@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -5,7 +6,7 @@ import { join } from "node:path";
 import { closeDb, openDb } from "./db";
 import { scratchEnv, writeClaudeTranscript, writeCodexRollout } from "./fixtures.test-support";
 import { dbPath, type Env } from "./paths";
-import { findQuery, QUERIES } from "./queries";
+import { findQuery, QUERIES, WITHOUT_WORKTREE } from "./queries";
 import { NoDatabaseError, openReadOnly } from "./read-db";
 import { renderTable } from "./render";
 import { sync } from "./sync";
@@ -108,6 +109,23 @@ describe("read path", () => {
       const tools = new Set(result?.rows.map((r) => r[0]));
       expect(tools).toEqual(new Set(["claude", "codex"]));
       expect(result?.note).toContain("Not summed across tools");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("a worktree checkout collapses onto the file it is a copy of", () => {
+    const db = new Database(":memory:");
+    try {
+      const expr = WITHOUT_WORKTREE("p");
+      const one = (p: string) =>
+        (db.query(`SELECT ${expr} AS out FROM (SELECT ? AS p)`).get(p) as { out: string }).out;
+
+      expect(one("/h/code/apps/.claude/worktrees/neochess/docs/x.md")).toBe("/h/code/apps/docs/x.md");
+      // A path with no worktree segment must come back untouched, or every file
+      // in the corpus would be rewritten by this.
+      expect(one("/h/code/apps/docs/x.md")).toBe("/h/code/apps/docs/x.md");
+      expect(one("/h/code/apps/.claude/settings.json")).toBe("/h/code/apps/.claude/settings.json");
     } finally {
       db.close();
     }

@@ -1049,6 +1049,78 @@ const running: Query = {
  * edited is somebody having to come back to it, which is an outcome and is
  * written down whether or not anyone noticed at the time.
  */
+/**
+ * Goal 3, read out of the same join as `fixes` and in the other direction: files
+ * an agent wrote, that shipped, and that no later fix commit returned to. It
+ * starts from what an agent edited rather than from every committed file, so a
+ * generated changelog with a thousand commits cannot outrank written code.
+ * A nomination, never a verdict — the label has to come from a reader.
+ */
+/**
+ * A worktree is a second checkout of the same repo, so `<repo>/.claude/worktrees/<name>/x`
+ * and `<repo>/x` are one file. Collapsing them keeps a file from competing with itself.
+ */
+export const WITHOUT_WORKTREE = (col: string) => `CASE
+  WHEN instr(${col}, '/.claude/worktrees/') > 0 THEN
+    substr(${col}, 1, instr(${col}, '/.claude/worktrees/') - 1) ||
+    substr(substr(${col}, instr(${col}, '/.claude/worktrees/') + 19),
+           instr(substr(${col}, instr(${col}, '/.claude/worktrees/') + 19), '/'))
+  ELSE ${col} END`;
+
+const exemplars: Query = {
+  name: "exemplars",
+  summary: "code an agent wrote that shipped and no fix came back to — candidates, not verdicts",
+  run: (db, ctx) => {
+    const columns = ["file", "repo", "skill", "edits", "commits", "days_since"];
+    const w = window("t.ts_call", ctx);
+    const records = table(
+      db,
+      `WITH edited AS (
+         SELECT ${WITHOUT_WORKTREE("t.file_path")} AS path, coalesce(t.attribution_skill, '(no skill)') AS skill,
+                count(*) AS edits, max(t.ts_call) AS last_edit
+         FROM tool_call t
+         WHERE t.tool_name IN ('Edit','Write') AND t.file_path IS NOT NULL
+           AND t.ts_call IS NOT NULL${w.sql}
+         GROUP BY path
+       ),
+       committed AS (
+         SELECT ${WITHOUT_WORKTREE("f.path")} AS path, coalesce(c.label, '(no remote)') AS repo,
+                c.ts AS ts, c.kind AS kind
+         FROM commit_file f JOIN repo_commit c ON c.sha = f.sha
+       ),
+       shipped AS (
+         SELECT path, min(repo) AS repo, count(*) AS commits FROM committed GROUP BY path
+       ),
+       returned AS (
+         SELECT path, min(ts) AS fixed_at FROM committed WHERE kind = 'fix' GROUP BY path
+       )
+       SELECT replace(e.path, ? || '/', '') AS file, s.repo AS repo, e.skill AS skill,
+              e.edits AS edits, s.commits AS commits,
+              cast(julianday('now') - julianday(e.last_edit) AS INTEGER) AS days_since
+       FROM edited e
+       JOIN shipped s ON s.path = e.path
+       LEFT JOIN returned r ON r.path = e.path AND r.fixed_at > e.last_edit
+       WHERE r.path IS NULL AND e.edits >= 3
+       ORDER BY e.edits DESC, days_since DESC
+       LIMIT 25`,
+      [...w.params, homeOf(ctx)],
+    );
+    return {
+      denominator:
+        `${scalar(db, "SELECT count(*) AS n FROM repo_commit")} commits read from the repos on disk ` +
+        `(${windowLine(ctx)}); a file needs three agent edits and one commit to appear, and the top 25 are shown`,
+      columns,
+      rows: toRows(records, columns),
+      note:
+        records.length === 0
+          ? "no agent-edited file in this window has shipped"
+          : "A nomination, never a verdict: nobody coming back to a file is not evidence it is right, only that it was " +
+            "not revisited. A fix committed without the conventional prefix is invisible here, a file is matched by path " +
+            "so repos sharing a name collide, and a file still being worked on today will read as untested rather than sound.",
+    };
+  },
+};
+
 const fixes: Query = {
   name: "fixes",
   summary: "files an agent edited that a later fix commit had to come back to, by skill",
@@ -1379,6 +1451,7 @@ export const QUERIES: Query[] = [
   delegation,
   running,
   fixes,
+  exemplars,
   repeats,
   burn,
   tokens,
