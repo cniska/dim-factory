@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { labelFor } from "./git-remote";
 import { readCommits, repoRoot } from "./git-source";
 
 export type GitReport = { repos: number; commits: number; files: number };
@@ -17,16 +18,20 @@ export function ingestCommits(db: Database): GitReport {
     .all();
 
   const roots = new Set<string>();
+  const labels = new Map<string, string | null>();
   for (const { cwd } of cwds) {
     const root = repoRoot(cwd);
-    if (root) roots.add(root);
+    if (!root) continue;
+    roots.add(root);
+    if (!labels.has(root)) labels.set(root, labelFor(root));
   }
 
   const insertCommit = db.prepare(
-    `INSERT INTO repo_commit (sha, repo, ts, author, subject, kind)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO repo_commit (sha, repo, label, ts, author, subject, kind)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(sha) DO UPDATE SET
-       repo = excluded.repo, ts = excluded.ts, author = excluded.author,
+       repo = excluded.repo, label = coalesce(excluded.label, repo_commit.label),
+       ts = excluded.ts, author = excluded.author,
        subject = excluded.subject, kind = excluded.kind`,
   );
   const insertFile = db.prepare(
@@ -43,7 +48,7 @@ export function ingestCommits(db: Database): GitReport {
         ? new Date(Date.parse(newest.ts) - OVERLAP_DAYS * 86_400_000).toISOString()
         : null;
       for (const c of readCommits(repo, since)) {
-        insertCommit.run(c.sha, c.repo, c.ts, c.author, c.subject, c.kind);
+        insertCommit.run(c.sha, c.repo, labels.get(repo) ?? null, c.ts, c.author, c.subject, c.kind);
         report.commits += 1;
         for (const path of c.files) {
           insertFile.run(c.sha, `${c.repo}/${path}`);
