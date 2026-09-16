@@ -6,7 +6,7 @@ Three goals. All of them are about time, which is the commodity actually being s
 
 ## 1. Make building take less of the owner's time and effort
 
-The work is apps, and the currency is attention, not output volume. A change succeeds when shipping the same thing costs fewer of the owner's minutes and less of his thinking — fewer things to re-explain, fewer decisions handed back, less re-deriving what is already known.
+The work is several repos, each its own production line — `apps`, `hoodly`, `acolyte` and the rest — and the currency is attention, not output volume. A change succeeds when shipping the same thing costs fewer of the owner's minutes and less of his thinking — fewer things to re-explain, fewer decisions handed back, less re-deriving what is already known.
 
 **Measured first by `q repeats`:** a phrase typed at the agent across several sessions means the point did not land the first time. Saying a thing twice is unambiguous waste, it names its own fix, and it is the one correction signal with no interpretation in it.
 
@@ -41,7 +41,7 @@ Text that changes what an agent does earns its tokens however long it is. Text t
 
 A good example teaches an agent more cheaply than a rule describing the same thing, and the corpus already holds every change this machine has made. The goal is that shipped work which held up becomes reachable as precedent, rather than being rediscovered.
 
-**What the corpus can do:** nominate. Code that shipped and that no later `fix:` commit returned to is computable today from `repo_commit` and `commit_file`, the same join `q fixes` reads in the other direction.
+**What the corpus can do:** nominate. Code that shipped and that no later `fix:` commit returned to is computable today from `repo_commit` and `commit_file`, the same join `q fixes` reads in the other direction. It spans every line on the machine, so a precedent set in one repo is reachable from another — which is how these lines already teach each other, one release doc at a time.
 
 **What it cannot do:** certify. Work nobody came back to may still be wrong, and a fix may land on code the session never wrote. An unlabeled nomination promoted to "good example" trains the next build on whatever went unnoticed, so the label comes from the owner or from a review, never from the absence of a fix alone.
 
