@@ -9,12 +9,34 @@ export type QueryResult = {
   note?: string;
 };
 
+/**
+ * `since` is an ISO timestamp the caller already resolved from `--since`. Old
+ * sessions ran under guidance that has since been rewritten, so counting them
+ * beside this week's describes a machine that no longer exists.
+ */
+export type QueryContext = { arg?: string; since?: string };
+
 export type Query = {
   name: string;
   summary: string;
   usage?: string;
-  run: (db: Database, arg?: string) => QueryResult;
+  /** A time series whose point is the arc across months, so no window is applied unless asked. */
+  spansHistory?: boolean;
+  run: (db: Database, ctx: QueryContext) => QueryResult;
 };
+
+/** The window as a bound fragment, empty when the caller asked for all of history. */
+function window(
+  col: string,
+  ctx: QueryContext,
+  keyword: "WHERE" | "AND" = "AND",
+): { sql: string; params: string[] } {
+  if (!ctx.since) return { sql: "", params: [] };
+  return { sql: ` ${keyword} ${col} >= ?`, params: [ctx.since] };
+}
+
+const windowLine = (ctx: QueryContext): string =>
+  ctx.since ? `since ${ctx.since.slice(0, 10)}` : "all time";
 
 function scalar(db: Database, sql: string, ...params: unknown[]): number {
   const row = db.prepare(sql).get(...(params as [])) as { n: number } | null;
@@ -29,17 +51,19 @@ function toRows(records: Record<string, unknown>[], columns: string[]): (string 
   return records.map((r) => columns.map((c) => (r[c] ?? null) as string | number | null));
 }
 
-const corpusLine = (db: Database): string => {
-  const sessions = scalar(db, "SELECT count(*) AS n FROM session");
-  const messages = scalar(db, "SELECT count(*) AS n FROM message");
-  const responses = scalar(db, "SELECT count(*) AS n FROM usage");
-  return `${sessions} sessions, ${messages} messages, ${responses} API responses`;
+const corpusLine = (db: Database, ctx: QueryContext): string => {
+  const w = window("last_seen_at", ctx, "WHERE");
+  const sessions = scalar(db, `SELECT count(*) AS n FROM session${w.sql}`, ...w.params);
+  const m = window("ts", ctx, "WHERE");
+  const messages = scalar(db, `SELECT count(*) AS n FROM message${m.sql}`, ...m.params);
+  const responses = scalar(db, `SELECT count(*) AS n FROM usage${m.sql}`, ...m.params);
+  return `${sessions} sessions, ${messages} messages, ${responses} API responses (${windowLine(ctx)})`;
 };
 
 const tokens: Query = {
   name: "tokens",
   summary: "input, cache and output tokens per tool and model",
-  run: (db) => {
+  run: (db, ctx) => {
     const columns = [
       "tool",
       "model",
@@ -50,17 +74,19 @@ const tokens: Query = {
       "output",
       "reasoning",
     ];
+    const w = window("u.ts", ctx, "WHERE");
     const records = table(
       db,
       `SELECT s.tool, coalesce(u.model, '(unnamed)') AS model, count(*) AS responses,
               sum(u.input_tokens) AS input, sum(u.cache_read_tokens) AS cache_read,
               sum(u.cache_write_tokens) AS cache_write, sum(u.output_tokens) AS output,
               sum(coalesce(u.reasoning_tokens, 0)) AS reasoning
-       FROM usage u JOIN session s ON s.id = u.session_id
+       FROM usage u JOIN session s ON s.id = u.session_id${w.sql}
        GROUP BY s.tool, u.model ORDER BY responses DESC`,
+      w.params,
     );
     return {
-      denominator: `${corpusLine(db)}. One row per API response, deduplicated on the response id.`,
+      denominator: `${corpusLine(db, ctx)}. One row per API response, deduplicated on the response id.`,
       columns,
       rows: toRows(records, columns),
       // The two tools count the same word differently; a combined total would be a
@@ -76,18 +102,21 @@ const tokens: Query = {
 const models: Query = {
   name: "models",
   summary: "sessions, responses and tokens per model per month — descriptive only",
-  run: (db) => {
+  spansHistory: true,
+  run: (db, ctx) => {
     const columns = ["month", "tool", "model", "sessions", "responses", "output"];
+    const w = window("u.ts", ctx, "WHERE");
     const records = table(
       db,
       `SELECT substr(u.ts, 1, 7) AS month, s.tool, coalesce(u.model, '(unnamed)') AS model,
               count(DISTINCT u.session_id) AS sessions, count(*) AS responses,
               sum(u.output_tokens) AS output
-       FROM usage u JOIN session s ON s.id = u.session_id
+       FROM usage u JOIN session s ON s.id = u.session_id${w.sql}
        GROUP BY month, s.tool, u.model ORDER BY month DESC, responses DESC`,
+      w.params,
     );
     return {
-      denominator: corpusLine(db),
+      denominator: corpusLine(db, ctx),
       columns,
       rows: toRows(records, columns),
       // Across these months the projects, the guidance and the habits all changed,
@@ -100,20 +129,23 @@ const models: Query = {
 const cost: Query = {
   name: "cost",
   summary: "cost as each tool reported it, never derived here",
-  run: (db) => {
+  spansHistory: true,
+  run: (db, ctx) => {
     const columns = ["month", "sessions_reporting", "total_usd"];
+    const w = window("coalesce(c.ts, s.started_at)", ctx, "WHERE");
     const records = table(
       db,
       `SELECT substr(coalesce(c.ts, s.started_at), 1, 7) AS month,
               count(*) AS sessions_reporting, round(sum(c.total_cost_usd), 2) AS total_usd
-       FROM session_cost_reported c JOIN session s ON s.id = c.session_id
+       FROM session_cost_reported c JOIN session s ON s.id = c.session_id${w.sql}
        GROUP BY month ORDER BY month DESC`,
+      w.params,
     );
     const claudeSessions = scalar(db, "SELECT count(*) AS n FROM session WHERE tool = 'claude'");
     const reporting = scalar(db, "SELECT count(*) AS n FROM session_cost_reported");
     const codex = scalar(db, "SELECT count(*) AS n FROM session WHERE tool = 'codex'");
     return {
-      denominator: `${reporting} of ${claudeSessions} Claude sessions carry a cost record; ${codex} Codex sessions report none`,
+      denominator: `${reporting} of ${claudeSessions} Claude sessions carry a cost record; ${codex} Codex sessions report none (${windowLine(ctx)})`,
       columns,
       rows: toRows(records, columns),
       note:
@@ -127,7 +159,7 @@ const cost: Query = {
 const turns: Query = {
   name: "turns",
   summary: "turn duration and how turns ended, per tool",
-  run: (db) => {
+  run: (db, ctx) => {
     const columns = ["tool", "turns", "median_s", "p90_s", "interrupted", "interrupted_pct"];
     const records = table(
       db,
@@ -135,21 +167,27 @@ const turns: Query = {
                          row_number() OVER (PARTITION BY s.tool ORDER BY t.duration_ms) AS rn,
                          count(*) OVER (PARTITION BY s.tool) AS n
                   FROM turn t JOIN session s ON s.id = t.session_id
-                  WHERE t.duration_ms IS NOT NULL)
+                  WHERE t.duration_ms IS NOT NULL${window("t.ts_end", ctx).sql})
        SELECT tool, max(n) AS turns,
               round(max(CASE WHEN rn = n / 2 THEN duration_ms END) / 1000.0, 1) AS median_s,
               round(max(CASE WHEN rn = n * 9 / 10 THEN duration_ms END) / 1000.0, 1) AS p90_s,
               sum(CASE WHEN status = 'interrupted' THEN 1 ELSE 0 END) AS interrupted,
               round(100.0 * sum(CASE WHEN status = 'interrupted' THEN 1 ELSE 0 END) / max(n), 1) AS interrupted_pct
        FROM t GROUP BY tool`,
+      window("t.ts_end", ctx).params,
     );
-    const all = scalar(db, "SELECT count(*) AS n FROM turn");
-    const timed = scalar(db, "SELECT count(*) AS n FROM turn WHERE duration_ms IS NOT NULL");
+    const w = window("ts_end", ctx, "WHERE");
+    const all = scalar(db, `SELECT count(*) AS n FROM turn${w.sql}`, ...w.params);
+    const timed = scalar(
+      db,
+      `SELECT count(*) AS n FROM turn WHERE duration_ms IS NOT NULL${window("ts_end", ctx).sql}`,
+      ...w.params,
+    );
     return {
       // The percentiles are computed only over turns that carry a duration, and
       // which turns those are is not random, so the gap is stated rather than
       // left for a reader to infer from a total that does not add up.
-      denominator: `${timed} of ${all} turns carry a duration; the percentiles cover only those`,
+      denominator: `${timed} of ${all} turns carry a duration; the percentiles cover only those (${windowLine(ctx)})`,
       columns,
       rows: toRows(records, columns),
       note:
@@ -163,7 +201,7 @@ const turns: Query = {
 const sessions: Query = {
   name: "sessions",
   summary: "most recently active sessions, newest first",
-  run: (db) => {
+  run: (db, ctx) => {
     const columns = ["id", "tool", "project", "started", "turns", "responses", "output", "ended"];
     const records = table(
       db,
@@ -174,12 +212,18 @@ const sessions: Query = {
               (SELECT count(*) FROM usage u WHERE u.session_id = s.id) AS responses,
               (SELECT sum(u.output_tokens) FROM usage u WHERE u.session_id = s.id) AS output,
               coalesce(s.end_reason, '') AS ended
-       FROM session s WHERE s.parent_id IS NULL
+       FROM session s WHERE s.parent_id IS NULL${window("s.last_seen_at", ctx).sql}
        ORDER BY s.last_seen_at DESC LIMIT 40`,
+      window("s.last_seen_at", ctx).params,
     );
-    const ended = scalar(db, "SELECT count(*) AS n FROM session WHERE end_reason IS NOT NULL");
+    const w = window("last_seen_at", ctx);
+    const ended = scalar(
+      db,
+      `SELECT count(*) AS n FROM session WHERE end_reason IS NOT NULL${w.sql}`,
+      ...w.params,
+    );
     return {
-      denominator: `${corpusLine(db)}; ${ended} sessions have an end reason from the hook spool`,
+      denominator: `${corpusLine(db, ctx)}; ${ended} sessions have an end reason from the hook spool`,
       columns,
       rows: toRows(records, columns),
       note:
@@ -194,7 +238,8 @@ const session: Query = {
   name: "session",
   summary: "one session in full",
   usage: "dim q session <id-prefix>",
-  run: (db, arg) => {
+  spansHistory: true,
+  run: (db, { arg }) => {
     if (!arg) {
       return { denominator: "", columns: ["error"], rows: [["usage: dim q session <id-prefix>"]] };
     }
@@ -273,7 +318,7 @@ const session: Query = {
 const tools: Query = {
   name: "tools",
   summary: "tool call counts, failures and the read-to-edit ratio per tool",
-  run: (db) => {
+  run: (db, ctx) => {
     const columns = ["tool", "tool_name", "calls", "failed", "failed_pct", "avg_result_bytes"];
     const records = table(
       db,
@@ -282,12 +327,23 @@ const tools: Query = {
               round(100.0 * sum(coalesce(t.is_error, 0)) / count(*), 1) AS failed_pct,
               CASE WHEN count(t.result_bytes) = 0 THEN NULL
                    ELSE round(avg(t.result_bytes)) END AS avg_result_bytes
-       FROM tool_call t JOIN session s ON s.id = t.session_id
+       FROM tool_call t JOIN session s ON s.id = t.session_id${window("t.ts_call", ctx, "WHERE").sql}
        GROUP BY s.tool, t.tool_name ORDER BY calls DESC`,
+      window("t.ts_call", ctx).params,
     );
-    const noResult = scalar(db, "SELECT count(*) AS n FROM tool_call WHERE ts_result IS NULL");
+    const w = window("ts_call", ctx);
+    const noResult = scalar(
+      db,
+      `SELECT count(*) AS n FROM tool_call WHERE ts_result IS NULL${w.sql}`,
+      ...w.params,
+    );
+    const calls = scalar(
+      db,
+      `SELECT count(*) AS n FROM tool_call${window("ts_call", ctx, "WHERE").sql}`,
+      ...w.params,
+    );
     return {
-      denominator: `${scalar(db, "SELECT count(*) AS n FROM tool_call")} tool calls; ${noResult} have no result record`,
+      denominator: `${calls} tool calls; ${noResult} have no result record (${windowLine(ctx)})`,
       columns,
       rows: toRows(records, columns),
       // Claude records no exit code, so a Claude failure is only what the
@@ -300,7 +356,7 @@ const tools: Query = {
 const skills: Query = {
   name: "skills",
   summary: "how often each skill loaded, by which path, and what its body cost",
-  run: (db) => {
+  run: (db, ctx) => {
     const columns = [
       "skill",
       "loads",
@@ -320,6 +376,7 @@ const skills: Query = {
       `WITH after AS (
          SELECT l.skill_name, count(*) AS calls_after
          FROM skill_load l JOIN usage u ON u.session_id = l.session_id AND u.ts > l.ts
+         ${window("l.ts", ctx, "WHERE").sql}
          GROUP BY l.skill_name
        )
        SELECT l.skill_name AS skill, count(*) AS loads,
@@ -332,12 +389,28 @@ const skills: Query = {
               count(DISTINCT l.body_sha256) AS versions,
               coalesce(a.calls_after, 0) AS calls_after
        FROM skill_load l LEFT JOIN after a ON a.skill_name = l.skill_name
+       ${window("l.ts", ctx, "WHERE").sql}
        GROUP BY l.skill_name ORDER BY loads DESC`,
+      [...window("l.ts", ctx).params, ...window("l.ts", ctx).params],
     );
-    const withBody = scalar(db, "SELECT count(*) AS n FROM skill_load WHERE body_chars IS NOT NULL");
-    const all = scalar(db, "SELECT count(*) AS n FROM skill_load");
+    const w = window("ts", ctx);
+    const withBody = scalar(
+      db,
+      `SELECT count(*) AS n FROM skill_load WHERE body_chars IS NOT NULL${w.sql}`,
+      ...w.params,
+    );
+    const all = scalar(
+      db,
+      `SELECT count(*) AS n FROM skill_load${window("ts", ctx, "WHERE").sql}`,
+      ...w.params,
+    );
+    const named = scalar(
+      db,
+      `SELECT count(DISTINCT skill_name) AS n FROM skill_load${window("ts", ctx, "WHERE").sql}`,
+      ...w.params,
+    );
     return {
-      denominator: `${all} loads across ${scalar(db, "SELECT count(DISTINCT skill_name) AS n FROM skill_load")} skills; ${withBody} carry a measured body`,
+      denominator: `${all} loads across ${named} skills; ${withBody} carry a measured body (${windowLine(ctx)})`,
       columns,
       rows: toRows(records, columns),
       note:
@@ -355,7 +428,7 @@ const skills: Query = {
  * the last-seen skill forward blames whichever skill ran most recently for
  * everything that follows and inflates the rate of rarely used ones.
  */
-const ATTRIBUTED = `
+const attributed = (ctx: QueryContext): string => `
   SELECT m.id, m.session_id, m.ts, m.model, m.text, m.denial_kind, m.user_feedback,
          m.interrupted_message_id,
          (SELECT p.attribution_skill FROM message p
@@ -364,16 +437,18 @@ const ATTRIBUTED = `
   FROM message m
   WHERE m.role = 'user'
     AND (m.denial_kind = 'user-rejected' OR m.interrupted_message_id IS NOT NULL
-         OR m.user_feedback IS NOT NULL)`;
+         OR m.user_feedback IS NOT NULL)${window("m.ts", ctx).sql}`;
 
 const corrections: Query = {
   name: "corrections",
   summary: "the mechanical signals that the user stopped the agent, by skill",
-  run: (db, arg) => {
+  run: (db, ctx) => {
+    const { arg } = ctx;
     const columns = ["skill", "rejected", "interrupted", "with_feedback", "labeled", "sessions"];
+    const w = window("m.ts", ctx);
     const records = table(
       db,
-      `WITH c AS (${ATTRIBUTED})
+      `WITH c AS (${attributed(ctx)})
        SELECT coalesce(c.skill, '(unattributed)') AS skill,
               sum(c.denial_kind IS NOT NULL) AS rejected,
               sum(c.interrupted_message_id IS NOT NULL) AS interrupted,
@@ -388,12 +463,12 @@ const corrections: Query = {
               count(DISTINCT c.session_id) AS sessions
        FROM c ${arg ? "WHERE c.skill = ?" : ""}
        GROUP BY c.skill ORDER BY rejected + interrupted DESC`,
-      arg ? [arg] : [],
+      [...w.params, ...(arg ? [arg] : [])],
     );
     const labeled = scalar(db, "SELECT count(*) AS n FROM correction_label");
-    const candidates = scalar(db, `WITH c AS (${ATTRIBUTED}) SELECT count(*) AS n FROM c`);
+    const candidates = scalar(db, `WITH c AS (${attributed(ctx)}) SELECT count(*) AS n FROM c`, ...w.params);
     return {
-      denominator: `${candidates} turns the user physically stopped; ${labeled} have been labeled by hand`,
+      denominator: `${candidates} turns the user physically stopped; ${labeled} have been labeled by hand (${windowLine(ctx)})`,
       columns,
       rows: toRows(records, columns),
       note:
@@ -415,7 +490,8 @@ const corrections: Query = {
 const rework: Query = {
   name: "rework",
   summary: "files the agent had to revisit after you pushed back, by skill",
-  run: (db, arg) => {
+  run: (db, ctx) => {
+    const { arg } = ctx;
     const columns = ["skill", "files_touched", "revisited", "after_pushback", "pushback_rate"];
     const records = table(
       db,
@@ -425,7 +501,7 @@ const rework: Query = {
                 min(t.ts_call) AS first_edit, max(t.ts_call) AS last_edit,
                 count(*) AS edits
          FROM tool_call t
-         WHERE t.tool_name IN ('Edit','Write') AND t.file_path IS NOT NULL AND t.ts_call IS NOT NULL
+         WHERE t.tool_name IN ('Edit','Write') AND t.file_path IS NOT NULL AND t.ts_call IS NOT NULL${window("t.ts_call", ctx).sql}
          GROUP BY t.session_id, t.file_path, skill
        ),
        marked AS (
@@ -446,14 +522,17 @@ const rework: Query = {
        ${arg ? "WHERE skill = ?" : ""}
        GROUP BY skill HAVING files_touched >= 20
        ORDER BY pushback_rate DESC`,
-      arg ? [arg] : [],
+      [...window("t.ts_call", ctx).params, ...(arg ? [arg] : [])],
     );
+    const w = window("ts_call", ctx);
     const total = scalar(
       db,
-      "SELECT count(*) AS n FROM tool_call WHERE tool_name IN ('Edit','Write') AND file_path IS NOT NULL",
+      `SELECT count(*) AS n FROM tool_call
+       WHERE tool_name IN ('Edit','Write') AND file_path IS NOT NULL${w.sql}`,
+      ...w.params,
     );
     return {
-      denominator: `${total} file edits; rows shown only where a skill touched at least 20 files`,
+      denominator: `${total} file edits; rows shown only where a skill touched at least 20 files (${windowLine(ctx)})`,
       columns,
       rows: toRows(records, columns),
       note:
@@ -466,7 +545,63 @@ const rework: Query = {
   },
 };
 
+/**
+ * What was said, not what was counted. The alternative is grepping every
+ * transcript on disk, which reads whole tool results and file contents back out
+ * of megabyte files to find one sentence.
+ */
+/**
+ * Every term is quoted before it reaches FTS5, which otherwise reads `-` as NOT
+ * and `:` as a column filter — so a branch name or a flag searches as the word
+ * it is. Terms are ANDed; the query language is not exposed.
+ */
+const asPhrases = (terms: string): string =>
+  terms
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((t) => `"${t.replaceAll('"', '""')}"`)
+    .join(" ");
+
+const search: Query = {
+  name: "search",
+  summary: "find a past message by its words, newest first",
+  usage: 'dim q search "<terms>"',
+  spansHistory: true,
+  run: (db, ctx) => {
+    const { arg } = ctx;
+    if (!arg) {
+      return { denominator: "", columns: ["error"], rows: [['usage: dim q search "<terms>"']] };
+    }
+    const columns = ["session", "when", "role", "project", "text"];
+    const w = window("m.ts", ctx);
+    const records = table(
+      db,
+      `SELECT substr(m.session_id, 1, 8) AS session, substr(m.ts, 1, 16) AS "when", m.role,
+              replace(coalesce(s.project, ''), '/Users/christofferniska/code/', '') AS project,
+              replace(snippet(message_fts, 0, '[', ']', '…', 12), char(10), ' ') AS text
+       FROM message_fts
+       JOIN message m ON m.rowid = message_fts.rowid
+       JOIN session s ON s.id = m.session_id
+       WHERE message_fts MATCH ?${w.sql}
+       ORDER BY m.ts DESC LIMIT 40`,
+      [asPhrases(arg), ...w.params],
+    );
+    const indexed = scalar(db, "SELECT count(*) AS n FROM message WHERE text IS NOT NULL");
+    const all = scalar(db, "SELECT count(*) AS n FROM message");
+    return {
+      denominator: `${indexed} of ${all} messages carry text and are searchable (${windowLine(ctx)}); newest 40 shown`,
+      columns,
+      rows: toRows(records, columns),
+      note:
+        records.length === 0
+          ? `nothing matches ${arg}; a message with no text is a tool call or its result, which this index does not hold`
+          : undefined,
+    };
+  },
+};
+
 export const QUERIES: Query[] = [
+  search,
   tokens,
   models,
   cost,
