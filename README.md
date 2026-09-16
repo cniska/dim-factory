@@ -17,15 +17,18 @@ Merit means evidence. This repo produces it.
 Bun, pinned in `mise.toml`. `mise install && bun install`, then:
 
 ```
-bun run dim sync      # read every new byte of both tools' session files
-bun run dim stats     # row counts and token totals per tool and model
-bun run dim rebuild   # forget every cursor and read all files from the start
-bun run verify        # lint, typecheck, test
+bun run dim sync            # read every new byte of both tools' session files
+bun run dim stats           # row counts and token totals per tool and model
+bun run dim rebuild         # forget every cursor and read all files from the start
+bun run dim install-hooks   # show the session hooks; --write applies them
+bun run verify              # lint, typecheck, test
 ```
 
 The database lands in `~/.local/share/dim-factory/sessions.db`. Reading the whole corpus from scratch takes about 20 seconds.
 
 Claude Code deletes transcripts after 30 days unless told otherwise, so `~/.claude/settings.json` sets `"cleanupPeriodDays": 3650`. Without it the sources this points into disappear.
+
+`dim install-hooks --write` appends a `SessionStart`/`SessionEnd` hook to `~/.claude/settings.json` and `~/.codex/hooks.json`, keeping every hook already there and copying each file to `<file>.dim-backup` first. The hook is one redirect into a spool directory and always exits 0. It is worth running early: a transcript records no end marker, so until the hooks are in, a session that was abandoned cannot be told from one still open, and that gap cannot be filled in later.
 
 ## Layout
 

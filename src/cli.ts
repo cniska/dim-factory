@@ -3,16 +3,20 @@
 // No model call happens anywhere below this line.
 
 import { closeDb, openDb } from "./db";
+import { installHooks, planHooks } from "./hooks";
 import { withLock } from "./lock";
 import { dbPath } from "./paths";
+import { ensureSpoolDirs } from "./spool";
 import { rebuild, type SyncReport, sync } from "./sync";
 
 const USAGE = `usage: dim <command>
 
-  init      create the database and its schema
-  sync      read every new byte of both tools' session files
-  rebuild   forget every cursor and read all files from the start
-  stats     row counts and token totals per tool and model
+  init            create the database and its schema
+  sync            read every new byte of both tools' session files
+  rebuild         forget every cursor and read all files from the start
+  stats           row counts and token totals per tool and model
+  install-hooks   show the session hooks to add to both tools' config
+                  (--write applies them, after copying each config aside)
 `;
 
 function printReport(report: SyncReport): void {
@@ -20,6 +24,12 @@ function printReport(report: SyncReport): void {
     `claude: ${report.claudeTranscripts} transcripts, ${report.claudeSubagents} subagents; ` +
       `codex: ${report.codexRollouts} rollouts; ${report.filesRead} files with new bytes`,
   );
+  const h = report.hooks;
+  if (h.applied + h.duplicate + h.unreadable > 0) {
+    console.log(
+      `hooks: ${h.applied} spooled events applied, ${h.duplicate} already seen, ${h.unreadable} unreadable`,
+    );
+  }
   if (report.orphanSubagents.length > 0) {
     console.log(`${report.orphanSubagents.length} subagents whose parent session is gone, recorded unlinked`);
   }
@@ -72,15 +82,35 @@ function printStats(): void {
   }
 }
 
-function withDb(fn: (db: ReturnType<typeof openDb>) => SyncReport): void {
+function withDb(fn: (db: ReturnType<typeof openDb>) => SyncReport, forRebuild = false): void {
   withLock(() => {
-    const db = openDb(dbPath());
+    const db = openDb(dbPath(), { forRebuild });
     try {
       printReport(fn(db));
     } finally {
       closeDb(db);
     }
   });
+}
+
+function printHookPlan(write: boolean): void {
+  ensureSpoolDirs();
+  const plans = planHooks();
+  const missing = plans.filter((p) => !p.present);
+  if (missing.length === 0) {
+    console.log("hooks: all four session hooks are already installed");
+    return;
+  }
+  for (const plan of missing) {
+    console.log(`${plan.configPath}\n  hooks.${plan.event} += ${plan.command}`);
+  }
+  if (!write) {
+    console.log(`\n${missing.length} to add. Re-run with --write to apply.`);
+    return;
+  }
+  const report = installHooks();
+  for (const path of report.written) console.log(`wrote ${path}`);
+  for (const path of report.backups) console.log(`previous version kept at ${path}`);
 }
 
 const command = process.argv[2];
@@ -93,10 +123,13 @@ try {
       withDb((db) => sync(db));
       break;
     case "rebuild":
-      withDb((db) => rebuild(db));
+      withDb((db) => rebuild(db), true);
       break;
     case "stats":
       printStats();
+      break;
+    case "install-hooks":
+      printHookPlan(process.argv.includes("--write"));
       break;
     default:
       console.log(USAGE);

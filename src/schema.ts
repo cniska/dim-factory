@@ -2,7 +2,7 @@
 // by re-reading them, so a schema change is `dim rebuild`, not a migration.
 // SCHEMA_VERSION exists only so sync can refuse to run against an older shape.
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -91,4 +91,24 @@ CREATE TABLE IF NOT EXISTS usage (
 );
 CREATE INDEX IF NOT EXISTS usage_session ON usage(session_id, ts);
 CREATE INDEX IF NOT EXISTS usage_model ON usage(model);
+
+-- Drained from the hook spool, and the one table \`dim rebuild\` must not touch:
+-- a transcript records no end marker, so a session that ended before its hook
+-- was installed can never be told apart from one still open. There is no
+-- foreign key to session because a hook can fire for a session whose transcript
+-- has not been read yet, or ever.
+CREATE TABLE IF NOT EXISTS hook_event (
+  id          INTEGER PRIMARY KEY,
+  tool        TEXT NOT NULL CHECK (tool IN ('claude','codex')),
+  session_id  TEXT NOT NULL,
+  event       TEXT NOT NULL CHECK (event IN ('session_start','session_end')),
+  ts          TEXT NOT NULL,
+  source      TEXT,               -- SessionStart: startup|resume|clear|compact|fork
+  reason      TEXT,               -- SessionEnd: clear|resume|logout|prompt_input_exit|other
+  model       TEXT,
+  cwd         TEXT,
+  payload     TEXT NOT NULL,      -- the hook's stdin, verbatim
+  UNIQUE (session_id, event, ts)
+);
+CREATE INDEX IF NOT EXISTS hook_event_session ON hook_event(session_id);
 `;

@@ -302,6 +302,22 @@ CREATE TABLE turn (
   PRIMARY KEY (session_id, turn_id)
 );
 
+-- Drained from the hook spool. No foreign key to session, and never cleared by
+-- a rebuild: see §7.
+CREATE TABLE hook_event (
+  id          INTEGER PRIMARY KEY,
+  tool        TEXT NOT NULL CHECK (tool IN ('claude','codex')),
+  session_id  TEXT NOT NULL,
+  event       TEXT NOT NULL CHECK (event IN ('session_start','session_end')),
+  ts          TEXT NOT NULL,        -- from the spool filename, which the hook writes
+  source      TEXT,                 -- SessionStart: startup|resume|clear|compact|fork
+  reason      TEXT,                 -- SessionEnd: clear|resume|logout|prompt_input_exit|other
+  model       TEXT,
+  cwd         TEXT,
+  payload     TEXT NOT NULL,        -- the hook's stdin, verbatim
+  UNIQUE (session_id, event, ts)
+);
+
 -- Everything else worth keeping, one row per occurrence.
 CREATE TABLE session_event (
   id              INTEGER PRIMARY KEY,
@@ -392,7 +408,9 @@ Not installed, and why: `Stop` duplicates `turn_duration` lines (Claude) and is 
 
 **Concurrency**: hooks never open the database. One file per event (`O_CREAT` of a unique name) is atomic on APFS; the scheduled `sync` moves spool files into `session_event` and `session.ended_at/end_reason` under the `flock`. Concurrent sessions therefore never contend on `sessions.db`; only `sync` writes it, one process at a time, in WAL mode so the read path can query during a sync.
 
-**One canonical source per column**: `session.ended_at`, `end_reason`, and `session_event kind IN ('hook_session_start','hook_session_end')` come from the spool only. Everything else comes from transcripts only. No column is written by both paths.
+**One canonical source per column**: the spool drains into `hook_event`, its own table, and `session.ended_at`/`end_reason` are derived from it on every sync. Everything else comes from transcripts only, and no column is written by both paths.
+
+`hook_event` is the one table `dim rebuild` does not clear, and the reason is the whole point of installing the hooks: every other table is re-read from files that persist, while a session that ended before its hook was installed can never be told apart from one still open. It carries no foreign key to `session` for the same reason — a hook fires for sessions whose transcript has not been read yet, or never will be — so an event that arrives early waits in the table and lands on the session the next time one appears. A spool file that cannot be placed is moved to `spool/unreadable/` rather than deleted, because it is the only copy.
 
 **Codex asymmetry**: Codex hooks give no `Stop`, no `UserPromptSubmit`, and a constant `SessionEnd.reason`. Interrupts are in the rollout (`turn_aborted reason:"interrupted"`, `thread_turns.status`), so "abandoned mid-turn" is visible; "closed the window vs. typed exit" is not. Codex also has no `attributionSkill`, so tokens cannot be attributed to a skill within a Codex session — only "session loaded skill X at time T". Those are the two places Codex analysis is coarser than Claude's; everything in §3 except per-turn skill attribution holds for both.
 

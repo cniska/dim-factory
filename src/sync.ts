@@ -3,6 +3,7 @@ import { listClaudeSubagents, listClaudeTranscripts } from "./claude-source";
 import { listCodexRollouts, readCodexTitles } from "./codex-source";
 import { createIngester, type FileSpec } from "./ingest";
 import type { Env } from "./paths";
+import { applyHookEvents, type DrainReport, drainSpool } from "./spool";
 
 export type SyncReport = {
   claudeTranscripts: number;
@@ -11,6 +12,7 @@ export type SyncReport = {
   filesRead: number;
   orphanSubagents: string[];
   failures: { path: string; error: string }[];
+  hooks: DrainReport;
 };
 
 export function sync(db: Database, env: Env = process.env): SyncReport {
@@ -27,6 +29,7 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     filesRead: 0,
     orphanSubagents: [],
     failures: [],
+    hooks: drainSpool(db, env),
   };
 
   const run = (spec: FileSpec): void => {
@@ -63,9 +66,16 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     if (title) setTitle.run(title, spec.sessionId);
   }
 
+  // After the transcripts, so a hook that fired before its session was read
+  // still lands on the session row.
+  applyHookEvents(db);
   return report;
 }
 
+/**
+ * Everything here is re-read from the source files. `hook_event` is deliberately
+ * not cleared: it is the one table with no source to re-read from.
+ */
 export function rebuild(db: Database, env: Env = process.env): SyncReport {
   db.transaction(() => {
     db.run("DELETE FROM usage");

@@ -12,7 +12,11 @@ export class SchemaTooOldError extends Error {
   }
 }
 
-export function openDb(path: string): Database {
+/**
+ * `rebuild` is the one caller allowed through a version mismatch, because
+ * re-reading the sources is exactly the fix the error asks for.
+ */
+export function openDb(path: string, opts: { forRebuild?: boolean } = {}): Database {
   mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path, { create: true });
   db.run("PRAGMA journal_mode = WAL");
@@ -23,8 +27,11 @@ export function openDb(path: string): Database {
   if (!row) {
     db.run("INSERT INTO schema_version (version) VALUES (?)", [SCHEMA_VERSION]);
   } else if (row.version !== SCHEMA_VERSION) {
-    db.close();
-    throw new SchemaTooOldError(row.version);
+    if (!opts.forRebuild) {
+      db.close();
+      throw new SchemaTooOldError(row.version);
+    }
+    db.run("UPDATE schema_version SET version = ?", [SCHEMA_VERSION]);
   }
   return db;
 }
