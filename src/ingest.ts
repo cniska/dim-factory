@@ -210,6 +210,19 @@ export function createIngester(db: Database) {
        extra             = coalesce(excluded.extra, tool_call.extra)`,
   );
 
+  const insertSkillLoad = db.prepare(
+    `INSERT INTO skill_load (session_id, message_id, ts, model, skill_name, how,
+       body_chars, body_sha256, skill_path)
+     VALUES ($sessionId, $messageId, $ts, $model, $skillName, $how,
+       $bodyChars, $bodySha256, $skillPath)
+     ON CONFLICT(session_id, message_id, skill_name, how) DO UPDATE SET
+       body_chars  = coalesce(excluded.body_chars, skill_load.body_chars),
+       body_sha256 = coalesce(excluded.body_sha256, skill_load.body_sha256),
+       skill_path  = coalesce(excluded.skill_path, skill_load.skill_path),
+       model       = coalesce(excluded.model, skill_load.model)`,
+  );
+
+  const deleteSkillLoads = db.prepare<void, [string]>("DELETE FROM skill_load WHERE session_id = ?");
   const deleteToolCalls = db.prepare<void, [string]>("DELETE FROM tool_call WHERE session_id = ?");
   const deleteTurns = db.prepare<void, [string]>("DELETE FROM turn WHERE session_id = ?");
   const deleteCost = db.prepare<void, [string]>("DELETE FROM session_cost_reported WHERE session_id = ?");
@@ -221,6 +234,7 @@ export function createIngester(db: Database) {
   );
 
   function resetSession(sessionId: string, path: string): void {
+    deleteSkillLoads.run(sessionId);
     deleteToolCalls.run(sessionId);
     deleteCost.run(sessionId);
     deleteTurns.run(sessionId);
@@ -337,6 +351,20 @@ export function createIngester(db: Database) {
         $srcLineCall: t.srcLineCall ?? null,
         $srcLineResult: t.srcLineResult ?? null,
         $extra: t.extra ?? null,
+      });
+    }
+
+    for (const l of parsed.skillLoads) {
+      insertSkillLoad.run({
+        $sessionId: spec.sessionId,
+        $messageId: l.messageId ?? null,
+        $ts: l.ts,
+        $model: l.model ?? null,
+        $skillName: l.skillName,
+        $how: l.how,
+        $bodyChars: l.bodyChars ?? null,
+        $bodySha256: l.bodySha256 ?? null,
+        $skillPath: l.skillPath ?? null,
       });
     }
 

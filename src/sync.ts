@@ -83,6 +83,7 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
  */
 export function rebuild(db: Database, env: Env = process.env): SyncReport {
   db.transaction(() => {
+    db.run("DELETE FROM skill_load");
     db.run("DELETE FROM tool_call");
     db.run("DELETE FROM orphan_prompt");
     db.run("DELETE FROM session_cost_reported");

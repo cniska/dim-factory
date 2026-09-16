@@ -9,6 +9,7 @@ import {
   type TurnRow,
   type UsageRow,
 } from "./records";
+import { type SkillLoadRow, skillFromFileRead } from "./skill-load";
 
 export type CodexState = { model?: string; turnId?: string };
 
@@ -114,6 +115,7 @@ export function parseCodexChunk(lines: string[], threadId: string, state: CodexS
   const turns: TurnRow[] = [];
   const costs: CostRow[] = [];
   const toolCalls: ToolCallRow[] = [];
+  const skillLoads: SkillLoadRow[] = [];
   let current: CodexState = { ...state };
 
   for (const raw of lines) {
@@ -217,6 +219,18 @@ export function parseCodexChunk(lines: string[], threadId: string, state: CodexS
       // Only the kinds that are a tool doing something; AgentMessage, Reasoning
       // and UserMessage are already message rows.
       if (kind === "CommandExecution" || kind === "FileChange" || kind === "McpToolCall") {
+        const cmd = typeof item.command === "string" ? item.command : commandText(item.command);
+        // Codex's usual path is the model opening the file itself, which is a
+        // load with no invocation record anywhere.
+        const readSkill = cmd ? skillFromFileRead(cmd) : undefined;
+        if (readSkill) {
+          skillLoads.push({
+            ts: msSince(p.started_at_ms) ?? line.timestamp ?? "",
+            model: current.model,
+            skillName: readSkill,
+            how: "read",
+          });
+        }
         toolCalls.push({
           id: item.id as string,
           model: current.model,
@@ -255,5 +269,14 @@ export function parseCodexChunk(lines: string[], threadId: string, state: CodexS
     }
   }
 
-  return { session, messages, usage, turns, costs, toolCalls, cursorState: JSON.stringify(current) };
+  return {
+    session,
+    messages,
+    usage,
+    turns,
+    costs,
+    toolCalls,
+    skillLoads,
+    cursorState: JSON.stringify(current),
+  };
 }

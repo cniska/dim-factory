@@ -2,7 +2,7 @@
 // by re-reading them, so a schema change is `dim rebuild`, not a migration.
 // SCHEMA_VERSION exists only so sync can refuse to run against an older shape.
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -182,4 +182,25 @@ CREATE TABLE IF NOT EXISTS tool_call (
 CREATE INDEX IF NOT EXISTS tool_call_session ON tool_call(session_id, ts_call);
 CREATE INDEX IF NOT EXISTS tool_call_name ON tool_call(tool_name);
 CREATE INDEX IF NOT EXISTS tool_call_file ON tool_call(file_path);
+
+-- Every time a skill's body entered the context window. The body itself is not
+-- stored, only its size and hash: it is recoverable from the source file by
+-- locator, and the hash is what dates it against the skills repo's history
+-- without depending on that working tree having been clean.
+CREATE TABLE IF NOT EXISTS skill_load (
+  id              INTEGER PRIMARY KEY,
+  session_id      TEXT NOT NULL REFERENCES session(id),
+  message_id      TEXT REFERENCES message(id),
+  ts              TEXT NOT NULL,
+  model           TEXT,
+  skill_name      TEXT NOT NULL,
+  how             TEXT NOT NULL CHECK (how IN ('model','user','read')),
+      -- model: the Skill tool chose it; user: typed /name or $name;
+      -- read: the model opened SKILL.md itself, which is Codex's usual path
+  body_chars      INTEGER,
+  body_sha256     TEXT,
+  skill_path      TEXT,
+  UNIQUE (session_id, message_id, skill_name, how)
+);
+CREATE INDEX IF NOT EXISTS skill_load_name ON skill_load(skill_name, ts);
 `;

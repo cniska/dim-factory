@@ -2,11 +2,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { Glob } from "bun";
 import type { FileSpec } from "./ingest";
+import { listInstalledSkills } from "./installed-skills";
 import { parseClaudeChunk } from "./parse-claude";
 import { claudeProjectsDir, type Env } from "./paths";
 
-function parse(lines: string[], firstLineNumber: number) {
-  return parseClaudeChunk(lines, firstLineNumber);
+function parserFor(env: Env) {
+  // Read once per listing rather than per file.
+  const known = listInstalledSkills(env);
+  return (lines: string[], firstLineNumber: number) => parseClaudeChunk(lines, firstLineNumber, known);
 }
 
 /** ~/.claude/projects/<slug>/<session>.jsonl */
@@ -14,6 +17,7 @@ export function listClaudeTranscripts(env: Env = process.env): FileSpec[] {
   const root = claudeProjectsDir(env);
   if (!existsSync(root)) return [];
   const specs: FileSpec[] = [];
+  const parse = parserFor(env);
   for (const path of new Glob("*/*.jsonl").scanSync({ cwd: root, absolute: true })) {
     specs.push({
       path,
@@ -42,6 +46,7 @@ export function listClaudeSubagents(env: Env = process.env): FileSpec[] {
   const root = claudeProjectsDir(env);
   if (!existsSync(root)) return [];
   const specs: FileSpec[] = [];
+  const parse = parserFor(env);
   for (const path of new Glob("*/*/subagents/*.jsonl").scanSync({ cwd: root, absolute: true })) {
     specs.push({
       path,

@@ -1,3 +1,5 @@
+import type { SkillLoadRow } from "./skill-load";
+
 // What a parser produces from one source line. Both tools' parsers emit these,
 // and the ingester knows nothing else about either format.
 
@@ -103,6 +105,7 @@ export type ParsedChunk = {
   turns: TurnRow[];
   costs: CostRow[];
   toolCalls: ToolCallRow[];
+  skillLoads: SkillLoadRow[];
   /** Parser state to resume with when the next chunk of this file is read. */
   cursorState?: string;
 };

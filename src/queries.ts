@@ -297,7 +297,59 @@ const tools: Query = {
   },
 };
 
-export const QUERIES: Query[] = [tokens, models, cost, turns, tools, sessions, session];
+const skills: Query = {
+  name: "skills",
+  summary: "how often each skill loaded, by which path, and what its body cost",
+  run: (db) => {
+    const columns = [
+      "skill",
+      "loads",
+      "model_chose",
+      "user_typed",
+      "file_read",
+      "sessions",
+      "body_chars",
+      "versions",
+      "calls_after",
+    ];
+    const records = table(
+      db,
+      // Every API response after a load re-reads that body from cache, so the
+      // count of responses following a load is the honest unit of what an
+      // instruction costs — counted per load, then summed.
+      `WITH after AS (
+         SELECT l.skill_name, count(*) AS calls_after
+         FROM skill_load l JOIN usage u ON u.session_id = l.session_id AND u.ts > l.ts
+         GROUP BY l.skill_name
+       )
+       SELECT l.skill_name AS skill, count(*) AS loads,
+              sum(l.how = 'model') AS model_chose,
+              sum(l.how = 'user') AS user_typed,
+              sum(l.how = 'read') AS file_read,
+              count(DISTINCT l.session_id) AS sessions,
+              CASE WHEN count(l.body_chars) = 0 THEN NULL
+                   ELSE round(avg(l.body_chars)) END AS body_chars,
+              count(DISTINCT l.body_sha256) AS versions,
+              coalesce(a.calls_after, 0) AS calls_after
+       FROM skill_load l LEFT JOIN after a ON a.skill_name = l.skill_name
+       GROUP BY l.skill_name ORDER BY loads DESC`,
+    );
+    const withBody = scalar(db, "SELECT count(*) AS n FROM skill_load WHERE body_chars IS NOT NULL");
+    const all = scalar(db, "SELECT count(*) AS n FROM skill_load");
+    return {
+      denominator: `${all} loads across ${scalar(db, "SELECT count(DISTINCT skill_name) AS n FROM skill_load")} skills; ${withBody} carry a measured body`,
+      columns,
+      rows: toRows(records, columns),
+      note:
+        all === 0
+          ? "no skill load recorded"
+          : "A skill absent here never loaded in this corpus, which is a fact about the corpus, not a verdict on the skill. " +
+            "Only Claude injects a body the size of which can be measured; a Codex file read is counted but not sized.",
+    };
+  },
+};
+
+export const QUERIES: Query[] = [tokens, models, cost, turns, tools, skills, sessions, session];
 
 export function findQuery(name: string): Query | undefined {
   return QUERIES.find((q) => q.name === name);

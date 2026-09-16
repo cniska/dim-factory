@@ -10,6 +10,8 @@ import {
   type UsageRow,
 } from "./records";
 
+import { parseSkillBody, type SkillLoadRow, sha256, skillFromCommand } from "./skill-load";
+
 const SKILL_BODY_PREFIX = "Base directory for this skill:";
 
 type ContentBlock = {
@@ -120,13 +122,18 @@ function feedbackText(value: unknown): string | undefined {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
-export function parseClaudeChunk(lines: string[], firstLineNumber: number): ParsedChunk {
+export function parseClaudeChunk(
+  lines: string[],
+  firstLineNumber: number,
+  knownSkills: ReadonlySet<string> = new Set(),
+): ParsedChunk {
   const session: SessionFacts[] = [];
   const messages: MessageRow[] = [];
   const usage: UsageRow[] = [];
   const turns: TurnRow[] = [];
   const costs: CostRow[] = [];
   const toolCalls: ToolCallRow[] = [];
+  const skillLoads: SkillLoadRow[] = [];
 
   for (const [index, raw] of lines.entries()) {
     if (raw.length === 0) continue;
@@ -206,6 +213,16 @@ export function parseClaudeChunk(lines: string[], firstLineNumber: number): Pars
       if (Array.isArray(line.message.content)) {
         for (const block of line.message.content) {
           if (block?.type !== "tool_use" || !block.id || !block.name) continue;
+          const chosen = (block.input as { skill?: unknown } | undefined)?.skill;
+          if (block.name === "Skill" && typeof chosen === "string") {
+            skillLoads.push({
+              messageId: line.message.id,
+              ts: line.timestamp ?? "",
+              model,
+              skillName: chosen,
+              how: "model",
+            });
+          }
           const input = (block.input ?? {}) as Record<string, unknown>;
           toolCalls.push({
             id: block.id,
@@ -272,6 +289,30 @@ export function parseClaudeChunk(lines: string[], firstLineNumber: number): Pars
         cliVersion: nonEmpty(line.version),
         entrypoint: nonEmpty(line.entrypoint),
       });
+      const named = text ? skillFromCommand(text) : undefined;
+      // Claude Code's built-in commands share the /name syntax; only a name that
+      // is an installed skill is a load.
+      const typed = named && knownSkills.has(named) ? named : undefined;
+      if (typed) {
+        skillLoads.push({
+          messageId: line.uuid,
+          ts: line.timestamp ?? "",
+          skillName: typed,
+          how: "user",
+        });
+      }
+      const body = line.isMeta === true && text ? parseSkillBody(text) : undefined;
+      if (body) {
+        skillLoads.push({
+          messageId: line.uuid,
+          ts: line.timestamp ?? "",
+          skillName: body.name,
+          how: "model",
+          bodyChars: body.body.length,
+          bodySha256: sha256(body.body),
+          skillPath: body.path,
+        });
+      }
       messages.push({
         id: line.uuid,
         ts: line.timestamp ?? "",
@@ -284,7 +325,7 @@ export function parseClaudeChunk(lines: string[], firstLineNumber: number): Pars
         interruptedMessageId: nonEmpty(line.interruptedMessageId),
         denialKind: nonEmpty(line.toolDenialKind),
         userFeedback: feedbackText(line.userFeedback),
-        text,
+        text: body ? undefined : text,
         srcLine,
         extra: jsonOrUndefined({
           isSidechain: line.isSidechain,
@@ -298,5 +339,5 @@ export function parseClaudeChunk(lines: string[], firstLineNumber: number): Pars
     }
   }
 
-  return { session, messages, usage, turns, costs, toolCalls };
+  return { session, messages, usage, turns, costs, toolCalls, skillLoads };
 }
