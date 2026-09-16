@@ -224,6 +224,21 @@ describe("read path", () => {
     }
   });
 
+  test("running says it is only as fresh as the last sync", () => {
+    const env = seeded();
+    const db = openReadOnly(dbPath(env));
+    try {
+      // The fixtures are older than any live window, so this must read as
+      // nothing running rather than as nothing to see.
+      const quiet = findQuery("running")?.run(db, { arg: "1" });
+      expect(quiet?.rows).toEqual([]);
+      expect(quiet?.note).toContain("dim sync");
+      expect(quiet?.denominator).toContain("last 1 minutes");
+    } finally {
+      db.close();
+    }
+  });
+
   test("resume gives facts for a cold start and never a next move", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));

@@ -933,12 +933,63 @@ const delegation: Query = {
   },
 };
 
+/**
+ * What is happening right now, including inside a subagent. Fanning work out
+ * costs the visibility of watching it, and a transcript is written as it goes:
+ * the delegate's own lines are on disk before it reports back. Minutes, not the
+ * day-granular window, because the question is what is running.
+ */
+const running: Query = {
+  name: "running",
+  summary: "sessions and subagents active in the last few minutes, and what each is doing",
+  usage: "dim q running [minutes]",
+  spansHistory: true,
+  run: (db, { arg }) => {
+    const minutes = arg && /^\d+$/.test(arg) ? Number(arg) : 30;
+    const columns = ["id", "kind", "project", "last_seen", "doing"];
+    const records = table(
+      db,
+      `SELECT substr(s.id, 1, 8) AS id,
+              CASE WHEN s.parent_id IS NULL THEN s.tool
+                   ELSE 'sub:' || coalesce(s.agent_type, '?') END AS kind,
+              replace(coalesce(s.project, ''), '/Users/christofferniska/code/', '') AS project,
+              substr(s.last_seen_at, 12, 5) AS last_seen,
+              coalesce(
+                (SELECT replace(substr(m.text, 1, 140), char(10), ' ') FROM message m
+                 WHERE m.session_id = s.id AND m.text IS NOT NULL
+                   AND m.is_skill_body = 0 AND m.is_meta = 0
+                 ORDER BY m.ts DESC LIMIT 1),
+                (SELECT t.tool_name || ' ' || coalesce(t.file_path, '') FROM tool_call t
+                 WHERE t.session_id = s.id ORDER BY t.ts_call DESC LIMIT 1),
+                '(nothing recorded)') AS doing
+       FROM session s
+       -- Timestamps are stored ISO with a T; datetime() renders a space, which
+       -- sorts below it and would put every row inside the window.
+       WHERE s.last_seen_at >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?)
+       ORDER BY s.last_seen_at DESC LIMIT 40`,
+      [`-${minutes} minutes`],
+    );
+    const synced = scalar(db, "SELECT count(*) AS n FROM source_file");
+    return {
+      denominator: `sessions active in the last ${minutes} minutes, of ${synced} source files read`,
+      columns,
+      rows: toRows(records, columns),
+      note:
+        records.length === 0
+          ? `nothing active in the last ${minutes} minutes — run \`dim sync\` first, since only bytes already read are here`
+          : "A subagent's rows are its own transcript, not its report to the parent. This is as fresh as the " +
+            "last `dim sync`: nothing here watches a file.",
+    };
+  },
+};
+
 export const QUERIES: Query[] = [
   search,
   thread,
   skill,
   resume,
   delegation,
+  running,
   tokens,
   models,
   cost,
