@@ -3,7 +3,7 @@
 // No model call happens anywhere below this line.
 
 import { AGENT_LABEL, installAgent, planAgent } from "./agent";
-import { installCommitGate, planCommitGate, repoDirs } from "./commit-gate";
+import { installCommitGate, ownerOf, planCommitGate, repoDirs } from "./commit-gate";
 import { closeDb, openDb } from "./db";
 import { diagnose } from "./doctor";
 import { installHooks, planHooks } from "./hooks";
@@ -216,18 +216,33 @@ function printSkillPlan(write: boolean): void {
  * broken is where it is worth gating, and a repo with a gate of its own keeps it.
  */
 function printCommitGatePlan(write: boolean): void {
+  const owners = process.argv.filter((a) => a.startsWith("--owner=")).map((a) => a.slice("--owner=".length));
   const db = openReadOnly(dbPath());
-  let repos: string[];
+  let checkouts: { repo: string; owner: string }[];
   try {
-    repos = repoDirs(
-      db
-        .query("SELECT DISTINCT repo FROM repo_commit ORDER BY repo")
-        .all()
-        .map((r) => (r as { repo: string }).repo),
-    );
+    checkouts = db
+      .query("SELECT DISTINCT repo, label FROM repo_commit ORDER BY repo")
+      .all()
+      .map((r) => {
+        const row = r as { repo: string; label: string | null };
+        return { repo: row.repo, owner: ownerOf(row.label) };
+      });
   } finally {
     db.close();
   }
+
+  if (owners.length === 0) {
+    console.log(
+      "name the owners whose checkouts to gate, so a clone of someone else's project keeps its own rules:",
+    );
+    for (const owner of [...new Set(checkouts.map((c) => c.owner))].filter(Boolean).sort()) {
+      const n = checkouts.filter((c) => c.owner === owner).length;
+      console.log(`  --owner=${owner}  (${n} checkouts)`);
+    }
+    return;
+  }
+
+  const repos = repoDirs(checkouts, owners);
 
   const plans = planCommitGate(repos);
   const pending = plans.filter((p) => p.state === "missing" || p.state === "occupied");
