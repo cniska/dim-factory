@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { dirname, join, resolve } from "node:path";
 import { dataDir, type Env, resolveHomeDir } from "./paths";
 
-export const AGENT_LABEL = "com.cniska.dim-factory";
+export const AGENT_LABEL = "dev.dimfactory.sync";
 const INTERVAL_SECONDS = 900;
 
 export function agentPlistPath(env: Env = process.env): string {
