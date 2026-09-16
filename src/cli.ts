@@ -7,7 +7,7 @@ import { closeDb, openDb } from "./db";
 import { diagnose } from "./doctor";
 import { installHooks, planHooks } from "./hooks";
 import { withLock } from "./lock";
-import { dbPath } from "./paths";
+import { dbPath, resolveHomeDir } from "./paths";
 import { findQuery, QUERIES } from "./queries";
 import { openReadOnly } from "./read-db";
 import { renderTable } from "./render";
@@ -283,7 +283,7 @@ function runQuery(args: string[]): void {
   const since = windowFromArgs(args, { spansHistory: query.spansHistory });
   const db = openReadOnly(dbPath());
   try {
-    const result = query.run(db, { arg, since });
+    const result = query.run(db, { arg, since, home: resolveHomeDir() });
     console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : renderTable(result));
   } finally {
     db.close();
