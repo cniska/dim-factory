@@ -1,49 +1,39 @@
 # The dark factory
 
-> Exploration, not a roadmap. This captures a framing from a session, not a commitment or a schedule. It sits behind the v1 bar in `plan.md` and builds on the durability reasoning in `remote-execution.md`. Read it as a direction to argue with, not a description of what exists.
-
-## Thesis
-
-The engineering skills already form a production line: `spec → plan → build → review → ship`, each stage with a defined input, a defined output, and a check that passes or fails it. Acolyte is the floor that can run those stages. So the interesting question is not whether the machinery for an autonomous software factory exists — most of it does — but whether to run it lights-out. My own methodology answers no, and that answer is the point. The target is not a dark factory. It is a dim one: autonomous between the gates, a human at the gates that matter.
+The argument this repo exists to execute. It is a position to argue with, not a description of what is built — what is built is in [`README.md`](../README.md), and what it is measured against is in [`goals.md`](goals.md).
 
 ## The line already exists
 
-The parts map onto a factory more cleanly than they were designed to.
+The engineering skills in `cniska/skills` form a production line — spec, plan, build, review, ship — and the parts map onto a factory more cleanly than they were designed to.
 
-- Skills are the stations. Each one — spec, plan, build, review, ship — is a repeatable operation with an entry contract and an exit check.
-- Acolyte is the floor. A runtime that executes stations with tools, budgets, and a lifecycle, and hands the driving to the model rather than scripting it.
-- `AGENTS.md` and `SPEC.md` are the fixtures and tolerances. Per-project grounding, and a machine-checkable contract for what "correct" means. A line cannot run unattended without them.
-- Review, `dogfood`, and verify are QC. Gates that pass or fail work without a human reading every diff.
+- **Skills are the stations.** Each is a repeatable operation with an entry contract and an exit check.
+- **A coding agent is the floor.** It executes stations with tools, budgets and a lifecycle, and the driving is handed to the model rather than scripted.
+- **`AGENTS.md` and `SPEC.md` are the fixtures and tolerances.** Per-project grounding, and a machine-checkable statement of what correct means. A line cannot run unattended without them.
+- **Review, verify and the gates are QC.** They pass or fail work without a human reading every diff.
 
-None of this was built to be a factory. It became one because each phase was made repeatable and verifiable on its own terms.
+None of it was built to be a factory. It became one because each phase was made repeatable and verifiable on its own terms.
 
-## What is missing is not skills
+## What is missing is not another skill
 
-Two layers stand between this and an autonomous line, and neither is another skill.
+Two layers stand between this and a line that runs itself, and neither is more instruction.
 
-1. Intake. A factory runs when work arrives without a human starting each task — an issue, a queue, a scheduled sweep. The line exists; the conveyor feeding it does not. This is where `remote-execution.md` matters: moving ownership of a unit of work up from the connection to the session or user, and making its state durable, is the substrate intake needs. Work has to outlive the thing that started it before it can start itself. The durable-state half of that substrate already ships: cloud sync runs in two forms — the OSS self-hostable `acolyte-cloud` and the managed, paid `app.acolyte.sh` (live; `acolyte login` works end to end), deliberately thin. State can outlive a machine today. That is the foundation, not the conveyor; nothing yet triggers work on its own.
-2. Verification you trust enough to leave. A gate only becomes autonomous when its check is strong enough to remove the human standing at it. Today the checks catch regressions and contract breaks; they do not yet catch a coherent, confident, wrong design. Until they do, a human stays at that gate — not as ceremony, but because the check is incomplete.
+1. **Intake.** A factory runs when work arrives without a human starting each task — an issue, a queue, a scheduled sweep. The stations exist; the conveyor feeding them does not. Work has to outlive the session that started it before it can start itself.
+2. **Verification worth leaving.** A gate becomes autonomous when its check is strong enough to remove the human standing at it. The checks catch regressions and broken contracts. They do not yet catch a coherent, confident, wrong design, and a human stays at that gate until they do — not as ceremony, but because the check is incomplete.
 
-## The tension with our own stance
+## Why the answer is not dark
 
-`unsupervised-work` and `my-workflow` argue that the human-in-the-loop is where quality comes from — that removing the review moment removes the place where a wrong decision becomes visible while it is still cheap to change. A dark factory is the direct negation of that. Running lights-out would mean abandoning a position taken deliberately and defended in writing.
+The moment a human reads the work is where a wrong decision becomes visible while it is still cheap to change. Removing every such moment removes that, so running lights-out is not a missing feature but a choice against a principle.
 
-So "dark" is not a missing feature. It is a choice against a principle. The honest question is not "can the line run itself" but "at which gates does removing the human cost more than it saves."
+The honest question is therefore not whether the line can run itself. It is **at which gates removing the human costs more than it saves** — a question with a different answer per gate, and a different answer next year than this one.
 
 ## Dim, not dark
 
-The defensible target keeps the lights on exactly where the methodology says they must be:
+- **Autonomous between the gates.** Once a direction is agreed the agent drives: reads, writes, verifies, recovers, without asking at every branch.
+- **A human at the gates that matter.** High-risk, irreversible or ambiguous changes pause for judgement, the same instinct as a confirmation before a release.
+- **Each gate earns its automation on its own merit**, reversibly, as verification gets strong enough to catch design-level errors — never by fiat and never all at once.
 
-- Autonomous execution between gates. Once a direction is agreed, the model drives — reads, writes, verifies, recovers — without asking at every branch. This is already how the host is built: support the model, do not constrain it.
-- A human at the gates that matter. High-risk, irreversible, or ambiguous changes pause for judgment. This is not a fallback; it is the same instinct as the `ship` skill's confirmation before a release and the `plan` skill's collaborative design before code.
-- The gates earn their automation over time. As verification gets strong enough to catch design-level errors, individual gates go dark on their own merit — not by fiat, and reversibly.
+That is an autonomous cell rather than a factory: a bounded unit that runs work end to end with a person at its edges. It is the version that does not require pretending the checks are more complete than they are.
 
-That is an autonomous cell, not a factory: a bounded unit that runs work end to end with a person at its edges. It is the version consistent with everything already written, and it is a better target than lights-out because it does not require pretending the checks are more complete than they are.
+## What follows from it
 
-## Connections
-
-- [plan.md](plan.md) — the v1 bar this sits behind.
-- [remote-execution.md](remote-execution.md) — durability and ownership-up: the substrate the intake layer needs.
-- [positioning.md](positioning.md) — why autonomy is the edge that compounds, not a feature.
-- `handoff` as a native command (planned) — a session handing its own state forward across a context reset: the same continuity move as durable work, one gate closer to work that starts itself.
-- The engineering skills (`cniska/skills`) — the stations, and the SDLC line they form.
+Merit means evidence, which is why this repo collects any. [`goals.md`](goals.md) states what the factory is measured against and in what order. [`findings.md`](findings.md) is what the corpus said when it was first asked. [`loop.md`](loop.md) is how a rule that stopped earning its place gets cut, and [`evals-and-hooks.md`](evals-and-hooks.md) is the instrument that decides whether it was earning one.
