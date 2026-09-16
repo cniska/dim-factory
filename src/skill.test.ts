@@ -14,15 +14,19 @@ describe("skill install", () => {
     expect(existsSync(join(skillSourceDir(), "SKILL.md"))).toBe(true);
   });
 
-  test("links the skill where agents look for it", () => {
+  test("links the skill where every tool looks for it", () => {
     const home = newHome();
     try {
-      expect(planSkill({ HOME: home }).state).toBe("missing");
+      expect(planSkill({ HOME: home }).map((p) => p.state)).toEqual(["missing", "missing"]);
       installSkill({ HOME: home });
-      const link = join(home, ".agents", "skills", SKILL_NAME);
-      expect(lstatSync(link).isSymbolicLink()).toBe(true);
-      expect(readlinkSync(link)).toBe(skillSourceDir());
-      expect(planSkill({ HOME: home }).state).toBe("linked");
+      // Claude and Acolyte share `.agents/skills`; Codex reads its own directory,
+      // and a link in only one of them leaves the other tool unable to ask.
+      for (const dir of [join(home, ".agents", "skills"), join(home, ".codex", "skills")]) {
+        const link = join(dir, SKILL_NAME);
+        expect(lstatSync(link).isSymbolicLink()).toBe(true);
+        expect(readlinkSync(link)).toBe(skillSourceDir());
+      }
+      expect(planSkill({ HOME: home }).every((p) => p.state === "linked")).toBe(true);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -34,7 +38,7 @@ describe("skill install", () => {
     try {
       mkdirSync(link, { recursive: true });
       writeFileSync(join(link, "SKILL.md"), "the owner's own skill");
-      expect(planSkill({ HOME: home }).state).toBe("occupied");
+      expect(planSkill({ HOME: home })[0]?.state).toBe("occupied");
 
       installSkill({ HOME: home });
       expect(lstatSync(link).isSymbolicLink()).toBe(true);

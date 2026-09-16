@@ -150,20 +150,25 @@ function printAgentPlan(write: boolean): void {
 }
 
 function printSkillPlan(write: boolean): void {
-  const plan = planSkill();
-  if (plan.state === "linked") {
-    console.log(`skill: ${plan.link} already points at ${plan.target}`);
+  const plans = planSkill();
+  const pending = plans.filter((p) => p.state !== "linked");
+  if (pending.length === 0) {
+    console.log(`skill: already linked for every tool (${plans.map((p) => p.link).join(", ")})`);
     return;
   }
-  console.log(`${plan.link} -> ${plan.target}`);
-  if (plan.state === "occupied") console.log(`something else is at that name; it would be moved aside`);
+  for (const plan of pending) {
+    console.log(`${plan.link} -> ${plan.target}`);
+    if (plan.state === "occupied") console.log("  something else is at that name; it would be moved aside");
+  }
   if (!write) {
-    console.log("\nRe-run with --write to link it.");
+    console.log(`\n${pending.length} to link. Re-run with --write to apply.`);
     return;
   }
   installSkill();
-  if (plan.state === "occupied") console.log(`previous version kept at ${plan.link}.dim-backup`);
-  console.log(`linked ${plan.link}`);
+  for (const plan of pending) {
+    if (plan.state === "occupied") console.log(`previous version kept at ${plan.link}.dim-backup`);
+    console.log(`linked ${plan.link}`);
+  }
 }
 
 /**
