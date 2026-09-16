@@ -492,6 +492,7 @@ The surviving Claude corpus is `claude-opus-5` (141,524 assistant lines) with 31
 | `candidates [skill]` | unlabeled stops with 200 characters of what was said, to be judged by reading |
 | `delegation` | work handed to a subagent or a peer, by the skill that handed it over |
 | `running [minutes]` | sessions and subagents active in the last few minutes, and what each is doing |
+| `repeats [n]` | phrases used across several sessions when prompting or stopping the agent |
 | `fixes` | files an agent edited that a later `fix:` commit came back to, by skill |
 
 **Agent invocation**: a skill `df-sessions`, shipped from this repo at `skills/df-sessions/SKILL.md` and linked into `~/.agents/skills` by `dim install-skill`. It lives here rather than in the skills repo because that repo's skills are tool-agnostic and this one is useless without `dim` on PATH; the `df-` prefix marks whose it is. A symlink rather than a copy, so an edit is live with no reinstall and no second copy to drift, and anything already at the name is moved aside rather than removed. The skill states the prerequisite, names `search-sessions` as the fallback for a machine with no database, and carries the section a query result cannot: what the database does not hold, so an absence is reported as a gap rather than as a finding.
@@ -511,6 +512,10 @@ A fix is only counted when it lands after the session ended. Within a session a 
 **Which rules were in force.** `skill_load` carries a body hash on every load, so a skill can be split by version; `AGENTS.md` and `CLAUDE.md` carried nothing, and they govern every session — including the 82% of file edits made under no skill at all. `guidance_version` closes that: a file inside a repo gets its whole history from `git log --raw`, which names the blob each commit left behind, so one pass over the log yields every version without a `rev-parse` per commit. A file outside a repo — `~/.claude/CLAUDE.md` is not version-controlled — can only be hashed as each sync finds it, so its history begins when collection does.
 
 A worktree is its own path here, so the same file appears once per checkout. That is deliberate: an agent working in a worktree read that copy, and the copies diverge.
+
+**A rule stated three times is guidance, not a memory.** `q repeats` counts the phrases the owner used across several sessions when typing a prompt or stopping the agent — no model, no judgement, only counting. The point is where a recurring correction belongs: a fact filed in a memory store has to be retrieved by something that already suspects it exists, while `AGENTS.md` and `CLAUDE.md` are loaded in every session, including the 82% that load no skill. Promoting a phrase that recurs into the guidance is what makes it fire without being asked.
+
+Two filters make the counts mean anything. A message over 400 characters is a document, not a sentence — without that cut the result is dominated by the handoff template, pasted into 207 sessions. And a turn the tool wrote for the user, such as an interruption marker, is not something anyone said. What survives is still only a place to look: a phrase may be a habit of speech rather than an instruction.
 
 **The read path is for the agent first.** The queries that count — `skills`, `tools`, `corrections`, `rework` — answer a question the owner asks about the corpus. The queries an agent reaches for mid-task are `search` and `thread`: find the sentence, then read the exchange around it, because the sentence that settled a question is rarely the one that matched. Until a query changes what an agent does in the session it is run in, it is a report, and reports are not what this is for.
 

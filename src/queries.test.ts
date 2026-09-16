@@ -254,6 +254,21 @@ describe("read path", () => {
     }
   });
 
+  test("repeats counts what was said, not what was pasted in", () => {
+    const env = seeded();
+    const db = openReadOnly(dbPath(env));
+    try {
+      const r = findQuery("repeats")?.run(db, {});
+      expect(r?.denominator).toContain("phrases of 4 words");
+      // A corpus this small has nothing recurring across three sessions, and that
+      // has to read as no evidence rather than as an empty finding.
+      expect(r?.rows).toEqual([]);
+      expect(r?.note).toContain("nothing recurs");
+    } finally {
+      db.close();
+    }
+  });
+
   test("resume gives facts for a cold start and never a next move", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
