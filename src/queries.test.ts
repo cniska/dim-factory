@@ -57,7 +57,7 @@ describe("read path", () => {
     const db = openReadOnly(dbPath(env));
     try {
       for (const q of QUERIES) {
-        if (q.name === "session" || q.name === "search") continue; // take an argument, covered below
+        if (q.usage) continue; // takes an argument; those are covered below
         const result = q.run(db, {});
         expect(result.denominator.length, `${q.name} has no denominator`).toBeGreaterThan(0);
       }
@@ -162,6 +162,28 @@ describe("read path", () => {
       const miss = findQuery("search")?.run(db, { arg: "nothingmatchesthis" });
       expect(miss?.rows).toEqual([]);
       expect(miss?.note).toContain("nothing matches");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("thread reads what was said, and centers on a timestamp when given one", () => {
+    const env = seeded();
+    const db = openReadOnly(dbPath(env));
+    try {
+      const whole = findQuery("thread")?.run(db, { arg: SESSION.slice(0, 8) });
+      expect(whole?.rows.length).toBeGreaterThan(0);
+      const texts = whole?.rows.map((r) => String(r[3])) ?? [];
+      // A tool call carries no text and a skill body was said by no one; both
+      // would otherwise be the largest thing in the exchange.
+      expect(texts.every((t) => t.length > 0)).toBe(true);
+
+      const centered = findQuery("thread")?.run(db, { arg: `${SESSION.slice(0, 8)}@2026-09-16T10:04` });
+      expect(centered?.denominator).toContain("centered on");
+
+      const missing = findQuery("thread")?.run(db, { arg: "zzzzzzzz" });
+      expect(missing?.rows).toEqual([]);
+      expect(missing?.note).toContain("no session starts with");
     } finally {
       db.close();
     }

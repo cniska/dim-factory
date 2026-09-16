@@ -11,6 +11,7 @@ import { findQuery, QUERIES } from "./queries";
 import { openReadOnly } from "./read-db";
 import { renderTable } from "./render";
 import { DEFAULT_WINDOW, windowFromArgs } from "./since";
+import { installSkill, planSkill } from "./skill";
 import { ensureSpoolDirs } from "./spool";
 import { rebuild, type SyncReport, sync } from "./sync";
 
@@ -24,6 +25,8 @@ const USAGE = `usage: dim <command>
                   (--write applies them, after copying each config aside)
   install-agent   show the launchd agent that syncs every 15 minutes
                   (--write writes the plist; load it with launchctl)
+  install-skill   show where the df-sessions skill would be linked for agents
+                  (--write creates the link, moving anything there aside)
   q <name> [arg]  ask the database a named question (q list names them; --json)
                   covers the last ${DEFAULT_WINDOW}; --since <n>d|YYYY-MM-DD or --all to widen
   label <id> <correction|clarification|not_correction> [--rule "..."]
@@ -146,6 +149,23 @@ function printAgentPlan(write: boolean): void {
   console.log(`remove it with: launchctl bootout gui/$(id -u)/${AGENT_LABEL}`);
 }
 
+function printSkillPlan(write: boolean): void {
+  const plan = planSkill();
+  if (plan.state === "linked") {
+    console.log(`skill: ${plan.link} already points at ${plan.target}`);
+    return;
+  }
+  console.log(`${plan.link} -> ${plan.target}`);
+  if (plan.state === "occupied") console.log(`something else is at that name; it would be moved aside`);
+  if (!write) {
+    console.log("\nRe-run with --write to link it.");
+    return;
+  }
+  installSkill();
+  if (plan.state === "occupied") console.log(`previous version kept at ${plan.link}.dim-backup`);
+  console.log(`linked ${plan.link}`);
+}
+
 /**
  * The one write a reader makes. Nothing derives a correction automatically —
  * whether a prompt told the agent it was wrong is the owner's call, not a rule's.
@@ -231,6 +251,9 @@ try {
       break;
     case "install-agent":
       printAgentPlan(process.argv.includes("--write"));
+      break;
+    case "install-skill":
+      printSkillPlan(process.argv.includes("--write"));
       break;
     default:
       console.log(USAGE);
