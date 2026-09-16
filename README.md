@@ -24,6 +24,7 @@ bun run dim doctor          # check collection is working, and say what to fix
 bun run dim install-hooks   # show the session hooks; --write applies them
 bun run dim install-rules   # flatten the conventions into Codex's rules file
 bun run dim install-skill   # show where the agent skills link; --write links them
+bun run dim install-commit-gate  # show which checkouts lack a subject gate; --write installs it
 bun run dim q list          # the named questions; `q <name>` asks one, --json for the raw rows
 bun run verify              # lint, typecheck, test
 ```
@@ -45,6 +46,8 @@ Claude Code deletes transcripts after 30 days unless told otherwise, so `~/.clau
 `dim install-skill --write` links every skill under `skills/` into `~/.agents/skills` and `~/.codex/skills`. Claude and Acolyte both read the first by convention; Codex reads its own. `df-sessions` recovers what a past session said with `q search` and `q thread` instead of grepping transcripts; `df-delegate` decides whether work should leave a session for a subagent at all, and what to check when its answer comes back. They ship here rather than in the skills repo because those skills are tool-agnostic and these need `dim` installed.
 
 The database holds every tool's sessions, so this is also how one tool reads what another did: a Claude session can recover a decision made in Codex, and the reverse. They share a record rather than a channel — neither has to be running for the other to read it.
+
+`dim install-commit-gate --write` writes a `commit-msg` hook into each checkout the corpus has seen commits from that does not already gate its own subjects, holding the convention in `~/.claude/CLAUDE.md`: Conventional Commits, a single-line subject of at most 50 characters, ASCII, no body. The hook is self-contained bash, because a gate that cannot run is a gate that passes. A repo carrying its own `scripts/check-commit-message.sh` or `.githooks/commit-msg` keeps it — `apps` holds 50 and the acolyte and hoodly repos hold 72, and every one of them is at zero violations of its own limit, which is the argument for the gate rather than against it.
 
 `dim install-hooks --write` appends a `SessionStart`/`SessionEnd` hook to `~/.claude/settings.json` and `~/.codex/hooks.json`, keeping every hook already there and copying each file to `<file>.dim-backup` first. The hook is one redirect into a spool directory and always exits 0. It is worth running early: a transcript records no end marker, so until the hooks are in, a session that was abandoned cannot be told from one still open, and that gap cannot be filled in later.
 
