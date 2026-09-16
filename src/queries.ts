@@ -983,6 +983,71 @@ const running: Query = {
   },
 };
 
+/**
+ * The repo's own verdict on work a session did. Every other number here is
+ * process — what was said, loaded, called, stopped — and process cannot say
+ * whether the code was right. A later `fix:` commit touching a file an agent
+ * edited is somebody having to come back to it, which is an outcome and is
+ * written down whether or not anyone noticed at the time.
+ */
+const fixes: Query = {
+  name: "fixes",
+  summary: "files an agent edited that a later fix commit had to come back to, by skill",
+  run: (db, ctx) => {
+    const columns = ["skill", "files", "later_fixed", "fixed_pct", "mean_days", "sessions"];
+    const w = window("t.ts_call", ctx);
+    const records = table(
+      db,
+      `WITH edited AS (
+         SELECT t.session_id, coalesce(t.attribution_skill, '(no skill)') AS skill,
+                s.cwd, t.file_path, max(t.ts_call) AS last_edit,
+                s.last_seen_at AS session_end
+         FROM tool_call t JOIN session s ON s.id = t.session_id
+         WHERE t.tool_name IN ('Edit','Write') AND t.file_path IS NOT NULL
+           AND t.ts_call IS NOT NULL AND s.cwd IS NOT NULL${w.sql}
+         GROUP BY t.session_id, t.file_path, skill, s.last_seen_at
+       ),
+       verdict AS (
+         SELECT e.*,
+                (SELECT min(c.ts) FROM repo_commit c JOIN commit_file f ON f.sha = c.sha
+                 WHERE f.path = e.file_path AND c.kind = 'fix'
+                   AND c.ts > coalesce(e.session_end, e.last_edit)) AS fixed_at
+         FROM edited e
+       )
+       SELECT skill, count(*) AS files,
+              sum(fixed_at IS NOT NULL) AS later_fixed,
+              round(100.0 * sum(fixed_at IS NOT NULL) / count(*), 1) AS fixed_pct,
+              round(mean_days, 1) AS mean_days,
+              count(DISTINCT session_id) AS sessions
+       FROM (SELECT v.*,
+                    avg(julianday(fixed_at) - julianday(last_edit))
+                      OVER (PARTITION BY skill) AS mean_days
+             FROM verdict v)
+       GROUP BY skill HAVING files >= 20
+       ORDER BY fixed_pct DESC`,
+      w.params,
+    );
+    const commits = scalar(db, "SELECT count(*) AS n FROM repo_commit");
+    const fixCommits = scalar(db, "SELECT count(*) AS n FROM repo_commit WHERE kind = 'fix'");
+    return {
+      denominator:
+        `${fixCommits} fix commits of ${commits} read from the repos on disk (${windowLine(ctx)}); ` +
+        "rows shown only where a skill touched at least 20 files",
+      columns,
+      rows: toRows(records, columns),
+      note:
+        commits === 0
+          ? "no commits read: the working directories in this corpus are gone or were never repos. `dim sync`."
+          : records.length === 0
+            ? "no skill touched enough files in this window to report a rate"
+            : "A `fix:` commit naming a file is the repo's verdict that the file needed changing, not " +
+              "proof the agent caused it — a fix may land on code it never wrote, and work nobody came " +
+              "back to may still be wrong. `mean_days` covers only the files that were fixed. Matching is by conventional-commit type, so a fix committed without the " +
+              "prefix is invisible here.",
+    };
+  },
+};
+
 export const QUERIES: Query[] = [
   search,
   thread,
@@ -990,6 +1055,7 @@ export const QUERIES: Query[] = [
   resume,
   delegation,
   running,
+  fixes,
   tokens,
   models,
   cost,

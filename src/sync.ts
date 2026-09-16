@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { listClaudeSubagents, listClaudeTranscripts } from "./claude-source";
 import { listCodexRollouts, readCodexTitles } from "./codex-source";
+import { type GitReport, ingestCommits } from "./git-ingest";
 import { type HistoryReport, ingestHistory } from "./history";
 import { createIngester, type FileSpec } from "./ingest";
 import type { Env } from "./paths";
@@ -16,6 +17,7 @@ export type SyncReport = {
   failures: { path: string; error: string }[];
   hooks: DrainReport;
   history: HistoryReport;
+  git: GitReport;
 };
 
 export function sync(db: Database, env: Env = process.env): SyncReport {
@@ -34,6 +36,7 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     failures: [],
     hooks: drainSpool(db, env),
     history: { read: 0, orphans: 0 },
+    git: { repos: 0, commits: 0, files: 0 },
   };
 
   const run = (spec: FileSpec): void => {
@@ -75,6 +78,8 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
   // once every transcript that could claim it has been read.
   applyHookEvents(db);
   report.history = ingestHistory(db, env);
+  // Last, because which repos to read comes from the session rows just written.
+  report.git = ingestCommits(db);
   return report;
 }
 
@@ -100,6 +105,8 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
     db.run("DELETE FROM usage");
     db.run("DELETE FROM message");
     db.run("DELETE FROM session");
+    db.run("DELETE FROM commit_file");
+    db.run("DELETE FROM repo_commit");
     db.run("DELETE FROM source_file");
     db.run(SCHEMA_SQL);
   })();

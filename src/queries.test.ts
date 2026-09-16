@@ -239,6 +239,21 @@ describe("read path", () => {
     }
   });
 
+  test("fixes counts only what someone came back to after the session ended", () => {
+    const env = seeded();
+    const db = openReadOnly(dbPath(env));
+    try {
+      const f = findQuery("fixes")?.run(db, {});
+      // The fixtures have no repo on disk, so this must say the commits are
+      // missing rather than report a clean zero-defect rate.
+      expect(f?.rows).toEqual([]);
+      expect(f?.note).toContain("no commits read");
+      expect(f?.denominator).toContain("fix commits");
+    } finally {
+      db.close();
+    }
+  });
+
   test("resume gives facts for a cold start and never a next move", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
