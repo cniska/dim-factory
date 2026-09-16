@@ -4,7 +4,7 @@
 >
 > **One correction to the hooks half, from `dark-factory.md`'s own reasoning.** The weakening guard is specified here as a `PostToolUse` hook returning `decision: block`. It must warn instead. A host check is a backstop only if a correct agent cannot trip it while right — and a correct agent deletes a test when the behavior it covered is gone, or moves an assertion. Both trip the guard legitimately, so blocking them fails that test. Feedback the agent can proceed past is the strongest form this check may take.
 
-Repo: `/Users/christofferniska/code/skills` (branch `main`, uncommitted: `search-sessions` skill, README row, validator verb). Prior art: `addyosmani/agent-skills` at `be4e44a9` (2026-09-11). Claude Code hook and CLI facts are cited to `code.claude.com/docs/en/{hooks,cli-reference,headless}.md` and `agent-sdk/{cost-tracking,typescript}.md` as fetched 2026-09-16; line numbers refer to the fetched markdown.
+Repo: `~/code/skills` (branch `main`, uncommitted: `search-sessions` skill, README row, validator verb). Prior art: `addyosmani/agent-skills` at `be4e44a9` (2026-09-11). Claude Code hook and CLI facts are cited to `code.claude.com/docs/en/{hooks,cli-reference,headless}.md` and `agent-sdk/{cost-tracking,typescript}.md` as fetched 2026-09-16; line numbers refer to the fetched markdown.
 
 ## Decisions in one screen
 
