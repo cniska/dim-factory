@@ -210,6 +210,20 @@ describe("read path", () => {
     }
   });
 
+  test("delegation counts a handoff without claiming the delegate's work was per-call", () => {
+    const env = seeded();
+    const db = openReadOnly(dbPath(env));
+    try {
+      const d = findQuery("delegation")?.run(db, {});
+      expect(d?.denominator).toMatch(/\d+ agents spawned and \d+ messages sent to a peer/);
+      // A skill's children are every child of a session it delegated in, so the
+      // figure must not read as the work these calls returned.
+      if ((d?.rows.length ?? 0) > 0) expect(d?.note).toContain("rather than a per-call figure");
+    } finally {
+      db.close();
+    }
+  });
+
   test("resume gives facts for a cold start and never a next move", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));

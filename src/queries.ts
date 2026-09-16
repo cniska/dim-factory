@@ -867,11 +867,78 @@ const resume: Query = {
   },
 };
 
+/**
+ * Who hands work off, and how much the delegate actually did. A spawn is cheap
+ * to count and tells you nothing on its own: the question is whether the work
+ * came back, which is the delegate's own output, and whether the parent was
+ * stopped after it landed.
+ */
+const delegation: Query = {
+  name: "delegation",
+  summary: "work handed to a subagent or a peer, by the skill that handed it over",
+  run: (db, ctx) => {
+    const columns = ["skill", "handoffs", "subagents", "subagent_output", "failed", "sessions"];
+    const w = window("t.ts_call", ctx, "WHERE");
+    const records = table(
+      db,
+      `WITH handoff AS (
+         SELECT t.session_id, coalesce(t.attribution_skill, '(no skill)') AS skill,
+                t.tool_name, t.is_error
+         FROM tool_call t
+         WHERE t.tool_name IN ('Agent', 'SendMessage')${window("t.ts_call", ctx).sql}
+       ),
+       parents AS (SELECT DISTINCT session_id, skill FROM handoff WHERE tool_name = 'Agent'),
+       kids AS (
+         SELECT p.skill, count(DISTINCT c.id) AS subagents,
+                coalesce(sum(u.output_tokens), 0) AS subagent_output
+         FROM parents p
+         JOIN session c ON c.parent_id = p.session_id
+         LEFT JOIN usage u ON u.session_id = c.id
+         GROUP BY p.skill
+       )
+       SELECT h.skill, count(*) AS handoffs,
+              coalesce(k.subagents, 0) AS subagents,
+              coalesce(k.subagent_output, 0) AS subagent_output,
+              sum(coalesce(h.is_error, 0)) AS failed,
+              count(DISTINCT h.session_id) AS sessions
+       FROM handoff h LEFT JOIN kids k ON k.skill = h.skill
+       GROUP BY h.skill ORDER BY handoffs DESC`,
+      w.params,
+    );
+    const spawned = scalar(
+      db,
+      `SELECT count(*) AS n FROM tool_call t WHERE t.tool_name = 'Agent'${window("t.ts_call", ctx).sql}`,
+      ...w.params,
+    );
+    const messaged = scalar(
+      db,
+      `SELECT count(*) AS n FROM tool_call t WHERE t.tool_name = 'SendMessage'${window("t.ts_call", ctx).sql}`,
+      ...w.params,
+    );
+    const children = scalar(db, "SELECT count(*) AS n FROM session WHERE parent_id IS NOT NULL");
+    return {
+      denominator:
+        `${spawned} agents spawned and ${messaged} messages sent to a peer in this window ` +
+        `(${windowLine(ctx)}); ${children} subagent sessions recorded in the corpus`,
+      columns,
+      rows: toRows(records, columns),
+      note:
+        records.length === 0
+          ? "nothing was handed to a subagent or a peer in this window"
+          : "`subagents` and `subagent_output` count every child of a session that skill ever delegated " +
+            "in, not only the children of these calls, so they are the scale of the delegation a skill " +
+            "sits alongside rather than a per-call figure. A peer's own session is not a child and its " +
+            "output is not counted here.",
+    };
+  },
+};
+
 export const QUERIES: Query[] = [
   search,
   thread,
   skill,
   resume,
+  delegation,
   tokens,
   models,
   cost,
