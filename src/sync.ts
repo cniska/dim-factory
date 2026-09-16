@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { listClaudeSubagents, listClaudeTranscripts } from "./claude-source";
 import { listCodexRollouts, readCodexTitles } from "./codex-source";
 import { type GitReport, ingestCommits } from "./git-ingest";
+import { type GuidanceReport, ingestGuidance } from "./guidance";
 import { type HistoryReport, ingestHistory } from "./history";
 import { createIngester, type FileSpec } from "./ingest";
 import type { Env } from "./paths";
@@ -18,6 +19,7 @@ export type SyncReport = {
   hooks: DrainReport;
   history: HistoryReport;
   git: GitReport;
+  guidance: GuidanceReport;
 };
 
 export function sync(db: Database, env: Env = process.env): SyncReport {
@@ -37,6 +39,7 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     hooks: drainSpool(db, env),
     history: { read: 0, orphans: 0 },
     git: { repos: 0, commits: 0, files: 0 },
+    guidance: { files: 0, versions: 0 },
   };
 
   const run = (spec: FileSpec): void => {
@@ -80,6 +83,8 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
   report.history = ingestHistory(db, env);
   // Last, because which repos to read comes from the session rows just written.
   report.git = ingestCommits(db);
+  // After the commits, because the repos to read come from what they recorded.
+  report.guidance = ingestGuidance(db, env);
   return report;
 }
 
@@ -105,6 +110,7 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
     db.run("DELETE FROM usage");
     db.run("DELETE FROM message");
     db.run("DELETE FROM session");
+    db.run("DELETE FROM guidance_version");
     db.run("DELETE FROM commit_file");
     db.run("DELETE FROM repo_commit");
     db.run("DELETE FROM source_file");

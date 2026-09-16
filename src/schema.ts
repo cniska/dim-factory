@@ -2,7 +2,7 @@
 // by re-reading them, so a schema change is `dim rebuild`, not a migration.
 // SCHEMA_VERSION exists only so sync can refuse to run against an older shape.
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -238,6 +238,23 @@ CREATE TABLE IF NOT EXISTS commit_file (
   PRIMARY KEY (sha, path)
 );
 CREATE INDEX IF NOT EXISTS commit_file_path ON commit_file(path);
+
+-- Which version of a rules file was in force when a session ran. Skills carry a
+-- body hash on every load; AGENTS.md and CLAUDE.md are loaded in every session and
+-- carried none, so the 82% of edits made under no skill could not be split by the
+-- guidance that governed them. Versions inside a repo come from git and reach back
+-- as far as its history; a file outside one is only ever seen from the first sync
+-- that read it, which is why waiting costs something no rebuild can return.
+CREATE TABLE IF NOT EXISTS guidance_version (
+  path            TEXT NOT NULL,        -- absolute, as an agent would read it
+  blob_sha        TEXT NOT NULL,        -- git blob id, or sha256 for a file outside a repo
+  first_seen      TEXT NOT NULL,        -- commit date, or the sync that first saw it
+  last_seen       TEXT NOT NULL,
+  bytes           INTEGER,
+  source          TEXT NOT NULL CHECK (source IN ('git','snapshot')),
+  PRIMARY KEY (path, blob_sha)
+);
+CREATE INDEX IF NOT EXISTS guidance_version_seen ON guidance_version(path, first_seen);
 
 -- Prose search over message.text, so finding what was said in a past session is a
 -- query rather than a grep across every transcript on disk. External content: the

@@ -49,6 +49,9 @@ function printReport(report: SyncReport): void {
       `git: ${report.git.commits} commits touching ${report.git.files} files, from ${report.git.repos} repos`,
     );
   }
+  if (report.guidance.versions > 0) {
+    console.log(`guidance: ${report.guidance.versions} versions of ${report.guidance.files} rules files`);
+  }
   if (report.history.orphans > 0) {
     console.log(
       `history: ${report.history.orphans} prompts from sessions with no transcript, of ${report.history.read} read`,
