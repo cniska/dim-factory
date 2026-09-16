@@ -13,7 +13,7 @@ import { openReadOnly } from "./read-db";
 import { renderTable } from "./render";
 import { installRules, planRules } from "./rules";
 import { DEFAULT_WINDOW, windowFromArgs } from "./since";
-import { installSkill, planSkill } from "./skill";
+import { installSkill, planSkill, SKILL_NAMES } from "./skill";
 import { ensureSpoolDirs } from "./spool";
 import { rebuild, type SyncReport, sync } from "./sync";
 
@@ -30,7 +30,7 @@ const USAGE = `usage: dim <command>
                   (--write writes the plist; load it with launchctl)
   install-rules   flatten ~/.claude/CLAUDE.md into ~/.codex/AGENTS.md, which
                   reads no imports (--write applies it, keeping a backup)
-  install-skill   show where the df-sessions skill would be linked for agents
+  install-skill   show where this repo's skills would be linked for agents
                   (--write creates the link, moving anything there aside)
   q <name> [arg]  ask the database a named question (q list names them; --json)
                   covers the last ${DEFAULT_WINDOW}; --since <n>d|YYYY-MM-DD or --all to widen
@@ -188,7 +188,8 @@ function printSkillPlan(write: boolean): void {
   const plans = planSkill();
   const pending = plans.filter((p) => p.state !== "linked");
   if (pending.length === 0) {
-    console.log(`skill: already linked for every tool (${plans.map((p) => p.link).join(", ")})`);
+    console.log(`skills: ${SKILL_NAMES.length} already linked for every tool`);
+    for (const plan of plans) console.log(`  ${plan.link}`);
     return;
   }
   for (const plan of pending) {

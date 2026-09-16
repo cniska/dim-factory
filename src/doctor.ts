@@ -181,11 +181,11 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
   const pendingLinks = planSkill(env).filter((p) => p.state !== "linked");
   checks.push(
     pendingLinks.length === 0
-      ? { name: "skill", state: "ok", detail: "linked for every tool" }
+      ? { name: "skill", state: "ok", detail: "every skill linked for every tool" }
       : {
           name: "skill",
           state: "warn",
-          detail: `not linked for ${pendingLinks.length} of ${planSkill(env).length} tools`,
+          detail: `${pendingLinks.length} of ${planSkill(env).length} skill links missing`,
           fix: "dim install-skill --write",
         },
   );
