@@ -2,7 +2,7 @@
 // by re-reading them, so a schema change is `dim rebuild`, not a migration.
 // SCHEMA_VERSION exists only so sync can refuse to run against an older shape.
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -136,4 +136,18 @@ CREATE TABLE IF NOT EXISTS session_cost_reported (
   has_unknown_model_cost INTEGER,
   ts              TEXT
 );
+
+-- Typed prompts whose transcript no longer exists. Both tools keep a flat
+-- history of what was typed, and it outlived the transcripts that were pruned
+-- before retention was extended: for those sessions this is all that is left.
+-- No foreign key, because by definition these sessions have no row.
+CREATE TABLE IF NOT EXISTS orphan_prompt (
+  tool            TEXT NOT NULL CHECK (tool IN ('claude','codex')),
+  session_id      TEXT NOT NULL,
+  ts              TEXT NOT NULL,
+  project         TEXT,
+  text            TEXT NOT NULL,
+  PRIMARY KEY (tool, session_id, ts, text)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS orphan_prompt_session ON orphan_prompt(session_id);
 `;

@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { listClaudeSubagents, listClaudeTranscripts } from "./claude-source";
 import { listCodexRollouts, readCodexTitles } from "./codex-source";
+import { type HistoryReport, ingestHistory } from "./history";
 import { createIngester, type FileSpec } from "./ingest";
 import type { Env } from "./paths";
 import { applyHookEvents, type DrainReport, drainSpool } from "./spool";
@@ -13,6 +14,7 @@ export type SyncReport = {
   orphanSubagents: string[];
   failures: { path: string; error: string }[];
   hooks: DrainReport;
+  history: HistoryReport;
 };
 
 export function sync(db: Database, env: Env = process.env): SyncReport {
@@ -30,6 +32,7 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     orphanSubagents: [],
     failures: [],
     hooks: drainSpool(db, env),
+    history: { read: 0, orphans: 0 },
   };
 
   const run = (spec: FileSpec): void => {
@@ -67,8 +70,10 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
   }
 
   // After the transcripts, so a hook that fired before its session was read
-  // still lands on the session row.
+  // still lands on the session row, and so a prompt is only called an orphan
+  // once every transcript that could claim it has been read.
   applyHookEvents(db);
+  report.history = ingestHistory(db, env);
   return report;
 }
 
@@ -78,6 +83,7 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
  */
 export function rebuild(db: Database, env: Env = process.env): SyncReport {
   db.transaction(() => {
+    db.run("DELETE FROM orphan_prompt");
     db.run("DELETE FROM session_cost_reported");
     db.run("DELETE FROM turn");
     db.run("DELETE FROM usage");
