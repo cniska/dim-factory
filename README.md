@@ -67,6 +67,7 @@ Two portability gaps stand in the way of anyone else running it: `install-agent`
 | [`docs/findings.md`](docs/findings.md) | What the corpus said when it was first asked, and what each number can carry |
 | [`docs/evals-and-hooks.md`](docs/evals-and-hooks.md) | The hook install layout, and the eval instrument that measures whether a skill's rules earn their place |
 | [`docs/goals.md`](docs/goals.md) | What the repo is for, in order: fewer corrections first, fewer tokens for the same work second |
+| [`docs/conventions.md`](docs/conventions.md) | Design: generating the machine-held half of the conventions, so a rule leaves only when a gate holds it |
 | [`docs/loop.md`](docs/loop.md) | How a line gets cut and stays cut: what the corpus decides, what the evals decide, what is measured after |
 | [`docs/factory.md`](docs/factory.md) | The argument this repo exists to execute |
 | `src/parse-claude.ts`, `src/parse-codex.ts` | One source line to rows; neither knows the database exists |
