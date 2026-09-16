@@ -1,6 +1,6 @@
 # Goals
 
-What the factory is for, in order, and how each goal is known to be met. The argument for building it at all is [`dark-factory.md`](dark-factory.md); this page is the operational version of it.
+What the factory is for, in order, and how each goal is known to be met. The argument for building it at all is [`factory.md`](factory.md); this page is the operational version of it.
 
 Three goals. All of them are about time, which is the commodity actually being spent: the owner's hours going into a build, and the hours lost when work stops. The order is load-bearing — the second and third exist to serve the first.
 
@@ -49,7 +49,7 @@ Met when a build can be pointed at precedent chosen on evidence, and when the no
 
 ## A standing constraint
 
-Every query states what it cannot say. This is not modesty: a number that reads as measured but is not will be acted on, and today the footers are what stop version-over-version comparisons, unverifiable savings claims and stop-counts from being read as verdicts. An instrument that overstates is worse than no instrument, because [`dark-factory.md`](dark-factory.md) puts verification at the center of which gates may ever go dark.
+Every query states what it cannot say. This is not modesty: a number that reads as measured but is not will be acted on, and today the footers are what stop version-over-version comparisons, unverifiable savings claims and stop-counts from being read as verdicts. An instrument that overstates is worse than no instrument, because [`factory.md`](factory.md) puts verification at the center of which gates may ever go dark.
 
 ## Not goals
 

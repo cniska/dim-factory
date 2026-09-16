@@ -1,4 +1,4 @@
-# The dark factory
+# The factory
 
 The argument this repo exists to execute. It is a position to argue with, not a description of what is built — what is built is in [`README.md`](../README.md), and what it is measured against is in [`goals.md`](goals.md).
 
