@@ -4,6 +4,7 @@
 
 import { AGENT_LABEL, installAgent, planAgent } from "./agent";
 import { closeDb, openDb } from "./db";
+import { diagnose } from "./doctor";
 import { installHooks, planHooks } from "./hooks";
 import { withLock } from "./lock";
 import { dbPath } from "./paths";
@@ -21,6 +22,7 @@ const USAGE = `usage: dim <command>
   sync            read every new byte of both tools' session files
   rebuild         forget every cursor and read all files from the start
   stats           row counts and token totals per tool and model
+  doctor          check that collection is actually working, and say what to fix
   install-hooks   show the session hooks to add to both tools' config
                   (--write applies them, after copying each config aside)
   install-agent   show the launchd agent that syncs every 15 minutes
@@ -180,6 +182,31 @@ function printSkillPlan(write: boolean): void {
 }
 
 /**
+ * Read-only, so a broken collection path can be diagnosed without writing to a
+ * database that may be the thing at fault.
+ */
+function runDoctor(): void {
+  const db = openReadOnly(dbPath());
+  try {
+    const checks = diagnose(db);
+    const mark = { ok: "ok  ", warn: "warn", fail: "FAIL" } as const;
+    for (const c of checks) {
+      console.log(`${mark[c.state]}  ${c.name.padEnd(13)} ${c.detail}`);
+      if (c.fix) console.log(`${" ".repeat(21)}fix: ${c.fix}`);
+    }
+    const failed = checks.filter((c) => c.state === "fail").length;
+    console.log(
+      failed === 0
+        ? `\n${checks.length} checks, nothing failing`
+        : `\n${failed} of ${checks.length} checks failing`,
+    );
+    if (failed > 0) process.exit(1);
+  } finally {
+    db.close();
+  }
+}
+
+/**
  * The one write a reader makes. Nothing derives a correction automatically —
  * whether a prompt told the agent it was wrong is the owner's call, not a rule's.
  */
@@ -264,6 +291,9 @@ try {
       break;
     case "install-agent":
       printAgentPlan(process.argv.includes("--write"));
+      break;
+    case "doctor":
+      runDoctor();
       break;
     case "install-skill":
       printSkillPlan(process.argv.includes("--write"));

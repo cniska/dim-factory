@@ -20,6 +20,7 @@ Bun, pinned in `mise.toml`. `mise install && bun install`, then:
 bun run dim sync            # read every new byte of both tools' session files
 bun run dim stats           # row counts and token totals per tool and model
 bun run dim rebuild         # forget every cursor and read all files from the start
+bun run dim doctor          # check collection is working, and say what to fix
 bun run dim install-hooks   # show the session hooks; --write applies them
 bun run dim install-skill   # show where the agent skill links; --write links it
 bun run dim q list          # the named questions; `q <name>` asks one, --json for the raw rows
@@ -33,6 +34,8 @@ Every query prints the base its numbers came from, and a query with nothing to r
 The database lands in `~/.local/share/dim-factory/sessions.db`. Reading the whole corpus from scratch takes about 20 seconds.
 
 Claude Code deletes transcripts after 30 days unless told otherwise, so `~/.claude/settings.json` sets `"cleanupPeriodDays": 3650`. Without it the sources this points into disappear.
+
+`dim doctor` checks the paths that fail silently: retention unset, hooks installed but never firing, a launchd agent written but never loaded, a spool nothing drains, a database built by an older schema. It reads only, exits non-zero when a check fails, and every failure names its fix.
 
 `dim install-agent --write` writes a launchd agent that runs `dim sync` every 15 minutes, logging to `~/.local/share/dim-factory/sync.log`; load it with the `launchctl bootstrap` line the command prints. Re-run it after a toolchain change, since the plist names an absolute `bun`.
 
