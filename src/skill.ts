@@ -2,10 +2,17 @@ import { existsSync, lstatSync, mkdirSync, readlinkSync, renameSync, symlinkSync
 import { dirname, join, resolve } from "node:path";
 import { type Env, resolveHomeDir } from "./paths";
 
-export const SKILL_NAME = "df-sessions";
+/**
+ * The skills that ship from this repo. Each needs `dim` on PATH, which is why it
+ * lives here rather than in the tool-agnostic skills repo; the `df-` prefix
+ * marks it as one of these.
+ */
+export const SKILL_NAMES = ["df-sessions", "df-delegate"] as const;
 
-export function skillSourceDir(): string {
-  return resolve(import.meta.dir, "..", "skills", SKILL_NAME);
+export type SkillName = (typeof SKILL_NAMES)[number];
+
+export function skillSourceDir(name: SkillName): string {
+  return resolve(import.meta.dir, "..", "skills", name);
 }
 
 /**
@@ -14,23 +21,35 @@ export function skillSourceDir(): string {
  * `~/.agents/skills` — Claude through its own symlink, Acolyte by the same
  * convention — so that one link serves both. Codex reads its own directory.
  */
-export function skillLinkPaths(env: Env = process.env): string[] {
+export function skillLinkDirs(env: Env = process.env): string[] {
   const home = resolveHomeDir(env);
-  return [join(home, ".agents", "skills", SKILL_NAME), join(home, ".codex", "skills", SKILL_NAME)];
+  return [join(home, ".agents", "skills"), join(home, ".codex", "skills")];
 }
 
-export type SkillPlan = { link: string; target: string; state: "linked" | "missing" | "occupied" };
+export function skillLinkPaths(name: SkillName, env: Env = process.env): string[] {
+  return skillLinkDirs(env).map((dir) => join(dir, name));
+}
+
+export type SkillPlan = {
+  name: SkillName;
+  link: string;
+  target: string;
+  state: "linked" | "missing" | "occupied";
+};
 
 /**
  * A symlink rather than a copy: the skill is version-controlled here, so an edit
  * to it is live without a reinstall, and there is no second copy to drift.
  */
 export function planSkill(env: Env = process.env): SkillPlan[] {
-  const target = skillSourceDir();
-  return skillLinkPaths(env).map((link) => {
-    if (!existsSync(link) && !isLink(link)) return { link, target, state: "missing" as const };
-    if (isLink(link) && readlinkSync(link) === target) return { link, target, state: "linked" as const };
-    return { link, target, state: "occupied" as const };
+  return SKILL_NAMES.flatMap((name) => {
+    const target = skillSourceDir(name);
+    return skillLinkPaths(name, env).map((link) => {
+      if (!existsSync(link) && !isLink(link)) return { name, link, target, state: "missing" as const };
+      if (isLink(link) && readlinkSync(link) === target)
+        return { name, link, target, state: "linked" as const };
+      return { name, link, target, state: "occupied" as const };
+    });
   });
 }
 

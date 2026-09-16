@@ -23,7 +23,7 @@ bun run dim rebuild         # forget every cursor and read all files from the st
 bun run dim doctor          # check collection is working, and say what to fix
 bun run dim install-hooks   # show the session hooks; --write applies them
 bun run dim install-rules   # flatten the conventions into Codex's rules file
-bun run dim install-skill   # show where the agent skill links; --write links it
+bun run dim install-skill   # show where the agent skills link; --write links them
 bun run dim q list          # the named questions; `q <name>` asks one, --json for the raw rows
 bun run verify              # lint, typecheck, test
 ```
@@ -42,7 +42,7 @@ Claude Code deletes transcripts after 30 days unless told otherwise, so `~/.clau
 
 `dim install-rules --write` writes `~/.codex/AGENTS.md` from `~/.claude/CLAUDE.md` with every `@import` expanded. Claude Code expands those imports and Codex does not — a sentinel placed behind one reached Claude and never reached Codex — so a rules file that imports delivers its import line to Codex as literal text. A relative import resolves against the target tool's own directory, so `@RTK.md` picks up the Codex copy rather than the Claude one. `dim doctor` fails when the two drift.
 
-`dim install-skill --write` links `skills/df-sessions` into `~/.agents/skills` and `~/.codex/skills`, so an agent can recover what a past session said with `q search` and `q thread` instead of grepping transcripts. Claude and Acolyte both read the first by convention; Codex reads its own. It ships here rather than in the skills repo because those skills are tool-agnostic and this one needs `dim` installed.
+`dim install-skill --write` links every skill under `skills/` into `~/.agents/skills` and `~/.codex/skills`. Claude and Acolyte both read the first by convention; Codex reads its own. `df-sessions` recovers what a past session said with `q search` and `q thread` instead of grepping transcripts; `df-delegate` decides whether work should leave a session for a subagent at all, and what to check when its answer comes back. They ship here rather than in the skills repo because those skills are tool-agnostic and these need `dim` installed.
 
 The database holds every tool's sessions, so this is also how one tool reads what another did: a Claude session can recover a decision made in Codex, and the reverse. They share a record rather than a channel — neither has to be running for the other to read it.
 
@@ -50,7 +50,7 @@ The database holds every tool's sessions, so this is also how one tool reads wha
 
 ## Publishing
 
-The collector, the CLI, the queries and the `df-sessions` skill are general: nothing in `src/` names a person or a machine, and paths print relative to whoever is reading. What is specific to this owner is the argument for building it ([`docs/dark-factory.md`](docs/dark-factory.md)), the measurements taken from one corpus ([`docs/findings.md`](docs/findings.md)), and the ten evidence citations in `docs/design.md` that point at files under one home directory. A split separates those, and it stays a `git mv` for as long as nothing personal lands in a general file.
+The collector, the CLI, the queries and the skills under `skills/` are general: nothing in `src/` names a person or a machine, and paths print relative to whoever is reading. What is specific to this owner is the argument for building it ([`docs/dark-factory.md`](docs/dark-factory.md)), the measurements taken from one corpus ([`docs/findings.md`](docs/findings.md)), and the ten evidence citations in `docs/design.md` that point at files under one home directory. A split separates those, and it stays a `git mv` for as long as nothing personal lands in a general file.
 
 Two portability gaps stand in the way of anyone else running it: `install-agent` writes a launchd plist, which is macOS only, and the collector reads two tools' formats.
 
