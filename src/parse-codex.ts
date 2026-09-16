@@ -178,6 +178,14 @@ export function parseCodexChunk(lines: string[], threadId: string, state: CodexS
       p.type === "message" &&
       (p.role === "user" || p.role === "assistant")
     ) {
+      // Codex marks no prompt source, so a typed prompt and an injected block
+      // arrive as the same record. A tool result is a `function_call_output`,
+      // never a message, so what is left to separate is what the harness wrote
+      // into a user turn: the project rules, and its own tagged envelopes.
+      const text = visibleText(p.content);
+      const injected = /^\s*(#\s*AGENTS\.md instructions|<[a-z_]+>|\[\s*\{)/.test(text ?? "");
+      const promptSource = p.role === "user" ? (injected ? "system" : "typed") : undefined;
+
       // Rollouts written before roughly August 2026 leave `id` null, so the
       // record is addressed the way the design addresses every Codex line.
       const id = nonEmpty(p.id) ?? `${threadId}:${ordinal}`;
@@ -187,9 +195,10 @@ export function parseCodexChunk(lines: string[], threadId: string, state: CodexS
         role: p.role,
         model: p.role === "assistant" ? current.model : undefined,
         turnId: current.turnId,
+        promptSource,
         isMeta: false,
         isSkillBody: false,
-        text: visibleText(p.content),
+        text,
         srcLine: ordinal,
         extra: jsonOrUndefined({ content_types: p.content?.map((c) => c?.type).filter(Boolean) }),
       });
