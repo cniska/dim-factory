@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { AGENT_LABEL, agentPlistPath } from "./agent";
 import { planHooks } from "./hooks";
 import { dataDir, type Env, resolveHomeDir } from "./paths";
+import { planRules } from "./rules";
 import { SCHEMA_VERSION } from "./schema";
 import { planSkill } from "./skill";
 
@@ -207,6 +208,26 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
             // syncs until someone runs it by hand.
             detail: "launchd agent is written but not loaded",
             fix: `launchctl bootstrap gui/$(id -u) ${plist}`,
+          },
+  );
+
+  // Codex expands no imports, so its rules file is a flattened copy and a copy
+  // goes stale in silence: the conventions look present in one tool and are
+  // absent in the other, which is how a rule gets restated by hand for months.
+  const rules = planRules(env);
+  checks.push(
+    rules.state === "missing-source"
+      ? { name: "rules", state: "warn", detail: `no ${rules.source} to flatten` }
+      : rules.state === "unchanged"
+        ? { name: "rules", state: "ok", detail: "codex rules match the canonical file" }
+        : {
+            name: "rules",
+            state: "fail",
+            detail:
+              rules.state === "absent"
+                ? "codex has no rules file, so none of the conventions reach it"
+                : "codex rules differ from the canonical file",
+            fix: "dim install-rules --write",
           },
   );
 
