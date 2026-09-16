@@ -1048,6 +1048,94 @@ const fixes: Query = {
   },
 };
 
+const STOPWORDS = new Set(
+  "the a an and or but if then this that these those is are was were be been it its to of in on for with as at by from you i we they he she do does did not no so up out".split(
+    " ",
+  ),
+);
+
+/**
+ * Anything longer is a document, not a sentence: a pasted handoff, a log, a spec.
+ * Without this the count is dominated by templates the owner pasted rather than
+ * wrote — the handoff format alone appears in 207 sessions.
+ */
+const SAID_MAX_CHARS = 400;
+
+/** Boilerplate the tool writes into a user turn, which is not something anyone said. */
+const BOILERPLATE = /\[request interrupted|tool use was rejected|the user (wants|doesn)/i;
+
+function phrases(text: string, size: number): string[] {
+  const words = text
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const out: string[] = [];
+  for (let i = 0; i + size <= words.length; i += 1) {
+    const slice = words.slice(i, i + size);
+    // A phrase that is only filler recurs everywhere and means nothing.
+    if (slice.every((w) => STOPWORDS.has(w))) continue;
+    out.push(slice.join(" "));
+  }
+  return out;
+}
+
+/**
+ * What the owner says over and over. A rule stated three times in three sessions
+ * is a rule that belongs in the guidance every session loads, not a fact to be
+ * retrieved later — which is the whole difference between a memory that fires
+ * and one that sits there. Counting, not judging: nothing here is a model call.
+ */
+const repeats: Query = {
+  name: "repeats",
+  summary: "phrases you have used in several sessions when stopping or correcting the agent",
+  usage: "dim q repeats [words-per-phrase]",
+  run: (db, ctx) => {
+    const size = ctx.arg && /^\d+$/.test(ctx.arg) ? Number(ctx.arg) : 4;
+    const w = window("m.ts", ctx);
+    const rows = table(
+      db,
+      `SELECT m.id, m.session_id, coalesce(m.user_feedback, m.text, '') AS said
+       FROM message m
+       WHERE m.role = 'user'
+         AND (m.denial_kind IS NOT NULL OR m.interrupted_message_id IS NOT NULL
+              OR m.user_feedback IS NOT NULL OR m.prompt_source IN ('typed','queued'))
+         AND m.text IS NOT NULL AND m.text_chars <= ${SAID_MAX_CHARS}${w.sql}`,
+      w.params,
+    ) as { id: string; session_id: string; said: string }[];
+
+    const seen = new Map<string, { sessions: Set<string>; uses: number }>();
+    for (const row of rows) {
+      if (!row.said || BOILERPLATE.test(row.said)) continue;
+      for (const phrase of new Set(phrases(row.said, size))) {
+        const hit = seen.get(phrase) ?? { sessions: new Set<string>(), uses: 0 };
+        hit.sessions.add(row.session_id);
+        hit.uses += 1;
+        seen.set(phrase, hit);
+      }
+    }
+
+    const columns = ["phrase", "sessions", "uses"];
+    const records = [...seen.entries()]
+      .filter(([, v]) => v.sessions.size >= 3)
+      .sort((a, b) => b[1].sessions.size - a[1].sessions.size || b[1].uses - a[1].uses)
+      .slice(0, 30)
+      .map(([phrase, v]) => ({ phrase, sessions: v.sessions.size, uses: v.uses }));
+
+    return {
+      denominator: `${rows.length} prompts you typed or used to stop the agent (${windowLine(ctx)}); phrases of ${size} words seen in 3+ sessions`,
+      columns,
+      rows: toRows(records, columns),
+      note:
+        records.length === 0
+          ? "nothing recurs across three sessions in this window; try fewer words per phrase or a wider window"
+          : "A phrase is a place to look, not a rule. What recurs may be a habit of speech rather than an " +
+            "instruction — read the sessions before promoting one into guidance every session will load.",
+    };
+  },
+};
+
 export const QUERIES: Query[] = [
   search,
   thread,
@@ -1056,6 +1144,7 @@ export const QUERIES: Query[] = [
   delegation,
   running,
   fixes,
+  repeats,
   tokens,
   models,
   cost,
