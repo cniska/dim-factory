@@ -1,0 +1,22 @@
+{
+  "name": "dim-factory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "dim": "./src/cli.ts"
+  },
+  "scripts": {
+    "dim": "bun run src/cli.ts",
+    "format": "bunx biome format --write .",
+    "lint": "bunx biome check --error-on-warnings .",
+    "typecheck": "bunx tsc --noEmit",
+    "test": "bun test",
+    "verify": "bun run lint && bun run typecheck && bun test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.14",
+    "@types/bun": "^1.4.2",
+    "typescript": "^7.0.2"
+  }
+}
