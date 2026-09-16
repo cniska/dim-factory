@@ -2,6 +2,7 @@
 // dim — read Claude Code and Codex session records into a local SQLite database.
 // No model call happens anywhere below this line.
 
+import { AGENT_LABEL, installAgent, planAgent } from "./agent";
 import { closeDb, openDb } from "./db";
 import { installHooks, planHooks } from "./hooks";
 import { withLock } from "./lock";
@@ -17,6 +18,8 @@ const USAGE = `usage: dim <command>
   stats           row counts and token totals per tool and model
   install-hooks   show the session hooks to add to both tools' config
                   (--write applies them, after copying each config aside)
+  install-agent   show the launchd agent that syncs every 15 minutes
+                  (--write writes the plist; load it with launchctl)
 `;
 
 function printReport(report: SyncReport): void {
@@ -113,6 +116,23 @@ function printHookPlan(write: boolean): void {
   for (const path of report.backups) console.log(`previous version kept at ${path}`);
 }
 
+function printAgentPlan(write: boolean): void {
+  const plan = planAgent();
+  if (plan.unchanged) {
+    console.log(`agent: ${plan.path} is already up to date`);
+    return;
+  }
+  if (!write) {
+    console.log(`${plan.path}\n\n${plan.contents}`);
+    console.log("Re-run with --write to write it.");
+    return;
+  }
+  installAgent();
+  console.log(`wrote ${plan.path}`);
+  console.log(`load it with: launchctl bootstrap gui/$(id -u) ${plan.path}`);
+  console.log(`remove it with: launchctl bootout gui/$(id -u)/${AGENT_LABEL}`);
+}
+
 const command = process.argv[2];
 try {
   switch (command) {
@@ -130,6 +150,9 @@ try {
       break;
     case "install-hooks":
       printHookPlan(process.argv.includes("--write"));
+      break;
+    case "install-agent":
+      printAgentPlan(process.argv.includes("--write"));
       break;
     default:
       console.log(USAGE);
