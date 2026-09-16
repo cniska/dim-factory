@@ -4,7 +4,7 @@ A software factory run by coding agents, with a human at the gates that still ea
 
 The stations are the engineering skills in `cniska/skills` — spec, plan, build, review, ship — each with an entry contract and an exit check, and the floor that runs them is a coding agent. What lives here is the rest of it: the record of what every session did, the questions asked of that record, and the gates that hold a rule whether or not a skill loaded.
 
-[`docs/dark-factory.md`](docs/dark-factory.md) is the argument. The question is not whether the line can run itself but at which gates removing the human costs more than it saves, and the answer is a dim factory rather than a dark one: autonomous between the gates, a human at the gates that matter, and each gate earning its automation on its own merit.
+[`docs/factory.md`](docs/factory.md) is the argument. The question is not whether the line can run itself but at which gates removing the human costs more than it saves, and the answer is a dim factory rather than a dark one: autonomous between the gates, a human at the gates that matter, and each gate earning its automation on its own merit.
 
 Merit means evidence, so the factory measures itself. [`docs/goals.md`](docs/goals.md) states what it is measured against.
 
@@ -55,7 +55,7 @@ The database holds every tool's sessions, so this is also how one tool reads wha
 
 ## Publishing
 
-The collector, the CLI, the queries and the skills under `skills/` are general: nothing in `src/` names a person or a machine, and paths print relative to whoever is reading. What is specific to this owner is the argument for building it ([`docs/dark-factory.md`](docs/dark-factory.md)), the measurements taken from one corpus ([`docs/findings.md`](docs/findings.md)), and the ten evidence citations in `docs/design.md` that point at files under one home directory. A split separates those, and it stays a `git mv` for as long as nothing personal lands in a general file.
+The collector, the CLI, the queries and the skills under `skills/` are general: nothing in `src/` names a person or a machine, and paths print relative to whoever is reading. What is specific to this owner is the argument for building it ([`docs/factory.md`](docs/factory.md)), the measurements taken from one corpus ([`docs/findings.md`](docs/findings.md)), and the ten evidence citations in `docs/design.md` that point at files under one home directory. A split separates those, and it stays a `git mv` for as long as nothing personal lands in a general file.
 
 Two portability gaps stand in the way of anyone else running it: `install-agent` writes a launchd plist, which is macOS only, and the collector reads two tools' formats.
 
@@ -68,7 +68,7 @@ Two portability gaps stand in the way of anyone else running it: `install-agent`
 | [`docs/evals-and-hooks.md`](docs/evals-and-hooks.md) | The hook install layout, and the eval instrument that measures whether a skill's rules earn their place |
 | [`docs/goals.md`](docs/goals.md) | What the repo is for, in order: fewer corrections first, fewer tokens for the same work second |
 | [`docs/loop.md`](docs/loop.md) | How a line gets cut and stays cut: what the corpus decides, what the evals decide, what is measured after |
-| [`docs/dark-factory.md`](docs/dark-factory.md) | The argument this repo exists to execute |
+| [`docs/factory.md`](docs/factory.md) | The argument this repo exists to execute |
 | `src/parse-claude.ts`, `src/parse-codex.ts` | One source line to rows; neither knows the database exists |
 | `src/ingest.ts` | Every upsert and the byte cursor; knows neither format |
 | `src/cli.ts` | `dim` |
