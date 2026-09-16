@@ -113,6 +113,38 @@ describe("read path", () => {
     }
   });
 
+  test("burn splits on the five-hour block, not on the day", () => {
+    const env = seeded();
+    const write = openDb(dbPath(env));
+    try {
+      // One second either side of a block edge: a day-based split would put both
+      // in the same row and the boundary would stop being tested.
+      for (const [id, ts] of [
+        ["r-before", "2026-09-16T16:59:59.000Z"],
+        ["r-after", "2026-09-16T17:00:00.000Z"],
+      ]) {
+        write.run(
+          `INSERT INTO usage (response_id, session_id, ts, input_tokens, cache_read_tokens,
+             cache_write_tokens, output_tokens) VALUES (?, ?, ?, 0, 0, 0, 1)`,
+          [id as string, SESSION, ts as string],
+        );
+      }
+    } finally {
+      closeDb(write);
+    }
+
+    const db = openReadOnly(dbPath(env));
+    try {
+      const result = findQuery("burn")?.run(db, {});
+      const blocks = new Set(result?.rows.map((r) => r[0]));
+      expect(blocks.has("2026-09-16 12:00:00")).toBe(true);
+      expect(blocks.has("2026-09-16 17:00:00")).toBe(true);
+      expect(result?.note).toContain("how close a block came to stopping");
+    } finally {
+      db.close();
+    }
+  });
+
   test("a window drops the sessions outside it and says which window it used", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
