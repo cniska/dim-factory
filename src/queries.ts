@@ -482,6 +482,52 @@ const corrections: Query = {
 };
 
 /**
+ * The candidates themselves, so a judgement can be made by reading rather than
+ * from a count. Labeled rows are left out: the list is work remaining, and one
+ * already judged is not work.
+ */
+const candidates: Query = {
+  name: "candidates",
+  summary: "unlabeled turns the user stopped, with enough text to judge them",
+  usage: "dim q candidates [skill]",
+  run: (db, ctx) => {
+    const { arg } = ctx;
+    const columns = ["message_id", "when", "skill", "kind", "text"];
+    const w = window("m.ts", ctx);
+    const records = table(
+      db,
+      `WITH c AS (${attributed(ctx)})
+       SELECT c.id AS message_id, substr(c.ts, 1, 16) AS "when",
+              coalesce(c.skill, '(none)') AS skill,
+              CASE WHEN c.denial_kind IS NOT NULL THEN 'rejected'
+                   WHEN c.interrupted_message_id IS NOT NULL THEN 'interrupted'
+                   ELSE 'feedback' END AS kind,
+              replace(substr(coalesce(c.user_feedback, c.text, ''), 1, 200), char(10), ' ') AS text
+       FROM c
+       WHERE c.id NOT IN (SELECT message_id FROM correction_label)
+         ${arg ? "AND c.skill = ?" : ""}
+       ORDER BY c.ts DESC LIMIT 20`,
+      [...w.params, ...(arg ? [arg] : [])],
+    );
+    const labeled = scalar(db, "SELECT count(*) AS n FROM correction_label");
+    const total = scalar(db, `WITH c AS (${attributed(ctx)}) SELECT count(*) AS n FROM c`, ...w.params);
+    return {
+      denominator: `${total} candidates in this window (${windowLine(ctx)}); ${labeled} labeled so far, newest 20 unlabeled shown`,
+      columns,
+      rows: toRows(records, columns),
+      note:
+        records.length === 0
+          ? total === 0
+            ? "no rejection, interruption or written feedback in this window"
+            : "every candidate in this window has been labeled"
+          : "A stop is an act, not a verdict: an interruption can be a correction, a change of mind, or " +
+            "a faster idea. Read the text, then `dim label <message_id> <correction|clarification|not_correction>`. " +
+            "Nothing here labels itself.",
+    };
+  },
+};
+
+/**
  * A file edited repeatedly is not evidence of anything on its own — writing a
  * file in pieces looks identical to fixing it three times. What separates them
  * is whether the user pushed back between the edits, which the transcript
@@ -728,10 +774,104 @@ const skill: Query = {
   },
 };
 
+/**
+ * The facts a cold start needs, so a handoff spends its lines on the next move
+ * instead of reconstructing the last one. Everything here is read from the
+ * database rather than recalled: the session writing a handoff is usually the
+ * one whose context is nearly full, which is exactly when recall is worst.
+ */
+const resume: Query = {
+  name: "resume",
+  summary: "the factual half of a handoff: branch, files in play, last pushback, last exchange",
+  usage: "dim q resume <id-prefix>",
+  spansHistory: true,
+  run: (db, { arg }) => {
+    if (!arg) {
+      return { denominator: "", columns: ["error"], rows: [["usage: dim q resume <id-prefix>"]] };
+    }
+    const found = table(
+      db,
+      "SELECT id, project, git_branch, last_seen_at FROM session WHERE id LIKE ? || '%' LIMIT 2",
+      [arg],
+    );
+    if (found.length === 0) {
+      return { denominator: "", columns: ["what"], rows: [], note: `no session starts with ${arg}` };
+    }
+    if (found.length > 1) {
+      return { denominator: "", columns: ["what"], rows: [], note: `${arg} matches more than one session` };
+    }
+    const s = found[0] as Record<string, string | null>;
+    const id = s.id as string;
+    const rows: (string | number | null)[][] = [
+      ["branch", s.git_branch ?? "(none recorded)"],
+      ["project", s.project ?? "(none recorded)"],
+      ["last active", s.last_seen_at ?? null],
+    ];
+
+    // Ordered by the last touch, not the count: the file being worked on when the
+    // session stopped is the one the next move starts from.
+    for (const f of table(
+      db,
+      `SELECT file_path, count(*) AS edits, max(ts_call) AS last_edit
+       FROM tool_call
+       WHERE session_id = ? AND tool_name IN ('Edit','Write') AND file_path IS NOT NULL
+       GROUP BY file_path ORDER BY last_edit DESC LIMIT 8`,
+      [id],
+    )) {
+      rows.push(["edited", `${f.file_path} (${f.edits})`]);
+    }
+
+    for (const f of table(
+      db,
+      `SELECT tool_name, count(*) AS failures FROM tool_call
+       WHERE session_id = ? AND is_error = 1 GROUP BY tool_name ORDER BY failures DESC LIMIT 3`,
+      [id],
+    )) {
+      rows.push(["failed", `${f.tool_name} × ${f.failures}`]);
+    }
+
+    for (const p of table(
+      db,
+      `SELECT substr(ts, 1, 16) AS ts, replace(substr(coalesce(user_feedback, text, ''), 1, 160), char(10), ' ') AS said
+       FROM message
+       WHERE session_id = ? AND role = 'user'
+         AND (denial_kind IS NOT NULL OR interrupted_message_id IS NOT NULL OR user_feedback IS NOT NULL)
+       ORDER BY ts DESC LIMIT 3`,
+      [id],
+    )) {
+      rows.push(["stopped", `${p.ts} ${p.said}`]);
+    }
+
+    for (const m of table(
+      db,
+      `SELECT * FROM (
+         SELECT substr(ts, 1, 16) AS ts, role,
+                replace(substr(text, 1, 200), char(10), ' ') AS said
+         FROM message
+         WHERE session_id = ? AND text IS NOT NULL AND is_skill_body = 0 AND is_meta = 0
+         ORDER BY ts DESC LIMIT 6
+       ) ORDER BY ts`,
+      [id],
+    )) {
+      rows.push(["said", `${m.ts} ${m.role}: ${m.said}`]);
+    }
+
+    return {
+      denominator: `session ${id}`,
+      columns: ["what", "detail"],
+      rows,
+      note:
+        "Facts only. What the next move should be is not in here — that is the judgement a handoff exists " +
+        "to make. Run `dim sync` first if the session is still open, since only written bytes are read.",
+    };
+  },
+};
+
 export const QUERIES: Query[] = [
   search,
   thread,
   skill,
+  resume,
   tokens,
   models,
   cost,
@@ -739,6 +879,7 @@ export const QUERIES: Query[] = [
   tools,
   skills,
   corrections,
+  candidates,
   rework,
   sessions,
   session,

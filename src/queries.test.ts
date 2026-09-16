@@ -210,6 +210,27 @@ describe("read path", () => {
     }
   });
 
+  test("resume gives facts for a cold start and never a next move", () => {
+    const env = seeded();
+    const db = openReadOnly(dbPath(env));
+    try {
+      const r = findQuery("resume")?.run(db, { arg: SESSION.slice(0, 8) });
+      const what = (r?.rows ?? []).map((row) => String(row[0]));
+      expect(what).toContain("branch");
+      expect(what).toContain("said");
+      // The judgement a handoff exists to make is not a fact in the database, and
+      // a row claiming it would read as one.
+      expect(what).not.toContain("next");
+      expect(r?.note).toContain("Facts only");
+
+      const missing = findQuery("resume")?.run(db, { arg: "zzzzzzzz" });
+      expect(missing?.rows).toEqual([]);
+      expect(missing?.note).toContain("no session starts with");
+    } finally {
+      db.close();
+    }
+  });
+
   test("session resolves a prefix and says so when it matches nothing", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
