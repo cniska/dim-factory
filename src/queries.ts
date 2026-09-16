@@ -14,7 +14,14 @@ export type QueryResult = {
  * sessions ran under guidance that has since been rewritten, so counting them
  * beside this week's describes a machine that no longer exists.
  */
-export type QueryContext = { arg?: string; since?: string };
+export type QueryContext = { arg?: string; since?: string; home?: string };
+
+/**
+ * Paths print relative to the reader's home, so the project column stays short
+ * on any machine. Bound rather than written into the SQL: another person's
+ * corpus sits under a different home, and a literal there is a fact about mine.
+ */
+const homeOf = (ctx: QueryContext): string => ctx.home ?? "";
 
 export type Query = {
   name: string;
@@ -206,7 +213,7 @@ const sessions: Query = {
     const records = table(
       db,
       `SELECT substr(s.id, 1, 8) AS id, s.tool,
-              replace(coalesce(s.project, ''), '/Users/christofferniska/code/', '') AS project,
+              replace(coalesce(s.project, ''), ? || '/', '') AS project,
               substr(s.started_at, 1, 16) AS started,
               (SELECT count(*) FROM turn t WHERE t.session_id = s.id) AS turns,
               (SELECT count(*) FROM usage u WHERE u.session_id = s.id) AS responses,
@@ -214,7 +221,7 @@ const sessions: Query = {
               coalesce(s.end_reason, '') AS ended
        FROM session s WHERE s.parent_id IS NULL${window("s.last_seen_at", ctx).sql}
        ORDER BY s.last_seen_at DESC LIMIT 40`,
-      window("s.last_seen_at", ctx).params,
+      [homeOf(ctx), ...window("s.last_seen_at", ctx).params],
     );
     const w = window("last_seen_at", ctx);
     const ended = scalar(
@@ -623,14 +630,14 @@ const search: Query = {
     const records = table(
       db,
       `SELECT substr(m.session_id, 1, 8) AS session, substr(m.ts, 1, 16) AS "when", m.role,
-              replace(coalesce(s.project, ''), '/Users/christofferniska/code/', '') AS project,
+              replace(coalesce(s.project, ''), ? || '/', '') AS project,
               replace(snippet(message_fts, 0, '[', ']', '…', 12), char(10), ' ') AS text
        FROM message_fts
        JOIN message m ON m.rowid = message_fts.rowid
        JOIN session s ON s.id = m.session_id
        WHERE message_fts MATCH ?${w.sql}
        ORDER BY m.ts DESC LIMIT 40`,
-      [asPhrases(arg), ...w.params],
+      [homeOf(ctx), asPhrases(arg), ...w.params],
     );
     const indexed = scalar(db, "SELECT count(*) AS n FROM message WHERE text IS NOT NULL");
     const all = scalar(db, "SELECT count(*) AS n FROM message");
@@ -944,7 +951,8 @@ const running: Query = {
   summary: "sessions and subagents active in the last few minutes, and what each is doing",
   usage: "dim q running [minutes]",
   spansHistory: true,
-  run: (db, { arg }) => {
+  run: (db, ctx) => {
+    const { arg } = ctx;
     const minutes = arg && /^\d+$/.test(arg) ? Number(arg) : 30;
     const columns = ["id", "kind", "project", "last_seen", "doing"];
     const records = table(
@@ -952,7 +960,7 @@ const running: Query = {
       `SELECT substr(s.id, 1, 8) AS id,
               CASE WHEN s.parent_id IS NULL THEN s.tool
                    ELSE 'sub:' || coalesce(s.agent_type, '?') END AS kind,
-              replace(coalesce(s.project, ''), '/Users/christofferniska/code/', '') AS project,
+              replace(coalesce(s.project, ''), ? || '/', '') AS project,
               substr(s.last_seen_at, 12, 5) AS last_seen,
               coalesce(
                 (SELECT replace(substr(m.text, 1, 140), char(10), ' ') FROM message m
@@ -967,7 +975,7 @@ const running: Query = {
        -- sorts below it and would put every row inside the window.
        WHERE s.last_seen_at >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?)
        ORDER BY s.last_seen_at DESC LIMIT 40`,
-      [`-${minutes} minutes`],
+      [homeOf(ctx), `-${minutes} minutes`],
     );
     const synced = scalar(db, "SELECT count(*) AS n FROM source_file");
     return {
@@ -1276,7 +1284,7 @@ const stale: Query = {
          FROM touched u
        )
        SELECT substr(id, 1, 8) AS session,
-              replace(coalesce(project, ''), '/Users/christofferniska/code/', '') AS project,
+              replace(coalesce(project, ''), ? || '/', '') AS project,
               substr(max(last_seen_at), 1, 10) AS ran,
               count(*) AS files,
               round(100.0 * sum(commits_after > 0) / count(*)) AS moved_pct,
@@ -1285,7 +1293,9 @@ const stale: Query = {
        FROM scored
        GROUP BY id HAVING files >= 3
        ORDER BY moved_pct DESC, commits_since DESC LIMIT 30`,
-      [...(arg ? [arg] : []), ...w.params],
+      // The filter and window sit in the CTE, which precedes the SELECT this
+      // binds in, and SQLite binds by position in the text.
+      [...(arg ? [arg] : []), ...w.params, homeOf(ctx)],
     );
     const commits = scalar(db, "SELECT count(*) AS n FROM repo_commit");
     return {
