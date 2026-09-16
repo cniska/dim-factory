@@ -4,6 +4,7 @@ import { listCodexRollouts, readCodexTitles } from "./codex-source";
 import { type HistoryReport, ingestHistory } from "./history";
 import { createIngester, type FileSpec } from "./ingest";
 import type { Env } from "./paths";
+import { SCHEMA_SQL } from "./schema";
 import { applyHookEvents, type DrainReport, drainSpool } from "./spool";
 
 export type SyncReport = {
@@ -83,6 +84,14 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
  */
 export function rebuild(db: Database, env: Env = process.env): SyncReport {
   db.transaction(() => {
+    // The search index holds no text of its own and reads it back through
+    // message.rowid, so clearing message row by row would have its triggers ask
+    // the index to forget entries an older schema never gave it. Dropping it
+    // first is also how the index arrives for a database built before it existed.
+    db.run("DROP TRIGGER IF EXISTS message_fts_insert");
+    db.run("DROP TRIGGER IF EXISTS message_fts_delete");
+    db.run("DROP TRIGGER IF EXISTS message_fts_update");
+    db.run("DROP TABLE IF EXISTS message_fts");
     db.run("DELETE FROM skill_load");
     db.run("DELETE FROM tool_call");
     db.run("DELETE FROM orphan_prompt");
@@ -92,6 +101,7 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
     db.run("DELETE FROM message");
     db.run("DELETE FROM session");
     db.run("DELETE FROM source_file");
+    db.run(SCHEMA_SQL);
   })();
   return sync(db, env);
 }

@@ -10,6 +10,7 @@ import { dbPath } from "./paths";
 import { findQuery, QUERIES } from "./queries";
 import { openReadOnly } from "./read-db";
 import { renderTable } from "./render";
+import { DEFAULT_WINDOW, windowFromArgs } from "./since";
 import { ensureSpoolDirs } from "./spool";
 import { rebuild, type SyncReport, sync } from "./sync";
 
@@ -24,6 +25,7 @@ const USAGE = `usage: dim <command>
   install-agent   show the launchd agent that syncs every 15 minutes
                   (--write writes the plist; load it with launchctl)
   q <name> [arg]  ask the database a named question (q list names them; --json)
+                  covers the last ${DEFAULT_WINDOW}; --since <n>d|YYYY-MM-DD or --all to widen
   label <id> <correction|clarification|not_correction> [--rule "..."]
                   record your judgement on one candidate correction
 `;
@@ -189,12 +191,14 @@ function runQuery(args: string[]): void {
     console.error(`dim: no query named ${name}; try \`dim q list\``);
     process.exit(1);
   }
+  const flagValues = new Set<string>();
+  const sinceFlag = args.indexOf("--since");
+  if (sinceFlag !== -1 && args[sinceFlag + 1]) flagValues.add(args[sinceFlag + 1] as string);
+  const arg = args.find((a) => !a.startsWith("--") && a !== name && !flagValues.has(a));
+  const since = windowFromArgs(args, { spansHistory: query.spansHistory });
   const db = openReadOnly(dbPath());
   try {
-    const result = query.run(
-      db,
-      args.find((a) => !a.startsWith("--") && a !== name),
-    );
+    const result = query.run(db, { arg, since });
     console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : renderTable(result));
   } finally {
     db.close();

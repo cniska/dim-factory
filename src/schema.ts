@@ -2,7 +2,7 @@
 // by re-reading them, so a schema change is `dim rebuild`, not a migration.
 // SCHEMA_VERSION exists only so sync can refuse to run against an older shape.
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -215,4 +215,27 @@ CREATE TABLE IF NOT EXISTS correction_label (
   rule            TEXT,                 -- which instruction was overridden, in the owner's words
   labeled_at      TEXT NOT NULL
 );
+
+-- Prose search over message.text, so finding what was said in a past session is a
+-- query rather than a grep across every transcript on disk. External content: the
+-- index stores no copy of the text and reads it back through message.rowid.
+CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
+  text,
+  content = 'message',
+  content_rowid = 'rowid',
+  tokenize = 'unicode61'
+);
+
+-- The ingester upserts, so a row arriving twice fires the update trigger rather
+-- than a second insert; all three keep the index level with the table.
+CREATE TRIGGER IF NOT EXISTS message_fts_insert AFTER INSERT ON message BEGIN
+  INSERT INTO message_fts (rowid, text) VALUES (new.rowid, new.text);
+END;
+CREATE TRIGGER IF NOT EXISTS message_fts_delete AFTER DELETE ON message BEGIN
+  INSERT INTO message_fts (message_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
+END;
+CREATE TRIGGER IF NOT EXISTS message_fts_update AFTER UPDATE ON message BEGIN
+  INSERT INTO message_fts (message_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
+  INSERT INTO message_fts (rowid, text) VALUES (new.rowid, new.text);
+END;
 `;
