@@ -110,9 +110,12 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
     db.run("DELETE FROM usage");
     db.run("DELETE FROM message");
     db.run("DELETE FROM session");
-    db.run("DELETE FROM guidance_version");
-    db.run("DELETE FROM commit_file");
-    db.run("DELETE FROM repo_commit");
+    // Dropped rather than emptied, like the search index above: these are read
+    // back from git in full, and a column added to one of them cannot appear in
+    // a table that already exists.
+    db.run("DROP TABLE IF EXISTS guidance_version");
+    db.run("DROP TABLE IF EXISTS commit_file");
+    db.run("DROP TABLE IF EXISTS repo_commit");
     db.run("DELETE FROM source_file");
     db.run(SCHEMA_SQL);
   })();

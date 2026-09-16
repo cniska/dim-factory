@@ -2,7 +2,7 @@
 // by re-reading them, so a schema change is `dim rebuild`, not a migration.
 // SCHEMA_VERSION exists only so sync can refuse to run against an older shape.
 
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -222,7 +222,8 @@ CREATE TABLE IF NOT EXISTS correction_label (
 -- change to it, written by whoever had to come back.
 CREATE TABLE IF NOT EXISTS repo_commit (
   sha             TEXT PRIMARY KEY,
-  repo            TEXT NOT NULL,        -- git toplevel, so a worktree folds into its repo
+  repo            TEXT NOT NULL,        -- git toplevel: one row per checkout, worktrees included
+  label           TEXT,                 -- owner/repo from the remote; the identity a worktree shares
   ts              TEXT NOT NULL,        -- author date, ISO, UTC
   author          TEXT,
   subject         TEXT NOT NULL,
