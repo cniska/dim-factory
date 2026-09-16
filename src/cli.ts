@@ -44,6 +44,11 @@ function printReport(report: SyncReport): void {
       `hooks: ${h.applied} spooled events applied, ${h.duplicate} already seen, ${h.unreadable} unreadable`,
     );
   }
+  if (report.git.commits > 0) {
+    console.log(
+      `git: ${report.git.commits} commits touching ${report.git.files} files, from ${report.git.repos} repos`,
+    );
+  }
   if (report.history.orphans > 0) {
     console.log(
       `history: ${report.history.orphans} prompts from sessions with no transcript, of ${report.history.read} read`,

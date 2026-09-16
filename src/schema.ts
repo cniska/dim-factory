@@ -2,7 +2,7 @@
 // by re-reading them, so a schema change is `dim rebuild`, not a migration.
 // SCHEMA_VERSION exists only so sync can refuse to run against an older shape.
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 10;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -215,6 +215,29 @@ CREATE TABLE IF NOT EXISTS correction_label (
   rule            TEXT,                 -- which instruction was overridden, in the owner's words
   labeled_at      TEXT NOT NULL
 );
+
+-- The only outcome signal here. Everything else in this database is process — what
+-- was said, loaded, called, stopped — and process cannot say whether the work was
+-- right. A later commit that fixes a file is the repo's own verdict on an earlier
+-- change to it, written by whoever had to come back.
+CREATE TABLE IF NOT EXISTS repo_commit (
+  sha             TEXT PRIMARY KEY,
+  repo            TEXT NOT NULL,        -- git toplevel, so a worktree folds into its repo
+  ts              TEXT NOT NULL,        -- author date, ISO, UTC
+  author          TEXT,
+  subject         TEXT NOT NULL,
+  kind            TEXT                  -- Conventional Commits type: fix, feat, docs, …
+);
+CREATE INDEX IF NOT EXISTS repo_commit_repo_ts ON repo_commit(repo, ts);
+
+CREATE TABLE IF NOT EXISTS commit_file (
+  sha             TEXT NOT NULL REFERENCES repo_commit(sha) ON DELETE CASCADE,
+  -- Absolute, not the repo-relative path git reports: a tool call records the
+  -- absolute path, and joining on a path assembled in SQL cannot use an index.
+  path            TEXT NOT NULL,
+  PRIMARY KEY (sha, path)
+);
+CREATE INDEX IF NOT EXISTS commit_file_path ON commit_file(path);
 
 -- Prose search over message.text, so finding what was said in a past session is a
 -- query rather than a grep across every transcript on disk. External content: the
