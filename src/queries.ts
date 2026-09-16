@@ -406,7 +406,78 @@ const corrections: Query = {
   },
 };
 
-export const QUERIES: Query[] = [tokens, models, cost, turns, tools, skills, corrections, sessions, session];
+/**
+ * A file edited repeatedly is not evidence of anything on its own — writing a
+ * file in pieces looks identical to fixing it three times. What separates them
+ * is whether the user pushed back between the edits, which the transcript
+ * records as an act rather than a judgement.
+ */
+const rework: Query = {
+  name: "rework",
+  summary: "files the agent had to revisit after you pushed back, by skill",
+  run: (db, arg) => {
+    const columns = ["skill", "files_touched", "revisited", "after_pushback", "pushback_rate"];
+    const records = table(
+      db,
+      `WITH spans AS (
+         SELECT t.session_id, t.file_path,
+                coalesce(t.attribution_skill, '(no skill)') AS skill,
+                min(t.ts_call) AS first_edit, max(t.ts_call) AS last_edit,
+                count(*) AS edits
+         FROM tool_call t
+         WHERE t.tool_name IN ('Edit','Write') AND t.file_path IS NOT NULL AND t.ts_call IS NOT NULL
+         GROUP BY t.session_id, t.file_path, skill
+       ),
+       marked AS (
+         SELECT s.*,
+                (SELECT count(*) FROM message m
+                 WHERE m.session_id = s.session_id
+                   AND m.ts > s.first_edit AND m.ts <= s.last_edit
+                   AND (m.denial_kind IS NOT NULL OR m.interrupted_message_id IS NOT NULL
+                        OR m.user_feedback IS NOT NULL)) AS stops
+         FROM spans s
+       )
+       SELECT skill,
+              count(*) AS files_touched,
+              sum(edits > 1) AS revisited,
+              sum(edits > 1 AND stops > 0) AS after_pushback,
+              round(100.0 * sum(edits > 1 AND stops > 0) / count(*), 1) AS pushback_rate
+       FROM marked
+       ${arg ? "WHERE skill = ?" : ""}
+       GROUP BY skill HAVING files_touched >= 20
+       ORDER BY pushback_rate DESC`,
+      arg ? [arg] : [],
+    );
+    const total = scalar(
+      db,
+      "SELECT count(*) AS n FROM tool_call WHERE tool_name IN ('Edit','Write') AND file_path IS NOT NULL",
+    );
+    return {
+      denominator: `${total} file edits; rows shown only where a skill touched at least 20 files`,
+      columns,
+      rows: toRows(records, columns),
+      note:
+        records.length === 0
+          ? "no skill has touched enough files to report a rate"
+          : "`after_pushback` counts a file revisited while the user was stopping the agent. It is a " +
+            "co-occurrence, not a cause: a skill loads because the task is a certain kind. Read it as " +
+            "where to look, never as which skill is worse.",
+    };
+  },
+};
+
+export const QUERIES: Query[] = [
+  tokens,
+  models,
+  cost,
+  turns,
+  tools,
+  skills,
+  corrections,
+  rework,
+  sessions,
+  session,
+];
 
 export function findQuery(name: string): Query | undefined {
   return QUERIES.find((q) => q.name === name);
