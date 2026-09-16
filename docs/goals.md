@@ -2,7 +2,7 @@
 
 What this repo is for, in order, and how each goal is known to be met. The argument for building it at all is [`dark-factory.md`](dark-factory.md); this page is the operational version of it.
 
-Three goals. The order is load-bearing: the second and third exist to serve the first.
+Three goals. All of them are about time, which is the commodity actually being spent: the owner's hours going into a build, and the hours lost when work stops. The order is load-bearing — the second and third exist to serve the first.
 
 ## 1. Make building take less of the owner's time and effort
 
@@ -10,7 +10,7 @@ The work is apps, and the currency is attention, not output volume. A change suc
 
 **Measured first by `q repeats`:** a phrase typed at the agent across several sessions means the point did not land the first time. Saying a thing twice is unambiguous waste, it names its own fix, and it is the one correction signal with no interpretation in it.
 
-**A stop is not a correction.** Of the turns the user physically stopped, the large majority are bare interrupts carrying no text, and only a handful carry written feedback. An interrupt means "stop" — it may be a redirect, a new idea, or added context, and counting it as a defect measures conversational style rather than agent quality. `q corrections` splits `rejected`, `interrupted` and `with_feedback` for exactly this reason; read the last two columns, never the total.
+**A stop is not a correction.** Of the turns the user physically stopped, the large majority are bare interrupts carrying no text, and only a handful carry written feedback. An interrupt means "stop" and nothing more — it may be a redirect, a new idea, or added context, so the count alone cannot say the agent was wrong. A message queued while the agent works is not an interrupt and does not appear here. `q corrections` splits `rejected`, `interrupted` and `with_feedback` for exactly this reason; the written feedback is the column that carries a reason, and the total carries none.
 
 **Also measured by** `q rework` (files revisited while the user was pushing back) and `q fixes` (files a later `fix:` commit returned to).
 
@@ -23,9 +23,11 @@ The work is apps, and the currency is attention, not output volume. A change suc
 - Get a known fact to the moment it is needed. A fact the record already holds, arriving after the work was redone, cost the same attention as not having it.
 - A heuristic standing in for a fact that lives in another system is not a hook; it is a worse copy of one.
 
-## 2. Spend fewer tokens for the same work
+## 2. Stay clear of the limits, so work does not stop
 
-Not to spend less, but to fit more work in the same budget. Tokens cap how much goal 1 can deliver, which is why this ranks second and never overrides it.
+Not to spend less for its own sake, but to fit more work inside the budget before usage limits halt it. A limit reached stops the build and costs the owner the wait, which is why this is a time goal like the first, and why it ranks second without ever overriding it.
+
+**Not measured here yet.** Nothing in the schema records a rate limit, a quota or a refusal, so no query can say how close a window came to stopping. The shape of the instrument is known — usage grouped into the rolling billing window, with the active one projected forward — and `ccusage` implements it today. Until something here does, limit proximity is observed rather than measured.
 
 **Context is re-read, not sent once.** `q tokens` reports cache reads three orders of magnitude above output, so a character in a skill body or a rules file is paid on every API call it stays resident for. The unit is `chars × calls_after`, which `q skills` reports directly, and it orders skills very differently from body size: the heaviest cost is a skill loaded often and left resident, not the longest file.
 
