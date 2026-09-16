@@ -27,7 +27,7 @@ The work is several repos, each its own production line — `apps`, `hoodly`, `a
 
 Not to spend less for its own sake, but to fit more work inside the budget before usage limits halt it. A limit reached stops the build and costs the owner the wait, which is why this is a time goal like the first, and why it ranks second without ever overriding it.
 
-**Not measured here yet.** Nothing in the schema records a rate limit, a quota or a refusal, so no query can say how close a window came to stopping. The shape of the instrument is known — usage grouped into the rolling billing window, with the active one projected forward — and `ccusage` implements it today. Until something here does, limit proximity is observed rather than measured.
+**Measured by `q burn`:** spend against edits per rolling five-hour block, which is the shape a usage limit is measured in. Nothing in the schema records a rate limit, a quota or a refusal, so no query can say how close a window came to stopping — what a block supports is comparison against the owner's other blocks, which is enough to say whether a stretch of work turned spend into changes.
 
 **Context is re-read, not sent once.** `q tokens` reports cache reads three orders of magnitude above output, so a character in a skill body or a rules file is paid on every API call it stays resident for. The unit is `chars × calls_after`, which `q skills` reports directly, and it orders skills very differently from body size: the heaviest cost is a skill loaded often and left resident, not the longest file.
 
@@ -41,7 +41,7 @@ Text that changes what an agent does earns its tokens however long it is. Text t
 
 A good example teaches an agent more cheaply than a rule describing the same thing, and the corpus already holds every change this machine has made. The goal is that shipped work which held up becomes reachable as precedent, rather than being rediscovered.
 
-**What the corpus can do:** nominate. Code that shipped and that no later `fix:` commit returned to is computable today from `repo_commit` and `commit_file`, the same join `q fixes` reads in the other direction. It spans every line on the machine, so a precedent set in one repo is reachable from another — which is how these lines already teach each other, one release doc at a time.
+**What the corpus can do:** nominate, through `q exemplars` — code an agent wrote that shipped and that no later `fix:` commit returned to, the same join `q fixes` reads in the other direction. It spans every line on the machine, so a precedent set in one repo is reachable from another, which is how these lines already teach each other one release doc at a time.
 
 **What it cannot do:** certify. Work nobody came back to may still be wrong, and a fix may land on code the session never wrote. An unlabeled nomination promoted to "good example" trains the next build on whatever went unnoticed, so the label comes from the owner or from a review, never from the absence of a fix alone.
 
