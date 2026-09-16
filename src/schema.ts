@@ -2,7 +2,7 @@
 // by re-reading them, so a schema change is `dim rebuild`, not a migration.
 // SCHEMA_VERSION exists only so sync can refuse to run against an older shape.
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -203,4 +203,16 @@ CREATE TABLE IF NOT EXISTS skill_load (
   UNIQUE (session_id, message_id, skill_name, how)
 );
 CREATE INDEX IF NOT EXISTS skill_load_name ON skill_load(skill_name, ts);
+
+-- The owner's judgement on a candidate correction, and the only table anything
+-- other than the ingester writes. Nothing derives a correction automatically:
+-- whether a prompt tells the agent it was wrong is semantic, and no rule here
+-- decides it.
+CREATE TABLE IF NOT EXISTS correction_label (
+  message_id      TEXT PRIMARY KEY REFERENCES message(id),
+  label           TEXT NOT NULL CHECK (label IN ('correction','clarification','not_correction')),
+  skill_name      TEXT,
+  rule            TEXT,                 -- which instruction was overridden, in the owner's words
+  labeled_at      TEXT NOT NULL
+);
 `;

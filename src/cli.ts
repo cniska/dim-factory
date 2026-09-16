@@ -24,6 +24,8 @@ const USAGE = `usage: dim <command>
   install-agent   show the launchd agent that syncs every 15 minutes
                   (--write writes the plist; load it with launchctl)
   q <name> [arg]  ask the database a named question (q list names them; --json)
+  label <id> <correction|clarification|not_correction> [--rule "..."]
+                  record your judgement on one candidate correction
 `;
 
 function printReport(report: SyncReport): void {
@@ -142,6 +144,38 @@ function printAgentPlan(write: boolean): void {
   console.log(`remove it with: launchctl bootout gui/$(id -u)/${AGENT_LABEL}`);
 }
 
+/**
+ * The one write a reader makes. Nothing derives a correction automatically —
+ * whether a prompt told the agent it was wrong is the owner's call, not a rule's.
+ */
+function runLabel(args: string[]): void {
+  const [messageId, label] = args;
+  const ruleAt = args.indexOf("--rule");
+  const rule = ruleAt === -1 ? null : (args[ruleAt + 1] ?? null);
+  if (!messageId || !label) {
+    console.error('usage: dim label <message-id> <correction|clarification|not_correction> [--rule "..."]');
+    process.exit(1);
+  }
+  const db = openDb(dbPath());
+  try {
+    const found = db.prepare("SELECT id FROM message WHERE id = ?").get(messageId);
+    if (!found) {
+      console.error(`dim: no message ${messageId}`);
+      process.exit(1);
+    }
+    db.run(
+      `INSERT INTO correction_label (message_id, label, rule, labeled_at)
+       VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+       ON CONFLICT(message_id) DO UPDATE SET label = excluded.label, rule = excluded.rule,
+         labeled_at = excluded.labeled_at`,
+      [messageId, label, rule],
+    );
+    console.log(`labeled ${messageId} as ${label}`);
+  } finally {
+    closeDb(db);
+  }
+}
+
 function runQuery(args: string[]): void {
   const name = args[0];
   if (!name || name === "list") {
@@ -184,6 +218,9 @@ try {
       break;
     case "install-hooks":
       printHookPlan(process.argv.includes("--write"));
+      break;
+    case "label":
+      runLabel(process.argv.slice(3));
       break;
     case "q":
       runQuery(process.argv.slice(3));

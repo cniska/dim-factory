@@ -349,7 +349,64 @@ const skills: Query = {
   },
 };
 
-export const QUERIES: Query[] = [tokens, models, cost, turns, tools, skills, sessions, session];
+/**
+ * A correction is credited to the attribution_skill of the assistant message
+ * immediately before it, and an unattributed message clears the credit. Carrying
+ * the last-seen skill forward blames whichever skill ran most recently for
+ * everything that follows and inflates the rate of rarely used ones.
+ */
+const ATTRIBUTED = `
+  SELECT m.id, m.session_id, m.ts, m.model, m.text, m.denial_kind, m.user_feedback,
+         m.interrupted_message_id,
+         (SELECT p.attribution_skill FROM message p
+          WHERE p.session_id = m.session_id AND p.role = 'assistant' AND p.ts <= m.ts
+          ORDER BY p.ts DESC, p.src_line DESC LIMIT 1) AS skill
+  FROM message m
+  WHERE m.role = 'user'
+    AND (m.denial_kind = 'user-rejected' OR m.interrupted_message_id IS NOT NULL
+         OR m.user_feedback IS NOT NULL)`;
+
+const corrections: Query = {
+  name: "corrections",
+  summary: "the mechanical signals that the user stopped the agent, by skill",
+  run: (db, arg) => {
+    const columns = ["skill", "rejected", "interrupted", "with_feedback", "labeled", "sessions"];
+    const records = table(
+      db,
+      `WITH c AS (${ATTRIBUTED})
+       SELECT coalesce(c.skill, '(unattributed)') AS skill,
+              sum(c.denial_kind IS NOT NULL) AS rejected,
+              sum(c.interrupted_message_id IS NOT NULL) AS interrupted,
+              sum(c.user_feedback IS NOT NULL) AS with_feedback,
+              (SELECT count(*) FROM correction_label cl
+               JOIN message m2 ON m2.id = cl.message_id
+               WHERE cl.label = 'correction'
+                 AND coalesce((SELECT p.attribution_skill FROM message p
+                               WHERE p.session_id = m2.session_id AND p.role = 'assistant'
+                                 AND p.ts <= m2.ts ORDER BY p.ts DESC LIMIT 1), '(unattributed)')
+                     = coalesce(c.skill, '(unattributed)')) AS labeled,
+              count(DISTINCT c.session_id) AS sessions
+       FROM c ${arg ? "WHERE c.skill = ?" : ""}
+       GROUP BY c.skill ORDER BY rejected + interrupted DESC`,
+      arg ? [arg] : [],
+    );
+    const labeled = scalar(db, "SELECT count(*) AS n FROM correction_label");
+    const candidates = scalar(db, `WITH c AS (${ATTRIBUTED}) SELECT count(*) AS n FROM c`);
+    return {
+      denominator: `${candidates} turns the user physically stopped; ${labeled} have been labeled by hand`,
+      columns,
+      rows: toRows(records, columns),
+      note:
+        candidates === 0
+          ? "no rejection, interruption or written feedback in the corpus"
+          : "These are acts the tool recorded, not judgements. Whether a prompt told the agent it was " +
+            "wrong is semantic and nothing here decides it; `dim label` records the owner's call. " +
+            "An unlabeled candidate is never counted as a correction.",
+    };
+  },
+};
+
+export const QUERIES: Query[] = [tokens, models, cost, turns, tools, skills, corrections, sessions, session];
 
 export function findQuery(name: string): Query | undefined {
   return QUERIES.find((q) => q.name === name);
