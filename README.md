@@ -21,17 +21,22 @@ bun run dim sync            # read every new byte of both tools' session files
 bun run dim stats           # row counts and token totals per tool and model
 bun run dim rebuild         # forget every cursor and read all files from the start
 bun run dim install-hooks   # show the session hooks; --write applies them
+bun run dim install-skill   # show where the agent skill links; --write links it
 bun run dim q list          # the named questions; `q <name>` asks one, --json for the raw rows
 bun run verify              # lint, typecheck, test
 ```
 
-Every query prints the base its numbers came from, and a query with nothing to report says so rather than printing a zero. Readers open the database read-only.
+`bun link` puts `dim` on PATH, which is what makes it usable from another repo — and an agent can only reach it from the repo it is working in.
+
+Every query prints the base its numbers came from, and a query with nothing to report says so rather than printing a zero. Queries cover the last 30 days unless given `--since <n>d|YYYY-MM-DD` or `--all`; the window is printed with the numbers. Readers open the database read-only.
 
 The database lands in `~/.local/share/dim-factory/sessions.db`. Reading the whole corpus from scratch takes about 20 seconds.
 
 Claude Code deletes transcripts after 30 days unless told otherwise, so `~/.claude/settings.json` sets `"cleanupPeriodDays": 3650`. Without it the sources this points into disappear.
 
 `dim install-agent --write` writes a launchd agent that runs `dim sync` every 15 minutes, logging to `~/.local/share/dim-factory/sync.log`; load it with the `launchctl bootstrap` line the command prints. Re-run it after a toolchain change, since the plist names an absolute `bun`.
+
+`dim install-skill --write` links `skills/df-sessions` into `~/.agents/skills`, so an agent can recover what a past session said with `q search` and `q thread` instead of grepping transcripts. It ships here rather than in the skills repo because those skills are tool-agnostic and this one needs `dim` installed.
 
 `dim install-hooks --write` appends a `SessionStart`/`SessionEnd` hook to `~/.claude/settings.json` and `~/.codex/hooks.json`, keeping every hook already there and copying each file to `<file>.dim-backup` first. The hook is one redirect into a spool directory and always exits 0. It is worth running early: a transcript records no end marker, so until the hooks are in, a session that was abandoned cannot be told from one still open, and that gap cannot be filled in later.
 

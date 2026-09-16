@@ -546,11 +546,6 @@ const rework: Query = {
 };
 
 /**
- * What was said, not what was counted. The alternative is grepping every
- * transcript on disk, which reads whole tool results and file contents back out
- * of megabyte files to find one sentence.
- */
-/**
  * Every term is quoted before it reaches FTS5, which otherwise reads `-` as NOT
  * and `:` as a column filter — so a branch name or a flag searches as the word
  * it is. Terms are ANDed; the query language is not exposed.
@@ -562,6 +557,11 @@ const asPhrases = (terms: string): string =>
     .map((t) => `"${t.replaceAll('"', '""')}"`)
     .join(" ");
 
+/**
+ * What was said, not what was counted. The alternative is grepping every
+ * transcript on disk, which reads whole tool results and file contents back out
+ * of megabyte files to find one sentence.
+ */
 const search: Query = {
   name: "search",
   summary: "find a past message by its words, newest first",
@@ -600,8 +600,62 @@ const search: Query = {
   },
 };
 
+/**
+ * The sentence that settled a question is rarely the one that matched, so a hit
+ * is only useful with its neighbours. Skill bodies and injected meta are left
+ * out: they are the largest text in a session and none of it was said by anyone.
+ */
+const thread: Query = {
+  name: "thread",
+  summary: "read one session's exchange, or the messages around a timestamp",
+  usage: "dim q thread <id-prefix>[@<ts>]",
+  spansHistory: true,
+  run: (db, { arg }) => {
+    if (!arg) {
+      return { denominator: "", columns: ["error"], rows: [["usage: dim q thread <id-prefix>[@<ts>]"]] };
+    }
+    const [prefix, at] = arg.split("@");
+    const found = table(db, "SELECT id FROM session WHERE id LIKE ? || '%' LIMIT 2", [prefix]);
+    if (found.length === 0) {
+      return { denominator: "", columns: ["id"], rows: [], note: `no session starts with ${prefix}` };
+    }
+    if (found.length > 1) {
+      return { denominator: "", columns: ["id"], rows: [], note: `${prefix} matches more than one session` };
+    }
+    const id = found[0]?.id as string;
+    const columns = ["when", "role", "skill", "text"];
+    const said = `FROM message WHERE session_id = ? AND text IS NOT NULL
+                  AND is_skill_body = 0 AND is_meta = 0`;
+    const select = `SELECT substr(ts, 1, 16) AS "when", role,
+                           coalesce(attribution_skill, '') AS skill,
+                           replace(substr(text, 1, 240), char(10), ' ') AS text, ts`;
+    const records = at
+      ? table(
+          db,
+          `SELECT * FROM (
+             SELECT * FROM (${select} ${said} AND ts <= ? ORDER BY ts DESC LIMIT 12)
+             UNION
+             SELECT * FROM (${select} ${said} AND ts > ? ORDER BY ts ASC LIMIT 12)
+           ) ORDER BY ts`,
+          [id, at, id, at],
+        )
+      : table(db, `${select} ${said} ORDER BY ts LIMIT 40`, [id]);
+    const all = scalar(db, `SELECT count(*) AS n ${said}`, id);
+    return {
+      denominator: `session ${id}: ${all} messages anyone said${at ? `, centered on ${at}` : ""}`,
+      columns,
+      rows: toRows(records, columns),
+      note:
+        records.length === 0
+          ? "nothing was said in this session outside tool calls and injected text"
+          : "Text is cut at 240 characters. Tool calls, their results, skill bodies and injected meta are not here.",
+    };
+  },
+};
+
 export const QUERIES: Query[] = [
   search,
+  thread,
   tokens,
   models,
   cost,
