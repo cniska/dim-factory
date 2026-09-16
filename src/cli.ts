@@ -7,6 +7,9 @@ import { closeDb, openDb } from "./db";
 import { installHooks, planHooks } from "./hooks";
 import { withLock } from "./lock";
 import { dbPath } from "./paths";
+import { findQuery, QUERIES } from "./queries";
+import { openReadOnly } from "./read-db";
+import { renderTable } from "./render";
 import { ensureSpoolDirs } from "./spool";
 import { rebuild, type SyncReport, sync } from "./sync";
 
@@ -20,6 +23,7 @@ const USAGE = `usage: dim <command>
                   (--write applies them, after copying each config aside)
   install-agent   show the launchd agent that syncs every 15 minutes
                   (--write writes the plist; load it with launchctl)
+  q <name> [arg]  ask the database a named question (q list names them; --json)
 `;
 
 function printReport(report: SyncReport): void {
@@ -138,6 +142,31 @@ function printAgentPlan(write: boolean): void {
   console.log(`remove it with: launchctl bootout gui/$(id -u)/${AGENT_LABEL}`);
 }
 
+function runQuery(args: string[]): void {
+  const name = args[0];
+  if (!name || name === "list") {
+    for (const q of QUERIES) {
+      console.log(`  ${(q.usage ?? `dim q ${q.name}`).padEnd(28)} ${q.summary}`);
+    }
+    return;
+  }
+  const query = findQuery(name);
+  if (!query) {
+    console.error(`dim: no query named ${name}; try \`dim q list\``);
+    process.exit(1);
+  }
+  const db = openReadOnly(dbPath());
+  try {
+    const result = query.run(
+      db,
+      args.find((a) => !a.startsWith("--") && a !== name),
+    );
+    console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : renderTable(result));
+  } finally {
+    db.close();
+  }
+}
+
 const command = process.argv[2];
 try {
   switch (command) {
@@ -155,6 +184,9 @@ try {
       break;
     case "install-hooks":
       printHookPlan(process.argv.includes("--write"));
+      break;
+    case "q":
+      runQuery(process.argv.slice(3));
       break;
     case "install-agent":
       printAgentPlan(process.argv.includes("--write"));

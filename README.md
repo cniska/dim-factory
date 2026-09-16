@@ -21,8 +21,11 @@ bun run dim sync            # read every new byte of both tools' session files
 bun run dim stats           # row counts and token totals per tool and model
 bun run dim rebuild         # forget every cursor and read all files from the start
 bun run dim install-hooks   # show the session hooks; --write applies them
+bun run dim q list          # the named questions; `q <name>` asks one, --json for the raw rows
 bun run verify              # lint, typecheck, test
 ```
+
+Every query prints the base its numbers came from, and a query with nothing to report says so rather than printing a zero. Readers open the database read-only.
 
 The database lands in `~/.local/share/dim-factory/sessions.db`. Reading the whole corpus from scratch takes about 20 seconds.
 
