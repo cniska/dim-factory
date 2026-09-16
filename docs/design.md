@@ -486,12 +486,12 @@ The surviving Claude corpus is `claude-opus-5` (141,524 assistant lines) with 31
 Each slice is one commit in `~/code/dim-factory`, independently useful.
 
 1. **Sessions, messages, usage** — `dim init`, `dim sync`, `dim rebuild`, `dim stats`; `parse-claude.ts` and `parse-codex.ts` populate `session`, `message` and `usage` for Claude transcripts, Claude subagents and Codex rollouts. Archiving is not a slice: `cleanupPeriodDays` is set to 3650, so the sources persist and the database points into them (§4). *Useful on its own: every token figure in §3.5 and §3.10 is answerable.*
-2. **Turns, costs and orphan prompts** — `turn`, `session_cost_reported`, `orphan_prompt` from both `history.jsonl` files; `q tokens`, `q session`, `q models`, `q cost`.
-3. **Hook spool** — the four hook commands added to `~/.claude/settings.json` and `~/.codex/hooks.json`; `sync` drains the spool into `session_event`. *Useful: session end reasons start accumulating immediately, and they cannot be backfilled.*
-4. **Scheduled sync** — a `launchd` agent running `dim sync` every 15 minutes.
-4. **Tool calls and edits** — `tool_call` for both tools; `q tools`.
-5. **Skill loads and versions** — `skill_load` with `how` and `body_sha256`; `skill_version` from the skills repo's git history; `q skills`, `q skill`, `q workflow`; the `review_scope` derivation for §9.9 case 1.
-6. **Corrections and routing** — `v_correction_candidate`, `v_routing_case`, `correction_label`; `q corrections`, `q label`, `q routing`, `export routing-cases`.
-7. **Agent skill** — `skills/session-evidence/SKILL.md` in the skills repo, validated with `make validate`, dry-run per `skill-test`.
+2. **Hook spool** — the four hook commands added to `~/.claude/settings.json` and `~/.codex/hooks.json`; `sync` drains the spool into `session_event`. Second because it is the only slice whose data expires: a session that ends before its hook is installed never records why it ended, and no later slice can recover it. This is §1's argument, which the transcripts no longer need and the hooks still do.
+3. **Scheduled sync** — a `launchd` agent running `dim sync` every 15 minutes, so the database tracks the corpus instead of being a snapshot, and the spool is drained while it is small.
+4. **Turns, costs and orphan prompts** — `turn`, `session_cost_reported`, `orphan_prompt` from both `history.jsonl` files; `q tokens`, `q session`, `q models`, `q cost`.
+5. **Tool calls and edits** — `tool_call` for both tools; `q tools`.
+6. **Skill loads and versions** — `skill_load` with `how` and `body_sha256`; `skill_version` from the skills repo's git history; `q skills`, `q skill`, `q workflow`; the `review_scope` derivation for §9.9 case 1.
+7. **Corrections and routing** — `v_correction_candidate`, `v_routing_case`, `correction_label`; `q corrections`, `q label`, `q routing`, `export routing-cases`.
+8. **Agent skill** — `skills/session-evidence/SKILL.md` in the skills repo, validated with `make validate`, dry-run per `skill-test`.
 
-Slices 2–7 rebuild from the source files at any time; a schema change is `dim rebuild`, not a migration.
+Slices 4–8 read only the source files, so they rebuild at any time and a schema change is `dim rebuild`, not a migration. Slice 2 is the exception: the spool is the one input that exists only if something was running when the session ended.
