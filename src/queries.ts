@@ -1116,12 +1116,25 @@ const repeats: Query = {
       }
     }
 
+    // Sliding an n-gram window over one sentence yields several phrases that are
+    // mostly the same words, and they would otherwise fill the list three deep
+    // with one habit. The strongest wins and its near-duplicates drop.
+    const kept: { phrase: string; words: Set<string>; sessions: number; uses: number }[] = [];
+    for (const [phrase, v] of [...seen.entries()]
+      .filter(([, x]) => x.sessions.size >= 3)
+      .sort((a, b) => b[1].sessions.size - a[1].sessions.size || b[1].uses - a[1].uses)) {
+      const words = new Set(phrase.split(" "));
+      const overlaps = kept.some((k) => {
+        let shared = 0;
+        for (const word of words) if (k.words.has(word)) shared += 1;
+        return shared >= Math.max(2, words.size - 1);
+      });
+      if (!overlaps) kept.push({ phrase, words, sessions: v.sessions.size, uses: v.uses });
+      if (kept.length >= 30) break;
+    }
+
     const columns = ["phrase", "sessions", "uses"];
-    const records = [...seen.entries()]
-      .filter(([, v]) => v.sessions.size >= 3)
-      .sort((a, b) => b[1].sessions.size - a[1].sessions.size || b[1].uses - a[1].uses)
-      .slice(0, 30)
-      .map(([phrase, v]) => ({ phrase, sessions: v.sessions.size, uses: v.uses }));
+    const records = kept.map(({ phrase, sessions, uses }) => ({ phrase, sessions, uses }));
 
     return {
       denominator: `${rows.length} prompts you typed or used to stop the agent (${windowLine(ctx)}); phrases of ${size} words seen in 3+ sessions`,
@@ -1136,7 +1149,101 @@ const repeats: Query = {
   },
 };
 
+/**
+ * One call for a scheduled reader, so the measure step of the loop is a job
+ * rather than a sitting. It reports over whatever window it is given and names
+ * it: `--since 7d` for a weekly cadence. Every figure here is also reachable on
+ * its own, and this adds no measurement of its own — a digest that computed
+ * something no other query could would be a number with nowhere to check it.
+ */
+const digest: Query = {
+  name: "digest",
+  summary: "the whole week in one call: friction, where work happened, what you repeated",
+  run: (db, ctx) => {
+    const w = (col: string) => window(col, ctx);
+    const rows: (string | number | null)[][] = [];
+    const add = (measure: string, value: string | number | null) => rows.push([measure, value]);
+
+    const sessions = scalar(
+      db,
+      `SELECT count(*) AS n FROM session WHERE parent_id IS NULL${window("last_seen_at", ctx).sql}`,
+      ...w("last_seen_at").params,
+    );
+    add("sessions", sessions);
+
+    const edited = scalar(
+      db,
+      `SELECT count(*) AS n FROM (SELECT DISTINCT session_id, file_path FROM tool_call
+        WHERE tool_name IN ('Edit','Write') AND file_path IS NOT NULL${w("ts_call").sql})`,
+      ...w("ts_call").params,
+    );
+    const unskilled = scalar(
+      db,
+      `SELECT count(*) AS n FROM (SELECT DISTINCT session_id, file_path FROM tool_call
+        WHERE tool_name IN ('Edit','Write') AND file_path IS NOT NULL
+          AND attribution_skill IS NULL${w("ts_call").sql})`,
+      ...w("ts_call").params,
+    );
+    add("files edited", edited);
+    add(
+      "edited under no skill",
+      edited === 0 ? "—" : `${unskilled} (${Math.round((100 * unskilled) / edited)}%)`,
+    );
+
+    const stops = scalar(
+      db,
+      `SELECT count(*) AS n FROM message m
+       WHERE m.role = 'user'
+         AND (m.denial_kind IS NOT NULL OR m.interrupted_message_id IS NOT NULL
+              OR m.user_feedback IS NOT NULL)${w("m.ts").sql}`,
+      ...w("m.ts").params,
+    );
+    add("times you stopped the agent", stops);
+    add("stops per file edited", edited === 0 ? "—" : (stops / edited).toFixed(2));
+
+    const handoffs = scalar(
+      db,
+      `SELECT count(*) AS n FROM tool_call
+       WHERE tool_name IN ('Agent','SendMessage')${w("ts_call").sql}`,
+      ...w("ts_call").params,
+    );
+    add("work handed to a subagent or peer", handoffs);
+
+    // Guidance that changed inside the window is the other half of any change in
+    // the numbers above, and reading them apart invites crediting the wrong one.
+    const skillVersions = scalar(
+      db,
+      `SELECT count(DISTINCT body_sha256) AS n FROM skill_load
+       WHERE body_sha256 IS NOT NULL${w("ts").sql}`,
+      ...w("ts").params,
+    );
+    const ruleVersions = scalar(
+      db,
+      `SELECT count(*) AS n FROM guidance_version${window("first_seen", ctx, "WHERE").sql}`,
+      ...w("first_seen").params,
+    );
+    add("skill versions loaded", skillVersions);
+    add("rules file versions written", ruleVersions);
+
+    for (const r of repeats.run(db, ctx).rows.slice(0, 5)) {
+      add("repeated", `"${r[0]}" — ${r[1]} sessions`);
+    }
+
+    return {
+      denominator: `${windowLine(ctx)}`,
+      columns: ["measure", "value"],
+      rows,
+      note:
+        sessions === 0
+          ? "no session in this window"
+          : "A repeated phrase is a candidate rule or a rule that is not reaching the tool that needs it. " +
+            "Nothing here is an effect of anything else here: read a change as where to look.",
+    };
+  },
+};
+
 export const QUERIES: Query[] = [
+  digest,
   search,
   thread,
   skill,
