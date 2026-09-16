@@ -60,6 +60,10 @@ Reach before body size. 82% of file edits carry no skill attribution at all, so 
 
 That inverts the obvious order. The heaviest skill bodies are not the best first target; the guidance files are, because a line there is paid on every session and a line in a rarely-loaded skill is nearly free. The skills worth questioning are the ones the corpus shows actually loading — `handoff`, `review`, `git`, `spec` lead `q skills` — and the rest can stay long without costing anything.
 
+**A rule leaves the conventions file only when a gate holds it.** The file is read on every API call of every session, so it is the most expensive text on the machine and the obvious place to cut. But moving a rule into a skill drops its reach from all work to the fraction that loads that skill, which is how a rule comes to exist and still not arrive. So the cut is earned, one rule at a time, by building the mechanism first: a gate fires whether or not any skill loaded, and only then is the sentence describing it redundant. `install-commit-gate` is the worked example — the subject rule is now held by a hook in every checkout, and its sentence is the first that could go.
+
+Most rules will never qualify. A comment earning its place, a claim verified at its source, a finding reported as a conclusion: no event payload decides any of them, and they stay written down. The cut list is short on purpose.
+
 The boundary the runner cannot cross today: it ablates a `SKILL.md` line by delivering trimmed text through `--append-system-prompt-file`, with the user's real `CLAUDE.md` present on purpose. A rule *inside* that file has no such seam, so a guidance-file cut is decided by reading and the one-place rule, and its cost is still exact. Giving the runner a guidance-file arm is a later question and is not answered here.
 
 ## 6. What this does not become
