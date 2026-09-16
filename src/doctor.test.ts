@@ -58,6 +58,19 @@ describe("doctor", () => {
     expect(check(env, "retention")?.state).toBe("ok");
   });
 
+  test("warns until one commit gate covers every repo", () => {
+    const env = seeded();
+    const missing = check(env, "commit gate");
+    expect(missing?.state).toBe("warn");
+    expect(missing?.fix).toContain("install-commit-gate");
+
+    // Writing the hook must flip it, or the check is reporting a constant.
+    const hooks = join(env.HOME as string, ".config", "dim", "hooks");
+    mkdirSync(hooks, { recursive: true });
+    writeFileSync(join(hooks, "commit-msg"), "#!/usr/bin/env bash\nexit 0\n");
+    expect(check(env, "commit gate")?.state).toBe("ok");
+  });
+
   test("fails when hooks are installed but have never fired", () => {
     const env = seeded();
     // No hooks in this scratch home, so the check must say it is not expected

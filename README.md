@@ -39,7 +39,7 @@ The database lands in `~/.local/share/dim-factory/sessions.db`. Reading the whol
 
 Claude Code deletes transcripts after 30 days unless told otherwise, so `~/.claude/settings.json` sets `"cleanupPeriodDays": 3650`. Without it the sources this points into disappear.
 
-`dim doctor` checks the paths that fail silently: retention unset, hooks installed but never firing, a launchd agent written but never loaded, a spool nothing drains, a database built by an older schema. It reads only, exits non-zero when a check fails, and every failure names its fix.
+`dim doctor` checks the paths that fail silently: retention unset, hooks installed but never firing, a launchd agent written but never loaded, a spool nothing drains, a commit gate covering no repo, a database built by an older schema. It reads only, exits non-zero when a check fails, and every failure names its fix.
 
 `dim install-agent --write` writes a launchd agent that runs `dim sync` every 15 minutes, logging to `~/.local/share/dim-factory/sync.log`; load it with the `launchctl bootstrap` line the command prints. Re-run it after a toolchain change, since the plist names an absolute `bun`.
 
