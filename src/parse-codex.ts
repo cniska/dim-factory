@@ -5,6 +5,7 @@ import {
   type ParsedChunk,
   projectOf,
   type SessionFacts,
+  type ToolCallRow,
   type TurnRow,
   type UsageRow,
 } from "./records";
@@ -53,8 +54,39 @@ type CodexLine = {
     duration_ms?: number;
     time_to_first_token_ms?: number;
     reason?: string;
+    // event_msg item_completed
+    started_at_ms?: number;
+    completed_at_ms?: number;
+    item?: {
+      id?: string;
+      type?: string;
+      command?: unknown;
+      changes?: Record<string, unknown>;
+      status?: string;
+      exit_code?: number;
+      duration?: { secs?: number; nanos?: number };
+      stdout?: string;
+      stderr?: string;
+      server?: string;
+      tool?: string;
+    };
   };
 };
+
+/** Codex reports a command duration as a {secs, nanos} struct. */
+function durationMs(d: { secs?: number; nanos?: number } | undefined): number | undefined {
+  if (!d) return undefined;
+  return Math.round((d.secs ?? 0) * 1000 + (d.nanos ?? 0) / 1e6);
+}
+
+function msSince(value: number | undefined): string | undefined {
+  return value == null ? undefined : new Date(value).toISOString();
+}
+
+/** A command arrives as an argv array; join it so a rule can match the text. */
+function commandText(value: unknown): string | undefined {
+  return Array.isArray(value) ? value.map(String).join(" ") : undefined;
+}
 
 /** Codex reports turn boundaries in epoch seconds. */
 function epochSeconds(value: number | undefined): string | undefined {
@@ -81,6 +113,7 @@ export function parseCodexChunk(lines: string[], threadId: string, state: CodexS
   const usage: UsageRow[] = [];
   const turns: TurnRow[] = [];
   const costs: CostRow[] = [];
+  const toolCalls: ToolCallRow[] = [];
   let current: CodexState = { ...state };
 
   for (const raw of lines) {
@@ -178,6 +211,34 @@ export function parseCodexChunk(lines: string[], threadId: string, state: CodexS
       continue;
     }
 
+    if (line.type === "event_msg" && p.type === "item_completed" && p.item?.id) {
+      const item = p.item;
+      const kind = item.type ?? "";
+      // Only the kinds that are a tool doing something; AgentMessage, Reasoning
+      // and UserMessage are already message rows.
+      if (kind === "CommandExecution" || kind === "FileChange" || kind === "McpToolCall") {
+        toolCalls.push({
+          id: item.id as string,
+          model: current.model,
+          tsCall: msSince(p.started_at_ms) ?? line.timestamp,
+          tsResult: msSince(p.completed_at_ms) ?? line.timestamp,
+          toolName: kind,
+          filePath:
+            kind === "FileChange" ? Object.keys(item.changes ?? {}).join(" ") || undefined : undefined,
+          command: typeof item.command === "string" ? item.command : commandText(item.command),
+          isError: item.status != null ? item.status !== "completed" : undefined,
+          exitCode: item.exit_code,
+          durationMs: durationMs(item.duration),
+          // stdout and stderr are measured here and stored nowhere.
+          resultBytes: (item.stdout?.length ?? 0) + (item.stderr?.length ?? 0) || undefined,
+          srcLineCall: ordinal,
+          srcLineResult: ordinal,
+          extra: jsonOrUndefined({ status: item.status, server: item.server, tool: item.tool }),
+        });
+      }
+      continue;
+    }
+
     if (line.type === "token_usage_record" && p.response_id) {
       const u = p.usage ?? {};
       usage.push({
@@ -194,5 +255,5 @@ export function parseCodexChunk(lines: string[], threadId: string, state: CodexS
     }
   }
 
-  return { session, messages, usage, turns, costs, cursorState: JSON.stringify(current) };
+  return { session, messages, usage, turns, costs, toolCalls, cursorState: JSON.stringify(current) };
 }

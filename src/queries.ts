@@ -270,7 +270,34 @@ const session: Query = {
   },
 };
 
-export const QUERIES: Query[] = [tokens, models, cost, turns, sessions, session];
+const tools: Query = {
+  name: "tools",
+  summary: "tool call counts, failures and the read-to-edit ratio per tool",
+  run: (db) => {
+    const columns = ["tool", "tool_name", "calls", "failed", "failed_pct", "avg_result_bytes"];
+    const records = table(
+      db,
+      `SELECT s.tool, t.tool_name, count(*) AS calls,
+              sum(coalesce(t.is_error, 0)) AS failed,
+              round(100.0 * sum(coalesce(t.is_error, 0)) / count(*), 1) AS failed_pct,
+              CASE WHEN count(t.result_bytes) = 0 THEN NULL
+                   ELSE round(avg(t.result_bytes)) END AS avg_result_bytes
+       FROM tool_call t JOIN session s ON s.id = t.session_id
+       GROUP BY s.tool, t.tool_name ORDER BY calls DESC`,
+    );
+    const noResult = scalar(db, "SELECT count(*) AS n FROM tool_call WHERE ts_result IS NULL");
+    return {
+      denominator: `${scalar(db, "SELECT count(*) AS n FROM tool_call")} tool calls; ${noResult} have no result record`,
+      columns,
+      rows: toRows(records, columns),
+      // Claude records no exit code, so a Claude failure is only what the
+      // transcript marked is_error, not every command that returned non-zero.
+      note: "Claude records no exit code; its failure count is what the transcript marked, not every non-zero exit.",
+    };
+  },
+};
+
+export const QUERIES: Query[] = [tokens, models, cost, turns, tools, sessions, session];
 
 export function findQuery(name: string): Query | undefined {
   return QUERIES.find((q) => q.name === name);

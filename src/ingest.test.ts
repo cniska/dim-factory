@@ -192,6 +192,64 @@ describe("ingest", () => {
     }
   });
 
+  test("joins a tool call to its result, which arrive as separate records", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    writeClaudeTranscript(env, "-Users-x-code-demo", SESSION);
+    const db = run(env);
+    try {
+      expect(
+        db
+          .prepare(
+            "SELECT tool_name, command, is_error, ts_call IS NOT NULL AS called, ts_result IS NOT NULL AS resulted, result_bytes FROM tool_call WHERE id = 'toolu-1'",
+          )
+          .get(),
+      ).toEqual({
+        tool_name: "Bash",
+        command: "ls",
+        is_error: 0,
+        called: 1,
+        resulted: 1,
+        result_bytes: 40,
+      });
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("measures what a tool returned without storing any of it", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    writeClaudeTranscript(env, "-Users-x-code-demo", SESSION);
+    const db = run(env);
+    try {
+      const dump = JSON.stringify(db.prepare("SELECT * FROM tool_call").all() as Record<string, unknown>[]);
+      // The size is kept; the bytes stay in the transcript, reachable by locator.
+      expect(dump).not.toContain("SECRET FILE CONTENTS");
+      expect(
+        db.prepare("SELECT result_bytes, src_line_result FROM tool_call WHERE id = 'toolu-1'").get(),
+      ).toMatchObject({ result_bytes: 40 });
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("records Codex exit codes and durations, which Claude does not report", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    writeCodexRollout(env, "sessions", THREAD);
+    writeClaudeTranscript(env, "-Users-x-code-demo", SESSION);
+    const db = run(env);
+    try {
+      const claude = db
+        .prepare("SELECT count(*) AS n FROM tool_call WHERE session_id = ? AND exit_code IS NOT NULL")
+        .get(SESSION);
+      expect(claude).toEqual({ n: 0 });
+    } finally {
+      closeDb(db);
+    }
+  });
+
   test("re-syncing an unchanged corpus changes nothing", () => {
     const root = newRoot();
     const env = scratchEnv(root);

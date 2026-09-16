@@ -2,7 +2,7 @@
 // by re-reading them, so a schema change is `dim rebuild`, not a migration.
 // SCHEMA_VERSION exists only so sync can refuse to run against an older shape.
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -150,4 +150,36 @@ CREATE TABLE IF NOT EXISTS orphan_prompt (
   PRIMARY KEY (tool, session_id, ts, text)
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS orphan_prompt_session ON orphan_prompt(session_id);
+
+-- One row per tool call. The call and its result are separate records in both
+-- formats, so a row is written twice: once from the call, once from the result.
+-- What the tool returned is never stored, only how big it was and whether it
+-- failed; the bytes stay in the source file, reachable by src_line_result.
+CREATE TABLE IF NOT EXISTS tool_call (
+  id              TEXT PRIMARY KEY,     -- toolu_… / Codex item id
+  session_id      TEXT NOT NULL REFERENCES session(id),
+  message_id      TEXT REFERENCES message(id),
+  model           TEXT,
+  attribution_skill TEXT,
+  ts_call         TEXT,                 -- null when only the result was seen
+  ts_result       TEXT,
+  tool_name       TEXT NOT NULL,
+  skill_name      TEXT,                 -- the Skill tool's input.skill
+  file_path       TEXT,
+  command         TEXT,
+  is_error        INTEGER,
+  interrupted     INTEGER,
+  denial_kind     TEXT,
+  exit_code       INTEGER,              -- Codex records one; Claude does not
+  duration_ms     INTEGER,
+  git_operation   TEXT,
+  result_bytes    INTEGER,
+  src_file        TEXT NOT NULL REFERENCES source_file(path) ON UPDATE CASCADE,
+  src_line_call   INTEGER,
+  src_line_result INTEGER,
+  extra           TEXT
+);
+CREATE INDEX IF NOT EXISTS tool_call_session ON tool_call(session_id, ts_call);
+CREATE INDEX IF NOT EXISTS tool_call_name ON tool_call(tool_name);
+CREATE INDEX IF NOT EXISTS tool_call_file ON tool_call(file_path);
 `;

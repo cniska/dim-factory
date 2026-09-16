@@ -5,13 +5,30 @@ import {
   type ParsedChunk,
   projectOf,
   type SessionFacts,
+  type ToolCallRow,
   type TurnRow,
   type UsageRow,
 } from "./records";
 
 const SKILL_BODY_PREFIX = "Base directory for this skill:";
 
-type ContentBlock = { type?: string; text?: string };
+type ContentBlock = {
+  type?: string;
+  text?: string;
+  id?: string;
+  name?: string;
+  input?: unknown;
+  tool_use_id?: string;
+  is_error?: boolean;
+  content?: unknown;
+};
+
+type ClaudeToolUseResult = {
+  stdout?: string;
+  stderr?: string;
+  interrupted?: boolean;
+  gitOperation?: unknown;
+};
 
 type ClaudeUsage = {
   input_tokens?: number;
@@ -57,6 +74,7 @@ type ClaudeLine = {
   totalCostUSD?: number;
   modelUsage?: Record<string, unknown>;
   hasUnknownModelCost?: boolean;
+  toolUseResult?: ClaudeToolUseResult;
   message?: {
     id?: string;
     model?: string;
@@ -84,6 +102,19 @@ function nonEmpty(value: string | null | undefined): string | undefined {
   return value != null && value !== "" ? value : undefined;
 }
 
+/** How much the tool returned, measured without keeping any of it. */
+function resultSize(content: unknown, result: ClaudeToolUseResult | undefined): number | undefined {
+  const parts: string[] = [];
+  if (typeof content === "string") parts.push(content);
+  else if (Array.isArray(content)) {
+    for (const b of content)
+      if (typeof (b as { text?: string })?.text === "string") parts.push((b as { text: string }).text);
+  }
+  if (typeof result?.stdout === "string") parts.push(result.stdout);
+  if (typeof result?.stderr === "string") parts.push(result.stderr);
+  return parts.length > 0 ? parts.reduce((n, p) => n + p.length, 0) : undefined;
+}
+
 function feedbackText(value: unknown): string | undefined {
   if (value == null) return undefined;
   return typeof value === "string" ? value : JSON.stringify(value);
@@ -95,6 +126,7 @@ export function parseClaudeChunk(lines: string[], firstLineNumber: number): Pars
   const usage: UsageRow[] = [];
   const turns: TurnRow[] = [];
   const costs: CostRow[] = [];
+  const toolCalls: ToolCallRow[] = [];
 
   for (const [index, raw] of lines.entries()) {
     if (raw.length === 0) continue;
@@ -171,6 +203,24 @@ export function parseClaudeChunk(lines: string[], firstLineNumber: number): Pars
           session_id: line.session_id,
         }),
       });
+      if (Array.isArray(line.message.content)) {
+        for (const block of line.message.content) {
+          if (block?.type !== "tool_use" || !block.id || !block.name) continue;
+          const input = (block.input ?? {}) as Record<string, unknown>;
+          toolCalls.push({
+            id: block.id,
+            messageId: line.message.id,
+            model,
+            attributionSkill: nonEmpty(line.attributionSkill),
+            tsCall: line.timestamp,
+            toolName: block.name,
+            skillName: typeof input.skill === "string" ? input.skill : undefined,
+            filePath: typeof input.file_path === "string" ? input.file_path : undefined,
+            command: typeof input.command === "string" ? input.command : undefined,
+            srcLineCall: srcLine,
+          });
+        }
+      }
       const u = line.message.usage;
       if (u) {
         usage.push({
@@ -197,6 +247,23 @@ export function parseClaudeChunk(lines: string[], firstLineNumber: number): Pars
 
     if (line.type === "user" && line.uuid) {
       const text = visibleText(line.message?.content);
+      if (Array.isArray(line.message?.content)) {
+        for (const block of line.message.content) {
+          if (block?.type !== "tool_result" || !block.tool_use_id) continue;
+          const r = line.toolUseResult;
+          toolCalls.push({
+            id: block.tool_use_id,
+            toolName: "", // the call record names it; this row only completes one
+            tsResult: line.timestamp,
+            isError: block.is_error === true,
+            interrupted: r?.interrupted === true,
+            // Bash stdout and stderr are measured, never stored.
+            resultBytes: resultSize(block.content, r),
+            gitOperation: r?.gitOperation ? JSON.stringify(r.gitOperation) : undefined,
+            srcLineResult: srcLine,
+          });
+        }
+      }
       session.push({
         ts: line.timestamp,
         cwd: line.cwd,
@@ -231,5 +298,5 @@ export function parseClaudeChunk(lines: string[], firstLineNumber: number): Pars
     }
   }
 
-  return { session, messages, usage, turns, costs };
+  return { session, messages, usage, turns, costs, toolCalls };
 }

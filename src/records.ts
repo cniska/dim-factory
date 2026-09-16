@@ -69,12 +69,40 @@ export type CostRow = {
   ts?: string;
 };
 
+/**
+ * Emitted twice for one call: once from the record that issued it and once from
+ * the record that returned, which the ingester merges on `id`.
+ */
+export type ToolCallRow = {
+  id: string;
+  messageId?: string;
+  model?: string;
+  attributionSkill?: string;
+  tsCall?: string;
+  tsResult?: string;
+  toolName: string;
+  skillName?: string;
+  filePath?: string;
+  command?: string;
+  isError?: boolean;
+  interrupted?: boolean;
+  exitCode?: number;
+  durationMs?: number;
+  gitOperation?: string;
+  /** Size of what the tool returned. The content itself is never stored. */
+  resultBytes?: number;
+  srcLineCall?: number;
+  srcLineResult?: number;
+  extra?: string;
+};
+
 export type ParsedChunk = {
   session: SessionFacts[];
   messages: MessageRow[];
   usage: UsageRow[];
   turns: TurnRow[];
   costs: CostRow[];
+  toolCalls: ToolCallRow[];
   /** Parser state to resume with when the next chunk of this file is read. */
   cursorState?: string;
 };

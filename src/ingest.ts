@@ -179,6 +179,38 @@ export function createIngester(db: Database) {
        ts                     = excluded.ts`,
   );
 
+  const upsertToolCall = db.prepare(
+    `INSERT INTO tool_call (id, session_id, message_id, model, attribution_skill, ts_call, ts_result,
+       tool_name, skill_name, file_path, command, is_error, interrupted, exit_code, duration_ms,
+       git_operation, result_bytes, src_file, src_line_call, src_line_result, extra)
+     VALUES ($id, $sessionId, $messageId, $model, $attributionSkill, $tsCall, $tsResult,
+       $toolName, $skillName, $filePath, $command, $isError, $interrupted, $exitCode, $durationMs,
+       $gitOperation, $resultBytes, $srcFile, $srcLineCall, $srcLineResult, $extra)
+     -- The call and its result are separate records, so whichever lands second
+     -- fills in the half the first one could not know.
+     ON CONFLICT(id) DO UPDATE SET
+       message_id        = coalesce(excluded.message_id, tool_call.message_id),
+       model             = coalesce(excluded.model, tool_call.model),
+       attribution_skill = coalesce(excluded.attribution_skill, tool_call.attribution_skill),
+       ts_call           = coalesce(excluded.ts_call, tool_call.ts_call),
+       ts_result         = coalesce(excluded.ts_result, tool_call.ts_result),
+       tool_name         = CASE WHEN excluded.tool_name = '' THEN tool_call.tool_name ELSE excluded.tool_name END,
+       skill_name        = coalesce(excluded.skill_name, tool_call.skill_name),
+       file_path         = coalesce(excluded.file_path, tool_call.file_path),
+       command           = coalesce(excluded.command, tool_call.command),
+       is_error          = coalesce(excluded.is_error, tool_call.is_error),
+       interrupted       = coalesce(excluded.interrupted, tool_call.interrupted),
+       exit_code         = coalesce(excluded.exit_code, tool_call.exit_code),
+       duration_ms       = coalesce(excluded.duration_ms, tool_call.duration_ms),
+       git_operation     = coalesce(excluded.git_operation, tool_call.git_operation),
+       result_bytes      = coalesce(excluded.result_bytes, tool_call.result_bytes),
+       src_file          = excluded.src_file,
+       src_line_call     = coalesce(excluded.src_line_call, tool_call.src_line_call),
+       src_line_result   = coalesce(excluded.src_line_result, tool_call.src_line_result),
+       extra             = coalesce(excluded.extra, tool_call.extra)`,
+  );
+
+  const deleteToolCalls = db.prepare<void, [string]>("DELETE FROM tool_call WHERE session_id = ?");
   const deleteTurns = db.prepare<void, [string]>("DELETE FROM turn WHERE session_id = ?");
   const deleteCost = db.prepare<void, [string]>("DELETE FROM session_cost_reported WHERE session_id = ?");
   const deleteUsage = db.prepare<void, [string]>("DELETE FROM usage WHERE session_id = ?");
@@ -189,6 +221,7 @@ export function createIngester(db: Database) {
   );
 
   function resetSession(sessionId: string, path: string): void {
+    deleteToolCalls.run(sessionId);
     deleteCost.run(sessionId);
     deleteTurns.run(sessionId);
     deleteUsage.run(sessionId);
@@ -278,6 +311,32 @@ export function createIngester(db: Database) {
         $status: t.status,
         $model: t.model ?? null,
         $timeToFirstTokenMs: t.timeToFirstTokenMs ?? null,
+      });
+    }
+
+    for (const t of parsed.toolCalls) {
+      upsertToolCall.run({
+        $id: t.id,
+        $sessionId: spec.sessionId,
+        $messageId: t.messageId ?? null,
+        $model: t.model ?? null,
+        $attributionSkill: t.attributionSkill ?? null,
+        $tsCall: t.tsCall ?? null,
+        $tsResult: t.tsResult ?? null,
+        $toolName: t.toolName,
+        $skillName: t.skillName ?? null,
+        $filePath: t.filePath ?? null,
+        $command: t.command ?? null,
+        $isError: t.isError == null ? null : t.isError ? 1 : 0,
+        $interrupted: t.interrupted == null ? null : t.interrupted ? 1 : 0,
+        $exitCode: t.exitCode ?? null,
+        $durationMs: t.durationMs ?? null,
+        $gitOperation: t.gitOperation ?? null,
+        $resultBytes: t.resultBytes ?? null,
+        $srcFile: spec.path,
+        $srcLineCall: t.srcLineCall ?? null,
+        $srcLineResult: t.srcLineResult ?? null,
+        $extra: t.extra ?? null,
       });
     }
 
