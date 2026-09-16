@@ -47,6 +47,7 @@ The database holds every tool's sessions, so this is also how one tool reads wha
 | Path | Holds |
 |---|---|
 | [`docs/design.md`](docs/design.md) | Schema, the questions it answers, ingestion, the read path, build order |
+| [`docs/findings.md`](docs/findings.md) | What the corpus said when it was first asked, and what each number can carry |
 | [`docs/evals-and-hooks.md`](docs/evals-and-hooks.md) | The hook install layout, and the eval instrument that measures whether a skill's rules earn their place |
 | [`docs/dark-factory.md`](docs/dark-factory.md) | The argument this repo exists to execute |
 | `src/parse-claude.ts`, `src/parse-codex.ts` | One source line to rows; neither knows the database exists |
