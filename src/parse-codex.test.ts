@@ -61,4 +61,31 @@ describe("parseCodexChunk", () => {
       entrypoint: "codex-tui",
     });
   });
+  test("marks a typed prompt apart from what the harness injected", () => {
+    const parsed = parseCodexChunk(modern, THREAD, {});
+    const typed = parsed.messages.find((m) => m.text === "add the parser");
+    // Codex records no prompt source of its own, so every user turn arrives
+    // looking the same; without this the corpus cannot tell a prompt from an
+    // injected rules block, and both tools' prompt counts stop comparing.
+    expect(typed?.promptSource).toBe("typed");
+
+    const withInjected = parseCodexChunk(
+      [
+        ...modern,
+        JSON.stringify({
+          type: "response_item",
+          timestamp: "2026-09-16T10:09:00.000Z",
+          payload: {
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: "# AGENTS.md instructions for /Users/x/code/demo" }],
+          },
+        }),
+      ],
+      THREAD,
+      {},
+    );
+    const rules = withInjected.messages.find((m) => m.text?.startsWith("# AGENTS.md"));
+    expect(rules?.promptSource).toBe("system");
+  });
 });
