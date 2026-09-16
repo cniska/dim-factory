@@ -3,7 +3,7 @@
 // No model call happens anywhere below this line.
 
 import { AGENT_LABEL, installAgent, planAgent } from "./agent";
-import { installCommitGate, ownerOf, planCommitGate, repoDirs } from "./commit-gate";
+import { checkoutDirs, installCommitGate, ownerOf, planCommitGate } from "./commit-gate";
 import { closeDb, openDb } from "./db";
 import { diagnose } from "./doctor";
 import { installHooks, planHooks } from "./hooks";
@@ -233,7 +233,7 @@ function printCommitGatePlan(write: boolean): void {
 
   if (owners.length === 0) {
     console.log(
-      "name the owners whose checkouts to gate, so a clone of someone else's project keeps its own rules:",
+      "name the owners whose commits to gate, so a clone of someone else's project keeps its own rules:",
     );
     for (const owner of [...new Set(checkouts.map((c) => c.owner))].filter(Boolean).sort()) {
       const n = checkouts.filter((c) => c.owner === owner).length;
@@ -242,29 +242,22 @@ function printCommitGatePlan(write: boolean): void {
     return;
   }
 
-  const repos = repoDirs(checkouts, owners);
+  const stranded = checkoutDirs(checkouts);
+  const plan = planCommitGate(owners, stranded);
+  console.log(`one hook for every repo: ${plan.hookPath} (${plan.state})`);
+  console.log(`  enforced for: ${owners.join(", ")}`);
+  console.log(`  git core.hooksPath (global): ${plan.globalHooksPath ?? "unset"}`);
+  for (const copy of plan.strandedCopies) console.log(`  replaces a per-repo copy at ${copy}`);
+  console.log("  a repo setting its own core.hooksPath keeps the hooks it already has");
 
-  const plans = planCommitGate(repos);
-  const pending = plans.filter((p) => p.state === "missing" || p.state === "occupied");
-  const own = plans.filter((p) => p.state === "has-own-gate");
-
-  if (pending.length === 0) {
-    console.log(`commit gate: nothing to install across ${plans.length} checkouts`);
-    for (const p of own) console.log(`  ${p.repo} gates its own subjects`);
-    return;
-  }
-  for (const plan of pending) {
-    console.log(`${plan.path}`);
-    if (plan.state === "occupied")
-      console.log("  a commit-msg hook is already there; it would be moved aside");
-  }
-  for (const p of own) console.log(`skipping ${p.repo}, which gates its own subjects`);
   if (!write) {
-    console.log(`\n${pending.length} to install. Re-run with --write to apply.`);
+    console.log("\nRe-run with --write to apply.");
     return;
   }
-  installCommitGate(repos);
-  for (const plan of pending) console.log(`installed ${plan.path}`);
+  const done = installCommitGate(owners, stranded);
+  console.log(`\nwrote ${done.hookPath}`);
+  console.log(`set global core.hooksPath to ${done.globalHooksPath}`);
+  for (const copy of done.strandedCopies) console.log(`removed ${copy}`);
 }
 
 /**

@@ -1,13 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { type Env, resolveHomeDir } from "./paths";
 
 /**
- * The rule is `cniska/apps`' own, which is the only repo on this machine whose
- * subjects never break it: a mechanical gate holds it at zero while the same
- * rule written down elsewhere drifts. Inclusive at 50 because that is what the
- * conforming history holds — its longest subject sits exactly on the limit.
+ * The rule is `cniska/apps`' own, the one repo whose subjects never break it: a
+ * mechanical gate holds it at zero while the same rule written down drifts.
+ * Inclusive at 50 because that is what the conforming history holds.
  */
 export const SUBJECT_LIMIT = 50;
 
@@ -15,7 +14,6 @@ const TYPES = ["feat", "fix", "refactor", "docs", "test", "chore", "style", "per
 
 export type Violation = "empty" | "body" | "not-conventional" | "too-long" | "not-ascii";
 
-/** Every rule the gate enforces, in the order the hook reports them. */
 export function checkSubject(subject: string, body = ""): Violation | null {
   if (subject.trim() === "") return "empty";
   if (body.trim() !== "") return "body";
@@ -26,17 +24,39 @@ export function checkSubject(subject: string, body = ""): Violation | null {
 }
 
 /**
- * Self-contained bash: the hook must not need `dim`, `bun` or anything else on
- * a PATH git did not promise it. A gate that cannot run is a gate that passes.
+ * One directory for every repo rather than a copy per checkout. Git resolves
+ * `core.hooksPath` locally before globally, so a repo carrying its own hooks
+ * keeps them and everything else picks this up — including a repo cloned after
+ * this was installed, which is what a per-checkout copy could never cover.
  */
-export function hookScript(): string {
-  return `#!/usr/bin/env bash
-# Installed by \`dim install-commit-gate\`. Subject rules, held mechanically.
-set -euo pipefail
+export function sharedHooksDir(env: Env = process.env): string {
+  return join(resolveHomeDir(env), ".config", "dim", "hooks");
+}
 
-msg_file="$1"
-subject=$(sed -n '1p' "$msg_file")
-body=$(sed -n '2,$p' "$msg_file" | grep -v '^#' | sed '/^[[:space:]]*$/d' || true)
+/**
+ * Ownership is checked when the hook runs, not when it is installed: a clone of
+ * someone else's project has its own conventions, and one set globally would
+ * otherwise refuse contributions that are correct there. Anything unexpected —
+ * no remote, no git, an unreadable message — exits 0. This runs before every
+ * commit on the machine, so it may only ever fail on a subject it has read.
+ */
+export function hookScript(owners: string[]): string {
+  return `#!/usr/bin/env bash
+# Installed by \`dim install-commit-gate\`. One copy for every repo; see dim-factory.
+set -u
+
+msg_file="\${1:-}"
+[ -n "$msg_file" ] && [ -r "$msg_file" ] || exit 0
+
+origin=$(git config --get remote.origin.url 2>/dev/null || true)
+owner=$(printf '%s' "$origin" | sed -n 's#.*[:/]\\([^/]*\\)/[^/]*$#\\1#p')
+case " ${owners.join(" ")} " in
+  *" $owner "*) ;;
+  *) exit 0 ;;
+esac
+
+subject=$(sed -n '1p' "$msg_file" 2>/dev/null || true)
+body=$(sed -n '2,$p' "$msg_file" 2>/dev/null | grep -v '^#' | sed '/^[[:space:]]*$/d' || true)
 
 types='${TYPES.join("|")}'
 fail() { echo "commit-msg: $1" >&2; echo "  got: $subject" >&2; exit 1; }
@@ -52,66 +72,69 @@ exit 0
 }
 
 export type GatePlan = {
-  repo: string;
-  path: string;
-  state: "installed" | "missing" | "occupied" | "has-own-gate";
+  hookPath: string;
+  state: "installed" | "missing" | "stale";
+  globalHooksPath: string | null;
+  strandedCopies: string[];
 };
 
-/** A repo whose own hooks already check subjects is left alone rather than double-gated. */
-function hasOwnGate(repo: string): boolean {
-  for (const candidate of ["scripts/check-commit-message.sh", ".githooks/commit-msg"]) {
-    if (existsSync(join(repo, candidate))) return true;
+function gitGlobal(key: string): string | null {
+  try {
+    return execFileSync("git", ["config", "--global", "--get", key], { encoding: "utf8" }).trim() || null;
+  } catch {
+    return null;
   }
-  return false;
 }
 
-export function planCommitGate(repos: string[]): GatePlan[] {
-  return repos.map((repo) => {
-    const path = join(repo, ".git", "hooks", "commit-msg");
-    if (hasOwnGate(repo)) return { repo, path, state: "has-own-gate" as const };
-    if (!existsSync(path)) return { repo, path, state: "missing" as const };
-    const current = readFileSync(path, "utf8");
-    if (current === hookScript()) return { repo, path, state: "installed" as const };
-    return { repo, path, state: "occupied" as const };
-  });
+export function planCommitGate(
+  owners: string[],
+  strandedIn: string[] = [],
+  env: Env = process.env,
+): GatePlan {
+  const hookPath = join(sharedHooksDir(env), "commit-msg");
+  const want = hookScript(owners);
+  const state = !existsSync(hookPath)
+    ? ("missing" as const)
+    : readFileSync(hookPath, "utf8") === want
+      ? ("installed" as const)
+      : ("stale" as const);
+  return {
+    hookPath,
+    state,
+    globalHooksPath: gitGlobal("core.hooksPath"),
+    strandedCopies: strandedIn
+      .map((r) => join(r, ".git", "hooks", "commit-msg"))
+      .filter((p) => existsSync(p)),
+  };
 }
 
-export function installCommitGate(repos: string[]): GatePlan[] {
-  const plans = planCommitGate(repos);
-  for (const plan of plans) {
-    if (plan.state === "installed" || plan.state === "has-own-gate") continue;
-    mkdirSync(dirname(plan.path), { recursive: true });
-    // Whatever is there may be the only copy of a hook written by hand.
-    if (plan.state === "occupied") copyFileSync(plan.path, `${plan.path}.dim-backup`);
-    writeFileSync(plan.path, hookScript());
-    chmodSync(plan.path, 0o755);
-  }
-  return plans;
-}
-
-export type Checkout = { repo: string; owner: string };
-
-/**
- * The checkouts the corpus has seen commits from, narrowed to the owners named.
- * Ownership is not inferred: a clone of someone else's project has its own
- * conventions, and gating it would refuse contributions that are correct there.
- */
-export function repoDirs(checkouts: Checkout[], owners: string[], env: Env = process.env): string[] {
-  const home = resolveHomeDir(env);
-  return checkouts
-    .filter((c) => owners.includes(c.owner))
-    .map((c) => c.repo)
-    .filter((r) => r.startsWith(join(home, "code")) && existsSync(join(r, ".git")));
+/** Writes the one hook, points git at it, and clears the per-checkout copies it replaces. */
+export function installCommitGate(
+  owners: string[],
+  strandedIn: string[] = [],
+  env: Env = process.env,
+): GatePlan {
+  const dir = sharedHooksDir(env);
+  mkdirSync(dir, { recursive: true });
+  const hookPath = join(dir, "commit-msg");
+  writeFileSync(hookPath, hookScript(owners));
+  chmodSync(hookPath, 0o755);
+  const plan = planCommitGate(owners, strandedIn, env);
+  for (const copy of plan.strandedCopies) rmSync(copy, { force: true });
+  execFileSync("git", ["config", "--global", "core.hooksPath", dir]);
+  return { ...plan, state: "installed", globalHooksPath: dir, strandedCopies: plan.strandedCopies };
 }
 
 export function ownerOf(label: string | null): string {
   return label?.includes("/") ? (label.split("/")[0] as string) : "";
 }
 
-export function gitToplevel(dir: string): string | null {
-  try {
-    return execFileSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
-  } catch {
-    return null;
-  }
+export type Checkout = { repo: string; owner: string };
+
+/** Checkouts that carry a per-repo copy this replaces. */
+export function checkoutDirs(checkouts: Checkout[], env: Env = process.env): string[] {
+  const home = resolveHomeDir(env);
+  return checkouts
+    .map((c) => c.repo)
+    .filter((r) => r.startsWith(join(home, "code")) && existsSync(join(r, ".git")));
 }

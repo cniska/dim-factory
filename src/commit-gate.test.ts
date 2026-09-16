@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkSubject, hookScript, installCommitGate, planCommitGate } from "./commit-gate";
+import { checkSubject, hookScript, sharedHooksDir } from "./commit-gate";
 
 describe("subject rules", () => {
   test("accepts a conforming subject", () => {
@@ -28,12 +28,20 @@ describe("subject rules", () => {
   });
 });
 
-function gitRepo(): string {
+function repoWithHook(origin: string | null): { dir: string; hooks: string } {
   const dir = mkdtempSync(join(tmpdir(), "dim-gate-"));
+  const hooks = join(dir, "hooks");
+  mkdirSync(hooks, { recursive: true });
+  const path = join(hooks, "commit-msg");
+  writeFileSync(path, hookScript(["cniska", "hoodly-hq"]));
+  execFileSync("chmod", ["755", path]);
+
   execFileSync("git", ["init", "-q", dir]);
   execFileSync("git", ["-C", dir, "config", "user.email", "t@example.com"]);
   execFileSync("git", ["-C", dir, "config", "user.name", "T"]);
-  return dir;
+  execFileSync("git", ["-C", dir, "config", "core.hooksPath", hooks]);
+  if (origin) execFileSync("git", ["-C", dir, "remote", "add", "origin", origin]);
+  return { dir, hooks };
 }
 
 function commit(dir: string, subject: string): { ok: boolean; err: string } {
@@ -43,16 +51,14 @@ function commit(dir: string, subject: string): { ok: boolean; err: string } {
     execFileSync("git", ["-C", dir, "commit", "-m", subject], { stdio: "pipe" });
     return { ok: true, err: "" };
   } catch (e) {
-    const err = e as { stderr?: Buffer };
-    return { ok: false, err: err.stderr?.toString() ?? "" };
+    return { ok: false, err: (e as { stderr?: Buffer }).stderr?.toString() ?? "" };
   }
 }
 
-describe("the installed hook", () => {
-  test("refuses what the rules refuse and passes what they allow", () => {
-    const dir = gitRepo();
+describe("the shared hook", () => {
+  test("enforces the rules in a repo whose owner is named", () => {
+    const { dir } = repoWithHook("git@github.com:cniska/thing.git");
     try {
-      installCommitGate([dir]);
       expect(commit(dir, "feat: a conforming subject").ok).toBe(true);
 
       const long = commit(dir, `feat: ${"a".repeat(60)}`);
@@ -67,41 +73,38 @@ describe("the installed hook", () => {
     }
   });
 
-  test("leaves a repo that already gates its own subjects alone", () => {
-    const dir = gitRepo();
+  // The hook is installed globally, so it meets every clone on the machine.
+  // Someone else's project keeps its own conventions or this refuses work that
+  // is correct there.
+  test("passes through a repo owned by someone else", () => {
+    const { dir } = repoWithHook("https://github.com/mastra-ai/mastra.git");
     try {
-      mkdirSync(join(dir, "scripts"), { recursive: true });
-      writeFileSync(join(dir, "scripts", "check-commit-message.sh"), "#!/usr/bin/env bash\nexit 0\n");
-      expect(planCommitGate([dir])[0]?.state).toBe("has-own-gate");
-      installCommitGate([dir]);
-      expect(commit(dir, "this would fail the dim gate").ok).toBe(true);
+      expect(commit(dir, "this would fail every rule the gate has").ok).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test("keeps a hook already at that name rather than dropping it", () => {
-    const dir = gitRepo();
-    const path = join(dir, ".git", "hooks", "commit-msg");
+  test("passes through a repo with no remote at all", () => {
+    const { dir } = repoWithHook(null);
     try {
-      writeFileSync(path, "#!/usr/bin/env bash\n# the owner's own\nexit 0\n");
-      chmodSync(path, 0o755);
-      expect(planCommitGate([dir])[0]?.state).toBe("occupied");
-      installCommitGate([dir]);
-      expect(Bun.file(`${path}.dim-backup`).size).toBeGreaterThan(0);
+      expect(commit(dir, "no remote means no owner to match").ok).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test("reports an already-installed gate as installed", () => {
-    const dir = gitRepo();
+  test("puts the one hook under the reader's own config directory", () => {
+    const home = mkdtempSync(join(tmpdir(), "dim-home-"));
     try {
-      installCommitGate([dir]);
-      expect(planCommitGate([dir])[0]?.state).toBe("installed");
-      expect(hookScript()).toContain("commit-msg:");
+      expect(sharedHooksDir({ HOME: home })).toBe(join(home, ".config", "dim", "hooks"));
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
     }
+  });
+
+  test("the owner list is the only thing that changes between installs", () => {
+    expect(hookScript(["cniska"])).not.toEqual(hookScript(["cniska", "hoodly-hq"]));
+    expect(hookScript(["cniska", "hoodly-hq"])).toContain(" cniska hoodly-hq ");
   });
 });

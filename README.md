@@ -26,7 +26,7 @@ bun run dim doctor          # check collection is working, and say what to fix
 bun run dim install-hooks   # show the session hooks; --write applies them
 bun run dim install-rules   # flatten the conventions into Codex's rules file
 bun run dim install-skill   # show where the agent skills link; --write links them
-bun run dim install-commit-gate --owner=<owner>  # gate subjects in your own checkouts; --write installs
+bun run dim install-commit-gate --owner=<owner>  # one commit-subject gate for every repo; --write installs
 bun run dim q list          # the named questions; `q <name>` asks one, --json for the raw rows
 bun run verify              # lint, typecheck, test
 ```
@@ -49,7 +49,7 @@ Claude Code deletes transcripts after 30 days unless told otherwise, so `~/.clau
 
 The database holds every tool's sessions, so this is also how one tool reads what another did: a Claude session can recover a decision made in Codex, and the reverse. They share a record rather than a channel — neither has to be running for the other to read it.
 
-`dim install-commit-gate --owner=<owner> --write` writes a `commit-msg` hook into each checkout of that owner's that does not already gate its own subjects. Ownership is named rather than inferred, because a clone of someone else's project has its own conventions and gating it would refuse contributions that are correct there. The hook holds the convention in `~/.claude/CLAUDE.md`: Conventional Commits, a single-line subject of at most 50 characters, ASCII, no body. The hook is self-contained bash, because a gate that cannot run is a gate that passes. A repo carrying its own `scripts/check-commit-message.sh` or `.githooks/commit-msg` keeps it — `apps` holds 50 and the acolyte and hoodly repos hold 72, and every one of them is at zero violations of its own limit, which is the argument for the gate rather than against it.
+`dim install-commit-gate --owner=<owner> --write` writes one `commit-msg` hook to `~/.config/dim/hooks/` and points git's global `core.hooksPath` at it, so every repo shares a single copy and a rule fixed once is fixed everywhere. A repo that sets its own `core.hooksPath` keeps the hooks it has, because git resolves that setting locally before globally. Ownership is checked when the hook runs rather than when it is installed: a clone of someone else's project keeps its own conventions, and a repo cloned later is covered without reinstalling. The hook holds the convention in `~/.claude/CLAUDE.md` — Conventional Commits, a single-line subject of at most 50 characters, ASCII, no body — and is self-contained bash that exits 0 on anything it cannot read, because it runs before every commit on the machine.
 
 `dim install-hooks --write` appends a `SessionStart`/`SessionEnd` hook to `~/.claude/settings.json` and `~/.codex/hooks.json`, keeping every hook already there and copying each file to `<file>.dim-backup` first. The hook is one redirect into a spool directory and always exits 0. It is worth running early: a transcript records no end marker, so until the hooks are in, a session that was abandoned cannot be told from one still open, and that gap cannot be filled in later.
 
