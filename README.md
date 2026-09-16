@@ -36,7 +36,9 @@ Claude Code deletes transcripts after 30 days unless told otherwise, so `~/.clau
 
 `dim install-agent --write` writes a launchd agent that runs `dim sync` every 15 minutes, logging to `~/.local/share/dim-factory/sync.log`; load it with the `launchctl bootstrap` line the command prints. Re-run it after a toolchain change, since the plist names an absolute `bun`.
 
-`dim install-skill --write` links `skills/df-sessions` into `~/.agents/skills`, so an agent can recover what a past session said with `q search` and `q thread` instead of grepping transcripts. It ships here rather than in the skills repo because those skills are tool-agnostic and this one needs `dim` installed.
+`dim install-skill --write` links `skills/df-sessions` into `~/.agents/skills` and `~/.codex/skills`, so an agent can recover what a past session said with `q search` and `q thread` instead of grepping transcripts. Claude and Acolyte both read the first by convention; Codex reads its own. It ships here rather than in the skills repo because those skills are tool-agnostic and this one needs `dim` installed.
+
+The database holds every tool's sessions, so this is also how one tool reads what another did: a Claude session can recover a decision made in Codex, and the reverse. They share a record rather than a channel — neither has to be running for the other to read it.
 
 `dim install-hooks --write` appends a `SessionStart`/`SessionEnd` hook to `~/.claude/settings.json` and `~/.codex/hooks.json`, keeping every hook already there and copying each file to `<file>.dim-backup` first. The hook is one redirect into a spool directory and always exits 0. It is worth running early: a transcript records no end marker, so until the hooks are in, a session that was abandoned cannot be told from one still open, and that gap cannot be filled in later.
 
