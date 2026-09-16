@@ -1,9 +1,11 @@
 import {
+  type CostRow,
   jsonOrUndefined,
   type MessageRow,
   type ParsedChunk,
   projectOf,
   type SessionFacts,
+  type TurnRow,
   type UsageRow,
 } from "./records";
 
@@ -49,6 +51,12 @@ type ClaudeLine = {
   userFeedback?: unknown;
   aiTitle?: string;
   customTitle?: string;
+  subtype?: string;
+  durationMs?: number;
+  messageCount?: number;
+  totalCostUSD?: number;
+  modelUsage?: Record<string, unknown>;
+  hasUnknownModelCost?: boolean;
   message?: {
     id?: string;
     model?: string;
@@ -85,6 +93,8 @@ export function parseClaudeChunk(lines: string[], firstLineNumber: number): Pars
   const session: SessionFacts[] = [];
   const messages: MessageRow[] = [];
   const usage: UsageRow[] = [];
+  const turns: TurnRow[] = [];
+  const costs: CostRow[] = [];
 
   for (const [index, raw] of lines.entries()) {
     if (raw.length === 0) continue;
@@ -99,6 +109,34 @@ export function parseClaudeChunk(lines: string[], firstLineNumber: number): Pars
     if (line.type === "ai-title" || line.type === "custom-title") {
       const title = nonEmpty(line.aiTitle) ?? nonEmpty(line.customTitle);
       if (title) session.push({ title });
+      continue;
+    }
+
+    if (line.type === "system" && line.subtype === "turn_duration" && line.uuid && line.timestamp) {
+      // The line marks the end of the turn; the start is what it took to get there.
+      const end = Date.parse(line.timestamp);
+      turns.push({
+        turnId: line.uuid,
+        tsStart:
+          Number.isFinite(end) && line.durationMs != null
+            ? new Date(end - line.durationMs).toISOString()
+            : undefined,
+        tsEnd: line.timestamp,
+        durationMs: line.durationMs,
+        messageCount: line.messageCount,
+        status: "completed",
+      });
+      continue;
+    }
+
+    if (line.type === "cost-state" && line.modelUsage) {
+      costs.push({
+        reportedBy: "claude-code cost-state",
+        totalCostUsd: line.totalCostUSD,
+        modelUsage: JSON.stringify(line.modelUsage),
+        hasUnknownModelCost: line.hasUnknownModelCost,
+        ts: nonEmpty(line.timestamp),
+      });
       continue;
     }
 
@@ -193,5 +231,5 @@ export function parseClaudeChunk(lines: string[], firstLineNumber: number): Pars
     }
   }
 
-  return { session, messages, usage };
+  return { session, messages, usage, turns, costs };
 }

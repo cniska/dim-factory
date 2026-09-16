@@ -1,9 +1,11 @@
 import {
+  type CostRow,
   jsonOrUndefined,
   type MessageRow,
   type ParsedChunk,
   projectOf,
   type SessionFacts,
+  type TurnRow,
   type UsageRow,
 } from "./records";
 
@@ -45,8 +47,19 @@ type CodexLine = {
     // token_usage_record
     response_id?: string;
     usage?: CodexUsage;
+    // event_msg task_complete / turn_aborted
+    started_at?: number;
+    completed_at?: number;
+    duration_ms?: number;
+    time_to_first_token_ms?: number;
+    reason?: string;
   };
 };
+
+/** Codex reports turn boundaries in epoch seconds. */
+function epochSeconds(value: number | undefined): string | undefined {
+  return value == null ? undefined : new Date(value * 1000).toISOString();
+}
 
 function nonEmpty(value: string | null | undefined): string | undefined {
   return value != null && value !== "" ? value : undefined;
@@ -66,6 +79,8 @@ export function parseCodexChunk(lines: string[], threadId: string, state: CodexS
   const session: SessionFacts[] = [];
   const messages: MessageRow[] = [];
   const usage: UsageRow[] = [];
+  const turns: TurnRow[] = [];
+  const costs: CostRow[] = [];
   let current: CodexState = { ...state };
 
   for (const raw of lines) {
@@ -109,6 +124,17 @@ export function parseCodexChunk(lines: string[], threadId: string, state: CodexS
         project: projectOf(p.cwd),
         model: current.model,
       });
+      // Open the turn here so its model comes from its own context. Taking the
+      // model in effect when task_complete arrives attributes the turn to
+      // whichever turn started next.
+      if (current.turnId) {
+        turns.push({
+          turnId: current.turnId,
+          tsEnd: line.timestamp ?? "",
+          status: "started",
+          model: current.model,
+        });
+      }
       continue;
     }
 
@@ -135,6 +161,23 @@ export function parseCodexChunk(lines: string[], threadId: string, state: CodexS
       continue;
     }
 
+    // task_complete also carries last_agent_message, the whole assistant reply.
+    // It is already a message row, and turn rows hold no text.
+    if (line.type === "event_msg" && (p.type === "task_complete" || p.type === "turn_aborted") && p.turn_id) {
+      turns.push({
+        turnId: p.turn_id,
+        tsStart: epochSeconds(p.started_at),
+        tsEnd: epochSeconds(p.completed_at) ?? line.timestamp ?? "",
+        durationMs: p.duration_ms,
+        messageCount: undefined,
+        status: p.type === "task_complete" ? "completed" : (nonEmpty(p.reason) ?? "aborted"),
+        // Left unset so the model recorded by this turn's own turn_context stands.
+        model: undefined,
+        timeToFirstTokenMs: p.time_to_first_token_ms,
+      });
+      continue;
+    }
+
     if (line.type === "token_usage_record" && p.response_id) {
       const u = p.usage ?? {};
       usage.push({
@@ -151,5 +194,5 @@ export function parseCodexChunk(lines: string[], threadId: string, state: CodexS
     }
   }
 
-  return { session, messages, usage, cursorState: JSON.stringify(current) };
+  return { session, messages, usage, turns, costs, cursorState: JSON.stringify(current) };
 }

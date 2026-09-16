@@ -78,6 +78,8 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
  */
 export function rebuild(db: Database, env: Env = process.env): SyncReport {
   db.transaction(() => {
+    db.run("DELETE FROM session_cost_reported");
+    db.run("DELETE FROM turn");
     db.run("DELETE FROM usage");
     db.run("DELETE FROM message");
     db.run("DELETE FROM session");

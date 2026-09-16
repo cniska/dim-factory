@@ -49,10 +49,32 @@ export type UsageRow = {
   extra?: string;
 };
 
+export type TurnRow = {
+  turnId: string;
+  tsStart?: string;
+  tsEnd: string;
+  durationMs?: number;
+  messageCount?: number;
+  status: string;
+  model?: string;
+  timeToFirstTokenMs?: number;
+};
+
+/** Cost as the tool computed it. Nothing here derives a dollar figure. */
+export type CostRow = {
+  reportedBy: string;
+  totalCostUsd?: number;
+  modelUsage: string;
+  hasUnknownModelCost?: boolean;
+  ts?: string;
+};
+
 export type ParsedChunk = {
   session: SessionFacts[];
   messages: MessageRow[];
   usage: UsageRow[];
+  turns: TurnRow[];
+  costs: CostRow[];
   /** Parser state to resume with when the next chunk of this file is read. */
   cursorState?: string;
 };

@@ -152,6 +152,35 @@ export function createIngester(db: Database) {
      WHERE excluded.output_tokens > usage.output_tokens`,
   );
 
+  const upsertTurn = db.prepare(
+    `INSERT INTO turn (session_id, turn_id, ts_start, ts_end, duration_ms, message_count,
+       status, model, time_to_first_token_ms)
+     VALUES ($sessionId, $turnId, $tsStart, $tsEnd, $durationMs, $messageCount,
+       $status, $model, $timeToFirstTokenMs)
+     ON CONFLICT(session_id, turn_id) DO UPDATE SET
+       ts_start               = coalesce(excluded.ts_start, turn.ts_start),
+       ts_end                 = max(turn.ts_end, excluded.ts_end),
+       duration_ms            = coalesce(excluded.duration_ms, turn.duration_ms),
+       message_count          = coalesce(excluded.message_count, turn.message_count),
+       status                 = excluded.status,
+       model                  = coalesce(excluded.model, turn.model),
+       time_to_first_token_ms = coalesce(excluded.time_to_first_token_ms, turn.time_to_first_token_ms)`,
+  );
+
+  const upsertCost = db.prepare(
+    `INSERT INTO session_cost_reported (session_id, reported_by, total_cost_usd, model_usage,
+       has_unknown_model_cost, ts)
+     VALUES ($sessionId, $reportedBy, $totalCostUsd, $modelUsage, $hasUnknownModelCost, $ts)
+     ON CONFLICT(session_id) DO UPDATE SET
+       reported_by            = excluded.reported_by,
+       total_cost_usd         = excluded.total_cost_usd,
+       model_usage            = excluded.model_usage,
+       has_unknown_model_cost = excluded.has_unknown_model_cost,
+       ts                     = excluded.ts`,
+  );
+
+  const deleteTurns = db.prepare<void, [string]>("DELETE FROM turn WHERE session_id = ?");
+  const deleteCost = db.prepare<void, [string]>("DELETE FROM session_cost_reported WHERE session_id = ?");
   const deleteUsage = db.prepare<void, [string]>("DELETE FROM usage WHERE session_id = ?");
   const deleteMessages = db.prepare<void, [string]>("DELETE FROM message WHERE session_id = ?");
   const deleteSession = db.prepare<void, [string]>("DELETE FROM session WHERE id = ?");
@@ -160,6 +189,8 @@ export function createIngester(db: Database) {
   );
 
   function resetSession(sessionId: string, path: string): void {
+    deleteCost.run(sessionId);
+    deleteTurns.run(sessionId);
     deleteUsage.run(sessionId);
     deleteMessages.run(sessionId);
     deleteSession.run(sessionId);
@@ -233,6 +264,31 @@ export function createIngester(db: Database) {
         $reasoningTokens: u.reasoningTokens ?? null,
         $attributionSkill: u.attributionSkill ?? null,
         $extra: u.extra ?? null,
+      });
+    }
+
+    for (const t of parsed.turns) {
+      upsertTurn.run({
+        $sessionId: spec.sessionId,
+        $turnId: t.turnId,
+        $tsStart: t.tsStart ?? null,
+        $tsEnd: t.tsEnd,
+        $durationMs: t.durationMs ?? null,
+        $messageCount: t.messageCount ?? null,
+        $status: t.status,
+        $model: t.model ?? null,
+        $timeToFirstTokenMs: t.timeToFirstTokenMs ?? null,
+      });
+    }
+
+    for (const c of parsed.costs) {
+      upsertCost.run({
+        $sessionId: spec.sessionId,
+        $reportedBy: c.reportedBy,
+        $totalCostUsd: c.totalCostUsd ?? null,
+        $modelUsage: c.modelUsage,
+        $hasUnknownModelCost: c.hasUnknownModelCost == null ? null : c.hasUnknownModelCost ? 1 : 0,
+        $ts: c.ts ?? null,
       });
     }
 

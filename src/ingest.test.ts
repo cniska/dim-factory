@@ -65,6 +65,18 @@ function snapshot(db: Database, root: string) {
                 cache_write_tokens, output_tokens, reasoning_tokens FROM usage ORDER BY response_id`,
       )
       .all() as Record<string, unknown>[],
+    turns: db
+      .prepare(
+        `SELECT session_id, turn_id, ts_start, ts_end, duration_ms, message_count, status, model,
+                time_to_first_token_ms FROM turn ORDER BY session_id, turn_id`,
+      )
+      .all() as Record<string, unknown>[],
+    costs: db
+      .prepare(
+        `SELECT session_id, reported_by, total_cost_usd, model_usage, has_unknown_model_cost
+         FROM session_cost_reported ORDER BY session_id`,
+      )
+      .all() as Record<string, unknown>[],
   };
 }
 
@@ -106,6 +118,75 @@ describe("ingest", () => {
       const all = JSON.stringify(snapshot(db, root));
       expect(all).not.toContain("SECRET FILE CONTENTS");
       expect(all).not.toContain("SECRET REASONING");
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("records turn timing from both tools", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    writeClaudeTranscript(env, "-Users-x-code-demo", SESSION);
+    writeCodexRollout(env, "sessions", THREAD);
+    const db = run(env);
+    try {
+      expect(
+        db
+          .prepare(
+            "SELECT turn_id, duration_ms, message_count, status FROM turn WHERE turn_id = 'turn-1' AND session_id = ?",
+          )
+          .get(SESSION),
+      ).toEqual({
+        turn_id: "turn-1",
+        duration_ms: 7193,
+        message_count: 13,
+        status: "completed",
+      });
+      expect(
+        db
+          .prepare("SELECT status, duration_ms, model FROM turn WHERE session_id = ? ORDER BY turn_id")
+          .all(THREAD),
+      ).toEqual([
+        { status: "completed", duration_ms: 151652, model: "gpt-5.6-luna" },
+        { status: "interrupted", duration_ms: 8128, model: "gpt-5.6-sol" },
+      ]);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("keeps the assistant reply that rides along with a completed Codex turn out of the database", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    writeCodexRollout(env, "sessions", THREAD);
+    const db = run(env);
+    try {
+      const dump = db.prepare("SELECT group_concat(coalesce(text,'')) AS t FROM message").get() as {
+        t: string;
+      };
+      expect(JSON.stringify(snapshot(db, root))).not.toContain("SECRET AGENT MESSAGE");
+      expect(dump.t).not.toContain("SECRET AGENT MESSAGE");
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("stores the cost the tool computed, and derives none of its own", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    writeClaudeTranscript(env, "-Users-x-code-demo", SESSION);
+    writeCodexRollout(env, "sessions", THREAD);
+    const db = run(env);
+    try {
+      expect(
+        db.prepare("SELECT session_id, reported_by, total_cost_usd FROM session_cost_reported").all(),
+      ).toEqual([{ session_id: SESSION, reported_by: "claude-code cost-state", total_cost_usd: 9.611748 }]);
+      // Codex reports no cost anywhere, and nothing here invents one.
+      expect(
+        db.prepare("SELECT count(*) AS n FROM session_cost_reported WHERE session_id = ?").get(THREAD),
+      ).toEqual({
+        n: 0,
+      });
     } finally {
       closeDb(db);
     }

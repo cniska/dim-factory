@@ -156,6 +156,27 @@ export function claudeTranscriptLines(sessionId: string): unknown[] {
       message: { role: "user", content: [{ type: "text", text: "stop" }] },
     },
     { type: "ai-title", sessionId, aiTitle: "Add the parser" },
+    {
+      ...base,
+      type: "system",
+      subtype: "turn_duration",
+      uuid: "turn-1",
+      timestamp: TS(7),
+      durationMs: 7193,
+      messageCount: 13,
+    },
+    {
+      ...base,
+      type: "cost-state",
+      uuid: "cost-1",
+      timestamp: TS(8),
+      totalCostUSD: 9.611748,
+      modelUsage: { "claude-opus-5[1m]": { inputTokens: 5, outputTokens: 50, costUSD: 9.611748 } },
+      totalAPIDuration: 516997,
+      totalLinesAdded: 45,
+      totalLinesRemoved: 10,
+      hasUnknownModelCost: false,
+    },
   ];
 }
 
@@ -249,6 +270,34 @@ export function codexRolloutLines(threadId: string, opts: { withIds: boolean }):
         id: id(6),
         role: "assistant",
         content: [{ type: "output_text", text: "And more." }],
+      },
+    },
+    {
+      type: "event_msg",
+      timestamp: TS(8),
+      ordinal: 7,
+      payload: {
+        type: "task_complete",
+        turn_id: "turn-1",
+        // The whole assistant reply rides along here; it must not reach the database.
+        last_agent_message: "SECRET AGENT MESSAGE",
+        started_at: 1789496759,
+        completed_at: 1789496911,
+        duration_ms: 151652,
+        time_to_first_token_ms: 4693,
+      },
+    },
+    {
+      type: "event_msg",
+      timestamp: TS(9),
+      ordinal: 8,
+      payload: {
+        type: "turn_aborted",
+        turn_id: "turn-2",
+        reason: "interrupted",
+        started_at: 1789536555,
+        completed_at: 1789536563,
+        duration_ms: 8128,
       },
     },
   ];

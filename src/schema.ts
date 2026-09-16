@@ -2,7 +2,7 @@
 // by re-reading them, so a schema change is `dim rebuild`, not a migration.
 // SCHEMA_VERSION exists only so sync can refuse to run against an older shape.
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -111,4 +111,29 @@ CREATE TABLE IF NOT EXISTS hook_event (
   UNIQUE (session_id, event, ts)
 );
 CREATE INDEX IF NOT EXISTS hook_event_session ON hook_event(session_id);
+
+CREATE TABLE IF NOT EXISTS turn (
+  session_id      TEXT NOT NULL REFERENCES session(id),
+  turn_id         TEXT NOT NULL,        -- Codex turn_id; Claude the turn_duration uuid
+  ts_start        TEXT,
+  ts_end          TEXT NOT NULL,
+  duration_ms     INTEGER,
+  message_count   INTEGER,              -- Claude only
+  status          TEXT,                 -- completed | interrupted | <Codex abort reason>
+  model           TEXT,
+  time_to_first_token_ms INTEGER,       -- Codex only
+  PRIMARY KEY (session_id, turn_id)
+);
+CREATE INDEX IF NOT EXISTS turn_session ON turn(session_id, ts_end);
+
+-- Cost only where the tool computed it. This database carries no price table
+-- and derives no dollar figure; Codex reports none at all.
+CREATE TABLE IF NOT EXISTS session_cost_reported (
+  session_id      TEXT PRIMARY KEY REFERENCES session(id),
+  reported_by     TEXT NOT NULL,
+  total_cost_usd  REAL,
+  model_usage     TEXT NOT NULL,        -- JSON as written
+  has_unknown_model_cost INTEGER,
+  ts              TEXT
+);
 `;
