@@ -1,0 +1,94 @@
+// Every table here is one-to-one with records in the source files and is rebuilt
+// by re-reading them, so a schema change is `dim rebuild`, not a migration.
+// SCHEMA_VERSION exists only so sync can refuse to run against an older shape.
+
+export const SCHEMA_VERSION = 1;
+
+export const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
+
+-- One row per source file on disk. The cursor is keyed by session, not by path:
+-- Codex moves rollouts into archived_sessions/, and re-reading a moved file from
+-- byte zero would append its assistant text a second time.
+CREATE TABLE IF NOT EXISTS source_file (
+  path            TEXT PRIMARY KEY,
+  tool            TEXT NOT NULL CHECK (tool IN ('claude','codex')),
+  kind            TEXT NOT NULL CHECK (kind IN ('transcript','subagent','rollout')),
+  session_id      TEXT NOT NULL,
+  bytes_ingested  INTEGER NOT NULL DEFAULT 0,
+  lines_ingested  INTEGER NOT NULL DEFAULT 0,
+  cursor_state    TEXT,
+  origin_mtime    TEXT,
+  ingested_at     TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS source_file_session ON source_file(session_id, kind);
+
+CREATE TABLE IF NOT EXISTS session (
+  id              TEXT PRIMARY KEY,
+  tool            TEXT NOT NULL,
+  parent_id       TEXT REFERENCES session(id),
+  agent_type      TEXT,
+  cwd             TEXT,
+  project         TEXT,
+  git_branch      TEXT,
+  cli_version     TEXT,
+  entrypoint      TEXT,
+  started_at      TEXT,
+  last_seen_at    TEXT,
+  ended_at        TEXT,
+  end_reason      TEXT,
+  first_model     TEXT,
+  last_model      TEXT,
+  title           TEXT,
+  extra           TEXT
+);
+CREATE INDEX IF NOT EXISTS session_project ON session(project, started_at);
+
+-- Claude assistant content-block lines sharing a message.id collapse into one
+-- row; Codex is one row per response_item message.
+CREATE TABLE IF NOT EXISTS message (
+  id              TEXT PRIMARY KEY,
+  session_id      TEXT NOT NULL REFERENCES session(id),
+  ts              TEXT NOT NULL,
+  role            TEXT NOT NULL CHECK (role IN ('user','assistant')),
+  model           TEXT,
+  turn_id         TEXT,
+  prompt_source   TEXT,
+  origin_kind     TEXT,
+  is_meta         INTEGER NOT NULL DEFAULT 0,
+  is_skill_body   INTEGER NOT NULL DEFAULT 0,
+  attribution_skill TEXT,
+  stop_reason     TEXT,
+  interrupted_message_id TEXT,
+  denial_kind     TEXT,
+  user_feedback   TEXT,
+  text            TEXT,
+  text_chars      INTEGER,
+  src_file        TEXT NOT NULL REFERENCES source_file(path) ON UPDATE CASCADE,
+  src_line        INTEGER NOT NULL,
+  extra           TEXT
+);
+CREATE INDEX IF NOT EXISTS message_session_ts ON message(session_id, ts);
+CREATE INDEX IF NOT EXISTS message_attr ON message(attribution_skill);
+
+-- The only table token sums come from. input_tokens is stored as each tool
+-- reports it: Claude excludes cached reads from it, Codex includes them, so no
+-- column adds the two tools together.
+CREATE TABLE IF NOT EXISTS usage (
+  response_id     TEXT PRIMARY KEY,
+  session_id      TEXT NOT NULL REFERENCES session(id),
+  message_id      TEXT REFERENCES message(id),
+  ts              TEXT NOT NULL,
+  model           TEXT,
+  input_tokens    INTEGER NOT NULL,
+  cache_read_tokens   INTEGER NOT NULL DEFAULT 0,
+  cache_write_tokens  INTEGER NOT NULL DEFAULT 0,
+  cache_write_1h_tokens INTEGER,
+  output_tokens   INTEGER NOT NULL,
+  reasoning_tokens INTEGER,
+  attribution_skill TEXT,
+  extra           TEXT
+);
+CREATE INDEX IF NOT EXISTS usage_session ON usage(session_id, ts);
+CREATE INDEX IF NOT EXISTS usage_model ON usage(model);
+`;
