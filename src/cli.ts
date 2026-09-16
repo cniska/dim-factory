@@ -3,6 +3,7 @@
 // No model call happens anywhere below this line.
 
 import { AGENT_LABEL, installAgent, planAgent } from "./agent";
+import { installCommitGate, planCommitGate, repoDirs } from "./commit-gate";
 import { closeDb, openDb } from "./db";
 import { diagnose } from "./doctor";
 import { installHooks, planHooks } from "./hooks";
@@ -32,6 +33,9 @@ const USAGE = `usage: dim <command>
                   reads no imports (--write applies it, keeping a backup)
   install-skill   show where this repo's skills would be linked for agents
                   (--write creates the link, moving anything there aside)
+  install-commit-gate
+                  show which checkouts would get the commit-subject hook
+                  (--write installs it, skipping repos that gate their own)
   q <name> [arg]  ask the database a named question (q list names them; --json)
                   covers the last ${DEFAULT_WINDOW}; --since <n>d|YYYY-MM-DD or --all to widen
   label <id> <correction|clarification|not_correction> [--rule "..."]
@@ -208,6 +212,47 @@ function printSkillPlan(write: boolean): void {
 }
 
 /**
+ * The checkouts the corpus has seen commits from: where the rule is actually
+ * broken is where it is worth gating, and a repo with a gate of its own keeps it.
+ */
+function printCommitGatePlan(write: boolean): void {
+  const db = openReadOnly(dbPath());
+  let repos: string[];
+  try {
+    repos = repoDirs(
+      db
+        .query("SELECT DISTINCT repo FROM repo_commit ORDER BY repo")
+        .all()
+        .map((r) => (r as { repo: string }).repo),
+    );
+  } finally {
+    db.close();
+  }
+
+  const plans = planCommitGate(repos);
+  const pending = plans.filter((p) => p.state === "missing" || p.state === "occupied");
+  const own = plans.filter((p) => p.state === "has-own-gate");
+
+  if (pending.length === 0) {
+    console.log(`commit gate: nothing to install across ${plans.length} checkouts`);
+    for (const p of own) console.log(`  ${p.repo} gates its own subjects`);
+    return;
+  }
+  for (const plan of pending) {
+    console.log(`${plan.path}`);
+    if (plan.state === "occupied")
+      console.log("  a commit-msg hook is already there; it would be moved aside");
+  }
+  for (const p of own) console.log(`skipping ${p.repo}, which gates its own subjects`);
+  if (!write) {
+    console.log(`\n${pending.length} to install. Re-run with --write to apply.`);
+    return;
+  }
+  installCommitGate(repos);
+  for (const plan of pending) console.log(`installed ${plan.path}`);
+}
+
+/**
  * Read-only, so a broken collection path can be diagnosed without writing to a
  * database that may be the thing at fault.
  */
@@ -326,6 +371,9 @@ try {
       break;
     case "install-skill":
       printSkillPlan(process.argv.includes("--write"));
+      break;
+    case "install-commit-gate":
+      printCommitGatePlan(process.argv.includes("--write"));
       break;
     default:
       console.log(USAGE);
