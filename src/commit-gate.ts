@@ -89,10 +89,23 @@ export function installCommitGate(repos: string[]): GatePlan[] {
   return plans;
 }
 
-/** The checkouts the corpus has seen commits from, which is where the rule is broken. */
-export function repoDirs(dbRepos: string[], env: Env = process.env): string[] {
+export type Checkout = { repo: string; owner: string };
+
+/**
+ * The checkouts the corpus has seen commits from, narrowed to the owners named.
+ * Ownership is not inferred: a clone of someone else's project has its own
+ * conventions, and gating it would refuse contributions that are correct there.
+ */
+export function repoDirs(checkouts: Checkout[], owners: string[], env: Env = process.env): string[] {
   const home = resolveHomeDir(env);
-  return dbRepos.filter((r) => r.startsWith(join(home, "code")) && existsSync(join(r, ".git")));
+  return checkouts
+    .filter((c) => owners.includes(c.owner))
+    .map((c) => c.repo)
+    .filter((r) => r.startsWith(join(home, "code")) && existsSync(join(r, ".git")));
+}
+
+export function ownerOf(label: string | null): string {
+  return label?.includes("/") ? (label.split("/")[0] as string) : "";
 }
 
 export function gitToplevel(dir: string): string | null {
