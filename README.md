@@ -12,6 +12,21 @@ Merit means evidence. This repo produces it.
 - **Answers.** A small query CLI over that database: where loaded-skill context goes, which skills fire and by which path, where corrections cluster, what tokens and tools a session actually spends.
 - **Guards.** Hooks that make mechanical what a skill can only instruct.
 
+## Using it
+
+Bun, pinned in `mise.toml`. `mise install && bun install`, then:
+
+```
+bun run dim sync      # read every new byte of both tools' session files
+bun run dim stats     # row counts and token totals per tool and model
+bun run dim rebuild   # forget every cursor and read all files from the start
+bun run verify        # lint, typecheck, test
+```
+
+The database lands in `~/.local/share/dim-factory/sessions.db`. Reading the whole corpus from scratch takes about 20 seconds.
+
+Claude Code deletes transcripts after 30 days unless told otherwise, so `~/.claude/settings.json` sets `"cleanupPeriodDays": 3650`. Without it the sources this points into disappear.
+
 ## Layout
 
 | Path | Holds |
@@ -19,6 +34,9 @@ Merit means evidence. This repo produces it.
 | [`docs/design.md`](docs/design.md) | Schema, the questions it answers, ingestion, the read path, build order |
 | [`docs/evals-and-hooks.md`](docs/evals-and-hooks.md) | The hook install layout, and the eval instrument that measures whether a skill's rules earn their place |
 | [`docs/dark-factory.md`](docs/dark-factory.md) | The argument this repo exists to execute |
+| `src/parse-claude.ts`, `src/parse-codex.ts` | One source line to rows; neither knows the database exists |
+| `src/ingest.ts` | Every upsert and the byte cursor; knows neither format |
+| `src/cli.ts` | `dim` |
 
 ## Constraints
 
