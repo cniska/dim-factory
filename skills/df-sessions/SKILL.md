@@ -15,6 +15,8 @@ Prerequisite: `dim` on PATH. If it is missing, say so and fall back to the `sear
 1. **Find the sentence.** `dim q search "<terms>"` — terms are ANDed and match as literal words, so a branch name or a flag searches as itself. Returns session prefix, timestamp, role, project and the matched excerpt, newest first.
 2. **Read around it.** `dim q thread <session-prefix>@<ts>` returns the messages on both sides of that timestamp. The exchange that settled a question runs three or four messages, and the sentence that changed the answer is rarely the one that matched. `dim q thread <session-prefix>` alone reads the session from the start.
 3. **Take the session's facts if they bear on the answer.** `dim q session <id-prefix>` gives models, turns, tokens, tool counts, interruptions and end reason.
+
+Before editing a skill, run `dim q skill <name>`: it splits that skill by each edit to its body and shows what the user stopped under each version. Most versions were loaded in a single session — the denominator says how many — so it points at sessions to read, never at a version that scored better.
 4. **Check the artifact against the current checkout.** A decision committed in another checkout and never pushed, or written to a file on a branch you are not on, is invisible from where you stand. Verify on the current branch before reporting a decision as present or missing, and say which it is.
 
 Queries cover the last 30 days by default and print the window above the rows. Pass `--since <n>d`, `--since YYYY-MM-DD` or `--all` to move it — `search` and `thread` already span all of history.
@@ -48,4 +50,5 @@ Say plainly what the search did not find — an absence you looked for is a find
 - Treating a matched line as the decision without reading the exchange around it
 - Searching only the user's messages, when the decision was stated in the reply
 - Reading an empty result as "it never happened" without saying which window was searched
+- Comparing two versions of a skill on a `stopped` count when each was loaded a handful of times
 - Reporting a decision as recorded without checking whether the artifact exists on the current branch

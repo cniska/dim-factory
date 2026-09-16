@@ -476,7 +476,7 @@ The surviving Claude corpus is `claude-opus-5` (141,524 assistant lines) with 31
 | Query | Returns |
 |---|---|
 | `skills` | per skill: loads by `how`, by tool, avg body chars, re-read count (§9.2), first/last seen |
-| `skill <name>` | one skill: loads over time by version hash, body chars per version, corrections (labeled / candidates), models it ran under |
+| `skill <name>` | one skill split by each edit to its body: loads, sessions, body chars and what the user stopped under each version |
 | `corrections [--skill]` | candidate list: ts, session prefix, skill, model, kind, 200-char excerpt, label if any |
 | `label <message_id> <label> [--rule]` | writes `correction_label` |
 | `routing [--skill]` | counts of positives / misses / wrong-skill; `export routing-cases` for the JSONL |
@@ -490,6 +490,8 @@ The surviving Claude corpus is `claude-opus-5` (141,524 assistant lines) with 31
 | `thread <id-prefix>[@<ts>]` | what was said in one session, in order, or the messages either side of a timestamp |
 
 **Agent invocation**: a skill `df-sessions`, shipped from this repo at `skills/df-sessions/SKILL.md` and linked into `~/.agents/skills` by `dim install-skill`. It lives here rather than in the skills repo because that repo's skills are tool-agnostic and this one is useless without `dim` on PATH; the `df-` prefix marks whose it is. A symlink rather than a copy, so an edit is live with no reinstall and no second copy to drift, and anything already at the name is moved aside rather than removed. The skill states the prerequisite, names `search-sessions` as the fallback for a machine with no database, and carries the section a query result cannot: what the database does not hold, so an absence is reported as a gap rather than as a finding.
+
+**A correction belongs to the version that was loaded.** `q skill` ties each stop to the `body_sha256` of the load in that session at that time, not to the text on disk now, so rewriting a skill cannot take credit for what the old wording did. The arms this produces are thin — `handoff` has 132 versions across the corpus and 121 were loaded in a single session — so the count of single-session versions leads the denominator, ahead of the table, and the note says the rows point at sessions to read rather than at a version that scored better. Codex reads a skill file itself and reports no body, so its loads carry no hash and collect in one `(unmeasured)` row instead of splitting.
 
 **The read path is for the agent first.** The queries that count — `skills`, `tools`, `corrections`, `rework` — answer a question the owner asks about the corpus. The queries an agent reaches for mid-task are `search` and `thread`: find the sentence, then read the exchange around it, because the sentence that settled a question is rarely the one that matched. Until a query changes what an agent does in the session it is run in, it is a report, and reports are not what this is for.
 

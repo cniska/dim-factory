@@ -653,9 +653,85 @@ const thread: Query = {
   },
 };
 
+/**
+ * One skill, split at each edit to its body. A correction is tied to the version
+ * that was loaded in its session at the time, not to the version loaded today,
+ * so rewriting a skill does not retroactively take credit for what the old text
+ * did. Versions are ordered oldest first: the question is what changed.
+ */
+const skill: Query = {
+  name: "skill",
+  summary: "one skill, version by version: loads, size, and what got stopped under each",
+  usage: "dim q skill <name>",
+  spansHistory: true,
+  run: (db, ctx) => {
+    const { arg } = ctx;
+    if (!arg) {
+      return { denominator: "", columns: ["error"], rows: [["usage: dim q skill <name>"]] };
+    }
+    const columns = ["version", "first_seen", "last_seen", "loads", "sessions", "body_chars", "stopped"];
+    const w = window("l.ts", ctx);
+    const records = table(
+      db,
+      `WITH loads AS (
+         SELECT l.session_id, l.ts, l.body_sha256, l.body_chars
+         FROM skill_load l WHERE l.skill_name = ?${w.sql}
+       ),
+       stops AS (
+         SELECT (SELECT ld.body_sha256 FROM loads ld
+                 WHERE ld.session_id = m.session_id AND ld.ts <= m.ts
+                 ORDER BY ld.ts DESC LIMIT 1) AS body_sha256
+         FROM message m
+         WHERE m.role = 'user'
+           AND (m.denial_kind IS NOT NULL OR m.interrupted_message_id IS NOT NULL
+                OR m.user_feedback IS NOT NULL)
+           AND (SELECT p.attribution_skill FROM message p
+                WHERE p.session_id = m.session_id AND p.role = 'assistant' AND p.ts <= m.ts
+                ORDER BY p.ts DESC, p.src_line DESC LIMIT 1) = ?
+       )
+       SELECT coalesce(substr(l.body_sha256, 1, 8), '(unmeasured)') AS version,
+              substr(min(l.ts), 1, 10) AS first_seen,
+              substr(max(l.ts), 1, 10) AS last_seen,
+              count(*) AS loads,
+              count(DISTINCT l.session_id) AS sessions,
+              max(l.body_chars) AS body_chars,
+              (SELECT count(*) FROM stops s
+               WHERE coalesce(s.body_sha256, '') = coalesce(l.body_sha256, '')) AS stopped
+       FROM loads l
+       GROUP BY l.body_sha256 ORDER BY min(l.ts)`,
+      [arg, ...w.params, arg],
+    );
+    const known = scalar(db, "SELECT count(*) AS n FROM skill_load WHERE skill_name = ?", arg);
+    // A version edited between two sessions is its own arm of one, and a column of
+    // ones invites a comparison the sample cannot carry. The count leads so the
+    // reader meets it before the table.
+    const singles = records.filter((r) => Number(r.sessions) === 1).length;
+    const unmeasured = records.some((r) => r.version === "(unmeasured)");
+    return {
+      denominator:
+        `${arg}: ${known} loads in the corpus, ${records.length} versions in this window ` +
+        `(${windowLine(ctx)})` +
+        (records.length > 0 ? `; ${singles} of them were loaded in a single session` : ""),
+      columns,
+      rows: toRows(records, columns),
+      note:
+        records.length === 0
+          ? `no load of ${arg} recorded; \`dim q skills\` names the skills that have loaded`
+          : "`stopped` counts acts the tool recorded — a rejection, an interruption, written feedback — " +
+            "under the version loaded at the time, never a judgement that the skill was wrong. Versions " +
+            "differ in the tasks they met as well as in their text, so read a change as where to look." +
+            (unmeasured
+              ? " `(unmeasured)` is every load that reported no body: Codex reads the file itself, so its " +
+                "loads carry no hash and fall together in one row rather than splitting by version."
+              : ""),
+    };
+  },
+};
+
 export const QUERIES: Query[] = [
   search,
   thread,
+  skill,
   tokens,
   models,
   cost,

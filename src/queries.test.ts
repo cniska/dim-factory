@@ -189,6 +189,27 @@ describe("read path", () => {
     }
   });
 
+  test("skill splits one skill by version and says how thin each arm is", () => {
+    const env = seeded();
+    const db = openReadOnly(dbPath(env));
+    try {
+      const loaded = findQuery("skills")?.run(db, {});
+      const name = String(loaded?.rows[0]?.[0]);
+      const one = findQuery("skill")?.run(db, { arg: name });
+      expect(one?.rows.length).toBeGreaterThan(0);
+      // A version loaded in one session is an arm of one; a reader who meets the
+      // table first will compare columns the sample cannot carry.
+      expect(one?.denominator).toMatch(/\d+ of them were loaded in a single session/);
+
+      const never = findQuery("skill")?.run(db, { arg: "no-such-skill" });
+      expect(never?.rows).toEqual([]);
+      expect(never?.note).toContain("no load of no-such-skill recorded");
+      expect(never?.denominator).not.toContain("single session");
+    } finally {
+      db.close();
+    }
+  });
+
   test("session resolves a prefix and says so when it matches nothing", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
