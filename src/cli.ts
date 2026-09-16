@@ -11,6 +11,7 @@ import { dbPath } from "./paths";
 import { findQuery, QUERIES } from "./queries";
 import { openReadOnly } from "./read-db";
 import { renderTable } from "./render";
+import { installRules, planRules } from "./rules";
 import { DEFAULT_WINDOW, windowFromArgs } from "./since";
 import { installSkill, planSkill } from "./skill";
 import { ensureSpoolDirs } from "./spool";
@@ -27,6 +28,8 @@ const USAGE = `usage: dim <command>
                   (--write applies them, after copying each config aside)
   install-agent   show the launchd agent that syncs every 15 minutes
                   (--write writes the plist; load it with launchctl)
+  install-rules   flatten ~/.claude/CLAUDE.md into ~/.codex/AGENTS.md, which
+                  reads no imports (--write applies it, keeping a backup)
   install-skill   show where the df-sessions skill would be linked for agents
                   (--write creates the link, moving anything there aside)
   q <name> [arg]  ask the database a named question (q list names them; --json)
@@ -157,6 +160,28 @@ function printAgentPlan(write: boolean): void {
   console.log(`wrote ${plan.path}`);
   console.log(`load it with: launchctl bootstrap gui/$(id -u) ${plan.path}`);
   console.log(`remove it with: launchctl bootout gui/$(id -u)/${AGENT_LABEL}`);
+}
+
+function printRulesPlan(write: boolean): void {
+  const plan = planRules();
+  if (plan.state === "missing-source") {
+    console.log(`rules: ${plan.source} does not exist; nothing to flatten`);
+    return;
+  }
+  if (plan.state === "unchanged") {
+    console.log(`rules: ${plan.path} already matches ${plan.source}`);
+    return;
+  }
+  const lines = plan.contents.split("\n").length;
+  console.log(`${plan.path} <- ${plan.source} (${lines} lines, imports expanded)`);
+  if (plan.state === "stale") console.log("  the file there differs; it would be replaced");
+  if (!write) {
+    console.log("\nRe-run with --write to apply.");
+    return;
+  }
+  installRules();
+  if (plan.state === "stale") console.log(`previous version kept at ${plan.path}.dim-backup`);
+  console.log(`wrote ${plan.path}`);
 }
 
 function printSkillPlan(write: boolean): void {
@@ -294,6 +319,9 @@ try {
       break;
     case "doctor":
       runDoctor();
+      break;
+    case "install-rules":
+      printRulesPlan(process.argv.includes("--write"));
       break;
     case "install-skill":
       printSkillPlan(process.argv.includes("--write"));

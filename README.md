@@ -22,6 +22,7 @@ bun run dim stats           # row counts and token totals per tool and model
 bun run dim rebuild         # forget every cursor and read all files from the start
 bun run dim doctor          # check collection is working, and say what to fix
 bun run dim install-hooks   # show the session hooks; --write applies them
+bun run dim install-rules   # flatten the conventions into Codex's rules file
 bun run dim install-skill   # show where the agent skill links; --write links it
 bun run dim q list          # the named questions; `q <name>` asks one, --json for the raw rows
 bun run verify              # lint, typecheck, test
@@ -38,6 +39,8 @@ Claude Code deletes transcripts after 30 days unless told otherwise, so `~/.clau
 `dim doctor` checks the paths that fail silently: retention unset, hooks installed but never firing, a launchd agent written but never loaded, a spool nothing drains, a database built by an older schema. It reads only, exits non-zero when a check fails, and every failure names its fix.
 
 `dim install-agent --write` writes a launchd agent that runs `dim sync` every 15 minutes, logging to `~/.local/share/dim-factory/sync.log`; load it with the `launchctl bootstrap` line the command prints. Re-run it after a toolchain change, since the plist names an absolute `bun`.
+
+`dim install-rules --write` writes `~/.codex/AGENTS.md` from `~/.claude/CLAUDE.md` with every `@import` expanded. Claude Code expands those imports and Codex does not — a sentinel placed behind one reached Claude and never reached Codex — so a rules file that imports delivers its import line to Codex as literal text. A relative import resolves against the target tool's own directory, so `@RTK.md` picks up the Codex copy rather than the Claude one. `dim doctor` fails when the two drift.
 
 `dim install-skill --write` links `skills/df-sessions` into `~/.agents/skills` and `~/.codex/skills`, so an agent can recover what a past session said with `q search` and `q thread` instead of grepping transcripts. Claude and Acolyte both read the first by convention; Codex reads its own. It ships here rather than in the skills repo because those skills are tool-agnostic and this one needs `dim` installed.
 
