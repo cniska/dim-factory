@@ -1242,8 +1242,75 @@ const digest: Query = {
   },
 };
 
+/**
+ * How far the code a session touched has moved since it ran. This is the gate
+ * `acolyte import` settled on, measured per file rather than per repo: a session
+ * whose files have been rewritten describes code that no longer exists, so its
+ * conclusions are worth less than their confidence suggests.
+ *
+ * It scores the area, not the work. A file everyone edits moves whatever was
+ * done to it, and a file nobody touches sits still even if it is wrong.
+ */
+const stale: Query = {
+  name: "stale",
+  summary: "how much the code a session touched has changed since it ran",
+  usage: "dim q stale [id-prefix]",
+  run: (db, ctx) => {
+    const { arg } = ctx;
+    const columns = ["session", "project", "ran", "files", "moved_pct", "commits_since", "days"];
+    const w = window("s.last_seen_at", ctx);
+    const records = table(
+      db,
+      `WITH touched AS (
+         SELECT s.id, s.project, s.last_seen_at, t.file_path
+         FROM tool_call t JOIN session s ON s.id = t.session_id
+         WHERE t.tool_name IN ('Edit','Write') AND t.file_path IS NOT NULL
+           AND s.parent_id IS NULL AND s.last_seen_at IS NOT NULL
+           ${arg ? "AND s.id LIKE ? || '%'" : ""}${w.sql}
+         GROUP BY s.id, t.file_path
+       ),
+       scored AS (
+         SELECT u.id, u.project, u.last_seen_at, u.file_path,
+                (SELECT count(*) FROM commit_file f JOIN repo_commit c ON c.sha = f.sha
+                 WHERE f.path = u.file_path AND c.ts > u.last_seen_at) AS commits_after
+         FROM touched u
+       )
+       SELECT substr(id, 1, 8) AS session,
+              replace(coalesce(project, ''), '/Users/christofferniska/code/', '') AS project,
+              substr(max(last_seen_at), 1, 10) AS ran,
+              count(*) AS files,
+              round(100.0 * sum(commits_after > 0) / count(*)) AS moved_pct,
+              sum(commits_after) AS commits_since,
+              cast(julianday('now') - julianday(max(last_seen_at)) AS INTEGER) AS days
+       FROM scored
+       GROUP BY id HAVING files >= 3
+       ORDER BY moved_pct DESC, commits_since DESC LIMIT 30`,
+      [...(arg ? [arg] : []), ...w.params],
+    );
+    const commits = scalar(db, "SELECT count(*) AS n FROM repo_commit");
+    return {
+      denominator:
+        commits === 0
+          ? "no commits read, so nothing can be scored"
+          : `${commits} commits read (${windowLine(ctx)}); sessions that edited at least 3 files`,
+      columns,
+      rows: toRows(records, columns),
+      note:
+        commits === 0
+          ? "`dim sync` from a machine holding the repos; without commits there is no measure of movement"
+          : "`moved_pct` is the share of the files that have been committed to since, and `commits_since` how " +
+            "often in total. Both are shown because neither is the score: the share says whether the session's " +
+            "ground moved, the count how far. The per-repo gate `acolyte import` settled on is the count. " +
+            "It measures the area, not the work: a file under constant edit moves whatever was done to it. " +
+            "Read a high score as evidence that what this session concluded is about code that has changed, " +
+            "never as evidence the session was wrong.",
+    };
+  },
+};
+
 export const QUERIES: Query[] = [
   digest,
+  stale,
   search,
   thread,
   skill,

@@ -269,6 +269,21 @@ describe("read path", () => {
     }
   });
 
+  test("stale says it cannot score without commits, rather than scoring zero", () => {
+    const env = seeded();
+    const db = openReadOnly(dbPath(env));
+    try {
+      const r = findQuery("stale")?.run(db, {});
+      // The fixtures have no repo on disk, so every session would otherwise
+      // score as untouched — which reads as durable rather than as unmeasured.
+      expect(r?.rows).toEqual([]);
+      expect(r?.denominator).toContain("no commits read");
+      expect(r?.note).toContain("no measure of movement");
+    } finally {
+      db.close();
+    }
+  });
+
   test("resume gives facts for a cold start and never a next move", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
