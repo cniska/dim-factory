@@ -1,10 +1,12 @@
 # dim-factory
 
-Instrumentation for AI coding sessions on this machine, and the hooks that act inside them.
+A software factory run by coding agents, with a human at the gates that still earn one.
 
-The name comes from [`docs/dark-factory.md`](docs/dark-factory.md): the engineering skills in `cniska/skills` form a production line — spec, plan, build, review, ship — and the question that note answers is not whether the line can run itself but at which gates removing the human costs more than it saves. Its answer is a dim factory, not a dark one: autonomous between the gates, a human at the gates that matter, and each gate earning its automation on its own merit.
+The stations are the engineering skills in `cniska/skills` — spec, plan, build, review, ship — each with an entry contract and an exit check, and the floor that runs them is a coding agent. What lives here is the rest of it: the record of what every session did, the questions asked of that record, and the gates that hold a rule whether or not a skill loaded.
 
-Merit means evidence. This repo produces it.
+[`docs/dark-factory.md`](docs/dark-factory.md) is the argument. The question is not whether the line can run itself but at which gates removing the human costs more than it saves, and the answer is a dim factory rather than a dark one: autonomous between the gates, a human at the gates that matter, and each gate earning its automation on its own merit.
+
+Merit means evidence, so the factory measures itself. [`docs/goals.md`](docs/goals.md) states what it is measured against.
 
 ## What it does
 

@@ -1,6 +1,6 @@
 # Goals
 
-What this repo is for, in order, and how each goal is known to be met. The argument for building it at all is [`dark-factory.md`](dark-factory.md); this page is the operational version of it.
+What the factory is for, in order, and how each goal is known to be met. The argument for building it at all is [`dark-factory.md`](dark-factory.md); this page is the operational version of it.
 
 Three goals. All of them are about time, which is the commodity actually being spent: the owner's hours going into a build, and the hours lost when work stops. The order is load-bearing — the second and third exist to serve the first.
 
