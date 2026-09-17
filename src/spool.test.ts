@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
 import { scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
-import { hookCommand, installHooks, planHooks } from "./hooks";
+import { hookCommand, installHooks, planHooks, wakeCommand } from "./hooks";
 import { dbPath, type Env } from "./paths";
 import { drainSpool, ensureSpoolDirs, type Tool, toolSpoolDir } from "./spool";
 import { rebuild, sync } from "./sync";
@@ -203,7 +203,10 @@ describe("installHooks", () => {
     expect(after.hooks.SessionEnd).toHaveLength(2);
     expect(after.hooks.SessionEnd[0].hooks[0].command).toBe("existing-notifier");
     expect(after.hooks.SessionEnd[1].hooks[0].command).toBe(hookCommand("claude", env));
-    expect(after.hooks.SessionStart).toHaveLength(1);
+    // Two at SessionStart: one writes the event to the spool, one answers with context.
+    expect(after.hooks.SessionStart).toHaveLength(2);
+    expect(after.hooks.SessionStart[0].hooks[0].command).toBe(hookCommand("claude", env));
+    expect(after.hooks.SessionStart[1].hooks[0].command).toBe(wakeCommand("claude"));
     expect(readFileSync(`${paths.claude}.dim-backup`, "utf8")).toContain("existing-notifier");
   });
 
@@ -212,9 +215,17 @@ describe("installHooks", () => {
     const env = hookEnv(dir);
     installHooks(env);
     const first = readFileSync(configs(env).claude, "utf8");
-    expect(installHooks(env)).toMatchObject({ written: [], alreadyPresent: 4 });
+    expect(installHooks(env)).toMatchObject({ written: [], alreadyPresent: 6 });
     expect(readFileSync(configs(env).claude, "utf8")).toBe(first);
     expect(planHooks(env).every((p) => p.present)).toBe(true);
+  });
+
+  // It runs before every session starts, so a missing database, an unreadable
+  // one, or no `dim` at all has to end as silence rather than a failed start.
+  test("the wake hook cannot fail a session either", () => {
+    const command = wakeCommand("claude");
+    expect(command).toEndWith("2>/dev/null || true");
+    expect(command).toContain("wake --tool=claude");
   });
 
   test("the hook itself cannot fail a session", () => {

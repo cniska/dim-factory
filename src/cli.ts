@@ -18,7 +18,7 @@ import { DEFAULT_WINDOW, windowFromArgs } from "./since";
 import { installSkill, planSkill, SKILL_NAMES } from "./skill";
 import { ensureSpoolDirs } from "./spool";
 import { rebuild, type SyncReport, sync } from "./sync";
-import { readWake, renderWake } from "./wake";
+import { readWake, renderWake, wireFor } from "./wake";
 
 const USAGE = `usage: dim <command>
 
@@ -281,12 +281,13 @@ function printCommitGatePlan(write: boolean): void {
  * fail and never print a diagnostic: anything unexpected is silence, and the
  * session starts as it would have without it.
  */
-function runWake(): void {
+function runWake(args: string[]): void {
+  const tool = args.includes("--tool=codex") ? "codex" : "claude";
   try {
     const db = openReadOnly(dbPath());
     try {
-      const block = renderWake(readWake(db, process.cwd()));
-      if (block) console.log(block);
+      const wire = wireFor(tool, renderWake(readWake(db, process.cwd())));
+      if (wire) console.log(wire);
     } finally {
       db.close();
     }
@@ -433,7 +434,7 @@ try {
       printCommitGatePlan(process.argv.includes("--write"));
       break;
     case "wake":
-      runWake();
+      runWake(process.argv.slice(3));
       break;
     case "check-commits":
       runCheckCommits(process.argv[3]);

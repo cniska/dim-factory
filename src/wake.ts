@@ -38,6 +38,13 @@ export function nextSection(handoff: string): string | null {
  *
  * A handoff is printed into the transcript before it is pasted, so the session
  * that wrote one holds the text whether or not anyone carried it forward.
+ *
+ * What makes a message a handoff is that it carries the heading and a `## Next`
+ * that parses. Keying on the `handoff` skill's attribution instead reads better
+ * and is wrong: a quarter of the handoffs in the corpus were written under no
+ * skill, including the most recent one here. A session that quotes a whole
+ * handoff back, Next and all, is the cost of that, and what it quotes is
+ * usually the live Next anyway.
  */
 export function readWake(db: Database, cwd: string): Wake | null {
   const session = db
@@ -46,7 +53,7 @@ export function readWake(db: Database, cwd: string): Wake | null {
        FROM session s
        JOIN message m ON m.session_id = s.id
        WHERE s.parent_id IS NULL AND s.cwd = ?
-         AND m.role = 'assistant' AND m.text LIKE '%# Handoff%'
+         AND m.role = 'assistant' AND m.text LIKE '%# Handoff%' AND m.text LIKE '%## Next%'
        ORDER BY m.ts DESC LIMIT 1`,
     )
     .get(cwd);
@@ -58,6 +65,19 @@ export function readWake(db: Database, cwd: string): Wake | null {
     endReason: session.end_reason,
     next: nextSection(session.text),
   };
+}
+
+/**
+ * Claude Code adds a SessionStart hook's plain-text stdout to the session as
+ * context; Codex takes the same thing only as `hookSpecificOutput.additionalContext`
+ * on a SessionStart event and ignores loose text. One block, two envelopes.
+ */
+export function wireFor(tool: "claude" | "codex", block: string): string {
+  if (block === "") return "";
+  if (tool === "claude") return block;
+  return JSON.stringify({
+    hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: block },
+  });
 }
 
 /** Empty when there is nothing a cold start does not already know: silence costs no tokens. */

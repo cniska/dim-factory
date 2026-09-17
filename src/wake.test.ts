@@ -28,9 +28,9 @@ function seeded(): Database {
     "INSERT INTO source_file (path, tool, kind, session_id) VALUES ('/f.jsonl', 'claude', 'transcript', 'newest')",
   );
   db.run(
-    `INSERT INTO message (id, session_id, role, ts, text, src_file, src_line) VALUES
-       ('m1', 'newest', 'assistant', '2026-09-02T09:00:00Z', ?, '/f.jsonl', 1),
-       ('m2', 'elsewhere', 'assistant', '2026-09-03T09:00:00Z', 'wrong project', '/f.jsonl', 2)`,
+    `INSERT INTO message (id, session_id, role, ts, text, attribution_skill, src_file, src_line) VALUES
+       ('m1', 'newest', 'assistant', '2026-09-02T09:00:00Z', ?, 'handoff', '/f.jsonl', 1),
+       ('m2', 'elsewhere', 'assistant', '2026-09-03T09:00:00Z', 'wrong project', 'handoff', '/f.jsonl', 2)`,
     [HANDOFF],
   );
   return db;
@@ -57,6 +57,24 @@ describe("the wake block", () => {
 
   // The block is added to every session that starts here, so it has to cost
   // nothing when it has nothing: silence, not a header saying there is no news.
+  // Most sessions that talk about handoffs never print one, and the heading
+  // alone would hand the next session whatever the last one merely discussed.
+  test("ignores a message that names a handoff but leaves no Next", () => {
+    const db = seeded();
+    try {
+      // Later than the real handoff, in the same directory, and only talking about one.
+      db.run(
+        `INSERT INTO message (id, session_id, role, ts, text, src_file, src_line)
+         VALUES ('m4', 'older', 'assistant', '2026-09-09T00:00:00Z',
+                 'We should look at the # Handoff from yesterday.', '/f.jsonl', 4)`,
+      );
+      expect(readWake(db, "/h/code/demo")?.sessionId).toBe("newest");
+      expect(readWake(db, "/h/code/demo")?.next).toContain("commit gate installed");
+    } finally {
+      db.close();
+    }
+  });
+
   test("renders nothing for a directory no session has worked in", () => {
     const db = seeded();
     try {
