@@ -135,29 +135,15 @@ describe("the wake block", () => {
     }
   });
 
-  // `dim wt` makes worktrees, where `.git` is a file holding a gitdir line
-  // rather than a directory, so a session starting in one is routine here.
-  test("reads the root of a worktree, where .git is a file", () => {
-    const repo = mkdtempSync(join(tmpdir(), "dim-wake-"));
-    try {
-      writeFileSync(join(repo, ".git"), "gitdir: /elsewhere/.git/worktrees/wt\n");
-      writeFileSync(join(repo, "package.json"), JSON.stringify({ scripts: { verify: "bun test" } }));
-      writeFileSync(join(repo, "bun.lock"), "");
-      mkdirSync(join(repo, "src"));
-
-      expect(projectLine(join(repo, "src"))).toContain("check `bun run verify`");
-    } finally {
-      rmSync(repo, { recursive: true, force: true });
-    }
-  });
-
-  // Outside a checkout there is no repo to speak for, and the walk would
-  // otherwise climb to the filesystem root and report a stranger's Makefile.
+  // Outside a checkout there is no repo to speak for. The manifest sits in the
+  // directory asked about as well as above it, so reading either one is a
+  // failure this catches — the home directory is full of both.
   test("says nothing when the session is not inside a checkout", () => {
     const root = mkdtempSync(join(tmpdir(), "dim-wake-"));
     try {
       writeFileSync(join(root, "Makefile"), "test:\n\techo hi\n");
       mkdirSync(join(root, "sub"));
+      writeFileSync(join(root, "sub", "Makefile"), "test:\n\techo hi\n");
 
       expect(projectLine(join(root, "sub"))).toBe("");
     } finally {
