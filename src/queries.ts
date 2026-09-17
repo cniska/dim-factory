@@ -1622,8 +1622,94 @@ const priorArt: Query = {
   },
 };
 
+/**
+ * The work a task spans, rather than the session it happened to be in. Every
+ * other per-session measure here counts a link as a whole piece of work; this
+ * is the column that says how many links were behind it.
+ */
+const chain: Query = {
+  name: "chain",
+  summary: "sessions that continued one another through a handoff, longest chain first",
+  usage: "dim q chain [id-prefix]",
+  spansHistory: true,
+  run: (db, ctx) => {
+    const { arg } = ctx;
+    if (arg) {
+      const columns = ["step", "session", "ran", "gap_min", "title"];
+      // Both directions from the named session, following the edge each way.
+      const records = table(
+        db,
+        `WITH RECURSIVE back(from_session, to_session, to_ts, from_ts, title) AS (
+           SELECT from_session, to_session, to_ts, from_ts, title FROM handoff_link
+           WHERE to_session LIKE ? || '%'
+           UNION
+           SELECT l.from_session, l.to_session, l.to_ts, l.from_ts, l.title
+           FROM handoff_link l JOIN back b ON l.to_session = b.from_session
+         ),
+         forward(from_session, to_session, to_ts, from_ts, title) AS (
+           SELECT from_session, to_session, to_ts, from_ts, title FROM handoff_link
+           WHERE from_session LIKE ? || '%'
+           UNION
+           SELECT l.from_session, l.to_session, l.to_ts, l.from_ts, l.title
+           FROM handoff_link l JOIN forward f ON l.from_session = f.to_session
+         ),
+         edge AS (SELECT * FROM back UNION SELECT * FROM forward)
+         SELECT row_number() OVER (ORDER BY to_ts) AS step,
+                substr(from_session, 1, 8) || ' → ' || substr(to_session, 1, 8) AS session,
+                substr(to_ts, 1, 16) AS ran,
+                cast((julianday(to_ts) - julianday(from_ts)) * 1440 AS INTEGER) AS gap_min,
+                ltrim(replace(title, '# Handoff', ''), ' —') AS title
+         FROM edge ORDER BY to_ts`,
+        [arg, arg],
+      );
+      return {
+        denominator: `the chain ${arg} sits in: ${records.length} links`,
+        columns,
+        rows: toRows(records, columns),
+        note:
+          records.length === 0
+            ? `no handoff joins ${arg} to another session; \`dim q resume ${arg}\` has what it left`
+            : "`gap_min` is the wait between a handoff being printed and pasted, not work. The walk " +
+              "follows the edge, not the title, so it crosses a task that was renamed midway, and it " +
+              "branches where one handoff was pasted into two sessions. A chain breaks where the " +
+              "writing session's transcript was pruned before it was read.",
+      };
+    }
+
+    const columns = ["links", "first", "last", "title"];
+    const w = window("to_ts", ctx, "WHERE");
+    const records = table(
+      db,
+      `SELECT count(*) AS links,
+              substr(min(from_ts), 1, 10) AS first,
+              substr(max(to_ts), 1, 10) AS last,
+              ltrim(replace(title, '# Handoff', ''), ' —') AS title
+       FROM handoff_link${w.sql}
+       GROUP BY title ORDER BY links DESC, last DESC LIMIT 30`,
+      w.params,
+    );
+    const links = scalar(db, "SELECT count(*) AS n FROM handoff_link");
+    const pasted = scalar(
+      db,
+      `SELECT count(*) AS n FROM message WHERE role = 'user' AND text LIKE '%# Handoff%' AND text LIKE '%## Next%'`,
+    );
+    return {
+      denominator: `${links} links joined, of ${pasted} handoffs pasted into a session (${windowLine(ctx)})`,
+      columns,
+      rows: toRows(records, columns),
+      note:
+        links === 0
+          ? "nothing is joined; `dim sync` builds this table from the transcripts it has read"
+          : "Grouped by the handoff title, which is what the two sides share, so a task renamed midway " +
+            "reads as two chains. A paste with no link means the session that printed it was pruned " +
+            "before its transcript was read.",
+    };
+  },
+};
+
 export const QUERIES: Query[] = [
   priorArt,
+  chain,
   digest,
   stale,
   search,

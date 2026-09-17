@@ -12,7 +12,9 @@ It is the only hook here that spends rather than records. What it prints is paid
 
 A handoff is printed into the transcript before it is pasted, so the same text lands in two sessions: the one that wrote it and the one that carried it forward. Neither knows about the other — `session.parent_id` links a subagent to its parent and nothing links a session to the one it continues, so a task spanning several sessions reads as several unrelated cold starts, and every per-session measure is distorted by whatever the chain depth was. `stale` is the sharpest case: for every link but the last, the ground moved because the next link moved it.
 
-The edge is recoverable from text already collected. The title line is the key and matches on both sides; where a title was reused, the nearest preceding printer is the writer. Unlike an end reason, nothing has to be captured as it happens — a handoff with no match links itself as soon as the writing session is read.
+The edge is recoverable from text already collected, and `sync` recovers it into `handoff_link`. The title line is the key and matches on both sides; where a title was reused, the nearest preceding printer in another session is the writer. Unlike an end reason, nothing has to be captured as it happens — a handoff with no match links itself as soon as the writing session is read, which is why the table is derived and replaced whole rather than appended to.
+
+`q chain` reads it two ways. Grouped by title it ranks the tasks that spanned the most sessions; walked from one session it follows the edge in both directions, so it crosses a task that was renamed midway and branches where one handoff was pasted into two sessions. Around one paste in five finds no writer, because that session's transcript was pruned before it was ever read.
 
 Two rules that look right and are not. Matching the `# Handoff` heading alone catches every session that merely discussed one, including the session asking. Keying on the `handoff` skill's attribution misses the handoffs written under no skill, which are a substantial minority ([`findings.md`](findings.md)). What holds is the heading together with a `## Next` that parses.
 
@@ -77,4 +79,4 @@ Neither measures the thing this file is about. No recall figure can say whether 
 
 ## Not built
 
-`wake` is installed, and so is semantic retrieval over the distilled text: `dim embed` writes a unit vector per passage into `embedding`, and `q search` scores them by cosine, falling back to the keyword index when nothing is embedded, the model will not load, or the database predates the table. The handoff chain is not built, and neither benchmark is wired up — so nothing yet says whether this ranking is better than the keyword one it replaced, which is the next thing to settle rather than a claim to make.
+`wake` is installed, and so is semantic retrieval over the distilled text: `dim embed` writes a unit vector per passage into `embedding`, and `q search` scores them by cosine, falling back to the keyword index when nothing is embedded, the model will not load, or the database predates the table. The chain is built: `sync` fills `handoff_link` and `q chain` walks it. Neither benchmark is wired up — so nothing yet says whether this ranking is better than the keyword one it replaced, which is the next thing to settle rather than a claim to make.

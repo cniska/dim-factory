@@ -3,6 +3,7 @@ import { listClaudeSubagents, listClaudeTranscripts } from "./claude-source";
 import { listCodexRollouts, readCodexTitles } from "./codex-source";
 import { type GitReport, ingestCommits } from "./git-ingest";
 import { type GuidanceReport, ingestGuidance } from "./guidance";
+import { type HandoffLinkReport, linkHandoffs } from "./handoff";
 import { type HistoryReport, ingestHistory } from "./history";
 import { createIngester, type FileSpec } from "./ingest";
 import type { Env } from "./paths";
@@ -22,6 +23,7 @@ export type SyncReport = {
   git: GitReport;
   repoFiles: RepoFileReport;
   guidance: GuidanceReport;
+  chain: HandoffLinkReport;
 };
 
 export function sync(db: Database, env: Env = process.env): SyncReport {
@@ -43,6 +45,7 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     git: { repos: 0, commits: 0, files: 0 },
     repoFiles: { repos: 0, files: 0 },
     guidance: { files: 0, versions: 0 },
+    chain: { pasted: 0, linked: 0 },
   };
 
   const run = (spec: FileSpec): void => {
@@ -89,6 +92,8 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
   // Both of these read the repos the commits just named, so neither scans a disk.
   report.repoFiles = indexRepoFiles(db);
   report.guidance = ingestGuidance(db, env);
+  // Derived from the messages just written, so it follows every transcript pass.
+  report.chain = linkHandoffs(db);
   return report;
 }
 
