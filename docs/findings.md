@@ -288,10 +288,41 @@ Mapping it back is not a string compare, because one remote has many spellings. 
 
 What still passes is a URL that resolves to no configured remote. That is not a hole: the checkout has no remote-tracking ref there, so there is no shared branch to compare against, and a hook may only refuse what it has read and understood.
 
-## A regex comment-stripper corrupts the file it protects
+## A regex comment-stripper reads a URL as a comment
 
-Found on 2026-09-17, looking for prior art before writing the JSONC reader in [`src/jsonc.ts`](../src/jsonc.ts). Another repo on this machine holds a `src/json.ts` that reads a config allowing comments by deleting them first: `//` to end of line, then `/* */`, then `JSON.parse`. Handed `{"url": "https://example.com/a", "x": 1}`, it returns `{"url": "https:`, because the scheme separator in a string literal is the same two characters as a comment. The file it exists to read is the one it destroys, and because the reader returns null on any throw, the corruption surfaces as a config that is simply not there.
+Found on 2026-09-17, looking for prior art before writing the JSONC reader in [`src/jsonc.ts`](../src/jsonc.ts). Another repo on this machine holds a `src/json.ts` that reads a config allowing comments by deleting them first: `//` to end of line, then `/* */`, then `JSON.parse`. The strip runs on names ending in `c`, which is what its callers pass for a `.jsonc` file and for `.prettierrc` and `.eslintrc`. Given `{"url": "https://example.com/a", "x": 1}` the stripper leaves `{"url": "https:`, because the scheme separator inside a string is the same two characters as a comment; `JSON.parse` then throws and the reader returns null. A `$schema` URL in one of those files is the live path, and the config reads back as absent rather than as broken.
 
-A tokenizer has the state a pattern does not: `jsonc-parser` knows it is inside a string, which is the whole of the difference. The same shape appeared in the gate for narrating comments above — a pattern matching text it cannot read the context of — and it is the reason a reader is bought rather than written.
+A tokenizer has the state a pattern does not: `jsonc-parser` knows it is inside a string, which is the whole of the difference. The same shape appeared in the gate for narrating comments above — a pattern matching text whose context it cannot read — and it is why the reader here is a dependency rather than a hand-rolled strip.
 
-`prior-art` found this only when the query dropped to `json`: the file is named for the format and the reader for the dialect, so `jsonc` returned nothing on a machine that had one. That is the path-not-meaning limit measured above, hit again.
+First written on the same day with the defect stated more broadly than the code supports: the `endsWith("c")` gate was missed, and that repo pins the plain-`.json` case green in its own test. The correction came from a review dimension reading the caller, which is the check a probe of the function alone does not make.
+
+`prior-art` found this only when the query dropped to `json`: the file is named for the format it parses rather than the dialect it accepts, so `jsonc` returned nothing on a machine holding one. That is the path-not-meaning limit measured above, hit again.
+
+## An editor and a reader disagree about a key written twice
+
+Measured on 2026-09-17, against `jsonc-parser` 3.3.1. Its `parse` resolves a repeated key to the **last** copy, which is what `JSON.parse` does and therefore what both tools do when they read their config. Its `findNodeAtLocation`, which every edit goes through, resolves the **first**. So a config where a key appears twice can be edited at one copy and read at another.
+
+Left unchecked that is silent and cumulative rather than a failure: installing a hook into such a file reported success, appended into the copy nothing reads, and reported the hook missing immediately afterwards — two runs left twelve command entries in a dead object, and because the install never converged, each run's backup overwrote the last good config. The round-trip through `JSON.stringify` that this replaced collapsed duplicates and got it right, which is the shape a replacement has to be checked against rather than assumed better than.
+
+The guard is to read the written text back the way the tools read it and refuse the write unless every command is in it. The general form: where an edit and a read go through different parsers, the only thing that establishes the edit landed is reading it back through the reader's.
+
+## A station's fix rate grades the code it is called on
+
+Asked on 2026-09-17. `q fixes` puts `simplify` at the top of the table — 28 of 59 files drew a later `fix:` commit, 47.5%, against 16.3% for `build` and 24.3% for files edited with no station attached. Read as a verdict on the station that is damning, and it is the wrong reading.
+
+Asking the same question in both directions settles it. For every file an agent edited, whether a `fix:` commit touched it in the seven days *before* that edit, and in the seven days *after*, counting only edits with a full seven days elapsed:
+
+| skill | files | % fixed in the 7 days before | % in the 7 days after |
+|---|---|---|---|
+| agents-md | 93 | 7.5 | 30.1 |
+| simplify | 39 | 33.3 | 25.6 |
+| (no skill) | 4031 | 13.6 | 15.7 |
+| spec | 72 | 6.9 | 15.3 |
+| build | 222 | 7.7 | 6.3 |
+| review | 106 | 4.7 | 4.7 |
+
+Files arrive at `simplify` already being fixed at four times the rate of files arriving at `build`, and they leave at a lower rate than they came in. Nothing here says the station makes code worse; it says it is pointed at code that was already churning, which is what a simplification station is for. The aiming is the part that works, and the record can do it deliberately rather than by intuition.
+
+What these numbers carry: one owner, about a month, and only commits with a `fix:` prefix, matched by path so repos sharing a name collide. Before and after are not independent — a file fixed last week is likelier to be fixed next week whatever happened in between — so the drop from 33.3 to 25.6 is not evidence of improvement either. A thirty-day window was tried first and leaves `simplify` under the twenty-file floor, because all of its use is recent; seven days is the widest window its own data supports, while `q fixes` counts a fix arriving at any later date, which is why its number is the larger one.
+
+The row that needs explaining is `agents-md`: four times more fixes after the edit than before, on the largest station sample here. That is the shape `simplify` was accused of, and nothing has looked at it.

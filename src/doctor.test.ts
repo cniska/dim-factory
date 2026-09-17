@@ -60,6 +60,12 @@ describe("doctor", () => {
     // Removing the setting must flip the check, or it is not holding anything.
     writeFileSync(join(claudeDir, "settings.json"), JSON.stringify({ cleanupPeriodDays: 3650 }));
     expect(check(env, "retention")?.state).toBe("ok");
+
+    // install-hooks writes into this file and keeps whatever comments it holds,
+    // so a reader that cannot take one would turn the check that guards the
+    // sources silent on a config dim itself made ordinary.
+    writeFileSync(join(claudeDir, "settings.json"), '{\n  // kept forever\n  "cleanupPeriodDays": 3650\n}\n');
+    expect(check(env, "retention")?.state).toBe("ok");
   });
 
   test("warns until one commit gate covers every repo", () => {
@@ -161,8 +167,6 @@ describe("doctor", () => {
     expect(check(env, "codex trust")?.state).toBe("fail");
   });
 
-  // The command exists to say what is broken, so a file it cannot read is a
-  // failing check and never the reason the rest go unreported.
   test("reports an unreadable codex config as one failure, keeping the other checks", () => {
     const env = seeded();
     const config = codexConfigPath(env);
@@ -173,13 +177,31 @@ describe("doctor", () => {
     const db = openReadOnly(dbPath(env));
     try {
       const checks = diagnose(db, env);
-      const trust = checks.find((c) => c.name === "codex trust");
-      expect(trust?.state).toBe("fail");
-      expect(trust?.detail).toContain("could not be read");
+      const by = (name: string) => checks.find((c) => c.name === name);
+      expect(by("codex trust")?.state).toBe("fail");
+      // The same file feeds both, so a hooks check reading "ok" here would say
+      // collection is wired up while the file deciding that is unreadable.
+      expect(by("hooks")?.state).toBe("fail");
+      expect(by("end reasons")?.detail).toContain("not judged");
       expect(checks.map((c) => c.name)).toContain("schema");
     } finally {
       db.close();
     }
+  });
+
+  // An empty set of trusted keys reads as "approve your hooks in Codex", which
+  // is the wrong instruction when the file holding them is what is broken.
+  test("reports an unparseable codex config.toml rather than reading it as no trust", () => {
+    const env = seeded();
+    const config = codexConfigPath(env);
+    mkdirSync(dirname(config), { recursive: true });
+    installHooks(env);
+    writeFileSync(config, "= 1\n");
+
+    const trust = check(env, "codex trust");
+    expect(trust?.state).toBe("fail");
+    expect(trust?.detail).toContain(config);
+    expect(trust?.detail).not.toContain("trusted_hash");
   });
 
   test("reports every check with something a reader can act on", () => {

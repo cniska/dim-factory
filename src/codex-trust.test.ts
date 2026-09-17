@@ -3,8 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { planCodexTrust } from "./codex-trust";
+import { ConfigError } from "./config-error";
 import { hookCommand } from "./hooks";
-import { JsoncError } from "./jsonc";
 import type { Env } from "./paths";
 
 const roots: string[] = [];
@@ -44,6 +44,6 @@ describe("reading the codex hooks a trust key points at", () => {
   // approve a hook in Codex, which is not what is wrong with it.
   test("raises the parse failure rather than reporting every hook untrusted", () => {
     const env = codexEnv(() => '{ "hooks": ');
-    expect(() => planCodexTrust(env)).toThrow(JsoncError);
+    expect(() => planCodexTrust(env)).toThrow(ConfigError);
   });
 });
