@@ -1,6 +1,6 @@
 ---
 name: dim-build
-description: Run the slice loop — the repo's own check, a checking agent on the diff, then the commit, one slice at a time. Invoked by dim-feat and dim-fix after their own first phase; use directly only for a change that is neither.
+description: Run the slice loop — the repo's own check, a simplification pass, a checking agent on the diff, then the commit, one slice at a time. Invoked by dim-feat and dim-fix after their own first phase; use directly only for a change that is neither.
 argument-hint: "<what to build>"
 ---
 
@@ -32,9 +32,21 @@ Commit in the same order: task passes, then commit, then the next slice.
 
 Where a slice turns out to be blocked, finish every other slice in full and say plainly what was left and why. Scaling the work down is the owner's call.
 
+## Simplify the slice before it is checked
+
+The slice that just went green is the code most recently written and least read, so it needs no aiming. Nothing ever asks for simplification, and a pass that has to be remembered is a pass that does not happen — which is why it runs here rather than waiting to be invoked.
+
+Read the slice's own diff and nothing else. Scope is the cut: a file the slice did not touch is a separate change, and reaching for one is how a slice turns into a branch with a long diff.
+
+What earns an edit is a reader's cost — a name that has to be held in the head, a nesting level that carries no case, a block written twice, an abstraction with one caller. What does not is taste: shorter is not simpler, and a line that reads plainly stays.
+
+**Behavior is preserved exactly, and the test for that is mechanical: the repo's task passes again with no test file touched.** A test edited to accommodate a simplification means the behavior moved, which makes it a different change and not this one. Run the task after this pass, before the checker, or the checker judges code that is about to change.
+
+**Run the pass again only if the last one changed something.** One simplification exposes another — a wrapper inlined reveals the two blocks it was hiding — and a pass that edits nothing has found the fixpoint, which is the expected result on a slice that was already plain. Judging for yourself whether anything remains is not the test; asked that, there is always something. What stops it circling is that a pass may not undo an edit an earlier pass made to this slice, since inlining what was just extracted terminates nothing. There is no round limit, because a number picked here is a constant no test can prove.
+
 ## Check the slice before the next one
 
-Between the task passing and the commit, hand the slice's diff to one agent working from a fixed brief. This is not the fan-out the top of this file argues against: that objection is about delegating the edits, which need the context that produced them. A checker returns findings and keeps nothing, which is the trade [`dim-review`](../dim-review/SKILL.md) makes and the one the corpus measured as costing nothing.
+Between the simplification pass and the commit, hand the slice's diff to one agent working from a fixed brief. This is not the fan-out the top of this file argues against: that objection is about delegating the edits, which need the context that produced them. A checker returns findings and keeps nothing, which is the trade [`dim-review`](../dim-review/SKILL.md) makes and the one the corpus measured as costing nothing.
 
 Bounded means a fixed brief, not "review this". It also means the checker is told what to look for: hand it the conventions actually in force — the `CLAUDE.md` and `AGENTS.md` on the walk into this session, imports included — because the rules it is checking against are written down and a checker left to invent them checks its own taste. Give it the diff of this slice alone, what the slice claims to do, and these four questions:
 
@@ -52,6 +64,7 @@ Act on what it returns or say why not, then commit. Returning nothing is the exp
 The change is done when:
 
 - the repo's own task passes, and its output was read rather than assumed
+- the last simplification pass on each slice changed nothing, and no test file was touched to let one through
 - every invariant claimed has a test that fails when the invariant is removed — delete the check, watch it go red, put it back
 - the docs that describe the changed behavior changed in the same commit
 - anything left out is named, with the reason

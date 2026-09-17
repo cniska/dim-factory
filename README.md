@@ -90,7 +90,7 @@ Two stations are front doors and the rest are invoked:
 
 - **`dim-feat`** — scopes new work against prior art and cuts it into slices. It invokes `dim-plan` where the cut is not obvious, which gathers what the record holds and hands the planning to a more capable model.
 - **`dim-fix`** — triages a defect and proves it with a failing test.
-- **`dim-build`** — the slice loop both front doors hand to: the repo's own check, a checking agent on each diff, then the commit.
+- **`dim-build`** — the slice loop both front doors hand to: the repo's own check, a simplification pass over the slice until one changes nothing, a checking agent on the diff, then the commit.
 - **`dim-review`** — stands on its own, running one agent per dimension against work you did not write. It is the one station the record shows used far more often without a build than with one.
 
 Adding a station is a directory under `skills/` and a name in `SKILL_NAMES`; a station retired from that list has its link removed on the next install, so a name never resolves to nothing.
