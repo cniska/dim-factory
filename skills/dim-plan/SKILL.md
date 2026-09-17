@@ -28,6 +28,19 @@ The four answers are gathering, not planning. Pass them, with the task and the c
 
 Ask the owner only when the choice is genuinely theirs, which is narrower than it feels. It is theirs when the work is hard to reverse, when it is outward-facing, or when it spends something that lands on every session rather than this one. Everything else — which of two shapes, what to name it, what order to slice it in — is settled here and stated, not asked. A question that a query could have answered is a question that should have been a query.
 
+## Check the plan before acting on it
+
+A plan is cheaper to fix than the code written from it, so it gets the same treatment a slice gets in [`dim-build`](../dim-build/SKILL.md): one agent, working from a fixed brief, and not the agent that wrote the plan. Give it the plan and what the four queries returned — not the reasoning that got there, or what comes back is agreement.
+
+The brief is these questions:
+
+- is every slice a cut that can be verified on its own, or does one of them only make sense once a later slice lands
+- does each slice name the repo's own task as its check, rather than a command assembled by hand
+- does the plan say what the record returned and what that removed, or does it read as though nothing was looked up
+- does anything here ask the owner a question one of the four queries could have answered
+
+Returning nothing is the expected result. A checker earns trust the way a test does — plant a defect once, watch it be caught, take it out.
+
 ## Exit check
 
 The plan is done when it names:
