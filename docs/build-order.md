@@ -51,6 +51,3 @@ Not waiting on anything, and not queued. [`landscape.md`](landscape.md) records 
 
 The portability gap the watcher would have closed stands on its own: `install-agent` writes a launchd plist, so the scheduled sync is macOS-only.
 
-## One step that is not build work
-
-Scratch-tree commits ingested before the rule existed are still in the database; the rule only stops new ones ([`design.md`](design.md)). They leave on the next `dim rebuild`, and the next `dim embed` then drops their vectors, because the index is a projection of its sources.
