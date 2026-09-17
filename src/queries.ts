@@ -673,7 +673,13 @@ const asPhrases = (terms: string): string =>
     .map((t) => `"${t.replaceAll('"', '""')}"`)
     .join(" ");
 
-/** What answers when the distilled index cannot: every message, but only the words actually typed. */
+/**
+ * What answers when the distilled index cannot: every message anyone said, but
+ * only the words actually typed. Injected meta is left out because the same
+ * reminder arrives in session after session, so a term inside one matches once
+ * per session that got it and says nothing about any of them. Skill bodies need
+ * no condition of their own: the parser drops their text, and each is meta too.
+ */
 function keywordSearch(db: Database, ctx: QueryContext, terms: string, why: string): QueryResult {
   const columns = ["session", "when", "role", "project", "text"];
   const w = window("m.ts", ctx);
@@ -685,22 +691,23 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string, why: stri
      FROM message_fts
      JOIN message m ON m.rowid = message_fts.rowid
      JOIN session s ON s.id = m.session_id
-     WHERE message_fts MATCH ?${w.sql}
+     WHERE message_fts MATCH ? AND m.is_meta = 0${w.sql}
      ORDER BY m.ts DESC LIMIT 40`,
     [homeOf(ctx), asPhrases(terms), ...w.params],
   );
-  const indexed = scalar(db, "SELECT count(*) AS n FROM message WHERE text IS NOT NULL");
+  const said = scalar(db, "SELECT count(*) AS n FROM message WHERE text IS NOT NULL AND is_meta = 0");
   const all = scalar(db, "SELECT count(*) AS n FROM message");
   return {
     path: "keyword",
     denominator:
-      `keywords over ${indexed} of ${all} messages that carry text (${windowLine(ctx)}); newest 40 shown. ` +
-      `Meaning was not ranked: ${why}`,
+      `keywords over ${said} of ${all} messages that carry text anyone said (${windowLine(ctx)}); ` +
+      `newest 40 shown. Meaning was not ranked: ${why}`,
     columns,
     rows: toRows(records, columns),
     note:
       records.length === 0
-        ? `nothing matches ${terms}; a message with no text is a tool call or its result, which this index does not hold`
+        ? `nothing matches ${terms}; a message with no text is a tool call or its result, and injected ` +
+          `text is nothing anyone said, so neither is searched`
         : undefined,
   };
 }

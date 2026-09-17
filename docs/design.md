@@ -377,7 +377,7 @@ Three things follow from it being a projection rather than a second archive:
 
 - `dim embed` drops a row whose source is gone, and the table carries no foreign key, because `rebuild` empties `message` and drops `repo_commit` before writing the same ids back.
 - `text` is stored beside the vector, because a vector means nothing except against the exact string the model was given, and a `Next` is a slice of a larger message that exists nowhere else.
-- Where nothing is embedded, the model will not load, or the database predates the table, `search` answers from `message_fts` and says so in its denominator. A retrieval path that can break is one nobody relies on.
+- Where nothing is embedded, the model will not load, or the database predates the table, `search` answers from `message_fts` and says so in its denominator. A retrieval path that can break is one nobody relies on. It searches what anyone said, so injected meta is excluded from it as `thread` excludes it: the same reminder arrives in session after session, and a term inside one would otherwise match once per session that got it. Skill bodies need no condition, because the parser drops their text and each is meta as well.
 
 What it does not hold is raw conversation turns, which are the measured-worse input. Whether adding them helps is for a benchmark, not an assumption.
 
