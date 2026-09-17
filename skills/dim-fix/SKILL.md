@@ -36,6 +36,8 @@ Hand off to [`dim-build`](../dim-build/SKILL.md) and follow it: the repo's own t
 
 Fix the cause. Where the cause is out of reach, stop and say what the real options are rather than patching the patch — a band-aid is how the next fix commit to this file gets written.
 
+Where the fix ran to more than one slice, invoke [`dim-review`](../dim-review/SKILL.md) over the range they span before calling it done: each slice was checked against its own diff, and nothing has yet read them together. One slice needs none — that is the checking agent's job run twice.
+
 ## Exit check
 
 The fix is done when:
