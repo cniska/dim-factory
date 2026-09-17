@@ -6,6 +6,7 @@ import { type GuidanceReport, ingestGuidance } from "./guidance";
 import { type HistoryReport, ingestHistory } from "./history";
 import { createIngester, type FileSpec } from "./ingest";
 import type { Env } from "./paths";
+import { indexRepoFiles, type RepoFileReport } from "./repo-files";
 import { SCHEMA_SQL } from "./schema";
 import { applyHookEvents, type DrainReport, drainSpool } from "./spool";
 
@@ -19,6 +20,7 @@ export type SyncReport = {
   hooks: DrainReport;
   history: HistoryReport;
   git: GitReport;
+  repoFiles: RepoFileReport;
   guidance: GuidanceReport;
 };
 
@@ -39,6 +41,7 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     hooks: drainSpool(db, env),
     history: { read: 0, orphans: 0 },
     git: { repos: 0, commits: 0, files: 0 },
+    repoFiles: { repos: 0, files: 0 },
     guidance: { files: 0, versions: 0 },
   };
 
@@ -83,7 +86,8 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
   report.history = ingestHistory(db, env);
   // Last, because which repos to read comes from the session rows just written.
   report.git = ingestCommits(db);
-  // After the commits, because the repos to read come from what they recorded.
+  // Both of these read the repos the commits just named, so neither scans a disk.
+  report.repoFiles = indexRepoFiles(db);
   report.guidance = ingestGuidance(db, env);
   return report;
 }
@@ -115,6 +119,7 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
     // a table that already exists.
     db.run("DROP TABLE IF EXISTS guidance_version");
     db.run("DROP TABLE IF EXISTS commit_file");
+    db.run("DROP TABLE IF EXISTS repo_file");
     db.run("DROP TABLE IF EXISTS repo_commit");
     db.run("DELETE FROM source_file");
     db.run(SCHEMA_SQL);

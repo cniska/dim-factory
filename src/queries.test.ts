@@ -9,6 +9,7 @@ import { dbPath, type Env } from "./paths";
 import { findQuery, QUERIES, WITHOUT_WORKTREE } from "./queries";
 import { NoDatabaseError, openReadOnly } from "./read-db";
 import { renderTable } from "./render";
+import { SCHEMA_SQL } from "./schema";
 import { sync } from "./sync";
 
 const SESSION = "11111111-2222-3333-4444-555555555555";
@@ -126,6 +127,57 @@ describe("read path", () => {
       // in the corpus would be rewritten by this.
       expect(one("/h/code/apps/docs/x.md")).toBe("/h/code/apps/docs/x.md");
       expect(one("/h/code/apps/.claude/settings.json")).toBe("/h/code/apps/.claude/settings.json");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("prior-art ranks by recency, caps one repo, and folds its worktrees together", () => {
+    const db = new Database(":memory:");
+    try {
+      db.run(SCHEMA_SQL);
+      const repo = (n: string) => `/h/code/${n}`;
+      const addFile = (r: string, p: string) =>
+        db.run("INSERT INTO repo_file (repo, path) VALUES (?, ?)", [repo(r), `${repo(r)}/${p}`]);
+      const addCommit = (sha: string, r: string, p: string, ts: string) => {
+        db.run(
+          "INSERT OR IGNORE INTO repo_commit (sha, repo, label, ts, author, subject) VALUES (?, ?, ?, ?, 'a', 's')",
+          [sha, repo(r), `owner/${r}`, ts],
+        );
+        db.run("INSERT INTO commit_file (sha, path) VALUES (?, ?)", [sha, `${repo(r)}/${p}`]);
+      };
+
+      addFile("one", ".github/workflows/ci.yml");
+      addCommit("s1", "one", ".github/workflows/ci.yml", "2026-09-10T00:00:00Z");
+      // The same file reached through a worktree: one file, so one row.
+      addFile("one", ".claude/worktrees/wt/.github/workflows/ci.yml");
+      addCommit("s2", "one", ".claude/worktrees/wt/.github/workflows/ci.yml", "2026-09-11T00:00:00Z");
+
+      for (const n of ["a", "b", "c", "d"]) {
+        addFile("two", `.github/workflows/${n}.yml`);
+        addCommit(`t${n}`, "two", `.github/workflows/${n}.yml`, "2026-09-01T00:00:00Z");
+      }
+
+      const result = findQuery("prior-art")?.run(db, { arg: ".github/workflows", home: "/h" });
+      const files = result?.rows.map((r) => r[0]);
+      expect(files?.[0]).toBe("code/one/.github/workflows/ci.yml");
+      expect(files?.filter((f) => String(f).includes("/two/"))).toHaveLength(3);
+      expect(files?.some((f) => String(f).includes("worktrees"))).toBe(false);
+      // Both checkouts' commits count toward the one file they are.
+      expect(result?.rows[0]?.[2]).toBe(2);
+      expect(result?.denominator).toContain("6 tracked files");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("prior-art asks for a path rather than answering over everything", () => {
+    const db = new Database(":memory:");
+    try {
+      db.run(SCHEMA_SQL);
+      const result = findQuery("prior-art")?.run(db, {});
+      expect(result?.rows).toEqual([]);
+      expect(result?.note).toContain("name part of a path");
     } finally {
       db.close();
     }

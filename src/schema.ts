@@ -2,7 +2,7 @@
 // by re-reading them, so a schema change is `dim rebuild`, not a migration.
 // SCHEMA_VERSION exists only so sync can refuse to run against an older shape.
 
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -239,6 +239,17 @@ CREATE TABLE IF NOT EXISTS commit_file (
   PRIMARY KEY (sha, path)
 );
 CREATE INDEX IF NOT EXISTS commit_file_path ON commit_file(path);
+
+-- What each repo tracks right now, replaced whole on every sync. commit_file
+-- answers what a repo once held: a rename is a delete and an add there, and a
+-- file deleted years ago still has its rows. A reader looking for how a problem
+-- was solved before needs a path that opens, which is this table.
+CREATE TABLE IF NOT EXISTS repo_file (
+  repo            TEXT NOT NULL,        -- git toplevel, as in repo_commit
+  path            TEXT NOT NULL,        -- absolute, as in commit_file
+  PRIMARY KEY (repo, path)
+);
+CREATE INDEX IF NOT EXISTS repo_file_path ON repo_file(path);
 
 -- Which version of a rules file was in force when a session ran. Skills carry a
 -- body hash on every load; AGENTS.md and CLAUDE.md are loaded in every session and
