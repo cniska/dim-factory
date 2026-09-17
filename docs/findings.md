@@ -334,3 +334,11 @@ Files arrive at `simplify` already being fixed at four times the rate of files a
 What these numbers carry: one owner, about a month, and only commits with a `fix:` prefix, matched by path so repos sharing a name collide. Before and after are not independent — a file fixed last week is likelier to be fixed next week whatever happened in between — so the drop from 33.3 to 25.6 is not evidence of improvement either. A thirty-day window was tried first and leaves `simplify` under the twenty-file floor, because all of its use is recent; seven days is the widest window its own data supports, while `q fixes` counts a fix arriving at any later date, which is why its number is the larger one.
 
 The row that needs explaining is `agents-md`: four times more fixes after the edit than before, on the largest station sample here. That is the shape `simplify` was accused of, and nothing has looked at it.
+
+## The keyword index carries text nobody said
+
+Measured on 2026-09-17, over the whole corpus. `message_fts` indexes every `message.text`, and 674 of the 1,631 rows flagged `is_meta` carry text — reminders the harness injects rather than anything a participant wrote. They repeat: the most common one is identical across 295 of the 1,031 sessions on this machine, so a term inside it matches hundreds of rows that are the same row.
+
+Skill bodies look like the larger problem and are not one. All 957 of them carry no text at all — the Claude parser drops the body it just recognized — and every one is flagged `is_meta` as well, so a condition naming `is_skill_body` selects nothing that `is_meta` had not already excluded. The size of a skill body is why it looks worth excluding; it was never in the index to exclude.
+
+What this carries: one machine's corpus, both tools, all of history. It says what the keyword path had to stop returning, not how often a search was spoiled by it — nothing counted that.

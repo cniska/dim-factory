@@ -57,6 +57,11 @@ function seeded(): Database {
     [HANDOFF],
   );
   db.run(
+    `INSERT INTO message (id, session_id, ts, role, text, src_file, src_line, is_meta)
+     VALUES ('m-meta', 's1', '2026-09-01T10:31:00Z', 'user', ?, '/f.jsonl', 2, 1)`,
+    ["Injected reminder about the checkout."],
+  );
+  db.run(
     `INSERT INTO repo_commit (sha, repo, label, ts, author, subject, kind)
      VALUES ('abc1230000', '/r', 'cniska/dim-factory', '2026-09-01T09:00:00Z', ?, ?, 'feat')`,
     [AUTHOR, SUBJECT],
@@ -118,6 +123,15 @@ describe("search degrades instead of failing", () => {
     const result = run(db, { arg: "checkout", question: await asked("checkout") });
     expect(result.rows.length).toBe(1);
     expect(String(result.rows[0]?.[0])).toBe("s1");
+    db.close();
+  });
+
+  test("keywords match what someone said, not text injected into the session", async () => {
+    const db = seeded();
+    const result = run(db, { arg: "checkout", question: await asked("checkout") });
+    expect(result.rows.map((r) => String(r[0]))).toEqual(["s1"]);
+    expect(String(result.rows[0]?.[4])).not.toContain("Injected");
+    expect(result.denominator).toContain("1 of 2 messages that carry text anyone said");
     db.close();
   });
 
