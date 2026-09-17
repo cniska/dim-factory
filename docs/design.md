@@ -321,6 +321,12 @@ Where they hold, the database gives the two arms and their locators and the eval
 - **`dim-plan`** gathers decisions already taken and whether an earlier conclusion still holds, then hands the planning to a more capable model.
 - **`dim-review`** runs one agent per dimension.
 
+A station for simplification belongs beside the two front doors rather than as a new shape: `dim-feat` adds behavior, `dim-fix` repairs it, and this one preserves it exactly while reducing what it costs to read. All three would hand to `dim-build`, and what differs is phase 1 — scoping, triage, and here the aiming, which is the half a portable skill cannot do ([`landscape.md`](landscape.md)).
+
+Two things make it unlike its siblings. A feature and a defect both arrive as demands, and nothing ever demands simplification; it is only ever noticed, so the station's trigger is the record rather than a person — the same gap [`recall.md`](recall.md) is about, one level up. And its invariant is the one a gate can hold: behavior preserved exactly means the tests pass unmodified, and a diff that edits a test beside the code it simplifies is a shape rather than a meaning. That rule belongs in a hook, where the other stations need a reading.
+
+What it must not buy is a check step justified by the claim that its changes do not hold, since files leave `simplify` at a lower fix rate than they arrived with ([`findings.md`](findings.md)).
+
 They live here rather than in the skills repo because they are useless without `dim` on PATH. A symlink rather than a copy, so an edit is live with no reinstall and no second copy to drift; anything already at the name is moved aside rather than removed, and a link left by a station that no longer ships is removed, so a name never resolves to nothing.
 
 Each station carries the section a query result cannot: what the database does not hold, so an absence is reported as a gap rather than as a finding.
