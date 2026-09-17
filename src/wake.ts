@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { handoffNext } from "./handoff";
-import { checkTask, declaredTasks, formatTask } from "./tasks";
+import { checkTask, formatTask } from "./tasks";
 
 /**
  * Claude Code adds a SessionStart hook's plain-text stdout to the session as
@@ -68,14 +68,14 @@ export function wireFor(tool: "claude" | "codex", block: string): string {
 }
 
 /**
- * A session often starts in a subdirectory, where the manifest is a level or
- * more up. The walk stops at the checkout root rather than climbing out of it,
- * so a repo that declares nothing cannot inherit its neighbour's commands.
+ * A session often starts in a subdirectory, so the checkout it belongs to is
+ * found by climbing. Nothing outside a checkout is a repo this line may speak
+ * for: a walk that runs past the last `.git` reaches the home directory, where
+ * any stray manifest would be read as what "this repo declares".
  */
-function nearestDeclaring(dir: string): string | null {
+function checkoutRoot(dir: string): string | null {
   for (let at = resolve(dir), prev = ""; at !== prev; prev = at, at = dirname(at)) {
-    if (declaredTasks(at).length > 0) return at;
-    if (existsSync(join(at, ".git"))) return null;
+    if (existsSync(join(at, ".git"))) return at;
   }
   return null;
 }
@@ -88,7 +88,7 @@ function nearestDeclaring(dir: string): string | null {
  * the tool underneath the script.
  */
 export function projectLine(dir: string): string {
-  const repo = nearestDeclaring(dir);
+  const repo = checkoutRoot(dir);
   if (repo === null) return "";
   const declared: string[] = [];
   const check = checkTask(repo);
