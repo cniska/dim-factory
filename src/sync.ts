@@ -119,6 +119,7 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
     // a table that already exists.
     db.run("DROP TABLE IF EXISTS guidance_version");
     db.run("DROP TABLE IF EXISTS commit_file");
+    db.run("DROP TABLE IF EXISTS git_command");
     db.run("DROP TABLE IF EXISTS repo_file");
     db.run("DROP TABLE IF EXISTS repo_commit");
     db.run("DELETE FROM source_file");

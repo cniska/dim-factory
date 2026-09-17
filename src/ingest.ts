@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { statSync } from "node:fs";
 import { readChunk } from "./chunk";
+import { gitSubcommands } from "./git-command";
 import type { ParsedChunk, SessionFacts } from "./records";
 
 export type Tool = "claude" | "codex";
@@ -214,6 +215,11 @@ export function createIngester(db: Database) {
        extra             = coalesce(excluded.extra, tool_call.extra)`,
   );
 
+  const clearGitCommands = db.prepare("DELETE FROM git_command WHERE tool_call_id = ?");
+  const insertGitCommand = db.prepare(
+    "INSERT INTO git_command (tool_call_id, position, subcommand) VALUES (?, ?, ?)",
+  );
+
   const insertSkillLoad = db.prepare(
     `INSERT INTO skill_load (session_id, message_id, ts, model, skill_name, how,
        body_chars, body_sha256, skill_path)
@@ -356,6 +362,18 @@ export function createIngester(db: Database) {
         $srcLineResult: t.srcLineResult ?? null,
         $extra: t.extra ?? null,
       });
+
+      // Derived from the command rather than collected, so it is rewritten from
+      // scratch each time the row is seen: a call and its result arrive as two
+      // records and only one of them carries the command.
+      if (t.command) {
+        clearGitCommands.run(t.id);
+        let position = 0;
+        for (const subcommand of gitSubcommands(t.command)) {
+          insertGitCommand.run(t.id, position, subcommand);
+          position += 1;
+        }
+      }
     }
 
     for (const l of parsed.skillLoads) {

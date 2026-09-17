@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { withoutWorktree } from "./worktree";
 
 export type QueryResult = {
   /** Printed above the rows, so a number is never read without its base. */
@@ -1056,17 +1057,6 @@ const running: Query = {
  * generated changelog with a thousand commits cannot outrank written code.
  * A nomination, never a verdict — the label has to come from a reader.
  */
-/**
- * A worktree is a second checkout of the same repo, so `<repo>/.claude/worktrees/<name>/x`
- * and `<repo>/x` are one file. Collapsing them keeps a file from competing with itself.
- */
-export const WITHOUT_WORKTREE = (col: string) => `CASE
-  WHEN instr(${col}, '/.claude/worktrees/') > 0 THEN
-    substr(${col}, 1, instr(${col}, '/.claude/worktrees/') - 1) ||
-    substr(substr(${col}, instr(${col}, '/.claude/worktrees/') + 19),
-           instr(substr(${col}, instr(${col}, '/.claude/worktrees/') + 19), '/'))
-  ELSE ${col} END`;
-
 const exemplars: Query = {
   name: "exemplars",
   summary: "code an agent wrote that shipped and no fix came back to — candidates, not verdicts",
@@ -1076,7 +1066,7 @@ const exemplars: Query = {
     const records = table(
       db,
       `WITH edited AS (
-         SELECT ${WITHOUT_WORKTREE("t.file_path")} AS path, coalesce(t.attribution_skill, '(no skill)') AS skill,
+         SELECT ${withoutWorktree("t.file_path")} AS path, coalesce(t.attribution_skill, '(no skill)') AS skill,
                 count(*) AS edits, max(t.ts_call) AS last_edit
          FROM tool_call t
          WHERE t.tool_name IN ('Edit','Write') AND t.file_path IS NOT NULL
@@ -1084,7 +1074,7 @@ const exemplars: Query = {
          GROUP BY path
        ),
        committed AS (
-         SELECT ${WITHOUT_WORKTREE("f.path")} AS path, coalesce(c.label, '(no remote)') AS repo,
+         SELECT ${withoutWorktree("f.path")} AS path, coalesce(c.label, '(no remote)') AS repo,
                 c.ts AS ts, c.kind AS kind
          FROM commit_file f JOIN repo_commit c ON c.sha = f.sha
        ),
@@ -1470,7 +1460,7 @@ const priorArt: Query = {
     const records = table(
       db,
       `WITH matched AS (
-         SELECT ${WITHOUT_WORKTREE("f.path")} AS path, f.path AS real_path, f.repo AS repo
+         SELECT ${withoutWorktree("f.path")} AS path, f.path AS real_path, f.repo AS repo
          FROM repo_file f
          WHERE f.path LIKE '%' || ? || '%'
        ),

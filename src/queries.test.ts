@@ -6,11 +6,12 @@ import { join } from "node:path";
 import { closeDb, openDb } from "./db";
 import { scratchEnv, writeClaudeTranscript, writeCodexRollout } from "./fixtures.test-support";
 import { dbPath, type Env } from "./paths";
-import { findQuery, QUERIES, WITHOUT_WORKTREE } from "./queries";
+import { findQuery, QUERIES } from "./queries";
 import { NoDatabaseError, openReadOnly } from "./read-db";
 import { renderTable } from "./render";
 import { SCHEMA_SQL } from "./schema";
 import { sync } from "./sync";
+import { withoutWorktree } from "./worktree";
 
 const SESSION = "11111111-2222-3333-4444-555555555555";
 const THREAD = "01a0a651-086e-7150-8650-cef0f4025a58";
@@ -118,7 +119,7 @@ describe("read path", () => {
   test("a worktree checkout collapses onto the file it is a copy of", () => {
     const db = new Database(":memory:");
     try {
-      const expr = WITHOUT_WORKTREE("p");
+      const expr = withoutWorktree("p");
       const one = (p: string) =>
         (db.query(`SELECT ${expr} AS out FROM (SELECT ? AS p)`).get(p) as { out: string }).out;
 

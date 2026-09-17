@@ -2,7 +2,7 @@
 // by re-reading them, so a schema change is `dim rebuild`, not a migration.
 // SCHEMA_VERSION exists only so sync can refuse to run against an older shape.
 
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -182,6 +182,19 @@ CREATE TABLE IF NOT EXISTS tool_call (
 CREATE INDEX IF NOT EXISTS tool_call_session ON tool_call(session_id, ts_call);
 CREATE INDEX IF NOT EXISTS tool_call_name ON tool_call(tool_name);
 CREATE INDEX IF NOT EXISTS tool_call_file ON tool_call(file_path);
+
+-- The git a session actually ran, read from the command line. One shell call
+-- runs several often enough that this is a row per operation rather than a
+-- column: "git add -A && git commit" is one tool_call and two operations.
+-- tool_call.git_operation is the tool's own metadata beside this, and covers
+-- push, branch and PR only, on Claude alone.
+CREATE TABLE IF NOT EXISTS git_command (
+  tool_call_id    TEXT NOT NULL REFERENCES tool_call(id) ON DELETE CASCADE,
+  position        INTEGER NOT NULL,     -- order within the one shell command
+  subcommand      TEXT NOT NULL,
+  PRIMARY KEY (tool_call_id, position)
+);
+CREATE INDEX IF NOT EXISTS git_command_sub ON git_command(subcommand);
 
 -- Every time a skill's body entered the context window. The body itself is not
 -- stored, only its size and hash: it is recoverable from the source file by
