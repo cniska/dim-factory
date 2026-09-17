@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { nextSection } from "./handoff";
@@ -96,6 +96,7 @@ describe("the wake block", () => {
   test("carries what the repo declares, with or without a Next to carry", () => {
     const repo = mkdtempSync(join(tmpdir(), "dim-wake-"));
     try {
+      mkdirSync(join(repo, ".git"));
       writeFileSync(
         join(repo, "package.json"),
         JSON.stringify({ scripts: { verify: "bun test", format: "biome format", lint: "biome lint" } }),
@@ -116,9 +117,58 @@ describe("the wake block", () => {
     }
   });
 
+  // The line speaks for the repo, so it reads the repo's own manifest. A
+  // subdirectory that happens to hold one is not the repo declaring anything.
+  test("reads the checkout root's manifest, not the nearest one", () => {
+    const repo = mkdtempSync(join(tmpdir(), "dim-wake-"));
+    try {
+      mkdirSync(join(repo, ".git"));
+      writeFileSync(join(repo, "package.json"), JSON.stringify({ scripts: { verify: "bun test" } }));
+      writeFileSync(join(repo, "bun.lock"), "");
+      mkdirSync(join(repo, "docs"));
+      writeFileSync(join(repo, "docs", "Makefile"), "test:\n\techo hi\n");
+
+      expect(projectLine(join(repo, "docs"))).toContain("check `bun run verify`");
+      expect(projectLine(join(repo, "docs"))).not.toContain("make test");
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  // `dim wt` makes worktrees, where `.git` is a file holding a gitdir line
+  // rather than a directory, so a session starting in one is routine here.
+  test("reads the root of a worktree, where .git is a file", () => {
+    const repo = mkdtempSync(join(tmpdir(), "dim-wake-"));
+    try {
+      writeFileSync(join(repo, ".git"), "gitdir: /elsewhere/.git/worktrees/wt\n");
+      writeFileSync(join(repo, "package.json"), JSON.stringify({ scripts: { verify: "bun test" } }));
+      writeFileSync(join(repo, "bun.lock"), "");
+      mkdirSync(join(repo, "src"));
+
+      expect(projectLine(join(repo, "src"))).toContain("check `bun run verify`");
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  // Outside a checkout there is no repo to speak for, and the walk would
+  // otherwise climb to the filesystem root and report a stranger's Makefile.
+  test("says nothing when the session is not inside a checkout", () => {
+    const root = mkdtempSync(join(tmpdir(), "dim-wake-"));
+    try {
+      writeFileSync(join(root, "Makefile"), "test:\n\techo hi\n");
+      mkdirSync(join(root, "sub"));
+
+      expect(projectLine(join(root, "sub"))).toBe("");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("says nothing about a repo that declares nothing", () => {
     const repo = mkdtempSync(join(tmpdir(), "dim-wake-"));
     try {
+      mkdirSync(join(repo, ".git"));
       expect(projectLine(repo)).toBe("");
       expect(renderWake(null, repo)).toBe("");
     } finally {
