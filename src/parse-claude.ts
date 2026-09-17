@@ -134,6 +134,7 @@ export function parseClaudeChunk(
   const costs: CostRow[] = [];
   const toolCalls: ToolCallRow[] = [];
   const skillLoads: SkillLoadRow[] = [];
+  const dropped: number[] = [];
 
   for (const [index, raw] of lines.entries()) {
     if (raw.length === 0) continue;
@@ -144,7 +145,9 @@ export function parseClaudeChunk(
       // A half-written line at the end of a live file never reaches here:
       // readChunk stops at the last newline. What does is a complete line that
       // is not JSON, and the cursor advances past it, so it is read once and
-      // lost. Dropping it is the only option that does not stall collection.
+      // lost. Dropping it is the only option that does not stall collection,
+      // and reporting it is what keeps the loss from being silent.
+      dropped.push(firstLineNumber + index);
       continue;
     }
     const srcLine = firstLineNumber + index;
@@ -343,5 +346,5 @@ export function parseClaudeChunk(
     }
   }
 
-  return { session, messages, usage, turns, costs, toolCalls, skillLoads };
+  return { session, messages, usage, turns, costs, toolCalls, skillLoads, dropped };
 }

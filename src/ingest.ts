@@ -19,7 +19,14 @@ export type FileSpec = {
   parse: (lines: string[], firstLineNumber: number, state: string | null) => ParsedChunk;
 };
 
-export type FileResult = { read: boolean; bytes: number; lines: number; reset: boolean };
+export type FileResult = {
+  read: boolean;
+  bytes: number;
+  lines: number;
+  reset: boolean;
+  /** Source line numbers the parser could not read; see ParsedChunk.dropped. */
+  dropped: number[];
+};
 
 // Repeated verbatim in text_chars so the stored length always matches the text.
 const MERGED_TEXT = `CASE
@@ -434,17 +441,24 @@ export function createIngester(db: Database) {
       state = null;
       reset = true;
     }
-    if (stat.size === cursor) return { read: false, bytes: 0, lines: 0, reset };
+    const nothing = { read: false, bytes: 0, lines: 0, reset, dropped: [] };
+    if (stat.size === cursor) return nothing;
 
     const chunk = readChunk(spec.path, cursor);
-    if (chunk.bytes === 0) return { read: false, bytes: 0, lines: 0, reset };
+    if (chunk.bytes === 0) return nothing;
 
     const parsed = spec.parse(chunk.lines, lines + 1, state);
     db.transaction(() => {
       applyChunk(spec, parsed, cursor + chunk.bytes, lines + chunk.lines.length, mtime);
     })();
 
-    return { read: true, bytes: chunk.bytes, lines: chunk.lines.length, reset };
+    return {
+      read: true,
+      bytes: chunk.bytes,
+      lines: chunk.lines.length,
+      reset,
+      dropped: parsed.dropped,
+    };
   }
 
   return { ingestFile, resetSession };

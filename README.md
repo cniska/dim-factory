@@ -46,6 +46,8 @@ Every query prints the base its numbers came from, and a query with nothing to r
 
 The database lands in `~/.local/share/dim-factory/sessions.db`. Reading the whole corpus from scratch takes about 20 seconds.
 
+`sync` reads past a complete line that is not JSON rather than refusing the file, which is what stops one corrupt record from stalling collection. The cursor advances over it, so that sync is the only one that can ever name it: it prints the file and the line number to stderr, and the launchd agent's `sync.log` is where that lands. `dim rebuild` reads the file from the start and reports it again.
+
 Claude Code deletes transcripts after 30 days unless told otherwise, so `~/.claude/settings.json` sets `"cleanupPeriodDays": 3650`. Without it the sources this points into disappear.
 
 `dim doctor` checks the paths that fail silently: retention unset, hooks installed but never firing, a launchd agent written but never loaded, a spool nothing drains, a commit gate covering no repo, a database built by an older schema. It reads only, exits non-zero when a check fails, and every failure names its fix.

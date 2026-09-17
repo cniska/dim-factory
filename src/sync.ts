@@ -18,6 +18,8 @@ export type SyncReport = {
   filesRead: number;
   orphanSubagents: string[];
   failures: { path: string; error: string }[];
+  /** Files with complete lines that were not JSON, and which line each was on. */
+  dropped: { path: string; lines: number[] }[];
   hooks: DrainReport;
   history: HistoryReport;
   git: GitReport;
@@ -40,6 +42,7 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     filesRead: 0,
     orphanSubagents: [],
     failures: [],
+    dropped: [],
     hooks: drainSpool(db, env),
     history: { read: 0, orphans: 0 },
     git: { repos: 0, commits: 0, files: 0 },
@@ -50,7 +53,9 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
 
   const run = (spec: FileSpec): void => {
     try {
-      if (ingester.ingestFile(spec).read) report.filesRead += 1;
+      const result = ingester.ingestFile(spec);
+      if (result.read) report.filesRead += 1;
+      if (result.dropped.length > 0) report.dropped.push({ path: spec.path, lines: result.dropped });
     } catch (error) {
       report.failures.push({
         path: spec.path,

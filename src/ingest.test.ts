@@ -371,6 +371,30 @@ describe("ingest", () => {
     }
   });
 
+  // The file is read on past the bad line and the cursor advances over it, so
+  // the sync that read it is the only one that can ever name it.
+  test("reads past a line that is not JSON and names it in the report", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    const path = join(env.DIM_CLAUDE_PROJECTS as string, "-Users-x-code-demo", `${SESSION}.jsonl`);
+    const good = claudeTranscriptLines(SESSION).map((l) => JSON.stringify(l));
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${[good[0], "{ truncated", ...good.slice(1)].join("\n")}\n`);
+
+    const db = openDb(dbPath(env));
+    try {
+      const report = sync(db, env);
+      expect(report.dropped).toEqual([{ path, lines: [2] }]);
+      expect(report.failures).toEqual([]);
+      // Everything either side of the bad line still landed.
+      expect(db.prepare("SELECT count(*) AS n FROM message").get()).not.toEqual({ n: 0 });
+      // And a second sync re-reads nothing, so it reports the loss no further.
+      expect(sync(db, env).dropped).toEqual([]);
+    } finally {
+      closeDb(db);
+    }
+  });
+
   test("addresses a pre-August Codex message by thread and ordinal", () => {
     const root = newRoot();
     const env = scratchEnv(root);

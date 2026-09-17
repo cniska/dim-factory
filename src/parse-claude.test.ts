@@ -82,4 +82,17 @@ describe("parseClaudeChunk", () => {
   test("takes the session title from an ai-title line", () => {
     expect(parsed.session.some((s) => s.title === "Add the parser")).toBe(true);
   });
+
+  // The cursor advances past a line that is not JSON, so it is read once and
+  // lost. Reading on is the only option that does not stall collection on one
+  // corrupt record, which makes naming the line the whole of the report.
+  test("names the line number of a complete line that is not JSON", () => {
+    const corrupt = parseClaudeChunk([lines[0] as string, "{not json", lines[1] as string], 10);
+    expect(corrupt.dropped).toEqual([11]);
+    expect(corrupt.messages.length).toBeGreaterThan(0);
+  });
+
+  test("reports nothing dropped for a chunk that parsed whole", () => {
+    expect(parsed.dropped).toEqual([]);
+  });
 });
