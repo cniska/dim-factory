@@ -411,7 +411,13 @@ function benchCutoff(args: string[]): number {
   if (at === -1) return DEFAULT_CUTOFF;
   const given = args[at + 1];
   const k = Number(given);
-  if (!Number.isInteger(k) || k < 1) throw new Error(`--k takes a whole number above zero, not ${given}`);
+  if (!Number.isInteger(k) || k < 1) {
+    throw new Error(
+      given === undefined
+        ? "--k takes a whole number above zero"
+        : `--k takes a whole number above zero, not ${given}`,
+    );
+  }
   return k;
 }
 
@@ -433,15 +439,25 @@ async function runBenchCommand(args: string[]): Promise<void> {
     const scored = report.scores.length;
     console.log(
       renderTable({
-        // A query caps its own rows, so asking for a k above that cap measures
-        // the cap; `returned` per question is what says which happened.
         denominator:
           scored === 0
             ? `nothing of the ${questions.length} questions in the corpus could be scored`
             : `${scored} of ${questions.length} questions scored at k=${k}: ` +
-              `recall ${report.recall.toFixed(3)}, nDCG ${report.ndcg.toFixed(3)}`,
-        columns: ["question", "query", "returned", "recall", "ndcg"],
-        rows: report.scores.map((s) => [s.id, s.query, s.returned, s.recall.toFixed(3), s.ndcg.toFixed(3)]),
+              `recall ${report.recall.toFixed(3)}, nDCG ${report.ndcg.toFixed(3)}.` +
+              // A query caps its own rows, so a k above that cap measures the
+              // cap and the figure would carry a cutoff nothing reached.
+              (report.capped > 0
+                ? ` ${report.capped} of them returned fewer than ${k} rows, so their score is over what came back.`
+                : ""),
+        columns: ["question", "query", "returned", "graded", "recall", "ndcg"],
+        rows: report.scores.map((s) => [
+          s.id,
+          s.query,
+          s.returned,
+          s.graded,
+          s.recall.toFixed(3),
+          s.ndcg.toFixed(3),
+        ]),
         note: scored === 0 ? "every question is listed below with the reason" : undefined,
       }),
     );
@@ -451,6 +467,10 @@ async function runBenchCommand(args: string[]): Promise<void> {
   }
 }
 
+/**
+ * The backstop for the commit gate: a hook is skippable with `--no-verify` and
+ * absent on a fresh clone, so CI reads what actually landed.
+ */
 function runCheckCommits(range: string | undefined): void {
   if (!range) throw new Error("check-commits needs a revision range, e.g. main..HEAD");
   const offenses = checkRange(range);

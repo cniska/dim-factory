@@ -9,8 +9,7 @@ import { findQuery } from "./queries";
  *
  * The file sits beside the database rather than in this repo: a question that
  * measures anything names the owner's own work — a branch, a product, a pull
- * request — and this repo is public. What ships here is the format and the
- * runner; the labels are the reader's own.
+ * request — and this repo is public.
  */
 export type BenchQuestion = {
   id: string;

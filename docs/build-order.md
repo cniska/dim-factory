@@ -6,7 +6,7 @@ An item is listed here only while it needs a slice of its own. Anything fixable 
 
 ## The measurement comes before any ranking change
 
-`q search` ranks by cosine today and nothing says that beats the keyword index it replaced ([`findings.md`](findings.md)). Until something does, every tuning below is a preference, which is the rule [`recall.md`](recall.md) sets for itself.
+`q search` ranks by cosine, and `dim bench` now says how well: it answers roughly half the labeled questions and misses the rest outright ([`findings.md`](findings.md)). So a tuning below can be scored against that set rather than argued, which is the rule [`recall.md`](recall.md) sets for itself. What the set cannot yet say is whether cosine beats the keyword index it replaced, since only one of them is scored.
 
 The corpus-native half of the measurement is built: `dim bench` scores a hand-labeled `retrieval.jsonl` by recall@k and nDCG@k through the queries themselves, and reports a first number ([`findings.md`](findings.md)). What is left:
 
@@ -14,7 +14,7 @@ The corpus-native half of the measurement is built: `dim bench` scores a hand-la
 
 - **A corpus wider than one hand.** The labeled set is small and every question in it was written by one agent in one sitting, so it reports what that agent thought to ask. `handoff_link` pairs a handoff with the session that acted on it, which is a query and its known answer that nobody had to invent — drawing questions from there is what makes the set larger than an opinion.
 
-- **Questions that name a message.** `search` prints a session for a message hit, so a message is graded by its session and two graded passages in one session cannot be told apart; `bench` refuses such a question rather than scoring it wrong. Until that is settled the corpus can only grade commits, which is the half of the record least likely to hold a decision.
+- **Telling two passages in one session apart.** `search` prints a session for a message hit, so a message is graded by the session it sits in and two graded passages from one session cannot be separated; `bench` refuses such a question rather than scoring it wrong. A decision is usually one passage, not a whole session, so this is what stands between the corpus and the questions it most wants to ask.
 
 ## Waiting on that measurement
 

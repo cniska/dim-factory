@@ -20,6 +20,13 @@ describe("recall@k", () => {
   test("a row returned twice is counted once", () => {
     expect(recallAtK(["a", "a"], new Set(["a", "b"]), 2)).toBe(0.5);
   });
+
+  // A repeat still spends its position. Dropping it first would pull a row from
+  // below the cutoff into the window and score a miss as a hit.
+  test("a repeat does not make room for the row beneath the cutoff", () => {
+    expect(recallAtK(["x", "x", "a"], new Set(["a"]), 2)).toBe(0);
+    expect(recallAtK(["x", "x", "a"], new Set(["a"]), 3)).toBe(1);
+  });
 });
 
 describe("nDCG@k", () => {
@@ -76,6 +83,11 @@ describe("nDCG@k", () => {
   test("cannot exceed one when a row comes back more than once", () => {
     expect(ndcgAtK(["a", "a"], new Map([["a", 3]]), 2)).toBe(1);
     expect(ndcgAtK(["a", "a", "a", "a", "a"], new Map([["a", 3]]), 5)).toBe(1);
+  });
+
+  test("a repeat does not make room for the row beneath the cutoff", () => {
+    expect(ndcgAtK(["x", "x", "a"], new Map([["a", 3]]), 2)).toBe(0);
+    expect(ndcgAtK(["x", "x", "a"], new Map([["a", 3]]), 3)).toBeGreaterThan(0);
   });
 
   test("ranks a high grade above a low one at the same position", () => {
