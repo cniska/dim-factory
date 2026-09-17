@@ -22,7 +22,7 @@ An item is listed here only while it needs a slice of its own. Anything fixable 
 
 ## Waiting on `PostToolUse` being installed
 
-dim installs session hooks only, so anything reacting to a single tool call has no channel yet. The precedent that it installs cleanly is in [`landscape.md`](landscape.md).
+dim installs session hooks only, so anything reacting to a single tool call has no channel yet. Installing that event is the borrow [`landscape.md`](landscape.md) picks first, because it waits on nothing and these three wait on it.
 
 - **Running a formatter after an edit**, which is the half of the project tier dim can supply a command for but never run ([`recall.md`](recall.md)).
 - **Undoing an agent's writes** ([`worktrees.md`](worktrees.md)), which records that something changed and commits on a later pass.
@@ -40,7 +40,12 @@ dim installs session hooks only, so anything reacting to a single tool call has 
 
 - **Generating the machine-held half of the conventions** ([`conventions.md`](conventions.md)). The work is building gates and earning one cut each; nothing generates a block until there are gates to hold the rules.
 - **The routing tier** ([`evals-and-hooks.md`](evals-and-hooks.md)). Revisited only if telemetry shows misroutes that fixing by reading did not close.
-- **A watcher in place of the polling agent**, and **a third transcript format** ([`landscape.md`](landscape.md)). Both are real, neither blocks anything.
+
+## Decided against
+
+Not waiting on anything, and not queued. [`landscape.md`](landscape.md) records each with its reason, so the next survey does not raise it again: a watcher in place of the polling agent, a parser widened to a third tool, chunking below a heading, a cursor for the embedding pass, remote embedding providers, a vector database, and dashboards.
+
+The portability gap the watcher would have closed stands on its own: `install-agent` writes a launchd plist, so the scheduled sync is macOS-only.
 
 ## One step that is not build work
 
