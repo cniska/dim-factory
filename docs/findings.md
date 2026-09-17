@@ -201,3 +201,13 @@ The asymmetry is not about effort or attention. A gate does not require anything
 Everything above except the fix-commit join measures process — what was said, loaded, called, stopped. Process cannot say whether the code was right.
 
 The one outcome signal is the repo's own: 4,880 `fix:` commits of 22,936, written at the time by whoever had to come back. It carries real limits. A fix may land on code the session never wrote. Work nobody came back to may still be wrong. A fix committed without the conventional prefix is invisible. And a fix inside the session that wrote the file is ordinary iteration, not a defect — counting those rated `simplify` worst of every skill at 53%, with a mean lag of seven hours, which measured how busy the file was rather than how wrong it was.
+
+## Git is the most-run tool and the least-guided one
+
+Asked on 2026-09-17, over the whole corpus. Git is the busiest thing an agent does here: 3,655 `commit` operations, 3,418 `add`, 656 `push`, and 1,474 operations that destroy work if aimed wrong — 503 worktree discards, 294 `branch -D`, 242 `reset --hard`, 207 amends, 72 force pushes. `reset --hard` fails at 23% against a roughly 4% baseline for git calls generally.
+
+The guidance for it loads about a third of the time. Of 333 sessions that committed, 114 had the `git` skill in context; of 153 that ran a destructive operation, 48 did. The skill is not unused — 244 loads across 121 sessions puts it among the most-loaded — and it is still absent from two thirds of the sessions doing the work it covers.
+
+What that costs is visible in one rule. `~/.claude/skills/git/SKILL.md` states "Never use `git -C <path>`"; `git -C` was run 1,250 times. Some of those are worktree sessions where a bare `git` is refused, so the count is an upper bound on violations rather than a tally of them, but no reading of it makes the rule effective.
+
+The same file tells the agent to read `git log` for a repo's convention. The record already holds the answer: `hoodly-hq/hoodly` is 100% conventional at 43 characters mean, `cniska/apps` 100% at 39 with nothing over 50, `cniska/acolyte` 100% at 48 with 44% over 50. That is a row to read, not a log to infer from.
