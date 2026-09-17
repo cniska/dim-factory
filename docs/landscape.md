@@ -6,11 +6,13 @@ The answer splits along the same seam the repo does. The argument in [`factory.m
 
 ## The argument has been made
 
-[Software Factories, Light and Dark](https://addyosmani.com/blog/software-factories/) draws the distinction this repo draws. Dark is "code ships that no human has read, verified only by other machines"; light keeps human judgement and moves it upstream. It reaches [`factory.md`](factory.md)'s conclusion about which loops may be released — a loop "can earn itself fully automated status only if the check is cheap, runs at high frequency, and relies on something that can't be easily faked out" — against this repo's "each gate earns its automation on its own merit." The same position, independently.
+[Software Factories, Light and Dark](https://addyosmani.com/blog/software-factories/) draws the distinction this repo draws. Dark is "code ships that no human has read, verified only by other machines"; light keeps human judgement and moves it upstream. It reaches [`factory.md`](factory.md)'s conclusion about which loops may be released — a loop "can earn itself fully automated status only if the check is cheap, runs at high frequency, and relies on something that can't be easily faked out" — against this repo's "each gate earns its automation on its own merit."
+
+How much of that is convergence and how much is lineage cannot be settled here. `cniska/skills` names `addyosmani/agent-skills` as a source some ideas were refined against, and upstream review as a standing maintenance input. The stations this repo calls a line were shaped with that channel open, so the match in the argument above them is not evidence of arriving separately.
 
 The surrounding writing is dense: [BCG Platinion](https://www.bcgplatinion.com/insights/the-agentic-software-factory) on the agentic software factory, [an arXiv survey](https://arxiv.org/pdf/2602.20979) of agent-infused ecosystems, and a body of vendor and blog writing on dark-factory codebases. Stations with entry and exit contracts, a human retaining approval on high-risk paths, auto-approval under measurable conditions — none of it is novel as of this date.
 
-So the metaphor is not the contribution, and neither is the position that the answer is dim rather than dark. Both are held widely enough that arriving at them independently is evidence they are right rather than evidence they are new.
+So the metaphor is not the contribution, and neither is the position that the answer is dim rather than dark. Both are held widely enough that holding them is evidence of being right rather than of being first.
 
 ## What was not found is the instrument
 
