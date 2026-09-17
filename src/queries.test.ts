@@ -426,3 +426,24 @@ describe("read path", () => {
     }
   });
 });
+
+describe("the sql escape hatch", () => {
+  test("the read-only connection refuses every statement that writes", () => {
+    const env = seeded();
+    const db = openReadOnly(dbPath(env));
+    try {
+      // The guarantee is SQLite's, not a rule here about what a statement looks
+      // like: a rule would have to be right about every spelling of a write.
+      expect(() => db.prepare("DELETE FROM session").all()).toThrow();
+      expect(() => db.prepare("UPDATE session SET cwd = 'x'").all()).toThrow();
+      expect(() => db.prepare("DROP TABLE message").all()).toThrow();
+      expect(() => db.prepare("CREATE TABLE t (a INT)").all()).toThrow();
+      expect(() => db.prepare("INSERT INTO session (id, tool) VALUES ('x','claude')").all()).toThrow();
+
+      const rows = db.prepare("SELECT count(*) AS n FROM session").all() as { n: number }[];
+      expect(rows[0]?.n).toBeGreaterThan(0);
+    } finally {
+      db.close();
+    }
+  });
+});

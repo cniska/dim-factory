@@ -113,7 +113,11 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
     db.run("DELETE FROM turn");
     db.run("DELETE FROM usage");
     db.run("DELETE FROM message");
-    db.run("DELETE FROM session");
+    // Dropped rather than emptied, for the same reason as the git tables below:
+    // a column added to session cannot appear in a table that already exists,
+    // and every row in it is read back from the transcripts. Its dependents are
+    // emptied above, so nothing references it by the time it goes.
+    db.run("DROP TABLE IF EXISTS session");
     // Dropped rather than emptied, like the search index above: these are read
     // back from git in full, and a column added to one of them cannot appear in
     // a table that already exists.

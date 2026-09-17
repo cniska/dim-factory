@@ -46,6 +46,7 @@ const USAGE = `usage: dim <command>
   check-commits <range>
                   judge every authored subject in a revision range by the same
                   rules the commit gate holds, and name each one that breaks
+  sql <select>    run one read-only statement against the database (--json)
   q <name> [arg]  ask the database a named question (q list names them; --json)
                   covers the last ${DEFAULT_WINDOW}; --since <n>d|YYYY-MM-DD or --all to widen
   label <id> <correction|clarification|not_correction> [--rule "..."]
@@ -330,6 +331,35 @@ function runCheckCommits(range: string | undefined): void {
 }
 
 /**
+ * The escape hatch the named questions are grown from: a question worth asking
+ * twice becomes one of them, and until it is, asking it should not mean leaving
+ * the tool. The connection is read-only, so a statement that writes is refused
+ * by SQLite rather than by a rule here that could be wrong about what writes.
+ */
+function runSql(statement: string | undefined, json: boolean): void {
+  if (!statement) throw new Error('sql needs one statement, as in: dim sql "SELECT count(*) FROM session"');
+  const db = openReadOnly(dbPath());
+  try {
+    const rows = db.prepare(statement).all() as Record<string, unknown>[];
+    if (json) {
+      console.log(JSON.stringify(rows, null, 2));
+      return;
+    }
+    const columns = rows.length > 0 ? Object.keys(rows[0] as object) : [];
+    console.log(
+      renderTable({
+        denominator: `${rows.length} rows`,
+        columns,
+        rows: rows.map((r) => columns.map((c) => (r[c] ?? null) as string | number | null)),
+        note: rows.length === 0 ? "the statement ran and matched nothing" : undefined,
+      }),
+    );
+  } finally {
+    db.close();
+  }
+}
+
+/**
  * Read-only, so a broken collection path can be diagnosed without writing to a
  * database that may be the thing at fault.
  */
@@ -433,6 +463,9 @@ try {
       break;
     case "label":
       runLabel(process.argv.slice(3));
+      break;
+    case "sql":
+      runSql(process.argv[3], process.argv.includes("--json"));
       break;
     case "q":
       runQuery(process.argv.slice(3));

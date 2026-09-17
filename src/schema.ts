@@ -2,7 +2,7 @@
 // by re-reading them, so a schema change is `dim rebuild`, not a migration.
 // SCHEMA_VERSION exists only so sync can refuse to run against an older shape.
 
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS session (
   parent_id       TEXT REFERENCES session(id),
   agent_type      TEXT,
   cwd             TEXT,
+  worktree        TEXT,                 -- the task worktree cwd sits in, null in a primary checkout
   project         TEXT,
   git_branch      TEXT,
   cli_version     TEXT,
