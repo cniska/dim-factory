@@ -13,7 +13,7 @@
     "typecheck": "bunx tsc --noEmit",
     "test": "bun test",
     "verify": "bun run lint && bun run typecheck && bun test && bun run test:wt",
-    "test:wt": "./scripts/wt.test.sh"
+    "test:wt": "WT_CMD=\"bun run $PWD/src/cli.ts wt\" ./scripts/wt.test.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
