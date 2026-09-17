@@ -10,6 +10,26 @@
  * rewritten on purpose all day, and `--no-verify` is the way past this one
  * without taking any other gate with it.
  */
+/**
+ * Checkouts carrying the gate that it can never fire in. The hook learns which
+ * branch is shared from `refs/remotes/origin/HEAD`, which `git clone` writes and
+ * nothing else does, so a repo the owner started with `git init` and a
+ * `remote add` is gated by a hook that exits before it reads anything.
+ *
+ * A repo with no remote is not reported: the whole gate is off there by design,
+ * because ownership is what decides whether these rules apply at all.
+ */
+export function unarmedCheckouts(dirs: string[]): string[] {
+  return dirs.filter((dir) => {
+    const has = (args: string[]) =>
+      Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "ignore", stderr: "ignore" }).success;
+    return (
+      has(["config", "--get", "remote.origin.url"]) &&
+      !has(["symbolic-ref", "-q", "refs/remotes/origin/HEAD"])
+    );
+  });
+}
+
 export function prePushScript(owners: string[]): string {
   return `#!/usr/bin/env bash
 # Installed by \`dim install-commit-gate\`. One copy for every repo; see dim-factory.
