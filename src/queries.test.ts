@@ -172,6 +172,33 @@ describe("read path", () => {
     }
   });
 
+  test("chain walks both ways from one session, across a task that was renamed", () => {
+    const db = new Database(":memory:");
+    try {
+      db.run(SCHEMA_SQL);
+      const link = (from: string, to: string, ts: string, title: string) =>
+        db.run(
+          `INSERT INTO handoff_link (to_message, to_session, to_ts, from_message, from_session, from_ts, title)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [`m-${to}`, to, ts, `m-${from}`, from, ts, title],
+        );
+      link("aaa", "bbb", "2026-09-01T10:00:00Z", "# Handoff — first name");
+      link("bbb", "ccc", "2026-09-01T12:00:00Z", "# Handoff — renamed midway");
+      link("ccc", "ddd", "2026-09-01T14:00:00Z", "# Handoff — renamed midway");
+      // A separate chain, which must not be swept in by the title it shares.
+      link("xxx", "yyy", "2026-09-02T10:00:00Z", "# Handoff — renamed midway");
+
+      const result = findQuery("chain")?.run(db, { arg: "ccc" });
+      expect(result?.rows.map((r) => r[1])).toEqual(["aaa → bbb", "bbb → ccc", "ccc → ddd"]);
+      expect(result?.rows[0]?.[4]).toBe("first name");
+
+      const all = findQuery("chain")?.run(db, {});
+      expect(all?.denominator).toContain("4 links joined");
+    } finally {
+      db.close();
+    }
+  });
+
   test("prior-art asks for a path rather than answering over everything", () => {
     const db = new Database(":memory:");
     try {

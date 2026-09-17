@@ -81,6 +81,11 @@ function printReport(report: SyncReport): void {
   if (report.guidance.versions > 0) {
     console.log(`guidance: ${report.guidance.versions} versions of ${report.guidance.files} rules files`);
   }
+  if (report.chain.pasted > 0) {
+    console.log(
+      `chain: ${report.chain.linked} of ${report.chain.pasted} pasted handoffs joined to the session that wrote them`,
+    );
+  }
   if (report.history.orphans > 0) {
     console.log(
       `history: ${report.history.orphans} prompts from sessions with no transcript, of ${report.history.read} read`,

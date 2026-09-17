@@ -6,10 +6,11 @@ An item is listed here only while it needs a slice of its own. Anything fixable 
 
 ## The measurement comes before any ranking change
 
-`q search` ranks by cosine today and nothing says that beats the keyword index it replaced ([`findings.md`](findings.md)). Until something does, every tuning below is a preference, which is the rule [`recall.md`](recall.md) sets for itself. Two pieces, in this order, because the first produces the input the second needs:
+`q search` ranks by cosine today and nothing says that beats the keyword index it replaced ([`findings.md`](findings.md)). Until something does, every tuning below is a preference, which is the rule [`recall.md`](recall.md) sets for itself.
 
-1. **The handoff chain** ([`recall.md`](recall.md)). The edge linking a session to the one it continues. It pays twice: per-session measures stop being distorted by chain depth, and a Next paired with the session that acted on it is a query with a known answer. Recoverable from text already collected, so nothing has to be captured as it happens.
-2. **The benchmark** ([`recall.md`](recall.md)). The metrics and dataset adapters transfer from Acolyte's harness; its scenario layer does not. The external set makes a published claim checkable here, and the corpus-native set from (1) is the one that decides changes.
+The chain that pairs a handoff with the session that acted on it is built, so the pairs the corpus-native set is drawn from exist. What is left is the measurement:
+
+- **The benchmark** ([`recall.md`](recall.md)). The metrics and dataset adapters transfer from Acolyte's harness; its scenario layer does not. The external set makes a published claim checkable here, and the corpus-native set drawn from `handoff_link` is the one that decides changes.
 
 ## Waiting on that measurement
 
