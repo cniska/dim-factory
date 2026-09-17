@@ -18,6 +18,7 @@ import { DEFAULT_WINDOW, windowFromArgs } from "./since";
 import { installSkill, planSkill, SKILL_NAMES } from "./skill";
 import { ensureSpoolDirs } from "./spool";
 import { rebuild, type SyncReport, sync } from "./sync";
+import { readWake, renderWake } from "./wake";
 
 const USAGE = `usage: dim <command>
 
@@ -37,6 +38,8 @@ const USAGE = `usage: dim <command>
   install-commit-gate
                   show which checkouts would get the commit-subject hook
                   (--write installs it, skipping repos that gate their own)
+  wake            the one thing a cold start here cannot work out: what the last
+                  session in this directory left as Next (for the SessionStart hook)
   check-commits <range>
                   judge every authored subject in a revision range by the same
                   rules the commit gate holds, and name each one that breaks
@@ -274,6 +277,25 @@ function printCommitGatePlan(write: boolean): void {
 }
 
 /**
+ * Runs before every session once wired to the SessionStart hook, so it may never
+ * fail and never print a diagnostic: anything unexpected is silence, and the
+ * session starts as it would have without it.
+ */
+function runWake(): void {
+  try {
+    const db = openReadOnly(dbPath());
+    try {
+      const block = renderWake(readWake(db, process.cwd()));
+      if (block) console.log(block);
+    } finally {
+      db.close();
+    }
+  } catch {
+    // no database, no read, nothing to say
+  }
+}
+
+/**
  * The backstop for the commit gate: a hook is skippable with `--no-verify` and
  * absent on a fresh clone, so CI reads what actually landed.
  */
@@ -409,6 +431,9 @@ try {
       break;
     case "install-commit-gate":
       printCommitGatePlan(process.argv.includes("--write"));
+      break;
+    case "wake":
+      runWake();
       break;
     case "check-commits":
       runCheckCommits(process.argv[3]);
