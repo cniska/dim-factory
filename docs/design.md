@@ -116,7 +116,13 @@ What that work establishes about this machine's transcripts, and what this desig
 - "Same for the codex `response_item` mapping" (schema unverified): the Codex schema is verified in §2.2. Two facts the note could not know: Codex now runs `history_mode: paginated` with a SQLite projection (`thread_history_1.sqlite`) beside the rollout, and per-response token usage (`token_usage_record`) exists only in rollouts written from roughly August 2026 on.
 - The note assumes transcripts persist; the 30-day `cleanupPeriodDays` deletion (§1) means acolyte's own `--since` backlog beyond 30 days is gone too.
 
-**Shared parsers or independent?** Independent, though both projects are now on the same stack (§6), because the two parsers want different things from the same bytes. `transcript-claude-code.ts` imports `./log`, `./task-activity` and `./tool-contract` (`:2-4`), so reusing it carries a port of those modules; and its zod schema (`:25-33`) exists to discard exactly the fields this design keeps — `usage`, `model`, `attributionSkill`, `promptSource`, `toolUseResult`, sidechains — so sharing would mean growing acolyte's parser to a second product's requirements. The cost stated plainly: two codebases track the Claude Code JSONL dialect and, once acolyte builds a Codex source, the rollout dialect too; when either tool renames a field, both break and both are fixed separately, and the two disagree in edge cases (acolyte treats a `<command-name>` prompt as noise; this treats it as a load). What makes the duplication cheap to live with is that the sources persist and a format change is one parser plus `dim rebuild`.
+**Shared parsers or independent?** Independent, though both projects are now on the same stack (§6), because the two parsers want different things from the same bytes.
+
+`transcript-claude-code.ts` imports `./log`, `./task-activity` and `./tool-contract` (`:2-4`), so reusing it carries a port of those modules. Its zod schema (`:25-33`) exists to discard exactly the fields this design keeps — `usage`, `model`, `attributionSkill`, `promptSource`, `toolUseResult`, sidechains — so sharing would mean growing acolyte's parser to a second product's requirements.
+
+The cost, stated plainly: two codebases track the Claude Code JSONL dialect and, once acolyte builds a Codex source, the rollout dialect too. When either tool renames a field, both break and both are fixed separately, and the two disagree in edge cases — acolyte treats a `<command-name>` prompt as noise, this treats it as a load.
+
+What makes the duplication cheap to live with is that the sources persist, so a format change is one parser plus `dim rebuild`.
 
 What acolyte does supply is the shape: `bun:sqlite` opened with WAL and typed prepared statements, a `close()` that checkpoints, and an XDG-aware `dataDir()` read from an injected env so a test can point a whole run at a scratch directory (`src/trace-store.ts:135-175`, `src/paths.ts:29-31`).
 
@@ -138,7 +144,9 @@ Ordered by what the owner can act on soonest. Each names the signal it rests on;
 ## 4. Storage and privacy
 
 - **Location**: `~/.local/share/dim-factory/` containing `sessions.db`, `spool/` (hook events) and the lock. Home-directory path, `chmod 700`, never inside a repository; the collector's own repo (`~/code/dim-factory`) contains code and schema only, and `sessions.db` is not a path any repo tracks.
-- **Pointer, not archive.** Structure plus a pointer into the original files keeps the database small and content-free. That turns on the sources surviving, and they now do: `~/.claude/settings.json` sets `"cleanupPeriodDays": 3650`, so Claude Code no longer prunes (§1 describes the 30-day default that made an archive necessary, and the 389 sessions already lost to it — those are gone either way), and Codex has never pruned. Records are addressable stably in both formats: a Claude line by `(session_id, line_number)` in an append-only file (Claude Code's own later writes — `file-history-delta`, `compact_boundary`, `cost-state` — are appended lines, never rewrites), a Codex line by `(thread_id, ordinal)` (C:1 `ordinal:0`). Every `message` and `tool_call` row carries `src_file` and `src_line`, so a question needing the full record — a tool result, a diff — re-reads one line from the source by locator. A schema change is `dim rebuild`: drop the tables and re-read the files.
+- **Pointer, not archive.** Structure plus a pointer into the original files keeps the database small and content-free. That turns on the sources surviving, and they now do: `~/.claude/settings.json` sets `"cleanupPeriodDays": 3650`, and Codex has never pruned. Every `message` and `tool_call` row carries `src_file` and `src_line`, so a question needing the full record — a tool result, a diff — re-reads one line from the source by locator.
+
+  Records are addressable stably in both formats: a Claude line by `(session_id, line_number)` in an append-only file, where Claude Code's own later writes are appended lines rather than rewrites; a Codex line by `(thread_id, ordinal)`.
 - **Files move; the cursor follows the session, not the path.** Codex archives a rollout by moving it to `archived_sessions/` (115 today), and the ingestion cursor is keyed by `(session_id, kind)` so the moved file resumes where it stopped. Keying on the path instead would re-read the file from byte zero and append every assistant message's text a second time. `source_file.path` is updated in place and `message.src_file` follows it through `ON UPDATE CASCADE`, so locators stay valid across the move.
 - **Cost of not archiving**: if either tool changes its retention default back, or a file is deleted by hand, what it held is lost beyond what the database already extracted. The database keeps structure and prompt text, never tool results, file contents or thinking — so those are the parts that would not survive.
 - **What the DB stores as text**: user prompts (typed/queued/human origin), assistant text, `userFeedback`, skill bodies' hash and size (not the body), Bash command strings (needed for commit/verify detection), file paths of edits. **Not stored**: tool results, file contents, `originalFile`/`structuredPatch`, `thinking` blocks, attachments, MCP results, stdout/stderr. Those stay in the source files only, reachable by `src_file`/`src_line`.
@@ -146,232 +154,15 @@ Ordered by what the owner can act on soonest. Each names the signal it rests on;
 
 ## 5. Schema
 
-Both tools land in the same tables; `tool` is `'claude'` or `'codex'`. Tool-specific detail rides in `extra` JSON columns rather than tool-specific tables, so a query never needs a `UNION`. Times are ISO-8601 UTC text (SQLite compares them correctly).
+[`src/schema.ts`](../src/schema.ts) is the schema. It is the file that creates the tables, so it is the only place the columns are stated, and each table carries the reason for its own shape beside it — why the source-file cursor is keyed by session rather than path, why no column adds the two tools' token counts together, why `hook_event` and `guidance_walk` are the tables `rebuild` must not clear.
 
-```sql
-PRAGMA journal_mode = WAL;
-PRAGMA foreign_keys = ON;
+What is worth saying here is the shape those tables share, which no single one of them shows.
 
--- One row per archived file; the incremental cursor for ingestion.
-CREATE TABLE source_file (
-  path            TEXT PRIMARY KEY,     -- absolute path of the source file
-  tool            TEXT NOT NULL CHECK (tool IN ('claude','codex')),
-  kind            TEXT NOT NULL CHECK (kind IN ('transcript','subagent','history')),
-  session_id      TEXT,
-  origin_path     TEXT NOT NULL,        -- where it was copied from
-  bytes_ingested  INTEGER NOT NULL DEFAULT 0,
-  lines_ingested  INTEGER NOT NULL DEFAULT 0,
-  origin_mtime    TEXT,
-  ingested_at     TEXT
-);
+**Both tools land in the same tables.** `tool` is `'claude'` or `'codex'`, and tool-specific detail rides in an `extra` JSON column rather than in tool-specific tables, so answering a question about both does not mean a `UNION`. Times are ISO-8601 UTC text, which SQLite compares correctly.
 
-CREATE TABLE session (
-  id              TEXT PRIMARY KEY,     -- Claude sessionId / Codex thread id
-  tool            TEXT NOT NULL,
-  parent_id       TEXT REFERENCES session(id),   -- subagent -> parent
-  agent_type      TEXT,                 -- Claude meta.agentType / Codex agent_role
-  cwd             TEXT,
-  project         TEXT,                 -- cwd with .claude/worktrees/<x> stripped
-  git_branch      TEXT,
-  cli_version     TEXT,
-  entrypoint      TEXT,                 -- Claude entrypoint / Codex originator
-  started_at      TEXT,                 -- first message timestamp
-  last_seen_at    TEXT,                 -- last message timestamp (grows while live)
-  ended_at        TEXT,                 -- from SessionEnd hook only
-  end_reason      TEXT,                 -- Claude: clear|resume|logout|prompt_input_exit|other; Codex: other
-  first_model     TEXT,
-  last_model      TEXT,
-  title           TEXT,                 -- ai-title / custom-title / threads.title
-  extra           TEXT                  -- JSON: Claude session_id alias, Codex source/sandbox/approval
-);
-CREATE INDEX session_project ON session(project, started_at);
+**Every table is rebuilt by re-reading its sources**, which is why a schema change is `dim rebuild` rather than a migration. The exceptions are the ones with no source to re-read — a hook fires once and the event is gone — and they say so at the table. `SCHEMA_VERSION` exists so `sync` refuses to run against a database only a re-read can correct.
 
--- One row per user or assistant message. Claude: one row per message.id
--- (content-block lines collapsed). Codex: one row per response_item message.
-CREATE TABLE message (
-  id              TEXT PRIMARY KEY,     -- Claude message.id (assistant) / uuid (user); Codex item id
-  session_id      TEXT NOT NULL REFERENCES session(id),
-  ts              TEXT NOT NULL,
-  role            TEXT NOT NULL CHECK (role IN ('user','assistant')),
-  model           TEXT,                 -- assistant: message.model / turn_context.model
-  turn_id         TEXT,                 -- Codex turn_id; Claude promptId
-  prompt_source   TEXT,                 -- Claude promptSource; Codex 'typed' for userMessage text
-  origin_kind     TEXT,                 -- Claude origin.kind
-  is_meta         INTEGER NOT NULL DEFAULT 0,
-  is_skill_body   INTEGER NOT NULL DEFAULT 0,
-  attribution_skill TEXT,               -- Claude only
-  stop_reason     TEXT,
-  interrupted_message_id TEXT,          -- Claude interruptedMessageId
-  denial_kind     TEXT,                 -- Claude toolDenialKind
-  user_feedback   TEXT,                 -- Claude userFeedback
-  text            TEXT,                 -- visible text only; never tool results
-  text_chars      INTEGER,
-  src_file        TEXT NOT NULL REFERENCES source_file(path),
-  src_line        INTEGER NOT NULL,     -- Claude line number / Codex ordinal; first line of the record
-  extra           TEXT
-);
-CREATE INDEX message_session_ts ON message(session_id, ts);
-CREATE INDEX message_attr ON message(attribution_skill);
-
--- One row per API response. The only table token sums come from.
-CREATE TABLE usage (
-  response_id     TEXT PRIMARY KEY,     -- Claude message.id / Codex response_id
-  session_id      TEXT NOT NULL REFERENCES session(id),
-  message_id      TEXT REFERENCES message(id),
-  ts              TEXT NOT NULL,
-  model           TEXT NOT NULL,
-  input_tokens    INTEGER NOT NULL,
-  cache_read_tokens   INTEGER NOT NULL DEFAULT 0,
-  cache_write_tokens  INTEGER NOT NULL DEFAULT 0,   -- Claude cache_creation_input_tokens / Codex cache_write_input_tokens
-  cache_write_1h_tokens INTEGER,        -- Claude cache_creation.ephemeral_1h_input_tokens
-  output_tokens   INTEGER NOT NULL,
-  reasoning_tokens INTEGER,             -- Claude thinking_tokens / Codex reasoning_output_tokens
-  attribution_skill TEXT,
-  extra           TEXT                  -- service_tier, speed, server_tool_use, rate_limits
-);
-CREATE INDEX usage_session ON usage(session_id, ts);
-CREATE INDEX usage_model ON usage(model);
-
-CREATE TABLE tool_call (
-  id              TEXT PRIMARY KEY,     -- toolu_… / call_id / exec-… item id
-  session_id      TEXT NOT NULL REFERENCES session(id),
-  message_id      TEXT REFERENCES message(id),
-  model           TEXT,
-  attribution_skill TEXT,
-  ts_call         TEXT NOT NULL,
-  ts_result       TEXT,
-  tool_name       TEXT NOT NULL,        -- Claude name; Codex 'exec'|'js'|'mcp'|'fileChange'|…
-  skill_name      TEXT,                 -- Skill tool input.skill
-  file_path       TEXT,                 -- Edit/Write/Read input.file_path; Codex fileChange path
-  command         TEXT,                 -- Bash input.command; Codex command string
-  is_error        INTEGER,
-  interrupted     INTEGER,
-  denial_kind     TEXT,
-  exit_code       INTEGER,              -- Codex only (Claude records none)
-  duration_ms     INTEGER,              -- Codex durationMs; Claude ts_result - ts_call
-  git_operation   TEXT,                 -- Claude toolUseResult.gitOperation JSON
-  result_bytes    INTEGER,
-  src_file        TEXT NOT NULL REFERENCES source_file(path),
-  src_line_call   INTEGER NOT NULL,
-  src_line_result INTEGER,              -- where the result (stdout, diff) can be re-read from the source file
-  extra           TEXT
-);
-CREATE INDEX tool_call_session ON tool_call(session_id, ts_call);
-CREATE INDEX tool_call_name ON tool_call(tool_name);
-CREATE INDEX tool_call_file ON tool_call(file_path);
-
--- Every time a skill's body entered context.
-CREATE TABLE skill_load (
-  id              INTEGER PRIMARY KEY,
-  session_id      TEXT NOT NULL REFERENCES session(id),
-  message_id      TEXT REFERENCES message(id),  -- the body message
-  ts              TEXT NOT NULL,
-  model           TEXT,
-  skill_name      TEXT NOT NULL,
-  how             TEXT NOT NULL CHECK (how IN ('model','user','read')),
-      -- model: Skill tool / Codex model-chosen; user: typed /name or $name; read: Codex sed/cat of SKILL.md
-  body_chars      INTEGER,
-  body_sha256     TEXT,                 -- sha256 of the body with wrapper and frontmatter stripped
-  skill_version_commit TEXT,            -- skill_version.commit whose body_sha256 matches; NULL = dirty tree
-  skill_path      TEXT,
-  UNIQUE (session_id, message_id, skill_name)
-);
-CREATE INDEX skill_load_name ON skill_load(skill_name, ts);
-
--- Every committed version of every SKILL.md in the skills repo (from git log -p).
-CREATE TABLE skill_version (
-  skill_name      TEXT NOT NULL,
-  commit_sha      TEXT NOT NULL,
-  committed_at    TEXT NOT NULL,
-  body_sha256     TEXT NOT NULL,
-  body_chars      INTEGER NOT NULL,
-  PRIMARY KEY (skill_name, commit_sha)
-);
-CREATE INDEX skill_version_hash ON skill_version(body_sha256);
-
-CREATE TABLE turn (
-  session_id      TEXT NOT NULL REFERENCES session(id),
-  turn_id         TEXT NOT NULL,        -- Codex turn_id; Claude turn_duration uuid
-  ts_start        TEXT,
-  ts_end          TEXT NOT NULL,
-  duration_ms     INTEGER,
-  message_count   INTEGER,              -- Claude messageCount
-  status          TEXT,                 -- Codex completed|failed|interrupted; Claude 'completed'
-  model           TEXT,
-  time_to_first_token_ms INTEGER,       -- Codex only
-  PRIMARY KEY (session_id, turn_id)
-);
-
--- Drained from the hook spool. No foreign key to session, and never cleared by
--- a rebuild: see §7.
-CREATE TABLE hook_event (
-  id          INTEGER PRIMARY KEY,
-  tool        TEXT NOT NULL CHECK (tool IN ('claude','codex')),
-  session_id  TEXT NOT NULL,
-  event       TEXT NOT NULL CHECK (event IN ('session_start','session_end')),
-  ts          TEXT NOT NULL,        -- from the spool filename, which the hook writes
-  source      TEXT,                 -- SessionStart: startup|resume|clear|compact|fork
-  reason      TEXT,                 -- SessionEnd: clear|resume|logout|prompt_input_exit|other
-  model       TEXT,
-  cwd         TEXT,
-  payload     TEXT NOT NULL,        -- the hook's stdin, verbatim
-  UNIQUE (session_id, event, ts)
-);
-
--- Everything else worth keeping, one row per occurrence.
-CREATE TABLE session_event (
-  id              INTEGER PRIMARY KEY,
-  session_id      TEXT NOT NULL REFERENCES session(id),
-  ts              TEXT,
-  kind            TEXT NOT NULL,
-      -- compact | clear | slash_command | pr_link | worktree | relocated | title
-      -- | tokens_reminder | cost_state | hook_session_start | hook_session_end
-      -- | queue_op | mode | permission_mode | rate_limits
-  detail          TEXT,                 -- JSON
-  UNIQUE (session_id, kind, ts, detail)
-);
-CREATE INDEX session_event_kind ON session_event(kind, ts);
-
--- Cost as reported by the tool, never computed here.
-CREATE TABLE session_cost_reported (
-  session_id      TEXT PRIMARY KEY REFERENCES session(id),
-  reported_by     TEXT NOT NULL,        -- 'claude-code cost-state'
-  total_cost_usd  REAL,
-  model_usage     TEXT NOT NULL,        -- JSON as written
-  has_unknown_model_cost INTEGER,
-  ts              TEXT
-);
-
--- Prompts whose transcript no longer exists (from history.jsonl).
-CREATE TABLE orphan_prompt (
-  tool            TEXT NOT NULL,
-  session_id      TEXT NOT NULL,
-  ts              TEXT NOT NULL,
-  project         TEXT,
-  text            TEXT,
-  PRIMARY KEY (tool, session_id, ts, text)
-);
-
--- Human labels on candidate corrections; the only table the read path writes.
-CREATE TABLE correction_label (
-  message_id      TEXT PRIMARY KEY REFERENCES message(id),
-  label           TEXT NOT NULL CHECK (label IN ('correction','clarification','not_correction')),
-  skill_name      TEXT,
-  rule            TEXT,                 -- free text: which instruction was overridden
-  labeled_at      TEXT NOT NULL
-);
-```
-
-Derived views (created by `schema.sql`, cheap to change):
-
-- `v_skill_context` — per `skill_name`, `body_sha256`: loads, avg `body_chars`, and `SUM(calls_after_load)` where `calls_after_load` = count of `usage` rows in the same session after the load's `ts`. That product is the body's re-read count, the honest unit of context cost. Token estimate is not stored; chars are.
-- `v_correction_candidate` — `message` rows with `denial_kind='user-rejected'`, or `interrupted_message_id IS NOT NULL`, or (`role='user' AND prompt_source IN ('typed','queued') AND text_chars < 200 AND text matches a negation lexicon`), joined to the last `attribution_skill` and `model` before them.
-- `v_routing_case` — each human prompt with: the skill the model called in the next assistant message (if any), and the skill the user invoked within the next two human prompts (if any).
-- `v_session_summary` — per session: tool, project, models, turns, tokens by class, tool counts, commits, reverts, skill loads, corrections, end reason.
-
-Normalization line: `message`, `usage`, `tool_call`, `turn`, `session_event` are one-to-one with things in the raw files and are rebuilt by re-ingesting. `skill_load` is derived but stored (needs cross-line joins that are awkward in views). Views hold every judgment call so they can change without re-ingesting.
-
-Model identity is a column on `message`, `usage`, `tool_call`, `turn`, `skill_load`, and `session.first_model/last_model`. Claude's `cost-state` uses `claude-opus-5[1m]` while `message.model` uses `claude-opus-5`; both kept verbatim, views strip the `[…]` suffix into `model_family`.
+**Model identity is a column rather than a table**, on `session`, `message`, `usage`, `tool_call`, `turn` and `skill_load`. Claude reports a context-window suffix on some surfaces and not others, and both spellings are kept verbatim rather than normalized at ingest, because normalizing loses which surface said what.
 
 ## 6. Ingestion
 
@@ -432,7 +223,13 @@ Three `how` values, all verified on disk (§2): `model` (Claude `Skill` tool cal
 ### 9.3 Correction signal (mechanical part sound; the rest is unresolved by design)
 Mechanical and reliable, because the tool recorded the act: `toolDenialKind='user-rejected'` with `userFeedback` (305 / 53 with text, R:80) and `interruptedMessageId` (1,377, R:330) on Claude; `turn_aborted reason:"interrupted"` and `thread_turns.status='interrupted'` (844 of 11,101) on Codex. These are the user physically stopping the agent and are stored as fields on `message`/`turn`.
 
-Whether a typed prompt *tells the agent it was wrong* is semantic, and no deterministic rule detects it honestly. The design therefore does not store a classification. What it does: store every human prompt with its text, skill attribution and model; let `q corrections` narrow cheaply at read time (short prompts, prompts following an `end_turn` within seconds, an optional caller-supplied regex — a rough one over 8,083 human prompts returns 150 rows, of which the sample reads about half as corrections — "no it was 5 days ago you overwrote my .env", "i said MINMAL SETUP" — and half as clarifications — "no webhooks?"); and leave the judgment to the owner (`correction_label`, written by `q label`) or to a model he invokes deliberately on that narrowed set, reading the excerpts the query returned. Model cost is then bounded by his curiosity, not by corpus size, and nothing in the collection path makes the call. The per-skill "corrections" figure reports the mechanical signals and labeled rows; it never counts unlabeled candidates as corrections.
+Whether a typed prompt *tells the agent it was wrong* is semantic, and no deterministic rule detects it honestly. The design therefore does not store a classification. It does three things instead:
+
+- **Stores every human prompt** with its text, skill attribution and model.
+- **Narrows cheaply at read time.** `q corrections` takes short prompts, prompts following an `end_turn` within seconds, and an optional caller-supplied regex. A rough one over 8,083 human prompts returns 150 rows, of which the sample reads about half as corrections — "no it was 5 days ago you overwrote my .env", "i said MINMAL SETUP" — and half as clarifications, like "no webhooks?".
+- **Leaves the judgment to a person**, through `correction_label` written by `q label`, or to a model invoked deliberately on that narrowed set, reading the excerpts the query returned.
+
+Model cost is then bounded by curiosity rather than by corpus size, and nothing in the collection path makes the call. The per-skill "corrections" figure reports the mechanical signals and labeled rows; it never counts unlabeled candidates as corrections.
 
 Clustering corrections on a *rule* inside a skill is not automatable from transcripts: nothing in the data names which sentence of the SKILL.md the model was following. The reading list (skill → candidate corrections with 200-char excerpts, session id, timestamp) is what the DB provides; the rule is what the owner writes in `correction_label.rule`.
 
@@ -461,11 +258,32 @@ The surviving Claude corpus is `claude-opus-5` (141,524 assistant lines) with 31
 
 **What the corpus holds per skill** (Claude body loads / Codex threads that read the file, as of 2026-09-16; Claude reaches back to 2026-07-22, Codex to 2026-02-05): handoff 238 / 12; git 95 / 51; review 86 (85 sessions) / 28; pr 57 / 33; simplify 49 / 22; build 44 / 52; spec 43 / —; agents-md 36 / —; plan 10 / 16; debug 1 / 21; tdd 0 / 17; ship 3 / 14; explain-diff, design, deprecation, issue, skill-test: ≤ 1 each. Versions in the window: `review` changed on 2026-08-05 (`f44f55f`) and 2026-09-04 (`6587b24`); `ship` has a single commit (`bca17fe`, 2026-07-23); `correctness-review` and `style-review` last changed before the corpus begins.
 
-**Case 1 — "fan out on more than 3 files" in `review:37,46`, `correctness-review:45`, `style-review:61`.** The rule predates every transcript on disk (`git log -S'more than 3 files'` finds only the 2026-07-10 restructure commit `6813bf5`, which carried it in), so there is no "before" arm — every review session in the corpus ran under it. What is directly observable: per review session, `Agent` tool calls with `attribution_skill='review'` (85 Claude sessions, 120 spawns; per session 0–9, 20 sessions with none, median 1, eight sessions ≥ 4, one with 9 — `e398a4a1`, 2026-09-04) against the diff size, which the DB does not hold as a column but the raw archive does: the first `git diff --stat`/`--name-only` Bash result under review attribution, re-read by `src_line_result`, gives the file count. A `review_scope(session_id, files_in_diff, spawns, model, skill_version_commit)` derivation answers "how many spawns per file count" today, and the two `review` versions inside the window (08-05, 09-04) split the 85 sessions into arms — for *those* edits, not for the fan-out rule. Codex: 28 threads read `review/SKILL.md`; subagent items (`collabAgentToolCall` + `subAgentActivity`) total 42 across the whole Codex corpus, so spawn counting works there too but the sample is thin.
+**Case 1 — "fan out on more than 3 files" in `review:37,46`, `correctness-review:45`, `style-review:61`.** The rule predates every transcript on disk — `git log -S'more than 3 files'` finds only the 2026-07-10 restructure commit `6813bf5`, which carried it in — so there is no "before" arm, and every review session in the corpus ran under it.
+
+What is directly observable is spawn count against diff size:
+
+- **Spawns**: `Agent` tool calls with `attribution_skill='review'` — 85 Claude sessions, 120 spawns; per session 0–9, with 20 sessions at none, a median of 1, eight at four or more and one at nine.
+- **Diff size**: not a column, but the raw archive holds it. The first `git diff --stat` or `--name-only` result under review attribution, re-read by `src_line_result`, gives the file count.
+
+A `review_scope(session_id, files_in_diff, spawns, model)` derivation answers "how many spawns per file count" today, and the two `review` versions inside the window split the 85 sessions into arms — for *those* edits, not for the fan-out rule.
+
+Codex can be counted the same way, thinly: 28 threads read `review/SKILL.md`, and subagent items total 42 across the whole Codex corpus.
 
 **Case 2 — `ship` says "warn, don't block" for quality checks (`ship:24`) and "stop" elsewhere (`ship:36`, `:62`).** Observable in principle: a ship session's assistant text under `attribution_skill='ship'` says which it did. The corpus holds 3 Claude ship sessions (2026-08-13 `c921bd7f`, 2026-08-28 `602c4605`, 2026-09-13 `b31b9303`) and 14 Codex threads that read the file, all under the same single version. That is a reading list of 17 sessions, not a metric; the DB's contribution is producing the list with locators in under a second.
 
-**What it can support.** Agreed: this is badly confounded — tasks differ between arms, `review` edits on 08-05 and 09-04 landed alongside edits to other skills the same sessions loaded, the Claude corpus is one model throughout so a model transition cannot even be separated, and per-version samples are tens of sessions for the top five skills and single digits for the rest. It yields "this rule's sessions look different after the change — go read them / put it in an eval", never "this rule helped". For a comparison to be worth acting on, all of these would have to hold: the same skill version on each side with no other loaded skill changing in the same window (checkable from `skill_version`); the same tool and model family on both sides (a column); the same project or task class (the owner's judgment, from the session list); a mechanical outcome — spawn count, commit count, interrupted turns — rather than a judged one; and at least a few dozen sessions per arm. Where those hold, the DB gives the two arms and their locators; the eval harness with the two versions as fixtures gives the answer. Where they do not, the query still returns the arms and says how small they are, which is the honest output.
+**What it can support.** This is badly confounded: tasks differ between arms, `review` edits landed alongside edits to other skills the same sessions loaded, the Claude corpus is one model throughout so a model transition cannot even be separated, and per-version samples are tens of sessions for the top five skills and single digits for the rest.
+
+So it yields "this rule's sessions look different after the change — go read them, or put it in an eval", never "this rule helped".
+
+For a comparison to be worth acting on, all of these would have to hold:
+
+- the same skill version on each side, with no other loaded skill changing in the same window
+- the same tool and model family on both sides, which is a column
+- the same project or task class, which is the owner's judgment from the session list
+- a mechanical outcome — spawn count, commit count, interrupted turns — rather than a judged one
+- at least a few dozen sessions per arm
+
+Where they hold, the database gives the two arms and their locators and the eval harness gives the answer. Where they do not, the query still returns the arms and says how small they are, which is the honest output.
 
 ## 10. Read path
 
@@ -497,7 +315,15 @@ The surviving Claude corpus is `claude-opus-5` (141,524 assistant lines) with 31
 | `stale [id-prefix]` | how far the code a session touched has moved since it ran |
 | `fixes` | files an agent edited that a later `fix:` commit came back to, by skill |
 
-**Agent invocation**: the stations under `skills/`, linked into `~/.agents/skills` and `~/.codex/skills` by `dim install-skill`. A station differs from a tool-agnostic engineering skill by reading the record: `dim-feat` and `dim-fix` are the front doors, scoping a change against prior art or triaging a defect against the files a later fix commit came back to, and both hand to `dim-build` for the slice loop; `dim-plan` gathers decisions already taken and whether an earlier conclusion still holds, then hands the planning to a more capable model; `dim-review` runs one agent per dimension. They live here rather than in the skills repo because they are useless without `dim` on PATH; the `dim-` prefix marks one. A symlink rather than a copy, so an edit is live with no reinstall and no second copy to drift; anything already at the name is moved aside rather than removed, and a link left by a station that no longer ships is removed, so a name never resolves to nothing. Each station carries the section a query result cannot: what the database does not hold, so an absence is reported as a gap rather than as a finding.
+**Agent invocation**: the stations under `skills/`, linked into `~/.agents/skills` and `~/.codex/skills` by `dim install-skill`. A station differs from a tool-agnostic engineering skill by reading the record, and the `dim-` prefix marks one:
+
+- **`dim-feat`** and **`dim-fix`** are the front doors, scoping a change against prior art or triaging a defect against the files a later fix commit came back to. Both hand to **`dim-build`** for the slice loop.
+- **`dim-plan`** gathers decisions already taken and whether an earlier conclusion still holds, then hands the planning to a more capable model.
+- **`dim-review`** runs one agent per dimension.
+
+They live here rather than in the skills repo because they are useless without `dim` on PATH. A symlink rather than a copy, so an edit is live with no reinstall and no second copy to drift; anything already at the name is moved aside rather than removed, and a link left by a station that no longer ships is removed, so a name never resolves to nothing.
+
+Each station carries the section a query result cannot: what the database does not hold, so an absence is reported as a gap rather than as a finding.
 
 **A correction belongs to the version that was loaded.** `q skill` ties each stop to the `body_sha256` of the load in that session at that time, not to the text on disk now, so rewriting a skill cannot take credit for what the old wording did. The arms this produces are thin — `handoff` has 132 versions across the corpus and 121 were loaded in a single session — so the count of single-session versions leads the denominator, ahead of the table, and the note says the rows point at sessions to read rather than at a version that scored better. Codex reads a skill file itself and reports no body, so its loads carry no hash and collect in one `(unmeasured)` row instead of splitting.
 
@@ -535,7 +361,15 @@ Two filters make the counts mean anything. A message over 400 characters is a do
 
 **Search is an index, not a scan.** `message_fts` is an FTS5 index over `message.text` with external content, so it stores no second copy and reads the text back through `message.rowid`; insert, update and delete triggers keep it level with the table, and `rebuild` drops it first because clearing rows one by one would ask the index to forget entries an older schema never gave it. It holds prose only: a message with no text is a tool call or its result. Terms are quoted before they reach FTS5, so a branch name or a flag searches as the word it is rather than as `NOT` or a column filter.
 
-**Meaning is a brute-force scan, and the keyword index is what it falls back to.** `embedding` holds one 384-float unit vector per distilled passage — a handoff's `## Next` as `wake` would deliver it, a commit subject the owner authored, a prompt labeled a correction — and `q search` embeds the question, scores every vector with a dot product, and shows the closest twenty. No vector store and no daemon: a corpus this size scans in milliseconds, so the cost is a blob column and nothing else. The table is a projection and never a second archive, so `dim embed` drops a row whose source is gone; it carries no foreign key, because `rebuild` empties `message` and drops `repo_commit` before writing the same ids back. `text` is stored beside the vector because a vector means nothing except against the exact string the model was given, and a `Next` is a slice of a larger message that exists nowhere else. Where nothing is embedded, the model will not load, or the database predates the table, `search` answers from `message_fts` and says so in its denominator — a retrieval path that can break is one nobody relies on. What it does not hold is raw conversation turns, which are the measured-worse input; whether adding them helps is for a benchmark, not an assumption.
+**Meaning is a brute-force scan, and the keyword index is what it falls back to.** `embedding` holds one 384-float unit vector per distilled passage — a handoff's `## Next` as `wake` would deliver it, a commit subject the owner authored, a prompt labeled a correction. `q search` embeds the question, scores every vector with a dot product, and shows the closest twenty. No vector store and no daemon: a corpus this size scans in milliseconds, so the cost is a blob column and nothing else.
+
+Three things follow from it being a projection rather than a second archive:
+
+- `dim embed` drops a row whose source is gone, and the table carries no foreign key, because `rebuild` empties `message` and drops `repo_commit` before writing the same ids back.
+- `text` is stored beside the vector, because a vector means nothing except against the exact string the model was given, and a `Next` is a slice of a larger message that exists nowhere else.
+- Where nothing is embedded, the model will not load, or the database predates the table, `search` answers from `message_fts` and says so in its denominator. A retrieval path that can break is one nobody relies on.
+
+What it does not hold is raw conversation turns, which are the measured-worse input. Whether adding them helps is for a benchmark, not an assumption.
 
 **A re-run embeds only what changed, by hash rather than by cursor.** `text_sha` and `model` are the key: a passage whose text and model both match what is stored costs one hash, and changing either re-embeds it. So `dim embed` needs no cursor of its own — the byte cursor that makes `sync` incremental has nothing to say about a table derived from rows it already wrote. What the hash does not avoid is re-reading every distilled passage each run, which is a full scan of the table and a hash per row: measured at 3.6s over 5,864 passages on 2026-09-17, against 46 minutes for the first pass. A cursor would buy those seconds and nothing else.
 
@@ -545,7 +379,13 @@ Two filters make the counts mean anything. A message over 400 characters is a do
 
 **Three states, never two.** A query reports conformed, violated, or *not exercised*, and the third is never folded into the first two. Every result carries the base its numbers came from, printed above the rows, and a result with no rows prints why rather than an empty table a reader scores as zero. Where a figure covers a subset — Codex rollouts before roughly March 2026 emit `task_complete` with no `started_at` or `duration_ms`, so 8,896 of 18,094 turns are counted but not timed — the denominator names the subset instead of leaving a total that does not add up. No duration is derived for those turns: `completed_at` minus the `turn_context` timestamp is a different measurement, and mixing two into one column is worse than a gap.
 
-**An agent reads this output, not a person.** The consumers are the skills that call the CLI, and none of them passes `--json` — they read the table. So a number prints as digits with no thousands separator, because a separator is punctuation a reader has to strip; cells are separated rather than padded out to the widest value in their column, because alignment buys a person columns that line up and costs the agent a run of spaces on every row; and a cell that would widen every row is truncated where the distinctive end survives: a commit from a checkout with no remote is named by the tail of its path, not by the temp directory it starts with. A result longer than the cap says how many rows were cut and names `--rows`, so a short table is never read as the whole answer. What stays is the prose — the denominator above the rows and the note below them — which is the half actually written for a model, and is why an empty result prints why rather than an empty table.
+**An agent reads this output, not a person.** The consumers are the skills that call the CLI, and none of them passes `--json` — they read the table. Three things follow:
+
+- A number prints as digits with no thousands separator, because a separator is punctuation a reader has to strip.
+- Cells are separated rather than padded to the widest value in their column. Alignment buys a person columns that line up and costs the agent a run of spaces on every row.
+- A cell that would widen every row is truncated where the distinctive end survives: a commit from a checkout with no remote is named by the tail of its path, not by the temp directory it starts with.
+
+A result longer than the cap says how many rows were cut and names `--rows`, so a short table is never read as the whole answer. What stays is the prose — the denominator above the rows and the note below them — which is the half actually written for a model, and is why an empty result prints why rather than an empty table.
 
 **The reader cannot write.** A query reaches the database only through `openReadOnly`, which opens with SQLite's read-only flag. Everything else here is rebuilt from the source files, but `hook_event` has no source to re-read from, so a wrong query typed by the owner or issued by an agent must not be able to reach it. `dim q` does open a second, writable handle after the rows are rendered, to record one `command_trace` row; it is a separate connection for that write alone, so the handle the query itself holds stays read-only.
 
@@ -561,19 +401,8 @@ Two filters make the counts mean anything. A message over 400 characters is a do
 - Not a hook-heavy telemetry layer: two hook events per tool, each a file write.
 - Reaches no network, holds no credential, and is billed for nothing at any point in collection or backfill; a model reads query output only when the owner asks, on a set the query has already narrowed, and the local embedder reads only text a person distilled.
 
-## 12. Build order
+## 12. What is left
 
-Each slice is one commit in `~/code/dim-factory`, independently useful.
+[`build-order.md`](build-order.md) holds what is unbuilt and what each piece waits on. It is the page that changes as work lands, so it is the one that says what is true now; the sections above argue for the shape rather than track it.
 
-1. **Sessions, messages, usage** — `dim init`, `dim sync`, `dim rebuild`, `dim stats`; `parse-claude.ts` and `parse-codex.ts` populate `session`, `message` and `usage` for Claude transcripts, Claude subagents and Codex rollouts. Archiving is not a slice: `cleanupPeriodDays` is set to 3650, so the sources persist and the database points into them (§4). *Useful on its own: every token figure in §3.5 and §3.10 is answerable.*
-2. **Hook spool** — the four hook commands added to `~/.claude/settings.json` and `~/.codex/hooks.json`; `sync` drains the spool into `hook_event`. Second because it is the only slice whose data expires: a session that ends before its hook is installed never records why it ended, and no later slice can recover it. This is §1's argument, which the transcripts no longer need and the hooks still do.
-3. **Scheduled sync** — a `launchd` agent running `dim sync` every 15 minutes, so the database tracks the corpus instead of being a snapshot, and the spool is drained while it is small.
-4. **Turns and reported cost** — `turn` from Claude's `turn_duration` lines and Codex's `task_complete`/`turn_aborted` events, `session_cost_reported` from Claude's `cost-state`. A Codex turn takes its model from its own `turn_context`, not from the turn in effect when it finished. Rollouts whose `turn_context` carries no `turn_id` (the pre-August dialect) leave the model unset rather than guessed.
-5. **Orphan prompts** — `orphan_prompt` from both `history.jsonl` files, for the sessions whose transcripts were deleted before §1's retention change.
-6. **Read path** — `q tokens`, `q session`, `q models`, `q cost`.
-7. **Tool calls and edits** — `tool_call` for both tools; `q tools`.
-8. **Skill loads and versions** — `skill_load` with `how` and `body_sha256`; `skill_version` from the skills repo's git history; `q skills`, `q skill`, `q workflow`; the `review_scope` derivation for §9.9 case 1.
-9. **Corrections and routing** — `v_correction_candidate`, `v_routing_case`, `correction_label`; `q corrections`, `q label`, `q routing`, `export routing-cases`.
-10. **Agent skill** — `skills/session-evidence/SKILL.md` in the skills repo, validated with `make validate`, dry-run per `skill-test`.
-
-Slices 4–10 read only the source files, so they rebuild at any time and a schema change is `dim rebuild`, not a migration. Slice 2 is the exception: the spool is the one input that exists only if something was running when the session ended.
+The original cut was ten slices, and the rule that governed it still holds: every table reads only the source files, so it rebuilds at any time and a schema change is `dim rebuild` rather than a migration. The spool is the exception, because it is the one input that exists only if something was running when the session ended.

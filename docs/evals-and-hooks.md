@@ -150,7 +150,16 @@ Kept short because it is real and he will come back to it, but it does not decid
 
 The probe (`scratchpad/probe.js`, re-run 2026-09-16: 19/31 rank-1, collisions `doc-review↔docs` 0.58 and `skill-authoring↔skill-test` 0.50) is a lexical proxy. Its misses split in two: descriptions missing words users say — `debug` lacks flaky/crash/exception/stack trace, `simplify` lacks refactor/duplication/too long, `explain-diff` lacks "walk me through"/"what does this PR change" — and scorer blindness to synonyms a model resolves without help (`security-review` vs "SSRF", `build` vs "step by step"). The first group is fixed by editing three descriptions by hand, today, no tooling. The second group is not a defect.
 
-Given the owner's priorities, a Tier 2 runner does not earn a second language or 250 lines of awk. If it is ever built: awk scorer (the repo already depends on awk at `validate.sh:34` and `Makefile:5`; Node would add a toolchain pin and a second test runner for one file — Node 22 is preinstalled on `ubuntu-latest`, so CI is not the obstacle), cases at `evals/<skill>/triggers.json` (invisible to installs, `evals/README.md:5`; `run.sh:94` only globs `*.sh` so no collision), owner required on every negative (Addy's owner-less negatives pass vacuously, `run-evals.js:319-345`), floor stored under a `trigger` key in the baseline and raised by hand. Real user turns from session telemetry would enter as `{"prompt", "source": "session", "fired": "<skill|none>"}` after stripping paths, file names, identifiers and pasted output down to the ask; the `fired` label is a direct routing measurement that makes the TF-IDF score unnecessary. That is the stronger reason not to build the scorer: telemetry answers the routing question better, and `fired`-labelled prompts can be graded with no scorer at all. Cost if built anyway: one to two days plus 26 case files.
+Given the owner's priorities, a Tier 2 runner does not earn a second language or 250 lines of awk. If it is ever built, the shape is:
+
+- **An awk scorer.** The repo already depends on awk at `validate.sh:34` and `Makefile:5`; Node would add a toolchain pin and a second test runner for one file.
+- **Cases at `evals/<skill>/triggers.json`**, invisible to installs, and `run.sh:94` globs only `*.sh` so there is no collision.
+- **An owner required on every negative**, because owner-less negatives pass vacuously.
+- **A floor stored under a `trigger` key** in the baseline, raised by hand.
+
+Real user turns from session telemetry would enter as `{"prompt", "source": "session", "fired": "<skill|none>"}` after stripping paths, file names, identifiers and pasted output down to the ask.
+
+That `fired` label is the stronger reason not to build the scorer at all: it is a direct routing measurement, so telemetry answers the routing question better than a TF-IDF score, and `fired`-labelled prompts can be graded with no scorer. Cost if built anyway: one to two days plus 26 case files.
 
 ## 6. Hooks
 
