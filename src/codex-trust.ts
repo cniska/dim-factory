@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ConfigError } from "./config-error";
-import { hookCommand, wakeCommand } from "./hooks";
+import { type HookEntry, hookConfigPath, wantedHooks } from "./hooks";
 import { readJsonc } from "./jsonc";
 import { codexDir, type Env } from "./paths";
 
@@ -34,8 +34,6 @@ function keyEvent(event: string): string {
   return event.replace(/(?<=[a-z])(?=[A-Z])/g, "_").toLowerCase();
 }
 
-type HookEntry = { hooks?: { command?: string }[] };
-
 function recordedKeys(path: string): Set<string> {
   if (!existsSync(path)) return new Set();
   let parsed: { hooks?: { state?: Record<string, { trusted_hash?: unknown }> } };
@@ -61,16 +59,11 @@ function positionOf(entries: HookEntry[], command: string): [number, number] | n
 }
 
 export function planCodexTrust(env: Env = process.env): TrustState[] {
-  const hooksPath = join(codexDir(env), "hooks.json");
+  const hooksPath = hookConfigPath("codex", env);
   const config = readJsonc<{ hooks?: Record<string, HookEntry[]> }>(hooksPath) ?? {};
   const recorded = recordedKeys(codexConfigPath(env));
 
-  const wanted: [string, string][] = [
-    ["SessionStart", hookCommand("codex", env)],
-    ["SessionStart", wakeCommand("codex")],
-    ["SessionEnd", hookCommand("codex", env)],
-  ];
-  return wanted.map(([event, command]) => {
+  return wantedHooks("codex", env).map(({ event, command }) => {
     const at = positionOf(config.hooks?.[event] ?? [], command);
     const key = at ? `${hooksPath}:${keyEvent(event)}:${at[0]}:${at[1]}` : null;
     return { event, command, key, recorded: key !== null && recorded.has(key) };

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { planCodexTrust } from "./codex-trust";
 import { ConfigError } from "./config-error";
-import { hookCommand } from "./hooks";
+import { hookCommand, planHooks } from "./hooks";
 import type { Env } from "./paths";
 
 const roots: string[] = [];
@@ -38,6 +38,20 @@ describe("reading the codex hooks a trust key points at", () => {
     );
     const start = planCodexTrust(env).find((t) => t.command === hookCommand("codex", env));
     expect(start?.key).toEndWith(":session_start:0:0");
+  });
+
+  // A hook the installer writes but the trust check does not look up reports as
+  // nothing at all, which a reader cannot tell from a hook that is trusted.
+  test("reports every codex hook the installer plans", () => {
+    const env = codexEnv(() => "{}");
+    const planned = planHooks(env)
+      .filter((p) => p.tool === "codex")
+      .map((p) => `${p.event} ${p.command}`);
+    const trust = planCodexTrust(env);
+    expect(trust.map((t) => `${t.event} ${t.command}`)).toEqual(planned);
+    // Both sides read the same list, so the comparison above pins no content:
+    // a renamed event would satisfy it. The trust key is built from these names.
+    expect(trust.map((t) => t.event)).toEqual(["SessionStart", "SessionStart", "SessionEnd"]);
   });
 
   // Reporting an unreadable file as three untrusted hooks sends the reader to
