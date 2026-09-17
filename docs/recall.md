@@ -28,6 +28,12 @@ MemPalace is the closest: verbatim, message-level, local, no API calls for retri
 
 So the gap is not storage. This database already holds every message with richer scoping than a memory store would build — project, session, skill, repo and commit.
 
+## Scope, and which tier arrives
+
+[Nothing Forgotten](https://crisu.me/blog/nothing-forgotten) separates memory into three scopes — what the work is on now, what holds for this project, and what holds for this person — and the same three exist here. The session tier is the Next a handoff left, and `wake` delivers it. The user tier is the conventions file, which is resident in every session and is what [`conventions.md`](conventions.md) exists to cut. The project tier — how this repo is built, tested and released — is recorded nowhere that arrives, and is exactly what gets re-explained at the start of a session.
+
+Two of its principles are rules here rather than observations. Relevance over recency: a session's own Next is the one place recency is the right key, because continuation is what it is for, and `prior-art` ranking by recency is the flaw it already names in its own note. And degradation rather than failure: where an embedding is missing or the model will not load, search falls back to the keyword index instead of erroring, because a retrieval path that can break is a query nobody can rely on.
+
 ## Input quality decides this, not the algorithm
 
 Measured already, on LoCoMo, and published as [The Distillation Gap](https://crisu.me/blog/the-distillation-gap): distilled observations beat raw conversation turns at every k, the two shipped retrieval improvements are worth about four points between them, and the distillation step before retrieval is worth seven. Better retrieval does not fix worse input.
