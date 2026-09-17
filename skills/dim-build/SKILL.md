@@ -1,10 +1,12 @@
 ---
 name: dim-build
-description: Build a change in vertical slices, aimed by the files this machine's record says have broken before, and checked by the repo's own task. Use when implementing a feature or a fix across more than one file.
+description: Run the slice loop — the repo's own check, a checking agent on the diff, then the commit, one slice at a time. Invoked by dim-feat and dim-fix after their own first phase; use directly only for a change that is neither.
 argument-hint: "<what to build>"
 ---
 
 # Build
+
+The shared half of both fronts. [`dim-feat`](../dim-feat/SKILL.md) arrives here having cut the work into slices; [`dim-fix`](../dim-fix/SKILL.md) arrives with a failing test and a named cause. What follows is the same either way.
 
 One agent, in one session. The work is edits, and edits need the context that produced them to stay coherent across slices; a subagent returns a conclusion and keeps its evidence. That is a good trade for a review, where findings are the product, and a bad one here.
 
@@ -14,10 +16,9 @@ What makes this a station is that the record aims it. This machine knows which f
 
 ## Entry contract
 
-1. **Know what checks this.** Read the repo's own task — `package.json` scripts, `mise` tasks, a `Makefile` — and use it. Running the repo's task is what makes a local check the same check CI runs; an equivalent command assembled by hand is not that.
-2. **Find the ground that has broken.** `dim q fixes` names files an agent edited that a later fix commit came back to. A path in this change that appears there gets the slow reading and a test before the edit, not after.
-3. **Read the rules actually in force.** The standing corrections live in the guidance files, not in a phrase counter — `dim q repeats` returns conversational filler and the corrections are not in it ([`findings.md`](../../docs/findings.md), "The repetition an n-gram counter cannot see"). Read the `CLAUDE.md` and `AGENTS.md` on the walk into this session, imports included, and treat a rule a session has already restated as one that is not landing rather than one the agent ignored.
-4. **Pick up rather than restart.** If a session already worked this, `dim q resume <id-prefix>` gives the branch, the files in play and the last pushback.
+1. **Know what checks this.** Read the repo's own task — `package.json` scripts, `mise` tasks, a `Makefile` — and use it. `dim check-task` prints what the repo declares. Running the repo's task is what makes a local check the same check CI runs; an equivalent command assembled by hand is not that.
+2. **Read the rules actually in force.** The standing corrections live in the guidance files, not in a phrase counter — `dim q repeats` returns conversational filler and the corrections are not in it ([`findings.md`](../../docs/findings.md), "The repetition an n-gram counter cannot see"). Read the `CLAUDE.md` and `AGENTS.md` on the walk into this session, imports included, and treat a rule a session has already restated as one that is not landing rather than one the agent ignored.
+3. **Know which ground has broken.** `dim q fixes` names files an agent edited that a later fix commit came back to. A path in this change that appears there gets the slow reading. A front arriving here has already asked this; a change that came in directly asks it now.
 
 ## Slices
 
