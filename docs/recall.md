@@ -28,6 +28,16 @@ MemPalace is the closest: verbatim, message-level, local, no API calls for retri
 
 So the gap is not storage. This database already holds every message with richer scoping than a memory store would build — project, session, skill, repo and commit.
 
+## Input quality decides this, not the algorithm
+
+Measured already, on LoCoMo, and published as [The Distillation Gap](https://crisu.me/blog/the-distillation-gap): distilled observations beat raw conversation turns at every k, the two shipped retrieval improvements are worth about four points between them, and the distillation step before retrieval is worth seven. Better retrieval does not fix worse input.
+
+The same finding settles topics. Structural filtering works where the topic assignments are good and adds noise where they are keyword-derived — the mechanism is right and the data is the bottleneck. So a topic layer here would have to be as good as the scopes already recorded, and the scopes are recorded rather than inferred.
+
+That is a cost to embedding every message here, not a reason against it: raw turns are the weaker input, and a distiller is the one thing collection may not do. What this corpus has instead is text a person already distilled. A handoff is a session compressed by hand to what the next one needs, a commit subject is one change stated in a line, and a correction is the moment the work was stopped. None of them needs a model to produce, because all of them were written.
+
+So the first thing to embed is what was distilled by hand, and whether adding raw messages helps is a question for the benchmark rather than an assumption.
+
 ## What semantic search would cost
 
 Keyword search finds the words that were typed. A question and the passage that answers it routinely share no tokens, and the corpus records the failure in its own voice: *"my earlier search was too narrow to catch it — I was matching phrases like 'from Claude,' not the concept."*
