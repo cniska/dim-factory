@@ -174,6 +174,10 @@ More usefully it found a defect nobody planted. The trace writer opened the data
 
 What it cost: one agent, 12 tool calls, about 90 seconds, against a slice of five files.
 
+It did it again on the `pre-push` gate the same day, against a slice its author believed finished and had 250 green tests behind. The hook waved a push through whenever the remote's tip was an object the checkout did not hold, on the reasoning that an oid it cannot resolve is something it cannot establish. That is backwards: the tip is missing locally exactly when it is a commit this checkout never fetched, which is the force push that loses someone else's work rather than the one that cannot be judged. The checker reproduced it end to end with two clones, and the reproduction is now a test. It also caught two tests asserting on the hook's source text rather than its behavior, which passed while the rule they named was intact and would have reddened on a rewrite that changed nothing.
+
+Neither of those is a defect a second pair of eyes would obviously catch either. What the checker had that the author did not was no stake in the slice being done — the run cost 19 tool calls and about four minutes.
+
 ## The record already says which queries are used
 
 Asked on 2026-09-17. Every `dim q` an agent runs is a shell call in a transcript, so usage needs no instrumentation: `search` 30 runs, `thread` 14, `prior-art` 9, `skills` 8, `resume` 8, down to `chain` at 4. That is what retired two shipped skills on the same day — `df-delegate` had never loaded once.
