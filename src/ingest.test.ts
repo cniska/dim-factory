@@ -429,9 +429,47 @@ describe("ingest", () => {
     );
     const db = run(env);
     try {
-      expect(db.prepare(`SELECT parent_id, agent_type FROM session WHERE id = '${agentId}'`).get()).toEqual({
-        parent_id: SESSION,
-        agent_type: "Explore",
+      expect(
+        db.prepare("SELECT parent_id, agent_type FROM session WHERE id = ?").get(`${agentId}@${SESSION}`),
+      ).toEqual({ parent_id: SESSION, agent_type: "Explore" });
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  // Claude Code reuses an agent id across parent sessions. Keyed on that id
+  // alone, the second file reads as the first having moved: one session row for
+  // two runs, and the second file read from the first's cursor, which lands
+  // mid-line and loses everything before it.
+  test("keeps two subagents that share an agent id apart", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    const other = "99999999-8888-7777-6666-555555555555";
+    for (const parent of [SESSION, other]) {
+      writeClaudeTranscript(env, "-Users-x-code-demo", parent);
+      const dir = join(env.DIM_CLAUDE_PROJECTS as string, "-Users-x-code-demo", parent, "subagents");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "agent-shared.jsonl"),
+        `${claudeTranscriptLines(parent)
+          .map((l) => JSON.stringify(l))
+          .join("\n")}\n`,
+      );
+    }
+    const db = openDb(dbPath(env));
+    try {
+      expect(sync(db, env).dropped).toEqual([]);
+      const rows = db
+        .prepare<{ id: string; parent_id: string }, []>(
+          "SELECT id, parent_id FROM session WHERE id LIKE 'shared@%' ORDER BY id",
+        )
+        .all();
+      expect(rows).toEqual([
+        { id: `shared@${SESSION}`, parent_id: SESSION },
+        { id: `shared@${other}`, parent_id: other },
+      ]);
+      expect(db.prepare("SELECT count(*) AS n FROM source_file WHERE kind = 'subagent'").get()).toEqual({
+        n: 2,
       });
     } finally {
       closeDb(db);
@@ -452,9 +490,10 @@ describe("ingest", () => {
     const db = openDb(dbPath(env));
     try {
       const report = sync(db, env);
-      expect(report.orphanSubagents).toEqual(["orphan1"]);
+      const id = `orphan1@${SESSION}`;
+      expect(report.orphanSubagents).toEqual([id]);
       expect(report.failures).toEqual([]);
-      expect(db.prepare("SELECT parent_id FROM session WHERE id = 'orphan1'").get()).toEqual({
+      expect(db.prepare("SELECT parent_id FROM session WHERE id = ?").get(id)).toEqual({
         parent_id: null,
       });
     } finally {

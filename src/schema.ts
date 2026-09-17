@@ -2,12 +2,13 @@
 // by re-reading them, so a schema change is `dim rebuild`, not a migration. The
 // exceptions carry the reason at the table: hook_event has no source to re-read,
 // and embedding is derived from tables that do.
-// SCHEMA_VERSION exists only so sync can refuse to run against an older shape.
-// A table added with nothing existing feeding it does not change that shape —
-// every write opens the database through SCHEMA_SQL, which creates it — so
-// adding one is not a version bump and does not cost a re-read of every file.
+// SCHEMA_VERSION exists so sync can refuse to run against a database only a
+// re-read can correct: a changed column, or a changed rule for what identifies a
+// row, since rows already written keep the old identity. A table added with
+// nothing existing feeding it is neither — every write opens the database
+// through SCHEMA_SQL, which creates it — so adding one is not a version bump.
 
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);

@@ -41,6 +41,17 @@ function agentTypeOf(path: string): string | undefined {
   }
 }
 
+/**
+ * An agent id repeats across parent sessions — six do in this corpus — so it is
+ * the pair that names a run, and keying on the id alone makes two different
+ * subagents one row and hands the second the first's read cursor. The agent id
+ * leads so that a prefix search still finds it and the short form still reads
+ * as the id a tool result names.
+ */
+export function subagentId(agentId: string, parentId: string): string {
+  return `${agentId}@${parentId}`;
+}
+
 /** ~/.claude/projects/<slug>/<session>/subagents/agent-<id>.jsonl */
 export function listClaudeSubagents(env: Env = process.env): FileSpec[] {
   const root = claudeProjectsDir(env);
@@ -48,12 +59,13 @@ export function listClaudeSubagents(env: Env = process.env): FileSpec[] {
   const specs: FileSpec[] = [];
   const parse = parserFor(env);
   for (const path of new Glob("*/*/subagents/*.jsonl").scanSync({ cwd: root, absolute: true })) {
+    const parentId = basename(dirname(dirname(path)));
     specs.push({
       path,
       tool: "claude",
       kind: "subagent",
-      sessionId: basename(path, ".jsonl").replace(/^agent-/, ""),
-      parentId: basename(dirname(dirname(path))),
+      sessionId: subagentId(basename(path, ".jsonl").replace(/^agent-/, ""), parentId),
+      parentId,
       agentType: agentTypeOf(path),
       parse,
     });
