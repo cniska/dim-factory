@@ -5,6 +5,7 @@
 
 import { AGENT_LABEL, installAgent, planAgent } from "./agent";
 import { checkRange } from "./check-commits";
+import { checkoutRoot } from "./checkout";
 import { checkoutDirs, installCommitGate, planCommitGate, sharedHooksDir } from "./commit-gate";
 import { closeDb, openDb } from "./db";
 import { diagnose } from "./doctor";
@@ -53,7 +54,8 @@ const USAGE = `usage: dim <command>
   wake            the one thing a cold start here cannot work out: what the last
                   session in this directory left as Next (for the SessionStart hook)
   check-task      print the check command this repo declares, and nothing if it
-                  declares none (the pre-commit hook reads this)
+                  declares none or this is not a checkout (the pre-commit hook
+                  reads this, and takes silence as no gate)
   check-commits <range>
                   judge every authored subject in a revision range by the same
                   rules the commit gate holds, and name each one that breaks
@@ -642,8 +644,11 @@ try {
       break;
     case "check-task":
       // The pre-commit hook asks this; silence means no declared task and no gate.
+      // Git runs a hook at the toplevel, but a person types this wherever they
+      // are, and the answer is the repo's rather than the directory's.
       {
-        const task = checkTask(process.cwd());
+        const root = checkoutRoot(process.cwd());
+        const task = root === null ? null : checkTask(root);
         if (task) console.log(task.command);
       }
       break;

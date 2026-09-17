@@ -1,6 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { checkoutRoot } from "./checkout";
 import { handoffNext } from "./handoff";
 import { checkTask, formatTask } from "./tasks";
 
@@ -65,19 +64,6 @@ export function wireFor(tool: "claude" | "codex", block: string): string {
   return JSON.stringify({
     hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: block },
   });
-}
-
-/**
- * A session often starts in a subdirectory, so the checkout it belongs to is
- * found by climbing. Nothing outside a checkout is a repo this line may speak
- * for: a walk that runs past the last `.git` reaches the home directory, where
- * any stray manifest would be read as what "this repo declares".
- */
-function checkoutRoot(dir: string): string | null {
-  for (let at = resolve(dir), prev = ""; at !== prev; prev = at, at = dirname(at)) {
-    if (existsSync(join(at, ".git"))) return at;
-  }
-  return null;
 }
 
 /**
