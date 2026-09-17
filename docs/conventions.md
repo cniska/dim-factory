@@ -36,4 +36,4 @@ That inverts today's `install-rules`, which reads the canonical file and flatten
 
 ## Not built
 
-Nothing generates a block today, and exactly one rule has a gate to be held by. The work is building gates and earning one cut each, not rewriting the file.
+Nothing generates a block today. Three rules now have a gate to be held by — the commit subject, the repo's own declared check, and a rewrite of the branch the remote's HEAD names — so what is left is the measurement each cut has to be recorded as, not the gates.

@@ -36,7 +36,7 @@ So the gap is not storage. This database already holds every message with richer
 
 ### What the project tier would carry
 
-The facts re-explained at the start of a session are how this repo is formatted, tested, deployed and reviewed. They are per-repo, they change rarely, and an agent that has to work them out reads a manifest and a lock file to reach three commands.
+The facts re-explained at the start of a session are how this repo is formatted, tested, deployed and reviewed. They are per-repo, they change rarely, and an agent that has to work them out reads a manifest and a lock file to reach them.
 
 Two halves, with different sources, and neither is a heuristic where the record already answers:
 

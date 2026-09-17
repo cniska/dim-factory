@@ -1,6 +1,6 @@
 ---
 name: dim-plan
-description: Scope a change against what this machine already did — prior art on disk, decisions already taken, and whether an earlier conclusion still holds. Use before breaking work down or settling on an approach.
+description: Scope a change against what this machine already did — prior art on disk, decisions already taken, and whether an earlier conclusion still holds. Invoked by dim-feat where the cut is not obvious; use directly only to scope work that is not yet a feature or a fix.
 argument-hint: "<what you are about to build>"
 ---
 

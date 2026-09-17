@@ -26,7 +26,7 @@ The chain that pairs a handoff with the session that acted on it is built, so th
 
 ## Waiting on `PostToolUse` being installed
 
-dim installs session hooks only, so anything reacting to a single tool call has no channel yet. Installing that event is the borrow [`landscape.md`](landscape.md) picks first, because it waits on nothing and these three wait on it.
+dim installs session hooks only, so anything reacting to a single tool call has no channel yet. Installing that event is the borrow [`landscape.md`](landscape.md) picks first, because it waits on nothing and the items below wait on it.
 
 - **Running a formatter after an edit**, which is the half of the project tier dim can supply a command for but never run ([`recall.md`](recall.md)).
 - **The working-directory check.** Git aimed outside the session's own directory fails three times as often ([`findings.md`](findings.md)). A commit hook knows the repo it runs in and not the one the session belongs to, so only a hook on the tool call can compare them.
@@ -52,7 +52,7 @@ dim installs session hooks only, so anything reacting to a single tool call has 
 
 ## Decided against
 
-Not waiting on anything, and not queued. [`landscape.md`](landscape.md) records each with its reason, so the next survey does not raise it again: a watcher in place of the polling agent, a parser widened to a third tool, chunking below a heading, a cursor for the embedding pass, remote embedding providers, a vector database, and dashboards.
+Not waiting on anything, and not queued. [`landscape.md`](landscape.md) records each with its reason, so the next survey does not raise it again, and that table is the list rather than this line.
 
 The portability gap the watcher would have closed stands on its own: `install-agent` writes a launchd plist, so the scheduled sync is macOS-only.
 
