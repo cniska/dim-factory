@@ -23,6 +23,10 @@ function pidIsAlive(pid: number): boolean {
  * which is all this needs; macOS ships no flock(1). The pid file is what makes
  * it safe to run unattended: a killed run leaves the directory behind, and
  * without this the scheduled agent would fail every 15 minutes forever.
+ *
+ * Held until the work is actually finished. A `fn` that returns a promise has
+ * only started, and releasing when it returns would hand the lock to a second
+ * run while the first is still writing.
  */
 export function withLock<T>(fn: () => T, env: Env = process.env): T {
   const path = join(dataDir(env), "lock");
@@ -39,9 +43,16 @@ export function withLock<T>(fn: () => T, env: Env = process.env): T {
   }
 
   writeFileSync(pidFile, String(process.pid));
+  const release = (): void => rmSync(path, { recursive: true, force: true });
+
+  let result: T;
   try {
-    return fn();
-  } finally {
-    rmSync(path, { recursive: true, force: true });
+    result = fn();
+  } catch (error) {
+    release();
+    throw error;
   }
+  if (result instanceof Promise) return result.finally(release) as T;
+  release();
+  return result;
 }

@@ -27,6 +27,14 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      # The embedder's tests assert against the real model, because what makes a
+      # dot product a cosine is that the weights return unit vectors. Cached so
+      # the download is paid once rather than on every run.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.local/share/dim-factory/models
+          key: embed-model-Xenova-all-MiniLM-L6-v2
+
       - run: bun run verify
 
   commits:

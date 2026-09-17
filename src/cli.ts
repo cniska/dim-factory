@@ -1,12 +1,16 @@
 #!/usr/bin/env bun
 // dim — read Claude Code and Codex session records into a local SQLite database.
-// No model call happens anywhere below this line.
+// Nothing below this line reaches the network, holds a credential, or is billed
+// per token. `embed` and `q search` run a model on weights already on disk.
 
 import { AGENT_LABEL, installAgent, planAgent } from "./agent";
 import { checkRange } from "./check-commits";
 import { checkoutDirs, installCommitGate, ownerOf, planCommitGate, sharedHooksDir } from "./commit-gate";
 import { closeDb, openDb } from "./db";
 import { diagnose } from "./doctor";
+import { EMBED_DIMS, EMBED_MODEL, embedQuestion, openEmbedder } from "./embed";
+import { buildIndex } from "./embed-index";
+import { committerName } from "./git-identity";
 import { installHooks, planHooks } from "./hooks";
 import { withLock } from "./lock";
 import { dbPath, resolveHomeDir } from "./paths";
@@ -26,6 +30,8 @@ const USAGE = `usage: dim <command>
   init            create the database and its schema
   sync            read every new byte of both tools' session files
   rebuild         forget every cursor and read all files from the start
+  embed           index the text a person distilled — handoff nexts, their own
+                  commit subjects, labeled corrections — for \`q search\`
   stats           row counts and token totals per tool and model
   doctor          check that collection is actually working, and say what to fix
   install-hooks   show the session hooks to add to both tools' config
@@ -330,6 +336,36 @@ function runCheckCommits(range: string | undefined): void {
   console.log(`every authored subject in ${range} holds`);
 }
 
+/** The one command here that loads a model; it reads distilled text, never a transcript. */
+async function runEmbed(): Promise<void> {
+  // Before the lock: fetching the weights the first time is the slowest thing
+  // here, and holding the write lock through it would block a scheduled sync.
+  const embed = await openEmbedder();
+  await withLock(async () => {
+    const db = openDb(dbPath());
+    try {
+      console.log(`${EMBED_MODEL}, ${EMBED_DIMS} dims per passage`);
+      const report = await buildIndex(db, embed, committerName(), (done, total) => {
+        if (done % 1000 === 0 || done === total) console.log(`  ${done} of ${total}`);
+      });
+      const { found } = report;
+      console.log(
+        `distilled: ${found.next} handoff nexts, ${found.subject} commit subjects, ` +
+          `${found.correction} corrections`,
+      );
+      console.log(
+        `${report.embedded} embedded, ${report.unchanged} already current, ` +
+          `${report.removed} dropped because the source is gone`,
+      );
+      if (found.correction === 0) {
+        console.log("no prompt is labeled a correction yet; `dim q candidates` narrows, `dim label` records");
+      }
+    } finally {
+      closeDb(db);
+    }
+  });
+}
+
 /**
  * The escape hatch the named questions are grown from: a question worth asking
  * twice becomes one of them, and until it is, asking it should not mean leaving
@@ -416,7 +452,7 @@ function runLabel(args: string[]): void {
   }
 }
 
-function runQuery(args: string[]): void {
+async function runQuery(args: string[]): Promise<void> {
   const name = args[0];
   if (!name || name === "list") {
     for (const q of QUERIES) {
@@ -434,9 +470,13 @@ function runQuery(args: string[]): void {
   if (sinceFlag !== -1 && args[sinceFlag + 1]) flagValues.add(args[sinceFlag + 1] as string);
   const arg = args.find((a) => !a.startsWith("--") && a !== name && !flagValues.has(a));
   const since = windowFromArgs(args, { spansHistory: query.spansHistory });
+  // Resolved here, like `since`, so ranking by meaning costs no query its
+  // synchronous shape: `digest` composes other queries and would otherwise have
+  // to await every one of them.
+  const question = query.embedsArg && arg ? await embedQuestion(arg) : undefined;
   const db = openReadOnly(dbPath());
   try {
-    const result = query.run(db, { arg, since, home: resolveHomeDir() });
+    const result = query.run(db, { arg, since, home: resolveHomeDir(), question });
     console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : renderTable(result));
   } finally {
     db.close();
@@ -468,7 +508,10 @@ try {
       runSql(process.argv[3], process.argv.includes("--json"));
       break;
     case "q":
-      runQuery(process.argv.slice(3));
+      await runQuery(process.argv.slice(3));
+      break;
+    case "embed":
+      await runEmbed();
       break;
     case "install-agent":
       printAgentPlan(process.argv.includes("--write"));

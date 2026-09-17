@@ -12,7 +12,7 @@ Prerequisite: `dim` on PATH. If it is missing, say so and fall back to the `sear
 
 ## Workflow
 
-1. **Find the sentence.** `dim q search "<terms>"` — terms are ANDed and match as literal words, so a branch name or a flag searches as itself. Returns session prefix, timestamp, role, project and the matched excerpt, newest first.
+1. **Find the passage.** `dim q search "<question>"` — ask it as a question, in whatever words fit; it ranks by meaning, so a hit need share no term with what you typed. It searches the text a person distilled by hand: the `## Next` a handoff left, the subjects of commits the owner authored, and prompts labeled corrections. A sentence said in passing is not in it. The denominator names which index answered — `cosine over N distilled passages`, or `keywords over N messages` when nothing is embedded or the model will not load, in which case terms are ANDed and match as literal words. Run `dim embed` if it keeps falling back.
 2. **Read around it.** `dim q thread <session-prefix>@<ts>` returns the messages on both sides of that timestamp. The exchange that settled a question runs three or four messages, and the sentence that changed the answer is rarely the one that matched. `dim q thread <session-prefix>` alone reads the session from the start.
 3. **Take the session's facts if they bear on the answer.** `dim q session <id-prefix>` gives models, turns, tokens, tool counts, interruptions and end reason.
 
@@ -25,6 +25,7 @@ Queries cover the last 30 days by default and print the window above the rows. P
 
 Say which of these applies rather than reporting an absence as a finding:
 
+- **`search` ranks distilled text, not every message.** A sentence typed once in one session is not a passage anyone summarized, so ranking by meaning cannot reach it. When the keyword fallback is what you need, `dim sql` reaches every message through `message_fts`.
 - **Tool calls and their results carry no text.** Roughly a third of messages are searchable prose; the rest are machinery, deliberately not indexed. A command you ran is in `dim q tools`, not in `search`.
 - **Skill bodies and injected meta are excluded from `thread`**, being the largest text in a session and said by no one.
 - **A session synced before its last turn is short a few messages.** `dim sync` reads new bytes; run it if the exchange you want is from the last few minutes.

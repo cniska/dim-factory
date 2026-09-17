@@ -95,7 +95,8 @@ Two portability gaps stand in the way of anyone else running it: `install-agent`
 
 ## Constraints
 
-- No model calls in collection or backfill. A model reads query results when asked a question, never transcripts.
+- Nothing reaches the network, holds a credential, or is billed per token. `dim embed` and `q search` run a model, on weights that sit on disk after one download; every other path is parsing and SQL.
+- No model reads a transcript. A model reads query results when asked a question, and `dim embed` reads only text a person already distilled.
 - The database stores structure and a locator into the source file. Tool results, file contents and thinking stay out of it.
 - Ingestion is incremental and idempotent — re-running never double-counts, and an in-progress session ingests cleanly and updates later.
 - Codex has equal standing with Claude Code, not a later phase.

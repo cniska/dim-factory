@@ -1,6 +1,11 @@
 // Every table here is one-to-one with records in the source files and is rebuilt
-// by re-reading them, so a schema change is `dim rebuild`, not a migration.
+// by re-reading them, so a schema change is `dim rebuild`, not a migration. The
+// exceptions carry the reason at the table: hook_event has no source to re-read,
+// and embedding is derived from tables that do.
 // SCHEMA_VERSION exists only so sync can refuse to run against an older shape.
+// A table added with nothing existing feeding it does not change that shape —
+// every write opens the database through SCHEMA_SQL, which creates it — so
+// adding one is not a version bump and does not cost a re-read of every file.
 
 export const SCHEMA_VERSION = 15;
 
@@ -281,6 +286,26 @@ CREATE TABLE IF NOT EXISTS guidance_version (
   PRIMARY KEY (path, blob_sha)
 );
 CREATE INDEX IF NOT EXISTS guidance_version_seen ON guidance_version(path, first_seen);
+
+-- What \`q search\` ranks: only text a person already distilled, for the reasons in
+-- docs/recall.md. A projection of its sources and never a second archive —
+-- \`dim embed\` drops the row when the source is gone.
+--
+-- No foreign key, because \`rebuild\` empties message and drops repo_commit and
+-- then writes the same ids back, so a vector keyed by one survives it. text is
+-- stored rather than joined because a vector only means anything against the
+-- exact string the model was given, and a Next is a slice of a larger message
+-- that exists nowhere else.
+CREATE TABLE IF NOT EXISTS embedding (
+  kind        TEXT NOT NULL CHECK (kind IN ('next','subject','correction')),
+  ref         TEXT NOT NULL,        -- message.id, or repo_commit.sha for a subject
+  text        TEXT NOT NULL,
+  text_sha    TEXT NOT NULL,        -- so a re-run embeds only what changed
+  vector      BLOB NOT NULL,        -- 384 little-endian float32, unit length
+  model       TEXT NOT NULL,
+  built_at    TEXT NOT NULL,
+  PRIMARY KEY (kind, ref)
+);
 
 -- Prose search over message.text, so finding what was said in a past session is a
 -- query rather than a grep across every transcript on disk. External content: the

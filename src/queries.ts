@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { fromBlob, type Question, similarity } from "./embed";
 import { withoutWorktree } from "./worktree";
 
 export type QueryResult = {
@@ -15,7 +16,13 @@ export type QueryResult = {
  * sessions ran under guidance that has since been rewritten, so counting them
  * beside this week's describes a machine that no longer exists.
  */
-export type QueryContext = { arg?: string; since?: string; home?: string };
+export type QueryContext = {
+  arg?: string;
+  since?: string;
+  home?: string;
+  /** Resolved by the caller, as `since` is, so no query has to be async to rank by meaning. */
+  question?: Question;
+};
 
 /**
  * Paths print relative to the reader's home, so the project column stays short
@@ -30,6 +37,8 @@ export type Query = {
   usage?: string;
   /** A time series whose point is the arc across months, so no window is applied unless asked. */
   spansHistory?: boolean;
+  /** Its argument is a question to rank by meaning, which the caller resolves into `ctx.question`. */
+  embedsArg?: boolean;
   run: (db: Database, ctx: QueryContext) => QueryResult;
 };
 
@@ -662,45 +671,147 @@ const asPhrases = (terms: string): string =>
     .map((t) => `"${t.replaceAll('"', '""')}"`)
     .join(" ");
 
+/** What answers when the distilled index cannot: every message, but only the words actually typed. */
+function keywordSearch(db: Database, ctx: QueryContext, terms: string, why: string): QueryResult {
+  const columns = ["session", "when", "role", "project", "text"];
+  const w = window("m.ts", ctx);
+  const records = table(
+    db,
+    `SELECT substr(m.session_id, 1, 8) AS session, substr(m.ts, 1, 16) AS "when", m.role,
+            replace(coalesce(s.project, ''), ? || '/', '') AS project,
+            replace(snippet(message_fts, 0, '[', ']', '…', 12), char(10), ' ') AS text
+     FROM message_fts
+     JOIN message m ON m.rowid = message_fts.rowid
+     JOIN session s ON s.id = m.session_id
+     WHERE message_fts MATCH ?${w.sql}
+     ORDER BY m.ts DESC LIMIT 40`,
+    [homeOf(ctx), asPhrases(terms), ...w.params],
+  );
+  const indexed = scalar(db, "SELECT count(*) AS n FROM message WHERE text IS NOT NULL");
+  const all = scalar(db, "SELECT count(*) AS n FROM message");
+  return {
+    denominator:
+      `keywords over ${indexed} of ${all} messages that carry text (${windowLine(ctx)}); newest 40 shown. ` +
+      `Meaning was not ranked: ${why}`,
+    columns,
+    rows: toRows(records, columns),
+    note:
+      records.length === 0
+        ? `nothing matches ${terms}; a message with no text is a tool call or its result, which this index does not hold`
+        : undefined,
+  };
+}
+
+const SEMANTIC_HITS = 20;
+const SNIPPET_CHARS = 96;
+const PLACE_CHARS = 30;
+
+const snippet = (text: string): string => {
+  const line = text.replace(/\s+/g, " ").trim();
+  return line.length > SNIPPET_CHARS ? `${line.slice(0, SNIPPET_CHARS - 1)}…` : line;
+};
+
 /**
- * What was said, not what was counted. The alternative is grepping every
- * transcript on disk, which reads whole tool results and file contents back out
- * of megabyte files to find one sentence.
+ * A commit from a scratch tree has no remote to name it, so its place is an
+ * absolute path that is mostly temp directory. Kept from the right, where the
+ * part that identifies it is, because every row pads to the widest cell.
+ */
+const place = (value: string | null): string | null => {
+  if (value === null || value.length <= PLACE_CHARS) return value;
+  return `…${value.slice(value.length - (PLACE_CHARS - 1))}`;
+};
+
+// Asked of sqlite_master rather than found by catching an error: a reader opens
+// read-only, so a database older than the table cannot be given one.
+const hasEmbeddings = (db: Database): boolean =>
+  scalar(db, "SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'embedding'") > 0;
+
+/**
+ * A question and the passage answering it routinely share no words, which is the
+ * one thing keywords cannot be made to do. Falls back rather than failing, in
+ * the three ways this can break: nothing embedded, no model, no table.
  */
 const search: Query = {
   name: "search",
-  summary: "find a past message by its words, newest first",
-  usage: 'dim q search "<terms>"',
+  summary: "find a distilled passage by meaning, falling back to keywords",
+  usage: 'dim q search "<question>"',
   spansHistory: true,
+  embedsArg: true,
   run: (db, ctx) => {
-    const { arg } = ctx;
+    const { arg, question } = ctx;
     if (!arg) {
-      return { denominator: "", columns: ["error"], rows: [['usage: dim q search "<terms>"']] };
+      return { denominator: "", columns: ["error"], rows: [['usage: dim q search "<question>"']] };
     }
-    const columns = ["session", "when", "role", "project", "text"];
-    const w = window("m.ts", ctx);
-    const records = table(
-      db,
-      `SELECT substr(m.session_id, 1, 8) AS session, substr(m.ts, 1, 16) AS "when", m.role,
-              replace(coalesce(s.project, ''), ? || '/', '') AS project,
-              replace(snippet(message_fts, 0, '[', ']', '…', 12), char(10), ' ') AS text
-       FROM message_fts
-       JOIN message m ON m.rowid = message_fts.rowid
-       JOIN session s ON s.id = m.session_id
-       WHERE message_fts MATCH ?${w.sql}
-       ORDER BY m.ts DESC LIMIT 40`,
-      [homeOf(ctx), asPhrases(arg), ...w.params],
+    if (!question) throw new Error("search ranks by meaning, so the caller must resolve ctx.question");
+    if (!hasEmbeddings(db)) {
+      return keywordSearch(db, ctx, arg, "this database predates the embedding index; run `dim embed`");
+    }
+    if ("unavailable" in question) return keywordSearch(db, ctx, arg, question.unavailable);
+
+    const w = window("coalesce(m.ts, c.ts)", ctx, "WHERE");
+    const rows = db
+      .prepare<{ kind: string; ref: string; vector: Uint8Array }, string[]>(
+        `SELECT e.kind, e.ref, e.vector
+         FROM embedding e
+         LEFT JOIN message m ON e.kind <> 'subject' AND m.id = e.ref
+         LEFT JOIN repo_commit c ON e.kind = 'subject' AND c.sha = e.ref${w.sql}`,
+      )
+      .all(...w.params);
+    if (rows.length === 0) {
+      return keywordSearch(db, ctx, arg, "nothing is embedded in this window; run `dim embed`");
+    }
+
+    const scored = rows
+      .map((row) => ({
+        kind: row.kind,
+        ref: row.ref,
+        score: similarity(question.vector, fromBlob(row.vector)),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, SEMANTIC_HITS);
+
+    const detail = db.prepare<
+      { text: string; when: string | null; ref: string | null; place: string | null },
+      [string, string, string, string]
+    >(
+      `SELECT e.text AS text, substr(coalesce(m.ts, c.ts), 1, 16) AS "when",
+              substr(coalesce(m.session_id, e.ref), 1, 8) AS ref,
+              coalesce(replace(s.project, ? || '/', ''), c.label, replace(c.repo, ? || '/', '')) AS place
+       FROM embedding e
+       LEFT JOIN message m ON e.kind <> 'subject' AND m.id = e.ref
+       LEFT JOIN session s ON s.id = m.session_id
+       LEFT JOIN repo_commit c ON e.kind = 'subject' AND c.sha = e.ref
+       WHERE e.kind = ? AND e.ref = ?`,
     );
-    const indexed = scalar(db, "SELECT count(*) AS n FROM message WHERE text IS NOT NULL");
-    const all = scalar(db, "SELECT count(*) AS n FROM message");
+
+    const columns = ["score", "kind", "when", "ref", "where", "text"];
+    const records = scored.map((hit) => {
+      const row = detail.get(homeOf(ctx), homeOf(ctx), hit.kind, hit.ref);
+      return {
+        score: Number(hit.score.toFixed(3)),
+        kind: hit.kind,
+        when: row?.when ?? null,
+        ref: row?.ref ?? hit.ref.slice(0, 8),
+        where: place(row?.place ?? null),
+        text: snippet(row?.text ?? ""),
+      };
+    });
+
+    const byKind = table(db, "SELECT kind, count(*) AS n FROM embedding GROUP BY kind ORDER BY kind")
+      .map((r) => `${r.n} ${r.kind}`)
+      .join(", ");
     return {
-      denominator: `${indexed} of ${all} messages carry text and are searchable (${windowLine(ctx)}); newest 40 shown`,
+      denominator:
+        `cosine over ${rows.length} distilled passages in this window, of ${byKind} embedded ` +
+        `(${windowLine(ctx)}); the ${records.length} closest shown`,
       columns,
-      rows: toRows(records, columns),
+      rows: toRows(records as unknown as Record<string, unknown>[], columns),
       note:
-        records.length === 0
-          ? `nothing matches ${arg}; a message with no text is a tool call or its result, which this index does not hold`
-          : undefined,
+        "Meaning, not words: a hit need share no term with the question, and a low score is still the " +
+        "closest thing indexed rather than an answer. This index holds text a person distilled — a " +
+        "handoff's Next, a subject they authored, a prompt they labeled a correction — and no raw " +
+        "conversation turn, so a sentence said in passing is not in it. `dim q thread <ref>` reads the " +
+        "session a next or a correction came from.",
     };
   },
 };
