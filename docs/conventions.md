@@ -15,7 +15,7 @@ The tempting move is to replace a rule with a pointer — "ask the database" ins
 Three cases, and only the first is a real saving:
 
 - **A gate holds it.** The sentence is deleted. Not shortened, not replaced by a pointer — a hook fires whether or not any skill loaded, so the text describing it is redundant. The commit-subject rule is in this state today, held by `install-commit-gate` in every checkout.
-- **It is a body of facts rather than a rule.** What an earlier session decided, what a number was, which version shipped. Facts are unbounded and a query is one line, so here the pointer wins outright: the rule is to ask the record, and `dim q search` and `q thread` are the asking.
+- **It is a body of facts rather than a rule.** What an earlier session decided, what a number was, which version shipped. Facts are unbounded and a query is one line, so here the pointer wins outright: the rule is to ask the record, and `dim q search`, `q keywords` and `q thread` are the asking.
 - **It needs judgement.** A comment earning its place, a claim verified at its source, a finding reported as a conclusion. No event payload decides any of these. They stay written, in full, and cutting them buys tokens at the cost of the goal the tokens serve.
 
 ## The shape

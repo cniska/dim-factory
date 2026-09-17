@@ -828,6 +828,32 @@ const search: Query = {
 };
 
 /**
+ * The door onto the message index. `search` ranks the passages a person
+ * distilled — a handoff's Next, a commit subject — so a question whose answer
+ * was settled in conversation and never written down ranks against subjects it
+ * has nothing to do with. Words find it where meaning cannot reach it.
+ */
+const keywords: Query = {
+  name: "keywords",
+  summary: "find a message by the words in it, across every session",
+  usage: 'dim q keywords "<words>"',
+  spansHistory: true,
+  run: (db, ctx) => {
+    const { arg } = ctx;
+    if (!arg) {
+      return { denominator: "", columns: ["error"], rows: [['usage: dim q keywords "<words>"']] };
+    }
+    return keywordSearch(
+      db,
+      ctx,
+      arg,
+      "this is the word index, asked directly. `dim q search` ranks distilled text by meaning, and " +
+        "`dim q thread <session>@<when>` reads the exchange a hit sits in",
+    );
+  },
+};
+
+/**
  * The sentence that settled a question is rarely the one that matched, so a hit
  * is only useful with its neighbours. Skill bodies and injected meta are left
  * out: they are the largest text in a session and none of it was said by anyone.
@@ -1877,6 +1903,7 @@ export const QUERIES: Query[] = [
   digest,
   stale,
   search,
+  keywords,
   thread,
   skill,
   resume,

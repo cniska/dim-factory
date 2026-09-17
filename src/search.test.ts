@@ -160,6 +160,54 @@ describe("search degrades instead of failing", () => {
   });
 });
 
+describe("keywords, asked directly", () => {
+  const keywords = findQuery("keywords") as NonNullable<ReturnType<typeof findQuery>>;
+  const ask = (db: Database, ctx: QueryContext): QueryResult => keywords.run(db, { home: "/home", ...ctx });
+
+  test("reaches a conversation the distilled index does not hold", async () => {
+    const db = await indexed();
+    const result = ask(db, { arg: "checkout" });
+    expect(result.rows.map((r) => String(r[0]))).toEqual(["s1"]);
+    expect(result.path).toBe("keyword");
+    db.close();
+  });
+
+  // The whole point of the door: it answers on a database where `search` ranks
+  // by meaning, rather than only where the meaning path has broken.
+  test("does not need the embedding index to be missing", async () => {
+    const db = await indexed();
+    expect(ask(db, { arg: "checkout" }).rows.length).toBe(1);
+    expect(run(db, { arg: "checkout", question: await asked("checkout") }).path).toBe("cosine");
+    db.close();
+  });
+
+  test("ranks no meaning, and says so with the rows", async () => {
+    const db = await indexed();
+    expect(ask(db, { arg: "checkout" }).denominator).toContain("dim q search");
+    db.close();
+  });
+
+  // Words are the whole answer here, so embedding the argument would load a
+  // model to rank nothing — the one cost this door has that `search` does not.
+  test("does not ask the caller to embed the words", () => {
+    expect(keywords.embedsArg).toBeFalsy();
+  });
+
+  test("asks for words rather than searching for nothing", async () => {
+    const db = await indexed();
+    expect(String(ask(db, {}).rows[0]?.[0])).toContain("usage:");
+    db.close();
+  });
+
+  test("a word nobody typed reads as no evidence, not an empty table", async () => {
+    const db = await indexed();
+    const result = ask(db, { arg: "promulgate" });
+    expect(result.rows).toEqual([]);
+    expect(result.note).toContain("nothing matches promulgate");
+    db.close();
+  });
+});
+
 describe("search over the distilled index", () => {
   test("ranks by meaning and reports the index it ranked over", async () => {
     const db = await indexed();
