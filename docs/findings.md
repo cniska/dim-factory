@@ -345,6 +345,14 @@ Skill bodies look like the larger problem and are not one. All 957 of them carry
 
 What this carries: one machine's corpus, all of history, and Claude only — `src/parse-codex.ts` never sets the flag, so Codex contributes no rows here because nothing marks them, not because it injects nothing. It says what the keyword path had to stop returning, not how often a search was spoiled by it — nothing counted that.
 
+## The benchmark every ranking change waits on already exists
+
+Found on 2026-09-17. Three places here defer a retrieval decision to a benchmark that was described as unbuilt: the fusion entry in [`landscape.md`](landscape.md), the index over code by meaning in [`build-order.md`](build-order.md), and the built-status paragraph in [`recall.md`](recall.md). Acolyte has one — `scripts/run-memory-bench.ts` with its scenarios and metrics — scoring retrieval by recall@k and nDCG@k over LongMemEval and LoCoMo, with queries whose relevant records are known. It landed alongside that repo's hybrid scoring, so the weights there were set against measurements rather than picked.
+
+What it does not settle. It scores retrieval over distilled memory records, and the population here is messages, commit subjects and repo files, so the datasets and the adapter do not carry across — a question with known-relevant rows has to exist for this corpus before any of it runs. The harness shape, the metrics and the datasets are the expensive part and they are done; the corpus is the part that is not.
+
+This was reachable only by hand. `prior-art` matches a path, `q search` ranks distilled text, and the four files that first pointed here had been renamed, which reads in the history as a deletion — the rename hazard [`design.md`](design.md) already names, met in practice.
+
 ## An ANDed phrase costs more than the one before it
 
 Measured on 2026-09-17 against the corpus of the day, 253,570 messages with 90,163 searchable. A keyword search ANDs one FTS5 phrase per word, and the cost of the whole grows about fourfold per doubling of the term count:
