@@ -374,8 +374,8 @@ Measured on 2026-09-17 against the corpus of the day, 253,570 messages with 90,1
 | 200 | 17.2s |
 | 400 | 63.6s |
 
-4,000 words — under 14KB, less than a paragraph of a transcript — had not returned after two minutes. The read path sets no statement timeout and no progress handler, so nothing stops it.
+4,000 words — under 14KB, less than a paragraph of a transcript — took 1 hour 43 minutes, holding one core for 6,168 seconds of CPU. That is one run rather than a curve, but it is the endpoint the table above predicts. The read path sets no statement timeout and no progress handler, so nothing stops it short.
 
-This matters because of who writes the argument. A search string reaches the query from a file or a transcript the agent is reading as readily as from a person typing, and the caller cannot see the cost before paying it. So the words past a cap are dropped and the denominator says how many, which bounds the work at the one place both readers of the index share.
+This matters because of who writes the argument. A search string reaches the query from a file or a transcript the agent is reading as readily as from a person typing, and the caller cannot see the cost before paying it. So the words past a cap are dropped and the denominator says how many, which bounds the work at the one place both readers of the index share: the same 5,000-word argument now returns in a third of a second.
 
 What this carries: one corpus, one machine, English stopwords as the terms — the worst case, since a rare word intersects almost nothing. A query of ordinary words is faster than this table at every count.
