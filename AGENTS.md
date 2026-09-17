@@ -20,7 +20,7 @@ A local record of what every Claude Code and Codex session did, the questions as
 ## Workflow
 
 - `bun run verify` — the gate, and what CI runs. `bun run format` applies biome.
-- `dim sync` reads new bytes; `dim rebuild` re-reads from the start; `dim check-task` prints what this repo declares as its check.
+- `dim sync` reads new bytes; `dim rebuild` re-reads from the start; `dim check-task` prints what this repo declares as its check; `dim bench` scores retrieval against the labeled questions beside the database.
 - `bun link` puts `dim` on PATH.
 
 ## Process

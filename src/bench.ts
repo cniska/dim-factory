@@ -25,6 +25,13 @@ export type QuestionScore = {
   id: string;
   query: string;
   returned: number;
+  /**
+   * How many rows the question grades. Recall divides by all of them while
+   * nDCG compares against the best k, so the two disagree whenever a question
+   * grades more rows than the cutoff — without this the reader cannot tell
+   * that from a ranking that put one of them out of reach.
+   */
+  graded: number;
   recall: number;
   ndcg: number;
 };
@@ -34,6 +41,8 @@ export type BenchReport = {
   scores: QuestionScore[];
   recall: number;
   ndcg: number;
+  /** How many questions the query answered with fewer rows than the cutoff asked for. */
+  capped: number;
   /** A question the corpus holds and nothing could score, with the reason. */
   unscorable: { id: string; why: string }[];
 };
@@ -113,6 +122,7 @@ export async function runBench(
       id: asked.id,
       query: asked.query,
       returned: result.rows.length,
+      graded: asked.relevant.size,
       recall: recallAtK(retrieved, new Set(asked.relevant.keys()), k),
       ndcg: ndcgAtK(retrieved, asked.relevant, k),
     });
@@ -122,6 +132,7 @@ export async function runBench(
     scores,
     recall: mean(scores.map((s) => s.recall)),
     ndcg: mean(scores.map((s) => s.ndcg)),
+    capped: scores.filter((s) => s.returned < k).length,
     unscorable,
   };
 }

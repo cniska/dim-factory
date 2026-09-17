@@ -75,14 +75,14 @@ One constraint stood in the way, and deliberately: collection makes no model cal
 
 ## Measuring whether retrieval improved
 
-A ranking change with nothing to falsify it is a preference. Acolyte already has the harness: recall and nDCG at k as pure functions, and adapters that normalize LongMemEval and LoCoMo into scenarios. Its scenario layer is coupled to distilled observations and does not transfer, but the metrics and the adapters do.
+A ranking change with nothing to falsify it is a preference. The metrics are here, in `src/rank-metrics.ts`, defined locally so a score keeps its meaning across years. What Acolyte's harness still holds is the adapters that normalize LongMemEval and LoCoMo into scenarios; its scenario layer is coupled to distilled observations and does not transfer.
 
 LongMemEval is worth taking for one reason beyond convenience: it is what MemPalace publishes against, so it is the only way a claim made there becomes a claim checkable here.
 
-The set that decides a change is drawn from this corpus instead. Today that set is hand-labeled — a question and the rows known to answer it, one line of JSON each in `retrieval.jsonl` beside the database, scored by `dim bench`. A handoff and the session that acted on it are a query and its known answer that nobody had to invent, and the chain already pairs them, which is how the set grows past what one person thought to ask. Both halves are needed: the external set says whether retrieval is good, the corpus-native one says whether it is good at the questions actually asked here.
+The set that decides a change is drawn from this corpus instead, and is hand-labeled today; [`design.md`](design.md) has its shape and `dim bench` scores it. A handoff and the session that acted on it are a query and its known answer that nobody had to invent, and the chain already pairs them, which is how the set grows past what one agent thought to ask. Both halves are needed: the external set says whether retrieval is good, the corpus-native one says whether it is good at the questions actually asked here.
 
 Neither measures the thing this file is about. No recall figure can say whether anyone thought to ask, which is why the session-start channel is not evaluated this way and cannot be.
 
-## Not built
+## What stands today
 
 `wake` is installed, and so is semantic retrieval over the distilled text: `dim embed` writes a unit vector per passage into `embedding`, and `q search` scores them by cosine, falling back to the keyword index when nothing is embedded, the model will not load, or the database predates the table. That keyword index has a door of its own, `q keywords`, so a decision settled in conversation and never distilled is reachable by the words it was settled in rather than only when the meaning path breaks. The chain is built: `sync` fills `handoff_link` and `q chain` walks it. The corpus-native benchmark is wired up — `dim bench` scores a labeled set through the queries and reports recall@k and nDCG@k — and its first reading is in [`findings.md`](findings.md). The external set is not, so a claim published elsewhere is still not checkable here.
