@@ -321,9 +321,11 @@ Where they hold, the database gives the two arms and their locators and the eval
 - **`dim-plan`** gathers decisions already taken and whether an earlier conclusion still holds, then hands the planning to a more capable model.
 - **`dim-review`** runs one agent per dimension.
 
-**Simplification is a step in the loop, not a front door.** A feature and a defect arrive as demands; nothing ever demands simplification, so a station you have to remember to run has the failure mode [`recall.md`](recall.md) is about. `dim-build` already runs at a moment where the target needs no aiming — the slice that just passed the repo's task is the code most recently written and least read. So the pass belongs between that task and the checking agent: the task passes, the slice is simplified, the task passes again, and the checker then judges what will actually be committed.
+**Simplification is a step in the loop, not a front door.** A feature and a defect arrive as demands; nothing ever demands simplification, so a station you have to remember to run has the failure mode [`recall.md`](recall.md) is about. `dim-build` runs it at a moment where the target needs no aiming — the slice that just passed the repo's task is the code most recently written and least read — between that task and the checking agent: the task passes, the slice is simplified, the task passes again, and the checker then judges what will actually be committed.
 
 The order is what keeps the contracts apart. This pass edits and the checker does not, so a checker running first would judge code that no longer exists.
+
+It repeats while a pass changes something, since one simplification exposes another, and a pass that edits nothing is the fixpoint. What stops it circling is that a pass may not undo an earlier pass's edit to the same slice; there is no round limit, because a number chosen there is a constant no test can prove.
 
 Its invariant is the one a gate can hold. Behavior preserved exactly means the tests pass unmodified, and a diff that edits a test beside the code it simplifies is a shape rather than a meaning, so that rule belongs in a hook where the other stations need a reading.
 
