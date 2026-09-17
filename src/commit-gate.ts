@@ -78,9 +78,19 @@ export type GatePlan = {
   strandedCopies: string[];
 };
 
-function gitGlobal(key: string): string | null {
+/** Env is threaded in so a test can point GIT_CONFIG_GLOBAL at a scratch file rather than the reader's own. */
+function gitEnv(env: Env): NodeJS.ProcessEnv {
+  return { ...process.env, ...env } as NodeJS.ProcessEnv;
+}
+
+function gitGlobal(key: string, env: Env): string | null {
   try {
-    return execFileSync("git", ["config", "--global", "--get", key], { encoding: "utf8" }).trim() || null;
+    return (
+      execFileSync("git", ["config", "--global", "--get", key], {
+        encoding: "utf8",
+        env: gitEnv(env),
+      }).trim() || null
+    );
   } catch {
     return null;
   }
@@ -101,27 +111,47 @@ export function planCommitGate(
   return {
     hookPath,
     state,
-    globalHooksPath: gitGlobal("core.hooksPath"),
+    globalHooksPath: gitGlobal("core.hooksPath", env),
     strandedCopies: strandedIn
       .map((r) => join(r, ".git", "hooks", "commit-msg"))
       .filter((p) => existsSync(p)),
   };
 }
 
-/** Writes the one hook, points git at it, and clears the per-checkout copies it replaces. */
+export class HooksPathTakenError extends Error {
+  readonly code = "HOOKS_PATH_TAKEN";
+  constructor(readonly existing: string) {
+    super(
+      `git's global core.hooksPath is already ${existing}; ` +
+        "git honors one hooks directory and there is no merge, so installing here would disable it. " +
+        "Point that directory at this hook, or unset it with `git config --global --unset core.hooksPath`.",
+    );
+  }
+}
+
+/**
+ * Writes the one hook, points git at it, and clears the per-checkout copies it replaces.
+ *
+ * The refusal comes before every write: a machine that already routes its hooks
+ * somewhere loses them the moment this sets the one setting git reads, and the
+ * per-repo copies deleted on the way would leave it gated by nothing at all.
+ */
 export function installCommitGate(
   owners: string[],
   strandedIn: string[] = [],
   env: Env = process.env,
 ): GatePlan {
   const dir = sharedHooksDir(env);
+  const existing = gitGlobal("core.hooksPath", env);
+  if (existing && existing !== dir) throw new HooksPathTakenError(existing);
+
   mkdirSync(dir, { recursive: true });
   const hookPath = join(dir, "commit-msg");
   writeFileSync(hookPath, hookScript(owners));
   chmodSync(hookPath, 0o755);
   const plan = planCommitGate(owners, strandedIn, env);
   for (const copy of plan.strandedCopies) rmSync(copy, { force: true });
-  execFileSync("git", ["config", "--global", "core.hooksPath", dir]);
+  execFileSync("git", ["config", "--global", "core.hooksPath", dir], { env: gitEnv(env) });
   return { ...plan, state: "installed", globalHooksPath: dir, strandedCopies: plan.strandedCopies };
 }
 

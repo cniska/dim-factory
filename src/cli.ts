@@ -4,7 +4,7 @@
 
 import { AGENT_LABEL, installAgent, planAgent } from "./agent";
 import { checkRange } from "./check-commits";
-import { checkoutDirs, installCommitGate, ownerOf, planCommitGate } from "./commit-gate";
+import { checkoutDirs, installCommitGate, ownerOf, planCommitGate, sharedHooksDir } from "./commit-gate";
 import { closeDb, openDb } from "./db";
 import { diagnose } from "./doctor";
 import { installHooks, planHooks } from "./hooks";
@@ -257,6 +257,12 @@ function printCommitGatePlan(write: boolean): void {
   for (const copy of plan.strandedCopies) console.log(`  replaces a per-repo copy at ${copy}`);
   console.log("  a repo setting its own core.hooksPath keeps the hooks it already has");
 
+  const taken = plan.globalHooksPath !== null && plan.globalHooksPath !== sharedHooksDir();
+  if (taken) {
+    console.log(`\nrefused: ${plan.globalHooksPath} already holds the one hooks directory git reads`);
+    console.log("  point that directory at this hook, or `git config --global --unset core.hooksPath`");
+    return;
+  }
   if (!write) {
     console.log("\nRe-run with --write to apply.");
     return;
