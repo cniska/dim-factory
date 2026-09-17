@@ -3,10 +3,11 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { AGENT_LABEL, agentPlistPath } from "./agent";
 import { codexConfigPath, planCodexTrust } from "./codex-trust";
-import { gateHooks, sharedHooksDir } from "./commit-gate";
+import { gateHooks, installedOwners, sharedHooksDir } from "./commit-gate";
 import { planHooks } from "./hooks";
 import { dataDir, type Env, resolveHomeDir } from "./paths";
 import { unarmedCheckouts } from "./push-gate";
+import { isHostQualified } from "./remote-slug";
 import { planRules } from "./rules";
 import { SCHEMA_VERSION } from "./schema";
 import { planSkill } from "./skill";
@@ -245,6 +246,19 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
           fix: "dim install-commit-gate --owner=<owner> --write",
         },
   );
+
+  // An owner naming an account without a host matched any forge, so the gate
+  // armed on repositories the owner had only cloned. Such a list now matches
+  // nothing, which leaves the gate installed and firing nowhere.
+  const bareOwners = (installedOwners(env) ?? []).filter((o) => !isHostQualified(o));
+  if (bareOwners.length > 0) {
+    checks.push({
+      name: "gate owners",
+      state: "fail",
+      detail: `${bareOwners.length} owners name an account but no host (${bareOwners.join(", ")}), so the gate arms nowhere`,
+      fix: "dim install-commit-gate --owner=<host>/<account> --write",
+    });
+  }
 
   // A hook that exits before it reads anything is the failure the rest of this
   // file exists to catch: from inside the repo it is indistinguishable from a

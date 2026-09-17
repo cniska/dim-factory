@@ -249,3 +249,22 @@ Asked on 2026-09-17. A third of the shell calls that run git move somewhere firs
 The comparison is only as good as the paths it can parse — a relative `cd`, a shell variable, or a `pushd` is not in either column — so the counts are a floor and the rates describe the calls that named an absolute path. What they do not describe is damage: a failed call is a call git refused, and a command that ran against the wrong repo successfully looks like any other row here.
 
 The channel that could hold this is not the one the commit gates use. A `commit-msg` or `pre-push` hook knows the repo it is running in and nothing about which repo the session was supposed to be in, so the check belongs to a `PreToolUse` hook on `Bash`, which dim does not install yet.
+
+## The gate's owner check named an account but not a forge
+
+Found and fixed on 2026-09-17. The three gate hooks decided whether to arm by reading the second-to-last path segment of the remote URL, which is an account name with the host discarded. Every one of these yields the same owner:
+
+| remote | owner it matched |
+|---|---|
+| `https://github.com/<account>/<repo>.git` | `<account>` |
+| `https://gitlab.com/<account>/<evil>.git` | `<account>` |
+| `git@evil.example.com:<account>/<evil>.git` | `<account>` |
+| `/tmp/holding/<account>/<evil>.git` | `<account>` |
+
+That matters because the `pre-commit` hook runs `eval` over whatever the repository's own manifest declares as its check. An account name is not an identity — anyone may register one on another forge, or name a directory after it — so cloning a repository that names a directory that way and committing once ran its scripts. `core.hooksPath` is global here, so the hook meets every clone on the machine and no `dim` command has to be typed.
+
+The owner is now the whole of the URL before the repository: `github.com/<account>` for a forge, and the parent directory for a file path.
+
+What the machine was actually exposed to, measured across the checkouts the corpus names: of 21 with an origin, 15 armed the gate, and 0 armed it that should not have. Every remote on this disk is on one host, so the defect changed nothing already here. That is the whole of what the number carries — it describes the clones that exist, not the next one, and one is enough.
+
+What the host match cannot guard is a branch inside a repository that is genuinely the owner's. Checking out a fork's pull request puts a contributor's manifest in the tree, and the next commit runs it. That is inherent to running the repository's own check from a commit hook, and it is stated rather than closed.

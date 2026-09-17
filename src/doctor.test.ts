@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { devNull, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { codexConfigPath, planCodexTrust } from "./codex-trust";
+import { gateHooks } from "./commit-gate";
 import { closeDb, openDb } from "./db";
 import { diagnose } from "./doctor";
 import { scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
@@ -80,6 +81,22 @@ describe("doctor", () => {
 
     writeFileSync(join(hooks, "pre-push"), "#!/usr/bin/env bash\nexit 0\n");
     expect(check(env, "commit gate")?.state).toBe("ok");
+  });
+
+  // An owner list from before the host match names an account alone, which now
+  // matches nothing: the gate reads as installed and arms in no repository.
+  test("names an owner that would arm the gate nowhere", () => {
+    const env = seeded();
+    const hooks = join(env.HOME as string, ".config", "dim", "hooks");
+    mkdirSync(hooks, { recursive: true });
+
+    writeFileSync(join(hooks, "commit-msg"), gateHooks(["github.com/an-account"])[0]?.body ?? "");
+    expect(check(env, "gate owners")).toBeUndefined();
+
+    writeFileSync(join(hooks, "commit-msg"), gateHooks(["an-account"])[0]?.body ?? "");
+    const bare = check(env, "gate owners");
+    expect(bare?.state).toBe("fail");
+    expect(bare?.detail).toContain("an-account");
   });
 
   // The gate exits silently where this ref is missing, so the whole point of

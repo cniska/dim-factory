@@ -5,7 +5,7 @@
 
 import { AGENT_LABEL, installAgent, planAgent } from "./agent";
 import { checkRange } from "./check-commits";
-import { checkoutDirs, installCommitGate, ownerOf, planCommitGate, sharedHooksDir } from "./commit-gate";
+import { checkoutDirs, installCommitGate, planCommitGate, sharedHooksDir } from "./commit-gate";
 import { closeDb, openDb } from "./db";
 import { diagnose } from "./doctor";
 import { EMBED_DIMS, EMBED_MODEL, embedQuestion, openEmbedder } from "./embed";
@@ -16,6 +16,7 @@ import { withLock } from "./lock";
 import { dbPath, resolveHomeDir } from "./paths";
 import { findQuery, QUERIES, type QueryResult } from "./queries";
 import { openReadOnly } from "./read-db";
+import { isHostQualified, remoteSlug } from "./remote-slug";
 import { DEFAULT_MAX_ROWS, renderTable, rowsFromArgs } from "./render";
 import { installRules, planRules } from "./rules";
 import { DEFAULT_WINDOW, windowFromArgs } from "./since";
@@ -256,6 +257,20 @@ function printSkillPlan(write: boolean): void {
 }
 
 /**
+ * The gate matches the whole remote URL before the repository, so a suggestion
+ * has to be read off the checkout rather than off `label`, which drops the host
+ * on purpose so a repository keeps its name across forges.
+ */
+function slugOf(repo: string): string | null {
+  const proc = Bun.spawnSync(["git", "-C", repo, "config", "--get", "remote.origin.url"], {
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+  if (!proc.success) return null;
+  return remoteSlug(new TextDecoder().decode(proc.stdout).trim());
+}
+
+/**
  * The checkouts the corpus has seen commits from: where the rule is actually
  * broken is where it is worth gating, and a repo with a gate of its own keeps it.
  */
@@ -265,14 +280,21 @@ function printCommitGatePlan(write: boolean): void {
   let checkouts: { repo: string; owner: string }[];
   try {
     checkouts = db
-      .query("SELECT DISTINCT repo, label FROM repo_commit ORDER BY repo")
+      .query("SELECT DISTINCT repo FROM repo_commit ORDER BY repo")
       .all()
       .map((r) => {
-        const row = r as { repo: string; label: string | null };
-        return { repo: row.repo, owner: ownerOf(row.label) };
+        const row = r as { repo: string };
+        return { repo: row.repo, owner: slugOf(row.repo) ?? "" };
       });
   } finally {
     db.close();
+  }
+
+  const bare = owners.filter((o) => !isHostQualified(o));
+  if (bare.length > 0) {
+    console.log(`refused: ${bare.join(", ")} names an account but no host, so the gate would arm nowhere.`);
+    console.log("  an owner is the whole of a remote URL before the repository, as in github.com/<account>.");
+    return;
   }
 
   if (owners.length === 0) {

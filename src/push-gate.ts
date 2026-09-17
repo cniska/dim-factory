@@ -1,3 +1,5 @@
+import { SLUG_SED } from "./remote-slug";
+
 /**
  * A git rule the record says is stated and not held: the corpus holds 72 force
  * pushes, and separately the skill forbidding them was loaded in 114 of the 333
@@ -39,7 +41,8 @@ remote="\${1:-}"
 # Git names the remote being pushed to and its URL. Reading the owner off that
 # URL rather than off origin is what makes a push to a fork's upstream, or to a
 # second remote, judged against the account it is actually landing in.
-owner=$(printf '%s' "\${2:-}" | sed -n 's#.*[:/]\\([^/]*\\)/[^/]*$#\\1#p')
+owner=$(printf '%s' "\${2:-}" | sed -nE '${SLUG_SED}')
+[ -n "$owner" ] || exit 0
 case " ${owners.join(" ")} " in
   *" $owner "*) ;;
   *) exit 0 ;;
