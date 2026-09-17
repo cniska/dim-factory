@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkSubject, hookScript, sharedHooksDir } from "./commit-gate";
+import { checkSubject, hookScript, installCommitGate, sharedHooksDir } from "./commit-gate";
 
 describe("subject rules", () => {
   test("accepts a conforming subject", () => {
@@ -100,6 +100,46 @@ describe("the shared hook", () => {
       expect(sharedHooksDir({ HOME: home })).toBe(join(home, ".config", "dim", "hooks"));
     } finally {
       rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  // Git reads one hooks directory and merges nothing, so installing over a path
+  // someone else set disables it. The refusal has to come before the per-repo
+  // copies are cleared, or a refused install leaves the machine gated by nothing.
+  test("refuses a global hooks path it does not own, without touching anything", () => {
+    const home = mkdtempSync(join(tmpdir(), "dim-home-"));
+    const theirs = mkdtempSync(join(tmpdir(), "dim-theirs-"));
+    const checkout = mkdtempSync(join(tmpdir(), "dim-repo-"));
+    try {
+      const perRepo = join(checkout, ".git", "hooks", "commit-msg");
+      mkdirSync(join(checkout, ".git", "hooks"), { recursive: true });
+      writeFileSync(perRepo, "#!/bin/sh\nexit 0\n");
+
+      const env = { HOME: home, GIT_CONFIG_GLOBAL: join(home, "gitconfig") };
+      execFileSync("git", ["config", "--global", "core.hooksPath", theirs], {
+        env: { ...process.env, ...env },
+      });
+
+      let thrown: unknown;
+      try {
+        installCommitGate(["cniska"], [checkout], env);
+      } catch (e) {
+        thrown = e;
+      }
+      expect((thrown as { code?: string })?.code).toBe("HOOKS_PATH_TAKEN");
+      expect((thrown as Error).message).toContain(theirs);
+
+      // Nothing written, nothing deleted, and their setting still stands.
+      expect(existsSync(join(sharedHooksDir(env), "commit-msg"))).toBe(false);
+      expect(existsSync(perRepo)).toBe(true);
+      expect(
+        execFileSync("git", ["config", "--global", "--get", "core.hooksPath"], {
+          env: { ...process.env, ...env },
+          encoding: "utf8",
+        }).trim(),
+      ).toBe(theirs);
+    } finally {
+      for (const d of [home, theirs, checkout]) rmSync(d, { recursive: true, force: true });
     }
   });
 

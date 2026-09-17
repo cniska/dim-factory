@@ -101,6 +101,9 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
         },
   );
 
+  // `ingested_at`, never `origin_mtime`: transcript mtimes get restamped in bulk
+  // by things that touch no conversation, so a file's mtime says when something
+  // wrote to it and not when anyone last worked.
   const last = text(db, "SELECT max(ingested_at) AS v FROM source_file");
   const age = last ? Date.now() - Date.parse(last) : Number.POSITIVE_INFINITY;
   checks.push(

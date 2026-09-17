@@ -137,6 +137,10 @@ export function createIngester(db: Database) {
      -- One API response is written as one line per content block, and usage
      -- accumulates across them: only the last line holds the complete figures.
      -- The whole row is replaced together so its fields stay from one line.
+     -- Keyed on output_tokens rather than a terminal stop_reason: over one full
+     -- corpus the two pick the same record for all but 0.5% of responses, and
+     -- every one of those was interrupted and has no terminal record at all, so
+     -- a stop_reason filter would drop them without saying so.
      ON CONFLICT(response_id) DO UPDATE SET
        message_id            = excluded.message_id,
        ts                    = excluded.ts,

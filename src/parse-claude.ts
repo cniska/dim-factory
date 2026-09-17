@@ -141,7 +141,11 @@ export function parseClaudeChunk(
     try {
       line = JSON.parse(raw) as ClaudeLine;
     } catch {
-      continue; // a torn line; the cursor will not have advanced past it
+      // A half-written line at the end of a live file never reaches here:
+      // readChunk stops at the last newline. What does is a complete line that
+      // is not JSON, and the cursor advances past it, so it is read once and
+      // lost. Dropping it is the only option that does not stall collection.
+      continue;
     }
     const srcLine = firstLineNumber + index;
 
