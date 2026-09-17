@@ -46,6 +46,8 @@ Every query prints the base its numbers came from, and a query with nothing to r
 
 The database lands in `~/.local/share/dim-factory/sessions.db`. Reading the whole corpus from scratch takes about 20 seconds.
 
+A subagent is identified by its agent id and its parent together, written `<agent>@<parent>`, because Claude Code reuses an agent id across parent sessions. The agent id leads, so a prefix search still finds it. Keyed on the agent id alone, two different runs become one session row and the second file is read from the first's cursor.
+
 `sync` reads past a complete line that is not JSON rather than refusing the file, which is what stops one corrupt record from stalling collection. The cursor advances over it, so that sync is the only one that can ever name it: it prints the file and the line number to stderr, and the launchd agent's `sync.log` is where that lands. `dim rebuild` reads the file from the start and reports it again.
 
 Claude Code deletes transcripts after 30 days unless told otherwise, so `~/.claude/settings.json` sets `"cleanupPeriodDays": 3650`. Without it the sources this points into disappear.
