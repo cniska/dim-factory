@@ -8,9 +8,13 @@ An item is listed here only while it needs a slice of its own. Anything fixable 
 
 `q search` ranks by cosine today and nothing says that beats the keyword index it replaced ([`findings.md`](findings.md)). Until something does, every tuning below is a preference, which is the rule [`recall.md`](recall.md) sets for itself.
 
-The chain that pairs a handoff with the session that acted on it is built, so the pairs the corpus-native set is drawn from exist. What is left is the measurement:
+The corpus-native half of the measurement is built: `dim bench` scores a hand-labeled `retrieval.jsonl` by recall@k and nDCG@k through the queries themselves, and reports a first number ([`findings.md`](findings.md)). What is left:
 
-- **The benchmark** ([`recall.md`](recall.md)). The metrics and dataset adapters transfer from Acolyte's harness; its scenario layer does not. The external set makes a published claim checkable here, and the corpus-native set drawn from `handoff_link` is the one that decides changes.
+- **The external set** ([`recall.md`](recall.md)). LongMemEval is what a published claim is made against, so it is the only way such a claim becomes checkable here. Its dataset adapters are the part that transfers from Acolyte's harness; the metrics were written here.
+
+- **A corpus wider than one hand.** The labeled set is small and every question in it was written by one agent in one sitting, so it reports what that agent thought to ask. `handoff_link` pairs a handoff with the session that acted on it, which is a query and its known answer that nobody had to invent — drawing questions from there is what makes the set larger than an opinion.
+
+- **Questions that name a message.** `search` prints a session for a message hit, so a message is graded by its session and two graded passages in one session cannot be told apart; `bench` refuses such a question rather than scoring it wrong. Until that is settled the corpus can only grade commits, which is the half of the record least likely to hold a decision.
 
 ## Waiting on that measurement
 
@@ -65,7 +69,7 @@ dim installs session hooks only, so anything reacting to a single tool call has 
 - **A gate for US spelling, and one for banner comments.** The two rules left in the conventions file that a mechanism could hold. Everything else there needs judgement and stays written ([`conventions.md`](conventions.md)).
 - **Slice 1 of the eval runner** ([`evals-and-hooks.md`](evals-and-hooks.md)): the trimmed arm and the rule inventory.
 - **A guidance-file arm for that runner.** [`loop.md`](loop.md) names the boundary: a rule inside `~/.claude/CLAUDE.md` has no seam the runner can deliver a trimmed version through, so a guidance cut is decided by reading. An arm built as a whole config directory is what closes it, and a trimmed surface has to be unlinked and written fresh inside the arm — writing through the symlink edits the real guidance, and only a test that reddens on that keeps it true.
-- **An index over code by meaning.** `prior-art` matches a path fragment, so a concept whose file is named for its domain is invisible to it — `lexer` returns nothing across 22 repos while `acolyte/src/log-parser.ts` is on disk ([`findings.md`](findings.md)). `q search` is semantic but covers only the text a person distilled. What is missing is the question "have we solved this shape before" where the shape is not in the filename. Waits on the benchmark, like every other ranking change — and the harness for that is prior art rather than new work ([`findings.md`](findings.md), "The benchmark every ranking change waits on already exists"); what this corpus lacks is a set of questions with known-relevant rows to score against.
+- **An index over code by meaning.** `prior-art` matches a path fragment, so a concept whose file is named for its domain is invisible to it — `lexer` returns nothing across 22 repos while `acolyte/src/log-parser.ts` is on disk ([`findings.md`](findings.md)). `q search` is semantic but covers only the text a person distilled. What is missing is the question "have we solved this shape before" where the shape is not in the filename. A ranking change can now be scored rather than preferred, so what this needs is questions of its own: `dim bench` grades what a query prints, and no query prints a file path as a ref today.
 - **Extracting the toolchain that repeats.** Three of the drifted scripts are jobs this repo already does once, so that part is deleting forks ([`findings.md`](findings.md), [`README.md`](../README.md)). The `mise` and env handling across five checkouts is the part that has to be built.
 
 ## Deliberately not next

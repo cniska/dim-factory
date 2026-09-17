@@ -18,7 +18,7 @@ Each page owns its subject. A fact lives on one of them and is linked to from th
 ## How it is built
 
 - [Session database](design.md) — the schema, the sources it re-reads, and the rules each table follows
-- [Reaching a session without being asked](recall.md) — the channel that arrives, and the benchmark that would settle its ranking
+- [Reaching a session without being asked](recall.md) — the channel that arrives, and the benchmark that scores what is pulled
 - [Worktrees](worktrees.md) — parallel checkouts, and undoing what an agent wrote
 
 ## Designs not yet built

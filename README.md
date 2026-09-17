@@ -44,6 +44,7 @@ bun run dim q prior-art "<path>"   # how the same problem was solved in the repo
 bun run dim q keywords "<words>"   # the messages carrying those words, across every session
 bun run dim q convention [repo]    # the commit convention each repo's own log holds
 bun run dim check-commits <range>  # judge a revision range by the same rules the gate holds
+bun run dim bench           # score retrieval against the labeled questions beside the database
 bun run dim sql "<select>"  # one read-only statement, for a question no named query covers
 bun run dim q list          # the named questions; `q <name>` asks one, --json for the raw rows
 bun run verify              # lint, typecheck, test
