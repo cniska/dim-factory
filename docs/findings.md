@@ -116,7 +116,7 @@ Asked 2026-09-17, over 5,856 distilled passages — 240 handoff nexts, 5,616 com
 
 Quality is uneven and unmeasured. "the commit subject gate and the rule it holds" returns the right commit at 0.677 followed by four related ones; "reaching a session without anyone asking for it" matches the word *session* and misses `wake` entirely, with every score inside 0.41–0.47. A narrow score band on a bad query is the shape to distrust.
 
-Two structural reasons, both known before measuring: commit subjects outnumber nexts more than twenty to one, and a one-line subject against a paragraph-long question is a length mismatch the model was not trained for. Neither is evidence against the approach, because no benchmark is wired up yet — nothing here says this ranking beats the keyword one it replaced, which is why [`recall.md`](recall.md) claims nothing.
+Two structural reasons, both known before measuring: commit subjects outnumber nexts more than twenty to one, and a one-line subject against a paragraph-long question is a length mismatch the model was not trained for. Neither was evidence against the approach at the time, because nothing was scored. What scoring it later showed is below, under "Meaning is found where the words already match".
 
 ## What the instrument had to infer
 
@@ -345,11 +345,21 @@ Skill bodies look like the larger problem and are not one. All 957 of them carry
 
 What this carries: one machine's corpus, all of history, and Claude only — `src/parse-codex.ts` never sets the flag, so Codex contributes no rows here because nothing marks them, not because it injects nothing. It says what the keyword path had to stop returning, not how often a search was spoiled by it — nothing counted that.
 
+## Meaning is found where the words already match
+
+Measured on 2026-09-17 by `dim bench` over 16 hand-labeled questions, each naming a commit subject in this repo's own history that answers it. At k=10, `q search` scores **recall 0.531 and nDCG 0.472**; five questions score a perfect 1.0 and six score a flat zero.
+
+The split is not random. Every question scoring 1.0 shares a distinctive word with the subject it should find. Every question scoring zero shares only meaning. The clearest pair: "what is happening at this moment, delegates included" should find `feat: show what is running, subagents included`, where each content word is a synonym of one in the question — and instead the top hits are `docs(plan): delegate design questions` and `feat(agent): delegate via main model`, which match the *word* delegate. The index ranked lexical overlap above the paraphrase.
+
+That is the opposite of what the index is for. [`design.md`](design.md) states the reason it exists: a question and the passage answering it routinely share no words, which is the one thing keywords cannot be made to do. On this corpus it answers when words overlap and misses when only meaning does.
+
+What this carries, and it is less than it looks. Sixteen questions, all written by one agent in one sitting, all naming commit subjects — a one-line subject against a sentence-long question is a length mismatch, and subjects outnumber handoff nexts more than twenty to one in the index. It says the current ranking fails a set of paraphrase questions it was built to answer; it does not say a hybrid or a reranker would do better, which is the next thing to score rather than assume.
+
 ## The benchmark every ranking change waits on already exists
 
 Found on 2026-09-17. Three places here defer a retrieval decision to a benchmark that was described as unbuilt: the fusion entry in [`landscape.md`](landscape.md), the index over code by meaning in [`build-order.md`](build-order.md), and the built-status paragraph in [`recall.md`](recall.md). Acolyte has one — `scripts/run-memory-bench.ts` with its scenarios and metrics — scoring retrieval by recall@k and nDCG@k over LongMemEval and LoCoMo, with queries whose relevant records are known. It landed alongside that repo's hybrid scoring, so the weights there were set against measurements rather than picked.
 
-What it does not settle. It scores retrieval over distilled memory records, and the population here is messages, commit subjects and repo files, so the datasets and the adapter do not carry across — a question with known-relevant rows has to exist for this corpus before any of it runs. The harness shape, the metrics and the datasets are the expensive part and they are done; the corpus is the part that is not.
+What it did not settle, and what happened instead. It scores retrieval over distilled memory records, and the population here is messages, commit subjects and repo files, so neither the datasets nor the scenario layer carried across. The metrics were written here rather than borrowed, and the corpus was labeled by hand against this record — the two of them are a smaller job than the entry above assumed, and they are done. What the prior art still holds that this does not is the external datasets, which are what make a published claim checkable.
 
 This was reachable only by hand. `prior-art` matches a path, `q search` ranks distilled text, and the four files that first pointed here had been renamed, which reads in the history as a deletion — the rename hazard [`design.md`](design.md) already names, met in practice.
 
