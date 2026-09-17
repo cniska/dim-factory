@@ -29,7 +29,7 @@ A slice that only makes sense once a later slice lands is not a slice. A branch 
 
 ## 3. Build them
 
-Hand off to [`dim-build`](../dim-build/SKILL.md) and follow it, one slice at a time: the repo's own task at the end of each, the simplification pass over that slice, the task again, one checking agent on the slice's diff, then the commit, then the next.
+Hand off to [`dim-build`](../dim-build/SKILL.md) and follow it, one slice at a time: the repo's own task at the end of each, the simplification pass over that slice, the task again, one checking agent on the slice's diff, an answer to every finding it raises, then the commit, then the next.
 
 Where a slice turns out to be blocked, finish every other slice in full and say plainly what was left and why. Scaling the work down is the owner's call.
 

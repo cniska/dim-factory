@@ -1,6 +1,6 @@
 ---
 name: dim-build
-description: Run the slice loop — the repo's own check, a simplification pass, a checking agent on the diff, then the commit, one slice at a time. Invoked by dim-feat and dim-fix after their own first phase; use directly only for a change that is neither.
+description: Run the slice loop — the repo's own check, a simplification pass, a checking agent on the diff, an answer to every finding, then the commit, one slice at a time. Invoked by dim-feat and dim-fix after their own first phase; use directly only for a change that is neither.
 argument-hint: "<what to build>"
 ---
 
@@ -18,13 +18,13 @@ What makes this a station is that the record aims it. This machine knows which f
 
 1. **Know what checks this.** Read the repo's own task — `package.json` scripts, `mise` tasks, a `Makefile` — and use it. `dim check-task` prints what the repo declares. Running the repo's task is what makes a local check the same check CI runs; an equivalent command assembled by hand is not that.
 2. **Read the rules actually in force.** The standing corrections live in the guidance files, not in a phrase counter — `dim q repeats` returns conversational filler and the corrections are not in it ([`findings.md`](../../docs/findings.md), "The repetition an n-gram counter cannot see"). Read the `CLAUDE.md` and `AGENTS.md` on the walk into this session, imports included, and treat a rule a session has already restated as one that is not landing rather than one the agent ignored.
-3. **Know which ground has broken.** `dim q fixes` names files an agent edited that a later fix commit came back to. A path in this change that appears there gets the slow reading. A front arriving here has already asked this; a change that came in directly asks it now.
+3. **Know which ground has broken.** `dim q fixes` gives the share of files edited under each skill that a later fix commit came back to, over the skills that touched enough files to report. It names no path, so it says which kind of work has been coming back rather than which file here did. `dim q exemplars` does name paths — the most-edited code that shipped with no fix returning to it — and those are candidates rather than verdicts, since a file nobody came back to may have been right or may have been abandoned. A front arriving here has already asked this; a change that came in directly asks it now.
 
 ## Slices
 
 A slice is a vertical cut: it changes behavior, it is checked on its own, and it is committed on its own. Work through them one at a time, running the repo's task at the end of each, and commit what passes before starting the next. A branch of unverified slices is one slice with a long diff.
 
-Commit in the same order every time: the task passes, the slice is simplified, the task passes again, the checker reads what will land, then the commit, then the next slice.
+Commit in the same order every time: the task passes, the slice is simplified, the task passes again, the checker reads what will land, every finding it raises is answered and the task passes over the answers, then the commit, then the next slice.
 
 **The subject follows the repo's own convention, and `dim q convention <repo>` is where that is read rather than inferred.** It gives the share of subjects that are Conventional Commits, their mean length, and how much of the history arrived through a branch — the questions the tool-agnostic advice answers by skimming `git log`, over the whole log instead of a sample. Where the repo is not in the record, read the log.
 
@@ -59,13 +59,24 @@ Bounded means a fixed brief, not "review this". It also means the checker is tol
 
 Withhold your own reading. Hand over the diff and the claim, not the conclusion, or what comes back is agreement.
 
-Act on what it returns or say why not, then commit. Returning nothing is the expected result and not a sign the check was wasted: of the sessions that loaded `review` in this corpus, 72% made no edit under it ([`findings.md`](../../docs/findings.md), "Review already finds nothing, most of the time"). A checker earns trust the way a test does — plant a defect once, watch it be caught, take it out — and after that an empty result is the good news it reads as.
+Returning nothing is the expected result and not a sign the check was wasted: of the sessions that loaded `review` in this corpus, 72% made no edit under it ([`findings.md`](../../docs/findings.md), "Review already finds nothing, most of the time"). A checker earns trust the way a test does — plant a defect once, watch it be caught, take it out — and after that an empty result is the good news it reads as.
+
+### Every finding gets an answer
+
+**Answer each finding before the commit: fix it, or refuse it and write down why**, so the diff goes out with nothing in it that was merely not mentioned. Check the claim at its source before either answer — a checker's reading is a claim like any other, and one taken on trust is how a wrong finding becomes the standard. Where a refusal turns on whether a finding is true rather than on whether it matters, a third agent settles it cheaply: hand it the finding, the diff and one question — is this true at its source, cited to `file:line`. Nothing judges that in turn; its answer is recorded with the slice.
+
+**Run the repo's task over the answers, then hand the checker what it had the first time plus the diff that answers.** The same brief, the same conventions, the same four questions — a checker given only a patch has nothing to judge it against but its own taste. The answering diff is the one part of the slice nothing has read: it was written after the checker's pass, which is what the round is for.
+
+**The loop ends when no finding is unanswered — never when no findings exist.** Asked whether anything could still be improved, a checker always says yes, so that test does not terminate. A refusal with a reason ends a finding as completely as a fix does; if refusing cost anything, the cheap way out would be to fix whatever was raised, which is the same loop with the answer decided in advance. A round where every finding was refused changes no code, so there is nothing to re-read and the slice commits. What makes this finite is the same thing that bounds the first pass: the checker answers four closed questions about one diff, not whether the diff could be better, and each round hands it a smaller diff than the last was written against. There is no round limit, for the reason the simplification pass has none.
+
+Two answers that read as evasions and are not: a finding that is true and does not matter here, refused and said so; and a finding that is true and belongs to a different slice, written into [`build-order.md`](../../docs/build-order.md) rather than folded in, which is what keeps the diff one thing.
 
 ## Exit check
 
 The change is done when:
 
 - the repo's own task passes, and its output was read rather than assumed
+- every finding on every slice was answered, by a fix or by a stated refusal, and the diff that answered was itself read
 - the last simplification pass on each slice changed nothing, and no test file was touched to let one through
 - every invariant claimed has a test that fails when the invariant is removed — delete the check, watch it go red, put it back
 - the docs that describe the changed behavior changed in the same commit
@@ -77,6 +88,6 @@ Unattended, stop only where the choice is genuinely the owner's: work that is ha
 
 ## What the record cannot tell you
 
-`dim q fixes` says a file drew a later fix commit. That is the repo's verdict on some earlier change to it, never on yours, and a file nobody came back to may have been right or may have been abandoned.
+`dim q fixes` says work done under a skill drew later fix commits at some rate. That is the repo's verdict on earlier changes, never on yours, and code nobody came back to may have been right or may have been abandoned.
 
 And effort is not a grade. Work that held took more turns per file than work that came back, more pushback, and more commands ([`findings.md`](../../docs/findings.md), "Effort does not grade the work"). A slice finished quickly is not a slice done well, and the check that was skipped is the usual reason it was quick.

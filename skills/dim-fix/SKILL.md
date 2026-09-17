@@ -16,7 +16,7 @@ A fix is also smaller than a feature and localized differently: 10 files to a fe
 
 Establish what is wrong before changing anything. The record aims this, because these files have a history.
 
-- **What broke here before.** `dim q fixes` names files an agent edited that a later fix commit came back to. A path in this defect that appears there gets the slow reading.
+- **What broke here before.** `dim q fixes` gives the share of files edited under each skill that a later fix commit came back to. It names no path, so it says which kind of work has been returning rather than whether this file has; `dim q exemplars` names paths, and only the ones nothing came back to.
 - **What was already tried.** `dim q search "<the symptom, in your words>"` ranks the text a person distilled; `dim q keywords "<words>"` finds an attempt that was only ever talked about, since that is nothing anyone distilled; `dim q resume <id-prefix>` gives the branch, the files in play and the last pushback of a session that worked this. A fix already attempted and abandoned is a fact worth having before attempting it again.
 - **What the trace says.** Where the defect arrived as a report rather than a description, read the report before the code. A stack, a log, or a fault body says which line ran; a description says what someone noticed.
 
@@ -34,7 +34,7 @@ The test names the behavior in plain terms, and pins wire values as literals rat
 
 ## 3. Build the fix
 
-Hand off to [`dim-build`](../dim-build/SKILL.md) and follow it: the repo's own task at the end of each slice, the simplification pass over that slice, the task again, one checking agent on the slice's diff, then the commit. The test that proved the defect is part of the slice and stays; the simplification pass is the one step that may not touch a test file. A fix is usually one slice; where it is more, it is still one slice at a time.
+Hand off to [`dim-build`](../dim-build/SKILL.md) and follow it: the repo's own task at the end of each slice, the simplification pass over that slice, the task again, one checking agent on the slice's diff, an answer to every finding it raises, then the commit. The test that proved the defect is part of the slice and stays; the simplification pass is the one step that may not touch a test file. A fix is usually one slice; where it is more, it is still one slice at a time.
 
 Fix the cause. Where the cause is out of reach, stop and say what the real options are rather than patching the patch — a band-aid is how the next fix commit to this file gets written.
 
@@ -51,4 +51,4 @@ The fix is done when:
 
 ## What the record cannot tell you
 
-`dim q fixes` says a file drew a later fix commit. That is the repo's verdict on some earlier change to it, never on yours, and a file nobody came back to may have been right or may have been abandoned. A `fix:` commit inside the session that wrote the file is ordinary iteration and not a defect at all.
+`dim q fixes` says work done under a skill drew later fix commits at some rate. That is the repo's verdict on earlier changes, never on yours, and code nobody came back to may have been right or may have been abandoned. A `fix:` commit inside the session that wrote the file is ordinary iteration and not a defect at all.
