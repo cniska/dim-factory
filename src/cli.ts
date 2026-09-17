@@ -3,7 +3,11 @@
 // Nothing below this line reaches the network, holds a credential, or is billed
 // per token. `embed` and `q search` run a model on weights already on disk.
 
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { AGENT_LABEL, installAgent, planAgent } from "./agent";
+import { runBench } from "./bench";
+import { corpusPath, parseCorpus } from "./bench-corpus";
 import { checkRange } from "./check-commits";
 import { checkoutRoot } from "./checkout";
 import { checkoutDirs, installCommitGate, planCommitGate, sharedHooksDir } from "./commit-gate";
@@ -59,6 +63,8 @@ const USAGE = `usage: dim <command>
   check-commits <range>
                   judge every authored subject in a revision range by the same
                   rules the commit gate holds, and name each one that breaks
+  bench           score retrieval against the questions in retrieval.jsonl,
+                  beside the database (--k <n> for the cutoff, default 10)
   sql <select>    run one read-only statement against the database (--json)
   q <name> [arg]  ask the database a named question (q list names them; --json)
                   covers the last ${DEFAULT_WINDOW}; --since <n>d|YYYY-MM-DD or --all to widen
@@ -397,10 +403,54 @@ async function runWake(args: string[]): Promise<void> {
   }
 }
 
+const DEFAULT_CUTOFF = 10;
+
+/** A cutoff that is not a whole number above zero is refused, never rounded to a default. */
+function benchCutoff(args: string[]): number {
+  const at = args.indexOf("--k");
+  if (at === -1) return DEFAULT_CUTOFF;
+  const given = args[at + 1];
+  const k = Number(given);
+  if (!Number.isInteger(k) || k < 1) throw new Error(`--k takes a whole number above zero, not ${given}`);
+  return k;
+}
+
 /**
- * The backstop for the commit gate: a hook is skippable with `--no-verify` and
- * absent on a fresh clone, so CI reads what actually landed.
+ * Prints the score per question as well as the mean, because a mean over a
+ * corpus this small moves for one question and says nothing about which.
  */
+async function runBenchCommand(args: string[]): Promise<void> {
+  const path = corpusPath();
+  if (!existsSync(path)) {
+    console.log(`no corpus at ${path}; a question is a line of JSON — see docs/design.md`);
+    return;
+  }
+  const questions = parseCorpus(await readFile(path, "utf8"));
+  const k = benchCutoff(args);
+  const db = openReadOnly(dbPath());
+  try {
+    const report = await runBench(db, questions, k, { home: resolveHomeDir() }, embedQuestion);
+    const scored = report.scores.length;
+    console.log(
+      renderTable({
+        // A query caps its own rows, so asking for a k above that cap measures
+        // the cap; `returned` per question is what says which happened.
+        denominator:
+          scored === 0
+            ? `nothing of the ${questions.length} questions in the corpus could be scored`
+            : `${scored} of ${questions.length} questions scored at k=${k}: ` +
+              `recall ${report.recall.toFixed(3)}, nDCG ${report.ndcg.toFixed(3)}`,
+        columns: ["question", "query", "returned", "recall", "ndcg"],
+        rows: report.scores.map((s) => [s.id, s.query, s.returned, s.recall.toFixed(3), s.ndcg.toFixed(3)]),
+        note: scored === 0 ? "every question is listed below with the reason" : undefined,
+      }),
+    );
+    for (const { id, why } of report.unscorable) console.log(`unscored  ${id}: ${why}`);
+  } finally {
+    db.close();
+  }
+}
+
 function runCheckCommits(range: string | undefined): void {
   if (!range) throw new Error("check-commits needs a revision range, e.g. main..HEAD");
   const offenses = checkRange(range);
@@ -654,6 +704,9 @@ try {
       break;
     case "check-commits":
       runCheckCommits(process.argv[3]);
+      break;
+    case "bench":
+      await runBenchCommand(process.argv.slice(3));
       break;
     default:
       console.log(USAGE);
