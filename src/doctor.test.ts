@@ -91,7 +91,9 @@ describe("doctor", () => {
     mkdirSync(hooks, { recursive: true });
 
     writeFileSync(join(hooks, "commit-msg"), gateHooks(["github.com/an-account"])[0]?.body ?? "");
-    expect(check(env, "gate owners")).toBeUndefined();
+    const clean = check(env, "gate owners");
+    expect(clean?.state).toBe("ok");
+    expect(clean?.detail).toContain("1 owners");
 
     writeFileSync(join(hooks, "commit-msg"), gateHooks(["an-account"])[0]?.body ?? "");
     const bare = check(env, "gate owners");

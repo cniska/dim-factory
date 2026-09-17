@@ -250,14 +250,23 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
   // An owner naming an account without a host matched any forge, so the gate
   // armed on repositories the owner had only cloned. Such a list now matches
   // nothing, which leaves the gate installed and firing nowhere.
-  const bareOwners = (installedOwners(env) ?? []).filter((o) => !isHostQualified(o));
-  if (bareOwners.length > 0) {
-    checks.push({
-      name: "gate owners",
-      state: "fail",
-      detail: `${bareOwners.length} owners name an account but no host (${bareOwners.join(", ")}), so the gate arms nowhere`,
-      fix: "dim install-commit-gate --owner=<host>/<account> --write",
-    });
+  const owners = installedOwners(env);
+  const bareOwners = (owners ?? []).filter((o) => !isHostQualified(o));
+  if (owners !== null) {
+    checks.push(
+      bareOwners.length === 0
+        ? {
+            name: "gate owners",
+            state: "ok",
+            detail: `${owners.length} owners, each naming a host and an account`,
+          }
+        : {
+            name: "gate owners",
+            state: "fail",
+            detail: `${bareOwners.length} owners name an account but no host (${bareOwners.join(", ")}), so the gate arms nowhere`,
+            fix: "dim install-commit-gate --owner=<host>/<account> --write",
+          },
+    );
   }
 
   // A hook that exits before it reads anything is the failure the rest of this
