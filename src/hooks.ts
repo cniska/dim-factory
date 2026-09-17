@@ -38,14 +38,32 @@ export function dimPath(): string {
   return Bun.which("dim") ?? "dim";
 }
 
-function configPathFor(tool: Tool, env: Env = process.env): string {
+export function hookConfigPath(tool: Tool, env: Env = process.env): string {
   return tool === "claude"
     ? join(dirname(claudeProjectsDir(env)), "settings.json")
     : join(codexDir(env), "hooks.json");
 }
 
-type HookEntry = { matcher?: string; hooks?: { type?: string; command?: string; timeout?: number }[] };
+export type HookEntry = { matcher?: string; hooks?: { type?: string; command?: string; timeout?: number }[] };
 type HookConfig = { hooks?: Record<string, HookEntry[]> };
+
+export type WantedHook = { event: string; command: string };
+
+/**
+ * The installer and the Codex trust check read this one list, because a hook the
+ * trust check stops reporting reads exactly like a hook that is trusted.
+ *
+ * SessionStart carries two: one writes the event to the spool, one answers with
+ * the context the session starts from. They are separate entries so a reader can
+ * see which is which, and so one failing cannot silence the other.
+ */
+export function wantedHooks(tool: Tool, env: Env = process.env): WantedHook[] {
+  return [
+    { event: "SessionStart", command: hookCommand(tool, env) },
+    { event: "SessionStart", command: wakeCommand(tool) },
+    { event: "SessionEnd", command: hookCommand(tool, env) },
+  ];
+}
 
 function readConfig(path: string): HookConfig {
   return readJsonc<HookConfig>(path) ?? {};
@@ -59,17 +77,9 @@ function hasCommand(entries: HookEntry[], command: string): boolean {
 export function planHooks(env: Env = process.env): HookPlan[] {
   const plans: HookPlan[] = [];
   for (const tool of ["claude", "codex"] as const) {
-    const configPath = configPathFor(tool, env);
+    const configPath = hookConfigPath(tool, env);
     const config = readConfig(configPath);
-    // SessionStart carries two: one writes the event to the spool, one answers
-    // with the context the session starts from. They are separate entries so a
-    // reader can see which is which, and so one failing cannot silence the other.
-    const commands: [string, string][] = [
-      ["SessionStart", hookCommand(tool, env)],
-      ["SessionStart", wakeCommand(tool)],
-      ["SessionEnd", hookCommand(tool, env)],
-    ];
-    for (const [event, command] of commands) {
+    for (const { event, command } of wantedHooks(tool, env)) {
       plans.push({
         tool,
         configPath,
