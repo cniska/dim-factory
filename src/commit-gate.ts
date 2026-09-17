@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync }
 import { join } from "node:path";
 import { type Env, resolveHomeDir } from "./paths";
 import { prePushScript } from "./push-gate";
+import { SLUG_SED } from "./remote-slug";
 
 /**
  * The rule is taken from the one repo here whose subjects never break it: a
@@ -50,7 +51,8 @@ msg_file="\${1:-}"
 [ -n "$msg_file" ] && [ -r "$msg_file" ] || exit 0
 
 origin=$(git config --get remote.origin.url 2>/dev/null || true)
-owner=$(printf '%s' "$origin" | sed -n 's#.*[:/]\\([^/]*\\)/[^/]*$#\\1#p')
+owner=$(printf '%s' "$origin" | sed -nE '${SLUG_SED}')
+[ -n "$owner" ] || exit 0
 case " ${owners.join(" ")} " in
   *" $owner "*) ;;
   *) exit 0 ;;
@@ -77,9 +79,13 @@ export const SKIP_CHECK_ENV = "DIM_SKIP_CHECK";
 
 /**
  * Refuses a commit whose repo declares a check that fails. Anything it cannot
- * establish exits 0, as the commit-msg hook does. The ownership check guards an
- * `eval` of the repo's own manifest: a clone of someone else's project must
- * never have its scripts run by a hook installed globally here.
+ * establish exits 0, as the commit-msg hook does.
+ *
+ * The ownership check guards an `eval` of the repo's own manifest, so it is the
+ * only thing between a clone and code execution, and it matches the host as
+ * well as the account for that reason. What it cannot guard is a branch inside
+ * a repository that is the owner's: checking out a fork's pull request puts a
+ * contributor's `package.json` in the tree, and the next commit runs it.
  */
 export function preCommitScript(owners: string[]): string {
   return `#!/usr/bin/env bash
@@ -89,7 +95,8 @@ set -u
 [ "\${${SKIP_CHECK_ENV}:-}" = "1" ] && exit 0
 
 origin=$(git config --get remote.origin.url 2>/dev/null || true)
-owner=$(printf '%s' "$origin" | sed -n 's#.*[:/]\\([^/]*\\)/[^/]*$#\\1#p')
+owner=$(printf '%s' "$origin" | sed -nE '${SLUG_SED}')
+[ -n "$owner" ] || exit 0
 case " ${owners.join(" ")} " in
   *" $owner "*) ;;
   *) exit 0 ;;
@@ -212,8 +219,17 @@ export function installCommitGate(
   return { ...plan, globalHooksPath: dir };
 }
 
-export function ownerOf(label: string | null): string {
-  return label?.includes("/") ? (label.split("/")[0] as string) : "";
+/**
+ * The owners an installed hook was written for, read back out of the script it
+ * was written into. An owner list predating the host match names an account
+ * alone, which now matches nothing — so the gate is installed, reads as
+ * installed, and arms in no repository at all.
+ */
+export function installedOwners(env: Env = process.env): string[] | null {
+  const path = join(sharedHooksDir(env), "commit-msg");
+  if (!existsSync(path)) return null;
+  const line = /^case " (.*) " in$/m.exec(readFileSync(path, "utf8"));
+  return line?.[1] === undefined ? [] : line[1].split(" ").filter(Boolean);
 }
 
 export type Checkout = { repo: string; owner: string };

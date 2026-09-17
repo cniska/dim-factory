@@ -40,7 +40,7 @@ function repoWithHook(origin: string | null): { dir: string; hooks: string } {
   const hooks = join(dir, "hooks");
   mkdirSync(hooks, { recursive: true });
   const path = join(hooks, "commit-msg");
-  writeFileSync(path, hookScript(["cniska", "other-org"]));
+  writeFileSync(path, hookScript(["github.com/cniska", "other-org"]));
   execFileSync("chmod", ["755", path]);
 
   execFileSync("git", ["init", "-q", dir]);
@@ -213,4 +213,70 @@ describe("the check gate", () => {
     expect(script).toContain("exit 1");
     expect(script).toContain(`${SKIP_CHECK_ENV}=1 git commit`);
   });
+});
+
+/**
+ * The pre-commit gate runs `eval "$task"` over whatever the repo's own manifest
+ * declares, so arming it in a repo the owner does not own is arbitrary code
+ * execution on the first commit in a clone. A `dim` shim stands in for
+ * `check-task` so the arming is what is under test and not the task lookup.
+ */
+function repoRunningItsOwnCheck(origin: string, owners: string[]): { dir: string; marker: string } {
+  const dir = mkdtempSync(join(tmpdir(), "dim-arm-"));
+  const hooks = join(dir, "hooks");
+  const bin = join(dir, "bin");
+  mkdirSync(hooks, { recursive: true });
+  mkdirSync(bin, { recursive: true });
+
+  const marker = join(dir, "marker");
+  const shim = join(bin, "dim");
+  writeFileSync(shim, `#!/usr/bin/env bash\nprintf '%s' "printf pwned > ${marker}"\n`);
+  execFileSync("chmod", ["755", shim]);
+
+  const hook = join(hooks, "pre-commit");
+  writeFileSync(hook, preCommitScript(owners));
+  execFileSync("chmod", ["755", hook]);
+
+  execFileSync("git", ["init", "-q", dir]);
+  execFileSync("git", ["-C", dir, "config", "user.email", "t@example.com"]);
+  execFileSync("git", ["-C", dir, "config", "user.name", "T"]);
+  execFileSync("git", ["-C", dir, "config", "core.hooksPath", hooks]);
+  execFileSync("git", ["-C", dir, "remote", "add", "origin", origin]);
+
+  writeFileSync(join(dir, "a"), "x");
+  execFileSync("git", ["-C", dir, "add", "-A"]);
+  execFileSync("git", ["-C", dir, "commit", "-m", "feat: a conforming subject"], {
+    stdio: "pipe",
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+  });
+  return { dir, marker };
+}
+
+describe("arming the check the gate runs", () => {
+  // Proves the arming works at all, so the refusals below mean something.
+  test("runs the declared check in a repo the owner owns", () => {
+    const { dir, marker } = repoRunningItsOwnCheck("git@github.com:cniska/thing.git", ["github.com/cniska"]);
+    try {
+      expect(existsSync(marker)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // An account name is not an identity: anyone may register `cniska` on another
+  // forge, or name a directory that way, and the gate reads the whole URL.
+  for (const origin of [
+    "https://gitlab.com/cniska/evil.git",
+    "git@evil.example.com:cniska/evil.git",
+    "https://github.com/org/cniska/evil.git",
+  ]) {
+    test(`runs nothing for a repo at ${origin}`, () => {
+      const { dir, marker } = repoRunningItsOwnCheck(origin, ["github.com/cniska"]);
+      try {
+        expect(existsSync(marker)).toBe(false);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
 });
