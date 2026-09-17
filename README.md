@@ -31,11 +31,14 @@ bun run dim install-wt      # link wt onto PATH; --write applies it
 bun run dim wake            # what the last session here left as Next, for the SessionStart hook
 bun run dim q prior-art "<path>"   # how the same problem was solved in the repos already on disk
 bun run dim check-commits <range>  # judge a revision range by the same rules the gate holds
+bun run dim sql "<select>"  # one read-only statement, for a question no named query covers
 bun run dim q list          # the named questions; `q <name>` asks one, --json for the raw rows
 bun run verify              # lint, typecheck, test
 ```
 
 `bun link` puts `dim` on PATH, which is what makes it usable from another repo — and an agent can only reach it from the repo it is working in.
+
+`dim sql "<select>"` runs one statement against the same read-only connection the queries use, so a question no named query covers does not mean leaving the tool. A statement that writes is refused by SQLite rather than by a rule here, which would have to be right about every spelling of a write. The named questions are grown from this: a question worth asking twice becomes one of them.
 
 Every query prints the base its numbers came from, and a query with nothing to report says so rather than printing a zero. Queries cover the last 30 days unless given `--since <n>d|YYYY-MM-DD` or `--all`; the window is printed with the numbers. Readers open the database read-only.
 

@@ -3,6 +3,7 @@ import { statSync } from "node:fs";
 import { readChunk } from "./chunk";
 import { gitSubcommands } from "./git-command";
 import type { ParsedChunk, SessionFacts } from "./records";
+import { worktreeOf } from "./worktree";
 
 export type Tool = "claude" | "codex";
 export type Kind = "transcript" | "subagent" | "rollout";
@@ -79,14 +80,15 @@ export function createIngester(db: Database) {
      VALUES (?, ?, ?, ?, ?) ON CONFLICT(path) DO NOTHING`,
   );
   const upsertSession = db.prepare(
-    `INSERT INTO session (id, tool, parent_id, agent_type, cwd, project, git_branch, cli_version,
+    `INSERT INTO session (id, tool, parent_id, agent_type, cwd, worktree, project, git_branch, cli_version,
        entrypoint, started_at, last_seen_at, first_model, last_model, title, extra)
-     VALUES ($id, $tool, $parent, $agentType, $cwd, $project, $gitBranch, $cliVersion,
+     VALUES ($id, $tool, $parent, $agentType, $cwd, $worktree, $project, $gitBranch, $cliVersion,
        $entrypoint, $startedAt, $lastSeenAt, $firstModel, $lastModel, $title, $extra)
      ON CONFLICT(id) DO UPDATE SET
        parent_id    = coalesce(session.parent_id, excluded.parent_id),
        agent_type   = coalesce(session.agent_type, excluded.agent_type),
        cwd          = coalesce(session.cwd, excluded.cwd),
+       worktree     = coalesce(session.worktree, excluded.worktree),
        project      = coalesce(session.project, excluded.project),
        git_branch   = coalesce(excluded.git_branch, session.git_branch),
        cli_version  = coalesce(excluded.cli_version, session.cli_version),
@@ -269,6 +271,7 @@ export function createIngester(db: Database) {
       $parent: spec.parentId ?? null,
       $agentType: spec.agentType ?? null,
       $cwd: s.cwd ?? null,
+      $worktree: worktreeOf(s.cwd),
       $project: s.project ?? null,
       $gitBranch: s.gitBranch ?? null,
       $cliVersion: s.cliVersion ?? null,
