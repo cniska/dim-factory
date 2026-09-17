@@ -106,10 +106,11 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
 }
 
 /**
- * Everything here is re-read from the source files. `hook_event` and
- * `guidance_walk` are deliberately not cleared: neither has a source to re-read
- * from, because a transcript records no end marker and a rules file edited since
- * cannot be read back as it was.
+ * Everything here is re-read from the source files. `hook_event`,
+ * `guidance_walk` and `command_trace` are deliberately not cleared: none has a
+ * source to re-read from, because a transcript records no end marker, a rules
+ * file edited since cannot be read back as it was, and a command that ran left
+ * no trace but its own.
  */
 export function rebuild(db: Database, env: Env = process.env): SyncReport {
   db.transaction(() => {

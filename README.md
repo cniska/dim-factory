@@ -46,6 +46,8 @@ Every query prints the base its numbers came from, and a query with nothing to r
 
 The database lands in `~/.local/share/dim-factory/sessions.db`. Reading the whole corpus from scratch takes about 20 seconds.
 
+Each `dim q` writes one `command_trace` row: the query, which branch answered, how many rows and how long. Which commands an agent ran is already in `tool_call`, since every one is a shell call in a transcript — what is not anywhere else is which branch served it, because `q search` falling back from cosine to the keyword index looks identical in the rows, and a query run from a terminal belongs to no session. The row is written on a second connection after the output is rendered, and a failure to write it is dropped rather than failing the query.
+
 A subagent is identified by its agent id and its parent together, written `<agent>@<parent>`, because Claude Code reuses an agent id across parent sessions. The agent id leads, so a prefix search still finds it. Keyed on the agent id alone, two different runs become one session row and the second file is read from the first's cursor.
 
 `sync` reads past a complete line that is not JSON rather than refusing the file, which is what stops one corrupt record from stalling collection. The cursor advances over it, so that sync is the only one that can ever name it: it prints the file and the line number to stderr, and the launchd agent's `sync.log` is where that lands. `dim rebuild` reads the file from the start and reports it again.
