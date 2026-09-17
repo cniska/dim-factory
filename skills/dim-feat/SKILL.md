@@ -33,11 +33,18 @@ Hand off to [`dim-build`](../dim-build/SKILL.md) and follow it, one slice at a t
 
 Where a slice turns out to be blocked, finish every other slice in full and say plainly what was left and why. Scaling the work down is the owner's call.
 
+## 4. Review the assembled change, where there was more than one slice
+
+Each slice was checked against its own diff, and nothing has yet read them together — a contract two slices agreed on separately, or a shape that only went wrong once both landed, is invisible to a per-slice check. Invoke [`dim-review`](../dim-review/SKILL.md) over the range the slices span.
+
+One slice means this is already done: reviewing the same diff a second time is the checking agent's job run twice.
+
 ## Exit check
 
 The feature is done when:
 
 - every slice named in phase 2 is committed, or is named as left out with its reason
+- a change that ran to more than one slice was reviewed as a whole
 - the repo's own task passes, and its output was read rather than assumed
 - every invariant claimed has a test that fails when the invariant is removed
 - the docs describing the new behavior changed in the same commit as the behavior
