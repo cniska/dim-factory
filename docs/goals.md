@@ -6,7 +6,7 @@ Three goals. All of them are about time, which is the commodity actually being s
 
 ## 1. Make building take less of the owner's time and effort
 
-The work is several repos, each its own production line — `apps`, `hoodly`, `acolyte` and the rest — and the currency is attention, not output volume. A change succeeds when shipping the same thing costs fewer of the owner's minutes and less of his thinking — fewer things to re-explain, fewer decisions handed back, less re-deriving what is already known.
+The work is several repos, each its own production line, and the currency is attention, not output volume. A change succeeds when shipping the same thing costs fewer of the owner's minutes and less of his thinking — fewer things to re-explain, fewer decisions handed back, less re-deriving what is already known.
 
 **Measured first by `q repeats`:** a phrase typed at the agent across several sessions means the point did not land the first time. Saying a thing twice is unambiguous waste, it names its own fix, and it is the one correction signal with no interpretation in it.
 

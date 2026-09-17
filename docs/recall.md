@@ -32,6 +32,19 @@ So the gap is not storage. This database already holds every message with richer
 
 [Nothing Forgotten](https://crisu.me/blog/nothing-forgotten) separates memory into three scopes — what the work is on now, what holds for this project, and what holds for this person — and the same three exist here. The session tier is the Next a handoff left, and `wake` delivers it. The user tier is the conventions file, which is resident in every session and is what [`conventions.md`](conventions.md) exists to cut. The project tier — how this repo is built, tested and released — is recorded nowhere that arrives, and is exactly what gets re-explained at the start of a session.
 
+### What the project tier would carry
+
+The facts re-explained at the start of a session are how this repo is formatted, tested, deployed and reviewed. They are per-repo, they change rarely, and an agent that has to work them out reads a manifest and a lock file to reach three commands.
+
+Two halves, with different sources, and neither is a heuristic where the record already answers:
+
+- **Declared tasks.** What the repo says to run: `package.json` scripts, `mise` tasks, a `Makefile`. This is the half that must be read rather than inferred, because running the repo's own task is what makes a local check the same check CI runs. Acolyte's `workspace-contract.ts` is the right shape to borrow — ecosystem, package manager, format, lint, test — but its detectors reach past the declared task to the underlying tool, which here would name `biome check --write` where the repo's own script is `biome format --write`, and `bun test` where the gate is `bun run verify`. So: declared tasks first, ecosystem detection only where a repo declares nothing.
+- **The tooling chain, derived.** Which CLIs a repo is actually worked with is already recorded, because every shell command a session ran is a row: across the corpus one line deploys with wrangler, three with vercel, and `gh` is used in all of them ([`findings.md`](findings.md)). No config file has to be parsed for this and no heuristic can do better, because the source is what was run rather than what is installed.
+
+The delivery is the one that already exists. `wake` is the only channel here that arrives, and it holds a budget: every line is paid for in every session that starts. Three commands and a tooling chain fit that budget on its own terms, because a cold start can work them out but only by spending a tool call and its output to do it — which is more than the lines cost. What does not fit is everything else about a repo, and the test for adding a line stays the one `wake` was built with: a cold start cannot work it out, or it does not go in.
+
+Two things this cannot reach. Running a formatter after each edit is a `PostToolUse` hook, and dim installs no such event — dim can supply the command, never run it. And on Codex nothing fires at all yet: hook trust there is recorded per hook in `~/.codex/config.toml` as `<hooks.json path>:<event>:<entry index>:<hook index>`, so trust is positional, and an entry inserted ahead of dim's by another tool silently un-trusts dim's.
+
 Two of its principles are rules here rather than observations. Relevance over recency: a session's own Next is the one place recency is the right key, because continuation is what it is for, and `prior-art` ranking by recency is the flaw it already names in its own note. And degradation rather than failure: where an embedding is missing or the model will not load, search falls back to the keyword index instead of erroring, because a retrieval path that can break is a query nobody can rely on.
 
 ## Input quality decides this, not the algorithm
