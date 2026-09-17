@@ -27,6 +27,21 @@ Commit in the same order: task passes, then commit, then the next slice. The sub
 
 Where a slice turns out to be blocked, finish every other slice in full and say plainly what was left and why. Scaling the work down is the owner's call.
 
+## Check the slice before the next one
+
+Between the task passing and the commit, hand the slice's diff to one bounded agent. This is not the fan-out the top of this file argues against: that objection is about delegating the edits, which need the context that produced them. A checker returns findings and keeps nothing, which is the trade [`dim-review`](../dim-review/SKILL.md) makes and the one the corpus measured as costing nothing.
+
+Bounded means a fixed brief, not "review this". It also means the checker is told what to look for: hand it the conventions actually in force — the `CLAUDE.md` and `AGENTS.md` on the walk into this session, imports included — because the rules it is checking against are written down and a checker left to invent them checks its own taste. Give it the diff of this slice alone, what the slice claims to do, and these four questions:
+
+- does every invariant the diff claims have a test that fails without it
+- does any comment narrate the change — what the code used to do, what was renamed, what is now different — rather than state the constraint that forced this approach
+- did a doc describing this behavior change in the same diff
+- is there a fallback, default or catch-and-continue standing in for a decision that was never made
+
+Withhold your own reading. Hand over the diff and the claim, not the conclusion, or what comes back is agreement.
+
+Act on what it returns or say why not, then commit. Returning nothing is the expected result and not a sign the check was wasted: of the sessions that loaded `review` in this corpus, 72% made no edit under it ([`findings.md`](../../docs/findings.md), "Review already finds nothing, most of the time"). A checker earns trust the way a test does — plant a defect once, watch it be caught, take it out — and after that an empty result is the good news it reads as.
+
 ## Exit check
 
 The change is done when:
