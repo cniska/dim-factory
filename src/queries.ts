@@ -37,7 +37,11 @@ export type Query = {
   name: string;
   summary: string;
   usage?: string;
-  /** A time series whose point is the arc across months, so no window is applied unless asked. */
+  /**
+   * No window is applied unless asked. Set where one would hide the answer: a
+   * time series, a query aimed at something the caller named, and `running`,
+   * whose own argument is the span it covers.
+   */
   spansHistory?: boolean;
   /** Its argument is a question to rank by meaning, which the caller resolves into `ctx.question`. */
   embedsArg?: boolean;
@@ -662,26 +666,51 @@ const rework: Query = {
 };
 
 /**
+ * An ANDed phrase costs FTS5 an intersection, and the cost of the whole is
+ * superlinear in how many there are: measured on this corpus at 1.7s for 50
+ * terms, 4.4s for 100 and 63.6s for 400. An argument arrives from a file or a
+ * transcript as readily as from a person, so the terms past the cap are dropped
+ * and the caller is told, rather than the query running until someone kills it.
+ */
+const MAX_TERMS = 16;
+
+/**
  * Every term is quoted before it reaches FTS5, which otherwise reads `-` as NOT
  * and `:` as a column filter — so a branch name or a flag searches as the word
  * it is. Terms are ANDed; the query language is not exposed.
  */
-const asPhrases = (terms: string): string =>
-  terms
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((t) => `"${t.replaceAll('"', '""')}"`)
-    .join(" ");
+const asPhrases = (terms: string): { match: string; dropped: number } => {
+  const words = terms.split(/\s+/).filter(Boolean);
+  return {
+    match: words
+      .slice(0, MAX_TERMS)
+      .map((t) => `"${t.replaceAll('"', '""')}"`)
+      .join(" "),
+    dropped: Math.max(0, words.length - MAX_TERMS),
+  };
+};
+
+/**
+ * Meta the harness injected is left out, because the same reminder arrives in
+ * session after session and a term inside one matches once per session that got
+ * it. What `origin.kind` marks as a coordinator's or a peer's message stays: an
+ * agent wrote that, and relaying it through the harness does not make it
+ * injected. Skill bodies need no condition of their own — the parser drops their
+ * text, and each is meta too.
+ */
+const SAID = "(m.is_meta = 0 OR m.origin_kind IN ('coordinator', 'peer'))";
 
 /**
  * What answers when the distilled index cannot: every message anyone said, but
- * only the words actually typed. Injected meta is left out because the same
- * reminder arrives in session after session, so a term inside one matches once
- * per session that got it and says nothing about any of them. Skill bodies need
- * no condition of their own: the parser drops their text, and each is meta too.
+ * only the words actually typed. The caller states why its reader is here, since
+ * this is a front door for one and a degradation for another.
  */
-function keywordSearch(db: Database, ctx: QueryContext, terms: string, why: string): QueryResult {
+function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryResult {
   const columns = ["session", "when", "role", "project", "text"];
+  const { match, dropped } = asPhrases(terms);
+  if (!match) {
+    return { denominator: "", columns: ["error"], rows: [["nothing to search for but whitespace"]] };
+  }
   const w = window("m.ts", ctx);
   const records = table(
     db,
@@ -691,26 +720,39 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string, why: stri
      FROM message_fts
      JOIN message m ON m.rowid = message_fts.rowid
      JOIN session s ON s.id = m.session_id
-     WHERE message_fts MATCH ? AND m.is_meta = 0${w.sql}
+     WHERE message_fts MATCH ? AND ${SAID}${w.sql}
      ORDER BY m.ts DESC LIMIT 40`,
-    [homeOf(ctx), asPhrases(terms), ...w.params],
+    [homeOf(ctx), match, ...w.params],
   );
-  const said = scalar(db, "SELECT count(*) AS n FROM message WHERE text IS NOT NULL AND is_meta = 0");
-  const all = scalar(db, "SELECT count(*) AS n FROM message");
+  // Both counts carry the window the rows were drawn under, or the base
+  // describes a corpus the search never looked at.
+  const searchable = window("m.ts", ctx);
+  const every = window("ts", ctx, "WHERE");
+  const said = scalar(
+    db,
+    `SELECT count(*) AS n FROM message m WHERE m.text IS NOT NULL AND ${SAID}${searchable.sql}`,
+    ...searchable.params,
+  );
+  const all = scalar(db, `SELECT count(*) AS n FROM message${every.sql}`, ...every.params);
   return {
-    path: "keyword",
     denominator:
       `keywords over ${said} of ${all} messages that carry text anyone said (${windowLine(ctx)}); ` +
-      `newest 40 shown. Meaning was not ranked: ${why}`,
+      `newest 40 shown.${dropped > 0 ? ` Only the first ${MAX_TERMS} words were searched; ${dropped} more were dropped.` : ""}`,
     columns,
     rows: toRows(records, columns),
     note:
       records.length === 0
-        ? `nothing matches ${terms}; a message with no text is a tool call or its result, and injected ` +
-          `text is nothing anyone said, so neither is searched`
+        ? `nothing matches ${terms}; a message with no text is a tool call or its result, and a reminder ` +
+          `the harness injected is nothing anyone said, so neither is searched`
         : undefined,
   };
 }
+
+/** The keyword index standing in for the meaning path, which the reader is owed. */
+const degradedToKeywords = (db: Database, ctx: QueryContext, terms: string, why: string): QueryResult => {
+  const result = keywordSearch(db, ctx, terms);
+  return { ...result, path: "keyword", denominator: `${result.denominator} Meaning was not ranked: ${why}` };
+};
 
 const SEMANTIC_HITS = 20;
 const SNIPPET_CHARS = 96;
@@ -754,9 +796,9 @@ const search: Query = {
     }
     if (!question) throw new Error("search ranks by meaning, so the caller must resolve ctx.question");
     if (!hasEmbeddings(db)) {
-      return keywordSearch(db, ctx, arg, "this database predates the embedding index; run `dim embed`");
+      return degradedToKeywords(db, ctx, arg, "this database predates the embedding index; run `dim embed`");
     }
-    if ("unavailable" in question) return keywordSearch(db, ctx, arg, question.unavailable);
+    if ("unavailable" in question) return degradedToKeywords(db, ctx, arg, question.unavailable);
 
     const w = window("coalesce(m.ts, c.ts)", ctx, "WHERE");
     const rows = db
@@ -768,7 +810,7 @@ const search: Query = {
       )
       .all(...w.params);
     if (rows.length === 0) {
-      return keywordSearch(db, ctx, arg, "nothing is embedded in this window; run `dim embed`");
+      return degradedToKeywords(db, ctx, arg, "nothing is embedded in this window; run `dim embed`");
     }
 
     const scored = rows
@@ -843,13 +885,13 @@ const keywords: Query = {
     if (!arg) {
       return { denominator: "", columns: ["error"], rows: [['usage: dim q keywords "<words>"']] };
     }
-    return keywordSearch(
-      db,
-      ctx,
-      arg,
-      "this is the word index, asked directly. `dim q search` ranks distilled text by meaning, and " +
-        "`dim q thread <session>@<when>` reads the exchange a hit sits in",
-    );
+    const result = keywordSearch(db, ctx, arg);
+    return {
+      ...result,
+      denominator:
+        `${result.denominator} Words, not meaning: \`dim q search\` ranks distilled text, and ` +
+        "`dim q thread <session>@<when>` reads the exchange a hit sits in.",
+    };
   },
 };
 

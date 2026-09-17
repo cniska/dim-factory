@@ -337,8 +337,27 @@ The row that needs explaining is `agents-md`: four times more fixes after the ed
 
 ## The keyword index carries text nobody said
 
-Measured on 2026-09-17, over the whole corpus. `message_fts` indexes every `message.text`, and 674 of the 1,631 rows flagged `is_meta` carry text — reminders the harness injects rather than anything a participant wrote. They repeat: the most common one is identical across 295 of the 1,031 sessions on this machine, so a term inside it matches hundreds of rows that are the same row.
+Measured on 2026-09-17, over the whole corpus. `message_fts` indexes every `message.text`, and 674 of the 1,631 rows flagged `is_meta` carry text — mostly reminders the harness injects rather than anything a participant wrote. They repeat: the most common one is identical across 295 of the 1,031 sessions on this machine, so a term inside it matches hundreds of rows that are the same row. On one real query, `local-command-caveat`, 322 of the 324 matching rows were injected text.
+
+The flag does not mean nobody said it. 52 of those rows are marked `coordinator` in `origin_kind` and 33 `peer` — another agent's instruction or correction, relayed into a session by the harness and flagged meta for having arrived that way. A question about what was decided wants exactly those, so `origin_kind` is what separates them; excluding on `is_meta` alone drops them.
 
 Skill bodies look like the larger problem and are not one. All 957 of them carry no text at all — the Claude parser drops the body it just recognized — and every one is flagged `is_meta` as well, so a condition naming `is_skill_body` selects nothing that `is_meta` had not already excluded. The size of a skill body is why it looks worth excluding; it was never in the index to exclude.
 
-What this carries: one machine's corpus, both tools, all of history. It says what the keyword path had to stop returning, not how often a search was spoiled by it — nothing counted that.
+What this carries: one machine's corpus, all of history, and Claude only — `src/parse-codex.ts` never sets the flag, so Codex contributes no rows here because nothing marks them, not because it injects nothing. It says what the keyword path had to stop returning, not how often a search was spoiled by it — nothing counted that.
+
+## An ANDed phrase costs more than the one before it
+
+Measured on 2026-09-17 against the corpus of the day, 253,570 messages with 90,163 searchable. A keyword search ANDs one FTS5 phrase per word, and the cost of the whole grows about fourfold per doubling of the term count:
+
+| words | wall clock |
+|---|---|
+| 50 | 1.7s |
+| 100 | 4.4s |
+| 200 | 17.2s |
+| 400 | 63.6s |
+
+4,000 words — under 14KB, less than a paragraph of a transcript — had not returned after two minutes. The read path sets no statement timeout and no progress handler, so nothing stops it.
+
+This matters because of who writes the argument. A search string reaches the query from a file or a transcript the agent is reading as readily as from a person typing, and the caller cannot see the cost before paying it. So the words past a cap are dropped and the denominator says how many, which bounds the work at the one place both readers of the index share.
+
+What this carries: one corpus, one machine, English stopwords as the terms — the worst case, since a rare word intersects almost nothing. A query of ordinary words is faster than this table at every count.
