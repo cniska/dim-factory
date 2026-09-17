@@ -19,6 +19,7 @@ import { installSkill, planSkill, SKILL_NAMES } from "./skill";
 import { ensureSpoolDirs } from "./spool";
 import { rebuild, type SyncReport, sync } from "./sync";
 import { readWake, renderWake, wireFor } from "./wake";
+import { installWt, planWt } from "./wt";
 
 const USAGE = `usage: dim <command>
 
@@ -38,6 +39,8 @@ const USAGE = `usage: dim <command>
   install-commit-gate
                   show which checkouts would get the commit-subject hook
                   (--write installs it, skipping repos that gate their own)
+  install-wt      show where wt would be linked onto PATH; --write links it,
+                  keeping whatever is there as a backup
   wake            the one thing a cold start here cannot work out: what the last
                   session in this directory left as Next (for the SessionStart hook)
   check-commits <range>
@@ -276,6 +279,22 @@ function printCommitGatePlan(write: boolean): void {
   for (const copy of done.strandedCopies) console.log(`removed ${copy}`);
 }
 
+function printWtPlan(write: boolean): void {
+  const plan = planWt();
+  console.log(`wt: ${plan.link} -> ${plan.source} (${plan.state})`);
+  if (plan.occupant) console.log(`  something else is there: ${plan.occupant}`);
+  console.log("  a link rather than a copy, so the script on PATH cannot drift from the tested one");
+
+  if (plan.state === "linked") return;
+  if (!write) {
+    console.log("\nRe-run with --write to link it.");
+    return;
+  }
+  const done = installWt();
+  if (plan.occupant) console.log(`kept the previous ${done.link} at ${done.link}.dim-backup`);
+  console.log(`linked ${done.link}`);
+}
+
 /**
  * Runs before every session once wired to the SessionStart hook, so it may never
  * fail and never print a diagnostic: anything unexpected is silence, and the
@@ -432,6 +451,9 @@ try {
       break;
     case "install-commit-gate":
       printCommitGatePlan(process.argv.includes("--write"));
+      break;
+    case "install-wt":
+      printWtPlan(process.argv.includes("--write"));
       break;
     case "wake":
       runWake(process.argv.slice(3));

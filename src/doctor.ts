@@ -8,6 +8,7 @@ import { dataDir, type Env, resolveHomeDir } from "./paths";
 import { planRules } from "./rules";
 import { SCHEMA_VERSION } from "./schema";
 import { planSkill } from "./skill";
+import { planWt } from "./wt";
 
 /**
  * `warn` is for a gap that costs evidence and `fail` for one that loses it:
@@ -180,6 +181,23 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
                 state: "ok",
                 detail: `${ended} of ${judgeable} sessions since the hooks went in recorded an end`,
               },
+  );
+
+  // wt establishes the worktree convention this database reads, so a wt that is
+  // not this repo's is a convention nothing here verifies.
+  const wt = planWt(env);
+  checks.push(
+    wt.state === "linked"
+      ? { name: "wt", state: "ok", detail: "linked to this repo's tested script" }
+      : {
+          name: "wt",
+          state: "warn",
+          detail:
+            wt.state === "missing"
+              ? "wt is not on PATH; worktrees are made by hand or not at all"
+              : `${wt.link} is not this repo's script, so nothing tests what runs`,
+          fix: "dim install-wt --write",
+        },
   );
 
   const pendingLinks = planSkill(env).filter((p) => p.state !== "linked");
