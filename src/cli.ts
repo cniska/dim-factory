@@ -22,6 +22,7 @@ import { DEFAULT_WINDOW, windowFromArgs } from "./since";
 import { installSkill, planSkill, SKILL_NAMES } from "./skill";
 import { ensureSpoolDirs } from "./spool";
 import { rebuild, type SyncReport, sync } from "./sync";
+import { checkTask } from "./tasks";
 import { readWake, renderWake, wireFor } from "./wake";
 import { resolveWalk, spoolWalk } from "./walk";
 import { installWt, planWt } from "./wt";
@@ -50,6 +51,8 @@ const USAGE = `usage: dim <command>
                   keeping whatever is there as a backup
   wake            the one thing a cold start here cannot work out: what the last
                   session in this directory left as Next (for the SessionStart hook)
+  check-task      print the check command this repo declares, and nothing if it
+                  declares none (the pre-commit hook reads this)
   check-commits <range>
                   judge every authored subject in a revision range by the same
                   rules the commit gate holds, and name each one that breaks
@@ -605,6 +608,13 @@ try {
       break;
     case "wake":
       await runWake(process.argv.slice(3));
+      break;
+    case "check-task":
+      // The pre-commit hook asks this; silence means no declared task and no gate.
+      {
+        const task = checkTask(process.cwd());
+        if (task) console.log(task.command);
+      }
       break;
     case "check-commits":
       runCheckCommits(process.argv[3]);

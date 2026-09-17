@@ -3,7 +3,14 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkSubject, hookScript, installCommitGate, sharedHooksDir } from "./commit-gate";
+import {
+  checkSubject,
+  hookScript,
+  installCommitGate,
+  preCommitScript,
+  SKIP_CHECK_ENV,
+  sharedHooksDir,
+} from "./commit-gate";
 
 describe("subject rules", () => {
   test("accepts a conforming subject", () => {
@@ -146,5 +153,36 @@ describe("the shared hook", () => {
   test("the owner list is the only thing that changes between installs", () => {
     expect(hookScript(["cniska"])).not.toEqual(hookScript(["cniska", "other-org"]));
     expect(hookScript(["cniska", "other-org"])).toContain(" cniska other-org ");
+  });
+});
+
+describe("the check gate", () => {
+  // `--no-verify` is git's only escape and it takes the subject gate with it,
+  // so a slow check without this would make the working gate the casualty.
+  test("skips itself on the env escape, before anything else", () => {
+    const script = preCommitScript(["cniska"]);
+    const skip = script.indexOf(SKIP_CHECK_ENV);
+    expect(skip).toBeGreaterThan(-1);
+    expect(skip).toBeLessThan(script.indexOf("remote.origin.url"));
+  });
+
+  test("runs nothing for a repo that is not the owner's", () => {
+    const script = preCommitScript(["cniska"]);
+    expect(script).toContain('case " cniska " in');
+    expect(script.indexOf('case " cniska " in')).toBeLessThan(script.indexOf("dim check-task"));
+  });
+
+  // It runs before every commit on the machine, so anything it cannot establish
+  // has to let the commit through.
+  test("exits 0 where dim or the declared task is missing", () => {
+    const script = preCommitScript(["cniska"]);
+    expect(script).toContain("command -v dim >/dev/null 2>&1 || exit 0");
+    expect(script).toContain('[ -n "$task" ] || exit 0');
+  });
+
+  test("refuses the commit when the check fails, and names the way past it", () => {
+    const script = preCommitScript(["cniska"]);
+    expect(script).toContain("exit 1");
+    expect(script).toContain(`${SKIP_CHECK_ENV}=1 git commit`);
   });
 });
