@@ -32,21 +32,57 @@ export function unarmedCheckouts(dirs: string[]): string[] {
   });
 }
 
+/**
+ * One spelling for a remote URL, as bash. The hook compares the URL git hands it
+ * against the URLs the checkout has configured, and the same remote is written
+ * many ways. Exported so a test can run it on its own: for a path that is a
+ * directory the cd normalizes on its own, so the other branches are reachable
+ * only here.
+ *
+ * Logical pwd rather than `pwd -P`, because resolving symlinks would rewrite the
+ * very path an owner list was written against.
+ */
+export const URL_NORMALIZER = `dim_url() {
+  u=\${1#file://}
+  u=\${u%/}
+  if [ -d "$u" ]; then (cd "$u" 2>/dev/null && pwd) || printf '%s' "$u"; else printf '%s' "$u"; fi
+}`;
+
 export function prePushScript(owners: string[]): string {
   return `#!/usr/bin/env bash
 # Installed by \`dim install-commit-gate\`. One copy for every repo; see dim-factory.
 set -u
 
 remote="\${1:-}"
+${URL_NORMALIZER}
+
 # Git names the remote being pushed to and its URL. Reading the owner off that
 # URL rather than off origin is what makes a push to a fork's upstream, or to a
 # second remote, judged against the account it is actually landing in.
-owner=$(printf '%s' "\${2:-}" | sed -nE '${SLUG_SED}')
+url=$(dim_url "\${2:-}")
+owner=$(printf '%s' "$url" | sed -nE '${SLUG_SED}')
 [ -n "$owner" ] || exit 0
 case " ${owners.join(" ")} " in
   *" $owner "*) ;;
   *) exit 0 ;;
 esac
+
+# Git names the remote by its name when the push named one and by its URL when it
+# did not, and only a name has a refs/remotes/<name>/HEAD to read the shared
+# branch from.
+if ! git config --get "remote.$remote.url" >/dev/null 2>&1; then
+  # get-url --push resolves insteadOf and a separate pushurl, neither of which
+  # reading remote.<name>.url out of the config would see.
+  match=""
+  for name in $(git remote 2>/dev/null); do
+    [ "$(dim_url "$(git remote get-url --push "$name" 2>/dev/null)")" = "$url" ] || continue
+    match=$name
+    # Several remotes may share a URL and only one of them name a shared branch.
+    git symbolic-ref -q "refs/remotes/$name/HEAD" >/dev/null 2>&1 && break
+  done
+  remote=$match
+  [ -n "$remote" ] || exit 0
+fi
 
 head=$(git symbolic-ref --short "refs/remotes/$remote/HEAD" 2>/dev/null || true)
 [ -n "$head" ] || exit 0

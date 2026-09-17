@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { devNull, tmpdir } from "node:os";
 import { join } from "node:path";
-import { prePushScript, unarmedCheckouts } from "./push-gate";
+import { prePushScript, URL_NORMALIZER, unarmedCheckouts } from "./push-gate";
 
 type Repo = { root: string; work: string };
 
@@ -109,6 +109,45 @@ describe("the push gate", () => {
     }
   });
 
+  // Git names the remote by its name when the push named one and by its URL
+  // when it did not, and only a name has a refs/remotes/<name>/HEAD to read the
+  // shared branch from. Every spelling here reaches the same configured remote.
+  for (const [label, spell] of [
+    ["its path", (root: string) => join(root, "gated-owner", "thing.git")],
+    ["a trailing slash", (root: string) => `${join(root, "gated-owner", "thing.git")}/`],
+    ["a dot segment", (root: string) => `${join(root, "gated-owner")}/./thing.git`],
+    ["a file URL", (root: string) => `file://${join(root, "gated-owner", "thing.git")}`],
+  ] as [string, (root: string) => string][]) {
+    test(`refuses a rewrite pushed to the remote by ${label}`, () => {
+      const { root, work } = clonedRepo("gated-owner");
+      try {
+        commit(work, "second");
+        git(work, "push", "-q", "origin", "main");
+        git(work, "reset", "--hard", "-q", "HEAD~1");
+        commit(work, "rewritten");
+
+        const forced = push(work, "--force", spell(root), "main");
+        expect(forced.ok).toBe(false);
+        expect(forced.err).toContain("rewrites refs/heads/main");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  }
+
+  // Nothing configured carries it, so this checkout tracks no branch there and
+  // the gate has nothing to judge against.
+  test("passes a push to a URL no configured remote carries", () => {
+    const { root, work } = clonedRepo("gated-owner");
+    const elsewhere = join(root, "elsewhere.git");
+    try {
+      bareGit("init", "-q", "--bare", "-b", "main", elsewhere);
+      expect(push(work, elsewhere, "main").ok).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   // A topic branch is rewritten on purpose, and gating that would refuse the
   // rebase-then-force the branch workflow is built on.
   test("leaves a branch that is not the remote's HEAD alone", () => {
@@ -206,5 +245,27 @@ describe("the push gate", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("dim_url", () => {
+  function norm(url: string): string {
+    return execFileSync("bash", ["-c", `${URL_NORMALIZER}\ndim_url "$1"`, "_", url], {
+      encoding: "utf8",
+    });
+  }
+
+  // A remote URL is not a directory, so the cd never runs and these are the only
+  // thing reducing the two spellings to one.
+  test("drops a trailing slash from a remote URL", () => {
+    expect(norm("https://github.com/an-owner/thing.git/")).toBe("https://github.com/an-owner/thing.git");
+  });
+
+  test("drops a file scheme from a local path", () => {
+    expect(norm("file:///nowhere/thing.git")).toBe("/nowhere/thing.git");
+  });
+
+  test("leaves a remote URL otherwise untouched", () => {
+    expect(norm("https://github.com/an-owner/thing.git")).toBe("https://github.com/an-owner/thing.git");
   });
 });
