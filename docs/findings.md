@@ -32,6 +32,10 @@ On the measure closest to *I had to fight the agent*, delegating is slightly bet
 
 Every figure here counts friction the owner noticed and acted on. Work that was wrong and accepted looks identical to work that was right.
 
+Asked again on 2026-09-17 against the fix-commit outcome rather than friction, the same split gives 16.7% of files coming back for the 140 sessions that fanned out and 19.3% for the 120 that did not, over 2,748 and 2,790 files. It points the same way and it settles nothing. Files cluster hard inside a session, so the effective sample is the sessions rather than the files, and at that size the gap is noise.
+
+The deeper problem is that the arms are not fan-out and its absence. Fan-out is what `review` does and what `build` does not, so this compares review-shaped sessions against build-shaped ones. Whether fanning out helps is answerable only where the same task is run both ways, which is an assignment the corpus never made.
+
 ## Review already finds nothing, most of the time
 
 Of 127 sessions that loaded `review`, 91 made no edit under `review` attribution and 36 did, touching 135 files. A review that only verifies is the outcome 72% of the time.
@@ -126,6 +130,33 @@ Each of these is a fact the harness knows and does not write down, so the databa
 | A turn's duration and how it ended | Claude records no turn status; Codex rollouts before roughly March 2026 carry no `started_at`. |
 | Which version of a rules file was in force | Recovered from `git log` where the file is in a repo, and only from the first sync that saw it where it is not. |
 | Which skills exist for a tool | Two directories with two conventions, so the skill is linked into both. |
+
+## Effort does not grade the work
+
+Asked on 2026-09-17. Of 260 sessions that edited at least three files, split by whether a later `fix:` commit touched a file they edited:
+
+| | sessions | turns per file | pushback per file | shell calls per file |
+|---|---|---|---|---|
+| work came back | 134 | 1.25 | 0.29 | 8.9 |
+| work held | 126 | 1.89 | 0.52 | 13.3 |
+
+Work that held took half again as many turns per file, drew more pushback, and ran more commands. Raw turn count does not separate the two either — 24.3 against 19.6 — and that gap is size: the sessions whose work came back touched 24.6 files against 17.8, so turns rose by less than the work did.
+
+A grade rewarding fewer turns therefore rewards the profile that correlates with work coming back, and the cheapest way to win it is to stop early. The direction is the finding; the magnitude is not, because a file nobody returned to reads as held whether it was right or abandoned.
+
+## A fix rate grades the month, not the station
+
+Asked on 2026-09-17. Share of files edited under each station that drew a later `fix:` commit, counted per month and shown where a month carried at least 25 files:
+
+| station | 2026-08 | 2026-09 |
+|---|---|---|
+| build | 7.3% (150 files) | 30.7% (75) |
+| review | 5.4% (74) | 25.7% (70) |
+| (no station) | 13.5% (1543) | 24.2% (2020) |
+
+Every row rises steeply, `(no station)` included, so what moved is not station quality. The months hold different work: feature repos in August, high-churn work on this instrument in September, where a fix lands on a file within hours of it being written.
+
+Inside August the separation is real — 7.3% and 5.4% against 13.5% for unstationed work. Inside September it is gone, on 70 to 75 files a row. So a station grade computed this way tracks what was being worked on, and a loop that optimizes it chases the project mix. Deciding whether a station improved needs a controlled arm, not a rate read off the corpus.
 
 ## What no query here can answer
 
