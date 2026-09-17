@@ -10,6 +10,7 @@ import type { Env } from "./paths";
 import { indexRepoFiles, type RepoFileReport } from "./repo-files";
 import { SCHEMA_SQL } from "./schema";
 import { applyHookEvents, type DrainReport, drainSpool } from "./spool";
+import { drainWalk, type WalkReport } from "./walk";
 
 export type SyncReport = {
   claudeTranscripts: number;
@@ -26,6 +27,7 @@ export type SyncReport = {
   repoFiles: RepoFileReport;
   guidance: GuidanceReport;
   chain: HandoffLinkReport;
+  walk: WalkReport;
 };
 
 export function sync(db: Database, env: Env = process.env): SyncReport {
@@ -49,6 +51,7 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     repoFiles: { repos: 0, files: 0 },
     guidance: { files: 0, versions: 0 },
     chain: { pasted: 0, linked: 0 },
+    walk: drainWalk(db, env),
   };
 
   const run = (spec: FileSpec): void => {
@@ -103,8 +106,10 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
 }
 
 /**
- * Everything here is re-read from the source files. `hook_event` is deliberately
- * not cleared: it is the one table with no source to re-read from.
+ * Everything here is re-read from the source files. `hook_event` and
+ * `guidance_walk` are deliberately not cleared: neither has a source to re-read
+ * from, because a transcript records no end marker and a rules file edited since
+ * cannot be read back as it was.
  */
 export function rebuild(db: Database, env: Env = process.env): SyncReport {
   db.transaction(() => {
