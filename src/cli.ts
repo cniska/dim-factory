@@ -16,7 +16,7 @@ import { withLock } from "./lock";
 import { dbPath, resolveHomeDir } from "./paths";
 import { findQuery, QUERIES } from "./queries";
 import { openReadOnly } from "./read-db";
-import { renderTable } from "./render";
+import { DEFAULT_MAX_ROWS, renderTable, rowsFromArgs } from "./render";
 import { installRules, planRules } from "./rules";
 import { DEFAULT_WINDOW, windowFromArgs } from "./since";
 import { installSkill, planSkill, SKILL_NAMES } from "./skill";
@@ -55,6 +55,7 @@ const USAGE = `usage: dim <command>
   sql <select>    run one read-only statement against the database (--json)
   q <name> [arg]  ask the database a named question (q list names them; --json)
                   covers the last ${DEFAULT_WINDOW}; --since <n>d|YYYY-MM-DD or --all to widen
+                  prints ${DEFAULT_MAX_ROWS} rows; --rows <n> for more
   label <id> <correction|clarification|not_correction> [--rule "..."]
                   record your judgement on one candidate correction
 `;
@@ -385,7 +386,13 @@ async function runEmbed(): Promise<void> {
  * the tool. The connection is read-only, so a statement that writes is refused
  * by SQLite rather than by a rule here that could be wrong about what writes.
  */
-function runSql(statement: string | undefined, json: boolean): void {
+function statementIn(args: string[]): string | undefined {
+  const rows = args.indexOf("--rows");
+  const value = rows === -1 ? -1 : rows + 1;
+  return args.find((a, i) => !a.startsWith("--") && i !== value);
+}
+
+function runSql(statement: string | undefined, json: boolean, maxRows: number): void {
   if (!statement) throw new Error('sql needs one statement, as in: dim sql "SELECT count(*) FROM session"');
   const db = openReadOnly(dbPath());
   try {
@@ -396,12 +403,15 @@ function runSql(statement: string | undefined, json: boolean): void {
     }
     const columns = rows.length > 0 ? Object.keys(rows[0] as object) : [];
     console.log(
-      renderTable({
-        denominator: `${rows.length} rows`,
-        columns,
-        rows: rows.map((r) => columns.map((c) => (r[c] ?? null) as string | number | null)),
-        note: rows.length === 0 ? "the statement ran and matched nothing" : undefined,
-      }),
+      renderTable(
+        {
+          denominator: `${rows.length} rows`,
+          columns,
+          rows: rows.map((r) => columns.map((c) => (r[c] ?? null) as string | number | null)),
+          note: rows.length === 0 ? "the statement ran and matched nothing" : undefined,
+        },
+        maxRows,
+      ),
     );
   } finally {
     db.close();
@@ -479,8 +489,10 @@ async function runQuery(args: string[]): Promise<void> {
     process.exit(1);
   }
   const flagValues = new Set<string>();
-  const sinceFlag = args.indexOf("--since");
-  if (sinceFlag !== -1 && args[sinceFlag + 1]) flagValues.add(args[sinceFlag + 1] as string);
+  for (const flag of ["--since", "--rows"]) {
+    const at = args.indexOf(flag);
+    if (at !== -1 && args[at + 1]) flagValues.add(args[at + 1] as string);
+  }
   const arg = args.find((a) => !a.startsWith("--") && a !== name && !flagValues.has(a));
   const since = windowFromArgs(args, { spansHistory: query.spansHistory });
   // Resolved here, like `since`, so ranking by meaning costs no query its
@@ -490,7 +502,9 @@ async function runQuery(args: string[]): Promise<void> {
   const db = openReadOnly(dbPath());
   try {
     const result = query.run(db, { arg, since, home: resolveHomeDir(), question });
-    console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : renderTable(result));
+    console.log(
+      args.includes("--json") ? JSON.stringify(result, null, 2) : renderTable(result, rowsFromArgs(args)),
+    );
   } finally {
     db.close();
   }
@@ -518,11 +532,12 @@ try {
       runLabel(process.argv.slice(3));
       break;
     case "sql":
-      // The first non-flag argument, so `sql --json "<select>"` reads the
-      // statement rather than running the flag as one.
+      // The first argument that is neither a flag nor a flag's value, so
+      // `sql --rows 80 "<select>"` reads the statement rather than the 80.
       runSql(
-        process.argv.slice(3).find((a) => !a.startsWith("--")),
+        statementIn(process.argv.slice(3)),
         process.argv.includes("--json"),
+        rowsFromArgs(process.argv.slice(3)),
       );
       break;
     case "q":

@@ -1,6 +1,6 @@
 import type { QueryResult } from "./queries";
 
-const MAX_ROWS = 40;
+export const DEFAULT_MAX_ROWS = 40;
 
 function cell(value: string | number | null): string {
   if (value === null || value === undefined) return "—";
@@ -13,8 +13,12 @@ function cell(value: string | number | null): string {
 /**
  * The denominator prints above the rows and the note below them, so a figure is
  * never read without the base it came from or the caveat it carries.
+ *
+ * Cells are separated, not aligned. Padding every cell out to the widest value
+ * in its column buys a reader columns that line up and costs the agent that
+ * actually reads this a run of spaces on every row of every result.
  */
-export function renderTable(result: QueryResult): string {
+export function renderTable(result: QueryResult, maxRows = DEFAULT_MAX_ROWS): string {
   const out: string[] = [];
   if (result.denominator) out.push(result.denominator, "");
 
@@ -23,24 +27,24 @@ export function renderTable(result: QueryResult): string {
     return out.join("\n");
   }
 
-  const shown = result.rows.slice(0, MAX_ROWS);
-  const body = shown.map((r) => r.map(cell));
-  const widths = result.columns.map((c, i) => Math.max(c.length, ...body.map((r) => (r[i] ?? "").length)));
-  const numeric = result.columns.map((_, i) => shown.every((r) => typeof r[i] === "number" || r[i] === null));
-
-  const line = (cells: string[]): string =>
-    cells
-      .map((v, i) => (numeric[i] ? v.padStart(widths[i] as number) : v.padEnd(widths[i] as number)))
-      .join("  ")
-      .trimEnd();
-
-  out.push(line(result.columns));
-  out.push(widths.map((w) => "-".repeat(w)).join("  "));
-  for (const r of body) out.push(line(r));
+  const shown = result.rows.slice(0, maxRows);
+  out.push(result.columns.join("  "));
+  out.push(result.columns.map((c) => "-".repeat(c.length)).join("  "));
+  for (const r of shown) out.push(r.map(cell).join("  ").trimEnd());
 
   if (result.rows.length > shown.length) {
-    out.push(`… ${result.rows.length - shown.length} more rows`);
+    out.push(`… ${result.rows.length - shown.length} more rows; --rows <n> to widen`);
   }
   if (result.note) out.push("", result.note);
   return out.join("\n");
+}
+
+/** `--rows <n>`, the cap on how many rows are printed. Bad input is an error, not a silent default. */
+export function rowsFromArgs(args: string[]): number {
+  const at = args.indexOf("--rows");
+  if (at === -1) return DEFAULT_MAX_ROWS;
+  const spec = args[at + 1];
+  const n = Number(spec);
+  if (!spec || !Number.isInteger(n) || n < 1) throw new Error(`--rows ${spec ?? "(missing)"} is not a count`);
+  return n;
 }

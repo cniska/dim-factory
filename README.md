@@ -42,7 +42,7 @@ bun run verify              # lint, typecheck, test
 
 `dim sql "<select>"` runs one statement against the same read-only connection the queries use, so a question no named query covers does not mean leaving the tool. A statement that writes is refused by SQLite rather than by a rule here, which would have to be right about every spelling of a write. The named questions are grown from this: a question worth asking twice becomes one of them.
 
-Every query prints the base its numbers came from, and a query with nothing to report says so rather than printing a zero. Queries cover the last 30 days unless given `--since <n>d|YYYY-MM-DD` or `--all`; the window is printed with the numbers. Readers open the database read-only.
+Every query prints the base its numbers came from, and a query with nothing to report says so rather than printing a zero. Queries cover the last 30 days unless given `--since <n>d|YYYY-MM-DD` or `--all`; the window is printed with the numbers. A result longer than 40 rows says how many were cut and names `--rows <n>`, which widens it. Cells are separated, not padded out to the column width: an agent reads this far more often than a person does, and alignment costs it a run of spaces on every row. Readers open the database read-only.
 
 The database lands in `~/.local/share/dim-factory/sessions.db`. Reading the whole corpus from scratch takes about 20 seconds.
 
