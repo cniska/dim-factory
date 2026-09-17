@@ -2,7 +2,7 @@
 
 How a line gets cut from a skill and stays cut: where a candidate comes from, what is allowed to decide it, and what is measured afterward.
 
-> **Scope.** The join between two instruments that already exist. The corpus and its queries are this repo's ([`design.md`](design.md)); the ablation runner and the rule inventory are `cniska/skills`' ([`evals-and-hooks.md`](evals-and-hooks.md)). Neither changes here. What this adds is the direction evidence is allowed to flow between them, and one report.
+> **Scope.** The join between two instruments that already exist. The corpus and its queries are this repo's ([`design.md`](design.md)); the ablation runner and the rule inventory belong to the skill set being measured ([`evals-and-hooks.md`](evals-and-hooks.md)). Neither changes here. What this adds is the direction evidence is allowed to flow between them, and one report.
 
 ## Decisions in one screen
 
