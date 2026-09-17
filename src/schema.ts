@@ -119,6 +119,24 @@ CREATE TABLE IF NOT EXISTS hook_event (
 );
 CREATE INDEX IF NOT EXISTS hook_event_session ON hook_event(session_id);
 
+-- Which rules files were in force together when a session started, and which one
+-- imported which. guidance_version records what each file said; this records that
+-- they were read as one set, which nothing else holds: the same project file
+-- governs different work depending on what sat above it. Written from the
+-- SessionStart hook and, like hook_event, never cleared by \`rebuild\` — a file
+-- edited since cannot be read back as it was. No foreign key, for the same
+-- reason: the hook fires before the transcript has been read, or ever.
+CREATE TABLE IF NOT EXISTS guidance_walk (
+  session_id  TEXT NOT NULL,
+  tool        TEXT NOT NULL CHECK (tool IN ('claude','codex')),
+  seen_at     TEXT NOT NULL,
+  path        TEXT NOT NULL,       -- absolute, as the agent would read it
+  blob_sha    TEXT NOT NULL,       -- sha256 of the bytes read, joining to guidance_version
+  imported_by TEXT,                -- the surface whose import pulled this one in
+  PRIMARY KEY (session_id, path)
+);
+CREATE INDEX IF NOT EXISTS guidance_walk_path ON guidance_walk(path, seen_at);
+
 CREATE TABLE IF NOT EXISTS turn (
   session_id      TEXT NOT NULL REFERENCES session(id),
   turn_id         TEXT NOT NULL,        -- Codex turn_id; Claude the turn_duration uuid

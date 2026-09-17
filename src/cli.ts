@@ -23,6 +23,7 @@ import { installSkill, planSkill, SKILL_NAMES } from "./skill";
 import { ensureSpoolDirs } from "./spool";
 import { rebuild, type SyncReport, sync } from "./sync";
 import { readWake, renderWake, wireFor } from "./wake";
+import { resolveWalk, spoolWalk } from "./walk";
 import { installWt, planWt } from "./wt";
 
 const USAGE = `usage: dim <command>
@@ -81,6 +82,11 @@ function printReport(report: SyncReport): void {
   }
   if (report.guidance.versions > 0) {
     console.log(`guidance: ${report.guidance.versions} versions of ${report.guidance.files} rules files`);
+  }
+  if (report.walk.sessions > 0) {
+    console.log(
+      `walk: ${report.walk.surfaces} rules surfaces recorded for ${report.walk.sessions} session starts`,
+    );
   }
   if (report.chain.pasted > 0) {
     console.log(
@@ -321,12 +327,45 @@ function printWtPlan(write: boolean): void {
  * fail and never print a diagnostic: anything unexpected is silence, and the
  * session starts as it would have without it.
  */
-function runWake(args: string[]): void {
+/**
+ * The hook's stdin, which carries the session id nothing else in this process
+ * knows. A terminal is never read from: `dim wake` run by hand has no payload
+ * and would wait for one that never comes.
+ */
+async function hookPayload(): Promise<{ session_id?: string; cwd?: string }> {
+  if (Bun.stdin.stream().locked || process.stdin.isTTY) return {};
+  try {
+    const raw = await Bun.stdin.text();
+    return raw.trim() === "" ? {} : (JSON.parse(raw) as { session_id?: string; cwd?: string });
+  } catch {
+    return {};
+  }
+}
+
+async function runWake(args: string[]): Promise<void> {
   const tool = args.includes("--tool=codex") ? "codex" : "claude";
+  const payload = await hookPayload();
+  const cwd = payload.cwd ?? process.cwd();
+
+  // Before the read, and in its own try: what was in force at this moment is
+  // knowable only now, while what wake prints can be worked out again later.
+  if (payload.session_id) {
+    try {
+      spoolWalk({
+        session_id: payload.session_id,
+        tool,
+        seen_at: new Date().toISOString(),
+        surfaces: resolveWalk(tool, cwd),
+      });
+    } catch {
+      // a hook that can fail is a hook that can stop a session from starting
+    }
+  }
+
   try {
     const db = openReadOnly(dbPath());
     try {
-      const wire = wireFor(tool, renderWake(readWake(db, process.cwd())));
+      const wire = wireFor(tool, renderWake(readWake(db, cwd)));
       if (wire) console.log(wire);
     } finally {
       db.close();
@@ -565,7 +604,7 @@ try {
       printWtPlan(process.argv.includes("--write"));
       break;
     case "wake":
-      runWake(process.argv.slice(3));
+      await runWake(process.argv.slice(3));
       break;
     case "check-commits":
       runCheckCommits(process.argv[3]);

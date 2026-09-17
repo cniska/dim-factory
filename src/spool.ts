@@ -19,10 +19,20 @@ export function toolSpoolDir(tool: Tool, env: Env = process.env): string {
   return join(spoolDir(env), tool);
 }
 
+/**
+ * The guidance walk goes in its own directory, not beside the hook payloads:
+ * `drainSpool` files anything without a hook event name under unreadable/, and
+ * these records are written by `dim wake` rather than copied from a hook's stdin.
+ */
+export function walkSpoolDir(env: Env = process.env): string {
+  return join(spoolDir(env), "walk");
+}
+
 export function ensureSpoolDirs(env: Env = process.env): void {
   for (const tool of ["claude", "codex"] as const) {
     mkdirSync(toolSpoolDir(tool, env), { recursive: true });
   }
+  mkdirSync(walkSpoolDir(env), { recursive: true });
   mkdirSync(join(spoolDir(env), "unreadable"), { recursive: true });
 }
 
