@@ -29,7 +29,7 @@ Where a slice turns out to be blocked, finish every other slice in full and say 
 
 ## Check the slice before the next one
 
-Between the task passing and the commit, hand the slice's diff to one bounded agent. This is not the fan-out the top of this file argues against: that objection is about delegating the edits, which need the context that produced them. A checker returns findings and keeps nothing, which is the trade [`dim-review`](../dim-review/SKILL.md) makes and the one the corpus measured as costing nothing.
+Between the task passing and the commit, hand the slice's diff to one agent working from a fixed brief. This is not the fan-out the top of this file argues against: that objection is about delegating the edits, which need the context that produced them. A checker returns findings and keeps nothing, which is the trade [`dim-review`](../dim-review/SKILL.md) makes and the one the corpus measured as costing nothing.
 
 Bounded means a fixed brief, not "review this". It also means the checker is told what to look for: hand it the conventions actually in force — the `CLAUDE.md` and `AGENTS.md` on the walk into this session, imports included — because the rules it is checking against are written down and a checker left to invent them checks its own taste. Give it the diff of this slice alone, what the slice claims to do, and these four questions:
 
