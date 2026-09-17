@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { labelFor } from "./git-remote";
 import { readCommits, repoRoot } from "./git-source";
+import { isScratchRepo } from "./scratch";
 
 export type GitReport = { repos: number; commits: number; files: number };
 
@@ -8,9 +9,10 @@ export type GitReport = { repos: number; commits: number; files: number };
 const OVERLAP_DAYS = 7;
 
 /**
- * Commits for every working directory the corpus names that is still a git repo.
- * The session rows are the only source of which repos matter: this never scans
- * the disk for repos the owner never worked in from an agent session.
+ * Commits for every working directory the corpus names that is still a git repo
+ * and is not a scratch tree. The session rows are the only source of which repos
+ * matter: this never scans the disk for repos the owner never worked in from an
+ * agent session.
  */
 export function ingestCommits(db: Database): GitReport {
   const cwds = db
@@ -21,7 +23,7 @@ export function ingestCommits(db: Database): GitReport {
   const labels = new Map<string, string | null>();
   for (const { cwd } of cwds) {
     const root = repoRoot(cwd);
-    if (!root) continue;
+    if (!root || isScratchRepo(root)) continue;
     roots.add(root);
     if (!labels.has(root)) labels.set(root, labelFor(root));
   }
