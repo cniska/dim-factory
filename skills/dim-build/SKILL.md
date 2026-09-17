@@ -16,7 +16,7 @@ What makes this a station is that the record aims it. This machine knows which f
 
 1. **Know what checks this.** Read the repo's own task — `package.json` scripts, `mise` tasks, a `Makefile` — and use it. Running the repo's task is what makes a local check the same check CI runs; an equivalent command assembled by hand is not that.
 2. **Find the ground that has broken.** `dim q fixes` names files an agent edited that a later fix commit came back to. A path in this change that appears there gets the slow reading and a test before the edit, not after.
-3. **Check for a standing correction.** `dim q repeats` gives the phrases the owner has used across several sessions when stopping or correcting an agent. A phrase that recurs is a rule that is not landing; find where it lives before writing code that breaks it again.
+3. **Read the rules actually in force.** The standing corrections live in the guidance files, not in a phrase counter — `dim q repeats` returns conversational filler and the corrections are not in it ([`findings.md`](../../docs/findings.md), "The repetition an n-gram counter cannot see"). Read the `CLAUDE.md` and `AGENTS.md` on the walk into this session, imports included, and treat a rule a session has already restated as one that is not landing rather than one the agent ignored.
 4. **Pick up rather than restart.** If a session already worked this, `dim q resume <id-prefix>` gives the branch, the files in play and the last pushback.
 
 ## Slices
