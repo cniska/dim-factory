@@ -62,6 +62,9 @@ function printReport(report: SyncReport): void {
       `git: ${report.git.commits} commits touching ${report.git.files} files, from ${report.git.repos} repos`,
     );
   }
+  if (report.repoFiles.repos > 0) {
+    console.log(`files: ${report.repoFiles.files} tracked in ${report.repoFiles.repos} repos`);
+  }
   if (report.guidance.versions > 0) {
     console.log(`guidance: ${report.guidance.versions} versions of ${report.guidance.files} rules files`);
   }
