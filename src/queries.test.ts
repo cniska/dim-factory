@@ -128,6 +128,10 @@ describe("read path", () => {
       // in the corpus would be rewritten by this.
       expect(one("/h/code/one/docs/x.md")).toBe("/h/code/one/docs/x.md");
       expect(one("/h/code/one/.claude/settings.json")).toBe("/h/code/one/.claude/settings.json");
+      // A worktree root has no tail to splice back on. Folding it to the repo
+      // root is the whole point: `convention` keys on this, so a repo with no
+      // remote would otherwise be judged twice, once under a key naming no repo.
+      expect(one("/h/code/one/.claude/worktrees/side")).toBe("/h/code/one");
     } finally {
       db.close();
     }
@@ -176,7 +180,7 @@ describe("read path", () => {
     const db = new Database(":memory:");
     try {
       db.run(SCHEMA_SQL);
-      const add = (repo: string, label: string, sha: string, subject: string, kind: string | null) =>
+      const add = (repo: string, label: string | null, sha: string, subject: string, kind: string | null) =>
         db.run(
           "INSERT INTO repo_commit (sha, repo, label, ts, author, subject, kind) VALUES (?, ?, ?, '2026-01-01T00:00:00Z', 'a', ?, ?)",
           [sha, repo, label, subject, kind],
@@ -195,10 +199,20 @@ describe("read path", () => {
       // Under the floor, so it must not be reported at all.
       add("/h/code/two", "owner/two", "b1", "no convention here", null);
 
-      const result = findQuery("convention")?.run(db, { home: "/h" });
-      expect(result?.rows).toHaveLength(1);
+      // A repo with no remote has no label, so its key is the folded path — the
+      // only rows where the fold decides anything. Ten each side of the fold,
+      // so the repo clears the floor only if its worktree folds onto it.
+      for (let i = 0; i < 10; i++) {
+        add("/h/code/three", null, `c${i}`, "feat: a conforming subject", "feat");
+        add("/h/code/three/.claude/worktrees/wt", null, `d${i}`, "feat: a conforming subject", "feat");
+      }
 
-      const [repo, commits, conventional, meanLen, over50, squashed, kinds] = result?.rows[0] ?? [];
+      const result = findQuery("convention")?.run(db, { home: "/h" });
+      expect(result?.rows).toHaveLength(2);
+      expect(result?.rows.map((r) => r[0])).toContain("code/three");
+
+      const labeled = result?.rows.find((r) => r[0] === "owner/one");
+      const [repo, commits, conventional, meanLen, over50, squashed, kinds] = labeled ?? [];
       expect(repo).toBe("owner/one");
       expect(commits).toBe(20);
       // Two of the twenty carry no conventional type.
@@ -209,7 +223,7 @@ describe("read path", () => {
       expect(squashed).toBe(25);
       expect(kinds).toBe("feat fix");
       // The base is every commit read, the below-floor repo's included.
-      expect(result?.denominator).toContain("21 commits read");
+      expect(result?.denominator).toContain("41 commits read");
     } finally {
       db.close();
     }
