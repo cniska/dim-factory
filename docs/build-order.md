@@ -14,6 +14,7 @@ An item is listed here only while it needs a slice of its own. Anything fixable 
 ## Waiting on that measurement
 
 - **Reciprocal-rank fusion** ([`landscape.md`](landscape.md)). The borrow table carries the shape, including why it is not a drop-in.
+- **A ledger of which guidance cuts measurement confirmed or rejected.** Append-only, written when a cut is decided by the runner. Distinct from the rejected-changes ledger [`evals-and-hooks.md`](evals-and-hooks.md) declines: that one records proposals turned down and is a multi-contributor artifact `git log` already covers, while this records what a measurement settled, which `git log` does not hold. It waits on the first measured cut — a ledger with no rows is the empty table that argument rejected.
 - **Whether raw conversation turns belong in the index** ([`recall.md`](recall.md)). Measured worse as retrieval input, so this is a question for the benchmark and not a default.
 
 ## Waiting on a judgment only the owner can record
@@ -35,6 +36,7 @@ dim installs session hooks only, so anything reacting to a single tool call has 
 - **A guidance-file arm for that runner.** [`loop.md`](loop.md) names the boundary: a rule inside `~/.claude/CLAUDE.md` has no seam the runner can deliver a trimmed version through, so a guidance cut is decided by reading. An arm built as a whole config directory is what closes it, and a trimmed surface has to be unlinked and written fresh inside the arm — writing through the symlink edits the real guidance, and only a test that reddens on that keeps it true.
 - **Extracting the toolchain that repeats.** Three of the drifted scripts are jobs this repo already does once, so that part is deleting forks ([`findings.md`](findings.md), [`README.md`](../README.md)). The `mise` and env handling across five checkouts is the part that has to be built.
 - **Reporting a line the parser dropped.** A complete line that is not valid JSON is skipped and the cursor advances past it (`src/parse-claude.ts`), which is the only option that does not stall collection on one corrupt record — but it is silent: uncounted, and absent from `sync`'s failures. The work is counting and surfacing it, not refusing the file. Described here because it is a defect rather than a design, so no other page argues for it.
+- **Recording the guidance walk at session start.** `guidance_version` hashes each rules file it finds, but not the walk that assembled it: which surfaces were in force together, and which file imported another. `wake` already runs as a `dim` process on `SessionStart`, so it is where a sha per surface plus the importing file can be written. Session granularity, so an edit made mid-session is missed — which is the honest limit, not a reason to reach for per-turn capture.
 
 ## Deliberately not next
 
