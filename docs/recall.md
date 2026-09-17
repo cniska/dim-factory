@@ -36,6 +36,16 @@ The mechanism is settled and needs no vector store. Acolyte keeps embeddings as 
 
 One constraint stands in the way, and deliberately: collection makes no model call, and a model reads query results rather than transcripts. Embedding every message is a model reading every transcript. The reasons behind that rule — no network, no credentials, no per-token cost — all survive a local embedder, so the rule should be rewritten to say what it protects rather than quietly broken by a retrieval feature.
 
+## Measuring whether retrieval improved
+
+A ranking change with nothing to falsify it is a preference. Acolyte already has the harness: recall and nDCG at k as pure functions, and adapters that normalize LongMemEval and LoCoMo into scenarios. Its scenario layer is coupled to distilled observations and does not transfer, but the metrics and the adapters do.
+
+LongMemEval is worth taking for one reason beyond convenience: it is what MemPalace publishes against, so it is the only way a claim made there becomes a claim checkable here.
+
+The set that should decide a change is drawn from this corpus instead. A handoff and the session that acted on it are a query and its known answer, and the chain already pairs them. Both halves are needed: the external set says whether retrieval is good, the corpus-native one says whether it is good at the questions actually asked here.
+
+Neither measures the thing this file is about. No recall figure can say whether anyone thought to ask, which is why the session-start channel is not evaluated this way and cannot be.
+
 ## Not built
 
 `wake` is installed. The handoff chain, and semantic retrieval, are not.
