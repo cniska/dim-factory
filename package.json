@@ -21,6 +21,7 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@huggingface/transformers": "^4.3.0"
+    "@huggingface/transformers": "^4.3.0",
+    "jsonc-parser": "^3.3.1"
   }
 }

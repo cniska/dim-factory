@@ -1,5 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { appendToJsoncArray, parseJsonc, readJsonc } from "./jsonc";
 import { claudeProjectsDir, codexDir, type Env } from "./paths";
 import { type Tool, toolSpoolDir } from "./spool";
 
@@ -46,8 +47,7 @@ type HookEntry = { matcher?: string; hooks?: { type?: string; command?: string; 
 type HookConfig = { hooks?: Record<string, HookEntry[]> };
 
 function readConfig(path: string): HookConfig {
-  if (!existsSync(path)) return {};
-  return JSON.parse(readFileSync(path, "utf8")) as HookConfig;
+  return readJsonc<HookConfig>(path) ?? {};
 }
 
 function hasCommand(entries: HookEntry[], command: string): boolean {
@@ -102,24 +102,22 @@ export function installHooks(env: Env = process.env): InstallReport {
     report.alreadyPresent += plans.length - missing.length;
     if (missing.length === 0) continue;
 
-    const config = readConfig(configPath);
-    config.hooks ??= {};
+    const present = existsSync(configPath);
+    let text = present ? readFileSync(configPath, "utf8") : "";
     for (const plan of missing) {
-      const entries = config.hooks[plan.event] ?? [];
-      entries.push({ hooks: [{ type: "command", command: plan.command }] });
-      config.hooks[plan.event] = entries;
+      const entry: HookEntry = { hooks: [{ type: "command", command: plan.command }] };
+      text = appendToJsoncArray(text, ["hooks", plan.event], entry);
     }
 
-    const serialized = `${JSON.stringify(config, null, 2)}\n`;
-    JSON.parse(serialized); // refuse to write anything that will not parse back
-    if (existsSync(configPath)) {
+    parseJsonc(text, configPath); // refuse to write anything that will not parse back
+    if (present) {
       const backup = `${configPath}.dim-backup`;
       copyFileSync(configPath, backup);
       report.backups.push(backup);
     } else {
       mkdirSync(dirname(configPath), { recursive: true });
     }
-    writeFileSync(configPath, serialized);
+    writeFileSync(configPath, text);
     report.written.push(configPath);
   }
   return report;

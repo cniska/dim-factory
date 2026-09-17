@@ -210,6 +210,32 @@ describe("installHooks", () => {
     expect(readFileSync(`${paths.claude}.dim-backup`, "utf8")).toContain("existing-notifier");
   });
 
+  // The file deciding whether sessions start is one a person hand-edits, so it
+  // carries comments and a shape of their own that reserializing would discard.
+  test("installs into a config carrying comments, keeping them", () => {
+    const dir = newRoot();
+    const env = hookEnv(dir);
+    const paths = configs(env);
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    writeFileSync(
+      paths.claude,
+      `{
+    // the notifier, do not remove
+    "hooks": {
+        "SessionEnd": [{ "hooks": [{ "type": "command", "command": "existing-notifier" }] }]
+    }
+}
+`,
+    );
+
+    installHooks(env);
+
+    const after = readFileSync(paths.claude, "utf8");
+    expect(after).toContain("// the notifier, do not remove");
+    expect(after).toContain('\n                "hooks": [');
+    expect(planHooks(env).every((p) => p.present)).toBe(true);
+  });
+
   test("installing twice adds one hook", () => {
     const dir = newRoot();
     const env = hookEnv(dir);
