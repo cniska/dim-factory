@@ -53,12 +53,13 @@ Which is the survey's most useful result, and it is not a borrow. The one thing 
 
 ## What to borrow
 
-Two, in this order. Each is a solved piece of the instrument rather than of the factory, and neither requires adopting anything else from the project it comes from.
+In this order. Each is a solved piece of the instrument rather than of the factory, and neither requires adopting anything else from the project it comes from.
 
 | From | Take | Why, and what it waits on |
 |---|---|---|
-| [claude-code-analytics](https://github.com/spences10/claude-code-analytics) | `PostToolUse` as an installed event | The most leverage for the least work, and it waits on nothing: one installed event unblocks running a formatter after an edit, undoing an agent's writes, and the weakening guard, which are three separate items in [`build-order.md`](build-order.md). The precedent is that it installs cleanly, not that it reports — a hook here records and a later pass commits, the way the session hooks spool rather than write, because a hook firing on every tool call that can fail is a hook that can break every session. |
+| [claude-code-analytics](https://github.com/spences10/claude-code-analytics) | `PostToolUse` as an installed event | The most leverage for the least work, and it waits on nothing: one installed event unblocks every item [`build-order.md`](build-order.md) lists as waiting on it. The precedent is that it installs cleanly, not that it reports — a hook here records and a later pass commits, the way the session hooks spool rather than write, because a hook firing on every tool call that can fail is a hook that can break every session. |
 | [CASS](https://github.com/jamesqo/coding_agent_session_search) | Reciprocal-rank fusion over the FTS5 and embedding scores, then a bounded rerank | The only borrow that touches a measured defect: [`findings.md`](findings.md) records the failure mode — a narrow score band on a bad query — that a second signal separates, and CASS is genuinely further along here. Not a drop-in: fusion ranks one candidate set twice, and the two indexes hold different populations — `message_fts` covers every message, `embedding` covers the distilled passages, and a commit subject is in no FTS index at all. The shape that fuses is a second FTS5 index over `embedding.text`, ranking the same passages by word and by meaning. Waits on the benchmark, or it is tuning by preference. |
+| [Superpowers](https://github.com/obra/superpowers) | A stuck-slice counter, and re-stating a station's brief after compaction | The nearest prior art the stations have, and it predates them: its workflow skills hand off between deciding, building under test and proving done, which is the shape of `dim-feat`, `dim-fix`, `dim-build` and `dim-review`. What it keeps is design docs and worktrees, so it can answer what this change is for and not what the machine already did — and its own docs record the hole, that a session-start bootstrap is lost after compaction where the harness has no post-compaction hook. That is this repo's premise, written by the author of the thing it answers. Read on 2026-09-17 from its README and docs rather than its source. |
 
 ## What not to borrow
 
@@ -72,16 +73,7 @@ Recorded with the reason, so the same survey does not produce the same suggestio
 | [CASS](https://github.com/jamesqo/coding_agent_session_search) | A cursor for the embedding pass | `text_sha` and the model id already make a re-run embed only what changed; a cursor would save the re-read, which is seconds ([`design.md`](design.md)). |
 | [agentsview](https://github.com/BUKOWSKIREAL/agentsview), [code-session-memory](https://github.com/djannot/code-session-memory) | Remote embedding providers, and a vector database | Both break the constraint that nothing reaches the network or holds a credential. A local model and a blob column are what keep it. |
 | [agentsview](https://github.com/BUKOWSKIREAL/agentsview) | Dashboards and cost tracking | They answer a question [`goals.md`](goals.md) does not ask, and cost is reported only as each tool reported it. |
-
-## Gas Town, read at arm's length
-
-[Gas Town](https://github.com/gastownhall/gastown) is an orchestrator for running many Claude Code instances against one codebase, and its concerns are the ones that appear at that scale: spawn capacity, merge contention, agents that get stuck. Read on 2026-09-17 from its README and press coverage rather than its source, so every mechanism below is a claim about code nobody here has opened, and none of it is a basis for a decision until someone does.
-
-Nothing has been taken. One thing is worth recording, and it is not a mechanism. Its "Seance" has an agent discover earlier sessions and ask a predecessor what it decided, instead of re-reading the codebase — which is this repo's collector and `q resume`, arrived at independently. That is the only external evidence found so far that the premise holds rather than just being appealing. It also lands in the same place: a seance helps the agent who thought to hold one, which is the gap [`findings.md`](findings.md) measures from the other side, where guidance that exists reaches a third of the sessions doing the work it covers. Their answer is to ask a predecessor and this one's is to read a record, and neither answers the agent who asks nothing.
-
-Two things were considered and left. Bisecting a failed batch to find which change broke it is the right shape for a gate that admits more than one change at a time, and nothing here does — slices are serial, and the item would be a design for a problem this repo does not have. Their watchdog tiers are supervision of unattended agents, which is a real question here only once something runs on a schedule; the answer would still be a gate that refuses rather than a witness that nudges, because a gate needs nothing to be watching.
-
-Its vocabulary is the clearest thing not to take. A reader cannot follow those docs without first learning a private dialect, which is the cost [`AGENTS.md`](../AGENTS.md) is naming when it asks for plain words over a metaphor standing in for a mechanism.
+| [Ferment](https://docs.kimchi.dev/docs/coding-ferment) | A letter grade from the judging agent | Its judge grades each step A-F and a low grade can block the next phase, with no stated threshold. A grade cannot be earned the way a checker here earns trust — plant a defect, watch it be caught, take it out — and a cutoff no test can prove is the hardcoded nudge [`AGENTS.md`](../AGENTS.md) warns about. A finding is present or absent, which keeps it falsifiable. Read on 2026-09-17 from its docs rather than its source. |
 
 ## Gas Town, read at arm's length
 
