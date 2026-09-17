@@ -211,3 +211,11 @@ The guidance for it loads about a third of the time. Of 333 sessions that commit
 What that costs is visible in one rule. `~/.claude/skills/git/SKILL.md` states "Never use `git -C <path>`"; `git -C` was run 1,250 times. Some of those are worktree sessions where a bare `git` is refused, so the count is an upper bound on violations rather than a tally of them, but no reading of it makes the rule effective.
 
 The same file tells the agent to read `git log` for a repo's convention. The record already holds the answer: `hoodly-hq/hoodly` is 100% conventional at 43 characters mean, `cniska/apps` 100% at 39 with nothing over 50, `cniska/acolyte` 100% at 48 with 44% over 50. That is a row to read, not a log to infer from.
+
+## Git aimed away from the session's own directory fails three times as often
+
+Asked on 2026-09-17. A third of the shell calls that run git move somewhere first: of 23,309, some 6,411 open with `cd` and 1,135 redirect with `git -C`. Where the target is an absolute path the session's `cwd` can be compared against, 3,816 of those calls stayed inside it and failed at 3.2%, while 539 aimed outside it, across 79 sessions, and failed at 10%.
+
+The comparison is only as good as the paths it can parse — a relative `cd`, a shell variable, or a `pushd` is not in either column — so the counts are a floor and the rates describe the calls that named an absolute path. What they do not describe is damage: a failed call is a call git refused, and a command that ran against the wrong repo successfully looks like any other row here.
+
+The channel that could hold this is not the one the commit gates use. A `commit-msg` or `pre-push` hook knows the repo it is running in and nothing about which repo the session was supposed to be in, so the check belongs to a `PreToolUse` hook on `Bash`, which dim does not install yet.
