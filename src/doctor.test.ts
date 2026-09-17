@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { codexConfigPath, planCodexTrust } from "./codex-trust";
 import { closeDb, openDb } from "./db";
 import { diagnose } from "./doctor";
 import { scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
+import { installHooks } from "./hooks";
 import { dbPath, type Env } from "./paths";
 import { openReadOnly } from "./read-db";
 import { sync } from "./sync";
@@ -77,6 +79,32 @@ describe("doctor", () => {
     // yet rather than reporting a failure the owner cannot act on.
     expect(check(env, "end reasons")?.state).toBe("warn");
     expect(check(env, "hooks")?.state).toBe("fail");
+  });
+
+  // Codex writes the hook the moment install-hooks does and runs it only once
+  // config.toml trusts its position, so "installed" and "running" are different
+  // facts and only this check reads the second one.
+  test("fails while a codex hook has no trust recorded for its position", () => {
+    const env = seeded();
+    const config = codexConfigPath(env);
+    mkdirSync(dirname(config), { recursive: true });
+    installHooks(env);
+
+    const untrusted = check(env, "codex trust");
+    expect(untrusted?.state).toBe("fail");
+    expect(untrusted?.detail).toContain("session_start:0:0");
+
+    const keys = planCodexTrust(env).map((t) => t.key as string);
+    writeFileSync(config, keys.map((k) => `[hooks.state."${k}"]\ntrusted_hash = "sha256:abc"\n`).join("\n"));
+    expect(check(env, "codex trust")?.state).toBe("ok");
+
+    // An entry inserted ahead of dim's shifts every index after it, and the
+    // trust recorded against the old position no longer names dim's hook.
+    const hooksPath = join(dirname(config), "hooks.json");
+    const hooks = JSON.parse(readFileSync(hooksPath, "utf8")) as { hooks: Record<string, unknown[]> };
+    hooks.hooks.SessionStart?.unshift({ hooks: [{ type: "command", command: "other-tool" }] });
+    writeFileSync(hooksPath, JSON.stringify(hooks));
+    expect(check(env, "codex trust")?.state).toBe("fail");
   });
 
   test("reports every check with something a reader can act on", () => {

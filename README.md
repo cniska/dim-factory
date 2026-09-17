@@ -52,7 +52,9 @@ A subagent is identified by its agent id and its parent together, written `<agen
 
 Claude Code deletes transcripts after 30 days unless told otherwise, so `~/.claude/settings.json` sets `"cleanupPeriodDays": 3650`. Without it the sources this points into disappear.
 
-`dim doctor` checks the paths that fail silently: retention unset, hooks installed but never firing, a launchd agent written but never loaded, a spool nothing drains, a commit gate covering no repo, a database built by an older schema. It reads only, exits non-zero when a check fails, and every failure names its fix.
+`dim doctor` checks the paths that fail silently: retention unset, hooks installed but never firing, a Codex hook installed but not trusted, a launchd agent written but never loaded, a spool nothing drains, a commit gate covering no repo, a database built by an older schema. It reads only, exits non-zero when a check fails, and every failure names its fix.
+
+Codex runs a hook only where `~/.codex/config.toml` records a `trusted_hash` for it under `[hooks.state]`, keyed `<hooks.json path>:<event>:<entry index>:<hook index>`. Trust is positional, so another tool inserting an entry ahead of dim's moves dim's hook to a key approved for a different command, and collection and `wake` stop on the Codex side with `hooks.json` still reading as correct. The check reads whether a trust is recorded at each hook's current position; the hash itself is Codex's to verify, so a missing key proves the hook will not run and a present one says only that the position was approved.
 
 `dim install-agent --write` writes a launchd agent that runs `dim sync` every 15 minutes, logging to `~/.local/share/dim-factory/sync.log`; load it with the `launchctl bootstrap` line the command prints. Re-run it after a toolchain change, since the plist names an absolute `bun`.
 

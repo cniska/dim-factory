@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { AGENT_LABEL, agentPlistPath } from "./agent";
+import { codexConfigPath, planCodexTrust } from "./codex-trust";
 import { sharedHooksDir } from "./commit-gate";
 import { planHooks } from "./hooks";
 import { dataDir, type Env, resolveHomeDir } from "./paths";
@@ -129,6 +130,24 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
           state: "fail",
           detail: `${missingHooks.length} session hooks missing (${missingHooks.map((p) => p.event).join(", ")})`,
           fix: "dim install-hooks --write",
+        },
+  );
+
+  // Installed is not running: Codex writes a hook into hooks.json the moment
+  // install-hooks does, and runs it only once config.toml records a trust for
+  // its position. Nothing reports the difference, so collection and `wake` stop
+  // on the Codex side with the config still reading as correct.
+  const untrusted = planCodexTrust(env).filter((t) => !t.recorded);
+  checks.push(
+    untrusted.length === 0
+      ? { name: "codex trust", state: "ok", detail: "every codex hook has a trust recorded for its position" }
+      : {
+          name: "codex trust",
+          state: "fail",
+          detail:
+            `${untrusted.length} codex hooks have no trusted_hash under [hooks.state] ` +
+            `(${untrusted.map((t) => t.key ?? `${t.event}, not in hooks.json`).join("; ")})`,
+          fix: `start a codex session and approve the hook, or remove the stale keys from ${codexConfigPath(env)}`,
         },
   );
 
