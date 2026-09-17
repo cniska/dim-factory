@@ -106,6 +106,12 @@ export type ParsedChunk = {
   costs: CostRow[];
   toolCalls: ToolCallRow[];
   skillLoads: SkillLoadRow[];
+  /**
+   * Source line numbers of complete lines that were not JSON. The cursor
+   * advances past them, so each is read once and lost, and a count nobody
+   * reports would make that loss invisible.
+   */
+  dropped: number[];
   /** Parser state to resume with when the next chunk of this file is read. */
   cursorState?: string;
 };

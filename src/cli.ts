@@ -94,6 +94,14 @@ function printReport(report: SyncReport): void {
   if (report.orphanSubagents.length > 0) {
     console.log(`${report.orphanSubagents.length} subagents whose parent session is gone, recorded unlinked`);
   }
+  // The cursor has already advanced past these lines, so this is the only time
+  // they are ever named: nothing re-reads them short of `dim rebuild`.
+  for (const drop of report.dropped) {
+    console.error(
+      `dim: ${drop.path}: ${drop.lines.length} lines were not JSON and are lost ` +
+        `(line ${drop.lines.slice(0, 5).join(", ")}${drop.lines.length > 5 ? ", …" : ""})`,
+    );
+  }
   for (const failure of report.failures) {
     console.error(`dim: ${failure.path}: ${failure.error}`);
   }

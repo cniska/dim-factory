@@ -108,7 +108,12 @@ function visibleText(content: CodexContent[] | undefined): string | undefined {
  * Codex names no model on a message or a usage record, only on the turn they
  * belong to, so `state` carries the turn in effect across chunk boundaries.
  */
-export function parseCodexChunk(lines: string[], threadId: string, state: CodexState): ParsedChunk {
+export function parseCodexChunk(
+  lines: string[],
+  firstLineNumber: number,
+  threadId: string,
+  state: CodexState,
+): ParsedChunk {
   const session: SessionFacts[] = [];
   const messages: MessageRow[] = [];
   const usage: UsageRow[] = [];
@@ -116,14 +121,17 @@ export function parseCodexChunk(lines: string[], threadId: string, state: CodexS
   const costs: CostRow[] = [];
   const toolCalls: ToolCallRow[] = [];
   const skillLoads: SkillLoadRow[] = [];
+  const dropped: number[] = [];
   let current: CodexState = { ...state };
 
-  for (const raw of lines) {
+  for (const [index, raw] of lines.entries()) {
     if (raw.length === 0) continue;
     let line: CodexLine;
     try {
       line = JSON.parse(raw) as CodexLine;
     } catch {
+      // Dropped and counted, for the reason parse-claude gives at its own catch.
+      dropped.push(firstLineNumber + index);
       continue;
     }
     const p = line.payload;
@@ -286,6 +294,7 @@ export function parseCodexChunk(lines: string[], threadId: string, state: CodexS
     costs,
     toolCalls,
     skillLoads,
+    dropped,
     cursorState: JSON.stringify(current),
   };
 }

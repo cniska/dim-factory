@@ -39,7 +39,7 @@ export function listCodexRollouts(env: Env = process.env): FileSpec[] {
         tool: "codex",
         kind: "rollout",
         sessionId: threadId,
-        parse: (lines, _first, state) => parseCodexChunk(lines, threadId, readState(state)),
+        parse: (lines, first, state) => parseCodexChunk(lines, first, threadId, readState(state)),
       });
     }
   }
