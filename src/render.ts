@@ -4,7 +4,10 @@ const MAX_ROWS = 40;
 
 function cell(value: string | number | null): string {
   if (value === null || value === undefined) return "—";
-  return typeof value === "number" ? value.toLocaleString("en-US") : value;
+  // No thousands separator: an agent reads this output far more often than a
+  // person does, and a number it has to strip punctuation from is worse than one
+  // it can use.
+  return typeof value === "number" ? String(value) : value;
 }
 
 /**

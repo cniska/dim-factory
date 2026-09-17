@@ -505,7 +505,12 @@ try {
       runLabel(process.argv.slice(3));
       break;
     case "sql":
-      runSql(process.argv[3], process.argv.includes("--json"));
+      // The first non-flag argument, so `sql --json "<select>"` reads the
+      // statement rather than running the flag as one.
+      runSql(
+        process.argv.slice(3).find((a) => !a.startsWith("--")),
+        process.argv.includes("--json"),
+      );
       break;
     case "q":
       await runQuery(process.argv.slice(3));

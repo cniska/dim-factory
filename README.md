@@ -13,6 +13,7 @@ Merit means evidence, so the factory measures itself. [`docs/goals.md`](docs/goa
 - **Collects.** Claude Code and Codex both record every session to disk. An incremental ingester reads both into one SQLite database — deterministic parsing and inserts, no model calls anywhere in the collection path.
 - **Answers.** A small query CLI over that database: where loaded-skill context goes, which skills fire and by which path, where corrections cluster, what tokens and tools a session actually spends.
 - **Guards.** Hooks that make mechanical what a skill can only instruct.
+- **Installs.** One copy of the tooling every checkout needs — `wt`, the commit-subject gate, the flattened rules, the sync agent — linked or pointed at from each repo rather than copied into it, so what runs cannot drift from what is tested here. A script that a third checkout would have to port belongs here instead; the same file under two repos has already diverged every time ([`docs/findings.md`](docs/findings.md)).
 
 ## Using it
 
