@@ -180,6 +180,16 @@ describe("the check gate", () => {
     expect(script).toContain('[ -n "$task" ] || exit 0');
   });
 
+  // Git exports these to a hook, so a check that runs git itself would inherit
+  // the committing repo's index; the worktree suite failed exactly this way.
+  test("clears git's own environment before running the check", () => {
+    const script = preCommitScript(["cniska"]);
+    for (const v of ["GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE", "GIT_OBJECT_DIRECTORY"]) {
+      expect(script).toContain(v);
+    }
+    expect(script.indexOf("unset GIT_DIR")).toBeLessThan(script.indexOf('eval "$task"'));
+  });
+
   test("refuses the commit when the check fails, and names the way past it", () => {
     const script = preCommitScript(["cniska"]);
     expect(script).toContain("exit 1");

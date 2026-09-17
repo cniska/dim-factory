@@ -158,6 +158,14 @@ Every row rises steeply, `(no station)` included, so what moved is not station q
 
 Inside August the separation is real — 7.3% and 5.4% against 13.5% for unstationed work. Inside September it is gone, on 70 to 75 files a row. So a station grade computed this way tracks what was being worked on, and a loop that optimizes it chases the project mix. Deciding whether a station improved needs a controlled arm, not a rate read off the corpus.
 
+## A word list cannot find a narrating comment
+
+Asked on 2026-09-17. The conventions forbid a comment that narrates the change rather than stating the constraint that forced it, and the obvious gate is a word list. Matching `used to`, `no longer`, `previously`, `formerly`, `instead of`, `now `, `renamed` and `was removed` against comment lines in `src/*.ts` and `skills/*/SKILL.md` returned 12 lines, and every one of them was legitimate: "scratch trees that no longer exist", "shown instead of an empty table", "Renamed, never deleted".
+
+The words that mark narration are the same words that describe final state, so precision is zero here and a gate built on them would reject only correct comments. A check that cries wolf is ignored, which costs more than no check.
+
+What the class needs is a reader, which is why a judgement check is an agent with a fixed brief rather than a pattern. The mechanical half of the same convention — a banner comment, a comment longer than two lines — is still gateable, because those are shapes rather than meanings.
+
 ## What no query here can answer
 
 Everything above except the fix-commit join measures process — what was said, loaded, called, stopped. Process cannot say whether the code was right.
