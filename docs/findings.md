@@ -216,6 +216,16 @@ What that costs is visible in one rule. `~/.claude/skills/git/SKILL.md` states "
 
 The same file tells the agent to read `git log` for a repo's convention. The record already holds the answer: `hoodly-hq/hoodly` is 100% conventional at 43 characters mean, `cniska/apps` 100% at 39 with nothing over 50, `cniska/acolyte` 100% at 48 with 44% over 50. That is a row to read, not a log to infer from.
 
+## A hook that reads a file can be stopped by the file
+
+Found on 2026-09-17, by a checking agent on the slice that gave `wake` a line of what the repo declares, and confirmed here three ways. The line is read from `package.json`, `mise.toml` and `Makefile` at session start, and each of those is an arbitrary path the hook opens.
+
+A `Makefile` that is a directory throws `EISDIR` out of the read. A `Makefile` that is a FIFO blocks: a process reading one was still alive after five seconds and had to be killed. Neither file is exotic on purpose — a FIFO or a stray directory at that name is the sort of thing a build system leaves behind — and the second is the serious one, because a `SessionStart` hook that does not return is a session that does not start.
+
+The invariant it breaks is stated in `AGENTS.md`: a hook may only ever fail on something it has read and understood. An unbounded blocking read of a path chosen by whatever is in the working directory is neither. What the hook needs is to stat before it opens, read only a regular file, and cap what it will read.
+
+The same slice also printed a guess as a declaration. `packageManager` falls back to `npm` where no lock file names one, so a repo with a `package.json` and no lock was told `check npm run verify` on no evidence — in a block whose whole claim is that it carries what the repo says rather than what was inferred.
+
 ## The push gate is off in every repo that was created rather than cloned
 
 Found on 2026-09-17, by tracing a fresh repo rather than reading the hook. `pre-push` learns which branch is shared from `refs/remotes/<remote>/HEAD`, and exits 0 where that ref is absent, having nothing to protect. `git clone` sets it. `git init` followed by `git remote add` and `git push -u` never does — verified end to end on a scratch repo, where the ref came back `fatal: ref refs/remotes/origin/HEAD is not a symbolic ref` after a successful first push.
