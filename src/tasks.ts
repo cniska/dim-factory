@@ -1,5 +1,31 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+
+/**
+ * These paths are read by a `SessionStart` hook, so the file at one of them is
+ * whatever the working directory happens to hold. A FIFO named `Makefile` blocks
+ * the read forever and takes the session start with it; a directory throws. Only
+ * a regular file is opened, and only its first bytes: a manifest is kilobytes,
+ * and anything claiming to be one at this size is not being read either way.
+ */
+const LONGEST_MANIFEST = 1024 * 1024;
+
+function readManifest(path: string): string | null {
+  let size: number;
+  try {
+    const stat = statSync(path);
+    if (!stat.isFile()) return null;
+    size = stat.size;
+  } catch {
+    return null;
+  }
+  if (size > LONGEST_MANIFEST) return null;
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+}
 
 /**
  * What a repo says to run, read rather than inferred. Running the repo's own
@@ -19,21 +45,25 @@ const LOCKS: [string, string][] = [
   ["package-lock.json", "npm"],
 ];
 
-export function packageManager(repo: string): string {
+export function packageManager(repo: string): string | null {
   for (const [lock, pm] of LOCKS) if (existsSync(join(repo, lock))) return pm;
-  return "npm";
+  return null;
 }
 
 function fromPackageJson(repo: string): Task[] {
-  const path = join(repo, "package.json");
-  if (!existsSync(path)) return [];
+  const text = readManifest(join(repo, "package.json"));
+  if (text === null) return [];
   let scripts: Record<string, unknown>;
   try {
-    scripts = (JSON.parse(readFileSync(path, "utf8")) as { scripts?: Record<string, unknown> }).scripts ?? {};
+    scripts = (JSON.parse(text) as { scripts?: Record<string, unknown> }).scripts ?? {};
   } catch {
     return [];
   }
+  // The script is only half of what the repo declares; without the lock file
+  // naming a runner there is no command to state, and stating one anyway is the
+  // inference this whole module exists to avoid.
   const pm = packageManager(repo);
+  if (pm === null) return [];
   return Object.keys(scripts).map((name) => ({
     name,
     command: `${pm} run ${name}`,
@@ -42,11 +72,11 @@ function fromPackageJson(repo: string): Task[] {
 }
 
 function fromMise(repo: string): Task[] {
-  const path = join(repo, "mise.toml");
-  if (!existsSync(path)) return [];
+  const text = readManifest(join(repo, "mise.toml"));
+  if (text === null) return [];
   let parsed: { tasks?: Record<string, unknown> };
   try {
-    parsed = Bun.TOML.parse(readFileSync(path, "utf8")) as typeof parsed;
+    parsed = Bun.TOML.parse(text) as typeof parsed;
   } catch {
     return [];
   }
@@ -61,11 +91,11 @@ function fromMise(repo: string): Task[] {
 const MAKE_TARGET = /^([A-Za-z][\w-]*)\s*:(?!=)/;
 
 function fromMakefile(repo: string): Task[] {
-  const path = join(repo, "Makefile");
-  if (!existsSync(path)) return [];
+  const text = readManifest(join(repo, "Makefile"));
+  if (text === null) return [];
   const tasks: Task[] = [];
   const seen = new Set<string>();
-  for (const line of readFileSync(path, "utf8").split("\n")) {
+  for (const line of text.split("\n")) {
     const name = MAKE_TARGET.exec(line)?.[1];
     if (name && !seen.has(name)) {
       seen.add(name);
@@ -87,11 +117,26 @@ export function declaredTasks(repo: string): Task[] {
  */
 const CHECK_ORDER = ["verify", "check", "ci", "validate", "test"];
 
-export function checkTask(repo: string): Task | null {
+/**
+ * Narrower than the check on purpose. `lint` is not here: a repo that declares
+ * both means a different thing by each, and a session told to run the linter
+ * where it meant to reformat writes a diff the author did not ask for.
+ */
+const FORMAT_ORDER = ["format", "fmt"];
+
+function firstDeclared(repo: string, order: string[]): Task | null {
   const tasks = declaredTasks(repo);
-  for (const name of CHECK_ORDER) {
+  for (const name of order) {
     const found = tasks.find((t) => t.name === name);
     if (found) return found;
   }
   return null;
+}
+
+export function checkTask(repo: string): Task | null {
+  return firstDeclared(repo, CHECK_ORDER);
+}
+
+export function formatTask(repo: string): Task | null {
+  return firstDeclared(repo, FORMAT_ORDER);
 }

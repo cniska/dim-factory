@@ -5,7 +5,7 @@ import { type Env, resolveHomeDir } from "./paths";
 import { prePushScript } from "./push-gate";
 
 /**
- * The rule is `cniska/apps`' own, the one repo whose subjects never break it: a
+ * The rule is taken from the one repo here whose subjects never break it: a
  * mechanical gate holds it at zero while the same rule written down drifts.
  * Inclusive at 50 because that is what the conforming history holds.
  */

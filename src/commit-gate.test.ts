@@ -15,7 +15,7 @@ import {
 describe("subject rules", () => {
   test("accepts a conforming subject", () => {
     expect(checkSubject("feat: score how far a session has moved")).toBeNull();
-    expect(checkSubject("fix(neochess): unify game and lesson UI")).toBeNull();
+    expect(checkSubject("fix(parser): fold the two entry points into one")).toBeNull();
   });
 
   test("names the rule each subject breaks", () => {

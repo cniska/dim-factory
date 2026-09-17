@@ -123,11 +123,11 @@ describe("read path", () => {
       const one = (p: string) =>
         (db.query(`SELECT ${expr} AS out FROM (SELECT ? AS p)`).get(p) as { out: string }).out;
 
-      expect(one("/h/code/apps/.claude/worktrees/neochess/docs/x.md")).toBe("/h/code/apps/docs/x.md");
+      expect(one("/h/code/one/.claude/worktrees/side/docs/x.md")).toBe("/h/code/one/docs/x.md");
       // A path with no worktree segment must come back untouched, or every file
       // in the corpus would be rewritten by this.
-      expect(one("/h/code/apps/docs/x.md")).toBe("/h/code/apps/docs/x.md");
-      expect(one("/h/code/apps/.claude/settings.json")).toBe("/h/code/apps/.claude/settings.json");
+      expect(one("/h/code/one/docs/x.md")).toBe("/h/code/one/docs/x.md");
+      expect(one("/h/code/one/.claude/settings.json")).toBe("/h/code/one/.claude/settings.json");
     } finally {
       db.close();
     }

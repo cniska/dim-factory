@@ -214,7 +214,7 @@ The guidance for it loads about a third of the time. Of 333 sessions that commit
 
 What that costs is visible in one rule. `~/.claude/skills/git/SKILL.md` states "Never use `git -C <path>`"; `git -C` was run 1,250 times. Some of those are worktree sessions where a bare `git` is refused, so the count is an upper bound on violations rather than a tally of them, but no reading of it makes the rule effective.
 
-The same file tells the agent to read `git log` for a repo's convention. The record already holds the answer: `hoodly-hq/hoodly` is 100% conventional at 43 characters mean, `cniska/apps` 100% at 39 with nothing over 50, `cniska/acolyte` 100% at 48 with 44% over 50. That is a row to read, not a log to infer from.
+The same file tells the agent to read `git log` for a repo's convention. The record already holds the answer: of the owner's own repos one is 100% conventional at a mean of 43 characters, another 100% at 39 with nothing over fifty, a third 100% at 48 with 44% over fifty. That is a row to read, not a log to infer from.
 
 ## A hook that reads a file can be stopped by the file
 
@@ -236,9 +236,9 @@ A hook cannot guess its way out of this. Nothing local says which branch is the 
 
 ## There is no single convention to take
 
-Asked on 2026-09-17, from `dim q convention` over the owner's own repos. All of them are 100% Conventional Commits, and they agree on nothing else: mean subject length runs 36 to 54 characters, the share over fifty runs 0% in `cniska/apps` to 61% in `cniska/acolyte`, and the share carrying a squash merge's `(#N)` suffix runs 0% to 11%.
+Asked on 2026-09-17, from `dim q convention` over the owner's own repos. All of them are 100% Conventional Commits, and they agree on nothing else: mean subject length runs 36 to 54 characters, the share over fifty runs from 0% in one to 61% in another, and the share carrying a squash merge's `(#N)` suffix runs 0% to 11%.
 
-So "follow the repo's convention" and "hold one rule everywhere" are different instructions here, not two names for the same one, and the subject gate already chose: `SUBJECT_LIMIT` is `cniska/apps`' rule, applied to every repo the owner owns, and `cniska/acolyte` breaks it in three subjects out of five. What makes that defensible is the ownership check rather than the choice of fifty — the gate is opinionated exactly where the opinion is the owner's to hold, and silent everywhere else.
+So "follow the repo's convention" and "hold one rule everywhere" are different instructions here, not two names for the same one, and the subject gate already chose: `SUBJECT_LIMIT` is taken from the one repo whose subjects never break it and applied to every repo the owner owns, while the largest of the others breaks it in three subjects out of five. What makes that defensible is the ownership check rather than the choice of fifty — the gate is opinionated exactly where the opinion is the owner's to hold, and silent everywhere else.
 
 Whether the gate moved behavior is not yet answerable. It was installed partway through 2026-09-16, and no query here can separate the commits of that day that preceded it from those that followed.
 

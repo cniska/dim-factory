@@ -24,7 +24,7 @@ import { ensureSpoolDirs } from "./spool";
 import { rebuild, type SyncReport, sync } from "./sync";
 import { checkTask } from "./tasks";
 import { trace } from "./trace";
-import { readWake, renderWake, wireFor } from "./wake";
+import { readWake, renderWake, type Wake, wireFor } from "./wake";
 import { resolveWalk, spoolWalk } from "./walk";
 import { installWt, planWt } from "./wt";
 
@@ -367,16 +367,26 @@ async function runWake(args: string[]): Promise<void> {
     }
   }
 
+  // The Next needs the database and what the repo declares does not, so they
+  // fail apart: before the first sync there is no database, and that is exactly
+  // the session most helped by being told the repo's own check.
+  let wake: Wake | null = null;
   try {
     const db = openReadOnly(dbPath());
     try {
-      const wire = wireFor(tool, renderWake(readWake(db, cwd)));
-      if (wire) console.log(wire);
+      wake = readWake(db, cwd);
     } finally {
       db.close();
     }
   } catch {
-    // no database, no read, nothing to say
+    // no database, no Next to read
+  }
+
+  try {
+    const wire = wireFor(tool, renderWake(wake, cwd));
+    if (wire) console.log(wire);
+  } catch {
+    // a hook that can fail is a hook that can stop a session from starting
   }
 }
 

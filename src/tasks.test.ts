@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkTask, declaredTasks, packageManager } from "./tasks";
@@ -32,7 +33,7 @@ describe("declared tasks", () => {
   test("reads the package manager from the lock file", () => {
     expect(packageManager(repo({ "pnpm-lock.yaml": "" }))).toBe("pnpm");
     expect(packageManager(repo({ "yarn.lock": "" }))).toBe("yarn");
-    expect(packageManager(repo({}))).toBe("npm");
+    expect(packageManager(repo({}))).toBeNull();
   });
 
   test("reads mise tasks and Makefile targets", () => {
@@ -75,5 +76,51 @@ describe("the check task", () => {
 
   test("finds this repo's own check task", () => {
     expect(checkTask(new URL("..", import.meta.url).pathname)?.command).toBe("bun run verify");
+  });
+});
+
+/**
+ * These paths are opened by a `SessionStart` hook, so what sits at one of them is
+ * whatever the working directory happens to hold rather than something a person
+ * chose. A hook that does not return is a session that does not start.
+ */
+describe("a manifest that is not a manifest", () => {
+  test("reads nothing from a path that is a directory", () => {
+    const root = mkdtempSync(join(tmpdir(), "dim-tasks-"));
+    roots.push(root);
+    mkdirSync(join(root, "Makefile"));
+    expect(declaredTasks(root)).toEqual([]);
+  });
+
+  test("does not block on a path that never delivers", async () => {
+    const root = mkdtempSync(join(tmpdir(), "dim-tasks-"));
+    roots.push(root);
+    execFileSync("mkfifo", [join(root, "Makefile")]);
+
+    const child = Bun.spawn(
+      [
+        "bun",
+        "-e",
+        `import {declaredTasks} from "${join(import.meta.dir, "tasks.ts")}"; declaredTasks("${root}")`,
+      ],
+      { stdout: "ignore", stderr: "ignore" },
+    );
+    const outcome = await Promise.race([
+      child.exited.then(() => "returned"),
+      new Promise((r) => setTimeout(() => r("still reading"), 4000)),
+    ]);
+    child.kill();
+    expect(outcome).toBe("returned");
+  }, 10_000);
+});
+
+// Every JS repo on this machine commits a lock file, so a manifest without one
+// is a repo whose runner nothing here knows — and a guessed runner printed as a
+// declaration is worse than no line at all.
+describe("the package manager", () => {
+  test("names no command where no lock file names a manager", () => {
+    const root = repo({ "package.json": JSON.stringify({ scripts: { verify: "vitest" } }) });
+    expect(packageManager(root)).toBeNull();
+    expect(declaredTasks(root)).toEqual([]);
   });
 });
