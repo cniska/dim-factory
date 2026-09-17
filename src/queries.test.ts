@@ -257,12 +257,15 @@ describe("read path", () => {
   test("search finds a message by its words and keeps the index level with the table", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
+    // A corpus with nothing embedded is the keyword path, which is what has to
+    // still reach every message once ranking by meaning is the first choice.
+    const unranked = { unavailable: "nothing embedded in this corpus" };
     try {
-      const hit = findQuery("search")?.run(db, { arg: "parser" });
+      const hit = findQuery("search")?.run(db, { arg: "parser", question: unranked });
       expect(hit?.rows.length).toBeGreaterThan(0);
       expect(String(hit?.rows[0]?.[4])).toContain("parser");
 
-      const miss = findQuery("search")?.run(db, { arg: "nothingmatchesthis" });
+      const miss = findQuery("search")?.run(db, { arg: "nothingmatchesthis", question: unranked });
       expect(miss?.rows).toEqual([]);
       expect(miss?.note).toContain("nothing matches");
     } finally {

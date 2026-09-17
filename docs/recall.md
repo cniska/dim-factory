@@ -50,7 +50,7 @@ Keyword search finds the words that were typed. A question and the passage that 
 
 The mechanism is settled and needs no vector store. Acolyte keeps embeddings as a `BLOB` beside the rows and scores them with a cosine over `Float32Array` views; brute force over a corpus this size is milliseconds, so a database and a daemon would buy nothing. What changes is the provider: Acolyte embeds through a remote API, and a local model is what keeps this offline and free.
 
-One constraint stands in the way, and deliberately: collection makes no model call, and a model reads query results rather than transcripts. Embedding every message is a model reading every transcript. The reasons behind that rule — no network, no credentials, no per-token cost — all survive a local embedder, so the rule should be rewritten to say what it protects rather than quietly broken by a retrieval feature.
+One constraint stood in the way, and deliberately: collection makes no model call, and a model reads query results rather than transcripts. Embedding every message is a model reading every transcript. The reasons behind that rule — no network, no credentials, no per-token cost — all survive a local embedder, so the rule now states what it protects: nothing reaches the network, holds a credential, or is billed per token, and no model reads a transcript. A local model over text a person distilled breaks none of that.
 
 ## Measuring whether retrieval improved
 
@@ -64,4 +64,4 @@ Neither measures the thing this file is about. No recall figure can say whether 
 
 ## Not built
 
-`wake` is installed. The handoff chain, and semantic retrieval, are not.
+`wake` is installed, and so is semantic retrieval over the distilled text: `dim embed` writes a unit vector per passage into `embedding`, and `q search` scores them by cosine, falling back to the keyword index when nothing is embedded, the model will not load, or the database predates the table. The handoff chain is not built, and neither benchmark is wired up — so nothing yet says whether this ranking is better than the keyword one it replaced, which is the next thing to settle rather than a claim to make.
