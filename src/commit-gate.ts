@@ -71,9 +71,48 @@ exit 0
 `;
 }
 
+/** `--no-verify` is git's only escape and it takes the subject gate with it; this skips one hook. */
+export const SKIP_CHECK_ENV = "DIM_SKIP_CHECK";
+
+/**
+ * Refuses a commit whose repo declares a check that fails. Anything it cannot
+ * establish exits 0, as the commit-msg hook does. The ownership check guards an
+ * `eval` of the repo's own manifest: a clone of someone else's project must
+ * never have its scripts run by a hook installed globally here.
+ */
+export function preCommitScript(owners: string[]): string {
+  return `#!/usr/bin/env bash
+# Installed by \`dim install-commit-gate\`. One copy for every repo; see dim-factory.
+set -u
+
+[ "\${${SKIP_CHECK_ENV}:-}" = "1" ] && exit 0
+
+origin=$(git config --get remote.origin.url 2>/dev/null || true)
+owner=$(printf '%s' "$origin" | sed -n 's#.*[:/]\\([^/]*\\)/[^/]*$#\\1#p')
+case " ${owners.join(" ")} " in
+  *" $owner "*) ;;
+  *) exit 0 ;;
+esac
+
+command -v dim >/dev/null 2>&1 || exit 0
+task=$(dim check-task 2>/dev/null || true)
+[ -n "$task" ] || exit 0
+
+echo "pre-commit: $task" >&2
+if ! eval "$task" >&2; then
+  echo "pre-commit: the repo's own check failed, so the commit is refused." >&2
+  echo "  fix it, or ${SKIP_CHECK_ENV}=1 git commit to commit without it." >&2
+  exit 1
+fi
+exit 0
+`;
+}
+
 export type GatePlan = {
   hookPath: string;
   state: "installed" | "missing" | "stale";
+  checkHookPath: string;
+  checkState: "installed" | "missing" | "stale";
   globalHooksPath: string | null;
   strandedCopies: string[];
 };
@@ -101,16 +140,20 @@ export function planCommitGate(
   strandedIn: string[] = [],
   env: Env = process.env,
 ): GatePlan {
-  const hookPath = join(sharedHooksDir(env), "commit-msg");
-  const want = hookScript(owners);
-  const state = !existsSync(hookPath)
-    ? ("missing" as const)
-    : readFileSync(hookPath, "utf8") === want
-      ? ("installed" as const)
-      : ("stale" as const);
+  const dir = sharedHooksDir(env);
+  const stateOf = (path: string, want: string) =>
+    !existsSync(path)
+      ? ("missing" as const)
+      : readFileSync(path, "utf8") === want
+        ? ("installed" as const)
+        : ("stale" as const);
+  const hookPath = join(dir, "commit-msg");
+  const checkHookPath = join(dir, "pre-commit");
   return {
     hookPath,
-    state,
+    state: stateOf(hookPath, hookScript(owners)),
+    checkHookPath,
+    checkState: stateOf(checkHookPath, preCommitScript(owners)),
     globalHooksPath: gitGlobal("core.hooksPath", env),
     strandedCopies: strandedIn
       .map((r) => join(r, ".git", "hooks", "commit-msg"))
@@ -146,13 +189,18 @@ export function installCommitGate(
   if (existing && existing !== dir) throw new HooksPathTakenError(existing);
 
   mkdirSync(dir, { recursive: true });
-  const hookPath = join(dir, "commit-msg");
-  writeFileSync(hookPath, hookScript(owners));
-  chmodSync(hookPath, 0o755);
+  for (const [name, body] of [
+    ["commit-msg", hookScript(owners)],
+    ["pre-commit", preCommitScript(owners)],
+  ] as const) {
+    const path = join(dir, name);
+    writeFileSync(path, body);
+    chmodSync(path, 0o755);
+  }
   const plan = planCommitGate(owners, strandedIn, env);
   for (const copy of plan.strandedCopies) rmSync(copy, { force: true });
   execFileSync("git", ["config", "--global", "core.hooksPath", dir], { env: gitEnv(env) });
-  return { ...plan, state: "installed", globalHooksPath: dir, strandedCopies: plan.strandedCopies };
+  return { ...plan, globalHooksPath: dir };
 }
 
 export function ownerOf(label: string | null): string {
