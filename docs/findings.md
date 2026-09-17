@@ -287,3 +287,11 @@ That is the push the gate exists to refuse, allowed by spelling it differently. 
 Mapping it back is not a string compare, because one remote has many spellings. A first attempt compared the URL git handed the hook against `remote.<name>.url` byte for byte, and four ordinary spellings of the same remote still went through — a trailing slash, a `.` segment, a relative path, and a `file://` URL for a configured local path — while `insteadOf` broke it outright, since git hands the hook the rewritten URL and the config holds the raw one. Both sides are now reduced to one spelling first, and each remote is resolved with `git remote get-url --push`, which is what sees `insteadOf` and a separate `pushurl`.
 
 What still passes is a URL that resolves to no configured remote. That is not a hole: the checkout has no remote-tracking ref there, so there is no shared branch to compare against, and a hook may only refuse what it has read and understood.
+
+## A regex comment-stripper corrupts the file it protects
+
+Found on 2026-09-17, looking for prior art before writing the JSONC reader in [`src/jsonc.ts`](../src/jsonc.ts). Another repo on this machine holds a `src/json.ts` that reads a config allowing comments by deleting them first: `//` to end of line, then `/* */`, then `JSON.parse`. Handed `{"url": "https://example.com/a", "x": 1}`, it returns `{"url": "https:`, because the scheme separator in a string literal is the same two characters as a comment. The file it exists to read is the one it destroys, and because the reader returns null on any throw, the corruption surfaces as a config that is simply not there.
+
+A tokenizer has the state a pattern does not: `jsonc-parser` knows it is inside a string, which is the whole of the difference. The same shape appeared in the gate for narrating comments above — a pattern matching text it cannot read the context of — and it is the reason a reader is bought rather than written.
+
+`prior-art` found this only when the query dropped to `json`: the file is named for the format and the reader for the dialect, so `jsonc` returned nothing on a machine that had one. That is the path-not-meaning limit measured above, hit again.
