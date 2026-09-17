@@ -164,26 +164,74 @@ describe("keywords, asked directly", () => {
   const keywords = findQuery("keywords") as NonNullable<ReturnType<typeof findQuery>>;
   const ask = (db: Database, ctx: QueryContext): QueryResult => keywords.run(db, { home: "/home", ...ctx });
 
-  test("reaches a conversation the distilled index does not hold", async () => {
-    const db = await indexed();
-    const result = ask(db, { arg: "checkout" });
-    expect(result.rows.map((r) => String(r[0]))).toEqual(["s1"]);
-    expect(result.path).toBe("keyword");
-    db.close();
-  });
-
   // The whole point of the door: it answers on a database where `search` ranks
   // by meaning, rather than only where the meaning path has broken.
-  test("does not need the embedding index to be missing", async () => {
+  test("reaches a conversation on a database where search still ranks by meaning", async () => {
     const db = await indexed();
-    expect(ask(db, { arg: "checkout" }).rows.length).toBe(1);
+    expect(ask(db, { arg: "checkout" }).rows.map((r) => String(r[0]))).toEqual(["s1"]);
     expect(run(db, { arg: "checkout", question: await asked("checkout") }).path).toBe("cosine");
     db.close();
   });
 
-  test("ranks no meaning, and says so with the rows", async () => {
+  // `path` names the branch that answered where a query has more than one. This
+  // one has a single branch, and `command_trace` keeps the column: a value here
+  // would read in the trace as `search` having degraded.
+  test("claims no branch, so a trace cannot read it as a fallback", async () => {
     const db = await indexed();
-    expect(ask(db, { arg: "checkout" }).denominator).toContain("dim q search");
+    expect(ask(db, { arg: "checkout" }).path).toBeUndefined();
+    db.close();
+  });
+
+  test("ranks no meaning, and says where meaning and the exchange are", async () => {
+    const db = await indexed();
+    const { denominator } = ask(db, { arg: "checkout" });
+    expect(denominator).toContain("dim q search");
+    expect(denominator).toContain("dim q thread <session>@<when>");
+    expect(denominator).not.toContain("Meaning was not ranked");
+    db.close();
+  });
+
+  // Without this the door windows to 30 days, and a decision settled months ago
+  // is unreachable — which is the whole thing it was built to reach.
+  test("spans history, so an old decision is still reachable", async () => {
+    const db = seeded();
+    db.run(
+      `INSERT INTO message (id, session_id, ts, role, text, src_file, src_line)
+       VALUES ('m-old', 's1', '2024-03-04T09:00:00Z', 'user', ?, '/f.jsonl', 9)`,
+      ["We settled on the shadow checkout back then."],
+    );
+    const result = ask(db, { arg: "settled" });
+    expect(result.rows.map((r) => String(r[1]))).toEqual(["2024-03-04T09:00"]);
+    expect(result.denominator).toContain("all time");
+    db.close();
+  });
+
+  // Relayed through the harness, so flagged meta, but an agent wrote it — and a
+  // question about what was decided wants exactly these.
+  test("finds what another agent said, which the harness only carried", async () => {
+    const db = seeded();
+    db.run(
+      `INSERT INTO message (id, session_id, ts, role, text, src_file, src_line, is_meta, origin_kind)
+       VALUES ('m-peer', 's1', '2026-09-01T10:33:00Z', 'user', ?, '/f.jsonl', 4, 1, 'peer')`,
+      ["Another Claude session sent a message: we decided against the second checkout."],
+    );
+    expect(ask(db, { arg: "decided" }).rows.map((r) => String(r[0]))).toEqual(["s1"]);
+    db.close();
+  });
+
+  // An argument can arrive from a file or a transcript, and the cost of ANDing
+  // phrases is superlinear, so an uncapped one runs until someone kills it.
+  test("searches a bounded number of words, and says what it dropped", async () => {
+    const db = await indexed();
+    const result = ask(db, { arg: `checkout ${"word ".repeat(40)}` });
+    expect(result.denominator).toContain("Only the first 16 words were searched");
+    expect(result.denominator).toContain("25 more were dropped");
+    db.close();
+  });
+
+  test("whitespace alone is not a search", async () => {
+    const db = await indexed();
+    expect(String(ask(db, { arg: "   " }).rows[0]?.[0])).toContain("nothing to search for");
     db.close();
   });
 
@@ -204,6 +252,7 @@ describe("keywords, asked directly", () => {
     const result = ask(db, { arg: "promulgate" });
     expect(result.rows).toEqual([]);
     expect(result.note).toContain("nothing matches promulgate");
+    expect(result.note).toContain("a reminder the harness injected is nothing anyone said");
     db.close();
   });
 });
