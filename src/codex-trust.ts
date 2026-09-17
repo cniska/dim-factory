@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { hookCommand, wakeCommand } from "./hooks";
+import { readJsonc } from "./jsonc";
 import { codexDir, type Env } from "./paths";
 
 /**
@@ -39,8 +40,10 @@ function recordedKeys(path: string): Set<string> {
   let parsed: { hooks?: { state?: Record<string, { trusted_hash?: unknown }> } };
   try {
     parsed = Bun.TOML.parse(readFileSync(path, "utf8")) as typeof parsed;
-  } catch {
-    return new Set();
+  } catch (error) {
+    // An empty set reads as "nothing is trusted", which sends the reader to
+    // approve a hook in Codex when what is wrong is the file.
+    throw new Error(`${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
   const state = parsed.hooks?.state ?? {};
   return new Set(Object.keys(state).filter((k) => typeof state[k]?.trusted_hash === "string"));
@@ -57,14 +60,7 @@ function positionOf(entries: HookEntry[], command: string): [number, number] | n
 
 export function planCodexTrust(env: Env = process.env): TrustState[] {
   const hooksPath = join(codexDir(env), "hooks.json");
-  let config: { hooks?: Record<string, HookEntry[]> } = {};
-  if (existsSync(hooksPath)) {
-    try {
-      config = JSON.parse(readFileSync(hooksPath, "utf8")) as typeof config;
-    } catch {
-      config = {};
-    }
-  }
+  const config = readJsonc<{ hooks?: Record<string, HookEntry[]> }>(hooksPath) ?? {};
   const recorded = recordedKeys(codexConfigPath(env));
 
   const wanted: [string, string][] = [

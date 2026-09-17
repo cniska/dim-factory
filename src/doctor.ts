@@ -2,9 +2,9 @@ import type { Database } from "bun:sqlite";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { AGENT_LABEL, agentPlistPath } from "./agent";
-import { codexConfigPath, planCodexTrust } from "./codex-trust";
+import { codexConfigPath, planCodexTrust, type TrustState } from "./codex-trust";
 import { gateHooks, installedOwners, sharedHooksDir } from "./commit-gate";
-import { planHooks } from "./hooks";
+import { type HookPlan, planHooks } from "./hooks";
 import { dataDir, type Env, resolveHomeDir } from "./paths";
 import { unarmedCheckouts } from "./push-gate";
 import { isHostQualified } from "./remote-slug";
@@ -28,6 +28,67 @@ function scalar(db: Database, sql: string): number {
 
 function text(db: Database, sql: string): string | null {
   return (db.prepare(sql).get() as { v: string | null } | null)?.v ?? null;
+}
+
+/**
+ * Both tool configs are files a person hand-edits, so either can be unparseable
+ * on any run. That is reported as this check failing rather than thrown, because
+ * a throw here costs the reader every other check in the report.
+ */
+function unreadable(name: string, error: unknown): Health {
+  return {
+    name,
+    state: "fail",
+    detail: `tool config could not be read (${error instanceof Error ? error.message : String(error)})`,
+    fix: "repair the file named in the detail above by hand",
+  };
+}
+
+function sessionHooks(env: Env): Health {
+  let missing: HookPlan[];
+  try {
+    missing = planHooks(env).filter((p) => !p.present);
+  } catch (error) {
+    return unreadable("hooks", error);
+  }
+  if (missing.length === 0) return { name: "hooks", state: "ok", detail: "installed in both tools" };
+  return {
+    name: "hooks",
+    state: "fail",
+    detail: `${missing.length} session hooks missing (${missing.map((p) => p.event).join(", ")})`,
+    fix: "dim install-hooks --write",
+  };
+}
+
+/**
+ * Installed is not running: Codex writes a hook into hooks.json the moment
+ * install-hooks does, and runs it only once config.toml records a trust for its
+ * position. Nothing else reports the difference, so collection and `wake` stop
+ * on the Codex side with the config still reading as correct.
+ *
+ */
+function codexTrust(env: Env): Health {
+  let untrusted: TrustState[];
+  try {
+    untrusted = planCodexTrust(env).filter((t) => !t.recorded);
+  } catch (error) {
+    return unreadable("codex trust", error);
+  }
+  if (untrusted.length === 0) {
+    return {
+      name: "codex trust",
+      state: "ok",
+      detail: "every codex hook has a trust recorded for its position",
+    };
+  }
+  return {
+    name: "codex trust",
+    state: "fail",
+    detail:
+      `${untrusted.length} codex hooks have no trusted_hash under [hooks.state] ` +
+      `(${untrusted.map((t) => t.key ?? `${t.event}, not in hooks.json`).join("; ")})`,
+    fix: `start a codex session and approve the hook, or remove the stale keys from ${codexConfigPath(env)}`,
+  };
 }
 
 function launchdLoaded(): boolean {
@@ -122,35 +183,8 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
         : { name: "freshness", state: "ok", detail: `last read ${Math.round(age / HOUR_MS)} hours ago` },
   );
 
-  const missingHooks = planHooks(env).filter((p) => !p.present);
-  checks.push(
-    missingHooks.length === 0
-      ? { name: "hooks", state: "ok", detail: "installed in both tools" }
-      : {
-          name: "hooks",
-          state: "fail",
-          detail: `${missingHooks.length} session hooks missing (${missingHooks.map((p) => p.event).join(", ")})`,
-          fix: "dim install-hooks --write",
-        },
-  );
-
-  // Installed is not running: Codex writes a hook into hooks.json the moment
-  // install-hooks does, and runs it only once config.toml records a trust for
-  // its position. Nothing reports the difference, so collection and `wake` stop
-  // on the Codex side with the config still reading as correct.
-  const untrusted = planCodexTrust(env).filter((t) => !t.recorded);
-  checks.push(
-    untrusted.length === 0
-      ? { name: "codex trust", state: "ok", detail: "every codex hook has a trust recorded for its position" }
-      : {
-          name: "codex trust",
-          state: "fail",
-          detail:
-            `${untrusted.length} codex hooks have no trusted_hash under [hooks.state] ` +
-            `(${untrusted.map((t) => t.key ?? `${t.event}, not in hooks.json`).join("; ")})`,
-          fix: `start a codex session and approve the hook, or remove the stale keys from ${codexConfigPath(env)}`,
-        },
-  );
+  const hooks = sessionHooks(env);
+  checks.push(hooks, codexTrust(env));
 
   // Installed hooks that produce nothing are the failure this command exists for:
   // the config looks right, and every session still ends indistinguishably. The
@@ -174,7 +208,7 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
       )
     : 0;
   checks.push(
-    missingHooks.length > 0
+    hooks.state !== "ok"
       ? { name: "end reasons", state: "warn", detail: "not expected yet; the hooks are not installed" }
       : !since
         ? {

@@ -161,6 +161,27 @@ describe("doctor", () => {
     expect(check(env, "codex trust")?.state).toBe("fail");
   });
 
+  // The command exists to say what is broken, so a file it cannot read is a
+  // failing check and never the reason the rest go unreported.
+  test("reports an unreadable codex config as one failure, keeping the other checks", () => {
+    const env = seeded();
+    const config = codexConfigPath(env);
+    mkdirSync(dirname(config), { recursive: true });
+    installHooks(env);
+    writeFileSync(join(dirname(config), "hooks.json"), '{ "hooks": ');
+
+    const db = openReadOnly(dbPath(env));
+    try {
+      const checks = diagnose(db, env);
+      const trust = checks.find((c) => c.name === "codex trust");
+      expect(trust?.state).toBe("fail");
+      expect(trust?.detail).toContain("could not be read");
+      expect(checks.map((c) => c.name)).toContain("schema");
+    } finally {
+      db.close();
+    }
+  });
+
   test("reports every check with something a reader can act on", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
