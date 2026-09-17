@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { installSkill, planSkill, SKILL_NAMES, skillLinkDirs, skillSourceDir } from "./skill";
+import { installSkill, planSkill, retiredLinks, SKILL_NAMES, skillLinkDirs, skillSourceDir } from "./skill";
 
 function shipped(): string[] {
   return [...SKILL_NAMES].sort();
@@ -26,7 +26,7 @@ describe("skill install", () => {
   // Literals, not the constant: importing SKILL_NAMES would let a dropped skill
   // ratify its own removal.
   test("ships the skills that need dim on PATH", () => {
-    expect(shipped()).toEqual(["df-delegate", "df-sessions"]);
+    expect(shipped()).toEqual(["dim-plan", "dim-review"]);
   });
 
   test("installs every skill directory in the repo, so a new one is not left behind", () => {
@@ -35,6 +35,21 @@ describe("skill install", () => {
       .map((e) => e.name)
       .sort();
     expect(shipped()).toEqual(dirs);
+  });
+
+  // Retiring a station would otherwise leave a link resolving to nothing, which
+  // reads to the tool as a skill that will not load rather than one that is gone.
+  test("unlinks a station that no longer ships, and leaves the owner's own alone", () => {
+    const home = newHome();
+    const env = { HOME: home };
+    const dir = join(home, ".agents", "skills");
+    mkdirSync(dir, { recursive: true });
+    symlinkSync(join(resolve(import.meta.dir, "..", "skills"), "dim-retired"), join(dir, "dim-retired"));
+    symlinkSync(join(home, "elsewhere"), join(dir, "theirs"));
+
+    installSkill(env);
+    expect(retiredLinks(env)).toEqual([]);
+    expect(lstatSync(join(dir, "theirs")).isSymbolicLink()).toBe(true);
   });
 
   test("every skill it installs is one in this repo", () => {
