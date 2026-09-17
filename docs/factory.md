@@ -4,7 +4,7 @@ The argument this repo exists to execute. It is a position to argue with, not a 
 
 ## The line already exists
 
-The engineering skills in `cniska/skills` form a production line — spec, plan, build, review, ship — and the parts map onto a factory more cleanly than they were designed to.
+The owner's tool-agnostic engineering skills form a production line — spec, plan, build, review, ship — and the parts map onto a factory more cleanly than they were designed to.
 
 - **Skills are the stations.** Each is a repeatable operation with an entry contract and an exit check.
 - **A coding agent is the floor.** It executes stations with tools, budgets and a lifecycle, and the driving is handed to the model rather than scripted.

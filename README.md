@@ -177,4 +177,4 @@ The reasoning lives under [`docs/`](docs/README.md), which indexes itself. What 
 
 ## Related
 
-- `cniska/skills` — the tool-agnostic engineering skills, which run on a machine with no database and are measured here like any other work. A station is the case that needs `dim` on PATH; nothing here is installed by `npx skills add`.
+- The owner's tool-agnostic engineering skills, which run on a machine with no database and are measured here like any other work. A station is the case that needs `dim` on PATH; nothing here is installed by `npx skills add`.
