@@ -137,6 +137,24 @@ CREATE TABLE IF NOT EXISTS guidance_walk (
 );
 CREATE INDEX IF NOT EXISTS guidance_walk_path ON guidance_walk(path, seen_at);
 
+-- One row per traced invocation. Which commands an agent runs is already in
+-- tool_call, because every one is a shell call in a transcript; what is not
+-- anywhere else is which branch answered — \`q search\` falling back from cosine
+-- to the keyword index is invisible in its rows — and any run from a terminal,
+-- which belongs to no session. Like hook_event it has no source to re-read, so
+-- \`rebuild\` never clears it.
+CREATE TABLE IF NOT EXISTS command_trace (
+  id          INTEGER PRIMARY KEY,
+  ts          TEXT NOT NULL,
+  command     TEXT NOT NULL,       -- the dim subcommand; only q writes one today
+  name        TEXT,                -- the query name, where the command is q
+  path        TEXT,                -- which branch answered, where the query names one
+  row_count   INTEGER,
+  duration_ms INTEGER,
+  cwd         TEXT
+);
+CREATE INDEX IF NOT EXISTS command_trace_name ON command_trace(command, name, ts);
+
 CREATE TABLE IF NOT EXISTS turn (
   session_id      TEXT NOT NULL REFERENCES session(id),
   turn_id         TEXT NOT NULL,        -- Codex turn_id; Claude the turn_duration uuid

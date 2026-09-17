@@ -91,6 +91,19 @@ describe("search degrades instead of failing", () => {
     db.close();
   });
 
+  // The denominator says which index answered in prose; `path` is the value the
+  // trace records, and only it can tell a fallback from a cosine run afterwards.
+  test("names the branch that answered as a value, not only in prose", async () => {
+    const cold = seeded();
+    expect(run(cold, { arg: "shadow", question: await asked("shadow") }).path).toBe("keyword");
+    cold.close();
+
+    const warm = await indexed();
+    expect(run(warm, { arg: "handoff", question: await asked("handoff") }).path).toBe("cosine");
+    expect(run(warm, { arg: "handoff", question: { unavailable: "no weights" } }).path).toBe("keyword");
+    warm.close();
+  });
+
   test("a model that would not load degrades to keywords, carrying the reason", async () => {
     const db = await indexed();
     const result = run(db, { arg: "checkout", question: { unavailable: "no weights on disk" } });

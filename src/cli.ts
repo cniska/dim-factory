@@ -14,7 +14,7 @@ import { committerName } from "./git-identity";
 import { installHooks, planHooks } from "./hooks";
 import { withLock } from "./lock";
 import { dbPath, resolveHomeDir } from "./paths";
-import { findQuery, QUERIES } from "./queries";
+import { findQuery, QUERIES, type QueryResult } from "./queries";
 import { openReadOnly } from "./read-db";
 import { DEFAULT_MAX_ROWS, renderTable, rowsFromArgs } from "./render";
 import { installRules, planRules } from "./rules";
@@ -23,6 +23,7 @@ import { installSkill, planSkill, SKILL_NAMES } from "./skill";
 import { ensureSpoolDirs } from "./spool";
 import { rebuild, type SyncReport, sync } from "./sync";
 import { checkTask } from "./tasks";
+import { trace } from "./trace";
 import { readWake, renderWake, wireFor } from "./wake";
 import { resolveWalk, spoolWalk } from "./walk";
 import { installWt, planWt } from "./wt";
@@ -542,11 +543,25 @@ async function runQuery(args: string[]): Promise<void> {
   // to await every one of them.
   const question = query.embedsArg && arg ? await embedQuestion(arg) : undefined;
   const db = openReadOnly(dbPath());
+  const started = Date.now();
   try {
-    const result = query.run(db, { arg, since, home: resolveHomeDir(), question });
-    console.log(
-      args.includes("--json") ? JSON.stringify(result, null, 2) : renderTable(result, rowsFromArgs(args)),
-    );
+    let result: QueryResult | undefined;
+    try {
+      result = query.run(db, { arg, since, home: resolveHomeDir(), question });
+      console.log(
+        args.includes("--json") ? JSON.stringify(result, null, 2) : renderTable(result, rowsFromArgs(args)),
+      );
+    } finally {
+      // In the `finally`, so a query that threw still records which branch it
+      // was on — the case where that is least obvious from the output.
+      trace({
+        command: "q",
+        name: query.name,
+        path: result?.path,
+        rowCount: result?.rows.length,
+        durationMs: Date.now() - started,
+      });
+    }
   } finally {
     db.close();
   }

@@ -9,6 +9,8 @@ export type QueryResult = {
   rows: (string | number | null)[][];
   /** Shown instead of an empty table, so no evidence never reads as a zero. */
   note?: string;
+  /** Which branch answered, where a query has more than one and the rows do not show which. */
+  path?: string;
 };
 
 /**
@@ -690,6 +692,7 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string, why: stri
   const indexed = scalar(db, "SELECT count(*) AS n FROM message WHERE text IS NOT NULL");
   const all = scalar(db, "SELECT count(*) AS n FROM message");
   return {
+    path: "keyword",
     denominator:
       `keywords over ${indexed} of ${all} messages that carry text (${windowLine(ctx)}); newest 40 shown. ` +
       `Meaning was not ranked: ${why}`,
@@ -801,6 +804,7 @@ const search: Query = {
       .map((r) => `${r.n} ${r.kind}`)
       .join(", ");
     return {
+      path: "cosine",
       denominator:
         `cosine over ${rows.length} distilled passages in this window, of ${byKind} embedded ` +
         `(${windowLine(ctx)}); the ${records.length} closest shown`,
