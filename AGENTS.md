@@ -51,6 +51,7 @@ A local record of what every Claude Code and Codex session did, the questions as
 
 - `README.md`, `AGENTS.md` and `docs/**` change in the same commit as the behavior they describe.
 - Measurements live in [`docs/findings.md`](docs/findings.md), dated, with what each number can carry. The rules they argue for live in [`docs/design.md`](docs/design.md).
+- Write a finding down when it is found, not at the end. A number measured and left in a conversation is gone when the session is, and the next agent re-measures it or, worse, assumes it.
 
 ## Testing
 
