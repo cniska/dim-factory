@@ -24,7 +24,9 @@ Form one explanation that accounts for every symptom, and name the line you beli
 
 ## 2. Prove it
 
-Write the test that fails because of this defect, and watch it fail, before editing the code it covers.
+**Where triage found no defect, stop here and say so.** That is a finding, not a failure of the station: the behavior is intended, or the report was about something else. Report what the code actually does and why it is right, and do not write a test to justify having started.
+
+Otherwise, write the test that fails because of this defect, and watch it fail, before editing the code it covers.
 
 This is the gate between reading and editing, and skipping it is how a fix lands on a symptom. A test written after the fix passes for the wrong reason more often than it catches anything: it was written against code that already worked. Where the defect is in a parser, an auth path, a signing step or anything that fails closed, this phase is not optional.
 
