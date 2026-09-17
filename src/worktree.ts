@@ -20,10 +20,18 @@ export function worktreeOf(path: string | null | undefined): string | null {
  * The same fold in SQL, for the columns holding absolute paths. A worktree is a
  * second checkout of one repo, so `<repo>/.claude/worktrees/<name>/x` and
  * `<repo>/x` are one file; collapsing them keeps a file from competing with itself.
+ *
+ * A worktree root is the case with no tail to splice back on, and it reaches
+ * here through `repo_commit.repo`, which names a checkout rather than a file.
  */
-export const withoutWorktree = (col: string): string => `CASE
-  WHEN instr(${col}, '${WORKTREE_SEGMENT}') > 0 THEN
-    substr(${col}, 1, instr(${col}, '${WORKTREE_SEGMENT}') - 1) ||
-    substr(substr(${col}, instr(${col}, '${WORKTREE_SEGMENT}') + ${WORKTREE_SEGMENT.length}),
-           instr(substr(${col}, instr(${col}, '${WORKTREE_SEGMENT}') + ${WORKTREE_SEGMENT.length}), '/'))
-  ELSE ${col} END`;
+export const withoutWorktree = (col: string): string => {
+  const at = `instr(${col}, '${WORKTREE_SEGMENT}')`;
+  const root = `substr(${col}, 1, ${at} - 1)`;
+  const rest = `substr(${col}, ${at} + ${WORKTREE_SEGMENT.length})`;
+  const tail = `instr(${rest}, '/')`;
+  return `CASE
+  WHEN ${at} = 0 THEN ${col}
+  WHEN ${tail} = 0 THEN ${root}
+  ELSE ${root} || substr(${rest}, ${tail})
+  END`;
+};
