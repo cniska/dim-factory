@@ -22,7 +22,7 @@ Both are in [`docs/findings.md`](docs/findings.md), because a factory that canno
 - **Collects.** Claude Code and Codex both record every session to disk. An incremental ingester reads both into one SQLite database — deterministic parsing and inserts, no model calls anywhere in the collection path.
 - **Answers.** A small query CLI over that database: where loaded-skill context goes, which skills fire and by which path, where corrections cluster, what tokens and tools a session actually spends.
 - **Guards.** Hooks that make mechanical what a skill can only instruct.
-- **Installs.** One copy of the tooling every checkout needs — `wt`, the commit-subject gate, the flattened rules, the sync agent — linked or pointed at from each repo rather than copied into it, so what runs cannot drift from what is tested here. A script that a third checkout would have to port belongs here instead; the same file under two repos has already diverged every time ([`docs/findings.md`](docs/findings.md)).
+- **Installs.** One copy of the tooling every checkout needs — the commit-subject gate, the flattened rules, the sync agent — linked or pointed at from each repo rather than copied into it, so what runs cannot drift from what is tested here. A script that a third checkout would have to port belongs here instead; the same file under two repos has already diverged every time ([`docs/findings.md`](docs/findings.md)).
 
 ## Using it
 
@@ -37,7 +37,7 @@ bun run dim install-hooks   # show the session hooks; --write applies them
 bun run dim install-rules   # flatten the conventions into Codex's rules file
 bun run dim install-skill   # show where the agent skills link; --write links them
 bun run dim install-commit-gate --owner=<host>/<account>  # subject, check and push gates for every repo; --write installs
-bun run dim install-wt      # link wt onto PATH; --write applies it
+bun run dim wt <branch>     # create or reuse this task's worktree and print its path
 bun run dim wake            # the last session's Next and what the repo declares, for SessionStart
 bun run dim q chain [id]    # which sessions were one piece of work, joined by the handoff between them
 bun run dim q prior-art "<path>"   # how the same problem was solved in the repos already on disk
@@ -115,7 +115,9 @@ All three are self-contained bash that exits 0 on anything they cannot establish
 
 ### Worktrees
 
-`dim install-wt --write` links [`scripts/wt`](scripts/wt) onto PATH. `wt` makes one worktree per task at `<repo>/.claude/worktrees/<branch>`, runs the repo's `scripts/worktree-setup.sh` on creation and `scripts/worktree-teardown.sh` before removal, and keeps the branch so the work can still be merged. It lives here because this is the repo that already reads its convention ([`src/worktree.ts`](src/worktree.ts)); linking rather than copying is what stops the script on PATH from drifting from the one `bun run verify` tests, and whatever was there is renamed to `.dim-backup` rather than removed. See [`docs/worktrees.md`](docs/worktrees.md).
+`dim wt <branch>` makes one worktree per task at `<repo>/.claude/worktrees/<branch>`, runs the repo's `scripts/worktree-setup.sh` on creation and `scripts/worktree-teardown.sh` before removal, and keeps the branch so the work can still be merged. `dim wt` on its own prints the rest: `ls`, `path`, `rm [--force]` and `prune`.
+
+It is a dim command rather than a script on PATH because this is the repo that already reads its convention ([`src/worktree.ts`](src/worktree.ts)), and one binary is one thing to install and one thing the tests cover. Nothing here changes the caller's directory, which is what `dim wt path` is for. See [`docs/worktrees.md`](docs/worktrees.md).
 
 ### Reaching a session at start-up
 

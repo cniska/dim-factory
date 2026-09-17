@@ -55,6 +55,6 @@ A local record of what every Claude Code and Codex session did, the questions as
 
 ## Testing
 
-- Tests live in `src/` beside what they cover, named for the unit under test rather than always for a file — `src/search.test.ts` covers the `search` query inside `src/queries.ts`. The shell suite is `scripts/wt.test.sh`.
+- Tests live in `src/` beside what they cover, named for the unit under test rather than always for a file — `src/search.test.ts` covers the `search` query inside `src/queries.ts`. The shell suite is `scripts/wt.test.sh`, which runs against `dim wt` rather than a copy of its logic.
 - A test claiming an invariant must fail when the invariant is removed — delete the check, watch it go red, put it back.
 - Pin wire values as literals: header names, record fields, status codes. Importing the production constant makes a rename ratify itself.

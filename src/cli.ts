@@ -27,7 +27,7 @@ import { checkTask } from "./tasks";
 import { trace } from "./trace";
 import { readWake, renderWake, type Wake, wireFor } from "./wake";
 import { resolveWalk, spoolWalk } from "./walk";
-import { installWt, planWt } from "./wt";
+import { runWt, WtError } from "./wt-command";
 
 const USAGE = `usage: dim <command>
 
@@ -49,8 +49,7 @@ const USAGE = `usage: dim <command>
   install-commit-gate
                   show which checkouts would get the commit-subject hook
                   (--write installs it, skipping repos that gate their own)
-  install-wt      show where wt would be linked onto PATH; --write links it,
-                  keeping whatever is there as a backup
+  wt              parallel-task worktrees, one per agent; dim wt for usage
   wake            the one thing a cold start here cannot work out: what the last
                   session in this directory left as Next (for the SessionStart hook)
   check-task      print the check command this repo declares, and nothing if it
@@ -331,22 +330,6 @@ function printCommitGatePlan(write: boolean): void {
   console.log(`\nwrote ${done.hooks.map((h) => h.name).join(", ")} to ${sharedHooksDir()}`);
   console.log(`set global core.hooksPath to ${done.globalHooksPath}`);
   for (const copy of done.strandedCopies) console.log(`removed ${copy}`);
-}
-
-function printWtPlan(write: boolean): void {
-  const plan = planWt();
-  console.log(`wt: ${plan.link} -> ${plan.source} (${plan.state})`);
-  if (plan.occupant) console.log(`  something else is there: ${plan.occupant}`);
-  console.log("  a link rather than a copy, so the script on PATH cannot drift from the tested one");
-
-  if (plan.state === "linked") return;
-  if (!write) {
-    console.log("\nRe-run with --write to link it.");
-    return;
-  }
-  const done = installWt();
-  if (plan.occupant) console.log(`kept the previous ${done.link} at ${done.link}.dim-backup`);
-  console.log(`linked ${done.link}`);
 }
 
 /**
@@ -651,8 +634,8 @@ try {
     case "install-commit-gate":
       printCommitGatePlan(process.argv.includes("--write"));
       break;
-    case "install-wt":
-      printWtPlan(process.argv.includes("--write"));
+    case "wt":
+      runWt(process.argv.slice(3));
       break;
     case "wake":
       await runWake(process.argv.slice(3));
@@ -672,6 +655,11 @@ try {
       process.exit(1);
   }
 } catch (error) {
+  // wt speaks as wt: its messages are pinned by scripts/wt.test.sh.
+  if (error instanceof WtError) {
+    console.error(`wt: ${error.message}`);
+    process.exit(1);
+  }
   console.error(`dim: ${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 }
