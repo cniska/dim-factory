@@ -13,7 +13,7 @@ A local record of what every Claude Code and Codex session did, the questions as
 ## Invariants
 
 - Nothing here reaches the network, holds a credential, or is billed per token, once the embedding model is on disk. Downloading it is the single exception and it happens once.
-- A hook exits 0 whatever happens. It runs before every session or commit on this machine, so it may only ever fail on something it has read and understood — the subject in `commit-msg`, the check that ran in `pre-commit`.
+- A hook exits 0 whatever happens. It runs before every session, commit and push on this machine, so it may only ever fail on something it has read and understood — the subject it was handed, the check that ran, the ancestry the remote reported.
 - Every table is rebuilt by re-reading its sources, so a schema change is `dim rebuild`, not a migration. The rules for `SCHEMA_VERSION`, for a table with no source to re-read, and for a derived table are stated at the top of [`src/schema.ts`](src/schema.ts) and at each table that is an exception.
 - Every query states the base its numbers came from, and one with nothing to report says so rather than printing a zero.
 
