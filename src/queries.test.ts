@@ -172,6 +172,49 @@ describe("read path", () => {
     }
   });
 
+  test("convention reads each repo's rule off its own log, worktrees folded in", () => {
+    const db = new Database(":memory:");
+    try {
+      db.run(SCHEMA_SQL);
+      const add = (repo: string, label: string, sha: string, subject: string, kind: string | null) =>
+        db.run(
+          "INSERT INTO repo_commit (sha, repo, label, ts, author, subject, kind) VALUES (?, ?, ?, '2026-01-01T00:00:00Z', 'a', ?, ?)",
+          [sha, repo, label, subject, kind],
+        );
+
+      // Ten in the checkout and ten through its worktree: one repo, twenty
+      // commits, or the floor below would drop it. Half of each half breaks a
+      // different rule, so no column can be right by being constant.
+      for (let i = 0; i < 10; i++) {
+        const long = i < 5 ? "feat: a conforming subject" : `feat: ${"a".repeat(60)}`;
+        add("/h/code/one", "owner/one", `a${i}`, long, "feat");
+        // A tag in parentheses and a bare issue number are not squash suffixes.
+        const merged = i < 5 ? `fix: landed through a branch (#${i})` : "fix: closes #12 and uses (#tag)";
+        add("/h/code/one/.claude/worktrees/wt", "owner/one", `w${i}`, merged, i < 8 ? "fix" : null);
+      }
+      // Under the floor, so it must not be reported at all.
+      add("/h/code/two", "owner/two", "b1", "no convention here", null);
+
+      const result = findQuery("convention")?.run(db, { home: "/h" });
+      expect(result?.rows).toHaveLength(1);
+
+      const [repo, commits, conventional, meanLen, over50, squashed, kinds] = result?.rows[0] ?? [];
+      expect(repo).toBe("owner/one");
+      expect(commits).toBe(20);
+      // Two of the twenty carry no conventional type.
+      expect(conventional).toBe(90);
+      expect(over50).toBe(25);
+      expect(meanLen).toBe(39);
+      // Only the five `(#N)` suffixes count.
+      expect(squashed).toBe(25);
+      expect(kinds).toBe("feat fix");
+      // The base is every commit read, the below-floor repo's included.
+      expect(result?.denominator).toContain("21 commits read");
+    } finally {
+      db.close();
+    }
+  });
+
   test("chain walks both ways from one session, across a task that was renamed", () => {
     const db = new Database(":memory:");
     try {
