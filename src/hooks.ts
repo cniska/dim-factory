@@ -20,6 +20,22 @@ export function hookCommand(tool: Tool, env: Env = process.env): string {
   return `cat > "${toolSpoolDir(tool, env)}/$(date +%s%N)-$$.json" 2>/dev/null; exit 0`;
 }
 
+/**
+ * The second SessionStart hook, and the only one that speaks back: its stdout
+ * becomes context the session starts with. Absolute, like the launchd agent's
+ * `bun`, because a hook does not inherit an interactive shell's PATH; `|| true`
+ * and a discarded stderr because this runs before every session and a hook that
+ * can fail is a hook that can stop one from starting.
+ */
+export function wakeCommand(tool: Tool): string {
+  return `${dimPath()} wake --tool=${tool} 2>/dev/null || true`;
+}
+
+/** The linked `dim`, falling back to the name so a plan reads sensibly where it is not installed. */
+export function dimPath(): string {
+  return Bun.which("dim") ?? "dim";
+}
+
 function configPathFor(tool: Tool, env: Env = process.env): string {
   return tool === "claude"
     ? join(dirname(claudeProjectsDir(env)), "settings.json")
@@ -44,8 +60,15 @@ export function planHooks(env: Env = process.env): HookPlan[] {
   for (const tool of ["claude", "codex"] as const) {
     const configPath = configPathFor(tool, env);
     const config = readConfig(configPath);
-    const command = hookCommand(tool, env);
-    for (const event of ["SessionStart", "SessionEnd"]) {
+    // SessionStart carries two: one writes the event to the spool, one answers
+    // with the context the session starts from. They are separate entries so a
+    // reader can see which is which, and so one failing cannot silence the other.
+    const commands: [string, string][] = [
+      ["SessionStart", hookCommand(tool, env)],
+      ["SessionStart", wakeCommand(tool)],
+      ["SessionEnd", hookCommand(tool, env)],
+    ];
+    for (const [event, command] of commands) {
       plans.push({
         tool,
         configPath,
