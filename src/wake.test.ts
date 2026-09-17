@@ -1,7 +1,8 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
+import { nextSection } from "./handoff";
 import { SCHEMA_SQL } from "./schema";
-import { nextSection, readWake, renderWake } from "./wake";
+import { readWake, renderWake } from "./wake";
 
 const HANDOFF = `# Handoff — dim-factory: earn the first cut
 
@@ -62,11 +63,13 @@ describe("the wake block", () => {
   test("ignores a message that names a handoff but leaves no Next", () => {
     const db = seeded();
     try {
-      // Later than the real handoff, in the same directory, and only talking about one.
+      // Later than the real handoff, in the same directory, and carrying both
+      // strings the SQL prefilter looks for — so only the parse tells them apart.
       db.run(
         `INSERT INTO message (id, session_id, role, ts, text, src_file, src_line)
          VALUES ('m4', 'older', 'assistant', '2026-09-09T00:00:00Z',
-                 'We should look at the # Handoff from yesterday.', '/f.jsonl', 4)`,
+                 'We should look at the # Handoff from yesterday and what its ## Next asked for.',
+                 '/f.jsonl', 4)`,
       );
       expect(readWake(db, "/h/code/demo")?.sessionId).toBe("newest");
       expect(readWake(db, "/h/code/demo")?.next).toContain("commit gate installed");

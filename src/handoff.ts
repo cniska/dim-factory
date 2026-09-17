@@ -1,5 +1,23 @@
 import type { Database } from "bun:sqlite";
-import { nextSection } from "./wake";
+
+/**
+ * The cap the `wake` block is held to: the Next is delivered on every session
+ * start, and every line of it is paid for there.
+ */
+const NEXT_MAX_CHARS = 700;
+
+/** The handoff's own heading, as the skill writes it. */
+const NEXT_HEADING = "## Next";
+
+export function nextSection(handoff: string): string | null {
+  const start = handoff.indexOf(NEXT_HEADING);
+  if (start === -1) return null;
+  const body = handoff.slice(start + NEXT_HEADING.length);
+  const end = body.indexOf("\n## ");
+  const section = (end === -1 ? body : body.slice(0, end)).trim();
+  if (section === "") return null;
+  return section.length > NEXT_MAX_CHARS ? `${section.slice(0, NEXT_MAX_CHARS).trimEnd()}…` : section;
+}
 
 /**
  * What makes a message a handoff: the heading at the start of a line, together
@@ -14,6 +32,11 @@ export function handoffTitle(text: string): string | null {
   const line = text.match(TITLE_LINE);
   if (!line) return null;
   return nextSection(text) === null ? null : line[0].trim();
+}
+
+/** The Next this handoff left, and null for a message that is not one. */
+export function handoffNext(text: string): string | null {
+  return handoffTitle(text) === null ? null : nextSection(text);
 }
 
 export type Handoff = {

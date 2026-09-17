@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { nextSection } from "./wake";
+import { handoffNext } from "./handoff";
 
 /** The text in this corpus a person compressed by hand; see docs/recall.md for why only this. */
 export type DistilledKind = "next" | "subject" | "correction";
@@ -16,9 +16,9 @@ function nexts(db: Database): Distilled[] {
     .all();
   const out: Distilled[] = [];
   for (const row of rows) {
-    // Sliced with wake's own function, so a search matches the text a session
+    // Sliced the way `wake` slices it, so a search matches the text a session
     // would be handed at start-up rather than the longer message it sits in.
-    const text = nextSection(row.text);
+    const text = handoffNext(row.text);
     if (text) out.push({ kind: "next", ref: row.id, text });
   }
   return out;
