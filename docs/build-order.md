@@ -53,7 +53,6 @@ dim installs session hooks only, so anything reacting to a single tool call has 
 
 - **Why files edited under `agents-md` draw four times more fixes afterward than before** ([`findings.md`](findings.md)), on the largest station sample measured. Nothing explains it, and it is the shape every other station was checked for and cleared of.
 
-- **A query door onto `message_fts`.** The embedding index holds distilled text only, so "what did we decide about X" is the question `q search` answers worst — it ranks commit subjects when the answer is in a conversation. `message_fts` covers every message and has no query above it, so reaching it means hand-writing `dim sql`.
 - **The generated conventions block** ([`conventions.md`](conventions.md)), which that writer is the precondition for. Its first condition is now met — three gates exist and `doctor` reports both a missing hook and a checkout where the push gate cannot fire — and its second is not: `loop.md` requires each cut recorded as characters removed against the calls they would have stayed resident for, and the three rules cut from `~/.claude/CLAUDE.md` on 2026-09-17 were cut by hand and never measured. Do that measurement before generating anything.
 - **A gate for US spelling, and one for banner comments.** The two rules left in the conventions file that a mechanism could hold. Everything else there needs judgement and stays written ([`conventions.md`](conventions.md)).
 - **Slice 1 of the eval runner** ([`evals-and-hooks.md`](evals-and-hooks.md)): the trimmed arm and the rule inventory.

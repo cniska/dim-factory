@@ -41,6 +41,7 @@ bun run dim wt <branch>     # create or reuse this task's worktree and print its
 bun run dim wake            # the last session's Next and what the repo declares, for SessionStart
 bun run dim q chain [id]    # which sessions were one piece of work, joined by the handoff between them
 bun run dim q prior-art "<path>"   # how the same problem was solved in the repos already on disk
+bun run dim q keywords "<words>"   # the messages carrying those words, across every session
 bun run dim q convention [repo]    # the commit convention each repo's own log holds
 bun run dim check-commits <range>  # judge a revision range by the same rules the gate holds
 bun run dim sql "<select>"  # one read-only statement, for a question no named query covers
