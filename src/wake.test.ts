@@ -1,8 +1,11 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { nextSection } from "./handoff";
 import { SCHEMA_SQL } from "./schema";
-import { readWake, renderWake } from "./wake";
+import { projectLine, readWake, renderWake } from "./wake";
 
 const HANDOFF = `# Handoff — dim-factory: earn the first cut
 
@@ -82,9 +85,44 @@ describe("the wake block", () => {
     const db = seeded();
     try {
       expect(readWake(db, "/h/code/untouched")).toBeNull();
-      expect(renderWake(null)).toBe("");
+      expect(renderWake(null, "/h/code/untouched")).toBe("");
     } finally {
       db.close();
+    }
+  });
+
+  // The declared task is the half of the project tier a manifest already holds,
+  // and reaching it costs a cold start a tool call and its output.
+  test("carries what the repo declares, with or without a Next to carry", () => {
+    const repo = mkdtempSync(join(tmpdir(), "dim-wake-"));
+    try {
+      writeFileSync(
+        join(repo, "package.json"),
+        JSON.stringify({ scripts: { verify: "bun test", format: "biome format", lint: "biome lint" } }),
+      );
+      writeFileSync(join(repo, "bun.lock"), "");
+
+      const line = projectLine(repo);
+      expect(line).toContain("check `bun run verify`");
+      expect(line).toContain("format `bun run format`");
+      // `lint` is not the format task, and a repo declaring both means two things.
+      expect(line).not.toContain("lint");
+
+      // It reaches a session that has no handoff to read, which is the start
+      // that needs it most.
+      expect(renderWake(null, repo)).toBe(line);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("says nothing about a repo that declares nothing", () => {
+    const repo = mkdtempSync(join(tmpdir(), "dim-wake-"));
+    try {
+      expect(projectLine(repo)).toBe("");
+      expect(renderWake(null, repo)).toBe("");
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
     }
   });
 

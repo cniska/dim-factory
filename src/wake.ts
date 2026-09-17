@@ -1,5 +1,8 @@
 import type { Database } from "bun:sqlite";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { handoffNext } from "./handoff";
+import { checkTask, declaredTasks, formatTask } from "./tasks";
 
 /**
  * Claude Code adds a SessionStart hook's plain-text stdout to the session as
@@ -64,13 +67,50 @@ export function wireFor(tool: "claude" | "codex", block: string): string {
   });
 }
 
-/** Empty when there is nothing a cold start does not already know: silence costs no tokens. */
-export function renderWake(wake: Wake | null): string {
-  if (!wake) return "";
+/**
+ * A session often starts in a subdirectory, where the manifest is a level or
+ * more up. The walk stops at the checkout root rather than climbing out of it,
+ * so a repo that declares nothing cannot inherit its neighbour's commands.
+ */
+function nearestDeclaring(dir: string): string | null {
+  for (let at = resolve(dir), prev = ""; at !== prev; prev = at, at = dirname(at)) {
+    if (declaredTasks(at).length > 0) return at;
+    if (existsSync(join(at, ".git"))) return null;
+  }
+  return null;
+}
+
+/**
+ * What the repo declares, in one line. A cold start can reach these by opening a
+ * manifest, which costs a tool call and its output — more than the line costs,
+ * which is the whole test for what goes in here. Running the declared task is
+ * what makes a local check the check CI runs, so nothing here is derived from
+ * the tool underneath the script.
+ */
+export function projectLine(dir: string): string {
+  const repo = nearestDeclaring(dir);
+  if (repo === null) return "";
+  const declared: string[] = [];
+  const check = checkTask(repo);
+  const format = formatTask(repo);
+  if (check) declared.push(`check \`${check.command}\``);
+  if (format) declared.push(`format \`${format.command}\``);
+  return declared.length === 0 ? "" : `This repo declares: ${declared.join(", ")}.`;
+}
+
+/**
+ * Empty when there is nothing a cold start does not already know: silence costs
+ * no tokens. A repo that declares a task is never silent, because that line is
+ * worth reading whether or not a session left anything behind.
+ */
+export function renderWake(wake: Wake | null, repo: string): string {
+  const project = projectLine(repo);
+  if (!wake) return project;
   const id = wake.sessionId.slice(0, 8);
   return [
     `The last session in this directory (${id}) left this Next:`,
     wake.next,
     `\`dim q resume ${id}\` has the branch, the files in play and the last pushback.`,
+    ...(project ? [project] : []),
   ].join("\n");
 }

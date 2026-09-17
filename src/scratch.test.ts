@@ -23,7 +23,7 @@ describe("a scratch tree is not the work", () => {
 
   test("a checkout the person keeps does not", () => {
     expect(isScratchRepo("/Users/someone/code/dim-factory")).toBe(false);
-    expect(isScratchRepo("/Users/someone/code/apps/.claude/worktrees/task-a")).toBe(false);
+    expect(isScratchRepo("/Users/someone/code/one/.claude/worktrees/task-a")).toBe(false);
   });
 
   test("a path that merely begins with the same letters does not", () => {

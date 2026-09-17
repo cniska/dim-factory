@@ -73,6 +73,16 @@ Recorded with the reason, so the same survey does not produce the same suggestio
 | [agentsview](https://github.com/BUKOWSKIREAL/agentsview), [code-session-memory](https://github.com/djannot/code-session-memory) | Remote embedding providers, and a vector database | Both break the constraint that nothing reaches the network or holds a credential. A local model and a blob column are what keep it. |
 | [agentsview](https://github.com/BUKOWSKIREAL/agentsview) | Dashboards and cost tracking | They answer a question [`goals.md`](goals.md) does not ask, and cost is reported only as each tool reported it. |
 
+## Gas Town, read at arm's length
+
+[Gas Town](https://github.com/gastownhall/gastown) is an orchestrator for running many Claude Code instances against one codebase, and its concerns are the ones that appear at that scale: spawn capacity, merge contention, agents that get stuck. Read on 2026-09-17 from its README and press coverage rather than its source, so every mechanism below is a claim about code nobody here has opened, and none of it is a basis for a decision until someone does.
+
+Nothing has been taken. One thing is worth recording, and it is not a mechanism. Its "Seance" has an agent discover earlier sessions and ask a predecessor what it decided, instead of re-reading the codebase — which is this repo's collector and `q resume`, arrived at independently. That is the only external evidence found so far that the premise holds rather than just being appealing. It also lands in the same place: a seance helps the agent who thought to hold one, which is the gap [`findings.md`](findings.md) measures from the other side, where guidance that exists reaches a third of the sessions doing the work it covers. Their answer is to ask a predecessor and this one's is to read a record, and neither answers the agent who asks nothing.
+
+Two things were considered and left. Bisecting a failed batch to find which change broke it is the right shape for a gate that admits more than one change at a time, and nothing here does — slices are serial, and the item would be a design for a problem this repo does not have. Their watchdog tiers are supervision of unattended agents, which is a real question here only once something runs on a schedule; the answer would still be a gate that refuses rather than a witness that nudges, because a gate needs nothing to be watching.
+
+Its vocabulary is the clearest thing not to take. A reader cannot follow those docs without first learning a private dialect, which is the cost [`AGENTS.md`](../AGENTS.md) is naming when it asks for plain words over a metaphor standing in for a mechanism.
+
 ## What this cannot carry
 
 The survey found no project doing what this one does, which is weaker than the claim that none exists. Search reaches published and indexed work. It does not reach a team running the same argument on an internal corpus, and that is the likeliest place for this to have been built already, since it takes a corpus and a line to be worth building at all.
