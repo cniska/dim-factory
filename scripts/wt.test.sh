@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Behavior tests for wt. Pure bash plus git; every case uses a throwaway repo.
-# Run: /usr/local/bin/wt.test.sh   (exit 0 = all pass, 1 = failures)
+# Run: bun run test:wt   (exit 0 = all pass, 1 = failures)
 set -u
 
 # The command under test, word-split so it can carry arguments. These cases pin
