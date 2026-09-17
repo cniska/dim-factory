@@ -97,6 +97,14 @@ Two things were considered and left. Bisecting a failed batch to find which chan
 
 Its vocabulary is the clearest thing not to take. A reader cannot follow those docs without first learning a private dialect, which is the cost [`AGENTS.md`](../AGENTS.md) names when it asks for plain words in place of a metaphor standing in for a mechanism.
 
+## An invariant reached independently
+
+[agent-working-memory](https://github.com/CompleteIdeas/agent-working-memory) answers an empty recall with `RECALL ABSTAINED` and the withheld count, in its own words "rather than claiming the memory is absent", and claims 90% correct abstention on questions about facts never stored. That is this repo's rule — every query states the base its numbers came from, and one with nothing to report says so rather than printing a zero — reached separately and with a number against it, which is more than there is here. The number is theirs and unverified on this machine; what carries is that someone else found the same failure worth engineering against.
+
+Its stack is the same shape too, and local for the same reason: SQLite with FTS5, bge-small-en-v1.5 embeddings and an ms-marco cross-encoder through ONNX, with ACT-R decay deciding what fades. The decay is the part this repo does not have and does not want — a record whose job is to say what happened cannot forget on a schedule.
+
+With the Gas Town seance above, that is two external projects arriving at a premise this repo argues from measurement, which is the only outside evidence found that the premise holds rather than merely appeals.
+
 ## What this cannot carry
 
 The survey found no project doing what this one does, which is weaker than the claim that none exists. Search reaches published and indexed work. It does not reach a team running the same argument on an internal corpus, and that is the likeliest place for this to have been built already, since it takes a corpus and a line to be worth building at all.

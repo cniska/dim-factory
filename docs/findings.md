@@ -190,6 +190,14 @@ Asked on 2026-09-17. `dim q prior-art "lexer"` returns nothing across all 22 ind
 
 Nothing here indexes code by meaning. `q search` is semantic but covers only the text a person distilled: handoff Nexts, commit subjects, labeled corrections. So "have we written one of these before" is answerable when the concept names its own file and unanswerable otherwise.
 
+## The record cannot point at the repo's own docs
+
+Observed on 2026-09-17, so this is an anecdote about one agent. An agent extending the landscape survey ran a fresh web sweep and brought back four items that were already written down — three in [`landscape.md`](landscape.md) and one in [`build-order.md`](build-order.md) — and found that out only by reading the doc afterwards.
+
+`q search` could not have redirected it. The embedding index that day held 242 handoff nexts and 5,558 commit subjects and no doc text, so a question whose answer is a paragraph under `docs/` ranks against whatever commit subject is nearest and comes back looking like an absence. A subject records that a doc changed, never what it now says.
+
+That is [the path-not-meaning limit](#prior-art-matches-a-path-not-a-meaning) reaching the agent least able to notice it: the one whose whole task is finding out what is already known, and whose failure mode is confidently re-deriving it.
+
 ## What held in one session, and what did not
 
 Observed across a single long session on 2026-09-17, so this is an anecdote about one agent and not a corpus measurement; it is recorded because it points the same way as every arm above.
