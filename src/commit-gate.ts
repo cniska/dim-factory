@@ -98,6 +98,10 @@ command -v dim >/dev/null 2>&1 || exit 0
 task=$(dim check-task 2>/dev/null || true)
 [ -n "$task" ] || exit 0
 
+# Git exports these to a hook, and a check that runs git itself would inherit
+# the committing repo's index and object store instead of its own.
+unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+
 echo "pre-commit: $task" >&2
 if ! eval "$task" >&2; then
   echo "pre-commit: the repo's own check failed, so the commit is refused." >&2
