@@ -66,10 +66,18 @@ describe("doctor", () => {
     expect(missing?.state).toBe("warn");
     expect(missing?.fix).toContain("install-commit-gate");
 
-    // Writing the hook must flip it, or the check is reporting a constant.
+    // Writing the hooks must flip it, or the check is reporting a constant. A
+    // gate missing one hook is a rule back to being asked, so it still warns and
+    // names which one.
     const hooks = join(env.HOME as string, ".config", "dim", "hooks");
     mkdirSync(hooks, { recursive: true });
     writeFileSync(join(hooks, "commit-msg"), "#!/usr/bin/env bash\nexit 0\n");
+    writeFileSync(join(hooks, "pre-commit"), "#!/usr/bin/env bash\nexit 0\n");
+    const partial = check(env, "commit gate");
+    expect(partial?.state).toBe("warn");
+    expect(partial?.detail).toContain("pre-push");
+
+    writeFileSync(join(hooks, "pre-push"), "#!/usr/bin/env bash\nexit 0\n");
     expect(check(env, "commit gate")?.state).toBe("ok");
   });
 

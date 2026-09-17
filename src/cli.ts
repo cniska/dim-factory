@@ -288,7 +288,8 @@ function printCommitGatePlan(write: boolean): void {
 
   const stranded = checkoutDirs(checkouts);
   const plan = planCommitGate(owners, stranded);
-  console.log(`one hook for every repo: ${plan.hookPath} (${plan.state})`);
+  console.log(`one set of hooks for every repo, in ${sharedHooksDir()}:`);
+  for (const hook of plan.hooks) console.log(`  ${hook.name} (${hook.state})`);
   console.log(`  enforced for: ${owners.join(", ")}`);
   console.log(`  git core.hooksPath (global): ${plan.globalHooksPath ?? "unset"}`);
   for (const copy of plan.strandedCopies) console.log(`  replaces a per-repo copy at ${copy}`);
@@ -305,7 +306,7 @@ function printCommitGatePlan(write: boolean): void {
     return;
   }
   const done = installCommitGate(owners, stranded);
-  console.log(`\nwrote ${done.hookPath}`);
+  console.log(`\nwrote ${done.hooks.map((h) => h.name).join(", ")} to ${sharedHooksDir()}`);
   console.log(`set global core.hooksPath to ${done.globalHooksPath}`);
   for (const copy of done.strandedCopies) console.log(`removed ${copy}`);
 }

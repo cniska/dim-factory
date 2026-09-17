@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { AGENT_LABEL, agentPlistPath } from "./agent";
 import { codexConfigPath, planCodexTrust } from "./codex-trust";
-import { sharedHooksDir } from "./commit-gate";
+import { gateHooks, sharedHooksDir } from "./commit-gate";
 import { planHooks } from "./hooks";
 import { dataDir, type Env, resolveHomeDir } from "./paths";
 import { planRules } from "./rules";
@@ -233,14 +233,14 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
 
   // The gate holds a rule the conventions would otherwise only ask for, so its
   // absence is a rule silently back to being asked rather than held.
-  const gate = join(sharedHooksDir(env), "commit-msg");
+  const absent = gateHooks([]).filter((h) => !existsSync(join(sharedHooksDir(env), h.name)));
   checks.push(
-    existsSync(gate)
-      ? { name: "commit gate", state: "ok", detail: "one hook for every repo" }
+    absent.length === 0
+      ? { name: "commit gate", state: "ok", detail: "every hook in place, for every repo" }
       : {
           name: "commit gate",
           state: "warn",
-          detail: "no shared commit-msg hook; subjects are held only where a repo gates its own",
+          detail: `no shared ${absent.map((h) => h.name).join(", ")}; those rules are held only where a repo gates its own`,
           fix: "dim install-commit-gate --owner=<owner> --write",
         },
   );
