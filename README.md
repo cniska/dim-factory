@@ -50,9 +50,13 @@ bun run verify              # lint, typecheck, test
 
 `bun link` puts `dim` on PATH, which is what makes it usable from another repo — and an agent can only reach it from the repo it is working in.
 
+### Asking it something
+
 `dim sql "<select>"` runs one statement against the same read-only connection the queries use, so a question no named query covers does not mean leaving the tool. A statement that writes is refused by SQLite rather than by a rule here, which would have to be right about every spelling of a write. The named questions are grown from this: a question worth asking twice becomes one of them.
 
 Every query prints the base its numbers came from, and a query with nothing to report says so rather than printing a zero. Queries cover the last 30 days unless given `--since <n>d|YYYY-MM-DD` or `--all`; the window is printed with the numbers. A result longer than 40 rows says how many were cut and names `--rows <n>`, which widens it. Cells are separated, not padded out to the column width: an agent reads this far more often than a person does, and alignment costs it a run of spaces on every row. Readers open the database read-only.
+
+### The database
 
 The database lands in `~/.local/share/dim-factory/sessions.db`. Reading the whole corpus from scratch takes about 20 seconds.
 
@@ -64,9 +68,17 @@ A subagent is identified by its agent id and its parent together, written `<agen
 
 Claude Code deletes transcripts after 30 days unless told otherwise, so `~/.claude/settings.json` sets `"cleanupPeriodDays": 3650`. Without it the sources this points into disappear.
 
+### Checking the install
+
 `dim doctor` checks the paths that fail silently: retention unset, hooks installed but never firing, a Codex hook installed but not trusted, a launchd agent written but never loaded, a spool nothing drains, a commit gate covering no repo, a gate whose owners name no host, a checkout where the push gate can never fire, a database built by an older schema. It reads only, exits non-zero when a check fails, and every failure names its fix.
 
 Codex runs a hook only where `~/.codex/config.toml` records a `trusted_hash` for it under `[hooks.state]`, keyed `<hooks.json path>:<event>:<entry index>:<hook index>`. Trust is positional, so another tool inserting an entry ahead of dim's moves dim's hook to a key approved for a different command, and collection and `wake` stop on the Codex side with `hooks.json` still reading as correct. The check reads whether a trust is recorded at each hook's current position; the hash itself is Codex's to verify, so a missing key proves the hook will not run and a present one says only that the position was approved.
+
+### Wiring the session hooks
+
+`dim install-hooks --write` appends a `SessionStart`/`SessionEnd` hook to `~/.claude/settings.json` and `~/.codex/hooks.json`, keeping every hook already there and copying each file to `<file>.dim-backup` first. The hook is one redirect into a spool directory and always exits 0. It is worth running early: a transcript records no end marker, so until the hooks are in, a session that was abandoned cannot be told from one still open, and that gap cannot be filled in later.
+
+### Installing the rest
 
 `dim install-agent --write` writes a launchd agent that runs `dim sync` every 15 minutes, logging to `~/.local/share/dim-factory/sync.log`; load it with the `launchctl bootstrap` line the command prints. Re-run it after a toolchain change, since the plist names an absolute `bun`.
 
@@ -85,6 +97,8 @@ Adding a station is a directory under `skills/` and a name in `SKILL_NAMES`; a s
 
 The database holds every tool's sessions, so this is also how one tool reads what another did: a Claude session can recover a decision made in Codex, and the reverse. They share a record rather than a channel — neither has to be running for the other to read it.
 
+### The gates
+
 `dim install-commit-gate --owner=<host>/<account> --write` writes a `commit-msg`, a `pre-commit` and a `pre-push` hook to `~/.config/dim/hooks/` and points git's global `core.hooksPath` at it, so every repo shares a single copy and a rule fixed once is fixed everywhere.
 
 - **`commit-msg`** — holds the subject convention: Conventional Commits, a single line of at most 50 characters, ASCII, no body.
@@ -99,7 +113,11 @@ A repo that sets its own `core.hooksPath` keeps the hooks it has, because git re
 
 All three are self-contained bash that exits 0 on anything they cannot establish, because they run before every commit and every push on the machine.
 
+### Worktrees
+
 `dim install-wt --write` links [`scripts/wt`](scripts/wt) onto PATH. `wt` makes one worktree per task at `<repo>/.claude/worktrees/<branch>`, runs the repo's `scripts/worktree-setup.sh` on creation and `scripts/worktree-teardown.sh` before removal, and keeps the branch so the work can still be merged. It lives here because this is the repo that already reads its convention ([`src/worktree.ts`](src/worktree.ts)); linking rather than copying is what stops the script on PATH from drifting from the one `bun run verify` tests, and whatever was there is renamed to `.dim-backup` rather than removed. See [`docs/worktrees.md`](docs/worktrees.md).
+
+### Reaching a session at start-up
 
 `dim wake` prints the Next left by the last session that worked in this directory, and `install-hooks` wires it to `SessionStart` on both tools. That is the only channel here reaching a session without anyone deciding to ask: Claude Code adds a SessionStart hook's plain-text stdout to the session as context the model can act on, and Codex takes the same block as `hookSpecificOutput.additionalContext`, which is why `--tool=` picks the envelope.
 
@@ -115,6 +133,8 @@ It resolves `~/.claude/CLAUDE.md` (or `~/.codex/AGENTS.md`), the `CLAUDE.md` and
 
 The wake hook is the one hook here that speaks rather than records, so it is the one that can waste tokens: it runs before every session, and what it prints is paid for in every session that starts. `dim q skill handoff` measures whether it pays.
 
+### The named questions
+
 `dim q chain [id-prefix]` answers which sessions were one piece of work. A handoff is printed into one transcript and pasted into the next, so `sync` joins the two on the heading line and writes an edge per paste into `handoff_link`; where a title was reused, the writer is the nearest preceding printer in another session.
 
 Without an argument it groups the edges by title, ranking the tasks that spanned the most sessions. With one it walks the edge in both directions from that session, so it crosses a task that was renamed midway and branches where one handoff was pasted into two sessions.
@@ -128,8 +148,6 @@ Around one paste in five finds no writer, because that transcript was pruned bef
 The tool-agnostic advice for this is to skim `git log` and match it; the whole log is already a table here, so a station reads a row. A repo that was cloned rather than written reports its authors' convention, so the repo column is read first.
 
 `dim check-commits <range>` judges every authored subject in a revision range by `checkSubject`, the same function the installed hook's rules mirror, and names each commit and the rule it broke. CI runs it over what each push added: the hook is skippable with `--no-verify` and absent on a fresh clone, so a bypassed commit is only visible once it has landed. Merge subjects are git's rather than an author's and are not judged.
-
-`dim install-hooks --write` appends a `SessionStart`/`SessionEnd` hook to `~/.claude/settings.json` and `~/.codex/hooks.json`, keeping every hook already there and copying each file to `<file>.dim-backup` first. The hook is one redirect into a spool directory and always exits 0. It is worth running early: a transcript records no end marker, so until the hooks are in, a session that was abandoned cannot be told from one still open, and that gap cannot be filled in later.
 
 ## Publishing
 
