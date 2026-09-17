@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Env, resolveHomeDir } from "./paths";
+import { prePushScript } from "./push-gate";
 
 /**
  * The rule is `cniska/apps`' own, the one repo whose subjects never break it: a
@@ -112,11 +113,19 @@ exit 0
 `;
 }
 
+/** The whole gate: the installer, the plan and `dim doctor` each read this list rather than naming a hook. */
+export function gateHooks(owners: string[]): { name: string; body: string }[] {
+  return [
+    { name: "commit-msg", body: hookScript(owners) },
+    { name: "pre-commit", body: preCommitScript(owners) },
+    { name: "pre-push", body: prePushScript(owners) },
+  ];
+}
+
+export type GateHook = { name: string; path: string; state: "installed" | "missing" | "stale" };
+
 export type GatePlan = {
-  hookPath: string;
-  state: "installed" | "missing" | "stale";
-  checkHookPath: string;
-  checkState: "installed" | "missing" | "stale";
+  hooks: GateHook[];
   globalHooksPath: string | null;
   strandedCopies: string[];
 };
@@ -151,13 +160,12 @@ export function planCommitGate(
       : readFileSync(path, "utf8") === want
         ? ("installed" as const)
         : ("stale" as const);
-  const hookPath = join(dir, "commit-msg");
-  const checkHookPath = join(dir, "pre-commit");
   return {
-    hookPath,
-    state: stateOf(hookPath, hookScript(owners)),
-    checkHookPath,
-    checkState: stateOf(checkHookPath, preCommitScript(owners)),
+    hooks: gateHooks(owners).map(({ name, body }) => ({
+      name,
+      path: join(dir, name),
+      state: stateOf(join(dir, name), body),
+    })),
     globalHooksPath: gitGlobal("core.hooksPath", env),
     strandedCopies: strandedIn
       .map((r) => join(r, ".git", "hooks", "commit-msg"))
@@ -193,10 +201,7 @@ export function installCommitGate(
   if (existing && existing !== dir) throw new HooksPathTakenError(existing);
 
   mkdirSync(dir, { recursive: true });
-  for (const [name, body] of [
-    ["commit-msg", hookScript(owners)],
-    ["pre-commit", preCommitScript(owners)],
-  ] as const) {
+  for (const { name, body } of gateHooks(owners)) {
     const path = join(dir, name);
     writeFileSync(path, body);
     chmodSync(path, 0o755);

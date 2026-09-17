@@ -150,6 +150,24 @@ describe("the shared hook", () => {
     }
   });
 
+  // What the gate is made of is the part a reader cannot see from any one hook's
+  // own tests: each is written and tested in its own file, and nothing else says
+  // the installer actually puts all of them on disk.
+  test("writes every hook the gate owns, and reports each one", () => {
+    const home = mkdtempSync(join(tmpdir(), "dim-home-"));
+    try {
+      const env = { HOME: home, GIT_CONFIG_GLOBAL: join(home, "gitconfig") };
+      const plan = installCommitGate(["cniska"], [], env);
+      expect(plan.hooks.map((h) => h.name)).toEqual(["commit-msg", "pre-commit", "pre-push"]);
+      for (const hook of plan.hooks) {
+        expect(hook.state).toBe("installed");
+        expect(existsSync(join(sharedHooksDir(env), hook.name))).toBe(true);
+      }
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   test("the owner list is the only thing that changes between installs", () => {
     expect(hookScript(["cniska"])).not.toEqual(hookScript(["cniska", "other-org"]));
     expect(hookScript(["cniska", "other-org"])).toContain(" cniska other-org ");
