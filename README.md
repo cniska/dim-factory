@@ -91,6 +91,7 @@ Two portability gaps stand in the way of anyone else running it: `install-agent`
 | [`docs/loop.md`](docs/loop.md) | How a line gets cut and stays cut: what the corpus decides, what the evals decide, what is measured after |
 | [`docs/factory.md`](docs/factory.md) | The argument this repo exists to execute |
 | [`docs/landscape.md`](docs/landscape.md) | What else exists, which part of this it reaches, and what to borrow from it |
+| [`docs/build-order.md`](docs/build-order.md) | What is not built, and what each piece waits on |
 | `src/parse-claude.ts`, `src/parse-codex.ts` | One source line to rows; neither knows the database exists |
 | `src/ingest.ts` | Every upsert and the byte cursor; knows neither format |
 | `src/cli.ts` | `dim` |
