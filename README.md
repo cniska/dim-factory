@@ -2,7 +2,7 @@
 
 A software factory run by coding agents, with a human at the gates that still earn one.
 
-The stations are the engineering skills in `cniska/skills` — spec, plan, build, review, ship — each with an entry contract and an exit check, and the floor that runs them is a coding agent. What lives here is the rest of it: the record of what every session did, the questions asked of that record, and the gates that hold a rule whether or not a skill loaded.
+The stations are the `dim-` skills under [`skills/`](skills) — plan, review, and the rest as they are earned — each with an entry contract and an exit check, and the floor that runs them is a coding agent. What separates a station from a generic engineering skill is that it reads the record: prior art on the disks here, the files a later fix commit came back to, whether an earlier conclusion still holds. None of them is portable to a machine without this database, which is why they ship here. Around them is the rest of it: the record of what every session did, the questions asked of that record, and the gates that hold a rule whether or not a skill loaded.
 
 [`docs/factory.md`](docs/factory.md) is the argument. The question is not whether the line can run itself but at which gates removing the human costs more than it saves, and the answer is a dim factory rather than a dark one: autonomous between the gates, a human at the gates that matter, and each gate earning its automation on its own merit.
 
@@ -60,7 +60,7 @@ Codex runs a hook only where `~/.codex/config.toml` records a `trusted_hash` for
 
 `dim install-rules --write` writes `~/.codex/AGENTS.md` from `~/.claude/CLAUDE.md` with every `@import` expanded. Claude Code expands those imports and Codex does not — a sentinel placed behind one reached Claude and never reached Codex — so a rules file that imports delivers its import line to Codex as literal text. A relative import resolves against the target tool's own directory, so `@RTK.md` picks up the Codex copy rather than the Claude one. `dim doctor` fails when the two drift.
 
-`dim install-skill --write` links every skill under `skills/` into `~/.agents/skills` and `~/.codex/skills`. Claude and Acolyte both read the first by convention; Codex reads its own. `df-sessions` recovers what a past session said with `q search` and `q thread` instead of grepping transcripts; `df-delegate` decides whether work should leave a session for a subagent at all, and what to check when its answer comes back. They ship here rather than in the skills repo because those skills are tool-agnostic and these need `dim` installed.
+`dim install-skill --write` links every station under `skills/` into `~/.agents/skills` and `~/.codex/skills`. Claude and Acolyte both read the first by convention; Codex reads its own. `dim-plan` gathers what the record already holds — prior art, decisions taken, whether an earlier conclusion still stands — and hands the planning to a more capable model; `dim-review` runs one agent per dimension, each aimed at the files a later fix commit came back to. Adding a station is a directory under `skills/` and a name in `SKILL_NAMES`; a station retired from that list has its link removed on the next install, so a name never resolves to nothing.
 
 The database holds every tool's sessions, so this is also how one tool reads what another did: a Claude session can recover a decision made in Codex, and the reverse. They share a record rather than a channel — neither has to be running for the other to read it.
 
@@ -117,4 +117,4 @@ Two portability gaps stand in the way of anyone else running it: `install-agent`
 
 ## Related
 
-- `cniska/skills` — the stations this measures. It consumes the query CLI the way `pr` consumes `gh`; nothing here is installed by `npx skills add`.
+- `cniska/skills` — the tool-agnostic engineering skills, which run on a machine with no database and are measured here like any other work. A station is the case that needs `dim` on PATH; nothing here is installed by `npx skills add`.

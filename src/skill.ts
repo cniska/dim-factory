@@ -1,13 +1,25 @@
-import { existsSync, lstatSync, mkdirSync, readlinkSync, renameSync, symlinkSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readlinkSync,
+  renameSync,
+  symlinkSync,
+  unlinkSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { type Env, resolveHomeDir } from "./paths";
 
 /**
- * The skills that ship from this repo. Each needs `dim` on PATH, which is why it
- * lives here rather than in the tool-agnostic skills repo; the `df-` prefix
- * marks it as one of these.
+ * The stations, and the only skills that ship from here. Each needs `dim` on
+ * PATH: a station differs from a generic engineering skill by reading the
+ * record — what this machine already built, and where its work came back — so
+ * none of them is portable to a machine without the database. The `dim-` prefix
+ * marks one, and adding a station is a directory beside this file plus a name
+ * here; everything below installs from the list.
  */
-export const SKILL_NAMES = ["df-sessions", "df-delegate"] as const;
+export const SKILL_NAMES = ["dim-plan", "dim-review"] as const;
 
 export type SkillName = (typeof SKILL_NAMES)[number];
 
@@ -61,6 +73,28 @@ function isLink(path: string): boolean {
   }
 }
 
+/**
+ * Links pointing into this repo's skills directory for a station that no longer
+ * ships. Retiring a station would otherwise leave a link resolving to nothing,
+ * which reads to the tool as a skill that will not load rather than one that is
+ * gone. Only links into this repo are considered: anything else is the owner's.
+ */
+export function retiredLinks(env: Env = process.env): string[] {
+  const root = resolve(import.meta.dir, "..", "skills");
+  const current = new Set<string>(SKILL_NAMES.map((name) => skillSourceDir(name)));
+  const stale: string[] = [];
+  for (const dir of skillLinkDirs(env)) {
+    if (!existsSync(dir)) continue;
+    for (const entry of readdirSync(dir)) {
+      const link = join(dir, entry);
+      if (!isLink(link)) continue;
+      const target = readlinkSync(link);
+      if (target.startsWith(`${root}/`) && !current.has(target)) stale.push(link);
+    }
+  }
+  return stale;
+}
+
 export function installSkill(env: Env = process.env): SkillPlan[] {
   const plans = planSkill(env);
   for (const plan of plans) {
@@ -71,5 +105,8 @@ export function installSkill(env: Env = process.env): SkillPlan[] {
     if (plan.state === "occupied") renameSync(plan.link, `${plan.link}.dim-backup`);
     symlinkSync(plan.target, plan.link);
   }
+  // Removed rather than moved aside: this link was written by an earlier install
+  // from here, so there is nothing of the owner's under it to keep.
+  for (const link of retiredLinks(env)) unlinkSync(link);
   return plans;
 }
