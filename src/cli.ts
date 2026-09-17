@@ -178,7 +178,7 @@ function printHookPlan(write: boolean): void {
   const plans = planHooks();
   const missing = plans.filter((p) => !p.present);
   if (missing.length === 0) {
-    console.log("hooks: all four session hooks are already installed");
+    console.log(`hooks: all ${plans.length} session hooks are already installed`);
     return;
   }
   for (const plan of missing) {

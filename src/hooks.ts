@@ -1,5 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { ConfigError } from "./config-error";
 import { appendToJsoncArray, parseJsonc, readJsonc } from "./jsonc";
 import { claudeProjectsDir, codexDir, type Env } from "./paths";
 import { type Tool, toolSpoolDir } from "./spool";
@@ -81,6 +82,26 @@ export function planHooks(env: Env = process.env): HookPlan[] {
   return plans;
 }
 
+/**
+ * A key written twice resolves to the first copy when the file is edited and to
+ * the last when it is read, so an edit can land somewhere nothing will look. The
+ * text is read back the way the tools read it, and a command that is not in it
+ * refuses the write — otherwise each run appends again to the dead copy, the
+ * hook never fires, and the backup of the last good config is overwritten.
+ */
+function refuseIneffective(text: string, configPath: string, plans: HookPlan[]): void {
+  const config = parseJsonc<HookConfig>(text, configPath);
+  for (const plan of plans) {
+    if (hasCommand(config.hooks?.[plan.event] ?? [], plan.command)) continue;
+    throw new ConfigError(
+      "unwritable",
+      configPath,
+      `${configPath}: the ${plan.event} hook would not land where a reader looks, so nothing was written`,
+      `hooks.${plan.event}`,
+    );
+  }
+}
+
 export type InstallReport = { written: string[]; alreadyPresent: number; backups: string[] };
 
 /**
@@ -97,19 +118,25 @@ export function installHooks(env: Env = process.env): InstallReport {
     byConfig.set(plan.configPath, list);
   }
 
+  // Every config is built and checked before any is written, so a refusal on the
+  // second leaves the first alone and the message holds for both.
+  const pending: { configPath: string; text: string }[] = [];
   for (const [configPath, plans] of byConfig) {
     const missing = plans.filter((p) => !p.present);
     report.alreadyPresent += plans.length - missing.length;
     if (missing.length === 0) continue;
 
-    const present = existsSync(configPath);
-    let text = present ? readFileSync(configPath, "utf8") : "";
+    let text = existsSync(configPath) ? readFileSync(configPath, "utf8") : "";
     for (const plan of missing) {
       const entry: HookEntry = { hooks: [{ type: "command", command: plan.command }] };
-      text = appendToJsoncArray(text, ["hooks", plan.event], entry);
+      text = appendToJsoncArray(text, ["hooks", plan.event], entry, configPath);
     }
+    refuseIneffective(text, configPath, missing);
+    pending.push({ configPath, text });
+  }
 
-    parseJsonc(text, configPath); // refuse to write anything that will not parse back
+  for (const { configPath, text } of pending) {
+    const present = existsSync(configPath);
     if (present) {
       const backup = `${configPath}.dim-backup`;
       copyFileSync(configPath, backup);

@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ConfigError } from "./config-error";
 import { closeDb, openDb } from "./db";
 import { scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
 import { hookCommand, installHooks, planHooks, wakeCommand } from "./hooks";
@@ -234,6 +235,35 @@ describe("installHooks", () => {
     expect(after).toContain("// the notifier, do not remove");
     expect(after).toContain('\n                "hooks": [');
     expect(planHooks(env).every((p) => p.present)).toBe(true);
+  });
+
+  // A key written twice is edited at its first copy and read at its last, so a
+  // write that looks fine lands where nothing reads. Left alone it appends again
+  // on every run and each run's backup overwrites the last good one.
+  test("refuses to write when the hook would not land where a reader looks", () => {
+    const dir = newRoot();
+    const env = hookEnv(dir);
+    const paths = configs(env);
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    const before = '{"hooks":{"SessionStart":[]},"hooks":{"SessionStart":[]}}';
+    writeFileSync(paths.claude, before);
+
+    expect(() => installHooks(env)).toThrow(ConfigError);
+    expect(readFileSync(paths.claude, "utf8")).toBe(before);
+    expect(existsSync(`${paths.claude}.dim-backup`)).toBe(false);
+  });
+
+  // A refusal on the second config after the first was already written would
+  // leave a report nobody sees and a message that says nothing was written.
+  test("writes no config when another one would be refused", () => {
+    const dir = newRoot();
+    const env = hookEnv(dir);
+    const paths = configs(env);
+    mkdirSync(join(dir, ".codex"), { recursive: true });
+    writeFileSync(paths.codex, '{"hooks":{"SessionStart":[]},"hooks":{"SessionStart":[]}}');
+
+    expect(() => installHooks(env)).toThrow(ConfigError);
+    expect(existsSync(paths.claude)).toBe(false);
   });
 
   test("installing twice adds one hook", () => {

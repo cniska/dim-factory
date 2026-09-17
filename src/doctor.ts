@@ -1,10 +1,12 @@
 import type { Database } from "bun:sqlite";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { AGENT_LABEL, agentPlistPath } from "./agent";
 import { codexConfigPath, planCodexTrust, type TrustState } from "./codex-trust";
 import { gateHooks, installedOwners, sharedHooksDir } from "./commit-gate";
+import { ConfigError } from "./config-error";
 import { type HookPlan, planHooks } from "./hooks";
+import { readJsonc } from "./jsonc";
 import { dataDir, type Env, resolveHomeDir } from "./paths";
 import { unarmedCheckouts } from "./push-gate";
 import { isHostQualified } from "./remote-slug";
@@ -31,31 +33,34 @@ function text(db: Database, sql: string): string | null {
 }
 
 /**
- * Both tool configs are files a person hand-edits, so either can be unparseable
- * on any run. That is reported as this check failing rather than thrown, because
- * a throw here costs the reader every other check in the report.
+ * Every config read here is one a person hand-edits, so any of them can be
+ * unparseable on any run. That is reported as the check failing rather than
+ * thrown, because a throw costs the reader every other check in the report.
  */
-function unreadable(name: string, error: unknown): Health {
-  return {
-    name,
-    state: "fail",
-    detail: `tool config could not be read (${error instanceof Error ? error.message : String(error)})`,
-    fix: "repair the file named in the detail above by hand",
-  };
+function unreadable(name: string, error: ConfigError): Health {
+  return { name, state: "fail", detail: error.message, fix: `repair ${error.path} by hand` };
 }
 
-function sessionHooks(env: Env): Health {
-  let missing: HookPlan[];
+type HookRead = { read: true; missing: HookPlan[] } | { read: false; error: ConfigError };
+
+function readHooks(env: Env): HookRead {
   try {
-    missing = planHooks(env).filter((p) => !p.present);
+    return { read: true, missing: planHooks(env).filter((p) => !p.present) };
   } catch (error) {
-    return unreadable("hooks", error);
+    if (!(error instanceof ConfigError)) throw error;
+    return { read: false, error };
   }
-  if (missing.length === 0) return { name: "hooks", state: "ok", detail: "installed in both tools" };
+}
+
+function sessionHooks(hooks: HookRead): Health {
+  if (!hooks.read) return unreadable("hooks", hooks.error);
+  if (hooks.missing.length === 0) {
+    return { name: "hooks", state: "ok", detail: "installed in both tools" };
+  }
   return {
     name: "hooks",
     state: "fail",
-    detail: `${missing.length} session hooks missing (${missing.map((p) => p.event).join(", ")})`,
+    detail: `${hooks.missing.length} session hooks missing (${hooks.missing.map((p) => p.event).join(", ")})`,
     fix: "dim install-hooks --write",
   };
 }
@@ -65,13 +70,13 @@ function sessionHooks(env: Env): Health {
  * install-hooks does, and runs it only once config.toml records a trust for its
  * position. Nothing else reports the difference, so collection and `wake` stop
  * on the Codex side with the config still reading as correct.
- *
  */
 function codexTrust(env: Env): Health {
   let untrusted: TrustState[];
   try {
     untrusted = planCodexTrust(env).filter((t) => !t.recorded);
   } catch (error) {
+    if (!(error instanceof ConfigError)) throw error;
     return unreadable("codex trust", error);
   }
   if (untrusted.length === 0) {
@@ -91,6 +96,46 @@ function codexTrust(env: Env): Health {
   };
 }
 
+/** The failure this command exists for: the config looks right and every session still ends indistinguishably. */
+function endReasons(hooks: HookRead, since: string | null, judgeable: number, ended: number): Health {
+  const name = "end reasons";
+  const RUNS = "check the hook command runs: it must write to the spool and exit 0";
+  if (!hooks.read) {
+    return { name, state: "warn", detail: "not judged; the hook config could not be read" };
+  }
+  if (hooks.missing.length > 0) {
+    return { name, state: "warn", detail: "not expected yet; the hooks are not installed" };
+  }
+  if (!since) {
+    return {
+      name,
+      state: "fail",
+      detail: "the hooks are installed but have never written an event",
+      fix: RUNS,
+    };
+  }
+  if (judgeable === 0) {
+    return {
+      name,
+      state: "ok",
+      detail: "no session has both started and finished since the hooks went in",
+    };
+  }
+  if (ended / judgeable < 0.5) {
+    return {
+      name,
+      state: "fail",
+      detail: `only ${ended} of ${judgeable} sessions that ran since the hooks went in recorded an end`,
+      fix: RUNS,
+    };
+  }
+  return {
+    name,
+    state: "ok",
+    detail: `${ended} of ${judgeable} sessions since the hooks went in recorded an end`,
+  };
+}
+
 function launchdLoaded(): boolean {
   const uid = Bun.spawnSync(["id", "-u"], { stdout: "pipe" });
   const who = new TextDecoder().decode(uid.stdout).trim();
@@ -104,9 +149,10 @@ function retention(env: Env): Health {
   const path = join(resolveHomeDir(env), ".claude", "settings.json");
   let days: unknown;
   try {
-    days = (JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>).cleanupPeriodDays;
-  } catch {
-    return { name: "retention", state: "warn", detail: `cannot read ${path}` };
+    days = readJsonc<Record<string, unknown>>(path)?.cleanupPeriodDays;
+  } catch (error) {
+    if (!(error instanceof ConfigError)) throw error;
+    return unreadable("retention", error);
   }
   if (typeof days !== "number") {
     return {
@@ -183,12 +229,10 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
         : { name: "freshness", state: "ok", detail: `last read ${Math.round(age / HOUR_MS)} hours ago` },
   );
 
-  const hooks = sessionHooks(env);
-  checks.push(hooks, codexTrust(env));
+  const hooks = readHooks(env);
+  checks.push(sessionHooks(hooks), codexTrust(env));
 
-  // Installed hooks that produce nothing are the failure this command exists for:
-  // the config looks right, and every session still ends indistinguishably. The
-  // denominator is sessions that began after the first hook fired — anything
+  // The denominator is sessions that began after the first hook fired: anything
   // earlier could not have been recorded and would make this pass on nothing.
   const since = text(db, "SELECT min(ts) AS v FROM hook_event");
   const judgeable = since
@@ -207,35 +251,7 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
            AND last_seen_at < strftime('%Y-%m-%dT%H:%M:%SZ','now','-2 hours')`,
       )
     : 0;
-  checks.push(
-    hooks.state !== "ok"
-      ? { name: "end reasons", state: "warn", detail: "not expected yet; the hooks are not installed" }
-      : !since
-        ? {
-            name: "end reasons",
-            state: "fail",
-            detail: "the hooks are installed but have never written an event",
-            fix: "check the hook command runs: it must write to the spool and exit 0",
-          }
-        : judgeable === 0
-          ? {
-              name: "end reasons",
-              state: "ok",
-              detail: "no session has both started and finished since the hooks went in",
-            }
-          : ended / judgeable < 0.5
-            ? {
-                name: "end reasons",
-                state: "fail",
-                detail: `only ${ended} of ${judgeable} sessions that ran since the hooks went in recorded an end`,
-                fix: "check the hook command runs: it must write to the spool and exit 0",
-              }
-            : {
-                name: "end reasons",
-                state: "ok",
-                detail: `${ended} of ${judgeable} sessions since the hooks went in recorded an end`,
-              },
-  );
+  checks.push(endReasons(hooks, since, judgeable, ended));
 
   const pendingLinks = planSkill(env).filter((p) => p.state !== "linked");
   checks.push(
