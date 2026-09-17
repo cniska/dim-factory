@@ -6,6 +6,7 @@ import { codexConfigPath, planCodexTrust } from "./codex-trust";
 import { gateHooks, sharedHooksDir } from "./commit-gate";
 import { planHooks } from "./hooks";
 import { dataDir, type Env, resolveHomeDir } from "./paths";
+import { unarmedCheckouts } from "./push-gate";
 import { planRules } from "./rules";
 import { SCHEMA_VERSION } from "./schema";
 import { planSkill } from "./skill";
@@ -242,6 +243,27 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
           state: "warn",
           detail: `no shared ${absent.map((h) => h.name).join(", ")}; those rules are held only where a repo gates its own`,
           fix: "dim install-commit-gate --owner=<owner> --write",
+        },
+  );
+
+  // A hook that exits before it reads anything is the failure the rest of this
+  // file exists to catch: from inside the repo it is indistinguishable from a
+  // gate that approved the push.
+  const unarmed = unarmedCheckouts(
+    (db.query("SELECT DISTINCT repo FROM repo_commit ORDER BY repo").all() as { repo: string }[])
+      .map((r) => r.repo)
+      .filter((repo) => existsSync(join(repo, ".git"))),
+  );
+  checks.push(
+    unarmed.length === 0
+      ? { name: "push gate", state: "ok", detail: "every checkout names the branch the gate protects" }
+      : {
+          name: "push gate",
+          state: "warn",
+          detail: `${unarmed.length} checkouts have no origin/HEAD, so the push gate exits before reading anything there: ${unarmed
+            .map((d) => d.replace(`${resolveHomeDir(env)}/`, ""))
+            .join(", ")}`,
+          fix: "git remote set-head origin -a, in each",
         },
   );
 

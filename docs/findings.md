@@ -216,6 +216,22 @@ What that costs is visible in one rule. `~/.claude/skills/git/SKILL.md` states "
 
 The same file tells the agent to read `git log` for a repo's convention. The record already holds the answer: `hoodly-hq/hoodly` is 100% conventional at 43 characters mean, `cniska/apps` 100% at 39 with nothing over 50, `cniska/acolyte` 100% at 48 with 44% over 50. That is a row to read, not a log to infer from.
 
+## The push gate is off in every repo that was created rather than cloned
+
+Found on 2026-09-17, by tracing a fresh repo rather than reading the hook. `pre-push` learns which branch is shared from `refs/remotes/<remote>/HEAD`, and exits 0 where that ref is absent, having nothing to protect. `git clone` sets it. `git init` followed by `git remote add` and `git push -u` never does — verified end to end on a scratch repo, where the ref came back `fatal: ref refs/remotes/origin/HEAD is not a symbolic ref` after a successful first push.
+
+Three checkouts on this machine are in that state, `dim-factory` among them, so the gate written here on the day it was written was never armed in the repo that holds it. `git remote set-head origin -a` sets the ref and arms it.
+
+A hook cannot guess its way out of this. Nothing local says which branch is the shared one: the upstream of the branch being pushed is set by the first `push -u` on a topic branch too, and `init.defaultBranch` is a setting about new repos rather than a statement about this remote. So the gap is reported rather than papered over, which is what `dim doctor` is for.
+
+## There is no single convention to take
+
+Asked on 2026-09-17, from `dim q convention` over the owner's own repos. All of them are 100% Conventional Commits, and they agree on nothing else: mean subject length runs 36 to 54 characters, the share over fifty runs 0% in `cniska/apps` to 61% in `cniska/acolyte`, and the share carrying a squash merge's `(#N)` suffix runs 0% to 11%.
+
+So "follow the repo's convention" and "hold one rule everywhere" are different instructions here, not two names for the same one, and the subject gate already chose: `SUBJECT_LIMIT` is `cniska/apps`' rule, applied to every repo the owner owns, and `cniska/acolyte` breaks it in three subjects out of five. What makes that defensible is the ownership check rather than the choice of fifty — the gate is opinionated exactly where the opinion is the owner's to hold, and silent everywhere else.
+
+Whether the gate moved behavior is not yet answerable. It was installed partway through 2026-09-16, and no query here can separate the commits of that day that preceded it from those that followed.
+
 ## Git aimed away from the session's own directory fails three times as often
 
 Asked on 2026-09-17. A third of the shell calls that run git move somewhere first: of 23,309, some 6,411 open with `cd` and 1,135 redirect with `git -C`. Where the target is an absolute path the session's `cwd` can be compared against, 3,816 of those calls stayed inside it and failed at 3.2%, while 539 aimed outside it, across 79 sessions, and failed at 10%.

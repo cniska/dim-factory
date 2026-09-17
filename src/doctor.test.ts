@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { devNull, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { codexConfigPath, planCodexTrust } from "./codex-trust";
 import { closeDb, openDb } from "./db";
@@ -79,6 +80,32 @@ describe("doctor", () => {
 
     writeFileSync(join(hooks, "pre-push"), "#!/usr/bin/env bash\nexit 0\n");
     expect(check(env, "commit gate")?.state).toBe("ok");
+  });
+
+  // The gate exits silently where this ref is missing, so the whole point of
+  // reporting it is that nothing else can.
+  test("names a checkout the push gate can never fire in", () => {
+    const env = seeded();
+    expect(check(env, "push gate")?.state).toBe("ok");
+
+    const repo = join(newRoot(), "started");
+    const isolated = { ...process.env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_SYSTEM: devNull };
+    execFileSync("git", ["init", "-q", "-b", "main", repo], { env: isolated });
+    execFileSync("git", ["-C", repo, "remote", "add", "origin", "git@github.com:cniska/started.git"], {
+      env: isolated,
+    });
+
+    const db = openDb(dbPath(env));
+    db.run(
+      "INSERT INTO repo_commit (sha, repo, label, ts, author, subject) VALUES ('s1', ?, 'cniska/started', '2026-01-01T00:00:00Z', 'a', 'feat: x')",
+      [repo],
+    );
+    closeDb(db);
+
+    const warned = check(env, "push gate");
+    expect(warned?.state).toBe("warn");
+    expect(warned?.detail).toContain("started");
+    expect(warned?.fix).toContain("set-head");
   });
 
   test("fails when hooks are installed but have never fired", () => {

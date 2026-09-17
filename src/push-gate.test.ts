@@ -1,14 +1,29 @@
 import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { devNull, tmpdir } from "node:os";
 import { join } from "node:path";
-import { prePushScript } from "./push-gate";
+import { prePushScript, unarmedCheckouts } from "./push-gate";
 
 type Repo = { root: string; work: string };
 
+/**
+ * The reader's own git config is the thing under test on this machine: a global
+ * `core.hooksPath` points at the installed gate, so a scratch repo that sets no
+ * local one runs the real hook instead of the one the test wrote.
+ */
+const ISOLATED = {
+  ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_"))),
+  GIT_CONFIG_GLOBAL: devNull,
+  GIT_CONFIG_SYSTEM: devNull,
+} as NodeJS.ProcessEnv;
+
+function bareGit(...args: string[]): void {
+  execFileSync("git", args, { env: ISOLATED, stdio: "pipe" });
+}
+
 function git(dir: string, ...args: string[]): string {
-  return execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: "pipe" });
+  return execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: "pipe", env: ISOLATED });
 }
 
 /**
@@ -20,10 +35,10 @@ function clonedRepo(owner: string): Repo {
   const root = mkdtempSync(join(tmpdir(), "dim-push-"));
   const bare = join(root, owner, "thing.git");
   mkdirSync(join(root, owner), { recursive: true });
-  execFileSync("git", ["init", "-q", "--bare", "-b", "main", bare]);
+  bareGit("init", "-q", "--bare", "-b", "main", bare);
 
   const work = join(root, "work");
-  execFileSync("git", ["clone", "-q", bare, work]);
+  bareGit("clone", "-q", bare, work);
   git(work, "config", "user.email", "t@example.com");
   git(work, "config", "user.name", "T");
   commit(work, "first");
@@ -133,7 +148,7 @@ describe("the push gate", () => {
     const { root, work } = clonedRepo("cniska");
     const other = join(root, "other");
     try {
-      execFileSync("git", ["clone", "-q", join(root, "cniska", "thing.git"), other]);
+      bareGit("clone", "-q", join(root, "cniska", "thing.git"), other);
       git(other, "config", "user.email", "t@example.com");
       git(other, "config", "user.name", "T");
       commit(other, "from the other checkout");
@@ -143,6 +158,33 @@ describe("the push gate", () => {
       const forced = push(work, "--force", "origin", "main");
       expect(forced.ok).toBe(false);
       expect(forced.err).toContain("is not in this checkout");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // The ref is set by `git clone` and by nothing else, so a repo the owner
+  // started rather than cloned carries the gate and is never armed by it. That
+  // is silent from inside the repo, which is what makes it worth reporting.
+  test("names the checkouts whose remote has no HEAD, and leaves the armed ones out", () => {
+    const { root, work } = clonedRepo("cniska");
+    const started = join(root, "started");
+    try {
+      const ownBare = join(root, "cniska", "started.git");
+      bareGit("init", "-q", "--bare", "-b", "main", ownBare);
+      bareGit("init", "-q", "-b", "main", started);
+      git(started, "config", "user.email", "t@example.com");
+      git(started, "config", "user.name", "T");
+      git(started, "remote", "add", "origin", ownBare);
+      commit(started, "first");
+      git(started, "push", "-q", "-u", "origin", "main");
+
+      // No remote at all: the whole gate is off there by design, so reporting it
+      // would be noise rather than a gap.
+      const local = join(root, "local");
+      bareGit("init", "-q", "-b", "main", local);
+
+      expect(unarmedCheckouts([work, started, local])).toEqual([started]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

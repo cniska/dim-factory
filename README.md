@@ -8,6 +8,8 @@ The stations are the `dim-` skills under [`skills/`](skills) — plan, review, a
 
 Merit means evidence, so the factory measures itself. [`docs/goals.md`](docs/goals.md) states what it is measured against.
 
+The factory is also what builds the factory. Every station here is run on this repo: a feature arrives through `dim-feat`, a defect through `dim-fix`, each slice is checked by an agent before it is committed, and each commit passes the same `commit-msg`, `pre-commit` and `pre-push` hooks every other repo on this machine gets. That is not a flourish — it is the only arm the design can run on itself, and it has already paid twice. The push gate was shipped with a hole that let through the one force push it existed to refuse, caught by the checking agent the build station mandates; and the gate was then found to be unarmed in this repo, because a ref only `git clone` writes was missing here. Both are written down in [`docs/findings.md`](docs/findings.md), because a factory that cannot find its own defects has no standing to claim it finds anyone else's.
+
 ## What it does
 
 - **Collects.** Claude Code and Codex both record every session to disk. An incremental ingester reads both into one SQLite database — deterministic parsing and inserts, no model calls anywhere in the collection path.
