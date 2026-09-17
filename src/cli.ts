@@ -3,6 +3,7 @@
 // No model call happens anywhere below this line.
 
 import { AGENT_LABEL, installAgent, planAgent } from "./agent";
+import { checkRange } from "./check-commits";
 import { checkoutDirs, installCommitGate, ownerOf, planCommitGate } from "./commit-gate";
 import { closeDb, openDb } from "./db";
 import { diagnose } from "./doctor";
@@ -36,6 +37,9 @@ const USAGE = `usage: dim <command>
   install-commit-gate
                   show which checkouts would get the commit-subject hook
                   (--write installs it, skipping repos that gate their own)
+  check-commits <range>
+                  judge every authored subject in a revision range by the same
+                  rules the commit gate holds, and name each one that breaks
   q <name> [arg]  ask the database a named question (q list names them; --json)
                   covers the last ${DEFAULT_WINDOW}; --since <n>d|YYYY-MM-DD or --all to widen
   label <id> <correction|clarification|not_correction> [--rule "..."]
@@ -261,6 +265,20 @@ function printCommitGatePlan(write: boolean): void {
 }
 
 /**
+ * The backstop for the commit gate: a hook is skippable with `--no-verify` and
+ * absent on a fresh clone, so CI reads what actually landed.
+ */
+function runCheckCommits(range: string | undefined): void {
+  if (!range) throw new Error("check-commits needs a revision range, e.g. main..HEAD");
+  const offenses = checkRange(range);
+  for (const o of offenses) {
+    console.error(`${o.sha.slice(0, 8)} ${o.violation}: ${o.subject}`);
+  }
+  if (offenses.length > 0) process.exit(1);
+  console.log(`every authored subject in ${range} holds`);
+}
+
+/**
  * Read-only, so a broken collection path can be diagnosed without writing to a
  * database that may be the thing at fault.
  */
@@ -382,6 +400,9 @@ try {
       break;
     case "install-commit-gate":
       printCommitGatePlan(process.argv.includes("--write"));
+      break;
+    case "check-commits":
+      runCheckCommits(process.argv[3]);
       break;
     default:
       console.log(USAGE);

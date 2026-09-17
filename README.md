@@ -27,6 +27,7 @@ bun run dim install-hooks   # show the session hooks; --write applies them
 bun run dim install-rules   # flatten the conventions into Codex's rules file
 bun run dim install-skill   # show where the agent skills link; --write links them
 bun run dim install-commit-gate --owner=<owner>  # one commit-subject gate for every repo; --write installs
+bun run dim check-commits <range>  # judge a revision range by the same rules the gate holds
 bun run dim q list          # the named questions; `q <name>` asks one, --json for the raw rows
 bun run verify              # lint, typecheck, test
 ```
@@ -50,6 +51,8 @@ Claude Code deletes transcripts after 30 days unless told otherwise, so `~/.clau
 The database holds every tool's sessions, so this is also how one tool reads what another did: a Claude session can recover a decision made in Codex, and the reverse. They share a record rather than a channel — neither has to be running for the other to read it.
 
 `dim install-commit-gate --owner=<owner> --write` writes one `commit-msg` hook to `~/.config/dim/hooks/` and points git's global `core.hooksPath` at it, so every repo shares a single copy and a rule fixed once is fixed everywhere. A repo that sets its own `core.hooksPath` keeps the hooks it has, because git resolves that setting locally before globally. Ownership is checked when the hook runs rather than when it is installed: a clone of someone else's project keeps its own conventions, and a repo cloned later is covered without reinstalling. The hook holds the convention in `~/.claude/CLAUDE.md` — Conventional Commits, a single-line subject of at most 50 characters, ASCII, no body — and is self-contained bash that exits 0 on anything it cannot read, because it runs before every commit on the machine.
+
+`dim check-commits <range>` judges every authored subject in a revision range by `checkSubject`, the same function the installed hook's rules mirror, and names each commit and the rule it broke. CI runs it over what each push added: the hook is skippable with `--no-verify` and absent on a fresh clone, so a bypassed commit is only visible once it has landed. Merge subjects are git's rather than an author's and are not judged.
 
 `dim install-hooks --write` appends a `SessionStart`/`SessionEnd` hook to `~/.claude/settings.json` and `~/.codex/hooks.json`, keeping every hook already there and copying each file to `<file>.dim-backup` first. The hook is one redirect into a spool directory and always exits 0. It is worth running early: a transcript records no end marker, so until the hooks are in, a session that was abandoned cannot be told from one still open, and that gap cannot be filled in later.
 
