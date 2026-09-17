@@ -24,7 +24,7 @@ What makes this a station is that the record aims it. This machine knows which f
 
 A slice is a vertical cut: it changes behavior, it is checked on its own, and it is committed on its own. Work through them one at a time, running the repo's task at the end of each, and commit what passes before starting the next. A branch of unverified slices is one slice with a long diff.
 
-Commit in the same order: task passes, then commit, then the next slice.
+Commit in the same order every time: the task passes, the slice is simplified, the task passes again, the checker reads what will land, then the commit, then the next slice.
 
 **The subject follows the repo's own convention, and `dim q convention <repo>` is where that is read rather than inferred.** It gives the share of subjects that are Conventional Commits, their mean length, and how much of the history arrived through a branch — the questions the tool-agnostic advice answers by skimming `git log`, over the whole log instead of a sample. Where the repo is not in the record, read the log.
 
@@ -40,9 +40,11 @@ Read the slice's own diff and nothing else. Scope is the cut: a file the slice d
 
 What earns an edit is a reader's cost — a name that has to be held in the head, a nesting level that carries no case, a block written twice, an abstraction with one caller. What does not is taste: shorter is not simpler, and a line that reads plainly stays.
 
-**Behavior is preserved exactly, and the test for that is mechanical: the repo's task passes again with no test file touched.** A test edited to accommodate a simplification means the behavior moved, which makes it a different change and not this one. Run the task after this pass, before the checker, or the checker judges code that is about to change.
+**Behavior is preserved exactly, and the test for that is mechanical: the repo's task passes again, and this pass's own diff touches no test file.** A test edited to accommodate a simplification means the behavior moved, which makes it a different change and not this one. The comparison is this pass's diff rather than the slice's, because a `dim-fix` slice carries the failing test that proved the defect and that edit is the point of it. Run the task after this pass, before the checker, or the checker judges code that is about to change.
 
-**Run the pass again only if the last one changed something.** One simplification exposes another — a wrapper inlined reveals the two blocks it was hiding — and a pass that edits nothing has found the fixpoint, which is the expected result on a slice that was already plain. Judging for yourself whether anything remains is not the test; asked that, there is always something. What stops it circling is that a pass may not undo an edit an earlier pass made to this slice, since inlining what was just extracted terminates nothing. There is no round limit, because a number picked here is a constant no test can prove.
+**An edit lands only by lowering one of the costs named above, and the pass names which.** A pass that can name none is the fixpoint, and that is the expected result on a slice that was already plain. This is what makes the loop finite: the costs are a list, each edit spends one off it, and a rename that trades one name for another lowers nothing and so is not an edit this pass may make. Judging instead whether anything *could* still be improved is not the test; asked that, there is always something.
+
+**Run the pass again only if the last one changed something**, since one simplification exposes another — a wrapper inlined reveals the two blocks it was hiding. There is no round limit, because a number picked here is a constant no test can prove.
 
 ## Check the slice before the next one
 

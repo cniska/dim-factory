@@ -34,7 +34,7 @@ The test names the behavior in plain terms, and pins wire values as literals rat
 
 ## 3. Build the fix
 
-Hand off to [`dim-build`](../dim-build/SKILL.md) and follow it: the repo's own task at the end of each slice, one checking agent on the slice's diff, then the commit. A fix is usually one slice; where it is more, it is still one slice at a time.
+Hand off to [`dim-build`](../dim-build/SKILL.md) and follow it: the repo's own task at the end of each slice, the simplification pass over that slice, the task again, one checking agent on the slice's diff, then the commit. The test that proved the defect is part of the slice and stays; the simplification pass is the one step that may not touch a test file. A fix is usually one slice; where it is more, it is still one slice at a time.
 
 Fix the cause. Where the cause is out of reach, stop and say what the real options are rather than patching the patch — a band-aid is how the next fix commit to this file gets written.
 
