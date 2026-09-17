@@ -23,6 +23,8 @@ What makes this a station is that the record aims it. This machine knows which f
 
 A slice is a vertical cut: it changes behavior, it is checked on its own, and it is committed on its own. Work through them one at a time, running the repo's task at the end of each, and commit what passes before starting the next. A branch of unverified slices is one slice with a long diff.
 
+Commit in the same order: task passes, then commit, then the next slice. The subject follows Conventional Commits — one line, under 50 characters, ASCII, naming what changed and nothing about why or how the work went. `dim install-commit-gate` holds that rule as a `commit-msg` hook for every repo on the machine, so a subject that breaks it is refused at commit time rather than found later; `dim check-commits <range>` judges what already landed. `dim q slices` then reads the record back and says which commits had a verified run in front of them.
+
 Where a slice turns out to be blocked, finish every other slice in full and say plainly what was left and why. Scaling the work down is the owner's call.
 
 ## Exit check
