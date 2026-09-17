@@ -268,3 +268,22 @@ The owner is now the whole of the URL before the repository: `github.com/<accoun
 What the machine was actually exposed to, measured across the checkouts the corpus names: of 21 with an origin, 15 armed the gate, and 0 armed it that should not have. Every remote on this disk is on one host, so the defect changed nothing already here. That is the whole of what the number carries — it describes the clones that exist, not the next one, and one is enough.
 
 What the host match cannot guard is a branch inside a repository that is genuinely the owner's. Checking out a fork's pull request puts a contributor's manifest in the tree, and the next commit runs it. That is inherent to running the repository's own check from a commit hook, and it is stated rather than closed.
+
+## The push gate read no shared branch when the push named a URL
+
+Found and fixed on 2026-09-17. Git's `pre-push` contract passes the remote's name as the first argument when the push names a remote, and the remote's *URL* when it does not. The gate read the branch it protects from `refs/remotes/<first argument>/HEAD`, which resolves for a name and never for a URL. The ownership check reads the second argument, which is the URL either way, so a push by URL passed ownership and then exited on an empty branch name.
+
+The same rewrite, in a repo the owner owns, with the gate installed and armed:
+
+```
+=== force push via remote NAME ===
+pre-push: this rewrites refs/heads/main on origin.
+=== force push via URL ===
+ + e3de6f9...d6365ff main -> main (forced update)
+```
+
+That is the push the gate exists to refuse, allowed by spelling it differently. The hook now maps the URL back to the remote configured for it before reading the ref.
+
+Mapping it back is not a string compare, because one remote has many spellings. A first attempt compared the URL git handed the hook against `remote.<name>.url` byte for byte, and four ordinary spellings of the same remote still went through — a trailing slash, a `.` segment, a relative path, and a `file://` URL for a configured local path — while `insteadOf` broke it outright, since git hands the hook the rewritten URL and the config holds the raw one. Both sides are now reduced to one spelling first, and each remote is resolved with `git remote get-url --push`, which is what sees `insteadOf` and a separate `pushurl`.
+
+What still passes is a URL that resolves to no configured remote. That is not a hole: the checkout has no remote-tracking ref there, so there is no shared branch to compare against, and a hook may only refuse what it has read and understood.
