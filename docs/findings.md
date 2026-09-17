@@ -166,6 +166,36 @@ The words that mark narration are the same words that describe final state, so p
 
 What the class needs is a reader, which is why a judgement check is an agent with a fixed brief rather than a pattern. The mechanical half of the same convention — a banner comment, a comment longer than two lines — is still gateable, because those are shapes rather than meanings.
 
+## A checker catches what a word list cannot
+
+Asked on 2026-09-17, as a planted-defect test of the check step both stations carry. Three comment defects were written into one slice and the checking agent was told nothing about them: a paragraph narrating the change ("previously", "Now", "which is better"), and two comments restating the line below them. It found all three, quoted each, and named the rule each broke. It also found a fourth the author had written and forgotten.
+
+More usefully it found a defect nobody planted. The trace writer opened the database with a bare connection, which does not run `SCHEMA_SQL`, so on any database written before that table existed every insert raised `no such table` and the surrounding catch dropped it. Confirmed by running the command and reading back zero rows: the feature was dead and silent. A word list finds none of this, and neither does a test that was never written.
+
+What it cost: one agent, 12 tool calls, about 90 seconds, against a slice of five files.
+
+## The record already says which queries are used
+
+Asked on 2026-09-17. Every `dim q` an agent runs is a shell call in a transcript, so usage needs no instrumentation: `search` 30 runs, `thread` 14, `prior-art` 9, `skills` 8, `resume` 8, down to `chain` at 4. That is what retired two shipped skills on the same day — `df-delegate` had never loaded once.
+
+What the transcripts cannot hold is which branch inside a command answered, because `q search` falling back from cosine to the keyword index produces the same shape of rows either way, and any command run from a terminal belongs to no session at all. That gap is what `command_trace` exists for, and it is the whole of what it adds.
+
+## `prior-art` matches a path, not a meaning
+
+Asked on 2026-09-17. `dim q prior-art "lexer"` returns nothing across all 22 indexed repos, while `acolyte/src/log-parser.ts` sits on disk and does the job. `prior-art` reads `repo_file`, so it answers whether a file's **path** looks like the fragment — which worked directly for `workspace-contract` — and is blind to a concept whose file is named for its domain instead.
+
+Nothing here indexes code by meaning. `q search` is semantic but covers only the text a person distilled: handoff Nexts, commit subjects, labeled corrections. So "have we written one of these before" is answerable when the concept names its own file and unanswerable otherwise.
+
+## What held in one session, and what did not
+
+Observed across a single long session on 2026-09-17, so this is an anecdote about one agent and not a corpus measurement; it is recorded because it points the same way as every arm above.
+
+Instructions did not hold. The comment convention was in force the whole time, in `~/.claude/CLAUDE.md` and then in this repo's own `AGENTS.md`, and the same agent broke it three times and was corrected by hand each time. The station's own instruction to check a slice before committing it was skipped on two of the slices that followed it.
+
+Gates held every time. The `commit-msg` hook refused two subjects at 52 and 53 characters. The `pre-commit` hook refused its first real commit and was right to: the check passed standalone and failed inside the hook, because git exports `GIT_DIR` and `GIT_INDEX_FILE` and the worktree suite inherited the committing repo's index.
+
+The asymmetry is not about effort or attention. A gate does not require anything to have been read.
+
 ## What no query here can answer
 
 Everything above except the fix-commit join measures process — what was said, loaded, called, stopped. Process cannot say whether the code was right.
