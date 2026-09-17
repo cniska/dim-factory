@@ -56,7 +56,7 @@ Step 6 is where the loop is usually drawn wrong. It closes on **delivery**, not 
 
 ## 5. Where to point it first
 
-Reach before body size. 82% of file edits carry no skill attribution at all, so a rule in `AGENTS.md` or `CLAUDE.md` reaches every edit while the same rule in `build/SKILL.md` reaches 3.8% of them ([`findings.md`](findings.md), "The stations run a fifth of the work").
+Reach before body size. Most file edits carry no skill attribution at all, so a rule in `AGENTS.md` or `CLAUDE.md` reaches every edit while the same rule in `build/SKILL.md` reaches a few percent of them ([`findings.md`](findings.md), "The stations run a fifth of the work"). The gap has widened since that was measured, never narrowed.
 
 That inverts the obvious order. The heaviest skill bodies are not the best first target; the guidance files are, because a line there is paid on every session and a line in a rarely-loaded skill is nearly free. The skills worth questioning are the ones the corpus shows actually loading — `handoff`, `review`, `git`, `spec` lead `q skills` — and the rest can stay long without costing anything.
 
