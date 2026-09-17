@@ -33,7 +33,7 @@ function repoWithHook(origin: string | null): { dir: string; hooks: string } {
   const hooks = join(dir, "hooks");
   mkdirSync(hooks, { recursive: true });
   const path = join(hooks, "commit-msg");
-  writeFileSync(path, hookScript(["cniska", "hoodly-hq"]));
+  writeFileSync(path, hookScript(["cniska", "other-org"]));
   execFileSync("chmod", ["755", path]);
 
   execFileSync("git", ["init", "-q", dir]);
@@ -144,7 +144,7 @@ describe("the shared hook", () => {
   });
 
   test("the owner list is the only thing that changes between installs", () => {
-    expect(hookScript(["cniska"])).not.toEqual(hookScript(["cniska", "hoodly-hq"]));
-    expect(hookScript(["cniska", "hoodly-hq"])).toContain(" cniska hoodly-hq ");
+    expect(hookScript(["cniska"])).not.toEqual(hookScript(["cniska", "other-org"]));
+    expect(hookScript(["cniska", "other-org"])).toContain(" cniska other-org ");
   });
 });
