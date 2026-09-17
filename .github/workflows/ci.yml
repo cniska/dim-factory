@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # A superseded pull request run is worth cancelling; a push to main is the run
+  # that says whether main is green, so it finishes.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # mise.toml is the single toolchain pin, so CI runs the bun the owner runs.
+      - uses: jdx/mise-action@v2
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run verify
+
+  commits:
+    name: Commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: jdx/mise-action@v2
+
+      - run: bun install --frozen-lockfile
+
+      # A branch's first push reports an all-zero base, which names no commit. Falling
+      # back to the head's parent judges the one commit that certainly arrived, rather
+      # than reporting a clean run over an empty range.
+      - name: Resolve the pushed range
+        id: range
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          base="$BASE_SHA"
+          git cat-file -e "$base^{commit}" 2>/dev/null || base="$HEAD_SHA^"
+          echo "range=$base..$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - run: bun run dim check-commits "${{ steps.range.outputs.range }}"
