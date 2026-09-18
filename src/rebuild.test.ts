@@ -211,10 +211,10 @@ describe("rebuilding a database an older schema wrote", () => {
     db.close();
   });
 
-  test("a factory job keeps the statement the queue stated it in", () => {
+  test("a factory job keeps the description the queue gave its item", () => {
     const { db, env } = scratch();
     db.run(
-      `INSERT INTO factory_job (id, run_id, queue_id, item_id, title, statement, status, claimed_at, updated_at)
+      `INSERT INTO factory_job (id, run_id, queue_id, item_id, title, description, status, claimed_at, updated_at)
        VALUES ('job-1', 'run-1', 'build-order', 'item-1', 'Survive a rebuild',
                'No surface can tell a reader what a job is about.', 'running',
                '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
@@ -222,8 +222,8 @@ describe("rebuilding a database an older schema wrote", () => {
 
     rebuild(db, env);
 
-    expect(db.query("SELECT id, statement FROM factory_job").all()).toEqual([
-      { id: "job-1", statement: "No surface can tell a reader what a job is about." },
+    expect(db.query("SELECT id, description FROM factory_job").all()).toEqual([
+      { id: "job-1", description: "No surface can tell a reader what a job is about." },
     ]);
     db.close();
   });

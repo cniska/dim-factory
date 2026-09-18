@@ -22,7 +22,7 @@ export type Job = {
   queueId: string;
   itemId: string;
   title: string;
-  statement?: string;
+  description?: string;
   agentId?: string;
   sessionId?: string;
   worktree?: string;
@@ -88,7 +88,7 @@ export function createJob(db: Database, job: Job, at = now()): void {
   db.transaction(() => {
     db.run(
       `INSERT INTO factory_job
-       (id, run_id, queue_id, item_id, title, statement, agent_id, session_id, worktree, branch, station, status, claimed_at, updated_at)
+       (id, run_id, queue_id, item_id, title, description, agent_id, session_id, worktree, branch, station, status, claimed_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'claimed', ?, ?)`,
       [
         job.id,
@@ -96,7 +96,7 @@ export function createJob(db: Database, job: Job, at = now()): void {
         job.queueId,
         job.itemId,
         job.title,
-        job.statement ?? null,
+        job.description ?? null,
         job.agentId ?? null,
         job.sessionId ?? null,
         job.worktree ?? null,
