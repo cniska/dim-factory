@@ -15,11 +15,12 @@ The client uses semantic HTML, CSS variables, a dark responsive layout, lightwei
 The page answers these questions in order:
 
 - **What is happening?** Active jobs, their stations, worktrees and latest events.
+- **Who is operating it?** Clocked-in operators, their harnesses and whether their presence is current or stale.
 - **What needs attention?** Fences, blockers, failed setup or teardown, stale workers and repeated failures.
 - **What happens next?** Eligible queue work, due schedules and jobs waiting for serialized landing.
 - **What just finished?** Recent terminal outcomes and the evidence attached to them.
 
-The overview is a snapshot assembled from the queue file and factory job, lifecycle event, schedule and worker-environment records. Queue eligibility is shown only when `DIM_QUEUE_FILE` points to a valid queue file; absent or empty queue data is stated explicitly. Detailed read-only queries remain the path for investigation; the wall does not reproduce their full reports.
+The overview is a snapshot assembled from the queue file and factory job, lifecycle event, schedule, operator-presence and worker-environment records. Queue eligibility is shown only when `DIM_QUEUE_FILE` points to a valid queue file; absent or empty queue data is stated explicitly. Detailed read-only queries remain the path for investigation; the wall does not reproduce their full reports.
 
 ## Visual language
 

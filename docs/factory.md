@@ -43,6 +43,18 @@ The workspace slice currently prints setup and teardown reports from `dim wt`; a
 
 The report lifecycle is a durable sequence from claim through running to completion or a stopped outcome, with evidence recorded as the job progresses. A terminal status cannot transition to another status, and each lifecycle event, its aggregate projection and its paired commit, check or finding evidence are written atomically. `dim q factory [job-id-prefix]` reads one unified current-status row per matching job with selected evidence; `dim q job <job-id>` remains the detailed event-and-evidence view, including every changed file and updated document. These operational tables survive `dim rebuild`, deliberately like `hook_event`, `command_trace` and `finding`: no transcript or file source can recreate a job's claims and judgements after the fact.
 
+## Operator presence
+
+The planned driver boundary is harness-agnostic. Codex, Claude Code, Claude Desktop or another local harness may operate the same factory when it uses `dim` as the record and coordination boundary. The active harness is the operator for that factory run.
+
+- **Clock-in.** An operator explicitly clocks in through `dim`, recording the harness, operator identity and session identity before it starts taking work.
+- **Clock-out.** The operator explicitly clocks out through `dim` when it stops operating the factory. An unclosed presence remains visible as stale rather than being treated as a clean departure.
+- **Shared record.** Operator presence, job claims and lifecycle evidence live in the same local database; a harness does not keep a private presence ledger.
+- **Concurrency.** Multiple clocked-in operators may observe the same factory. Atomic claims, leases or heartbeats, and serialized queue transitions are required before they may safely execute the same queue concurrently.
+- **Wall.** The read-only wall shows active operators alongside jobs, so the owner can see both what is moving and which harness is operating it. The wall does not provide clock-in, clock-out or job controls.
+
+This is planned, not a current guarantee of multi-driver execution. The current driver still owns scheduling, observation and integration, and the database does not yet provide the cross-driver lease and claim semantics needed to make duplicate execution impossible.
+
 The self-sufficient job contract is live as `runFactoryJob`: it claims one supplied item, marks it running, passes the item and base revision to a builder, and records the builder's terminal outcome and evidence through the existing factory tables. A builder assigns the job's worktree once, may record bounded delegation through `context.delegate`, and stops through `context.stop` or by returning one terminal outcome. Non-terminal lifecycle events and normalized evidence are accepted only while the job is running; a completed job must have a worktree, and no lifecycle or evidence record can be added after a terminal status. A setup or builder exception records `failed` before the exception is returned to the caller. The driver still supplies the worktree and remains responsible for scheduling, observing and integrating the job; queue selection, serialized landing and queue-state enforcement remain outside this slice.
 
 ## Worker environments
