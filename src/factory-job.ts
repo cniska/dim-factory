@@ -46,7 +46,14 @@ export type JobEvent = {
 };
 
 const now = (): string => new Date().toISOString();
-const terminalStatuses = new Set<JobStatus>(["completed", "blocked", "fenced", "failed", "abandoned"]);
+export const TERMINAL_JOB_STATUSES: readonly JobStatus[] = [
+  "completed",
+  "blocked",
+  "fenced",
+  "failed",
+  "abandoned",
+];
+const terminalStatuses = new Set<JobStatus>(TERMINAL_JOB_STATUSES);
 
 export function isTerminalJobStatus(status: JobStatus): boolean {
   return terminalStatuses.has(status);

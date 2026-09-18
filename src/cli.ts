@@ -16,6 +16,7 @@ import { serveWall } from "./factory-wall";
 import { type Finding, FindingError, findingFrom, recordFinding } from "./finding";
 import { committerName } from "./git-identity";
 import { installHooks, planHooks } from "./hooks";
+import { JOB_USAGE, JobCommandError, runJobCommand } from "./job-command";
 import { withLock } from "./lock";
 import { dbPath, resolveHomeDir } from "./paths";
 import { findQuery, QUERIES, type QueryResult } from "./queries";
@@ -81,6 +82,10 @@ const USAGE = `usage: dim <command>
           --summary "..." [--file <path>] [--why "..."]
                   record what a checking agent raised on a slice and how it was
                   answered; a refusal states why, which is what ends a finding
+  job claim|start|stop <job-id> ...
+                  record a factory job as it is taken, started and stopped, so
+                  the wall shows the work while it is happening (dim job for
+                  the flags each subcommand takes)
   queue ready <file> [--limit <n>]
                   print planned items whose dependencies are completed
   queue transition <file> <item> <status> [--reason <text>] [--at <iso>]
@@ -774,6 +779,16 @@ try {
     case "queue":
       console.log(await runQueueCommand(process.argv.slice(3)));
       break;
+    case "job":
+      {
+        const db = openDb(dbPath());
+        try {
+          console.log(runJobCommand(db, process.argv.slice(3)));
+        } finally {
+          closeDb(db);
+        }
+      }
+      break;
     case "embed":
       await runEmbed();
       break;
@@ -822,6 +837,13 @@ try {
   // wt speaks as wt: its messages are pinned by scripts/wt.test.sh.
   if (error instanceof WtError) {
     warn(`wt: ${error.message}`);
+    process.exit(1);
+  }
+  // A caller that got the line wrong is shown the line, which a database error
+  // reaching the same exit would only bury.
+  if (error instanceof JobCommandError) {
+    warn(`dim: ${error.message}`);
+    warn(JOB_USAGE);
     process.exit(1);
   }
   warn(`dim: ${error instanceof Error ? error.message : String(error)}`);
