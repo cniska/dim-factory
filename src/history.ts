@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { readChunk } from "./chunk";
 import { claudeProjectsDir, codexDir, type Env } from "./paths";
+import type { Tool } from "./tools";
 
 export type HistoryReport = { read: number; orphans: number };
 
@@ -38,7 +39,7 @@ export function ingestHistory(db: Database, env: Env = process.env): HistoryRepo
 
   const load = (
     path: string,
-    tool: "claude" | "codex",
+    tool: Tool,
     pick: (line: string) => { sessionId?: string; ts?: number; text?: string; project?: string },
   ): void => {
     if (!existsSync(path)) return;
