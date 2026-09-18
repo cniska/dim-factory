@@ -2,7 +2,7 @@
 
 A software factory run by coding agents, with a human at the gates that still earn one.
 
-The stations are the `dim-` skills under [`skills/`](skills), each with an entry contract and an exit check, and the floor that runs them is a coding agent. `dim-factory` is the conveyor that feeds them, reading whatever queue the repo it runs in keeps. What separates any of them from a generic engineering skill is that it reads the record: prior art on the disks here, the files a later fix commit came back to, whether an earlier conclusion still holds. None is portable to a machine without this database, which is why they ship here. Around them is the rest of it: the record of what every session did, the questions asked of that record, and the gates that hold a rule whether or not a skill loaded.
+The stations are the `dim-` skills under [`skills/`](skills), each with an entry contract and an exit check, and the floor that runs them is a coding agent. `dim-factory` starts the work, reading whatever queue the repo it runs in keeps and opening a job on the station that fits. What separates any of them from a generic engineering skill is that it reads the record: prior art on the disks here, the files a later fix commit came back to, whether an earlier conclusion still holds. None is portable to a machine without this database, which is why they ship here. Around them is the rest of it: the record of what every session did, the questions asked of that record, and the gates that hold a rule whether or not a skill loaded.
 
 [`docs/factory.md`](docs/factory.md) is the argument. The question is not whether the line can run itself but at which gates removing the human costs more than it saves, and the answer is a dim factory rather than a dark one: autonomous between the gates, a human at the gates that matter, and each gate earning its automation on its own merit.
 
@@ -95,7 +95,7 @@ Two stations are front doors and the rest are invoked:
 - **`dim-build`** — the slice loop both front doors hand to: the repo's own check, a simplification pass over the slice until one changes nothing, a checking agent on the diff, an answer to each finding it raised with the answering diff read in turn, then the commit.
 - **`dim-review`** — stands on its own, running one agent per dimension against work you did not write. It is the one station the record shows used far more often without a build than with one.
 
-`dim-factory` sits above all of them and is handed no subject. It reads the queue the repo it runs in keeps — a file named as its argument, a tracker the repo's rules file declares, or what it finds and names — takes one unblocked item, and routes it to the front door that fits. What it will not do is decide the calls the queue reserves for its owner, which is the conveyor [`docs/factory.md`](docs/factory.md) argues for and the gate it argues against removing.
+`dim-factory` sits above all of them and is handed no subject. It reads the queue the repo it runs in keeps — a file named as its argument, a tracker the repo's rules file declares, or what it finds and names — takes one unblocked item, and routes it to the front door that fits. What it will not do is decide the calls the queue reserves for its owner — it holds a run inside the gates rather than judging them, which is the split [`docs/factory.md`](docs/factory.md) argues for.
 
 Adding one is a directory under `skills/` and a name in `SKILL_NAMES`; a name retired from that list has its link removed on the next install, so it never resolves to nothing.
 
