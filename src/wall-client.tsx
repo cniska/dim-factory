@@ -30,6 +30,11 @@ const stateLabels: Record<WallStatus, string> = {
 
 const stopped = new Set<WallStatus>(["blocked", "fenced", "failed", "abandoned"]);
 
+// What the column already asserts: Active is where a running job is, Done is where a completed
+// one ends. Writing it again on every card in the column spends the card's quietest row saying
+// what the heading said, and the breathing mark keeps carrying it.
+const columnSaysTheState = new Set<WallStatus>(["running", "completed"]);
+
 const statusIcon: Record<WallStatus, LucideIcon> = {
   running: CircleDot,
   waiting: CircleDot,
@@ -113,13 +118,17 @@ function JobCard({ job, now, bumped }: { job: WallJob; now: Date; bumped: boolea
     >
       <CardHeader className={cn(ROW, "justify-between text-quiet")}>
         <span className={cn("flex items-center gap-1.5", statusTint(job.status))}>
+          {/* Where the column carries the state, the mark is what states it, so the mark is
+              what has to name it to a reader who is not looking at the column. */}
           <StatusIcon
             size={12}
             strokeWidth={1.8}
-            aria-hidden="true"
+            {...(columnSaysTheState.has(job.status)
+              ? { role: "img", "aria-label": stateLabels[job.status] }
+              : { "aria-hidden": "true" })}
             className={job.status === "running" ? "breathing" : undefined}
           />
-          {stateLabels[job.status]}
+          {columnSaysTheState.has(job.status) ? null : stateLabels[job.status]}
         </span>
         {/* Re-derived from the timestamp every second rather than read off the snapshot, so
             the board keeps moving between pushes instead of standing still. */}
