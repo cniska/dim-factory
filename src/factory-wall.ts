@@ -78,6 +78,7 @@ type JobRow = {
   item_id: string;
   title: string;
   agent_id: string | null;
+  role: string | null;
   station: string | null;
   status: string;
   stop_reason: string | null;
@@ -92,7 +93,7 @@ type JobRow = {
   failed_check_count: number;
 };
 
-const JOB_ROW_SELECT = `SELECT j.id, j.item_id, j.title, j.agent_id, j.station, j.status,
+const JOB_ROW_SELECT = `SELECT j.id, j.item_id, j.title, j.agent_id, j.role, j.station, j.status,
               j.stop_reason, j.run_id, j.queue_id, j.worktree, j.branch,
               e.ts AS last_event_at, e.reason AS latest_reason, e.station AS latest_station,
               e.actor_id AS latest_actor,
@@ -141,15 +142,14 @@ function station(value: string | null): WallStation {
   return (value === null ? undefined : stationByRecordedValue[value]) ?? "unknown";
 }
 
-// Ship is work none of these roles names, and a station the wall does not recognize says
-// nothing about the role either.
-const roleByStation: Record<WallStation, WallRole> = {
-  plan: "planner",
-  build: "builder",
-  review: "reviewer",
-  ship: "unknown",
-  unknown: "unknown",
-};
+/**
+ * Read from the claim, never worked out from the station: a worker is called in as one
+ * thing and stays it, while the station says where the work is. A role the record does
+ * not hold reads as unknown rather than as whatever the station suggests.
+ */
+function role(value: string | null): WallRole {
+  return value === "planner" || value === "builder" || value === "reviewer" ? value : "unknown";
+}
 
 function status(value: string): WallStatus {
   const mapped = wallStatusByJobStatus[value];
@@ -173,7 +173,7 @@ function mapJob(row: JobRow, now: Date): WallJob {
     station: stationName,
     lifecycle: lifecycleByStatus[jobStatus],
     ...(agentId ? { agent: agentId, worker: workerName(agentId) } : {}),
-    role: roleByStation[stationName],
+    role: role(row.role),
     status: jobStatus,
     age: age(lastEventAt, now),
     lastEventAt,

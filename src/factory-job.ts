@@ -17,6 +17,14 @@ export type JobEventKind =
   | "failed"
   | "abandoned";
 
+/** What a worker was called in as. The operator runs the line and holds no order, so it is not one. */
+export const ORDER_ROLES = ["planner", "builder", "reviewer"] as const;
+export type OrderRole = (typeof ORDER_ROLES)[number];
+
+export function isOrderRole(value: string): value is OrderRole {
+  return (ORDER_ROLES as readonly string[]).includes(value);
+}
+
 export type Job = {
   id: string;
   runId: string;
@@ -25,6 +33,7 @@ export type Job = {
   title: string;
   description?: string;
   agentId?: string;
+  role?: OrderRole;
   sessionId?: string;
   worktree?: string;
   branch?: string;
@@ -101,8 +110,8 @@ export function createJob(db: Database, job: Job, at = now()): void {
   db.transaction(() => {
     db.run(
       `INSERT INTO factory_job
-       (id, run_id, queue_id, item_id, title, description, agent_id, session_id, worktree, branch, station, status, claimed_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'claimed', ?, ?)`,
+       (id, run_id, queue_id, item_id, title, description, agent_id, role, session_id, worktree, branch, station, status, claimed_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'claimed', ?, ?)`,
       [
         job.id,
         job.runId,
@@ -111,6 +120,7 @@ export function createJob(db: Database, job: Job, at = now()): void {
         job.title,
         job.description ?? null,
         job.agentId ?? null,
+        job.role ?? null,
         job.sessionId ?? null,
         job.worktree ?? null,
         job.branch ?? null,
