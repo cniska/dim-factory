@@ -18,19 +18,19 @@ bun install
 The database lives at `~/.local/share/dim-factory/sessions.db`.
 
 ```sh
-bun run dim sync       # read new Claude Code and Codex session data
-bun run dim stats      # show stored row and usage counts
-bun run dim doctor     # check installation and name repairs
-bun run dim rebuild    # rebuild derived tables from their sources
+dim sync       # read new Claude Code and Codex session data
+dim stats      # show stored row and usage counts
+dim doctor     # check installation and name repairs
+dim rebuild    # rebuild derived tables from their sources
 ```
 
 Named questions are listed and run with:
 
 ```sh
-bun run dim q list
-bun run dim q <name>
-bun run dim q <name> --json
-bun run dim sql "<read-only select>"
+dim q list
+dim q <name>
+dim q <name> --json
+dim sql "<read-only select>"
 ```
 
 Queries state the evidence base and report when no evidence is available. See [Session database](design.md) for sources, schema and read-path rules.
@@ -38,10 +38,10 @@ Queries state the evidence base and report when no evidence is available. See [S
 ## Install the shared controls
 
 ```sh
-bun run dim install-hooks
-bun run dim install-rules
-bun run dim install-skill
-bun run dim install-commit-gate --owner=<host>/<account>
+dim install-hooks
+dim install-rules
+dim install-skill
+dim install-commit-gate --owner=<host>/<account>
 ```
 
 Commands that change a shared installation require `--write`. `dim doctor` reports missing or stale hooks, missing trust, database drift and unloaded agents together with the repair for each failure.
@@ -53,9 +53,9 @@ The commit gate checks the repository's declared task before a commit. The push 
 Create an isolated task checkout with:
 
 ```sh
-bun run dim wt <branch>
-bun run dim wt ls
-bun run dim wt path <branch>
+dim wt <branch>
+dim wt ls
+dim wt path <branch>
 ```
 
 The worktree command creates `.claude/worktrees/<branch>` and runs the repository setup hook when one exists. See [Worktrees](worktrees.md) for lifecycle and write recovery.
