@@ -145,6 +145,7 @@ const FACTORY_JOB_TABLES = [
   "factory_job_check",
   "factory_job_finding",
   "factory_job_document",
+  "factory_job_environment",
 ];
 
 /**
