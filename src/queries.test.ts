@@ -514,6 +514,160 @@ describe("read path", () => {
   });
 });
 
+describe("who stopped the agent", () => {
+  // Two stops in one session: the owner refusing a call, and the harness
+  // refusing its own. Only the first is a person pushing back.
+  function stopped(): Database {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    db.run(
+      `INSERT INTO session (id, tool, cwd, project, git_branch, started_at, last_seen_at)
+       VALUES ('s1', 'claude', '/w', '/w', 'main', '2026-09-01T10:00:00Z', '2026-09-01T12:00:00Z')`,
+    );
+    db.run(
+      "INSERT INTO source_file (path, tool, kind, session_id) VALUES ('/f.jsonl', 'claude', 'transcript', 's1')",
+    );
+    db.run(
+      `INSERT INTO message (id, session_id, ts, role, text, text_chars, attribution_skill, src_file, src_line)
+       VALUES ('m-ran', 's1', '2026-09-01T10:00:00Z', 'assistant', 'working on it', 13, 'dim-build', '/f.jsonl', 1)`,
+    );
+    db.run(
+      `INSERT INTO skill_load (session_id, message_id, ts, skill_name, how, body_chars, body_sha256)
+       VALUES ('s1', 'm-ran', '2026-09-01T10:00:00Z', 'dim-build', 'model', 400, 'abcdef0123')`,
+    );
+    const stop = (id: string, ts: string, kind: string, text: string) =>
+      db.run(
+        `INSERT INTO message (id, session_id, ts, role, denial_kind, text, text_chars, src_file, src_line)
+         VALUES (?, 's1', ?, 'user', ?, ?, ?, '/f.jsonl', 2)`,
+        [id, ts, kind, text, text.length],
+      );
+    // The harness block sits inside every edit span; the owner's refusal lands
+    // after the last edit, so a rate over the spans separates the two.
+    stop("m-blocked", "2026-09-01T10:15:00Z", "automode-blocked", "auto mode cannot run this");
+    stop("m-refused", "2026-09-01T11:30:00Z", "user-rejected", "no, not like that");
+
+    for (let i = 0; i < 20; i++) {
+      for (const [n, ts] of [
+        [`a${i}`, "2026-09-01T10:05:00Z"],
+        [`b${i}`, "2026-09-01T10:30:00Z"],
+      ]) {
+        db.run(
+          `INSERT INTO tool_call (id, session_id, tool_name, attribution_skill, file_path, ts_call, src_file)
+           VALUES (?, 's1', 'Edit', 'dim-build', ?, ?, '/f.jsonl')`,
+          [n as string, `/w/file-${i}.ts`, ts as string],
+        );
+      }
+    }
+    return db;
+  }
+
+  test("only the owner's own refusal counts as the owner stopping the agent", () => {
+    const db = stopped();
+    try {
+      const digest = findQuery("digest")?.run(db, {});
+      const stops = digest?.rows.find((r) => r[0] === "times you stopped the agent");
+      expect(stops?.[1]).toBe(1);
+
+      const resume = findQuery("resume")?.run(db, { arg: "s1" });
+      expect(resume?.rows.filter((r) => r[0] === "stopped")).toHaveLength(1);
+      expect(String(resume?.rows.find((r) => r[0] === "stopped")?.[1])).toContain("not like that");
+
+      const skill = findQuery("skill")?.run(db, { arg: "dim-build" });
+      expect(skill?.rows[0]?.[6]).toBe(1);
+
+      expect(findQuery("repeats")?.run(db, {})?.denominator).toContain("1 prompts");
+
+      // The block is the only stop inside the spans, so a rate counting it
+      // reports every file as revisited under pushback.
+      const rework = findQuery("rework")?.run(db, {});
+      expect(rework?.rows[0]?.[3]).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("corrections and candidates read the same stop as the rest", () => {
+    const db = stopped();
+    try {
+      expect(findQuery("corrections")?.run(db, {})?.denominator).toContain(
+        "1 turns the user physically stopped",
+      );
+      const kinds = findQuery("candidates")
+        ?.run(db, {})
+        ?.rows.map((r) => r[3]);
+      expect(kinds).toEqual(["rejected"]);
+
+      // One number covering both reads as the owner having refused twice.
+      const facts = new Map(
+        findQuery("session")
+          ?.run(db, { arg: "s1" })
+          ?.rows.map((r) => [r[0], r[1]]),
+      );
+      expect(facts.get("tool calls you rejected")).toBe(1);
+      expect(facts.get("tool calls auto mode blocked")).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe("what a query counts of each tool", () => {
+  test("a query matching only Claude's edit tools says it reaches Claude alone", () => {
+    const env = seeded();
+    const db = openReadOnly(dbPath(env));
+    try {
+      const edits = [
+        "rework",
+        "resume",
+        "exemplars",
+        "fixes",
+        "digest",
+        "stale",
+        "corrections",
+        "candidates",
+        "skill",
+      ];
+      const silent = edits.filter((name) => {
+        const arg = name === "resume" ? SESSION.slice(0, 8) : name === "skill" ? "build" : undefined;
+        const note = findQuery(name)?.run(db, arg ? { arg } : {}).note ?? "";
+        return !note.includes("Codex");
+      });
+      expect(silent).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("slices reaches a commit Codex made through its own shell tool", () => {
+    const db = new Database(":memory:");
+    try {
+      db.run(SCHEMA_SQL);
+      db.run(
+        `INSERT INTO session (id, tool, cwd, started_at, last_seen_at)
+         VALUES ('c1', 'codex', '/w', '2026-09-01T10:00:00Z', '2026-09-01T11:00:00Z')`,
+      );
+      db.run(
+        "INSERT INTO source_file (path, tool, kind, session_id) VALUES ('/r.jsonl', 'codex', 'rollout', 'c1')",
+      );
+      db.run(
+        `INSERT INTO tool_call (id, session_id, tool_name, command, ts_call, src_file)
+         VALUES ('t1', 'c1', 'CommandExecution', 'bun run verify', '2026-09-01T10:10:00Z', '/r.jsonl')`,
+      );
+      db.run(
+        `INSERT INTO tool_call (id, session_id, tool_name, command, ts_call, src_file)
+         VALUES ('t2', 'c1', 'CommandExecution', 'git commit -m "feat: a slice"', '2026-09-01T10:11:00Z', '/r.jsonl')`,
+      );
+      db.run("INSERT INTO git_command (tool_call_id, position, subcommand) VALUES ('t2', 0, 'commit')");
+
+      const result = findQuery("slices")?.run(db, {});
+      expect(result?.rows).toHaveLength(1);
+      expect(result?.rows[0]?.[2]).toBe("yes");
+    } finally {
+      db.close();
+    }
+  });
+});
+
 describe("the sql escape hatch", () => {
   test("the read-only connection refuses every statement that writes", () => {
     const env = seeded();

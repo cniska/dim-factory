@@ -319,6 +319,31 @@ describe("search over the distilled index", () => {
     db.close();
   });
 
+  // A cosine between two models' vectors is a number with no scale behind it,
+  // and a rebuild interrupted midway leaves both in the table.
+  test("a vector another model built is not scored beside this one's", async () => {
+    const db = await indexed();
+    expect(
+      (db.query("SELECT model FROM embedding WHERE kind = 'next'").get() as { model: string }).model,
+    ).toBe("Xenova/all-MiniLM-L6-v2");
+    db.run("UPDATE embedding SET model = 'retired/model' WHERE kind = 'subject'");
+
+    const result = run(db, { arg: SUBJECT, question: await asked(SUBJECT) });
+    expect(result.rows.map((r) => r[1])).toEqual(["next"]);
+    expect(result.denominator).toContain("cosine over 1 distilled passages");
+    expect(result.denominator).toContain("1 in this window built by another model");
+    db.close();
+  });
+
+  test("an index left entirely on another model's scale degrades to keywords", async () => {
+    const db = await indexed();
+    db.run("UPDATE embedding SET model = 'retired/model'");
+    const result = run(db, { arg: "checkout", question: await asked("checkout") });
+    expect(result.path).toBe("keyword");
+    expect(result.denominator).toContain("another model");
+    db.close();
+  });
+
   test("the note says what the index does not hold, so a miss is not read as an absence", async () => {
     const db = await indexed();
     const result = run(db, { arg: "shadow", question: await asked("shadow") });

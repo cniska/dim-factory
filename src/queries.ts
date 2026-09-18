@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { fromBlob, type Question, similarity } from "./embed";
+import { EMBED_MODEL, fromBlob, type Question, similarity } from "./embed";
 import { withoutWorktree } from "./worktree";
 
 export type QueryResult = {
@@ -376,8 +376,20 @@ const session: Query = {
         ),
       ],
       [
-        "tool rejections",
-        scalar(db, "SELECT count(*) AS n FROM message WHERE session_id = ? AND denial_kind IS NOT NULL", id),
+        "tool calls you rejected",
+        scalar(
+          db,
+          "SELECT count(*) AS n FROM message WHERE session_id = ? AND denial_kind = 'user-rejected'",
+          id,
+        ),
+      ],
+      [
+        "tool calls auto mode blocked",
+        scalar(
+          db,
+          "SELECT count(*) AS n FROM message WHERE session_id = ? AND denial_kind IS NOT NULL AND denial_kind <> 'user-rejected'",
+          id,
+        ),
       ],
       ["subagents", scalar(db, "SELECT count(*) AS n FROM session WHERE parent_id = ?", id)],
     ];
@@ -497,6 +509,29 @@ const skills: Query = {
 };
 
 /**
+ * A base narrower than the corpus that goes unsaid reads as a measured zero for
+ * the tool it left out, so every query keying on one tool's vocabulary says
+ * which. Widening the edit match waits on the parser: a Codex FileChange writes
+ * all of its paths into one `file_path`, which joins no committed path.
+ */
+const CLAUDE_EDITS =
+  "an edit is matched by the `Edit` and `Write` tool names, and Codex writes a `FileChange`";
+const CLAUDE_STOPS =
+  "a stop is read from fields only Claude writes on a message, and Codex marks an interrupted turn " +
+  "instead, which `dim q turns` reports";
+const claudeOnly = (...bases: string[]): string =>
+  `These counts are Claude's alone: ${bases.join("; ")}. A Codex session is absent from them rather than idle.`;
+
+/**
+ * The owner refusing a call. `user-rejected` is the only denial kind a person
+ * caused: the rest are auto mode blocked or unavailable, which is the harness
+ * refusing its own call and no pushback at all.
+ */
+const stoppedByOwner = (prefix = "m."): string =>
+  `(${prefix}denial_kind = 'user-rejected' OR ${prefix}interrupted_message_id IS NOT NULL ` +
+  `OR ${prefix}user_feedback IS NOT NULL)`;
+
+/**
  * A correction is credited to the attribution_skill of the assistant message
  * immediately before it, and an unattributed message clears the credit. Carrying
  * the last-seen skill forward blames whichever skill ran most recently for
@@ -510,8 +545,7 @@ const attributed = (ctx: QueryContext): string => `
           ORDER BY p.ts DESC, p.src_line DESC LIMIT 1) AS skill
   FROM message m
   WHERE m.role = 'user'
-    AND (m.denial_kind = 'user-rejected' OR m.interrupted_message_id IS NOT NULL
-         OR m.user_feedback IS NOT NULL)${window("m.ts", ctx).sql}`;
+    AND ${stoppedByOwner()}${window("m.ts", ctx).sql}`;
 
 /**
  * Spans history because the table starts empty and fills a slice at a time, so
@@ -583,7 +617,7 @@ const corrections: Query = {
       db,
       `WITH c AS (${attributed(ctx)})
        SELECT coalesce(c.skill, '(unattributed)') AS skill,
-              sum(c.denial_kind IS NOT NULL) AS rejected,
+              sum(coalesce(c.denial_kind, '') = 'user-rejected') AS rejected,
               sum(c.interrupted_message_id IS NOT NULL) AS interrupted,
               sum(c.user_feedback IS NOT NULL) AS with_feedback,
               (SELECT count(*) FROM correction_label cl
@@ -605,11 +639,11 @@ const corrections: Query = {
       columns,
       rows: toRows(records, columns),
       note:
-        candidates === 0
-          ? "no rejection, interruption or written feedback in the corpus"
+        (candidates === 0
+          ? "no rejection, interruption or written feedback in the corpus. "
           : "These are acts the tool recorded, not judgements. Whether a prompt told the agent it was " +
             "wrong is semantic and nothing here decides it; `dim label` records the owner's call. " +
-            "An unlabeled candidate is never counted as a correction.",
+            "An unlabeled candidate is never counted as a correction. ") + claudeOnly(CLAUDE_STOPS),
     };
   },
 };
@@ -632,7 +666,7 @@ const candidates: Query = {
       `WITH c AS (${attributed(ctx)})
        SELECT c.id AS message_id, substr(c.ts, 1, 16) AS "when",
               coalesce(c.skill, '(none)') AS skill,
-              CASE WHEN c.denial_kind IS NOT NULL THEN 'rejected'
+              CASE WHEN c.denial_kind = 'user-rejected' THEN 'rejected'
                    WHEN c.interrupted_message_id IS NOT NULL THEN 'interrupted'
                    ELSE 'feedback' END AS kind,
               replace(substr(coalesce(c.user_feedback, c.text, ''), 1, 200), char(10), ' ') AS text
@@ -649,13 +683,13 @@ const candidates: Query = {
       columns,
       rows: toRows(records, columns),
       note:
-        records.length === 0
+        (records.length === 0
           ? total === 0
-            ? "no rejection, interruption or written feedback in this window"
-            : "every candidate in this window has been labeled"
+            ? "no rejection, interruption or written feedback in this window. "
+            : "every candidate in this window has been labeled. "
           : "A stop is an act, not a verdict: an interruption can be a correction, a change of mind, or " +
             "a faster idea. Read the text, then `dim label <message_id> <correction|clarification|not_correction>`. " +
-            "Nothing here labels itself.",
+            "Nothing here labels itself. ") + claudeOnly(CLAUDE_STOPS),
     };
   },
 };
@@ -688,8 +722,7 @@ const rework: Query = {
                 (SELECT count(*) FROM message m
                  WHERE m.session_id = s.session_id
                    AND m.ts > s.first_edit AND m.ts <= s.last_edit
-                   AND (m.denial_kind IS NOT NULL OR m.interrupted_message_id IS NOT NULL
-                        OR m.user_feedback IS NOT NULL)) AS stops
+                   AND ${stoppedByOwner()}) AS stops
          FROM spans s
        )
        SELECT skill,
@@ -715,11 +748,11 @@ const rework: Query = {
       columns,
       rows: toRows(records, columns),
       note:
-        records.length === 0
-          ? "no skill has touched enough files to report a rate"
+        (records.length === 0
+          ? "no skill has touched enough files to report a rate. "
           : "`after_pushback` counts a file revisited while the user was stopping the agent. It is a " +
             "co-occurrence, not a cause: a skill loads because the task is a certain kind. Read it as " +
-            "where to look, never as which skill is worse.",
+            "where to look, never as which skill is worse. ") + claudeOnly(CLAUDE_EDITS, CLAUDE_STOPS),
     };
   },
 };
@@ -860,16 +893,27 @@ const search: Query = {
     if ("unavailable" in question) return degradedToKeywords(db, ctx, arg, question.unavailable);
 
     const w = window("coalesce(m.ts, c.ts)", ctx, "WHERE");
-    const rows = db
-      .prepare<{ kind: string; ref: string; vector: Uint8Array }, string[]>(
-        `SELECT e.kind, e.ref, e.vector
+    const inWindow = db
+      .prepare<{ kind: string; ref: string; vector: Uint8Array; model: string }, string[]>(
+        `SELECT e.kind, e.ref, e.vector, e.model
          FROM embedding e
          LEFT JOIN message m ON e.kind <> 'subject' AND m.id = e.ref
          LEFT JOIN repo_commit c ON e.kind = 'subject' AND c.sha = e.ref${w.sql}`,
       )
       .all(...w.params);
+    // A cosine between two models' vectors is a number on no scale, and a
+    // rebuild stopped midway through a model change leaves both in the table.
+    const rows = inWindow.filter((row) => row.model === EMBED_MODEL);
+    const otherScale = inWindow.length - rows.length;
     if (rows.length === 0) {
-      return degradedToKeywords(db, ctx, arg, "nothing is embedded in this window; run `dim embed`");
+      return degradedToKeywords(
+        db,
+        ctx,
+        arg,
+        otherScale > 0
+          ? "every vector in this window was built by another model; run `dim embed`"
+          : "nothing is embedded in this window; run `dim embed`",
+      );
     }
 
     const scored = rows
@@ -908,14 +952,20 @@ const search: Query = {
       };
     });
 
-    const byKind = table(db, "SELECT kind, count(*) AS n FROM embedding GROUP BY kind ORDER BY kind")
+    const byKind = table(
+      db,
+      "SELECT kind, count(*) AS n FROM embedding WHERE model = ? GROUP BY kind ORDER BY kind",
+      [EMBED_MODEL],
+    )
       .map((r) => `${r.n} ${r.kind}`)
       .join(", ");
     return {
       path: "cosine",
       denominator:
         `cosine over ${rows.length} distilled passages in this window, of ${byKind} embedded ` +
-        `(${windowLine(ctx)}); the ${records.length} closest shown`,
+        `by ${EMBED_MODEL}` +
+        (otherScale > 0 ? `, ${otherScale} in this window built by another model and not ranked` : "") +
+        ` (${windowLine(ctx)}); the ${records.length} closest shown`,
       columns,
       rows: toRows(records as unknown as Record<string, unknown>[], columns),
       note:
@@ -1037,8 +1087,7 @@ const skill: Query = {
                  ORDER BY ld.ts DESC LIMIT 1) AS body_sha256
          FROM message m
          WHERE m.role = 'user'
-           AND (m.denial_kind IS NOT NULL OR m.interrupted_message_id IS NOT NULL
-                OR m.user_feedback IS NOT NULL)
+           AND ${stoppedByOwner()}
            AND (SELECT p.attribution_skill FROM message p
                 WHERE p.session_id = m.session_id AND p.role = 'assistant' AND p.ts <= m.ts
                 ORDER BY p.ts DESC, p.src_line DESC LIMIT 1) = ?
@@ -1069,15 +1118,15 @@ const skill: Query = {
       columns,
       rows: toRows(records, columns),
       note:
-        records.length === 0
-          ? `no load of ${arg} recorded; \`dim q skills\` names the skills that have loaded`
+        (records.length === 0
+          ? `no load of ${arg} recorded; \`dim q skills\` names the skills that have loaded. `
           : "`stopped` counts acts the tool recorded — a rejection, an interruption, written feedback — " +
             "under the version loaded at the time, never a judgement that the skill was wrong. Versions " +
             "differ in the tasks they met as well as in their text, so read a change as where to look." +
             (unmeasured
               ? " `(unmeasured)` is every load that reported no body: Codex reads the file itself, so its " +
-                "loads carry no hash and fall together in one row rather than splitting by version."
-              : ""),
+                "loads carry no hash and fall together in one row rather than splitting by version. "
+              : " ")) + claudeOnly(CLAUDE_STOPS),
     };
   },
 };
@@ -1142,8 +1191,7 @@ const resume: Query = {
       db,
       `SELECT substr(ts, 1, 16) AS ts, replace(substr(coalesce(user_feedback, text, ''), 1, 160), char(10), ' ') AS said
        FROM message
-       WHERE session_id = ? AND role = 'user'
-         AND (denial_kind IS NOT NULL OR interrupted_message_id IS NOT NULL OR user_feedback IS NOT NULL)
+       WHERE session_id = ? AND role = 'user' AND ${stoppedByOwner("")}
        ORDER BY ts DESC LIMIT 3`,
       [id],
     )) {
@@ -1170,7 +1218,8 @@ const resume: Query = {
       rows,
       note:
         "Facts only. What the next move should be is not in here — that is the judgement a handoff exists " +
-        "to make. Run `dim sync` first if the session is still open, since only written bytes are read.",
+        "to make. Run `dim sync` first if the session is still open, since only written bytes are read. " +
+        claudeOnly(CLAUDE_EDITS, CLAUDE_STOPS),
     };
   },
 };
@@ -1351,11 +1400,12 @@ const exemplars: Query = {
       columns,
       rows: toRows(records, columns),
       note:
-        records.length === 0
-          ? "no agent-edited file in this window has shipped"
+        (records.length === 0
+          ? "no agent-edited file in this window has shipped. "
           : "A nomination, never a verdict: nobody coming back to a file is not evidence it is right, only that it was " +
             "not revisited. A fix committed without the conventional prefix is invisible here, a file is matched by path " +
-            "so repos sharing a name collide, and a file still being worked on today will read as untested rather than sound.",
+            "so repos sharing a name collide, and a file still being worked on today will read as untested rather than sound. ") +
+        claudeOnly(CLAUDE_EDITS),
     };
   },
 };
@@ -1406,14 +1456,14 @@ const fixes: Query = {
       columns,
       rows: toRows(records, columns),
       note:
-        commits === 0
-          ? "no commits read: the working directories in this corpus are gone or were never repos. `dim sync`."
+        (commits === 0
+          ? "no commits read: the working directories in this corpus are gone or were never repos. `dim sync`. "
           : records.length === 0
-            ? "no skill touched enough files in this window to report a rate"
+            ? "no skill touched enough files in this window to report a rate. "
             : "A `fix:` commit naming a file is the repo's verdict that the file needed changing, not " +
               "proof the agent caused it — a fix may land on code it never wrote, and work nobody came " +
               "back to may still be wrong. `mean_days` covers only the files that were fixed. Matching is by conventional-commit type, so a fix committed without the " +
-              "prefix is invisible here.",
+              "prefix is invisible here. ") + claudeOnly(CLAUDE_EDITS),
     };
   },
 };
@@ -1469,8 +1519,7 @@ const repeats: Query = {
       `SELECT m.id, m.session_id, coalesce(m.user_feedback, m.text, '') AS said
        FROM message m
        WHERE m.role = 'user'
-         AND (m.denial_kind IS NOT NULL OR m.interrupted_message_id IS NOT NULL
-              OR m.user_feedback IS NOT NULL OR m.prompt_source IN ('typed','queued'))
+         AND (${stoppedByOwner()} OR m.prompt_source IN ('typed','queued'))
          AND m.text IS NOT NULL AND m.text_chars <= ${SAID_MAX_CHARS}${w.sql}`,
       w.params,
     ) as { id: string; session_id: string; said: string }[];
@@ -1514,7 +1563,8 @@ const repeats: Query = {
         records.length === 0
           ? "nothing recurs across three sessions in this window; try fewer words per phrase or a wider window"
           : "A phrase is a place to look, not a rule. What recurs may be a habit of speech rather than an " +
-            "instruction — read the sessions before promoting one into guidance every session will load.",
+            "instruction — read the sessions before promoting one into guidance every session will load. " +
+            "Both tools mark a typed prompt; only Claude marks a stop, so the stopped half is Claude's alone.",
     };
   },
 };
@@ -1563,9 +1613,7 @@ const digest: Query = {
     const stops = scalar(
       db,
       `SELECT count(*) AS n FROM message m
-       WHERE m.role = 'user'
-         AND (m.denial_kind IS NOT NULL OR m.interrupted_message_id IS NOT NULL
-              OR m.user_feedback IS NOT NULL)${w("m.ts").sql}`,
+       WHERE m.role = 'user' AND ${stoppedByOwner()}${w("m.ts").sql}`,
       ...w("m.ts").params,
     );
     add("times you stopped the agent", stops);
@@ -1604,10 +1652,11 @@ const digest: Query = {
       columns: ["measure", "value"],
       rows,
       note:
-        sessions === 0
-          ? "no session in this window"
+        (sessions === 0
+          ? "no session in this window. "
           : "A repeated phrase is a candidate rule or a rule that is not reaching the tool that needs it. " +
-            "Nothing here is an effect of anything else here: read a change as where to look.",
+            "Nothing here is an effect of anything else here: read a change as where to look. ") +
+        claudeOnly(CLAUDE_EDITS, CLAUDE_STOPS),
     };
   },
 };
@@ -1668,14 +1717,14 @@ const stale: Query = {
       columns,
       rows: toRows(records, columns),
       note:
-        commits === 0
-          ? "`dim sync` from a machine holding the repos; without commits there is no measure of movement"
+        (commits === 0
+          ? "`dim sync` from a machine holding the repos; without commits there is no measure of movement. "
           : "`moved_pct` is the share of the files that have been committed to since, and `commits_since` how " +
             "often in total. Both are shown because neither is the score: the share says whether the session's " +
             "ground moved, the count how far. The per-repo gate `acolyte import` settled on is the count. " +
             "It measures the area, not the work: a file under constant edit moves whatever was done to it. " +
             "Read a high score as evidence that what this session concluded is about code that has changed, " +
-            "never as evidence the session was wrong.",
+            "never as evidence the session was wrong. ") + claudeOnly(CLAUDE_EDITS),
     };
   },
 };
@@ -1863,7 +1912,8 @@ const slices: Query = {
          SELECT c.id, c.session_id, c.ts_call AS ts, c.command, c.is_error AS failed,
                 max(CASE WHEN g.subcommand = 'commit' THEN 1 ELSE 0 END) AS is_commit
          FROM tool_call c LEFT JOIN git_command g ON g.tool_call_id = c.id
-         WHERE c.tool_name = 'Bash' AND c.ts_call IS NOT NULL AND c.command IS NOT NULL
+         WHERE c.tool_name IN ('Bash', 'CommandExecution') AND c.ts_call IS NOT NULL
+           AND c.command IS NOT NULL
            ${arg ? "AND c.session_id LIKE ? || '%'" : ""}${w.sql}
          GROUP BY c.id
        ),
