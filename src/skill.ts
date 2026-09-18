@@ -19,7 +19,14 @@ import { type Env, resolveHomeDir } from "./paths";
  * marks one, and adding a station is a directory beside this file plus a name
  * here; everything below installs from the list.
  */
-export const SKILL_NAMES = ["dim-feat", "dim-fix", "dim-plan", "dim-build", "dim-review"] as const;
+export const SKILL_NAMES = [
+  "dim-feat",
+  "dim-fix",
+  "dim-plan",
+  "dim-build",
+  "dim-review",
+  "dim-factory",
+] as const;
 
 export type SkillName = (typeof SKILL_NAMES)[number];
 
