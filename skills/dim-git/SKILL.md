@@ -6,7 +6,7 @@ argument-hint: "<git operation or factory context>"
 
 # Git
 
-The shared Git boundary for the factory. Use the generic `git` skill for command mechanics; use this skill when the operation affects ownership, evidence, or the factory's serialized line.
+The shared Git boundary for the factory. Use this skill whenever Git work affects ownership, evidence, or the factory's serialized line.
 
 ## 1. Establish ownership
 

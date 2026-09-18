@@ -12,6 +12,8 @@ What makes this a station rather than a checklist is that the record says where 
 
 Apply [`dim-git`](../dim-git/SKILL.md) for the read-only diff boundary and handoff evidence. Review does not edit, commit or land the work it inspects.
 
+This station carries its review briefs directly. Each dimension supplies findings; this station supplies the factory grounding, read-only boundary and finding convergence.
+
 ## Entry contract
 
 Before spawning anything:
@@ -26,12 +28,12 @@ Spawn one agent per dimension, each given the diff, the intent, and only the gro
 
 | dimension | what the record gives it |
 |---|---|
-| correctness | whether `exemplars` names a path in this diff — code that has held, so a change to it is read against that |
-| tests | `dim q rework`, where work was revisited after a pushback |
-| architecture | `dim q prior-art "<path fragment>"` — how this shape is built in the repos on disk; apply the [architecture-review brief](../../../../.agents/skills/architecture-review/SKILL.md) where it is available |
-| docs | `dim q stale <id-prefix>` — whether the code a doc describes has moved since |
-| security | nothing; read from the diff alone |
-| style | nothing; read from the diff alone |
+| correctness | whether the changed code fulfills its stated behavior, handles failure paths and preserves existing contracts; use `dim q exemplars` as grounding |
+| tests | whether meaningful behavior is covered by tests that fail when the invariant is removed; use `dim q rework` as grounding |
+| architecture | whether responsibilities, boundaries, dependencies and extension points remain coherent; use `dim q prior-art "<path fragment>"` as grounding |
+| docs | whether long-lived docs describe the resulting behavior and terminology; use `dim q stale <id-prefix>` as grounding |
+| security | whether the diff creates a concrete trust-boundary, data-exposure or unsafe-default path; read the diff and project rules |
+| style | whether naming, structure and local patterns remain consistent without adding comments or abstraction noise; read the diff and project rules |
 
 The last two rows are not an oversight. The record holds no signal about either, and inventing one would be worse than the gap — an agent told it has grounding it does not have stops looking.
 

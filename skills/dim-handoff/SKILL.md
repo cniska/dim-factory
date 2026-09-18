@@ -1,29 +1,11 @@
 ---
 name: dim-handoff
-description: Write a strict session handoff for the next agent.
-argument-hint: ""
+description: Write a strict station handoff for the next factory agent.
+argument-hint: "<queue item>"
 ---
 
 # Handoff
 
-Write the continuation a later session needs from the transcript and work you
-actually inspected. Keep the output as markdown with this shape:
+Write the transfer a later station needs from the work and evidence you actually inspected. Output a title line in the form `# Handoff — <item_id> — <item name>`, followed by an `## Next` heading and one concrete action.
 
-```markdown
-# Handoff — <short task name>
-
-## Next
-<the next concrete action>
-
-## State
-<what is true now, with paths, commands or revisions only when observed>
-
-## Open questions
-<unresolved choices, or “None.”>
-```
-
-The `# Handoff` and `## Next` headings are required. Use `## Next` for one
-action, not a recap. State unknowns as unknowns; do not infer branch names,
-file lists, test results, or decisions from context that was not recorded.
-
-Output only the handoff.
+The `# Handoff` and `## Next` headings are required. Use `## Next` for one action, not a recap. The item ID is canonical; the name is the queue's display name and is never invented here. Do not infer either or the next action from context that was not recorded. The receiving station queries the job report and its evidence with `dim`. The handoff transfers only the routing token. Output only the handoff.
