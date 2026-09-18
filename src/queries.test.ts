@@ -666,6 +666,69 @@ describe("what a query counts of each tool", () => {
       db.close();
     }
   });
+
+  // A fixture repo the OS will delete is not work anyone did, and its commits
+  // run no check because there is no check to run. Counted, they read as
+  // discipline nobody kept.
+  test("a commit in a scratch tree is not counted as an unchecked slice", () => {
+    const db = new Database(":memory:");
+    try {
+      db.run(SCHEMA_SQL);
+      const commitIn = (session: string, cwd: string, id: string) => {
+        db.run(
+          `INSERT INTO session (id, tool, cwd, project, started_at, last_seen_at)
+           VALUES (?, 'claude', ?, ?, '2026-09-01T10:00:00Z', '2026-09-01T11:00:00Z')`,
+          [session, cwd, cwd],
+        );
+        db.run(
+          "INSERT INTO source_file (path, tool, kind, session_id) VALUES (?, 'claude', 'transcript', ?)",
+          [`/${session}.jsonl`, session],
+        );
+        db.run(
+          `INSERT INTO tool_call (id, session_id, tool_name, command, ts_call, src_file)
+           VALUES (?, ?, 'Bash', 'git commit -m "feat: a slice"', '2026-09-01T10:11:00Z', ?)`,
+          [id, session, `/${session}.jsonl`],
+        );
+        db.run("INSERT INTO git_command (tool_call_id, position, subcommand) VALUES (?, 0, 'commit')", [id]);
+      };
+      commitIn("s-real", "/Users/x/code/demo", "t-real");
+      commitIn("s-tmp", "/private/tmp/fixture/runs/run-1", "t-tmp");
+
+      const result = findQuery("slices")?.run(db, {});
+      expect(result?.rows).toHaveLength(1);
+      expect(result?.rows[0]?.[0]).toBe("s-real");
+      expect(result?.denominator).toContain("1 commits");
+      // Dropping rows silently is the failure this query's base rule exists for.
+      expect(result?.denominator).toContain("1 in scratch trees not counted");
+    } finally {
+      db.close();
+    }
+  });
+
+  // An empty path resolves to the process cwd, so a session with no project
+  // reads as scratch exactly when dim is run from a temp directory — which is
+  // why this runs somewhere it would, rather than wherever the suite happens to.
+  test("a commit from a session with no project counts as work", () => {
+    const dir = mkdtempSync(join(tmpdir(), "dim-slices-"));
+    const script = `
+      import { Database } from "bun:sqlite";
+      import { findQuery } from ${JSON.stringify(join(import.meta.dir, "queries.ts"))};
+      import { SCHEMA_SQL } from ${JSON.stringify(join(import.meta.dir, "schema.ts"))};
+      const db = new Database(":memory:");
+      db.run(SCHEMA_SQL);
+      db.run("INSERT INTO session (id, tool, cwd, project, started_at, last_seen_at) VALUES ('s-none','claude','/w',NULL,'2026-09-01T10:00:00Z','2026-09-01T11:00:00Z')");
+      db.run("INSERT INTO source_file (path, tool, kind, session_id) VALUES ('/n.jsonl','claude','transcript','s-none')");
+      db.run("INSERT INTO tool_call (id, session_id, tool_name, command, ts_call, src_file) VALUES ('t-none','s-none','Bash','git commit -m \\"feat: a slice\\"','2026-09-01T10:11:00Z','/n.jsonl')");
+      db.run("INSERT INTO git_command (tool_call_id, position, subcommand) VALUES ('t-none', 0, 'commit')");
+      const r = findQuery("slices").run(db, {});
+      process.stdout.write(String(r.rows.length));`;
+    try {
+      const proc = Bun.spawnSync(["bun", "-e", script], { cwd: dir, stdout: "pipe", stderr: "pipe" });
+      expect(proc.stdout.toString()).toBe("1");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("the sql escape hatch", () => {
