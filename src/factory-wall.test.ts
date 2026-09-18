@@ -48,9 +48,18 @@ describe("factory wall snapshot", () => {
     );
     createJob(
       db,
-      { id: "job-done", runId: "run", queueId: "queue", itemId: "done", station: "landing" },
+      {
+        id: "job-done",
+        runId: "run",
+        queueId: "queue",
+        itemId: "done",
+        station: "landing",
+        worktree: "/tmp/wall-done",
+        branch: "wall-done",
+      },
       "2026-09-18T08:00:00.000Z",
     );
+    appendJobEvent(db, "job-done", { kind: "started", status: "running" }, "2026-09-18T08:00:30.000Z");
     recordJobCommit(db, "job-done", "abc123", "wall", "2026-09-18T08:01:00.000Z");
     appendJobEvent(
       db,
