@@ -520,13 +520,11 @@ const attributed = (ctx: QueryContext): string => `
 const findings: Query = {
   name: "findings",
   summary: "what a checking agent raised on a slice, and how each was answered",
+  usage: "dim q findings [repo-fragment]",
   spansHistory: true,
   run: (db, ctx) => {
     const { arg } = ctx;
     const columns = ["dimension", "raised", "fixed", "refused", "slices", "repos"];
-    // The base and the rows are counted over the same predicate, so a fragment
-    // matching nothing reports nothing rather than an empty table under a count
-    // of every finding in the corpus.
     const where: string[] = [];
     const params: string[] = [];
     if (ctx.since) {
@@ -554,9 +552,9 @@ const findings: Query = {
     const slices = scalar(db, `SELECT count(DISTINCT slice) AS n FROM finding${sql}`, ...params);
     if (raised === 0) {
       return {
-        denominator: arg
-          ? `no finding recorded against a repo matching ${arg}`
-          : "no finding has been recorded",
+        denominator:
+          (arg ? `no finding recorded against a repo matching ${arg}` : "no finding has been recorded") +
+          (ctx.since ? ` ${windowLine(ctx)}` : ""),
         columns,
         rows: [],
         note: "`dim-build` records one per finding as it is answered; nothing backfills a session that has ended.",

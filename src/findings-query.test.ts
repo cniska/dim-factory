@@ -100,6 +100,19 @@ describe("reading findings back", () => {
     db.close();
   });
 
+  test("names the window when one emptied the table, not the corpus", () => {
+    const db = seeded();
+    recordFinding(db, raised());
+    const result = findings().run(db, { ...ctx, since: "2099-01-01T00:00:00Z" });
+    expect(result.rows).toEqual([]);
+    expect(result.denominator).toBe("no finding has been recorded since 2099-01-01");
+    db.close();
+  });
+
+  test("offers the repo fragment on the discovery surface", () => {
+    expect(findings().usage).toBe("dim q findings [repo-fragment]");
+  });
+
   test("narrows to one repo when given a fragment", () => {
     const db = seeded();
     recordFinding(db, raised());
