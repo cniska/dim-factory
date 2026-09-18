@@ -28,7 +28,7 @@ The lane returns a delivered-product report containing the item and queue identi
 
 ## Report persistence
 
-The delivered-product report is persisted in the dim database so it remains queryable after the session rather than existing only in chat. `factory_lane` is the current projection; `factory_lane_event` is its typed append-only lifecycle ledger; and the normalized evidence tables hold commits, checks, findings and updated documents. The record includes:
+The delivered-product report is persisted in the dim database so it remains queryable after the session rather than existing only in chat. `factory_lane` is the current projection; `factory_lane_event` is its typed append-only lifecycle ledger; and the normalized evidence tables hold commits, changed files, checks, findings and updated documents. The record includes:
 
 - **Identity.** Queue and item identity, lane and run identity, agent identity, worktree and branch.
 - **Work.** Station, delegation tree, changed files and commit SHA.

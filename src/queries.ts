@@ -1113,6 +1113,13 @@ const lane: Query = {
       ),
       ...table(
         db,
+        `SELECT 'file' AS section, recorded_at AS "when", 'file_changed' AS kind, '' AS status,
+                path AS subject, '' AS evidence
+         FROM factory_lane_file WHERE lane_id = ?`,
+        [id],
+      ),
+      ...table(
+        db,
         `SELECT 'finding' AS section, recorded_at AS "when", 'review_finished' AS kind,
                 answer AS status, dimension AS subject, summary AS evidence
          FROM factory_lane_finding WHERE lane_id = ?`,

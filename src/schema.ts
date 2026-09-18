@@ -212,6 +212,13 @@ CREATE TABLE IF NOT EXISTS factory_lane_commit (
   PRIMARY KEY (lane_id, sha)
 );
 
+CREATE TABLE IF NOT EXISTS factory_lane_file (
+  lane_id       TEXT NOT NULL REFERENCES factory_lane(id) ON DELETE CASCADE,
+  path          TEXT NOT NULL,
+  recorded_at   TEXT NOT NULL,
+  PRIMARY KEY (lane_id, path)
+);
+
 CREATE TABLE IF NOT EXISTS factory_lane_check (
   id            INTEGER PRIMARY KEY,
   lane_id       TEXT NOT NULL REFERENCES factory_lane(id) ON DELETE CASCADE,

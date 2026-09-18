@@ -135,6 +135,10 @@ export function recordLaneCommit(
   appendLaneEvent(db, laneId, { kind: "commit_created", commitSha: sha }, at);
 }
 
+export function recordLaneFile(db: Database, laneId: string, path: string, at = now()): void {
+  db.run("INSERT INTO factory_lane_file (lane_id, path, recorded_at) VALUES (?, ?, ?)", [laneId, path, at]);
+}
+
 export function recordLaneCheck(
   db: Database,
   laneId: string,
