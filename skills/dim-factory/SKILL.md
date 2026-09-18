@@ -42,6 +42,12 @@ An item you cannot state needs scoping, which is `dim-plan` — run it, leave th
 | repairs something wrong | `dim-fix` |
 | neither — a refactor, a doc, a rule | `dim-build` |
 
+**Hand the item to a builder, and do not build it here.** One agent takes one item end to end, invoking the station itself; running the station in this session instead makes the line one worker long, and then the queue is worked one item per invocation whatever this file says about emptying it.
+
+This is not the fan-out `dim-build` argues against. That rule keeps a single slice from being split across agents, because edits need the context that produced them — a builder holding one whole item has exactly that context. What it forbids is two agents editing one slice.
+
+Give the builder the item as the queue states it, the repo's check, and the standing instruction to run its station's loop including the checking agent. Take back what it reports: the commits, the findings, what it left. A builder that returns without a commit and without saying why is a failed attempt, and the bound below counts it.
+
 ## 4. The fence
 
 Three shapes stop a run wherever they are met, including partway into an item that read as ready:
