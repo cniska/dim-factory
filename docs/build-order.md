@@ -34,19 +34,19 @@ The corpus-native half of the measurement is built: `dim bench` scores a hand-la
 
 ## Ready, waiting on nothing
 
-- **Running a formatter after an edit**, which is the half of the project tier dim can supply a command for but never run ([`recall.md`](recall.md)).
-
-- **The working-directory check.** Git aimed outside the session's own directory fails three times as often ([`findings.md`](findings.md)). A commit hook knows the repo it runs in and not the one the session belongs to, so only a hook on the tool call can compare them.
-
-- **Undoing an agent's writes** ([`worktrees.md`](worktrees.md)), which records that something changed and commits on a later pass.
-
-- **The weakening guard** ([`evals-and-hooks.md`](evals-and-hooks.md)), which warns rather than blocks.
-
 - **The self-sufficient factory job.** [`factory.md`](factory.md) defines the job contract: one job owns one queue item in an isolated worktree, may delegate its internal work, runs to completion or a recorded stop, and leaves the driver to schedule, observe and integrate. The delivered-product report is persisted in `factory_job`, its typed lifecycle in `factory_job_event`, and its normalized evidence in the commit, check, finding and document tables; `dim q job <job-id>` reads it after the session. The persistence layer is live; driver-side ownership, claims, landing and queue-transition enforcement remain the next orchestration work. Independent jobs can run in parallel, while claims, landing and queue transitions stay serialized. The explicit item count is the run boundary and defaults to one.
 
 - **A reversible queue planner.** The planned queue layer is a tracked file issue format plus a small Node or Bun CLI. It owns item intent, dependencies and queue status; it identifies unblocked work for parallel isolated jobs and writes status transitions back to the file. [`factory.md`](factory.md) keeps this boundary separate from the persisted `factory_job` execution report, whose claims, events and evidence remain the factory's operational record.
 
-- **`PostToolUse` as an installed event**, which is the borrow [`landscape.md`](landscape.md) picks first and the only item here that clears others — four of them, listed above. It records that a call happened and a later pass reads the record, the way the session hooks spool rather than write, because a hook firing on every tool call that can fail is a hook that can break every session.
+- **`PostToolUse` as an installed event**, which records tool activity for the observable loop and clears the formatter and weakening guard below. It records that a call happened and a later pass reads the record, the way the session hooks spool rather than write, because a hook firing on every tool call that can fail is a hook that can break every session.
+
+- **Running a formatter after an edit**, which is the half of the project tier dim can supply a command for but never run ([`recall.md`](recall.md)).
+
+- **The working-directory check.** Git aimed outside the session's own directory fails three times as often ([`findings.md`](findings.md)). A commit hook knows the repo it runs in and not the one the session belongs to, so only a hook on the tool call can compare them.
+
+- **The weakening guard** ([`evals-and-hooks.md`](evals-and-hooks.md)), which warns rather than blocks.
+
+- **Undoing an agent's writes** ([`worktrees.md`](worktrees.md)), which records that something changed and commits on a later pass.
 
 - **The tooling chain in `wake`** ([`recall.md`](recall.md)), which is the half of the project tier the record answers rather than the manifest: which CLIs a repo is actually worked with, derived from the shell commands its sessions ran. The declared half is delivered. What has to be settled is how a CLI worth naming is told from one every repo uses, without a written list of interesting tools — a share measured against the corpus is the shape, and the threshold is the part that needs deciding rather than picking.
 
