@@ -14,9 +14,9 @@ It ships as a subcommand ([`wt-command.ts`](../src/wt-command.ts)) rather than a
 
 ## Worker environments
 
-A worktree may need more than tracked files before a worker can run. A repository-owned setup hook can install dependencies across workspace members, activate pinned tools, allocate isolated ports, create worker-specific service containers, materialize environment files and check health. Its teardown hook removes those resources before the worktree is removed.
+A worktree may need more than tracked files before a worker can run. A repository-owned setup hook can install dependencies across workspace members, activate pinned tools, allocate isolated ports, create worker-specific service containers, materialize environment files and check health. Its teardown hook removes those resources before the worktree is removed. `workspaceContract` reports the checkout, worktree identity, declared tasks, package managers, Dart or Flutter bootstrap, members, capabilities and hook entry points; an absent declaration remains `null` or an empty collection.
 
-`dim wt` owns the lifecycle around those hooks: it invokes setup after creation, invokes teardown before removal, records the result for the factory job, and keeps the worktree when teardown fails. It does not infer the repository's service topology or perform package installation on its own. The workspace profile supplies the package-manager and environment description that makes the hook's work visible; the hook remains the authority for side effects.
+`dim wt` owns the lifecycle around those hooks: it invokes setup after creation, invokes teardown before removal, prints a structured command/result/resource report, and keeps the worktree when teardown fails. It does not infer the repository's service topology or perform package installation on its own. The workspace profile supplies the package-manager and environment description that makes the hook's work visible; the hook remains the authority for side effects.
 
 A teardown hook that is killed by a signal reports no exit code, and reading that as success would remove the worktree its resources are named by — so any status that is not a clean zero keeps the worktree, and `--force` is the only way past.
 
