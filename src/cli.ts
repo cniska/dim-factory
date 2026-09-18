@@ -88,6 +88,10 @@ const USAGE = `usage: dim <command>
                   record a factory job as it is taken, started, moved between
                   stations and stopped, so the wall shows the work while it is
                   happening (dim job for the flags each subcommand takes)
+  job commit|file|check|finding|document <job-id> ...
+                  record what a running job produced — a commit and its subject,
+                  a file it changed, a check and its exit status, a finding and
+                  how it was answered, a doc it updated
   queue ready <file> [--limit <n>]
                   print planned items whose dependencies are completed
   queue transition <file> <item> <status> [--reason <text>] [--at <iso>]
