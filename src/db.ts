@@ -14,7 +14,10 @@ export class SchemaTooOldError extends Error {
 
 /**
  * `rebuild` is the one caller allowed through a version mismatch, because
- * re-reading the sources is exactly the fix the error asks for.
+ * re-reading the sources is exactly the fix the error asks for. It stamps the
+ * new version itself once that re-read has returned: stamped here, a re-read
+ * that threw would leave a database claiming a version its rows do not have,
+ * and every later `sync` would pass the check and hit the same failure.
  */
 export function openDb(path: string, opts: { forRebuild?: boolean } = {}): Database {
   mkdirSync(dirname(path), { recursive: true });
@@ -26,12 +29,9 @@ export function openDb(path: string, opts: { forRebuild?: boolean } = {}): Datab
   const row = db.prepare<{ version: number }, []>("SELECT version FROM schema_version LIMIT 1").get();
   if (!row) {
     db.run("INSERT INTO schema_version (version) VALUES (?)", [SCHEMA_VERSION]);
-  } else if (row.version !== SCHEMA_VERSION) {
-    if (!opts.forRebuild) {
-      db.close();
-      throw new SchemaTooOldError(row.version);
-    }
-    db.run("UPDATE schema_version SET version = ?", [SCHEMA_VERSION]);
+  } else if (row.version !== SCHEMA_VERSION && !opts.forRebuild) {
+    db.close();
+    throw new SchemaTooOldError(row.version);
   }
   return db;
 }
