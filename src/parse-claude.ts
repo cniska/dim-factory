@@ -8,7 +8,7 @@ import {
   type ToolCallRow,
   type TurnRow,
   type UsageRow,
-} from "./records";
+} from "./session-records";
 
 import { parseSkillBody, type SkillLoadRow, sha256, skillFromCommand } from "./skill-load";
 

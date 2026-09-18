@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { statSync } from "node:fs";
 import { readChunk } from "./chunk";
 import { gitSubcommands } from "./git-command";
-import type { ParsedChunk, SessionFacts } from "./records";
+import type { ParsedChunk, SessionFacts } from "./session-records";
 import type { Tool } from "./tools";
 import { worktreeOf } from "./worktree";
 export type Kind = "transcript" | "subagent" | "rollout";
