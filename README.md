@@ -151,6 +151,10 @@ Around one paste in five finds no writer, because that transcript was pruned bef
 
 The tool-agnostic advice for this is to skim `git log` and match it; the whole log is already a table here, so a station reads a row. A repo that was cloned rather than written reports its authors' convention, so the repo column is read first.
 
+`dim q findings [repo-fragment]` answers what the checking agent in `dim-build` raised and how each was answered, by dimension. `dim finding` writes one row as a finding is answered — fixed, or refused with the reason that ended it — because that judgement exists only in the session that made it and no transcript carries it afterward. The table is one of the few nothing re-reads, so `dim rebuild` leaves it standing and nothing backfills a session that has ended.
+
+It grades the checker and never the builder. A builder scored down by a count writes duller slices and a checker scored up by one invents findings, which is the shape measures in [`docs/findings.md`](docs/findings.md) already turned out to have. A refusal ends a finding as completely as a fix does, so the two columns are answers rather than a pass rate.
+
 `dim check-commits <range>` judges every authored subject in a revision range by `checkSubject`, the same function the installed hook's rules mirror, and names each commit and the rule it broke. CI runs it over what each push added: the hook is skippable with `--no-verify` and absent on a fresh clone, so a bypassed commit is only visible once it has landed. Merge subjects are git's rather than an author's and are not judged.
 
 ## Publishing
