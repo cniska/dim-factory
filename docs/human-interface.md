@@ -23,8 +23,6 @@ The overview is a snapshot assembled from the existing queue, factory job, lifec
 
 ## Visual language
 
-The wall takes its visual direction from Hoodly's Wall and NeoChess:
-
 - **Dark ground.** A stable dark surface keeps status colors and text legible for a display that may stay open.
 - **Compact cards.** Each card carries one fact, a short explanation and the smallest useful supporting detail.
 - **Strong hierarchy.** Current state is bright and large; age, identity and provenance are quieter.
@@ -32,6 +30,12 @@ The wall takes its visual direction from Hoodly's Wall and NeoChess:
 - **Age is visible.** The newest event leads; older events recede without disappearing.
 - **No ornamental motion.** Animation marks a changed fact or a connection state, never decoration.
 - **Responsive and fullscreen.** The same wall works as a browser page and as a display viewed from across a room.
+
+## Acceptance
+
+The first implementation is reviewed against a seeded snapshot containing plan, build and review work; running, waiting, blocked, fenced and completed states; and each agent role. The first viewport must make the work, station, agent, state and next meaningful action legible without opening a detail view.
+
+The review checks the same wall at fullscreen desktop and narrow viewport sizes. Surfaces use one shared token set, edges and gaps align, text remains readable when the browser enlarges it, and no state depends on color alone. The snapshot, stale-feed state and role markers remain understandable when the connection stops. An independent screenshot review is required in addition to automated checks; a passing test suite does not establish visual quality.
 
 ## Factory character
 
