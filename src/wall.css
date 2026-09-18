@@ -17,7 +17,7 @@ h1, h2, h3, p { margin-top: 0; } h1 { font-size: clamp(2rem, 4vw, 3.4rem); line-
 h1 span { display: block; }
 h2 { font-size: 1.1rem; margin-bottom: 0; letter-spacing: -.02em; } h3 { font-size: 1.05rem; line-height: 1.2; margin: var(--space-3) 0 var(--space-2); overflow-wrap: anywhere; }
 .lede { color: var(--muted); font-size: .95rem; margin-bottom: 0; }
-.feed-status { display: flex; align-items: center; gap: var(--space-2); border: 1px solid var(--line); border-radius: 999px; color: var(--muted); padding: .55rem .8rem; white-space: nowrap; }
+.feed-status { display: flex; align-items: center; gap: var(--space-2); min-height: 2.25rem; border: 1px solid var(--line); border-radius: var(--radius); color: var(--muted); padding: .55rem .8rem; white-space: nowrap; }
 .feed-status.live span:first-child { color: var(--good); } .feed-status.stale, .feed-status.unavailable { color: var(--warn); } .feed-status small { color: var(--quiet); }
 .wall-actions { display: flex; align-items: center; gap: var(--space-2); }
 .ui-button { font: inherit; color: inherit; }
