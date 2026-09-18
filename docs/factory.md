@@ -27,6 +27,8 @@ The planned factory assigns each queue item to one self-sufficient job that runs
 
 The job returns a delivered-product report containing the item and queue identity, station and delegation tree, worktree and branch, changed files, commit SHA, repo check and result, checker findings and resolutions, updated docs, and final status: completed, blocked, fenced, failed or abandoned. A completed or stopped report includes the evidence the driver needs to land the work or stop at the stated boundary.
 
+Station transfers use the factory's `dim-handoff`. It requires strict `# Handoff — <item_id> — <item name>` and `## Next` headings and carries only the routing token. The ID is canonical and the name comes from the queue. The receiving station queries the job's station, worktree, branch, commits, checks, findings, docs and fence with `dim`; the handoff is not a session-resume document or a second job report.
+
 ## Report persistence
 
 The delivered-product report is persisted in the dim database so it remains queryable after the session rather than existing only in chat. `factory_job` is the current projection; `factory_job_event` is its typed append-only lifecycle ledger; and the normalized evidence tables hold commits, changed files, checks, findings and updated documents. The record includes:

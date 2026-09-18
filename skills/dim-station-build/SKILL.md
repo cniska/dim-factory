@@ -28,6 +28,8 @@ Commit in the same order every time: the task passes, the slice is simplified, t
 
 Apply [`dim-git`](../dim-git/SKILL.md) at the commit boundary. It owns the repository status, worktree ownership, evidence recorded with the commit and the rules for later landing; this station owns the slice loop.
 
+Use [`dim-tdd`](../dim-tdd/SKILL.md) for behavior-changing slices and [`dim-simplify`](../dim-simplify/SKILL.md) for the simplification pass. Their methods remain shared; this station supplies the slice boundary, repository evidence and finding loop.
+
 Where a slice turns out to be blocked, finish every other slice in full and say plainly what was left and why. Scaling the work down is the owner's call.
 
 ## Simplify the slice before it is checked
