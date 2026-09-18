@@ -1,8 +1,4 @@
 #!/usr/bin/env bun
-// dim — read Claude Code and Codex session records into a local SQLite database.
-// Nothing below this line reaches the network, holds a credential, or is billed
-// per token. `embed` and `q search` run a model on weights already on disk.
-
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { AGENT_LABEL, installAgent, planAgent } from "./agent";
