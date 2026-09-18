@@ -72,7 +72,7 @@ Claude Code deletes transcripts after 30 days unless told otherwise, so `~/.clau
 
 ### Checking the install
 
-`dim doctor` checks the paths that fail silently: retention unset, hooks installed but never firing, a Codex hook installed but not trusted, a launchd agent written but never loaded, a spool nothing drains, a commit gate covering no repo, a gate whose owners name no host, a checkout where the push gate can never fire, a database built by an older schema. It reads only, exits non-zero when a check fails, and every failure names its fix.
+`dim doctor` checks the paths that fail silently: retention unset, hooks installed but never firing, a Codex hook installed but not trusted, a launchd agent written but never loaded, a spool nothing drains, a gate hook missing, holding a body the scripts no longer write, or sitting in a directory git is not pointed at, a gate whose owners name no host, a checkout where the push gate can never fire, a database built by an older schema. It reads only, exits non-zero when a check fails, and every failure names its fix.
 
 Codex runs a hook only where `~/.codex/config.toml` records a `trusted_hash` for it under `[hooks.state]`, keyed `<hooks.json path>:<event>:<entry index>:<hook index>`. Trust is positional, so another tool inserting an entry ahead of dim's moves dim's hook to a key approved for a different command, and collection and `wake` stop on the Codex side with `hooks.json` still reading as correct. The check reads whether a trust is recorded at each hook's current position; the hash itself is Codex's to verify, so a missing key proves the hook will not run and a present one says only that the position was approved.
 

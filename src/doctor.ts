@@ -3,7 +3,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { AGENT_LABEL, agentPlistPath } from "./agent";
 import { codexConfigPath, planCodexTrust, type TrustState } from "./codex-trust";
-import { gateHooks, installedOwners, sharedHooksDir } from "./commit-gate";
+import { installedOwners, planCommitGate, sharedHooksDir } from "./commit-gate";
 import { ConfigError } from "./config-error";
 import { type HookPlan, planHooks } from "./hooks";
 import { readJsonc } from "./jsonc";
@@ -267,15 +267,28 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
   );
 
   // The gate holds a rule the conventions would otherwise only ask for, so its
-  // absence is a rule silently back to being asked rather than held.
-  const absent = gateHooks([]).filter((h) => !existsSync(join(sharedHooksDir(env), h.name)));
+  // absence is a rule silently back to being asked rather than held. A body
+  // predating a script change runs the old rules, so it is compared rather than
+  // only looked for, against the owners the installed hook itself names.
+  const plan = planCommitGate(installedOwners(env) ?? [], [], env);
+  const dir = sharedHooksDir(env);
+  // Git reads one hooks directory and merges nothing, so three perfect hooks it
+  // is not pointed at run in no repo at all.
+  const gaps = plan.hooks
+    .filter((h) => h.state !== "installed")
+    .map((h) => `${h.name} is ${h.state}`)
+    .concat(
+      plan.globalHooksPath === dir
+        ? []
+        : [`git's global core.hooksPath is ${plan.globalHooksPath ?? "unset"} rather than ${dir}`],
+    );
   checks.push(
-    absent.length === 0
+    gaps.length === 0
       ? { name: "commit gate", state: "ok", detail: "every hook in place, for every repo" }
       : {
           name: "commit gate",
           state: "warn",
-          detail: `no shared ${absent.map((h) => h.name).join(", ")}; those rules are held only where a repo gates its own`,
+          detail: `${gaps.join(", ")}; those rules are held only where a repo gates its own`,
           fix: "dim install-commit-gate --owner=<owner> --write",
         },
   );
