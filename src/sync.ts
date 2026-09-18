@@ -3,7 +3,7 @@ import { listClaudeSubagents, listClaudeTranscripts } from "./claude-source";
 import { listCodexRollouts, readCodexTitles } from "./codex-source";
 import { type GitReport, ingestCommits } from "./git-ingest";
 import { type GuidanceReport, ingestGuidance } from "./guidance";
-import { type HandoffLinkReport, linkHandoffs } from "./handoff";
+import { backfillHandoffs, type HandoffLinkReport, linkHandoffs } from "./handoff";
 import { type HistoryReport, ingestHistory } from "./history";
 import { createIngester, type FileSpec } from "./ingest";
 import type { Env } from "./paths";
@@ -105,6 +105,7 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
   report.repoChecks = recordRepoChecks(db);
   report.guidance = ingestGuidance(db, env);
   // Derived from the messages just written, so it follows every transcript pass.
+  backfillHandoffs(db);
   report.chain = linkHandoffs(db);
   return report;
 }
@@ -160,6 +161,7 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
     db.run("DROP TABLE IF EXISTS repo_check");
     db.run("DROP TABLE IF EXISTS repo_commit");
     db.run("DROP TABLE IF EXISTS handoff_link");
+    db.run("DROP TABLE IF EXISTS factory_handoff");
     db.run(SCHEMA_SQL);
     const restore = db.prepare<void, [string, string, string | null, string | null, string]>(
       `INSERT INTO correction_label (message_id, label, skill_name, rule, labeled_at)

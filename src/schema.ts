@@ -488,6 +488,19 @@ CREATE TABLE IF NOT EXISTS handoff_link (
 CREATE INDEX IF NOT EXISTS handoff_link_from ON handoff_link(from_session);
 CREATE INDEX IF NOT EXISTS handoff_link_to ON handoff_link(to_session);
 
+-- One row per handoff-shaped message, rebuilt from transcript text. The message
+-- is the source identity; next is stored so wake and resume do not re-parse a
+-- transcript at read time.
+CREATE TABLE IF NOT EXISTS factory_handoff (
+  message_id      TEXT PRIMARY KEY,
+  session_id      TEXT NOT NULL,
+  role            TEXT NOT NULL CHECK (role IN ('user','assistant')),
+  ts              TEXT NOT NULL,
+  title           TEXT NOT NULL,
+  next            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS factory_handoff_session_ts ON factory_handoff(session_id, ts);
+
 -- Prose search over message.text, so finding what was said in a past session is a
 -- query rather than a grep across every transcript on disk. External content: the
 -- index stores no copy of the text and reads it back through message.rowid.
