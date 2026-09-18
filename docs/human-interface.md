@@ -8,15 +8,9 @@ The first interface is a Bun-hosted React page served on loopback. It reads the 
 
 The client uses shadcn/ui components and Tailwind design tokens, built as a static bundle that Bun serves. Next.js is outside the first slice: the local server and the client have separate responsibilities, and the wall does not need a second application server.
 
-## Prior art
+## Implementation
 
-The implementation borrows from two different surfaces:
-
-- **NeoChess's static demo** (`apps/sites/neochess/public/`) supplies the visual discipline: semantic HTML, CSS variables, JetBrains Mono, a dark responsive layout, lightweight client state and deliberate animation without application-framework overhead.
-- **`app.acolyte.sh`** supplies dashboard composition: overview and detail separation, shadcn/ui components, auto-refresh, bounded lists and a responsive application shell. Its authentication, CRUD routes and hosted service model do not transfer.
-- **Hoodly's Wall** supplies the operational display shape: bounded statistics, a recent-activity ticker, fullscreen presentation and an explicit stale-feed state.
-
-The factory combines these as a React and shadcn/ui client, a NeoChess-inspired visual system and a Bun-hosted local read-only server. It does not copy any one product's control surface or application architecture.
+The client uses semantic HTML, CSS variables, a dark responsive layout, lightweight client state, deliberate animation, overview and detail separation, bounded lists, a recent-activity ticker, fullscreen presentation and an explicit stale-feed state. Its base palette is black, white and grayscale surfaces; semantic accents are reserved for agent roles and job states. It uses React, shadcn/ui and Tailwind as a static bundle; Bun serves it beside the local read-only server. The interface owns its visual system and has no control surface.
 
 The page answers these questions in order:
 
@@ -95,7 +89,7 @@ snapshot assembler → HTTP snapshot
      wall page
 ```
 
-The server follows Acolyte's useful separation between Bun fetch handling, status-payload construction and WebSocket handling. The client follows Hoodly's shadcn/ui component conventions and NeoChess's dark, compact visual language. Authentication, RPC commands and remote hosting are outside this interface.
+The server separates Bun fetch handling, status-payload construction and WebSocket handling. Authentication, RPC commands and remote hosting are outside this interface.
 
 ## Design rule
 
