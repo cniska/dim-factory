@@ -1,20 +1,15 @@
 import type { Database } from "bun:sqlite";
-import { readFileSync } from "node:fs";
 import { dbPath } from "./paths";
-import { parseQueue, type QueueFile, readyItems } from "./queue-planner";
 import { openReadOnly } from "./read-db";
 
-export type WallStation = "plan" | "build" | "review" | "landing";
+export type WallStation = "plan" | "build" | "review" | "ship";
 export type WallStatus = "running" | "waiting" | "blocked" | "fenced" | "completed" | "failed";
 export type WallRole = "builder" | "fixer" | "reviewer" | "planner";
 
 export type WallJob = {
   id: string;
   item: string;
-  queue: string;
   station: WallStation;
-  worktree: string;
-  branch: string;
   agent: string;
   role: WallRole;
   status: WallStatus;
@@ -22,7 +17,6 @@ export type WallJob = {
   age: string;
   updatedAt: string;
   evidence: string;
-  next: string;
   attention?: string;
 };
 
@@ -30,27 +24,14 @@ export type WallSnapshot = {
   generatedAt: string;
   source: "database" | "unavailable";
   jobs: WallJob[];
-  attention: string[];
-  next: string[];
-  finished: WallJob[];
-  activeTotal: number;
-  attentionTotal: number;
-  nextTotal: number | null;
-  stationTotals: Record<WallStation, number>;
 };
 
 const MAX_ACTIVE = 12;
-const MAX_ATTENTION = 8;
-const MAX_NEXT = 8;
-const MAX_FINISHED = 5;
 
 type JobRow = {
   id: string;
   item_id: string;
-  queue_id: string;
   agent_id: string | null;
-  worktree: string | null;
-  branch: string | null;
   station: string | null;
   status: WallStatus;
   claimed_at: string;
@@ -63,13 +44,13 @@ type JobRow = {
   latest_evidence: string | null;
 };
 
-const stations = new Set<WallStation>(["plan", "build", "review", "landing"]);
+const stations = new Set<WallStation>(["plan", "build", "review", "ship"]);
 const statuses = new Set<WallStatus>(["running", "waiting", "blocked", "fenced", "completed", "failed"]);
 
 function station(value: string | null): WallStation {
   if (value === "dim-station-plan" || value === "plan") return "plan";
   if (value === "dim-station-review" || value === "review") return "review";
-  if (value === "landing" || value === "dim-station-landing") return "landing";
+  if (value === "ship" || value === "dim-station-ship") return "ship";
   return "build";
 }
 
@@ -111,10 +92,7 @@ function mapJob(row: JobRow, now: Date): WallJob {
   return {
     id: row.id,
     item: row.item_id,
-    queue: row.queue_id,
     station: stationName,
-    worktree: row.worktree ?? "not assigned",
-    branch: row.branch ?? "not assigned",
     agent: row.latest_actor ?? row.agent_id ?? "unassigned",
     role: role(row.latest_actor ?? row.agent_id, stationName),
     status: jobStatus,
@@ -122,15 +100,14 @@ function mapJob(row: JobRow, now: Date): WallJob {
     age: age(row.updated_at || row.claimed_at, now),
     updatedAt: row.updated_at || row.claimed_at,
     evidence: row.latest_evidence ?? "No evidence recorded yet",
-    next: jobStatus === "completed" ? "Finished" : attention ? "Owner attention" : "No next action recorded",
     ...(attention ? { attention } : {}),
   };
 }
 
-export function assembleWallSnapshot(db: Database, now = new Date(), queue?: QueueFile): WallSnapshot {
+export function assembleWallSnapshot(db: Database, now = new Date()): WallSnapshot {
   const rows = db
     .query(
-      `SELECT j.id, j.item_id, j.queue_id, j.agent_id, j.worktree, j.branch, j.station, j.status,
+      `SELECT j.id, j.item_id, j.agent_id, j.station, j.status,
               j.claimed_at, j.updated_at, j.stop_reason,
               e.kind AS latest_kind, e.reason AS latest_reason, e.station AS latest_station,
               e.actor_id AS latest_actor,
@@ -144,31 +121,10 @@ export function assembleWallSnapshot(db: Database, now = new Date(), queue?: Que
     .all() as JobRow[];
   const jobs = rows.map((row) => mapJob(row, now));
   const active = jobs.filter((job) => job.status !== "completed");
-  const attention = active.filter((job) => job.attention).map((job) => `${job.item}: ${job.attention}`);
-  const eligible = queue === undefined ? null : readyItems(queue, Number.POSITIVE_INFINITY);
-  const stationTotals = Object.fromEntries(
-    [...stations].map((stationName) => [
-      stationName,
-      active.filter((job) => job.station === stationName).length,
-    ]),
-  ) as Record<WallStation, number>;
-  const next =
-    eligible === null
-      ? ["Queue eligibility unavailable"]
-      : eligible.length === 0
-        ? ["No eligible queue items"]
-        : eligible.slice(0, MAX_NEXT).map((item) => `${item.id}: ${item.title}`);
   return {
     generatedAt: now.toISOString(),
     source: "database",
     jobs: active.slice(0, MAX_ACTIVE),
-    attention: attention.slice(0, MAX_ATTENTION),
-    next,
-    finished: jobs.filter((job) => job.status === "completed").slice(0, MAX_FINISHED),
-    activeTotal: active.length,
-    attentionTotal: attention.length,
-    nextTotal: eligible?.length ?? null,
-    stationTotals,
   };
 }
 
@@ -184,18 +140,16 @@ export async function buildWallBundle(): Promise<{ js: Uint8Array; css: Uint8Arr
 const page = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/wall.css"><title>Factory wall</title></head><body><div id="root"></div><script src="/wall.js"></script></body></html>`;
 
 export async function serveWall(
-  options: { port?: number; databasePath?: string; queuePath?: string } = {},
+  options: { port?: number; databasePath?: string } = {},
 ): Promise<ReturnType<typeof Bun.serve>> {
   const bundle = await buildWallBundle();
   const clients = new Set<Bun.ServerWebSocket<unknown>>();
   const path = options.databasePath ?? dbPath();
-  const queuePath = options.queuePath;
   let hash = "";
   const snapshot = (): WallSnapshot => {
     const db = openReadOnly(path);
     try {
-      const queue = queuePath === undefined ? undefined : parseQueue(readFileSync(queuePath, "utf8"));
-      return assembleWallSnapshot(db, new Date(), queue);
+      return assembleWallSnapshot(db, new Date());
     } finally {
       db.close();
     }

@@ -12,15 +12,9 @@ The client is a React static bundle that Bun serves. Its CSS custom properties a
 
 The client uses semantic HTML, CSS variables, a dark responsive layout, lightweight client state, overview and detail separation, bounded lists, fullscreen presentation and explicit stale, unavailable and empty states. Its base palette is black, white and grayscale surfaces; semantic accents are reserved for agent roles and job states. Bun serves the React bundle beside the local read-only server. The interface owns its visual system and has no control surface.
 
-The page answers these questions in order:
+The page answers one question: where is each active item in the factory flow? A four-column board puts every active item in Plan, Build, Review or Ship. Each fixed-size card carries the item, agent, state, elapsed time and latest evidence. Column headers carry the item counts. Blocked, fenced and failed jobs keep their operational warning on the card.
 
-- **What is happening?** Active jobs, their stations, worktrees and latest events.
-- **Who is operating it?** Clocked-in operators, their harnesses and whether their presence is current or stale.
-- **What needs attention?** Fences, blockers, failed setup or teardown, stale workers and repeated failures.
-- **What happens next?** Eligible queue work, due schedules and jobs waiting for serialized landing.
-- **What just finished?** Recent terminal outcomes and the evidence attached to them.
-
-The overview is a snapshot assembled from the queue file and factory job, lifecycle event, schedule, operator-presence and worker-environment records. Queue eligibility is shown only when `DIM_QUEUE_FILE` points to a valid queue file; absent or empty queue data is stated explicitly. Detailed read-only queries remain the path for investigation; the wall does not reproduce their full reports.
+The board is a snapshot assembled from factory job and lifecycle event records. Detailed read-only queries remain the path for investigation; the wall does not reproduce their full reports.
 
 ## Visual language
 
@@ -35,17 +29,17 @@ The overview is a snapshot assembled from the queue file and factory job, lifecy
 
 ## Acceptance
 
-The first implementation is reviewed against a seeded snapshot containing plan, build and review work; running, waiting, blocked, fenced and completed states; and each agent role. The first viewport must make the work, station, agent, state and next meaningful action legible without opening a detail view.
+The implementation is reviewed against a seeded snapshot containing work in all four columns; running, waiting, blocked, fenced and completed states; and each agent role. The first viewport must make the work, station, agent, state, elapsed time and latest evidence legible without opening a detail view.
 
-The first implementation lives in `src/factory-wall.ts`, `src/wall-client.tsx` and `src/wall.css`. `dim wall` serves the bundled page on loopback; `GET /api/snapshot` reads the existing database and queue file, and `/ws` sends a changed snapshot. When either source is unavailable, the wall states that condition rather than rendering fabricated operational rows. Empty active, attention, eligible and finished lists have explicit empty states.
+The implementation lives in `src/factory-wall.ts`, `src/wall-board.ts`, `src/wall-client.tsx` and `src/wall.css`. `dim wall` serves the bundled page on loopback; `GET /api/snapshot` reads the existing database, and `/ws` sends a changed snapshot. When the database is unavailable, the wall states that condition rather than rendering fabricated operational rows. Empty columns use the same treatment.
 
-The review checks the same wall at fullscreen desktop and narrow viewport sizes. Surfaces use one shared token set, edges and gaps align, text remains readable when the browser enlarges it, and no state depends on color alone. The snapshot, stale-feed state and role markers remain understandable when the connection stops. An independent screenshot review is required in addition to automated checks; a passing test suite does not establish visual quality.
+The review checks the same wall at a 1440×900 fullscreen desktop viewport and below it. Surfaces use one shared token set, edges and gaps align, text remains readable when the browser enlarges it, and no state depends on color alone. The snapshot, stale-feed state and role markers remain understandable when the connection stops. An independent screenshot review is required in addition to automated checks; a passing test suite does not establish visual quality.
 
 ## Factory character
 
 The wall should feel like a software production floor:
 
-- **Stations are visible.** Plan, build, review and landing are stable places in the layout; a job's current station is immediately clear.
+- **Stations are visible.** Plan, Build, Review and Ship are stable places in the layout; a job's current station is immediately clear.
 - **Work-in-progress is concrete.** A job card names the item, worker, worktree, elapsed time and latest evidence instead of showing abstract activity counts.
 - **Flow is legible.** The page shows work moving between stations and makes a stopped item interrupt that flow visually.
 - **Handoffs are explicit.** The next station, the report it received and the reason work is waiting are visible without opening raw logs.
@@ -70,16 +64,14 @@ These values come from persisted job claims, lifecycle events, reports and worke
 
 The wall remains an overview as the factory grows:
 
-- **Summaries before lists.** Counts and station flow show the whole factory; only active, blocked, fenced and recently changed work appears on the first screen.
-- **Attention is bounded.** The snapshot carries a bounded set of high-value rows and points to read-only queries for the rest, so more jobs do not make the page slower or louder.
-- **Stations absorb volume.** A station shows its current work and backlog shape rather than expanding into one card per historical job.
-- **Details open on demand.** A job, environment or event can be inspected separately without turning the wall into a table.
+- **Columns absorb volume.** Each station shows its current work in bounded cards rather than expanding into a history list.
+- **Details stay on the card.** The item, agent, state, elapsed time and latest evidence are visible without turning the wall into a table.
 - **The transport stays quiet.** WebSocket updates send changed snapshots or bounded deltas, not an ever-growing event log.
 - **The layout adapts.** The same hierarchy works as a fullscreen wall, a wide desktop page and a narrow browser window.
 
 ## Read-only boundary
 
-The page may observe but never claim, retry, pause, resume, cancel, land, remove, push or alter a schedule. The server binds to `127.0.0.1`; its HTTP routes return snapshots and its WebSocket sends snapshots when they change. Client messages are rejected or ignored.
+The page may observe but never claim, retry, pause, resume, cancel, ship, remove, push or alter a schedule. The server binds to `127.0.0.1`; its HTTP routes return snapshots and its WebSocket sends snapshots when they change. Client messages are rejected or ignored.
 
 ## Human attention
 

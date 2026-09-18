@@ -17,7 +17,7 @@ What makes this a station is that the record aims it. This machine knows which f
 ## Entry contract
 
 1. **Know what checks this.** Read the repo's own task — `package.json` scripts, `mise` tasks, a `Makefile` — and use it. `dim check-task` prints what the repo declares. Running the repo's task is what makes a local check the same check CI runs; an equivalent command assembled by hand is not that.
-2. **Read the rules actually in force.** The standing corrections live in the guidance files, not in a phrase counter — `dim q repeats` returns conversational filler and the corrections are not in it ([`findings.md`](../../docs/findings.md), "The repetition an n-gram counter cannot see"). Read the `CLAUDE.md` and `AGENTS.md` on the walk into this session, imports included, and treat a rule a session has already restated as one that is not landing rather than one the agent ignored.
+2. **Read the rules actually in force.** The standing corrections live in the guidance files, not in a phrase counter — `dim q repeats` returns conversational filler and the corrections are not in it ([`findings.md`](../../docs/findings.md), "The repetition an n-gram counter cannot see"). Read the `CLAUDE.md` and `AGENTS.md` on the walk into this session, imports included, and treat a rule a session has already restated as one that is not taking hold rather than one the agent ignored.
 3. **Know which ground has broken.** `dim q fixes` gives the share of files edited under each skill that a later fix commit came back to, over the skills that touched enough files to report. It names no path, so it says which kind of work has been coming back rather than which file here did. `dim q exemplars` does name paths — the most-edited code that shipped with no fix returning to it — and those are candidates rather than verdicts, since a file nobody came back to may have been right or may have been abandoned. A front arriving here has already asked this; a change that came in directly asks it now.
 
 ## Slices
@@ -26,7 +26,7 @@ A slice is a vertical cut: it changes behavior, it is checked on its own, and it
 
 Commit in the same order every time: the task passes, the slice is simplified, the task passes again, the checker reads what will land, every finding it raises is answered and the task passes over the answers, then the commit, then the next slice.
 
-Apply [`dim-git`](../dim-git/SKILL.md) at the commit boundary. It owns the repository status, worktree ownership, evidence recorded with the commit and the rules for later landing; this station owns the slice loop.
+Apply [`dim-git`](../dim-git/SKILL.md) at the commit boundary. It owns the repository status, worktree ownership, evidence recorded with the commit and the rules for later integration; this station owns the slice loop.
 
 Use [`dim-tdd`](../dim-tdd/SKILL.md) for behavior-changing slices and [`dim-simplify`](../dim-simplify/SKILL.md) for the simplification pass. Their methods remain shared; this station supplies the slice boundary, repository evidence and finding loop.
 

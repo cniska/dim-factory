@@ -754,7 +754,6 @@ try {
       {
         const server = await serveWall({
           port: Number(process.env.DIM_WALL_PORT ?? 0) || 0,
-          queuePath: process.env.DIM_QUEUE_FILE,
         });
         console.log(`factory wall listening at http://${server.hostname}:${server.port}`);
       }
