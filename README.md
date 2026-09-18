@@ -2,7 +2,7 @@
 
 A software factory run by coding agents, with a human at the gates that still earn one.
 
-The stations are the `dim-` skills under [`skills/`](skills), each with an entry contract and an exit check, and the floor that runs them is a coding agent. What separates a station from a generic engineering skill is that it reads the record: prior art on the disks here, the files a later fix commit came back to, whether an earlier conclusion still holds. None of them is portable to a machine without this database, which is why they ship here. Around them is the rest of it: the record of what every session did, the questions asked of that record, and the gates that hold a rule whether or not a skill loaded.
+The stations are the `dim-` skills under [`skills/`](skills), each with an entry contract and an exit check, and the floor that runs them is a coding agent. `dim-factory` is the conveyor that feeds them, reading whatever queue the repo it runs in keeps. What separates any of them from a generic engineering skill is that it reads the record: prior art on the disks here, the files a later fix commit came back to, whether an earlier conclusion still holds. None is portable to a machine without this database, which is why they ship here. Around them is the rest of it: the record of what every session did, the questions asked of that record, and the gates that hold a rule whether or not a skill loaded.
 
 [`docs/factory.md`](docs/factory.md) is the argument. The question is not whether the line can run itself but at which gates removing the human costs more than it saves, and the answer is a dim factory rather than a dark one: autonomous between the gates, a human at the gates that matter, and each gate earning its automation on its own merit.
 
@@ -86,7 +86,7 @@ Codex runs a hook only where `~/.codex/config.toml` records a `trusted_hash` for
 
 `dim install-rules --write` writes `~/.codex/AGENTS.md` from `~/.claude/CLAUDE.md` with every `@import` expanded. Claude Code expands those imports and Codex does not — a sentinel placed behind one reached Claude and never reached Codex — so a rules file that imports delivers its import line to Codex as literal text. A relative import resolves against the target tool's own directory, so `@RTK.md` picks up the Codex copy rather than the Claude one. `dim doctor` fails when the two drift.
 
-`dim install-skill --write` links every station under `skills/` into `~/.agents/skills` and `~/.codex/skills`. Claude and Acolyte both read the first by convention; Codex reads its own.
+`dim install-skill --write` links everything under `skills/` into `~/.agents/skills` and `~/.codex/skills`. Claude and Acolyte both read the first by convention; Codex reads its own.
 
 Two stations are front doors and the rest are invoked:
 
@@ -95,7 +95,9 @@ Two stations are front doors and the rest are invoked:
 - **`dim-build`** — the slice loop both front doors hand to: the repo's own check, a simplification pass over the slice until one changes nothing, a checking agent on the diff, an answer to each finding it raised with the answering diff read in turn, then the commit.
 - **`dim-review`** — stands on its own, running one agent per dimension against work you did not write. It is the one station the record shows used far more often without a build than with one.
 
-Adding a station is a directory under `skills/` and a name in `SKILL_NAMES`; a station retired from that list has its link removed on the next install, so a name never resolves to nothing.
+`dim-factory` sits above all of them and is handed no subject. It reads the queue the repo it runs in keeps — a file named as its argument, a tracker the repo's rules file declares, or what it finds and names — takes one unblocked item, and routes it to the front door that fits. What it will not do is decide the calls the queue reserves for its owner, which is the conveyor [`docs/factory.md`](docs/factory.md) argues for and the gate it argues against removing.
+
+Adding one is a directory under `skills/` and a name in `SKILL_NAMES`; a name retired from that list has its link removed on the next install, so it never resolves to nothing.
 
 The database holds every tool's sessions, so this is also how one tool reads what another did: a Claude session can recover a decision made in Codex, and the reverse. They share a record rather than a channel — neither has to be running for the other to read it.
 
