@@ -10,7 +10,7 @@ import { join } from "node:path";
  */
 const LONGEST_MANIFEST = 1024 * 1024;
 
-function readManifest(path: string): string | null {
+export function readManifest(path: string): string | null {
   let size: number;
   try {
     const stat = statSync(path);

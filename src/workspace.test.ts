@@ -67,7 +67,7 @@ describe("workspace contract", () => {
     expect(contract.ecosystems).toEqual(["flutter"]);
     expect(contract.packageManagers).toEqual(["flutter"]);
     expect(contract.members.map((member) => member.path)).toEqual(["apps/vendor", "packages/core"]);
-    expect(contract.bootstrap).toEqual({ command: ["flutter", "pub", "get"], source: "pubspec.yaml" });
+    expect(contract.bootstrap).toEqual({ value: ["flutter", "pub", "get"], source: "pubspec.yaml" });
     expect(contract.capabilities).toEqual({ format: true, analyze: true, test: true });
   });
 
@@ -78,7 +78,7 @@ describe("workspace contract", () => {
 
     expect(contract.ecosystems).toEqual(["dart"]);
     expect(contract.packageManagers).toEqual(["dart"]);
-    expect(contract.bootstrap).toEqual({ command: ["dart", "pub", "get"], source: "pubspec.yaml" });
+    expect(contract.bootstrap).toEqual({ value: ["dart", "pub", "get"], source: "pubspec.yaml" });
     expect(contract.capabilities).toEqual({ format: false, analyze: false, test: false });
   });
 
@@ -129,12 +129,20 @@ describe("workspace contract", () => {
   });
 
   test("stays silent about a compose file it cannot read as a mapping", () => {
-    const broken = workspaceContract(repo({ "compose.yaml": "services:\n  - api\n" }));
+    const listed = workspaceContract(repo({ "compose.yaml": "services:\n  - api\n" }));
     const unparsed = workspaceContract(repo({ "compose.yaml": "services:\n\tapi:\n  db:\n" }));
-    if (broken === null || unparsed === null) throw new Error("expected a workspace contract");
+    const multidoc = workspaceContract(
+      repo({ "compose.yaml": "services:\n  api:\n---\nservices:\n  db:\n" }),
+    );
+    const scalar = workspaceContract(repo({ "compose.yaml": "just a sentence\n" }));
+    if (listed === null || unparsed === null || multidoc === null || scalar === null) {
+      throw new Error("expected a workspace contract");
+    }
 
-    expect(broken.services).toBeNull();
+    expect(listed.services).toBeNull();
     expect(unparsed.services).toBeNull();
+    expect(multidoc.services).toBeNull();
+    expect(scalar.services).toBeNull();
   });
 
   test("prefers the compose file Compose itself would resolve first", () => {
@@ -163,7 +171,7 @@ describe("workspace contract", () => {
     const contract = workspaceContract(root);
     if (contract === null) throw new Error("expected a workspace contract");
 
-    expect(contract.environment).toEqual({
+    expect(contract.requiredEnvironment).toEqual({
       value: ["SUPABASE_URL", "STRIPE_SECRET_KEY", "SPACED_NAME"],
       source: ".env.example",
     });
@@ -183,8 +191,19 @@ describe("workspace contract", () => {
     const contract = workspaceContract(root);
     if (contract === null) throw new Error("expected a workspace contract");
 
-    expect(contract.environment).toEqual({ value: ["SIGNING_KEY", "AFTER"], source: ".env.example" });
+    expect(contract.requiredEnvironment).toEqual({
+      value: ["SIGNING_KEY", "AFTER"],
+      source: ".env.example",
+    });
     expect(JSON.stringify(contract)).not.toContain("MIIEvQ");
+  });
+
+  test("stops at a value whose quote is never closed", () => {
+    const root = repo({ ".env.example": 'CERT="-----BEGIN\nPASSWORD=hunter2\n' });
+    const contract = workspaceContract(root);
+    if (contract === null) throw new Error("expected a workspace contract");
+
+    expect(contract.requiredEnvironment).toEqual({ value: ["CERT"], source: ".env.example" });
   });
 
   test("never opens the filled-in environment file", () => {
@@ -192,7 +211,7 @@ describe("workspace contract", () => {
     const contract = workspaceContract(root);
     if (contract === null) throw new Error("expected a workspace contract");
 
-    expect(contract.environment).toBeNull();
+    expect(contract.requiredEnvironment).toBeNull();
     expect(JSON.stringify(contract)).not.toContain("STRIPE_SECRET_KEY");
   });
 
@@ -201,8 +220,16 @@ describe("workspace contract", () => {
     const empty = workspaceContract(repo({ ".env.sample": "# nothing needed yet\n" }));
     if (silent === null || empty === null) throw new Error("expected a workspace contract");
 
-    expect(silent.environment).toBeNull();
-    expect(empty.environment).toEqual({ value: [], source: ".env.sample" });
+    expect(silent.requiredEnvironment).toBeNull();
+    expect(empty.requiredEnvironment).toEqual({ value: [], source: ".env.sample" });
+  });
+
+  test("prefers the sample file a contributor is told to copy first", () => {
+    const root = repo({ ".env.example": "FROM_EXAMPLE=\n", ".env.template": "FROM_TEMPLATE=\n" });
+    const contract = workspaceContract(root);
+    if (contract === null) throw new Error("expected a workspace contract");
+
+    expect(contract.requiredEnvironment).toEqual({ value: ["FROM_EXAMPLE"], source: ".env.example" });
   });
 
   test("does not treat a later YAML list as workspace members", () => {

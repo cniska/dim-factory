@@ -1,12 +1,18 @@
-import { readFileSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { checkoutRoot } from "./checkout";
-import { checkTask, declaredTasks, formatTask, packageManager, type Task } from "./tasks";
+import { checkTask, declaredTasks, formatTask, packageManager, readManifest, type Task } from "./tasks";
 import { worktreeOf } from "./worktree";
 
 export type WorkspaceMember = { path: string; source: string };
 export type WorkerHook = { path: string; argv: string[] };
-/** A repository's own answer and the file it answered in; `null` where it did not answer. */
+/**
+ * A repository's own answer and the file it answered in. `null` covers both a
+ * repository that wrote no such file and a file this module could not read, which
+ * are different facts sharing one value until something downstream needs to tell
+ * them apart; neither is the repository saying it needs nothing, and that is what
+ * an empty `value` says.
+ */
 export type Declaration<T> = { value: T; source: string };
 export type WorkspaceContract = {
   checkoutRoot: string;
@@ -18,28 +24,20 @@ export type WorkspaceContract = {
   tasks: Task[];
   checkTask: Task | null;
   formatTask: Task | null;
-  bootstrap: { command: string[]; source: string } | null;
+  bootstrap: Declaration<string[]> | null;
   capabilities: { format: boolean; analyze: boolean; test: boolean };
   services: Declaration<string[]> | null;
-  environment: Declaration<string[]> | null;
+  requiredEnvironment: Declaration<string[]> | null;
   setup: WorkerHook | null;
   teardown: WorkerHook | null;
 };
 export type WorkspaceProfile = Omit<WorkspaceContract, "worktree">;
 
-function manifest(path: string): string | null {
-  try {
-    return statSync(path).isFile() ? readFileSync(path, "utf8") : null;
-  } catch {
-    return null;
-  }
-}
-
 function pubspecFacts(root: string): {
   kind: "dart" | "flutter";
   members: WorkspaceMember[];
 } | null {
-  const text = manifest(join(root, "pubspec.yaml"));
+  const text = readManifest(join(root, "pubspec.yaml"));
   if (text === null) return null;
   const flutter = /^\s+flutter:\s*$/m.test(text) && /^\s+sdk:\s+flutter\s*$/m.test(text);
   const members: WorkspaceMember[] = [];
@@ -59,7 +57,12 @@ function pubspecFacts(root: string): {
   return { kind: flutter ? "flutter" : "dart", members };
 }
 
-/** Compose's own precedence, so a repository keeping a legacy name beside the current one gets the current one. */
+/**
+ * Compose's own precedence, so a repository keeping a legacy name beside the
+ * current one gets the current one. An override file is not merged in: which
+ * override applies is a Compose invocation's business, and guessing wrong would
+ * put a service in the profile that the repository does not run by default.
+ */
 const COMPOSE_FILES = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"];
 
 function isMapping(value: unknown): value is Record<string, unknown> {
@@ -75,7 +78,7 @@ function isMapping(value: unknown): value is Record<string, unknown> {
  */
 function declaredServices(root: string): Declaration<string[]> | null {
   for (const file of COMPOSE_FILES) {
-    const text = manifest(join(root, file));
+    const text = readManifest(join(root, file));
     if (text === null) continue;
     let parsed: unknown;
     try {
@@ -110,7 +113,7 @@ const ENVIRONMENT_NAME = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
  */
 function declaredEnvironment(root: string): Declaration<string[]> | null {
   for (const file of ENVIRONMENT_SAMPLES) {
-    const text = manifest(join(root, file));
+    const text = readManifest(join(root, file));
     if (text === null) continue;
     const names: string[] = [];
     let unclosed: string | null = null;
@@ -161,13 +164,13 @@ export function workspaceContract(dir: string): WorkspaceContract | null {
   if (root === null) return null;
   const tasks = declaredTasks(root);
   const pubspec = pubspecFacts(root);
-  const hasPackageJson = manifest(join(root, "package.json")) !== null;
+  const hasPackageJson = readManifest(join(root, "package.json")) !== null;
   const manager = packageManager(root);
   const packageManagers = manager ? [manager] : [];
   if (pubspec) packageManagers.push(pubspec.kind);
   const languages = [...(pubspec ? ["dart"] : []), ...(hasPackageJson ? ["javascript"] : [])];
   const ecosystems = [...(pubspec ? [pubspec.kind] : []), ...(hasPackageJson ? ["node"] : [])];
-  const bootstrap = pubspec ? { command: [pubspec.kind, "pub", "get"], source: "pubspec.yaml" } : null;
+  const bootstrap = pubspec ? { value: [pubspec.kind, "pub", "get"], source: "pubspec.yaml" } : null;
   return {
     checkoutRoot: root,
     worktree: { path: root, name: worktreeOf(root), branch: gitBranch(root) },
@@ -185,7 +188,7 @@ export function workspaceContract(dir: string): WorkspaceContract | null {
       test: declaredCapability(tasks, ["test", "tests"]),
     },
     services: declaredServices(root),
-    environment: declaredEnvironment(root),
+    requiredEnvironment: declaredEnvironment(root),
     setup: hook(root, "worktree-setup.sh"),
     teardown: hook(root, "worktree-teardown.sh"),
   };
