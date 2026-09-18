@@ -17,10 +17,9 @@ const job = (
   agent: "agent",
   role: "builder",
   status,
-  action: "Working",
   age: "2m",
-  updatedAt: "2026-09-18T10:00:00.000Z",
-  evidence: "check passed",
+  lastEventAt: "2026-09-18T10:00:00.000Z",
+  failedChecks: 0,
 });
 
 describe("factory wall board", () => {
@@ -44,6 +43,21 @@ describe("factory wall board", () => {
       active: [job("fenced-item", "active", "review", "fenced")],
       done: [job("shipped-item", "done", "ship", "completed")],
     });
+  });
+
+  test("lifts a job that needs a person above one that is only moving", () => {
+    const needsAnswer = { ...job("fenced-item", "active", "build", "fenced"), attention: "scope unclear" };
+    const columns = jobsByLifecycle([
+      job("first-running", "active", "build", "running"),
+      needsAnswer,
+      job("second-running", "active", "build", "running"),
+    ]);
+
+    expect(columns.active.map((entry) => entry.id)).toEqual([
+      "fenced-item",
+      "first-running",
+      "second-running",
+    ]);
   });
 
   test("groups by lifecycle rather than by the status the card displays", () => {
