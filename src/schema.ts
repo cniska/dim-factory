@@ -1,8 +1,9 @@
 // Every table here is one-to-one with records in the source files and is rebuilt
 // by re-reading them, so a schema change is `dim rebuild`, not a migration. The
 // exceptions carry the reason at the table: hook_event, guidance_walk,
-// command_trace and finding have no source to re-read, and embedding is derived
-// from tables that do.
+// command_trace and finding have no source to re-read, embedding is derived from
+// tables that do, and correction_label has no source either but is dropped and
+// written back row for row.
 // SCHEMA_VERSION exists so sync can refuse to run against a database only a
 // re-read can correct: a changed column, or a changed rule for what identifies a
 // row, since rows already written keep the old identity. A table added with
@@ -267,8 +268,12 @@ CREATE INDEX IF NOT EXISTS skill_load_name ON skill_load(skill_name, ts);
 -- automatically: whether a prompt tells the agent it was wrong is semantic, and
 -- no rule here decides it. Written by \`dim label\`, as \`finding\` is written by
 -- \`dim finding\`; every other table is the ingester's.
+--
+-- No foreign key, because \`rebuild\` drops message and then writes the same ids
+-- back, so a label keyed by one survives it. \`dim label\` refuses a message id
+-- that is not in the table, which is where a typo is caught instead.
 CREATE TABLE IF NOT EXISTS correction_label (
-  message_id      TEXT PRIMARY KEY REFERENCES message(id),
+  message_id      TEXT PRIMARY KEY,
   label           TEXT NOT NULL CHECK (label IN ('correction','clarification','not_correction')),
   skill_name      TEXT,
   rule            TEXT,                 -- which instruction was overridden, in the owner's words

@@ -105,6 +105,14 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
   return report;
 }
 
+type CorrectionLabel = {
+  message_id: string;
+  label: string;
+  skill_name: string | null;
+  rule: string | null;
+  labeled_at: string;
+};
+
 /**
  * Everything here is re-read from the source files. Each table is dropped
  * rather than emptied, because `CREATE TABLE IF NOT EXISTS` leaves one that
@@ -119,10 +127,20 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
  * command that ran or a finding that was answered left no trace but its own.
  * `embedding` is left because re-reading the sources cannot rebuild it: its
  * vectors come from a model `dim embed` runs, and the ids keying them are
- * written back unchanged.
+ * written back unchanged. `correction_label` has no source either, but is
+ * dropped and written back row for row, so a schema change to it can land.
  */
 export function rebuild(db: Database, env: Env = process.env): SyncReport {
   db.transaction(() => {
+    // Read out before the drop because no source can re-read them. The table is
+    // dropped anyway, both so a schema change to it can land and because an
+    // older database has a foreign key to message that would refuse that drop.
+    const labels = db
+      .query<CorrectionLabel, []>(
+        "SELECT message_id, label, skill_name, rule, labeled_at FROM correction_label",
+      )
+      .all();
+    db.run("DROP TABLE IF EXISTS correction_label");
     // The index is external content over message, so it would be left pointing
     // into a table dropped and refilled below. Its triggers need no drop of
     // their own: they belong to message, and a drop fires none of them.
@@ -143,6 +161,13 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
     db.run("DROP TABLE IF EXISTS repo_commit");
     db.run("DROP TABLE IF EXISTS handoff_link");
     db.run(SCHEMA_SQL);
+    const restore = db.prepare<void, [string, string, string | null, string | null, string]>(
+      `INSERT INTO correction_label (message_id, label, skill_name, rule, labeled_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    );
+    for (const row of labels) {
+      restore.run(row.message_id, row.label, row.skill_name, row.rule, row.labeled_at);
+    }
   })();
   const report = sync(db, env);
   db.run("UPDATE schema_version SET version = ?", [SCHEMA_VERSION]);
