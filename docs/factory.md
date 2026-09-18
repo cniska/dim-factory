@@ -20,6 +20,7 @@ The planned factory assigns each queue item to one self-sufficient job that runs
 - **Ownership.** One job owns one queue item end to end, in an isolated worktree.
 - **Delegation.** The job may delegate internal triage, implementation slices, simplification and checking, while retaining responsibility for the item and its evidence.
 - **Completion.** The job runs until the item is complete, it reaches an explicit fence, or it reaches its failure limit.
+- **Environment.** The job records workspace and worker-environment setup and teardown reports. Repository-owned hooks remain responsible for package installation, containers, ports, environment files and service health.
 - **Parallelism.** Independent jobs may run in parallel in isolated worktrees. Claims, landing and queue-state transitions remain serialized.
 - **Driver.** The factory driver schedules jobs, observes their evidence and integrates completed work. It does not implement the item.
 - **Count.** An explicit item count limits a run; the default count is one. The factory does not drain the queue implicitly.
@@ -34,10 +35,21 @@ The delivered-product report is persisted in the dim database so it remains quer
 - **Work.** Station, delegation tree, changed files and commit SHA.
 - **Verification.** Repository check command and result, checker findings and their resolutions, and updated docs.
 - **Outcome.** Final status — completed, blocked, fenced, failed or abandoned — with fence or blocker evidence and timestamps for the lifecycle events.
+- **Environment.** Workspace profile, setup and teardown commands, changed resource identifiers, service health results and cleanup status.
 
 The report lifecycle is a durable sequence from claim through running to completion or a stopped outcome, with evidence recorded as the job progresses. A terminal status cannot transition to another status, and each lifecycle event and its aggregate projection are written atomically. `dim q factory [job-id-prefix]` reads one unified current-status row per matching job, including its latest lifecycle event and normalized evidence; `dim q job <job-id>` remains the detailed event-and-evidence view. These operational tables survive `dim rebuild`, deliberately like `hook_event`, `command_trace` and `finding`: no transcript or file source can recreate a job's claims and judgements after the fact.
 
 The persistence contract is live. The first driver slice is live as `runFactoryJob`: it claims one supplied item, marks it running, passes the item and base revision to a builder, and records the builder's terminal outcome and evidence through the existing factory tables. The builder supplies the isolated worktree location and station work. Scheduling, queue selection, serialized landing and queue-state enforcement remain outside this slice; those orchestration boundaries are not inferred from a report row.
+
+## Worker environments
+
+The planned workspace contract makes each isolated worker's environment visible without moving its side effects into `dim`.
+
+- **Profile.** The profile identifies the checkout and worktree, languages, package managers, workspace members, declared setup entry point, check, format and test tasks, required services, isolation strategy, cleanup entry point, and resource or secret requirements.
+- **Setup.** `dim wt` invokes the repository's setup hook and records what it reports. The hook may install dependencies, activate pinned tools, create containers, allocate ports, materialize environment files or check service health.
+- **Teardown.** Worktree removal invokes the repository's teardown hook first. A failed teardown keeps the worktree and becomes visible in the job report; an explicit force operation is the only override.
+- **Boundary.** `dim` owns the worktree lifecycle and evidence. The repository owns package installation, service topology, secrets, ports and resource policy.
+- **Parallelism.** Worker-specific names and resources must be isolated by the repository hook, so independent factory jobs cannot share containers, ports or mutable environment state accidentally.
 
 ## Queue planning
 

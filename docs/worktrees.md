@@ -12,6 +12,12 @@ That is the case for adopting it here rather than tidiness. This is the one repo
 
 It ships as a subcommand ([`wt-command.ts`](../src/wt-command.ts)) rather than a file on PATH, so there is one installed thing and the tests cover it. Its suite is [`scripts/wt.test.sh`](../scripts/wt.test.sh), in bash, because the cases pin the messages and exit codes a caller reads; `bun run verify` points it at `dim wt`, so the command and the tests move together.
 
+## Worker environments
+
+A worktree may need more than tracked files before a worker can run. A repository-owned setup hook can install dependencies across workspace members, activate pinned tools, allocate isolated ports, create worker-specific service containers, materialize environment files and check health. Its teardown hook removes those resources before the worktree is removed.
+
+`dim wt` owns the lifecycle around those hooks: it invokes setup after creation, invokes teardown before removal, records the result for the factory job, and keeps the worktree when teardown fails. It does not infer the repository's service topology or perform package installation on its own. The workspace profile supplies the package-manager and environment description that makes the hook's work visible; the hook remains the authority for side effects.
+
 A teardown hook that is killed by a signal reports no exit code, and reading that as success would remove the worktree its resources are named by — so any status that is not a clean zero keeps the worktree, and `--force` is the only way past.
 
 Acolyte's own workspaces feature took the same shape — a five-phase program whose middle two phases are bootstrap on create and teardown on removal, deliberately mirroring `wt` so the two interoperate. It is parked on an unmerged branch, which is why the bash script is what actually runs.
