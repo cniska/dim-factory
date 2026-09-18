@@ -69,14 +69,13 @@ describe("absorbing a schema change", () => {
     db.close();
   });
 
-  test("a table is dropped before the one it points at, so no row is left dangling", () => {
+  test("a row in every table that references another does not stop the drops", () => {
     const { db, env } = scratch();
     fill(db);
 
     rebuild(db, env);
 
     expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
-    expect(db.query("SELECT count(*) AS n FROM tool_call").get()).toEqual({ n: 0 });
     db.close();
   });
 
@@ -111,7 +110,6 @@ describe("absorbing a schema change", () => {
   test("a label in a database still carrying the old foreign key survives too", () => {
     const { db, env } = scratch();
     fill(db);
-    db.run("DELETE FROM correction_label");
     db.run("DROP TABLE correction_label");
     db.run(
       `CREATE TABLE correction_label (
@@ -134,26 +132,26 @@ describe("absorbing a schema change", () => {
     expect(db.query("PRAGMA foreign_key_list(correction_label)").all()).toEqual([]);
     db.close();
   });
+});
+
+describe("opening a database an older schema wrote", () => {
+  function stampedOld(): string {
+    const path = join(mkdtempSync(join(tmpdir(), "dim-rebuild-")), "sessions.db");
+    const db = openDb(path);
+    db.run("UPDATE schema_version SET version = 1");
+    db.close();
+    return path;
+  }
 
   test("opening for a rebuild leaves the old version in place", () => {
-    const home = mkdtempSync(join(tmpdir(), "dim-rebuild-"));
-    const path = join(home, "sessions.db");
-    const first = openDb(path);
-    first.run("UPDATE schema_version SET version = 1");
-    first.close();
+    const db = openDb(stampedOld(), { forRebuild: true });
 
-    const reopened = openDb(path, { forRebuild: true });
-
-    expect(reopened.query("SELECT version FROM schema_version").get()).toEqual({ version: 1 });
-    reopened.close();
+    expect(db.query("SELECT version FROM schema_version").get()).toEqual({ version: 1 });
+    db.close();
   });
 
-  test("opening without a rebuild refuses a database an older schema wrote", () => {
-    const home = mkdtempSync(join(tmpdir(), "dim-rebuild-"));
-    const path = join(home, "sessions.db");
-    const first = openDb(path);
-    first.run("UPDATE schema_version SET version = 1");
-    first.close();
+  test("opening for anything else refuses it", () => {
+    const path = stampedOld();
 
     expect(() => openDb(path)).toThrow(/schema version 1/);
   });

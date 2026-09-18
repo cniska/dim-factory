@@ -121,20 +121,15 @@ type CorrectionLabel = {
  * keys on, a drop is an implicit delete, and a parent whose children are still
  * there fails.
  *
- * `hook_event`, `guidance_walk`, `command_trace` and `finding` are deliberately
- * left: none has a source to re-read from, because a transcript records no end
- * marker, a rules file edited since cannot be read back as it was, and a
- * command that ran or a finding that was answered left no trace but its own.
- * `embedding` is left because re-reading the sources cannot rebuild it: its
- * vectors come from a model `dim embed` runs, and the ids keying them are
- * written back unchanged. `correction_label` has no source either, but is
- * dropped and written back row for row, so a schema change to it can land.
+ * Which tables are left instead, and why, is stated at each of them in
+ * `schema.ts`. `correction_label` is the one that is neither: it has no source
+ * either, but is dropped with the rest and written back row for row.
  */
 export function rebuild(db: Database, env: Env = process.env): SyncReport {
   db.transaction(() => {
-    // Read out before the drop because no source can re-read them. The table is
-    // dropped anyway, both so a schema change to it can land and because an
-    // older database has a foreign key to message that would refuse that drop.
+    // Read out before the drop because no source can re-read them, and dropped
+    // ahead of message because an older database has a foreign key to it that
+    // would refuse that drop.
     const labels = db
       .query<CorrectionLabel, []>(
         "SELECT message_id, label, skill_name, rule, labeled_at FROM correction_label",
