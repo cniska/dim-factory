@@ -3,9 +3,5 @@ export type Tool = "claude" | "codex";
 
 export const TOOLS: readonly Tool[] = ["claude", "codex"];
 
-/**
- * The tool vocabulary as a SQL literal list, so a column constraining `tool`
- * derives from the same list the code iterates. Spelled twice, they drift in the
- * direction nothing catches: a row the code writes and the database refuses.
- */
+/** Binds at creation only: a table already on disk keeps the CHECK it was born with. */
 export const TOOLS_SQL = TOOLS.map((tool) => `'${tool}'`).join(",");

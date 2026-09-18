@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { checkoutRoot } from "./checkout";
 import { handoffNext } from "./handoff";
 import { checkTask, formatTask } from "./tasks";
+import type { Tool } from "./tools";
 
 /**
  * Claude Code adds a SessionStart hook's plain-text stdout to the session as
@@ -58,7 +59,7 @@ export function readWake(db: Database, cwd: string): Wake | null {
  * context; Codex takes the same thing only as `hookSpecificOutput.additionalContext`
  * on a SessionStart event and ignores loose text. One block, two envelopes.
  */
-export function wireFor(tool: "claude" | "codex", block: string): string {
+export function wireFor(tool: Tool, block: string): string {
   if (block === "") return "";
   if (tool === "claude") return block;
   return JSON.stringify({
