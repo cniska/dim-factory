@@ -38,10 +38,11 @@ const stateLabels: Record<WallStatus, string> = {
 
 const stopped = new Set<WallStatus>(["blocked", "fenced", "failed", "abandoned"]);
 
-// What the column already asserts: Active is where a running job is, Done is where a completed
-// one ends. Writing it again on every card in the column spends the card's quietest row saying
-// what the heading said, and the breathing mark keeps carrying it.
-const columnSaysTheState = new Set<WallStatus>(["running", "completed"]);
+// What the column already asserts: Todo is where a job waits, Active is where a running one
+// works, Done is where a completed one ends. Writing it again on every card in the column spends
+// the card's quietest row saying what the heading said, and the mark keeps carrying it. What
+// survives is what a column cannot say — the states that want a person.
+const columnSaysTheState = new Set<WallStatus>(["waiting", "running", "completed"]);
 
 const statusIcon: Record<WallStatus, LucideIcon> = {
   running: CircleDot,
@@ -168,7 +169,12 @@ function JobCard({
         </span>
       </CardHeader>
 
-      <h3 className={cn(ROW, "truncate font-medium text-foreground")}>{job.title}</h3>
+      {/* The title is what the reader came for, so it wraps rather than being cut. Two rows of
+          the card's own rhythm: enough for the titles the queue writes, and a bound a runaway
+          title cannot grow the card past. */}
+      <h3 className="line-clamp-2 min-h-[36px] shrink-0 font-medium text-foreground leading-[18px]">
+        {job.title}
+      </h3>
 
       {/* The row stands whether or not it holds anything, so a card does not change height the
           moment its first check fails and the column does not step as work arrives. */}
