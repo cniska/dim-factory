@@ -568,7 +568,7 @@ describe("factory wall item view", () => {
         title: "Work an item through",
         agentId: "builder",
         station: "build",
-        worktree: "/tmp/worked",
+        worktree: trunk.dir,
         branch: "worked",
       },
       "2026-09-18T10:00:00.000Z",
@@ -606,7 +606,15 @@ describe("factory wall item view", () => {
       "2026-09-18T10:04:00.000Z",
     );
     recordJobFile(db, "job-worked", "src/factory-wall.ts", "2026-09-18T10:05:00.000Z");
-    recordJobCommit(db, "job-worked", "abc123", "feat: read one job's record", "2026-09-18T10:06:00.000Z");
+    recordJobCommit(db, "job-worked", trunk.sha, "feat: read one job's record", "2026-09-18T10:06:00.000Z");
+    // The check that lets this job complete: recorded after the commit it covers,
+    // which is the order the gate reads and the loop already works in.
+    recordJobCheck(
+      db,
+      "job-worked",
+      { command: "bun run verify", exitCode: 0, result: "green" },
+      "2026-09-18T10:06:30.000Z",
+    );
     recordJobFinding(
       db,
       "job-worked",
@@ -648,6 +656,7 @@ describe("factory wall item view", () => {
       "check_finished",
       "file_changed",
       "commit_created",
+      "check_finished",
       "review_finished",
       "review_finished",
       "document_updated",
@@ -668,7 +677,7 @@ describe("factory wall item view", () => {
     expect(view?.job.status).toBe("completed");
     expect(view?.job.worker).toBe(workerName("builder"));
     expect([view?.runId, view?.queueId, view?.job.itemId]).toEqual(["run", "queue", "worked"]);
-    expect([view?.worktree, view?.branch]).toEqual(["/tmp/worked", "worked"]);
+    expect([view?.worktree, view?.branch]).toEqual([trunk.dir, "worked"]);
     db.close();
   });
 
@@ -680,11 +689,12 @@ describe("factory wall item view", () => {
     const entries = assembleItemView(db, "job-worked", new Date("2026-09-18T10:20:00.000Z"))?.entries ?? [];
 
     expect(entries.find((entry) => entry.kind === "commit_created")?.commit).toEqual({
-      sha: "abc123",
+      sha: trunk.sha,
       subject: "feat: read one job's record",
     });
     expect(entries.filter((entry) => entry.kind === "check_finished").map((entry) => entry.check)).toEqual([
       { command: "bun run verify", exitCode: 1, result: "typecheck failed" },
+      { command: "bun run verify", exitCode: 0, result: "green" },
       { command: "bun run verify", exitCode: 0, result: "green" },
     ]);
     expect(entries.filter((entry) => entry.kind === "review_finished").map((entry) => entry.finding)).toEqual(

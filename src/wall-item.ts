@@ -5,6 +5,7 @@ import type { WallItemEntry, WallItemKind } from "./factory-wall";
 export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   claimed: "Claimed",
   started: "Started",
+  moved: "Moved",
   delegated: "Delegated",
   commit_created: "Commit",
   check_finished: "Check",
@@ -35,6 +36,9 @@ export const RAIL_MARK_GLYPH: Record<RailMark, string> = {
 const RAIL_MARK_BY_KIND: Record<WallItemKind, RailMark> = {
   claimed: "moment",
   started: "moment",
+  // A station move is the job itself crossing to other work, which reads as the
+  // same kind of passing-on as a delegation even though no agent changes.
+  moved: "handover",
   delegated: "handover",
   commit_created: "moment",
   check_finished: "moment",
