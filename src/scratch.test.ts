@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { isScratchRepo } from "./scratch";
@@ -17,6 +18,17 @@ describe("a scratch tree is not the work", () => {
     expect(isScratchRepo(join(tmpdir(), "dim-git-abc123"))).toBe(true);
   });
 
+  // A cwd is whatever spelling the process it came from was started under.
+  test("the resolved spelling of the temp directory counts too", () => {
+    expect(isScratchRepo(join(realpathSync(tmpdir()), "dim-git-abc123"))).toBe(true);
+  });
+
+  // Any user's per-user temp tree, not only the one this process was handed.
+  test("a per-user darwin temp tree counts", () => {
+    expect(isScratchRepo("/private/var/folders/v5/9g9nzrss/T/dim-git-abc123")).toBe(true);
+    expect(isScratchRepo("/var/folders/v5/9g9nzrss/T/dim-git-abc123")).toBe(true);
+  });
+
   test("the temp root itself counts", () => {
     expect(isScratchRepo(resolve(tmpdir()))).toBe(true);
   });
@@ -29,6 +41,19 @@ describe("a scratch tree is not the work", () => {
   test("a path that merely begins with the same letters does not", () => {
     expect(isScratchRepo("/tmpfiles/code/thing")).toBe(false);
     expect(isScratchRepo("/private/tmpfoo/thing")).toBe(false);
+  });
+
+  // Every `dim` command imports this through the collector, so a temp directory
+  // that has been cleared away would stop the CLI before it ran.
+  test("a temp directory that is gone does not stop the module loading", () => {
+    const script = `import { isScratchRepo } from ${JSON.stringify(join(import.meta.dir, "scratch.ts"))};
+      if (isScratchRepo("/Users/someone/code/dim-factory")) process.exit(2);`;
+    const proc = Bun.spawnSync(["bun", "-e", script], {
+      env: { ...process.env, TMPDIR: "/dim-temp-directory-that-is-gone" },
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    expect(proc.exitCode).toBe(0);
   });
 
   test("a relative path is judged where it actually resolves", () => {
