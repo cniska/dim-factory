@@ -8,7 +8,7 @@ import wallPage from "./wall.html";
 import type { ResourceEvidence, WorkerEnvironmentPhase, WorkerHookReport } from "./worker-environment";
 import { workerName } from "./worker-name";
 
-export type WallStation = "plan" | "build" | "review" | "ship";
+export type WallStation = "plan" | "build" | "review" | "ship" | "unknown";
 export type WallLifecycle = "todo" | "active" | "done";
 export type WallStatus = "running" | "waiting" | "blocked" | "fenced" | "completed" | "failed" | "abandoned";
 export type WallRole = "builder" | "fixer" | "reviewer" | "planner";
@@ -122,11 +122,22 @@ const lifecycleByStatus: Record<WallStatus, WallLifecycle> = {
 
 const attentionStatuses = new Set<WallStatus>(["blocked", "fenced", "failed", "abandoned"]);
 
+// A job is claimed with whatever word the caller passed, and a line or a typo is not a station.
+// Naming one of the four for a value that is none of them puts a card at a station nobody sent
+// it to, which is worse than the card saying it does not know.
+const stationByRecordedValue: Record<string, WallStation> = {
+  plan: "plan",
+  "dim-station-plan": "plan",
+  build: "build",
+  "dim-station-build": "build",
+  review: "review",
+  "dim-station-review": "review",
+  ship: "ship",
+  "dim-station-ship": "ship",
+};
+
 function station(value: string | null): WallStation {
-  if (value === "dim-station-plan" || value === "plan") return "plan";
-  if (value === "dim-station-review" || value === "review") return "review";
-  if (value === "ship" || value === "dim-station-ship") return "ship";
-  return "build";
+  return (value === null ? undefined : stationByRecordedValue[value]) ?? "unknown";
 }
 
 function role(value: string | null, stationName: WallStation): WallRole {

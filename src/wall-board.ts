@@ -11,6 +11,7 @@ export const STATION_LABELS: Record<WallStation, string> = {
   build: "Build",
   review: "Review",
   ship: "Ship",
+  unknown: "Station unknown",
 };
 
 export function jobsByLifecycle(jobs: WallJob[]): Record<WallLifecycle, WallJob[]> {
