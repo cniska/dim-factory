@@ -1,13 +1,14 @@
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { WallJob, WallRole, WallSnapshot, WallStatus } from "./factory-wall";
-import { jobsByStation, WALL_COLUMNS } from "./wall-board";
+import { jobsByLifecycle, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
 import "./wall.css";
 
 const unavailableSnapshot: WallSnapshot = {
   generatedAt: "",
   source: "unavailable",
   jobs: [],
+  totals: { todo: 0, active: 0, done: 0 },
 };
 
 const stateLabels: Record<WallStatus, string> = {
@@ -17,8 +18,10 @@ const stateLabels: Record<WallStatus, string> = {
   fenced: "Fenced",
   completed: "Completed",
   failed: "Failed",
+  abandoned: "Abandoned",
 };
 const roleGlyph: Record<WallRole, string> = { builder: "◆", fixer: "◇", reviewer: "▣", planner: "●" };
+const stopped = new Set<WallStatus>(["blocked", "fenced", "failed", "abandoned"]);
 
 function timeLabel(updatedAt: string): string {
   return new Date(updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -29,11 +32,12 @@ function JobCard({ job }: { job: WallJob }) {
   return (
     <article className={`job-card status-${job.status} role-${job.role}`}>
       <div className="job-top">
-        <span className="state-mark"><span aria-hidden="true">{job.status === "running" ? "◉" : job.status === "blocked" || job.status === "fenced" || job.status === "failed" ? "!" : "○"}</span> {stateLabels[job.status]}</span>
+        <span className="state-mark"><span aria-hidden="true">{job.status === "running" ? "◉" : stopped.has(job.status) ? "!" : "○"}</span> {stateLabels[job.status]}</span>
         <span>{job.age}</span>
       </div>
       <h3>{job.item}</h3>
       <p className="action">{job.action}</p>
+      <p className={`station-tag station-${job.station}`}>Station <strong>{STATION_LABELS[job.station]}</strong></p>
       <div className="job-meta">
         <span><span className="role-glyph" aria-hidden="true">{roleGlyph[job.role]}</span> {job.agent}</span>
         <span>Updated {timeLabel(job.updatedAt)}</span>
@@ -44,15 +48,17 @@ function JobCard({ job }: { job: WallJob }) {
   );
 }
 
-function BoardColumn({ label, jobs }: { label: string; jobs: WallJob[] }) {
+function BoardColumn({ label, empty, jobs, total }: { label: string; empty: string; jobs: WallJob[]; total: number }) {
+  const hidden = total - jobs.length;
   return (
     <section className="board-column" aria-labelledby={`column-${label.toLowerCase()}`}>
       <header className="column-heading">
         <h2 id={`column-${label.toLowerCase()}`}>{label}</h2>
-        <span aria-label={`${jobs.length} items`}>{jobs.length}</span>
+        <span aria-label={`${total} items`}>{total}</span>
       </header>
       <div className="column-cards">
-        {jobs.length ? jobs.map((job) => <JobCard job={job} key={job.id} />) : <p className="empty-column">No items here</p>}
+        {jobs.length ? jobs.map((job) => <JobCard job={job} key={job.id} />) : <p className="empty-column">{empty}</p>}
+        {hidden > 0 ? <p className="column-overflow">{hidden} more not shown</p> : null}
       </div>
     </section>
   );
@@ -89,7 +95,7 @@ function App() {
     return () => socket?.close();
   }, []);
 
-  const columns = jobsByStation(snapshot.jobs);
+  const columns = jobsByLifecycle(snapshot.jobs);
   return (
     <main className="wall-shell">
       <header className="wall-header">
@@ -98,7 +104,7 @@ function App() {
       </header>
       {unavailable ? <aside className="stale-banner" role="status"><strong>Factory snapshot unavailable.</strong> Current work cannot be displayed until the data source responds.</aside> : stale ? <aside className="stale-banner" role="status"><strong>Showing the last known snapshot.</strong> The feed is not connected; card positions may be out of date.</aside> : null}
       <section className="board" aria-label="Factory kanban board">
-        {unavailable ? <p className="board-unavailable">Waiting for a factory snapshot.</p> : WALL_COLUMNS.map(({ station, label }) => <BoardColumn key={station} label={label} jobs={columns[station]} />)}
+        {unavailable ? <p className="board-unavailable">Waiting for a factory snapshot.</p> : WALL_COLUMNS.map(({ lifecycle, label, empty }) => <BoardColumn key={lifecycle} label={label} empty={empty} jobs={columns[lifecycle]} total={snapshot.totals[lifecycle]} />)}
       </section>
       <footer>Read-only · cards reflect the latest received snapshot</footer>
     </main>

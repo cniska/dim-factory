@@ -3,13 +3,15 @@ import { dbPath } from "./paths";
 import { openReadOnly } from "./read-db";
 
 export type WallStation = "plan" | "build" | "review" | "ship";
-export type WallStatus = "running" | "waiting" | "blocked" | "fenced" | "completed" | "failed";
+export type WallLifecycle = "todo" | "active" | "done";
+export type WallStatus = "running" | "waiting" | "blocked" | "fenced" | "completed" | "failed" | "abandoned";
 export type WallRole = "builder" | "fixer" | "reviewer" | "planner";
 
 export type WallJob = {
   id: string;
   item: string;
   station: WallStation;
+  lifecycle: WallLifecycle;
   agent: string;
   role: WallRole;
   status: WallStatus;
@@ -24,16 +26,17 @@ export type WallSnapshot = {
   generatedAt: string;
   source: "database" | "unavailable";
   jobs: WallJob[];
+  totals: Record<WallLifecycle, number>;
 };
 
-const MAX_ACTIVE = 12;
+const MAX_COLUMN_CARDS = 12;
 
 type JobRow = {
   id: string;
   item_id: string;
   agent_id: string | null;
   station: string | null;
-  status: WallStatus;
+  status: string;
   claimed_at: string;
   updated_at: string;
   stop_reason: string | null;
@@ -44,8 +47,27 @@ type JobRow = {
   latest_evidence: string | null;
 };
 
-const stations = new Set<WallStation>(["plan", "build", "review", "ship"]);
-const statuses = new Set<WallStatus>(["running", "waiting", "blocked", "fenced", "completed", "failed"]);
+const wallStatusByJobStatus: Record<string, WallStatus> = {
+  claimed: "waiting",
+  running: "running",
+  blocked: "blocked",
+  fenced: "fenced",
+  completed: "completed",
+  failed: "failed",
+  abandoned: "abandoned",
+};
+
+const lifecycleByStatus: Record<WallStatus, WallLifecycle> = {
+  waiting: "todo",
+  running: "active",
+  blocked: "active",
+  fenced: "active",
+  completed: "done",
+  failed: "done",
+  abandoned: "done",
+};
+
+const attentionStatuses = new Set<WallStatus>(["blocked", "fenced", "failed", "abandoned"]);
 
 function station(value: string | null): WallStation {
   if (value === "dim-station-plan" || value === "plan") return "plan";
@@ -62,9 +84,10 @@ function role(value: string | null, stationName: WallStation): WallRole {
   return stationName === "plan" ? "planner" : stationName === "review" ? "reviewer" : "builder";
 }
 
-function status(value: WallStatus): WallStatus {
-  if (statuses.has(value)) return value;
-  return "waiting";
+function status(value: string): WallStatus {
+  const mapped = wallStatusByJobStatus[value];
+  if (!mapped) throw new Error(`unknown factory job status: ${value}`);
+  return mapped;
 }
 
 function age(iso: string, now: Date): string {
@@ -86,13 +109,14 @@ function action(row: JobRow): string {
 function mapJob(row: JobRow, now: Date): WallJob {
   const stationName = station(row.station ?? row.latest_station);
   const jobStatus = status(row.status);
-  const attention = ["blocked", "fenced", "failed"].includes(jobStatus)
+  const attention = attentionStatuses.has(jobStatus)
     ? (row.stop_reason ?? row.latest_reason ?? jobStatus)
     : undefined;
   return {
     id: row.id,
     item: row.item_id,
     station: stationName,
+    lifecycle: lifecycleByStatus[jobStatus],
     agent: row.latest_actor ?? row.agent_id ?? "unassigned",
     role: role(row.latest_actor ?? row.agent_id, stationName),
     status: jobStatus,
@@ -119,13 +143,14 @@ export function assembleWallSnapshot(db: Database, now = new Date()): WallSnapsh
        ORDER BY j.updated_at DESC, j.id`,
     )
     .all() as JobRow[];
-  const jobs = rows.map((row) => mapJob(row, now));
-  const active = jobs.filter((job) => job.status !== "completed");
-  return {
-    generatedAt: now.toISOString(),
-    source: "database",
-    jobs: active.slice(0, MAX_ACTIVE),
-  };
+  const totals: Record<WallLifecycle, number> = { todo: 0, active: 0, done: 0 };
+  const jobs: WallJob[] = [];
+  for (const row of rows) {
+    const job = mapJob(row, now);
+    totals[job.lifecycle] += 1;
+    if (totals[job.lifecycle] <= MAX_COLUMN_CARDS) jobs.push(job);
+  }
+  return { generatedAt: now.toISOString(), source: "database", jobs, totals };
 }
 
 export async function buildWallBundle(): Promise<{ js: Uint8Array; css: Uint8Array }> {
@@ -193,7 +218,8 @@ export async function serveWall(
       },
     },
   });
-  setInterval(() => {
+  // Bun.serve already holds the event loop; an unref'd poller lets a stopped server's process exit.
+  const poll = setInterval(() => {
     if (clients.size === 0) return;
     try {
       const current = snapshot();
@@ -205,7 +231,6 @@ export async function serveWall(
       for (const client of clients) client.send(JSON.stringify({ error: "snapshot unavailable" }));
     }
   }, 2000);
+  poll.unref();
   return server;
 }
-
-export { stations };

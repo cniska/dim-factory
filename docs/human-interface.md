@@ -10,9 +10,13 @@ The client is a React static bundle that Bun serves. Its CSS custom properties a
 
 ## Implementation
 
-The client uses semantic HTML, CSS variables, a dark responsive layout, lightweight client state, overview and detail separation, bounded lists, fullscreen presentation and explicit stale, unavailable and empty states. Its base palette is black, white and grayscale surfaces; semantic accents are reserved for agent roles and job states. Bun serves the React bundle beside the local read-only server. The interface owns its visual system and has no control surface.
+The client uses semantic HTML, CSS variables, a dark responsive layout, lightweight client state, bounded lists, fullscreen presentation and explicit stale, unavailable and empty states. Its base palette is black, white and grayscale surfaces; semantic accents are reserved for agent roles and job states. Bun serves the React bundle beside the local read-only server. The interface owns its visual system and has no control surface.
 
-The page answers one question: where is each active item in the factory flow? A four-column board puts every active item in Plan, Build, Review or Ship. Each fixed-size card carries the item, agent, state, elapsed time and latest evidence. Column headers carry the item counts. Blocked, fenced and failed jobs keep their operational warning on the card.
+The page answers one question: where is each item in the factory flow? A three-column board puts every item in Todo, Active or Done, the lifecycle every item shares whatever kind of work it is. A job that has been claimed but not started is Todo; a running job is Active; a completed, failed or abandoned job is Done. A blocked or fenced job stays in Active: it has not reached an outcome, and a stuck item is what a wall exists to show. Each fixed-size card carries the item, its station, agent, state, elapsed time and latest evidence. Blocked, fenced, failed and abandoned jobs keep their operational warning on the card.
+
+Column headers carry the column's whole count, not the number of cards drawn, and a column holding more work than it can draw says how many it left out. An empty column says what is absent — no claimed work waiting, nothing in motion, nothing finished — rather than that the column is empty.
+
+The station — Plan, Build, Review or Ship — is card metadata rather than a column, so the board reads as progress rather than as a floor plan, and two items at the same station can sit in different columns.
 
 The board is a snapshot assembled from factory job and lifecycle event records. Detailed read-only queries remain the path for investigation; the wall does not reproduce their full reports.
 
@@ -20,6 +24,7 @@ The board is a snapshot assembled from factory job and lifecycle event records. 
 
 - **Dark ground.** A stable dark surface keeps status colors and text legible for a display that may stay open.
 - **Dim presence.** Graphite and charcoal surfaces, softened white hierarchy and low-saturation accents keep the wall calm, precise and instrument-like; neon, glossy and high-energy treatment does not belong here.
+- **Monospace type.** JetBrains Mono, falling back to the platform's monospace face, keeps identifiers, timestamps and counts aligned and gives the wall its instrument register. No web font is fetched.
 - **Compact cards.** Each card carries one fact, a short explanation and the smallest useful supporting detail.
 - **Strong hierarchy.** Current state is bright and large; age, identity and provenance are quieter.
 - **Status as information.** Color marks active, healthy, blocked, failed, fenced and stale states, with text always carrying the meaning.
@@ -29,7 +34,7 @@ The board is a snapshot assembled from factory job and lifecycle event records. 
 
 ## Acceptance
 
-The implementation is reviewed against a seeded snapshot containing work in all four columns; running, waiting, blocked, fenced and completed states; and each agent role. The first viewport must make the work, station, agent, state, elapsed time and latest evidence legible without opening a detail view.
+The implementation is reviewed against seeded snapshots covering all three columns; the running, waiting, blocked, fenced, completed, failed and abandoned states; every station; and each agent role. The first viewport must make the work, station, agent, state, elapsed time and latest evidence legible without opening a detail view.
 
 The implementation lives in `src/factory-wall.ts`, `src/wall-board.ts`, `src/wall-client.tsx` and `src/wall.css`. `dim wall` serves the bundled page on loopback; `GET /api/snapshot` reads the existing database, and `/ws` sends a changed snapshot. When the database is unavailable, the wall states that condition rather than rendering fabricated operational rows. Empty columns use the same treatment.
 
@@ -39,10 +44,10 @@ The review checks the same wall at a 1440×900 fullscreen desktop viewport and b
 
 The wall should feel like a software production floor:
 
-- **Stations are visible.** Plan, Build, Review and Ship are stable places in the layout; a job's current station is immediately clear.
-- **Work-in-progress is concrete.** A job card names the item, worker, worktree, elapsed time and latest evidence instead of showing abstract activity counts.
-- **Flow is legible.** The page shows work moving between stations and makes a stopped item interrupt that flow visually.
-- **Handoffs are explicit.** The next station, the report it received and the reason work is waiting are visible without opening raw logs.
+- **Stations are visible.** Plan, Build, Review and Ship are named on every card; a job's current station is immediately clear without the layout being built around it.
+- **Work-in-progress is concrete.** A job card names the item, its station, the worker, elapsed time and latest evidence instead of showing abstract activity counts.
+- **Flow is legible.** The page shows work moving from Todo through Active to Done and makes a stopped item interrupt that flow visually.
+- **Stopped work says why.** The reason a job cannot move is on the card, without opening raw logs.
 - **Quality is part of the surface.** Checks, review findings, setup state and fences sit beside progress rather than behind a separate admin page.
 - **The page is calm.** Strong spacing, a small status palette and deliberate typography make the important exception visible without making the whole screen look urgent.
 - **Roles have a visual code.** Agent roles may tint a rail and job marker: builder, fixer, reviewer and planner each have a stable visual role. The written role and a shape or icon carry the meaning too; the code does not identify a model or rely on color alone. The station remains a separate label.
@@ -50,21 +55,21 @@ The wall should feel like a software production floor:
 
 ## Job identity
 
-Every visible active job carries the same compact identity block:
+Every card on the board carries the same compact identity block:
 
-- **What.** The generated item name, queue and item identity, with the current action or latest lifecycle evidence.
-- **Where.** Current station, worktree and branch.
-- **Who.** Agent identity and delegation context when a job handed work to another agent.
-- **State.** Running, waiting, blocked, fenced or finished, with elapsed time and the last update.
-- **Next.** The next station or explicit reason the job cannot move.
+- **What.** The item identity, with the current action and the latest lifecycle evidence.
+- **Where.** The current station, named on the card.
+- **Who.** Agent identity, with the agent's role carried by a marker and by the written role.
+- **State.** Running, waiting, blocked, fenced, completed, failed or abandoned, with elapsed time and the last update.
+- **Why stopped.** For a job that cannot move, its stop reason or fence.
 
-These values come from persisted job claims, lifecycle events, reports and worker-environment records. The wall does not infer activity from a process name or a stale heartbeat.
+These values come from persisted job claims and lifecycle events. The wall does not infer activity from a process name or a stale heartbeat, and it does not infer what kind of work an item is from its title: it shows the metadata the factory recorded.
 
 ## Scale
 
 The wall remains an overview as the factory grows:
 
-- **Columns absorb volume.** Each station shows its current work in bounded cards rather than expanding into a history list.
+- **Columns absorb volume.** Each lifecycle column draws its most recently updated work in bounded cards rather than expanding into a history list, and is bounded on its own, so a growing Done column cannot push Active work off the board.
 - **Details stay on the card.** The item, agent, state, elapsed time and latest evidence are visible without turning the wall into a table.
 - **The transport stays quiet.** WebSocket updates send changed snapshots or bounded deltas, not an ever-growing event log.
 - **The layout adapts.** The same hierarchy works as a fullscreen wall, a wide desktop page and a narrow browser window.
