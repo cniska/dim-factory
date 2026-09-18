@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { appendJobEvent, createJob, recordJobCheck, recordJobCommit } from "./factory-job";
-import { assembleWallSnapshot, buildWallBundle, serveWall } from "./factory-wall";
+import { assembleWallSnapshot, serveWall } from "./factory-wall";
 import { SCHEMA_SQL } from "./schema";
 import { workerName } from "./worker-name";
 
@@ -201,10 +201,34 @@ describe("factory wall snapshot", () => {
     }
   });
 
-  test("builds the kanban client bundle", async () => {
-    const bundle = await buildWallBundle();
+  test("serves a page whose script and stylesheet load", async () => {
+    const server = await serveWall({ port: 0 });
+    const origin = `http://127.0.0.1:${server.port}`;
+    try {
+      const page = await fetch(origin);
+      expect(page.status).toBe(200);
+      const html = await page.text();
+      expect(html).toContain('id="root"');
 
-    expect(bundle.js.byteLength).toBeGreaterThan(0);
-    expect(bundle.css.byteLength).toBeGreaterThan(0);
+      const assets = [...html.matchAll(/(?:src|href)="(\/[^"]+)"/g)].map((match) => match[1] ?? "");
+      const script = assets.find((asset) => asset.endsWith(".js"));
+      const style = assets.find((asset) => asset.endsWith(".css"));
+      expect(script).toBeDefined();
+      expect(style).toBeDefined();
+
+      const bundled = await fetch(`${origin}${script}`);
+      expect(bundled.status).toBe(200);
+      expect((await bundled.text()).length).toBeGreaterThan(0);
+
+      const stylesheet = await fetch(`${origin}${style}`);
+      expect(stylesheet.status).toBe(200);
+      // Tailwind ran: a utility the board uses is in the sheet the page links.
+      expect(await stylesheet.text()).toContain("grid-cols-3");
+
+      const font = await fetch(`${origin}/wall.woff2`);
+      expect(font.status).toBe(200);
+    } finally {
+      server.stop(true);
+    }
   });
 });

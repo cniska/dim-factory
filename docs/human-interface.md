@@ -36,7 +36,7 @@ The board is a snapshot assembled from factory job and lifecycle event records. 
 
 The implementation is reviewed against seeded snapshots covering all three columns; the running, waiting, blocked, fenced, completed, failed and abandoned states; every station; and each agent role. The first viewport must make the work, station, state and worker identity legible without opening a detail view.
 
-The implementation lives in `src/factory-wall.ts`, `src/wall-board.ts`, `src/wall-client.tsx` and `src/wall.css`. `dim wall` serves the bundled page on loopback; `GET /api/snapshot` reads the existing database, and `/ws` sends a changed snapshot. When the database is unavailable, the wall states that condition rather than rendering fabricated operational rows.
+The implementation lives in `src/factory-wall.ts`, `src/wall-board.ts`, `src/wall-client.tsx`, `src/wall.html` and `src/wall.css`. `dim wall` serves the page on loopback and Bun bundles it from the HTML route, so `dim wall --dev` adds hot reload without a second way of being served; `GET /api/snapshot` reads the existing database, and `/ws` sends a changed snapshot. When the database is unavailable, the wall states that condition rather than rendering fabricated operational rows.
 
 The review checks the same wall at a 1440×900 fullscreen desktop viewport and below it. Surfaces use one shared token set, edges and gaps align, text remains readable when the browser enlarges it, and no state depends on color alone. The snapshot, stale-feed state and role markers remain understandable when the connection stops. An independent screenshot review is required in addition to automated checks; a passing test suite does not establish visual quality.
 
