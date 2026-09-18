@@ -1,9 +1,9 @@
 // Every table here is one-to-one with records in the source files and is rebuilt
 // by re-reading them, so a schema change is `dim rebuild`, not a migration. The
 // exceptions carry the reason at the table: hook_event, guidance_walk,
-// command_trace and finding have no source to re-read, embedding is derived from
-// tables that do, and correction_label has no source either but is dropped and
-// written back row for row.
+// command_trace and finding have no source to re-read, embedding holds vectors
+// only a model can produce again, and correction_label has no source either but
+// is dropped and written back row for row.
 // SCHEMA_VERSION exists so sync can refuse to run against a database only a
 // re-read can correct: a changed column, or a changed rule for what identifies a
 // row, since rows already written keep the old identity. A table added with
@@ -15,6 +15,8 @@ import { TOOLS_SQL } from "./tools";
 export const SCHEMA_VERSION = 16;
 
 export const SCHEMA_SQL = `
+-- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
+-- returned; a drop would take the version with it.
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
 
 -- One row per source file on disk. The cursor is keyed by session, not by path:
@@ -103,9 +105,9 @@ CREATE TABLE IF NOT EXISTS usage (
 CREATE INDEX IF NOT EXISTS usage_session ON usage(session_id, ts);
 CREATE INDEX IF NOT EXISTS usage_model ON usage(model);
 
--- Drained from the hook spool, and the one table \`dim rebuild\` must not touch:
--- a transcript records no end marker, so a session that ended before its hook
--- was installed can never be told apart from one still open. There is no
+-- Drained from the hook spool, and never cleared by \`dim rebuild\`: a transcript
+-- records no end marker, so a session that ended before its hook was installed
+-- can never be told apart from one still open. There is no
 -- foreign key to session because a hook can fire for a session whose transcript
 -- has not been read yet, or ever.
 CREATE TABLE IF NOT EXISTS hook_event (
@@ -355,8 +357,10 @@ CREATE INDEX IF NOT EXISTS guidance_version_seen ON guidance_version(path, first
 -- docs/recall.md. A projection of its sources and never a second archive —
 -- \`dim embed\` drops the row when the source is gone.
 --
--- No foreign key, because \`rebuild\` drops message and repo_commit and
--- then writes the same ids back, so a vector keyed by one survives it. text is
+-- Never cleared by \`rebuild\`, because only the model \`dim embed\` runs can
+-- produce these vectors again. No foreign key, because \`rebuild\` drops message
+-- and repo_commit and then writes the same ids back, so a vector keyed by one
+-- survives it. text is
 -- stored rather than joined because a vector only means anything against the
 -- exact string the model was given, and a Next is a slice of a larger message
 -- that exists nowhere else.
