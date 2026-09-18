@@ -11,6 +11,7 @@ import {
   recordJobEnvironment,
   recordJobFile,
   recordJobFinding,
+  updateJobLocation,
 } from "./factory-job";
 import { assembleItemView, assembleWallSnapshot, serveWall } from "./factory-wall";
 import { SCHEMA_SQL } from "./schema";
@@ -109,10 +110,9 @@ describe("factory wall snapshot", () => {
       worker: workerName("builder"),
       role: "builder",
       status: "running",
-      action: "Repository check finished",
       age: "8m",
-      updatedAt: "2026-09-18T10:02:00.000Z",
-      evidence: "bun run verify",
+      lastEventAt: "2026-09-18T10:02:00.000Z",
+      failedChecks: 0,
     });
     db.close();
   });
@@ -170,6 +170,74 @@ describe("factory wall snapshot", () => {
     db.close();
   });
 
+  test("ages a job from its last recorded event, not from the row's last write", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    createJob(
+      db,
+      {
+        id: "job-quiet",
+        runId: "run",
+        queueId: "queue",
+        itemId: "quiet",
+        title: "Go quiet after starting",
+        station: "build",
+      },
+      "2026-09-18T09:00:00.000Z",
+    );
+    appendJobEvent(db, "job-quiet", { kind: "started", status: "running" }, "2026-09-18T09:05:00.000Z");
+    // Writes the job row without recording an event, which is how a job's row can be newer
+    // than anything that happened to it.
+    updateJobLocation(db, "job-quiet", "/tmp/quiet", "quiet");
+
+    const job = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).jobs[0];
+
+    expect(job?.lastEventAt).toBe("2026-09-18T09:05:00.000Z");
+    expect(job?.age).toBe("1h 0m");
+    db.close();
+  });
+
+  test("counts the checks a running job failed and leaves a passing one silent", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    createJob(
+      db,
+      {
+        id: "job-struggling",
+        runId: "run",
+        queueId: "queue",
+        itemId: "struggling",
+        title: "Fail the check twice",
+        station: "build",
+      },
+      "2026-09-18T10:00:00.000Z",
+    );
+    appendJobEvent(db, "job-struggling", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    recordJobCheck(
+      db,
+      "job-struggling",
+      { command: "bun run verify", exitCode: 1, result: "lint failed" },
+      "2026-09-18T10:02:00.000Z",
+    );
+    recordJobCheck(
+      db,
+      "job-struggling",
+      { command: "bun run verify", exitCode: 2, result: "typecheck failed" },
+      "2026-09-18T10:03:00.000Z",
+    );
+    recordJobCheck(
+      db,
+      "job-struggling",
+      { command: "bun run verify", exitCode: 0, result: "green" },
+      "2026-09-18T10:04:00.000Z",
+    );
+
+    const job = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).jobs[0];
+
+    expect(job?.failedChecks).toBe(2);
+    db.close();
+  });
+
   test("names no worker for a job no claim and no event named an agent for", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
@@ -196,10 +264,9 @@ describe("factory wall snapshot", () => {
       lifecycle: "todo",
       role: "builder",
       status: "waiting",
-      action: "Claimed, not started",
       age: "5m",
-      updatedAt: "2026-09-18T10:00:00.000Z",
-      evidence: "No evidence recorded yet",
+      lastEventAt: "2026-09-18T10:00:00.000Z",
+      failedChecks: 0,
     });
     db.close();
   });

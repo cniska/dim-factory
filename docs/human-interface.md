@@ -65,8 +65,15 @@ Every card on the board carries the same compact identity block:
 - **Who.** Agent identity, with the agent's role carried by a marker and by the written role. A job that no claim or event named an agent for shows no worker, rather than a name that would read as a worker and collide with every other unattributed job.
 - **State.** Running, waiting, blocked, fenced, completed, failed or abandoned.
 - **Why stopped.** For a job that cannot move, its stop reason or fence.
+- **How long it has been silent.** Time since the job's last recorded event. An unattended run fails by going quiet, so the one figure on the card counts from the last thing that happened rather than from the claim or from the last write to the job's row.
 
 These values come from persisted job claims and lifecycle events. The wall does not infer activity from a process name or a stale heartbeat, and it does not infer what kind of work an item is from its title: it shows the metadata the factory recorded.
+
+A card states what its column does not. A value repeated down a whole column is a constant, which is the rule that keeps the operator out of the cards, and an invariant the lifecycle guarantees is the same thing one level up: a completed job's check passed, so a done card says nothing about checks. The one piece of evidence a card carries is a running job's failed checks, one mark each, because a job failing its check repeatedly is struggling and that is what the owner would otherwise have to open the item view to see. Everything else the job accrued — its commits, files, findings, checks and history — is reading rather than glancing, and lives in the item view.
+
+That an outcome implies a green check is a rule the board leans on and nothing enforces: the driver records `completed` itself and could record it over a red check. [`build-order.md`](build-order.md) carries the gate that would hold it.
+
+A job the owner has to answer — blocked, fenced or failed — sorts above the moving work in its column, so a column read from the top reads as what needs a person and then as what is in flight.
 
 ## The item view
 

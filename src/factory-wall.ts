@@ -25,10 +25,13 @@ export type WallJob = {
   worker?: string;
   role: WallRole;
   status: WallStatus;
-  action: string;
   age: string;
-  updatedAt: string;
-  evidence: string;
+  /** When the job last recorded an event. A job's age on the board is its silence, so it counts
+   *  from the last thing that happened rather than from the claim. */
+  lastEventAt: string;
+  /** How many of the job's checks ended non-zero. A job failing its check repeatedly is
+   *  struggling, which is the one piece of evidence a card has room to carry. */
+  failedChecks: number;
   attention?: string;
 };
 
@@ -84,22 +87,21 @@ type JobRow = {
   queue_id: string;
   worktree: string | null;
   branch: string | null;
-  latest_kind: string | null;
+  last_event_at: string | null;
   latest_reason: string | null;
   latest_station: string | null;
   latest_actor: string | null;
-  latest_evidence: string | null;
+  failed_check_count: number;
 };
 
 const JOB_ROW_SELECT = `SELECT j.id, j.item_id, j.title, j.agent_id, j.station, j.status,
               j.claimed_at, j.updated_at, j.stop_reason, j.run_id, j.queue_id, j.worktree, j.branch,
-              e.kind AS latest_kind, e.reason AS latest_reason, e.station AS latest_station,
+              e.ts AS last_event_at, e.reason AS latest_reason, e.station AS latest_station,
               e.actor_id AS latest_actor,
-              coalesce(e.reason, e.fence_type, e.commit_sha, c.subject, ch.command) AS latest_evidence
+              (SELECT count(*) FROM factory_job_check c
+                WHERE c.job_id = j.id AND c.exit_code <> 0) AS failed_check_count
        FROM factory_job j
-       LEFT JOIN factory_job_event e ON e.id = (SELECT e2.id FROM factory_job_event e2 WHERE e2.job_id = j.id ORDER BY e2.ts DESC, e2.id DESC LIMIT 1)
-       LEFT JOIN factory_job_commit c ON c.job_id = j.id AND c.recorded_at = (SELECT max(recorded_at) FROM factory_job_commit WHERE job_id = j.id)
-       LEFT JOIN factory_job_check ch ON ch.id = (SELECT ch2.id FROM factory_job_check ch2 WHERE ch2.job_id = j.id ORDER BY ch2.finished_at DESC, ch2.id DESC LIMIT 1)`;
+       LEFT JOIN factory_job_event e ON e.id = (SELECT e2.id FROM factory_job_event e2 WHERE e2.job_id = j.id ORDER BY e2.ts DESC, e2.id DESC LIMIT 1)`;
 
 const wallStatusByJobStatus: Record<string, WallStatus> = {
   claimed: "waiting",
@@ -156,30 +158,6 @@ function status(value: string): WallStatus {
   if (!mapped) throw new Error(`unknown factory job status: ${value}`);
   return mapped;
 }
-
-// Every kind `factory_job_event` allows, so no raw column value reaches the wall.
-const activityByKind: Record<string, string> = {
-  claimed: "Claimed, not started",
-  delegated: "Delegated to another agent",
-  started: "Working through the item",
-  commit_created: "Commit recorded",
-  check_finished: "Repository check finished",
-  review_finished: "Review evidence recorded",
-  fenced: "Stopped at a fence",
-  blocked: "Blocked on another item",
-  completed: "Finished",
-  failed: "Failed",
-  abandoned: "Abandoned",
-};
-
-function action(row: JobRow, attention: string | undefined): string {
-  // A stopped job's reason is already its attention line, and a card carrying one fact
-  // twice spends its loudest row saying nothing.
-  if (row.latest_reason && row.latest_reason !== attention) return row.latest_reason;
-  if (!row.latest_kind) return "Awaiting first evidence";
-  return activityByKind[row.latest_kind] ?? "Awaiting first evidence";
-}
-
 function mapJob(row: JobRow, now: Date): WallJob {
   const agentId = row.latest_actor ?? row.agent_id;
   const stationName = station(row.station ?? row.latest_station);
@@ -187,6 +165,7 @@ function mapJob(row: JobRow, now: Date): WallJob {
   const attention = attentionStatuses.has(jobStatus)
     ? (row.stop_reason ?? row.latest_reason ?? jobStatus)
     : undefined;
+  const lastEventAt = row.last_event_at ?? row.claimed_at;
   return {
     id: row.id,
     title: row.title,
@@ -196,10 +175,9 @@ function mapJob(row: JobRow, now: Date): WallJob {
     ...(agentId ? { agent: agentId, worker: workerName(agentId) } : {}),
     role: roleByStation[stationName],
     status: jobStatus,
-    action: action(row, attention),
-    age: age(row.updated_at || row.claimed_at, now),
-    updatedAt: row.updated_at || row.claimed_at,
-    evidence: row.latest_evidence ?? "No evidence recorded yet",
+    age: age(lastEventAt, now),
+    lastEventAt,
+    failedChecks: row.failed_check_count,
     ...(attention ? { attention } : {}),
   };
 }

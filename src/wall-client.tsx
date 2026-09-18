@@ -8,7 +8,7 @@ import { Digits } from "./components/ui/digits";
 import { Robot } from "./components/ui/robot";
 import type { WallJob, WallRole, WallSnapshot, WallStatus } from "./factory-wall";
 import { cn } from "./lib/utils";
-import { jobsByLifecycle, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
+import { FAILURE_MARKS_SHOWN, jobsByLifecycle, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
 import "./wall.css";
 
 const unavailableSnapshot: WallSnapshot = {
@@ -77,6 +77,27 @@ function timeLabel(updatedAt: string): string {
  *  and the rows stop sharing a rhythm the eye can follow across three columns. */
 const ROW = "flex h-[18px] shrink-0 items-center gap-1.5 leading-none";
 
+/** One mark per failed check, so three attempts read as three marks without a word. A cross
+ *  rather than a tinted dot: the shape carries it where color is spent on roles, and the count
+ *  stands in past what the card has room for. */
+function FailedChecks({ count }: { count: number }) {
+  const shown = Math.min(count, FAILURE_MARKS_SHOWN);
+
+  return (
+    <span
+      role="img"
+      className="flex items-center gap-1 text-danger"
+      aria-label={`${count} ${count === 1 ? "failed check" : "failed checks"}`}
+    >
+      {Array.from({ length: shown }, (_, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: the marks are identical, so a mark's position is the whole of its identity
+        <CircleX key={index} size={12} strokeWidth={1.8} aria-hidden="true" />
+      ))}
+      {count > shown ? <span className="tabular-nums">+{count - shown}</span> : null}
+    </span>
+  );
+}
+
 function JobCard({ job, now, bumped }: { job: WallJob; now: Date; bumped: boolean }) {
   const StatusIcon = statusIcon[job.status];
 
@@ -103,13 +124,17 @@ function JobCard({ job, now, bumped }: { job: WallJob; now: Date; bumped: boolea
         {/* Re-derived from the timestamp every second rather than read off the snapshot, so
             the board keeps moving between pushes instead of standing still. */}
         <span className="tabular-nums">
-          <Digits value={age(job.updatedAt, now)} />
+          <Digits value={age(job.lastEventAt, now)} />
         </span>
       </CardHeader>
 
       <h3 className={cn(ROW, "truncate font-medium text-foreground")}>{job.title}</h3>
 
-      <p className={cn(ROW, "truncate text-muted-foreground")}>{job.action}</p>
+      {/* The row stands whether or not it holds anything, so a card does not change height the
+          moment its first check fails and the column does not step as work arrives. */}
+      <div className={ROW}>
+        {job.status === "running" && job.failedChecks > 0 ? <FailedChecks count={job.failedChecks} /> : null}
+      </div>
 
       {job.attention ? (
         <p role="status" className={cn(ROW, "truncate text-warn-foreground")}>
@@ -194,7 +219,7 @@ function feedStateOf(unavailable: boolean, stale: boolean): FeedState {
 
 /** What a card would show, so a snapshot that changed nothing lights nothing. */
 function cardState(job: WallJob): string {
-  return `${job.status}|${job.action}|${job.worker ?? ""}|${job.attention ?? ""}`;
+  return `${job.status}|${job.failedChecks}|${job.worker ?? ""}|${job.attention ?? ""}`;
 }
 
 const BUMP_MS = 2000;
