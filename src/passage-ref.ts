@@ -13,7 +13,7 @@ const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/;
 export type PassageRef = { id: string; at?: string };
 
 /** The timestamp a ref ends in, or undefined where it names no passage. */
-export function passageTime(ref: string): string | undefined {
+function passageTime(ref: string): string | undefined {
   const cut = ref.lastIndexOf("@");
   if (cut === -1) return undefined;
   const tail = ref.slice(cut + 1);
