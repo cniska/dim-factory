@@ -15,6 +15,7 @@ import { closeDb, openDb } from "./db";
 import { diagnose } from "./doctor";
 import { EMBED_DIMS, EMBED_MODEL, embedQuestion, openEmbedder } from "./embed";
 import { buildIndex } from "./embed-index";
+import { type Finding, FindingError, findingFrom, recordFinding } from "./finding";
 import { committerName } from "./git-identity";
 import { installHooks, planHooks } from "./hooks";
 import { withLock } from "./lock";
@@ -71,6 +72,10 @@ const USAGE = `usage: dim <command>
                   prints ${DEFAULT_MAX_ROWS} rows; --rows <n> for more
   label <id> <correction|clarification|not_correction> [--rule "..."]
                   record your judgement on one candidate correction
+  finding --slice <name> --dimension <name> --answer <fixed|refused>
+          --summary "..." [--file <path>] [--why "..."]
+                  record what a checking agent raised on a slice and how it was
+                  answered; a refusal states why, which is what ends a finding
 `;
 
 function printReport(report: SyncReport): void {
@@ -606,6 +611,28 @@ function runLabel(args: string[]): void {
   }
 }
 
+/**
+ * The builder's own record of how it answered a checker, written where the slice
+ * was built so the repo is read rather than passed in.
+ */
+function runFinding(args: string[]): void {
+  let finding: Finding;
+  try {
+    finding = findingFrom(args, process.cwd());
+  } catch (error) {
+    if (!(error instanceof FindingError)) throw error;
+    console.error(error.message);
+    process.exit(1);
+  }
+  const db = openDb(dbPath());
+  try {
+    recordFinding(db, finding);
+    console.log(`recorded a ${finding.answer} finding on ${finding.slice}`);
+  } finally {
+    closeDb(db);
+  }
+}
+
 async function runQuery(args: string[]): Promise<void> {
   const name = args[0];
   if (!name || name === "list") {
@@ -675,6 +702,9 @@ try {
       break;
     case "label":
       runLabel(process.argv.slice(3));
+      break;
+    case "finding":
+      runFinding(process.argv.slice(3));
       break;
     case "sql":
       // The first argument that is neither a flag nor a flag's value, so
