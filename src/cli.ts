@@ -84,10 +84,10 @@ const USAGE = `usage: dim <command>
           --summary "..." [--file <path>] [--why "..."]
                   record what a checking agent raised on a slice and how it was
                   answered; a refusal states why, which is what ends a finding
-  job claim|start|stop <job-id> ...
-                  record a factory job as it is taken, started and stopped, so
-                  the wall shows the work while it is happening (dim job for
-                  the flags each subcommand takes)
+  job claim|start|move|stop <job-id> ...
+                  record a factory job as it is taken, started, moved between
+                  stations and stopped, so the wall shows the work while it is
+                  happening (dim job for the flags each subcommand takes)
   queue ready <file> [--limit <n>]
                   print planned items whose dependencies are completed
   queue transition <file> <item> <status> [--reason <text>] [--at <iso>]

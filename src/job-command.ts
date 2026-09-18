@@ -5,6 +5,7 @@ import {
   isTerminalJobStatus,
   type JobEventKind,
   type JobStatus,
+  moveJob,
   TERMINAL_JOB_STATUSES,
 } from "./factory-job";
 
@@ -14,6 +15,7 @@ export const JOB_USAGE = `usage: dim job claim <job-id> --run <id> --queue <id> 
                       [--statement "..."] [--agent <id>] [--session <id>] [--station <name>]
                       [--worktree <path>] [--branch <name>]
        dim job start <job-id>
+       dim job move <job-id> --station <name>
        dim job stop <job-id> <${TERMINAL_JOB_STATUSES.join("|")}> [--reason "..."]`;
 
 const CLAIM_FLAGS = [
@@ -100,6 +102,11 @@ export function runJobCommand(db: Database, args: string[]): string {
     flags(rest, []);
     appendJobEvent(db, jobId, { kind: "started", status: "running" });
     return `${jobId} is running`;
+  }
+  if (command === "move") {
+    const station = required(flags(rest, ["--station"]), "--station");
+    moveJob(db, jobId, station);
+    return `${jobId} moved to ${station}`;
   }
   if (command === "stop") return stop(db, jobId, rest);
   throw new JobCommandError(`${command} is not a job subcommand`);

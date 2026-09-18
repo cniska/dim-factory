@@ -6,6 +6,7 @@ export type JobEventKind =
   | "claimed"
   | "delegated"
   | "started"
+  | "moved"
   | "commit_created"
   | "check_finished"
   | "review_finished"
@@ -55,6 +56,9 @@ export const TERMINAL_JOB_STATUSES: readonly JobStatus[] = [
   "abandoned",
 ];
 const terminalStatuses = new Set<JobStatus>(TERMINAL_JOB_STATUSES);
+
+/** A refusal is read by whoever typed the command, so it names the act and not the event kind. */
+const VERB_FOR_KIND: Record<string, string> = { completed: "complete", moved: "move" };
 
 export function isTerminalJobStatus(status: JobStatus): boolean {
   return terminalStatuses.has(status);
@@ -133,6 +137,18 @@ export function updateJobLocation(db: Database, jobId: string, worktree: string,
   if (result.changes !== 1) throw new Error(`job not found: ${jobId}`);
 }
 
+/**
+ * The projection follows the move because that column is what a card is read by
+ * (`src/factory-wall.ts` prefers it over the latest event's station), and the
+ * event ledger keeps every station the job passed through.
+ */
+export function moveJob(db: Database, jobId: string, station: string, at = now()): void {
+  db.transaction(() => {
+    appendJobEventInTransaction(db, jobId, { kind: "moved", station }, at);
+    db.run("UPDATE factory_job SET station = ? WHERE id = ?", [station, jobId]);
+  })();
+}
+
 export function jobStatus(db: Database, jobId: string): JobStatus {
   const job = db.query("SELECT status FROM factory_job WHERE id = ?").get(jobId) as {
     status: JobStatus;
@@ -166,7 +182,7 @@ function appendJobEventInTransaction(db: Database, jobId: string, event: JobEven
     }
     const mayStopBeforeRunning = isTerminalJobStatus(event.kind as JobStatus) && event.kind !== "completed";
     if (event.kind !== "started" && job.status !== "running" && !mayStopBeforeRunning) {
-      const action = event.kind === "completed" ? "complete" : event.kind;
+      const action = VERB_FOR_KIND[event.kind] ?? event.kind;
       throw new Error(`job ${jobId} must be running before it can ${action}`);
     }
     if (event.kind === "completed" && !job.worktree) {
