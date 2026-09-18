@@ -105,12 +105,29 @@ describe("job command", () => {
     const database = db();
     runJobCommand(database, claim);
     runJobCommand(database, ["start", "job-1"]);
+    runJobCommand(database, ["check", "job-1", "--command", "bun run verify", "--exit", "0"]);
 
     expect(runJobCommand(database, ["stop", "job-1", "completed"])).toBe("job-1 stopped as completed");
 
     const snapshot = assembleWallSnapshot(database);
     expect(snapshot.totals).toEqual({ todo: 0, active: 0, done: 1 });
     expect(snapshot.jobs[0]?.status).toBe("completed");
+  });
+
+  test("a stop as completed is refused until a check has passed", () => {
+    const database = db();
+    runJobCommand(database, claim);
+    runJobCommand(database, ["start", "job-1"]);
+    runJobCommand(database, ["check", "job-1", "--command", "bun run verify", "--exit", "1"]);
+
+    expect(() => runJobCommand(database, ["stop", "job-1", "completed"])).toThrow(
+      expect.objectContaining({ code: "job_not_checked" }),
+    );
+
+    expect(assembleWallSnapshot(database).jobs[0]?.status).toBe("running");
+    expect(runJobCommand(database, ["stop", "job-1", "blocked", "--reason", "waits on the wall"])).toBe(
+      "job-1 stopped as blocked",
+    );
   });
 
   test("a fence keeps the card active and shows why it stopped", () => {
@@ -196,6 +213,7 @@ describe("job command", () => {
     );
 
     runJobCommand(database, ["start", "job-1"]);
+    runJobCommand(database, ["check", "job-1", "--command", "bun run verify", "--exit", "0"]);
     runJobCommand(database, ["stop", "job-1", "completed"]);
 
     expect(() => runJobCommand(database, ["commit", "job-1", "--sha", "abc123"])).toThrow(
@@ -263,6 +281,7 @@ describe("job command", () => {
     expect(() => runJobCommand(database, ["stop", "job-1", "running"])).toThrow(JobCommandError);
 
     expect(assembleWallSnapshot(database).jobs[0]?.status).toBe("running");
+    runJobCommand(database, ["check", "job-1", "--command", "bun run verify", "--exit", "0"]);
     expect(runJobCommand(database, ["stop", "job-1", "completed"])).toBe("job-1 stopped as completed");
   });
 

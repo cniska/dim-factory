@@ -83,6 +83,12 @@ describe("factory wall snapshot", () => {
     );
     appendJobEvent(db, "job-done", { kind: "started", status: "running" }, "2026-09-18T08:00:30.000Z");
     recordJobCommit(db, "job-done", "abc123", "wall", "2026-09-18T08:01:00.000Z");
+    recordJobCheck(
+      db,
+      "job-done",
+      { command: "bun run verify", exitCode: 0, result: "green" },
+      "2026-09-18T08:01:30.000Z",
+    );
     appendJobEvent(
       db,
       "job-done",
@@ -404,8 +410,15 @@ describe("factory wall snapshot", () => {
         },
         "2026-09-18T09:00:00.000Z",
       );
-      if (kind === "completed")
+      if (kind === "completed") {
         appendJobEvent(db, id, { kind: "started", status: "running" }, "2026-09-18T09:00:30.000Z");
+        recordJobCheck(
+          db,
+          id,
+          { command: "bun run verify", exitCode: 0, result: "green" },
+          "2026-09-18T09:00:45.000Z",
+        );
+      }
       appendJobEvent(db, id, { kind, status: kind, reason: `reason-${id}` }, "2026-09-18T09:01:00.000Z");
     };
     for (let index = 0; index < 14; index += 1) seed(`fenced-${index}`, "fenced");
