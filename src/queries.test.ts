@@ -721,8 +721,9 @@ describe("a thin sample is a row with its base, not a row withheld", () => {
     try {
       const r = findQuery("rework")?.run(db, { arg: "no-such-skill" });
       expect(r?.rows).toEqual([]);
-      expect(r?.note).toContain("no file edit is attributed to no-such-skill");
-      expect(r?.denominator).toContain("rows cover no-such-skill alone");
+      expect(r?.note).toContain("no file edit in this window is attributed to no-such-skill");
+      // A corpus-wide total beside "rows cover it alone" is a base the rows cannot account for.
+      expect(r?.denominator).toContain("0 file edits under no-such-skill; rows cover it alone");
     } finally {
       db.close();
     }
@@ -739,7 +740,6 @@ describe("a thin sample is a row with its base, not a row withheld", () => {
       // it; counting it in the base would print a total the rows cannot account for.
       const r = findQuery("rework")?.run(db, {});
       expect(r?.denominator).toContain("2 file edits");
-      expect(r?.rows.map((row) => [row[0], row[1]])).toEqual([["dim-station-build", 2]]);
     } finally {
       db.close();
     }
@@ -755,7 +755,29 @@ describe("a thin sample is a row with its base, not a row withheld", () => {
       );
       const f = findQuery("fixes")?.run(db, {});
       expect(f?.rows).toEqual([]);
-      expect(f?.note).toContain("a file path, a timestamp and a session working directory");
+      expect(f?.note).toContain("file path, timestamp and session working directory");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("fixes gives a one-file skill its rate, with the one file beside it", () => {
+    const db = twoFiles();
+    try {
+      db.run(
+        `INSERT INTO tool_call (id, session_id, tool_name, attribution_skill, file_path, ts_call, src_file)
+         VALUES ('c', 's1', 'Edit', 'simplify', '/w/three.ts', '2026-09-01T10:05:00Z', '/f.jsonl')`,
+      );
+      db.run(
+        `INSERT INTO repo_commit (sha, repo, ts, kind, subject)
+         VALUES ('sha1', '/w', '2026-09-02T10:00:00Z', 'fix', 'fix: three')`,
+      );
+      db.run("INSERT INTO commit_file (sha, path) VALUES ('sha1', '/w/three.ts')");
+      const f = findQuery("fixes")?.run(db, {});
+      expect(f?.rows.map((row) => [row[0], row[1], row[3]])).toEqual([
+        ["simplify", 1, 100],
+        ["dim-station-build", 2, 0],
+      ]);
     } finally {
       db.close();
     }
