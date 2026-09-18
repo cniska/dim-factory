@@ -85,6 +85,10 @@ The job's identity stays above whatever is being read — which item, which stat
 
 The plan and the account are the exception, and putting them in separate places is the way to lose what they are for. Their value is where they disagree — scope that grew, a slice never built — and a difference nobody can see is a difference nobody finds. They belong on one surface, against each other, however the rest divides.
 
+Beside the reports runs the job's timeline: every agent that touched it, in the order it happened, with the time each thing occurred. It is the audit record in its most compact form — who operated, who they handed to, and when — and it answers at a glance the question the reports answer at length.
+
+Keeping it lean is what makes it readable: the rail carries a mark, a worker and a time, and nothing else. An event's words belong to the report it came from, so a rail that starts quoting them becomes a second copy of the history it indexes. The marks stay uniform, so four review rounds read as four marks rather than four paragraphs, and a delegation reads as the handover it was — one agent's run ending where another's begins.
+
 The wall's primitives are small and its runtime dependencies are few, so the dialog is worth building on the platform's own `<dialog>` element, which carries modality, focus and dismissal already. Pulling in a component library for one surface would cost more than the surface.
 
 `dim q job <job-id>` already reads this record from the same tables, so the view renders what that query reads rather than assembling a second account of a job. Where the two would disagree, the query is the one to fix.
