@@ -44,6 +44,7 @@ export type LaneEvent = {
 };
 
 const now = (): string => new Date().toISOString();
+const terminalStatuses = new Set<LaneStatus>(["completed", "blocked", "fenced", "failed", "abandoned"]);
 
 function eventValues(laneId: string, event: LaneEvent, ts: string): (string | number | null)[] {
   return [
@@ -95,28 +96,38 @@ export function createLane(db: Database, lane: Lane, at = now()): void {
 }
 
 export function appendLaneEvent(db: Database, laneId: string, event: LaneEvent, at = now()): void {
-  db.run(
-    `INSERT INTO factory_lane_event
-     (lane_id, ts, kind, actor_id, session_id, station, delegated_agent_id, delegated_session_id,
-      delegated_station, commit_sha, check_id, finding_id, fence_type, status, reason)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    eventValues(laneId, event, event.ts ?? at),
-  );
-  db.run(
-    `UPDATE factory_lane SET status = coalesce(?, status), updated_at = ?, started_at = coalesce(started_at, ?),
-     completed_at = CASE WHEN ? IN ('completed', 'blocked', 'fenced', 'failed', 'abandoned') THEN ? ELSE completed_at END,
-     stop_reason = coalesce(?, stop_reason)
-     WHERE id = ?`,
-    [
-      event.status ?? null,
-      event.ts ?? at,
-      event.kind === "started" ? (event.ts ?? at) : null,
-      event.status ?? null,
-      event.ts ?? at,
-      event.reason ?? null,
-      laneId,
-    ],
-  );
+  db.transaction(() => {
+    const lane = db.query("SELECT status FROM factory_lane WHERE id = ?").get(laneId) as {
+      status: LaneStatus;
+    } | null;
+    if (!lane) throw new Error(`lane not found: ${laneId}`);
+    if (terminalStatuses.has(lane.status)) {
+      throw new Error(`lane ${laneId} is already ${lane.status}`);
+    }
+
+    db.run(
+      `INSERT INTO factory_lane_event
+       (lane_id, ts, kind, actor_id, session_id, station, delegated_agent_id, delegated_session_id,
+        delegated_station, commit_sha, check_id, finding_id, fence_type, status, reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      eventValues(laneId, event, event.ts ?? at),
+    );
+    db.run(
+      `UPDATE factory_lane SET status = coalesce(?, status), updated_at = ?, started_at = coalesce(started_at, ?),
+       completed_at = CASE WHEN ? IN ('completed', 'blocked', 'fenced', 'failed', 'abandoned') THEN ? ELSE completed_at END,
+       stop_reason = coalesce(?, stop_reason)
+       WHERE id = ?`,
+      [
+        event.status ?? null,
+        event.ts ?? at,
+        event.kind === "started" ? (event.ts ?? at) : null,
+        event.status ?? null,
+        event.ts ?? at,
+        event.reason ?? null,
+        laneId,
+      ],
+    );
+  })();
 }
 
 export function recordLaneCommit(

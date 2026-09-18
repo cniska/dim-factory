@@ -35,7 +35,7 @@ The delivered-product report is persisted in the dim database so it remains quer
 - **Verification.** Repository check command and result, checker findings and their resolutions, and updated docs.
 - **Outcome.** Final status — complete, blocked, fenced or failed — with fence or blocker evidence and timestamps for the lifecycle events.
 
-The report lifecycle is a durable sequence from claim through running to completion or a stopped outcome, with evidence recorded as the lane progresses. `dim q lane <lane-id>` reads the aggregate, events and evidence through the read-only query path. These operational tables survive `dim rebuild`, deliberately like `hook_event`, `command_trace` and `finding`: no transcript or file source can recreate a lane's claims and judgements after the fact.
+The report lifecycle is a durable sequence from claim through running to completion or a stopped outcome, with evidence recorded as the lane progresses. A terminal status cannot transition to another status, and each lifecycle event and its aggregate projection are written atomically. `dim q lane <lane-id>` reads the aggregate, events and evidence through the read-only query path. These operational tables survive `dim rebuild`, deliberately like `hook_event`, `command_trace` and `finding`: no transcript or file source can recreate a lane's claims and judgements after the fact.
 
 The persistence contract is live. The factory driver still owns scheduling, isolated worktree creation, serialized landing and queue-state enforcement; those orchestration boundaries are not inferred from a report row.
 
