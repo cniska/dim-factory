@@ -12,7 +12,7 @@
 
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 19;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -214,7 +214,7 @@ CREATE TABLE IF NOT EXISTS factory_job_event (
   id                    INTEGER PRIMARY KEY,
   job_id                TEXT NOT NULL REFERENCES factory_job(id) ON DELETE CASCADE,
   ts                    TEXT NOT NULL,
-  kind                  TEXT NOT NULL CHECK (kind IN ('claimed', 'delegated', 'started', 'commit_created', 'check_finished', 'review_finished', 'fenced', 'blocked', 'completed', 'failed', 'abandoned')),
+  kind                  TEXT NOT NULL CHECK (kind IN ('claimed', 'delegated', 'started', 'moved', 'commit_created', 'check_finished', 'review_finished', 'fenced', 'blocked', 'completed', 'failed', 'abandoned')),
   actor_id              TEXT,
   session_id            TEXT,
   station               TEXT,

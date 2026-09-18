@@ -79,6 +79,28 @@ describe("job command", () => {
     expect(snapshot.jobs[0]?.status).toBe("running");
   });
 
+  test("a move sends the card to the station the work is at now", () => {
+    const database = db();
+    runJobCommand(database, claim);
+    runJobCommand(database, ["start", "job-1"]);
+
+    expect(runJobCommand(database, ["move", "job-1", "--station", "dim-station-review"])).toBe(
+      "job-1 moved to dim-station-review",
+    );
+
+    expect(assembleWallSnapshot(database).jobs[0]?.station).toBe("review");
+  });
+
+  test("a move with no station to move to is refused", () => {
+    const database = db();
+    runJobCommand(database, claim);
+    runJobCommand(database, ["start", "job-1"]);
+
+    expect(() => runJobCommand(database, ["move", "job-1"])).toThrow(JobCommandError);
+
+    expect(assembleWallSnapshot(database).jobs[0]?.station).toBe("build");
+  });
+
   test("a stop moves that card into the done column", () => {
     const database = db();
     runJobCommand(database, claim);

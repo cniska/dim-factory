@@ -8,6 +8,7 @@ import { runFactoryJob } from "./factory-driver";
 import {
   appendJobEvent,
   createJob,
+  moveJob,
   recordJobCheck,
   recordJobCommit,
   recordJobDocument,
@@ -314,6 +315,46 @@ describe("factory job report records", () => {
       kind: "claimed",
       actor_id: "agent-1",
       session_id: "session-1",
+    });
+    database.close();
+  });
+
+  test("moves a running job to another station and keeps where it came from", () => {
+    const database = db();
+    createJob(database, job, "2026-09-18T10:00:00.000Z");
+    appendJobEvent(database, "job-1", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+
+    moveJob(database, "job-1", "dim-station-review", "2026-09-18T10:02:00.000Z");
+
+    expect(database.query("SELECT station, updated_at FROM factory_job").get()).toEqual({
+      station: "dim-station-review",
+      updated_at: "2026-09-18T10:02:00.000Z",
+    });
+    expect(database.query("SELECT kind, station FROM factory_job_event ORDER BY id").all()).toEqual([
+      { kind: "claimed", station: "dim-station-build" },
+      { kind: "started", station: null },
+      { kind: "moved", station: "dim-station-review" },
+    ]);
+    database.close();
+  });
+
+  test("refuses a move before the job started and after it stopped", () => {
+    const database = db();
+    createJob(database, job, "2026-09-18T10:00:00.000Z");
+
+    expect(() => moveJob(database, "job-1", "dim-station-review")).toThrow(
+      "job job-1 must be running before it can move",
+    );
+    expect(database.query("SELECT station FROM factory_job").get()).toEqual({
+      station: "dim-station-build",
+    });
+
+    appendJobEvent(database, "job-1", { kind: "started", status: "running" });
+    appendJobEvent(database, "job-1", { kind: "completed", status: "completed" });
+
+    expect(() => moveJob(database, "job-1", "dim-station-review")).toThrow(/already completed/);
+    expect(database.query("SELECT station FROM factory_job").get()).toEqual({
+      station: "dim-station-build",
     });
     database.close();
   });
