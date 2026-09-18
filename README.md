@@ -32,6 +32,7 @@ bun run verify
 ## Learn more
 
 - [Using dim-factory](docs/usage.md) — installation, collection, queries, hooks, worktrees and stations
+- [Source layout](src/README.md) — module groups and where to start reading the code
 - [The factory](docs/factory.md) — line, job, report and queue design
 - [Session database](docs/design.md) — sources, schema and read path
 - [Reaching a session without being asked](docs/recall.md) — wake, handoffs and retrieval
