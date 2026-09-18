@@ -20,7 +20,7 @@ Before spawning anything:
 
 ## The passes
 
-Spawn one agent per dimension, each given the diff, the intent, and only the grounding below. Withhold your own read of the diff — hand over a conclusion and what comes back is agreement with it.
+Spawn one agent per dimension, each given the diff, the intent, and only the grounding below, and each with read-only tools. Withhold your own read of the diff — hand over a conclusion and what comes back is agreement with it. A reviewer that can edit answers a finding by editing, and what it overwrites is work it was sent to read ([`build-order.md`](../../docs/build-order.md)).
 
 | dimension | what the record gives it |
 |---|---|
