@@ -96,10 +96,18 @@ describe("a map that cannot be trusted", () => {
     );
   });
 
+  // Every tier is named here, so the only thing wrong with this map is the stray
+  // key; a fixture that also left a tier unnamed would redden on that instead.
   test("refuses a key that is no tier, which is how a typo is caught", () => {
-    expect(() => route("checker", machine('{ "cheep": "small", "standard": "m", "deep": "l" }'))).toThrow(
-      /cheep, which is no tier/,
-    );
+    const env = machine('{ "cheap": "s", "standard": "m", "deep": "l", "cheep": "x" }');
+
+    expect(() => route("checker", env)).toThrow(/cheep, which is no tier/);
+  });
+
+  test("refuses a tier named twice, which JSON would silently resolve", () => {
+    const env = machine('{ "cheap": "first", "cheap": "second", "standard": "m", "deep": "l" }');
+
+    expect(() => route("checker", env)).toThrow(/names cheap twice/);
   });
 });
 

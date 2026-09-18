@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { readJsonc } from "./jsonc-file";
+import { duplicateKeys, parseJsonc } from "./jsonc";
+import { readJsoncText } from "./jsonc-file";
 import { dataDir, type Env } from "./paths";
 
 export type Tier = "cheap" | "standard" | "deep";
@@ -62,7 +63,16 @@ export function readHarnessMap(env: Env = process.env): HarnessMap {
       path,
     );
   }
-  const raw = readJsonc<unknown>(path);
+  const text = readJsoncText(path);
+  const repeated = duplicateKeys(text);
+  if (repeated.length > 0) {
+    throw new RoutingError(
+      "malformed",
+      `${path}: names ${repeated.join(", ")} twice, so one model silently replaced another`,
+      path,
+    );
+  }
+  const raw = parseJsonc<unknown>(text, path);
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     throw new RoutingError("malformed", `${path}: the harness map is not an object of ${TEMPLATE}`, path);
   }
