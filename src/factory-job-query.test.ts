@@ -6,6 +6,7 @@ import {
   recordJobCheck,
   recordJobCommit,
   recordJobDocument,
+  recordJobEnvironment,
   recordJobFile,
   recordJobFinding,
 } from "./factory-job";
@@ -168,6 +169,20 @@ describe("factory job query", () => {
       "2026-09-18T10:03:00.000Z",
     );
     recordJobDocument(db, "job-123", "docs/factory.md", "2026-09-18T10:04:00.000Z");
+    recordJobEnvironment(
+      db,
+      "job-123",
+      {
+        phase: "setup",
+        argv: ["/tmp/job-123/scripts/worktree-setup.sh"],
+        exitCode: 0,
+        signal: null,
+        stdout: "",
+        stderr: "",
+        resources: [{ port: 5433 }],
+      },
+      "2026-09-18T10:05:00.000Z",
+    );
     const result = findQuery("job")?.run(db, { arg: "job-12" });
     expect(result?.columns).toEqual(["section", "when", "kind", "status", "subject", "evidence"]);
     expect(result?.rows.map((row) => row[0])).toEqual([
@@ -182,9 +197,55 @@ describe("factory job query", () => {
       "event",
       "finding",
       "document",
+      "environment",
+    ]);
+    expect(result?.rows.at(-1)).toEqual([
+      "environment",
+      "2026-09-18T10:05:00.000Z",
+      "environment_reported",
+      "0",
+      "setup",
+      '[{"port":5433}]',
     ]);
     expect(result?.rows[0]?.[4]).toBe("run-1/queue-1/item-1");
     expect(result?.denominator).toContain("job job-123: running");
+    db.close();
+  });
+
+  test("reports the signal that killed a hook where it left no exit code", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    createJob(
+      db,
+      { id: "job-killed", runId: "run-1", queueId: "queue-1", itemId: "item-1" },
+      "2026-09-18T10:00:00.000Z",
+    );
+    appendJobEvent(db, "job-killed", { kind: "started", status: "running" }, "2026-09-18T10:00:30.000Z");
+    recordJobEnvironment(
+      db,
+      "job-killed",
+      {
+        phase: "teardown",
+        argv: ["/tmp/job-killed/scripts/worktree-teardown.sh"],
+        exitCode: null,
+        signal: "SIGKILL",
+        stdout: "",
+        stderr: "",
+        resources: [],
+      },
+      "2026-09-18T10:05:00.000Z",
+    );
+
+    const result = findQuery("job")?.run(db, { arg: "job-killed" });
+
+    expect(result?.rows.at(-1)).toEqual([
+      "environment",
+      "2026-09-18T10:05:00.000Z",
+      "environment_reported",
+      "SIGKILL",
+      "teardown",
+      "[]",
+    ]);
     db.close();
   });
 

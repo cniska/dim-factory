@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import type { WorkerHookReport } from "./worker-environment";
 
 export type JobStatus = "claimed" | "running" | "completed" | "blocked" | "fenced" | "failed" | "abandoned";
 export type JobEventKind =
@@ -254,6 +255,31 @@ export function recordJobFinding(
     appendJobEventInTransaction(db, jobId, { kind: "review_finished", findingId: id }, at);
     return id;
   })();
+}
+
+export function recordJobEnvironment(
+  db: Database,
+  jobId: string,
+  report: WorkerHookReport,
+  at = now(),
+): void {
+  assertJobRunning(db, jobId);
+  db.run(
+    `INSERT INTO factory_job_environment
+       (job_id, phase, argv, exit_code, signal, stdout, stderr, resources, recorded_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      jobId,
+      report.phase,
+      JSON.stringify(report.argv),
+      report.exitCode,
+      report.signal,
+      report.stdout,
+      report.stderr,
+      JSON.stringify(report.resources),
+      at,
+    ],
+  );
 }
 
 export function recordJobDocument(db: Database, jobId: string, path: string, at = now()): void {

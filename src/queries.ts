@@ -1159,6 +1159,14 @@ const job: Query = {
          FROM factory_job_document WHERE job_id = ?`,
         [id],
       ),
+      ...table(
+        db,
+        `SELECT 'environment' AS section, recorded_at AS "when", 'environment_reported' AS kind,
+                coalesce(cast(exit_code AS TEXT), signal, '') AS status, phase AS subject,
+                resources AS evidence
+         FROM factory_job_environment WHERE job_id = ?`,
+        [id],
+      ),
     ].sort((a, b) => String(a.when).localeCompare(String(b.when)));
     const rows = [aggregate, ...evidence];
     return {

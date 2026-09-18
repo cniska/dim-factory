@@ -31,15 +31,15 @@ Station transfers use the factory's `dim-handoff`. It requires strict `# Handoff
 
 ## Report persistence
 
-The delivered-product report is persisted in the dim database so it remains queryable after the session rather than existing only in chat. `factory_job` is the current projection; `factory_job_event` is its typed append-only lifecycle ledger; and the normalized evidence tables hold commits, changed files, checks, findings and updated documents. The record includes:
+The delivered-product report is persisted in the dim database so it remains queryable after the session rather than existing only in chat. `factory_job` is the current projection; `factory_job_event` is its typed append-only lifecycle ledger; and the normalized evidence tables hold commits, changed files, checks, findings, updated documents and worker-environment reports. The record includes:
 
 - **Identity.** Queue and item identity, job and run identity, agent identity, worktree and branch.
 - **Work.** Station, delegation tree, changed files and commit SHA.
 - **Verification.** Repository check command and result, checker findings and their resolutions, and updated docs.
 - **Outcome.** Final status — completed, blocked, fenced, failed or abandoned — with fence or blocker evidence and timestamps for the lifecycle events.
-- **Environment.** Workspace profile, setup and teardown commands, changed resource identifiers, service health results and cleanup status.
+- **Environment.** Each setup and teardown report the job attached: the phase, the hook command, its exit code or the signal that killed it, its output, and the resource identifiers the hook named.
 
-The workspace slice currently prints setup and teardown reports from `dim wt`; attaching them to `factory_job` evidence remains part of the planned job persistence boundary.
+A running job attaches a hook report it was handed, and `dim q job` reads it back beside its other evidence. The workspace profile belongs to the planned contract below.
 
 The report lifecycle is a durable sequence from claim through running to completion or a stopped outcome, with evidence recorded as the job progresses. A terminal status cannot transition to another status, and each lifecycle event, its aggregate projection and its paired commit, check or finding evidence are written atomically. `dim q factory [job-id-prefix]` reads one unified current-status row per matching job with selected evidence; `dim q job <job-id>` remains the detailed event-and-evidence view, including every changed file and updated document. These operational tables survive `dim rebuild`, deliberately like `hook_event`, `command_trace` and `finding`: no transcript or file source can recreate a job's claims and judgements after the fact.
 
