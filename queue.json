@@ -85,15 +85,15 @@
     {
       "id": "item-view",
       "title": "Fill the item view with the plan and the build",
-      "description": "Carry the plan a job was given and the account of what it built into the item view, since what it holds today is only what the record already holds.",
+      "description": "Carry the plan an order was given and the account of what it built into the item view, since what it holds today is only what the record already holds.",
       "dependencies": [],
       "status": "planned",
       "transitions": []
     },
     {
-      "id": "factory-job-orchestration",
+      "id": "factory-order-orchestration",
       "title": "Queue selection and serialized integration",
-      "description": "Take queue selection, serialized integration and queue-state enforcement into the job contract, and correct the skill that still types the commands wrong.",
+      "description": "Take queue selection, serialized integration and queue-state enforcement into the order contract, and correct the skill that still types the commands wrong.",
       "dependencies": [],
       "status": "planned",
       "transitions": []
@@ -101,7 +101,7 @@
     {
       "id": "item-statement",
       "title": "Read the item's own statement back",
-      "description": "Have dim q job, dim q factory and the wall card show the --description recorded on claim, which is written but not yet read back.",
+      "description": "Have dim q order, dim q factory and the wall card show the --description recorded on claim, which is written but not yet read back.",
       "dependencies": [],
       "status": "planned",
       "transitions": []
@@ -116,8 +116,8 @@
     },
     {
       "id": "owner-verdict",
-      "title": "The owner's verdict on a finished job",
-      "description": "Record whether a finished job landed as it came, was sent back or was changed before landing, with the grounds whenever it was not the first.",
+      "title": "The owner's verdict on a finished order",
+      "description": "Record whether a finished order landed as it came, was sent back or was changed before landing, with the grounds whenever it was not the first.",
       "dependencies": [],
       "status": "planned",
       "transitions": []
@@ -125,7 +125,7 @@
     {
       "id": "model-routing",
       "title": "Record the tier a role actually ran at",
-      "description": "Add a field on the delegation event, joined against factory_job_finding, so whether a cheap checker raises fewer real findings than an expensive one can be asked.",
+      "description": "Add a field on the delegation event, joined against factory_order_finding, so whether a cheap checker raises fewer real findings than an expensive one can be asked.",
       "dependencies": [],
       "status": "planned",
       "transitions": []

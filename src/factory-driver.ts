@@ -1,32 +1,32 @@
 import type { Database } from "bun:sqlite";
 import {
-  appendJobEvent,
-  createJob,
-  isTerminalJobStatus,
-  type Job,
-  type JobEvent,
-  type JobStatus,
-  jobStatus,
-  recordJobCheck,
-  recordJobCommit,
-  recordJobDocument,
-  recordJobEnvironment,
-  recordJobFile,
-  recordJobFinding,
-  updateJobLocation,
-} from "./factory-job";
+  appendOrderEvent,
+  createOrder,
+  isTerminalOrderStatus,
+  type Order,
+  type OrderEvent,
+  type OrderStatus,
+  orderStatus,
+  recordOrderCheck,
+  recordOrderCommit,
+  recordOrderDocument,
+  recordOrderEnvironment,
+  recordOrderFile,
+  recordOrderFinding,
+  updateOrderLocation,
+} from "./factory-order";
 import type { WorkerHookReport } from "./worker-environment";
 
 export type FactoryOutcome = {
-  status: Exclude<JobStatus, "claimed" | "running">;
+  status: Exclude<OrderStatus, "claimed" | "running">;
   reason?: string;
 };
 
 export type FactoryContext = {
-  item: Job;
+  item: Order;
   baseRevision: string;
   setLocation(worktree: string, branch: string): void;
-  appendEvent(event: JobEvent): void;
+  appendEvent(event: OrderEvent): void;
   delegate(agentId: string, sessionId?: string, station?: string): void;
   stop(outcome: FactoryOutcome): void;
   recordCommit(sha: string, subject?: string): void;
@@ -50,51 +50,51 @@ export type FactoryContext = {
 
 export type FactoryBuilder = (context: FactoryContext) => FactoryOutcome | Promise<FactoryOutcome>;
 
-export async function runFactoryJob(
+export async function runFactoryOrder(
   db: Database,
-  item: Job,
+  item: Order,
   options: { baseRevision: string },
   build: FactoryBuilder,
 ): Promise<FactoryOutcome> {
-  createJob(db, item);
-  appendJobEvent(db, item.id, { kind: "started", status: "running" });
+  createOrder(db, item);
+  appendOrderEvent(db, item.id, { kind: "started", status: "running" });
 
   const context: FactoryContext = {
     item,
     baseRevision: options.baseRevision,
-    setLocation: (worktree, branch) => updateJobLocation(db, item.id, worktree, branch),
-    appendEvent: (event) => appendJobEvent(db, item.id, event),
+    setLocation: (worktree, branch) => updateOrderLocation(db, item.id, worktree, branch),
+    appendEvent: (event) => appendOrderEvent(db, item.id, event),
     delegate: (agentId, sessionId, station) =>
-      appendJobEvent(db, item.id, {
+      appendOrderEvent(db, item.id, {
         kind: "delegated",
         delegatedAgentId: agentId,
         delegatedSessionId: sessionId,
         delegatedStation: station,
       }),
     stop: (outcome) =>
-      appendJobEvent(db, item.id, { kind: outcome.status, status: outcome.status, reason: outcome.reason }),
-    recordCommit: (sha, subject) => recordJobCommit(db, item.id, sha, subject),
-    recordFile: (path) => recordJobFile(db, item.id, path),
-    recordCheck: (check) => recordJobCheck(db, item.id, check),
-    recordFinding: (finding) => recordJobFinding(db, item.id, finding),
-    recordDocument: (path) => recordJobDocument(db, item.id, path),
-    recordEnvironment: (report) => recordJobEnvironment(db, item.id, report),
+      appendOrderEvent(db, item.id, { kind: outcome.status, status: outcome.status, reason: outcome.reason }),
+    recordCommit: (sha, subject) => recordOrderCommit(db, item.id, sha, subject),
+    recordFile: (path) => recordOrderFile(db, item.id, path),
+    recordCheck: (check) => recordOrderCheck(db, item.id, check),
+    recordFinding: (finding) => recordOrderFinding(db, item.id, finding),
+    recordDocument: (path) => recordOrderDocument(db, item.id, path),
+    recordEnvironment: (report) => recordOrderEnvironment(db, item.id, report),
   };
 
   try {
     const outcome = await build(context);
-    const status = jobStatus(db, item.id);
-    if (!isTerminalJobStatus(status)) {
-      appendJobEvent(db, item.id, { kind: outcome.status, status: outcome.status, reason: outcome.reason });
+    const status = orderStatus(db, item.id);
+    if (!isTerminalOrderStatus(status)) {
+      appendOrderEvent(db, item.id, { kind: outcome.status, status: outcome.status, reason: outcome.reason });
     } else if (status !== outcome.status) {
-      throw new Error(`job ${item.id} stopped as ${status} but builder returned ${outcome.status}`);
+      throw new Error(`order ${item.id} stopped as ${status} but builder returned ${outcome.status}`);
     }
     return outcome;
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    if (!isTerminalJobStatus(jobStatus(db, item.id))) {
+    if (!isTerminalOrderStatus(orderStatus(db, item.id))) {
       try {
-        appendJobEvent(db, item.id, { kind: "failed", status: "failed", reason });
+        appendOrderEvent(db, item.id, { kind: "failed", status: "failed", reason });
       } catch (failureError) {
         throw new AggregateError([error, failureError], reason);
       }

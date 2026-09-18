@@ -131,21 +131,21 @@ type HookEvent = {
 };
 
 /**
- * Parent first, which the restore needs: a child written before the job it
+ * Parent first, which the restore needs: a child written before the order it
  * references fails the foreign key. The drop runs in reverse for a different
- * reason — every child cascades, so dropping the job first would empty them
+ * reason — every child cascades, so dropping the order first would empty them
  * instead of refusing, and a save ever moved after the drop would lose them
  * with nothing to show for it.
  */
-const FACTORY_JOB_TABLES = [
-  "factory_job",
-  "factory_job_event",
-  "factory_job_commit",
-  "factory_job_file",
-  "factory_job_check",
-  "factory_job_finding",
-  "factory_job_document",
-  "factory_job_environment",
+const FACTORY_ORDER_TABLES = [
+  "factory_order",
+  "factory_order_event",
+  "factory_order_commit",
+  "factory_order_file",
+  "factory_order_check",
+  "factory_order_finding",
+  "factory_order_document",
+  "factory_order_environment",
 ];
 
 /**
@@ -201,16 +201,16 @@ function carryThroughRebuild(db: Database, tables: string[]): () => void {
  * there fails.
  *
  * Which tables are left instead, and why, is stated at each of them in
- * `schema.ts`. `correction_label`, `hook_event` and the factory job records are
+ * `schema.ts`. `correction_label`, `hook_event` and the factory order records are
  * the ones that are neither: nothing can re-read them — the spool deletes each
- * file once it is read, and a job's claims and judgements were never in a source
+ * file once it is read, and an order's claims and judgements were never in a source
  * at all — so they are dropped with the rest and written back row for row. A
  * table kept instead of dropped keeps whatever shape it was created with, and
  * a check widened in `SCHEMA_SQL` would never reach it.
  */
 export function rebuild(db: Database, env: Env = process.env): SyncReport {
   db.transaction(() => {
-    const restoreFactoryJobs = carryThroughRebuild(db, FACTORY_JOB_TABLES);
+    const restoreFactoryOrders = carryThroughRebuild(db, FACTORY_ORDER_TABLES);
     // Read out before the drop because no source can re-read them, and dropped
     // ahead of message because an older database has a foreign key to it that
     // would refuse that drop.
@@ -248,7 +248,7 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
     db.run("DROP TABLE IF EXISTS handoff_link");
     db.run("DROP TABLE IF EXISTS factory_handoff");
     db.run(SCHEMA_SQL);
-    restoreFactoryJobs();
+    restoreFactoryOrders();
     const restore = db.prepare<void, [string, string, string | null, string | null, string]>(
       `INSERT INTO correction_label (message_id, label, skill_name, rule, labeled_at)
        VALUES (?, ?, ?, ?, ?)`,

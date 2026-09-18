@@ -52,31 +52,31 @@ This is not the fan-out `dim-station-build` argues against. That rule keeps a si
 
 Give the builder the item as the queue states it, the repo's check, and the standing instruction to run its station's loop including the checking agent. Take back what it reports: the commits, the findings, what it left. A builder that returns without a commit and without saying why is a failed attempt, and the bound below counts it.
 
-## 4. Record the job
+## 4. Record the order
 
 Every item taken is claimed before a builder sees it, started when the builder starts, and stopped once whatever happened. An item worked without a claim is work nobody watching can see, and a claim that never stops is a card left on the floor.
 
-Mint one run id per invocation — `run-$(date -u +%Y%m%dT%H%M%SZ)` — and one job id per item, `<run-id>-<item-id>`, with a suffix on a retry so a second attempt is its own card rather than a name the record already holds and refuses.
+Mint one run id per invocation — `run-$(date -u +%Y%m%dT%H%M%SZ)` — and one order id per item, `<run-id>-<item-id>`, with a suffix on a retry so a second attempt is its own card rather than a name the record already holds and refuses.
 
 ```
-dim job claim <job-id> --run <run-id> --queue <queue-id> --item <item-id> \
+dim order claim <order-id> --run <run-id> --queue <queue-id> --item <item-id> \
   --title "<the item's title>" --description "<the item's statement>" \
   --agent <builder-id> --station <plan|build|review|ship> \
   --branch <branch> --worktree "$(dim wt path <branch>)"
-dim job start <job-id>
-dim job move <job-id> --station <plan|build|review|ship>
-dim job stop <job-id> <completed|blocked|fenced|failed|abandoned> [--reason "..."]
+dim order start <order-id>
+dim order move <order-id> --station <plan|build|review|ship>
+dim order stop <order-id> <completed|blocked|fenced|failed|abandoned> [--reason "..."]
 ```
 
 - The queue id and item id are what step 2 identified: a planner file's own `id` and the item's `id` in it, or the path or tracker query that named the queue and the item's identity there.
 - **The title, the statement and the ids come from the queue, not from you.** Against a planner file they are the `id`, `title` and `description` `dim queue ready` printed, passed through unedited; against a document or a tracker the statement is the one sentence step 3 required before the item could be taken. A claim that paraphrases an item records a second version of it.
 - **The title is the item's name, never its id.** It is what every card is read by; the ids are there for an agent to join on.
-- A planner file also holds the item's own state, so the item moves as the job does: `dim queue transition <file> <item> claimed` before the builder, `running` when it starts, and `completed`, `blocked`, `fenced` or `failed` at the end, with `--reason` wherever the job stopped for one. An item dropped before a builder started it is `cancelled`. Every one of those five is terminal and refused a further transition, the way a stopped job is, so an item recorded `blocked` leaves `ready` until someone edits the file — record it only where that is what you mean.
+- A planner file also holds the item's own state, so the item moves as the order does: `dim queue transition <file> <item> claimed` before the builder, `running` when it starts, and `completed`, `blocked`, `fenced` or `failed` at the end, with `--reason` wherever the order stopped for one. An item dropped before a builder started it is `cancelled`. Every one of those five is terminal and refused a further transition, the way a stopped order is, so an item recorded `blocked` leaves `ready` until someone edits the file — record it only where that is what you mean.
 - Naming the branch is yours, because the claim records it before the builder exists. `dim wt path <branch>` prints where that worktree will be without creating it, so the claim carries the location the builder then makes.
-- **`--agent <id>` names the builder, and is not optional in practice.** Without it the card names no worker, and several jobs running at once are indistinguishable — pass the stable identifier the harness gives the builder it spawns.
-- **The station is a word the wall holds — `plan`, `build`, `review` or `ship` — never the line running it.** `dim-line-feat` and `dim-line-fix` are the line, not the station; the station is where the work is, and `dim job move <job-id> --station <name>` records it changing as the work moves through planning, building and review.
-- Record evidence as it happens, not at the end: `dim job commit`, `dim job file`, `dim job check`, `dim job finding` and `dim job document` each take the job id and what was produced. A job that records nothing leaves a card with nothing on it; `dim q factory <job-id-prefix>` reads back what was recorded.
-- **Stop exactly once, whatever happened**: the item landed (`completed`), it waits on something else (`blocked`), a fence stopped it (`fenced`, with the shape as the reason), the builder failed or returned nothing it could explain (`failed`), or it was dropped (`abandoned`). A stopped job is refused a second lifecycle event, so a retry is a new job id. `dim job stop <job> completed` is refused unless a check recorded after the job's last commit passed and that commit reaches the trunk — the gate reads git out of the job's own worktree, so merge the work, then stop the job, then remove the worktree; removing it first makes completion impossible.
+- **`--agent <id>` names the builder, and is not optional in practice.** Without it the card names no worker, and several orders running at once are indistinguishable — pass the stable identifier the harness gives the builder it spawns.
+- **The station is a word the wall holds — `plan`, `build`, `review` or `ship` — never the line running it.** `dim-line-feat` and `dim-line-fix` are the line, not the station; the station is where the work is, and `dim order move <order-id> --station <name>` records it changing as the work moves through planning, building and review.
+- Record evidence as it happens, not at the end: `dim order commit`, `dim order file`, `dim order check`, `dim order finding` and `dim order document` each take the order id and what was produced. An order that records nothing leaves a card with nothing on it; `dim q factory <order-id-prefix>` reads back what was recorded.
+- **Stop exactly once, whatever happened**: the item landed (`completed`), it waits on something else (`blocked`), a fence stopped it (`fenced`, with the shape as the reason), the builder failed or returned nothing it could explain (`failed`), or it was dropped (`abandoned`). A stopped order is refused a second lifecycle event, so a retry is a new order id. `dim order stop <order> completed` is refused unless a check recorded after the order's last commit passed and that commit reaches the trunk — the gate reads git out of the order's own worktree, so merge the work, then stop the order, then remove the worktree; removing it first makes completion impossible.
 
 ## 5. The fence
 
@@ -88,13 +88,13 @@ Three shapes stop a run wherever they are met, including partway into an item th
 
 A queue may draw its own fence on top of these — a section its rules file marks as the owner's call, a label, a state. Read it as binding and never move it: the owner moves a fence by editing the queue, not by an agent deciding an item looked fine.
 
-Stopping means writing down what was found, leaving the item where it was, naming which shape stopped it, and stopping the job as `fenced` with that shape as the reason. Waiting for permission mid-run is not running unattended; deciding one of these alone is what the fence exists to prevent.
+Stopping means writing down what was found, leaving the item where it was, naming which shape stopped it, and stopping the order as `fenced` with that shape as the reason. Waiting for permission mid-run is not running unattended; deciding one of these alone is what the fence exists to prevent.
 
 ## 6. Keep the line moving
 
-**Work the queue until it is empty.** Take the next item the moment one lands, and do not come back between items to say a thing went well — a line that halts after every job is not running, and a report per item is the report at the end read one piece at a time.
+**Work the queue until it is empty.** Take the next item the moment one lands, and do not come back between items to say a thing went well — a line that halts after every order is not running, and a report per item is the report at the end read one piece at a time.
 
-The skill may be invoked repeatedly by whatever is driving it. Each invocation starts by reading the current floor and queue state; it never assumes that an earlier invocation finished, failed, or released an item. An active job is observed rather than claimed again. Independent items may run in parallel only when their claims are isolated; claiming, integration and queue-state transitions remain serialized. Repetition never crosses a fence or turns an unrecorded outcome into success.
+The skill may be invoked repeatedly by whatever is driving it. Each invocation starts by reading the current floor and queue state; it never assumes that an earlier invocation finished, failed, or released an item. An active order is observed rather than claimed again. Independent items may run in parallel only when their claims are isolated; claiming, integration and queue-state transitions remain serialized. Repetition never crosses a fence or turns an unrecorded outcome into success.
 
 Four things stop it, and nothing else does:
 
@@ -110,7 +110,7 @@ A failed attempt usually leaves the queue exactly as it was, so nothing but thes
 Per item, landed or not:
 
 - the item taken, quoted, and the queue it came from
-- the job id and the status it stopped at
+- the order id and the status it stopped at
 - where it went, and the commits
 - what `dim q findings` recorded for the slice
 - what stopped the run, and which shape it was

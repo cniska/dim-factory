@@ -1,35 +1,35 @@
 import type { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
 import { age } from "./age";
-import type { JobEventKind } from "./factory-job";
-import { dbPath } from "./paths";
+import type { OrderEventKind } from "./factory-order";
+import { dbPath, tildePath } from "./paths";
 import { openReadOnly } from "./read-db";
 import wallPage from "./wall.html";
 import type { ResourceEvidence, WorkerEnvironmentPhase, WorkerHookReport } from "./worker-environment";
 import { workerName } from "./worker-name";
 
 export type WallStation = "plan" | "build" | "review" | "ship" | "unknown";
-export type WallLifecycle = "todo" | "active" | "done";
+export type WallPhase = "todo" | "active" | "done";
 export type WallStatus = "running" | "waiting" | "blocked" | "fenced" | "completed" | "failed" | "abandoned";
 export type WallRole = "builder" | "reviewer" | "planner" | "unknown";
 
-export type WallJob = {
+export type WallOrder = {
   id: string;
   title: string;
   itemId: string;
   station: WallStation;
-  lifecycle: WallLifecycle;
-  /** Absent where no claim and no event named an agent: a job nobody is recorded against. */
+  phase: WallPhase;
+  /** Absent where no claim and no event named an agent: an order nobody is recorded against. */
   agent?: string;
   /** What the floor calls this worker, so a card never shows an internal identity. */
   worker?: string;
   role: WallRole;
   status: WallStatus;
   age: string;
-  /** When the job last recorded an event. A job's age on the board is its silence, so it counts
+  /** When the order last recorded an event. An order's age on the board is its silence, so it counts
    *  from the last thing that happened rather than from the claim. */
   lastEventAt: string;
-  /** How many of the job's checks ended non-zero. A job failing its check repeatedly is
+  /** How many of the order's checks ended non-zero. An order failing its check repeatedly is
    *  struggling, which is the one piece of evidence a card has room to carry. */
   failedChecks: number;
   attention?: string;
@@ -38,13 +38,13 @@ export type WallJob = {
 export type WallSnapshot = {
   generatedAt: string;
   source: "database" | "unavailable";
-  jobs: WallJob[];
-  totals: Record<WallLifecycle, number>;
+  orders: WallOrder[];
+  totals: Record<WallPhase, number>;
 };
 
-/** Every kind a job event carries, plus the three kinds of evidence written without one,
- *  named as `dim q job` names them. */
-export type WallItemKind = JobEventKind | "file_changed" | "document_updated" | "environment_reported";
+/** Every kind an order event carries, plus the three kinds of evidence written without one,
+ *  named as `dim q order` names them. */
+export type WallItemKind = OrderEventKind | "file_changed" | "document_updated" | "environment_reported";
 
 export type WallItemEntry = {
   at: string;
@@ -63,7 +63,7 @@ export type WallItemEntry = {
 };
 
 export type WallItemView = {
-  job: WallJob;
+  order: WallOrder;
   runId: string;
   queueId: string;
   worktree?: string;
@@ -73,7 +73,7 @@ export type WallItemView = {
 
 const MAX_COLUMN_CARDS = 12;
 
-type JobRow = {
+type OrderRow = {
   id: string;
   item_id: string;
   title: string;
@@ -93,16 +93,16 @@ type JobRow = {
   failed_check_count: number;
 };
 
-const JOB_ROW_SELECT = `SELECT j.id, j.item_id, j.title, j.agent_id, j.role, j.station, j.status,
-              j.stop_reason, j.run_id, j.queue_id, j.worktree, j.branch,
+const ORDER_ROW_SELECT = `SELECT o.id, o.item_id, o.title, o.agent_id, o.role, o.station, o.status,
+              o.stop_reason, o.run_id, o.queue_id, o.worktree, o.branch,
               e.ts AS last_event_at, e.reason AS latest_reason, e.station AS latest_station,
               e.actor_id AS latest_actor,
-              (SELECT count(*) FROM factory_job_check c
-                WHERE c.job_id = j.id AND c.exit_code <> 0) AS failed_check_count
-       FROM factory_job j
-       LEFT JOIN factory_job_event e ON e.id = (SELECT e2.id FROM factory_job_event e2 WHERE e2.job_id = j.id ORDER BY e2.ts DESC, e2.id DESC LIMIT 1)`;
+              (SELECT count(*) FROM factory_order_check c
+                WHERE c.order_id = o.id AND c.exit_code <> 0) AS failed_check_count
+       FROM factory_order o
+       LEFT JOIN factory_order_event e ON e.id = (SELECT e2.id FROM factory_order_event e2 WHERE e2.order_id = o.id ORDER BY e2.ts DESC, e2.id DESC LIMIT 1)`;
 
-const wallStatusByJobStatus: Record<string, WallStatus> = {
+const wallStatusByOrderStatus: Record<string, WallStatus> = {
   claimed: "waiting",
   running: "running",
   blocked: "blocked",
@@ -112,7 +112,7 @@ const wallStatusByJobStatus: Record<string, WallStatus> = {
   abandoned: "abandoned",
 };
 
-const lifecycleByStatus: Record<WallStatus, WallLifecycle> = {
+const phaseByStatus: Record<WallStatus, WallPhase> = {
   waiting: "todo",
   running: "active",
   blocked: "active",
@@ -124,7 +124,7 @@ const lifecycleByStatus: Record<WallStatus, WallLifecycle> = {
 
 const attentionStatuses = new Set<WallStatus>(["blocked", "fenced", "failed", "abandoned"]);
 
-// A job is claimed with whatever word the caller passed, and a line or a typo is not a station.
+// An order is claimed with whatever word the caller passed, and a line or a typo is not a station.
 // Naming one of the four for a value that is none of them puts a card at a station nobody sent
 // it to, which is worse than the card saying it does not know.
 const stationByRecordedValue: Record<string, WallStation> = {
@@ -152,29 +152,29 @@ function role(value: string | null): WallRole {
 }
 
 function status(value: string): WallStatus {
-  const mapped = wallStatusByJobStatus[value];
-  if (!mapped) throw new Error(`unknown factory job status: ${value}`);
+  const mapped = wallStatusByOrderStatus[value];
+  if (!mapped) throw new Error(`unknown factory order status: ${value}`);
   return mapped;
 }
 
-function mapJob(row: JobRow, now: Date): WallJob {
+function mapOrder(row: OrderRow, now: Date): WallOrder {
   const agentId = row.latest_actor ?? row.agent_id;
   const stationName = station(row.station ?? row.latest_station);
-  const jobStatus = status(row.status);
-  const attention = attentionStatuses.has(jobStatus)
-    ? (row.stop_reason ?? row.latest_reason ?? jobStatus)
+  const orderStatus = status(row.status);
+  const attention = attentionStatuses.has(orderStatus)
+    ? (row.stop_reason ?? row.latest_reason ?? orderStatus)
     : undefined;
-  // A claim writes its own event in the same transaction, so a job row always has one.
+  // A claim writes its own event in the same transaction, so an order row always has one.
   const lastEventAt = row.last_event_at;
   return {
     id: row.id,
     title: row.title,
     itemId: row.item_id,
     station: stationName,
-    lifecycle: lifecycleByStatus[jobStatus],
+    phase: phaseByStatus[orderStatus],
     ...(agentId ? { agent: agentId, worker: workerName(agentId) } : {}),
     role: role(row.role),
-    status: jobStatus,
+    status: orderStatus,
     age: age(lastEventAt, now),
     lastEventAt,
     failedChecks: row.failed_check_count,
@@ -183,18 +183,21 @@ function mapJob(row: JobRow, now: Date): WallJob {
 }
 
 export function assembleWallSnapshot(db: Database, now = new Date()): WallSnapshot {
-  // Ordered by the same clock the card shows, so a column's ages read down the page. A job that
+  // Ordered by the same clock the card shows, so a column's ages read down the page. An order that
   // needs a person stops recording events, so it sinks under the moving work and would be the
   // first card a bound dropped — it is ranked ahead of the bound rather than after it.
-  const rows = db.query(`${JOB_ROW_SELECT} ORDER BY e.ts DESC, j.id`).all() as JobRow[];
-  const mapped = rows.map((row) => mapJob(row, now));
-  const totals: Record<WallLifecycle, number> = { todo: 0, active: 0, done: 0 };
-  const jobs: WallJob[] = [];
-  for (const job of [...mapped.filter((job) => job.attention), ...mapped.filter((job) => !job.attention)]) {
-    totals[job.lifecycle] += 1;
-    if (totals[job.lifecycle] <= MAX_COLUMN_CARDS) jobs.push(job);
+  const rows = db.query(`${ORDER_ROW_SELECT} ORDER BY e.ts DESC, o.id`).all() as OrderRow[];
+  const mapped = rows.map((row) => mapOrder(row, now));
+  const totals: Record<WallPhase, number> = { todo: 0, active: 0, done: 0 };
+  const orders: WallOrder[] = [];
+  for (const order of [
+    ...mapped.filter((order) => order.attention),
+    ...mapped.filter((order) => !order.attention),
+  ]) {
+    totals[order.phase] += 1;
+    if (totals[order.phase] <= MAX_COLUMN_CARDS) orders.push(order);
   }
-  return { generatedAt: now.toISOString(), source: "database", jobs, totals };
+  return { generatedAt: now.toISOString(), source: "database", orders, totals };
 }
 
 type EventRow = {
@@ -300,12 +303,12 @@ function eventEntry(row: EventRow): WallItemEntry {
   };
 }
 
-/** One job's own record: the identity a card carries, and every lifecycle event and piece of
+/** One order's own record: the identity a card carries, and every lifecycle event and piece of
  *  evidence, ordered by the time each was recorded. Commits, checks and findings are written
  *  with the event that produced them, so they arrive attached rather than listed a second
  *  time. */
-export function assembleItemView(db: Database, jobId: string, now = new Date()): WallItemView | null {
-  const row = db.query(`${JOB_ROW_SELECT} WHERE j.id = ?`).get(jobId) as JobRow | null;
+export function assembleItemView(db: Database, orderId: string, now = new Date()): WallItemView | null {
+  const row = db.query(`${ORDER_ROW_SELECT} WHERE o.id = ?`).get(orderId) as OrderRow | null;
   if (!row) return null;
   const events = db
     .query(
@@ -314,52 +317,58 @@ export function assembleItemView(db: Database, jobId: string, now = new Date()):
               coalesce(c.sha, e.commit_sha) AS commit_sha, c.subject AS commit_subject,
               ch.command, ch.exit_code, ch.result,
               f.dimension, f.answer, f.summary, f.resolution
-       FROM factory_job_event e
-       LEFT JOIN factory_job_commit c ON c.job_id = e.job_id AND c.sha = e.commit_sha
-       LEFT JOIN factory_job_check ch ON ch.id = e.check_id AND ch.job_id = e.job_id
-       LEFT JOIN factory_job_finding f ON f.id = e.finding_id AND f.job_id = e.job_id
-       WHERE e.job_id = ? ORDER BY e.ts, e.id`,
+       FROM factory_order_event e
+       LEFT JOIN factory_order_commit c ON c.order_id = e.order_id AND c.sha = e.commit_sha
+       LEFT JOIN factory_order_check ch ON ch.id = e.check_id AND ch.order_id = e.order_id
+       LEFT JOIN factory_order_finding f ON f.id = e.finding_id AND f.order_id = e.order_id
+       WHERE e.order_id = ? ORDER BY e.ts, e.id`,
     )
-    .all(jobId) as EventRow[];
+    .all(orderId) as EventRow[];
   const files = db
-    .query("SELECT recorded_at, path FROM factory_job_file WHERE job_id = ? ORDER BY recorded_at, path")
-    .all(jobId) as PathRow[];
+    .query("SELECT recorded_at, path FROM factory_order_file WHERE order_id = ? ORDER BY recorded_at, path")
+    .all(orderId) as PathRow[];
   const documents = db
-    .query("SELECT recorded_at, path FROM factory_job_document WHERE job_id = ? ORDER BY recorded_at, path")
-    .all(jobId) as PathRow[];
+    .query(
+      "SELECT recorded_at, path FROM factory_order_document WHERE order_id = ? ORDER BY recorded_at, path",
+    )
+    .all(orderId) as PathRow[];
   const environments = db
     .query(
       `SELECT recorded_at, phase, argv, exit_code, signal, stdout, stderr, resources
-       FROM factory_job_environment WHERE job_id = ? ORDER BY recorded_at, id`,
+       FROM factory_order_environment WHERE order_id = ? ORDER BY recorded_at, id`,
     )
-    .all(jobId) as EnvironmentRow[];
+    .all(orderId) as EnvironmentRow[];
   const entries: WallItemEntry[] = [
     ...events.map(eventEntry),
-    ...files.map((file) => ({ at: file.recorded_at, kind: "file_changed" as const, path: file.path })),
+    ...files.map((file) => ({
+      at: file.recorded_at,
+      kind: "file_changed" as const,
+      path: tildePath(file.path),
+    })),
     ...documents.map((doc) => ({
       at: doc.recorded_at,
       kind: "document_updated" as const,
-      path: doc.path,
+      path: tildePath(doc.path),
     })),
     ...environments.map(environmentEntry),
     // Two rows recorded at the same instant carry nothing that says which was written first,
-    // so they hold the order `dim q job` puts them in — events, then files, documents and
+    // so they hold the order `dim q order` puts them in — events, then files, documents and
     // environment reports — rather than the two surfaces disagreeing on a tie.
   ].sort((a, b) => a.at.localeCompare(b.at));
   return {
-    job: mapJob(row, now),
+    order: mapOrder(row, now),
     runId: row.run_id,
     queueId: row.queue_id,
-    ...(row.worktree ? { worktree: row.worktree } : {}),
+    ...(row.worktree ? { worktree: tildePath(row.worktree) } : {}),
     ...(row.branch ? { branch: row.branch } : {}),
     entries,
   };
 }
 
-/** The job id a request names, or nothing where the path holds a percent sequence that is not
- *  valid UTF-8: an id the page cannot spell is an id this server holds no job for. */
-function jobIdIn(pathname: string): string | null {
-  const raw = pathname.slice("/api/job/".length);
+/** The order id a request names, or nothing where the path holds a percent sequence that is not
+ *  valid UTF-8: an id the page cannot spell is an id this server holds no order for. */
+function orderIdIn(pathname: string): string | null {
+  const raw = pathname.slice("/api/order/".length);
   try {
     return decodeURIComponent(raw);
   } catch {
@@ -387,10 +396,10 @@ export async function serveWall(
       db.close();
     }
   };
-  const item = (jobId: string): WallItemView | null => {
+  const item = (orderId: string): WallItemView | null => {
     const db = openReadOnly(path);
     try {
-      return assembleItemView(db, jobId, new Date());
+      return assembleItemView(db, orderId, new Date());
     } finally {
       db.close();
     }
@@ -418,11 +427,11 @@ export async function serveWall(
           );
         }
       }
-      if (url.pathname.startsWith("/api/job/")) {
-        const jobId = jobIdIn(url.pathname);
-        if (jobId === null) return new Response("Not found", { status: 404 });
+      if (url.pathname.startsWith("/api/order/")) {
+        const orderId = orderIdIn(url.pathname);
+        if (orderId === null) return new Response("Not found", { status: 404 });
         try {
-          const view = item(jobId);
+          const view = item(orderId);
           if (!view) return new Response("Not found", { status: 404 });
           return Response.json(view, { headers: { "cache-control": "no-store" } });
         } catch (error) {

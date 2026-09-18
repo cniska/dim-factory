@@ -39,7 +39,7 @@ describe("queue command", () => {
         "a",
         "claimed",
         "--reason",
-        "isolated job",
+        "isolated order",
         "--at",
         "2026-09-18T10:00:00.000Z",
       ]),
@@ -54,7 +54,7 @@ describe("queue command", () => {
     const item = updated.items.find((candidate) => candidate.id === "a");
     expect(item?.status).toBe("claimed");
     expect(item?.transitions).toEqual([
-      { from: "planned", to: "claimed", reason: "isolated job", at: "2026-09-18T10:00:00.000Z" },
+      { from: "planned", to: "claimed", reason: "isolated order", at: "2026-09-18T10:00:00.000Z" },
     ]);
   });
 

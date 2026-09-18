@@ -1097,28 +1097,28 @@ const thread: Query = {
   },
 };
 
-const job: Query = {
-  name: "job",
-  summary: "inspect one factory job report, its events, and evidence",
-  usage: "dim q job <job-id>",
+const order: Query = {
+  name: "order",
+  summary: "inspect one factory order report, its events, and evidence",
+  usage: "dim q order <order-id>",
   spansHistory: true,
   window: null,
   run: (db, { arg }) => {
     if (!arg) {
-      return { denominator: "", columns: ["error"], rows: [["usage: dim q job <job-id>"]] };
+      return { denominator: "", columns: ["error"], rows: [["usage: dim q order <order-id>"]] };
     }
-    const found = table(db, "SELECT * FROM factory_job WHERE id LIKE ? || '%' LIMIT 2", [arg]);
+    const found = table(db, "SELECT * FROM factory_order WHERE id LIKE ? || '%' LIMIT 2", [arg]);
     if (found.length === 0) {
-      return { denominator: "", columns: ["id"], rows: [], note: `no job starts with ${arg}` };
+      return { denominator: "", columns: ["id"], rows: [], note: `no order starts with ${arg}` };
     }
     if (found.length > 1) {
-      return { denominator: "", columns: ["id"], rows: [], note: `${arg} matches more than one job` };
+      return { denominator: "", columns: ["id"], rows: [], note: `${arg} matches more than one order` };
     }
     const report = found[0] as Record<string, unknown>;
     const id = report.id as string;
     const columns = ["section", "when", "kind", "status", "subject", "evidence"];
     const aggregate: Record<string, unknown> = {
-      section: "job",
+      section: "order",
       when: report.updated_at,
       kind: "report",
       status: report.status,
@@ -1134,42 +1134,42 @@ const job: Query = {
                 coalesce(station, delegated_station, '') AS subject,
                 coalesce(reason, fence_type, commit_sha, cast(check_id AS TEXT), cast(finding_id AS TEXT),
                          delegated_agent_id, '') AS evidence
-         FROM factory_job_event WHERE job_id = ?`,
+         FROM factory_order_event WHERE order_id = ?`,
         [id],
       ),
       ...table(
         db,
         `SELECT 'commit' AS section, recorded_at AS "when", 'commit_created' AS kind, '' AS status,
                 sha AS subject, coalesce(subject, '') AS evidence
-         FROM factory_job_commit WHERE job_id = ?`,
+         FROM factory_order_commit WHERE order_id = ?`,
         [id],
       ),
       ...table(
         db,
         `SELECT 'check' AS section, finished_at AS "when", 'check_finished' AS kind,
                 cast(exit_code AS TEXT) AS status, command AS subject, coalesce(result, '') AS evidence
-         FROM factory_job_check WHERE job_id = ?`,
+         FROM factory_order_check WHERE order_id = ?`,
         [id],
       ),
       ...table(
         db,
         `SELECT 'file' AS section, recorded_at AS "when", 'file_changed' AS kind, '' AS status,
                 path AS subject, '' AS evidence
-         FROM factory_job_file WHERE job_id = ?`,
+         FROM factory_order_file WHERE order_id = ?`,
         [id],
       ),
       ...table(
         db,
         `SELECT 'finding' AS section, recorded_at AS "when", 'review_finished' AS kind,
                 answer AS status, dimension AS subject, summary AS evidence
-         FROM factory_job_finding WHERE job_id = ?`,
+         FROM factory_order_finding WHERE order_id = ?`,
         [id],
       ),
       ...table(
         db,
         `SELECT 'document' AS section, recorded_at AS "when", 'document_updated' AS kind, '' AS status,
                 path AS subject, '' AS evidence
-         FROM factory_job_document WHERE job_id = ?`,
+         FROM factory_order_document WHERE order_id = ?`,
         [id],
       ),
       ...table(
@@ -1177,61 +1177,61 @@ const job: Query = {
         `SELECT 'environment' AS section, recorded_at AS "when", 'environment_reported' AS kind,
                 coalesce(cast(exit_code AS TEXT), signal, '') AS status, phase AS subject,
                 resources AS evidence
-         FROM factory_job_environment WHERE job_id = ?`,
+         FROM factory_order_environment WHERE order_id = ?`,
         [id],
       ),
     ].sort((a, b) => String(a.when).localeCompare(String(b.when)));
     const rows = [aggregate, ...evidence];
     return {
-      denominator: `job ${id}: ${report.status}; one aggregate, ${rows.length - 1} lifecycle and evidence rows`,
+      denominator: `order ${id}: ${report.status}; one aggregate, ${rows.length - 1} lifecycle and evidence rows`,
       columns,
       rows: toRows(rows, columns),
-      note: "Evidence is recorded by the job; this query does not infer completion from repository history.",
+      note: "Evidence is recorded by the order; this query does not infer completion from repository history.",
     };
   },
 };
 
 const factory: Query = {
   name: "factory",
-  summary: "show current factory item and job status with lifecycle and evidence",
-  usage: "dim q factory [job-id]",
+  summary: "show current factory item and order status with lifecycle and evidence",
+  usage: "dim q factory [order-id]",
   spansHistory: true,
   window: null,
   run: (db, { arg }) => {
-    const filter = arg ? "WHERE j.id LIKE ? || '%'" : "";
+    const filter = arg ? "WHERE o.id LIKE ? || '%'" : "";
     const found = table(
       db,
-      `SELECT j.queue_id AS queue, j.item_id AS item, j.id AS job, j.status,
-              (SELECT e.kind FROM factory_job_event e
-               WHERE e.job_id = j.id ORDER BY e.ts DESC, e.id DESC LIMIT 1) AS latest_event,
-              (SELECT e.ts FROM factory_job_event e
-               WHERE e.job_id = j.id ORDER BY e.ts DESC, e.id DESC LIMIT 1) AS latest_event_at,
-              coalesce(j.worktree, '(absent)') AS worktree,
-              coalesce(j.branch, '(absent)') AS branch,
-              coalesce(j.station, '(absent)') AS station,
+      `SELECT o.queue_id AS queue, o.item_id AS item, o.id AS "order", o.status,
+              (SELECT e.kind FROM factory_order_event e
+               WHERE e.order_id = o.id ORDER BY e.ts DESC, e.id DESC LIMIT 1) AS latest_event,
+              (SELECT e.ts FROM factory_order_event e
+               WHERE e.order_id = o.id ORDER BY e.ts DESC, e.id DESC LIMIT 1) AS latest_event_at,
+              coalesce(o.worktree, '(absent)') AS worktree,
+              coalesce(o.branch, '(absent)') AS branch,
+              coalesce(o.station, '(absent)') AS station,
               coalesce((SELECT c.sha || coalesce(' ' || c.subject, '')
-                        FROM factory_job_commit c WHERE c.job_id = j.id
+                        FROM factory_order_commit c WHERE c.order_id = o.id
                         ORDER BY c.recorded_at DESC, c.sha DESC LIMIT 1), '(none recorded)') AS "commit",
               coalesce((SELECT c.command || ' (' || c.exit_code || ', ' || coalesce(c.result, 'no result') || ')'
-                        FROM factory_job_check c WHERE c.job_id = j.id
+                        FROM factory_order_check c WHERE c.order_id = o.id
                         ORDER BY c.finished_at DESC, c.id DESC LIMIT 1), '(none recorded)') AS "check",
               coalesce((SELECT group_concat(finding, '; ') FROM (
                           SELECT f.dimension || ': ' || f.answer || ' - ' || f.summary AS finding
-                          FROM factory_job_finding f WHERE f.job_id = j.id
+                          FROM factory_order_finding f WHERE f.order_id = o.id
                           ORDER BY f.recorded_at, f.id
                         )), '(none recorded)') AS findings,
               coalesce((SELECT nullif(trim(coalesce(e.fence_type || ': ', '') || coalesce(e.reason, '')), '')
-                        FROM factory_job_event e WHERE e.job_id = j.id
+                        FROM factory_order_event e WHERE e.order_id = o.id
                           AND e.kind IN ('completed', 'blocked', 'fenced', 'failed', 'abandoned')
                         ORDER BY e.ts DESC, e.id DESC LIMIT 1), '(none)') AS stop
-       FROM factory_job j ${filter}
-       ORDER BY j.updated_at DESC, j.id`,
+       FROM factory_order o ${filter}
+       ORDER BY o.updated_at DESC, o.id`,
       arg ? [arg] : [],
     );
     const columns = [
       "queue",
       "item",
-      "job",
+      "order",
       "status",
       "latest_event",
       "latest_event_at",
@@ -1245,19 +1245,19 @@ const factory: Query = {
     ];
     if (found.length === 0) {
       return {
-        denominator: "queue planner source absent; no factory job matched",
+        denominator: "queue planner source absent; no factory order matched",
         columns,
         rows: [],
-        note: arg ? `no job starts with ${arg}` : "no factory jobs are recorded",
+        note: arg ? `no order starts with ${arg}` : "no factory orders are recorded",
       };
     }
     return {
       denominator:
-        `${found.length} factory job${found.length === 1 ? "" : "s"} read from factory_job; ` +
+        `${found.length} factory order${found.length === 1 ? "" : "s"} read from factory_order; ` +
         "queue planner source absent (no file-backed planner is recorded)",
       columns,
       rows: toRows(found, columns),
-      note: "Lifecycle and evidence are read from factory_job and its normalized evidence tables; no status is inferred from repository files.",
+      note: "Lifecycle and evidence are read from factory_order and its normalized evidence tables; no status is inferred from repository files.",
     };
   },
 };
@@ -1289,7 +1289,7 @@ const schedules: Query = {
       note:
         rows.length === 0
           ? "no schedules are recorded"
-          : "Due selection reads schedule state only; it does not claim queue work or create a factory job.",
+          : "Due selection reads schedule state only; it does not claim queue work or create a factory order.",
     };
   },
 };
@@ -2334,7 +2334,7 @@ export const QUERIES: Query[] = [
   thread,
   factory,
   schedules,
-  job,
+  order,
   skill,
   resume,
   delegation,

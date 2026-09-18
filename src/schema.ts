@@ -2,7 +2,7 @@
 // by re-reading them, so a schema change is `dim rebuild`, not a migration. The
 // exceptions carry the reason at the table: guidance_walk, command_trace and
 // finding have no source to re-read, embedding holds vectors only a model can
-// produce again, and correction_label, hook_event and the factory job records
+// produce again, and correction_label, hook_event and the factory order records
 // have no source either but are dropped and written back row for row.
 // SCHEMA_VERSION exists so sync can refuse to run against a database only a
 // re-read can correct: a changed column, or a changed rule for what identifies a
@@ -12,7 +12,7 @@
 
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 21;
+export const SCHEMA_VERSION = 22;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -163,7 +163,7 @@ CREATE TABLE IF NOT EXISTS command_trace (
 CREATE INDEX IF NOT EXISTS command_trace_name ON command_trace(command, name, ts);
 
 -- Persisted scheduler definitions are operational control state, not source-derived
--- rows and not factory job execution reports. The latest evaluation fields let the
+-- rows and not factory order execution reports. The latest evaluation fields let the
 -- next invocation explain when a schedule was last considered without a second report store.
 CREATE TABLE IF NOT EXISTS factory_schedule (
   id                  TEXT PRIMARY KEY,
@@ -178,11 +178,11 @@ CREATE TABLE IF NOT EXISTS factory_schedule (
 );
 CREATE INDEX IF NOT EXISTS factory_schedule_due ON factory_schedule(enabled, paused, last_evaluated_at);
 
--- Operational factory evidence is written by the job driver, not derived from
+-- Operational factory evidence is written by the order driver, not derived from
 -- transcripts or repository files. No source could reproduce a claim, event or
 -- report after the fact, so rebuild writes these rows back rather than re-reading
 -- them.
-CREATE TABLE IF NOT EXISTS factory_job (
+CREATE TABLE IF NOT EXISTS factory_order (
   id              TEXT PRIMARY KEY,
   run_id          TEXT NOT NULL,
   queue_id        TEXT NOT NULL,
@@ -191,7 +191,7 @@ CREATE TABLE IF NOT EXISTS factory_job (
   -- it is what a query joins on and never what a person is shown.
   title           TEXT NOT NULL,
   -- The queue item's own description, copied in at claim time: the queue is edited
-  -- as work lands, so by the time anyone reads the job back the wording that was
+  -- as work lands, so by the time anyone reads the order back the wording that was
   -- worked to is gone. Nullable because a queue that names its items and nothing
   -- more has none to copy, and an invented one would read as the owner's words.
   description     TEXT,
@@ -213,11 +213,11 @@ CREATE TABLE IF NOT EXISTS factory_job (
   stop_reason     TEXT,
   UNIQUE (run_id, item_id)
 );
-CREATE INDEX IF NOT EXISTS factory_job_status ON factory_job(status, updated_at);
+CREATE INDEX IF NOT EXISTS factory_order_status ON factory_order(status, updated_at);
 
-CREATE TABLE IF NOT EXISTS factory_job_event (
+CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,
-  job_id                TEXT NOT NULL REFERENCES factory_job(id) ON DELETE CASCADE,
+  order_id                TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   ts                    TEXT NOT NULL,
   kind                  TEXT NOT NULL CHECK (kind IN ('claimed', 'delegated', 'started', 'moved', 'commit_created', 'check_finished', 'review_finished', 'fenced', 'blocked', 'completed', 'failed', 'abandoned')),
   actor_id              TEXT,
@@ -233,26 +233,26 @@ CREATE TABLE IF NOT EXISTS factory_job_event (
   status                TEXT,
   reason                TEXT
 );
-CREATE INDEX IF NOT EXISTS factory_job_event_job_ts ON factory_job_event(job_id, ts, id);
+CREATE INDEX IF NOT EXISTS factory_order_event_order_ts ON factory_order_event(order_id, ts, id);
 
-CREATE TABLE IF NOT EXISTS factory_job_commit (
-  job_id        TEXT NOT NULL REFERENCES factory_job(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS factory_order_commit (
+  order_id        TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   sha           TEXT NOT NULL,
   subject       TEXT,
   recorded_at   TEXT NOT NULL,
-  PRIMARY KEY (job_id, sha)
+  PRIMARY KEY (order_id, sha)
 );
 
-CREATE TABLE IF NOT EXISTS factory_job_file (
-  job_id        TEXT NOT NULL REFERENCES factory_job(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS factory_order_file (
+  order_id        TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   path          TEXT NOT NULL,
   recorded_at   TEXT NOT NULL,
-  PRIMARY KEY (job_id, path)
+  PRIMARY KEY (order_id, path)
 );
 
-CREATE TABLE IF NOT EXISTS factory_job_check (
+CREATE TABLE IF NOT EXISTS factory_order_check (
   id            INTEGER PRIMARY KEY,
-  job_id        TEXT NOT NULL REFERENCES factory_job(id) ON DELETE CASCADE,
+  order_id        TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   command       TEXT NOT NULL,
   exit_code     INTEGER NOT NULL,
   started_at    TEXT,
@@ -261,9 +261,9 @@ CREATE TABLE IF NOT EXISTS factory_job_check (
   recorded_at   TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS factory_job_finding (
+CREATE TABLE IF NOT EXISTS factory_order_finding (
   id            INTEGER PRIMARY KEY,
-  job_id        TEXT NOT NULL REFERENCES factory_job(id) ON DELETE CASCADE,
+  order_id        TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   dimension     TEXT NOT NULL,
   summary       TEXT NOT NULL,
   answer        TEXT NOT NULL CHECK (answer IN ('fixed', 'refused')),
@@ -274,10 +274,10 @@ CREATE TABLE IF NOT EXISTS factory_job_finding (
 
 -- What a worktree's setup and teardown hooks reported. resources holds the
 -- identifiers the hook named — containers, volumes, ports — which is all that is
--- left of what a job allocated once its worktree is gone.
-CREATE TABLE IF NOT EXISTS factory_job_environment (
+-- left of what an order allocated once its worktree is gone.
+CREATE TABLE IF NOT EXISTS factory_order_environment (
   id            INTEGER PRIMARY KEY,
-  job_id        TEXT NOT NULL REFERENCES factory_job(id) ON DELETE CASCADE,
+  order_id        TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   phase         TEXT NOT NULL CHECK (phase IN ('setup', 'teardown')),
   argv          TEXT NOT NULL,
   exit_code     INTEGER,
@@ -288,11 +288,11 @@ CREATE TABLE IF NOT EXISTS factory_job_environment (
   recorded_at   TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS factory_job_document (
-  job_id        TEXT NOT NULL REFERENCES factory_job(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS factory_order_document (
+  order_id        TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   path          TEXT NOT NULL,
   recorded_at   TEXT NOT NULL,
-  PRIMARY KEY (job_id, path)
+  PRIMARY KEY (order_id, path)
 );
 
 CREATE TABLE IF NOT EXISTS turn (

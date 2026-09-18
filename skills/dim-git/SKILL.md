@@ -12,7 +12,7 @@ The shared Git boundary for the factory. Use this skill whenever Git work affect
 
 - Read the current status, worktree, branch and recent commits before changing anything.
 - Work in the isolated worktree assigned to the item. The parent worktree is not a worker workspace.
-- One job owns one item end to end. Do not edit another job's worktree or combine unrelated changes into its commit.
+- One order owns one item end to end. Do not edit another order's worktree or combine unrelated changes into its commit.
 - Preserve uncommitted changes you did not create. Stop when the target or ownership is unclear.
 
 ## 2. Commit a slice

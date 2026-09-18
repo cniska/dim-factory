@@ -1,6 +1,6 @@
 import type { WallItemEntry, WallItemKind } from "./factory-wall";
 
-/** What each moment in a job's record is called on the item view. Human words lead; the ids
+/** What each moment in an order's record is called on the item view. Human words lead; the ids
  *  they stand for are on the entry for an agent to join on. */
 export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   claimed: "Claimed",
@@ -26,7 +26,7 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
 export type RailMark = "moment" | "handover" | "outcome";
 
 /** What each mark is drawn as. A dot for a moment, an arrow where one agent's run ends and
- *  another's begins, a filled square where the job stops. */
+ *  another's begins, a filled square where the order stops. */
 export const RAIL_MARK_GLYPH: Record<RailMark, string> = {
   moment: "·",
   handover: "→",
@@ -36,7 +36,7 @@ export const RAIL_MARK_GLYPH: Record<RailMark, string> = {
 const RAIL_MARK_BY_KIND: Record<WallItemKind, RailMark> = {
   claimed: "moment",
   started: "moment",
-  // A station move is the job itself crossing to other work, which reads as the
+  // A station move is the order itself crossing to other work, which reads as the
   // same kind of passing-on as a delegation even though no agent changes.
   moved: "handover",
   delegated: "handover",

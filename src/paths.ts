@@ -11,6 +11,14 @@ export function resolveHomeDir(env: Env = process.env): string {
   return homedir();
 }
 
+/** A path as a person writes it. Only a path under the home directory is shortened, and
+ *  `/home-brewed` is not a path under `/home`, so the separator is part of the match. */
+export function tildePath(path: string, env: Env = process.env): string {
+  const home = resolveHomeDir(env);
+  if (path === home) return "~";
+  return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+}
+
 // DIM_HOME names the data directory outright, which is what lets a test point a
 // whole run at a scratch directory.
 export function dataDir(env: Env = process.env): string {
