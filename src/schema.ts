@@ -1,7 +1,7 @@
 // Every table here is one-to-one with records in the source files and is rebuilt
 // by re-reading them, so a schema change is `dim rebuild`, not a migration. The
 // exceptions carry the reason at the table: hook_event, guidance_walk,
-// command_trace, factory lane records and finding have no source to re-read, embedding holds vectors
+// command_trace, factory job records and finding have no source to re-read, embedding holds vectors
 // only a model can produce again, and correction_label has no source either but
 // is dropped and written back row for row.
 // SCHEMA_VERSION exists so sync can refuse to run against a database only a
@@ -161,10 +161,10 @@ CREATE TABLE IF NOT EXISTS command_trace (
 );
 CREATE INDEX IF NOT EXISTS command_trace_name ON command_trace(command, name, ts);
 
--- Operational factory evidence is written by the lane driver, not derived from
+-- Operational factory evidence is written by the job driver, not derived from
 -- transcripts or repository files. It survives rebuild because there is no
 -- source that could reproduce a claim, event or report after the fact.
-CREATE TABLE IF NOT EXISTS factory_lane (
+CREATE TABLE IF NOT EXISTS factory_job (
   id              TEXT PRIMARY KEY,
   run_id          TEXT NOT NULL,
   queue_id        TEXT NOT NULL,
@@ -182,11 +182,11 @@ CREATE TABLE IF NOT EXISTS factory_lane (
   stop_reason     TEXT,
   UNIQUE (run_id, item_id)
 );
-CREATE INDEX IF NOT EXISTS factory_lane_status ON factory_lane(status, updated_at);
+CREATE INDEX IF NOT EXISTS factory_job_status ON factory_job(status, updated_at);
 
-CREATE TABLE IF NOT EXISTS factory_lane_event (
+CREATE TABLE IF NOT EXISTS factory_job_event (
   id                    INTEGER PRIMARY KEY,
-  lane_id               TEXT NOT NULL REFERENCES factory_lane(id) ON DELETE CASCADE,
+  job_id                TEXT NOT NULL REFERENCES factory_job(id) ON DELETE CASCADE,
   ts                    TEXT NOT NULL,
   kind                  TEXT NOT NULL CHECK (kind IN ('claimed', 'delegated', 'started', 'commit_created', 'check_finished', 'review_finished', 'fenced', 'blocked', 'completed', 'failed', 'abandoned')),
   actor_id              TEXT,
@@ -202,26 +202,26 @@ CREATE TABLE IF NOT EXISTS factory_lane_event (
   status                TEXT,
   reason                TEXT
 );
-CREATE INDEX IF NOT EXISTS factory_lane_event_lane_ts ON factory_lane_event(lane_id, ts, id);
+CREATE INDEX IF NOT EXISTS factory_job_event_job_ts ON factory_job_event(job_id, ts, id);
 
-CREATE TABLE IF NOT EXISTS factory_lane_commit (
-  lane_id       TEXT NOT NULL REFERENCES factory_lane(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS factory_job_commit (
+  job_id        TEXT NOT NULL REFERENCES factory_job(id) ON DELETE CASCADE,
   sha           TEXT NOT NULL,
   subject       TEXT,
   recorded_at   TEXT NOT NULL,
-  PRIMARY KEY (lane_id, sha)
+  PRIMARY KEY (job_id, sha)
 );
 
-CREATE TABLE IF NOT EXISTS factory_lane_file (
-  lane_id       TEXT NOT NULL REFERENCES factory_lane(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS factory_job_file (
+  job_id        TEXT NOT NULL REFERENCES factory_job(id) ON DELETE CASCADE,
   path          TEXT NOT NULL,
   recorded_at   TEXT NOT NULL,
-  PRIMARY KEY (lane_id, path)
+  PRIMARY KEY (job_id, path)
 );
 
-CREATE TABLE IF NOT EXISTS factory_lane_check (
+CREATE TABLE IF NOT EXISTS factory_job_check (
   id            INTEGER PRIMARY KEY,
-  lane_id       TEXT NOT NULL REFERENCES factory_lane(id) ON DELETE CASCADE,
+  job_id        TEXT NOT NULL REFERENCES factory_job(id) ON DELETE CASCADE,
   command       TEXT NOT NULL,
   exit_code     INTEGER NOT NULL,
   started_at    TEXT,
@@ -230,9 +230,9 @@ CREATE TABLE IF NOT EXISTS factory_lane_check (
   recorded_at   TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS factory_lane_finding (
+CREATE TABLE IF NOT EXISTS factory_job_finding (
   id            INTEGER PRIMARY KEY,
-  lane_id       TEXT NOT NULL REFERENCES factory_lane(id) ON DELETE CASCADE,
+  job_id        TEXT NOT NULL REFERENCES factory_job(id) ON DELETE CASCADE,
   dimension     TEXT NOT NULL,
   summary       TEXT NOT NULL,
   answer        TEXT NOT NULL CHECK (answer IN ('fixed', 'refused')),
@@ -241,11 +241,11 @@ CREATE TABLE IF NOT EXISTS factory_lane_finding (
   CHECK (answer <> 'refused' OR (resolution IS NOT NULL AND trim(resolution) <> ''))
 );
 
-CREATE TABLE IF NOT EXISTS factory_lane_document (
-  lane_id       TEXT NOT NULL REFERENCES factory_lane(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS factory_job_document (
+  job_id        TEXT NOT NULL REFERENCES factory_job(id) ON DELETE CASCADE,
   path          TEXT NOT NULL,
   recorded_at   TEXT NOT NULL,
-  PRIMARY KEY (lane_id, path)
+  PRIMARY KEY (job_id, path)
 );
 
 CREATE TABLE IF NOT EXISTS turn (

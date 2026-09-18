@@ -13,29 +13,29 @@ The owner's tool-agnostic engineering skills form a production line — spec, pl
 
 None of it was built to be a factory. It became one because each phase was made repeatable and verifiable on its own terms.
 
-## The lane contract
+## The job contract
 
-The planned factory assigns each queue item to one self-sufficient lane that runs it to a verifiable stopping point.
+The planned factory assigns each queue item to one self-sufficient job that runs it to a verifiable stopping point.
 
-- **Ownership.** One lane owns one queue item end to end, in an isolated worktree.
-- **Delegation.** The lane may delegate internal triage, implementation slices, simplification and checking, while retaining responsibility for the item and its evidence.
-- **Completion.** The lane runs until the item is complete, it reaches an explicit fence, or it reaches its failure limit.
-- **Parallelism.** Independent lanes may run in parallel in isolated worktrees. Claims, landing and queue-state transitions remain serialized.
-- **Driver.** The factory driver schedules lanes, observes their evidence and integrates completed work. It does not implement the item.
+- **Ownership.** One job owns one queue item end to end, in an isolated worktree.
+- **Delegation.** The job may delegate internal triage, implementation slices, simplification and checking, while retaining responsibility for the item and its evidence.
+- **Completion.** The job runs until the item is complete, it reaches an explicit fence, or it reaches its failure limit.
+- **Parallelism.** Independent jobs may run in parallel in isolated worktrees. Claims, landing and queue-state transitions remain serialized.
+- **Driver.** The factory driver schedules jobs, observes their evidence and integrates completed work. It does not implement the item.
 - **Count.** An explicit item count limits a run; the default count is one. The factory does not drain the queue implicitly.
 
-The lane returns a delivered-product report containing the item and queue identity, station and delegation tree, worktree and branch, changed files, commit SHA, repo check and result, checker findings and resolutions, updated docs, and final status: complete, blocked, fenced or failed. A complete or stopped report includes the evidence the driver needs to land the work or stop at the stated boundary.
+The job returns a delivered-product report containing the item and queue identity, station and delegation tree, worktree and branch, changed files, commit SHA, repo check and result, checker findings and resolutions, updated docs, and final status: complete, blocked, fenced or failed. A complete or stopped report includes the evidence the driver needs to land the work or stop at the stated boundary.
 
 ## Report persistence
 
-The delivered-product report is persisted in the dim database so it remains queryable after the session rather than existing only in chat. `factory_lane` is the current projection; `factory_lane_event` is its typed append-only lifecycle ledger; and the normalized evidence tables hold commits, changed files, checks, findings and updated documents. The record includes:
+The delivered-product report is persisted in the dim database so it remains queryable after the session rather than existing only in chat. `factory_job` is the current projection; `factory_job_event` is its typed append-only lifecycle ledger; and the normalized evidence tables hold commits, changed files, checks, findings and updated documents. The record includes:
 
-- **Identity.** Queue and item identity, lane and run identity, agent identity, worktree and branch.
+- **Identity.** Queue and item identity, job and run identity, agent identity, worktree and branch.
 - **Work.** Station, delegation tree, changed files and commit SHA.
 - **Verification.** Repository check command and result, checker findings and their resolutions, and updated docs.
 - **Outcome.** Final status — complete, blocked, fenced or failed — with fence or blocker evidence and timestamps for the lifecycle events.
 
-The report lifecycle is a durable sequence from claim through running to completion or a stopped outcome, with evidence recorded as the lane progresses. A terminal status cannot transition to another status, and each lifecycle event and its aggregate projection are written atomically. `dim q lane <lane-id>` reads the aggregate, events and evidence through the read-only query path. These operational tables survive `dim rebuild`, deliberately like `hook_event`, `command_trace` and `finding`: no transcript or file source can recreate a lane's claims and judgements after the fact.
+The report lifecycle is a durable sequence from claim through running to completion or a stopped outcome, with evidence recorded as the job progresses. A terminal status cannot transition to another status, and each lifecycle event and its aggregate projection are written atomically. `dim q job <job-id>` reads the aggregate, events and evidence through the read-only query path. These operational tables survive `dim rebuild`, deliberately like `hook_event`, `command_trace` and `finding`: no transcript or file source can recreate a job's claims and judgements after the fact.
 
 The persistence contract is live. The factory driver still owns scheduling, isolated worktree creation, serialized landing and queue-state enforcement; those orchestration boundaries are not inferred from a report row.
 

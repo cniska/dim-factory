@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 
-export type LaneStatus = "claimed" | "running" | "completed" | "blocked" | "fenced" | "failed" | "abandoned";
-export type LaneEventKind =
+export type JobStatus = "claimed" | "running" | "completed" | "blocked" | "fenced" | "failed" | "abandoned";
+export type JobEventKind =
   | "claimed"
   | "delegated"
   | "started"
@@ -14,7 +14,7 @@ export type LaneEventKind =
   | "failed"
   | "abandoned";
 
-export type Lane = {
+export type Job = {
   id: string;
   runId: string;
   queueId: string;
@@ -26,8 +26,8 @@ export type Lane = {
   station?: string;
 };
 
-export type LaneEvent = {
-  kind: LaneEventKind;
+export type JobEvent = {
+  kind: JobEventKind;
   actorId?: string;
   sessionId?: string;
   station?: string;
@@ -38,17 +38,17 @@ export type LaneEvent = {
   checkId?: number;
   findingId?: number;
   fenceType?: string;
-  status?: LaneStatus;
+  status?: JobStatus;
   reason?: string;
   ts?: string;
 };
 
 const now = (): string => new Date().toISOString();
-const terminalStatuses = new Set<LaneStatus>(["completed", "blocked", "fenced", "failed", "abandoned"]);
+const terminalStatuses = new Set<JobStatus>(["completed", "blocked", "fenced", "failed", "abandoned"]);
 
-function eventValues(laneId: string, event: LaneEvent, ts: string): (string | number | null)[] {
+function eventValues(jobId: string, event: JobEvent, ts: string): (string | number | null)[] {
   return [
-    laneId,
+    jobId,
     ts,
     event.kind,
     event.actorId ?? null,
@@ -66,54 +66,54 @@ function eventValues(laneId: string, event: LaneEvent, ts: string): (string | nu
   ];
 }
 
-export function createLane(db: Database, lane: Lane, at = now()): void {
+export function createJob(db: Database, job: Job, at = now()): void {
   db.transaction(() => {
     db.run(
-      `INSERT INTO factory_lane
+      `INSERT INTO factory_job
        (id, run_id, queue_id, item_id, agent_id, session_id, worktree, branch, station, status, claimed_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'claimed', ?, ?)`,
       [
-        lane.id,
-        lane.runId,
-        lane.queueId,
-        lane.itemId,
-        lane.agentId ?? null,
-        lane.sessionId ?? null,
-        lane.worktree ?? null,
-        lane.branch ?? null,
-        lane.station ?? null,
+        job.id,
+        job.runId,
+        job.queueId,
+        job.itemId,
+        job.agentId ?? null,
+        job.sessionId ?? null,
+        job.worktree ?? null,
+        job.branch ?? null,
+        job.station ?? null,
         at,
         at,
       ],
     );
-    appendLaneEvent(
+    appendJobEvent(
       db,
-      lane.id,
-      { kind: "claimed", actorId: lane.agentId, sessionId: lane.sessionId, station: lane.station },
+      job.id,
+      { kind: "claimed", actorId: job.agentId, sessionId: job.sessionId, station: job.station },
       at,
     );
   })();
 }
 
-export function appendLaneEvent(db: Database, laneId: string, event: LaneEvent, at = now()): void {
+export function appendJobEvent(db: Database, jobId: string, event: JobEvent, at = now()): void {
   db.transaction(() => {
-    const lane = db.query("SELECT status FROM factory_lane WHERE id = ?").get(laneId) as {
-      status: LaneStatus;
+    const job = db.query("SELECT status FROM factory_job WHERE id = ?").get(jobId) as {
+      status: JobStatus;
     } | null;
-    if (!lane) throw new Error(`lane not found: ${laneId}`);
-    if (terminalStatuses.has(lane.status)) {
-      throw new Error(`lane ${laneId} is already ${lane.status}`);
+    if (!job) throw new Error(`job not found: ${jobId}`);
+    if (terminalStatuses.has(job.status)) {
+      throw new Error(`job ${jobId} is already ${job.status}`);
     }
 
     db.run(
-      `INSERT INTO factory_lane_event
-       (lane_id, ts, kind, actor_id, session_id, station, delegated_agent_id, delegated_session_id,
+      `INSERT INTO factory_job_event
+       (job_id, ts, kind, actor_id, session_id, station, delegated_agent_id, delegated_session_id,
         delegated_station, commit_sha, check_id, finding_id, fence_type, status, reason)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      eventValues(laneId, event, event.ts ?? at),
+      eventValues(jobId, event, event.ts ?? at),
     );
     db.run(
-      `UPDATE factory_lane SET status = coalesce(?, status), updated_at = ?, started_at = coalesce(started_at, ?),
+      `UPDATE factory_job SET status = coalesce(?, status), updated_at = ?, started_at = coalesce(started_at, ?),
        completed_at = CASE WHEN ? IN ('completed', 'blocked', 'fenced', 'failed', 'abandoned') THEN ? ELSE completed_at END,
        stop_reason = coalesce(?, stop_reason)
        WHERE id = ?`,
@@ -124,43 +124,43 @@ export function appendLaneEvent(db: Database, laneId: string, event: LaneEvent, 
         event.status ?? null,
         event.ts ?? at,
         event.reason ?? null,
-        laneId,
+        jobId,
       ],
     );
   })();
 }
 
-export function recordLaneCommit(
+export function recordJobCommit(
   db: Database,
-  laneId: string,
+  jobId: string,
   sha: string,
   subject?: string,
   at = now(),
 ): void {
-  db.run("INSERT INTO factory_lane_commit (lane_id, sha, subject, recorded_at) VALUES (?, ?, ?, ?)", [
-    laneId,
+  db.run("INSERT INTO factory_job_commit (job_id, sha, subject, recorded_at) VALUES (?, ?, ?, ?)", [
+    jobId,
     sha,
     subject ?? null,
     at,
   ]);
-  appendLaneEvent(db, laneId, { kind: "commit_created", commitSha: sha }, at);
+  appendJobEvent(db, jobId, { kind: "commit_created", commitSha: sha }, at);
 }
 
-export function recordLaneFile(db: Database, laneId: string, path: string, at = now()): void {
-  db.run("INSERT INTO factory_lane_file (lane_id, path, recorded_at) VALUES (?, ?, ?)", [laneId, path, at]);
+export function recordJobFile(db: Database, jobId: string, path: string, at = now()): void {
+  db.run("INSERT INTO factory_job_file (job_id, path, recorded_at) VALUES (?, ?, ?)", [jobId, path, at]);
 }
 
-export function recordLaneCheck(
+export function recordJobCheck(
   db: Database,
-  laneId: string,
+  jobId: string,
   check: { command: string; exitCode: number; startedAt?: string; finishedAt?: string; result?: string },
   at = now(),
 ): number {
   const result = db.run(
-    `INSERT INTO factory_lane_check (lane_id, command, exit_code, started_at, finished_at, result, recorded_at)
+    `INSERT INTO factory_job_check (job_id, command, exit_code, started_at, finished_at, result, recorded_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
-      laneId,
+      jobId,
       check.command,
       check.exitCode,
       check.startedAt ?? null,
@@ -170,30 +170,26 @@ export function recordLaneCheck(
     ],
   );
   const id = Number(result.lastInsertRowid);
-  appendLaneEvent(db, laneId, { kind: "check_finished", checkId: id }, at);
+  appendJobEvent(db, jobId, { kind: "check_finished", checkId: id }, at);
   return id;
 }
 
-export function recordLaneFinding(
+export function recordJobFinding(
   db: Database,
-  laneId: string,
+  jobId: string,
   finding: { dimension: string; summary: string; answer: "fixed" | "refused"; resolution?: string },
   at = now(),
 ): number {
   const result = db.run(
-    `INSERT INTO factory_lane_finding (lane_id, dimension, summary, answer, resolution, recorded_at)
+    `INSERT INTO factory_job_finding (job_id, dimension, summary, answer, resolution, recorded_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [laneId, finding.dimension, finding.summary, finding.answer, finding.resolution ?? null, at],
+    [jobId, finding.dimension, finding.summary, finding.answer, finding.resolution ?? null, at],
   );
   const id = Number(result.lastInsertRowid);
-  appendLaneEvent(db, laneId, { kind: "review_finished", findingId: id }, at);
+  appendJobEvent(db, jobId, { kind: "review_finished", findingId: id }, at);
   return id;
 }
 
-export function recordLaneDocument(db: Database, laneId: string, path: string, at = now()): void {
-  db.run("INSERT INTO factory_lane_document (lane_id, path, recorded_at) VALUES (?, ?, ?)", [
-    laneId,
-    path,
-    at,
-  ]);
+export function recordJobDocument(db: Database, jobId: string, path: string, at = now()): void {
+  db.run("INSERT INTO factory_job_document (job_id, path, recorded_at) VALUES (?, ?, ?)", [jobId, path, at]);
 }
