@@ -185,8 +185,8 @@ describe("rebuilding a database an older schema wrote", () => {
     const { db, env } = scratch();
     db.run("ALTER TABLE factory_job DROP COLUMN stop_reason");
     db.run(
-      `INSERT INTO factory_job (id, run_id, queue_id, item_id, status, claimed_at, updated_at)
-       VALUES ('job-1', 'run-1', 'build-order', 'item-1', 'running', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+      `INSERT INTO factory_job (id, run_id, queue_id, item_id, title, status, claimed_at, updated_at)
+       VALUES ('job-1', 'run-1', 'build-order', 'item-1', 'Survive a rebuild', 'running', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
     db.run(
       "INSERT INTO factory_job_event (job_id, ts, kind) VALUES ('job-1', '2026-01-01T00:00:00Z', 'claimed')",
@@ -208,6 +208,22 @@ describe("rebuilding a database an older schema wrote", () => {
       { job_id: "job-1", sha: "abc" },
     ]);
     expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
+    db.close();
+  });
+
+  test("a factory job written before the title column stops the rebuild", () => {
+    const { db, env } = scratch();
+    db.run("ALTER TABLE factory_job DROP COLUMN title");
+    db.run(
+      `INSERT INTO factory_job (id, run_id, queue_id, item_id, status, claimed_at, updated_at)
+       VALUES ('job-old', 'run-1', 'build-order', 'item-1', 'running', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+    );
+
+    expect(() => rebuild(db, env)).toThrow(/NOT NULL constraint failed: factory_job.title/);
+
+    // Rolled back whole rather than given an invented name: what such a row should
+    // be called is the owner's to say, and a rebuild is the only route it has.
+    expect(db.query("SELECT id FROM factory_job").all()).toEqual([{ id: "job-old" }]);
     db.close();
   });
 });

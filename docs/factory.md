@@ -33,7 +33,7 @@ Station transfers use the factory's `dim-handoff`. It requires strict `# Handoff
 
 The delivered-product report is persisted in the dim database so it remains queryable after the session rather than existing only in chat. `factory_job` is the current projection; `factory_job_event` is its typed append-only lifecycle ledger; and the normalized evidence tables hold commits, changed files, checks, findings, updated documents and worker-environment reports. The record includes:
 
-- **Identity.** Queue and item identity, job and run identity, agent identity, worktree and branch.
+- **Identity.** Queue and item identity, the item's display name, job and run identity, agent identity, worktree and branch.
 - **Work.** Station, delegation tree, changed files and commit SHA.
 - **Verification.** Repository check command and result, checker findings and their resolutions, and updated docs.
 - **Outcome.** Final status — completed, blocked, fenced, failed or abandoned — with fence or blocker evidence and timestamps for the lifecycle events.

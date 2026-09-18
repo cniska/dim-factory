@@ -9,7 +9,8 @@ const job = (
   status: WallJob["status"],
 ): WallJob => ({
   id,
-  item: id,
+  title: `Work on ${id}`,
+  itemId: id,
   worker: "copper-1",
   station,
   lifecycle,

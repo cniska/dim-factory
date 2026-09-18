@@ -13,7 +13,8 @@ export type WallRole = "builder" | "fixer" | "reviewer" | "planner";
 
 export type WallJob = {
   id: string;
-  item: string;
+  title: string;
+  itemId: string;
   station: WallStation;
   lifecycle: WallLifecycle;
   agent: string;
@@ -40,6 +41,7 @@ const MAX_COLUMN_CARDS = 12;
 type JobRow = {
   id: string;
   item_id: string;
+  title: string;
   agent_id: string | null;
   station: string | null;
   status: string;
@@ -128,7 +130,8 @@ function mapJob(row: JobRow, now: Date): WallJob {
     : undefined;
   return {
     id: row.id,
-    item: row.item_id,
+    title: row.title,
+    itemId: row.item_id,
     station: stationName,
     lifecycle: lifecycleByStatus[jobStatus],
     agent: agentId,
@@ -146,7 +149,7 @@ function mapJob(row: JobRow, now: Date): WallJob {
 export function assembleWallSnapshot(db: Database, now = new Date()): WallSnapshot {
   const rows = db
     .query(
-      `SELECT j.id, j.item_id, j.agent_id, j.station, j.status,
+      `SELECT j.id, j.item_id, j.title, j.agent_id, j.station, j.status,
               j.claimed_at, j.updated_at, j.stop_reason,
               e.kind AS latest_kind, e.reason AS latest_reason, e.station AS latest_station,
               e.actor_id AS latest_actor,

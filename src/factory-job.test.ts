@@ -32,6 +32,7 @@ const job = {
   runId: "run-1",
   queueId: "queue-1",
   itemId: "item-1",
+  title: "Record a factory job",
   agentId: "agent-1",
   sessionId: "session-1",
   worktree: "/tmp/wt",
@@ -69,6 +70,7 @@ describe("factory job report records", () => {
         runId: "run-2",
         queueId: "build-order",
         itemId: "self-sufficient-factory-job",
+        title: "Make a job self-sufficient",
         agentId: "agent-2",
       },
       { baseRevision: "abc123" },
@@ -144,6 +146,7 @@ describe("factory job report records", () => {
           runId: `run-${jobId}`,
           queueId: "queue-1",
           itemId: jobId,
+          title: `Run ${jobId} beside the others`,
           worktree: `/repo/.claude/worktrees/${jobId}`,
           branch: jobId,
         },
@@ -171,7 +174,7 @@ describe("factory job report records", () => {
     await expect(
       runFactoryJob(
         database,
-        { id: "job-3", runId: "run-3", queueId: "queue-1", itemId: "item-3" },
+        { id: "job-3", runId: "run-3", queueId: "queue-1", itemId: "item-3", title: "Fail in the builder" },
         { baseRevision: "abc123" },
         () => {
           throw new Error("builder stopped");
@@ -196,7 +199,13 @@ describe("factory job report records", () => {
     await expect(
       runFactoryJob(
         database,
-        { id: "job-no-worktree", runId: "run-no-worktree", queueId: "queue-1", itemId: "item-1" },
+        {
+          id: "job-no-worktree",
+          runId: "run-no-worktree",
+          queueId: "queue-1",
+          itemId: "item-1",
+          title: "Complete without a worktree",
+        },
         { baseRevision: "abc123" },
         () => ({ status: "completed", reason: "verified" }),
       ),
@@ -257,6 +266,7 @@ describe("factory job report records", () => {
           runId: "run-4",
           queueId: "queue-1",
           itemId: "item-4",
+          title: "Record evidence as it lands",
           worktree: "/repo/.claude/worktrees/job-4",
           branch: "job-4",
         },

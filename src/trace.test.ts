@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
 import { dbPath, type Env } from "./paths";
+import { SCHEMA_VERSION } from "./schema";
 import { trace } from "./trace";
 
 const roots: string[] = [];
@@ -45,7 +46,9 @@ describe("the command trace", () => {
     const env = scratch();
     const db = new Database(dbPath(env), { create: true });
     db.run("CREATE TABLE schema_version (version INTEGER NOT NULL)");
-    db.run("INSERT INTO schema_version (version) VALUES (16)");
+    // The version this build expects, so the database is current in every way
+    // except the missing table, which is the thing under test.
+    db.run("INSERT INTO schema_version (version) VALUES (?)", [SCHEMA_VERSION]);
     db.close();
 
     trace({ command: "q", name: "chain" }, env);
