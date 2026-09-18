@@ -21,6 +21,7 @@ export type WorkspaceContract = {
   bootstrap: { command: string[]; source: string } | null;
   capabilities: { format: boolean; analyze: boolean; test: boolean };
   services: Declaration<string[]> | null;
+  environment: Declaration<string[]> | null;
   setup: WorkerHook | null;
   teardown: WorkerHook | null;
 };
@@ -91,6 +92,46 @@ function declaredServices(root: string): Declaration<string[]> | null {
   return null;
 }
 
+/**
+ * The sample files a repository tracks. `.env` itself is never among them: it is
+ * the filled-in copy, it is gitignored precisely because it holds the secrets,
+ * and a profile that opened it would carry a credential into a job report.
+ */
+const ENVIRONMENT_SAMPLES = [".env.example", ".env.sample", ".env.template"];
+
+const ENVIRONMENT_NAME = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
+
+/**
+ * A sample file is tracked and so is meant to hold placeholders, but repositories
+ * do commit a real value by mistake — which is why no part of one is recorded, and
+ * why a value quoted across several lines is followed to its closing quote. Read
+ * line by line without that, a PEM body's base64 matches the shape of a name, and
+ * a chunk of the key ends up in the profile as one.
+ */
+function declaredEnvironment(root: string): Declaration<string[]> | null {
+  for (const file of ENVIRONMENT_SAMPLES) {
+    const text = manifest(join(root, file));
+    if (text === null) continue;
+    const names: string[] = [];
+    let unclosed: string | null = null;
+    for (const line of text.split("\n")) {
+      if (unclosed !== null) {
+        if (line.includes(unclosed)) unclosed = null;
+        continue;
+      }
+      const declaration = ENVIRONMENT_NAME.exec(line);
+      if (declaration === null) continue;
+      const value = line.slice(declaration[0].length).trimStart();
+      const quote = value[0];
+      if ((quote === '"' || quote === "'") && !value.slice(1).includes(quote)) unclosed = quote;
+      const name = declaration[1] as string;
+      if (!names.includes(name)) names.push(name);
+    }
+    return { value: names, source: file };
+  }
+  return null;
+}
+
 function declaredCapability(tasks: Task[], names: string[]): boolean {
   return tasks.some((task) => names.includes(task.name));
 }
@@ -144,6 +185,7 @@ export function workspaceContract(dir: string): WorkspaceContract | null {
       test: declaredCapability(tasks, ["test", "tests"]),
     },
     services: declaredServices(root),
+    environment: declaredEnvironment(root),
     setup: hook(root, "worktree-setup.sh"),
     teardown: hook(root, "worktree-teardown.sh"),
   };

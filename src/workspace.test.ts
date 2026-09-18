@@ -148,6 +148,63 @@ describe("workspace contract", () => {
     expect(contract.services).toEqual({ value: ["api"], source: "compose.yaml" });
   });
 
+  test("names the variables a sample environment file declares and none of their values", () => {
+    const root = repo({
+      ".env.example": [
+        "# Copy to .env and fill in.",
+        "SUPABASE_URL=http://127.0.0.1:54321",
+        "",
+        "export STRIPE_SECRET_KEY=placeholder-value-never-recorded",
+        "  SPACED_NAME = value",
+        "SUPABASE_URL=repeated",
+        "not a declaration",
+      ].join("\n"),
+    });
+    const contract = workspaceContract(root);
+    if (contract === null) throw new Error("expected a workspace contract");
+
+    expect(contract.environment).toEqual({
+      value: ["SUPABASE_URL", "STRIPE_SECRET_KEY", "SPACED_NAME"],
+      source: ".env.example",
+    });
+    expect(JSON.stringify(contract)).not.toContain("sk_live_51");
+    expect(JSON.stringify(contract)).not.toContain("54321");
+  });
+
+  test("reads no part of a value that runs across several lines", () => {
+    const root = repo({
+      ".env.example": [
+        'SIGNING_KEY="-----BEGIN PRIVATE KEY-----',
+        "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj=",
+        'PASSWORD=hunter2-----END PRIVATE KEY-----"',
+        "AFTER=1",
+      ].join("\n"),
+    });
+    const contract = workspaceContract(root);
+    if (contract === null) throw new Error("expected a workspace contract");
+
+    expect(contract.environment).toEqual({ value: ["SIGNING_KEY", "AFTER"], source: ".env.example" });
+    expect(JSON.stringify(contract)).not.toContain("MIIEvQ");
+  });
+
+  test("never opens the filled-in environment file", () => {
+    const root = repo({ ".env": "STRIPE_SECRET_KEY=placeholder-value-never-recorded\n" });
+    const contract = workspaceContract(root);
+    if (contract === null) throw new Error("expected a workspace contract");
+
+    expect(contract.environment).toBeNull();
+    expect(JSON.stringify(contract)).not.toContain("STRIPE_SECRET_KEY");
+  });
+
+  test("separates a repository with no sample file from one whose sample names nothing", () => {
+    const silent = workspaceContract(repo({ "package.json": "{}" }));
+    const empty = workspaceContract(repo({ ".env.sample": "# nothing needed yet\n" }));
+    if (silent === null || empty === null) throw new Error("expected a workspace contract");
+
+    expect(silent.environment).toBeNull();
+    expect(empty.environment).toEqual({ value: [], source: ".env.sample" });
+  });
+
   test("does not treat a later YAML list as workspace members", () => {
     const root = repo({
       "pubspec.yaml": "name: parser\nworkspace:\n  - packages/core\nother:\n  - unrelated\n",
