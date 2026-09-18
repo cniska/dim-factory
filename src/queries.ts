@@ -1697,10 +1697,11 @@ const fixes: Query = {
     );
     const commits = scalar(db, "SELECT count(*) AS n FROM repo_commit");
     const fixCommits = scalar(db, "SELECT count(*) AS n FROM repo_commit WHERE kind = 'fix'");
+    const edited = records.reduce((n, r) => n + Number(r.files ?? 0), 0);
     return {
       denominator:
         `${fixCommits} fix commits of ${commits} read from the repos on disk (${windowLine(ctx)}); ` +
-        "every skill that edited a file is a row, and `files` is the base each rate stands on",
+        `every skill that edited one of ${edited} files is a row, and \`files\` is the base each rate stands on`,
       columns,
       rows: toRows(records, columns),
       note:

@@ -316,7 +316,7 @@ The guard is to read the written text back the way the tools read it and refuse 
 
 ## A station's fix rate grades the code it is called on
 
-Asked on 2026-09-17. `q fixes` puts `simplify` at the top of the stations with a sizable sample — 28 of 59 files drew a later `fix:` commit, 47.5%, against 16.3% for `build` and 24.3% for files edited with no station attached. Read as a verdict on the station that is damning, and it is the wrong reading.
+Asked on 2026-09-17. `q fixes` reports `simplify` at 47.5% — 28 of 59 files drew a later `fix:` commit — against 16.3% for `build` and 24.3% for files edited with no station attached. Read as a verdict on the station that is damning, and it is the wrong reading.
 
 Asking the same question in both directions settles it. For every file an agent edited, whether a `fix:` commit touched it in the seven days *before* that edit, and in the seven days *after*, counting only edits with a full seven days elapsed:
 
