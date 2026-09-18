@@ -1,9 +1,9 @@
 import type { WallJob, WallLifecycle, WallStation } from "./factory-wall";
 
-export const WALL_COLUMNS: ReadonlyArray<{ lifecycle: WallLifecycle; label: string; empty: string }> = [
-  { lifecycle: "todo", label: "Todo", empty: "No claimed work waiting to start" },
-  { lifecycle: "active", label: "Active", empty: "Nothing in motion" },
-  { lifecycle: "done", label: "Done", empty: "Nothing finished yet" },
+export const WALL_COLUMNS: ReadonlyArray<{ lifecycle: WallLifecycle; label: string }> = [
+  { lifecycle: "todo", label: "Todo" },
+  { lifecycle: "active", label: "Active" },
+  { lifecycle: "done", label: "Done" },
 ];
 
 export const STATION_LABELS: Record<WallStation, string> = {

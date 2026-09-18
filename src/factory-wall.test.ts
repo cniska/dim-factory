@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { appendJobEvent, createJob, recordJobCheck, recordJobCommit } from "./factory-job";
 import { assembleWallSnapshot, buildWallBundle, serveWall } from "./factory-wall";
 import { SCHEMA_SQL } from "./schema";
+import { workerName } from "./worker-name";
 
 describe("factory wall snapshot", () => {
   test("assembles current work for the board from read-only job records", () => {
@@ -84,9 +85,10 @@ describe("factory wall snapshot", () => {
       station: "build",
       lifecycle: "active",
       agent: "builder",
+      worker: workerName("builder"),
       role: "builder",
       status: "running",
-      action: "check finished",
+      action: "Repository check finished",
       age: "8m",
       updatedAt: "2026-09-18T10:02:00.000Z",
       evidence: "bun run verify",

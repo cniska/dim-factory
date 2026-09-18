@@ -1,6 +1,10 @@
 import type { Database } from "bun:sqlite";
+import { readFileSync } from "node:fs";
+import tailwind from "bun-plugin-tailwind";
+import { age } from "./age";
 import { dbPath } from "./paths";
 import { openReadOnly } from "./read-db";
+import { workerName } from "./worker-name";
 
 export type WallStation = "plan" | "build" | "review" | "ship";
 export type WallLifecycle = "todo" | "active" | "done";
@@ -13,6 +17,8 @@ export type WallJob = {
   station: WallStation;
   lifecycle: WallLifecycle;
   agent: string;
+  /** What the floor calls this worker, so a card never shows an internal identity. */
+  worker: string;
   role: WallRole;
   status: WallStatus;
   action: string;
@@ -90,23 +96,31 @@ function status(value: string): WallStatus {
   return mapped;
 }
 
-function age(iso: string, now: Date): string {
-  const minutes = Math.max(0, Math.floor((now.getTime() - new Date(iso).getTime()) / 60000));
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ${minutes % 60}m`;
-  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
-}
+// Every kind `factory_job_event` allows, so no raw column value reaches the wall.
+const activityByKind: Record<string, string> = {
+  claimed: "Claimed, not started",
+  delegated: "Delegated to another agent",
+  started: "Working through the item",
+  commit_created: "Commit recorded",
+  check_finished: "Repository check finished",
+  review_finished: "Review evidence recorded",
+  fenced: "Stopped at a fence",
+  blocked: "Blocked on another item",
+  completed: "Finished",
+  failed: "Failed",
+  abandoned: "Abandoned",
+};
 
-function action(row: JobRow): string {
-  if (row.latest_reason) return row.latest_reason;
-  if (row.latest_kind === "started") return "Working through the item";
-  if (row.latest_kind === "review_finished") return "Review evidence recorded";
-  return row.latest_kind ? row.latest_kind.replaceAll("_", " ") : "Awaiting first evidence";
+function action(row: JobRow, attention: string | undefined): string {
+  // A stopped job's reason is already its attention line, and a card carrying one fact
+  // twice spends its loudest row saying nothing.
+  if (row.latest_reason && row.latest_reason !== attention) return row.latest_reason;
+  if (!row.latest_kind) return "Awaiting first evidence";
+  return activityByKind[row.latest_kind] ?? "Awaiting first evidence";
 }
 
 function mapJob(row: JobRow, now: Date): WallJob {
+  const agentId = row.latest_actor ?? row.agent_id ?? "unassigned";
   const stationName = station(row.station ?? row.latest_station);
   const jobStatus = status(row.status);
   const attention = attentionStatuses.has(jobStatus)
@@ -117,10 +131,11 @@ function mapJob(row: JobRow, now: Date): WallJob {
     item: row.item_id,
     station: stationName,
     lifecycle: lifecycleByStatus[jobStatus],
-    agent: row.latest_actor ?? row.agent_id ?? "unassigned",
-    role: role(row.latest_actor ?? row.agent_id, stationName),
+    agent: agentId,
+    worker: workerName(agentId),
+    role: role(agentId, stationName),
     status: jobStatus,
-    action: action(row),
+    action: action(row, attention),
     age: age(row.updated_at || row.claimed_at, now),
     updatedAt: row.updated_at || row.claimed_at,
     evidence: row.latest_evidence ?? "No evidence recorded yet",
@@ -153,8 +168,20 @@ export function assembleWallSnapshot(db: Database, now = new Date()): WallSnapsh
   return { generatedAt: now.toISOString(), source: "database", jobs, totals };
 }
 
+/** The face the page asks for, read off disk so nothing on this wall reaches the network. */
+export function wallFont(): Uint8Array {
+  return new Uint8Array(readFileSync(new URL("./fonts/jetbrains-mono-latin.woff2", import.meta.url)));
+}
+
 export async function buildWallBundle(): Promise<{ js: Uint8Array; css: Uint8Array }> {
-  const result = await Bun.build({ entrypoints: ["./src/wall-client.tsx"], target: "browser", minify: true });
+  const result = await Bun.build({
+    // Resolved against this module rather than the working directory, so the wall serves
+    // from wherever `dim` was invoked.
+    entrypoints: [new URL("./wall-client.tsx", import.meta.url).pathname],
+    target: "browser",
+    minify: true,
+    plugins: [tailwind],
+  });
   if (!result.success) throw new Error(result.logs.map((log) => log.message).join("\n"));
   const js = result.outputs.find((output) => output.path.endsWith(".js"));
   const css = result.outputs.find((output) => output.path.endsWith(".css"));
@@ -162,12 +189,18 @@ export async function buildWallBundle(): Promise<{ js: Uint8Array; css: Uint8Arr
   return { js: new Uint8Array(await js.arrayBuffer()), css: new Uint8Array(await css.arrayBuffer()) };
 }
 
-const page = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/wall.css"><title>Factory wall</title></head><body><div id="root"></div><script src="/wall.js"></script></body></html>`;
+// The face is declared here rather than in `wall.css` because the bundler resolves a css
+// `url()` at build time and this one is a route this server answers, not a file on disk
+// beside the stylesheet. Served from the wall's own port: nothing here reaches the network.
+const fontFace = `@font-face{font-family:"JetBrains Mono";src:url("/wall.woff2") format("woff2");font-weight:100 800;font-style:normal;font-display:swap}`;
+
+const page = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${fontFace}</style><link rel="stylesheet" href="/wall.css"><title>Wall · dim factory</title></head><body><div id="root"></div><script src="/wall.js"></script></body></html>`;
 
 export async function serveWall(
   options: { port?: number; databasePath?: string } = {},
 ): Promise<ReturnType<typeof Bun.serve>> {
   const bundle = await buildWallBundle();
+  const font = wallFont();
   const clients = new Set<Bun.ServerWebSocket<unknown>>();
   const path = options.databasePath ?? dbPath();
   let hash = "";
@@ -191,6 +224,10 @@ export async function serveWall(
       if (url.pathname === "/wall.css")
         return new Response(bundle.css as unknown as BodyInit, {
           headers: { "content-type": "text/css; charset=utf-8" },
+        });
+      if (url.pathname === "/wall.woff2")
+        return new Response(font as unknown as BodyInit, {
+          headers: { "content-type": "font/woff2", "cache-control": "max-age=31536000, immutable" },
         });
       if (url.pathname === "/api/snapshot") {
         try {
