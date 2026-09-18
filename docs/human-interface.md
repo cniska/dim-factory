@@ -71,11 +71,17 @@ These values come from persisted job claims and lifecycle events. The wall does 
 
 Planned. A card answers where an item is; the item view answers what happened to it. Opening one card shows that job alone, and the board stays an overview rather than growing columns to hold the detail.
 
+It is a dialog over the board, the shape a detail surface already takes in this owner's other work: a titled header, the job's facts in a term-and-value grid, and the content below it. Two things differ. It is sized for reading rather than for a form, so the plan, the ordered history and the account fit without the dialog outgrowing the viewport — the dialog holds its size and its content scrolls. And it carries no action row, because opening a record is the whole of what it does.
+
+Covering the board is the right trade: reading one item is a deliberate act at the machine, while the board is what carries the room. A dialog is also the reason the view can be live without being noisy — the board behind it keeps moving, and the reader is looking at one thing on purpose.
+
 - **One item.** The view opens from a card and shows that job's own record. It is a place to look at one thing, not a table of everything, and the board is still the way to find it.
 - **Its history, in order.** The lifecycle events as they were written: claimed, started, delegated, each commit, each check, each finding, and the outcome. The order is the story, so it reads down the page rather than being grouped into tabs.
 - **What it took to get there.** Repeated checks and repeated review rounds are visible as repetition rather than collapsed into a final state, so an item that passed on the first attempt reads differently from one that took four. A refused finding shows the grounds it was refused on.
 - **Its evidence, attached.** The commits with their subjects, the files they touched, the checks with their commands and exit status, the findings with their dimension, and the documents the job updated. Each sits with the event that produced it.
 - **Human words, machine ids.** The same split the board follows: the title and the plain description lead, and the job id, item id and commit shas are present for an agent to join on.
+
+The wall's primitives are small and its runtime dependencies are few, so the dialog is worth building on the platform's own `<dialog>` element, which carries modality, focus and dismissal already. Pulling in a component library for one surface would cost more than the surface.
 
 `dim q job <job-id>` already reads this record from the same tables, so the view renders what that query reads rather than assembling a second account of a job. Where the two would disagree, the query is the one to fix.
 
