@@ -1630,20 +1630,21 @@ const exemplars: Query = {
        FROM edited e
        JOIN shipped s ON s.path = e.path
        LEFT JOIN returned r ON r.path = e.path AND r.fixed_at > e.last_edit
-       WHERE r.path IS NULL AND e.edits >= 3
-       ORDER BY e.edits DESC, days_since DESC
+       WHERE r.path IS NULL
+       ORDER BY e.edits DESC, days_since DESC, e.path
        LIMIT 25`,
       [...w.params, homeOf(ctx)],
     );
     return {
       denominator:
         `${scalar(db, "SELECT count(*) AS n FROM repo_commit")} commits read from the repos on disk ` +
-        `(${windowLine(ctx)}); a file needs three agent edits and one commit to appear, and the top 25 are shown`,
+        `(${windowLine(ctx)}); a file needs an agent edit, a commit, and no fix commit coming back to it ` +
+        "since; `edits` counts the agent edits behind it, and the 25 most edited are shown",
       columns,
       rows: toRows(records, columns),
       note:
         (records.length === 0
-          ? "no agent-edited file in this window has shipped. "
+          ? "no agent-edited file in this window shipped without a fix coming back to it. "
           : "A nomination, never a verdict: nobody coming back to a file is not evidence it is right, only that it was " +
             "not revisited. A fix committed without the conventional prefix is invisible here, a file is matched by path " +
             "so repos sharing a name collide, and a file still being worked on today will read as untested rather than sound. ") +
