@@ -41,13 +41,16 @@ const statusIcon: Record<WallStatus, LucideIcon> = {
 };
 
 // Color carries the agent's role and nothing else; the station stays text, so the two
-// never compete for the same signal.
-const roleTint: Record<WallRole, string> = {
+// never compete for the same signal. A tint that can be wrong about the one thing it carries
+// is worse than a mark with none, so an unknown role takes no color.
+const roleTint: Record<WallRole, string | undefined> = {
   planner: "text-role-planner",
   builder: "text-role-builder",
   reviewer: "text-role-reviewer",
-  fixer: "text-role-fixer",
+  unknown: undefined,
 };
+
+const NO_WORKER = "no worker recorded";
 
 function statusTint(status: WallStatus): string {
   return stopped.has(status) ? "text-warn-foreground" : "text-muted-foreground";
@@ -116,8 +119,11 @@ function JobCard({ job, now, bumped }: { job: WallJob; now: Date; bumped: boolea
 
       <CardFooter className={cn(ROW, "mt-auto justify-between text-quiet")}>
         <span className="flex min-w-0 items-center gap-1.5">
-          <Robot label={`${job.worker}, ${job.role}`} className={roleTint[job.role]} />
-          <span className="truncate">{job.worker}</span>
+          <Robot
+            label={`${job.worker ?? NO_WORKER}, ${job.role === "unknown" ? "role unknown" : job.role}`}
+            className={roleTint[job.role]}
+          />
+          <span className="truncate">{job.worker ?? NO_WORKER}</span>
         </span>
         <Badge className="shrink-0">{STATION_LABELS[job.station]}</Badge>
       </CardFooter>
@@ -188,7 +194,7 @@ function feedStateOf(unavailable: boolean, stale: boolean): FeedState {
 
 /** What a card would show, so a snapshot that changed nothing lights nothing. */
 function cardState(job: WallJob): string {
-  return `${job.status}|${job.action}|${job.worker}|${job.attention ?? ""}`;
+  return `${job.status}|${job.action}|${job.worker ?? ""}|${job.attention ?? ""}`;
 }
 
 const BUMP_MS = 2000;

@@ -29,7 +29,6 @@
   --color-role-planner: #c39fe0;
   --color-role-builder: #7fd7a4;
   --color-role-reviewer: #8ab6f5;
-  --color-role-fixer: #f09b86;
 
   /* Station hues sit at one lightness so no station reads as louder than another; what
      ranks a card is its column, not its color. */
