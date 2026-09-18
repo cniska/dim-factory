@@ -67,7 +67,7 @@ The planned scheduler makes recurring factory runs visible without choosing the 
 - **Visibility.** The factory status query will show schedule state, due work, active runs, terminal outcomes and fences from the same persisted record.
 - **Control.** Pausing a schedule prevents new claims while preserving its history. A fence or repeated failure is recorded and remains visible to the next invocation.
 
-The first slice is the schedule definition, due selection and read path. Installing or mutating a host scheduler is outside that slice.
+The first slice is live: `dim schedule define` persists an interval schedule, `dim schedule pause|resume` controls its enabled state, and `dim q schedules` reads the persisted definitions and due selection. Installing or mutating a host scheduler, claiming queue work and recording job execution remain outside that slice.
 
 ## What is missing is not another skill
 

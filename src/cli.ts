@@ -11,6 +11,7 @@ import { closeDb, openDb } from "./db";
 import { diagnose } from "./doctor";
 import { downloadEmbedder, EMBED_DIMS, EMBED_MODEL, embedQuestion } from "./embed";
 import { buildIndex } from "./embed-index";
+import { createSchedule, setSchedulePaused } from "./factory-schedule";
 import { type Finding, FindingError, findingFrom, recordFinding } from "./finding";
 import { committerName } from "./git-identity";
 import { installHooks, planHooks } from "./hooks";
@@ -67,6 +68,10 @@ const USAGE = `usage: dim <command>
   q <name> [arg]  ask the database a named question (q list names them; --json)
                   covers the last ${DEFAULT_WINDOW}; --since <n>d|YYYY-MM-DD or --all to widen
                   prints ${DEFAULT_MAX_ROWS} rows; --rows <n> for more
+  schedule define <id> <queue> --every <seconds> [--paused]
+                  persist a harness-neutral recurring schedule
+  schedule pause|resume <id>
+                  pause or resume a persisted schedule
   label <id> <correction|clarification|not_correction> [--rule "..."]
                   record your judgement on one candidate correction
   finding --slice <name> --dimension <name> --answer <fixed|refused>
@@ -630,6 +635,38 @@ function runFinding(args: string[]): void {
   }
 }
 
+function runSchedule(args: string[]): void {
+  const action = args[0];
+  const id = args[1];
+  if (action === "define") {
+    const queue = args[2];
+    const everyAt = args.indexOf("--every");
+    const intervalSeconds = everyAt === -1 ? Number.NaN : Number(args[everyAt + 1]);
+    if (!id || !queue || !Number.isInteger(intervalSeconds) || intervalSeconds <= 0) {
+      throw new Error("usage: dim schedule define <id> <queue> --every <positive-seconds> [--paused]");
+    }
+    const db = openDb(dbPath());
+    try {
+      createSchedule(db, { id, queueId: queue, intervalSeconds, paused: args.includes("--paused") });
+      console.log(`defined schedule ${id} for queue ${queue}`);
+    } finally {
+      closeDb(db);
+    }
+    return;
+  }
+  if ((action === "pause" || action === "resume") && id) {
+    const db = openDb(dbPath());
+    try {
+      setSchedulePaused(db, id, action === "pause");
+      console.log(`${action}d schedule ${id}`);
+    } finally {
+      closeDb(db);
+    }
+    return;
+  }
+  throw new Error("usage: dim schedule define|pause|resume ...");
+}
+
 async function runQuery(args: string[]): Promise<void> {
   const name = args[0];
   if (!name || name === "list") {
@@ -702,6 +739,9 @@ try {
       break;
     case "finding":
       runFinding(process.argv.slice(3));
+      break;
+    case "schedule":
+      runSchedule(process.argv.slice(3));
       break;
     case "sql":
       // The first argument that is neither a flag nor a flag's value, so
