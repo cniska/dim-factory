@@ -27,6 +27,7 @@ export type QueueItem = {
   dependencies: string[];
   status: QueueStatus;
   transitions: QueueTransition[];
+  job_id?: string;
 };
 
 export type QueueFile = {
@@ -36,6 +37,15 @@ export type QueueFile = {
 };
 
 const terminalStatuses = new Set<QueueStatus>(["completed", "blocked", "fenced", "failed", "cancelled"]);
+const transitions = new Map<QueueStatus, Set<QueueStatus>>([
+  ["planned", new Set(["claimed", "blocked", "cancelled"])],
+  ["claimed", new Set(["running", "blocked", "failed", "cancelled"])],
+  ["running", new Set(["completed", "blocked", "fenced", "failed"])],
+]);
+
+const queueFields = new Set(["version", "id", "items"]);
+const itemFields = new Set(["id", "title", "description", "dependencies", "status", "transitions", "job_id"]);
+const transitionFields = new Set(["from", "to", "at", "reason"]);
 
 function isStatus(value: unknown): value is QueueStatus {
   return typeof value === "string" && (QUEUE_STATUSES as readonly string[]).includes(value);
@@ -46,13 +56,32 @@ function requiredString(value: unknown, field: string): string {
   return value;
 }
 
+function requiredTimestamp(value: unknown, field: string): string {
+  const timestamp = requiredString(value, field);
+  if (
+    Number.isNaN(Date.parse(timestamp)) ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(timestamp)
+  ) {
+    throw new Error(`${field} must be an ISO timestamp`);
+  }
+  return timestamp;
+}
+
+function assertFields(value: Record<string, unknown>, fields: Set<string>, name: string): void {
+  for (const field of Object.keys(value)) {
+    if (!fields.has(field)) throw new Error(`${name} has unknown field: ${field}`);
+  }
+}
+
 function parseTransition(value: unknown, itemId: string): QueueTransition {
   if (typeof value !== "object" || value === null) throw new Error(`invalid transition for item: ${itemId}`);
   const transition = value as Record<string, unknown>;
+  assertFields(transition, transitionFields, `transition for item ${itemId}`);
   const from = transition.from;
   const to = transition.to;
   if (!isStatus(from) || !isStatus(to)) throw new Error(`invalid transition status for item: ${itemId}`);
-  const result: QueueTransition = { from, to, at: requiredString(transition.at, "transition.at") };
+  if (!transitions.get(from)?.has(to)) throw new Error(`invalid transition for item: ${itemId}`);
+  const result: QueueTransition = { from, to, at: requiredTimestamp(transition.at, "transition.at") };
   if (transition.reason !== undefined) result.reason = requiredString(transition.reason, "transition.reason");
   return result;
 }
@@ -66,6 +95,7 @@ export function parseQueue(text: string): QueueFile {
   }
   if (typeof value !== "object" || value === null) throw new Error("queue file must be an object");
   const source = value as Record<string, unknown>;
+  assertFields(source, queueFields, "queue file");
   if (source.version !== QUEUE_VERSION)
     throw new Error(`unsupported queue version: ${String(source.version)}`);
   const id = requiredString(source.id, "queue.id");
@@ -74,6 +104,7 @@ export function parseQueue(text: string): QueueFile {
   const items = source.items.map((value) => {
     if (typeof value !== "object" || value === null) throw new Error("queue item must be an object");
     const sourceItem = value as Record<string, unknown>;
+    assertFields(sourceItem, itemFields, "queue item");
     const itemId = requiredString(sourceItem.id, "item.id");
     if (seen.has(itemId)) throw new Error(`duplicate item: ${itemId}`);
     seen.add(itemId);
@@ -83,9 +114,24 @@ export function parseQueue(text: string): QueueFile {
     ) {
       throw new Error(`item dependencies must be strings: ${itemId}`);
     }
+    if (new Set(sourceItem.dependencies).size !== sourceItem.dependencies.length) {
+      throw new Error(`duplicate dependency: ${itemId}`);
+    }
     if (!isStatus(sourceItem.status)) throw new Error(`invalid item status: ${itemId}`);
     if (!Array.isArray(sourceItem.transitions))
       throw new Error(`item transitions must be an array: ${itemId}`);
+    const transitionsForItem = sourceItem.transitions.map((transition) =>
+      parseTransition(transition, itemId),
+    );
+    let statusBeforeHistory: QueueStatus = "planned";
+    for (const transition of transitionsForItem) {
+      if (transition.from !== statusBeforeHistory)
+        throw new Error(`transition history does not chain: ${itemId}`);
+      statusBeforeHistory = transition.to;
+    }
+    if (statusBeforeHistory !== sourceItem.status) {
+      throw new Error(`transition history does not match status: ${itemId}`);
+    }
     return {
       id: itemId,
       title: requiredString(sourceItem.title, `item.title (${itemId})`),
@@ -94,7 +140,10 @@ export function parseQueue(text: string): QueueFile {
         : { description: requiredString(sourceItem.description, `item.description (${itemId})`) }),
       dependencies: [...sourceItem.dependencies],
       status: sourceItem.status,
-      transitions: sourceItem.transitions.map((transition) => parseTransition(transition, itemId)),
+      transitions: transitionsForItem,
+      ...(sourceItem.job_id === undefined
+        ? {}
+        : { job_id: requiredString(sourceItem.job_id, `item.job_id (${itemId})`) }),
     } as QueueItem;
   });
   const byId = new Map(items.map((item) => [item.id, item]));
@@ -110,15 +159,28 @@ export function parseQueue(text: string): QueueFile {
 function assertAcyclic(items: QueueItem[], byId: Map<string, QueueItem>): void {
   const visiting = new Set<string>();
   const visited = new Set<string>();
-  const visit = (id: string): void => {
-    if (visiting.has(id)) throw new Error("dependency cycle");
-    if (visited.has(id)) return;
-    visiting.add(id);
-    for (const dependency of byId.get(id)?.dependencies ?? []) visit(dependency);
-    visiting.delete(id);
-    visited.add(id);
-  };
-  for (const item of items) visit(item.id);
+  for (const item of items) {
+    if (visited.has(item.id)) continue;
+    const stack: { id: string; nextDependency: number }[] = [{ id: item.id, nextDependency: 0 }];
+    visiting.add(item.id);
+    while (stack.length > 0) {
+      const current = stack[stack.length - 1];
+      if (!current) throw new Error("dependency traversal failed");
+      const dependencies = byId.get(current.id)?.dependencies ?? [];
+      if (current.nextDependency === dependencies.length) {
+        stack.pop();
+        visiting.delete(current.id);
+        visited.add(current.id);
+        continue;
+      }
+      const dependency = dependencies[current.nextDependency++];
+      if (dependency === undefined) throw new Error("dependency traversal failed");
+      if (visiting.has(dependency)) throw new Error("dependency cycle");
+      if (visited.has(dependency)) continue;
+      visiting.add(dependency);
+      stack.push({ id: dependency, nextDependency: 0 });
+    }
+  }
 }
 
 export function readyItems(queue: QueueFile, limit = Number.POSITIVE_INFINITY): QueueItem[] {
@@ -129,7 +191,7 @@ export function readyItems(queue: QueueFile, limit = Number.POSITIVE_INFINITY): 
         item.status === "planned" &&
         item.dependencies.every((dependency) => byId.get(dependency)?.status === "completed"),
     )
-    .sort((left, right) => left.id.localeCompare(right.id))
+    .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
     .slice(0, limit);
 }
 
@@ -143,14 +205,17 @@ export function transitionQueue(
   const item = queue.items.find((candidate) => candidate.id === itemId);
   if (!item) throw new Error(`item not found: ${itemId}`);
   if (terminalStatuses.has(item.status)) throw new Error("terminal item cannot transition");
+  if (!transitions.get(item.status)?.has(status)) throw new Error("invalid status transition");
+  const timestamp = requiredTimestamp(at, "transition.at");
+  const normalizedReason = reason === undefined ? undefined : requiredString(reason, "transition.reason");
   if (status === "claimed" && !readyItems(queue).some((candidate) => candidate.id === itemId)) {
     throw new Error("dependencies are not completed");
   }
   const transition: QueueTransition = {
     from: item.status,
     to: status,
-    at,
-    ...(reason === undefined ? {} : { reason }),
+    at: timestamp,
+    ...(normalizedReason === undefined ? {} : { reason: normalizedReason }),
   };
   return {
     ...queue,
