@@ -33,6 +33,7 @@ import { checkTask } from "./tasks";
 import { trace } from "./trace";
 import { readWake, renderWake, type Wake, wireFor } from "./wake";
 import { resolveWalk, spoolWalk } from "./walk";
+import { warn } from "./warn";
 import { runWt, WtError } from "./wt-command";
 
 const USAGE = `usage: dim <command>
@@ -121,13 +122,13 @@ function printReport(report: SyncReport): void {
   // The cursor has already advanced past these lines, so this is the only time
   // they are ever named: nothing re-reads them short of `dim rebuild`.
   for (const drop of report.dropped) {
-    console.error(
+    warn(
       `dim: ${drop.path}: ${drop.lines.length} lines were not JSON and are lost ` +
         `(line ${drop.lines.slice(0, 5).join(", ")}${drop.lines.length > 5 ? ", …" : ""})`,
     );
   }
   for (const failure of report.failures) {
-    console.error(`dim: ${failure.path}: ${failure.error}`);
+    warn(`dim: ${failure.path}: ${failure.error}`);
   }
 }
 
@@ -480,7 +481,7 @@ function runCheckCommits(range: string | undefined): void {
   if (!range) throw new Error("check-commits needs a revision range, e.g. main..HEAD");
   const offenses = checkRange(range);
   for (const o of offenses) {
-    console.error(`${o.sha.slice(0, 8)} ${o.violation}: ${o.subject}`);
+    warn(`${o.sha.slice(0, 8)} ${o.violation}: ${o.subject}`);
   }
   if (offenses.length > 0) process.exit(1);
   console.log(`every authored subject in ${range} holds`);
@@ -588,14 +589,14 @@ function runLabel(args: string[]): void {
   const ruleAt = args.indexOf("--rule");
   const rule = ruleAt === -1 ? null : (args[ruleAt + 1] ?? null);
   if (!messageId || !label) {
-    console.error('usage: dim label <message-id> <correction|clarification|not_correction> [--rule "..."]');
+    warn('usage: dim label <message-id> <correction|clarification|not_correction> [--rule "..."]');
     process.exit(1);
   }
   const db = openDb(dbPath());
   try {
     const found = db.prepare("SELECT id FROM message WHERE id = ?").get(messageId);
     if (!found) {
-      console.error(`dim: no message ${messageId}`);
+      warn(`dim: no message ${messageId}`);
       process.exit(1);
     }
     db.run(
@@ -621,7 +622,7 @@ function runFinding(args: string[]): void {
     finding = findingFrom(args, process.cwd());
   } catch (error) {
     if (!(error instanceof FindingError)) throw error;
-    console.error(error.message);
+    warn(error.message);
     process.exit(1);
   }
   const db = openDb(dbPath());
@@ -643,7 +644,7 @@ async function runQuery(args: string[]): Promise<void> {
   }
   const query = findQuery(name);
   if (!query) {
-    console.error(`dim: no query named ${name}; try \`dim q list\``);
+    warn(`dim: no query named ${name}; try \`dim q list\``);
     process.exit(1);
   }
   const flagValues = new Set<string>();
@@ -765,9 +766,9 @@ try {
 } catch (error) {
   // wt speaks as wt: its messages are pinned by scripts/wt.test.sh.
   if (error instanceof WtError) {
-    console.error(`wt: ${error.message}`);
+    warn(`wt: ${error.message}`);
     process.exit(1);
   }
-  console.error(`dim: ${error instanceof Error ? error.message : String(error)}`);
+  warn(`dim: ${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 }

@@ -12,7 +12,10 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "preset": "recommended"
+      "preset": "recommended",
+      "suspicious": {
+        "noConsole": { "level": "error", "options": { "allow": ["log"] } }
+      }
     }
   },
   "assist": {

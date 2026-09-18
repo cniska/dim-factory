@@ -132,6 +132,14 @@ assert "an unknown rm option is named" "$bogus" "wt: unknown rm option: --bogus"
 assert "removing an absent worktree exits non-zero" "$absent_rc" 1
 contains "removing an absent worktree says where it looked" "$absent" "wt: no worktree at"
 
+# Forced here rather than inherited, so the case holds in the environment the
+# suite usually runs in.
+set +e
+forced=$(cd "$REPO" && FORCE_COLOR=3 $WT rm task-a task-b 2>&1)
+set -e
+assert "an error carries no escapes when the environment forces color" \
+  "$forced" "wt: branch name specified more than once"
+
 # errors: missing arguments and calls outside a repository stay actionable.
 set +e
 missing=$(run path 2>&1); missing_rc=$?
