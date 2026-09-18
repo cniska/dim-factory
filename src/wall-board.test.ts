@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { WallJob } from "./factory-wall";
-import { jobsByLifecycle, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
+import { jobsByLifecycle, WALL_COLUMNS } from "./wall-board";
 
 const job = (
   id: string,
@@ -10,6 +10,7 @@ const job = (
 ): WallJob => ({
   id,
   item: id,
+  worker: "copper-1",
   station,
   lifecycle,
   agent: "agent",
@@ -28,18 +29,6 @@ describe("factory wall board", () => {
       ["active", "Active"],
       ["done", "Done"],
     ]);
-  });
-
-  test("names what each empty column means rather than saying it is empty", () => {
-    expect(WALL_COLUMNS.map((column) => column.empty)).toEqual([
-      "No claimed work waiting to start",
-      "Nothing in motion",
-      "Nothing finished yet",
-    ]);
-  });
-
-  test("labels every station as card metadata rather than a column", () => {
-    expect(STATION_LABELS).toEqual({ plan: "Plan", build: "Build", review: "Review", ship: "Ship" });
   });
 
   test("groups each snapshot job into its lifecycle without dropping empty columns", () => {

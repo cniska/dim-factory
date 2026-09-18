@@ -1,52 +1,111 @@
-:root {
-  color-scheme: dark;
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --ground: #090a0b; --surface: #111315; --surface-alert: #201a10; --line: #30353a;
-  --text: #f5f7f8; --muted: #a0a7ad; --quiet: #70777e; --accent: #b6c5d1;
-  --warn: #d3a35f; --warn-text: #e1c18a; --danger: #df806f; --good: #9fb99f;
-  --plan: #b49bc7; --review: #9ba9d0; --fix: #d29d76; --build: #9cb8a9; --ship: #a9b5c0;
-  --radius: .55rem; --space-2: .45rem; --space-3: .7rem; --space-4: 1rem;
-  --space-5: 1.2rem; --space-6: 1.7rem;
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* The wall hangs on a screen in a room and never follows a system theme, so these are the
+   palette rather than an override and there is no light branch to keep. */
+@theme inline {
+  --color-background: #090a0b;
+  --color-foreground: #f5f7f8;
+  --color-card: #111315;
+  /* A card that stopped sits on its own ground, so a column reads as moving or not before
+     any of its text resolves. */
+  --color-card-stopped: #181414;
+  --color-border: #30353a;
+  --color-muted-foreground: #a0a7ad;
+  --color-quiet: #70777e;
+  --color-accent: #b6c5d1;
+
+  --color-alert: #201a10;
+  --color-alert-border: #67512f;
+  --color-warn: #d3a35f;
+  --color-warn-foreground: #e1c18a;
+  --color-danger: #df806f;
+  --color-good: #9fb99f;
+
+  /* A role's color is the only color a running card carries, so it is set brighter than the
+     station hues it sits beside: at 13px a desaturated mid-tone is indistinguishable from the
+     body grey, which is what these replaced. Held clear of the warn amber, which means
+     something else. */
+  --color-role-planner: #c39fe0;
+  --color-role-builder: #7fd7a4;
+  --color-role-reviewer: #8ab6f5;
+  --color-role-fixer: #f09b86;
+
+  /* Station hues sit at one lightness so no station reads as louder than another; what
+     ranks a card is its column, not its color. */
+  --color-station-plan: #b49bc7;
+  --color-station-build: #9cb8a9;
+  --color-station-review: #9ba9d0;
+  --color-station-ship: #a9b5c0;
+
+  --radius-wall: 0.55rem;
+
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--ground); color: var(--text); }
-.wall-shell { width: min(1440px, 100%); min-height: 100vh; margin: 0 auto; padding: clamp(1rem, 2.6vw, 2.4rem); display: flex; flex-direction: column; text-transform: lowercase; }
-.wall-header { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-6); padding-bottom: var(--space-3); }
-.eyebrow { margin: 0 0 var(--space-2); color: var(--muted); font-size: .72rem; font-weight: 750; letter-spacing: .14em; }
-h1, h2, h3, p { margin-top: 0; } h1 { font-size: clamp(2rem, 4vw, 3.4rem); line-height: .98; letter-spacing: -.045em; margin-bottom: var(--space-3); }
-h1 span { display: block; }
-h2 { font-size: 1.1rem; margin-bottom: 0; letter-spacing: -.02em; } h3 { font-size: 1.05rem; line-height: 1.2; margin: var(--space-3) 0 var(--space-2); overflow-wrap: anywhere; }
-.lede { color: var(--muted); font-size: .95rem; margin-bottom: 0; }
-.feed-status { display: flex; align-items: center; gap: var(--space-2); min-height: 2.25rem; border: 1px solid var(--line); border-radius: var(--radius); color: var(--muted); padding: .55rem .8rem; white-space: nowrap; }
-.feed-status.live span:first-child { color: var(--good); } .feed-status.stale, .feed-status.unavailable { color: var(--warn); } .feed-status small { color: var(--quiet); }
-.wall-actions { display: flex; align-items: center; gap: var(--space-2); }
-.ui-button { font: inherit; color: inherit; }
-.icon-button { display: grid; place-items: center; width: 2.25rem; height: 2.25rem; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; }
-.icon-button:hover, .icon-button:focus-visible { border-color: var(--accent); color: var(--text); }
-.stale-banner { border: 1px solid #67512f; background: var(--surface-alert); color: var(--warn-text); margin: var(--space-4) 0 0; padding: .8rem var(--space-4); border-radius: var(--radius); }
-.board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin: var(--space-5) 0; align-items: start; }
-.board-unavailable { grid-column: 1 / -1; min-height: 244px; margin: 0; border: 1px dashed var(--line); border-radius: var(--radius); color: var(--quiet); padding: var(--space-4); display: grid; place-items: center; text-align: center; }
-.board-column { min-width: 0; }
-.column-heading { display: flex; justify-content: space-between; align-items: baseline; padding: 0 .15rem .6rem; margin-bottom: var(--space-3); }
-.column-heading span { color: var(--muted); font-size: .9rem; font-variant-numeric: tabular-nums; }
-.column-cards { display: grid; gap: var(--space-3); }
-.ui-card { display: flex; flex-direction: column; }
-.ui-badge { display: inline-flex; align-items: center; border: 1px solid var(--line); }
-.job-card { height: 244px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--build); border-radius: var(--radius); padding: var(--space-4); min-width: 0; }
-.job-card.role-planner { border-top-color: var(--plan); } .job-card.role-reviewer { border-top-color: var(--review); } .job-card.role-fixer { border-top-color: var(--fix); }
-.job-card.status-blocked, .job-card.status-fenced, .job-card.status-failed, .job-card.status-abandoned { background: #181414; }
-.job-top, .job-meta { display: flex; justify-content: space-between; gap: var(--space-3); color: var(--muted); font-size: .75rem; }
-.job-top span:last-child { color: var(--quiet); font-variant-numeric: tabular-nums; }
-.state-mark { display: inline-flex; align-items: center; gap: .35rem; color: var(--muted); } .status-running .state-mark { color: var(--good); } .status-blocked .state-mark, .status-fenced .state-mark, .status-failed .state-mark, .status-abandoned .state-mark { color: var(--danger); }
-.action { color: var(--muted); height: 2.4em; margin-bottom: var(--space-3); overflow: hidden; overflow-wrap: anywhere; }
-.station-tag { align-self: flex-start; margin: 0; border-left: 3px solid var(--build); color: var(--text); padding: .2rem .5rem; font-size: .72rem; }
-.station-tag.station-plan { border-left-color: var(--plan); } .station-tag.station-review { border-left-color: var(--review); } .station-tag.station-ship { border-left-color: var(--ship); }
-.job-meta { margin-top: auto; padding-top: var(--space-3); overflow-wrap: anywhere; }
-.worker { display: inline-flex; align-items: center; gap: .35rem; color: var(--text); }
-.card-warning { color: var(--warn-text); font-size: .78rem; margin: var(--space-3) 0 0; overflow-wrap: anywhere; }
-.column-overflow { margin: 0; color: var(--quiet); font-size: .75rem; text-align: center; }
-.empty-column { display: none; }
-footer { color: var(--quiet); padding-top: var(--space-3); margin-top: auto; font-size: .78rem; }
-@media (max-width: 760px) { .board { grid-template-columns: 1fr; } .job-card, .empty-column { height: auto; min-height: 0; } .action { height: auto; } }
-@media (max-width: 620px) { .wall-shell { padding: var(--space-3); } .wall-header { display: block; } .feed-status { display: inline-flex; margin-top: var(--space-4); } }
-@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+
+/* A mark swells rather than fades: it has no meaning of its own to lose, where a line of
+   words that grows and shrinks is one a reader's eye keeps re-measuring. One breath is slow
+   against every other motion here, so it reads as a pulse rather than a blink, and quick
+   enough not to become scenery. */
+@keyframes breath {
+  from {
+    transform: scale(0.9);
+  }
+  to {
+    transform: scale(1.1);
+  }
+}
+
+.breathing {
+  animation: breath 450ms ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .breathing {
+    animation: none;
+  }
+}
+
+/* Breathing in color rather than in size or ink: the mark travels between the grey a waiting
+   card rests at and the foreground, so a running card reads as the same board vocabulary in
+   motion. One breath is slow against every other motion here, so it reads as a pulse rather
+   than a blink, and quick enough not to become scenery. */
+@keyframes breath {
+  from {
+    color: var(--color-muted-foreground);
+  }
+  to {
+    color: var(--color-foreground);
+  }
+}
+
+.breathing {
+  animation: breath 450ms ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .breathing {
+    animation: none;
+  }
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-mono;
+    margin: 0;
+  }
+
+  /* Rendered lowercase while the source keeps its real capitalization: a proper noun
+     lowercased at the source reads as a typo everywhere the text is copied or quoted. */
+  .wall-shell {
+    text-transform: lowercase;
+  }
+}
