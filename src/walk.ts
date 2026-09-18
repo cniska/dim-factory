@@ -2,7 +2,8 @@ import type { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { codexDir, type Env, resolveHomeDir } from "./paths";
-import { type Tool, walkSpoolDir } from "./spool";
+import { walkSpoolDir } from "./spool";
+import type { Tool } from "./tools";
 
 /** The rules file names a repo carries, as `guidance_version` already tracks them. */
 const NAMES = ["CLAUDE.md", "AGENTS.md"];

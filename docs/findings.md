@@ -387,3 +387,11 @@ Found on 2026-09-18, checking `dim q findings`. A test claiming an invariant is 
 The edit that no-ops is the failure mode, not the editor. A file tool refuses an edit whose target has moved; a shell rewrite reports success for replacing nothing. This is the concrete case behind the rule that files are read and edited through the file tools rather than the shell, and it costs a false proof rather than a lost write.
 
 What makes a removal proof trustworthy is reading the failure, not the exit code: the red must name the test the invariant belongs to. A removal that leaves every test passing means the invariant was never held or was never removed, and those two are told apart by looking at the file.
+
+## The parsers generalize; the wiring around them did not
+
+Asked on 2026-09-18, to price a third agent CLI before deciding whether to support one. `parse-claude.ts` and `parse-codex.ts` already share a shape: both take lines and a first line number, both fill the same `ParsedChunk` accumulators, and both drop an unparseable line by number rather than stalling. What differs is only what each carries in — a thread id and running state for Codex, the known skill names for Claude. So the parser boundary was never the obstacle.
+
+The cost sat outside it. The pair was written as a literal list in four separate places, the `Tool` type was declared twice in two modules, and four tables constrained their `tool` column with the vocabulary spelled out again in SQL — ten places naming the same two tools, none of them derived from another. A third tool meant finding all ten, and the failure mode of missing one is a row the code writes and the database refuses.
+
+The list is now one constant, the type is declared once, and the four constraints interpolate it, so the vocabulary is stated once. What is still per-tool and genuinely so: the source module that finds files on disk, the parser, the hook config path, and Codex's trust check, which has no Claude equivalent. That is the real price of a third tool, and it is a fair one — the accidental half is gone.
