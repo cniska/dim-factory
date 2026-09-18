@@ -29,12 +29,19 @@ function seeded(): Env {
   const root = newRoot();
   // HOME too, not just the DIM_* roots: doctor reads the tools' own config, and
   // a test that leaves it unset would diagnose the real machine.
-  const env = { ...scratchEnv(root), HOME: join(root, "home") };
+  // Git's global config too, or the gate checks would read the reader's own.
+  const env = { ...scratchEnv(root), HOME: join(root, "home"), GIT_CONFIG_GLOBAL: join(root, "gitconfig") };
   writeClaudeTranscript(env, "-Users-x-code-demo", "11111111-2222-3333-4444-555555555555");
   const db = openDb(dbPath(env));
   sync(db, env);
   closeDb(db);
   return env;
+}
+
+function pointGitAt(env: Env, dir: string): void {
+  execFileSync("git", ["config", "--global", "core.hooksPath", dir], {
+    env: { ...process.env, ...env } as NodeJS.ProcessEnv,
+  });
 }
 
 function check(env: Env, name: string) {
@@ -79,13 +86,59 @@ describe("doctor", () => {
     // names which one.
     const hooks = join(env.HOME as string, ".config", "dim", "hooks");
     mkdirSync(hooks, { recursive: true });
-    writeFileSync(join(hooks, "commit-msg"), "#!/usr/bin/env bash\nexit 0\n");
-    writeFileSync(join(hooks, "pre-commit"), "#!/usr/bin/env bash\nexit 0\n");
+    pointGitAt(env, hooks);
+    const bodies = gateHooks(["github.com/an-account"]);
+    const bodyOf = (name: string) => bodies.find((h) => h.name === name)?.body ?? "";
+    writeFileSync(join(hooks, "commit-msg"), bodyOf("commit-msg"));
+    writeFileSync(join(hooks, "pre-commit"), bodyOf("pre-commit"));
     const partial = check(env, "commit gate");
     expect(partial?.state).toBe("warn");
     expect(partial?.detail).toContain("pre-push");
 
+    writeFileSync(join(hooks, "pre-push"), bodyOf("pre-push"));
+    expect(check(env, "commit gate")?.state).toBe("ok");
+  });
+
+  // A hook written before the scripts changed runs the old rules, and existence
+  // alone cannot see that: the check read as every hook in place for every repo.
+  test("names a hook whose body is not the one the gate now writes", () => {
+    const env = seeded();
+    const hooks = join(env.HOME as string, ".config", "dim", "hooks");
+    mkdirSync(hooks, { recursive: true });
+    pointGitAt(env, hooks);
+    for (const { name, body } of gateHooks(["github.com/an-account"])) {
+      writeFileSync(join(hooks, name), body);
+    }
+    expect(check(env, "commit gate")?.state).toBe("ok");
+
     writeFileSync(join(hooks, "pre-push"), "#!/usr/bin/env bash\nexit 0\n");
+    const stale = check(env, "commit gate");
+    expect(stale?.state).toBe("warn");
+    expect(stale?.detail).toContain("pre-push");
+    expect(stale?.fix).toContain("install-commit-gate");
+  });
+
+  // Git reads one hooks directory, so a gate it is not pointed at is three
+  // correct files that run nowhere.
+  test("names a gate git is not pointed at", () => {
+    const env = seeded();
+    const hooks = join(env.HOME as string, ".config", "dim", "hooks");
+    mkdirSync(hooks, { recursive: true });
+    for (const { name, body } of gateHooks(["github.com/an-account"])) {
+      writeFileSync(join(hooks, name), body);
+    }
+    const unset = check(env, "commit gate");
+    expect(unset?.state).toBe("warn");
+    expect(unset?.detail).toContain("core.hooksPath is unset");
+
+    const theirs = join(env.HOME as string, "someone-elses-hooks");
+    mkdirSync(theirs, { recursive: true });
+    pointGitAt(env, theirs);
+    const taken = check(env, "commit gate");
+    expect(taken?.state).toBe("warn");
+    expect(taken?.detail).toContain(theirs);
+
+    pointGitAt(env, hooks);
     expect(check(env, "commit gate")?.state).toBe("ok");
   });
 
