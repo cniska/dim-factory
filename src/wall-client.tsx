@@ -38,15 +38,6 @@ const stateLabels: Record<WallStatus, string> = {
 
 const stopped = new Set<WallStatus>(["blocked", "fenced", "failed", "abandoned"]);
 
-/** Still expected to move, which is the only state a worker's role tells a reader anything in. */
-const moving = new Set<WallStatus>(["waiting", "running"]);
-
-// A column asserts a state only where it holds one. Todo holds nothing but waiting, so the word
-// there repeats the heading; Active and Done each hold several — a completed order and an
-// abandoned one sit in the same column and read as the same mark without it — so the word is
-// what tells them apart.
-const columnSaysTheState = new Set<WallStatus>(["waiting"]);
-
 const statusIcon: Record<WallStatus, LucideIcon> = {
   running: CircleDot,
   waiting: CircleDot,
@@ -150,12 +141,10 @@ function JobCard({
           <StatusIcon
             size={12}
             strokeWidth={1.8}
-            {...(columnSaysTheState.has(job.status)
-              ? { role: "img", "aria-label": stateLabels[job.status] }
-              : { "aria-hidden": "true" })}
+            aria-hidden="true"
             className={job.status === "running" ? "breathing" : undefined}
           />
-          {columnSaysTheState.has(job.status) ? null : stateLabels[job.status]}
+          {stateLabels[job.status]}
         </span>
         {/* Re-derived from the timestamp every second rather than read off the snapshot, so
             the board keeps moving between pushes instead of standing still. */}
@@ -201,11 +190,9 @@ function JobCard({
         <span className="flex min-w-0 items-center gap-1.5">
           {job.worker ? (
             <>
-              {/* Tinted only while the work is live: a role says who to expect movement
-                  from, and on a stopped order it is a color with nothing left to mean. */}
               <Robot
                 label={`${job.worker}, ${job.role === "unknown" ? "role unknown" : job.role}`}
-                className={moving.has(job.status) ? roleTint[job.role] : undefined}
+                className={roleTint[job.role]}
               />
               <span className="truncate">{job.worker}</span>
             </>

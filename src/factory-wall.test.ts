@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import {
   appendJobEvent,
   createJob,
+  type OrderRole,
   recordJobCheck,
   recordJobCommit,
   recordJobDocument,
@@ -35,6 +36,7 @@ describe("factory wall snapshot", () => {
         itemId: "wall",
         title: "Show the wall",
         agentId: "builder",
+        role: "builder",
         station: "build",
         worktree: "/tmp/wall",
         branch: "wall",
@@ -315,7 +317,8 @@ describe("factory wall snapshot", () => {
       itemId: "unattributed",
       station: "build",
       lifecycle: "todo",
-      role: "builder",
+      // Nobody was named, so nothing says what kind of worker this is either.
+      role: "unknown",
       status: "waiting",
       age: "5m",
       lastEventAt: "2026-09-18T10:00:00.000Z",
@@ -324,10 +327,10 @@ describe("factory wall snapshot", () => {
     db.close();
   });
 
-  test("reads a role off the recorded station and never off the agent's name", () => {
+  test("reads a role off the claim, never off the station or the agent's name", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    const claim = (id: string, stationValue: string | undefined, agentId: string) =>
+    const claim = (id: string, recorded: OrderRole | undefined, stationValue: string, agentId: string) =>
       createJob(
         db,
         {
@@ -337,15 +340,17 @@ describe("factory wall snapshot", () => {
           itemId: id,
           title: `Claim ${id}`,
           agentId,
-          ...(stationValue ? { station: stationValue } : {}),
+          station: stationValue,
+          ...(recorded ? { role: recorded } : {}),
         },
         "2026-09-18T10:00:00.000Z",
       );
-    claim("planning", "dim-station-plan", "builder-1");
-    claim("building", "dim-station-build", "builder-planner-queue");
-    claim("reviewing", "dim-station-review", "builder-2");
-    claim("shipping", "ship", "planner-3");
-    claim("unstationed", undefined, "reviewer-4");
+    // A builder sitting at the review station is still a builder, and a name that reads
+    // like a role is a string somebody typed.
+    claim("planning", "planner", "dim-station-build", "agent-1");
+    claim("building", "builder", "dim-station-review", "planner-2");
+    claim("reviewing", "reviewer", "dim-station-plan", "agent-3");
+    claim("unrecorded", undefined, "dim-station-build", "builder-4");
 
     const roles = new Map(
       assembleWallSnapshot(db, new Date("2026-09-18T10:20:00.000Z")).jobs.map((job) => [
@@ -357,8 +362,7 @@ describe("factory wall snapshot", () => {
     expect(roles.get("planning")).toBe("planner");
     expect(roles.get("building")).toBe("builder");
     expect(roles.get("reviewing")).toBe("reviewer");
-    expect(roles.get("shipping")).toBe("unknown");
-    expect(roles.get("unstationed")).toBe("unknown");
+    expect(roles.get("unrecorded")).toBe("unknown");
     db.close();
   });
 

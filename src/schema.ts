@@ -12,7 +12,7 @@
 
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 21;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -196,6 +196,11 @@ CREATE TABLE IF NOT EXISTS factory_job (
   -- more has none to copy, and an invented one would read as the owner's words.
   description     TEXT,
   agent_id        TEXT,
+  -- What the worker was called in as. Set when the driver spawns it and never again:
+  -- a builder stays a builder wherever its work sits, so nothing downstream has to
+  -- guess a worker's kind from the station, which says where the work is and not who
+  -- is holding it.
+  role            TEXT CHECK (role IN ('planner', 'builder', 'reviewer')),
   session_id      TEXT,
   worktree        TEXT,
   branch          TEXT,

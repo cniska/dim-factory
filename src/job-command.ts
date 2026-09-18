@@ -2,10 +2,13 @@ import type { Database } from "bun:sqlite";
 import {
   appendJobEvent,
   createJob,
+  isOrderRole,
   isTerminalJobStatus,
   type JobEventKind,
   type JobStatus,
   moveJob,
+  ORDER_ROLES,
+  type OrderRole,
   recordJobCheck,
   recordJobCommit,
   recordJobDocument,
@@ -17,7 +20,8 @@ import {
 export class JobCommandError extends Error {}
 
 export const JOB_USAGE = `usage: dim job claim <job-id> --run <id> --queue <id> --item <id> --title "..."
-                      [--description "..."] [--agent <id>] [--session <id>] [--station <name>]
+                      [--description "..."] [--agent <id>] [--role <planner|builder|reviewer>]
+                      [--session <id>] [--station <name>]
                       [--worktree <path>] [--branch <name>]
        dim job start <job-id>
        dim job move <job-id> --station <name>
@@ -36,6 +40,7 @@ const CLAIM_FLAGS = [
   "--title",
   "--description",
   "--agent",
+  "--role",
   "--session",
   "--station",
   "--worktree",
@@ -69,6 +74,20 @@ function required(given: Map<string, string>, flag: string): string {
   return value;
 }
 
+/**
+ * What the worker was called in as, which the driver knows when it spawns one and
+ * nothing downstream can recover: a station says where the work is, never who holds it.
+ */
+function role(given: string | undefined): OrderRole | undefined {
+  if (given === undefined) return undefined;
+  if (!isOrderRole(given)) {
+    throw new JobCommandError(
+      `${given} is not a role a worker holds an order as; one of ${ORDER_ROLES.join(", ")}`,
+    );
+  }
+  return given;
+}
+
 function claim(db: Database, jobId: string, args: string[]): string {
   const given = flags(args, CLAIM_FLAGS);
   const itemId = required(given, "--item");
@@ -81,6 +100,7 @@ function claim(db: Database, jobId: string, args: string[]): string {
     title: required(given, "--title"),
     description: given.get("--description"),
     agentId: given.get("--agent"),
+    role: role(given.get("--role")),
     sessionId: given.get("--session"),
     worktree: given.get("--worktree"),
     branch: given.get("--branch"),
