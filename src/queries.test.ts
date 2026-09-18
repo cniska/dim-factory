@@ -499,25 +499,27 @@ describe("read path", () => {
     }
   });
 
-  test("resume gives facts for a cold start and never a next move", () => {
+  test("resume gives facts for a cold start and the stored next move", () => {
     const env = seeded();
+    const write = openDb(dbPath(env));
+    write.run(
+      `INSERT INTO factory_handoff (message_id, session_id, role, ts, title, next)
+       VALUES ('handoff-1', ?, 'assistant', '2026-09-01T12:00:00Z', '# Handoff — test', 'Run the next check.')`,
+      [SESSION],
+    );
+    closeDb(write);
     const db = openReadOnly(dbPath(env));
-    try {
-      const r = findQuery("resume")?.run(db, { arg: SESSION.slice(0, 8) });
-      const what = (r?.rows ?? []).map((row) => String(row[0]));
-      expect(what).toContain("branch");
-      expect(what).toContain("said");
-      // The judgement a handoff exists to make is not a fact in the database, and
-      // a row claiming it would read as one.
-      expect(what).not.toContain("next");
-      expect(r?.note).toContain("Facts only");
+    const r = findQuery("resume")?.run(db, { arg: SESSION.slice(0, 8) });
+    const what = (r?.rows ?? []).map((row) => String(row[0]));
+    expect(what).toContain("branch");
+    expect(what).toContain("said");
+    expect(what).toContain("next");
+    expect(r?.note).toContain("Facts only");
 
-      const missing = findQuery("resume")?.run(db, { arg: "zzzzzzzz" });
-      expect(missing?.rows).toEqual([]);
-      expect(missing?.note).toContain("no session starts with");
-    } finally {
-      db.close();
-    }
+    const missing = findQuery("resume")?.run(db, { arg: "zzzzzzzz" });
+    expect(missing?.rows).toEqual([]);
+    expect(missing?.note).toContain("no session starts with");
+    db.close();
   });
 
   test("session resolves a prefix and says so when it matches nothing", () => {

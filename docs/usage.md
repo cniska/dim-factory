@@ -65,6 +65,9 @@ The line has two entry points:
 - **`dim-feat`** — start feature work, scope it against the record and cut it into verified slices.
 - **`dim-fix`** — start defect work, triage it and prove it with a failing test before fixing it.
 
+Use `/dim-handoff` in an agent session to write the strict handoff format that
+`dim sync` backfills for wake and resume.
+
 The stations are:
 
 - **`dim-plan`** — scope work against prior art and decisions when the cut is not clear.

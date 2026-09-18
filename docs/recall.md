@@ -14,6 +14,8 @@ A handoff is printed into the transcript before it is pasted, so the same text l
 
 The handoff record is recoverable from text already collected, and `sync` backfills strict `# Handoff` plus `## Next` pairs into `factory_handoff`. Wake reads that projection rather than parsing transcript text. The edge is then recoverable from the same records in `handoff_link`. The title line is the key and matches on both sides; where a title was reused, the nearest preceding printer in another session is the writer. Unlike an end reason, nothing has to be captured as it happens — a handoff with no match links itself as soon as the writing session is read, which is why both tables are derived and replaced whole rather than appended to.
 
+`q resume` reads the stored Next for a session; it does not infer a next move from branch, file or message facts.
+
 `q chain` reads it two ways. Grouped by title it ranks the tasks that spanned the most sessions; walked from one session it follows the edge in both directions, so it crosses a task that was renamed midway and branches where one handoff was pasted into two sessions. Around one paste in five finds no writer, because that session's transcript was pruned before it was ever read.
 
 Two rules that look right and are not. Matching the `# Handoff` heading alone catches every session that merely discussed one, including the session asking. Keying on the `handoff` skill's attribution misses the handoffs written under no skill, which are a substantial minority ([`findings.md`](findings.md)). What holds is the heading together with a `## Next` that parses.

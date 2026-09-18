@@ -47,6 +47,11 @@ function seeded(): Database {
       [id, role, text],
     );
   message("m-handoff", "assistant", HANDOFF);
+  db.run(
+    `INSERT INTO factory_handoff (message_id, session_id, role, ts, title, next)
+     VALUES ('m-handoff', 's1', 'assistant', '2026-09-01T10:30:00Z', '# Handoff — dim-factory: earn the first cut',
+             'Get the shared commit gate installed, then delete the rule it holds.')`,
+  );
   message("m-stopped", "user", "no, the worktree convention has one definition");
   db.run(
     `INSERT INTO repo_commit (sha, repo, label, ts, author, subject, kind)
