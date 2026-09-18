@@ -6,7 +6,7 @@
 
 - **Memory.** Claude Code and Codex sessions, tool calls, commits and usage are ingested into one local SQLite database.
 - **Recall.** Named queries and semantic search recover prior decisions, context and repository history without a network call.
-- **A factory line.** `dim-factory` reads a repository queue and routes an item to `dim-feat`, `dim-fix` or `dim-build`; `dim-review` checks work that is ready to be read.
+- **A factory line.** `dim-factory` reads a repository queue and routes work through the `dim-feat` and `dim-fix` entry points. Those entry points use the `dim-plan`, `dim-build` and `dim-review` stations.
 - **Evidence.** Reports, lifecycle events, checks, findings and changed files are persisted so work can be inspected after the session ends.
 - **Gates.** Hooks hold mechanical rules for commits, pushes, collection and session context.
 - **Isolation.** `dim wt` gives each task its own worktree and branch.

@@ -60,13 +60,18 @@ bun run dim wt path <branch>
 
 The worktree command creates `.claude/worktrees/<branch>` and runs the repository setup hook when one exists. See [Worktrees](worktrees.md) for lifecycle and write recovery.
 
+The line has two entry points:
+
+- **`dim-feat`** — start feature work, scope it against the record and cut it into verified slices.
+- **`dim-fix`** — start defect work, triage it and prove it with a failing test before fixing it.
+
 The stations are:
 
-- **`dim-feat`** — scope a feature against the record and cut it into verified slices.
-- **`dim-fix`** — triage a defect and prove it with a failing test before fixing it.
+- **`dim-plan`** — scope work against prior art and decisions when the cut is not clear.
 - **`dim-build`** — run the check, simplify the slice, obtain a read-only check, answer findings and commit.
 - **`dim-review`** — review a completed diff dimension by dimension without editing it.
-- **`dim-factory`** — read a queue, choose an unblocked item and route it to the right entry point.
+
+`dim-factory` is the driver above the line: it reads a queue, chooses an unblocked item and routes it to the right entry point.
 
 See [The factory](factory.md) for job ownership, reports, queue planning and the human gates.
 
