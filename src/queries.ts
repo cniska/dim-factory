@@ -1058,6 +1058,84 @@ const thread: Query = {
   },
 };
 
+const lane: Query = {
+  name: "lane",
+  summary: "inspect one factory lane report, its events, and evidence",
+  usage: "dim q lane <lane-id>",
+  spansHistory: true,
+  run: (db, { arg }) => {
+    if (!arg) {
+      return { denominator: "", columns: ["error"], rows: [["usage: dim q lane <lane-id>"]] };
+    }
+    const found = table(db, "SELECT * FROM factory_lane WHERE id LIKE ? || '%' LIMIT 2", [arg]);
+    if (found.length === 0) {
+      return { denominator: "", columns: ["id"], rows: [], note: `no lane starts with ${arg}` };
+    }
+    if (found.length > 1) {
+      return { denominator: "", columns: ["id"], rows: [], note: `${arg} matches more than one lane` };
+    }
+    const report = found[0] as Record<string, unknown>;
+    const id = report.id as string;
+    const columns = ["section", "when", "kind", "status", "subject", "evidence"];
+    const aggregate: Record<string, unknown> = {
+      section: "lane",
+      when: report.updated_at,
+      kind: "report",
+      status: report.status,
+      subject: `${report.run_id}/${report.queue_id}/${report.item_id}`,
+      evidence: [report.station, report.worktree, report.branch, report.stop_reason]
+        .filter(Boolean)
+        .join(" | "),
+    };
+    const evidence: Record<string, unknown>[] = [
+      ...table(
+        db,
+        `SELECT 'event' AS section, ts AS "when", kind, coalesce(status, '') AS status,
+                coalesce(station, delegated_station, '') AS subject,
+                coalesce(reason, fence_type, commit_sha, cast(check_id AS TEXT), cast(finding_id AS TEXT),
+                         delegated_agent_id, '') AS evidence
+         FROM factory_lane_event WHERE lane_id = ?`,
+        [id],
+      ),
+      ...table(
+        db,
+        `SELECT 'commit' AS section, recorded_at AS "when", 'commit_created' AS kind, '' AS status,
+                sha AS subject, coalesce(subject, '') AS evidence
+         FROM factory_lane_commit WHERE lane_id = ?`,
+        [id],
+      ),
+      ...table(
+        db,
+        `SELECT 'check' AS section, finished_at AS "when", 'check_finished' AS kind,
+                cast(exit_code AS TEXT) AS status, command AS subject, coalesce(result, '') AS evidence
+         FROM factory_lane_check WHERE lane_id = ?`,
+        [id],
+      ),
+      ...table(
+        db,
+        `SELECT 'finding' AS section, recorded_at AS "when", 'review_finished' AS kind,
+                answer AS status, dimension AS subject, summary AS evidence
+         FROM factory_lane_finding WHERE lane_id = ?`,
+        [id],
+      ),
+      ...table(
+        db,
+        `SELECT 'document' AS section, recorded_at AS "when", 'document_updated' AS kind, '' AS status,
+                path AS subject, '' AS evidence
+         FROM factory_lane_document WHERE lane_id = ?`,
+        [id],
+      ),
+    ].sort((a, b) => String(a.when).localeCompare(String(b.when)));
+    const rows = [aggregate, ...evidence];
+    return {
+      denominator: `lane ${id}: ${report.status}; one aggregate, ${rows.length - 1} lifecycle and evidence rows`,
+      columns,
+      rows: toRows(rows, columns),
+      note: "Evidence is recorded by the lane; this query does not infer completion from repository history.",
+    };
+  },
+};
+
 /**
  * One skill, split at each edit to its body. A correction is tied to the version
  * that was loaded in its session at the time, not to the version loaded today,
@@ -2065,6 +2143,7 @@ export const QUERIES: Query[] = [
   search,
   keywords,
   thread,
+  lane,
   skill,
   resume,
   delegation,
