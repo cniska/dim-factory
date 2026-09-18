@@ -1,6 +1,6 @@
 # The landscape
 
-What else exists, surveyed 2026-09-17, and which part of this repo it reaches. The survey is a web search over public projects and writing, so it can only say what is findable and published — a private line running the same idea is invisible to it, and the judgement of what counts as "the same" is the author's.
+What else exists, surveyed 2026-09-17–18, and which part of this repo it reaches. The survey is a web search over public projects and writing, so it can only say what is findable and published — a private line running the same idea is invisible to it, and the judgement of what counts as "the same" is the author's.
 
 The answer splits along the same seam the repo does. The argument in [`factory.md`](factory.md) has been made by other people, in close to the same words. The collector is a crowded field. What was not found is the join between them: a gate whose rule is decided by evidence read out of a session corpus. One project gates on a record of past failures, and [what it reads](#a-gate-that-reads-a-record-of-past-failures) is the distance left.
 
@@ -17,6 +17,23 @@ Neither that set nor any other surveyed here holds anything on sessions — no h
 The surrounding writing is dense: [BCG Platinion](https://www.bcgplatinion.com/insights/the-agentic-software-factory) on the agentic software factory, [an arXiv survey](https://arxiv.org/pdf/2602.20979) of agent-infused ecosystems, and a body of vendor and blog writing on dark-factory codebases. Stations with entry and exit contracts, a human retaining approval on high-risk paths, auto-approval under measurable conditions — none of it is novel as of this date.
 
 So the metaphor is not the contribution, and neither is the position that the answer is dim rather than dark. Both are held widely enough that holding them is evidence of being right rather than of being first.
+
+## StrongDM makes the loop concrete
+
+[StrongDM's factory](https://factory.strongdm.ai/) gives the factory argument a more specific operating loop: a seed, an end-to-end validation harness, feedback from observed output, and repetition until holdout scenarios pass. It calls those end-to-end user stories *scenarios* rather than tests, and measures satisfaction empirically instead of treating a green test suite as the whole answer ([principles](https://factory.strongdm.ai/principles)).
+
+The useful comparison is the boundary between the shared mechanism and the different product:
+
+| StrongDM pattern | This repo's counterpart | Status here |
+|---|---|---|
+| Seed | A queue item routed through the line, with the repository's rules and declared check as its constraints | Live in [`factory.md`](factory.md) and [`build-order.md`](build-order.md) |
+| Shift work | The driver passes an item and base revision; an isolated worker owns the line or station run | Live in [`factory.md`](factory.md) |
+| Validation harness and feedback loop | Repo checks, read-only review, persisted findings, and the factory stop conditions | Live in the line and station contracts; the evidence is recorded in the session database |
+| Holdout scenarios and satisfaction | Not the same as the current repository checks; this is application-level behavioral validation | Not adopted as a factory-wide contract |
+| Digital Twin Universe | A possible application-specific test fixture, not a requirement of the session factory | Not adopted |
+| Filesystem models and pyramid summaries | Local files, SQLite projections, and queries that retain a drill-down path from summary to source | Already the storage and recall shape |
+
+The distinction matters. StrongDM treats generated code as opaque and replaces traditional review with behavioral validation ([techniques](https://factory.strongdm.ai/techniques)); this repo keeps source review and mechanical checks because its subject is the development process itself. The borrowed lesson is to make validation describe observed behavior and feed failures back into the next run, not to remove every human gate or to make code disposable.
 
 ## What was not found is the instrument
 

@@ -32,18 +32,15 @@ The corpus-native half of the measurement is built: `dim bench` scores a hand-la
 
 - **Corrections as a source.** `correction_label` holds no rows, so the source that would catch a reworded repetition is empty, and `q repeats` cannot see one either ([`findings.md`](findings.md)). `dim q candidates` narrows and `dim label` records; nothing here labels itself, by design.
 
-## Waiting on `PostToolUse` being installed
-
-dim installs session hooks only, so anything reacting to a single tool call has no channel yet. Installing the event is itself ready and is the first item under "Ready, waiting on nothing"; the four below are what it clears.
-
-- **Running a formatter after an edit**, which is the half of the project tier dim can supply a command for but never run ([`recall.md`](recall.md)).
-- **The working-directory check.** Git aimed outside the session's own directory fails three times as often ([`findings.md`](findings.md)). A commit hook knows the repo it runs in and not the one the session belongs to, so only a hook on the tool call can compare them.
-- **Undoing an agent's writes** ([`worktrees.md`](worktrees.md)), which records that something changed and commits on a later pass.
-- **The weakening guard** ([`evals-and-hooks.md`](evals-and-hooks.md)), which warns rather than blocks.
-
 ## Ready, waiting on nothing
 
-- **`PostToolUse` as an installed event**, which is the borrow [`landscape.md`](landscape.md) picks first and the only item here that clears others — four of them, listed above. It records that a call happened and a later pass reads the record, the way the session hooks spool rather than write, because a hook firing on every tool call that can fail is a hook that can break every session.
+- **Running a formatter after an edit**, which is the half of the project tier dim can supply a command for but never run ([`recall.md`](recall.md)).
+
+- **The working-directory check.** Git aimed outside the session's own directory fails three times as often ([`findings.md`](findings.md)). A commit hook knows the repo it runs in and not the one the session belongs to, so only a hook on the tool call can compare them.
+
+- **Undoing an agent's writes** ([`worktrees.md`](worktrees.md)), which records that something changed and commits on a later pass.
+
+- **The weakening guard** ([`evals-and-hooks.md`](evals-and-hooks.md)), which warns rather than blocks.
 
 - **The tooling chain in `wake`** ([`recall.md`](recall.md)), which is the half of the project tier the record answers rather than the manifest: which CLIs a repo is actually worked with, derived from the shell commands its sessions ran. The declared half is delivered. What has to be settled is how a CLI worth naming is told from one every repo uses, without a written list of interesting tools — a share measured against the corpus is the shape, and the threshold is the part that needs deciding rather than picking.
 
@@ -98,4 +95,3 @@ dim installs session hooks only, so anything reacting to a single tool call has 
 Not waiting on anything, and not queued. [`landscape.md`](landscape.md) records each with its reason, so the next survey does not raise it again, and that table is the list rather than this line.
 
 The portability gap the watcher would have closed stands on its own: `install-agent` writes a launchd plist, so the scheduled sync is macOS-only.
-

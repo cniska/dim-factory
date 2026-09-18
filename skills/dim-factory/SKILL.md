@@ -36,13 +36,13 @@ Take the first item that is **unblocked and statable in one sentence**. A queue 
 
 An item you cannot state needs scoping, which is `dim-plan` — run it, leave the sharpened item in the queue, and stop there.
 
-| the item | the station |
+| the item | the entry point |
 |---|---|
 | adds functionality | `dim-feat` |
 | repairs something wrong | `dim-fix` |
 | neither — a refactor, a doc, a rule | `dim-build` |
 
-**Hand the item to a builder, and do not build it here.** One agent takes one item end to end, invoking the station itself; running the station in this session instead makes the line one worker long, and then the queue is worked one item per invocation whatever this file says about emptying it.
+**Hand the item to a builder.** Pass the item, base revision and repo check; the builder creates its isolated worktree with `dim wt`, then invokes the station itself and takes the item end to end. Running the station in this session makes the line one worker long, and then the queue is worked one item per invocation whatever this file says about emptying it.
 
 This is not the fan-out `dim-build` argues against. That rule keeps a single slice from being split across agents, because edits need the context that produced them — a builder holding one whole item has exactly that context. What it forbids is two agents editing one slice.
 

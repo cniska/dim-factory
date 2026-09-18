@@ -51,7 +51,7 @@ describe("reading the codex hooks a trust key points at", () => {
     expect(trust.map((t) => `${t.event} ${t.command}`)).toEqual(planned);
     // Both sides read the same list, so the comparison above pins no content:
     // a renamed event would satisfy it. The trust key is built from these names.
-    expect(trust.map((t) => t.event)).toEqual(["SessionStart", "SessionStart", "SessionEnd"]);
+    expect(trust.map((t) => t.event)).toEqual(["SessionStart", "SessionStart", "SessionEnd", "PostToolUse"]);
   });
 
   // Reporting an unreadable file as three untrusted hooks sends the reader to

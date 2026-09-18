@@ -63,6 +63,7 @@ export function wantedHooks(tool: Tool, env: Env = process.env): WantedHook[] {
     { event: "SessionStart", command: hookCommand(tool, env) },
     { event: "SessionStart", command: wakeCommand(tool) },
     { event: "SessionEnd", command: hookCommand(tool, env) },
+    { event: "PostToolUse", command: hookCommand(tool, env) },
   ];
 }
 

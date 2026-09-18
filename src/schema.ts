@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS hook_event (
   id          INTEGER PRIMARY KEY,
   tool        TEXT NOT NULL CHECK (tool IN (${TOOLS_SQL})),
   session_id  TEXT NOT NULL,
-  event       TEXT NOT NULL CHECK (event IN ('session_start','session_end')),
+  event       TEXT NOT NULL CHECK (event IN ('session_start','session_end','post_tool_use')),
   ts          TEXT NOT NULL,
   source      TEXT,               -- SessionStart: startup|resume|clear|compact|fork
   reason      TEXT,               -- SessionEnd: clear|resume|logout|prompt_input_exit|other
