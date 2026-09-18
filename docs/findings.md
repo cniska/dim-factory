@@ -379,3 +379,11 @@ Measured on 2026-09-17 against the corpus of the day, 253,570 messages with 90,1
 This matters because of who writes the argument. A search string reaches the query from a file or a transcript the agent is reading as readily as from a person typing, and the caller cannot see the cost before paying it. So the words past a cap are dropped and the denominator says how many, which bounds the work at the one place both readers of the index share: the same 5,000-word argument now returns in a third of a second.
 
 What this carries: one corpus, one machine, English stopwords as the terms — the worst case, since a rare word intersects almost nothing. A query of ordinary words is faster than this table at every count.
+
+## A proof by removal can pass without proving anything
+
+Found on 2026-09-18, checking `dim q findings`. A test claiming an invariant is proved by deleting the invariant and watching the test go red. That proof was attempted through a scripted shell edit, which silently matched nothing — the formatter had rewrapped the target line since it was read — so the deletion never happened and the suite stayed green. A green suite is the same output a removal produces when the test does not actually hold the invariant, so the two are indistinguishable from the result alone.
+
+The edit that no-ops is the failure mode, not the editor. A file tool refuses an edit whose target has moved; a shell rewrite reports success for replacing nothing. This is the concrete case behind the rule that files are read and edited through the file tools rather than the shell, and it costs a false proof rather than a lost write.
+
+What makes a removal proof trustworthy is reading the failure, not the exit code: the red must name the test the invariant belongs to. A removal that leaves every test passing means the invariant was never held or was never removed, and those two are told apart by looking at the file.
