@@ -1,7 +1,7 @@
 // Every table here is one-to-one with records in the source files and is rebuilt
 // by re-reading them, so a schema change is `dim rebuild`, not a migration. The
 // exceptions carry the reason at the table: hook_event, guidance_walk,
-// command_trace and finding have no source to re-read, embedding holds vectors
+// command_trace, factory lane records and finding have no source to re-read, embedding holds vectors
 // only a model can produce again, and correction_label has no source either but
 // is dropped and written back row for row.
 // SCHEMA_VERSION exists so sync can refuse to run against a database only a
@@ -160,6 +160,86 @@ CREATE TABLE IF NOT EXISTS command_trace (
   cwd         TEXT
 );
 CREATE INDEX IF NOT EXISTS command_trace_name ON command_trace(command, name, ts);
+
+-- Operational factory evidence is written by the lane driver, not derived from
+-- transcripts or repository files. It survives rebuild because there is no
+-- source that could reproduce a claim, event or report after the fact.
+CREATE TABLE IF NOT EXISTS factory_lane (
+  id              TEXT PRIMARY KEY,
+  run_id          TEXT NOT NULL,
+  queue_id        TEXT NOT NULL,
+  item_id         TEXT NOT NULL,
+  agent_id        TEXT,
+  session_id      TEXT,
+  worktree        TEXT,
+  branch          TEXT,
+  station         TEXT,
+  status          TEXT NOT NULL CHECK (status IN ('claimed', 'running', 'completed', 'blocked', 'fenced', 'failed', 'abandoned')),
+  claimed_at      TEXT NOT NULL,
+  started_at      TEXT,
+  updated_at      TEXT NOT NULL,
+  completed_at    TEXT,
+  stop_reason     TEXT,
+  UNIQUE (run_id, item_id)
+);
+CREATE INDEX IF NOT EXISTS factory_lane_status ON factory_lane(status, updated_at);
+
+CREATE TABLE IF NOT EXISTS factory_lane_event (
+  id                    INTEGER PRIMARY KEY,
+  lane_id               TEXT NOT NULL REFERENCES factory_lane(id) ON DELETE CASCADE,
+  ts                    TEXT NOT NULL,
+  kind                  TEXT NOT NULL CHECK (kind IN ('claimed', 'delegated', 'started', 'commit_created', 'check_finished', 'review_finished', 'fenced', 'blocked', 'completed', 'failed', 'abandoned')),
+  actor_id              TEXT,
+  session_id            TEXT,
+  station               TEXT,
+  delegated_agent_id    TEXT,
+  delegated_session_id  TEXT,
+  delegated_station     TEXT,
+  commit_sha            TEXT,
+  check_id              INTEGER,
+  finding_id            INTEGER,
+  fence_type            TEXT,
+  status                TEXT,
+  reason                TEXT
+);
+CREATE INDEX IF NOT EXISTS factory_lane_event_lane_ts ON factory_lane_event(lane_id, ts, id);
+
+CREATE TABLE IF NOT EXISTS factory_lane_commit (
+  lane_id       TEXT NOT NULL REFERENCES factory_lane(id) ON DELETE CASCADE,
+  sha           TEXT NOT NULL,
+  subject       TEXT,
+  recorded_at   TEXT NOT NULL,
+  PRIMARY KEY (lane_id, sha)
+);
+
+CREATE TABLE IF NOT EXISTS factory_lane_check (
+  id            INTEGER PRIMARY KEY,
+  lane_id       TEXT NOT NULL REFERENCES factory_lane(id) ON DELETE CASCADE,
+  command       TEXT NOT NULL,
+  exit_code     INTEGER NOT NULL,
+  started_at    TEXT,
+  finished_at   TEXT NOT NULL,
+  result        TEXT,
+  recorded_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS factory_lane_finding (
+  id            INTEGER PRIMARY KEY,
+  lane_id       TEXT NOT NULL REFERENCES factory_lane(id) ON DELETE CASCADE,
+  dimension     TEXT NOT NULL,
+  summary       TEXT NOT NULL,
+  answer        TEXT NOT NULL CHECK (answer IN ('fixed', 'refused')),
+  resolution    TEXT,
+  recorded_at   TEXT NOT NULL,
+  CHECK (answer <> 'refused' OR (resolution IS NOT NULL AND trim(resolution) <> ''))
+);
+
+CREATE TABLE IF NOT EXISTS factory_lane_document (
+  lane_id       TEXT NOT NULL REFERENCES factory_lane(id) ON DELETE CASCADE,
+  path          TEXT NOT NULL,
+  recorded_at   TEXT NOT NULL,
+  PRIMARY KEY (lane_id, path)
+);
 
 CREATE TABLE IF NOT EXISTS turn (
   session_id      TEXT NOT NULL REFERENCES session(id),
