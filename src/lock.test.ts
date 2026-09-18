@@ -1,7 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { LockHeldError, withLock } from "./lock";
 import type { Env } from "./paths";
 
@@ -78,5 +86,37 @@ describe("the write lock", () => {
     writeFileSync(join(lock, "pid"), "999999");
     expect(withLock(() => existsSync(lock), env)).toBe(true);
     expect(existsSync(lock)).toBe(false);
+  });
+
+  // Reclaiming a lock whose directory holds no live pid is only safe because a
+  // run that does hold it is named there the moment the directory appears.
+  test("the lock names its holder for as long as it is held", () => {
+    const { env, lock } = newRoot();
+    withLock(() => {
+      expect(readFileSync(join(lock, "pid"), "utf8")).toBe(String(process.pid));
+    }, env);
+  });
+
+  // Signal 0 to pid 0 addresses the process group and answers, so an empty pid
+  // file read as a number would leave a lock nothing could ever take back.
+  test("an empty pid file is not a holder", () => {
+    const { env, lock } = newRoot();
+    mkdirSync(lock, { recursive: true });
+    writeFileSync(join(lock, "pid"), "");
+    expect(withLock(() => "ran", env)).toBe("ran");
+  });
+
+  test("a pid file that cannot be read is not a holder", () => {
+    const { env, lock } = newRoot();
+    mkdirSync(join(lock, "pid"), { recursive: true });
+    expect(withLock(() => "ran", env)).toBe("ran");
+  });
+
+  test("a refused run leaves nothing of its own behind", () => {
+    const { env, lock } = newRoot();
+    mkdirSync(lock, { recursive: true });
+    writeFileSync(join(lock, "pid"), String(process.pid));
+    expect(() => withLock(() => "ran", env)).toThrow(LockHeldError);
+    expect(readdirSync(dirname(lock))).toEqual(["lock"]);
   });
 });
