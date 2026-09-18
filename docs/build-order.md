@@ -44,7 +44,7 @@ The corpus-native half of the measurement is built: `dim bench` scores a hand-la
 
 - **`PostToolUse` as an installed event**, which records tool activity for the observable loop and clears the formatter and weakening guard below. It records that a call happened and a later pass reads the record, the way the session hooks spool rather than write, because a hook firing on every tool call that can fail is a hook that can break every session.
 
-- **Running a formatter after an edit**, which is the half of the project tier dim can supply a command for but never run ([`recall.md`](recall.md)).
+- **Running a formatter after an edit.** The `PostToolUse` path should identify edit operations, resolve the checkout from the event's working directory, and read the repository's declared formatter through `formatTask`. It should run that task against changed paths before the next agent action, record the command, paths, exit code and output, and fail open so formatting cannot break a session. Acolyte's workspace-contract shape and `$FILES` placeholder are useful interface ideas; its underlying-tool detectors are not, because the repository's declared task remains authoritative ([`recall.md`](recall.md)).
 
 - **The working-directory check.** Git aimed outside the session's own directory fails three times as often ([`findings.md`](findings.md)). A commit hook knows the repo it runs in and not the one the session belongs to, so only a hook on the tool call can compare them.
 
