@@ -96,8 +96,7 @@ const USAGE = `usage: dim <command>
                   a file it changed, a check and its exit status, a finding and
                   how it was answered, a doc it updated
   queue ready <file> [--limit <n>]
-                  print the id, title, description and status of each planned
-                  item whose dependencies are completed
+                  print planned items whose dependencies are completed
   queue transition <file> <item> <status> [--reason <text>] [--at <iso>]
                   append a validated status transition to the queue file
 `;
