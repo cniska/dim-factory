@@ -217,7 +217,7 @@ CREATE INDEX IF NOT EXISTS factory_order_status ON factory_order(status, updated
 
 CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,
-  order_id                TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   ts                    TEXT NOT NULL,
   kind                  TEXT NOT NULL CHECK (kind IN ('claimed', 'delegated', 'started', 'moved', 'commit_created', 'check_finished', 'review_finished', 'fenced', 'blocked', 'completed', 'failed', 'abandoned')),
   actor_id              TEXT,
@@ -236,7 +236,7 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
 CREATE INDEX IF NOT EXISTS factory_order_event_order_ts ON factory_order_event(order_id, ts, id);
 
 CREATE TABLE IF NOT EXISTS factory_order_commit (
-  order_id        TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   sha           TEXT NOT NULL,
   subject       TEXT,
   recorded_at   TEXT NOT NULL,
@@ -244,7 +244,7 @@ CREATE TABLE IF NOT EXISTS factory_order_commit (
 );
 
 CREATE TABLE IF NOT EXISTS factory_order_file (
-  order_id        TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   path          TEXT NOT NULL,
   recorded_at   TEXT NOT NULL,
   PRIMARY KEY (order_id, path)
@@ -252,7 +252,7 @@ CREATE TABLE IF NOT EXISTS factory_order_file (
 
 CREATE TABLE IF NOT EXISTS factory_order_check (
   id            INTEGER PRIMARY KEY,
-  order_id        TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   command       TEXT NOT NULL,
   exit_code     INTEGER NOT NULL,
   started_at    TEXT,
@@ -263,7 +263,7 @@ CREATE TABLE IF NOT EXISTS factory_order_check (
 
 CREATE TABLE IF NOT EXISTS factory_order_finding (
   id            INTEGER PRIMARY KEY,
-  order_id        TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   dimension     TEXT NOT NULL,
   summary       TEXT NOT NULL,
   answer        TEXT NOT NULL CHECK (answer IN ('fixed', 'refused')),
@@ -277,7 +277,7 @@ CREATE TABLE IF NOT EXISTS factory_order_finding (
 -- left of what an order allocated once its worktree is gone.
 CREATE TABLE IF NOT EXISTS factory_order_environment (
   id            INTEGER PRIMARY KEY,
-  order_id        TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   phase         TEXT NOT NULL CHECK (phase IN ('setup', 'teardown')),
   argv          TEXT NOT NULL,
   exit_code     INTEGER,
@@ -289,7 +289,7 @@ CREATE TABLE IF NOT EXISTS factory_order_environment (
 );
 
 CREATE TABLE IF NOT EXISTS factory_order_document (
-  order_id        TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   path          TEXT NOT NULL,
   recorded_at   TEXT NOT NULL,
   PRIMARY KEY (order_id, path)
