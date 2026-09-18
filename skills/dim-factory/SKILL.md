@@ -28,7 +28,7 @@ A repo's queue is **read, never inferred** — the rule `dim check-task` already
 3. **Otherwise look**, in this order, and say which was found: a planner file the repo tracks — `queue.json` at its root, or the path its rules file names, and only where `dim queue ready` parses it, since another file of that name is another format; a queue doc the repo's rules file links; `TODO.md`; open issues in the repo's tracker.
 4. **Two plausible queues is a question, not a coin flip.** Name both and stop.
 
-**A planner file states its own items, so nothing about one is retyped.** `dim queue ready <file> [--limit <n>]` prints every unblocked item as JSON — its `id`, `title`, one-sentence `description` and `status` — and `dim queue transition <file> <item> <status> [--reason <text>]` records it moving. The id, title and description are what the claim below carries; the status is the item's own, and the job's is separate. A repo may keep a document beside the file carrying the same ids: the file owns each item's state, and the document owns the order and any fence the file cannot express.
+**A planner file states its own items, so nothing about one is retyped.** `dim queue ready <file> [--limit <n>]` prints every unblocked item as JSON — its `id`, `title`, one-sentence `description` and `status` — and `dim queue transition <file> <item> <status> [--reason <text>]` records it moving. A repo may keep a document beside the file carrying the same ids: the file owns each item's state, and the document owns the order and any fence the file cannot express.
 
 Reading a tracker is your own tools' business — `dim` holds no credential and reaches no network, and nothing here changes that.
 
@@ -68,7 +68,7 @@ dim job stop <job-id> <completed|blocked|fenced|failed|abandoned> [--reason "...
 ```
 
 - The queue id and item id are what step 2 identified: a planner file's own `id` and the item's `id` in it, or the path or tracker query that named the queue and the item's identity there.
-- **The title, the statement and the ids come from the queue, not from you.** Against a planner file they are the `id`, `title` and `description` `dim queue ready` printed, passed through unedited; a claim that paraphrases an item records a second version of it.
+- **The title, the statement and the ids come from the queue, not from you.** Against a planner file they are the `id`, `title` and `description` `dim queue ready` printed, passed through unedited; against a document or a tracker the statement is the one sentence step 3 required before the item could be taken. A claim that paraphrases an item records a second version of it.
 - **The title is the item's name, never its id.** It is what every card is read by; the ids are there for an agent to join on.
 - A planner file also holds the item's own state, so the item moves as the job does: `dim queue transition <file> <item> claimed` before the builder, `running` when it starts, and `completed`, `blocked`, `fenced` or `failed` at the end, with `--reason` wherever the job stopped for one. An item dropped before a builder started it is `cancelled`. Every one of those five is terminal and refused a further transition, the way a stopped job is, so an item recorded `blocked` leaves `ready` until someone edits the file — record it only where that is what you mean.
 - Naming the branch is yours, because the claim records it before the builder exists. `dim wt path <branch>` prints where that worktree will be without creating it, so the claim carries the location the builder then makes.
