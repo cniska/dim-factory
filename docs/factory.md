@@ -35,7 +35,7 @@ The delivered-product report is persisted in the dim database so it remains quer
 - **Verification.** Repository check command and result, checker findings and their resolutions, and updated docs.
 - **Outcome.** Final status — complete, blocked, fenced or failed — with fence or blocker evidence and timestamps for the lifecycle events.
 
-The report lifecycle is a durable sequence from claim through running to completion or a stopped outcome, with evidence recorded as the job progresses. A terminal status cannot transition to another status, and each lifecycle event and its aggregate projection are written atomically. `dim q job <job-id>` reads the aggregate, events and evidence through the read-only query path. These operational tables survive `dim rebuild`, deliberately like `hook_event`, `command_trace` and `finding`: no transcript or file source can recreate a job's claims and judgements after the fact.
+The report lifecycle is a durable sequence from claim through running to completion or a stopped outcome, with evidence recorded as the job progresses. A terminal status cannot transition to another status, and each lifecycle event and its aggregate projection are written atomically. `dim q factory [job-id-prefix]` reads one unified current-status row per matching job, including its latest lifecycle event and normalized evidence; `dim q job <job-id>` remains the detailed event-and-evidence view. These operational tables survive `dim rebuild`, deliberately like `hook_event`, `command_trace` and `finding`: no transcript or file source can recreate a job's claims and judgements after the fact.
 
 The persistence contract is live. The factory driver still owns scheduling, isolated worktree creation, serialized landing and queue-state enforcement; those orchestration boundaries are not inferred from a report row.
 
@@ -52,7 +52,7 @@ The planned queue planner is a reversible, file-backed issue tracker that suppli
 - **Serialization.** The driver keys claims and landing by queue and item, so work sharing a key is serialized while independent keys can run in parallel.
 - **Boundary.** The queue file owns intent and dependency state; `factory_job` owns execution identity, lifecycle events and evidence. The driver translates between them.
 
-The queue may carry a compact current status and `job_id` link for a person reading the plan. The delivered-product report remains in `factory_job` and its evidence tables: commits, changed files, checks, findings, documents, and fence or blocker evidence. The queue is not a second report store.
+The queue may carry a compact current status and `job_id` link for a person reading the plan. The delivered-product report remains in `factory_job` and its evidence tables: commits, changed files, checks, findings, documents, and fence or blocker evidence. The queue is not a second report store. Until a file-backed planner exists, `dim q factory` states that its queue source is absent and reports only persisted jobs.
 
 This is planned orchestration work. It does not add a second source of truth for job reports.
 
