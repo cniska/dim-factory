@@ -33,7 +33,7 @@ const job = {
   sessionId: "session-1",
   worktree: "/tmp/wt",
   branch: "job-1",
-  station: "dim-build",
+  station: "dim-station-build",
 };
 
 describe("factory job report records", () => {
@@ -193,7 +193,7 @@ describe("factory job report records", () => {
       item_id: "item-1",
       worktree: "/tmp/wt",
       branch: "job-1",
-      station: "dim-build",
+      station: "dim-station-build",
       status: "claimed",
     });
     expect(

@@ -36,14 +36,14 @@ function fill(db: Database): void {
   );
   db.run("INSERT INTO git_command (tool_call_id, position, subcommand) VALUES ('tc1', 0, 'commit')");
   db.run(
-    "INSERT INTO skill_load (session_id, message_id, ts, skill_name, how) VALUES ('s1', 'm1', '2026-01-01T00:00:00Z', 'dim-fix', 'model')",
+    "INSERT INTO skill_load (session_id, message_id, ts, skill_name, how) VALUES ('s1', 'm1', '2026-01-01T00:00:00Z', 'dim-line-fix', 'model')",
   );
   db.run(
     "INSERT INTO repo_commit (sha, repo, ts, subject) VALUES ('abc', '/r', '2026-01-01T00:00:00Z', 'fix: x')",
   );
   db.run("INSERT INTO commit_file (sha, path) VALUES ('abc', '/r/a.ts')");
   db.run(
-    "INSERT INTO correction_label (message_id, label, skill_name, rule, labeled_at) VALUES ('m1', 'correction', 'dim-fix', 'ask before pushing', '2026-01-01T00:00:00Z')",
+    "INSERT INTO correction_label (message_id, label, skill_name, rule, labeled_at) VALUES ('m1', 'correction', 'dim-line-fix', 'ask before pushing', '2026-01-01T00:00:00Z')",
   );
 }
 
@@ -102,7 +102,7 @@ describe("absorbing a schema change", () => {
     rebuild(db, env);
 
     expect(db.query("SELECT message_id, label, skill_name, rule FROM correction_label").all()).toEqual([
-      { message_id: "m1", label: "correction", skill_name: "dim-fix", rule: "ask before pushing" },
+      { message_id: "m1", label: "correction", skill_name: "dim-line-fix", rule: "ask before pushing" },
     ]);
     db.close();
   });
