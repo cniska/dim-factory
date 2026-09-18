@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { nextSection } from "./handoff";
+import { backfillHandoffs, nextSection } from "./handoff";
 import { SCHEMA_SQL } from "./schema";
 import { projectLine, readWake, renderWake } from "./wake";
 
@@ -37,6 +37,7 @@ function seeded(): Database {
        ('m2', 'elsewhere', 'assistant', '2026-09-03T09:00:00Z', 'wrong project', 'handoff', '/f.jsonl', 2)`,
     [HANDOFF],
   );
+  backfillHandoffs(db);
   return db;
 }
 

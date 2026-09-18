@@ -15,7 +15,7 @@ Files use a domain-concern name where the boundary is useful: `factory-job.ts`, 
 | Database | `db.ts`, `schema.ts`, `rebuild.ts`, `read-db.ts`, `session-records.ts` | Open, rebuild and write the SQLite store |
 | Retrieval | `distilled.ts`, `embed*.ts`, `queries.ts`, `render.ts`, `rank-metrics.ts` | Distill, index, query and render the record |
 | Factory | `factory-job.ts`, `queries.ts` | Persist job lifecycle and evidence, then read reports |
-| Session context | `handoff.ts`, `wake.ts`, `guidance.ts`, `skill-load.ts` | Carry context into a later session |
+| Session context | `handoff.ts`, `wake.ts`, `guidance.ts`, `skill-load.ts` | Persist strict handoffs and carry context into a later session |
 | Gates and installation | `commit-gate.ts`, `push-gate.ts`, `codex-trust.ts`, `hooks.ts`, `rules.ts`, `installed-skills.ts` | Install and enforce shared controls |
 | Work and repositories | `worktree.ts`, `checkout.ts`, `git-*.ts`, `repo-*.ts`, `remote-slug.ts` | Identify repositories and manage isolated work |
 

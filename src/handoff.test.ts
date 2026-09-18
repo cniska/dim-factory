@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { handoffTitle, linkHandoffs, readHandoffs } from "./handoff";
+import { backfillHandoffs, handoffNext, handoffTitle, linkHandoffs, readHandoffs } from "./handoff";
 import { SCHEMA_SQL } from "./schema";
 
 const handoff = (title: string, next = "Get the gate installed.") =>
@@ -39,6 +39,27 @@ describe("what counts as a handoff", () => {
 
   test("rejects the heading written mid-sentence rather than as a heading", () => {
     expect(handoffTitle("the # Handoff skill\n\n## Next\nsomething")).toBeNull();
+  });
+
+  test("takes the Next belonging to the heading", () => {
+    const text = "## Next\nold\n\n# Handoff — current\n\n## Next\ncurrent";
+    expect(handoffTitle(text)).toBe("# Handoff — current");
+    expect(handoffNext(text)).toBe("current");
+  });
+
+  test("backfills only strict heading and section pairs", () => {
+    const db = seeded();
+    try {
+      say(db, "m1", "a", "assistant", "2026-09-01T10:00:00Z", handoff("one"));
+      say(db, "m2", "b", "assistant", "2026-09-01T11:00:00Z", "Discussion of # Handoff\n\n## Next\nno");
+      say(db, "m3", "c", "assistant", "2026-09-01T12:00:00Z", "# Handoff\n\n## Next steps\nno");
+      expect(backfillHandoffs(db)).toEqual({ found: 1 });
+      expect(db.query("SELECT message_id, title, next FROM factory_handoff").all()).toEqual([
+        { message_id: "m1", title: "# Handoff — one", next: "Get the gate installed." },
+      ]);
+    } finally {
+      db.close();
+    }
   });
 });
 

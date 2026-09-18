@@ -7,13 +7,15 @@ import type { Database } from "bun:sqlite";
 const NEXT_MAX_CHARS = 700;
 
 /** The handoff's own heading, as the skill writes it. */
-const NEXT_HEADING = "## Next";
-
 export function nextSection(handoff: string): string | null {
-  const start = handoff.indexOf(NEXT_HEADING);
-  if (start === -1) return null;
-  const body = handoff.slice(start + NEXT_HEADING.length);
-  const end = body.indexOf("\n## ");
+  const match = handoff.match(/^## Next[ \t]*$/m);
+  if (!match || match.index === undefined) return null;
+  return sectionAfter(handoff, match.index + match[0].length);
+}
+
+function sectionAfter(text: string, start: number): string | null {
+  const body = text.slice(start);
+  const end = body.search(/^## /m);
   const section = (end === -1 ? body : body.slice(0, end)).trim();
   if (section === "") return null;
   return section.length > NEXT_MAX_CHARS ? `${section.slice(0, NEXT_MAX_CHARS).trimEnd()}…` : section;
@@ -25,18 +27,26 @@ export function nextSection(handoff: string): string | null {
  * that merely discussed one, and the `handoff` skill's attribution misses the
  * quarter written under no skill. See docs/recall.md.
  */
-const TITLE_LINE = /^# Handoff.*$/m;
+const TITLE_LINE = /^# Handoff(?:[ \t]+.*)?[ \t]*$/m;
 
 /** The whole heading line, which is the key both sides of the chain share. */
 export function handoffTitle(text: string): string | null {
   const line = text.match(TITLE_LINE);
-  if (!line) return null;
-  return nextSection(text) === null ? null : line[0].trim();
+  if (!line || line.index === undefined) return null;
+  const rest = text.slice(line.index + line[0].length);
+  const next = rest.match(/^## Next[ \t]*$/m);
+  if (!next || next.index === undefined) return null;
+  return sectionAfter(rest, next.index + next[0].length) === null ? null : line[0].trim();
 }
 
 /** The Next this handoff left, and null for a message that is not one. */
 export function handoffNext(text: string): string | null {
-  return handoffTitle(text) === null ? null : nextSection(text);
+  const line = text.match(TITLE_LINE);
+  if (!line || line.index === undefined) return null;
+  const rest = text.slice(line.index + line[0].length);
+  const next = rest.match(/^## Next[ \t]*$/m);
+  if (!next || next.index === undefined) return null;
+  return sectionAfter(rest, next.index + next[0].length);
 }
 
 export type Handoff = {
@@ -46,7 +56,36 @@ export type Handoff = {
   role: "user" | "assistant";
   ts: string;
   title: string;
+  next: string;
 };
+
+export type HandoffBackfillReport = { found: number };
+
+/** Rebuild the transcript-derived handoff projection from collected messages. */
+export function backfillHandoffs(db: Database): HandoffBackfillReport {
+  const rows = db
+    .prepare<{ id: string; session_id: string; role: "user" | "assistant"; ts: string; text: string }, []>(
+      `SELECT id, session_id, role, ts, text FROM message
+       WHERE text IS NOT NULL ORDER BY ts, id`,
+    )
+    .all();
+  const insert = db.prepare(
+    `INSERT INTO factory_handoff (message_id, session_id, role, ts, title, next)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  );
+  let found = 0;
+  db.transaction(() => {
+    db.run("DELETE FROM factory_handoff");
+    for (const row of rows) {
+      const title = handoffTitle(row.text);
+      const next = handoffNext(row.text);
+      if (!title || !next) continue;
+      insert.run(row.id, row.session_id, row.role, row.ts, title, next);
+      found += 1;
+    }
+  })();
+  return { found };
+}
 
 /** Both halves of every chain, oldest first, which is the order the link pass walks. */
 export function readHandoffs(db: Database): Handoff[] {
@@ -62,7 +101,14 @@ export function readHandoffs(db: Database): Handoff[] {
   for (const row of rows) {
     const title = handoffTitle(row.text);
     if (title) {
-      out.push({ messageId: row.id, sessionId: row.session_id, role: row.role, ts: row.ts, title });
+      out.push({
+        messageId: row.id,
+        sessionId: row.session_id,
+        role: row.role,
+        ts: row.ts,
+        title,
+        next: handoffNext(row.text) as string,
+      });
     }
   }
   return out;

@@ -1,6 +1,5 @@
 import type { Database } from "bun:sqlite";
 import { checkoutRoot } from "./checkout";
-import { handoffNext } from "./handoff";
 import { checkTask, formatTask } from "./tasks";
 import type { Tool } from "./tools";
 
@@ -36,20 +35,18 @@ export function readWake(db: Database, cwd: string): Wake | null {
   // such a message shadow the real handoff under it. So the rows are walked
   // newest first and the first one that is a handoff wins.
   const rows = db
-    .prepare<{ id: string; ended_at: string | null; end_reason: string | null; text: string }, [string]>(
-      `SELECT s.id AS id, s.ended_at AS ended_at, s.end_reason AS end_reason, m.text AS text
+    .prepare<{ id: string; ended_at: string | null; end_reason: string | null; next: string }, [string]>(
+      `SELECT s.id AS id, s.ended_at AS ended_at, s.end_reason AS end_reason, h.next AS next
        FROM session s
-       JOIN message m ON m.session_id = s.id
+       JOIN factory_handoff h ON h.session_id = s.id
        WHERE s.parent_id IS NULL AND s.cwd = ?
-         AND m.role = 'assistant' AND m.text LIKE '%# Handoff%' AND m.text LIKE '%## Next%'
-       ORDER BY m.ts DESC`,
+         AND h.role = 'assistant'
+       ORDER BY h.ts DESC`,
     )
     .iterate(cwd);
 
   for (const row of rows) {
-    const next = handoffNext(row.text);
-    if (next === null) continue;
-    return { sessionId: row.id, endedAt: row.ended_at, endReason: row.end_reason, next };
+    return { sessionId: row.id, endedAt: row.ended_at, endReason: row.end_reason, next: row.next };
   }
   return null;
 }
