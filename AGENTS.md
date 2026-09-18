@@ -23,3 +23,4 @@ Only what holds here and nowhere else is written below. General engineering conv
 - Stop where the choice is the owner's: work that is hard to reverse, work that is outward-facing, or a change that spends something on every session rather than this one.
 - Measurements live in [`docs/findings.md`](docs/findings.md), dated, with what each number can carry. Write a finding when it is found — a number left in a conversation is gone when the session is, and the next agent re-measures it or assumes it.
 - A skill under `skills/` cites only queries that answer. Check what one returns before naming it.
+- A comment earns its place only with a *why* a name, type or test cannot carry. Never restate the line below it, never narrate what changed, and no banner or separator comments.
