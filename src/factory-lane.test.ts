@@ -10,6 +10,7 @@ import {
   recordLaneCheck,
   recordLaneCommit,
   recordLaneDocument,
+  recordLaneFile,
   recordLaneFinding,
 } from "./factory-lane";
 import { dbPath } from "./paths";
@@ -61,6 +62,7 @@ describe("factory lane report records", () => {
     createLane(database, lane, "2026-09-18T10:00:00.000Z");
     appendLaneEvent(database, "lane-1", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
     recordLaneCommit(database, "lane-1", "abc123", "feat: lane", "2026-09-18T10:02:00.000Z");
+    recordLaneFile(database, "lane-1", "src/factory-lane.ts", "2026-09-18T10:02:30.000Z");
     const check = recordLaneCheck(
       database,
       "lane-1",
@@ -86,6 +88,9 @@ describe("factory lane report records", () => {
       stop_reason: "verified",
     });
     expect(database.query("SELECT sha FROM factory_lane_commit").get()).toEqual({ sha: "abc123" });
+    expect(database.query("SELECT path FROM factory_lane_file").get()).toEqual({
+      path: "src/factory-lane.ts",
+    });
     expect(database.query("SELECT command, exit_code FROM factory_lane_check").get()).toEqual({
       command: "bun run verify",
       exit_code: 0,

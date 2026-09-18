@@ -5,6 +5,7 @@ import {
   recordLaneCheck,
   recordLaneCommit,
   recordLaneDocument,
+  recordLaneFile,
   recordLaneFinding,
 } from "./factory-lane";
 import { findQuery } from "./queries";
@@ -20,6 +21,7 @@ describe("factory lane query", () => {
       "2026-09-18T10:00:00.000Z",
     );
     recordLaneCommit(db, "lane-123", "abc", "feat: report", "2026-09-18T10:01:00.000Z");
+    recordLaneFile(db, "lane-123", "src/factory-lane.ts", "2026-09-18T10:01:30.000Z");
     recordLaneCheck(
       db,
       "lane-123",
@@ -40,6 +42,7 @@ describe("factory lane query", () => {
       "event",
       "event",
       "commit",
+      "file",
       "event",
       "check",
       "event",
