@@ -684,6 +684,38 @@ describe("a thin sample is a row with its base, not a row withheld", () => {
     }
   });
 
+  test("exemplars nominates a file edited once, with the edit count beside it", () => {
+    const db = twoFiles();
+    try {
+      db.run(
+        `INSERT INTO repo_commit (sha, repo, ts, kind, subject)
+         VALUES ('sha1', '/w', '2026-09-02T10:00:00Z', 'feat', 'feat: one')`,
+      );
+      db.run("INSERT INTO commit_file (sha, path) VALUES ('sha1', '/w/one.ts')");
+      const x = findQuery("exemplars")?.run(db, { home: "/w" });
+      expect(x?.rows.map((row) => [row[0], row[3]])).toEqual([["one.ts", 1]]);
+      expect(x?.denominator).toContain("`edits` counts the agent edits behind it");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("exemplars says a fix came back rather than that nothing shipped", () => {
+    const db = twoFiles();
+    try {
+      db.run(
+        `INSERT INTO repo_commit (sha, repo, ts, kind, subject)
+         VALUES ('sha1', '/w', '2026-09-02T10:00:00Z', 'fix', 'fix: one')`,
+      );
+      db.run("INSERT INTO commit_file (sha, path) VALUES ('sha1', '/w/one.ts')");
+      const x = findQuery("exemplars")?.run(db, { home: "/w" });
+      expect(x?.rows).toEqual([]);
+      expect(x?.note).toContain("shipped without a fix coming back to it");
+    } finally {
+      db.close();
+    }
+  });
+
   test("rework names the skill it was asked about when that skill has no edits", () => {
     const db = twoFiles();
     try {
