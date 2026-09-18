@@ -449,3 +449,13 @@ The error that is live is a different one. Splitting the window's commits by whe
 Every one of those 90 is a fixture from an earlier session's test runs, under `.../recurrence/runs/run-N`. `isScratchRepo` exists to exclude exactly these and already lists `/private/tmp`, but it filters what `sync` ingests into `repo_commit`; `q slices` reads `tool_call` and `session.project` directly and never consults it. So a rule that is correct is applied in one place and not the other.
 
 What this carries: one machine, one window, and a count of repos rather than of commits for the first claim — a repo declaring a check its sessions never run is invisible to that 21. The 627 is the number that survives, and it is a floor: a commit whose check ran under a name the list does not hold would still read as unchecked, and nothing here has measured how often the 12 undeclaring repos commit.
+
+## A builder explained a flaky test with a cause that cannot reach it
+
+Measured on 2026-09-18, while three builders ran in parallel on one checkout. A builder reported `src/push-gate.test.ts` failing 6 of 16 on timeouts inside its worktree, attributed it to the rtk hook rewriting the `git` those tests spawn, and adopted `rtk proxy` for its commit on that basis.
+
+The attribution cannot be right. Those tests reach git through `execFileSync("git", ...)` (`src/push-gate.test.ts:22`, `:26`), which spawns the binary from the test process; the hook rewrites commands issued through the agent's shell tool and never sees them. Re-run in a fresh worktree with the hook active and two builders still working, the file passed 16 of 16 on four consecutive runs.
+
+What produced the six failures is unestablished. Load is the open candidate: `bun run verify` on the main checkout aborted with SIGABRT the same hour under the same three builders, and both of its halves passed alone immediately afterward. Neither observation isolates a cause, and one abort with one report is not a rate.
+
+What this carries is the misattribution rather than the flake. The explanation was plausible, matched a real documented caveat — rtk does break interactive `git` in a worktree — and named a mechanism that does not touch the failing code. A workaround was then adopted against it, which is the part that outlives the session: the next reader finds `rtk proxy` in a commit and infers the constraint was real. A cause is worth a check against the code it is said to act on, and a subagent's explanation is worth that check whether or not the failure it explains was real.
