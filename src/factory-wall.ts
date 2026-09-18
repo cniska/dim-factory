@@ -42,9 +42,10 @@ export type WallSnapshot = {
   totals: Record<WallPhase, number>;
 };
 
-/** Every kind an order event carries, plus the three kinds of evidence written without one,
- *  named as `dim q order` names them. */
-export type WallItemKind = OrderEventKind | "file_changed" | "document_updated" | "environment_reported";
+/** Every kind an order event carries, plus the two kinds of evidence written without one,
+ *  named as `dim q order` names them. A changed file is evidence of the same sort but is read
+ *  as a set of changes rather than as a moment, so it stands beside the history. */
+export type WallItemKind = OrderEventKind | "document_updated" | "environment_reported";
 
 export type WallItemEntry = {
   at: string;
@@ -62,6 +63,14 @@ export type WallItemEntry = {
   environment?: WorkerHookReport;
 };
 
+/** What the order changed in one file, as its recorder counted it. A count is absent where none
+ *  was recorded, which a page states as unknown rather than as zero lines changed. */
+export type WallItemChange = {
+  path: string;
+  added?: number;
+  removed?: number;
+};
+
 export type WallItemView = {
   order: WallOrder;
   runId: string;
@@ -69,6 +78,7 @@ export type WallItemView = {
   worktree?: string;
   branch?: string;
   entries: WallItemEntry[];
+  changes: WallItemChange[];
 };
 
 const MAX_COLUMN_CARDS = 12;
@@ -222,6 +232,8 @@ type EventRow = {
 
 type PathRow = { recorded_at: string; path: string };
 
+type FileRow = { path: string; added: number | null; removed: number | null };
+
 type EnvironmentRow = {
   recorded_at: string;
   phase: WorkerEnvironmentPhase;
@@ -325,8 +337,11 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
     )
     .all(orderId) as EventRow[];
   const files = db
-    .query("SELECT recorded_at, path FROM factory_order_file WHERE order_id = ? ORDER BY recorded_at, path")
-    .all(orderId) as PathRow[];
+    .query(
+      `SELECT path, added, removed FROM factory_order_file
+       WHERE order_id = ? ORDER BY recorded_at, path`,
+    )
+    .all(orderId) as FileRow[];
   const documents = db
     .query(
       "SELECT recorded_at, path FROM factory_order_document WHERE order_id = ? ORDER BY recorded_at, path",
@@ -340,11 +355,6 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
     .all(orderId) as EnvironmentRow[];
   const entries: WallItemEntry[] = [
     ...events.map(eventEntry),
-    ...files.map((file) => ({
-      at: file.recorded_at,
-      kind: "file_changed" as const,
-      path: tildePath(file.path),
-    })),
     ...documents.map((doc) => ({
       at: doc.recorded_at,
       kind: "document_updated" as const,
@@ -352,7 +362,7 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
     })),
     ...environments.map(environmentEntry),
     // Two rows recorded at the same instant carry nothing that says which was written first,
-    // so they hold the order `dim q order` puts them in — events, then files, documents and
+    // so they hold the order `dim q order` puts them in — events, then documents and
     // environment reports — rather than the two surfaces disagreeing on a tie.
   ].sort((a, b) => a.at.localeCompare(b.at));
   return {
@@ -362,6 +372,11 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
     ...(row.worktree ? { worktree: tildePath(row.worktree) } : {}),
     ...(row.branch ? { branch: row.branch } : {}),
     entries,
+    changes: files.map((file) => ({
+      path: tildePath(file.path),
+      ...(file.added === null ? {} : { added: file.added }),
+      ...(file.removed === null ? {} : { removed: file.removed }),
+    })),
   };
 }
 

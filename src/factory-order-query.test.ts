@@ -180,7 +180,12 @@ describe("factory order query", () => {
     );
     appendOrderEvent(db, "order-123", { kind: "started", status: "running" }, "2026-09-18T10:00:30.000Z");
     recordOrderCommit(db, "order-123", "abc", "feat: report", "2026-09-18T10:01:00.000Z");
-    recordOrderFile(db, "order-123", "src/factory-order.ts", "2026-09-18T10:01:30.000Z");
+    recordOrderFile(
+      db,
+      "order-123",
+      { path: "src/factory-order.ts", added: 12, removed: 3 },
+      "2026-09-18T10:01:30.000Z",
+    );
     recordOrderCheck(
       db,
       "order-123",
@@ -233,6 +238,10 @@ describe("factory order query", () => {
       '[{"port":5433}]',
     ]);
     expect(result?.rows[0]?.[4]).toBe("run-1/queue-1/item-1");
+    expect(result?.rows.find((row) => row[0] === "file")?.slice(4)).toEqual([
+      "src/factory-order.ts",
+      "+12 -3",
+    ]);
     expect(result?.denominator).toContain("order order-123: running");
     db.close();
   });

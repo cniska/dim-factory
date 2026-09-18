@@ -12,7 +12,7 @@
 
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 22;
+export const SCHEMA_VERSION = 23;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -243,9 +243,14 @@ CREATE TABLE IF NOT EXISTS factory_order_commit (
   PRIMARY KEY (order_id, sha)
 );
 
+-- How much of each file the order changed, as the recorder counted it. Both
+-- nullable: a path recorded without counts says only that the file was touched,
+-- and git reports no line counts at all for a binary file.
 CREATE TABLE IF NOT EXISTS factory_order_file (
   order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   path          TEXT NOT NULL,
+  added         INTEGER,
+  removed       INTEGER,
   recorded_at   TEXT NOT NULL,
   PRIMARY KEY (order_id, path)
 );

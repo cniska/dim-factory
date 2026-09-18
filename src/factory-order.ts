@@ -259,13 +259,14 @@ export function recordOrderCommit(
   })();
 }
 
-export function recordOrderFile(db: Database, orderId: string, path: string, at = now()): void {
+export type OrderFile = { path: string; added?: number; removed?: number };
+
+export function recordOrderFile(db: Database, orderId: string, file: OrderFile, at = now()): void {
   assertOrderRunning(db, orderId);
-  db.run("INSERT INTO factory_order_file (order_id, path, recorded_at) VALUES (?, ?, ?)", [
-    orderId,
-    path,
-    at,
-  ]);
+  db.run(
+    "INSERT INTO factory_order_file (order_id, path, added, removed, recorded_at) VALUES (?, ?, ?, ?, ?)",
+    [orderId, file.path, file.added ?? null, file.removed ?? null, at],
+  );
 }
 
 export function recordOrderCheck(

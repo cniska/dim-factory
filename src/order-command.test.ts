@@ -164,9 +164,18 @@ describe("order command", () => {
     expect(
       runOrderCommand(database, ["commit", "order-1", "--sha", "abc123", "--subject", "feat: land it"]),
     ).toBe("order-1 recorded commit abc123");
-    expect(runOrderCommand(database, ["file", "order-1", "--path", "src/order-command.ts"])).toBe(
-      "order-1 recorded src/order-command.ts",
-    );
+    expect(
+      runOrderCommand(database, [
+        "file",
+        "order-1",
+        "--path",
+        "src/order-command.ts",
+        "--added",
+        "31",
+        "--removed",
+        "4",
+      ]),
+    ).toBe("order-1 recorded src/order-command.ts (+31/-4)");
     expect(
       runOrderCommand(database, [
         "check",
@@ -199,8 +208,10 @@ describe("order command", () => {
       sha: "abc123",
       subject: "feat: land it",
     });
-    expect(database.query("SELECT path FROM factory_order_file").get()).toEqual({
+    expect(database.query("SELECT path, added, removed FROM factory_order_file").get()).toEqual({
       path: "src/order-command.ts",
+      added: 31,
+      removed: 4,
     });
     expect(database.query("SELECT command, exit_code, result FROM factory_order_check").get()).toEqual({
       command: "bun run verify",
@@ -235,6 +246,34 @@ describe("order command", () => {
     expect(
       database.query("SELECT count(*) AS rows FROM factory_order_commit WHERE sha = 'abc123'").get(),
     ).toEqual({ rows: 0 });
+  });
+
+  test("a line count that is not a number is refused, and git's binary dash is no count", () => {
+    const database = db();
+    runOrderCommand(database, claim);
+    runOrderCommand(database, ["start", "order-1"]);
+
+    for (const spec of ["", " ", "1e3", "-4", "many"]) {
+      expect(() =>
+        runOrderCommand(database, ["file", "order-1", "--path", "src/a.ts", "--added", spec]),
+      ).toThrow(OrderCommandError);
+    }
+    expect(
+      runOrderCommand(database, [
+        "file",
+        "order-1",
+        "--path",
+        "src/logo.png",
+        "--added",
+        "-",
+        "--removed",
+        "-",
+      ]),
+    ).toBe("order-1 recorded src/logo.png");
+    expect(database.query("SELECT added, removed FROM factory_order_file").get()).toEqual({
+      added: null,
+      removed: null,
+    });
   });
 
   test("a check with no exit status and a finding with no answer are refused", () => {
