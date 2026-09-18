@@ -237,7 +237,13 @@ describe("factory job query", () => {
     db.run(SCHEMA_SQL);
     createJob(
       db,
-      { id: "job-killed", runId: "run-1", queueId: "queue-1", itemId: "item-1" },
+      {
+        id: "job-killed",
+        runId: "run-1",
+        queueId: "queue-1",
+        itemId: "item-1",
+        title: "Teardown hook killed",
+      },
       "2026-09-18T10:00:00.000Z",
     );
     appendJobEvent(db, "job-killed", { kind: "started", status: "running" }, "2026-09-18T10:00:30.000Z");
