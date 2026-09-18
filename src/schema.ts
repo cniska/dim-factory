@@ -423,6 +423,13 @@ CREATE TABLE IF NOT EXISTS repo_file (
 );
 CREATE INDEX IF NOT EXISTS repo_file_path ON repo_file(path);
 
+-- The check a repository declared when sync read it. A null command is the
+-- source's answer that it declared no check, not an inference from its tools.
+CREATE TABLE IF NOT EXISTS repo_check (
+  repo            TEXT PRIMARY KEY,
+  command         TEXT
+);
+
 -- Which version of a rules file was in force when a session ran. Skills carry a
 -- body hash on every load; AGENTS.md and CLAUDE.md are loaded in every session and
 -- carried none, so the 82% of edits made under no skill could not be split by the

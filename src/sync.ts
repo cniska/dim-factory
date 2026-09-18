@@ -7,6 +7,7 @@ import { type HandoffLinkReport, linkHandoffs } from "./handoff";
 import { type HistoryReport, ingestHistory } from "./history";
 import { createIngester, type FileSpec } from "./ingest";
 import type { Env } from "./paths";
+import { type RepoCheckReport, recordRepoChecks } from "./repo-check";
 import { indexRepoFiles, type RepoFileReport } from "./repo-files";
 import { SCHEMA_SQL, SCHEMA_VERSION } from "./schema";
 import { applyHookEvents, type DrainReport, drainSpool } from "./spool";
@@ -25,6 +26,7 @@ export type SyncReport = {
   history: HistoryReport;
   git: GitReport;
   repoFiles: RepoFileReport;
+  repoChecks: RepoCheckReport;
   guidance: GuidanceReport;
   chain: HandoffLinkReport;
   walk: WalkReport;
@@ -49,6 +51,7 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     history: { read: 0, orphans: 0 },
     git: { repos: 0, commits: 0, files: 0 },
     repoFiles: { repos: 0, files: 0 },
+    repoChecks: { repos: 0 },
     guidance: { files: 0, versions: 0 },
     chain: { pasted: 0, linked: 0 },
     walk: drainWalk(db, env),
@@ -99,6 +102,7 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
   report.git = ingestCommits(db);
   // Both of these read the repos the commits just named, so neither scans a disk.
   report.repoFiles = indexRepoFiles(db);
+  report.repoChecks = recordRepoChecks(db);
   report.guidance = ingestGuidance(db, env);
   // Derived from the messages just written, so it follows every transcript pass.
   report.chain = linkHandoffs(db);
@@ -153,6 +157,7 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
     db.run("DROP TABLE IF EXISTS guidance_version");
     db.run("DROP TABLE IF EXISTS commit_file");
     db.run("DROP TABLE IF EXISTS repo_file");
+    db.run("DROP TABLE IF EXISTS repo_check");
     db.run("DROP TABLE IF EXISTS repo_commit");
     db.run("DROP TABLE IF EXISTS handoff_link");
     db.run(SCHEMA_SQL);
