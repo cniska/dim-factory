@@ -48,10 +48,13 @@ export function versionsFromGit(repo: string, name: string): { sha: string; ts: 
  * so each sync is the only chance to record what it said at that moment.
  */
 export function ingestGuidance(db: Database, env: Env = process.env): GuidanceReport {
+  // A removed worktree leaves its commits behind, and spawning git against a
+  // missing cwd throws rather than failing, which aborts the whole sync.
   const repos = db
     .prepare<{ repo: string }, []>("SELECT DISTINCT repo FROM repo_commit")
     .all()
-    .map((r) => r.repo);
+    .map((r) => r.repo)
+    .filter((repo) => existsSync(repo));
 
   const now = new Date().toISOString();
   const upsert = db.prepare(
