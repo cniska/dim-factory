@@ -1170,6 +1170,77 @@ const job: Query = {
   },
 };
 
+const factory: Query = {
+  name: "factory",
+  summary: "show current factory item and job status with lifecycle and evidence",
+  usage: "dim q factory [job-id]",
+  spansHistory: true,
+  window: null,
+  run: (db, { arg }) => {
+    const filter = arg ? "WHERE j.id LIKE ? || '%'" : "";
+    const found = table(
+      db,
+      `SELECT j.queue_id AS queue, j.item_id AS item, j.id AS job, j.status,
+              (SELECT e.kind FROM factory_job_event e
+               WHERE e.job_id = j.id ORDER BY e.ts DESC, e.id DESC LIMIT 1) AS latest_event,
+              (SELECT e.ts FROM factory_job_event e
+               WHERE e.job_id = j.id ORDER BY e.ts DESC, e.id DESC LIMIT 1) AS latest_event_at,
+              coalesce(j.worktree, '(absent)') AS worktree,
+              coalesce(j.branch, '(absent)') AS branch,
+              coalesce(j.station, '(absent)') AS station,
+              coalesce((SELECT c.sha || coalesce(' ' || c.subject, '')
+                        FROM factory_job_commit c WHERE c.job_id = j.id
+                        ORDER BY c.recorded_at DESC, c.sha DESC LIMIT 1), '(none recorded)') AS "commit",
+              coalesce((SELECT c.command || ' (' || c.exit_code || ', ' || coalesce(c.result, 'no result') || ')'
+                        FROM factory_job_check c WHERE c.job_id = j.id
+                        ORDER BY c.finished_at DESC, c.id DESC LIMIT 1), '(none recorded)') AS "check",
+              coalesce((SELECT group_concat(finding, '; ') FROM (
+                          SELECT f.dimension || ': ' || f.answer || ' - ' || f.summary AS finding
+                          FROM factory_job_finding f WHERE f.job_id = j.id
+                          ORDER BY f.recorded_at, f.id
+                        )), '(none recorded)') AS findings,
+              coalesce((SELECT nullif(trim(coalesce(e.fence_type || ': ', '') || coalesce(e.reason, '')), '')
+                        FROM factory_job_event e WHERE e.job_id = j.id
+                          AND e.kind IN ('completed', 'blocked', 'fenced', 'failed', 'abandoned')
+                        ORDER BY e.ts DESC, e.id DESC LIMIT 1), '(none)') AS stop
+       FROM factory_job j ${filter}
+       ORDER BY j.updated_at DESC, j.id`,
+      arg ? [arg] : [],
+    );
+    const columns = [
+      "queue",
+      "item",
+      "job",
+      "status",
+      "latest_event",
+      "latest_event_at",
+      "worktree",
+      "branch",
+      "station",
+      "commit",
+      "check",
+      "findings",
+      "stop",
+    ];
+    if (found.length === 0) {
+      return {
+        denominator: "queue planner source absent; no factory job matched",
+        columns,
+        rows: [],
+        note: arg ? `no job starts with ${arg}` : "no factory jobs are recorded",
+      };
+    }
+    return {
+      denominator:
+        `${found.length} factory job${found.length === 1 ? "" : "s"} read from factory_job; ` +
+        "queue planner source absent (no file-backed planner is recorded)",
+      columns,
+      rows: toRows(found, columns),
+      note: "Lifecycle and evidence are read from factory_job and its normalized evidence tables; no status is inferred from repository files.",
+    };
+  },
+};
+
 /**
  * One skill, split at each edit to its body. A correction is tied to the version
  * that was loaded in its session at the time, not to the version loaded today,
@@ -2196,6 +2267,7 @@ export const QUERIES: Query[] = [
   search,
   keywords,
   thread,
+  factory,
   job,
   skill,
   resume,
