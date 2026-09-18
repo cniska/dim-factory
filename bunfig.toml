@@ -1,0 +1,4 @@
+# Tailwind runs through the HTML bundler that serves the wall, which reads its plugins here
+# rather than from a build call.
+[serve.static]
+plugins = ["bun-plugin-tailwind"]

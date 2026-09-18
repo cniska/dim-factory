@@ -1,9 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
-import tailwind from "bun-plugin-tailwind";
 import { age } from "./age";
 import { dbPath } from "./paths";
 import { openReadOnly } from "./read-db";
+import wallPage from "./wall.html";
 import { workerName } from "./worker-name";
 
 export type WallStation = "plan" | "build" | "review" | "ship";
@@ -173,33 +173,9 @@ export function wallFont(): Uint8Array {
   return new Uint8Array(readFileSync(new URL("./fonts/jetbrains-mono-latin.woff2", import.meta.url)));
 }
 
-export async function buildWallBundle(): Promise<{ js: Uint8Array; css: Uint8Array }> {
-  const result = await Bun.build({
-    // Resolved against this module rather than the working directory, so the wall serves
-    // from wherever `dim` was invoked.
-    entrypoints: [new URL("./wall-client.tsx", import.meta.url).pathname],
-    target: "browser",
-    minify: true,
-    plugins: [tailwind],
-  });
-  if (!result.success) throw new Error(result.logs.map((log) => log.message).join("\n"));
-  const js = result.outputs.find((output) => output.path.endsWith(".js"));
-  const css = result.outputs.find((output) => output.path.endsWith(".css"));
-  if (!js || !css) throw new Error("wall bundle must produce JavaScript and CSS assets");
-  return { js: new Uint8Array(await js.arrayBuffer()), css: new Uint8Array(await css.arrayBuffer()) };
-}
-
-// The face is declared here rather than in `wall.css` because the bundler resolves a css
-// `url()` at build time and this one is a route this server answers, not a file on disk
-// beside the stylesheet. Served from the wall's own port: nothing here reaches the network.
-const fontFace = `@font-face{font-family:"JetBrains Mono";src:url("/wall.woff2") format("woff2");font-weight:100 800;font-style:normal;font-display:swap}`;
-
-const page = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${fontFace}</style><link rel="stylesheet" href="/wall.css"><title>Wall · dim factory</title></head><body><div id="root"></div><script src="/wall.js"></script></body></html>`;
-
 export async function serveWall(
-  options: { port?: number; databasePath?: string } = {},
+  options: { port?: number; databasePath?: string; hmr?: boolean } = {},
 ): Promise<ReturnType<typeof Bun.serve>> {
-  const bundle = await buildWallBundle();
   const font = wallFont();
   const clients = new Set<Bun.ServerWebSocket<unknown>>();
   const path = options.databasePath ?? dbPath();
@@ -215,16 +191,12 @@ export async function serveWall(
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: options.port ?? 0,
+    // The page and every asset it pulls are bundled from this route, so the wall has one
+    // way of being served and `hmr` is the only thing an editing session changes.
+    routes: { "/": wallPage },
+    development: options.hmr ? { hmr: true } : false,
     fetch(request, server) {
       const url = new URL(request.url);
-      if (url.pathname === "/wall.js")
-        return new Response(bundle.js as unknown as BodyInit, {
-          headers: { "content-type": "text/javascript; charset=utf-8" },
-        });
-      if (url.pathname === "/wall.css")
-        return new Response(bundle.css as unknown as BodyInit, {
-          headers: { "content-type": "text/css; charset=utf-8" },
-        });
       if (url.pathname === "/wall.woff2")
         return new Response(font as unknown as BodyInit, {
           headers: { "content-type": "font/woff2", "cache-control": "max-age=31536000, immutable" },
@@ -241,7 +213,7 @@ export async function serveWall(
       }
       if (url.pathname === "/api/control") return new Response("Not found", { status: 404 });
       if (url.pathname === "/ws" && server.upgrade(request)) return;
-      return new Response(page, { headers: { "content-type": "text/html; charset=utf-8" } });
+      return new Response("Not found", { status: 404 });
     },
     websocket: {
       open(socket) {

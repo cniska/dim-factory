@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Wall · dim factory</title>
+    <!-- The face names a route this server answers rather than a file beside a stylesheet,
+         so it is declared here where the bundler leaves the URL alone. Served from the
+         wall's own port: nothing here reaches the network. -->
+    <style>
+      @font-face {
+        font-family: "JetBrains Mono";
+        src: url("/wall.woff2") format("woff2");
+        font-weight: 100 800;
+        font-style: normal;
+        font-display: swap;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./wall-client.tsx"></script>
+  </body>
+</html>

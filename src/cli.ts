@@ -754,6 +754,7 @@ try {
       {
         const server = await serveWall({
           port: Number(process.env.DIM_WALL_PORT ?? 0) || 0,
+          hmr: process.argv.includes("--dev"),
         });
         console.log(`factory wall listening at http://${server.hostname}:${server.port}`);
       }
