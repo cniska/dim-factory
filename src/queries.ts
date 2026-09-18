@@ -1058,27 +1058,27 @@ const thread: Query = {
   },
 };
 
-const lane: Query = {
-  name: "lane",
-  summary: "inspect one factory lane report, its events, and evidence",
-  usage: "dim q lane <lane-id>",
+const job: Query = {
+  name: "job",
+  summary: "inspect one factory job report, its events, and evidence",
+  usage: "dim q job <job-id>",
   spansHistory: true,
   run: (db, { arg }) => {
     if (!arg) {
-      return { denominator: "", columns: ["error"], rows: [["usage: dim q lane <lane-id>"]] };
+      return { denominator: "", columns: ["error"], rows: [["usage: dim q job <job-id>"]] };
     }
-    const found = table(db, "SELECT * FROM factory_lane WHERE id LIKE ? || '%' LIMIT 2", [arg]);
+    const found = table(db, "SELECT * FROM factory_job WHERE id LIKE ? || '%' LIMIT 2", [arg]);
     if (found.length === 0) {
-      return { denominator: "", columns: ["id"], rows: [], note: `no lane starts with ${arg}` };
+      return { denominator: "", columns: ["id"], rows: [], note: `no job starts with ${arg}` };
     }
     if (found.length > 1) {
-      return { denominator: "", columns: ["id"], rows: [], note: `${arg} matches more than one lane` };
+      return { denominator: "", columns: ["id"], rows: [], note: `${arg} matches more than one job` };
     }
     const report = found[0] as Record<string, unknown>;
     const id = report.id as string;
     const columns = ["section", "when", "kind", "status", "subject", "evidence"];
     const aggregate: Record<string, unknown> = {
-      section: "lane",
+      section: "job",
       when: report.updated_at,
       kind: "report",
       status: report.status,
@@ -1094,51 +1094,51 @@ const lane: Query = {
                 coalesce(station, delegated_station, '') AS subject,
                 coalesce(reason, fence_type, commit_sha, cast(check_id AS TEXT), cast(finding_id AS TEXT),
                          delegated_agent_id, '') AS evidence
-         FROM factory_lane_event WHERE lane_id = ?`,
+         FROM factory_job_event WHERE job_id = ?`,
         [id],
       ),
       ...table(
         db,
         `SELECT 'commit' AS section, recorded_at AS "when", 'commit_created' AS kind, '' AS status,
                 sha AS subject, coalesce(subject, '') AS evidence
-         FROM factory_lane_commit WHERE lane_id = ?`,
+         FROM factory_job_commit WHERE job_id = ?`,
         [id],
       ),
       ...table(
         db,
         `SELECT 'check' AS section, finished_at AS "when", 'check_finished' AS kind,
                 cast(exit_code AS TEXT) AS status, command AS subject, coalesce(result, '') AS evidence
-         FROM factory_lane_check WHERE lane_id = ?`,
+         FROM factory_job_check WHERE job_id = ?`,
         [id],
       ),
       ...table(
         db,
         `SELECT 'file' AS section, recorded_at AS "when", 'file_changed' AS kind, '' AS status,
                 path AS subject, '' AS evidence
-         FROM factory_lane_file WHERE lane_id = ?`,
+         FROM factory_job_file WHERE job_id = ?`,
         [id],
       ),
       ...table(
         db,
         `SELECT 'finding' AS section, recorded_at AS "when", 'review_finished' AS kind,
                 answer AS status, dimension AS subject, summary AS evidence
-         FROM factory_lane_finding WHERE lane_id = ?`,
+         FROM factory_job_finding WHERE job_id = ?`,
         [id],
       ),
       ...table(
         db,
         `SELECT 'document' AS section, recorded_at AS "when", 'document_updated' AS kind, '' AS status,
                 path AS subject, '' AS evidence
-         FROM factory_lane_document WHERE lane_id = ?`,
+         FROM factory_job_document WHERE job_id = ?`,
         [id],
       ),
     ].sort((a, b) => String(a.when).localeCompare(String(b.when)));
     const rows = [aggregate, ...evidence];
     return {
-      denominator: `lane ${id}: ${report.status}; one aggregate, ${rows.length - 1} lifecycle and evidence rows`,
+      denominator: `job ${id}: ${report.status}; one aggregate, ${rows.length - 1} lifecycle and evidence rows`,
       columns,
       rows: toRows(rows, columns),
-      note: "Evidence is recorded by the lane; this query does not infer completion from repository history.",
+      note: "Evidence is recorded by the job; this query does not infer completion from repository history.",
     };
   },
 };
@@ -2150,7 +2150,7 @@ export const QUERIES: Query[] = [
   search,
   keywords,
   thread,
-  lane,
+  job,
   skill,
   resume,
   delegation,
