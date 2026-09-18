@@ -12,7 +12,7 @@
 
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -190,6 +190,11 @@ CREATE TABLE IF NOT EXISTS factory_job (
   -- What the item is called, so a card can be read across a room. The id beside
   -- it is what a query joins on and never what a person is shown.
   title           TEXT NOT NULL,
+  -- What the queue said the item was, copied in at claim time: the queue is edited
+  -- as work lands, so by the time anyone reads the job back the wording that was
+  -- worked to is gone. Nullable because a queue that names its items and nothing
+  -- more has no statement to copy, and an invented one would read as the owner's.
+  statement       TEXT,
   agent_id        TEXT,
   session_id      TEXT,
   worktree        TEXT,
