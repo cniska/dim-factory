@@ -42,7 +42,7 @@ An item you cannot state needs scoping, which is `dim-station-plan` — run it, 
 | repairs something wrong | `dim-line-fix` |
 | neither — a refactor, a doc, a rule | `dim-station-build` |
 
-**Hand the item to a builder.** Pass the item, base revision, repo check and the branch the claim below recorded; the builder creates its isolated worktree with `dim wt <branch>`, then invokes the station itself and takes the item end to end. Running the station in this session makes the line one worker long, and then the queue is worked one item per invocation whatever this file says about emptying it.
+**Hand the item to a builder**, at the tier `dim route builder` gives you. Pass the item, base revision, repo check and the branch the claim below recorded; the builder creates its isolated worktree with `dim wt <branch>`, then invokes the station itself and takes the item end to end. Running the station in this session makes the line one worker long, and then the queue is worked one item per invocation whatever this file says about emptying it.
 
 This is not the fan-out `dim-station-build` argues against. That rule keeps a single slice from being split across agents, because edits need the context that produced them — a builder holding one whole item has exactly that context. What it forbids is two agents editing one slice.
 
