@@ -1,0 +1,358 @@
+{
+  "version": 1,
+  "id": "dim-factory",
+  "items": [
+    {
+      "id": "external-benchmark",
+      "title": "Score recall against LongMemEval",
+      "description": "Port the LongMemEval dataset adapters so a published recall claim is measured against an external set rather than only the corpus-native one.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "passage-refs",
+      "title": "Tell two passages in one session apart",
+      "description": "Give search a ref finer than a session so two graded passages from one session can be separated and bench can score the question instead of refusing it.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "wider-corpus",
+      "title": "Draw labeled questions from handoff links",
+      "description": "Grow the labeled set past one agent's sitting by drawing questions from handoff_link pairs, where a query and its known answer already exist.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "rank-fusion",
+      "title": "Reciprocal-rank fusion",
+      "description": "Fuse the cosine and keyword rankings, scored against the labeled set rather than argued.",
+      "dependencies": ["external-benchmark", "passage-refs", "wider-corpus"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "guidance-cut-ledger",
+      "title": "Ledger of measured guidance cuts",
+      "description": "Record append-only which guidance cuts a measurement confirmed or rejected, written when the runner decides a cut.",
+      "dependencies": ["guidance-file-arm"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "raw-turns-in-index",
+      "title": "Whether raw turns belong in the index",
+      "description": "Settle by benchmark whether indexing raw conversation turns helps retrieval, after they measured worse as input.",
+      "dependencies": ["external-benchmark", "passage-refs", "wider-corpus"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "self-maintaining-loop",
+      "title": "A self-maintaining loop in an app repo",
+      "description": "Run dim-line-fix on a schedule against the faults a shipping repo's own crash reports name, with a memory of what was already attempted kept beside those reports.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "corrections-source",
+      "title": "Corrections as a source",
+      "description": "Put rows in correction_label so a reworded repetition has a source that can catch it.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "workspace-contract",
+      "title": "Workspace and worker-environment contract",
+      "description": "Name the required services, the isolation strategy and the resource and secret requirements the workspace profile still leaves open.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "wall-gaps",
+      "title": "What the factory wall cannot show",
+      "description": "Give the board a durable agent-to-name table, a project on every card and an operator record, so a name is a fact and one board can carry more than one repo.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "factory-job-orchestration",
+      "title": "Queue selection and serialized integration",
+      "description": "Take queue selection, serialized integration and queue-state enforcement into the job contract; recording evidence from a shell is a slice of its own.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "factory-scheduler",
+      "title": "Harness-neutral factory scheduler",
+      "description": "Install the schedule in a host, claim the due queue work and record what each scheduled run executed.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "owner-verdict",
+      "title": "The owner's verdict on a finished job",
+      "description": "Record whether a finished job landed as it came, was sent back or was changed before landing, with the grounds whenever it was not the first.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "scheduled-architecture-review",
+      "title": "Architecture review on a boundary",
+      "description": "Run the read-only architecture dimension when the queue presents a change crossing a module, schema, queue or hook boundary.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "posttooluse-event",
+      "title": "PostToolUse as an installed event",
+      "description": "Record tool activity from a PostToolUse hook that spools rather than writes, so a later pass reads it and a failing hook cannot break a session.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "format-after-edit",
+      "title": "Run a formatter after an edit",
+      "description": "Resolve the checkout from an edit event, run the repository's declared formatter against the changed paths, record the result and fail open.",
+      "dependencies": ["posttooluse-event"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "working-directory-check",
+      "title": "The working-directory check",
+      "description": "Compare the repo a git call is aimed at against the one the session belongs to, which only a hook on the tool call can do.",
+      "dependencies": ["posttooluse-event"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "weakening-guard",
+      "title": "The weakening guard",
+      "description": "Warn when a change weakens a test or a check, rather than blocking it.",
+      "dependencies": ["posttooluse-event"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "undo-agent-writes",
+      "title": "Undoing an agent's writes",
+      "description": "Record that an agent changed something and commit that record on a later pass, so a write can be undone.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "wake-tooling-chain",
+      "title": "The tooling chain in wake",
+      "description": "Derive which CLIs a repo is actually worked with from the shell commands its sessions ran, once the threshold telling an interesting tool from a universal one is settled.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "jsonc-io-split",
+      "title": "Split jsonc IO from its text edits",
+      "description": "Settle whether the jsonc module grows a path-level edit or drops its IO, so every writer stops repeating the exists, read, append, check, back up, write sequence.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "jsonc-edit-fidelity",
+      "title": "Two small jsonc edit infidelities",
+      "description": "A comment trailing an array's last element labels the entry appended after it, and an edited CRLF file comes back with LF endings.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "subcommand-help",
+      "title": "Each subcommand carries its own help",
+      "description": "Print every dim subcommand's usage from a registry the way queries already do, so adding a command cannot leave the listing silently short.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "checked-slice-gate",
+      "title": "A slice cannot commit unchecked",
+      "description": "Settle what makes a check countable, so a pre-commit gate can refuse a slice that skipped it instead of only a query saying so afterward.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "repeats-meaning",
+      "title": "q repeats classifies by meaning",
+      "description": "Replace the stopword set, regex and character threshold that decide what a repeat is with meaning.",
+      "dependencies": ["corrections-source"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "schema-version-derived",
+      "title": "A schema edit announces itself",
+      "description": "Derive the schema version from the schema text and the rebuild drop list from every table but an explicitly spared few, once the cost of that check on every command is known.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "stuck-slice-counter",
+      "title": "A stuck-slice counter",
+      "description": "Count a slice's failed attempts across sessions, which a per-run bound inside the driver cannot see.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "checking-pays-arm",
+      "title": "Whether checking pays",
+      "description": "Join a finding's file against the later fix commits that came back to it, and checked slices against unchecked ones, once there are rows to join.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "refused-finding-judge",
+      "title": "A judge for a refused finding",
+      "description": "Make the third agent fire on a refusal that rests on whether a finding is true, and record how each went, rather than leaving the builder to reach for it.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "label-count-base",
+      "title": "Two label counts state different bases",
+      "description": "Decide whether both the per-skill column and the scalars beside it join message, or whether rebuild reports the labels whose message did not come back.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "keywords-any-term",
+      "title": "q keywords ANDs every word",
+      "description": "Rank by how many terms matched rather than requiring all of them, or say in the query's own output that it wants few words.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "simplification-arm",
+      "title": "Whether the simplification pass pays",
+      "description": "Run slices with and without the pass and score each arm by whether a later fix commit came back to what it touched.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "aimed-simplification",
+      "title": "The aimed simplification pass",
+      "description": "Pick which untouched code has earned a simplification off q fixes, q rework and q exemplars rather than off whatever is open.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "agents-md-fix-rate",
+      "title": "Why agents-md edits draw more fixes",
+      "description": "Explain why files edited under agents-md draw four times more fixes afterward than before, the one station sample that did not clear.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "conventions-block",
+      "title": "The generated conventions block",
+      "description": "Measure the guidance cuts already made by hand as characters removed against the calls they would have stayed resident for, before generating anything.",
+      "dependencies": ["heading-range-writer"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "spelling-banner-gates",
+      "title": "Gates for US spelling and banner comments",
+      "description": "The two conventions a mechanism can hold; everything else there needs judgement and stays written.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "eval-runner-inventory",
+      "title": "The trimmed arm and rule inventory",
+      "description": "The eval runner's first slice: an arm running a trimmed guidance surface, and an inventory of the rules it can cut.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "guidance-file-arm",
+      "title": "A guidance-file arm for the runner",
+      "description": "Deliver a trimmed guidance surface through a whole config directory written fresh inside the arm, with a test that reddens when a write goes through the symlink.",
+      "dependencies": ["eval-runner-inventory"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "code-meaning-index",
+      "title": "An index over code by meaning",
+      "description": "Answer whether this shape was solved before where the shape is not in the filename, which needs a query that prints a file path as a ref so bench can grade it.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "toolchain-extraction",
+      "title": "Extracting the toolchain that repeats",
+      "description": "Delete the drifted script forks this repo already does once, and build the mise and env handling shared across the five checkouts.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "conventions-generation",
+      "title": "Generating the machine-held conventions",
+      "description": "Build the gates and earn one cut each; nothing generates a block until there are gates to hold the rules.",
+      "dependencies": ["spelling-banner-gates"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "routing-tier",
+      "title": "The routing tier",
+      "description": "Score whether a prompt reaches the skill it should, revisited only if telemetry shows misroutes that editing descriptions did not close.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "heading-range-writer",
+      "title": "A markdown writer that replaces a heading",
+      "description": "Replace a heading's byte range through an AST, which only the generated conventions block would call.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "macos-only-sync",
+      "title": "The scheduled sync is macOS-only",
+      "description": "install-agent writes a launchd plist, so nothing schedules the sync on another platform.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    }
+  ]
+}
