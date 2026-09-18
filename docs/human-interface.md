@@ -14,7 +14,7 @@ The client is a React static bundle that Bun serves. Its CSS custom properties a
 
 The client uses semantic HTML, CSS variables, a dark responsive layout, lightweight client state, bounded lists and fullscreen presentation. Its base palette is black, white and grayscale surfaces; semantic accents are reserved for agent roles and job states. Bun serves the React bundle beside the local read-only server. The interface owns its visual system and has no control surface.
 
-The page answers one question: where is each item in the factory flow? A three-column board puts every item in Todo, Active or Done, the lifecycle every item shares whatever kind of work it is. A job that has been claimed but not started is Todo; a running job is Active; a completed, failed or abandoned job is Done. A blocked or fenced job stays in Active: it has not reached an outcome, and a stuck item is what a wall exists to show. Each fixed-size card carries the item's title, its station, lifecycle state and worker identity. Blocked, fenced, failed and abandoned jobs keep their operational warning on the card.
+The page answers one question: where is each item in the factory flow? A three-column board puts every item in Todo, Active or Done, the lifecycle every item shares whatever kind of work it is. A job that has been claimed but not started is Todo; a running job is Active; a completed, failed or abandoned job is Done. A blocked or fenced job stays in Active: it has not reached an outcome, and a stuck item is what a wall exists to show. Each fixed-size card carries the item's title, its station, lifecycle state and the worker it is recorded against. Blocked, fenced, failed and abandoned jobs keep their operational warning on the card.
 
 Column headers carry the column's whole count, not the number of cards drawn, and a column holding more work than it can draw says how many it left out. Empty columns retain only their heading and count so the board stays quiet.
 
@@ -52,8 +52,9 @@ The wall should feel like a software production floor:
 - **Stopped work says why.** The reason a job cannot move is on the card, without opening raw logs.
 - **Quality is part of the surface.** Checks, review findings, setup state and fences sit beside progress rather than behind a separate admin page.
 - **The page is calm.** Strong spacing, a small status palette and deliberate typography make the important exception visible without making the whole screen look urgent.
-- **Roles have a visual code.** Agent roles may tint a rail and job marker: builder, fixer, reviewer and planner each have a stable visual role. The written role and a shape or icon carry the meaning too; the code does not identify a model or rely on color alone. The station remains a separate label.
-- **Theme resolves meaning.** Semantic roles such as `builder`, `fixer`, `reviewer`, `planner`, `running`, `blocked` and `failed` are chosen by the layout and resolved by one fixed theme. Agent-role styling and job-state styling stay separate, so a role color never has to carry state as well.
+- **Roles have a visual code.** A job's marker is tinted for its role: planner, builder and reviewer each have a stable tint. The marker's accessible name states the role in words; the tint does not identify a model. The station remains a separate label.
+- **The recorded station is what a role is read from.** It is the one thing that says what kind of work a job is doing. Ship is work none of the roles names, and an unknown station says nothing about the role, so both leave the role unknown. An unknown role takes no tint, and its marker's name says the role is unknown.
+- **Theme resolves meaning.** Semantic roles such as `builder`, `reviewer`, `planner`, `running`, `blocked` and `failed` are chosen by the layout and resolved by one fixed theme. Agent-role styling and job-state styling stay separate, so a role color never has to carry state as well.
 
 ## Job identity
 
@@ -61,7 +62,7 @@ Every card on the board carries the same compact identity block:
 
 - **What.** The item's title, in the words the queue states it in. The item id stays in the record for an agent to join on.
 - **Where.** The current station, named on the card. Plan, Build, Review and Ship are reserved for the words the record actually holds; a job claimed with anything else, or with no station at all, reads as unknown.
-- **Who.** Agent identity, with the agent's role carried by a marker and by the written role.
+- **Who.** Agent identity, with the agent's role carried by a marker and by the written role. A job that no claim or event named an agent for shows no worker, rather than a name that would read as a worker and collide with every other unattributed job.
 - **State.** Running, waiting, blocked, fenced, completed, failed or abandoned.
 - **Why stopped.** For a job that cannot move, its stop reason or fence.
 
@@ -108,7 +109,7 @@ Writing an account of every diff spends on every job rather than on one, which m
 The board shows the work; the operator is who is driving the floor. A job's agent is already on its card, so the operator is the one identity a card cannot carry: while a single harness drives a run, repeating it on every card states a constant down all three columns.
 
 - **Where.** In the header, beside the feed state. Both describe the run as a whole rather than any one item, and the pairing reads as one line: this floor is being driven, and the feed is live.
-- **Mark.** A robot, as the cards use, left untinted. Role tints belong to workers, so an operator that takes no tint reads as standing outside them without adding a color meaning.
+- **Mark.** A robot, as the cards use, left untinted. A tint states a role and the operator has none; the header is what sets the mark apart from a worker's.
 - **When it moves to the card.** Only once several operators can drive one factory at the same time, which [`factory.md`](factory.md) designs and bounds. Until then a per-card operator is a repeated constant.
 - **Absent is a state.** A floor with no clocked-in operator says so, rather than showing the last one that was seen.
 
@@ -119,7 +120,7 @@ The board shows the work; the operator is who is driving the floor. A job's agen
 The wall remains an overview as the factory grows:
 
 - **Columns absorb volume.** Each lifecycle column draws its most recently updated work in bounded cards rather than expanding into a history list, and is bounded on its own, so a growing Done column cannot push Active work off the board.
-- **Details stay on the card.** The item's title, station, state and worker identity are visible without turning the wall into a table.
+- **Details stay on the card.** The item's title, station, state and the worker it is recorded against are visible without turning the wall into a table.
 - **The transport stays quiet.** WebSocket updates send changed snapshots or bounded deltas, not an ever-growing event log.
 - **The layout adapts.** The same hierarchy works as a fullscreen wall, a wide desktop page and a narrow browser window.
 

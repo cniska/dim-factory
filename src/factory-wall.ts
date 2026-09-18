@@ -11,7 +11,7 @@ import { workerName } from "./worker-name";
 export type WallStation = "plan" | "build" | "review" | "ship" | "unknown";
 export type WallLifecycle = "todo" | "active" | "done";
 export type WallStatus = "running" | "waiting" | "blocked" | "fenced" | "completed" | "failed" | "abandoned";
-export type WallRole = "builder" | "fixer" | "reviewer" | "planner";
+export type WallRole = "builder" | "reviewer" | "planner" | "unknown";
 
 export type WallJob = {
   id: string;
@@ -19,9 +19,10 @@ export type WallJob = {
   itemId: string;
   station: WallStation;
   lifecycle: WallLifecycle;
-  agent: string;
+  /** Absent where no claim and no event named an agent: a job nobody is recorded against. */
+  agent?: string;
   /** What the floor calls this worker, so a card never shows an internal identity. */
-  worker: string;
+  worker?: string;
   role: WallRole;
   status: WallStatus;
   action: string;
@@ -140,13 +141,15 @@ function station(value: string | null): WallStation {
   return (value === null ? undefined : stationByRecordedValue[value]) ?? "unknown";
 }
 
-function role(value: string | null, stationName: WallStation): WallRole {
-  const lower = (value ?? "").toLowerCase();
-  if (lower.includes("review")) return "reviewer";
-  if (lower.includes("fix")) return "fixer";
-  if (lower.includes("plan")) return "planner";
-  return stationName === "plan" ? "planner" : stationName === "review" ? "reviewer" : "builder";
-}
+// Ship is work none of these roles names, and a station the wall does not recognize says
+// nothing about the role either.
+const roleByStation: Record<WallStation, WallRole> = {
+  plan: "planner",
+  build: "builder",
+  review: "reviewer",
+  ship: "unknown",
+  unknown: "unknown",
+};
 
 function status(value: string): WallStatus {
   const mapped = wallStatusByJobStatus[value];
@@ -178,7 +181,7 @@ function action(row: JobRow, attention: string | undefined): string {
 }
 
 function mapJob(row: JobRow, now: Date): WallJob {
-  const agentId = row.latest_actor ?? row.agent_id ?? "unassigned";
+  const agentId = row.latest_actor ?? row.agent_id;
   const stationName = station(row.station ?? row.latest_station);
   const jobStatus = status(row.status);
   const attention = attentionStatuses.has(jobStatus)
@@ -190,9 +193,8 @@ function mapJob(row: JobRow, now: Date): WallJob {
     itemId: row.item_id,
     station: stationName,
     lifecycle: lifecycleByStatus[jobStatus],
-    agent: agentId,
-    worker: workerName(agentId),
-    role: role(agentId, stationName),
+    ...(agentId ? { agent: agentId, worker: workerName(agentId) } : {}),
+    role: roleByStation[stationName],
     status: jobStatus,
     action: action(row, attention),
     age: age(row.updated_at || row.claimed_at, now),

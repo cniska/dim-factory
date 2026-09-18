@@ -170,6 +170,78 @@ describe("factory wall snapshot", () => {
     db.close();
   });
 
+  test("names no worker for a job no claim and no event named an agent for", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    createJob(
+      db,
+      {
+        id: "job-unattributed",
+        runId: "run",
+        queueId: "queue",
+        itemId: "unattributed",
+        title: "Claimed by nobody in particular",
+        station: "dim-station-build",
+      },
+      "2026-09-18T10:00:00.000Z",
+    );
+
+    const job = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).jobs[0];
+
+    expect(job).toEqual({
+      id: "job-unattributed",
+      title: "Claimed by nobody in particular",
+      itemId: "unattributed",
+      station: "build",
+      lifecycle: "todo",
+      role: "builder",
+      status: "waiting",
+      action: "Claimed, not started",
+      age: "5m",
+      updatedAt: "2026-09-18T10:00:00.000Z",
+      evidence: "No evidence recorded yet",
+    });
+    db.close();
+  });
+
+  test("reads a role off the recorded station and never off the agent's name", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const claim = (id: string, stationValue: string | undefined, agentId: string) =>
+      createJob(
+        db,
+        {
+          id,
+          runId: "run",
+          queueId: "queue",
+          itemId: id,
+          title: `Claim ${id}`,
+          agentId,
+          ...(stationValue ? { station: stationValue } : {}),
+        },
+        "2026-09-18T10:00:00.000Z",
+      );
+    claim("planning", "dim-station-plan", "builder-1");
+    claim("building", "dim-station-build", "builder-planner-queue");
+    claim("reviewing", "dim-station-review", "builder-2");
+    claim("shipping", "ship", "planner-3");
+    claim("unstationed", undefined, "reviewer-4");
+
+    const roles = new Map(
+      assembleWallSnapshot(db, new Date("2026-09-18T10:20:00.000Z")).jobs.map((job) => [
+        job.itemId,
+        job.role,
+      ]),
+    );
+
+    expect(roles.get("planning")).toBe("planner");
+    expect(roles.get("building")).toBe("builder");
+    expect(roles.get("reviewing")).toBe("reviewer");
+    expect(roles.get("shipping")).toBe("unknown");
+    expect(roles.get("unstationed")).toBe("unknown");
+    db.close();
+  });
+
   test("says a station it does not know is unknown rather than calling it build", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
