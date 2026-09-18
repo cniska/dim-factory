@@ -61,9 +61,10 @@ Mint one run id per invocation — `run-$(date -u +%Y%m%dT%H%M%SZ)` — and one 
 ```
 dim job claim <job-id> --run <run-id> --queue <queue-id> --item <item-id> \
   --title "<the item's title>" --description "<the item's statement>" \
-  --station <the station it routed to> \
+  --agent <builder-id> --station <plan|build|review|ship> \
   --branch <branch> --worktree "$(dim wt path <branch>)"
 dim job start <job-id>
+dim job move <job-id> --station <plan|build|review|ship>
 dim job stop <job-id> <completed|blocked|fenced|failed|abandoned> [--reason "..."]
 ```
 
@@ -72,10 +73,10 @@ dim job stop <job-id> <completed|blocked|fenced|failed|abandoned> [--reason "...
 - **The title is the item's name, never its id.** It is what every card is read by; the ids are there for an agent to join on.
 - A planner file also holds the item's own state, so the item moves as the job does: `dim queue transition <file> <item> claimed` before the builder, `running` when it starts, and `completed`, `blocked`, `fenced` or `failed` at the end, with `--reason` wherever the job stopped for one. An item dropped before a builder started it is `cancelled`. Every one of those five is terminal and refused a further transition, the way a stopped job is, so an item recorded `blocked` leaves `ready` until someone edits the file — record it only where that is what you mean.
 - Naming the branch is yours, because the claim records it before the builder exists. `dim wt path <branch>` prints where that worktree will be without creating it, so the claim carries the location the builder then makes.
-- `--agent <id>` when the harness gives the builder a stable identity; without it the card names no worker.
-- **Stop exactly once, whatever happened**: the item landed (`completed`), it waits on something else (`blocked`), a fence stopped it (`fenced`, with the shape as the reason), the builder failed or returned nothing it could explain (`failed`), or it was dropped (`abandoned`). A stopped job is refused a second lifecycle event, so a retry is a new job id.
-
-Evidence past the lifecycle — commits, checks, findings, changed files, documents — has no command yet. It travels in the report, and `dim q factory <job-id-prefix>` reads back what was recorded.
+- **`--agent <id>` names the builder, and is not optional in practice.** Without it the card names no worker, and several jobs running at once are indistinguishable — pass the stable identifier the harness gives the builder it spawns.
+- **The station is a word the wall holds — `plan`, `build`, `review` or `ship` — never the line running it.** `dim-line-feat` and `dim-line-fix` are the line, not the station; the station is where the work is, and `dim job move <job-id> --station <name>` records it changing as the work moves through planning, building and review.
+- Record evidence as it happens, not at the end: `dim job commit`, `dim job file`, `dim job check`, `dim job finding` and `dim job document` each take the job id and what was produced. A job that records nothing leaves a card with nothing on it; `dim q factory <job-id-prefix>` reads back what was recorded.
+- **Stop exactly once, whatever happened**: the item landed (`completed`), it waits on something else (`blocked`), a fence stopped it (`fenced`, with the shape as the reason), the builder failed or returned nothing it could explain (`failed`), or it was dropped (`abandoned`). A stopped job is refused a second lifecycle event, so a retry is a new job id. `dim job stop <job> completed` is refused unless a check recorded after the job's last commit passed and that commit reaches the trunk — the gate reads git out of the job's own worktree, so merge the work, then stop the job, then remove the worktree; removing it first makes completion impossible.
 
 ## 5. The fence
 
