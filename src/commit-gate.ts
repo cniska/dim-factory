@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync }
 import { join } from "node:path";
 import { type Env, resolveHomeDir } from "./paths";
 import { prePushScript } from "./push-gate";
-import { SLUG_SED } from "./remote-slug";
+import { foldAscii, SLUG_SED } from "./remote-slug";
 
 /**
  * The rule is taken from the one repo here whose subjects never break it: a
@@ -53,7 +53,7 @@ msg_file="\${1:-}"
 origin=$(git config --get remote.origin.url 2>/dev/null || true)
 owner=$(printf '%s' "$origin" | sed -nE '${SLUG_SED}')
 [ -n "$owner" ] || exit 0
-case " ${owners.join(" ")} " in
+case " ${owners.map(foldAscii).join(" ")} " in
   *" $owner "*) ;;
   *) exit 0 ;;
 esac
@@ -97,7 +97,7 @@ set -u
 origin=$(git config --get remote.origin.url 2>/dev/null || true)
 owner=$(printf '%s' "$origin" | sed -nE '${SLUG_SED}')
 [ -n "$owner" ] || exit 0
-case " ${owners.join(" ")} " in
+case " ${owners.map(foldAscii).join(" ")} " in
   *" $owner "*) ;;
   *) exit 0 ;;
 esac
