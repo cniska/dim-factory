@@ -14,7 +14,7 @@ The client is a React static bundle that Bun serves. Its CSS custom properties a
 
 The client uses semantic HTML, CSS variables, a dark responsive layout, lightweight client state, bounded lists and fullscreen presentation. Its base palette is black, white and grayscale surfaces; semantic accents are reserved for agent roles and job states. Bun serves the React bundle beside the local read-only server. The interface owns its visual system and has no control surface.
 
-The page answers one question: where is each item in the factory flow? A three-column board puts every item in Todo, Active or Done, the lifecycle every item shares whatever kind of work it is. A job that has been claimed but not started is Todo; a running job is Active; a completed, failed or abandoned job is Done. A blocked or fenced job stays in Active: it has not reached an outcome, and a stuck item is what a wall exists to show. Each fixed-size card carries the item, its station, lifecycle state and worker identity. Blocked, fenced, failed and abandoned jobs keep their operational warning on the card.
+The page answers one question: where is each item in the factory flow? A three-column board puts every item in Todo, Active or Done, the lifecycle every item shares whatever kind of work it is. A job that has been claimed but not started is Todo; a running job is Active; a completed, failed or abandoned job is Done. A blocked or fenced job stays in Active: it has not reached an outcome, and a stuck item is what a wall exists to show. Each fixed-size card carries the item's name, its station, lifecycle state and worker identity. Blocked, fenced, failed and abandoned jobs keep their operational warning on the card.
 
 Column headers carry the column's whole count, not the number of cards drawn, and a column holding more work than it can draw says how many it left out. Empty columns retain only their heading and count so the board stays quiet.
 
@@ -119,7 +119,7 @@ The board shows the work; the operator is who is driving the floor. A job's agen
 The wall remains an overview as the factory grows:
 
 - **Columns absorb volume.** Each lifecycle column draws its most recently updated work in bounded cards rather than expanding into a history list, and is bounded on its own, so a growing Done column cannot push Active work off the board.
-- **Details stay on the card.** The item, station, state and worker identity are visible without turning the wall into a table.
+- **Details stay on the card.** The item's name, station, state and worker identity are visible without turning the wall into a table.
 - **The transport stays quiet.** WebSocket updates send changed snapshots or bounded deltas, not an ever-growing event log.
 - **The layout adapts.** The same hierarchy works as a fullscreen wall, a wide desktop page and a narrow browser window.
 

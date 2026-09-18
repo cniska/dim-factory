@@ -18,6 +18,7 @@ describe("factory wall snapshot", () => {
         runId: "run",
         queueId: "queue",
         itemId: "wall",
+        title: "Show the wall",
         agentId: "builder",
         station: "build",
         worktree: "/tmp/wall",
@@ -39,7 +40,14 @@ describe("factory wall snapshot", () => {
     );
     createJob(
       db,
-      { id: "job-blocked", runId: "run", queueId: "queue", itemId: "blocked", station: "review" },
+      {
+        id: "job-blocked",
+        runId: "run",
+        queueId: "queue",
+        itemId: "blocked",
+        title: "Unblock the queue",
+        station: "review",
+      },
       "2026-09-18T09:00:00.000Z",
     );
     appendJobEvent(
@@ -55,6 +63,7 @@ describe("factory wall snapshot", () => {
         runId: "run",
         queueId: "queue",
         itemId: "done",
+        title: "Ship the board",
         station: "ship",
         worktree: "/tmp/wall-done",
         branch: "wall-done",
@@ -73,15 +82,17 @@ describe("factory wall snapshot", () => {
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:10:00.000Z"));
 
     expect(snapshot.source).toBe("database");
-    expect(snapshot.jobs.map((job) => [job.item, job.station, job.status, job.lifecycle])).toEqual([
-      ["wall", "build", "running", "active"],
-      ["blocked", "review", "fenced", "active"],
-      ["done", "ship", "completed", "done"],
+    expect(snapshot.jobs.map((job) => [job.title, job.station, job.status, job.lifecycle])).toEqual([
+      ["Show the wall", "build", "running", "active"],
+      ["Unblock the queue", "review", "fenced", "active"],
+      ["Ship the board", "ship", "completed", "done"],
     ]);
+    expect(snapshot.jobs.map((job) => job.itemId)).toEqual(["wall", "blocked", "done"]);
     expect(snapshot.jobs[1]?.attention).toBe("scope unclear");
     expect(snapshot.jobs[0]).toEqual({
       id: "job-running",
-      item: "wall",
+      title: "Show the wall",
+      itemId: "wall",
       station: "build",
       lifecycle: "active",
       agent: "builder",
@@ -101,7 +112,14 @@ describe("factory wall snapshot", () => {
     db.run(SCHEMA_SQL);
     createJob(
       db,
-      { id: "job-claimed", runId: "run", queueId: "queue", itemId: "waiting", station: "plan" },
+      {
+        id: "job-claimed",
+        runId: "run",
+        queueId: "queue",
+        itemId: "waiting",
+        title: "Wait for a builder",
+        station: "plan",
+      },
       "2026-09-18T10:00:00.000Z",
     );
 
@@ -116,7 +134,14 @@ describe("factory wall snapshot", () => {
     db.run(SCHEMA_SQL);
     createJob(
       db,
-      { id: "job-gone", runId: "run", queueId: "queue", itemId: "gone", station: "build" },
+      {
+        id: "job-gone",
+        runId: "run",
+        queueId: "queue",
+        itemId: "gone",
+        title: "Abandon this one",
+        station: "build",
+      },
       "2026-09-18T10:00:00.000Z",
     );
     appendJobEvent(db, "job-gone", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
@@ -146,6 +171,7 @@ describe("factory wall snapshot", () => {
           runId: "run",
           queueId: "queue",
           itemId: id,
+          title: `Crowd the column as ${id}`,
           station: "build",
           worktree: `/tmp/${id}`,
           branch: id,

@@ -12,7 +12,7 @@
 
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -187,6 +187,9 @@ CREATE TABLE IF NOT EXISTS factory_job (
   run_id          TEXT NOT NULL,
   queue_id        TEXT NOT NULL,
   item_id         TEXT NOT NULL,
+  -- What the item is called, so a card can be read across a room. The id beside
+  -- it is what a query joins on and never what a person is shown.
+  title           TEXT NOT NULL,
   agent_id        TEXT,
   session_id      TEXT,
   worktree        TEXT,

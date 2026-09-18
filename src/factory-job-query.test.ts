@@ -24,6 +24,7 @@ describe("factory job query", () => {
         runId: "run-1",
         queueId: "queue-1",
         itemId: "item-1",
+        title: "Report one job's status",
         worktree: "/tmp/factory-item",
         branch: "factory-item",
         station: "dim-station-build",
@@ -124,7 +125,13 @@ describe("factory job query", () => {
   test("shows explicit absence when a blocked job has no fence or reason", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createJob(db, { id: "job-blocked", runId: "run-1", queueId: "queue-1", itemId: "item-1" });
+    createJob(db, {
+      id: "job-blocked",
+      runId: "run-1",
+      queueId: "queue-1",
+      itemId: "item-1",
+      title: "Block on another item",
+    });
     appendJobEvent(db, "job-blocked", { kind: "blocked", status: "blocked" });
 
     const result = findQuery("factory")?.run(db, { arg: "job-blocked" });
@@ -133,7 +140,13 @@ describe("factory job query", () => {
     expect(result?.rows[0]?.[4]).toBe("blocked");
     expect(result?.rows[0]?.[12]).toBe("(none)");
 
-    createJob(db, { id: "job-fenced", runId: "run-1", queueId: "queue-1", itemId: "item-2" });
+    createJob(db, {
+      id: "job-fenced",
+      runId: "run-1",
+      queueId: "queue-1",
+      itemId: "item-2",
+      title: "Stop at a fence",
+    });
     appendJobEvent(db, "job-fenced", {
       kind: "fenced",
       status: "fenced",
@@ -150,7 +163,14 @@ describe("factory job query", () => {
     db.run(SCHEMA_SQL);
     createJob(
       db,
-      { id: "job-123", runId: "run-1", queueId: "queue-1", itemId: "item-1", station: "dim-station-build" },
+      {
+        id: "job-123",
+        runId: "run-1",
+        queueId: "queue-1",
+        itemId: "item-1",
+        title: "Read the detailed report",
+        station: "dim-station-build",
+      },
       "2026-09-18T10:00:00.000Z",
     );
     appendJobEvent(db, "job-123", { kind: "started", status: "running" }, "2026-09-18T10:00:30.000Z");

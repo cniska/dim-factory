@@ -104,7 +104,7 @@ function JobCard({ job, now, bumped }: { job: WallJob; now: Date; bumped: boolea
         </span>
       </CardHeader>
 
-      <h3 className={cn(ROW, "truncate font-medium text-foreground")}>{job.item}</h3>
+      <h3 className={cn(ROW, "truncate font-medium text-foreground")}>{job.title}</h3>
 
       <p className={cn(ROW, "truncate text-muted-foreground")}>{job.action}</p>
 
