@@ -8,8 +8,8 @@
   },
   "scripts": {
     "dim": "bun run src/cli.ts",
-    "format": "bunx biome format --write .",
-    "lint": "bunx biome check --error-on-warnings .",
+    "format": "bunx biome format --write src",
+    "lint": "bunx biome check --error-on-warnings src",
     "typecheck": "bunx tsc --noEmit",
     "test": "bun test",
     "verify": "bun run lint && bun run typecheck && bun test && bun run test:wt",
