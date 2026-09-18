@@ -35,6 +35,8 @@ jobs:
           path: ~/.local/share/dim-factory/models
           key: embed-model-Xenova-all-MiniLM-L6-v2
 
+      - run: bun run fetch-model
+
       - run: bun run verify
 
   commits:
