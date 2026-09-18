@@ -152,6 +152,7 @@ describe("factory job query", () => {
       { id: "job-123", runId: "run-1", queueId: "queue-1", itemId: "item-1", station: "dim-station-build" },
       "2026-09-18T10:00:00.000Z",
     );
+    appendJobEvent(db, "job-123", { kind: "started", status: "running" }, "2026-09-18T10:00:30.000Z");
     recordJobCommit(db, "job-123", "abc", "feat: report", "2026-09-18T10:01:00.000Z");
     recordJobFile(db, "job-123", "src/factory-job.ts", "2026-09-18T10:01:30.000Z");
     recordJobCheck(
@@ -173,6 +174,7 @@ describe("factory job query", () => {
       "job",
       "event",
       "event",
+      "event",
       "commit",
       "file",
       "event",
@@ -182,7 +184,7 @@ describe("factory job query", () => {
       "document",
     ]);
     expect(result?.rows[0]?.[4]).toBe("run-1/queue-1/item-1");
-    expect(result?.denominator).toContain("job job-123: claimed");
+    expect(result?.denominator).toContain("job job-123: running");
     db.close();
   });
 

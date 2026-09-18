@@ -100,6 +100,18 @@ export function createJob(db: Database, job: Job, at = now()): void {
 }
 
 export function updateJobLocation(db: Database, jobId: string, worktree: string, branch: string): void {
+  const job = db.query("SELECT worktree, branch FROM factory_job WHERE id = ?").get(jobId) as {
+    worktree: string | null;
+    branch: string | null;
+  } | null;
+  if (!job) throw new Error(`job not found: ${jobId}`);
+  const status = jobStatus(db, jobId);
+  if (status !== "claimed" && status !== "running") {
+    throw new Error(`job ${jobId} is already terminal`);
+  }
+  if (job.worktree && (job.worktree !== worktree || job.branch !== branch)) {
+    throw new Error(`job ${jobId} already owns a worktree`);
+  }
   const result = db.run("UPDATE factory_job SET worktree = ?, branch = ?, updated_at = ? WHERE id = ?", [
     worktree,
     branch,
@@ -118,44 +130,60 @@ export function jobStatus(db: Database, jobId: string): JobStatus {
 }
 
 export function appendJobEvent(db: Database, jobId: string, event: JobEvent, at = now()): void {
-  db.transaction(() => {
-    if (isTerminalJobStatus(event.kind as JobStatus) && event.status !== event.kind) {
-      throw new Error(`terminal event kind must match its status: ${event.kind}`);
-    }
-    if (event.status && isTerminalJobStatus(event.status) && event.kind !== event.status) {
-      throw new Error(`terminal event status must match its kind: ${event.status}`);
-    }
-    const job = db.query("SELECT status FROM factory_job WHERE id = ?").get(jobId) as {
-      status: JobStatus;
-    } | null;
-    if (!job) throw new Error(`job not found: ${jobId}`);
-    if (isTerminalJobStatus(job.status)) {
-      throw new Error(`job ${jobId} is already ${job.status}`);
-    }
+  db.transaction(() => appendJobEventInTransaction(db, jobId, event, at))();
+}
 
-    db.run(
-      `INSERT INTO factory_job_event
+function appendJobEventInTransaction(db: Database, jobId: string, event: JobEvent, at: string): void {
+  if (isTerminalJobStatus(event.kind as JobStatus) && event.status !== event.kind) {
+    throw new Error(`terminal event kind must match its status: ${event.kind}`);
+  }
+  if (event.status && isTerminalJobStatus(event.status) && event.kind !== event.status) {
+    throw new Error(`terminal event status must match its kind: ${event.status}`);
+  }
+  const job = db.query("SELECT status, worktree FROM factory_job WHERE id = ?").get(jobId) as {
+    status: JobStatus;
+    worktree: string | null;
+  } | null;
+  if (!job) throw new Error(`job not found: ${jobId}`);
+  if (isTerminalJobStatus(job.status)) {
+    throw new Error(`job ${jobId} is already ${job.status}`);
+  }
+  if (event.kind !== "claimed") {
+    if (event.kind === "started" && job.status !== "claimed") {
+      throw new Error(`job ${jobId} must be claimed before it can start`);
+    }
+    const mayStopBeforeRunning = isTerminalJobStatus(event.kind as JobStatus) && event.kind !== "completed";
+    if (event.kind !== "started" && job.status !== "running" && !mayStopBeforeRunning) {
+      const action = event.kind === "completed" ? "complete" : event.kind;
+      throw new Error(`job ${jobId} must be running before it can ${action}`);
+    }
+    if (event.kind === "completed" && !job.worktree) {
+      throw new Error(`job ${jobId} has no worktree`);
+    }
+  }
+
+  db.run(
+    `INSERT INTO factory_job_event
        (job_id, ts, kind, actor_id, session_id, station, delegated_agent_id, delegated_session_id,
         delegated_station, commit_sha, check_id, finding_id, fence_type, status, reason)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      eventValues(jobId, event, event.ts ?? at),
-    );
-    db.run(
-      `UPDATE factory_job SET status = coalesce(?, status), updated_at = ?, started_at = coalesce(started_at, ?),
+    eventValues(jobId, event, event.ts ?? at),
+  );
+  db.run(
+    `UPDATE factory_job SET status = coalesce(?, status), updated_at = ?, started_at = coalesce(started_at, ?),
        completed_at = CASE WHEN ? IN ('completed', 'blocked', 'fenced', 'failed', 'abandoned') THEN ? ELSE completed_at END,
        stop_reason = coalesce(?, stop_reason)
        WHERE id = ?`,
-      [
-        event.status ?? null,
-        event.ts ?? at,
-        event.kind === "started" ? (event.ts ?? at) : null,
-        event.status ?? null,
-        event.ts ?? at,
-        event.reason ?? null,
-        jobId,
-      ],
-    );
-  })();
+    [
+      event.status ?? null,
+      event.ts ?? at,
+      event.kind === "started" ? (event.ts ?? at) : null,
+      event.status ?? null,
+      event.ts ?? at,
+      event.reason ?? null,
+      jobId,
+    ],
+  );
 }
 
 export function recordJobCommit(
@@ -165,16 +193,20 @@ export function recordJobCommit(
   subject?: string,
   at = now(),
 ): void {
-  db.run("INSERT INTO factory_job_commit (job_id, sha, subject, recorded_at) VALUES (?, ?, ?, ?)", [
-    jobId,
-    sha,
-    subject ?? null,
-    at,
-  ]);
-  appendJobEvent(db, jobId, { kind: "commit_created", commitSha: sha }, at);
+  assertJobRunning(db, jobId);
+  db.transaction(() => {
+    db.run("INSERT INTO factory_job_commit (job_id, sha, subject, recorded_at) VALUES (?, ?, ?, ?)", [
+      jobId,
+      sha,
+      subject ?? null,
+      at,
+    ]);
+    appendJobEventInTransaction(db, jobId, { kind: "commit_created", commitSha: sha }, at);
+  })();
 }
 
 export function recordJobFile(db: Database, jobId: string, path: string, at = now()): void {
+  assertJobRunning(db, jobId);
   db.run("INSERT INTO factory_job_file (job_id, path, recorded_at) VALUES (?, ?, ?)", [jobId, path, at]);
 }
 
@@ -184,22 +216,25 @@ export function recordJobCheck(
   check: { command: string; exitCode: number; startedAt?: string; finishedAt?: string; result?: string },
   at = now(),
 ): number {
-  const result = db.run(
-    `INSERT INTO factory_job_check (job_id, command, exit_code, started_at, finished_at, result, recorded_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [
-      jobId,
-      check.command,
-      check.exitCode,
-      check.startedAt ?? null,
-      check.finishedAt ?? at,
-      check.result ?? null,
-      at,
-    ],
-  );
-  const id = Number(result.lastInsertRowid);
-  appendJobEvent(db, jobId, { kind: "check_finished", checkId: id }, at);
-  return id;
+  assertJobRunning(db, jobId);
+  return db.transaction(() => {
+    const result = db.run(
+      `INSERT INTO factory_job_check (job_id, command, exit_code, started_at, finished_at, result, recorded_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        jobId,
+        check.command,
+        check.exitCode,
+        check.startedAt ?? null,
+        check.finishedAt ?? at,
+        check.result ?? null,
+        at,
+      ],
+    );
+    const id = Number(result.lastInsertRowid);
+    appendJobEventInTransaction(db, jobId, { kind: "check_finished", checkId: id }, at);
+    return id;
+  })();
 }
 
 export function recordJobFinding(
@@ -208,16 +243,25 @@ export function recordJobFinding(
   finding: { dimension: string; summary: string; answer: "fixed" | "refused"; resolution?: string },
   at = now(),
 ): number {
-  const result = db.run(
-    `INSERT INTO factory_job_finding (job_id, dimension, summary, answer, resolution, recorded_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [jobId, finding.dimension, finding.summary, finding.answer, finding.resolution ?? null, at],
-  );
-  const id = Number(result.lastInsertRowid);
-  appendJobEvent(db, jobId, { kind: "review_finished", findingId: id }, at);
-  return id;
+  assertJobRunning(db, jobId);
+  return db.transaction(() => {
+    const result = db.run(
+      `INSERT INTO factory_job_finding (job_id, dimension, summary, answer, resolution, recorded_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [jobId, finding.dimension, finding.summary, finding.answer, finding.resolution ?? null, at],
+    );
+    const id = Number(result.lastInsertRowid);
+    appendJobEventInTransaction(db, jobId, { kind: "review_finished", findingId: id }, at);
+    return id;
+  })();
 }
 
 export function recordJobDocument(db: Database, jobId: string, path: string, at = now()): void {
+  assertJobRunning(db, jobId);
   db.run("INSERT INTO factory_job_document (job_id, path, recorded_at) VALUES (?, ?, ?)", [jobId, path, at]);
+}
+
+function assertJobRunning(db: Database, jobId: string): void {
+  const status = jobStatus(db, jobId);
+  if (status !== "running") throw new Error(`job ${jobId} is already ${status}`);
 }

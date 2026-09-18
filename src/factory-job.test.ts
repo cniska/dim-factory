@@ -13,6 +13,7 @@ import {
   recordJobDocument,
   recordJobFile,
   recordJobFinding,
+  updateJobLocation,
 } from "./factory-job";
 import { dbPath } from "./paths";
 import { SCHEMA_SQL } from "./schema";
@@ -53,12 +54,13 @@ describe("factory job report records", () => {
         expect(context.item.itemId).toBe("self-sufficient-factory-job");
         expect(context.baseRevision).toBe("abc123");
         context.setLocation("/tmp/job-2", "job-2");
-        context.appendEvent({ kind: "delegated", delegatedAgentId: "agent-3" });
+        context.delegate("agent-3", "session-3", "dim-station-review");
         context.recordCommit("def456", "feat: observable job");
         context.recordFile("src/factory-driver.ts");
         context.recordCheck({ command: "bun run verify", exitCode: 0, result: "green" });
         context.recordFinding({ dimension: "tests", summary: "holds", answer: "fixed" });
         context.recordDocument("docs/factory.md");
+        context.stop({ status: "completed", reason: "verified" });
         return { status: "completed", reason: "verified" };
       },
     );
@@ -111,7 +113,14 @@ describe("factory job report records", () => {
       const jobId = `job-terminal-${index}`;
       const outcome = await runFactoryJob(
         database,
-        { id: jobId, runId: `run-${jobId}`, queueId: "queue-1", itemId: jobId },
+        {
+          id: jobId,
+          runId: `run-${jobId}`,
+          queueId: "queue-1",
+          itemId: jobId,
+          worktree: `/repo/.claude/worktrees/${jobId}`,
+          branch: jobId,
+        },
         { baseRevision: "abc123" },
         () => ({ status, reason: "stopped" }),
       );
@@ -155,12 +164,70 @@ describe("factory job report records", () => {
     database.close();
   });
 
+  test("requires one worktree before a job can stop", async () => {
+    const database = db();
+
+    await expect(
+      runFactoryJob(
+        database,
+        { id: "job-no-worktree", runId: "run-no-worktree", queueId: "queue-1", itemId: "item-1" },
+        { baseRevision: "abc123" },
+        () => ({ status: "completed", reason: "verified" }),
+      ),
+    ).rejects.toThrow("job job-no-worktree has no worktree");
+    expect(database.query("SELECT status FROM factory_job WHERE id = 'job-no-worktree'").get()).toEqual({
+      status: "failed",
+    });
+    database.close();
+  });
+
+  test("keeps the owned worktree and rejects lifecycle events out of order", () => {
+    const database = db();
+    createJob(database, job, "2026-09-18T10:00:00.000Z");
+
+    expect(() => appendJobEvent(database, "job-1", { kind: "completed", status: "completed" })).toThrow(
+      "job job-1 must be running before it can complete",
+    );
+    appendJobEvent(database, "job-1", { kind: "started", status: "running" });
+    expect(() => updateJobLocation(database, "job-1", "/other", "other")).toThrow(
+      "job job-1 already owns a worktree",
+    );
+    database.close();
+  });
+
+  test("records an explicit stop and rejects evidence after it", () => {
+    const database = db();
+    createJob(database, job, "2026-09-18T10:00:00.000Z");
+    appendJobEvent(database, "job-1", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    appendJobEvent(
+      database,
+      "job-1",
+      { kind: "fenced", status: "fenced", fenceType: "owner-decision", reason: "needs approval" },
+      "2026-09-18T10:02:00.000Z",
+    );
+    expect(() => recordJobFile(database, "job-1", "src/after-stop.ts")).toThrow(
+      "job job-1 is already fenced",
+    );
+    expect(() => updateJobLocation(database, "job-1", "/other", "other")).toThrow(
+      "job job-1 is already terminal",
+    );
+    expect(database.query("SELECT count(*) AS count FROM factory_job_file").get()).toEqual({ count: 0 });
+    database.close();
+  });
+
   test("preserves a builder error after the builder records a terminal outcome", async () => {
     const database = db();
     await expect(
       runFactoryJob(
         database,
-        { id: "job-4", runId: "run-4", queueId: "queue-1", itemId: "item-4" },
+        {
+          id: "job-4",
+          runId: "run-4",
+          queueId: "queue-1",
+          itemId: "item-4",
+          worktree: "/repo/.claude/worktrees/job-4",
+          branch: "job-4",
+        },
         { baseRevision: "abc123" },
         (context) => {
           context.appendEvent({ kind: "blocked", status: "blocked", reason: "builder stopped" });
@@ -268,6 +335,7 @@ describe("factory job report records", () => {
         { ...job, id: jobId, runId: `run-${jobId}`, itemId: jobId },
         "2026-09-18T10:00:00.000Z",
       );
+      appendJobEvent(database, jobId, { kind: "started", status: "running" }, "2026-09-18T10:00:30.000Z");
       appendJobEvent(database, jobId, { kind: status, status }, "2026-09-18T10:01:00.000Z");
 
       expect(() => appendJobEvent(database, jobId, { kind: "started", status: "running" })).toThrow();
@@ -279,7 +347,7 @@ describe("factory job report records", () => {
       expect(
         database.query("SELECT count(*) AS count FROM factory_job_event WHERE job_id = ?").get(jobId),
       ).toEqual({
-        count: 2,
+        count: 3,
       });
     }
     database.close();
@@ -325,6 +393,25 @@ describe("factory job report records", () => {
     ).toThrow();
     expect(database.query("SELECT count(*) AS count FROM factory_job_event").get()).toEqual({ count: 1 });
     expect(database.query("SELECT status FROM factory_job").get()).toEqual({ status: "claimed" });
+    database.close();
+  });
+
+  test("rolls back evidence when its lifecycle event cannot project", () => {
+    const database = db();
+    createJob(database, job, "2026-09-18T10:00:00.000Z");
+    appendJobEvent(database, "job-1", { kind: "started", status: "running" });
+    database.run(
+      `CREATE TRIGGER reject_job_evidence_projection BEFORE UPDATE ON factory_job
+       BEGIN SELECT RAISE(ABORT, 'projection rejected'); END`,
+    );
+
+    expect(() => recordJobCommit(database, "job-1", "abc123", "feat: job")).toThrow("projection rejected");
+    expect(database.query("SELECT count(*) AS count FROM factory_job_commit").get()).toEqual({ count: 0 });
+    expect(
+      database.query("SELECT count(*) AS count FROM factory_job_event WHERE kind = 'commit_created'").get(),
+    ).toEqual({
+      count: 0,
+    });
     database.close();
   });
 

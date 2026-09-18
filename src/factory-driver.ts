@@ -25,6 +25,8 @@ export type FactoryContext = {
   baseRevision: string;
   setLocation(worktree: string, branch: string): void;
   appendEvent(event: JobEvent): void;
+  delegate(agentId: string, sessionId?: string, station?: string): void;
+  stop(outcome: FactoryOutcome): void;
   recordCommit(sha: string, subject?: string): void;
   recordFile(path: string): void;
   recordCheck(check: {
@@ -59,6 +61,15 @@ export async function runFactoryJob(
     baseRevision: options.baseRevision,
     setLocation: (worktree, branch) => updateJobLocation(db, item.id, worktree, branch),
     appendEvent: (event) => appendJobEvent(db, item.id, event),
+    delegate: (agentId, sessionId, station) =>
+      appendJobEvent(db, item.id, {
+        kind: "delegated",
+        delegatedAgentId: agentId,
+        delegatedSessionId: sessionId,
+        delegatedStation: station,
+      }),
+    stop: (outcome) =>
+      appendJobEvent(db, item.id, { kind: outcome.status, status: outcome.status, reason: outcome.reason }),
     recordCommit: (sha, subject) => recordJobCommit(db, item.id, sha, subject),
     recordFile: (path) => recordJobFile(db, item.id, path),
     recordCheck: (check) => recordJobCheck(db, item.id, check),
@@ -68,7 +79,12 @@ export async function runFactoryJob(
 
   try {
     const outcome = await build(context);
-    appendJobEvent(db, item.id, { kind: outcome.status, status: outcome.status, reason: outcome.reason });
+    const status = jobStatus(db, item.id);
+    if (!isTerminalJobStatus(status)) {
+      appendJobEvent(db, item.id, { kind: outcome.status, status: outcome.status, reason: outcome.reason });
+    } else if (status !== outcome.status) {
+      throw new Error(`job ${item.id} stopped as ${status} but builder returned ${outcome.status}`);
+    }
     return outcome;
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
