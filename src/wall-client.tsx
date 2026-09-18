@@ -269,7 +269,7 @@ function App() {
         </h1>
         <div
           className={cn(
-            "flex h-9 items-center gap-2 rounded-wall border px-3 text-xs whitespace-nowrap",
+            "flex h-9 items-center gap-2 rounded-wall border px-3 text-[11px] whitespace-nowrap",
             FEED_TINT[feed],
           )}
         >
