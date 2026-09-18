@@ -8,7 +8,7 @@ import {
   type ToolCallRow,
   type TurnRow,
   type UsageRow,
-} from "./records";
+} from "./session-records";
 import { type SkillLoadRow, skillFromFileRead } from "./skill-load";
 
 export type CodexState = { model?: string; turnId?: string };

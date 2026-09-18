@@ -12,7 +12,7 @@ Files use a domain-concern name where the boundary is useful: `factory-job.ts`, 
 | --- | --- | --- |
 | CLI and commands | `cli.ts`, `tasks.ts`, `wt-command.ts` | Parse commands and connect them to operations |
 | Collection | `claude-source.ts`, `codex-source.ts`, `parse-*.ts`, `ingest.ts`, `sync.ts` | Read session sources and persist normalized records |
-| Database | `db.ts`, `schema.ts`, `rebuild.ts`, `read-db.ts`, `records.ts` | Open, rebuild and write the SQLite store |
+| Database | `db.ts`, `schema.ts`, `rebuild.ts`, `read-db.ts`, `session-records.ts` | Open, rebuild and write the SQLite store |
 | Retrieval | `distilled.ts`, `embed*.ts`, `queries.ts`, `render.ts`, `rank-metrics.ts` | Distill, index, query and render the record |
 | Factory | `factory-job.ts`, `queries.ts` | Persist job lifecycle and evidence, then read reports |
 | Session context | `handoff.ts`, `wake.ts`, `guidance.ts`, `skill-load.ts` | Carry context into a later session |
@@ -24,7 +24,7 @@ The CLI is the wiring boundary. Domain modules own the behavior that tests exerc
 ## Where to start
 
 - Read `cli.ts` to find command wiring.
-- Read `schema.ts` and `records.ts` to understand persisted data.
+- Read `schema.ts` and `session-records.ts` to understand persisted data.
 - Read `queries.ts` and `render.ts` to understand the read path.
 - Read `factory-job.ts` and the factory query in `queries.ts` for factory reports.
 - Read the matching `.test.ts` before changing a module contract.
