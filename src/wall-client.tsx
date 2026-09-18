@@ -53,8 +53,20 @@ function statusTint(status: WallStatus): string {
   return stopped.has(status) ? "text-warn-foreground" : "text-muted-foreground";
 }
 
+// `hourCycle` rather than `hour12: false`, which reads midnight as 24 in some locales. The
+// wall hangs on a screen in a room and shows one clock whoever is looking at it.
+const clock = new Intl.DateTimeFormat([], {
+  hour: "numeric",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+// Assembled from the parts rather than taking the locale's own separator, which differs
+// across ICU builds, so the figure on the wall is ours and not the viewer's.
 function timeLabel(updatedAt: string): string {
-  return new Date(updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const parts = clock.formatToParts(new Date(updatedAt));
+  const part = (type: "hour" | "minute") => parts.find((p) => p.type === type)?.value ?? "00";
+  return `${Number(part("hour"))}:${part("minute")}`;
 }
 
 /** The box every row of a card stands in, whatever it holds. One figure rather than a gap
@@ -276,7 +288,7 @@ function App() {
           <FeedIcon size={15} aria-hidden="true" />
           <span>{FEED_LABEL[feed]}</span>
           {lastMessage ? (
-            <small className="text-quiet">· {timeLabel(new Date(lastMessage).toISOString())}</small>
+            <span className="text-quiet">· {timeLabel(new Date(lastMessage).toISOString())}</span>
           ) : null}
         </div>
       </header>
