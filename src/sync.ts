@@ -8,7 +8,7 @@ import { type HistoryReport, ingestHistory } from "./history";
 import { createIngester, type FileSpec } from "./ingest";
 import type { Env } from "./paths";
 import { indexRepoFiles, type RepoFileReport } from "./repo-files";
-import { SCHEMA_SQL } from "./schema";
+import { SCHEMA_SQL, SCHEMA_VERSION } from "./schema";
 import { applyHookEvents, type DrainReport, drainSpool } from "./spool";
 import { drainWalk, type WalkReport } from "./walk";
 
@@ -106,44 +106,45 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
 }
 
 /**
- * Everything here is re-read from the source files. `hook_event`,
- * `guidance_walk` and `command_trace` are deliberately not cleared: none has a
- * source to re-read from, because a transcript records no end marker, a rules
- * file edited since cannot be read back as it was, and a command that ran left
- * no trace but its own.
+ * Everything here is re-read from the source files. Each table is dropped
+ * rather than emptied, because `CREATE TABLE IF NOT EXISTS` leaves one that
+ * already exists alone, so a column added to it would never appear and every
+ * write of that column would throw. They go in dependency order: with foreign
+ * keys on, a drop is an implicit delete, and a parent whose children are still
+ * there fails.
+ *
+ * `hook_event`, `guidance_walk`, `command_trace` and `finding` are deliberately
+ * left: none has a source to re-read from, because a transcript records no end
+ * marker, a rules file edited since cannot be read back as it was, and a
+ * command that ran or a finding that was answered left no trace but its own.
+ * `embedding` is left because re-reading the sources cannot rebuild it: its
+ * vectors come from a model `dim embed` runs, and the ids keying them are
+ * written back unchanged.
  */
 export function rebuild(db: Database, env: Env = process.env): SyncReport {
   db.transaction(() => {
-    // The search index holds no text of its own and reads it back through
-    // message.rowid, so clearing message row by row would have its triggers ask
-    // the index to forget entries an older schema never gave it. Dropping it
-    // first is also how the index arrives for a database built before it existed.
-    db.run("DROP TRIGGER IF EXISTS message_fts_insert");
-    db.run("DROP TRIGGER IF EXISTS message_fts_delete");
-    db.run("DROP TRIGGER IF EXISTS message_fts_update");
+    // The index is external content over message, so it would be left pointing
+    // into a table dropped and refilled below. Its triggers need no drop of
+    // their own: they belong to message, and a drop fires none of them.
     db.run("DROP TABLE IF EXISTS message_fts");
-    db.run("DELETE FROM skill_load");
-    db.run("DELETE FROM tool_call");
-    db.run("DELETE FROM orphan_prompt");
-    db.run("DELETE FROM session_cost_reported");
-    db.run("DELETE FROM turn");
-    db.run("DELETE FROM usage");
-    db.run("DELETE FROM message");
-    // Dropped rather than emptied, for the same reason as the git tables below:
-    // a column added to session cannot appear in a table that already exists,
-    // and every row in it is read back from the transcripts. Its dependents are
-    // emptied above, so nothing references it by the time it goes.
+    db.run("DROP TABLE IF EXISTS git_command");
+    db.run("DROP TABLE IF EXISTS skill_load");
+    db.run("DROP TABLE IF EXISTS tool_call");
+    db.run("DROP TABLE IF EXISTS orphan_prompt");
+    db.run("DROP TABLE IF EXISTS session_cost_reported");
+    db.run("DROP TABLE IF EXISTS turn");
+    db.run("DROP TABLE IF EXISTS usage");
+    db.run("DROP TABLE IF EXISTS message");
     db.run("DROP TABLE IF EXISTS session");
-    // Dropped rather than emptied, like the search index above: these are read
-    // back from git in full, and a column added to one of them cannot appear in
-    // a table that already exists.
+    db.run("DROP TABLE IF EXISTS source_file");
     db.run("DROP TABLE IF EXISTS guidance_version");
     db.run("DROP TABLE IF EXISTS commit_file");
-    db.run("DROP TABLE IF EXISTS git_command");
     db.run("DROP TABLE IF EXISTS repo_file");
     db.run("DROP TABLE IF EXISTS repo_commit");
-    db.run("DELETE FROM source_file");
+    db.run("DROP TABLE IF EXISTS handoff_link");
     db.run(SCHEMA_SQL);
   })();
-  return sync(db, env);
+  const report = sync(db, env);
+  db.run("UPDATE schema_version SET version = ?", [SCHEMA_VERSION]);
+  return report;
 }

@@ -1,7 +1,8 @@
 // Every table here is one-to-one with records in the source files and is rebuilt
 // by re-reading them, so a schema change is `dim rebuild`, not a migration. The
-// exceptions carry the reason at the table: hook_event, guidance_walk and finding
-// have no source to re-read, and embedding is derived from tables that do.
+// exceptions carry the reason at the table: hook_event, guidance_walk,
+// command_trace and finding have no source to re-read, and embedding is derived
+// from tables that do.
 // SCHEMA_VERSION exists so sync can refuse to run against a database only a
 // re-read can correct: a changed column, or a changed rule for what identifies a
 // row, since rows already written keep the old identity. A table added with
@@ -349,7 +350,7 @@ CREATE INDEX IF NOT EXISTS guidance_version_seen ON guidance_version(path, first
 -- docs/recall.md. A projection of its sources and never a second archive —
 -- \`dim embed\` drops the row when the source is gone.
 --
--- No foreign key, because \`rebuild\` empties message and drops repo_commit and
+-- No foreign key, because \`rebuild\` drops message and repo_commit and
 -- then writes the same ids back, so a vector keyed by one survives it. text is
 -- stored rather than joined because a vector only means anything against the
 -- exact string the model was given, and a Next is a slice of a larger message
