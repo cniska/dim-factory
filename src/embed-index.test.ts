@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { readDistilled } from "./distilled";
-import { EMBED_DIMS, type Embedder } from "./embed";
+import { EMBED_DIMS, type Embedder, fromBlob, similarity } from "./embed";
 import { buildIndex } from "./embed-index";
 import { SCHEMA_SQL } from "./schema";
 
@@ -133,6 +133,8 @@ describe("building the index", () => {
       vector: Uint8Array;
     };
     expect(row.vector.byteLength).toBe(EMBED_DIMS * 4);
+    const stored = fromBlob(row.vector);
+    expect(Math.sqrt(similarity(stored, stored))).toBeCloseTo(1, 6);
     db.close();
   });
 

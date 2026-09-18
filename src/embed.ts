@@ -11,7 +11,11 @@ const BATCH = 32;
 export class EmbedderUnavailableError extends Error {
   readonly code = "EMBEDDER_UNAVAILABLE";
   constructor(cause: unknown) {
-    super(`the embedding model would not load: ${cause instanceof Error ? cause.message : String(cause)}`);
+    super(
+      `the embedding model would not load, and \`dim embed\` is what fetches it: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+    );
   }
 }
 
@@ -23,8 +27,11 @@ export function modelCacheDir(e: Env = process.env): string {
   return join(dataDir(e), "models");
 }
 
-export async function openEmbedder(e: Env = process.env): Promise<Embedder> {
+// `env` is the library's process-wide settings object, so both entry points
+// assign the flag rather than one of them leaving it where the other put it.
+async function load(e: Env, allowRemoteModels: boolean): Promise<Embedder> {
   env.cacheDir = modelCacheDir(e);
+  env.allowRemoteModels = allowRemoteModels;
   let extract: Awaited<ReturnType<typeof pipeline<"feature-extraction">>>;
   try {
     extract = await pipeline("feature-extraction", EMBED_MODEL);
@@ -46,6 +53,16 @@ export async function openEmbedder(e: Env = process.env): Promise<Embedder> {
     }
     return vectors;
   };
+}
+
+/** Reads the model off disk, and fails where it is missing rather than fetching it. */
+export function openEmbedder(e: Env = process.env): Promise<Embedder> {
+  return load(e, false);
+}
+
+/** The one thing here that reaches the network: `dim embed` warming an empty cache. */
+export function downloadEmbedder(e: Env = process.env): Promise<Embedder> {
+  return load(e, true);
 }
 
 export function toBlob(vector: Float32Array): Uint8Array {
@@ -71,17 +88,19 @@ export function fromBlob(blob: Uint8Array): Float32Array {
  */
 export type Question = { vector: Float32Array } | { unavailable: string };
 
-export async function embedQuestion(text: string, e: Env = process.env): Promise<Question> {
-  let embed: Embedder;
+export async function embedQuestion(
+  text: string,
+  e: Env = process.env,
+  open: (e: Env) => Promise<Embedder> = openEmbedder,
+): Promise<Question> {
   try {
-    embed = await openEmbedder(e);
+    const embed = await open(e);
+    const [vector] = await embed([text]);
+    if (!vector) return { unavailable: "the model returned no vector for the question" };
+    return { vector };
   } catch (error) {
-    if (error instanceof EmbedderUnavailableError) return { unavailable: error.message };
-    throw error;
+    return { unavailable: error instanceof Error ? error.message : String(error) };
   }
-  const [vector] = await embed([text]);
-  if (!vector) return { unavailable: "the model returned no vector for the question" };
-  return { vector };
 }
 
 /** Both sides are unit vectors, so their dot product is the cosine between them. */

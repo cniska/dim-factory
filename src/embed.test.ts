@@ -1,5 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { BLOB_BYTES, EMBED_DIMS, fromBlob, openEmbedder, similarity, toBlob } from "./embed";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { env } from "@huggingface/transformers";
+import {
+  BLOB_BYTES,
+  EMBED_DIMS,
+  type Embedder,
+  embedQuestion,
+  fromBlob,
+  openEmbedder,
+  similarity,
+  toBlob,
+} from "./embed";
 
 function vector(fill: (i: number) => number): Float32Array {
   const v = new Float32Array(EMBED_DIMS);
@@ -53,6 +66,49 @@ describe("similarity", () => {
     const b = vector((i) => (i === 0 ? -1 : 0));
     expect(similarity(a, b)).toBeCloseTo(-1, 6);
   });
+});
+
+describe("reading a question", () => {
+  // Every caller of this treats retrieval as optional and falls back to keywords,
+  // so a throw from here takes down a command that had a working answer to give.
+  test("a model that fails mid-inference comes back as unavailable, not as a throw", async () => {
+    const breaks: Embedder = async () => {
+      throw new Error("onnxruntime session ran out of memory");
+    };
+    const question = await embedQuestion("what broke the worktree", process.env, async () => breaks);
+    expect(question).toEqual({ unavailable: "onnxruntime session ran out of memory" });
+  });
+
+  test("a model that returns nothing comes back as unavailable", async () => {
+    const empty: Embedder = async () => [];
+    const question = await embedQuestion("what broke the worktree", process.env, async () => empty);
+    expect(question).toHaveProperty("unavailable");
+  });
+});
+
+describe("the no-network invariant", () => {
+  // `env.fetch` is reached only for an http URL — a local path is read through the
+  // filesystem — so a recorded call here is a download and nothing else.
+  test("a cache miss fails rather than reaching the hub", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "dim-embed-"));
+    const reached: string[] = [];
+    const real = env.fetch;
+    env.fetch = async (input: string | URL) => {
+      reached.push(String(input));
+      throw new Error("the test refuses the network");
+    };
+    let code: unknown;
+    try {
+      await openEmbedder({ DIM_HOME: dir });
+    } catch (error) {
+      code = (error as { code?: unknown }).code;
+    } finally {
+      env.fetch = real;
+      rmSync(dir, { recursive: true, force: true });
+    }
+    expect(reached).toEqual([]);
+    expect(code).toBe("EMBEDDER_UNAVAILABLE");
+  }, 120_000);
 });
 
 describe("the local model", () => {

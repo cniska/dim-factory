@@ -13,7 +13,7 @@ import { checkoutRoot } from "./checkout";
 import { checkoutDirs, installCommitGate, planCommitGate, sharedHooksDir } from "./commit-gate";
 import { closeDb, openDb } from "./db";
 import { diagnose } from "./doctor";
-import { EMBED_DIMS, EMBED_MODEL, embedQuestion, openEmbedder } from "./embed";
+import { downloadEmbedder, EMBED_DIMS, EMBED_MODEL, embedQuestion } from "./embed";
 import { buildIndex } from "./embed-index";
 import { type Finding, FindingError, findingFrom, recordFinding } from "./finding";
 import { committerName } from "./git-identity";
@@ -491,7 +491,7 @@ function runCheckCommits(range: string | undefined): void {
 async function runEmbed(): Promise<void> {
   // Before the lock: fetching the weights the first time is the slowest thing
   // here, and holding the write lock through it would block a scheduled sync.
-  const embed = await openEmbedder();
+  const embed = await downloadEmbedder();
   await withLock(async () => {
     const db = openDb(dbPath());
     try {
