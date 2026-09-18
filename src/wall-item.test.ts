@@ -54,6 +54,13 @@ describe("factory wall item view", () => {
     expect(Object.values(ITEM_KIND_LABELS).every((label) => !label.includes("_"))).toBe(true);
   });
 
+  test("marks a station move, so a job that just reached one has news", () => {
+    const stops = railStops([entry({ kind: "moved", station: "review" })]);
+
+    expect(stops[0]?.mark).toBe("handover");
+    expect(ITEM_KIND_LABELS.moved).toBe("Moved");
+  });
+
   test("draws a handover and an end differently from an ordinary moment", () => {
     expect(new Set(Object.values(RAIL_MARK_GLYPH)).size).toBe(3);
     expect(RAIL_MARK_GLYPH.handover).toBe("→");
