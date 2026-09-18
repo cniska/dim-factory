@@ -18,9 +18,10 @@ The session database, query CLI, hooks, worktrees, stations and factory report t
 ```sh
 mise install
 bun install
-bun run dim sync
-bun run dim doctor
-bun run dim q list
+bun link
+dim sync
+dim doctor
+dim q list
 ```
 
 Run the repository check with:
