@@ -44,6 +44,10 @@ function endEvent(sessionId: string, reason: string) {
   return { session_id: sessionId, hook_event_name: "SessionEnd", reason, cwd: "/Users/x/code/demo" };
 }
 
+function startEvent(sessionId: string, source: string) {
+  return { session_id: sessionId, hook_event_name: "SessionStart", source, cwd: "/Users/x/code/demo" };
+}
+
 describe("spool", () => {
   test("records why a session ended, which no transcript says", () => {
     const root = newRoot();
@@ -54,7 +58,7 @@ describe("spool", () => {
     try {
       expect(sync(db, env).hooks).toMatchObject({ applied: 1, unreadable: 0 });
       expect(db.prepare(`SELECT ended_at, end_reason FROM session WHERE id = '${SESSION}'`).get()).toEqual({
-        ended_at: "2026-09-10T00:26:40Z",
+        ended_at: "2026-09-10T00:26:40.000Z",
         end_reason: "prompt_input_exit",
       });
     } finally {
@@ -124,6 +128,25 @@ describe("spool", () => {
       spool(env, "claude", "1789000000000000000", endEvent(SESSION, "clear"));
       expect(drainSpool(db, env)).toMatchObject({ applied: 0, duplicate: 1 });
       expect(db.prepare("SELECT count(*) AS n FROM hook_event").get()).toEqual({ n: 1 });
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  // Two starts a fraction of a second apart are two things that happened, and
+  // the spooled file is the only copy of each.
+  test("keeps both events when one second holds two of them", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    spool(env, "claude", "1789000000000000000", startEvent(SESSION, "startup"));
+    spool(env, "claude", "1789000000400000000", startEvent(SESSION, "compact"));
+    const db = openDb(dbPath(env));
+    try {
+      expect(drainSpool(db, env)).toMatchObject({ applied: 2, duplicate: 0 });
+      expect(db.prepare("SELECT source FROM hook_event ORDER BY ts").all()).toEqual([
+        { source: "startup" },
+        { source: "compact" },
+      ]);
     } finally {
       closeDb(db);
     }

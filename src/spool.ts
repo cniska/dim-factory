@@ -86,7 +86,10 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
         report.unreadable += 1;
         continue;
       }
-      const ts = new Date(Number(match[1]) / 1e6).toISOString().replace(/\.\d{3}Z$/, "Z");
+      // `hook_event` identifies a row by its timestamp, so a second rounded off
+      // here makes two events that really happened one, and the file holding the
+      // second of them is the only copy there is.
+      const ts = new Date(Number(match[1]) / 1e6).toISOString();
       const changes = db.transaction(() =>
         insert.run({
           $tool: tool,
