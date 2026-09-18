@@ -26,7 +26,7 @@ Spawn one agent per dimension, each given the diff, the intent, and only the gro
 |---|---|
 | correctness | whether `exemplars` names a path in this diff — code that has held, so a change to it is read against that |
 | tests | `dim q rework`, where work was revisited after a pushback |
-| architecture | `dim q prior-art "<path fragment>"` — how this shape is built in the repos on disk |
+| architecture | `dim q prior-art "<path fragment>"` — how this shape is built in the repos on disk; apply the [architecture-review brief](../../../../.agents/skills/architecture-review/SKILL.md) where it is available |
 | docs | `dim q stale <id-prefix>` — whether the code a doc describes has moved since |
 | security | nothing; read from the diff alone |
 | style | nothing; read from the diff alone |
