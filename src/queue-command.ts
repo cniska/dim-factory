@@ -108,7 +108,11 @@ export async function runQueueCommand(args: string[]): Promise<string> {
     }
     if (args.slice(2).length === 2 && args[2] !== "--limit") throw new Error(usage);
     const items = readyItems(await readQueue(path), positiveLimit(valueAfter(args, "--limit"))).map(
-      ({ id, title, description, status }) => ({ id, title, description, status }),
+      ({ id, title, status }) => ({
+        id,
+        title,
+        status,
+      }),
     );
     return JSON.stringify(items);
   }
