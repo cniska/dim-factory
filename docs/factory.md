@@ -100,7 +100,7 @@ The queue planner is a reversible, file-backed issue tracker that supplies work 
 - **Parallel work.** The planner identifies ready items whose dependencies are satisfied. Grouping them into independent isolated jobs, claims and integration remain driver responsibilities.
 - **Cancellation.** Cancelling queued work marks it in the queue; ready selection excludes it.
 - **Capacity.** The planner exposes bounded ready work rather than creating unlimited jobs.
-- **CLI.** `dim queue ready <file> [--limit <n>]` prints planned items in stable ID order, and `dim queue transition <file> <item> <status> [--reason <text>] [--at <iso>]` validates and atomically writes a status transition back to the file.
+- **CLI.** `dim queue ready <file> [--limit <n>]` prints each ready item's `id`, `title`, `description` and `status` as JSON in stable ID order, leaving out a `description` the item does not carry, and `dim queue transition <file> <item> <status> [--reason <text>] [--at <iso>]` validates and atomically writes a status transition back to the file.
 - **Serialization.** The driver keys claims and integration by queue and item, so work sharing a key is serialized while independent keys can run in parallel.
 - **Boundary.** The queue file owns intent and dependency state; `factory_job` owns execution identity, lifecycle events and evidence. The driver translates between them.
 
