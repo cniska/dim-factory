@@ -152,7 +152,12 @@ describe("factory job report records", () => {
           branch: jobId,
         },
         { baseRevision: "abc123" },
-        () => ({ status, reason: "stopped" }),
+        (context) => {
+          if (status === "completed") {
+            context.recordCheck({ command: "bun run verify", exitCode: 0, result: "green" });
+          }
+          return { status, reason: "stopped" };
+        },
       );
       expect(outcome).toEqual({ status, reason: "stopped" });
       expect(database.query("SELECT status, stop_reason FROM factory_job WHERE id = ?").get(jobId)).toEqual({
@@ -164,9 +169,36 @@ describe("factory job report records", () => {
       ).toEqual([
         { kind: "claimed", status: null },
         { kind: "started", status: "running" },
+        ...(status === "completed" ? [{ kind: "check_finished", status: null }] : []),
         { kind: status, status },
       ]);
     }
+    database.close();
+  });
+
+  test("fails a builder that returns completed with no check recorded", async () => {
+    const database = db();
+
+    await expect(
+      runFactoryJob(
+        database,
+        {
+          id: "job-unchecked",
+          runId: "run-unchecked",
+          queueId: "queue-1",
+          itemId: "item-1",
+          title: "Complete without checking",
+          worktree: "/tmp/wt",
+          branch: "job-unchecked",
+        },
+        { baseRevision: "abc123" },
+        () => ({ status: "completed", reason: "verified" }),
+      ),
+    ).rejects.toThrow(expect.objectContaining({ code: "job_not_checked" }));
+
+    expect(database.query("SELECT status FROM factory_job WHERE id = 'job-unchecked'").get()).toEqual({
+      status: "failed",
+    });
     database.close();
   });
 
@@ -229,6 +261,75 @@ describe("factory job report records", () => {
       "job job-1 already owns a worktree",
     );
     database.close();
+  });
+
+  test("refuses to complete a job no passing check was recorded for", () => {
+    const database = db();
+    createJob(database, job, "2026-09-18T10:00:00.000Z");
+    appendJobEvent(database, "job-1", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    recordJobCheck(
+      database,
+      "job-1",
+      { command: "bun run verify", exitCode: 1, result: "2 failed" },
+      "2026-09-18T10:02:00.000Z",
+    );
+
+    expect(() => appendJobEvent(database, "job-1", { kind: "completed", status: "completed" })).toThrow(
+      expect.objectContaining({ code: "job_not_checked" }),
+    );
+    expect(database.query("SELECT status FROM factory_job").get()).toEqual({ status: "running" });
+
+    recordJobCheck(
+      database,
+      "job-1",
+      { command: "bun run verify", exitCode: 0, result: "green" },
+      "2026-09-18T10:03:00.000Z",
+    );
+    appendJobEvent(database, "job-1", { kind: "completed", status: "completed" });
+
+    expect(database.query("SELECT status FROM factory_job").get()).toEqual({ status: "completed" });
+    database.close();
+  });
+
+  test("refuses a check that passed before the job's last commit", () => {
+    const database = db();
+    createJob(database, job, "2026-09-18T10:00:00.000Z");
+    appendJobEvent(database, "job-1", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    recordJobCheck(
+      database,
+      "job-1",
+      { command: "bun run verify", exitCode: 0, result: "green" },
+      "2026-09-18T10:02:00.000Z",
+    );
+    recordJobCommit(database, "job-1", "abc123", "feat: land it", "2026-09-18T10:03:00.000Z");
+
+    expect(() => appendJobEvent(database, "job-1", { kind: "completed", status: "completed" })).toThrow(
+      expect.objectContaining({ code: "job_not_checked" }),
+    );
+
+    recordJobCheck(
+      database,
+      "job-1",
+      { command: "bun run verify", exitCode: 0, result: "green" },
+      "2026-09-18T10:04:00.000Z",
+    );
+    appendJobEvent(database, "job-1", { kind: "completed", status: "completed" });
+
+    expect(database.query("SELECT status FROM factory_job").get()).toEqual({ status: "completed" });
+    database.close();
+  });
+
+  test("lets every other terminal status stop an unchecked job", () => {
+    for (const status of ["blocked", "fenced", "failed", "abandoned"] as const) {
+      const database = db();
+      createJob(database, job, "2026-09-18T10:00:00.000Z");
+      appendJobEvent(database, "job-1", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+
+      appendJobEvent(database, "job-1", { kind: status, status });
+
+      expect(database.query("SELECT status FROM factory_job").get()).toEqual({ status });
+      database.close();
+    }
   });
 
   test("records an explicit stop and rejects evidence after it", () => {
@@ -350,6 +451,7 @@ describe("factory job report records", () => {
     });
 
     appendJobEvent(database, "job-1", { kind: "started", status: "running" });
+    recordJobCheck(database, "job-1", { command: "bun run verify", exitCode: 0, result: "green" });
     appendJobEvent(database, "job-1", { kind: "completed", status: "completed" });
 
     expect(() => moveJob(database, "job-1", "dim-station-review")).toThrow(/already completed/);
@@ -458,6 +560,15 @@ describe("factory job report records", () => {
         "2026-09-18T10:00:00.000Z",
       );
       appendJobEvent(database, jobId, { kind: "started", status: "running" }, "2026-09-18T10:00:30.000Z");
+      const checks = status === "completed" ? 1 : 0;
+      if (checks) {
+        recordJobCheck(
+          database,
+          jobId,
+          { command: "bun run verify", exitCode: 0, result: "green" },
+          "2026-09-18T10:00:45.000Z",
+        );
+      }
       appendJobEvent(database, jobId, { kind: status, status }, "2026-09-18T10:01:00.000Z");
 
       expect(() => appendJobEvent(database, jobId, { kind: "started", status: "running" })).toThrow();
@@ -469,7 +580,7 @@ describe("factory job report records", () => {
       expect(
         database.query("SELECT count(*) AS count FROM factory_job_event WHERE job_id = ?").get(jobId),
       ).toEqual({
-        count: 3,
+        count: 3 + checks,
       });
     }
     database.close();

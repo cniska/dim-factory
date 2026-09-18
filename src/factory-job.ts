@@ -47,6 +47,11 @@ export type JobEvent = {
   ts?: string;
 };
 
+/** Carries a code because a caller deciding what to do about this must not match on prose. */
+export class JobNotChecked extends Error {
+  readonly code = "job_not_checked";
+}
+
 const now = (): string => new Date().toISOString();
 export const TERMINAL_JOB_STATUSES: readonly JobStatus[] = [
   "completed",
@@ -185,8 +190,9 @@ function appendJobEventInTransaction(db: Database, jobId: string, event: JobEven
       const action = VERB_FOR_KIND[event.kind] ?? event.kind;
       throw new Error(`job ${jobId} must be running before it can ${action}`);
     }
-    if (event.kind === "completed" && !job.worktree) {
-      throw new Error(`job ${jobId} has no worktree`);
+    if (event.kind === "completed") {
+      if (!job.worktree) throw new Error(`job ${jobId} has no worktree`);
+      assertChecked(db, jobId);
     }
   }
 
@@ -312,6 +318,30 @@ export function recordJobEnvironment(
 export function recordJobDocument(db: Database, jobId: string, path: string, at = now()): void {
   assertJobRunning(db, jobId);
   db.run("INSERT INTO factory_job_document (job_id, path, recorded_at) VALUES (?, ?, ?)", [jobId, path, at]);
+}
+
+/**
+ * A check older than the last commit is the case the gate exists to catch: a job
+ * that ran the repo's task and then kept committing has no evidence for what it
+ * landed. With no commit recorded there is nothing for a check to be older than,
+ * so any passing one satisfies it.
+ */
+function assertChecked(db: Database, jobId: string): void {
+  const passed = db
+    .query(
+      `SELECT 1 FROM factory_job_check
+       WHERE job_id = ? AND exit_code = 0
+         AND finished_at >= coalesce((SELECT max(recorded_at) FROM factory_job_commit WHERE job_id = ?), '')
+       LIMIT 1`,
+    )
+    .get(jobId, jobId);
+  if (!passed) {
+    throw new JobNotChecked(
+      `job ${jobId} cannot complete without a check that passed after its last commit: ` +
+        `record one with \`dim job check ${jobId} --command "..." --exit 0\`, ` +
+        "or stop the job as blocked, fenced, failed or abandoned.",
+    );
+  }
 }
 
 function assertJobRunning(db: Database, jobId: string): void {
