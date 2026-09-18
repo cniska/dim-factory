@@ -1089,6 +1089,7 @@ const job: Query = {
   summary: "inspect one factory job report, its events, and evidence",
   usage: "dim q job <job-id>",
   spansHistory: true,
+  window: null,
   run: (db, { arg }) => {
     if (!arg) {
       return { denominator: "", columns: ["error"], rows: [["usage: dim q job <job-id>"]] };

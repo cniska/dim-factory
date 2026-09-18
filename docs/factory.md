@@ -39,6 +39,23 @@ The report lifecycle is a durable sequence from claim through running to complet
 
 The persistence contract is live. The factory driver still owns scheduling, isolated worktree creation, serialized landing and queue-state enforcement; those orchestration boundaries are not inferred from a report row.
 
+## Queue planning
+
+The planned queue planner is a reversible, file-backed issue tracker that supplies work to the factory driver without becoming the execution ledger.
+
+- **Queue source.** A tracked file owns the item description, dependencies and queue status, so planning changes are reviewable, branchable and reversible.
+- **Lifecycle.** Items move through explicit states: `planned`, `claimed`, `running`, `completed`, `blocked`, `fenced`, `failed` or `cancelled`. Terminal states do not transition again.
+- **Parallel work.** The planner identifies items whose dependencies are satisfied and groups them for independent isolated jobs. Claims and landing remain serialized.
+- **Cancellation.** Cancelling queued work marks it in the queue and the driver skips it when selecting the next item.
+- **Capacity.** The planner exposes bounded ready work rather than creating unlimited jobs.
+- **CLI.** Node or Bun commands read tickets, claim unblocked items and write status transitions back to the queue file.
+- **Serialization.** The driver keys claims and landing by queue and item, so work sharing a key is serialized while independent keys can run in parallel.
+- **Boundary.** The queue file owns intent and dependency state; `factory_job` owns execution identity, lifecycle events and evidence. The driver translates between them.
+
+The queue may carry a compact current status and `job_id` link for a person reading the plan. The delivered-product report remains in `factory_job` and its evidence tables: commits, changed files, checks, findings, documents, and fence or blocker evidence. The queue is not a second report store.
+
+This is planned orchestration work. It does not add a second source of truth for job reports.
+
 ## What is missing is not another skill
 
 Two layers separate a set of stations from a line that runs itself, and neither is more instruction.
