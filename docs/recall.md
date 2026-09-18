@@ -49,7 +49,7 @@ Where a repo declares nothing it returns nothing rather than guessing. The ecosy
 
 The delivery is the one that already exists. `wake` is the only channel here that arrives, and it holds a budget: every line is paid for in every session that starts. Three commands and a tooling chain fit that budget on its own terms, because a cold start can work them out but only by spending a tool call and its output to do it — which is more than the lines cost. What does not fit is everything else about a repo, and the test for adding a line stays the one `wake` was built with: a cold start cannot work it out, or it does not go in.
 
-One thing this cannot reach: running a formatter after each edit is a `PostToolUse` hook, and dim installs no such event — dim can supply the command, never run it.
+Running a formatter after each edit is a `PostToolUse` hook; dim installs the event and spools its payload, while a later pass decides what the payload means.
 
 On Codex the hooks fire only while their position is trusted. Trust is recorded per hook in `~/.codex/config.toml` as `<hooks.json path>:<event>:<entry index>:<hook index>`, so an entry inserted ahead of dim's by another tool moves dim's hook to a key approved for a different command. `doctor` reads whether a trust is recorded at each hook's current position, which is what turns that from silent into reported.
 

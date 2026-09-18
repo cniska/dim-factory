@@ -6,7 +6,7 @@ The argument this repo exists to execute. It is a position to argue with, not a 
 
 The owner's tool-agnostic engineering skills form a production line — spec, plan, build, review, ship — and the parts map onto a factory more cleanly than they were designed to.
 
-- **Skills are the stations.** Each is a repeatable operation with an entry contract and an exit check.
+- **Skills form the line and stations.** `dim-feat` and `dim-fix` are line entry points; `dim-plan`, `dim-build` and `dim-review` are repeatable stations with entry contracts and exit checks.
 - **A coding agent is the floor.** It executes stations with tools, budgets and a lifecycle, and the driving is handed to the model rather than scripted.
 - **`AGENTS.md` and `SPEC.md` are the fixtures and tolerances.** Per-project grounding, and a machine-checkable statement of what correct means. A line cannot run unattended without them.
 - **Review, verify and the gates are QC.** They pass or fail work without a human reading every diff.
@@ -18,7 +18,8 @@ None of it was built to be a factory. It became one because each phase was made 
 Two layers separate a set of stations from a line that runs itself, and neither is more instruction.
 
 1. **Someone to start the work.** A factory runs when work begins without a person starting each task. The queues already exist — a file, a tracker, a list of issues — so what the stations lack is not a place for work to wait but something that reads one and opens the job. `dim-factory` does that: it takes a queue rather than keeping one, so a file it is handed, a tracker the repo declares and what it finds by looking all reach the same reader; it picks an item, routes it to the station whose shape fits, and holds the run inside the bounds below rather than judging them. For this repo the queue is [`build-order.md`](build-order.md).
-2. **Verification worth leaving.** A gate becomes autonomous when its check is strong enough to remove the human standing at it. The checks catch regressions and broken contracts. They do not catch a coherent, confident, wrong design, so a human stays at that gate — not as ceremony, but because the check is incomplete.
+   The driver passes the item and base revision to the builder. The builder creates its isolated checkout with `dim wt` before invoking its line or station and owns the work from there.
+2. **Verification worth leaving.** A gate becomes autonomous when its check is strong enough to remove the human standing at it. The checks catch regressions and broken contracts. They do not catch a coherent, confident, wrong design, so a human stays at that gate — because the check is incomplete.
 
 ## Why the answer is not dark
 

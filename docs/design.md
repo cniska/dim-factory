@@ -196,12 +196,13 @@ Two things the agent's environment forces. The plist names `bun` by absolute pat
 | Claude | `SessionStart` | `source` (startup/resume/clear/compact/fork) and `model` when present — whether a session is a resume. The transcript's `session_id`/`sessionId` mismatch (274 sessions) is undocumented; this is the documented signal. | one file write at start, not in a tool path |
 | Codex | `SessionEnd` | End timestamp and `model`. `reason` is always `other`, so how it ended is not captured. | one file write, 1 s limit |
 | Codex | `SessionStart` | `source`, `model` at start | one file write |
+| Claude, Codex | `PostToolUse` | That a tool call happened, with the provider payload for a later pass to interpret | one file write per tool call |
 
-Not installed, and why: `Stop` duplicates `turn_duration` lines (Claude) and is unsupported (Codex). `PostToolUse` fires on every tool call; the transcript already has input, result, and both timestamps, and the docs do not promise an exit code in `tool_response`, so it would add wall-clock precision only, at a per-call cost. `UserPromptSubmit` duplicates `promptSource:"typed"` lines. `PreCompact`/`PostCompact`: compaction happened once in the corpus.
+Not installed: `Stop` duplicates `turn_duration` lines (Claude) and is unsupported (Codex). `UserPromptSubmit` duplicates `promptSource:"typed"` lines. `PreCompact`/`PostCompact`: compaction happened once in the corpus.
 
 **Budget and failure mode**: each hook is `cat > "$SPOOL/$(date +%s%N)-$$.json" 2>/dev/null; exit 0`. No jq, no sqlite, no network; sub-millisecond; always exits 0; if the spool directory is missing it fails silently and the session is unaffected. SessionEnd hooks on Claude ignore exit codes anyway.
 
-**Concurrency**: hooks never open the database. One file per event (`O_CREAT` of a unique name) is atomic on APFS; the scheduled `sync` moves spool files into `session_event` and `session.ended_at/end_reason` under the `flock`. Concurrent sessions therefore never contend on `sessions.db`; only `sync` writes it, one process at a time, in WAL mode so the read path can query during a sync.
+**Concurrency**: hooks never open the database. One file per event (`O_CREAT` of a unique name) is atomic on APFS; the scheduled `sync` moves spool files into `hook_event` and derives `session.ended_at/end_reason` under the `flock`. Concurrent sessions therefore never contend on `sessions.db`; only `sync` writes it, one process at a time, in WAL mode so the read path can query during a sync.
 
 **One canonical source per column**: the spool drains into `hook_event`, its own table, and `session.ended_at`/`end_reason` are derived from it on every sync. Everything else comes from transcripts only, and no column is written by both paths.
 
@@ -418,7 +419,7 @@ A result longer than the cap says how many rows were cut and names `--rows`, so 
 - Not a search tool over transcript content; `search-sessions` already does that against the files.
 - Not a compliance checker for skill instructions; that is `evals/`.
 - Not multi-machine or multi-user; one home directory, one SQLite file.
-- Not a hook-heavy telemetry layer: two hook events per tool, each a file write.
+- Not a hook-heavy telemetry layer: three hook events per tool, each a file write.
 - Reaches no network, holds no credential, and is billed for nothing at any point in collection or backfill; a model reads query output only when the owner asks, on a set the query has already narrowed, and the local embedder reads only text a person distilled.
 
 ## 12. What is left

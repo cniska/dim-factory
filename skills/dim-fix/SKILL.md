@@ -8,6 +8,8 @@ argument-hint: "<what is broken>"
 
 The front door for a defect. It runs the whole line: triage, a test that fails on the bug, then the slice loop in [`dim-build`](../dim-build/SKILL.md). You type this once; it invokes what it needs.
 
+When `dim-factory` hands this line a queue item, create the isolated checkout first with `dim wt <branch>`, then continue from inside that worktree. The factory driver routes the item; this line owns the checkout and work.
+
 The record says why this is one station and not three pointers. `debug` has loaded in 9 sessions in this corpus, against 1,470 `fix:` commits in the owner's own repos ([`findings.md`](../../docs/findings.md)). A phase named in prose is a phase that does not run — so triage is performed here rather than delegated to a skill the agent has to remember.
 
 A fix is also smaller than a feature and localized differently: 10 files to a feature's 30. That is why the slicing phase is borrowed rather than owned, and the reading phase is owned rather than borrowed.

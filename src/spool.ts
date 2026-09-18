@@ -44,9 +44,10 @@ type HookPayload = {
   model?: string;
 };
 
-function eventOf(name: string | undefined): "session_start" | "session_end" | undefined {
+function eventOf(name: string | undefined): "session_start" | "session_end" | "post_tool_use" | undefined {
   if (name === "SessionStart") return "session_start";
   if (name === "SessionEnd") return "session_end";
+  if (name === "PostToolUse") return "post_tool_use";
   return undefined;
 }
 

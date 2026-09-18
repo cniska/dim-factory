@@ -48,6 +48,16 @@ function startEvent(sessionId: string, source: string) {
   return { session_id: sessionId, hook_event_name: "SessionStart", source, cwd: "/Users/x/code/demo" };
 }
 
+function toolEvent(sessionId: string) {
+  return {
+    session_id: sessionId,
+    hook_event_name: "PostToolUse",
+    tool_name: "Edit",
+    tool_use_id: "toolu_123",
+    cwd: "/Users/x/code/demo",
+  };
+}
+
 describe("spool", () => {
   test("records why a session ended, which no transcript says", () => {
     const root = newRoot();
@@ -184,6 +194,22 @@ describe("spool", () => {
       closeDb(db);
     }
   });
+
+  test("stores a post-tool event for a later pass to interpret", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    spool(env, "claude", "1789000000000000000", toolEvent(SESSION));
+    const db = openDb(dbPath(env));
+    try {
+      expect(drainSpool(db, env)).toMatchObject({ applied: 1, unreadable: 0 });
+      expect(db.prepare("SELECT event, payload FROM hook_event").get()).toEqual({
+        event: "post_tool_use",
+        payload: JSON.stringify(toolEvent(SESSION)),
+      });
+    } finally {
+      closeDb(db);
+    }
+  });
 });
 
 describe("installHooks", () => {
@@ -232,6 +258,8 @@ describe("installHooks", () => {
     expect(after.hooks.SessionStart).toHaveLength(2);
     expect(after.hooks.SessionStart[0].hooks[0].command).toBe(hookCommand("claude", env));
     expect(after.hooks.SessionStart[1].hooks[0].command).toBe(wakeCommand("claude"));
+    expect(after.hooks.PostToolUse).toHaveLength(1);
+    expect(after.hooks.PostToolUse[0].hooks[0].command).toBe(hookCommand("claude", env));
     expect(readFileSync(`${paths.claude}.dim-backup`, "utf8")).toContain("existing-notifier");
   });
 
@@ -295,7 +323,7 @@ describe("installHooks", () => {
     const env = hookEnv(dir);
     installHooks(env);
     const first = readFileSync(configs(env).claude, "utf8");
-    expect(installHooks(env)).toMatchObject({ written: [], alreadyPresent: 6 });
+    expect(installHooks(env)).toMatchObject({ written: [], alreadyPresent: 8 });
     expect(readFileSync(configs(env).claude, "utf8")).toBe(first);
     expect(planHooks(env).every((p) => p.present)).toBe(true);
   });
