@@ -155,6 +155,22 @@ The two things a verdict is passed on already have writers. [`dim-station-plan`]
 
 Reviewing everything is the honest starting point, because a gate cannot earn its way out of a record that was never kept.
 
+## A role runs at the tier its work needs
+
+Every station names its agents by role and brief — driver, planner, builder, simplifier, reviewer, checker, judge, and the search that finds where a thing already lives. Each role runs at one of three capability tiers, declared in [`src/routing.ts`](../src/routing.ts) and never worked out from the task at hand, which is the rule `src/tasks.ts` already follows for a repo's check.
+
+- **`cheap`** reads one thing against a fixed brief: check one diff against four closed questions, settle one disputed claim at its source, find where a shape exists on disk. That is the checker, the judge and the search.
+- **`standard`** makes the mechanical edit and the doc that goes with it: the builder, the simplification pass, and a review dimension reading an assembled change.
+- **`deep`** cuts the work and decides where the line stops: the planner, and the driver whose stopping rule is the substance of this file.
+
+What a tier is called locally is a separate thing, and it is data rather than code. `routing.json` beside the database maps `cheap`, `standard` and `deep` to whatever the harness driving the floor calls them; another harness writes its own names, and a harness with one model maps all three to it and loses nothing. `dim route <role>` prints the tier and the mapped name, so a station says "spawn the checker at the tier `dim route checker` gives you" and names no model. No model name appears in this repo's source or in a skill, and a test fails when one does.
+
+The map is per machine and not per repo. Which models exist is a property of the harness driving the line, not of the code being worked on, and the same factory run from a different harness must resolve differently; a repo-level override waits until something asks for one.
+
+**A missing or incomplete map refuses to route.** `dim route` names the file, the tier that is unnamed and the shape to write, and exits nonzero. A default tier chosen here would be a guess about cost and capability made where nobody would see it, and the run that silently took it is the one that cost the most.
+
+This is the first preference `dim` holds rather than a record of something that happened, and it is worth saying plainly because everything else here is history. It qualifies: it is one file, hand-written, read and never inferred, and it is the machine's answer to a question the record cannot answer — no row says what a model is called here. Whether a cheap checker raises fewer real findings than an expensive one is still a measurement, and it waits on the tier being recorded against a job.
+
 ## What the assembly line already settled
 
 Borrowed, and each kept only where a mechanism here carries it. The names are worth keeping because they are searchable, and because each one names a mistake that is easy to make twice.
