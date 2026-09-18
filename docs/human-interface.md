@@ -76,10 +76,14 @@ It is a dialog over the board, the shape a detail surface already takes in this 
 Covering the board is the right trade: reading one item is a deliberate act at the machine, while the board is what carries the room. A dialog is also the reason the view can be live without being noisy — the board behind it keeps moving, and the reader is looking at one thing on purpose.
 
 - **One item.** The view opens from a card and shows that job's own record. It is a place to look at one thing, not a table of everything, and the board is still the way to find it.
-- **Its history, in order.** The lifecycle events as they were written: claimed, started, delegated, each commit, each check, each finding, and the outcome. The order is the story, so it reads down the page rather than being grouped into tabs.
+- **Its history, in order.** The lifecycle events as they were written: claimed, started, delegated, each commit, each check, each finding, and the outcome. The order is the story, so it reads down the page rather than being grouped by kind.
 - **What it took to get there.** Repeated checks and repeated review rounds are visible as repetition rather than collapsed into a final state, so an item that passed on the first attempt reads differently from one that took four. A refused finding shows the grounds it was refused on.
 - **Its evidence, attached.** The commits with their subjects, the files they touched, the checks with their commands and exit status, the findings with their dimension, and the documents the job updated. Each sits with the event that produced it.
 - **Human words, machine ids.** The same split the board follows: the title and the plain description lead, and the job id, item id and commit shas are present for an agent to join on.
+
+The job's identity stays above whatever is being read — which item, which station, which worker, which state — because it answers "what am I looking at" and a reader who has to go back for it has lost the thread. Below it the reports divide: what the job set out to do, what it did, and what it built. Each is a document in its own right and long enough that stacking them makes the one being read hard to find.
+
+The plan and the account are the exception, and putting them in separate places is the way to lose what they are for. Their value is where they disagree — scope that grew, a slice never built — and a difference nobody can see is a difference nobody finds. They belong on one surface, against each other, however the rest divides.
 
 The wall's primitives are small and its runtime dependencies are few, so the dialog is worth building on the platform's own `<dialog>` element, which carries modality, focus and dismissal already. Pulling in a component library for one surface would cost more than the surface.
 
