@@ -45,7 +45,7 @@ A local record of what every Claude Code and Codex session did, the questions as
 ## Stations
 
 - The `dim-` skills under `skills/` differ from a tool-agnostic engineering skill by reading the record, so none is portable to a machine without this database. `src/skill.ts` states how one is added and removed.
-- `dim-feat`, `dim-fix`, `dim-plan`, `dim-build` and `dim-review` are the stations, each one operation on a subject it is handed. `dim-factory` is the conveyor above them: it reads a repo's queue, takes an item and routes it to the station that fits, in whichever repo it is invoked.
+- `dim-feat`, `dim-fix`, `dim-plan`, `dim-build` and `dim-review` are the stations, each one operation on a subject it is handed. `dim-factory` runs the line above them: it reads a repo's queue, takes an item and routes it to the station that fits, in whichever repo it is invoked.
 - A skill here cites only queries that answer. Check what one returns before naming it, and read [`docs/findings.md`](docs/findings.md) for what a query is already known not to carry.
 
 ## Docs

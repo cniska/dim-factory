@@ -17,7 +17,7 @@ None of it was built to be a factory. It became one because each phase was made 
 
 Two layers separate a set of stations from a line that runs itself, and neither is more instruction.
 
-1. **Intake.** A factory runs when work arrives without a human starting each task. Work outlives the session that started it by sitting in a queue — a file, a tracker — and `dim-factory` is the conveyor that reads one. It takes a queue rather than keeping one, so a file it is handed, a tracker the repo declares and what it finds by looking all reach the same driver. For this repo the queue is [`build-order.md`](build-order.md).
+1. **Someone to start the work.** A factory runs when work begins without a person starting each task. The queues already exist — a file, a tracker, a list of issues — so what the stations lack is not a place for work to wait but something that reads one and opens the job. `dim-factory` does that: it takes a queue rather than keeping one, so a file it is handed, a tracker the repo declares and what it finds by looking all reach the same reader; it picks an item, routes it to the station whose shape fits, and holds the run inside the bounds below rather than judging them. For this repo the queue is [`build-order.md`](build-order.md).
 2. **Verification worth leaving.** A gate becomes autonomous when its check is strong enough to remove the human standing at it. The checks catch regressions and broken contracts. They do not catch a coherent, confident, wrong design, so a human stays at that gate — not as ceremony, but because the check is incomplete.
 
 ## Why the answer is not dark
