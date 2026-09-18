@@ -180,6 +180,36 @@ describe("rebuilding a database an older schema wrote", () => {
     ]);
     db.close();
   });
+
+  test("a factory job reaches the current schema with its evidence intact", () => {
+    const { db, env } = scratch();
+    db.run("ALTER TABLE factory_job DROP COLUMN stop_reason");
+    db.run(
+      `INSERT INTO factory_job (id, run_id, queue_id, item_id, status, claimed_at, updated_at)
+       VALUES ('job-1', 'run-1', 'build-order', 'item-1', 'running', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+    );
+    db.run(
+      "INSERT INTO factory_job_event (job_id, ts, kind) VALUES ('job-1', '2026-01-01T00:00:00Z', 'claimed')",
+    );
+    db.run(
+      "INSERT INTO factory_job_commit (job_id, sha, recorded_at) VALUES ('job-1', 'abc', '2026-01-01T00:00:00Z')",
+    );
+
+    rebuild(db, env);
+
+    expect(columnsOf(db, "factory_job")).toContain("stop_reason");
+    expect(db.query("SELECT id, item_id, status FROM factory_job").all()).toEqual([
+      { id: "job-1", item_id: "item-1", status: "running" },
+    ]);
+    expect(db.query("SELECT job_id, kind FROM factory_job_event").all()).toEqual([
+      { job_id: "job-1", kind: "claimed" },
+    ]);
+    expect(db.query("SELECT job_id, sha FROM factory_job_commit").all()).toEqual([
+      { job_id: "job-1", sha: "abc" },
+    ]);
+    expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
+    db.close();
+  });
 });
 
 describe("opening a database an older schema wrote", () => {

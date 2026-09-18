@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite";
+import type { Database, SQLQueryBindings } from "bun:sqlite";
 import { listClaudeSubagents, listClaudeTranscripts } from "./claude-source";
 import { listCodexRollouts, readCodexTitles } from "./codex-source";
 import { type GitReport, ingestCommits } from "./git-ingest";
@@ -131,6 +131,57 @@ type HookEvent = {
 };
 
 /**
+ * Parent first, which the restore needs: a child written before the job it
+ * references fails the foreign key. The drop runs in reverse for a different
+ * reason — every child cascades, so dropping the job first would empty them
+ * instead of refusing, and a save ever moved after the drop would lose them
+ * with nothing to show for it.
+ */
+const FACTORY_JOB_TABLES = [
+  "factory_job",
+  "factory_job_event",
+  "factory_job_commit",
+  "factory_job_file",
+  "factory_job_check",
+  "factory_job_finding",
+  "factory_job_document",
+];
+
+/**
+ * Columns are read off each table rather than listed here, because the reason
+ * these are dropped at all is that `SCHEMA_SQL` holds a column they do not, and
+ * a list in this file would be the one place still needing to be remembered. A
+ * column the schema has dropped goes with the table; the rows keep the rest.
+ * A column added `NOT NULL` with no default has no value to write for a row
+ * saved before it existed, so it fails the whole rebuild for as long as the
+ * database holds one: such a column needs a default, or a backfill of its own.
+ */
+function carryThroughRebuild(db: Database, tables: string[]): () => void {
+  const saved = tables.map((table) => ({
+    table,
+    rows: db.query(`SELECT * FROM ${table}`).all() as Record<string, SQLQueryBindings>[],
+  }));
+  for (const table of [...tables].reverse()) db.run(`DROP TABLE IF EXISTS ${table}`);
+  return () => {
+    for (const { table, rows } of saved) {
+      const columns = new Set(
+        db
+          .query<{ name: string }, []>(`PRAGMA table_info(${table})`)
+          .all()
+          .map((column) => column.name),
+      );
+      for (const row of rows) {
+        const names = Object.keys(row).filter((name) => columns.has(name));
+        db.run(
+          `INSERT INTO ${table} (${names.join(", ")}) VALUES (${names.map(() => "?").join(", ")})`,
+          names.map((name) => row[name] as SQLQueryBindings),
+        );
+      }
+    }
+  };
+}
+
+/**
  * Everything here is re-read from the source files. Each table is dropped
  * rather than emptied, because `CREATE TABLE IF NOT EXISTS` leaves one that
  * already exists alone, so a column added to it would never appear and every
@@ -139,14 +190,16 @@ type HookEvent = {
  * there fails.
  *
  * Which tables are left instead, and why, is stated at each of them in
- * `schema.ts`. `correction_label` and `hook_event` are the ones that are
- * neither: their sources are gone — the spool deletes each file once it is
- * read — so both are dropped with the rest and written back row for row. A
+ * `schema.ts`. `correction_label`, `hook_event` and the factory job records are
+ * the ones that are neither: nothing can re-read them — the spool deletes each
+ * file once it is read, and a job's claims and judgements were never in a source
+ * at all — so they are dropped with the rest and written back row for row. A
  * table kept instead of dropped keeps whatever shape it was created with, and
  * a check widened in `SCHEMA_SQL` would never reach it.
  */
 export function rebuild(db: Database, env: Env = process.env): SyncReport {
   db.transaction(() => {
+    const restoreFactoryJobs = carryThroughRebuild(db, FACTORY_JOB_TABLES);
     // Read out before the drop because no source can re-read them, and dropped
     // ahead of message because an older database has a foreign key to it that
     // would refuse that drop.
@@ -184,6 +237,7 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
     db.run("DROP TABLE IF EXISTS handoff_link");
     db.run("DROP TABLE IF EXISTS factory_handoff");
     db.run(SCHEMA_SQL);
+    restoreFactoryJobs();
     const restore = db.prepare<void, [string, string, string | null, string | null, string]>(
       `INSERT INTO correction_label (message_id, label, skill_name, rule, labeled_at)
        VALUES (?, ?, ?, ?, ?)`,
