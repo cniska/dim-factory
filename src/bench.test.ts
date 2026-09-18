@@ -192,6 +192,17 @@ describe("scoring the corpus through the queries themselves", () => {
     db.close();
   });
 
+  // Most sessions distil nothing at all, so a session id is the easiest ref to
+  // reach for and the one most likely to name a row no query can return.
+  test("refuses a session holding nothing anyone distilled", async () => {
+    const db = seeded();
+    await buildIndex(db, byWords, "A Person");
+    const report = await runBench(db, [graded("search", [["s1", 3]])], 5, {}, embedWith);
+    expect(report.scores).toEqual([]);
+    expect(report.unscorable[0]?.why).toContain("holding nothing anyone distilled");
+    db.close();
+  });
+
   // `keywords` and `thread` print a time for any turn, so copying one is the
   // easiest label to write and no query ever returns it.
   test("refuses a passage ref naming a turn nobody distilled", async () => {
@@ -239,9 +250,18 @@ describe("scoring the corpus through the queries themselves", () => {
   // ranking that never distinguished them.
   test("refuses two labels one printed id would answer to", async () => {
     const db = seeded();
+    withTwoPassages(db);
     db.run(
       `INSERT INTO session (id, tool, cwd, project, started_at, last_seen_at)
        VALUES ('s123', 'claude', '/w', '/p', '2026-09-01T10:00:00Z', '2026-09-01T11:00:00Z')`,
+    );
+    db.run(
+      `INSERT INTO message (id, session_id, ts, role, text, src_file, src_line)
+       VALUES ('m-twin', 's123', '2026-09-01T10:55:00.000Z', 'assistant', 'A twin session.', '/f.jsonl', 4)`,
+    );
+    db.run(
+      `INSERT INTO factory_handoff (message_id, session_id, role, ts, title, next)
+       VALUES ('m-twin', 's123', 'assistant', '2026-09-01T10:55:00.000Z', '# Handoff', 'A twin session.')`,
     );
     await buildIndex(db, byWords, "A Person");
     const report = await runBench(

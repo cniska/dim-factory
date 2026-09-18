@@ -13,23 +13,40 @@ const REF_COLUMN = "ref";
 const PRINTED_REF = 8;
 
 /**
- * Which messages a passage ref may name. Read from the sources a passage is
- * distilled from rather than from the vectors built over them, so a label is
- * checked without the runner consulting the index it is scoring.
+ * What a label may name and still be answerable. Read from the sources a passage
+ * is distilled from rather than from the vectors built over them, so a label is
+ * checked without the runner consulting the index it is scoring, and the rule
+ * cannot drift from what `search` can print — `buildIndex` reads the same call.
+ *
+ * Commit subjects are left out, because they are distilled per author and the
+ * runner is given none. So a sha is checked only for being a commit this record
+ * holds, and one whose subject nobody distilled scores zero unexplained.
  */
-function distilledMessages(db: Database): Set<string> {
-  return new Set(readDistilled(db, null).map((item) => item.ref));
+function distilled(db: Database): { messages: Set<string>; sessions: Set<string> } {
+  const messages = new Set(readDistilled(db, null).map((item) => item.ref));
+  const holder = db.prepare<{ session_id: string }, [string]>("SELECT session_id FROM message WHERE id = ?");
+  const sessions = new Set<string>();
+  for (const id of messages) {
+    const row = holder.get(id);
+    if (row) sessions.add(row.session_id);
+  }
+  return { messages, sessions };
 }
 
 /** Why a labeled ref cannot be scored, or undefined where the record holds it. */
-function refusal(db: Database, ref: string, distilled: Set<string>): string | undefined {
+function refusal(db: Database, ref: string, known: ReturnType<typeof distilled>): string | undefined {
   const { id, at } = parsePassageRef(ref);
   const count = (sql: string, params: string[]): number =>
     db.prepare<{ n: number }, string[]>(sql).get(...params)?.n ?? 0;
   if (at === undefined) {
     if (count("SELECT count(*) AS n FROM repo_commit WHERE sha = ?", [id]) > 0) return undefined;
-    if (count("SELECT count(*) AS n FROM session WHERE id = ?", [id]) > 0) return undefined;
-    return `${ref} names no commit and no session`;
+    if (count("SELECT count(*) AS n FROM session WHERE id = ?", [id]) === 0) {
+      return `${ref} names no commit and no session`;
+    }
+    if (!known.sessions.has(id)) {
+      return `${ref} names a session holding nothing anyone distilled, which no query returns`;
+    }
+    return undefined;
   }
   if (count("SELECT count(*) AS n FROM session WHERE id = ?", [id]) === 0) {
     return `${ref} names no session; a passage is graded as <session>@<timestamp>`;
@@ -44,7 +61,7 @@ function refusal(db: Database, ref: string, distilled: Set<string>): string | un
   // An ordinary turn is addressable and is never a hit, so grading one scores
   // zero for ever — the same mistake as grading a message by its own id, and the
   // easier one to make, since `keywords` and `thread` print a time for any turn.
-  if (!named.some((messageId) => distilled.has(messageId))) {
+  if (!named.some((messageId) => known.messages.has(messageId))) {
     return `${ref} names a turn nobody distilled, which no query returns`;
   }
   return undefined;
@@ -112,7 +129,7 @@ export async function runBench(
 ): Promise<BenchReport> {
   const scores: QuestionScore[] = [];
   const unscorable: { id: string; why: string }[] = [];
-  const distilled = distilledMessages(db);
+  const known = distilled(db);
   for (const asked of questions) {
     const query = findQuery(asked.query);
     if (!query) {
@@ -137,7 +154,7 @@ export async function runBench(
     // and `<session>@<timestamp>` for a message. A label naming anything else can
     // never match, and would read as a ranking failure forever.
     const labeled = [...asked.relevant.keys()];
-    const refused = labeled.map((ref) => refusal(db, ref, distilled)).filter((why) => why !== undefined);
+    const refused = labeled.map((ref) => refusal(db, ref, known)).filter((why) => why !== undefined);
     if (refused.length > 0) {
       unscorable.push({ id: asked.id, why: refused.join("; ") });
       continue;
