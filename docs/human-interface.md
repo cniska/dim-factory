@@ -24,6 +24,7 @@ The overview is a snapshot assembled from the existing queue, factory job, lifec
 ## Visual language
 
 - **Dark ground.** A stable dark surface keeps status colors and text legible for a display that may stay open.
+- **Dim presence.** Graphite and charcoal surfaces, softened white hierarchy and low-saturation accents keep the wall calm, precise and instrument-like; neon, glossy and high-energy treatment does not belong here.
 - **Compact cards.** Each card carries one fact, a short explanation and the smallest useful supporting detail.
 - **Strong hierarchy.** Current state is bright and large; age, identity and provenance are quieter.
 - **Status as information.** Color marks active, healthy, blocked, failed, fenced and stale states, with text always carrying the meaning.
