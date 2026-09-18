@@ -12,12 +12,8 @@ import { dirname, join, resolve } from "node:path";
 import { type Env, resolveHomeDir } from "./paths";
 
 /**
- * The line entry points and stations, and the only skills that ship from here. Each needs `dim` on
- * PATH: a station differs from a generic engineering skill by reading the
- * record — what this machine already built, and where its work came back — so
- * none of them is portable to a machine without the database. The `dim-` prefix
- * marks one, and adding a station is a directory beside this file plus a name
- * here; everything below installs from the list.
+ * The skills that ship from here. Each needs `dim` on PATH because it reads the
+ * local record, and adding one is a directory beside this file plus a name here.
  */
 export const SKILL_NAMES = [
   "dim-line-feat",
@@ -27,6 +23,7 @@ export const SKILL_NAMES = [
   "dim-handoff",
   "dim-station-review",
   "dim-factory",
+  "dim-git",
 ] as const;
 
 export type SkillName = (typeof SKILL_NAMES)[number];
