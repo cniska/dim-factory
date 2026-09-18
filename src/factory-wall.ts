@@ -1,5 +1,7 @@
 import type { Database } from "bun:sqlite";
+import { readFileSync } from "node:fs";
 import { dbPath } from "./paths";
+import { parseQueue, type QueueFile, readyItems } from "./queue-planner";
 import { openReadOnly } from "./read-db";
 
 export type WallStation = "plan" | "build" | "review" | "landing";
@@ -26,12 +28,21 @@ export type WallJob = {
 
 export type WallSnapshot = {
   generatedAt: string;
-  source: "database" | "fixture";
+  source: "database" | "unavailable";
   jobs: WallJob[];
   attention: string[];
   next: string[];
   finished: WallJob[];
+  activeTotal: number;
+  attentionTotal: number;
+  nextTotal: number | null;
+  stationTotals: Record<WallStation, number>;
 };
+
+const MAX_ACTIVE = 12;
+const MAX_ATTENTION = 8;
+const MAX_NEXT = 8;
+const MAX_FINISHED = 5;
 
 type JobRow = {
   id: string;
@@ -111,19 +122,12 @@ function mapJob(row: JobRow, now: Date): WallJob {
     age: age(row.updated_at || row.claimed_at, now),
     updatedAt: row.updated_at || row.claimed_at,
     evidence: row.latest_evidence ?? "No evidence recorded yet",
-    next:
-      jobStatus === "completed"
-        ? "Finished"
-        : attention
-          ? "Owner attention"
-          : stationName === "review"
-            ? "Landing"
-            : "Next station pending",
+    next: jobStatus === "completed" ? "Finished" : attention ? "Owner attention" : "No next action recorded",
     ...(attention ? { attention } : {}),
   };
 }
 
-export function assembleWallSnapshot(db: Database, now = new Date()): WallSnapshot {
+export function assembleWallSnapshot(db: Database, now = new Date(), queue?: QueueFile): WallSnapshot {
   const rows = db
     .query(
       `SELECT j.id, j.item_id, j.queue_id, j.agent_id, j.worktree, j.branch, j.station, j.status,
@@ -140,13 +144,32 @@ export function assembleWallSnapshot(db: Database, now = new Date()): WallSnapsh
     .all() as JobRow[];
   const jobs = rows.map((row) => mapJob(row, now));
   const active = jobs.filter((job) => job.status !== "completed");
-  const finished = jobs.filter((job) => job.status === "completed").slice(0, 5);
   const attention = active.filter((job) => job.attention).map((job) => `${job.item}: ${job.attention}`);
+  const eligible = queue === undefined ? null : readyItems(queue, Number.POSITIVE_INFINITY);
+  const stationTotals = Object.fromEntries(
+    [...stations].map((stationName) => [
+      stationName,
+      active.filter((job) => job.station === stationName).length,
+    ]),
+  ) as Record<WallStation, number>;
   const next =
-    active.length === 0
-      ? ["No active factory jobs are recorded"]
-      : active.map((job) => `${job.item}: ${job.next}`).slice(0, 5);
-  return { generatedAt: now.toISOString(), source: "database", jobs: active, attention, next, finished };
+    eligible === null
+      ? ["Queue eligibility unavailable"]
+      : eligible.length === 0
+        ? ["No eligible queue items"]
+        : eligible.slice(0, MAX_NEXT).map((item) => `${item.id}: ${item.title}`);
+  return {
+    generatedAt: now.toISOString(),
+    source: "database",
+    jobs: active.slice(0, MAX_ACTIVE),
+    attention: attention.slice(0, MAX_ATTENTION),
+    next,
+    finished: jobs.filter((job) => job.status === "completed").slice(0, MAX_FINISHED),
+    activeTotal: active.length,
+    attentionTotal: attention.length,
+    nextTotal: eligible?.length ?? null,
+    stationTotals,
+  };
 }
 
 export async function buildWallBundle(): Promise<{ js: Uint8Array; css: Uint8Array }> {
@@ -161,16 +184,18 @@ export async function buildWallBundle(): Promise<{ js: Uint8Array; css: Uint8Arr
 const page = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/wall.css"><title>Factory wall</title></head><body><div id="root"></div><script src="/wall.js"></script></body></html>`;
 
 export async function serveWall(
-  options: { port?: number; databasePath?: string } = {},
+  options: { port?: number; databasePath?: string; queuePath?: string } = {},
 ): Promise<ReturnType<typeof Bun.serve>> {
   const bundle = await buildWallBundle();
   const clients = new Set<Bun.ServerWebSocket<unknown>>();
   const path = options.databasePath ?? dbPath();
+  const queuePath = options.queuePath;
   let hash = "";
   const snapshot = (): WallSnapshot => {
     const db = openReadOnly(path);
     try {
-      return assembleWallSnapshot(db);
+      const queue = queuePath === undefined ? undefined : parseQueue(readFileSync(queuePath, "utf8"));
+      return assembleWallSnapshot(db, new Date(), queue);
     } finally {
       db.close();
     }

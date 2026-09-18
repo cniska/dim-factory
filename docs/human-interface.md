@@ -6,11 +6,11 @@ The factory's human interface is a local, read-only wall that makes current work
 
 The first interface is a Bun-hosted React page served on loopback. It reads the persisted factory records and updates through a read-only WebSocket stream. It has no control endpoints and does not become a second state store.
 
-The client uses shadcn/ui components and Tailwind design tokens, built as a static bundle that Bun serves. Next.js is outside the first slice: the local server and the client have separate responsibilities, and the wall does not need a second application server.
+The client is a React static bundle that Bun serves. Its CSS custom properties are the single visual token source. Next.js is outside the first slice: the local server and the client have separate responsibilities, and the wall does not need a second application server.
 
 ## Implementation
 
-The client uses semantic HTML, CSS variables, a dark responsive layout, lightweight client state, deliberate animation, overview and detail separation, bounded lists, a recent-activity ticker, fullscreen presentation and an explicit stale-feed state. Its base palette is black, white and grayscale surfaces; semantic accents are reserved for agent roles and job states. It uses React, shadcn/ui and Tailwind as a static bundle; Bun serves it beside the local read-only server. The interface owns its visual system and has no control surface.
+The client uses semantic HTML, CSS variables, a dark responsive layout, lightweight client state, overview and detail separation, bounded lists, fullscreen presentation and explicit stale, unavailable and empty states. Its base palette is black, white and grayscale surfaces; semantic accents are reserved for agent roles and job states. Bun serves the React bundle beside the local read-only server. The interface owns its visual system and has no control surface.
 
 The page answers these questions in order:
 
@@ -19,7 +19,7 @@ The page answers these questions in order:
 - **What happens next?** Eligible queue work, due schedules and jobs waiting for serialized landing.
 - **What just finished?** Recent terminal outcomes and the evidence attached to them.
 
-The overview is a snapshot assembled from the existing queue, factory job, lifecycle event, schedule and worker-environment records. Detailed read-only queries remain the path for investigation; the wall does not reproduce their full reports.
+The overview is a snapshot assembled from the queue file and factory job, lifecycle event, schedule and worker-environment records. Queue eligibility is shown only when `DIM_QUEUE_FILE` points to a valid queue file; absent or empty queue data is stated explicitly. Detailed read-only queries remain the path for investigation; the wall does not reproduce their full reports.
 
 ## Visual language
 
@@ -29,14 +29,14 @@ The overview is a snapshot assembled from the existing queue, factory job, lifec
 - **Strong hierarchy.** Current state is bright and large; age, identity and provenance are quieter.
 - **Status as information.** Color marks active, healthy, blocked, failed, fenced and stale states, with text always carrying the meaning.
 - **Age is visible.** The newest event leads; older events recede without disappearing.
-- **No ornamental motion.** Animation marks a changed fact or a connection state, never decoration.
+- **No ornamental motion.** The wall uses text and state markers to show change without decorative animation.
 - **Responsive and fullscreen.** The same wall works as a browser page and as a display viewed from across a room.
 
 ## Acceptance
 
 The first implementation is reviewed against a seeded snapshot containing plan, build and review work; running, waiting, blocked, fenced and completed states; and each agent role. The first viewport must make the work, station, agent, state and next meaningful action legible without opening a detail view.
 
-The first implementation lives in `src/factory-wall.ts`, `src/wall-client.tsx` and `src/wall.css`. `dim wall` serves the bundled page on loopback; `GET /api/snapshot` reads the existing database and `/ws` sends a changed snapshot. The client fixture is used when the database is unavailable so the layout can be reviewed without manufacturing operational rows. Missing queue-planner data is stated as absent rather than inferred.
+The first implementation lives in `src/factory-wall.ts`, `src/wall-client.tsx` and `src/wall.css`. `dim wall` serves the bundled page on loopback; `GET /api/snapshot` reads the existing database and queue file, and `/ws` sends a changed snapshot. When either source is unavailable, the wall states that condition rather than rendering fabricated operational rows. Empty active, attention, eligible and finished lists have explicit empty states.
 
 The review checks the same wall at fullscreen desktop and narrow viewport sizes. Surfaces use one shared token set, edges and gaps align, text remains readable when the browser enlarges it, and no state depends on color alone. The snapshot, stale-feed state and role markers remain understandable when the connection stops. An independent screenshot review is required in addition to automated checks; a passing test suite does not establish visual quality.
 

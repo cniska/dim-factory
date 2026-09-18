@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { appendJobEvent, createJob, recordJobCheck, recordJobCommit } from "./factory-job";
 import { assembleWallSnapshot } from "./factory-wall";
+import { parseQueue } from "./queue-planner";
 import { SCHEMA_SQL } from "./schema";
 
 describe("factory wall snapshot", () => {
@@ -58,7 +59,23 @@ describe("factory wall snapshot", () => {
       "2026-09-18T08:02:00.000Z",
     );
 
-    const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:10:00.000Z"));
+    const queue = parseQueue(
+      JSON.stringify({
+        version: 1,
+        id: "queue",
+        items: [
+          { id: "ready", title: "Ready item", dependencies: [], status: "planned", transitions: [] },
+          {
+            id: "waiting",
+            title: "Waiting item",
+            dependencies: ["ready"],
+            status: "planned",
+            transitions: [],
+          },
+        ],
+      }),
+    );
+    const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:10:00.000Z"), queue);
 
     expect(snapshot.source).toBe("database");
     expect(snapshot.jobs.map((job) => [job.item, job.station, job.status])).toEqual([
@@ -67,7 +84,53 @@ describe("factory wall snapshot", () => {
     ]);
     expect(snapshot.jobs[1]?.attention).toBe("scope unclear");
     expect(snapshot.finished[0]?.item).toBe("done");
-    expect(snapshot.next).toContain("wall: Next station pending");
+    expect(snapshot.next).toEqual(["ready: Ready item"]);
+    expect(snapshot.nextTotal).toBe(1);
+    expect(snapshot.jobs[0]?.next).toBe("No next action recorded");
+    expect(snapshot.stationTotals).toEqual({ plan: 0, build: 1, review: 1, landing: 0 });
+    db.close();
+  });
+
+  test("bounds active and attention rows while preserving totals", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    for (let index = 0; index < 14; index += 1) {
+      const id = `job-${index}`;
+      createJob(
+        db,
+        { id, runId: "run", queueId: "queue", itemId: id, station: "build" },
+        "2026-09-18T09:00:00.000Z",
+      );
+      appendJobEvent(
+        db,
+        id,
+        { kind: "fenced", status: "fenced", reason: `reason-${index}` },
+        "2026-09-18T09:01:00.000Z",
+      );
+    }
+
+    const snapshot = assembleWallSnapshot(
+      db,
+      new Date("2026-09-18T10:10:00.000Z"),
+      parseQueue('{"version":1,"id":"queue","items":[]}'),
+    );
+
+    expect(snapshot.jobs).toHaveLength(12);
+    expect(snapshot.activeTotal).toBe(14);
+    expect(snapshot.attention).toHaveLength(8);
+    expect(snapshot.attentionTotal).toBe(14);
+    expect(snapshot.stationTotals.build).toBe(14);
+    db.close();
+  });
+
+  test("states queue eligibility as unavailable without a queue source", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+
+    const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:10:00.000Z"));
+
+    expect(snapshot.next).toEqual(["Queue eligibility unavailable"]);
+    expect(snapshot.nextTotal).toBeNull();
     db.close();
   });
 
