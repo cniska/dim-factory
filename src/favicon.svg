@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="dim factory wall">
+  <!-- The same lucide `bot` geometry the cards draw, so the tab and the board carry one mark.
+       A tab bar follows the system theme even though the wall does not, so the ink switches
+       where the wall's own palette cannot. -->
+  <style>
+    svg { --ink: #1f2328; }
+    @media (prefers-color-scheme: dark) { svg { --ink: #f5f7f8; } }
+  </style>
+  <g fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 8V4H8" />
+    <rect width="16" height="12" x="4" y="8" rx="2" />
+    <path d="M2 14h2" />
+    <path d="M20 14h2" />
+    <path d="M15 13v2" />
+    <path d="M9 13v2" />
+  </g>
+</svg>
