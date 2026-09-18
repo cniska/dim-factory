@@ -36,6 +36,8 @@ The overview is a snapshot assembled from the existing queue, factory job, lifec
 
 The first implementation is reviewed against a seeded snapshot containing plan, build and review work; running, waiting, blocked, fenced and completed states; and each agent role. The first viewport must make the work, station, agent, state and next meaningful action legible without opening a detail view.
 
+The first implementation lives in `src/factory-wall.ts`, `src/wall-client.tsx` and `src/wall.css`. `dim wall` serves the bundled page on loopback; `GET /api/snapshot` reads the existing database and `/ws` sends a changed snapshot. The client fixture is used when the database is unavailable so the layout can be reviewed without manufacturing operational rows. Missing queue-planner data is stated as absent rather than inferred.
+
 The review checks the same wall at fullscreen desktop and narrow viewport sizes. Surfaces use one shared token set, edges and gaps align, text remains readable when the browser enlarges it, and no state depends on color alone. The snapshot, stale-feed state and role markers remain understandable when the connection stops. An independent screenshot review is required in addition to automated checks; a passing test suite does not establish visual quality.
 
 ## Factory character
@@ -55,7 +57,7 @@ The wall should feel like a software production floor:
 
 Every visible active job carries the same compact identity block:
 
-- **What.** Queue and item title, with the current action or latest lifecycle evidence.
+- **What.** The generated item name, queue and item identity, with the current action or latest lifecycle evidence.
 - **Where.** Current station, worktree and branch.
 - **Who.** Agent identity and delegation context when a job handed work to another agent.
 - **State.** Running, waiting, blocked, fenced or finished, with elapsed time and the last update.
