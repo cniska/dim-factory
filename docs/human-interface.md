@@ -81,7 +81,7 @@ Planned. A card answers where an item is; the item view answers what happened to
 
 ### Reviewing before and after
 
-Planned, and unrecorded today. An item view shows what happened; these two let the owner judge it without reading a transcript.
+Planned. An item view shows what happened; these two let the owner judge it without reading a transcript. Both already have writers and neither has a home: the plan comes from the planning station, the account from reading the built diff, and both currently end in a transcript.
 
 - **The plan, before.** What the job intends to build, in the words a person would use, written when the item is claimed and not edited afterward. A plan that can be revised once the work is done can always be made to match the work, so its value comes from being fixed at claim time and attached to the job rather than to a session.
 - **The account, after.** What the job actually built, read off its diff. It names the commits it describes, because a generated account of a change is indistinguishable from a checked one after the fact, and `factory_job_commit` with `factory_job_file` stay the record a reader can verify it against.

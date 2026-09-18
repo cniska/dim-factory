@@ -121,6 +121,18 @@ The honest question is therefore not whether the line can run itself. It is **at
 
 That is an autonomous cell rather than a factory: a bounded unit that runs work end to end with a person at its edges. It is the version that does not require pretending the checks are more complete than they are.
 
+### A gate earns its automation from a record
+
+Planned. "On its own merit" needs something to read the merit off, and the owner's verdicts are not written down anywhere today. `factory_job_finding` records an agent's finding with the grounds a refusal rested on; the owner's decision on a finished job has no such row.
+
+The two things a verdict is passed on already have writers. [`dim-station-plan`](../skills/dim-station-plan/SKILL.md) returns a plan in slices, and the `explain-diff` skill reads a built diff back as intent and risk. Neither persists against a job, so both end in a transcript; an account written for the owner also names the commits it describes, since that is what makes it checkable rather than trusted.
+
+- **The verdict.** Per job: landed as it came, sent back, or changed before landing — with the grounds whenever it was not the first.
+- **What it answers.** Which kinds of work stopped needing a reading, and which still earn one. That is the question "how involved should I be" resolves into, and it is a query over verdicts rather than a memory of how the last few felt.
+- **Why it is not optional.** A gate that is always on and never recorded reads the same as one nobody is exercising. Recording the verdict is what separates a gate being held from a gate being waved through, and a relaxation that follows from rows is reversible in a way that one following from fatigue is not.
+
+Reviewing everything is the honest starting point, because a gate cannot earn its way out of a record that was never kept.
+
 ## What the assembly line already settled
 
 Borrowed, and each kept only where a mechanism here carries it. The names are worth keeping because they are searchable, and because each one names a mistake that is easy to make twice.
