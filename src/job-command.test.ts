@@ -21,7 +21,7 @@ const claim = [
   "record-a-factory-job",
   "--title",
   "Record a factory job as work is taken",
-  "--statement",
+  "--description",
   "The record holds what an item is called and never what it says.",
   "--agent",
   "agent-1",
@@ -47,24 +47,24 @@ describe("job command", () => {
     expect(snapshot.jobs[0]?.station).toBe("build");
   });
 
-  test("a claim keeps the item's statement as the queue stated it", () => {
+  test("a claim keeps the item's description as the queue worded it", () => {
     const database = db();
 
     runJobCommand(database, claim);
 
-    expect(database.query("SELECT statement FROM factory_job WHERE id = 'job-1'").get()).toEqual({
-      statement: "The record holds what an item is called and never what it says.",
+    expect(database.query("SELECT description FROM factory_job WHERE id = 'job-1'").get()).toEqual({
+      description: "The record holds what an item is called and never what it says.",
     });
   });
 
-  test("a claim with no statement records the job without one", () => {
+  test("a claim with no description records the job without one", () => {
     const database = db();
-    const at = claim.indexOf("--statement");
+    const at = claim.indexOf("--description");
 
     runJobCommand(database, [...claim.slice(0, at), ...claim.slice(at + 2)]);
 
-    expect(database.query("SELECT statement FROM factory_job WHERE id = 'job-1'").get()).toEqual({
-      statement: null,
+    expect(database.query("SELECT description FROM factory_job WHERE id = 'job-1'").get()).toEqual({
+      description: null,
     });
   });
 
