@@ -17,6 +17,7 @@ Each page owns its subject. A fact lives on one of them and is linked to from th
 
 ## How it is built
 
+- [Source layout](../src/README.md) — module groups and where to start reading the code
 - [Using dim-factory](usage.md) — installation, collection, queries, hooks, worktrees and stations
 - [Session database](design.md) — the schema, the sources it re-reads, and the rules each table follows
 - [Reaching a session without being asked](recall.md) — the channel that arrives, and the benchmark that scores what is pulled
