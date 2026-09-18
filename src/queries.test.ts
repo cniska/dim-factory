@@ -678,7 +678,7 @@ describe("a thin sample is a row with its base, not a row withheld", () => {
     try {
       const f = findQuery("fixes")?.run(db, {});
       expect(f?.rows.map((row) => [row[0], row[1]])).toEqual([["dim-station-build", 2]]);
-      expect(f?.denominator).toContain("`files` is the base each rate stands on");
+      expect(f?.denominator).toContain("every skill that edited one of 2 files is a row");
     } finally {
       db.close();
     }
