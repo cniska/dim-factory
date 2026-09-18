@@ -1,7 +1,7 @@
 // Every table here is one-to-one with records in the source files and is rebuilt
 // by re-reading them, so a schema change is `dim rebuild`, not a migration. The
-// exceptions carry the reason at the table: hook_event has no source to re-read,
-// and embedding is derived from tables that do.
+// exceptions carry the reason at the table: hook_event and finding have no source
+// to re-read, and embedding is derived from tables that do.
 // SCHEMA_VERSION exists so sync can refuse to run against a database only a
 // re-read can correct: a changed column, or a changed rule for what identifies a
 // row, since rows already written keep the old identity. A table added with
@@ -260,10 +260,10 @@ CREATE TABLE IF NOT EXISTS skill_load (
 );
 CREATE INDEX IF NOT EXISTS skill_load_name ON skill_load(skill_name, ts);
 
--- The owner's judgement on a candidate correction, and the only table anything
--- other than the ingester writes. Nothing derives a correction automatically:
--- whether a prompt tells the agent it was wrong is semantic, and no rule here
--- decides it.
+-- The owner's judgement on a candidate correction. Nothing derives a correction
+-- automatically: whether a prompt tells the agent it was wrong is semantic, and
+-- no rule here decides it. Written by \`dim label\`, as \`finding\` is written by
+-- \`dim finding\`; every other table is the ingester's.
 CREATE TABLE IF NOT EXISTS correction_label (
   message_id      TEXT PRIMARY KEY REFERENCES message(id),
   label           TEXT NOT NULL CHECK (label IN ('correction','clarification','not_correction')),
@@ -271,6 +271,25 @@ CREATE TABLE IF NOT EXISTS correction_label (
   rule            TEXT,                 -- which instruction was overridden, in the owner's words
   labeled_at      TEXT NOT NULL
 );
+
+-- No source to re-read — an answer exists only in the session that made it — so
+-- \`rebuild\` never clears this, as it does not clear hook_event. Grades the
+-- checker and never the builder: measures in docs/findings.md looked like grades
+-- and turned out to track what was being worked on instead.
+CREATE TABLE IF NOT EXISTS finding (
+  id           INTEGER PRIMARY KEY,
+  repo         TEXT NOT NULL,        -- as repo_commit spells it, so a row reaches commit_file
+  slice        TEXT NOT NULL,
+  dimension    TEXT NOT NULL,        -- which of the checker's four questions raised it
+  file         TEXT,                 -- relative to the checkout
+  summary      TEXT NOT NULL,        -- the checker's words, not the builder's
+  answer       TEXT NOT NULL CHECK (answer IN ('fixed','refused')),
+  reason       TEXT,
+  recorded_at  TEXT NOT NULL,
+  -- A refusal with no reason is the cheap way out the loop exists to prevent.
+  CHECK (answer <> 'refused' OR (reason IS NOT NULL AND trim(reason) <> ''))
+);
+CREATE INDEX IF NOT EXISTS finding_repo ON finding(repo, file);
 
 -- The only outcome signal here. Everything else in this database is process — what
 -- was said, loaded, called, stopped — and process cannot say whether the work was

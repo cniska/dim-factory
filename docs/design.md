@@ -154,13 +154,15 @@ Ordered by what the owner can act on soonest. Each names the signal it rests on;
 
 ## 5. Schema
 
-[`src/schema.ts`](../src/schema.ts) is the schema. It is the file that creates the tables, so it is the only place the columns are stated, and each table carries the reason for its own shape beside it — why the source-file cursor is keyed by session rather than path, why no column adds the two tools' token counts together, why `hook_event` and `guidance_walk` are the tables `rebuild` must not clear.
+[`src/schema.ts`](../src/schema.ts) is the schema. It is the file that creates the tables, so it is the only place the columns are stated, and each table carries the reason for its own shape beside it — why the source-file cursor is keyed by session rather than path, why no column adds the two tools' token counts together, why `hook_event`, `guidance_walk` and `finding` are the tables `rebuild` must not clear.
 
 What is worth saying here is the shape those tables share, which no single one of them shows.
 
 **Both tools land in the same tables.** `tool` is `'claude'` or `'codex'`, and tool-specific detail rides in an `extra` JSON column rather than in tool-specific tables, so answering a question about both does not mean a `UNION`. Times are ISO-8601 UTC text, which SQLite compares correctly.
 
 **Every table is rebuilt by re-reading its sources**, which is why a schema change is `dim rebuild` rather than a migration. The exceptions are the ones with no source to re-read — a hook fires once and the event is gone — and they say so at the table. `SCHEMA_VERSION` exists so `sync` refuses to run against a database only a re-read can correct.
+
+**A finding is keyed on the repo and the file, not on the session.** `dim finding` runs inside the session it records and cannot name it, and the question the table exists for is whether a later fix came back to code a checker flagged — which `file` answers through `commit_file` and a session id does not. What it may never be read as is a score on the builder: the arm it supports asks whether checking pays, and [`findings.md`](findings.md) records measures that looked like grades and turned out to track what was being worked on.
 
 **Model identity is a column rather than a table**, on `session`, `message`, `usage`, `tool_call`, `turn` and `skill_load`. Claude reports a context-window suffix on some surfaces and not others, and both spellings are kept verbatim rather than normalized at ingest, because normalizing loses which surface said what.
 
