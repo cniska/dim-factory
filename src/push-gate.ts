@@ -1,4 +1,4 @@
-import { SLUG_SED } from "./remote-slug";
+import { foldAscii, SLUG_SED } from "./remote-slug";
 
 /**
  * A git rule the record says is stated and not held: the corpus holds 72 force
@@ -62,7 +62,7 @@ ${URL_NORMALIZER}
 url=$(dim_url "\${2:-}")
 owner=$(printf '%s' "$url" | sed -nE '${SLUG_SED}')
 [ -n "$owner" ] || exit 0
-case " ${owners.join(" ")} " in
+case " ${owners.map(foldAscii).join(" ")} " in
   *" $owner "*) ;;
   *) exit 0 ;;
 esac

@@ -35,12 +35,15 @@ describe("subject rules", () => {
   });
 });
 
-function repoWithHook(origin: string | null): { dir: string; hooks: string } {
+function repoWithHook(
+  origin: string | null,
+  owners = ["github.com/cniska", "other-org"],
+): { dir: string; hooks: string } {
   const dir = mkdtempSync(join(tmpdir(), "dim-gate-"));
   const hooks = join(dir, "hooks");
   mkdirSync(hooks, { recursive: true });
   const path = join(hooks, "commit-msg");
-  writeFileSync(path, hookScript(["github.com/cniska", "other-org"]));
+  writeFileSync(path, hookScript(owners));
   execFileSync("chmod", ["755", path]);
 
   execFileSync("git", ["init", "-q", dir]);
@@ -72,6 +75,31 @@ describe("the shared hook", () => {
       expect(long.ok).toBe(false);
       expect(long.err).toContain("over the 50 allowed");
 
+      const shape = commit(dir, "just did some stuff");
+      expect(shape.ok).toBe(false);
+      expect(shape.err).toContain("Conventional Commit");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // A forge answers to either spelling of the same clone, and the owner list
+  // holds one of them, so case is the difference that must not decide whether
+  // anything is gated at all.
+  test("enforces them however the remote spells the owner", () => {
+    const { dir } = repoWithHook("git@GitHub.com:CNiska/thing.git");
+    try {
+      const shape = commit(dir, "just did some stuff");
+      expect(shape.ok).toBe(false);
+      expect(shape.err).toContain("Conventional Commit");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("enforces them however the owner list spells the owner", () => {
+    const { dir } = repoWithHook("git@github.com:cniska/thing.git", ["GitHub.com/CNiska"]);
+    try {
       const shape = commit(dir, "just did some stuff");
       expect(shape.ok).toBe(false);
       expect(shape.err).toContain("Conventional Commit");
