@@ -13,6 +13,32 @@ The owner's tool-agnostic engineering skills form a production line — spec, pl
 
 None of it was built to be a factory. It became one because each phase was made repeatable and verifiable on its own terms.
 
+## The lane contract is planned
+
+The planned factory assigns each queue item to one self-sufficient lane that runs it to a verifiable stopping point.
+
+- **Ownership.** One lane owns one queue item end to end, in an isolated worktree.
+- **Delegation.** The lane may delegate internal triage, implementation slices, simplification and checking, while retaining responsibility for the item and its evidence.
+- **Completion.** The lane runs until the item is complete, it reaches an explicit fence, or it reaches its failure limit.
+- **Parallelism.** Independent lanes may run in parallel in isolated worktrees. Claims, landing and queue-state transitions remain serialized.
+- **Driver.** The factory driver schedules lanes, observes their evidence and integrates completed work. It does not implement the item.
+- **Count.** An explicit item count limits a run; the default count is one. The factory does not drain the queue implicitly.
+
+The lane returns a delivered-product report containing the item and queue identity, station and delegation tree, worktree and branch, changed files, commit SHA, repo check and result, checker findings and resolutions, updated docs, and final status: complete, blocked, fenced or failed. A complete or stopped report includes the evidence the driver needs to land the work or stop at the stated boundary.
+
+## Report persistence is planned
+
+The delivered-product report will be persisted in the dim database so it remains queryable after the session rather than existing only in chat. Its planned record includes:
+
+- **Identity.** Queue and item identity, lane and run identity, agent identity, worktree and branch.
+- **Work.** Station, delegation tree, changed files and commit SHA.
+- **Verification.** Repository check command and result, checker findings and their resolutions, and updated docs.
+- **Outcome.** Final status — complete, blocked, fenced or failed — with fence or blocker evidence and timestamps for the lifecycle events.
+
+The report lifecycle is planned as a durable sequence from claim through running to completion or a stopped outcome, with evidence updated as the lane progresses. The current database has no factory report record or factory-report query, so this persistence and lifecycle are not live.
+
+These are planned boundaries, not live guarantees. The current record does not yet persist item claims, lane ownership or queue-state transitions, so the contract cannot safely be treated as implemented.
+
 ## What is missing is not another skill
 
 Two layers separate a set of stations from a line that runs itself, and neither is more instruction.
