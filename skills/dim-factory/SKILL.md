@@ -42,13 +42,35 @@ An item you cannot state needs scoping, which is `dim-station-plan` — run it, 
 | repairs something wrong | `dim-line-fix` |
 | neither — a refactor, a doc, a rule | `dim-station-build` |
 
-**Hand the item to a builder.** Pass the item, base revision and repo check; the builder creates its isolated worktree with `dim wt`, then invokes the station itself and takes the item end to end. Running the station in this session makes the line one worker long, and then the queue is worked one item per invocation whatever this file says about emptying it.
+**Hand the item to a builder.** Pass the item, base revision, repo check and the branch the claim below recorded; the builder creates its isolated worktree with `dim wt <branch>`, then invokes the station itself and takes the item end to end. Running the station in this session makes the line one worker long, and then the queue is worked one item per invocation whatever this file says about emptying it.
 
 This is not the fan-out `dim-station-build` argues against. That rule keeps a single slice from being split across agents, because edits need the context that produced them — a builder holding one whole item has exactly that context. What it forbids is two agents editing one slice.
 
 Give the builder the item as the queue states it, the repo's check, and the standing instruction to run its station's loop including the checking agent. Take back what it reports: the commits, the findings, what it left. A builder that returns without a commit and without saying why is a failed attempt, and the bound below counts it.
 
-## 4. The fence
+## 4. Record the job
+
+Every item taken is claimed before a builder sees it, started when the builder starts, and stopped once whatever happened. An item worked without a claim is work nobody watching can see, and a claim that never stops is a card left on the floor.
+
+Mint one run id per invocation — `run-$(date -u +%Y%m%dT%H%M%SZ)` — and one job id per item, `<run-id>-<item-id>`, with a suffix on a retry so a second attempt is its own card rather than a name the record already holds and refuses.
+
+```
+dim job claim <job-id> --run <run-id> --queue <queue-id> --item <item-id> \
+  --title "<the item's title>" --station <the station it routed to> \
+  --branch <branch> --worktree "$(dim wt path <branch>)"
+dim job start <job-id>
+dim job stop <job-id> <completed|blocked|fenced|failed|abandoned> [--reason "..."]
+```
+
+- The queue id and item id are what step 2 identified: a planner file's own `id` and the item's `id` in it, or the path or tracker query that named the queue and the item's identity there.
+- **The title is the item's name, never its id.** It is what every card is read by; the ids are there for an agent to join on.
+- Naming the branch is yours, because the claim records it before the builder exists. `dim wt path <branch>` prints where that worktree will be without creating it, so the claim carries the location the builder then makes.
+- `--agent <id>` when the harness gives the builder a stable identity; without it the card names no worker.
+- **Stop exactly once, whatever happened**: the item landed (`completed`), it waits on something else (`blocked`), a fence stopped it (`fenced`, with the shape as the reason), the builder failed or returned nothing it could explain (`failed`), or it was dropped (`abandoned`). A stopped job is refused a second lifecycle event, so a retry is a new job id.
+
+Evidence past the lifecycle — commits, checks, findings, changed files, documents — has no command yet. It travels in the report, and `dim q factory <job-id-prefix>` reads back what was recorded.
+
+## 5. The fence
 
 Three shapes stop a run wherever they are met, including partway into an item that read as ready:
 
@@ -58,9 +80,9 @@ Three shapes stop a run wherever they are met, including partway into an item th
 
 A queue may draw its own fence on top of these — a section its rules file marks as the owner's call, a label, a state. Read it as binding and never move it: the owner moves a fence by editing the queue, not by an agent deciding an item looked fine.
 
-Stopping means writing down what was found, leaving the item where it was, and naming which shape stopped it. Waiting for permission mid-run is not running unattended; deciding one of these alone is what the fence exists to prevent.
+Stopping means writing down what was found, leaving the item where it was, naming which shape stopped it, and stopping the job as `fenced` with that shape as the reason. Waiting for permission mid-run is not running unattended; deciding one of these alone is what the fence exists to prevent.
 
-## 5. Keep the line moving
+## 6. Keep the line moving
 
 **Work the queue until it is empty.** Take the next item the moment one lands, and do not come back between items to say a thing went well — a line that halts after every job is not running, and a report per item is the report at the end read one piece at a time.
 
@@ -75,11 +97,12 @@ Four things stop it, and nothing else does:
 
 A failed attempt usually leaves the queue exactly as it was, so nothing but these keeps a run from taking the same item forever.
 
-## 6. Report
+## 7. Report
 
 Per item, landed or not:
 
 - the item taken, quoted, and the queue it came from
+- the job id and the status it stopped at
 - where it went, and the commits
 - what `dim q findings` recorded for the slice
 - what stopped the run, and which shape it was
