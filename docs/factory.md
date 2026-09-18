@@ -64,7 +64,8 @@ The same lifecycle is reachable from a shell line, because the factory line is a
 
 The planned workspace contract makes each isolated worker's environment visible without moving its side effects into `dim`.
 
-- **Profile.** The profile identifies the checkout and worktree, languages, package managers, workspace members, declared setup entry point, check, format and test tasks, required services, isolation strategy, cleanup entry point, and resource or secret requirements.
+- **Profile.** The profile identifies the checkout and worktree, languages, package managers, workspace members, declared setup and cleanup entry points, check, format and test tasks, required services, isolation strategy, and resource or secret requirements.
+- **Services.** The service names a compose file declares, carrying that file as their source, and nothing past the name. Images, ports, health checks and dependency edges describe a topology the setup hook owns, and a profile repeating them would assert a port no hook had allocated. A repository with no compose file is silent about services, which is a different claim from a compose file that names none; a compose file this cannot read stays silent rather than reporting an empty one.
 - **Setup.** `dim wt` invokes the repository's setup hook and records what it reports. The hook may install dependencies, activate pinned tools, create containers, allocate ports, materialize environment files or check service health.
 - **Teardown.** Worktree removal invokes the repository's teardown hook first. A failed teardown keeps the worktree and becomes visible in the job report; an explicit force operation is the only override.
 - **Boundary.** `dim` owns the worktree lifecycle and evidence. The repository owns package installation, service topology, secrets, ports and resource policy.
