@@ -71,6 +71,8 @@ Returning nothing is the expected result and not a sign the check was wasted: of
 
 Two answers that read as evasions and are not: a finding that is true and does not matter here, refused and said so; and a finding that is true and belongs to a different slice, written into [`build-order.md`](../../docs/build-order.md) rather than folded in, which is what keeps the diff one thing.
 
+**Record each answer as you make it**, with `dim finding --slice <name> --dimension <name> --answer fixed|refused --summary "..."`, plus `--file` where the finding names one and `--why` on a refusal. Write it when the finding is answered rather than at the end: the judgement exists only in this session, nothing re-reads it into the database afterward, and a round recalled later is a round summarized. `dim q findings` reads them back by dimension, which is what can eventually say whether checking pays — it grades the checker and never the builder, so a slice that drew several findings is not a worse slice.
+
 ## Exit check
 
 The change is done when:
