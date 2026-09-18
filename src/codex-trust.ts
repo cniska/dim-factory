@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ConfigError } from "./config-error";
 import { type HookEntry, hookConfigPath, wantedHooks } from "./hooks";
-import { readJsonc } from "./jsonc";
+import { readJsonc } from "./jsonc-file";
 import { codexDir, type Env } from "./paths";
 
 /**

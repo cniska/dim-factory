@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
 import {
   applyEdits,
   type FormattingOptions,
@@ -25,12 +24,6 @@ export function parseJsonc<T>(text: string, file: string): T {
     );
   }
   return value;
-}
-
-/** Null where the file is absent. */
-export function readJsonc<T>(path: string): T | null {
-  if (!existsSync(path)) return null;
-  return parseJsonc<T>(readFileSync(path, "utf8"), path);
 }
 
 /** The file's own indent, so what is inserted lines up with what is already there. */

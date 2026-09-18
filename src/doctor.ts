@@ -6,7 +6,7 @@ import { codexConfigPath, planCodexTrust, type TrustState } from "./codex-trust"
 import { installedOwners, planCommitGate, sharedHooksDir } from "./commit-gate";
 import { ConfigError } from "./config-error";
 import { type HookPlan, planHooks } from "./hooks";
-import { readJsonc } from "./jsonc";
+import { readJsonc } from "./jsonc-file";
 import { dataDir, type Env, resolveHomeDir } from "./paths";
 import { unarmedCheckouts } from "./push-gate";
 import { isHostQualified } from "./remote-slug";

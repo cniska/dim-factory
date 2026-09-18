@@ -1,7 +1,8 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { ConfigError } from "./config-error";
-import { appendToJsoncArray, parseJsonc, readJsonc } from "./jsonc";
+import { appendToJsoncArray, parseJsonc } from "./jsonc";
+import { readJsonc, readJsoncText } from "./jsonc-file";
 import { claudeProjectsDir, codexDir, type Env } from "./paths";
 import { toolSpoolDir } from "./spool";
 import { TOOLS, type Tool } from "./tools";
@@ -138,7 +139,7 @@ export function installHooks(env: Env = process.env): InstallReport {
     report.alreadyPresent += plans.length - missing.length;
     if (missing.length === 0) continue;
 
-    let text = existsSync(configPath) ? readFileSync(configPath, "utf8") : "";
+    let text = readJsoncText(configPath);
     for (const plan of missing) {
       const entry: HookEntry = { hooks: [{ type: "command", command: plan.command }] };
       text = appendToJsoncArray(text, ["hooks", plan.event], entry, configPath);
