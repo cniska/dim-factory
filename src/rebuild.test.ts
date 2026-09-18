@@ -134,6 +134,54 @@ describe("absorbing a schema change", () => {
   });
 });
 
+describe("rebuilding a database an older schema wrote", () => {
+  /** What a fresh database puts in `sqlite_master`, which is what a rebuilt one must match. */
+  function currentDefinitions(): Record<string, string> {
+    const db = openDb(join(mkdtempSync(join(tmpdir(), "dim-rebuild-")), "sessions.db"));
+    const rows = db
+      .query<{ name: string; sql: string }, []>(
+        "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND sql IS NOT NULL",
+      )
+      .all();
+    db.close();
+    return Object.fromEntries(rows.map((row) => [row.name, row.sql]));
+  }
+
+  test("a table whose definition went stale is brought up to the current schema", () => {
+    const { db, env } = scratch();
+    // The shape `hook_event` had before post-tool events joined it. `CREATE TABLE IF NOT
+    // EXISTS` leaves this alone, so only a drop can widen the check again.
+    db.run("DROP TABLE hook_event");
+    db.run(
+      `CREATE TABLE hook_event (
+         id INTEGER PRIMARY KEY,
+         tool TEXT NOT NULL CHECK (tool IN ('claude','codex')),
+         session_id TEXT NOT NULL,
+         event TEXT NOT NULL CHECK (event IN ('session_start','session_end')),
+         ts TEXT NOT NULL,
+         source TEXT, reason TEXT, model TEXT, cwd TEXT,
+         payload TEXT NOT NULL,
+         UNIQUE (session_id, event, ts)
+       )`,
+    );
+    db.run(
+      "INSERT INTO hook_event (tool, session_id, event, ts, payload) VALUES ('claude', 's1', 'session_start', '2026-01-01T00:00:00Z', '{}')",
+    );
+
+    rebuild(db, env);
+
+    expect(
+      db.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'hook_event'").get(),
+    ).toEqual({ sql: currentDefinitions().hook_event });
+    // The spool deletes each file once it is read, so these rows have no source to re-read
+    // and a rebuild that drops the table has to write them back.
+    expect(db.query("SELECT session_id, event FROM hook_event").all()).toEqual([
+      { session_id: "s1", event: "session_start" },
+    ]);
+    db.close();
+  });
+});
+
 describe("opening a database an older schema wrote", () => {
   function stampedOld(): string {
     const path = join(mkdtempSync(join(tmpdir(), "dim-rebuild-")), "sessions.db");

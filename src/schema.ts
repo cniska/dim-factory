@@ -1,9 +1,9 @@
 // Every table here is one-to-one with records in the source files and is rebuilt
 // by re-reading them, so a schema change is `dim rebuild`, not a migration. The
-// exceptions carry the reason at the table: hook_event, guidance_walk,
-// command_trace, factory job records and finding have no source to re-read, embedding holds vectors
-// only a model can produce again, and correction_label has no source either but
-// is dropped and written back row for row.
+// exceptions carry the reason at the table: guidance_walk, command_trace,
+// factory job records and finding have no source to re-read, embedding holds vectors
+// only a model can produce again, and correction_label and hook_event have no
+// source either but are dropped and written back row for row.
 // SCHEMA_VERSION exists so sync can refuse to run against a database only a
 // re-read can correct: a changed column, or a changed rule for what identifies a
 // row, since rows already written keep the old identity. A table added with
@@ -105,11 +105,12 @@ CREATE TABLE IF NOT EXISTS usage (
 CREATE INDEX IF NOT EXISTS usage_session ON usage(session_id, ts);
 CREATE INDEX IF NOT EXISTS usage_model ON usage(model);
 
--- Drained from the hook spool, and never cleared by \`dim rebuild\`: a transcript
--- records no end marker, so a session that ended before its hook was installed
--- can never be told apart from one still open. There is no
--- foreign key to session because a hook can fire for a session whose transcript
--- has not been read yet, or ever.
+-- Drained from the hook spool, which deletes each file once it is read, so these
+-- rows have no source: \`dim rebuild\` reads them out and writes them back rather
+-- than clearing them. A transcript records no end marker, so a session that ended
+-- before its hook was installed can never be told apart from one still open. There
+-- is no foreign key to session because a hook can fire for a session whose
+-- transcript has not been read yet, or ever.
 CREATE TABLE IF NOT EXISTS hook_event (
   id          INTEGER PRIMARY KEY,
   tool        TEXT NOT NULL CHECK (tool IN (${TOOLS_SQL})),

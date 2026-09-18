@@ -118,6 +118,18 @@ type CorrectionLabel = {
   labeled_at: string;
 };
 
+type HookEvent = {
+  tool: string;
+  session_id: string;
+  event: string;
+  ts: string;
+  source: string | null;
+  reason: string | null;
+  model: string | null;
+  cwd: string | null;
+  payload: string;
+};
+
 /**
  * Everything here is re-read from the source files. Each table is dropped
  * rather than emptied, because `CREATE TABLE IF NOT EXISTS` leaves one that
@@ -127,8 +139,11 @@ type CorrectionLabel = {
  * there fails.
  *
  * Which tables are left instead, and why, is stated at each of them in
- * `schema.ts`. `correction_label` is the one that is neither: it has no source
- * either, but is dropped with the rest and written back row for row.
+ * `schema.ts`. `correction_label` and `hook_event` are the ones that are
+ * neither: their sources are gone — the spool deletes each file once it is
+ * read — so both are dropped with the rest and written back row for row. A
+ * table kept instead of dropped keeps whatever shape it was created with, and
+ * a check widened in `SCHEMA_SQL` would never reach it.
  */
 export function rebuild(db: Database, env: Env = process.env): SyncReport {
   db.transaction(() => {
@@ -141,6 +156,12 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
       )
       .all();
     db.run("DROP TABLE IF EXISTS correction_label");
+    const hookEvents = db
+      .query<HookEvent, []>(
+        "SELECT tool, session_id, event, ts, source, reason, model, cwd, payload FROM hook_event",
+      )
+      .all();
+    db.run("DROP TABLE IF EXISTS hook_event");
     // The index is external content over message, so it would be left pointing
     // into a table dropped and refilled below. Its triggers need no drop of
     // their own: they belong to message, and a drop fires none of them.
@@ -169,6 +190,26 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
     );
     for (const row of labels) {
       restore.run(row.message_id, row.label, row.skill_name, row.rule, row.labeled_at);
+    }
+    const restoreHook = db.prepare<
+      void,
+      [string, string, string, string, string | null, string | null, string | null, string | null, string]
+    >(
+      `INSERT INTO hook_event (tool, session_id, event, ts, source, reason, model, cwd, payload)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    for (const row of hookEvents) {
+      restoreHook.run(
+        row.tool,
+        row.session_id,
+        row.event,
+        row.ts,
+        row.source,
+        row.reason,
+        row.model,
+        row.cwd,
+        row.payload,
+      );
     }
   })();
   const report = sync(db, env);
