@@ -105,6 +105,46 @@ describe("factory lane report records", () => {
     database.close();
   });
 
+  test("rejects lifecycle events after a lane reaches a terminal status", () => {
+    const database = db();
+    createLane(database, lane, "2026-09-18T10:00:00.000Z");
+    appendLaneEvent(
+      database,
+      "lane-1",
+      { kind: "completed", status: "completed" },
+      "2026-09-18T10:01:00.000Z",
+    );
+
+    expect(() =>
+      appendLaneEvent(database, "lane-1", { kind: "started", status: "running" }, "2026-09-18T10:02:00.000Z"),
+    ).toThrow();
+    expect(() =>
+      appendLaneEvent(database, "lane-1", { kind: "started" }, "2026-09-18T10:03:00.000Z"),
+    ).toThrow();
+    expect(database.query("SELECT status, completed_at FROM factory_lane").get()).toEqual({
+      status: "completed",
+      completed_at: "2026-09-18T10:01:00.000Z",
+    });
+    expect(database.query("SELECT count(*) AS count FROM factory_lane_event").get()).toEqual({ count: 2 });
+    database.close();
+  });
+
+  test("rolls back an event when projecting it fails", () => {
+    const database = db();
+    createLane(database, lane, "2026-09-18T10:00:00.000Z");
+    database.run(
+      `CREATE TRIGGER reject_lane_projection BEFORE UPDATE ON factory_lane
+       BEGIN SELECT RAISE(ABORT, 'projection rejected'); END`,
+    );
+
+    expect(() =>
+      appendLaneEvent(database, "lane-1", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z"),
+    ).toThrow();
+    expect(database.query("SELECT count(*) AS count FROM factory_lane_event").get()).toEqual({ count: 1 });
+    expect(database.query("SELECT status FROM factory_lane").get()).toEqual({ status: "claimed" });
+    database.close();
+  });
+
   test("refused findings require a resolution", () => {
     const database = db();
     createLane(database, lane);
