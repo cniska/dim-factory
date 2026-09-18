@@ -45,13 +45,14 @@ The report lifecycle is a durable sequence from claim through running to complet
 
 ## Operator presence
 
-The planned driver boundary is harness-agnostic. Codex, Claude Code, Claude Desktop or another local harness may operate the same factory when it uses `dim` as the record and coordination boundary. The active harness is the operator for that factory run.
+The planned driver boundary is harness-agnostic. Codex, Claude Code, Claude Desktop or another local harness may operate the same factory when it uses `dim` as the record and coordination boundary. The active harness is the operator for that project and factory run.
 
 - **Clock-in.** An operator explicitly clocks in through `dim`, recording the harness, operator identity and session identity before it starts taking work.
 - **Clock-out.** The operator explicitly clocks out through `dim` when it stops operating the factory. An unclosed presence remains visible as stale rather than being treated as a clean departure.
+- **Scope.** Operator presence belongs to a project and factory, even though the local database is shared across projects. The project uses its canonical `owner/repo` name, so paths and worktrees resolve to one identity. One harness may have separate operator records in several projects.
 - **Shared record.** Operator presence, job claims and lifecycle evidence live in the same local database; a harness does not keep a private presence ledger.
 - **Concurrency.** Multiple clocked-in operators may observe the same factory. Atomic claims, leases or heartbeats, and serialized queue transitions are required before they may safely execute the same queue concurrently.
-- **Wall.** The read-only wall shows active operators alongside jobs, so the owner can see both what is moving and which harness is operating it. The wall does not provide clock-in, clock-out or job controls.
+- **Wall.** The read-only wall is one shared factory floor: it shows jobs and active operators from every project in the same lifecycle board. Every card and operator carries its canonical `owner/repo` project name. The wall does not provide clock-in, clock-out or job controls.
 
 This is planned, not a current guarantee of multi-driver execution. The current driver still owns scheduling, observation and integration, and the database does not yet provide the cross-driver lease and claim semantics needed to make duplicate execution impossible.
 
