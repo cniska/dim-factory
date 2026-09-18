@@ -2,8 +2,7 @@ import type { Database } from "bun:sqlite";
 import { mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { dataDir, type Env } from "./paths";
-
-export type Tool = "claude" | "codex";
+import { TOOLS, type Tool } from "./tools";
 
 export type DrainReport = { applied: number; duplicate: number; unreadable: number };
 
@@ -29,7 +28,7 @@ export function walkSpoolDir(env: Env = process.env): string {
 }
 
 export function ensureSpoolDirs(env: Env = process.env): void {
-  for (const tool of ["claude", "codex"] as const) {
+  for (const tool of TOOLS) {
     mkdirSync(toolSpoolDir(tool, env), { recursive: true });
   }
   mkdirSync(walkSpoolDir(env), { recursive: true });
@@ -66,7 +65,7 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
      ON CONFLICT(session_id, event, ts) DO NOTHING`,
   );
 
-  for (const tool of ["claude", "codex"] as const) {
+  for (const tool of TOOLS) {
     const dir = toolSpoolDir(tool, env);
     for (const name of readdirSync(dir).sort()) {
       const path = join(dir, name);

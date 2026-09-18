@@ -8,6 +8,8 @@
 // nothing existing feeding it is neither — every write opens the database
 // through SCHEMA_SQL, which creates it — so adding one is not a version bump.
 
+import { TOOLS_SQL } from "./tools";
+
 export const SCHEMA_VERSION = 16;
 
 export const SCHEMA_SQL = `
@@ -18,7 +20,7 @@ CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
 -- byte zero would append its assistant text a second time.
 CREATE TABLE IF NOT EXISTS source_file (
   path            TEXT PRIMARY KEY,
-  tool            TEXT NOT NULL CHECK (tool IN ('claude','codex')),
+  tool            TEXT NOT NULL CHECK (tool IN (${TOOLS_SQL})),
   kind            TEXT NOT NULL CHECK (kind IN ('transcript','subagent','rollout')),
   session_id      TEXT NOT NULL,
   bytes_ingested  INTEGER NOT NULL DEFAULT 0,
@@ -106,7 +108,7 @@ CREATE INDEX IF NOT EXISTS usage_model ON usage(model);
 -- has not been read yet, or ever.
 CREATE TABLE IF NOT EXISTS hook_event (
   id          INTEGER PRIMARY KEY,
-  tool        TEXT NOT NULL CHECK (tool IN ('claude','codex')),
+  tool        TEXT NOT NULL CHECK (tool IN (${TOOLS_SQL})),
   session_id  TEXT NOT NULL,
   event       TEXT NOT NULL CHECK (event IN ('session_start','session_end')),
   ts          TEXT NOT NULL,
@@ -128,7 +130,7 @@ CREATE INDEX IF NOT EXISTS hook_event_session ON hook_event(session_id);
 -- reason: the hook fires before the transcript has been read, or ever.
 CREATE TABLE IF NOT EXISTS guidance_walk (
   session_id  TEXT NOT NULL,
-  tool        TEXT NOT NULL CHECK (tool IN ('claude','codex')),
+  tool        TEXT NOT NULL CHECK (tool IN (${TOOLS_SQL})),
   seen_at     TEXT NOT NULL,
   path        TEXT NOT NULL,       -- absolute, as the agent would read it
   blob_sha    TEXT NOT NULL,       -- sha256 of the bytes read, joining to guidance_version
@@ -185,7 +187,7 @@ CREATE TABLE IF NOT EXISTS session_cost_reported (
 -- before retention was extended: for those sessions this is all that is left.
 -- No foreign key, because by definition these sessions have no row.
 CREATE TABLE IF NOT EXISTS orphan_prompt (
-  tool            TEXT NOT NULL CHECK (tool IN ('claude','codex')),
+  tool            TEXT NOT NULL CHECK (tool IN (${TOOLS_SQL})),
   session_id      TEXT NOT NULL,
   ts              TEXT NOT NULL,
   project         TEXT,

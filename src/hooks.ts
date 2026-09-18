@@ -3,7 +3,8 @@ import { dirname, join } from "node:path";
 import { ConfigError } from "./config-error";
 import { appendToJsoncArray, parseJsonc, readJsonc } from "./jsonc";
 import { claudeProjectsDir, codexDir, type Env } from "./paths";
-import { type Tool, toolSpoolDir } from "./spool";
+import { toolSpoolDir } from "./spool";
+import { TOOLS, type Tool } from "./tools";
 
 export type HookPlan = {
   tool: Tool;
@@ -76,7 +77,7 @@ function hasCommand(entries: HookEntry[], command: string): boolean {
 /** Both tools take the same shape: hooks.<Event>[].hooks[].command. */
 export function planHooks(env: Env = process.env): HookPlan[] {
   const plans: HookPlan[] = [];
-  for (const tool of ["claude", "codex"] as const) {
+  for (const tool of TOOLS) {
     const configPath = hookConfigPath(tool, env);
     const config = readConfig(configPath);
     for (const { event, command } of wantedHooks(tool, env)) {

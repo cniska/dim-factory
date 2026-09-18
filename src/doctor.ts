@@ -13,6 +13,7 @@ import { isHostQualified } from "./remote-slug";
 import { planRules } from "./rules";
 import { SCHEMA_VERSION } from "./schema";
 import { planSkill } from "./skill";
+import { TOOLS } from "./tools";
 
 /**
  * `warn` is for a gap that costs evidence and `fail` for one that loses it:
@@ -170,7 +171,7 @@ function retention(env: Env): Health {
 function spool(env: Env): Health {
   const root = join(dataDir(env), "spool");
   let waiting = 0;
-  for (const tool of ["claude", "codex"]) {
+  for (const tool of TOOLS) {
     const dir = join(root, tool);
     if (existsSync(dir)) waiting += readdirSync(dir).filter((f) => f.endsWith(".json")).length;
   }

@@ -15,8 +15,9 @@ import { closeDb, openDb } from "./db";
 import { scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
 import { hookCommand, installHooks, planHooks, wakeCommand } from "./hooks";
 import { dbPath, type Env } from "./paths";
-import { drainSpool, ensureSpoolDirs, type Tool, toolSpoolDir } from "./spool";
+import { drainSpool, ensureSpoolDirs, toolSpoolDir } from "./spool";
 import { rebuild, sync } from "./sync";
+import type { Tool } from "./tools";
 
 const SESSION = "11111111-2222-3333-4444-555555555555";
 const roots: string[] = [];

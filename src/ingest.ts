@@ -3,9 +3,8 @@ import { statSync } from "node:fs";
 import { readChunk } from "./chunk";
 import { gitSubcommands } from "./git-command";
 import type { ParsedChunk, SessionFacts } from "./records";
+import type { Tool } from "./tools";
 import { worktreeOf } from "./worktree";
-
-export type Tool = "claude" | "codex";
 export type Kind = "transcript" | "subagent" | "rollout";
 
 export type FileSpec = {
