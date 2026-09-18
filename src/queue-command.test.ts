@@ -9,7 +9,15 @@ const source = JSON.stringify({
   id: "build-order",
   items: [
     { id: "b", title: "Second", dependencies: ["a"], status: "planned", transitions: [] },
-    { id: "a", title: "First", dependencies: [], status: "planned", transitions: [] },
+    {
+      id: "a",
+      title: "First",
+      description: "What the item says in one sentence.",
+      dependencies: [],
+      status: "planned",
+      transitions: [],
+    },
+    { id: "c", title: "Third", dependencies: [], status: "planned", transitions: [] },
   ],
 });
 
@@ -25,7 +33,16 @@ describe("queue command", () => {
     const path = await fixture();
 
     expect(await runQueueCommand(["ready", path, "--limit", "1"])).toBe(
-      '[{"id":"a","title":"First","status":"planned"}]',
+      '[{"id":"a","title":"First","description":"What the item says in one sentence.","status":"planned"}]',
+    );
+  });
+
+  test("prints an item that carries no statement without the field", async () => {
+    const path = await fixture();
+
+    expect(await runQueueCommand(["ready", path])).toBe(
+      '[{"id":"a","title":"First","description":"What the item says in one sentence.","status":"planned"},' +
+        '{"id":"c","title":"Third","status":"planned"}]',
     );
   });
 
