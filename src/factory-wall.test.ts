@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import {
@@ -14,9 +14,13 @@ import {
   updateJobLocation,
 } from "./factory-job";
 import { assembleItemView, assembleWallSnapshot, serveWall } from "./factory-wall";
+import { integratedRepo } from "./fixtures.test-support";
 import { SCHEMA_SQL } from "./schema";
 import { STATION_LABELS } from "./wall-board";
 import { workerName } from "./worker-name";
+
+const trunk = integratedRepo();
+afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
 
 describe("factory wall snapshot", () => {
   test("assembles current work for the board from read-only job records", () => {
@@ -76,13 +80,13 @@ describe("factory wall snapshot", () => {
         itemId: "done",
         title: "Ship the board",
         station: "ship",
-        worktree: "/tmp/wall-done",
+        worktree: trunk.dir,
         branch: "wall-done",
       },
       "2026-09-18T08:00:00.000Z",
     );
     appendJobEvent(db, "job-done", { kind: "started", status: "running" }, "2026-09-18T08:00:30.000Z");
-    recordJobCommit(db, "job-done", "abc123", "wall", "2026-09-18T08:01:00.000Z");
+    recordJobCommit(db, "job-done", trunk.sha, "wall", "2026-09-18T08:01:00.000Z");
     recordJobCheck(
       db,
       "job-done",
@@ -405,13 +409,14 @@ describe("factory wall snapshot", () => {
           itemId: id,
           title: `Crowd the column as ${id}`,
           station: "build",
-          worktree: `/tmp/${id}`,
+          worktree: trunk.dir,
           branch: id,
         },
         "2026-09-18T09:00:00.000Z",
       );
       if (kind === "completed") {
         appendJobEvent(db, id, { kind: "started", status: "running" }, "2026-09-18T09:00:30.000Z");
+        recordJobCommit(db, id, trunk.sha, "feat: land it", "2026-09-18T09:00:40.000Z");
         recordJobCheck(
           db,
           id,
