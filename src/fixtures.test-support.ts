@@ -1,6 +1,51 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Env } from "./paths";
+
+/**
+ * A repo whose one commit is on a trunk the repo names itself, which is what the
+ * completion gate reads. Built rather than stubbed: the gate asks git, and a
+ * fixture that answered for it would pass whatever the gate got wrong.
+ */
+export function integratedRepo(): { dir: string; sha: string } {
+  const dir = mkdtempSync(join(tmpdir(), "dim-trunk-"));
+  const git = (args: string[]) => Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe" });
+  git(["init", "-q", "-b", "main"]);
+  git(["config", "user.email", "t@example.com"]);
+  git(["config", "user.name", "Test"]);
+  writeFileSync(join(dir, "landed.txt"), "landed");
+  git(["add", "."]);
+  git(["commit", "-q", "-m", "feat: land it"]);
+  // The gate reads the trunk off this ref and nothing else writes it outside a clone.
+  git(["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"]);
+  return { dir, sha: git(["rev-parse", "HEAD"]).stdout.toString().trim() };
+}
+
+/** A commit on a branch of that repo, real but never merged into its trunk. */
+export function commitOffTrunk(dir: string, branch: string): string {
+  const git = (args: string[]) => Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe" });
+  git(["checkout", "-q", "-b", branch]);
+  writeFileSync(join(dir, `${branch}.txt`), branch);
+  git(["add", "."]);
+  git(["commit", "-q", "-m", `feat: ${branch}`]);
+  const sha = git(["rev-parse", "HEAD"]).stdout.toString().trim();
+  git(["checkout", "-q", "main"]);
+  return sha;
+}
+
+/** A repo that never names a trunk, as `git init` leaves one. */
+export function repoWithoutTrunk(): { dir: string; sha: string } {
+  const dir = mkdtempSync(join(tmpdir(), "dim-no-trunk-"));
+  const git = (args: string[]) => Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe" });
+  git(["init", "-q", "-b", "main"]);
+  git(["config", "user.email", "t@example.com"]);
+  git(["config", "user.name", "Test"]);
+  writeFileSync(join(dir, "landed.txt"), "landed");
+  git(["add", "."]);
+  git(["commit", "-q", "-m", "feat: land it"]);
+  return { dir, sha: git(["rev-parse", "HEAD"]).stdout.toString().trim() };
+}
 
 export function scratchEnv(root: string): Env {
   return {

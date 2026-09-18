@@ -1,6 +1,8 @@
 import { Database } from "bun:sqlite";
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { rmSync } from "node:fs";
 import { assembleWallSnapshot } from "./factory-wall";
+import { integratedRepo } from "./fixtures.test-support";
 import { JobCommandError, runJobCommand } from "./job-command";
 import { SCHEMA_SQL } from "./schema";
 
@@ -8,6 +10,15 @@ function db(): Database {
   const database = new Database(":memory:");
   database.run(SCHEMA_SQL);
   return database;
+}
+
+const trunk = integratedRepo();
+afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
+
+/** What the gate wants before a job may complete: a commit on the trunk, then a check that passed. */
+function landed(database: Database, jobId: string): void {
+  runJobCommand(database, ["commit", jobId, "--sha", trunk.sha, "--subject", "feat: land it"]);
+  runJobCommand(database, ["check", jobId, "--command", "bun run verify", "--exit", "0"]);
 }
 
 const claim = [
@@ -28,7 +39,7 @@ const claim = [
   "--station",
   "dim-station-build",
   "--worktree",
-  "/tmp/wt",
+  trunk.dir,
   "--branch",
   "job-1",
 ];
@@ -105,7 +116,7 @@ describe("job command", () => {
     const database = db();
     runJobCommand(database, claim);
     runJobCommand(database, ["start", "job-1"]);
-    runJobCommand(database, ["check", "job-1", "--command", "bun run verify", "--exit", "0"]);
+    landed(database, "job-1");
 
     expect(runJobCommand(database, ["stop", "job-1", "completed"])).toBe("job-1 stopped as completed");
 
@@ -209,17 +220,19 @@ describe("job command", () => {
     runJobCommand(database, claim);
 
     expect(() => runJobCommand(database, ["commit", "job-1", "--sha", "abc123"])).toThrow(
-      "job job-1 is already claimed",
+      "job job-1 has not started",
     );
 
     runJobCommand(database, ["start", "job-1"]);
-    runJobCommand(database, ["check", "job-1", "--command", "bun run verify", "--exit", "0"]);
+    landed(database, "job-1");
     runJobCommand(database, ["stop", "job-1", "completed"]);
 
     expect(() => runJobCommand(database, ["commit", "job-1", "--sha", "abc123"])).toThrow(
       "job job-1 is already completed",
     );
-    expect(database.query("SELECT count(*) AS rows FROM factory_job_commit").get()).toEqual({ rows: 0 });
+    expect(
+      database.query("SELECT count(*) AS rows FROM factory_job_commit WHERE sha = 'abc123'").get(),
+    ).toEqual({ rows: 0 });
   });
 
   test("a check with no exit status and a finding with no answer are refused", () => {
@@ -281,7 +294,7 @@ describe("job command", () => {
     expect(() => runJobCommand(database, ["stop", "job-1", "running"])).toThrow(JobCommandError);
 
     expect(assembleWallSnapshot(database).jobs[0]?.status).toBe("running");
-    runJobCommand(database, ["check", "job-1", "--command", "bun run verify", "--exit", "0"]);
+    landed(database, "job-1");
     expect(runJobCommand(database, ["stop", "job-1", "completed"])).toBe("job-1 stopped as completed");
   });
 

@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { reachesTrunk } from "./trunk";
 import type { WorkerHookReport } from "./worker-environment";
 
 export type JobStatus = "claimed" | "running" | "completed" | "blocked" | "fenced" | "failed" | "abandoned";
@@ -47,9 +48,16 @@ export type JobEvent = {
   ts?: string;
 };
 
-/** Carries a code because a caller deciding what to do about this must not match on prose. */
-export class JobNotChecked extends Error {
-  readonly code = "job_not_checked";
+export type JobNotDoneCode = "job_not_checked" | "job_not_integrated" | "job_trunk_unknown";
+
+/** Carries a code because a caller deciding which condition failed must not match on prose. */
+export class JobNotDone extends Error {
+  constructor(
+    readonly code: JobNotDoneCode,
+    message: string,
+  ) {
+    super(message);
+  }
 }
 
 const now = (): string => new Date().toISOString();
@@ -193,6 +201,7 @@ function appendJobEventInTransaction(db: Database, jobId: string, event: JobEven
     if (event.kind === "completed") {
       if (!job.worktree) throw new Error(`job ${jobId} has no worktree`);
       assertChecked(db, jobId);
+      assertIntegrated(db, jobId, job.worktree);
     }
   }
 
@@ -325,18 +334,24 @@ export function recordJobDocument(db: Database, jobId: string, path: string, at 
  * that ran the repo's task and then kept committing has no evidence for what it
  * landed. With no commit recorded there is nothing for a check to be older than,
  * so any passing one satisfies it.
+ *
+ * Both sides are `recorded_at`, the time the row was written, so the two paths
+ * are judged on one clock. A check's `finished_at` may be supplied by its caller
+ * and is free to say when the check truly ran, which on a loop that checks before
+ * committing is earlier than the commit it vouches for.
  */
 function assertChecked(db: Database, jobId: string): void {
   const passed = db
     .query(
       `SELECT 1 FROM factory_job_check
        WHERE job_id = ? AND exit_code = 0
-         AND finished_at >= coalesce((SELECT max(recorded_at) FROM factory_job_commit WHERE job_id = ?), '')
+         AND recorded_at >= coalesce((SELECT max(recorded_at) FROM factory_job_commit WHERE job_id = ?), '')
        LIMIT 1`,
     )
     .get(jobId, jobId);
   if (!passed) {
-    throw new JobNotChecked(
+    throw new JobNotDone(
+      "job_not_checked",
       `job ${jobId} cannot complete without a check that passed after its last commit: ` +
         `record one with \`dim job check ${jobId} --command "..." --exit 0\`, ` +
         "or stop the job as blocked, fenced, failed or abandoned.",
@@ -344,7 +359,56 @@ function assertChecked(db: Database, jobId: string): void {
   }
 }
 
+/**
+ * A branch that is finished and unmerged is the state work rots in, so being on
+ * the trunk is part of being done rather than a step after it. Where the repo
+ * cannot place the commit at all, the refusal says which reading failed rather
+ * than reporting the work as unmerged on the strength of a git command that did
+ * not answer.
+ */
+function assertIntegrated(db: Database, jobId: string, worktree: string): void {
+  const shas = db
+    .query<{ sha: string }, [string]>("SELECT sha FROM factory_job_commit WHERE job_id = ?")
+    .all(jobId)
+    .map((row) => row.sha);
+  if (shas.length === 0) {
+    throw new JobNotDone(
+      "job_not_integrated",
+      `job ${jobId} recorded no commit, so nothing of it is on the trunk: ` +
+        `record what it landed with \`dim job commit ${jobId} --sha <sha>\`, ` +
+        "or stop the job as blocked, fenced, failed or abandoned.",
+    );
+  }
+  const reach = shas.map((sha) => reachesTrunk(worktree, sha));
+  if (reach.some((one) => one.reach === "reached")) return;
+  const unknown = reach.find((one) => one.reach === "unknown");
+  if (unknown && unknown.reach === "unknown") {
+    throw new JobNotDone(
+      "job_trunk_unknown",
+      `job ${jobId} cannot be placed against a trunk, so nothing can say whether it is ` +
+        `integrated: ${unknown.why}.`,
+    );
+  }
+  if (reach.every((one) => one.reach === "absent")) {
+    throw new JobNotDone(
+      "job_not_integrated",
+      `job ${jobId} recorded commits that ${worktree} does not have, so nothing there can place ` +
+        `them: check the shas recorded with \`dim q job ${jobId}\`.`,
+    );
+  }
+  throw new JobNotDone(
+    "job_not_integrated",
+    `job ${jobId} has no recorded commit on the trunk: merge its branch before completing it, ` +
+      "or stop the job as blocked, fenced, failed or abandoned.",
+  );
+}
+
 function assertJobRunning(db: Database, jobId: string): void {
   const status = jobStatus(db, jobId);
-  if (status !== "running") throw new Error(`job ${jobId} is already ${status}`);
+  if (status === "running") return;
+  // A claimed job is short of the point that takes evidence rather than past it,
+  // and this refusal is read by whoever typed the command.
+  throw new Error(
+    status === "claimed" ? `job ${jobId} has not started` : `job ${jobId} is already ${status}`,
+  );
 }

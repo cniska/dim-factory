@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { rmSync } from "node:fs";
 import {
   appendJobEvent,
   createJob,
@@ -10,8 +11,12 @@ import {
   recordJobFile,
   recordJobFinding,
 } from "./factory-job";
+import { integratedRepo } from "./fixtures.test-support";
 import { findQuery } from "./queries";
 import { SCHEMA_SQL } from "./schema";
+
+const trunk = integratedRepo();
+afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
 
 describe("factory job query", () => {
   test("returns one unified status row with the latest lifecycle and evidence", () => {
@@ -25,14 +30,14 @@ describe("factory job query", () => {
         queueId: "queue-1",
         itemId: "item-1",
         title: "Report one job's status",
-        worktree: "/tmp/factory-item",
+        worktree: trunk.dir,
         branch: "factory-item",
         station: "dim-station-build",
       },
       "2026-09-18T10:00:00.000Z",
     );
     appendJobEvent(db, "job-status", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
-    recordJobCommit(db, "job-status", "abc123", "feat: status", "2026-09-18T10:02:00.000Z");
+    recordJobCommit(db, "job-status", trunk.sha, "feat: status", "2026-09-18T10:02:00.000Z");
     recordJobCommit(db, "job-status", "def456", "feat: later", "2026-09-18T10:02:00.000Z");
     recordJobCheck(
       db,
@@ -99,7 +104,7 @@ describe("factory job query", () => {
         "completed",
         "completed",
         "2026-09-18T10:05:00.000Z",
-        "/tmp/factory-item",
+        trunk.dir,
         "factory-item",
         "dim-station-build",
         "def456 feat: later",

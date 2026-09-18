@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,6 +17,7 @@ import {
   recordJobFinding,
   updateJobLocation,
 } from "./factory-job";
+import { commitOffTrunk, integratedRepo, repoWithoutTrunk } from "./fixtures.test-support";
 import { dbPath } from "./paths";
 import { SCHEMA_SQL } from "./schema";
 import { rebuild } from "./sync";
@@ -28,6 +29,9 @@ function db(): Database {
   return database;
 }
 
+const trunk = integratedRepo();
+afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
+
 const job = {
   id: "job-1",
   runId: "run-1",
@@ -36,10 +40,16 @@ const job = {
   title: "Record a factory job",
   agentId: "agent-1",
   sessionId: "session-1",
-  worktree: "/tmp/wt",
+  worktree: trunk.dir,
   branch: "job-1",
   station: "dim-station-build",
 };
+
+/** What the gate wants before a job may complete: a commit on the trunk, then a check that passed. */
+function landed(database: Database, jobId: string, at?: string): void {
+  recordJobCommit(database, jobId, trunk.sha, "feat: land it", at);
+  recordJobCheck(database, jobId, { command: "bun run verify", exitCode: 0, result: "green" }, at);
+}
 
 const setupReport: WorkerHookReport = {
   phase: "setup",
@@ -78,9 +88,9 @@ describe("factory job report records", () => {
       async (context) => {
         expect(context.item.itemId).toBe("self-sufficient-factory-job");
         expect(context.baseRevision).toBe("abc123");
-        context.setLocation("/tmp/job-2", "job-2");
+        context.setLocation(trunk.dir, "job-2");
         context.delegate("agent-3", "session-3", "dim-station-review");
-        context.recordCommit("def456", "feat: observable job");
+        context.recordCommit(trunk.sha, "feat: observable job");
         context.recordFile("src/factory-driver.ts");
         context.recordCheck({ command: "bun run verify", exitCode: 0, result: "green" });
         context.recordFinding({ dimension: "tests", summary: "holds", answer: "fixed" });
@@ -99,7 +109,7 @@ describe("factory job report records", () => {
     ).toEqual({
       status: "completed",
       stop_reason: "verified",
-      worktree: "/tmp/job-2",
+      worktree: trunk.dir,
       branch: "job-2",
     });
     expect(database.query("SELECT kind, status FROM factory_job_event WHERE job_id = 'job-2'").all()).toEqual(
@@ -114,7 +124,7 @@ describe("factory job report records", () => {
       ],
     );
     expect(database.query("SELECT sha FROM factory_job_commit WHERE job_id = 'job-2'").get()).toEqual({
-      sha: "def456",
+      sha: trunk.sha,
     });
     expect(database.query("SELECT path FROM factory_job_file WHERE job_id = 'job-2'").get()).toEqual({
       path: "src/factory-driver.ts",
@@ -148,12 +158,13 @@ describe("factory job report records", () => {
           queueId: "queue-1",
           itemId: jobId,
           title: `Run ${jobId} beside the others`,
-          worktree: `/repo/.claude/worktrees/${jobId}`,
+          worktree: trunk.dir,
           branch: jobId,
         },
         { baseRevision: "abc123" },
         (context) => {
           if (status === "completed") {
+            context.recordCommit(trunk.sha, "feat: land it");
             context.recordCheck({ command: "bun run verify", exitCode: 0, result: "green" });
           }
           return { status, reason: "stopped" };
@@ -169,7 +180,12 @@ describe("factory job report records", () => {
       ).toEqual([
         { kind: "claimed", status: null },
         { kind: "started", status: "running" },
-        ...(status === "completed" ? [{ kind: "check_finished", status: null }] : []),
+        ...(status === "completed"
+          ? [
+              { kind: "commit_created", status: null },
+              { kind: "check_finished", status: null },
+            ]
+          : []),
         { kind: status, status },
       ]);
     }
@@ -263,6 +279,138 @@ describe("factory job report records", () => {
     database.close();
   });
 
+  test("refuses to complete a job whose commits never reached the trunk", () => {
+    const repo = integratedRepo();
+    const database = db();
+    const landed = { ...job, worktree: repo.dir };
+    createJob(database, landed, "2026-09-18T10:00:00.000Z");
+    appendJobEvent(database, "job-1", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    recordJobCommit(database, "job-1", commitOffTrunk(repo.dir, "item-statement"), "feat: land it");
+    recordJobCheck(database, "job-1", { command: "bun run verify", exitCode: 0, result: "green" });
+
+    expect(() => appendJobEvent(database, "job-1", { kind: "completed", status: "completed" })).toThrow(
+      expect.objectContaining({ code: "job_not_integrated" }),
+    );
+    expect(database.query("SELECT status FROM factory_job").get()).toEqual({ status: "running" });
+
+    recordJobCommit(database, "job-1", repo.sha, "feat: on the trunk");
+    recordJobCheck(database, "job-1", { command: "bun run verify", exitCode: 0, result: "green" });
+    appendJobEvent(database, "job-1", { kind: "completed", status: "completed" });
+
+    expect(database.query("SELECT status FROM factory_job").get()).toEqual({ status: "completed" });
+    database.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+  });
+
+  test("counts a check by when it was recorded, not by when it says it ran", () => {
+    const repo = integratedRepo();
+    const database = db();
+    createJob(database, { ...job, worktree: repo.dir }, "2026-09-18T10:00:00.000Z");
+    appendJobEvent(database, "job-1", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    recordJobCommit(database, "job-1", repo.sha, "feat: land it", "2026-09-18T10:03:00.000Z");
+    // The order the station loop runs in: the check finishes, then the commit it
+    // vouches for is made, then both are recorded.
+    recordJobCheck(
+      database,
+      "job-1",
+      {
+        command: "bun run verify",
+        exitCode: 0,
+        result: "green",
+        finishedAt: "2026-09-18T10:02:00.000Z",
+      },
+      "2026-09-18T10:04:00.000Z",
+    );
+
+    appendJobEvent(database, "job-1", { kind: "completed", status: "completed" });
+
+    expect(database.query("SELECT status FROM factory_job").get()).toEqual({ status: "completed" });
+    database.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+  });
+
+  test("says what it cannot read when a trunk is named but not present", () => {
+    const repo = repoWithoutTrunk();
+    Bun.spawnSync([
+      "git",
+      "-C",
+      repo.dir,
+      "symbolic-ref",
+      "refs/remotes/origin/HEAD",
+      "refs/remotes/origin/trunk",
+    ]);
+    const database = db();
+    createJob(database, { ...job, worktree: repo.dir }, "2026-09-18T10:00:00.000Z");
+    appendJobEvent(database, "job-1", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    recordJobCommit(database, "job-1", repo.sha, "feat: land it");
+    recordJobCheck(database, "job-1", { command: "bun run verify", exitCode: 0, result: "green" });
+
+    expect(() => appendJobEvent(database, "job-1", { kind: "completed", status: "completed" })).toThrow(
+      /names trunk as its trunk but has no local branch/,
+    );
+    database.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+  });
+
+  test("says the worktree is gone rather than that it names no trunk", () => {
+    const database = db();
+    const gone = join(tmpdir(), `dim-gone-${Date.now()}`);
+    createJob(database, { ...job, worktree: gone }, "2026-09-18T10:00:00.000Z");
+    appendJobEvent(database, "job-1", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    recordJobCommit(database, "job-1", trunk.sha, "feat: land it");
+    recordJobCheck(database, "job-1", { command: "bun run verify", exitCode: 0, result: "green" });
+
+    expect(() => appendJobEvent(database, "job-1", { kind: "completed", status: "completed" })).toThrow(
+      /is not a git repo that can be read/,
+    );
+    database.close();
+  });
+
+  test("says a commit is missing rather than unmerged when the repo lacks it", () => {
+    const repo = integratedRepo();
+    const database = db();
+    createJob(database, { ...job, worktree: repo.dir }, "2026-09-18T10:00:00.000Z");
+    appendJobEvent(database, "job-1", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    recordJobCommit(database, "job-1", "0000000000000000000000000000000000000000", "feat: mistyped");
+    recordJobCheck(database, "job-1", { command: "bun run verify", exitCode: 0, result: "green" });
+
+    expect(() => appendJobEvent(database, "job-1", { kind: "completed", status: "completed" })).toThrow(
+      /does not have, so nothing there can place them/,
+    );
+    database.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+  });
+
+  test("refuses to complete a job that recorded no commit at all", () => {
+    const repo = integratedRepo();
+    const database = db();
+    createJob(database, { ...job, worktree: repo.dir }, "2026-09-18T10:00:00.000Z");
+    appendJobEvent(database, "job-1", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    recordJobCheck(database, "job-1", { command: "bun run verify", exitCode: 0, result: "green" });
+
+    expect(() => appendJobEvent(database, "job-1", { kind: "completed", status: "completed" })).toThrow(
+      expect.objectContaining({ code: "job_not_integrated" }),
+    );
+    database.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+  });
+
+  test("refuses to complete where the repo does not name a trunk to reach", () => {
+    const repo = repoWithoutTrunk();
+    const database = db();
+    createJob(database, { ...job, worktree: repo.dir }, "2026-09-18T10:00:00.000Z");
+    appendJobEvent(database, "job-1", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    recordJobCommit(database, "job-1", repo.sha, "feat: land it");
+    recordJobCheck(database, "job-1", { command: "bun run verify", exitCode: 0, result: "green" });
+
+    expect(() => appendJobEvent(database, "job-1", { kind: "completed", status: "completed" })).toThrow(
+      expect.objectContaining({ code: "job_trunk_unknown" }),
+    );
+    expect(database.query("SELECT status FROM factory_job").get()).toEqual({ status: "running" });
+    database.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+  });
+
   test("refuses to complete a job no passing check was recorded for", () => {
     const database = db();
     createJob(database, job, "2026-09-18T10:00:00.000Z");
@@ -273,6 +421,7 @@ describe("factory job report records", () => {
       { command: "bun run verify", exitCode: 1, result: "2 failed" },
       "2026-09-18T10:02:00.000Z",
     );
+    recordJobCommit(database, "job-1", trunk.sha, "feat: land it", "2026-09-18T10:02:30.000Z");
 
     expect(() => appendJobEvent(database, "job-1", { kind: "completed", status: "completed" })).toThrow(
       expect.objectContaining({ code: "job_not_checked" }),
@@ -301,7 +450,7 @@ describe("factory job report records", () => {
       { command: "bun run verify", exitCode: 0, result: "green" },
       "2026-09-18T10:02:00.000Z",
     );
-    recordJobCommit(database, "job-1", "abc123", "feat: land it", "2026-09-18T10:03:00.000Z");
+    recordJobCommit(database, "job-1", trunk.sha, "feat: land it", "2026-09-18T10:03:00.000Z");
 
     expect(() => appendJobEvent(database, "job-1", { kind: "completed", status: "completed" })).toThrow(
       expect.objectContaining({ code: "job_not_checked" }),
@@ -402,7 +551,7 @@ describe("factory job report records", () => {
       run_id: "run-1",
       queue_id: "queue-1",
       item_id: "item-1",
-      worktree: "/tmp/wt",
+      worktree: trunk.dir,
       branch: "job-1",
       station: "dim-station-build",
       status: "claimed",
@@ -451,7 +600,7 @@ describe("factory job report records", () => {
     });
 
     appendJobEvent(database, "job-1", { kind: "started", status: "running" });
-    recordJobCheck(database, "job-1", { command: "bun run verify", exitCode: 0, result: "green" });
+    landed(database, "job-1");
     appendJobEvent(database, "job-1", { kind: "completed", status: "completed" });
 
     expect(() => moveJob(database, "job-1", "dim-station-review")).toThrow(/already completed/);
@@ -465,7 +614,7 @@ describe("factory job report records", () => {
     const database = db();
     createJob(database, job, "2026-09-18T10:00:00.000Z");
     appendJobEvent(database, "job-1", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
-    recordJobCommit(database, "job-1", "abc123", "feat: job", "2026-09-18T10:02:00.000Z");
+    recordJobCommit(database, "job-1", trunk.sha, "feat: job", "2026-09-18T10:02:00.000Z");
     recordJobFile(database, "job-1", "src/factory-job.ts", "2026-09-18T10:02:30.000Z");
     const check = recordJobCheck(
       database,
@@ -491,7 +640,7 @@ describe("factory job report records", () => {
       completed_at: "2026-09-18T10:06:00.000Z",
       stop_reason: "verified",
     });
-    expect(database.query("SELECT sha FROM factory_job_commit").get()).toEqual({ sha: "abc123" });
+    expect(database.query("SELECT sha FROM factory_job_commit").get()).toEqual({ sha: trunk.sha });
     expect(database.query("SELECT path FROM factory_job_file").get()).toEqual({
       path: "src/factory-job.ts",
     });
@@ -560,15 +709,9 @@ describe("factory job report records", () => {
         "2026-09-18T10:00:00.000Z",
       );
       appendJobEvent(database, jobId, { kind: "started", status: "running" }, "2026-09-18T10:00:30.000Z");
-      const checks = status === "completed" ? 1 : 0;
-      if (checks) {
-        recordJobCheck(
-          database,
-          jobId,
-          { command: "bun run verify", exitCode: 0, result: "green" },
-          "2026-09-18T10:00:45.000Z",
-        );
-      }
+      // A completed job needs its commit and check on the record before the gate lets it stop.
+      const staged = status === "completed" ? 2 : 0;
+      if (staged) landed(database, jobId, "2026-09-18T10:00:45.000Z");
       appendJobEvent(database, jobId, { kind: status, status }, "2026-09-18T10:01:00.000Z");
 
       expect(() => appendJobEvent(database, jobId, { kind: "started", status: "running" })).toThrow();
@@ -580,7 +723,7 @@ describe("factory job report records", () => {
       expect(
         database.query("SELECT count(*) AS count FROM factory_job_event WHERE job_id = ?").get(jobId),
       ).toEqual({
-        count: 3 + checks,
+        count: 3 + staged,
       });
     }
     database.close();
