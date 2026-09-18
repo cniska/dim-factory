@@ -23,6 +23,7 @@ Each page owns its subject. A fact lives on one of them and is linked to from th
 - [Reaching a session without being asked](recall.md) — the channel that arrives, and the benchmark that scores what is pulled
 - [Worktrees](worktrees.md) — parallel checkouts, and undoing what an agent wrote
 - [Human interface](human-interface.md) — the read-only wall for factory state
+- [Glossary](glossary.md) — the words this repo uses, one per thing
 
 ## Designs not yet built
 
