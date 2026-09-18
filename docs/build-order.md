@@ -38,6 +38,8 @@ The corpus-native half of the measurement is built: `dim bench` scores a hand-la
 
 - **A reversible queue planner.** The planned queue layer is a tracked file issue format plus a small Node or Bun CLI. It owns item intent, dependencies and queue status; it identifies unblocked work for parallel isolated jobs and writes status transitions back to the file. [`factory.md`](factory.md) keeps this boundary separate from the persisted `factory_job` execution report, whose claims, events and evidence remain the factory's operational record.
 
+- **A harness-neutral factory scheduler.** [`factory.md`](factory.md) defines the boundary: `dim` owns schedule state, due selection and run evidence, while Codex, launchd, cron or another host only invokes it. The first slice is the schedule definition and read path; host installation remains outside it.
+
 - **A scheduled architecture review.** A read-only `dim-review` pass uses the architecture dimension over a coherent group of changes or a change that crosses a module, schema, queue or hook boundary. It reports responsibility, contract and dependency drift separately from tests and slice checks; the review runs when the queue presents that boundary, not on an arbitrary timer.
 
 - **`PostToolUse` as an installed event**, which records tool activity for the observable loop and clears the formatter and weakening guard below. It records that a call happened and a later pass reads the record, the way the session hooks spool rather than write, because a hook firing on every tool call that can fail is a hook that can break every session.
