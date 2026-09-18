@@ -211,6 +211,23 @@ describe("rebuilding a database an older schema wrote", () => {
     db.close();
   });
 
+  test("a factory job keeps the statement the queue stated it in", () => {
+    const { db, env } = scratch();
+    db.run(
+      `INSERT INTO factory_job (id, run_id, queue_id, item_id, title, statement, status, claimed_at, updated_at)
+       VALUES ('job-1', 'run-1', 'build-order', 'item-1', 'Survive a rebuild',
+               'No surface can tell a reader what a job is about.', 'running',
+               '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+    );
+
+    rebuild(db, env);
+
+    expect(db.query("SELECT id, statement FROM factory_job").all()).toEqual([
+      { id: "job-1", statement: "No surface can tell a reader what a job is about." },
+    ]);
+    db.close();
+  });
+
   test("a factory job written before the title column stops the rebuild", () => {
     const { db, env } = scratch();
     db.run("ALTER TABLE factory_job DROP COLUMN title");

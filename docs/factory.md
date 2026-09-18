@@ -33,11 +33,13 @@ Station transfers use the factory's `dim-handoff`. It requires strict `# Handoff
 
 The delivered-product report is persisted in the dim database so it remains queryable after the session rather than existing only in chat. `factory_job` is the current projection; `factory_job_event` is its typed append-only lifecycle ledger; and the normalized evidence tables hold commits, changed files, checks, findings, updated documents and worker-environment reports. The record includes:
 
-- **Identity.** Queue and item identity, the item's title, job and run identity, agent identity, worktree and branch.
+- **Identity.** Queue and item identity, the item's title and the statement the queue made of it, job and run identity, agent identity, worktree and branch.
 - **Work.** Station, delegation tree, changed files and commit SHA.
 - **Verification.** Repository check command and result, checker findings and their resolutions, and updated docs.
 - **Outcome.** Final status — completed, blocked, fenced, failed or abandoned — with fence or blocker evidence and timestamps for the lifecycle events.
 - **Environment.** Each setup and teardown report the job attached: the phase, the hook command, its exit code or the signal that killed it, its output, and the resource identifiers the hook named.
+
+The statement is copied into the record at claim time rather than read from the queue when someone asks. The queue is edited as work lands, so the wording a job was worked to survives only where the claim kept it; a job claimed off a queue that names its items and nothing more carries a title and no statement.
 
 A running job attaches a hook report it was handed, and `dim q job` reads it back beside its other evidence. The workspace profile belongs to the planned contract below.
 
@@ -58,7 +60,7 @@ This is planned, not a current guarantee of multi-driver execution. The current 
 
 The self-sufficient job contract is live as `runFactoryJob`: it claims one supplied item, marks it running, passes the item and base revision to a builder, and records the builder's terminal outcome and evidence through the existing factory tables. A builder assigns the job's worktree once, may record bounded delegation through `context.delegate`, and stops through `context.stop` or by returning one terminal outcome. Non-terminal lifecycle events and normalized evidence are accepted only while the job is running; a completed job must have a worktree, and no lifecycle or evidence record can be added after a terminal status. A setup or builder exception records `failed` before the exception is returned to the caller. The driver still supplies the worktree and remains responsible for scheduling, observing and integrating the job; queue selection, serialized integration and queue-state enforcement remain outside this slice.
 
-The same lifecycle is reachable from a shell line, because the factory line is a skill driving agents through commands rather than a TypeScript caller. `dim job claim <job-id> --run --queue --item --title` records the claim, with the worktree, branch, agent, session and station it already knows; `dim job start <job-id>` marks it running; and `dim job stop <job-id> <status> [--reason]` records one terminal outcome. A status that is not terminal is refused rather than written, and the ordering rules the job contract already enforces apply unchanged, so a stopped job cannot be started again. Evidence beyond the lifecycle — commits, files, checks, findings and documents — is still written only through the driver.
+The same lifecycle is reachable from a shell line, because the factory line is a skill driving agents through commands rather than a TypeScript caller. `dim job claim <job-id> --run --queue --item --title` records the claim, with `--statement` for the item's own words and the worktree, branch, agent, session and station it already knows; `dim job start <job-id>` marks it running; and `dim job stop <job-id> <status> [--reason]` records one terminal outcome. A status that is not terminal is refused rather than written, and the ordering rules the job contract already enforces apply unchanged, so a stopped job cannot be started again. Evidence beyond the lifecycle — commits, files, checks, findings and documents — is still written only through the driver.
 
 ## Worker environments
 

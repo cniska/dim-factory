@@ -11,7 +11,7 @@ import {
 export class JobCommandError extends Error {}
 
 export const JOB_USAGE = `usage: dim job claim <job-id> --run <id> --queue <id> --item <id> --title "..."
-                      [--agent <id>] [--session <id>] [--station <name>]
+                      [--statement "..."] [--agent <id>] [--session <id>] [--station <name>]
                       [--worktree <path>] [--branch <name>]
        dim job start <job-id>
        dim job stop <job-id> <${TERMINAL_JOB_STATUSES.join("|")}> [--reason "..."]`;
@@ -21,6 +21,7 @@ const CLAIM_FLAGS = [
   "--queue",
   "--item",
   "--title",
+  "--statement",
   "--agent",
   "--session",
   "--station",
@@ -65,6 +66,7 @@ function claim(db: Database, jobId: string, args: string[]): string {
     queueId,
     itemId,
     title: required(given, "--title"),
+    statement: given.get("--statement"),
     agentId: given.get("--agent"),
     sessionId: given.get("--session"),
     worktree: given.get("--worktree"),
