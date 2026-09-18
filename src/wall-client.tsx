@@ -193,12 +193,18 @@ function JobCard({
         >
           Open {job.title}
         </button>
+        {/* Nobody recorded leaves the slot empty rather than spending the card's
+            one identity line saying so: the absence is already the message. */}
         <span className="flex min-w-0 items-center gap-1.5">
-          <Robot
-            label={`${job.worker ?? NO_WORKER}, ${job.role === "unknown" ? "role unknown" : job.role}`}
-            className={roleTint[job.role]}
-          />
-          <span className="truncate">{job.worker ?? NO_WORKER}</span>
+          {job.worker ? (
+            <>
+              <Robot
+                label={`${job.worker}, ${job.role === "unknown" ? "role unknown" : job.role}`}
+                className={roleTint[job.role]}
+              />
+              <span className="truncate">{job.worker}</span>
+            </>
+          ) : null}
         </span>
         <Badge className="shrink-0">{STATION_LABELS[job.station]}</Badge>
       </CardFooter>
