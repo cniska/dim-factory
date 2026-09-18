@@ -17,6 +17,7 @@ Files use a domain-concern name where the boundary is useful: `factory-job.ts`, 
 | Factory | `factory-job.ts`, `queue-planner.ts`, `queries.ts` | Plan file-backed work separately from persisted job lifecycle and evidence |
 | Session context | `handoff.ts`, `wake.ts`, `guidance.ts`, `skill-load.ts` | Persist strict handoffs and carry context into a later session |
 | Gates and installation | `commit-gate.ts`, `push-gate.ts`, `codex-trust.ts`, `hooks.ts`, `rules.ts`, `installed-skills.ts` | Install and enforce shared controls |
+| Tool configs | `jsonc.ts`, `jsonc-file.ts` | Edit the JSONC a tool's config is written in, text apart from the file holding it |
 | Work and repositories | `worktree.ts`, `checkout.ts`, `git-*.ts`, `repo-*.ts`, `remote-slug.ts` | Identify repositories and manage isolated work |
 
 The CLI is the wiring boundary. Domain modules own the behavior that tests exercise; hooks and commands adapt external payloads and process arguments to those modules.

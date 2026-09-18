@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfigError } from "./config-error";
-import { readJsonc, readJsoncText } from "./jsonc-file";
+import { readJsonc, readJsoncText, writeJsoncFile } from "./jsonc-file";
 
 function newDir(): string {
   return mkdtempSync(join(tmpdir(), "dim-jsonc-file-"));
@@ -43,5 +43,24 @@ describe("reading a config from disk", () => {
       expect((e as ConfigError).kind).toBe("parse");
       expect((e as ConfigError).path).toBe(path);
     }
+  });
+});
+
+describe("writing a config back", () => {
+  test("keeps the replaced config beside itself", () => {
+    const dir = newDir();
+    const path = join(dir, "settings.json");
+    writeFileSync(path, '{ "hooks": { "SessionEnd": [] } }');
+
+    expect(writeJsoncFile(path, '{ "hooks": {} }')).toBe(`${path}.dim-backup`);
+    expect(readFileSync(`${path}.dim-backup`, "utf8")).toBe('{ "hooks": { "SessionEnd": [] } }');
+    expect(readFileSync(path, "utf8")).toBe('{ "hooks": {} }');
+  });
+
+  test("creates the directory a first config is written into", () => {
+    const path = join(newDir(), "nested", "settings.json");
+
+    expect(writeJsoncFile(path, '{ "hooks": {} }')).toBeNull();
+    expect(readFileSync(path, "utf8")).toBe('{ "hooks": {} }');
   });
 });
