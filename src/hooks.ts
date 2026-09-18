@@ -1,8 +1,7 @@
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { ConfigError } from "./config-error";
 import { appendToJsoncArray, parseJsonc } from "./jsonc";
-import { readJsonc, readJsoncText } from "./jsonc-file";
+import { readJsonc, readJsoncText, writeJsoncFile } from "./jsonc-file";
 import { claudeProjectsDir, codexDir, type Env } from "./paths";
 import { toolSpoolDir } from "./spool";
 import { TOOLS, type Tool } from "./tools";
@@ -117,11 +116,7 @@ function refuseIneffective(text: string, configPath: string, plans: HookPlan[]):
 
 export type InstallReport = { written: string[]; alreadyPresent: number; backups: string[] };
 
-/**
- * Append the spool hook to each config, leaving every hook already there alone.
- * The original is copied beside itself first: this edits the file that decides
- * whether the user's sessions start at all.
- */
+/** Append the spool hook to each config, leaving every hook already there alone. */
 export function installHooks(env: Env = process.env): InstallReport {
   const report: InstallReport = { written: [], alreadyPresent: 0, backups: [] };
   const byConfig = new Map<string, HookPlan[]>();
@@ -149,15 +144,8 @@ export function installHooks(env: Env = process.env): InstallReport {
   }
 
   for (const { configPath, text } of pending) {
-    const present = existsSync(configPath);
-    if (present) {
-      const backup = `${configPath}.dim-backup`;
-      copyFileSync(configPath, backup);
-      report.backups.push(backup);
-    } else {
-      mkdirSync(dirname(configPath), { recursive: true });
-    }
-    writeFileSync(configPath, text);
+    const backup = writeJsoncFile(configPath, text);
+    if (backup) report.backups.push(backup);
     report.written.push(configPath);
   }
   return report;
