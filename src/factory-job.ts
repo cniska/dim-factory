@@ -46,6 +46,10 @@ export type JobEvent = {
 const now = (): string => new Date().toISOString();
 const terminalStatuses = new Set<JobStatus>(["completed", "blocked", "fenced", "failed", "abandoned"]);
 
+export function isTerminalJobStatus(status: JobStatus): boolean {
+  return terminalStatuses.has(status);
+}
+
 function eventValues(jobId: string, event: JobEvent, ts: string): (string | number | null)[] {
   return [
     jobId,
@@ -95,13 +99,37 @@ export function createJob(db: Database, job: Job, at = now()): void {
   })();
 }
 
+export function updateJobLocation(db: Database, jobId: string, worktree: string, branch: string): void {
+  const result = db.run("UPDATE factory_job SET worktree = ?, branch = ?, updated_at = ? WHERE id = ?", [
+    worktree,
+    branch,
+    now(),
+    jobId,
+  ]);
+  if (result.changes !== 1) throw new Error(`job not found: ${jobId}`);
+}
+
+export function jobStatus(db: Database, jobId: string): JobStatus {
+  const job = db.query("SELECT status FROM factory_job WHERE id = ?").get(jobId) as {
+    status: JobStatus;
+  } | null;
+  if (!job) throw new Error(`job not found: ${jobId}`);
+  return job.status;
+}
+
 export function appendJobEvent(db: Database, jobId: string, event: JobEvent, at = now()): void {
   db.transaction(() => {
+    if (isTerminalJobStatus(event.kind as JobStatus) && event.status !== event.kind) {
+      throw new Error(`terminal event kind must match its status: ${event.kind}`);
+    }
+    if (event.status && isTerminalJobStatus(event.status) && event.kind !== event.status) {
+      throw new Error(`terminal event status must match its kind: ${event.status}`);
+    }
     const job = db.query("SELECT status FROM factory_job WHERE id = ?").get(jobId) as {
       status: JobStatus;
     } | null;
     if (!job) throw new Error(`job not found: ${jobId}`);
-    if (terminalStatuses.has(job.status)) {
+    if (isTerminalJobStatus(job.status)) {
       throw new Error(`job ${jobId} is already ${job.status}`);
     }
 
