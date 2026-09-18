@@ -80,8 +80,6 @@ type JobRow = {
   agent_id: string | null;
   station: string | null;
   status: string;
-  claimed_at: string;
-  updated_at: string;
   stop_reason: string | null;
   run_id: string;
   queue_id: string;
@@ -95,7 +93,7 @@ type JobRow = {
 };
 
 const JOB_ROW_SELECT = `SELECT j.id, j.item_id, j.title, j.agent_id, j.station, j.status,
-              j.claimed_at, j.updated_at, j.stop_reason, j.run_id, j.queue_id, j.worktree, j.branch,
+              j.stop_reason, j.run_id, j.queue_id, j.worktree, j.branch,
               e.ts AS last_event_at, e.reason AS latest_reason, e.station AS latest_station,
               e.actor_id AS latest_actor,
               (SELECT count(*) FROM factory_job_check c

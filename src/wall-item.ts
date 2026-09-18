@@ -24,6 +24,14 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
  *  of reading them. */
 export type RailMark = "moment" | "handover" | "outcome";
 
+/** What each mark is drawn as. A dot for a moment, an arrow where one agent's run ends and
+ *  another's begins, a filled square where the job stops. */
+export const RAIL_MARK_GLYPH: Record<RailMark, string> = {
+  moment: "·",
+  handover: "→",
+  outcome: "■",
+};
+
 const RAIL_MARK_BY_KIND: Record<WallItemKind, RailMark> = {
   claimed: "moment",
   started: "moment",

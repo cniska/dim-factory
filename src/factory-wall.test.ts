@@ -170,6 +170,22 @@ describe("factory wall snapshot", () => {
     db.close();
   });
 
+  test("has an event to age every claimed job from", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    createJob(
+      db,
+      { id: "job-fresh", runId: "run", queueId: "queue", itemId: "fresh", title: "Only just claimed" },
+      "2026-09-18T10:00:00.000Z",
+    );
+
+    // The board reads its one figure off the last event, which holds because a claim writes an
+    // event in the same transaction as the job row.
+    expect(db.query("SELECT count(*) AS events FROM factory_job_event").get()).toEqual({ events: 1 });
+    expect(assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).jobs[0]?.age).toBe("5m");
+    db.close();
+  });
+
   test("ages a job from its last recorded event, not from the row's last write", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
