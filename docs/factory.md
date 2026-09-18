@@ -37,6 +37,8 @@ The delivered-product report is persisted in the dim database so it remains quer
 - **Outcome.** Final status — completed, blocked, fenced, failed or abandoned — with fence or blocker evidence and timestamps for the lifecycle events.
 - **Environment.** Workspace profile, setup and teardown commands, changed resource identifiers, service health results and cleanup status.
 
+The workspace slice currently prints setup and teardown reports from `dim wt`; attaching them to `factory_job` evidence remains part of the planned job persistence boundary.
+
 The report lifecycle is a durable sequence from claim through running to completion or a stopped outcome, with evidence recorded as the job progresses. A terminal status cannot transition to another status, and each lifecycle event and its aggregate projection are written atomically. `dim q factory [job-id-prefix]` reads one unified current-status row per matching job, including its latest lifecycle event and normalized evidence; `dim q job <job-id>` remains the detailed event-and-evidence view. These operational tables survive `dim rebuild`, deliberately like `hook_event`, `command_trace` and `finding`: no transcript or file source can recreate a job's claims and judgements after the fact.
 
 The persistence contract is live. The first driver slice is live as `runFactoryJob`: it claims one supplied item, marks it running, passes the item and base revision to a builder, and records the builder's terminal outcome and evidence through the existing factory tables. The builder supplies the isolated worktree location and station work. Scheduling, queue selection, serialized landing and queue-state enforcement remain outside this slice; those orchestration boundaries are not inferred from a report row.

@@ -1,6 +1,7 @@
 import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { warn } from "./warn";
+import { runWorkerHook, type WorkerEnvironmentPhase, type WorkerHookReport } from "./worker-environment";
 
 /**
  * One task, one worktree, at `<repo>/.claude/worktrees/<branch>` — the path
@@ -77,11 +78,26 @@ function isExecutable(path: string): boolean {
  * Opt-in per repo and non-fatal: a failed install still leaves a worktree to
  * debug in, which is what keeps this generic across repos.
  */
+function reportHook(report: WorkerHookReport): void {
+  if (report.stdout) process.stdout.write(report.stdout);
+  if (report.stderr) process.stderr.write(report.stderr);
+  console.log(`wt: ${report.phase} report ${JSON.stringify(report)}`);
+}
+
+function runHook(path: string, phase: WorkerEnvironmentPhase): WorkerHookReport | null {
+  const hook = join(path, "scripts", phase === "setup" ? "worktree-setup.sh" : "worktree-teardown.sh");
+  if (!isExecutable(hook)) return null;
+  const report = runWorkerHook(phase, hook, path);
+  reportHook(report);
+  return report;
+}
+
 function bootstrap(path: string): void {
   const hook = join(path, "scripts", "worktree-setup.sh");
   if (!isExecutable(hook)) return;
   console.log("wt: bootstrapping worktree via scripts/worktree-setup.sh");
-  const rc = hookStatus(Bun.spawnSync([hook], { cwd: path, stdout: "inherit", stderr: "inherit" }));
+  const report = runHook(path, "setup");
+  const rc = report === null ? 0 : hookStatus(report);
   if (rc === 0) console.log("wt: bootstrap complete");
   else warn(`wt: bootstrap failed (exit ${rc}) — worktree created; fix and re-run the hook`);
 }
@@ -96,7 +112,8 @@ function teardown(path: string, force: boolean): void {
   const hook = join(path, "scripts", "worktree-teardown.sh");
   if (!isExecutable(hook)) return;
   console.log("wt: tearing down worktree via scripts/worktree-teardown.sh");
-  const rc = hookStatus(Bun.spawnSync([hook], { cwd: path, stdout: "inherit", stderr: "inherit" }));
+  const report = runHook(path, "teardown");
+  const rc = report === null ? 0 : hookStatus(report);
   if (rc === 0) return;
   if (!force) die(`teardown failed (exit ${rc}) — worktree kept; fix it, or re-run with --force`);
   warn(`wt: teardown failed (exit ${rc}) — removing anyway (--force)`);
