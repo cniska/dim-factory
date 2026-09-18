@@ -756,24 +756,28 @@ const rework: Query = {
               round(100.0 * sum(edits > 1 AND stops > 0) / count(*), 1) AS pushback_rate
        FROM marked
        ${arg ? "WHERE skill = ?" : ""}
-       GROUP BY skill HAVING files_touched >= 20
-       ORDER BY pushback_rate DESC`,
+       GROUP BY skill
+       ORDER BY pushback_rate DESC, files_touched DESC`,
       [...window("t.ts_call", ctx).params, ...(arg ? [arg] : [])],
     );
     const w = window("ts_call", ctx);
     const total = scalar(
       db,
       `SELECT count(*) AS n FROM tool_call
-       WHERE tool_name IN ('Edit','Write') AND file_path IS NOT NULL${w.sql}`,
+       WHERE tool_name IN ('Edit','Write') AND file_path IS NOT NULL AND ts_call IS NOT NULL${w.sql}`,
       ...w.params,
     );
     return {
-      denominator: `${total} file edits; rows shown only where a skill touched at least 20 files (${windowLine(ctx)})`,
+      denominator:
+        `${total} file edits; ${arg ? `rows cover ${arg} alone, and` : "every skill that edited a file is a row, and"}` +
+        ` \`files_touched\` is the base each rate stands on (${windowLine(ctx)})`,
       columns,
       rows: toRows(records, columns),
       note:
         (records.length === 0
-          ? "no skill has touched enough files to report a rate. "
+          ? arg
+            ? `no file edit is attributed to ${arg} in this window. `
+            : "no agent edit in this window carries both a file path and a timestamp. "
           : "`after_pushback` counts a file revisited while the user was stopping the agent. It is a " +
             "co-occurrence, not a cause: a skill loads because the task is a certain kind. Read it as " +
             "where to look, never as which skill is worse. ") + claudeOnly(CLAUDE_EDITS, CLAUDE_STOPS),
@@ -1682,8 +1686,8 @@ const fixes: Query = {
                     avg(julianday(fixed_at) - julianday(last_edit))
                       OVER (PARTITION BY skill) AS mean_days
              FROM verdict v)
-       GROUP BY skill HAVING files >= 20
-       ORDER BY fixed_pct DESC`,
+       GROUP BY skill
+       ORDER BY fixed_pct DESC, files DESC`,
       w.params,
     );
     const commits = scalar(db, "SELECT count(*) AS n FROM repo_commit");
@@ -1691,14 +1695,14 @@ const fixes: Query = {
     return {
       denominator:
         `${fixCommits} fix commits of ${commits} read from the repos on disk (${windowLine(ctx)}); ` +
-        "rows shown only where a skill touched at least 20 files",
+        "every skill that edited a file is a row, and `files` is the base each rate stands on",
       columns,
       rows: toRows(records, columns),
       note:
         (commits === 0
           ? "no commits read: the working directories in this corpus are gone or were never repos. `dim sync`. "
           : records.length === 0
-            ? "no skill touched enough files in this window to report a rate. "
+            ? "no agent edit in this window carries a file path, a timestamp and a session working directory. "
             : "A `fix:` commit naming a file is the repo's verdict that the file needed changing, not " +
               "proof the agent caused it — a fix may land on code it never wrote, and work nobody came " +
               "back to may still be wrong. `mean_days` covers only the files that were fixed. Matching is by conventional-commit type, so a fix committed without the " +
