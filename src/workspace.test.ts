@@ -82,6 +82,72 @@ describe("workspace contract", () => {
     expect(contract.capabilities).toEqual({ format: false, analyze: false, test: false });
   });
 
+  test("separates a repository with no compose file from one whose compose file names no services", () => {
+    const silent = workspaceContract(repo({ "package.json": "{}" }));
+    const empty = workspaceContract(repo({ "compose.yaml": "services:\n" }));
+    if (silent === null || empty === null) throw new Error("expected a workspace contract");
+
+    expect(silent.services).toBeNull();
+    expect(empty.services).toEqual({ value: [], source: "compose.yaml" });
+  });
+
+  test("names the services a compose file declares without reading their shape", () => {
+    const root = repo({
+      "docker-compose.yml": [
+        "services:",
+        "  postgres: &db",
+        "    image: postgres:16",
+        "    ports:",
+        "      - 5432:5432",
+        "# the cache came later",
+        "  redis:",
+        "    image: redis",
+        "volumes:",
+        "  pgdata:",
+      ].join("\n"),
+    });
+    const contract = workspaceContract(root);
+    if (contract === null) throw new Error("expected a workspace contract");
+
+    expect(contract.services).toEqual({ value: ["postgres", "redis"], source: "docker-compose.yml" });
+  });
+
+  test("reads services written as a flow mapping", () => {
+    const root = repo({ "compose.yaml": 'services: {api: {}, "db": {}}\n' });
+    const contract = workspaceContract(root);
+    if (contract === null) throw new Error("expected a workspace contract");
+
+    expect(contract.services).toEqual({ value: ["api", "db"], source: "compose.yaml" });
+  });
+
+  test("ignores a services key nested under another top-level key", () => {
+    const root = repo({ "compose.yaml": "x-defaults:\n  services:\n    fake:\n" });
+    const contract = workspaceContract(root);
+    if (contract === null) throw new Error("expected a workspace contract");
+
+    expect(contract.services).toEqual({ value: [], source: "compose.yaml" });
+  });
+
+  test("stays silent about a compose file it cannot read as a mapping", () => {
+    const broken = workspaceContract(repo({ "compose.yaml": "services:\n  - api\n" }));
+    const unparsed = workspaceContract(repo({ "compose.yaml": "services:\n\tapi:\n  db:\n" }));
+    if (broken === null || unparsed === null) throw new Error("expected a workspace contract");
+
+    expect(broken.services).toBeNull();
+    expect(unparsed.services).toBeNull();
+  });
+
+  test("prefers the compose file Compose itself would resolve first", () => {
+    const root = repo({
+      "compose.yaml": "services:\n  api:\n",
+      "docker-compose.yml": "services:\n  legacy:\n",
+    });
+    const contract = workspaceContract(root);
+    if (contract === null) throw new Error("expected a workspace contract");
+
+    expect(contract.services).toEqual({ value: ["api"], source: "compose.yaml" });
+  });
+
   test("does not treat a later YAML list as workspace members", () => {
     const root = repo({
       "pubspec.yaml": "name: parser\nworkspace:\n  - packages/core\nother:\n  - unrelated\n",

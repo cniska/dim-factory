@@ -6,6 +6,8 @@ import { worktreeOf } from "./worktree";
 
 export type WorkspaceMember = { path: string; source: string };
 export type WorkerHook = { path: string; argv: string[] };
+/** A repository's own answer and the file it answered in; `null` where it did not answer. */
+export type Declaration<T> = { value: T; source: string };
 export type WorkspaceContract = {
   checkoutRoot: string;
   worktree: { path: string; name: string | null; branch: string | null };
@@ -18,6 +20,7 @@ export type WorkspaceContract = {
   formatTask: Task | null;
   bootstrap: { command: string[]; source: string } | null;
   capabilities: { format: boolean; analyze: boolean; test: boolean };
+  services: Declaration<string[]> | null;
   setup: WorkerHook | null;
   teardown: WorkerHook | null;
 };
@@ -53,6 +56,39 @@ function pubspecFacts(root: string): {
     if (inWorkspace && /^(?:[^\s:#][^:]*):(?:\s.*)?$/.test(line)) inWorkspace = false;
   }
   return { kind: flutter ? "flutter" : "dart", members };
+}
+
+/** Compose's own precedence, so a repository keeping a legacy name beside the current one gets the current one. */
+const COMPOSE_FILES = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"];
+
+function isMapping(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Service names only: an image, a port or a `depends_on` edge is a topology the
+ * repository's setup hook owns, and a profile repeating one asserts a port no
+ * hook allocated. A file that cannot be read as a mapping returns `null` rather
+ * than an empty list, because an empty list is the repository saying it needs no
+ * services and a parse this module gave up on is not the repository saying anything.
+ */
+function declaredServices(root: string): Declaration<string[]> | null {
+  for (const file of COMPOSE_FILES) {
+    const text = manifest(join(root, file));
+    if (text === null) continue;
+    let parsed: unknown;
+    try {
+      parsed = Bun.YAML.parse(text);
+    } catch {
+      return null;
+    }
+    if (!isMapping(parsed)) return null;
+    const services = parsed.services;
+    if (services === undefined || services === null) return { value: [], source: file };
+    if (!isMapping(services)) return null;
+    return { value: Object.keys(services), source: file };
+  }
+  return null;
 }
 
 function declaredCapability(tasks: Task[], names: string[]): boolean {
@@ -107,6 +143,7 @@ export function workspaceContract(dir: string): WorkspaceContract | null {
       analyze: declaredCapability(tasks, ["analyze", "analyse"]),
       test: declaredCapability(tasks, ["test", "tests"]),
     },
+    services: declaredServices(root),
     setup: hook(root, "worktree-setup.sh"),
     teardown: hook(root, "worktree-teardown.sh"),
   };
