@@ -1,0 +1,19 @@
+import type { Database } from "bun:sqlite";
+import { checkTask } from "./tasks";
+
+export type RepoCheckReport = { repos: number };
+
+/** Re-read the check declaration for every repository named by a session. */
+export function recordRepoChecks(db: Database): RepoCheckReport {
+  const repos = db
+    .prepare<{ repo: string }, []>("SELECT DISTINCT project AS repo FROM session WHERE project IS NOT NULL")
+    .all();
+  const upsert = db.prepare(
+    `INSERT INTO repo_check (repo, command) VALUES (?, ?)
+     ON CONFLICT(repo) DO UPDATE SET command = excluded.command`,
+  );
+  db.transaction(() => {
+    for (const { repo } of repos) upsert.run(repo, checkTask(repo)?.command ?? null);
+  })();
+  return { repos: repos.length };
+}

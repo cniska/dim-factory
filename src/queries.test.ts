@@ -643,9 +643,10 @@ describe("what a query counts of each tool", () => {
     try {
       db.run(SCHEMA_SQL);
       db.run(
-        `INSERT INTO session (id, tool, cwd, started_at, last_seen_at)
-         VALUES ('c1', 'codex', '/w', '2026-09-01T10:00:00Z', '2026-09-01T11:00:00Z')`,
+        `INSERT INTO session (id, tool, cwd, project, started_at, last_seen_at)
+         VALUES ('c1', 'codex', '/w', '/w', '2026-09-01T10:00:00Z', '2026-09-01T11:00:00Z')`,
       );
+      db.run("INSERT INTO repo_check (repo, command) VALUES ('/w', 'bun run verify')");
       db.run(
         "INSERT INTO source_file (path, tool, kind, session_id) VALUES ('/r.jsonl', 'codex', 'rollout', 'c1')",
       );
@@ -662,6 +663,58 @@ describe("what a query counts of each tool", () => {
       const result = findQuery("slices")?.run(db, {});
       expect(result?.rows).toHaveLength(1);
       expect(result?.rows[0]?.[2]).toBe("yes");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("slices uses the persisted declared command instead of command fragments", () => {
+    const db = new Database(":memory:");
+    try {
+      db.run(SCHEMA_SQL);
+      db.run(
+        `INSERT INTO session (id, tool, cwd, project, started_at, last_seen_at)
+         VALUES ('s1', 'codex', '/repo', '/repo', '2026-09-01T10:00:00Z', '2026-09-01T11:00:00Z')`,
+      );
+      db.run("INSERT INTO repo_check (repo, command) VALUES ('/repo', 'cargo test')");
+      db.run(
+        "INSERT INTO source_file (path, tool, kind, session_id) VALUES ('/r.jsonl', 'codex', 'rollout', 's1')",
+      );
+      db.run(
+        `INSERT INTO tool_call (id, session_id, tool_name, command, ts_call, src_file)
+         VALUES ('check', 's1', 'CommandExecution', 'cargo test', '2026-09-01T10:10:00Z', '/r.jsonl')`,
+      );
+      db.run(
+        `INSERT INTO tool_call (id, session_id, tool_name, command, ts_call, src_file)
+         VALUES ('commit', 's1', 'CommandExecution', 'git commit -m "feat: a slice"', '2026-09-01T10:11:00Z', '/r.jsonl')`,
+      );
+      db.run("INSERT INTO git_command (tool_call_id, position, subcommand) VALUES ('commit', 0, 'commit')");
+
+      expect(findQuery("slices")?.run(db, {}).rows[0]?.[2]).toBe("yes");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("slices labels a repository with no declared check as undeclared", () => {
+    const db = new Database(":memory:");
+    try {
+      db.run(SCHEMA_SQL);
+      db.run(
+        `INSERT INTO session (id, tool, cwd, project, started_at, last_seen_at)
+         VALUES ('s2', 'codex', '/repo', '/repo', '2026-09-01T10:00:00Z', '2026-09-01T11:00:00Z')`,
+      );
+      db.run("INSERT INTO repo_check (repo, command) VALUES ('/repo', NULL)");
+      db.run(
+        "INSERT INTO source_file (path, tool, kind, session_id) VALUES ('/r.jsonl', 'codex', 'rollout', 's2')",
+      );
+      db.run(
+        `INSERT INTO tool_call (id, session_id, tool_name, command, ts_call, src_file)
+         VALUES ('commit', 's2', 'CommandExecution', 'git commit -m "feat: a slice"', '2026-09-01T10:11:00Z', '/r.jsonl')`,
+      );
+      db.run("INSERT INTO git_command (tool_call_id, position, subcommand) VALUES ('commit', 0, 'commit')");
+
+      expect(findQuery("slices")?.run(db, {}).rows[0]?.[2]).toBe("undeclared");
     } finally {
       db.close();
     }

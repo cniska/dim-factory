@@ -1980,9 +1980,6 @@ const chain: Query = {
   },
 };
 
-/** A repo whose check is declared under another name reads as unchecked; the note says so. */
-const CHECK_PATTERNS = ["run verify", "run check", "run ci", "run validate", "run test", "mise run", "make "];
-
 const slices: Query = {
   name: "slices",
   summary: "commits that had no run of the repo's own check in front of them",
@@ -1991,19 +1988,22 @@ const slices: Query = {
     const { arg } = ctx;
     const columns = ["session", "at", "checked", "command"];
     const w = window("c.ts_call", ctx);
-    const isCheck = CHECK_PATTERNS.map(() => "m.command LIKE '%' || ? || '%'").join(" OR ");
     const all = table(
       db,
       `WITH calls AS (
          SELECT c.id, c.session_id, c.ts_call AS ts, c.command, c.is_error AS failed,
+                s.project AS repo, rc.command AS declared_check,
                 max(CASE WHEN g.subcommand = 'commit' THEN 1 ELSE 0 END) AS is_commit
-         FROM tool_call c LEFT JOIN git_command g ON g.tool_call_id = c.id
+         FROM tool_call c
+         JOIN session s ON s.id = c.session_id
+         LEFT JOIN repo_check rc ON rc.repo = s.project
+         LEFT JOIN git_command g ON g.tool_call_id = c.id
          WHERE c.tool_name IN ('Bash', 'CommandExecution') AND c.ts_call IS NOT NULL
            AND c.command IS NOT NULL
            ${arg ? "AND c.session_id LIKE ? || '%'" : ""}${w.sql}
          GROUP BY c.id
        ),
-       m AS (SELECT *, CASE WHEN ${isCheck} THEN 1 ELSE 0 END AS is_check FROM calls m),
+       m AS (SELECT *, CASE WHEN declared_check IS NOT NULL AND command = declared_check THEN 1 ELSE 0 END AS is_check FROM calls),
        commits AS (
          -- A commit the subject gate refused is not a boundary: nothing changed
          -- between it and the retry but the message, so the check in front of it
@@ -2017,14 +2017,15 @@ const slices: Query = {
               substr(ts, 1, 16) AS at,
               -- The check and the commit are often one shell call, which is the
               -- order the station asks for, so that call checks itself.
-              CASE WHEN commits.is_check = 1 OR EXISTS (
+              CASE WHEN commits.declared_check IS NULL THEN 'undeclared'
+              WHEN commits.is_check = 1 OR EXISTS (
                 SELECT 1 FROM m t WHERE t.session_id = commits.session_id AND t.is_check = 1
                   AND t.ts < commits.ts AND (commits.prev IS NULL OR t.ts > commits.prev)
               ) THEN 'yes' ELSE 'no' END AS checked,
               replace(substr(command, 1, 60), char(10), ' ') AS command,
               (SELECT s.project FROM session s WHERE s.id = commits.session_id) AS project
        FROM commits ORDER BY ts DESC`,
-      [...(arg ? [arg] : []), ...w.params, ...CHECK_PATTERNS],
+      [...(arg ? [arg] : []), ...w.params],
     );
     // A fixture repo the OS will delete declares no check, so its commits read as
     // discipline nobody owed. `isScratchRepo` holds the roots, and asking it is
@@ -2041,9 +2042,8 @@ const slices: Query = {
       note:
         records.length === 0
           ? "no commit was made through a shell call in this window"
-          : "A check is a command matching one of " +
-            `${CHECK_PATTERNS.map((p) => `\`${p.trim()}\``).join(", ")}, so a repo whose task is named ` +
-            "something else reads as unchecked. `checked` means a check ran in the same session since the " +
+          : "A check is the exact command recorded from the repository's declared task; a repository with no " +
+            "declared task reads as undeclared. `checked` means a check ran in the same session since the " +
             "previous commit, never that it passed — a failing run and a passing one look alike here. " +
             "This observes; `dim install-commit-gate` is what enforces.",
     };
