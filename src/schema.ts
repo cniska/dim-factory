@@ -1,9 +1,9 @@
 // Every table here is one-to-one with records in the source files and is rebuilt
 // by re-reading them, so a schema change is `dim rebuild`, not a migration. The
-// exceptions carry the reason at the table: guidance_walk, command_trace,
-// factory job records and finding have no source to re-read, embedding holds vectors
-// only a model can produce again, and correction_label and hook_event have no
-// source either but are dropped and written back row for row.
+// exceptions carry the reason at the table: guidance_walk, command_trace and
+// finding have no source to re-read, embedding holds vectors only a model can
+// produce again, and correction_label, hook_event and the factory job records
+// have no source either but are dropped and written back row for row.
 // SCHEMA_VERSION exists so sync can refuse to run against a database only a
 // re-read can correct: a changed column, or a changed rule for what identifies a
 // row, since rows already written keep the old identity. A table added with
@@ -179,8 +179,9 @@ CREATE TABLE IF NOT EXISTS factory_schedule (
 CREATE INDEX IF NOT EXISTS factory_schedule_due ON factory_schedule(enabled, paused, last_evaluated_at);
 
 -- Operational factory evidence is written by the job driver, not derived from
--- transcripts or repository files. It survives rebuild because there is no
--- source that could reproduce a claim, event or report after the fact.
+-- transcripts or repository files. No source could reproduce a claim, event or
+-- report after the fact, so rebuild writes these rows back rather than re-reading
+-- them.
 CREATE TABLE IF NOT EXISTS factory_job (
   id              TEXT PRIMARY KEY,
   run_id          TEXT NOT NULL,
