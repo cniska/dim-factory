@@ -45,11 +45,11 @@ describe("factory wall board", () => {
     });
   });
 
-  test("lifts a job that needs a person above one that is only moving", () => {
+  test("keeps the order the snapshot ranked its jobs in", () => {
     const needsAnswer = { ...job("fenced-item", "active", "build", "fenced"), attention: "scope unclear" };
     const columns = jobsByLifecycle([
-      job("first-running", "active", "build", "running"),
       needsAnswer,
+      job("first-running", "active", "build", "running"),
       job("second-running", "active", "build", "running"),
     ]);
 

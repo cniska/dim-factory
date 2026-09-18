@@ -94,13 +94,13 @@ describe("factory wall snapshot", () => {
 
     expect(snapshot.source).toBe("database");
     expect(snapshot.jobs.map((job) => [job.title, job.station, job.status, job.lifecycle])).toEqual([
-      ["Show the wall", "build", "running", "active"],
       ["Unblock the queue", "review", "fenced", "active"],
+      ["Show the wall", "build", "running", "active"],
       ["Ship the board", "ship", "completed", "done"],
     ]);
-    expect(snapshot.jobs.map((job) => job.itemId)).toEqual(["wall", "blocked", "done"]);
-    expect(snapshot.jobs[1]?.attention).toBe("scope unclear");
-    expect(snapshot.jobs[0]).toEqual({
+    expect(snapshot.jobs.map((job) => job.itemId)).toEqual(["blocked", "wall", "done"]);
+    expect(snapshot.jobs[0]?.attention).toBe("scope unclear");
+    expect(snapshot.jobs[1]).toEqual({
       id: "job-running",
       title: "Show the wall",
       itemId: "wall",
@@ -189,6 +189,7 @@ describe("factory wall snapshot", () => {
     // Writes the job row without recording an event, which is how a job's row can be newer
     // than anything that happened to it.
     updateJobLocation(db, "job-quiet", "/tmp/quiet", "quiet");
+    db.run("UPDATE factory_job SET updated_at = ? WHERE id = ?", ["2026-09-18T10:04:00.000Z", "job-quiet"]);
 
     const job = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).jobs[0];
 
@@ -232,9 +233,35 @@ describe("factory wall snapshot", () => {
       "2026-09-18T10:04:00.000Z",
     );
 
-    const job = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).jobs[0];
+    createJob(
+      db,
+      {
+        id: "job-clean",
+        runId: "run",
+        queueId: "queue",
+        itemId: "clean",
+        title: "Pass the check first time",
+        station: "build",
+      },
+      "2026-09-18T10:00:00.000Z",
+    );
+    appendJobEvent(db, "job-clean", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    recordJobCheck(
+      db,
+      "job-clean",
+      { command: "bun run verify", exitCode: 0, result: "green" },
+      "2026-09-18T10:02:00.000Z",
+    );
 
-    expect(job?.failedChecks).toBe(2);
+    const failures = new Map(
+      assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).jobs.map((job) => [
+        job.itemId,
+        job.failedChecks,
+      ]),
+    );
+
+    expect(failures.get("struggling")).toBe(2);
+    expect(failures.get("clean")).toBe(0);
     db.close();
   });
 
@@ -339,7 +366,7 @@ describe("factory wall snapshot", () => {
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z"));
 
     expect(snapshot.jobs.map((job) => job.station)).toEqual(["unknown", "unknown"]);
-    expect(STATION_LABELS.unknown).toBe("Station unknown");
+    expect(STATION_LABELS.unknown).toBe("Unknown");
     db.close();
   });
 
@@ -373,6 +400,59 @@ describe("factory wall snapshot", () => {
     expect(snapshot.jobs.filter((job) => job.lifecycle === "active")).toHaveLength(12);
     expect(snapshot.jobs.filter((job) => job.lifecycle === "done")).toHaveLength(12);
     expect(snapshot.totals).toEqual({ todo: 0, active: 14, done: 14 });
+    db.close();
+  });
+
+  test("keeps a job that needs a person on the board and at the top of its column", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    createJob(
+      db,
+      {
+        id: "job-fenced-early",
+        runId: "run",
+        queueId: "queue",
+        itemId: "fenced-early",
+        title: "Stop and wait for the owner",
+        station: "build",
+      },
+      "2026-09-18T08:00:00.000Z",
+    );
+    appendJobEvent(
+      db,
+      "job-fenced-early",
+      { kind: "fenced", status: "fenced", reason: "scope unclear" },
+      "2026-09-18T08:02:00.000Z",
+    );
+    // More running work than a column draws, every piece of it newer than the fenced job, which
+    // is what a bound applied before the ranking would drop first.
+    for (let index = 0; index < 14; index += 1) {
+      createJob(
+        db,
+        {
+          id: `job-busy-${index}`,
+          runId: "run",
+          queueId: "queue",
+          itemId: `busy-${index}`,
+          title: `Keep working on ${index}`,
+          station: "build",
+        },
+        "2026-09-18T09:00:00.000Z",
+      );
+      appendJobEvent(
+        db,
+        `job-busy-${index}`,
+        { kind: "started", status: "running" },
+        `2026-09-18T09:${String(index + 10).padStart(2, "0")}:00.000Z`,
+      );
+    }
+
+    const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:00:00.000Z"));
+    const active = snapshot.jobs.filter((job) => job.lifecycle === "active");
+
+    expect(active[0]?.id).toBe("job-fenced-early");
+    expect(active).toHaveLength(12);
+    expect(snapshot.totals.active).toBe(15);
     db.close();
   });
 

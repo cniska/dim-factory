@@ -87,7 +87,7 @@ type JobRow = {
   queue_id: string;
   worktree: string | null;
   branch: string | null;
-  last_event_at: string | null;
+  last_event_at: string;
   latest_reason: string | null;
   latest_station: string | null;
   latest_actor: string | null;
@@ -158,6 +158,7 @@ function status(value: string): WallStatus {
   if (!mapped) throw new Error(`unknown factory job status: ${value}`);
   return mapped;
 }
+
 function mapJob(row: JobRow, now: Date): WallJob {
   const agentId = row.latest_actor ?? row.agent_id;
   const stationName = station(row.station ?? row.latest_station);
@@ -165,7 +166,8 @@ function mapJob(row: JobRow, now: Date): WallJob {
   const attention = attentionStatuses.has(jobStatus)
     ? (row.stop_reason ?? row.latest_reason ?? jobStatus)
     : undefined;
-  const lastEventAt = row.last_event_at ?? row.claimed_at;
+  // A claim writes its own event in the same transaction, so a job row always has one.
+  const lastEventAt = row.last_event_at;
   return {
     id: row.id,
     title: row.title,
@@ -183,11 +185,14 @@ function mapJob(row: JobRow, now: Date): WallJob {
 }
 
 export function assembleWallSnapshot(db: Database, now = new Date()): WallSnapshot {
-  const rows = db.query(`${JOB_ROW_SELECT} ORDER BY j.updated_at DESC, j.id`).all() as JobRow[];
+  // Ordered by the same clock the card shows, so a column's ages read down the page. A job that
+  // needs a person stops recording events, so it sinks under the moving work and would be the
+  // first card a bound dropped — it is ranked ahead of the bound rather than after it.
+  const rows = db.query(`${JOB_ROW_SELECT} ORDER BY e.ts DESC, j.id`).all() as JobRow[];
+  const mapped = rows.map((row) => mapJob(row, now));
   const totals: Record<WallLifecycle, number> = { todo: 0, active: 0, done: 0 };
   const jobs: WallJob[] = [];
-  for (const row of rows) {
-    const job = mapJob(row, now);
+  for (const job of [...mapped.filter((job) => job.attention), ...mapped.filter((job) => !job.attention)]) {
     totals[job.lifecycle] += 1;
     if (totals[job.lifecycle] <= MAX_COLUMN_CARDS) jobs.push(job);
   }
