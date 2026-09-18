@@ -258,6 +258,22 @@ CREATE TABLE IF NOT EXISTS factory_job_finding (
   CHECK (answer <> 'refused' OR (resolution IS NOT NULL AND trim(resolution) <> ''))
 );
 
+-- What a worktree's setup and teardown hooks reported. resources holds the
+-- identifiers the hook named — containers, volumes, ports — which is all that is
+-- left of what a job allocated once its worktree is gone.
+CREATE TABLE IF NOT EXISTS factory_job_environment (
+  id            INTEGER PRIMARY KEY,
+  job_id        TEXT NOT NULL REFERENCES factory_job(id) ON DELETE CASCADE,
+  phase         TEXT NOT NULL CHECK (phase IN ('setup', 'teardown')),
+  argv          TEXT NOT NULL,
+  exit_code     INTEGER,
+  signal        TEXT,
+  stdout        TEXT NOT NULL,
+  stderr        TEXT NOT NULL,
+  resources     TEXT NOT NULL,
+  recorded_at   TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS factory_job_document (
   job_id        TEXT NOT NULL REFERENCES factory_job(id) ON DELETE CASCADE,
   path          TEXT NOT NULL,

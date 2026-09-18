@@ -10,10 +10,12 @@ import {
   recordJobCheck,
   recordJobCommit,
   recordJobDocument,
+  recordJobEnvironment,
   recordJobFile,
   recordJobFinding,
   updateJobLocation,
 } from "./factory-job";
+import type { WorkerHookReport } from "./worker-environment";
 
 export type FactoryOutcome = {
   status: Exclude<JobStatus, "claimed" | "running">;
@@ -43,6 +45,7 @@ export type FactoryContext = {
     resolution?: string;
   }): number;
   recordDocument(path: string): void;
+  recordEnvironment(report: WorkerHookReport): void;
 };
 
 export type FactoryBuilder = (context: FactoryContext) => FactoryOutcome | Promise<FactoryOutcome>;
@@ -75,6 +78,7 @@ export async function runFactoryJob(
     recordCheck: (check) => recordJobCheck(db, item.id, check),
     recordFinding: (finding) => recordJobFinding(db, item.id, finding),
     recordDocument: (path) => recordJobDocument(db, item.id, path),
+    recordEnvironment: (report) => recordJobEnvironment(db, item.id, report),
   };
 
   try {

@@ -11,6 +11,7 @@ import {
   recordJobCheck,
   recordJobCommit,
   recordJobDocument,
+  recordJobEnvironment,
   recordJobFile,
   recordJobFinding,
   updateJobLocation,
@@ -18,6 +19,7 @@ import {
 import { dbPath } from "./paths";
 import { SCHEMA_SQL } from "./schema";
 import { rebuild } from "./sync";
+import type { WorkerHookReport } from "./worker-environment";
 
 function db(): Database {
   const database = new Database(":memory:");
@@ -35,6 +37,26 @@ const job = {
   worktree: "/tmp/wt",
   branch: "job-1",
   station: "dim-station-build",
+};
+
+const setupReport: WorkerHookReport = {
+  phase: "setup",
+  argv: ["/tmp/wt/scripts/worktree-setup.sh"],
+  exitCode: 0,
+  signal: null,
+  stdout: '{"resources":[{"container":"dim-wt-job-1"}]}\n',
+  stderr: "",
+  resources: [{ container: "dim-wt-job-1" }],
+};
+
+const teardownReport: WorkerHookReport = {
+  phase: "teardown",
+  argv: ["/tmp/wt/scripts/worktree-teardown.sh"],
+  exitCode: null,
+  signal: "SIGKILL",
+  stdout: "",
+  stderr: "out of memory\n",
+  resources: [],
 };
 
 describe("factory job report records", () => {
@@ -60,6 +82,7 @@ describe("factory job report records", () => {
         context.recordCheck({ command: "bun run verify", exitCode: 0, result: "green" });
         context.recordFinding({ dimension: "tests", summary: "holds", answer: "fixed" });
         context.recordDocument("docs/factory.md");
+        context.recordEnvironment(setupReport);
         context.stop({ status: "completed", reason: "verified" });
         return { status: "completed", reason: "verified" };
       },
@@ -102,6 +125,9 @@ describe("factory job report records", () => {
     expect(database.query("SELECT path FROM factory_job_document WHERE job_id = 'job-2'").get()).toEqual({
       path: "docs/factory.md",
     });
+    expect(
+      database.query("SELECT phase, resources FROM factory_job_environment WHERE job_id = 'job-2'").get(),
+    ).toEqual({ phase: "setup", resources: '[{"container":"dim-wt-job-1"}]' });
     database.close();
   });
 
@@ -208,10 +234,16 @@ describe("factory job report records", () => {
     expect(() => recordJobFile(database, "job-1", "src/after-stop.ts")).toThrow(
       "job job-1 is already fenced",
     );
+    expect(() => recordJobEnvironment(database, "job-1", teardownReport)).toThrow(
+      "job job-1 is already fenced",
+    );
     expect(() => updateJobLocation(database, "job-1", "/other", "other")).toThrow(
       "job job-1 is already terminal",
     );
     expect(database.query("SELECT count(*) AS count FROM factory_job_file").get()).toEqual({ count: 0 });
+    expect(database.query("SELECT count(*) AS count FROM factory_job_environment").get()).toEqual({
+      count: 0,
+    });
     database.close();
   });
 
@@ -324,6 +356,45 @@ describe("factory job report records", () => {
     database.close();
   });
 
+  test("attaches a worktree's setup and teardown reports to the job", () => {
+    const database = db();
+    createJob(database, job, "2026-09-18T10:00:00.000Z");
+    appendJobEvent(database, "job-1", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    recordJobEnvironment(database, "job-1", setupReport, "2026-09-18T10:02:00.000Z");
+    recordJobEnvironment(database, "job-1", teardownReport, "2026-09-18T10:07:00.000Z");
+
+    expect(
+      database
+        .query(
+          `SELECT phase, argv, exit_code, signal, stdout, stderr, resources, recorded_at
+           FROM factory_job_environment WHERE job_id = 'job-1' ORDER BY recorded_at`,
+        )
+        .all(),
+    ).toEqual([
+      {
+        phase: "setup",
+        argv: '["/tmp/wt/scripts/worktree-setup.sh"]',
+        exit_code: 0,
+        signal: null,
+        stdout: '{"resources":[{"container":"dim-wt-job-1"}]}\n',
+        stderr: "",
+        resources: '[{"container":"dim-wt-job-1"}]',
+        recorded_at: "2026-09-18T10:02:00.000Z",
+      },
+      {
+        phase: "teardown",
+        argv: '["/tmp/wt/scripts/worktree-teardown.sh"]',
+        exit_code: null,
+        signal: "SIGKILL",
+        stdout: "",
+        stderr: "out of memory\n",
+        resources: "[]",
+        recorded_at: "2026-09-18T10:07:00.000Z",
+      },
+    ]);
+    database.close();
+  });
+
   test("rejects lifecycle events after a job reaches a terminal status", () => {
     const database = db();
     for (const [index, status] of (
@@ -429,12 +500,17 @@ describe("factory job report records", () => {
     const environment = { HOME: home, DIM_HOME: home };
     const database = openDb(dbPath(environment));
     createJob(database, job, "2026-09-18T10:00:00.000Z");
+    appendJobEvent(database, "job-1", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    recordJobEnvironment(database, "job-1", teardownReport, "2026-09-18T10:02:00.000Z");
     closeDb(database);
     const rebuilt = openDb(dbPath(environment), { forRebuild: true });
     rebuild(rebuilt, environment);
     expect(rebuilt.query("SELECT status FROM factory_job WHERE id = 'job-1'").get()).toEqual({
-      status: "claimed",
+      status: "running",
     });
+    expect(
+      rebuilt.query("SELECT phase, signal FROM factory_job_environment WHERE job_id = 'job-1'").get(),
+    ).toEqual({ phase: "teardown", signal: "SIGKILL" });
     expect(rebuilt.query("SELECT kind FROM factory_job_event WHERE job_id = 'job-1'").get()).toEqual({
       kind: "claimed",
     });
