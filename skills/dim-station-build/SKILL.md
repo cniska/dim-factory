@@ -26,9 +26,7 @@ A slice is a vertical cut: it changes behavior, it is checked on its own, and it
 
 Commit in the same order every time: the task passes, the slice is simplified, the task passes again, the checker reads what will land, every finding it raises is answered and the task passes over the answers, then the commit, then the next slice.
 
-**The subject follows the repo's own convention, and `dim q convention <repo>` is where that is read rather than inferred.** It gives the share of subjects that are Conventional Commits, their mean length, and how much of the history arrived through a branch — the questions the tool-agnostic advice answers by skimming `git log`, over the whole log instead of a sample. Where the repo is not in the record, read the log.
-
-`dim install-commit-gate` holds the owner's own subject rule as a `commit-msg` hook for every repo on the machine, so a subject that breaks it is refused at commit time rather than found later, and `pre-push` refuses a push that rewrites the branch the remote's HEAD names. `dim check-commits <range>` judges what already landed, and `dim q slices` reads the record back for which commits had a verified run in front of them.
+Apply [`dim-git`](../dim-git/SKILL.md) at the commit boundary. It owns the repository status, worktree ownership, evidence recorded with the commit and the rules for later landing; this station owns the slice loop.
 
 Where a slice turns out to be blocked, finish every other slice in full and say plainly what was left and why. Scaling the work down is the owner's call.
 

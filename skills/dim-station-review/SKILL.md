@@ -10,6 +10,8 @@ One pass per dimension, each in its own agent. A single reader carrying six chec
 
 What makes this a station rather than a checklist is that the record says where to aim. This machine knows which kinds of work have been drawing later `fix:` commits and which code shipped with nothing coming back, so a dimension arrives knowing what it is reading against instead of sweeping.
 
+Apply [`dim-git`](../dim-git/SKILL.md) for the read-only diff boundary and handoff evidence. Review does not edit, commit or land the work it inspects.
+
 ## Entry contract
 
 Before spawning anything:
