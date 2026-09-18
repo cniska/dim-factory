@@ -397,6 +397,7 @@ The cost sat outside it. The pair was written as a literal list in four places, 
 The list is now one constant, the type is declared and imported from one module, and the four constraints interpolate it. What that does not reach is a database already on disk: every constrained table is created only if absent, so its `CHECK` keeps the vocabulary it was born with. Adding a tool is therefore a schema version bump and a drop of those four tables, not an edit to the constant — the constant stops the code disagreeing with itself, and a migration is what makes the database follow.
 
 What stays per-tool and should: the source module that finds files on disk, the parser, the hook config path, the history reader and its per-tool timestamp scale, the wake envelope, and Codex's trust check, which has no Claude equivalent. That is the real price of a third tool.
+
 ## The runtime paints stderr, and the environment can force it
 
 Measured on 2026-09-18 against Bun 1.3.14. `console.error` wraps its whole line in `ESC[0mESC[31m` … `ESC[0m`. It does that when stderr is a pipe as readily as when it is a terminal, whenever `FORCE_COLOR` is set in the environment, and `NO_COLOR=1` does not turn it off. `console.log` is untouched, so this shows up only on the error paths.
@@ -404,3 +405,12 @@ Measured on 2026-09-18 against Bun 1.3.14. `console.error` wraps its whole line 
 Nothing here writes an escape of its own — the styling is entirely the runtime's, applied to text that is a contract. `scripts/wt.test.sh` compares `dim wt`'s stderr against exact strings, so under a forced-color environment four of its cases failed on the escapes alone. That is `bun run verify`, which is what the `pre-commit` hook runs, and the hook inherits the environment: every commit that ran the check was refused for a reason having nothing to do with the change.
 
 The fix is that a diagnostic is written as bytes, through [`src/warn.ts`](../src/warn.ts), rather than through a console API that decides how it should look. What keeps it there is `noConsole` in [`biome.json`](../biome.json), which allows `console.log` and refuses the rest — the choice of stream is mechanical, so it is a gate rather than a rule to remember. The case pinning it sets `FORCE_COLOR` itself, so it holds whatever the ambient environment is — which is what a test of this has to do, since the environment that breaks it is not the one the suite usually runs in.
+## Two runs really do hold the sync lock, and not on demand
+
+Measured on 2026-09-18 against the lock as it stood before that day. Contenders run `withLock` in a loop over a scratch data directory; inside the lock each writes a marker file named for its pid, reads the directory back and removes it. A second marker in that listing is a second run inside the lock at the same time.
+
+Two contenders, 200 rounds, six trials: 6 of the 12 processes recorded an overlap. The same harness against the lock that replaced it recorded none, over 12 processes and 1,294 acquisitions.
+
+Making it fail on demand did not work. Four contenders at 300 rounds detected an overlap in 3 trials of 8, and two contenders at 800 rounds in 2 of 8 — once one process is ahead of the other they stop arriving together, so more rounds and more contenders both buy less. Holding every contender at a barrier until all have arrived, then releasing them together, was worst at 1 trial in 10: the window is two syscalls wide, and a contender released from a barrier still reaches the pid file after the winner has written it, which is the case the lock already refuses correctly.
+
+What this carries. The defect was real, and the replacement is clean on the workload that exists — the scheduled agent and a person, which is two writers. It is not a test and none ships: a check that catches a planted defect in half its runs would have gone green over this one. What does have tests is the state a second run can find on disk — an empty pid file, a pid file it cannot read, a directory with no pid file at all, and what a refused run leaves behind.
