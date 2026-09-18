@@ -197,6 +197,7 @@ function useSnapshot() {
   const [snapshot, setSnapshot] = useState<WallSnapshot>(unavailableSnapshot);
   const [stale, setStale] = useState(true);
   const [unavailable, setUnavailable] = useState(true);
+  const [answered, setAnswered] = useState(false);
   const [lastMessage, setLastMessage] = useState<number | null>(null);
   const [bumped, setBumped] = useState<ReadonlySet<string>>(new Set());
   const seen = useRef(new Map<string, string>());
@@ -221,13 +222,17 @@ function useSnapshot() {
       setSnapshot(data);
       setStale(false);
       setUnavailable(false);
+      setAnswered(true);
       setLastMessage(Date.now());
     };
 
     fetch("/api/snapshot")
       .then((response) => (response.ok ? response.json() : Promise.reject()))
       .then(accept)
-      .catch(() => setUnavailable(true));
+      .catch(() => {
+        setUnavailable(true);
+        setAnswered(true);
+      });
     try {
       socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
       socket.onmessage = (event) => {
@@ -243,6 +248,7 @@ function useSnapshot() {
     } catch {
       setStale(true);
       setUnavailable(true);
+      setAnswered(true);
     }
     return () => {
       clearTimeout(clearBump);
@@ -250,7 +256,7 @@ function useSnapshot() {
     };
   }, []);
 
-  return { snapshot, stale, unavailable, lastMessage, bumped };
+  return { snapshot, stale, unavailable, answered, lastMessage, bumped };
 }
 
 /** A clock the board reads, so every age advances on the same beat. */
@@ -266,7 +272,7 @@ function useNow(): Date {
 }
 
 function App() {
-  const { snapshot, stale, unavailable, lastMessage, bumped } = useSnapshot();
+  const { snapshot, stale, unavailable, answered, lastMessage, bumped } = useSnapshot();
   const now = useNow();
   const feed = feedStateOf(unavailable, stale);
   const FeedIcon = FEED_ICON[feed];
@@ -283,6 +289,9 @@ function App() {
           className={cn(
             "flex h-9 items-center gap-2 rounded-wall border px-3 text-[11px] whitespace-nowrap",
             FEED_TINT[feed],
+            // The box is held rather than the element dropped, so the header does not step
+            // sideways when the first answer arrives.
+            !answered && "invisible",
           )}
         >
           <FeedIcon size={15} aria-hidden="true" />
@@ -294,22 +303,16 @@ function App() {
       </header>
 
       <section className="grid grid-cols-3 items-start gap-4 pb-16" aria-label="Factory kanban board">
-        {unavailable ? (
-          <p className="col-span-full grid place-items-center rounded-wall border border-dashed p-4 text-center text-quiet">
-            Waiting for a factory snapshot.
-          </p>
-        ) : (
-          WALL_COLUMNS.map(({ lifecycle, label }) => (
-            <BoardColumn
-              key={lifecycle}
-              label={label}
-              jobs={columns[lifecycle]}
-              total={snapshot.totals[lifecycle]}
-              now={now}
-              bumped={bumped}
-            />
-          ))
-        )}
+        {WALL_COLUMNS.map(({ lifecycle, label }) => (
+          <BoardColumn
+            key={lifecycle}
+            label={label}
+            jobs={columns[lifecycle]}
+            total={snapshot.totals[lifecycle]}
+            now={now}
+            bumped={bumped}
+          />
+        ))}
       </section>
 
       <footer className="mt-auto text-center text-[11px] tracking-[0.02em] text-quiet">
