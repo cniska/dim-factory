@@ -432,3 +432,20 @@ Widening the rest waits on the parser. `src/parse-codex.ts` writes every path of
 Measured on 2026-09-18. The scratch rule listed `/tmp`, `/private/tmp`, `/var/tmp`, `/private/var/tmp` and whatever `tmpdir()` reported, normalized but not resolved. On this machine `tmpdir()` reports `/var/folders/<xx>/<yy>/T` and resolves to `/private/var/folders/<xx>/<yy>/T`, so a session started under the resolved spelling read as ordinary work. 9 session rows hold such a cwd, and `repo_commit` holds nothing from any of them — every one of those directories had already been deleted when git was asked, so the cost was a scratch repo's subjects landing in the corpus whenever one outlived a sync, not anything now in it.
 
 The shape is the one the gate defects fixed beside it share: the check ran, reported success, and what it guarded was off. A path list, an existence test and a slug are each mechanical enough to gate, and each was wrong about a case nothing exercised. What catches that is a row from the record — the 9 above — rather than another reading of the rule.
+
+## The check-detection word list is right by luck, and counts scratch repos as work
+
+Measured on 2026-09-18. `q slices` reports which commits had a run of the repo's own check in front of them, and decides what a check is by matching seven substrings against the shell command — `run verify`, `run check`, `run ci`, `run validate`, `run test`, `mise run`, `make `. `dim check-task` reads the declared check from the repo's manifest and is the authority, but no table holds what it returns, so the query has nothing to join and guesses instead.
+
+The guess is currently exact. Of the 33 checkouts under `~/code`, 21 declare a check and every one of them matches the list; the other 12 declare none. So the list produces no false negative on this machine today. It holds by coincidence rather than construction: `cargo test` and `go test ./...` match nothing, and a repo in either language would read as never checked.
+
+The error that is live is a different one. Splitting the window's commits by where the session was working:
+
+| | commits | with no check in front |
+|---|---|---|
+| real checkouts | 2,216 | 627 |
+| scratch trees under `/private/tmp` | 90 | 88 |
+
+Every one of those 90 is a fixture from an earlier session's test runs, under `.../recurrence/runs/run-N`. `isScratchRepo` exists to exclude exactly these and already lists `/private/tmp`, but it filters what `sync` ingests into `repo_commit`; `q slices` reads `tool_call` and `session.project` directly and never consults it. So a rule that is correct is applied in one place and not the other.
+
+What this carries: one machine, one window, and a count of repos rather than of commits for the first claim — a repo declaring a check its sessions never run is invisible to that 21. The 627 is the number that survives, and it is a floor: a commit whose check ran under a name the list does not hold would still read as unchecked, and nothing here has measured how often the 12 undeclaring repos commit.
