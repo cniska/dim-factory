@@ -18,6 +18,7 @@ import { installHooks, planHooks } from "./hooks";
 import { withLock } from "./lock";
 import { dbPath, resolveHomeDir } from "./paths";
 import { findQuery, QUERIES, type QueryResult } from "./queries";
+import { runQueueCommand } from "./queue-command";
 import { openReadOnly } from "./read-db";
 import { isHostQualified, remoteSlug } from "./remote-slug";
 import { DEFAULT_MAX_ROWS, renderTable, rowsFromArgs } from "./render";
@@ -78,6 +79,10 @@ const USAGE = `usage: dim <command>
           --summary "..." [--file <path>] [--why "..."]
                   record what a checking agent raised on a slice and how it was
                   answered; a refusal states why, which is what ends a finding
+  queue ready <file> [--limit <n>]
+                  print planned items whose dependencies are completed
+  queue transition <file> <item> <status> [--reason <text>] [--at <iso>]
+                  append a validated status transition to the queue file
 `;
 
 function printReport(report: SyncReport): void {
@@ -754,6 +759,9 @@ try {
       break;
     case "q":
       await runQuery(process.argv.slice(3));
+      break;
+    case "queue":
+      console.log(await runQueueCommand(process.argv.slice(3)));
       break;
     case "embed":
       await runEmbed();

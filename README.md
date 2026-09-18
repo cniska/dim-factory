@@ -11,7 +11,7 @@
 - **Gates.** Hooks hold mechanical rules for commits, pushes, collection and session context.
 - **Isolation.** `dim wt` gives each task its own worktree and branch.
 
-The session database, query CLI, hooks, worktrees, stations and factory report tables are live. The queue planner, self-sufficient driver and unified factory status view are being built. The design and current build order are in [`docs/`](docs/README.md).
+The session database, query CLI, hooks, worktrees, stations, factory report tables and queue planner are live. The self-sufficient driver and unified factory status view are being built. The design and current build order are in [`docs/`](docs/README.md).
 
 ## Quick start
 
