@@ -58,7 +58,7 @@ ${URL_NORMALIZER}
 
 # Git names the remote being pushed to and its URL. Reading the owner off that
 # URL rather than off origin is what makes a push to a fork's upstream, or to a
-# second remote, judged against the account it is actually landing in.
+# second remote, judged against the account it is actually integrating into.
 url=$(dim_url "\${2:-}")
 owner=$(printf '%s' "$url" | sed -nE '${SLUG_SED}')
 [ -n "$owner" ] || exit 0

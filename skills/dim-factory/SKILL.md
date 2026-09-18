@@ -64,7 +64,7 @@ Stopping means writing down what was found, leaving the item where it was, and n
 
 **Work the queue until it is empty.** Take the next item the moment one lands, and do not come back between items to say a thing went well — a line that halts after every job is not running, and a report per item is the report at the end read one piece at a time.
 
-The skill may be invoked repeatedly by whatever is driving it. Each invocation starts by reading the current floor and queue state; it never assumes that an earlier invocation finished, failed, or released an item. An active job is observed rather than claimed again. Independent items may run in parallel only when their claims are isolated; claiming, landing and queue-state transitions remain serialized. Repetition never crosses a fence or turns an unrecorded outcome into success.
+The skill may be invoked repeatedly by whatever is driving it. Each invocation starts by reading the current floor and queue state; it never assumes that an earlier invocation finished, failed, or released an item. An active job is observed rather than claimed again. Independent items may run in parallel only when their claims are isolated; claiming, integration and queue-state transitions remain serialized. Repetition never crosses a fence or turns an unrecorded outcome into success.
 
 Four things stop it, and nothing else does:
 

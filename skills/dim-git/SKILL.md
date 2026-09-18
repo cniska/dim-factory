@@ -1,6 +1,6 @@
 ---
 name: dim-git
-description: Apply the factory's Git policy across lines and stations, from isolated worktrees through verified commits and serialized landing.
+description: Apply the factory's Git policy across lines and stations, from isolated worktrees through verified commits and serialized integration.
 argument-hint: "<git operation or factory context>"
 ---
 
@@ -35,7 +35,7 @@ Review reads a diff, history and evidence without changing the worktree. It does
 
 ## 4. Land work
 
-Landing is serialized. Before integrating a completed item, verify its report, commit ancestry, repository check, documentation status and fence. Integrate only the commits that belong to the item, then verify the resulting target branch.
+Integration is serialized. Before integrating a completed item, verify its report, commit ancestry, repository check, documentation status and fence. Integrate only the commits that belong to the item, then verify the resulting target branch.
 
 Do not force-push, rewrite a shared branch, or push outside the explicit owner authorization. A push is an outward-facing fence even when the local checks are green.
 
@@ -54,5 +54,5 @@ Every stopped or completed operation says:
 - editing the parent worktree from a worker
 - committing before the repository check and review are complete
 - treating a checker finding as optional because tests pass
-- landing two items together when their claims were separate
+- integrating two items together when their claims were separate
 - pushing or rewriting history without the owner's authorization

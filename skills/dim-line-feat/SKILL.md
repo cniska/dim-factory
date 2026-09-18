@@ -10,7 +10,7 @@ The front door for new work. It runs the whole line: scope, then the slice loop 
 
 When `dim-factory` hands this line a queue item, create the isolated checkout first with `dim wt <branch>`, then continue from inside that worktree. The factory driver routes the item; this line owns the checkout and work.
 
-Apply [`dim-git`](../dim-git/SKILL.md) for the worktree ownership, commit evidence and landing boundaries; this line decides the feature's scope and slices, not a second Git policy.
+Apply [`dim-git`](../dim-git/SKILL.md) for the worktree ownership, commit evidence and integration boundaries; this line decides the feature's scope and slices, not a second Git policy.
 
 What makes this front different from [`dim-line-fix`](../dim-line-fix/SKILL.md) is the shape of the work rather than a preference. A feature in the owner's own repos touches 30 files against a fix's 10 ([`findings.md`](../../docs/findings.md)). Thirty files is not one slice, so the hard part here is the cut, and that is what phase 1 buys.
 
