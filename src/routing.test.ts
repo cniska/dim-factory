@@ -119,3 +119,21 @@ test("no model name reaches dim's source or a skill", () => {
   }
   expect(offenders).toEqual([]);
 });
+
+// A skill names a role in prose, where a typo reads as fine and resolves to
+// nothing until the station runs; this is the mechanical half of "a skill cites
+// only queries that answer".
+test("every role a skill cites is one that routes", () => {
+  const root = join(import.meta.dir, "..");
+  const cited: string[] = [];
+  const unroutable: string[] = [];
+  for (const file of new Glob("skills/**/*.md").scanSync(root)) {
+    for (const [, role] of readFileSync(join(root, file), "utf8").matchAll(/dim route (\w+)/g)) {
+      cited.push(role as string);
+      if (!((role as string) in ROLE_TIERS)) unroutable.push(`${file}: ${role}`);
+    }
+  }
+
+  expect(unroutable).toEqual([]);
+  expect(cited.length).toBeGreaterThan(0);
+});

@@ -16,7 +16,7 @@ Answer all four before proposing an approach.
 
 1. **Has this shape been built here before?** `dim q prior-art "<path fragment>"` names every tracked file whose path matches, across the repos on disk, dated by the commits that touched it. Every path it prints opens, so the answer is a file to read rather than a memory. Read the repo column before the file — a repo that was only cloned ranks beside the owner's own — and treat recency and commit count as where to look, never as quality.
 
-2. **Was this already decided?** `dim q search "<the question, in your words>"` ranks the text a person distilled by hand — handoff Nexts, their own commit subjects — by meaning. A decision settled in conversation and never distilled is not in that index, and `dim q keywords "<words>"` is what reaches it, over every message anyone said. A decision already taken is not yours to re-take; find it and say what it settled.
+2. **Was this already decided?** `dim q search "<the question, in your words>"` ranks the text a person distilled by hand — handoff Nexts, their own commit subjects — by meaning. A decision settled in conversation and never distilled is not in that index, and `dim q keywords "<words>"` is what reaches it, over every message anyone said. A decision already taken is not yours to re-take; find it and say what it settled. Where both come back empty and only a file sweep will answer, that sweep is one agent with a fixed question, at the tier `dim route searcher` gives you.
 
 3. **Is this a continuation?** `dim q chain <id-prefix>` gives the sessions either side of one, joined by the handoff between them, and `dim q resume <id-prefix>` gives the branch, the files in play and the last pushback. Work that is mid-chain has a Next already written, and planning over it is how the same thing gets built twice.
 
@@ -24,13 +24,13 @@ Answer all four before proposing an approach.
 
 ## Hand the planning up
 
-The four answers are gathering, not planning. Pass them, with the task and the constraints they imply, to a planning agent on a more capable model, and let it return the plan. Give it what the record returned rather than your reading of it: hand over a conclusion and what comes back is agreement with that conclusion.
+The four answers are gathering, not planning. Pass them, with the task and the constraints they imply, to a planning agent at the tier `dim route planner` gives you, and let it return the plan. Give it what the record returned rather than your reading of it: hand over a conclusion and what comes back is agreement with that conclusion.
 
 Ask the owner only when the choice is genuinely theirs, which is narrower than it feels. It is theirs when the work is hard to reverse, when it is outward-facing, or when it spends something that lands on every session rather than this one. Everything else — which of two shapes, what to name it, what order to slice it in — is settled here and stated, not asked. A question that a query could have answered is a question that should have been a query.
 
 ## Check the plan before acting on it
 
-A plan is cheaper to fix than the code written from it, so it gets the same treatment a slice gets in [`dim-station-build`](../dim-station-build/SKILL.md): one agent, working from a fixed brief, and not the agent that wrote the plan. Give it the plan and what the four queries returned — not the reasoning that got there, or what comes back is agreement.
+A plan is cheaper to fix than the code written from it, so it gets the same treatment a slice gets in [`dim-station-build`](../dim-station-build/SKILL.md): one agent at the tier `dim route checker` gives you, working from a fixed brief, and not the agent that wrote the plan. Give it the plan and what the four queries returned — not the reasoning that got there, or what comes back is agreement.
 
 The brief is these questions:
 
