@@ -219,10 +219,11 @@ describe("rebuilding a database an older schema wrote", () => {
        VALUES ('job-old', 'run-1', 'build-order', 'item-1', 'running', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
 
-    expect(() => rebuild(db, env)).toThrow(/NOT NULL constraint failed: factory_job.title/);
+    // Named with the column and the ways out, because rebuild is the only route
+    // these rows have and what such a row should be called is the owner's to say.
+    expect(() => rebuild(db, env)).toThrow(/factory_job\.title/);
+    expect(() => rebuild(db, env)).toThrow(/sqlite3/);
 
-    // Rolled back whole rather than given an invented name: what such a row should
-    // be called is the owner's to say, and a rebuild is the only route it has.
     expect(db.query("SELECT id FROM factory_job").all()).toEqual([{ id: "job-old" }]);
     db.close();
   });
