@@ -1,10 +1,10 @@
 :root {
   color-scheme: dark;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --ground: #090a0b; --surface: #111315; --surface-alert: #201a10; --line: #30353a;
   --text: #f5f7f8; --muted: #a0a7ad; --quiet: #70777e; --accent: #b6c5d1;
   --warn: #d3a35f; --warn-text: #e1c18a; --danger: #df806f; --good: #9fb99f;
-  --plan: #b49bc7; --review: #9ba9d0; --fix: #d29d76; --build: #9cb8a9;
+  --plan: #b49bc7; --review: #9ba9d0; --fix: #d29d76; --build: #9cb8a9; --ship: #a9b5c0;
   --radius: .55rem; --space-2: .45rem; --space-3: .7rem; --space-4: 1rem;
   --space-5: 1.2rem; --space-6: 1.7rem;
 }
@@ -19,24 +19,28 @@ h2 { font-size: 1.1rem; margin-bottom: 0; letter-spacing: -.02em; } h3 { font-si
 .feed-status { display: flex; align-items: center; gap: var(--space-2); border: 1px solid var(--line); border-radius: 999px; color: var(--muted); padding: .55rem .8rem; white-space: nowrap; }
 .feed-status.live span:first-child { color: var(--good); } .feed-status.stale, .feed-status.unavailable { color: var(--warn); } .feed-status small { color: var(--quiet); }
 .stale-banner { border: 1px solid #67512f; background: var(--surface-alert); color: var(--warn-text); margin: var(--space-4) 0 0; padding: .8rem var(--space-4); border-radius: var(--radius); }
-.board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin: var(--space-5) 0; align-items: start; }
-.board-unavailable { grid-column: 1 / -1; min-height: 218px; margin: 0; border: 1px dashed var(--line); border-radius: var(--radius); color: var(--quiet); padding: var(--space-4); display: grid; place-items: center; text-align: center; }
+.board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin: var(--space-5) 0; align-items: start; }
+.board-unavailable { grid-column: 1 / -1; min-height: 244px; margin: 0; border: 1px dashed var(--line); border-radius: var(--radius); color: var(--quiet); padding: var(--space-4); display: grid; place-items: center; text-align: center; }
 .board-column { min-width: 0; }
 .column-heading { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid var(--line); padding: 0 .15rem .6rem; margin-bottom: var(--space-3); }
 .column-heading span { color: var(--muted); font-size: .9rem; font-variant-numeric: tabular-nums; }
 .column-cards { display: grid; gap: var(--space-3); }
-.job-card { height: 218px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--build); border-radius: var(--radius); padding: var(--space-4); display: flex; flex-direction: column; min-width: 0; }
+.job-card { height: 244px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--build); border-radius: var(--radius); padding: var(--space-4); display: flex; flex-direction: column; min-width: 0; }
 .job-card.role-planner { border-top-color: var(--plan); } .job-card.role-reviewer { border-top-color: var(--review); } .job-card.role-fixer { border-top-color: var(--fix); }
-.job-card.status-blocked, .job-card.status-fenced, .job-card.status-failed { background: #181414; }
+.job-card.status-blocked, .job-card.status-fenced, .job-card.status-failed, .job-card.status-abandoned { background: #181414; }
 .job-top, .job-meta { display: flex; justify-content: space-between; gap: var(--space-3); color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .07em; }
 .job-top span:last-child { color: var(--quiet); font-variant-numeric: tabular-nums; }
-.state-mark { color: var(--muted); } .status-running .state-mark { color: var(--good); } .status-blocked .state-mark, .status-fenced .state-mark, .status-failed .state-mark { color: var(--danger); }
-.action { color: var(--muted); min-height: 2.4em; margin-bottom: var(--space-3); overflow-wrap: anywhere; }
+.state-mark { color: var(--muted); } .status-running .state-mark { color: var(--good); } .status-blocked .state-mark, .status-fenced .state-mark, .status-failed .state-mark, .status-abandoned .state-mark { color: var(--danger); }
+.action { color: var(--muted); height: 2.4em; margin-bottom: var(--space-3); overflow: hidden; overflow-wrap: anywhere; }
+.station-tag { align-self: flex-start; margin: 0; border: 1px solid var(--line); border-left: 3px solid var(--build); border-radius: var(--radius); color: var(--quiet); padding: .2rem .5rem; font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; }
+.station-tag strong { color: var(--text); font-weight: 700; }
+.station-tag.station-plan { border-left-color: var(--plan); } .station-tag.station-review { border-left-color: var(--review); } .station-tag.station-ship { border-left-color: var(--ship); }
 .job-meta { margin-top: auto; padding-top: var(--space-3); border-top: 1px solid var(--line); text-transform: none; letter-spacing: 0; overflow-wrap: anywhere; }
 .role-glyph { color: var(--accent); font-weight: 800; } .evidence { padding-top: var(--space-3); } .evidence span { display: block; color: var(--quiet); font-size: .7rem; text-transform: uppercase; letter-spacing: .09em; }
 .evidence strong { display: block; margin-top: .2rem; color: var(--accent); overflow-wrap: anywhere; } .card-warning { color: var(--warn-text); font-size: .78rem; margin: var(--space-3) 0 0; overflow-wrap: anywhere; }
-.empty-column { height: 218px; margin: 0; border: 1px dashed var(--line); border-radius: var(--radius); color: var(--quiet); padding: var(--space-4); display: grid; place-items: center; text-align: center; }
+.column-overflow { margin: 0; color: var(--quiet); font-size: .75rem; text-align: center; }
+.empty-column { height: 244px; margin: 0; border: 1px dashed var(--line); border-radius: var(--radius); color: var(--quiet); padding: var(--space-4); display: grid; place-items: center; text-align: center; }
 footer { color: var(--quiet); border-top: 1px solid var(--line); padding-top: var(--space-3); margin-top: auto; font-size: .78rem; }
-@media (max-width: 980px) { .board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 620px) { .wall-shell { padding: var(--space-3); } .wall-header { display: block; } .feed-status { display: inline-flex; margin-top: var(--space-4); } .board { grid-template-columns: 1fr; } .job-card, .empty-column { height: auto; min-height: 0; } }
+@media (max-width: 760px) { .board { grid-template-columns: 1fr; } .job-card, .empty-column { height: auto; min-height: 0; } .action { height: auto; } }
+@media (max-width: 620px) { .wall-shell { padding: var(--space-3); } .wall-header { display: block; } .feed-status { display: inline-flex; margin-top: var(--space-4); } }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
