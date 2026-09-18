@@ -69,6 +69,15 @@ describe("read path", () => {
     }
   });
 
+  test("every registered query declares its window expression or no window", () => {
+    for (const query of QUERIES) {
+      expect("window" in query, query.name).toBe(true);
+      expect(query.window === null || typeof query.window === "string" || Array.isArray(query.window)).toBe(
+        true,
+      );
+    }
+  });
+
   test("an empty corpus reads as no evidence, never as a zero", () => {
     const env = scratchEnv(newRoot());
     const write = openDb(dbPath(env));
@@ -317,6 +326,22 @@ describe("read path", () => {
       const all = findQuery("tools")?.run(db, {});
       expect(all?.denominator).toContain("all time");
       expect(all?.rows.length).toBeGreaterThan(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("a query with no declared window does not claim an explicit bound", () => {
+    const env = seeded();
+    const db = openReadOnly(dbPath(env));
+    try {
+      const result = findQuery("session")?.run(db, {
+        arg: SESSION.slice(0, 8),
+        since: "2099-01-01T00:00:00.000Z",
+      });
+      expect(result?.rows.length).toBeGreaterThan(0);
+      expect(result?.denominator).toBe(`session ${SESSION}`);
+      expect(findQuery("session")?.window).toBeNull();
     } finally {
       db.close();
     }

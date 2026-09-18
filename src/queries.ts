@@ -25,6 +25,8 @@ export type QueryContext = {
   home?: string;
   /** Resolved by the caller, as `since` is, so no query has to be async to rank by meaning. */
   question?: Question;
+  /** Set by the query registry; null means this query intentionally ignores time windows. */
+  windowColumn?: string | string[] | null;
 };
 
 /**
@@ -38,6 +40,8 @@ export type Query = {
   name: string;
   summary: string;
   usage?: string;
+  /** The timestamp expression every windowed statement in this query must use. */
+  window: string | string[] | null;
   /**
    * No window is applied unless asked. Set where one would hide the answer: a
    * time series, a query aimed at something the caller named, and `running`,
@@ -55,12 +59,17 @@ function window(
   ctx: QueryContext,
   keyword: "WHERE" | "AND" = "AND",
 ): { sql: string; params: string[] } {
-  if (!ctx.since) return { sql: "", params: [] };
+  const declaration = ctx.windowColumn;
+  if (declaration === undefined) throw new Error("query window declaration was not resolved");
+  if (!ctx.since || declaration === null) return { sql: "", params: [] };
+  if (Array.isArray(declaration) && !declaration.includes(col)) return { sql: "", params: [] };
   return { sql: ` ${keyword} ${col} >= ?`, params: [ctx.since] };
 }
 
-const windowLine = (ctx: QueryContext): string =>
-  ctx.since ? `since ${ctx.since.slice(0, 10)}` : "all time";
+const windowLine = (ctx: QueryContext): string => {
+  if (ctx.windowColumn === undefined) throw new Error("query window declaration was not resolved");
+  return ctx.since && ctx.windowColumn !== null ? `since ${ctx.since.slice(0, 10)}` : "all time";
+};
 
 function scalar(db: Database, sql: string, ...params: unknown[]): number {
   const row = db.prepare(sql).get(...(params as [])) as { n: number } | null;
@@ -87,6 +96,7 @@ const corpusLine = (db: Database, ctx: QueryContext): string => {
 const tokens: Query = {
   name: "tokens",
   summary: "input, cache and output tokens per tool and model",
+  window: ["u.ts", "last_seen_at", "ts"],
   run: (db, ctx) => {
     const columns = [
       "tool",
@@ -135,6 +145,7 @@ const tokens: Query = {
 const burn: Query = {
   name: "burn",
   summary: "spend against edits per rolling five-hour block — how much a block turned into changes",
+  window: ["u.ts", "last_seen_at", "ts"],
   run: (db, ctx) => {
     const columns = ["block", "tool", "sessions", "responses", "edits", "cache_read", "output"];
     const w = window("u.ts", ctx, "WHERE");
@@ -178,6 +189,7 @@ const models: Query = {
   name: "models",
   summary: "sessions, responses and tokens per model per month — descriptive only",
   spansHistory: true,
+  window: ["u.ts", "last_seen_at", "ts"],
   run: (db, ctx) => {
     const columns = ["month", "tool", "model", "sessions", "responses", "output"];
     const w = window("u.ts", ctx, "WHERE");
@@ -205,6 +217,7 @@ const cost: Query = {
   name: "cost",
   summary: "cost as each tool reported it, never derived here",
   spansHistory: true,
+  window: "coalesce(c.ts, s.started_at)",
   run: (db, ctx) => {
     const columns = ["month", "sessions_reporting", "total_usd"];
     const w = window("coalesce(c.ts, s.started_at)", ctx, "WHERE");
@@ -234,6 +247,7 @@ const cost: Query = {
 const turns: Query = {
   name: "turns",
   summary: "turn duration and how turns ended, per tool",
+  window: "t.ts_end",
   run: (db, ctx) => {
     const columns = ["tool", "turns", "median_s", "p90_s", "interrupted", "interrupted_pct"];
     const records = table(
@@ -276,6 +290,7 @@ const turns: Query = {
 const sessions: Query = {
   name: "sessions",
   summary: "most recently active sessions, newest first",
+  window: "s.last_seen_at",
   run: (db, ctx) => {
     const columns = ["id", "tool", "project", "started", "turns", "responses", "output", "ended"];
     const records = table(
@@ -314,6 +329,7 @@ const session: Query = {
   summary: "one session in full",
   usage: "dim q session <id-prefix>",
   spansHistory: true,
+  window: null,
   run: (db, { arg }) => {
     if (!arg) {
       return { denominator: "", columns: ["error"], rows: [["usage: dim q session <id-prefix>"]] };
@@ -405,6 +421,7 @@ const session: Query = {
 const tools: Query = {
   name: "tools",
   summary: "tool call counts, failures and the read-to-edit ratio per tool",
+  window: "t.ts_call",
   run: (db, ctx) => {
     const columns = ["tool", "tool_name", "calls", "failed", "failed_pct", "avg_result_bytes"];
     const records = table(
@@ -443,6 +460,7 @@ const tools: Query = {
 const skills: Query = {
   name: "skills",
   summary: "how often each skill loaded, by which path, and what its body cost",
+  window: "l.ts",
   run: (db, ctx) => {
     const columns = [
       "skill",
@@ -557,14 +575,16 @@ const findings: Query = {
   summary: "what a checking agent raised on a slice, and how each was answered",
   usage: "dim q findings [repo-fragment]",
   spansHistory: true,
+  window: "recorded_at",
   run: (db, ctx) => {
     const { arg } = ctx;
     const columns = ["dimension", "raised", "fixed", "refused", "slices", "repos"];
     const where: string[] = [];
     const params: string[] = [];
-    if (ctx.since) {
-      where.push("recorded_at >= ?");
-      params.push(ctx.since);
+    const w = window("recorded_at", ctx, "WHERE");
+    if (w.sql) {
+      where.push(w.sql.trim().replace(/^WHERE /, ""));
+      params.push(...w.params);
     }
     if (arg) {
       where.push("repo LIKE '%' || ? || '%'");
@@ -610,6 +630,7 @@ const findings: Query = {
 const corrections: Query = {
   name: "corrections",
   summary: "the mechanical signals that the user stopped the agent, by skill",
+  window: "m.ts",
   run: (db, ctx) => {
     const { arg } = ctx;
     const columns = ["skill", "rejected", "interrupted", "with_feedback", "labeled", "sessions"];
@@ -657,6 +678,7 @@ const corrections: Query = {
 const candidates: Query = {
   name: "candidates",
   summary: "unlabeled turns the user stopped, with enough text to judge them",
+  window: "m.ts",
   usage: "dim q candidates [skill]",
   run: (db, ctx) => {
     const { arg } = ctx;
@@ -704,6 +726,7 @@ const candidates: Query = {
 const rework: Query = {
   name: "rework",
   summary: "files the agent had to revisit after you pushed back, by skill",
+  window: "t.ts_call",
   run: (db, ctx) => {
     const { arg } = ctx;
     const columns = ["skill", "files_touched", "revisited", "after_pushback", "pushback_rate"];
@@ -881,6 +904,7 @@ const search: Query = {
   summary: "find a distilled passage by meaning, falling back to keywords",
   usage: 'dim q search "<question>"',
   spansHistory: true,
+  window: "coalesce(m.ts, c.ts)",
   embedsArg: true,
   run: (db, ctx) => {
     const { arg, question } = ctx;
@@ -990,6 +1014,7 @@ const keywords: Query = {
   summary: "find a message by the words in it, across every session",
   usage: 'dim q keywords "<words>"',
   spansHistory: true,
+  window: "m.ts",
   run: (db, ctx) => {
     const { arg } = ctx;
     if (!arg) {
@@ -1015,6 +1040,7 @@ const thread: Query = {
   summary: "read one session's exchange, or the messages around a timestamp",
   usage: "dim q thread <id-prefix>[@<ts>]",
   spansHistory: true,
+  window: null,
   run: (db, { arg }) => {
     if (!arg) {
       return { denominator: "", columns: ["error"], rows: [["usage: dim q thread <id-prefix>[@<ts>]"]] };
@@ -1154,6 +1180,7 @@ const skill: Query = {
   summary: "one skill, version by version: loads, size, and what got stopped under each",
   usage: "dim q skill <name>",
   spansHistory: true,
+  window: "l.ts",
   run: (db, ctx) => {
     const { arg } = ctx;
     if (!arg) {
@@ -1228,6 +1255,7 @@ const resume: Query = {
   summary: "the factual half of a handoff: branch, files in play, last pushback, last exchange",
   usage: "dim q resume <id-prefix>",
   spansHistory: true,
+  window: null,
   run: (db, { arg }) => {
     if (!arg) {
       return { denominator: "", columns: ["error"], rows: [["usage: dim q resume <id-prefix>"]] };
@@ -1319,6 +1347,7 @@ const resume: Query = {
 const delegation: Query = {
   name: "delegation",
   summary: "work handed to a subagent or a peer, by the skill that handed it over",
+  window: "t.ts_call",
   run: (db, ctx) => {
     const columns = ["skill", "handoffs", "subagents", "subagent_output", "failed", "sessions"];
     const w = window("t.ts_call", ctx, "WHERE");
@@ -1387,6 +1416,7 @@ const running: Query = {
   summary: "sessions and subagents active in the last few minutes, and what each is doing",
   usage: "dim q running [minutes]",
   spansHistory: true,
+  window: "s.last_seen_at",
   run: (db, ctx) => {
     const { arg } = ctx;
     const minutes = arg && /^\d+$/.test(arg) ? Number(arg) : 30;
@@ -1444,6 +1474,7 @@ const running: Query = {
 const exemplars: Query = {
   name: "exemplars",
   summary: "code an agent wrote that shipped and no fix came back to — candidates, not verdicts",
+  window: "t.ts_call",
   run: (db, ctx) => {
     const columns = ["file", "repo", "skill", "edits", "commits", "days_since"];
     const w = window("t.ts_call", ctx);
@@ -1499,6 +1530,7 @@ const exemplars: Query = {
 const fixes: Query = {
   name: "fixes",
   summary: "files an agent edited that a later fix commit had to come back to, by skill",
+  window: "t.ts_call",
   run: (db, ctx) => {
     const columns = ["skill", "files", "later_fixed", "fixed_pct", "mean_days", "sessions"];
     const w = window("t.ts_call", ctx);
@@ -1597,6 +1629,7 @@ const repeats: Query = {
   name: "repeats",
   summary: "phrases you have used in several sessions when stopping or correcting the agent",
   usage: "dim q repeats [words-per-phrase]",
+  window: "m.ts",
   run: (db, ctx) => {
     const size = ctx.arg && /^\d+$/.test(ctx.arg) ? Number(ctx.arg) : 4;
     const w = window("m.ts", ctx);
@@ -1665,6 +1698,7 @@ const repeats: Query = {
 const digest: Query = {
   name: "digest",
   summary: "the whole week in one call: friction, where work happened, what you repeated",
+  window: ["last_seen_at", "ts_call", "m.ts", "ts", "first_seen"],
   run: (db, ctx) => {
     const w = (col: string) => window(col, ctx);
     const rows: (string | number | null)[][] = [];
@@ -1760,6 +1794,7 @@ const stale: Query = {
   name: "stale",
   summary: "how much the code a session touched has changed since it ran",
   usage: "dim q stale [id-prefix]",
+  window: "s.last_seen_at",
   run: (db, ctx) => {
     const { arg } = ctx;
     const columns = ["session", "project", "ran", "files", "moved_pct", "commits_since", "days"];
@@ -1829,6 +1864,7 @@ const priorArt: Query = {
   summary: "where a path like this one already exists across the repos on disk, newest first",
   usage: 'dim q prior-art "<path fragment>"',
   spansHistory: true,
+  window: null,
   run: (db, ctx) => {
     const columns = ["file", "repo", "commits", "days_since", "authors"];
     const fragment = ctx.arg ?? "";
@@ -1905,6 +1941,7 @@ const chain: Query = {
   summary: "sessions that continued one another through a handoff, longest chain first",
   usage: "dim q chain [id-prefix]",
   spansHistory: true,
+  window: "to_ts",
   run: (db, ctx) => {
     const { arg } = ctx;
     if (arg) {
@@ -1984,6 +2021,7 @@ const slices: Query = {
   name: "slices",
   summary: "commits that had no run of the repo's own check in front of them",
   usage: "dim q slices [id-prefix]",
+  window: "c.ts_call",
   run: (db, ctx) => {
     const { arg } = ctx;
     const columns = ["session", "at", "checked", "command"];
@@ -2068,6 +2106,7 @@ const convention: Query = {
   summary: "the commit convention each repo's own log holds",
   usage: "dim q convention [repo-fragment]",
   spansHistory: true,
+  window: "ts",
   run: (db, ctx) => {
     const { arg } = ctx;
     const columns = [
@@ -2085,9 +2124,10 @@ const convention: Query = {
       conds.push("repo_key LIKE '%' || ? || '%'");
       filter.push(arg);
     }
-    if (ctx.since) {
-      conds.push("ts >= ?");
-      filter.push(ctx.since);
+    const w = window("ts", ctx, "WHERE");
+    if (w.sql) {
+      conds.push(w.sql.trim().replace(/^WHERE /, ""));
+      filter.push(...w.params);
     }
     // Every number in a row is measured over the same rows, `top_kinds` included:
     // a subquery reading the base table instead would report types from outside
@@ -2140,6 +2180,11 @@ const convention: Query = {
   },
 };
 
+const withDeclaredWindow = (query: Query): Query => ({
+  ...query,
+  run: (db, ctx) => query.run(db, { ...ctx, windowColumn: query.window }),
+});
+
 export const QUERIES: Query[] = [
   convention,
   priorArt,
@@ -2171,7 +2216,7 @@ export const QUERIES: Query[] = [
   rework,
   sessions,
   session,
-];
+].map(withDeclaredWindow);
 
 export function findQuery(name: string): Query | undefined {
   return QUERIES.find((q) => q.name === name);
