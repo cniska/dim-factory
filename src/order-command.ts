@@ -26,7 +26,7 @@ export const ORDER_USAGE = `usage: dim order claim <order-id> --run <id> --queue
        dim order start <order-id>
        dim order move <order-id> --station <name>
        dim order commit <order-id> --sha <sha> [--subject "..."]
-       dim order file <order-id> --path <path>
+       dim order file <order-id> --path <path> [--added <n>] [--removed <n>]
        dim order check <order-id> --command "..." --exit <code> [--result "..."]
        dim order finding <order-id> --dimension <name> --summary "..." --answer <fixed|refused>
                        [--resolution "..."]
@@ -119,6 +119,18 @@ function exitCode(given: Map<string, string>): number {
   return Number(spec);
 }
 
+/**
+ * A count git reported, read as digits for the same reason an exit code is: a
+ * line that says `-`, which is what numstat gives for a binary file, is not zero
+ * lines changed and is recorded as no count at all.
+ */
+function lineCount(given: Map<string, string>, flag: string): number | undefined {
+  const spec = given.get(flag);
+  if (spec === undefined || spec === "-") return undefined;
+  if (!/^\d+$/.test(spec)) throw new OrderCommandError(`${flag} ${spec} is not a line count`);
+  return Number(spec);
+}
+
 function answer(given: Map<string, string>): "fixed" | "refused" {
   const value = required(given, "--answer");
   if (value !== "fixed" && value !== "refused") {
@@ -146,11 +158,15 @@ const EVIDENCE: Record<string, Evidence> = {
     },
   },
   file: {
-    flags: ["--path"],
+    flags: ["--path", "--added", "--removed"],
     record: (db, id, given) => {
       const path = required(given, "--path");
-      recordOrderFile(db, id, path);
-      return `${id} recorded ${path}`;
+      const added = lineCount(given, "--added");
+      const removed = lineCount(given, "--removed");
+      recordOrderFile(db, id, { path, added, removed });
+      const counted =
+        added === undefined && removed === undefined ? "" : ` (+${added ?? 0}/-${removed ?? 0})`;
+      return `${id} recorded ${path}${counted}`;
     },
   },
   check: {

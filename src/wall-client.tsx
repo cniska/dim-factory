@@ -7,6 +7,7 @@ import { Card, CardFooter, CardHeader } from "./components/ui/card";
 import { Digits } from "./components/ui/digits";
 import { Robot } from "./components/ui/robot";
 import type {
+  WallItemChange,
   WallItemEntry,
   WallItemView,
   WallOrder,
@@ -16,7 +17,7 @@ import type {
 } from "./factory-wall";
 import { cn } from "./lib/utils";
 import { FAILURE_MARKS_SHOWN, ordersByPhase, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
-import { ITEM_KIND_LABELS, RAIL_MARK_GLYPH, railStops, shortSha } from "./wall-item";
+import { ITEM_KIND_LABELS, RAIL_MARK_GLYPH, type RailStop, railStops, shortSha } from "./wall-item";
 import "./wall.css";
 
 const unavailableSnapshot: WallSnapshot = {
@@ -271,11 +272,85 @@ function EntryEvidence({ entry }: { entry: WallItemEntry }) {
   return null;
 }
 
-/** The rail and the history are one list in two columns rather than two lists side by side: a
- *  history line that wraps takes its own rail stop with it, where two lists drift apart at the
- *  first wrapped line and the rail stops indexing what it sits beside. */
-function ItemHistory({ entries }: { entries: WallItemEntry[] }) {
+/** What the order changed, beside its history rather than inside it: a file is not a moment in
+ *  the story, and a builder that touches twenty of them would bury the events among them. A count
+ *  nobody recorded is left blank, because zero lines changed is a different claim. */
+function ItemChanges({ changes }: { changes: WallItemChange[] }) {
+  return (
+    <section className="flex w-[22rem] shrink-0 flex-col gap-2 border-l pl-5">
+      <h3 className="text-foreground">Changes</h3>
+      <ol className="flex flex-col gap-1">
+        {changes.map((change) => (
+          <li key={change.path} className="flex items-baseline justify-between gap-3 text-quiet">
+            <code className="truncate text-muted-foreground" title={change.path}>
+              {change.path}
+            </code>
+            <span className="shrink-0 tabular-nums">
+              {change.added === undefined ? null : <span className="text-role-builder">+{change.added}</span>}
+              {change.removed === undefined ? null : <span className="text-danger"> −{change.removed}</span>}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+/** A worker as a moment names it, falling back to the worker the order is held by. Only the
+ *  order's own worker takes its role's tint: a delegated agent's role is not recorded, so tinting
+ *  it would state a role nothing holds. */
+function EntryWorker({
+  stop,
+  order,
+  held,
+}: {
+  stop: RailStop | undefined;
+  order: WallOrder;
+  /** The worker every unattributed moment belongs to, or nothing where the order delegated: a
+   *  delegated moment records no actor either, and the holder would be the wrong name on it. */
+  held: string | undefined;
+}) {
+  const marker = (worker: string) => (
+    <>
+      <Robot
+        label={
+          worker === order.worker && order.role !== "unknown"
+            ? `${worker}, ${order.role}`
+            : `${worker}, role unknown`
+        }
+        className={worker === order.worker ? roleTint[order.role] : roleTint.unknown}
+      />
+      <span className="truncate">{worker}</span>
+    </>
+  );
+
+  const worker = stop?.worker ?? held;
+  if (!worker && !stop?.handedTo) return <span />;
+
+  return (
+    <span className="flex items-center justify-end gap-1.5 whitespace-nowrap text-quiet">
+      {marker(worker ?? NO_WORKER)}
+      {stop?.handedTo ? (
+        <>
+          <span aria-hidden="true">{RAIL_MARK_GLYPH.handover}</span>
+          {marker(stop.handedTo)}
+        </>
+      ) : null}
+    </span>
+  );
+}
+
+/** The rail and the history are one list in three columns rather than lists side by side: a
+ *  history line that wraps takes its own rail stop with it, where separate lists drift apart at
+ *  the first wrapped line and the rail stops indexing what it sits beside. The mark and the time
+ *  lead because they order the page; who did it sits at the right edge, where a column of workers
+ *  reads down the page on its own. */
+function ItemHistory({ entries, order }: { entries: WallItemEntry[]; order: WallOrder }) {
   const stops = railStops(entries);
+  // Only a claim, a start and a delegation record an actor, so every other moment of an
+  // undelegated order belongs to the worker holding it. Once one was delegated, an unattributed
+  // moment could be either agent's, and the holder's name on it would be the wrong one.
+  const held = entries.some((entry) => entry.kind === "delegated") ? undefined : order.worker;
 
   return (
     <ol className="flex min-w-0 grow flex-col gap-2">
@@ -288,16 +363,13 @@ function ItemHistory({ entries }: { entries: WallItemEntry[] }) {
             // what tells them apart.
             // biome-ignore lint/suspicious/noArrayIndexKey: position in the written order is the entry's identity
             key={`${entry.at}-${entry.kind}-${index}`}
-            className="grid grid-cols-[minmax(11rem,auto)_1fr] gap-x-5 border-b pb-2 last:border-b-0"
+            className="grid grid-cols-[minmax(5rem,auto)_1fr_auto] gap-x-5 border-b pb-2 last:border-b-0"
           >
             <span className="flex items-baseline gap-2 border-r pr-4 whitespace-nowrap text-quiet">
               <span aria-hidden="true" className="w-3 text-center text-foreground">
                 {stop ? RAIL_MARK_GLYPH[stop.mark] : ""}
               </span>
               <span className="tabular-nums">{timeLabel(entry.at)}</span>
-              <span className="truncate">
-                {stop?.handedTo ? `${stop.worker ?? NO_WORKER} → ${stop.handedTo}` : (stop?.worker ?? "")}
-              </span>
             </span>
             <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
               <span className="w-[9rem] shrink-0 text-foreground">{ITEM_KIND_LABELS[entry.kind]}</span>
@@ -305,6 +377,7 @@ function ItemHistory({ entries }: { entries: WallItemEntry[] }) {
               {entry.reason ? <span>{entry.reason}</span> : null}
               {entry.fence ? <span className="text-warn-foreground">{entry.fence}</span> : null}
             </span>
+            <EntryWorker stop={stop} order={order} held={held} />
           </li>
         );
       })}
@@ -401,7 +474,10 @@ function ItemDialog({
             whatever is being read. */}
         <div className="flex min-h-0 gap-5 overflow-y-auto p-5">
           {read.view && read.view.entries.length > 0 ? (
-            <ItemHistory entries={read.view.entries} />
+            <>
+              <ItemHistory entries={read.view.entries} order={order} />
+              {read.view.changes.length > 0 ? <ItemChanges changes={read.view.changes} /> : null}
+            </>
           ) : (
             <p className={read.state === "unavailable" ? "text-warn-foreground" : undefined}>
               {ITEM_READ_MESSAGE[read.state]}

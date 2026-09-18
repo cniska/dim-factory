@@ -618,7 +618,12 @@ describe("factory wall item view", () => {
       { command: "bun run verify", exitCode: 0, result: "green" },
       "2026-09-18T10:04:00.000Z",
     );
-    recordOrderFile(db, "order-worked", "src/factory-wall.ts", "2026-09-18T10:05:00.000Z");
+    recordOrderFile(
+      db,
+      "order-worked",
+      { path: "src/factory-wall.ts", added: 62, removed: 7 },
+      "2026-09-18T10:05:00.000Z",
+    );
     recordOrderCommit(
       db,
       "order-worked",
@@ -673,7 +678,6 @@ describe("factory wall item view", () => {
       "environment_reported",
       "check_finished",
       "check_finished",
-      "file_changed",
       "commit_created",
       "check_finished",
       "review_finished",
@@ -700,6 +704,37 @@ describe("factory wall item view", () => {
     db.close();
   });
 
+  test("reads the changes beside the history rather than as moments in it", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    seedWorkedOrder(db);
+
+    const view = assembleItemView(db, "order-worked", new Date("2026-09-18T10:20:00.000Z"));
+
+    expect(view?.changes).toEqual([{ path: "src/factory-wall.ts", added: 62, removed: 7 }]);
+    expect(view?.entries.some((entry) => entry.path === "src/factory-wall.ts")).toBe(false);
+    db.close();
+  });
+
+  test("leaves an uncounted change without a count rather than calling it zero", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    createOrder(db, {
+      id: "order-uncounted",
+      runId: "run",
+      queueId: "queue",
+      itemId: "uncounted",
+      title: "Record a path and no counts",
+    });
+    appendOrderEvent(db, "order-uncounted", { kind: "started", status: "running" });
+    recordOrderFile(db, "order-uncounted", { path: "src/binary.png" });
+
+    const view = assembleItemView(db, "order-uncounted", new Date("2026-09-18T10:20:00.000Z"));
+
+    expect(view?.changes).toEqual([{ path: "src/binary.png" }]);
+    db.close();
+  });
+
   test("writes a path under the home directory the way a person does", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
@@ -714,14 +749,12 @@ describe("factory wall item view", () => {
       branch: "at-home",
     });
     appendOrderEvent(db, "order-at-home", { kind: "started", status: "running" });
-    recordOrderFile(db, "order-at-home", `${home}/code/dim-factory/src/paths.ts`);
+    recordOrderFile(db, "order-at-home", { path: `${home}/code/dim-factory/src/paths.ts` });
 
     const view = assembleItemView(db, "order-at-home", new Date("2026-09-18T10:20:00.000Z"));
 
     expect(view?.worktree).toBe("~/code/dim-factory");
-    expect(view?.entries.find((entry) => entry.kind === "file_changed")?.path).toBe(
-      "~/code/dim-factory/src/paths.ts",
-    );
+    expect(view?.changes).toEqual([{ path: "~/code/dim-factory/src/paths.ts" }]);
     db.close();
   });
 
@@ -752,7 +785,6 @@ describe("factory wall item view", () => {
         },
       ],
     );
-    expect(entries.find((entry) => entry.kind === "file_changed")?.path).toBe("src/factory-wall.ts");
     expect(entries.find((entry) => entry.kind === "document_updated")?.path).toBe("docs/human-interface.md");
     expect(entries.find((entry) => entry.kind === "environment_reported")?.environment).toEqual({
       phase: "setup",
@@ -867,7 +899,7 @@ describe("factory wall item view", () => {
       { command: "bun run other", exitCode: 0, result: "green" },
       "2026-09-18T10:03:00.000Z",
     );
-    recordOrderFile(db, "order-other", "src/other.ts", "2026-09-18T10:05:00.000Z");
+    recordOrderFile(db, "order-other", { path: "src/other.ts" }, "2026-09-18T10:05:00.000Z");
     recordOrderDocument(db, "order-other", "docs/other.md", "2026-09-18T10:09:00.000Z");
 
     const entries = assembleItemView(db, "order-other", new Date("2026-09-18T10:20:00.000Z"))?.entries ?? [];
@@ -876,11 +908,10 @@ describe("factory wall item view", () => {
       "claimed",
       "started",
       "check_finished",
-      "file_changed",
       "document_updated",
     ]);
     expect(entries.map((entry) => entry.check?.command).filter(Boolean)).toEqual(["bun run other"]);
-    expect(entries.map((entry) => entry.path).filter(Boolean)).toEqual(["src/other.ts", "docs/other.md"]);
+    expect(entries.map((entry) => entry.path).filter(Boolean)).toEqual(["docs/other.md"]);
     db.close();
   });
 

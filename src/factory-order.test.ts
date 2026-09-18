@@ -91,7 +91,7 @@ describe("factory order report records", () => {
         context.setLocation(trunk.dir, "order-2");
         context.delegate("agent-3", "session-3", "dim-station-review");
         context.recordCommit(trunk.sha, "feat: observable order");
-        context.recordFile("src/factory-driver.ts");
+        context.recordFile({ path: "src/factory-driver.ts", added: 18, removed: 2 });
         context.recordCheck({ command: "bun run verify", exitCode: 0, result: "green" });
         context.recordFinding({ dimension: "tests", summary: "holds", answer: "fixed" });
         context.recordDocument("docs/factory.md");
@@ -508,7 +508,7 @@ describe("factory order report records", () => {
       { kind: "fenced", status: "fenced", fenceType: "owner-decision", reason: "needs approval" },
       "2026-09-18T10:02:00.000Z",
     );
-    expect(() => recordOrderFile(database, "order-1", "src/after-stop.ts")).toThrow(
+    expect(() => recordOrderFile(database, "order-1", { path: "src/after-stop.ts" })).toThrow(
       "order order-1 is already fenced",
     );
     expect(() => recordOrderEnvironment(database, "order-1", teardownReport)).toThrow(
@@ -634,7 +634,12 @@ describe("factory order report records", () => {
     createOrder(database, order, "2026-09-18T10:00:00.000Z");
     appendOrderEvent(database, "order-1", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
     recordOrderCommit(database, "order-1", trunk.sha, "feat: order", "2026-09-18T10:02:00.000Z");
-    recordOrderFile(database, "order-1", "src/factory-order.ts", "2026-09-18T10:02:30.000Z");
+    recordOrderFile(
+      database,
+      "order-1",
+      { path: "src/factory-order.ts", added: 40, removed: 9 },
+      "2026-09-18T10:02:30.000Z",
+    );
     const check = recordOrderCheck(
       database,
       "order-1",

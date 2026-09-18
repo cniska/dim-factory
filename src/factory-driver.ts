@@ -5,6 +5,7 @@ import {
   isTerminalOrderStatus,
   type Order,
   type OrderEvent,
+  type OrderFile,
   type OrderStatus,
   orderStatus,
   recordOrderCheck,
@@ -30,7 +31,7 @@ export type FactoryContext = {
   delegate(agentId: string, sessionId?: string, station?: string): void;
   stop(outcome: FactoryOutcome): void;
   recordCommit(sha: string, subject?: string): void;
-  recordFile(path: string): void;
+  recordFile(file: OrderFile): void;
   recordCheck(check: {
     command: string;
     exitCode: number;
@@ -74,7 +75,7 @@ export async function runFactoryOrder(
     stop: (outcome) =>
       appendOrderEvent(db, item.id, { kind: outcome.status, status: outcome.status, reason: outcome.reason }),
     recordCommit: (sha, subject) => recordOrderCommit(db, item.id, sha, subject),
-    recordFile: (path) => recordOrderFile(db, item.id, path),
+    recordFile: (file) => recordOrderFile(db, item.id, file),
     recordCheck: (check) => recordOrderCheck(db, item.id, check),
     recordFinding: (finding) => recordOrderFinding(db, item.id, finding),
     recordDocument: (path) => recordOrderDocument(db, item.id, path),
