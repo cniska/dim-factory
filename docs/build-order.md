@@ -12,9 +12,7 @@ The corpus-native half of the measurement is built: `dim bench` scores a hand-la
 
 - **The external set** ([`recall.md`](recall.md)). LongMemEval is what a published claim is made against, so it is the only way such a claim becomes checkable here. Its dataset adapters are the part that transfers from Acolyte's harness; the metrics were written here.
 
-- **Telling two passages in one session apart.** `search` prints a session for a message hit, so a message is graded by the session it sits in and two graded passages from one session cannot be separated; `bench` refuses such a question rather than scoring it wrong. A decision is usually one passage, not a whole session, so this is what stands between the corpus and the questions it most wants to ask, and it bounds the item below.
-
-- **A corpus wider than one hand.** The labeled set is small and every question in it was written by one agent in one sitting, so it reports what that agent thought to ask. `handoff_link` pairs a handoff with the session that acted on it, which is a query and its known answer that nobody had to invent — drawing questions from there is what makes the set larger than an opinion. Until a passage can be told from its session, such a draw takes at most one question per session; the rest of the edges are unscorable.
+- **A corpus wider than one hand.** The labeled set is small and every question in it was written by one agent in one sitting, so it reports what that agent thought to ask. `handoff_link` pairs a handoff with the session that acted on it, which is a query and its known answer that nobody had to invent — drawing questions from there is what makes the set larger than an opinion. A session can carry as many questions as it holds passages, since `search` names a passage and `bench` grades one ([`design.md`](design.md)).
 
 ## Waiting on that measurement
 
