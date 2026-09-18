@@ -26,7 +26,15 @@ describe("skill install", () => {
   // Literals, not the constant: importing SKILL_NAMES would let a dropped skill
   // ratify its own removal.
   test("ships the skills that need dim on PATH", () => {
-    expect(shipped()).toEqual(["dim-build", "dim-factory", "dim-feat", "dim-fix", "dim-plan", "dim-review"]);
+    expect(shipped()).toEqual([
+      "dim-build",
+      "dim-factory",
+      "dim-feat",
+      "dim-fix",
+      "dim-handoff",
+      "dim-plan",
+      "dim-review",
+    ]);
   });
 
   test("installs every skill directory in the repo, so a new one is not left behind", () => {

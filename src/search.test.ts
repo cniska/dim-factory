@@ -57,6 +57,12 @@ function seeded(): Database {
     [HANDOFF],
   );
   db.run(
+    `INSERT INTO factory_handoff (message_id, session_id, role, ts, title, next)
+     VALUES ('m-handoff', 's1', 'assistant', '2026-09-01T10:30:00Z',
+             '# Handoff — dim-factory: reach a session unasked',
+             'Undo what an agent wrote without touching the user''s own checkout.')`,
+  );
+  db.run(
     `INSERT INTO message (id, session_id, ts, role, text, src_file, src_line, is_meta)
      VALUES ('m-meta', 's1', '2026-09-01T10:31:00Z', 'user', ?, '/f.jsonl', 2, 1)`,
     ["Injected reminder about the checkout."],

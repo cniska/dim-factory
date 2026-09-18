@@ -1,5 +1,4 @@
 import type { Database } from "bun:sqlite";
-import { handoffNext } from "./handoff";
 
 /** The text in this corpus a person compressed by hand; see docs/recall.md for why only this. */
 export type DistilledKind = "next" | "subject" | "correction";
@@ -8,18 +7,15 @@ export type Distilled = { kind: DistilledKind; ref: string; text: string };
 
 function nexts(db: Database): Distilled[] {
   const rows = db
-    .prepare<{ id: string; text: string }, []>(
-      `SELECT m.id AS id, m.text AS text
-       FROM message m
-       WHERE m.role = 'assistant' AND m.text LIKE '%# Handoff%' AND m.text LIKE '%## Next%'`,
+    .prepare<{ id: string; next: string }, []>(
+      `SELECT message_id AS id, next
+       FROM factory_handoff
+       WHERE role = 'assistant'`,
     )
     .all();
   const out: Distilled[] = [];
   for (const row of rows) {
-    // Sliced the way `wake` slices it, so a search matches the text a session
-    // would be handed at start-up rather than the longer message it sits in.
-    const text = handoffNext(row.text);
-    if (text) out.push({ kind: "next", ref: row.id, text });
+    out.push({ kind: "next", ref: row.id, text: row.next });
   }
   return out;
 }

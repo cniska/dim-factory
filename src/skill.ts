@@ -24,6 +24,7 @@ export const SKILL_NAMES = [
   "dim-fix",
   "dim-plan",
   "dim-build",
+  "dim-handoff",
   "dim-review",
   "dim-factory",
 ] as const;

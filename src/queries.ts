@@ -1351,6 +1351,15 @@ const resume: Query = {
       ["last active", s.last_seen_at ?? null],
     ];
 
+    const handoff = table(
+      db,
+      `SELECT next FROM factory_handoff
+       WHERE session_id = ? AND role = 'assistant'
+       ORDER BY ts DESC LIMIT 1`,
+      [id],
+    )[0];
+    if (handoff) rows.push(["next", handoff.next as string]);
+
     // Ordered by the last touch, not the count: the file being worked on when the
     // session stopped is the one the next move starts from.
     for (const f of table(
@@ -1403,8 +1412,8 @@ const resume: Query = {
       columns: ["what", "detail"],
       rows,
       note:
-        "Facts only. What the next move should be is not in here — that is the judgement a handoff exists " +
-        "to make. Run `dim sync` first if the session is still open, since only written bytes are read. " +
+        "Facts only. The next move is the handoff text written in that session; no move is inferred here. " +
+        "Run `dim sync` first if the session is still open, since only written bytes are read. " +
         claudeOnly(CLAUDE_EDITS, CLAUDE_STOPS),
     };
   },
