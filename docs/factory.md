@@ -56,6 +56,19 @@ The queue may carry a compact current status and `job_id` link for a person read
 
 This is planned orchestration work. It does not add a second source of truth for job reports.
 
+## Scheduling
+
+The planned scheduler makes recurring factory runs visible without choosing the host that wakes them.
+
+- **Definition.** `dim` owns a schedule's identity, target queue, due policy and enabled or paused state.
+- **Due work.** The driver asks `dim` which schedules are due, claims the eligible queue work and records the run and jobs in the existing factory tables.
+- **Host boundary.** Codex, launchd, cron or another host only invokes `dim`; it does not own schedule state, claim work or write a second report.
+- **Repeatability.** A repeated invocation reads persisted schedule and job state, so it does not start a second active run for the same serialized key.
+- **Visibility.** The factory status query will show schedule state, due work, active runs, terminal outcomes and fences from the same persisted record.
+- **Control.** Pausing a schedule prevents new claims while preserving its history. A fence or repeated failure is recorded and remains visible to the next invocation.
+
+The first slice is the schedule definition, due selection and read path. Installing or mutating a host scheduler is outside that slice.
+
 ## What is missing is not another skill
 
 Two layers separate a set of stations from a line that runs itself, and neither is more instruction.
