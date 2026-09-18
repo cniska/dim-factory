@@ -24,6 +24,7 @@ import { runQueueCommand } from "./queue-command";
 import { openReadOnly } from "./read-db";
 import { isHostQualified, remoteSlug } from "./remote-slug";
 import { DEFAULT_MAX_ROWS, renderTable, rowsFromArgs } from "./render";
+import { routeReport } from "./routing";
 import { installRules, planRules } from "./rules";
 import { DEFAULT_WINDOW, windowFromArgs } from "./since";
 import { installSkill, planSkill, SKILL_NAMES } from "./skill";
@@ -63,6 +64,8 @@ const USAGE = `usage: dim <command>
   check-task      print the check command this repo declares, and nothing if it
                   declares none or this is not a checkout (the pre-commit hook
                   reads this, and takes silence as no gate)
+  route [<role>]  print the capability tier a factory role runs at and what this
+                  machine's harness map calls it, or every role with no argument
   check-commits <range>
                   judge every authored subject in a revision range by the same
                   rules the commit gate holds, and name each one that breaks
@@ -838,6 +841,9 @@ try {
         const task = root === null ? null : checkTask(root);
         if (task) console.log(task.command);
       }
+      break;
+    case "route":
+      console.log(routeReport(process.argv[3]).join("\n"));
       break;
     case "check-commits":
       runCheckCommits(process.argv[3]);
