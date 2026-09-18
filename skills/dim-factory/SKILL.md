@@ -54,11 +54,18 @@ A queue may draw its own fence on top of these — a section its rules file mark
 
 Stopping means writing down what was found, leaving the item where it was, and naming which shape stopped it. Waiting for permission mid-run is not running unattended; deciding one of these alone is what the fence exists to prevent.
 
-## 5. Bound the run
+## 5. Keep the line moving
 
-**Stop after the item count you were given, default one. Stop on the second failure of one item whatever the count says** — a second failure says the item is wrong, not the attempt.
+**Work the queue until it is empty.** Take the next item the moment one lands, and do not come back between items to say a thing went well — a line that halts after every job is not running, and a report per item is the report at the end read one piece at a time.
 
-A failed attempt usually leaves the queue exactly as it was, so nothing but this bound keeps the next run from taking the same item again.
+Four things stop it, and nothing else does:
+
+- a fence, per above
+- the item count, when one was given as an argument
+- **the same item failing twice** — a second failure says the item is wrong, not the attempt, so leave it and take the next one
+- **two items failing in a row** — that is the floor moving rather than the items, and the next thing to do is read why rather than start a third
+
+A failed attempt usually leaves the queue exactly as it was, so nothing but these keeps a run from taking the same item forever.
 
 ## 6. Report
 

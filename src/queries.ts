@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { EMBED_MODEL, fromBlob, type Question, similarity } from "./embed";
+import { isScratchRepo } from "./scratch";
 import { withoutWorktree } from "./worktree";
 
 export type QueryResult = {
@@ -1906,7 +1907,7 @@ const slices: Query = {
     const columns = ["session", "at", "checked", "command"];
     const w = window("c.ts_call", ctx);
     const isCheck = CHECK_PATTERNS.map(() => "m.command LIKE '%' || ? || '%'").join(" OR ");
-    const records = table(
+    const all = table(
       db,
       `WITH calls AS (
          SELECT c.id, c.session_id, c.ts_call AS ts, c.command, c.is_error AS failed,
@@ -1935,13 +1936,21 @@ const slices: Query = {
                 SELECT 1 FROM m t WHERE t.session_id = commits.session_id AND t.is_check = 1
                   AND t.ts < commits.ts AND (commits.prev IS NULL OR t.ts > commits.prev)
               ) THEN 'yes' ELSE 'no' END AS checked,
-              replace(substr(command, 1, 60), char(10), ' ') AS command
+              replace(substr(command, 1, 60), char(10), ' ') AS command,
+              (SELECT s.project FROM session s WHERE s.id = commits.session_id) AS project
        FROM commits ORDER BY ts DESC`,
       [...(arg ? [arg] : []), ...w.params, ...CHECK_PATTERNS],
     );
+    // A fixture repo the OS will delete declares no check, so its commits read as
+    // discipline nobody owed. `isScratchRepo` holds the roots, and asking it is
+    // what keeps this from becoming a second list; an empty path resolves to the
+    // cwd there, so a session with no project counts as work rather than scratch.
+    const records = all.filter((r) => !(r.project && isScratchRepo(String(r.project))));
     const unchecked = records.filter((r) => r.checked === "no").length;
     return {
-      denominator: `${records.length} commits, ${unchecked} with no check in front of them (${windowLine(ctx)})`,
+      denominator:
+        `${records.length} commits, ${unchecked} with no check in front of them (${windowLine(ctx)})` +
+        (all.length > records.length ? `, ${all.length - records.length} in scratch trees not counted` : ""),
       columns,
       rows: toRows(records, columns),
       note:
