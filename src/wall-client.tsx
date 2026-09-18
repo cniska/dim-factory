@@ -6,9 +6,17 @@ import { Badge } from "./components/ui/badge";
 import { Card, CardFooter, CardHeader } from "./components/ui/card";
 import { Digits } from "./components/ui/digits";
 import { Robot } from "./components/ui/robot";
-import type { WallJob, WallRole, WallSnapshot, WallStatus } from "./factory-wall";
+import type {
+  WallItemEntry,
+  WallItemView,
+  WallJob,
+  WallRole,
+  WallSnapshot,
+  WallStatus,
+} from "./factory-wall";
 import { cn } from "./lib/utils";
 import { FAILURE_MARKS_SHOWN, jobsByLifecycle, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
+import { ITEM_KIND_LABELS, type RailMark, railStops, shortSha } from "./wall-item";
 import "./wall.css";
 
 const unavailableSnapshot: WallSnapshot = {
@@ -103,14 +111,37 @@ function FailedChecks({ count }: { count: number }) {
   );
 }
 
-function JobCard({ job, now, bumped }: { job: WallJob; now: Date; bumped: boolean }) {
+function JobCard({
+  job,
+  now,
+  bumped,
+  onOpen,
+}: {
+  job: WallJob;
+  now: Date;
+  bumped: boolean;
+  onOpen: (jobId: string) => void;
+}) {
   const StatusIcon = statusIcon[job.status];
 
   return (
     <Card
+      onClick={() => onOpen(job.id)}
+      // The card is what a reader points at, so it is what opens; the view it opens reads the
+      // record and changes nothing, which is why a card can carry it without a control.
+      tabIndex={0}
+      role="button"
+      aria-label={`Open ${job.title}`}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen(job.id);
+        }
+      }}
       stopped={stopped.has(job.status)}
       className={cn(
-        "gap-0 p-2.5 text-[11px] transition-colors duration-1000",
+        "gap-0 p-2.5 text-left text-[11px] transition-colors duration-1000",
+        "cursor-pointer hover:border-accent focus-visible:border-accent focus-visible:outline-none",
         // Lit on the beat this card changed and left to fade, so a glance a moment later
         // still shows which card moved.
         bumped && "border-accent duration-0",
@@ -165,18 +196,201 @@ function JobCard({ job, now, bumped }: { job: WallJob; now: Date; bumped: boolea
   );
 }
 
+function EntryEvidence({ entry }: { entry: WallItemEntry }) {
+  if (entry.commit)
+    return (
+      <>
+        <code className="text-foreground">{shortSha(entry.commit.sha)}</code>
+        {entry.commit.subject ? <span>{entry.commit.subject}</span> : null}
+      </>
+    );
+  if (entry.check)
+    return (
+      <>
+        <code className="text-foreground">{entry.check.command}</code>
+        <span className={entry.check.exitCode === 0 ? undefined : "text-danger"}>
+          exit {entry.check.exitCode}
+        </span>
+        {entry.check.result ? <span>{entry.check.result}</span> : null}
+      </>
+    );
+  if (entry.finding)
+    return (
+      <>
+        <Badge className="shrink-0">{entry.finding.dimension}</Badge>
+        <span className={entry.finding.answer === "refused" ? "text-warn-foreground" : undefined}>
+          {entry.finding.answer}
+        </span>
+        <span>{entry.finding.summary}</span>
+        {entry.finding.resolution ? (
+          <span className="text-warn-foreground">{entry.finding.resolution}</span>
+        ) : null}
+      </>
+    );
+  if (entry.environment)
+    return (
+      <>
+        <span>{entry.environment.phase}</span>
+        <span className={entry.environment.exitCode === 0 ? undefined : "text-danger"}>
+          {entry.environment.signal ?? `exit ${entry.environment.exitCode ?? "unrecorded"}`}
+        </span>
+        {entry.environment.stderr ? <span className="text-danger">{entry.environment.stderr}</span> : null}
+        {entry.environment.resources.length > 0 ? (
+          <code>{JSON.stringify(entry.environment.resources)}</code>
+        ) : null}
+      </>
+    );
+  if (entry.path) return <code className="text-foreground">{entry.path}</code>;
+  if (entry.delegatedTo)
+    return (
+      <span>
+        to {entry.delegatedTo.worker}
+        {entry.delegatedTo.station ? ` at ${STATION_LABELS[entry.delegatedTo.station]}` : ""}
+      </span>
+    );
+  return null;
+}
+
+function ItemHistory({ entries }: { entries: WallItemEntry[] }) {
+  return (
+    <ol className="flex min-w-0 flex-col gap-2">
+      {entries.map((entry, index) => (
+        <li
+          // Two entries can share a kind and an instant, and their place in the written order is
+          // what tells them apart.
+          // biome-ignore lint/suspicious/noArrayIndexKey: position in the written order is the entry's identity
+          key={`${entry.at}-${entry.kind}-${index}`}
+          className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 border-b pb-2 last:border-b-0"
+        >
+          <span className="w-[7.5rem] shrink-0 text-quiet tabular-nums">{timeLabel(entry.at)}</span>
+          <span className="w-[9rem] shrink-0 text-foreground">{ITEM_KIND_LABELS[entry.kind]}</span>
+          <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-muted-foreground">
+            <EntryEvidence entry={entry} />
+            {entry.reason ? <span>{entry.reason}</span> : null}
+            {entry.fence ? <span className="text-warn-foreground">{entry.fence}</span> : null}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+const RAIL_MARK_GLYPH: Record<RailMark, string> = { moment: "·", handover: "→", outcome: "■" };
+
+function ItemRail({ entries }: { entries: WallItemEntry[] }) {
+  const stops = railStops(entries);
+
+  return (
+    <ol className="flex shrink-0 flex-col gap-2 border-r pr-4 text-quiet">
+      {stops.map((stop, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: position in the written order is the stop's identity
+        <li key={`${stop.at}-${index}`} className="flex items-baseline gap-2 whitespace-nowrap">
+          <span aria-hidden="true" className="w-3 text-center text-foreground">
+            {RAIL_MARK_GLYPH[stop.mark]}
+          </span>
+          <span className="tabular-nums">{timeLabel(stop.at)}</span>
+          <span className="truncate">
+            {stop.handedTo ? `${stop.worker ?? NO_WORKER} → ${stop.handedTo}` : (stop.worker ?? "")}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** One job's own record, over the board. On the platform's `<dialog>`, which carries modality,
+ *  focus and dismissal already — a component library would cost more than this surface. */
+function ItemDialog({ view, onClose }: { view: WallItemView | null; onClose: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const element = dialog.current;
+    if (!element) return;
+    if (!element.open) element.showModal();
+  }, []);
+
+  const job = view?.job;
+
+  return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: dismissal from the keyboard is Escape, which the element carries itself
+    <dialog
+      ref={dialog}
+      onClose={onClose}
+      // A click on the backdrop lands on the dialog itself, which is how one is told from a
+      // click on anything inside it.
+      onClick={(event) => {
+        if (event.target === dialog.current) dialog.current?.close();
+      }}
+      className="m-auto max-h-[85vh] w-[min(64rem,92vw)] rounded-wall border bg-card p-0 text-[12px] text-muted-foreground backdrop:bg-black/70"
+    >
+      <div className="flex max-h-[85vh] flex-col">
+        <header className="flex flex-col gap-2 border-b p-5">
+          <h2 className="text-[15px] text-foreground">{job?.title ?? "Reading the record"}</h2>
+          {job ? (
+            <dl className="flex flex-wrap items-center gap-x-6 gap-y-1 text-quiet">
+              <div className="flex items-center gap-2">
+                <dt>item</dt>
+                <dd className="text-muted-foreground">{job.itemId}</dd>
+              </div>
+              <div className="flex items-center gap-2">
+                <dt>station</dt>
+                <dd className="text-muted-foreground">{STATION_LABELS[job.station]}</dd>
+              </div>
+              <div className="flex items-center gap-2">
+                <dt>worker</dt>
+                <dd className="flex items-center gap-1.5 text-muted-foreground">
+                  <Robot
+                    label={`${job.worker ?? NO_WORKER}, ${job.role === "unknown" ? "role unknown" : job.role}`}
+                    className={roleTint[job.role]}
+                  />
+                  {job.worker ?? NO_WORKER}
+                </dd>
+              </div>
+              <div className="flex items-center gap-2">
+                <dt>state</dt>
+                <dd className={stopped.has(job.status) ? "text-warn-foreground" : "text-muted-foreground"}>
+                  {stateLabels[job.status]}
+                </dd>
+              </div>
+              <div className="flex items-center gap-2">
+                <dt>job</dt>
+                <dd className="text-muted-foreground">{job.id}</dd>
+              </div>
+            </dl>
+          ) : null}
+        </header>
+
+        {/* The dialog holds its size and its content scrolls, so the identity above stays with
+            whatever is being read. */}
+        <div className="flex min-h-0 gap-5 overflow-y-auto p-5">
+          {view && view.entries.length > 0 ? (
+            <>
+              <ItemRail entries={view.entries} />
+              <ItemHistory entries={view.entries} />
+            </>
+          ) : (
+            <p>{view ? "Nothing is recorded against this job yet." : "Reading the record."}</p>
+          )}
+        </div>
+      </div>
+    </dialog>
+  );
+}
+
 function BoardColumn({
   label,
   jobs,
   total,
   now,
   bumped,
+  onOpen,
 }: {
   label: string;
   jobs: WallJob[];
   total: number;
   now: Date;
   bumped: ReadonlySet<string>;
+  onOpen: (jobId: string) => void;
 }) {
   const id = `column-${label.toLowerCase()}`;
 
@@ -193,7 +407,7 @@ function BoardColumn({
       {/* An empty column says so by being empty; the count in its heading already reads 0. */}
       <div className="grid gap-1.5">
         {jobs.map((job) => (
-          <JobCard job={job} key={job.id} now={now} bumped={bumped.has(job.id)} />
+          <JobCard job={job} key={job.id} now={now} bumped={bumped.has(job.id)} onOpen={onOpen} />
         ))}
       </div>
     </section>
@@ -228,7 +442,7 @@ function feedStateOf(unavailable: boolean, stale: boolean): FeedState {
 
 /** What a card would show, so a snapshot that changed nothing lights nothing. */
 function cardState(job: WallJob): string {
-  return `${job.status}|${job.failedChecks}|${job.worker ?? ""}|${job.attention ?? ""}`;
+  return `${job.status}|${job.lastEventAt}|${job.failedChecks}|${job.worker ?? ""}|${job.attention ?? ""}`;
 }
 
 const BUMP_MS = 2000;
@@ -299,6 +513,34 @@ function useSnapshot() {
   return { snapshot, stale, unavailable, answered, lastMessage, bumped };
 }
 
+/** The open job's own record, read from the same tables `dim q job` reads. It is re-read when
+ *  the board says that job moved, so the view is as live as the board behind it. */
+function useItemView(jobId: string | null, movedAt: string | undefined): WallItemView | null {
+  const [view, setView] = useState<WallItemView | null>(null);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `movedAt` is why this re-reads — the board saying the job moved is the signal the record changed
+  useEffect(() => {
+    if (!jobId) {
+      setView(null);
+      return;
+    }
+    let current = true;
+    fetch(`/api/job/${encodeURIComponent(jobId)}`)
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then((data: WallItemView) => {
+        if (current) setView(data);
+      })
+      .catch(() => {
+        if (current) setView(null);
+      });
+    return () => {
+      current = false;
+    };
+  }, [jobId, movedAt]);
+
+  return view;
+}
+
 /** A clock the board reads, so every age advances on the same beat. */
 function useNow(): Date {
   const [now, setNow] = useState(() => new Date());
@@ -314,9 +556,12 @@ function useNow(): Date {
 function App() {
   const { snapshot, stale, unavailable, answered, lastMessage, bumped } = useSnapshot();
   const now = useNow();
+  const [openJobId, setOpenJobId] = useState<string | null>(null);
   const feed = feedStateOf(unavailable, stale);
   const FeedIcon = FEED_ICON[feed];
   const columns = jobsByLifecycle(snapshot.jobs);
+  const openJob = snapshot.jobs.find((job) => job.id === openJobId);
+  const view = useItemView(openJobId, openJob?.lastEventAt);
 
   return (
     <main className="wall-shell mx-auto flex min-h-screen w-full max-w-[90rem] flex-col p-[clamp(1rem,2.6vw,2.4rem)]">
@@ -351,9 +596,12 @@ function App() {
             total={snapshot.totals[lifecycle]}
             now={now}
             bumped={bumped}
+            onOpen={setOpenJobId}
           />
         ))}
       </section>
+
+      {openJobId ? <ItemDialog view={view} onClose={() => setOpenJobId(null)} /> : null}
 
       <footer className="mt-auto text-center text-[11px] tracking-[0.02em] text-quiet">
         Built with ♥︎ by{" "}
