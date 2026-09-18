@@ -68,8 +68,8 @@
     },
     {
       "id": "workspace-contract",
-      "title": "Workspace and worker-environment contract",
-      "description": "Name the required services, the isolation strategy and the resource and secret requirements the workspace profile still leaves open.",
+      "title": "How a repository declares its isolation strategy",
+      "description": "Name the requirements the workspace profile still leaves open beyond setup and teardown hooks: the isolation strategy, and containers, ports and disk.",
       "dependencies": [],
       "status": "planned",
       "transitions": []
@@ -77,7 +77,15 @@
     {
       "id": "wall-gaps",
       "title": "What the factory wall cannot show",
-      "description": "Give the board a durable agent-to-name table, a project on every card and an operator record, so a name is a fact and one board can carry more than one repo.",
+      "description": "Give the board a threshold for how long is too long, a mark for the station-move event, a durable agent-to-name table, a project on every card and an operator record.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "item-view",
+      "title": "Fill the item view with the plan and the build",
+      "description": "Carry the plan a job was given and the account of what it built into the item view, since what it holds today is only what the record already holds.",
       "dependencies": [],
       "status": "planned",
       "transitions": []
@@ -85,7 +93,15 @@
     {
       "id": "factory-job-orchestration",
       "title": "Queue selection and serialized integration",
-      "description": "Take queue selection, serialized integration and queue-state enforcement into the job contract; recording evidence from a shell is a slice of its own.",
+      "description": "Take queue selection, serialized integration and queue-state enforcement into the job contract, and correct the skill that still types the commands wrong.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "item-statement",
+      "title": "Read the item's own statement back",
+      "description": "Have dim q job, dim q factory and the wall card show the --description recorded on claim, which is written but not yet read back.",
       "dependencies": [],
       "status": "planned",
       "transitions": []
@@ -102,6 +118,14 @@
       "id": "owner-verdict",
       "title": "The owner's verdict on a finished job",
       "description": "Record whether a finished job landed as it came, was sent back or was changed before landing, with the grounds whenever it was not the first.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "model-routing",
+      "title": "Record the tier a role actually ran at",
+      "description": "Add a field on the delegation event, joined against factory_job_finding, so whether a cheap checker raises fewer real findings than an expensive one can be asked.",
       "dependencies": [],
       "status": "planned",
       "transitions": []
@@ -182,14 +206,6 @@
       "id": "subcommand-help",
       "title": "Each subcommand carries its own help",
       "description": "Print every dim subcommand's usage from a registry the way queries already do, so adding a command cannot leave the listing silently short.",
-      "dependencies": [],
-      "status": "planned",
-      "transitions": []
-    },
-    {
-      "id": "checked-slice-gate",
-      "title": "A slice cannot commit unchecked",
-      "description": "Settle what makes a check countable, so a pre-commit gate can refuse a slice that skipped it instead of only a query saying so afterward.",
       "dependencies": [],
       "status": "planned",
       "transitions": []
@@ -350,6 +366,30 @@
       "id": "macos-only-sync",
       "title": "The scheduled sync is macOS-only",
       "description": "install-agent writes a launchd plist, so nothing schedules the sync on another platform.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "queue-ingest",
+      "title": "Wire dim-factory to read queue.json",
+      "description": "Teach the driver to read a planner file's own items through dim queue ready, so a queue.json is worked without retyping any item.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "worker-brief",
+      "title": "Brief the worker taking a ready item",
+      "description": "Hand the builder the id, title and statement dim queue ready printed, unedited, so a claim never records a second version of an item.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "planner-queue",
+      "title": "Point the build order at the queue file",
+      "description": "Give docs/build-order.md the argument, order and fence, and queue.json the state, so neither page restates what the other decides.",
       "dependencies": [],
       "status": "planned",
       "transitions": []
