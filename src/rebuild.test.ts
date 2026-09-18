@@ -42,6 +42,9 @@ function fill(db: Database): void {
     "INSERT INTO repo_commit (sha, repo, ts, subject) VALUES ('abc', '/r', '2026-01-01T00:00:00Z', 'fix: x')",
   );
   db.run("INSERT INTO commit_file (sha, path) VALUES ('abc', '/r/a.ts')");
+  db.run(
+    "INSERT INTO correction_label (message_id, label, skill_name, rule, labeled_at) VALUES ('m1', 'correction', 'dim-fix', 'ask before pushing', '2026-01-01T00:00:00Z')",
+  );
 }
 
 function columnsOf(db: Database, table: string): string[] {
@@ -90,6 +93,45 @@ describe("absorbing a schema change", () => {
     expect(db.query("SELECT version FROM schema_version").get()).toEqual({
       version: SCHEMA_VERSION,
     });
+    db.close();
+  });
+
+  test("a label the owner wrote survives, its message id being written back", () => {
+    const { db, env } = scratch();
+    fill(db);
+
+    rebuild(db, env);
+
+    expect(db.query("SELECT message_id, label, skill_name, rule FROM correction_label").all()).toEqual([
+      { message_id: "m1", label: "correction", skill_name: "dim-fix", rule: "ask before pushing" },
+    ]);
+    db.close();
+  });
+
+  test("a label in a database still carrying the old foreign key survives too", () => {
+    const { db, env } = scratch();
+    fill(db);
+    db.run("DELETE FROM correction_label");
+    db.run("DROP TABLE correction_label");
+    db.run(
+      `CREATE TABLE correction_label (
+         message_id TEXT PRIMARY KEY REFERENCES message(id),
+         label TEXT NOT NULL,
+         skill_name TEXT,
+         rule TEXT,
+         labeled_at TEXT NOT NULL
+       )`,
+    );
+    db.run(
+      "INSERT INTO correction_label (message_id, label, labeled_at) VALUES ('m1', 'clarification', '2026-01-01T00:00:00Z')",
+    );
+
+    rebuild(db, env);
+
+    expect(db.query("SELECT message_id, label FROM correction_label").all()).toEqual([
+      { message_id: "m1", label: "clarification" },
+    ]);
+    expect(db.query("PRAGMA foreign_key_list(correction_label)").all()).toEqual([]);
     db.close();
   });
 
