@@ -1,6 +1,10 @@
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { WallJob, WallRole, WallSnapshot, WallStatus } from "./factory-wall";
+import { Bot, CircleAlert, CircleCheck, CircleDot, CircleX, Maximize2, Radio } from "lucide-react";
+import { Badge } from "./components/ui/badge";
+import { Button } from "./components/ui/button";
+import { Card } from "./components/ui/card";
+import type { WallJob, WallSnapshot, WallStatus } from "./factory-wall";
 import { jobsByLifecycle, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
 import "./wall.css";
 
@@ -20,7 +24,6 @@ const stateLabels: Record<WallStatus, string> = {
   failed: "Failed",
   abandoned: "Abandoned",
 };
-const roleGlyph: Record<WallRole, string> = { builder: "◆", fixer: "◇", reviewer: "▣", planner: "●" };
 const stopped = new Set<WallStatus>(["blocked", "fenced", "failed", "abandoned"]);
 
 function timeLabel(updatedAt: string): string {
@@ -29,27 +32,25 @@ function timeLabel(updatedAt: string): string {
 
 function JobCard({ job }: { job: WallJob }) {
   const warning = job.attention ? `Attention: ${job.attention}` : null;
+  const StatusIcon = job.status === "running" ? CircleDot : stopped.has(job.status) ? CircleAlert : job.status === "completed" ? CircleCheck : CircleX;
   return (
-    <article className={`job-card status-${job.status} role-${job.role}`}>
+    <Card className={`job-card status-${job.status} role-${job.role}`}>
       <div className="job-top">
-        <span className="state-mark"><span aria-hidden="true">{job.status === "running" ? "◉" : stopped.has(job.status) ? "!" : "○"}</span> {stateLabels[job.status]}</span>
+        <span className="state-mark"><StatusIcon size={14} strokeWidth={1.8} aria-hidden="true" /> {stateLabels[job.status]}</span>
         <span>{job.age}</span>
       </div>
       <h3>{job.item}</h3>
-      <p className="action">{job.action}</p>
-      <p className={`station-tag station-${job.station}`}>Station <strong>{STATION_LABELS[job.station]}</strong></p>
+      <Badge className={`station-tag station-${job.station}`}>{STATION_LABELS[job.station]}</Badge>
       <div className="job-meta">
-        <span><span className="role-glyph" aria-hidden="true">{roleGlyph[job.role]}</span> {job.agent}</span>
+        <span className="worker"><Bot size={15} strokeWidth={1.7} aria-hidden="true" /> <span>{job.agent}</span></span>
         <span>Updated {timeLabel(job.updatedAt)}</span>
       </div>
-      <div className="evidence"><span>Latest evidence</span><strong>{job.evidence}</strong></div>
       {warning ? <p className="card-warning" role="status">{warning}</p> : null}
-    </article>
+    </Card>
   );
 }
 
-function BoardColumn({ label, empty, jobs, total }: { label: string; empty: string; jobs: WallJob[]; total: number }) {
-  const hidden = total - jobs.length;
+function BoardColumn({ label, jobs, total }: { label: string; jobs: WallJob[]; total: number }) {
   return (
     <section className="board-column" aria-labelledby={`column-${label.toLowerCase()}`}>
       <header className="column-heading">
@@ -57,8 +58,7 @@ function BoardColumn({ label, empty, jobs, total }: { label: string; empty: stri
         <span aria-label={`${total} items`}>{total}</span>
       </header>
       <div className="column-cards">
-        {jobs.length ? jobs.map((job) => <JobCard job={job} key={job.id} />) : <p className="empty-column">{empty}</p>}
-        {hidden > 0 ? <p className="column-overflow">{hidden} more not shown</p> : null}
+        {jobs.map((job) => <JobCard job={job} key={job.id} />)}
       </div>
     </section>
   );
@@ -96,17 +96,18 @@ function App() {
   }, []);
 
   const columns = jobsByLifecycle(snapshot.jobs);
+  const enterFullscreen = () => document.documentElement.requestFullscreen?.();
   return (
     <main className="wall-shell">
       <header className="wall-header">
-        <div><p className="eyebrow">DIM / FACTORY WALL</p><h1>Work in motion</h1><p className="lede">Read-only work moving through the factory.</p></div>
-        <div className={`feed-status ${unavailable ? "unavailable" : stale ? "stale" : "live"}`}><span aria-hidden="true">{unavailable ? "!" : stale ? "◌" : "●"}</span><span>{unavailable ? "Unavailable" : stale ? "Showing last snapshot" : "Live feed"}</span>{lastMessage ? <small>· {timeLabel(new Date(lastMessage).toISOString())}</small> : null}</div>
+        <div><p className="eyebrow">dim factory</p><h1><span>dim factory</span><span>wall</span></h1></div>
+        <div className="wall-actions"><div className={`feed-status ${unavailable ? "unavailable" : stale ? "stale" : "live"}`}><span aria-hidden="true">{unavailable ? <CircleX size={15} /> : stale ? <CircleAlert size={15} /> : <Radio size={15} />}</span><span>{unavailable ? "unavailable" : stale ? "showing last snapshot" : "live feed"}</span>{lastMessage ? <small>· {timeLabel(new Date(lastMessage).toISOString())}</small> : null}</div><Button className="icon-button" type="button" onClick={enterFullscreen} aria-label="fullscreen"><Maximize2 size={16} aria-hidden="true" /></Button></div>
       </header>
       {unavailable ? <aside className="stale-banner" role="status"><strong>Factory snapshot unavailable.</strong> Current work cannot be displayed until the data source responds.</aside> : stale ? <aside className="stale-banner" role="status"><strong>Showing the last known snapshot.</strong> The feed is not connected; card positions may be out of date.</aside> : null}
       <section className="board" aria-label="Factory kanban board">
-        {unavailable ? <p className="board-unavailable">Waiting for a factory snapshot.</p> : WALL_COLUMNS.map(({ lifecycle, label, empty }) => <BoardColumn key={lifecycle} label={label} empty={empty} jobs={columns[lifecycle]} total={snapshot.totals[lifecycle]} />)}
+        {unavailable ? <p className="board-unavailable">Waiting for a factory snapshot.</p> : WALL_COLUMNS.map(({ lifecycle, label }) => <BoardColumn key={lifecycle} label={label} jobs={columns[lifecycle]} total={snapshot.totals[lifecycle]} />)}
       </section>
-      <footer>Read-only · cards reflect the latest received snapshot</footer>
+      <footer>read-only · cards reflect the latest received snapshot</footer>
     </main>
   );
 }
