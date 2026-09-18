@@ -48,15 +48,15 @@ describe("factory wall board", () => {
   test("keeps the order the snapshot ranked its jobs in", () => {
     const needsAnswer = { ...job("fenced-item", "active", "build", "fenced"), attention: "scope unclear" };
     const columns = jobsByLifecycle([
-      needsAnswer,
       job("first-running", "active", "build", "running"),
       job("second-running", "active", "build", "running"),
+      needsAnswer,
     ]);
 
     expect(columns.active.map((entry) => entry.id)).toEqual([
-      "fenced-item",
       "first-running",
       "second-running",
+      "fenced-item",
     ]);
   });
 

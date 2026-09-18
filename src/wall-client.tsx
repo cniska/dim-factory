@@ -16,7 +16,7 @@ import type {
 } from "./factory-wall";
 import { cn } from "./lib/utils";
 import { FAILURE_MARKS_SHOWN, jobsByLifecycle, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
-import { ITEM_KIND_LABELS, type RailMark, railStops, shortSha } from "./wall-item";
+import { ITEM_KIND_LABELS, RAIL_MARK_GLYPH, railStops, shortSha } from "./wall-item";
 import "./wall.css";
 
 const unavailableSnapshot: WallSnapshot = {
@@ -121,24 +121,16 @@ function JobCard({
   job: WallJob;
   now: Date;
   bumped: boolean;
-  onOpen: (jobId: string) => void;
+  onOpen: (job: WallJob) => void;
 }) {
   const StatusIcon = statusIcon[job.status];
 
   return (
     <Card
-      onClick={() => onOpen(job.id)}
-      // The card is what a reader points at, so it is what opens; the view it opens reads the
-      // record and changes nothing, which is why a card can carry it without a control.
-      tabIndex={0}
-      role="button"
-      aria-label={`Open ${job.title}`}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onOpen(job.id);
-        }
-      }}
+      // The card is what a reader points at, so the whole of it opens the view. It stays an
+      // article rather than becoming a button, because a button's children are read as its label
+      // and the state, age, worker and station on the card would stop being read at all.
+      onClick={() => onOpen(job)}
       stopped={stopped.has(job.status)}
       className={cn(
         "gap-0 p-2.5 text-left text-[11px] transition-colors duration-1000",
@@ -188,7 +180,19 @@ function JobCard({
         </p>
       ) : null}
 
-      <CardFooter className={cn(ROW, "mt-auto justify-between text-quiet")}>
+      <CardFooter className={cn(ROW, "mt-auto justify-between gap-1.5 text-quiet")}>
+        {/* What opens the view from the keyboard, and what a screen reader is offered: the card
+            around it stays readable as the article it is. */}
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen(job);
+          }}
+          className="sr-only focus-visible:not-sr-only focus-visible:rounded-wall focus-visible:border focus-visible:px-1.5"
+        >
+          Open {job.title}
+        </button>
         <span className="flex min-w-0 items-center gap-1.5">
           <Robot
             label={`${job.worker ?? NO_WORKER}, ${job.role === "unknown" ? "role unknown" : job.role}`}
@@ -206,7 +210,11 @@ function EntryEvidence({ entry }: { entry: WallItemEntry }) {
   if (entry.commit)
     return (
       <>
-        <code className="text-foreground">{shortSha(entry.commit.sha)}</code>
+        {/* Shortened to what a person compares, with the whole sha on the element for an agent
+            reading the page and for anyone who copies it. */}
+        <code className="text-foreground" title={entry.commit.sha}>
+          {shortSha(entry.commit.sha)}
+        </code>
         {entry.commit.subject ? <span>{entry.commit.subject}</span> : null}
       </>
     );
@@ -228,8 +236,12 @@ function EntryEvidence({ entry }: { entry: WallItemEntry }) {
           {entry.finding.answer}
         </span>
         <span>{entry.finding.summary}</span>
+        {/* The grounds are what a refusal rests on, so they carry the refusal's own color; the
+            same field on a fixed finding is ordinary detail. */}
         {entry.finding.resolution ? (
-          <span className="text-warn-foreground">{entry.finding.resolution}</span>
+          <span className={entry.finding.answer === "refused" ? "text-warn-foreground" : undefined}>
+            {entry.finding.resolution}
+          </span>
         ) : null}
       </>
     );
@@ -237,13 +249,15 @@ function EntryEvidence({ entry }: { entry: WallItemEntry }) {
     return (
       <>
         <span>{entry.environment.phase}</span>
+        <code className="text-foreground">{entry.environment.argv.join(" ")}</code>
         <span className={entry.environment.exitCode === 0 ? undefined : "text-danger"}>
           {entry.environment.signal ?? `exit ${entry.environment.exitCode ?? "unrecorded"}`}
         </span>
+        {entry.environment.stdout ? <span>{entry.environment.stdout}</span> : null}
         {entry.environment.stderr ? <span className="text-danger">{entry.environment.stderr}</span> : null}
-        {entry.environment.resources.length > 0 ? (
-          <code>{JSON.stringify(entry.environment.resources)}</code>
-        ) : null}
+        {entry.environment.resources.map((resource) => (
+          <code key={JSON.stringify(resource)}>{JSON.stringify(resource)}</code>
+        ))}
       </>
     );
   if (entry.path) return <code className="text-foreground">{entry.path}</code>;
@@ -257,57 +271,62 @@ function EntryEvidence({ entry }: { entry: WallItemEntry }) {
   return null;
 }
 
+/** The rail and the history are one list in two columns rather than two lists side by side: a
+ *  history line that wraps takes its own rail stop with it, where two lists drift apart at the
+ *  first wrapped line and the rail stops indexing what it sits beside. */
 function ItemHistory({ entries }: { entries: WallItemEntry[] }) {
-  return (
-    <ol className="flex min-w-0 flex-col gap-2">
-      {entries.map((entry, index) => (
-        <li
-          // Two entries can share a kind and an instant, and their place in the written order is
-          // what tells them apart.
-          // biome-ignore lint/suspicious/noArrayIndexKey: position in the written order is the entry's identity
-          key={`${entry.at}-${entry.kind}-${index}`}
-          className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 border-b pb-2 last:border-b-0"
-        >
-          <span className="w-[7.5rem] shrink-0 text-quiet tabular-nums">{timeLabel(entry.at)}</span>
-          <span className="w-[9rem] shrink-0 text-foreground">{ITEM_KIND_LABELS[entry.kind]}</span>
-          <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-muted-foreground">
-            <EntryEvidence entry={entry} />
-            {entry.reason ? <span>{entry.reason}</span> : null}
-            {entry.fence ? <span className="text-warn-foreground">{entry.fence}</span> : null}
-          </span>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-const RAIL_MARK_GLYPH: Record<RailMark, string> = { moment: "·", handover: "→", outcome: "■" };
-
-function ItemRail({ entries }: { entries: WallItemEntry[] }) {
   const stops = railStops(entries);
 
   return (
-    <ol className="flex shrink-0 flex-col gap-2 border-r pr-4 text-quiet">
-      {stops.map((stop, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: position in the written order is the stop's identity
-        <li key={`${stop.at}-${index}`} className="flex items-baseline gap-2 whitespace-nowrap">
-          <span aria-hidden="true" className="w-3 text-center text-foreground">
-            {RAIL_MARK_GLYPH[stop.mark]}
-          </span>
-          <span className="tabular-nums">{timeLabel(stop.at)}</span>
-          <span className="truncate">
-            {stop.handedTo ? `${stop.worker ?? NO_WORKER} → ${stop.handedTo}` : (stop.worker ?? "")}
-          </span>
-        </li>
-      ))}
+    <ol className="flex min-w-0 grow flex-col gap-2">
+      {entries.map((entry, index) => {
+        const stop = stops[index];
+
+        return (
+          <li
+            // Two entries can share a kind and an instant, and their place in the written order is
+            // what tells them apart.
+            // biome-ignore lint/suspicious/noArrayIndexKey: position in the written order is the entry's identity
+            key={`${entry.at}-${entry.kind}-${index}`}
+            className="grid grid-cols-[minmax(11rem,auto)_1fr] gap-x-5 border-b pb-2 last:border-b-0"
+          >
+            <span className="flex items-baseline gap-2 border-r pr-4 whitespace-nowrap text-quiet">
+              <span aria-hidden="true" className="w-3 text-center text-foreground">
+                {stop ? RAIL_MARK_GLYPH[stop.mark] : ""}
+              </span>
+              <span className="tabular-nums">{timeLabel(entry.at)}</span>
+              <span className="truncate">
+                {stop?.handedTo ? `${stop.worker ?? NO_WORKER} → ${stop.handedTo}` : (stop?.worker ?? "")}
+              </span>
+            </span>
+            <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="w-[9rem] shrink-0 text-foreground">{ITEM_KIND_LABELS[entry.kind]}</span>
+              <EntryEvidence entry={entry} />
+              {entry.reason ? <span>{entry.reason}</span> : null}
+              {entry.fence ? <span className="text-warn-foreground">{entry.fence}</span> : null}
+            </span>
+          </li>
+        );
+      })}
     </ol>
   );
 }
 
 /** One job's own record, over the board. On the platform's `<dialog>`, which carries modality,
  *  focus and dismissal already — a component library would cost more than this surface. */
-function ItemDialog({ view, onClose }: { view: WallItemView | null; onClose: () => void }) {
+function ItemDialog({
+  card,
+  movedAt,
+  onClose,
+}: {
+  /** The job as the board holds it, so the identity is on screen from the first frame rather
+   *  than after the record arrives. */
+  card: WallJob;
+  movedAt: string;
+  onClose: () => void;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const read = useItemView(card.id, movedAt);
 
   useEffect(() => {
     const element = dialog.current;
@@ -315,7 +334,7 @@ function ItemDialog({ view, onClose }: { view: WallItemView | null; onClose: () 
     if (!element.open) element.showModal();
   }, []);
 
-  const job = view?.job;
+  const job = read.view?.job ?? card;
 
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: dismissal from the keyboard is Escape, which the element carries itself
@@ -327,55 +346,66 @@ function ItemDialog({ view, onClose }: { view: WallItemView | null; onClose: () 
       onClick={(event) => {
         if (event.target === dialog.current) dialog.current?.close();
       }}
-      className="m-auto max-h-[85vh] w-[min(64rem,92vw)] rounded-wall border bg-card p-0 text-[12px] text-muted-foreground backdrop:bg-black/70"
+      // The element takes focus when it opens, and the platform's focus ring on a whole dialog
+      // is a blue frame around the surface rather than a mark on anything a reader can act on.
+      className="m-auto max-h-[85vh] w-[min(64rem,92vw)] rounded-wall border bg-card p-0 text-[12px] text-muted-foreground outline-none backdrop:bg-black/70"
     >
       <div className="flex max-h-[85vh] flex-col">
         <header className="flex flex-col gap-2 border-b p-5">
-          <h2 className="text-[15px] text-foreground">{job?.title ?? "Reading the record"}</h2>
-          {job ? (
-            <dl className="flex flex-wrap items-center gap-x-6 gap-y-1 text-quiet">
+          <h2 className="text-[15px] text-foreground">{job.title}</h2>
+          <dl className="flex flex-wrap items-center gap-x-6 gap-y-1 text-quiet">
+            <div className="flex items-center gap-2">
+              <dt>item</dt>
+              <dd className="text-muted-foreground">{job.itemId}</dd>
+            </div>
+            <div className="flex items-center gap-2">
+              <dt>station</dt>
+              <dd className="text-muted-foreground">{STATION_LABELS[job.station]}</dd>
+            </div>
+            <div className="flex items-center gap-2">
+              <dt>worker</dt>
+              <dd className="flex items-center gap-1.5 text-muted-foreground">
+                <Robot
+                  label={`${job.worker ?? NO_WORKER}, ${job.role === "unknown" ? "role unknown" : job.role}`}
+                  className={roleTint[job.role]}
+                />
+                {job.worker ?? NO_WORKER}
+              </dd>
+            </div>
+            <div className="flex items-center gap-2">
+              <dt>state</dt>
+              <dd className={stopped.has(job.status) ? "text-warn-foreground" : "text-muted-foreground"}>
+                {stateLabels[job.status]}
+              </dd>
+            </div>
+            <div className="flex items-center gap-2">
+              <dt>job</dt>
+              <dd className="text-muted-foreground">{job.id}</dd>
+            </div>
+            {read.view?.branch ? (
               <div className="flex items-center gap-2">
-                <dt>item</dt>
-                <dd className="text-muted-foreground">{job.itemId}</dd>
+                <dt>branch</dt>
+                <dd className="text-muted-foreground">{read.view.branch}</dd>
               </div>
+            ) : null}
+            {read.view?.worktree ? (
               <div className="flex items-center gap-2">
-                <dt>station</dt>
-                <dd className="text-muted-foreground">{STATION_LABELS[job.station]}</dd>
+                <dt>worktree</dt>
+                <dd className="text-muted-foreground">{read.view.worktree}</dd>
               </div>
-              <div className="flex items-center gap-2">
-                <dt>worker</dt>
-                <dd className="flex items-center gap-1.5 text-muted-foreground">
-                  <Robot
-                    label={`${job.worker ?? NO_WORKER}, ${job.role === "unknown" ? "role unknown" : job.role}`}
-                    className={roleTint[job.role]}
-                  />
-                  {job.worker ?? NO_WORKER}
-                </dd>
-              </div>
-              <div className="flex items-center gap-2">
-                <dt>state</dt>
-                <dd className={stopped.has(job.status) ? "text-warn-foreground" : "text-muted-foreground"}>
-                  {stateLabels[job.status]}
-                </dd>
-              </div>
-              <div className="flex items-center gap-2">
-                <dt>job</dt>
-                <dd className="text-muted-foreground">{job.id}</dd>
-              </div>
-            </dl>
-          ) : null}
+            ) : null}
+          </dl>
         </header>
 
         {/* The dialog holds its size and its content scrolls, so the identity above stays with
             whatever is being read. */}
         <div className="flex min-h-0 gap-5 overflow-y-auto p-5">
-          {view && view.entries.length > 0 ? (
-            <>
-              <ItemRail entries={view.entries} />
-              <ItemHistory entries={view.entries} />
-            </>
+          {read.view && read.view.entries.length > 0 ? (
+            <ItemHistory entries={read.view.entries} />
           ) : (
-            <p>{view ? "Nothing is recorded against this job yet." : "Reading the record."}</p>
+            <p className={read.state === "unavailable" ? "text-warn-foreground" : undefined}>
+              {ITEM_READ_MESSAGE[read.state]}
+            </p>
           )}
         </div>
       </div>
@@ -396,7 +426,7 @@ function BoardColumn({
   total: number;
   now: Date;
   bumped: ReadonlySet<string>;
-  onOpen: (jobId: string) => void;
+  onOpen: (job: WallJob) => void;
 }) {
   const id = `column-${label.toLowerCase()}`;
 
@@ -519,32 +549,38 @@ function useSnapshot() {
   return { snapshot, stale, unavailable, answered, lastMessage, bumped };
 }
 
-/** The open job's own record, read from the same tables `dim q job` reads. It is re-read when
- *  the board says that job moved, so the view is as live as the board behind it. */
-function useItemView(jobId: string | null, movedAt: string | undefined): WallItemView | null {
-  const [view, setView] = useState<WallItemView | null>(null);
+type ItemRead = { state: "reading" | "read" | "unavailable"; view: WallItemView | null };
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `movedAt` is why this re-reads — the board saying the job moved is the signal the record changed
+const ITEM_READ_MESSAGE: Record<ItemRead["state"], string> = {
+  reading: "Reading the record.",
+  read: "Nothing is recorded against this job yet.",
+  unavailable: "This job's record could not be read.",
+};
+
+/** The open job's own record, read from the same tables `dim q job` reads. It is re-read on
+ *  every beat the board reports for that job, so the view is as live as the board behind it. */
+function useItemView(jobId: string, movedAt: string): ItemRead {
+  const [read, setRead] = useState<ItemRead>({ state: "reading", view: null });
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `movedAt` is why this re-reads — the beat the board reports for this job is the signal its record may have changed
   useEffect(() => {
-    if (!jobId) {
-      setView(null);
-      return;
-    }
     let current = true;
     fetch(`/api/job/${encodeURIComponent(jobId)}`)
       .then((response) => (response.ok ? response.json() : Promise.reject()))
       .then((data: WallItemView) => {
-        if (current) setView(data);
+        if (current) setRead({ state: "read", view: data });
       })
       .catch(() => {
-        if (current) setView(null);
+        // A re-read that fails leaves the record already on screen where it is: the reader is
+        // looking at it, and the last thing the server answered is still the last thing it said.
+        if (current) setRead((last) => ({ state: "unavailable", view: last.view }));
       });
     return () => {
       current = false;
     };
   }, [jobId, movedAt]);
 
-  return view;
+  return read;
 }
 
 /** A clock the board reads, so every age advances on the same beat. */
@@ -562,12 +598,15 @@ function useNow(): Date {
 function App() {
   const { snapshot, stale, unavailable, answered, lastMessage, bumped } = useSnapshot();
   const now = useNow();
-  const [openJobId, setOpenJobId] = useState<string | null>(null);
+  const [opened, setOpened] = useState<WallJob | null>(null);
   const feed = feedStateOf(unavailable, stale);
   const FeedIcon = FEED_ICON[feed];
   const columns = jobsByLifecycle(snapshot.jobs);
-  const openJob = snapshot.jobs.find((job) => job.id === openJobId);
-  const view = useItemView(openJobId, openJob?.lastEventAt);
+  // The board bounds what it draws, so the job a reader opened can leave the snapshot while the
+  // view is open. Its own card is what the view keeps showing, and the snapshot's beat is what
+  // goes on prompting a re-read.
+  const onBoard = snapshot.jobs.find((job) => job.id === opened?.id);
+  const openCard = onBoard ?? opened;
 
   return (
     <main className="wall-shell mx-auto flex min-h-screen w-full max-w-[90rem] flex-col p-[clamp(1rem,2.6vw,2.4rem)]">
@@ -602,12 +641,21 @@ function App() {
             total={snapshot.totals[lifecycle]}
             now={now}
             bumped={bumped}
-            onOpen={setOpenJobId}
+            onOpen={setOpened}
           />
         ))}
       </section>
 
-      {openJobId ? <ItemDialog view={view} onClose={() => setOpenJobId(null)} /> : null}
+      {openCard ? (
+        <ItemDialog
+          // Keyed by job, so opening another card reads that record from nothing rather than
+          // showing the last one until its read lands.
+          key={openCard.id}
+          card={openCard}
+          movedAt={onBoard?.lastEventAt ?? snapshot.generatedAt}
+          onClose={() => setOpened(null)}
+        />
+      ) : null}
 
       <footer className="mt-auto text-center text-[11px] tracking-[0.02em] text-quiet">
         Built with ♥︎ by{" "}
