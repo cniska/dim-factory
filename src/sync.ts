@@ -153,8 +153,9 @@ const FACTORY_JOB_TABLES = [
  * a list in this file would be the one place still needing to be remembered. A
  * column the schema has dropped goes with the table; the rows keep the rest.
  * A column added `NOT NULL` with no default has no value to write for a row
- * saved before it existed, so it fails the whole rebuild for as long as the
- * database holds one: such a column needs a default, or a backfill of its own.
+ * saved before it existed. That refusal is named rather than guessed at: what
+ * such a row should hold is the owner's to say, and inventing a placeholder
+ * would put it in the record as though someone had meant it.
  */
 function carryThroughRebuild(db: Database, tables: string[]): () => void {
   const saved = tables.map((table) => ({
@@ -164,13 +165,22 @@ function carryThroughRebuild(db: Database, tables: string[]): () => void {
   for (const table of [...tables].reverse()) db.run(`DROP TABLE IF EXISTS ${table}`);
   return () => {
     for (const { table, rows } of saved) {
-      const columns = new Set(
-        db
-          .query<{ name: string }, []>(`PRAGMA table_info(${table})`)
-          .all()
-          .map((column) => column.name),
-      );
+      const info = db
+        .query<{ name: string; notnull: number; dflt_value: unknown }, []>(`PRAGMA table_info(${table})`)
+        .all();
+      const columns = new Set(info.map((column) => column.name));
+      const demanded = info
+        .filter((column) => column.notnull === 1 && column.dflt_value === null)
+        .map((column) => column.name);
       for (const row of rows) {
+        const missing = demanded.filter((name) => !(name in row));
+        if (missing.length > 0) {
+          throw new Error(
+            `${table} holds rows written before ${missing.map((name) => `${table}.${name}`).join(", ")}, ` +
+              "which the schema now requires and no source can supply. Fill or delete those rows with " +
+              "sqlite3 against the database, then run `dim rebuild` again.",
+          );
+        }
         const names = Object.keys(row).filter((name) => columns.has(name));
         db.run(
           `INSERT INTO ${table} (${names.join(", ")}) VALUES (${names.map(() => "?").join(", ")})`,
