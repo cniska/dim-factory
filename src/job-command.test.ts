@@ -126,6 +126,135 @@ describe("job command", () => {
     expect(snapshot.jobs[0]?.attention).toBe("outward-facing");
   });
 
+  test("a running job records the evidence the work produced", () => {
+    const database = db();
+    runJobCommand(database, claim);
+    runJobCommand(database, ["start", "job-1"]);
+
+    expect(
+      runJobCommand(database, ["commit", "job-1", "--sha", "abc123", "--subject", "feat: land it"]),
+    ).toBe("job-1 recorded commit abc123");
+    expect(runJobCommand(database, ["file", "job-1", "--path", "src/job-command.ts"])).toBe(
+      "job-1 recorded src/job-command.ts",
+    );
+    expect(
+      runJobCommand(database, [
+        "check",
+        "job-1",
+        "--command",
+        "bun run verify",
+        "--exit",
+        "0",
+        "--result",
+        "green",
+      ]),
+    ).toBe("job-1 recorded bun run verify (0)");
+    expect(
+      runJobCommand(database, [
+        "finding",
+        "job-1",
+        "--dimension",
+        "tests",
+        "--summary",
+        "the invariant holds",
+        "--answer",
+        "fixed",
+      ]),
+    ).toBe("job-1 recorded a fixed finding on tests");
+    expect(runJobCommand(database, ["document", "job-1", "--path", "docs/factory.md"])).toBe(
+      "job-1 recorded docs/factory.md",
+    );
+
+    expect(database.query("SELECT sha, subject FROM factory_job_commit").get()).toEqual({
+      sha: "abc123",
+      subject: "feat: land it",
+    });
+    expect(database.query("SELECT path FROM factory_job_file").get()).toEqual({
+      path: "src/job-command.ts",
+    });
+    expect(database.query("SELECT command, exit_code, result FROM factory_job_check").get()).toEqual({
+      command: "bun run verify",
+      exit_code: 0,
+      result: "green",
+    });
+    expect(database.query("SELECT dimension, summary, answer FROM factory_job_finding").get()).toEqual({
+      dimension: "tests",
+      summary: "the invariant holds",
+      answer: "fixed",
+    });
+    expect(database.query("SELECT path FROM factory_job_document").get()).toEqual({
+      path: "docs/factory.md",
+    });
+  });
+
+  test("evidence is refused before the job started and after it stopped", () => {
+    const database = db();
+    runJobCommand(database, claim);
+
+    expect(() => runJobCommand(database, ["commit", "job-1", "--sha", "abc123"])).toThrow(
+      "job job-1 is already claimed",
+    );
+
+    runJobCommand(database, ["start", "job-1"]);
+    runJobCommand(database, ["stop", "job-1", "completed"]);
+
+    expect(() => runJobCommand(database, ["commit", "job-1", "--sha", "abc123"])).toThrow(
+      "job job-1 is already completed",
+    );
+    expect(database.query("SELECT count(*) AS rows FROM factory_job_commit").get()).toEqual({ rows: 0 });
+  });
+
+  test("a check with no exit status and a finding with no answer are refused", () => {
+    const database = db();
+    runJobCommand(database, claim);
+    runJobCommand(database, ["start", "job-1"]);
+
+    expect(() =>
+      runJobCommand(database, ["check", "job-1", "--command", "bun run verify", "--exit", "green"]),
+    ).toThrow(JobCommandError);
+    expect(() =>
+      runJobCommand(database, [
+        "finding",
+        "job-1",
+        "--dimension",
+        "tests",
+        "--summary",
+        "s",
+        "--answer",
+        "maybe",
+      ]),
+    ).toThrow(JobCommandError);
+    for (const spec of ["", " ", "1e3"]) {
+      expect(() =>
+        runJobCommand(database, ["check", "job-1", "--command", "bun run verify", "--exit", spec]),
+      ).toThrow(JobCommandError);
+    }
+
+    expect(database.query("SELECT count(*) AS rows FROM factory_job_check").get()).toEqual({ rows: 0 });
+    expect(database.query("SELECT count(*) AS rows FROM factory_job_finding").get()).toEqual({ rows: 0 });
+  });
+
+  test("a refused finding is not recorded without the grounds it rests on", () => {
+    const database = db();
+    runJobCommand(database, claim);
+    runJobCommand(database, ["start", "job-1"]);
+
+    expect(() =>
+      runJobCommand(database, [
+        "finding",
+        "job-1",
+        "--dimension",
+        "docs",
+        "--summary",
+        "a doc did not move",
+        "--answer",
+        "refused",
+      ]),
+    ).toThrow(expect.objectContaining({ code: "SQLITE_CONSTRAINT_CHECK" }));
+
+    expect(database.query("SELECT count(*) AS rows FROM factory_job_finding").get()).toEqual({ rows: 0 });
+  });
+
   test("a status a job cannot stop at is refused rather than written", () => {
     const database = db();
     runJobCommand(database, claim);
@@ -148,6 +277,7 @@ describe("job command", () => {
     const database = db();
 
     expect(() => runJobCommand(database, ["park", "job-1"])).toThrow(JobCommandError);
+    expect(() => runJobCommand(database, ["toString", "job-1"])).toThrow(JobCommandError);
     expect(() => runJobCommand(database, [...claim, "--colour", "red"])).toThrow(JobCommandError);
     expect(() => runJobCommand(database, [...claim, "--title", "second"])).toThrow(JobCommandError);
   });
