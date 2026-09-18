@@ -14,6 +14,7 @@ import {
 } from "./factory-job";
 import { assembleItemView, assembleWallSnapshot, serveWall } from "./factory-wall";
 import { SCHEMA_SQL } from "./schema";
+import { STATION_LABELS } from "./wall-board";
 import { workerName } from "./worker-name";
 
 describe("factory wall snapshot", () => {
@@ -166,6 +167,40 @@ describe("factory wall snapshot", () => {
     expect(snapshot.jobs.map((job) => [job.status, job.lifecycle, job.attention])).toEqual([
       ["abandoned", "done", "operator stopped"],
     ]);
+    db.close();
+  });
+
+  test("says a station it does not know is unknown rather than calling it build", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    createJob(
+      db,
+      {
+        id: "job-line",
+        runId: "run",
+        queueId: "queue",
+        itemId: "line",
+        title: "Claimed with a line, not a station",
+        station: "dim-line-feat",
+      },
+      "2026-09-18T10:00:00.000Z",
+    );
+    createJob(
+      db,
+      {
+        id: "job-stationless",
+        runId: "run",
+        queueId: "queue",
+        itemId: "stationless",
+        title: "Claimed with no station at all",
+      },
+      "2026-09-18T09:00:00.000Z",
+    );
+
+    const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z"));
+
+    expect(snapshot.jobs.map((job) => job.station)).toEqual(["unknown", "unknown"]);
+    expect(STATION_LABELS.unknown).toBe("Station unknown");
     db.close();
   });
 

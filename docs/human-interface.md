@@ -46,7 +46,7 @@ The review checks the same wall at a 1440×900 fullscreen desktop viewport and b
 
 The wall should feel like a software production floor:
 
-- **Stations are visible.** Plan, Build, Review and Ship are named on every card; a job's current station is immediately clear without the layout being built around it.
+- **Stations are visible.** Every card names the station its job is at; a job's current station is immediately clear without the layout being built around it.
 - **Work-in-progress is concrete.** A job card names the item, its station, lifecycle state and worker instead of showing abstract activity counts.
 - **Flow is legible.** The page shows work moving from Todo through Active to Done and makes a stopped item interrupt that flow visually.
 - **Stopped work says why.** The reason a job cannot move is on the card, without opening raw logs.
@@ -60,7 +60,7 @@ The wall should feel like a software production floor:
 Every card on the board carries the same compact identity block:
 
 - **What.** The item's title, in the words the queue states it in. The item id stays in the record for an agent to join on.
-- **Where.** The current station, named on the card.
+- **Where.** The current station, named on the card. Plan, Build, Review and Ship are reserved for the words the record actually holds; a job claimed with anything else, or with no station at all, reads as unknown.
 - **Who.** Agent identity, with the agent's role carried by a marker and by the written role.
 - **State.** Running, waiting, blocked, fenced, completed, failed or abandoned.
 - **Why stopped.** For a job that cannot move, its stop reason or fence.
