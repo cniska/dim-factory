@@ -24,7 +24,7 @@ The planned factory assigns each queue item to one self-sufficient job that runs
 - **Driver.** The factory driver schedules jobs, observes their evidence and integrates completed work. It does not implement the item.
 - **Count.** An explicit item count limits a run; the default count is one. The factory does not drain the queue implicitly.
 
-The job returns a delivered-product report containing the item and queue identity, station and delegation tree, worktree and branch, changed files, commit SHA, repo check and result, checker findings and resolutions, updated docs, and final status: complete, blocked, fenced or failed. A complete or stopped report includes the evidence the driver needs to land the work or stop at the stated boundary.
+The job returns a delivered-product report containing the item and queue identity, station and delegation tree, worktree and branch, changed files, commit SHA, repo check and result, checker findings and resolutions, updated docs, and final status: completed, blocked, fenced, failed or abandoned. A completed or stopped report includes the evidence the driver needs to land the work or stop at the stated boundary.
 
 ## Report persistence
 
@@ -33,11 +33,11 @@ The delivered-product report is persisted in the dim database so it remains quer
 - **Identity.** Queue and item identity, job and run identity, agent identity, worktree and branch.
 - **Work.** Station, delegation tree, changed files and commit SHA.
 - **Verification.** Repository check command and result, checker findings and their resolutions, and updated docs.
-- **Outcome.** Final status — complete, blocked, fenced or failed — with fence or blocker evidence and timestamps for the lifecycle events.
+- **Outcome.** Final status — completed, blocked, fenced, failed or abandoned — with fence or blocker evidence and timestamps for the lifecycle events.
 
 The report lifecycle is a durable sequence from claim through running to completion or a stopped outcome, with evidence recorded as the job progresses. A terminal status cannot transition to another status, and each lifecycle event and its aggregate projection are written atomically. `dim q factory [job-id-prefix]` reads one unified current-status row per matching job, including its latest lifecycle event and normalized evidence; `dim q job <job-id>` remains the detailed event-and-evidence view. These operational tables survive `dim rebuild`, deliberately like `hook_event`, `command_trace` and `finding`: no transcript or file source can recreate a job's claims and judgements after the fact.
 
-The persistence contract is live. The factory driver still owns scheduling, isolated worktree creation, serialized landing and queue-state enforcement; those orchestration boundaries are not inferred from a report row.
+The persistence contract is live. The first driver slice is live as `runFactoryJob`: it claims one supplied item, marks it running, passes the item and base revision to a builder, and records the builder's terminal outcome and evidence through the existing factory tables. The builder supplies the isolated worktree location and station work. Scheduling, queue selection, serialized landing and queue-state enforcement remain outside this slice; those orchestration boundaries are not inferred from a report row.
 
 ## Queue planning
 
