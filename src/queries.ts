@@ -513,6 +513,67 @@ const attributed = (ctx: QueryContext): string => `
     AND (m.denial_kind = 'user-rejected' OR m.interrupted_message_id IS NOT NULL
          OR m.user_feedback IS NOT NULL)${window("m.ts", ctx).sql}`;
 
+/**
+ * Spans history because the table starts empty and fills a slice at a time, so
+ * the default window would hide the corpus rather than bound it.
+ */
+const findings: Query = {
+  name: "findings",
+  summary: "what a checking agent raised on a slice, and how each was answered",
+  spansHistory: true,
+  run: (db, ctx) => {
+    const { arg } = ctx;
+    const columns = ["dimension", "raised", "fixed", "refused", "slices", "repos"];
+    // The base and the rows are counted over the same predicate, so a fragment
+    // matching nothing reports nothing rather than an empty table under a count
+    // of every finding in the corpus.
+    const where: string[] = [];
+    const params: string[] = [];
+    if (ctx.since) {
+      where.push("recorded_at >= ?");
+      params.push(ctx.since);
+    }
+    if (arg) {
+      where.push("repo LIKE '%' || ? || '%'");
+      params.push(arg);
+    }
+    const sql = where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "";
+    const records = table(
+      db,
+      `SELECT dimension,
+              count(*) AS raised,
+              sum(answer = 'fixed') AS fixed,
+              sum(answer = 'refused') AS refused,
+              count(DISTINCT slice) AS slices,
+              count(DISTINCT repo) AS repos
+       FROM finding${sql}
+       GROUP BY dimension ORDER BY raised DESC, dimension`,
+      params,
+    );
+    const raised = scalar(db, `SELECT count(*) AS n FROM finding${sql}`, ...params);
+    const slices = scalar(db, `SELECT count(DISTINCT slice) AS n FROM finding${sql}`, ...params);
+    if (raised === 0) {
+      return {
+        denominator: arg
+          ? `no finding recorded against a repo matching ${arg}`
+          : "no finding has been recorded",
+        columns,
+        rows: [],
+        note: "`dim-build` records one per finding as it is answered; nothing backfills a session that has ended.",
+      };
+    }
+    return {
+      denominator: `${raised} findings answered across ${slices} ${slices === 1 ? "slice" : "slices"} (${windowLine(ctx)})`,
+      columns,
+      rows: toRows(records, columns),
+      note:
+        "This grades the checker and never the builder: a builder scored down by a count writes duller " +
+        "slices and a checker scored up by one invents findings. A refusal ends a finding as completely " +
+        "as a fix does, so the two columns are answers and not a pass rate.",
+    };
+  },
+};
+
 const corrections: Query = {
   name: "corrections",
   summary: "the mechanical signals that the user stopped the agent, by skill",
@@ -1962,6 +2023,7 @@ export const QUERIES: Query[] = [
   tools,
   skills,
   corrections,
+  findings,
   candidates,
   rework,
   sessions,
