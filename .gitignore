@@ -5,3 +5,5 @@
 node_modules/
 dist/
 .claude/
+queue.json.lock*
+.queue-tmp-*
