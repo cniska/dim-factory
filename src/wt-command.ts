@@ -1,5 +1,6 @@
 import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { warn } from "./warn";
 
 /**
  * One task, one worktree, at `<repo>/.claude/worktrees/<branch>` — the path
@@ -82,7 +83,7 @@ function bootstrap(path: string): void {
   console.log("wt: bootstrapping worktree via scripts/worktree-setup.sh");
   const rc = hookStatus(Bun.spawnSync([hook], { cwd: path, stdout: "inherit", stderr: "inherit" }));
   if (rc === 0) console.log("wt: bootstrap complete");
-  else console.error(`wt: bootstrap failed (exit ${rc}) — worktree created; fix and re-run the hook`);
+  else warn(`wt: bootstrap failed (exit ${rc}) — worktree created; fix and re-run the hook`);
 }
 
 /**
@@ -98,7 +99,7 @@ function teardown(path: string, force: boolean): void {
   const rc = hookStatus(Bun.spawnSync([hook], { cwd: path, stdout: "inherit", stderr: "inherit" }));
   if (rc === 0) return;
   if (!force) die(`teardown failed (exit ${rc}) — worktree kept; fix it, or re-run with --force`);
-  console.error(`wt: teardown failed (exit ${rc}) — removing anyway (--force)`);
+  warn(`wt: teardown failed (exit ${rc}) — removing anyway (--force)`);
 }
 
 function isDirectory(path: string): boolean {
