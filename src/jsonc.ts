@@ -26,6 +26,25 @@ export function parseJsonc<T>(text: string, file: string): T {
   return value;
 }
 
+/**
+ * `parse` keeps the last of a repeated key and reports no error, so a file a
+ * person edits by hand needs the tree to see that one value was overwritten by
+ * another. Top-level keys only, which is the depth a hand-edit collides at.
+ */
+export function duplicateKeys(text: string): string[] {
+  const tree = parseTree(text, [], { allowTrailingComma: true });
+  if (tree?.type !== "object") return [];
+  const seen = new Set<string>();
+  const repeated: string[] = [];
+  for (const property of tree.children ?? []) {
+    const key = property.children?.[0]?.value;
+    if (typeof key !== "string") continue;
+    if (seen.has(key)) repeated.push(key);
+    seen.add(key);
+  }
+  return repeated;
+}
+
 /** The file's own indent, so what is inserted lines up with what is already there. */
 function indentOf(text: string): FormattingOptions {
   const indent = text.match(/^[ \t]+(?=\S)/m)?.[0];

@@ -167,7 +167,7 @@ What a tier is called locally is a separate thing, and it is data rather than co
 
 The map is per machine and not per repo. Which models exist is a property of the harness driving the line, not of the code being worked on, and the same factory run from a different harness must resolve differently; a repo-level override waits until something asks for one.
 
-**A missing or incomplete map refuses to route.** `dim route` names the file, the tier that is unnamed and the shape to write, and exits nonzero. A default tier chosen here would be a guess about cost and capability made where nobody would see it, and the run that silently took it is the one that cost the most.
+**A map that does not say exactly one thing refuses to route.** That covers a file that is absent, a tier left unnamed, a key that is no tier, and a tier named twice — which JSON resolves to the last value without complaining, so a copied line would quietly change the model every cheap role runs on. `dim route` names the file and what is wrong with it, and exits nonzero. A default tier chosen here would be a guess about cost and capability made where nobody would see it, and the run that silently took it is the one that cost the most.
 
 This is the first preference `dim` holds rather than a record of something that happened, and it is worth saying plainly because everything else here is history. It qualifies: it is one file, hand-written, read and never inferred, and it is the machine's answer to a question the record cannot answer — no row says what a model is called here. Whether a cheap checker raises fewer real findings than an expensive one is still a measurement, and it waits on the tier being recorded against a job.
 
