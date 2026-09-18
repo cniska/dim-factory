@@ -573,7 +573,7 @@ describe("who stopped the agent", () => {
     stop("m-blocked", "2026-09-01T10:15:00Z", "automode-blocked", "auto mode cannot run this");
     stop("m-refused", "2026-09-01T11:30:00Z", "user-rejected", "no, not like that");
 
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 2; i++) {
       for (const [n, ts] of [
         [`a${i}`, "2026-09-01T10:05:00Z"],
         [`b${i}`, "2026-09-01T10:30:00Z"],
@@ -632,6 +632,98 @@ describe("who stopped the agent", () => {
       );
       expect(facts.get("tool calls you rejected")).toBe(1);
       expect(facts.get("tool calls auto mode blocked")).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe("a thin sample is a row with its base, not a row withheld", () => {
+  function twoFiles(): Database {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    db.run(
+      `INSERT INTO session (id, tool, cwd, project, git_branch, started_at, last_seen_at)
+       VALUES ('s1', 'claude', '/w', '/w', 'main', '2026-09-01T10:00:00Z', '2026-09-01T12:00:00Z')`,
+    );
+    db.run(
+      "INSERT INTO source_file (path, tool, kind, session_id) VALUES ('/f.jsonl', 'claude', 'transcript', 's1')",
+    );
+    for (const [id, file] of [
+      ["a", "/w/one.ts"],
+      ["b", "/w/two.ts"],
+    ] as const) {
+      db.run(
+        `INSERT INTO tool_call (id, session_id, tool_name, attribution_skill, file_path, ts_call, src_file)
+         VALUES (?, 's1', 'Edit', 'dim-station-build', ?, '2026-09-01T10:05:00Z', '/f.jsonl')`,
+        [id, file],
+      );
+    }
+    return db;
+  }
+
+  test("rework reports a skill that touched two files and names the base", () => {
+    const db = twoFiles();
+    try {
+      const r = findQuery("rework")?.run(db, {});
+      expect(r?.rows.map((row) => [row[0], row[1]])).toEqual([["dim-station-build", 2]]);
+      expect(r?.denominator).toContain("`files_touched` is the base each rate stands on");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("fixes reports the same two files and names the base", () => {
+    const db = twoFiles();
+    try {
+      const f = findQuery("fixes")?.run(db, {});
+      expect(f?.rows.map((row) => [row[0], row[1]])).toEqual([["dim-station-build", 2]]);
+      expect(f?.denominator).toContain("`files` is the base each rate stands on");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("rework names the skill it was asked about when that skill has no edits", () => {
+    const db = twoFiles();
+    try {
+      const r = findQuery("rework")?.run(db, { arg: "no-such-skill" });
+      expect(r?.rows).toEqual([]);
+      expect(r?.note).toContain("no file edit is attributed to no-such-skill");
+      expect(r?.denominator).toContain("rows cover no-such-skill alone");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("rework counts as its base only the edits its rows could come from", () => {
+    const db = twoFiles();
+    try {
+      db.run(
+        `INSERT INTO tool_call (id, session_id, tool_name, attribution_skill, file_path, src_file)
+         VALUES ('c', 's1', 'Edit', 'dim-station-build', '/w/three.ts', '/f.jsonl')`,
+      );
+      // An edit seen only as a result has no ts_call, so no span can be built from
+      // it; counting it in the base would print a total the rows cannot account for.
+      const r = findQuery("rework")?.run(db, {});
+      expect(r?.denominator).toContain("2 file edits");
+      expect(r?.rows.map((row) => [row[0], row[1]])).toEqual([["dim-station-build", 2]]);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("fixes says which record is missing rather than reporting no edits", () => {
+    const db = twoFiles();
+    try {
+      db.run("UPDATE session SET cwd = NULL WHERE id = 's1'");
+      db.run(
+        `INSERT INTO repo_commit (sha, repo, ts, kind, subject)
+         VALUES ('sha1', '/w', '2026-09-02T10:00:00Z', 'fix', 'fix: something')`,
+      );
+      const f = findQuery("fixes")?.run(db, {});
+      expect(f?.rows).toEqual([]);
+      expect(f?.note).toContain("a file path, a timestamp and a session working directory");
     } finally {
       db.close();
     }
