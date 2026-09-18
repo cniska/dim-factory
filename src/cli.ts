@@ -12,6 +12,7 @@ import { diagnose } from "./doctor";
 import { downloadEmbedder, EMBED_DIMS, EMBED_MODEL, embedQuestion } from "./embed";
 import { buildIndex } from "./embed-index";
 import { createSchedule, setSchedulePaused } from "./factory-schedule";
+import { serveWall } from "./factory-wall";
 import { type Finding, FindingError, findingFrom, recordFinding } from "./finding";
 import { committerName } from "./git-identity";
 import { installHooks, planHooks } from "./hooks";
@@ -73,6 +74,7 @@ const USAGE = `usage: dim <command>
                   persist a harness-neutral recurring schedule
   schedule pause|resume <id>
                   pause or resume a persisted schedule
+  wall            serve the local read-only factory wall on loopback
   label <id> <correction|clarification|not_correction> [--rule "..."]
                   record your judgement on one candidate correction
   finding --slice <name> --dimension <name> --answer <fixed|refused>
@@ -747,6 +749,12 @@ try {
       break;
     case "schedule":
       runSchedule(process.argv.slice(3));
+      break;
+    case "wall":
+      {
+        const server = await serveWall({ port: Number(process.env.DIM_WALL_PORT ?? 0) || 0 });
+        console.log(`factory wall listening at http://${server.hostname}:${server.port}`);
+      }
       break;
     case "sql":
       // The first argument that is neither a flag nor a flag's value, so
