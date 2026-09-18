@@ -50,6 +50,8 @@ What earns an edit is a reader's cost — a name that has to be held in the head
 
 Between the simplification pass and the commit, hand the slice's diff to one agent working from a fixed brief. This is not the fan-out the top of this file argues against: that objection is about delegating the edits, which need the context that produced them. A checker returns findings and keeps nothing, which is the trade [`dim-review`](../dim-review/SKILL.md) makes and the one the corpus measured as costing nothing.
 
+**Give the checker read-only tools.** An agent that can edit answers a finding by editing, and what it overwrites is the fix the builder already made — one was reverted that way on 2026-09-18, caught only because the file tools report an on-disk change ([`build-order.md`](../../docs/build-order.md)).
+
 Bounded means a fixed brief, not "review this". It also means the checker is told what to look for: hand it the conventions actually in force — the `CLAUDE.md` and `AGENTS.md` on the walk into this session, imports included — because the rules it is checking against are written down and a checker left to invent them checks its own taste. Give it the diff of this slice alone, what the slice claims to do, and these four questions:
 
 - does every invariant the diff claims have a test that fails without it
