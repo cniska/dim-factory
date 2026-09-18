@@ -1241,6 +1241,38 @@ const factory: Query = {
   },
 };
 
+const schedules: Query = {
+  name: "schedules",
+  summary: "show persisted schedules and which enabled schedules are due",
+  usage: "dim q schedules",
+  spansHistory: true,
+  window: null,
+  run: (db) => {
+    const columns = ["id", "queue", "interval_seconds", "state", "due", "last_evaluated_at", "last_due_at"];
+    const at = new Date().toISOString();
+    const rows = table(
+      db,
+      `SELECT id, queue_id AS queue, interval_seconds,
+              CASE WHEN enabled = 0 THEN 'disabled' WHEN paused = 1 THEN 'paused' ELSE 'enabled' END AS state,
+              CASE WHEN enabled = 1 AND paused = 0
+                    AND (last_evaluated_at IS NULL OR datetime(last_evaluated_at, '+' || interval_seconds || ' seconds') <= datetime(?) )
+                   THEN 'due' ELSE 'not due' END AS due,
+              last_evaluated_at, last_due_at
+       FROM factory_schedule ORDER BY id`,
+      [at],
+    );
+    return {
+      denominator: `${rows.length} persisted schedule${rows.length === 1 ? "" : "s"}; due is evaluated at ${at}`,
+      columns,
+      rows: toRows(rows, columns),
+      note:
+        rows.length === 0
+          ? "no schedules are recorded"
+          : "Due selection reads schedule state only; it does not claim queue work or create a factory job.",
+    };
+  },
+};
+
 /**
  * One skill, split at each edit to its body. A correction is tied to the version
  * that was loaded in its session at the time, not to the version loaded today,
@@ -2277,6 +2309,7 @@ export const QUERIES: Query[] = [
   keywords,
   thread,
   factory,
+  schedules,
   job,
   skill,
   resume,

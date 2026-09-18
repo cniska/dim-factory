@@ -161,6 +161,22 @@ CREATE TABLE IF NOT EXISTS command_trace (
 );
 CREATE INDEX IF NOT EXISTS command_trace_name ON command_trace(command, name, ts);
 
+-- Persisted scheduler definitions are operational control state, not source-derived
+-- rows and not factory job execution reports. The latest evaluation fields let the
+-- next invocation explain when a schedule was last considered without a second report store.
+CREATE TABLE IF NOT EXISTS factory_schedule (
+  id                  TEXT PRIMARY KEY,
+  queue_id            TEXT NOT NULL,
+  interval_seconds    INTEGER NOT NULL CHECK (interval_seconds > 0),
+  enabled             INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  paused              INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1)),
+  created_at          TEXT NOT NULL,
+  updated_at          TEXT NOT NULL,
+  last_evaluated_at   TEXT,
+  last_due_at         TEXT
+);
+CREATE INDEX IF NOT EXISTS factory_schedule_due ON factory_schedule(enabled, paused, last_evaluated_at);
+
 -- Operational factory evidence is written by the job driver, not derived from
 -- transcripts or repository files. It survives rebuild because there is no
 -- source that could reproduce a claim, event or report after the fact.
