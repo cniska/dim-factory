@@ -27,13 +27,13 @@ describe("skill install", () => {
   // ratify its own removal.
   test("ships the skills that need dim on PATH", () => {
     expect(shipped()).toEqual([
-      "dim-build",
       "dim-factory",
-      "dim-feat",
-      "dim-fix",
       "dim-handoff",
-      "dim-plan",
-      "dim-review",
+      "dim-line-feat",
+      "dim-line-fix",
+      "dim-station-build",
+      "dim-station-plan",
+      "dim-station-review",
     ]);
   });
 

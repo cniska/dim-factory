@@ -1,6 +1,6 @@
 ---
-name: dim-plan
-description: Scope a change against what this machine already did — prior art on disk, decisions already taken, and whether an earlier conclusion still holds. Invoked by dim-feat where the cut is not obvious; use directly only to scope work that is not yet a feature or a fix.
+name: dim-station-plan
+description: Scope a change against what this machine already did — prior art on disk, decisions already taken, and whether an earlier conclusion still holds. Invoked by dim-line-feat where the cut is not obvious; use directly only to scope work that is not yet a feature or a fix.
 argument-hint: "<what you are about to build>"
 ---
 
@@ -30,7 +30,7 @@ Ask the owner only when the choice is genuinely theirs, which is narrower than i
 
 ## Check the plan before acting on it
 
-A plan is cheaper to fix than the code written from it, so it gets the same treatment a slice gets in [`dim-build`](../dim-build/SKILL.md): one agent, working from a fixed brief, and not the agent that wrote the plan. Give it the plan and what the four queries returned — not the reasoning that got there, or what comes back is agreement.
+A plan is cheaper to fix than the code written from it, so it gets the same treatment a slice gets in [`dim-station-build`](../dim-station-build/SKILL.md): one agent, working from a fixed brief, and not the agent that wrote the plan. Give it the plan and what the four queries returned — not the reasoning that got there, or what comes back is agreement.
 
 The brief is these questions:
 

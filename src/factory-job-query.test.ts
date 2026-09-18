@@ -25,7 +25,7 @@ describe("factory job query", () => {
         itemId: "item-1",
         worktree: "/tmp/factory-item",
         branch: "factory-item",
-        station: "dim-build",
+        station: "dim-station-build",
       },
       "2026-09-18T10:00:00.000Z",
     );
@@ -99,7 +99,7 @@ describe("factory job query", () => {
         "2026-09-18T10:05:00.000Z",
         "/tmp/factory-item",
         "factory-item",
-        "dim-build",
+        "dim-station-build",
         "def456 feat: later",
         "bun run test (0, green)",
         "tests: fixed - holds; docs: fixed - updated",
@@ -149,7 +149,7 @@ describe("factory job query", () => {
     db.run(SCHEMA_SQL);
     createJob(
       db,
-      { id: "job-123", runId: "run-1", queueId: "queue-1", itemId: "item-1", station: "dim-build" },
+      { id: "job-123", runId: "run-1", queueId: "queue-1", itemId: "item-1", station: "dim-station-build" },
       "2026-09-18T10:00:00.000Z",
     );
     recordJobCommit(db, "job-123", "abc", "feat: report", "2026-09-18T10:01:00.000Z");

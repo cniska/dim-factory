@@ -1,12 +1,12 @@
 ---
-name: dim-build
-description: Run the slice loop — the repo's own check, a simplification pass, a checking agent on the diff, an answer to every finding, then the commit, one slice at a time. Invoked by dim-feat and dim-fix after their own first phase; use directly only for a change that is neither.
+name: dim-station-build
+description: Run the slice loop — the repo's own check, a simplification pass, a checking agent on the diff, an answer to every finding, then the commit, one slice at a time. Invoked by dim-line-feat and dim-line-fix after their own first phase; use directly only for a change that is neither.
 argument-hint: "<what to build>"
 ---
 
 # Build
 
-The shared half of both fronts. [`dim-feat`](../dim-feat/SKILL.md) arrives here having cut the work into slices; [`dim-fix`](../dim-fix/SKILL.md) arrives with a failing test and a named cause. What follows is the same either way.
+The shared half of both fronts. [`dim-line-feat`](../dim-line-feat/SKILL.md) arrives here having cut the work into slices; [`dim-line-fix`](../dim-line-fix/SKILL.md) arrives with a failing test and a named cause. What follows is the same either way.
 
 One agent, in one session. The work is edits, and edits need the context that produced them to stay coherent across slices; a subagent returns a conclusion and keeps its evidence. That is a good trade for a review, where findings are the product, and a bad one here.
 
@@ -40,7 +40,7 @@ Read the slice's own diff and nothing else. Scope is the cut: a file the slice d
 
 What earns an edit is a reader's cost — a name that has to be held in the head, a nesting level that carries no case, a block written twice, an abstraction with one caller. What does not is taste: shorter is not simpler, and a line that reads plainly stays.
 
-**Behavior is preserved exactly, and the test for that is mechanical: the repo's task passes again, and this pass's own diff touches no test file.** A test edited to accommodate a simplification means the behavior moved, which makes it a different change and not this one. The comparison is this pass's diff rather than the slice's, because a `dim-fix` slice carries the failing test that proved the defect and that edit is the point of it. Run the task after this pass, before the checker, or the checker judges code that is about to change.
+**Behavior is preserved exactly, and the test for that is mechanical: the repo's task passes again, and this pass's own diff touches no test file.** A test edited to accommodate a simplification means the behavior moved, which makes it a different change and not this one. The comparison is this pass's diff rather than the slice's, because a `dim-line-fix` slice carries the failing test that proved the defect and that edit is the point of it. Run the task after this pass, before the checker, or the checker judges code that is about to change.
 
 **An edit lands only by lowering one of the costs named above, and the pass names which.** A pass that can name none is the fixpoint, and that is the expected result on a slice that was already plain. This is what makes the loop finite: the costs are a list, each edit spends one off it, and a rename that trades one name for another lowers nothing and so is not an edit this pass may make. Judging instead whether anything *could* still be improved is not the test; asked that, there is always something.
 
@@ -48,7 +48,7 @@ What earns an edit is a reader's cost — a name that has to be held in the head
 
 ## Check the slice before the next one
 
-Between the simplification pass and the commit, hand the slice's diff to one agent working from a fixed brief. This is not the fan-out the top of this file argues against: that objection is about delegating the edits, which need the context that produced them. A checker returns findings and keeps nothing, which is the trade [`dim-review`](../dim-review/SKILL.md) makes and the one the corpus measured as costing nothing.
+Between the simplification pass and the commit, hand the slice's diff to one agent working from a fixed brief. This is not the fan-out the top of this file argues against: that objection is about delegating the edits, which need the context that produced them. A checker returns findings and keeps nothing, which is the trade [`dim-station-review`](../dim-station-review/SKILL.md) makes and the one the corpus measured as costing nothing.
 
 **Give the checker read-only tools.** An agent that can edit answers a finding by editing, and what it overwrites is the fix the builder already made — one was reverted that way on 2026-09-18, caught only because the file tools report an on-disk change ([`build-order.md`](../../docs/build-order.md)).
 

@@ -6,7 +6,7 @@ The argument this repo exists to execute. It is a position to argue with, not a 
 
 The owner's tool-agnostic engineering skills form a production line — spec, plan, build, review, ship — and the parts map onto a factory more cleanly than they were designed to.
 
-- **Skills form the line and stations.** `dim-feat` and `dim-fix` are line entry points; `dim-plan`, `dim-build` and `dim-review` are repeatable stations with entry contracts and exit checks.
+- **Skills form the line and stations.** `dim-line-feat` and `dim-line-fix` are line entry points; `dim-station-plan`, `dim-station-build` and `dim-station-review` are repeatable stations with entry contracts and exit checks.
 - **A coding agent is the floor.** It executes stations with tools, budgets and a lifecycle, and the driving is handed to the model rather than scripted.
 - **`AGENTS.md` and `SPEC.md` are the fixtures and tolerances.** Per-project grounding, and a machine-checkable statement of what correct means. A line cannot run unattended without them.
 - **Review, verify and the gates are QC.** They pass or fail work without a human reading every diff.

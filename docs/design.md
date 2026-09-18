@@ -320,17 +320,17 @@ Where they hold, the database gives the two arms and their locators and the eval
 
 **Agent invocation**: the stations under `skills/`, linked into `~/.agents/skills` and `~/.codex/skills` by `dim install-skill`. A station differs from a tool-agnostic engineering skill by reading the record, and the `dim-` prefix marks one:
 
-- **`dim-feat`** and **`dim-fix`** are the front doors, scoping a change against prior art or triaging a defect against the files a later fix commit came back to. Both hand to **`dim-build`** for the slice loop.
-- **`dim-plan`** gathers decisions already taken and whether an earlier conclusion still holds, then hands the planning to a more capable model.
-- **`dim-review`** runs one agent per dimension.
+- **`dim-line-feat`** and **`dim-line-fix`** are the front doors, scoping a change against prior art or triaging a defect against the files a later fix commit came back to. Both hand to **`dim-station-build`** for the slice loop.
+- **`dim-station-plan`** gathers decisions already taken and whether an earlier conclusion still holds, then hands the planning to a more capable model.
+- **`dim-station-review`** runs one agent per dimension.
 
-**Simplification is a step in the loop, not a front door.** A feature and a defect arrive as demands; nothing ever demands simplification, so a station you have to remember to run has the failure mode [`recall.md`](recall.md) is about. `dim-build` runs it at a moment where the target needs no aiming — the slice that just passed the repo's task is the code most recently written and least read — between that task and the checking agent: the task passes, the slice is simplified, the task passes again, and the checker then judges what will actually be committed.
+**Simplification is a step in the loop, not a front door.** A feature and a defect arrive as demands; nothing ever demands simplification, so a station you have to remember to run has the failure mode [`recall.md`](recall.md) is about. `dim-station-build` runs it at a moment where the target needs no aiming — the slice that just passed the repo's task is the code most recently written and least read — between that task and the checking agent: the task passes, the slice is simplified, the task passes again, and the checker then judges what will actually be committed.
 
 The order is what keeps the contracts apart. This pass edits and the checker does not, so a checker running first would judge code that no longer exists.
 
 It repeats while a pass changes something, since one simplification exposes another, and a pass that edits nothing is the fixpoint. What makes that finite is that an edit lands only by lowering a named reader cost, off a list the station states: a rename trading one name for another lowers nothing, so the sequence that would otherwise circle forever is not a sequence of edits this pass may make. There is no round limit, because a number chosen there is a constant no test can prove.
 
-Behavior preserved exactly means the repo's task passes again and the pass's own diff touches no test file. That is a shape rather than a meaning, but it is a shape only against that diff: a `dim-fix` slice commits the test that proved the defect, and from the committed diff alone a test written by the fix and a test bent to admit a simplification look the same. So the rule holds inside the station and a commit hook is not where it can be read.
+Behavior preserved exactly means the repo's task passes again and the pass's own diff touches no test file. That is a shape rather than a meaning, but it is a shape only against that diff: a `dim-line-fix` slice commits the test that proved the defect, and from the committed diff alone a test written by the fix and a test bent to admit a simplification look the same. So the rule holds inside the station and a commit hook is not where it can be read.
 
 Aiming by the record is the separate, deliberate pass: `q fixes` and `q rework` for what has come back, `q exemplars` for what to leave alone. It answers a different question — which code that nobody is currently editing has earned a pass — and the one measurement that exists describes that use rather than the one in the loop: files arrive at `simplify` already drawing fixes at four times the rate of files arriving at `build` ([`findings.md`](findings.md)), which says what the skill is pointed at. What that page declines to read as improvement is the rate they leave at, and nothing here measures whether simplifying a fresh slice pays at all.
 

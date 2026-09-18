@@ -1,5 +1,5 @@
 ---
-name: dim-review
+name: dim-station-review
 description: Review a diff dimension by dimension, one agent each, aimed by what this machine's record says about the ground the change stands on. Use before merging a change or handing it to someone else.
 argument-hint: "<diff, branch or path>"
 ---
@@ -43,7 +43,7 @@ The review is done when:
 - every finding a dimension raised was checked at its source before it was passed on, cited to `file:line`
 - a path the record named as having held is read against that, and a finding against it is either addressed or explicitly cleared
 
-A dimension's finding is a claim, and a claim carried forward unchecked is how a wrong one becomes the standard. Checking it is this station's work whether or not the reviewer wrote the code — where the author is in the session, [`dim-build`](../dim-build/SKILL.md) says what answering one looks like.
+A dimension's finding is a claim, and a claim carried forward unchecked is how a wrong one becomes the standard. Checking it is this station's work whether or not the reviewer wrote the code — where the author is in the session, [`dim-station-build`](../dim-station-build/SKILL.md) says what answering one looks like.
 
 ## What the record cannot say
 

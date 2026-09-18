@@ -556,11 +556,11 @@ describe("who stopped the agent", () => {
     );
     db.run(
       `INSERT INTO message (id, session_id, ts, role, text, text_chars, attribution_skill, src_file, src_line)
-       VALUES ('m-ran', 's1', '2026-09-01T10:00:00Z', 'assistant', 'working on it', 13, 'dim-build', '/f.jsonl', 1)`,
+       VALUES ('m-ran', 's1', '2026-09-01T10:00:00Z', 'assistant', 'working on it', 13, 'dim-station-build', '/f.jsonl', 1)`,
     );
     db.run(
       `INSERT INTO skill_load (session_id, message_id, ts, skill_name, how, body_chars, body_sha256)
-       VALUES ('s1', 'm-ran', '2026-09-01T10:00:00Z', 'dim-build', 'model', 400, 'abcdef0123')`,
+       VALUES ('s1', 'm-ran', '2026-09-01T10:00:00Z', 'dim-station-build', 'model', 400, 'abcdef0123')`,
     );
     const stop = (id: string, ts: string, kind: string, text: string) =>
       db.run(
@@ -580,7 +580,7 @@ describe("who stopped the agent", () => {
       ]) {
         db.run(
           `INSERT INTO tool_call (id, session_id, tool_name, attribution_skill, file_path, ts_call, src_file)
-           VALUES (?, 's1', 'Edit', 'dim-build', ?, ?, '/f.jsonl')`,
+           VALUES (?, 's1', 'Edit', 'dim-station-build', ?, ?, '/f.jsonl')`,
           [n as string, `/w/file-${i}.ts`, ts as string],
         );
       }
@@ -599,7 +599,7 @@ describe("who stopped the agent", () => {
       expect(resume?.rows.filter((r) => r[0] === "stopped")).toHaveLength(1);
       expect(String(resume?.rows.find((r) => r[0] === "stopped")?.[1])).toContain("not like that");
 
-      const skill = findQuery("skill")?.run(db, { arg: "dim-build" });
+      const skill = findQuery("skill")?.run(db, { arg: "dim-station-build" });
       expect(skill?.rows[0]?.[6]).toBe(1);
 
       expect(findQuery("repeats")?.run(db, {})?.denominator).toContain("1 prompts");
