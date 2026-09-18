@@ -13,7 +13,7 @@ The owner's tool-agnostic engineering skills form a production line — spec, pl
 
 None of it was built to be a factory. It became one because each phase was made repeatable and verifiable on its own terms.
 
-## The lane contract is planned
+## The lane contract
 
 The planned factory assigns each queue item to one self-sufficient lane that runs it to a verifiable stopping point.
 
@@ -26,18 +26,18 @@ The planned factory assigns each queue item to one self-sufficient lane that run
 
 The lane returns a delivered-product report containing the item and queue identity, station and delegation tree, worktree and branch, changed files, commit SHA, repo check and result, checker findings and resolutions, updated docs, and final status: complete, blocked, fenced or failed. A complete or stopped report includes the evidence the driver needs to land the work or stop at the stated boundary.
 
-## Report persistence is planned
+## Report persistence
 
-The delivered-product report will be persisted in the dim database so it remains queryable after the session rather than existing only in chat. Its planned record includes:
+The delivered-product report is persisted in the dim database so it remains queryable after the session rather than existing only in chat. `factory_lane` is the current projection; `factory_lane_event` is its typed append-only lifecycle ledger; and the normalized evidence tables hold commits, checks, findings and updated documents. The record includes:
 
 - **Identity.** Queue and item identity, lane and run identity, agent identity, worktree and branch.
 - **Work.** Station, delegation tree, changed files and commit SHA.
 - **Verification.** Repository check command and result, checker findings and their resolutions, and updated docs.
 - **Outcome.** Final status — complete, blocked, fenced or failed — with fence or blocker evidence and timestamps for the lifecycle events.
 
-The report lifecycle is planned as a durable sequence from claim through running to completion or a stopped outcome, with evidence updated as the lane progresses. The current database has no factory report record or factory-report query, so this persistence and lifecycle are not live.
+The report lifecycle is a durable sequence from claim through running to completion or a stopped outcome, with evidence recorded as the lane progresses. `dim q lane <lane-id>` reads the aggregate, events and evidence through the read-only query path. These operational tables survive `dim rebuild`, deliberately like `hook_event`, `command_trace` and `finding`: no transcript or file source can recreate a lane's claims and judgements after the fact.
 
-These are planned boundaries, not live guarantees. The current record does not yet persist item claims, lane ownership or queue-state transitions, so the contract cannot safely be treated as implemented.
+The persistence contract is live. The factory driver still owns scheduling, isolated worktree creation, serialized landing and queue-state enforcement; those orchestration boundaries are not inferred from a report row.
 
 ## What is missing is not another skill
 
