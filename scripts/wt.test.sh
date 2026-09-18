@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Behavior tests for wt. Pure bash plus git; every case uses a throwaway repo.
-# Run: bun run test:wt   (exit 0 = all pass, 1 = failures)
+# Every case uses a throwaway repo.
 set -u
 
 # The command under test, word-split so it can carry arguments. These cases pin
@@ -39,12 +38,10 @@ write_hook(){ # name, body
   ( cd "$REPO" && git add "scripts/$1" && git commit -qm "$1" )
 }
 
-# path and ls: no worktree yet
 assert "path prints the conventional location" \
   "$(run path task-a)" "$REPO/.claude/worktrees/task-a"
 assert "ls reports no task worktrees before creation" "$(run ls)" "wt: no task worktrees"
 
-# open: creates a branch/worktree, runs the optional hook, and reports the path.
 write_hook worktree-setup.sh 'printf ready > .wt-bootstrap-ran'
 opened=$(run task-a)
 contains "open reports bootstrap" "$opened" "wt: bootstrapping worktree via scripts/worktree-setup.sh"
@@ -53,13 +50,11 @@ assert "open creates the worktree" "$([ -d "$REPO/.claude/worktrees/task-a" ] &&
 assert "open runs the bootstrap hook only on creation" "$(cat "$REPO/.claude/worktrees/task-a/.wt-bootstrap-ran")" ready
 assert "open creates the requested branch" "$(git -C "$REPO" branch --show-current; git -C "$REPO/.claude/worktrees/task-a" branch --show-current | tail -1)" $'main\ntask-a'
 
-# reuse: must preserve the worktree and skip bootstrap.
 rm "$REPO/.claude/worktrees/task-a/.wt-bootstrap-ran"
 reused=$(run task-a)
 contains "existing worktree is reused" "$reused" "wt: reusing existing worktree"
 assert "reuse skips bootstrap" "$([ -e "$REPO/.claude/worktrees/task-a/.wt-bootstrap-ran" ] && echo yes || echo no)" no
 
-# ls and rm: only managed worktrees appear, rm keeps the branch for post-merge cleanup.
 contains "ls includes the managed branch" "$(run ls)" "task-a"
 contains "ls includes the managed path" "$(run ls)" "$REPO/.claude/worktrees/task-a"
 removed=$(run rm task-a)
@@ -115,12 +110,10 @@ assert "a file where the worktree goes creates no worktree" \
   "$([ -d "$REPO/.claude/worktrees/task-e" ] && echo yes || echo no)" no
 rm "$REPO/.claude/worktrees/task-e"
 
-# prune and usage: the paths with no case at all before.
 contains "prune reports what it did" "$(run prune)" "wt: pruned stale worktree entries"
 contains "no arguments prints usage" "$(run)" "parallel-task worktrees, one per agent"
 contains "--help prints usage" "$(run --help)" "dim wt path <branch>"
 
-# rm argument parsing.
 set +e
 twice=$(run rm task-a task-b 2>&1); twice_rc=$?
 bogus=$(run rm --bogus task-a 2>&1); bogus_rc=$?
@@ -140,7 +133,6 @@ set -e
 assert "an error carries no escapes when the environment forces color" \
   "$forced" "wt: branch name specified more than once"
 
-# errors: missing arguments and calls outside a repository stay actionable.
 set +e
 missing=$(run path 2>&1); missing_rc=$?
 outside=$(cd "$TMP" && $WT ls 2>&1); outside_rc=$?

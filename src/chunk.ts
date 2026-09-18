@@ -30,7 +30,7 @@ export function readChunk(path: string, cursor: number): Chunk {
       .subarray(0, lastNewline + 1)
       .toString("utf8")
       .split("\n");
-    lines.pop(); // the empty string after the final newline
+    lines.pop();
     return { lines, bytes: lastNewline + 1 };
   } finally {
     closeSync(fd);
