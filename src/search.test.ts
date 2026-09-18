@@ -286,13 +286,55 @@ describe("search over the distilled index", () => {
     db.close();
   });
 
-  test("a next carries its session and time, so the thread can be read around it", async () => {
+  // A session holds several distilled passages, so a ref naming only the session
+  // cannot say which one ranked. The ref is `thread`'s own argument, which is
+  // what keeps one string good for reading the exchange and for grading it.
+  test("a next names the passage, and the ref is what thread reads", async () => {
     const db = await indexed();
     const result = run(db, { arg: "touching the checkout", question: await asked("touching the checkout") });
     const next = result.rows.find((r) => r[1] === "next");
-    expect(next?.[3]).toBe("s1");
+    expect(next?.[3]).toBe("s1@2026-09-01T10:30:00Z");
     expect(next?.[2]).toBe("2026-09-01T10:30");
     expect(next?.[4]).toBe("code/dim-factory");
+
+    const thread = findQuery("thread") as NonNullable<ReturnType<typeof findQuery>>;
+    const around = thread.run(db, { arg: String(next?.[3]) });
+    expect(around.denominator).toContain("centered on 2026-09-01T10:30:00Z");
+    expect(around.rows.length).toBeGreaterThan(0);
+    db.close();
+  });
+
+  // A subagent's session id is `<agent>@<parent>`, so splitting on the first
+  // delimiter reads the parent uuid as a timestamp and centers on nothing.
+  test("thread reads a session whose own id holds an at-sign", async () => {
+    const db = seeded();
+    const id = "a0064e811b74a81cb@79e9c9bc-3a0b-46f6-b935-7a25be925124";
+    db.run(
+      `INSERT INTO session (id, tool, cwd, project, started_at, last_seen_at)
+       VALUES (?, 'claude', '/w', '/home/code/dim-factory', '2026-09-01T10:00:00Z', '2026-09-01T11:00:00Z')`,
+      [id],
+    );
+    db.run(
+      `INSERT INTO message (id, session_id, ts, role, text, src_file, src_line)
+       VALUES ('m-sub', ?, '2026-09-01T10:45:00.000Z', 'assistant', 'What the delegate settled.', '/f.jsonl', 3)`,
+      [id],
+    );
+    const thread = findQuery("thread") as NonNullable<ReturnType<typeof findQuery>>;
+    const whole = thread.run(db, { arg: id });
+    expect(whole.denominator).toContain("1 messages anyone said");
+    expect(whole.denominator).not.toContain("centered on");
+
+    const passage = thread.run(db, { arg: `${id}@2026-09-01T10:45:00.000Z` });
+    expect(passage.denominator).toContain("centered on 2026-09-01T10:45:00.000Z");
+    expect(passage.rows.length).toBe(1);
+    db.close();
+  });
+
+  test("a commit is named by its sha, which carries no passage", async () => {
+    const db = await indexed();
+    const result = run(db, { arg: SUBJECT, question: await asked(SUBJECT) });
+    const subject = result.rows.find((r) => r[1] === "subject");
+    expect(subject?.[3]).toBe("abc12300");
     db.close();
   });
 

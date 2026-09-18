@@ -450,6 +450,16 @@ Every one of those 90 is a fixture from an earlier session's test runs, under `.
 
 What this carries: one machine, one window, and a count of repos rather than of commits for the first claim — a repo declaring a check its sessions never run is invisible to that 21. The 627 is the number that survives, and it is a floor: a commit whose check ran under a name the list does not hold would still read as unchecked, and nothing here has measured how often the 12 undeclaring repos commit.
 
+## A passage ref cut to the minute would lose one session in thirty-three
+
+Measured on 2026-09-18 over the 242 distilled passages that come from a message — every `next` and `correction` in the index, spread across 186 sessions. 33 of those sessions hold more than one passage, which is the set a ref naming only the session cannot separate.
+
+Cut the timestamp to the width the `when` column prints, `2026-09-01T10:30`, and one of the 33 still collides: it printed two passages inside the same minute. At seconds and at the whole stored timestamp, none of the 33 collide. So a ref cut to the minute would be right 32 times out of 33, with nothing in the output to say which session it had given up on.
+
+What this carries is the choice of width, not a property of handoffs. Nothing constrains a session and a timestamp to name one message, so the whole timestamp is exact as measured here rather than by construction. The rate is a fact about one corpus at one size, and a corpus that grows is the case where a truncation that measured fine starts costing sessions silently.
+
+The delimiter is the other half of the choice, and it is already taken: 525 of the 1,180 sessions have ids of the form `<agent>@<parent>`, which is how a subagent's is written, and 47 eight-character prefixes are shared by more than one session. So `@` cannot be found by splitting, and a ref is read by recognizing the timestamp's shape at the end instead. Asked for one of those sessions by its whole id, `thread` read the parent uuid as the timestamp to center on and answered with the last twelve messages — a wrong window rather than a refusal, which is the failure a delimiter chosen against an id space that already uses it produces.
+
 ## A builder explained a flaky test with a cause that cannot reach it
 
 Measured on 2026-09-18, while three builders ran in parallel on one checkout. A builder reported `src/push-gate.test.ts` failing 6 of 16 on timeouts inside its worktree, attributed it to the rtk hook rewriting the `git` those tests spawn, and adopted `rtk proxy` for its commit on that basis.

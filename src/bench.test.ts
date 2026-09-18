@@ -68,6 +68,27 @@ function seeded(): Database {
   return db;
 }
 
+/** Two distilled passages in one session, which is the pair a grader wants to tell apart. */
+function withTwoPassages(db: Database): { early: string; late: string } {
+  const passages: [string, string, string][] = [
+    ["m-early", "2026-09-01T10:40:00.000Z", "Undo what an agent wrote in the shadow checkout."],
+    ["m-late", "2026-09-01T10:50:00.000Z", "Score the labeled corpus through the queries themselves."],
+  ];
+  for (const [id, ts, next] of passages) {
+    db.run(
+      `INSERT INTO message (id, session_id, ts, role, text, src_file, src_line)
+       VALUES (?, 's1', ?, 'assistant', ?, '/f.jsonl', 2)`,
+      [id, ts, next],
+    );
+    db.run(
+      `INSERT INTO factory_handoff (message_id, session_id, role, ts, title, next)
+       VALUES (?, 's1', 'assistant', ?, '# Handoff', ?)`,
+      [id, ts, next],
+    );
+  }
+  return { early: `s1@${passages[0]?.[1]}`, late: `s1@${passages[1]?.[1]}` };
+}
+
 describe("scoring the corpus through the queries themselves", () => {
   // `keywords` prints a session and a timestamp and no ref, so its ranking
   // cannot be scored. Saying so beats scoring less than the corpus claims.
@@ -135,6 +156,157 @@ describe("scoring the corpus through the queries themselves", () => {
     const db = seeded();
     const report = await runBench(db, [graded("telepathy", [["x", 3]])], 5, {}, embedNothing);
     expect(report.unscorable[0]?.why).toContain("telepathy");
+    db.close();
+  });
+
+  // The whole point of a passage ref: a decision is one passage, and grading by
+  // the session it sits in makes the wrong one look like the right one.
+  test("tells two graded passages in one session apart", async () => {
+    const db = seeded();
+    const { early, late } = withTwoPassages(db);
+    await buildIndex(db, byWords, "A Person");
+    const asked = { ...graded("search", [[late, 3]]) };
+    asked.question = "Score the labeled corpus through the queries themselves.";
+    const hit = await runBench(db, [asked], 1, {}, embedWith);
+    expect(hit.unscorable).toEqual([]);
+    expect(hit.scores[0]?.recall).toBe(1);
+
+    const missed = { ...asked, relevant: new Map([[early, 3]]) };
+    const miss = await runBench(db, [missed], 1, {}, embedWith);
+    expect(miss.unscorable).toEqual([]);
+    expect(miss.scores[0]?.recall).toBe(0);
+    db.close();
+  });
+
+  // A question can be about a session as a whole, and a label naming one grades
+  // every passage in it rather than scoring zero against all of them.
+  test("a label naming only a session still grades a passage inside it", async () => {
+    const db = seeded();
+    withTwoPassages(db);
+    await buildIndex(db, byWords, "A Person");
+    const asked = { ...graded("search", [["s1", 3]]) };
+    asked.question = "Score the labeled corpus through the queries themselves.";
+    const report = await runBench(db, [asked], 1, {}, embedWith);
+    expect(report.unscorable).toEqual([]);
+    expect(report.scores[0]?.recall).toBe(1);
+    db.close();
+  });
+
+  // `keywords` and `thread` print a time for any turn, so copying one is the
+  // easiest label to write and no query ever returns it.
+  test("refuses a passage ref naming a turn nobody distilled", async () => {
+    const db = seeded();
+    withTwoPassages(db);
+    await buildIndex(db, byWords, "A Person");
+    const report = await runBench(db, [graded("search", [["s1@2026-09-01T10:30:00Z", 3]])], 5, {}, embedWith);
+    expect(report.scores).toEqual([]);
+    expect(report.unscorable[0]?.why).toContain("names a turn nobody distilled");
+    db.close();
+  });
+
+  // A subagent's session id is `<agent>@<parent>`, so a passage in one carries
+  // two delimiters and splitting on the first reads the parent as a timestamp.
+  test("grades a passage in a session whose own id holds an at-sign", async () => {
+    const db = seeded();
+    const id = "a0064e811b74a81cb@79e9c9bc-3a0b-46f6-b935-7a25be925124";
+    db.run(
+      `INSERT INTO session (id, tool, cwd, project, started_at, last_seen_at)
+       VALUES (?, 'claude', '/w', '/p', '2026-09-01T10:00:00Z', '2026-09-01T11:00:00Z')`,
+      [id],
+    );
+    const ts = "2026-09-01T10:45:00.000Z";
+    const next = "Undo what an agent wrote without touching the checkout.";
+    db.run(
+      `INSERT INTO message (id, session_id, ts, role, text, src_file, src_line)
+       VALUES ('m-sub', ?, ?, 'assistant', ?, '/f.jsonl', 3)`,
+      [id, ts, next],
+    );
+    db.run(
+      `INSERT INTO factory_handoff (message_id, session_id, role, ts, title, next)
+       VALUES ('m-sub', ?, 'assistant', ?, '# Handoff', ?)`,
+      [id, ts, next],
+    );
+    await buildIndex(db, byWords, "A Person");
+    const asked = { ...graded("search", [[`${id}@${ts}`, 3]]) };
+    asked.question = next;
+    const report = await runBench(db, [asked], 1, {}, embedWith);
+    expect(report.unscorable).toEqual([]);
+    expect(report.scores[0]?.recall).toBe(1);
+    db.close();
+  });
+
+  // One printed id answers to both labels, so scoring either would credit a
+  // ranking that never distinguished them.
+  test("refuses two labels one printed id would answer to", async () => {
+    const db = seeded();
+    db.run(
+      `INSERT INTO session (id, tool, cwd, project, started_at, last_seen_at)
+       VALUES ('s123', 'claude', '/w', '/p', '2026-09-01T10:00:00Z', '2026-09-01T11:00:00Z')`,
+    );
+    await buildIndex(db, byWords, "A Person");
+    const report = await runBench(
+      db,
+      [
+        graded("search", [
+          ["s1", 3],
+          ["s123", 2],
+        ]),
+      ],
+      5,
+      {},
+      embedWith,
+    );
+    expect(report.unscorable[0]?.why).toContain("print the same ref");
+    db.close();
+  });
+
+  // A ref ending in a bare delimiter must refuse rather than quietly widening
+  // into the whole session and grading every passage in it.
+  test("refuses a ref whose timestamp is missing after the at-sign", async () => {
+    const db = seeded();
+    withTwoPassages(db);
+    await buildIndex(db, byWords, "A Person");
+    const report = await runBench(db, [graded("search", [["s1@", 3]])], 5, {}, embedWith);
+    expect(report.scores).toEqual([]);
+    expect(report.unscorable[0]?.why).toContain("names no commit and no session");
+    db.close();
+  });
+
+  // A mistyped timestamp would otherwise score zero forever and read as a
+  // ranking failure, which is the mistake every other refusal here exists for.
+  test("refuses a passage ref whose timestamp names no message", async () => {
+    const db = seeded();
+    withTwoPassages(db);
+    await buildIndex(db, byWords, "A Person");
+    const report = await runBench(
+      db,
+      [graded("search", [["s1@2026-09-01T10:41:00.000Z", 3]])],
+      5,
+      {},
+      embedWith,
+    );
+    expect(report.scores).toEqual([]);
+    expect(report.unscorable[0]?.why).toContain("names no message in that session");
+    db.close();
+  });
+
+  test("refuses a session graded beside one of its own passages", async () => {
+    const db = seeded();
+    const { late } = withTwoPassages(db);
+    await buildIndex(db, byWords, "A Person");
+    const report = await runBench(
+      db,
+      [
+        graded("search", [
+          ["s1", 3],
+          [late, 2],
+        ]),
+      ],
+      5,
+      {},
+      embedWith,
+    );
+    expect(report.unscorable[0]?.why).toContain("print the same ref");
     db.close();
   });
 

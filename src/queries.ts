@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { EMBED_MODEL, fromBlob, type Question, similarity } from "./embed";
+import { parsePassageRef } from "./passage-ref";
 import { isScratchRepo } from "./scratch";
 import { withoutWorktree } from "./worktree";
 
@@ -957,12 +958,17 @@ const search: Query = {
       .sort((a, b) => b.score - a.score)
       .slice(0, SEMANTIC_HITS);
 
+    // A session holds several distilled passages, so naming only the session
+    // leaves two of them the same row. The passage form is the argument `thread`
+    // takes, so one string is both the address a reader follows and the one a
+    // corpus grades.
     const detail = db.prepare<
       { text: string; when: string | null; ref: string | null; place: string | null },
       [string, string, string, string]
     >(
       `SELECT e.text AS text, substr(coalesce(m.ts, c.ts), 1, 16) AS "when",
-              substr(coalesce(m.session_id, e.ref), 1, 8) AS ref,
+              CASE WHEN e.kind = 'subject' THEN substr(e.ref, 1, 8)
+                   ELSE substr(m.session_id, 1, 8) || '@' || m.ts END AS ref,
               coalesce(replace(s.project, ? || '/', ''), c.label, replace(c.repo, ? || '/', '')) AS place
        FROM embedding e
        LEFT JOIN message m ON e.kind <> 'subject' AND m.id = e.ref
@@ -1005,7 +1011,7 @@ const search: Query = {
         "closest thing indexed rather than an answer. This index holds text a person distilled — a " +
         "handoff's Next, a subject they authored, a prompt they labeled a correction — and no raw " +
         "conversation turn, so a sentence said in passing is not in it. `dim q thread <ref>` reads the " +
-        "session a next or a correction came from.",
+        "exchange a next or a correction came from, centered on the passage the ref names.",
     };
   },
 };
@@ -1052,7 +1058,7 @@ const thread: Query = {
     if (!arg) {
       return { denominator: "", columns: ["error"], rows: [["usage: dim q thread <id-prefix>[@<ts>]"]] };
     }
-    const [prefix, at] = arg.split("@");
+    const { id: prefix, at } = parsePassageRef(arg);
     const found = table(db, "SELECT id FROM session WHERE id LIKE ? || '%' LIMIT 2", [prefix]);
     if (found.length === 0) {
       return { denominator: "", columns: ["id"], rows: [], note: `no session starts with ${prefix}` };

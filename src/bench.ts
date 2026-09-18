@@ -1,24 +1,67 @@
 import type { Database } from "bun:sqlite";
 import type { BenchQuestion } from "./bench-corpus";
+import { readDistilled } from "./distilled";
 import type { Question } from "./embed";
+import { type PassageRef, parsePassageRef } from "./passage-ref";
 import { findQuery, type QueryContext } from "./queries";
 import { ndcgAtK, recallAtK } from "./rank-metrics";
 
 /** Where a scored question's answer is read from the rows a query returned. */
 const REF_COLUMN = "ref";
 
-/** How much of a ref a query prints, which is the width a label is matched at. */
+/** How much of an id a query prints, which is the width a label is matched at. */
 const PRINTED_REF = 8;
 
 /**
- * Whether a labeled ref names anything this record holds. A corpus is graded by
- * hand against output, so the usual mistake is grading a message by its own id
- * when the query printed the session — which scores zero and reads as a miss.
+ * Which messages a passage ref may name. Read from the sources a passage is
+ * distilled from rather than from the vectors built over them, so a label is
+ * checked without the runner consulting the index it is scoring.
  */
-function knownRefs(db: Database, refs: string[]): Map<string, boolean> {
-  const commit = db.prepare<{ n: number }, [string]>("SELECT count(*) AS n FROM repo_commit WHERE sha = ?");
-  const session = db.prepare<{ n: number }, [string]>("SELECT count(*) AS n FROM session WHERE id = ?");
-  return new Map(refs.map((ref) => [ref, (commit.get(ref)?.n ?? 0) > 0 || (session.get(ref)?.n ?? 0) > 0]));
+function distilledMessages(db: Database): Set<string> {
+  return new Set(readDistilled(db, null).map((item) => item.ref));
+}
+
+/** Why a labeled ref cannot be scored, or undefined where the record holds it. */
+function refusal(db: Database, ref: string, distilled: Set<string>): string | undefined {
+  const { id, at } = parsePassageRef(ref);
+  const count = (sql: string, params: string[]): number =>
+    db.prepare<{ n: number }, string[]>(sql).get(...params)?.n ?? 0;
+  if (at === undefined) {
+    if (count("SELECT count(*) AS n FROM repo_commit WHERE sha = ?", [id]) > 0) return undefined;
+    if (count("SELECT count(*) AS n FROM session WHERE id = ?", [id]) > 0) return undefined;
+    return `${ref} names no commit and no session`;
+  }
+  if (count("SELECT count(*) AS n FROM session WHERE id = ?", [id]) === 0) {
+    return `${ref} names no session; a passage is graded as <session>@<timestamp>`;
+  }
+  const named = db
+    .prepare<{ id: string }, [string, string]>("SELECT id FROM message WHERE session_id = ? AND ts = ?")
+    .all(id, at)
+    .map((row) => row.id);
+  if (named.length === 0) {
+    return `${ref} names no message in that session; a passage carries the whole timestamp search prints`;
+  }
+  // An ordinary turn is addressable and is never a hit, so grading one scores
+  // zero for ever — the same mistake as grading a message by its own id, and the
+  // easier one to make, since `keywords` and `thread` print a time for any turn.
+  if (!named.some((messageId) => distilled.has(messageId))) {
+    return `${ref} names a turn nobody distilled, which no query returns`;
+  }
+  return undefined;
+}
+
+/**
+ * Whether a labeled ref grades the row a query printed. An id is matched at the
+ * printed width because a corpus stores the whole one, and a ref naming only a
+ * session grades every passage in it — the question asked of a session as a whole.
+ */
+const grades = (labeled: PassageRef, printed: PassageRef): boolean =>
+  labeled.id.startsWith(printed.id) && (labeled.at === undefined || labeled.at === printed.at);
+
+/** Whether one printed row could answer to both labels, leaving them inseparable. */
+function inseparable(a: PassageRef, b: PassageRef): boolean {
+  const [x, y] = [a.id.slice(0, PRINTED_REF), b.id.slice(0, PRINTED_REF)];
+  return (x.startsWith(y) || y.startsWith(x)) && (a.at === undefined || b.at === undefined || a.at === b.at);
 }
 
 export type QuestionScore = {
@@ -69,10 +112,7 @@ export async function runBench(
 ): Promise<BenchReport> {
   const scores: QuestionScore[] = [];
   const unscorable: { id: string; why: string }[] = [];
-  const names = knownRefs(
-    db,
-    questions.flatMap((q) => [...q.relevant.keys()]),
-  );
+  const distilled = distilledMessages(db);
   for (const asked of questions) {
     const query = findQuery(asked.query);
     if (!query) {
@@ -91,23 +131,20 @@ export async function runBench(
       unscorable.push({ id: asked.id, why });
       continue;
     }
-    // A query prints a ref short enough to read, so a returned row names its
-    // answer by a prefix of the ref the corpus stores. Which entity that ref
-    // names is the query's choice, not the corpus's: `search` prints the sha for
-    // a commit and the session for a message, because a session is what the
-    // reader goes on to ask `thread` about. A label naming anything else can
+    // A query prints an id short enough to read, so a returned row names its
+    // answer by a prefix of the id the corpus stores. Which entity a ref names is
+    // the query's choice, not the corpus's: `search` prints the sha for a commit
+    // and `<session>@<timestamp>` for a message. A label naming anything else can
     // never match, and would read as a ranking failure forever.
     const labeled = [...asked.relevant.keys()];
-    const unknown = labeled.filter((ref) => !names.get(ref));
-    if (unknown.length > 0) {
-      unscorable.push({
-        id: asked.id,
-        why: `${unknown.join(", ")} names no commit and no session; a message is graded by the session ${asked.query} prints`,
-      });
+    const refused = labeled.map((ref) => refusal(db, ref, distilled)).filter((why) => why !== undefined);
+    if (refused.length > 0) {
+      unscorable.push({ id: asked.id, why: refused.join("; ") });
       continue;
     }
-    const prefixes = new Set(labeled.map((ref) => ref.slice(0, PRINTED_REF)));
-    if (prefixes.size < labeled.length) {
+    const refs = labeled.map((ref) => ({ ref, parsed: parsePassageRef(ref) }));
+    const clash = refs.some((a, i) => refs.slice(i + 1).some((b) => inseparable(a.parsed, b.parsed)));
+    if (clash) {
       unscorable.push({
         id: asked.id,
         why: "two graded rows print the same ref, so one cannot be told from the other",
@@ -116,7 +153,8 @@ export async function runBench(
     }
     const retrieved = result.rows.map((row) => {
       const printed = String(row[refColumn]);
-      return labeled.find((ref) => ref.startsWith(printed)) ?? printed;
+      const returned = parsePassageRef(printed);
+      return refs.find(({ parsed }) => grades(parsed, returned))?.ref ?? printed;
     });
     scores.push({
       id: asked.id,
