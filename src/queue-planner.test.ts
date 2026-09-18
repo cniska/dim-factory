@@ -150,7 +150,7 @@ describe("queue planner", () => {
       parsed,
       "a",
       "claimed",
-      "assigned to an isolated job",
+      "assigned to an isolated order",
       "2026-09-18T10:00:00.000Z",
     );
 
@@ -159,18 +159,18 @@ describe("queue planner", () => {
       {
         from: "planned",
         to: "claimed",
-        reason: "assigned to an isolated job",
+        reason: "assigned to an isolated order",
         at: "2026-09-18T10:00:00.000Z",
       },
     ]);
   });
 
-  test("preserves a job link when reading the queue source", () => {
+  test("preserves an order link when reading the queue source", () => {
     const source = JSON.parse(queue([{ id: "a" }])) as { items: Record<string, unknown>[] };
     const item = source.items[0];
     if (!item) throw new Error("test fixture is missing an item");
-    item.job_id = "job-1";
-    expect(parseQueue(JSON.stringify(source)).items[0]?.job_id).toBe("job-1");
+    item.order_id = "order-1";
+    expect(parseQueue(JSON.stringify(source)).items[0]?.order_id).toBe("order-1");
   });
 
   test("rejects empty reasons and accepts ISO timestamps with offsets", () => {

@@ -16,8 +16,8 @@ import { serveWall } from "./factory-wall";
 import { type Finding, FindingError, findingFrom, recordFinding } from "./finding";
 import { committerName } from "./git-identity";
 import { installHooks, planHooks } from "./hooks";
-import { JOB_USAGE, JobCommandError, runJobCommand } from "./job-command";
 import { withLock } from "./lock";
+import { ORDER_USAGE, OrderCommandError, runOrderCommand } from "./order-command";
 import { dbPath, resolveHomeDir } from "./paths";
 import { findQuery, QUERIES, type QueryResult } from "./queries";
 import { runQueueCommand } from "./queue-command";
@@ -87,12 +87,12 @@ const USAGE = `usage: dim <command>
           --summary "..." [--file <path>] [--why "..."]
                   record what a checking agent raised on a slice and how it was
                   answered; a refusal states why, which is what ends a finding
-  job claim|start|move|stop <job-id> ...
-                  record a factory job as it is taken, started, moved between
+  order claim|start|move|stop <order-id> ...
+                  record a factory order as it is taken, started, moved between
                   stations and stopped, so the wall shows the work while it is
-                  happening (dim job for the flags each subcommand takes)
-  job commit|file|check|finding|document <job-id> ...
-                  record what a running job produced — a commit and its subject,
+                  happening (dim order for the flags each subcommand takes)
+  order commit|file|check|finding|document <order-id> ...
+                  record what a running order produced — a commit and its subject,
                   a file it changed, a check and its exit status, a finding and
                   how it was answered, a doc it updated
   queue ready <file> [--limit <n>]
@@ -798,11 +798,11 @@ try {
     case "queue":
       console.log(await runQueueCommand(process.argv.slice(3)));
       break;
-    case "job":
+    case "order":
       {
         const db = openDb(dbPath());
         try {
-          console.log(runJobCommand(db, process.argv.slice(3)));
+          console.log(runOrderCommand(db, process.argv.slice(3)));
         } finally {
           closeDb(db);
         }
@@ -863,9 +863,9 @@ try {
   }
   // A caller that got the line wrong is shown the line, which a database error
   // reaching the same exit would only bury.
-  if (error instanceof JobCommandError) {
+  if (error instanceof OrderCommandError) {
     warn(`dim: ${error.message}`);
-    warn(JOB_USAGE);
+    warn(ORDER_USAGE);
     process.exit(1);
   }
   warn(`dim: ${error instanceof Error ? error.message : String(error)}`);

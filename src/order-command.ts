@@ -1,37 +1,37 @@
 import type { Database } from "bun:sqlite";
 import {
-  appendJobEvent,
-  createJob,
+  appendOrderEvent,
+  createOrder,
   isOrderRole,
-  isTerminalJobStatus,
-  type JobEventKind,
-  type JobStatus,
-  moveJob,
+  isTerminalOrderStatus,
+  moveOrder,
   ORDER_ROLES,
+  type OrderEventKind,
   type OrderRole,
-  recordJobCheck,
-  recordJobCommit,
-  recordJobDocument,
-  recordJobFile,
-  recordJobFinding,
-  TERMINAL_JOB_STATUSES,
-} from "./factory-job";
+  type OrderStatus,
+  recordOrderCheck,
+  recordOrderCommit,
+  recordOrderDocument,
+  recordOrderFile,
+  recordOrderFinding,
+  TERMINAL_ORDER_STATUSES,
+} from "./factory-order";
 
-export class JobCommandError extends Error {}
+export class OrderCommandError extends Error {}
 
-export const JOB_USAGE = `usage: dim job claim <job-id> --run <id> --queue <id> --item <id> --title "..."
+export const ORDER_USAGE = `usage: dim order claim <order-id> --run <id> --queue <id> --item <id> --title "..."
                       [--description "..."] [--agent <id>] [--role <planner|builder|reviewer>]
                       [--session <id>] [--station <name>]
                       [--worktree <path>] [--branch <name>]
-       dim job start <job-id>
-       dim job move <job-id> --station <name>
-       dim job commit <job-id> --sha <sha> [--subject "..."]
-       dim job file <job-id> --path <path>
-       dim job check <job-id> --command "..." --exit <code> [--result "..."]
-       dim job finding <job-id> --dimension <name> --summary "..." --answer <fixed|refused>
+       dim order start <order-id>
+       dim order move <order-id> --station <name>
+       dim order commit <order-id> --sha <sha> [--subject "..."]
+       dim order file <order-id> --path <path>
+       dim order check <order-id> --command "..." --exit <code> [--result "..."]
+       dim order finding <order-id> --dimension <name> --summary "..." --answer <fixed|refused>
                        [--resolution "..."]
-       dim job document <job-id> --path <path>
-       dim job stop <job-id> <${TERMINAL_JOB_STATUSES.join("|")}> [--reason "..."]`;
+       dim order document <order-id> --path <path>
+       dim order stop <order-id> <${TERMINAL_ORDER_STATUSES.join("|")}> [--reason "..."]`;
 
 const CLAIM_FLAGS = [
   "--run",
@@ -50,19 +50,19 @@ const CLAIM_FLAGS = [
 /**
  * A flag given twice is refused rather than resolved to either value: a skill
  * assembles these from a shell line, and a title that silently lost half of
- * itself reads on the wall as a job nobody can match back to its item.
+ * itself reads on the wall as an order nobody can match back to its item.
  */
 function flags(args: string[], allowed: string[]): Map<string, string> {
   const given = new Map<string, string>();
   for (let index = 0; index < args.length; index += 2) {
     const flag = args[index] as string;
     const value = args[index + 1];
-    if (!allowed.includes(flag)) throw new JobCommandError(`${flag} is not an option this takes`);
-    if (value === undefined) throw new JobCommandError(`${flag} needs a value`);
+    if (!allowed.includes(flag)) throw new OrderCommandError(`${flag} is not an option this takes`);
+    if (value === undefined) throw new OrderCommandError(`${flag} needs a value`);
     // A value that reads as a flag is refused rather than taken, so a missing
     // argument cannot quietly consume the next option as its own text.
-    if (value.startsWith("--")) throw new JobCommandError(`${flag} needs a value that is not an option`);
-    if (given.has(flag)) throw new JobCommandError(`${flag} may be given once`);
+    if (value.startsWith("--")) throw new OrderCommandError(`${flag} needs a value that is not an option`);
+    if (given.has(flag)) throw new OrderCommandError(`${flag} may be given once`);
     given.set(flag, value);
   }
   return given;
@@ -70,7 +70,7 @@ function flags(args: string[], allowed: string[]): Map<string, string> {
 
 function required(given: Map<string, string>, flag: string): string {
   const value = given.get(flag);
-  if (value === undefined) throw new JobCommandError(`${flag} is required`);
+  if (value === undefined) throw new OrderCommandError(`${flag} is required`);
   return value;
 }
 
@@ -81,19 +81,19 @@ function required(given: Map<string, string>, flag: string): string {
 function role(given: string | undefined): OrderRole | undefined {
   if (given === undefined) return undefined;
   if (!isOrderRole(given)) {
-    throw new JobCommandError(
+    throw new OrderCommandError(
       `${given} is not a role a worker holds an order as; one of ${ORDER_ROLES.join(", ")}`,
     );
   }
   return given;
 }
 
-function claim(db: Database, jobId: string, args: string[]): string {
+function claim(db: Database, orderId: string, args: string[]): string {
   const given = flags(args, CLAIM_FLAGS);
   const itemId = required(given, "--item");
   const queueId = required(given, "--queue");
-  createJob(db, {
-    id: jobId,
+  createOrder(db, {
+    id: orderId,
     runId: required(given, "--run"),
     queueId,
     itemId,
@@ -106,7 +106,7 @@ function claim(db: Database, jobId: string, args: string[]): string {
     branch: given.get("--branch"),
     station: given.get("--station"),
   });
-  return `claimed ${jobId} for ${itemId} on ${queueId}`;
+  return `claimed ${orderId} for ${itemId} on ${queueId}`;
 }
 
 /**
@@ -115,14 +115,14 @@ function claim(db: Database, jobId: string, args: string[]): string {
  */
 function exitCode(given: Map<string, string>): number {
   const spec = required(given, "--exit");
-  if (!/^-?\d+$/.test(spec)) throw new JobCommandError(`--exit ${spec} is not an exit code`);
+  if (!/^-?\d+$/.test(spec)) throw new OrderCommandError(`--exit ${spec} is not an exit code`);
   return Number(spec);
 }
 
 function answer(given: Map<string, string>): "fixed" | "refused" {
   const value = required(given, "--answer");
   if (value !== "fixed" && value !== "refused") {
-    throw new JobCommandError(`${value} is not an answer a finding can end on`);
+    throw new OrderCommandError(`${value} is not an answer a finding can end on`);
   }
   return value;
 }
@@ -141,7 +141,7 @@ const EVIDENCE: Record<string, Evidence> = {
     flags: ["--sha", "--subject"],
     record: (db, id, given) => {
       const sha = required(given, "--sha");
-      recordJobCommit(db, id, sha, given.get("--subject"));
+      recordOrderCommit(db, id, sha, given.get("--subject"));
       return `${id} recorded commit ${sha}`;
     },
   },
@@ -149,7 +149,7 @@ const EVIDENCE: Record<string, Evidence> = {
     flags: ["--path"],
     record: (db, id, given) => {
       const path = required(given, "--path");
-      recordJobFile(db, id, path);
+      recordOrderFile(db, id, path);
       return `${id} recorded ${path}`;
     },
   },
@@ -158,7 +158,7 @@ const EVIDENCE: Record<string, Evidence> = {
     record: (db, id, given) => {
       const command = required(given, "--command");
       const code = exitCode(given);
-      recordJobCheck(db, id, { command, exitCode: code, result: given.get("--result") });
+      recordOrderCheck(db, id, { command, exitCode: code, result: given.get("--result") });
       return `${id} recorded ${command} (${code})`;
     },
   },
@@ -167,7 +167,7 @@ const EVIDENCE: Record<string, Evidence> = {
     record: (db, id, given) => {
       const dimension = required(given, "--dimension");
       const ended = answer(given);
-      recordJobFinding(db, id, {
+      recordOrderFinding(db, id, {
         dimension,
         summary: required(given, "--summary"),
         answer: ended,
@@ -180,48 +180,48 @@ const EVIDENCE: Record<string, Evidence> = {
     flags: ["--path"],
     record: (db, id, given) => {
       const path = required(given, "--path");
-      recordJobDocument(db, id, path);
+      recordOrderDocument(db, id, path);
       return `${id} recorded ${path}`;
     },
   },
 };
 
-function stop(db: Database, jobId: string, args: string[]): string {
+function stop(db: Database, orderId: string, args: string[]): string {
   const [status, ...rest] = args;
-  if (!status) throw new JobCommandError("stop needs the status the job stopped at");
-  const terminal = status as JobStatus;
-  if (!isTerminalJobStatus(terminal)) {
-    throw new JobCommandError(`${status} is not a status a job can stop at`);
+  if (!status) throw new OrderCommandError("stop needs the status the order stopped at");
+  const terminal = status as OrderStatus;
+  if (!isTerminalOrderStatus(terminal)) {
+    throw new OrderCommandError(`${status} is not a status an order can stop at`);
   }
   const given = flags(rest, ["--reason"]);
-  appendJobEvent(db, jobId, {
-    kind: terminal as JobEventKind,
+  appendOrderEvent(db, orderId, {
+    kind: terminal as OrderEventKind,
     status: terminal,
     reason: given.get("--reason"),
   });
-  return `${jobId} stopped as ${terminal}`;
+  return `${orderId} stopped as ${terminal}`;
 }
 
-export function runJobCommand(db: Database, args: string[]): string {
-  const [command, jobId, ...rest] = args;
-  if (!command || !jobId) throw new JobCommandError("job takes a subcommand and a job id");
-  if (command === "claim") return claim(db, jobId, rest);
+export function runOrderCommand(db: Database, args: string[]): string {
+  const [command, orderId, ...rest] = args;
+  if (!command || !orderId) throw new OrderCommandError("order takes a subcommand and an order id");
+  if (command === "claim") return claim(db, orderId, rest);
   if (command === "start") {
     flags(rest, []);
-    appendJobEvent(db, jobId, { kind: "started", status: "running" });
-    return `${jobId} is running`;
+    appendOrderEvent(db, orderId, { kind: "started", status: "running" });
+    return `${orderId} is running`;
   }
   if (command === "move") {
     const station = required(flags(rest, ["--station"]), "--station");
-    moveJob(db, jobId, station);
-    return `${jobId} moved to ${station}`;
+    moveOrder(db, orderId, station);
+    return `${orderId} moved to ${station}`;
   }
   // Own property only: an object literal inherits `toString` and `constructor`, and
-  // `dim job toString` would reach one instead of the refusal every other name gets.
+  // `dim order toString` would reach one instead of the refusal every other name gets.
   if (Object.hasOwn(EVIDENCE, command)) {
     const evidence = EVIDENCE[command] as Evidence;
-    return evidence.record(db, jobId, flags(rest, evidence.flags));
+    return evidence.record(db, orderId, flags(rest, evidence.flags));
   }
-  if (command === "stop") return stop(db, jobId, rest);
-  throw new JobCommandError(`${command} is not a job subcommand`);
+  if (command === "stop") return stop(db, orderId, rest);
+  throw new OrderCommandError(`${command} is not an order subcommand`);
 }

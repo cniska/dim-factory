@@ -9,20 +9,20 @@ import { Robot } from "./components/ui/robot";
 import type {
   WallItemEntry,
   WallItemView,
-  WallJob,
+  WallOrder,
   WallRole,
   WallSnapshot,
   WallStatus,
 } from "./factory-wall";
 import { cn } from "./lib/utils";
-import { FAILURE_MARKS_SHOWN, jobsByLifecycle, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
+import { FAILURE_MARKS_SHOWN, ordersByPhase, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
 import { ITEM_KIND_LABELS, RAIL_MARK_GLYPH, railStops, shortSha } from "./wall-item";
 import "./wall.css";
 
 const unavailableSnapshot: WallSnapshot = {
   generatedAt: "",
   source: "unavailable",
-  jobs: [],
+  orders: [],
   totals: { todo: 0, active: 0, done: 0 },
 };
 
@@ -106,26 +106,26 @@ function FailedChecks({ count }: { count: number }) {
   );
 }
 
-function JobCard({
-  job,
+function OrderCard({
+  order,
   now,
   bumped,
   onOpen,
 }: {
-  job: WallJob;
+  order: WallOrder;
   now: Date;
   bumped: boolean;
-  onOpen: (job: WallJob) => void;
+  onOpen: (order: WallOrder) => void;
 }) {
-  const StatusIcon = statusIcon[job.status];
+  const StatusIcon = statusIcon[order.status];
 
   return (
     <Card
       // The card is what a reader points at, so the whole of it opens the view. It stays an
       // article rather than becoming a button, because a button's children are read as its label
       // and the state, age, worker and station on the card would stop being read at all.
-      onClick={() => onOpen(job)}
-      stopped={stopped.has(job.status)}
+      onClick={() => onOpen(order)}
+      stopped={stopped.has(order.status)}
       className={cn(
         "gap-0 p-2.5 text-left text-[11px] transition-colors duration-1000",
         "cursor-pointer hover:border-accent focus-visible:border-accent focus-visible:outline-none",
@@ -135,21 +135,21 @@ function JobCard({
       )}
     >
       <CardHeader className={cn(ROW, "justify-between text-quiet")}>
-        <span className={cn("flex items-center gap-1.5", statusTint(job.status))}>
+        <span className={cn("flex items-center gap-1.5", statusTint(order.status))}>
           {/* Where the column carries the state, the mark is what states it, so the mark is
               what has to name it to a reader who is not looking at the column. */}
           <StatusIcon
             size={12}
             strokeWidth={1.8}
             aria-hidden="true"
-            className={job.status === "running" ? "breathing" : undefined}
+            className={order.status === "running" ? "breathing" : undefined}
           />
-          {stateLabels[job.status]}
+          {stateLabels[order.status]}
         </span>
         {/* Re-derived from the timestamp every second rather than read off the snapshot, so
             the board keeps moving between pushes instead of standing still. */}
         <span className="tabular-nums">
-          <Digits value={age(job.lastEventAt, now)} />
+          <Digits value={age(order.lastEventAt, now)} />
         </span>
       </CardHeader>
 
@@ -157,18 +157,20 @@ function JobCard({
           the card's own rhythm: enough for the titles the queue writes, and a bound a runaway
           title cannot grow the card past. */}
       <h3 className="line-clamp-2 min-h-[36px] shrink-0 font-medium text-foreground leading-[18px]">
-        {job.title}
+        {order.title}
       </h3>
 
       {/* The row stands whether or not it holds anything, so a card does not change height the
           moment its first check fails and the column does not step as work arrives. */}
       <div className={ROW}>
-        {job.status === "running" && job.failedChecks > 0 ? <FailedChecks count={job.failedChecks} /> : null}
+        {order.status === "running" && order.failedChecks > 0 ? (
+          <FailedChecks count={order.failedChecks} />
+        ) : null}
       </div>
 
-      {job.attention ? (
+      {order.attention ? (
         <p role="status" className={cn(ROW, "truncate text-warn-foreground")}>
-          {job.attention}
+          {order.attention}
         </p>
       ) : null}
 
@@ -179,26 +181,26 @@ function JobCard({
           type="button"
           onClick={(event) => {
             event.stopPropagation();
-            onOpen(job);
+            onOpen(order);
           }}
           className="sr-only focus-visible:not-sr-only focus-visible:rounded-wall focus-visible:border focus-visible:px-1.5"
         >
-          Open {job.title}
+          Open {order.title}
         </button>
         {/* Nobody recorded leaves the slot empty rather than spending the card's
             one identity line saying so: the absence is already the message. */}
         <span className="flex min-w-0 items-center gap-1.5">
-          {job.worker ? (
+          {order.worker ? (
             <>
               <Robot
-                label={`${job.worker}, ${job.role === "unknown" ? "role unknown" : job.role}`}
-                className={roleTint[job.role]}
+                label={`${order.worker}, ${order.role === "unknown" ? "role unknown" : order.role}`}
+                className={roleTint[order.role]}
               />
-              <span className="truncate">{job.worker}</span>
+              <span className="truncate">{order.worker}</span>
             </>
           ) : null}
         </span>
-        <Badge className="shrink-0">{STATION_LABELS[job.station]}</Badge>
+        <Badge className="shrink-0">{STATION_LABELS[order.station]}</Badge>
       </CardFooter>
     </Card>
   );
@@ -310,16 +312,16 @@ function ItemHistory({ entries }: { entries: WallItemEntry[] }) {
   );
 }
 
-/** One job's own record, over the board. On the platform's `<dialog>`, which carries modality,
+/** One order's own record, over the board. On the platform's `<dialog>`, which carries modality,
  *  focus and dismissal already — a component library would cost more than this surface. */
 function ItemDialog({
   card,
   movedAt,
   onClose,
 }: {
-  /** The job as the board holds it, so the identity is on screen from the first frame rather
+  /** The order as the board holds it, so the identity is on screen from the first frame rather
    *  than after the record arrives. */
-  card: WallJob;
+  card: WallOrder;
   movedAt: string;
   onClose: () => void;
 }) {
@@ -332,7 +334,7 @@ function ItemDialog({
     if (!element.open) element.showModal();
   }, []);
 
-  const job = read.view?.job ?? card;
+  const order = read.view?.order ?? card;
 
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: dismissal from the keyboard is Escape, which the element carries itself
@@ -350,35 +352,35 @@ function ItemDialog({
     >
       <div className="flex max-h-[85vh] flex-col">
         <header className="flex flex-col gap-2 border-b p-5">
-          <h2 className="text-[15px] text-foreground">{job.title}</h2>
+          <h2 className="text-[15px] text-foreground">{order.title}</h2>
           <dl className="flex flex-wrap items-center gap-x-6 gap-y-1 text-quiet">
             <div className="flex items-center gap-2">
               <dt>item</dt>
-              <dd className="text-muted-foreground">{job.itemId}</dd>
+              <dd className="text-muted-foreground">{order.itemId}</dd>
             </div>
             <div className="flex items-center gap-2">
               <dt>station</dt>
-              <dd className="text-muted-foreground">{STATION_LABELS[job.station]}</dd>
+              <dd className="text-muted-foreground">{STATION_LABELS[order.station]}</dd>
             </div>
             <div className="flex items-center gap-2">
               <dt>worker</dt>
               <dd className="flex items-center gap-1.5 text-muted-foreground">
                 <Robot
-                  label={`${job.worker ?? NO_WORKER}, ${job.role === "unknown" ? "role unknown" : job.role}`}
-                  className={roleTint[job.role]}
+                  label={`${order.worker ?? NO_WORKER}, ${order.role === "unknown" ? "role unknown" : order.role}`}
+                  className={roleTint[order.role]}
                 />
-                {job.worker ?? NO_WORKER}
+                {order.worker ?? NO_WORKER}
               </dd>
             </div>
             <div className="flex items-center gap-2">
               <dt>state</dt>
-              <dd className={stopped.has(job.status) ? "text-warn-foreground" : "text-muted-foreground"}>
-                {stateLabels[job.status]}
+              <dd className={stopped.has(order.status) ? "text-warn-foreground" : "text-muted-foreground"}>
+                {stateLabels[order.status]}
               </dd>
             </div>
             <div className="flex items-center gap-2">
-              <dt>job</dt>
-              <dd className="text-muted-foreground">{job.id}</dd>
+              <dt>order</dt>
+              <dd className="text-muted-foreground">{order.id}</dd>
             </div>
             {read.view?.branch ? (
               <div className="flex items-center gap-2">
@@ -413,18 +415,18 @@ function ItemDialog({
 
 function BoardColumn({
   label,
-  jobs,
+  orders,
   total,
   now,
   bumped,
   onOpen,
 }: {
   label: string;
-  jobs: WallJob[];
+  orders: WallOrder[];
   total: number;
   now: Date;
   bumped: ReadonlySet<string>;
-  onOpen: (job: WallJob) => void;
+  onOpen: (order: WallOrder) => void;
 }) {
   const id = `column-${label.toLowerCase()}`;
 
@@ -440,8 +442,8 @@ function BoardColumn({
       </header>
       {/* An empty column says so by being empty; the count in its heading already reads 0. */}
       <div className="grid gap-1.5">
-        {jobs.map((job) => (
-          <JobCard job={job} key={job.id} now={now} bumped={bumped.has(job.id)} onOpen={onOpen} />
+        {orders.map((order) => (
+          <OrderCard order={order} key={order.id} now={now} bumped={bumped.has(order.id)} onOpen={onOpen} />
         ))}
       </div>
     </section>
@@ -475,8 +477,8 @@ function feedStateOf(unavailable: boolean, stale: boolean): FeedState {
 }
 
 /** What a card would show, so a snapshot that changed nothing lights nothing. */
-function cardState(job: WallJob): string {
-  return `${job.status}|${job.lastEventAt}|${job.failedChecks}|${job.worker ?? ""}|${job.attention ?? ""}`;
+function cardState(order: WallOrder): string {
+  return `${order.status}|${order.lastEventAt}|${order.failedChecks}|${order.worker ?? ""}|${order.attention ?? ""}`;
 }
 
 const BUMP_MS = 2000;
@@ -498,10 +500,12 @@ function useSnapshot() {
       // Marked on the beat a push changes something, then expired: the timer is cleared on
       // the way in, so a later push finding nothing new cannot leave the last one lit.
       const changed = new Set(
-        data.jobs.filter((job) => seen.current.get(job.id) !== cardState(job)).map((job) => job.id),
+        data.orders
+          .filter((order) => seen.current.get(order.id) !== cardState(order))
+          .map((order) => order.id),
       );
       const first = seen.current.size === 0;
-      seen.current = new Map(data.jobs.map((job) => [job.id, cardState(job)]));
+      seen.current = new Map(data.orders.map((order) => [order.id, cardState(order)]));
       clearTimeout(clearBump);
       // Everything is new on the first snapshot, and lighting the whole board says nothing.
       setBumped(first ? new Set() : changed);
@@ -551,19 +555,19 @@ type ItemRead = { state: "reading" | "read" | "unavailable"; view: WallItemView 
 
 const ITEM_READ_MESSAGE: Record<ItemRead["state"], string> = {
   reading: "Reading the record.",
-  read: "Nothing is recorded against this job yet.",
-  unavailable: "This job's record could not be read.",
+  read: "Nothing is recorded against this order yet.",
+  unavailable: "This order's record could not be read.",
 };
 
-/** The open job's own record, read from the same tables `dim q job` reads. It is re-read on
- *  every beat the board reports for that job, so the view is as live as the board behind it. */
-function useItemView(jobId: string, movedAt: string): ItemRead {
+/** The open order's own record, read from the same tables `dim q order` reads. It is re-read on
+ *  every beat the board reports for that order, so the view is as live as the board behind it. */
+function useItemView(orderId: string, movedAt: string): ItemRead {
   const [read, setRead] = useState<ItemRead>({ state: "reading", view: null });
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `movedAt` is why this re-reads — the beat the board reports for this job is the signal its record may have changed
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `movedAt` is why this re-reads — the beat the board reports for this order is the signal its record may have changed
   useEffect(() => {
     let current = true;
-    fetch(`/api/job/${encodeURIComponent(jobId)}`)
+    fetch(`/api/order/${encodeURIComponent(orderId)}`)
       .then((response) => (response.ok ? response.json() : Promise.reject()))
       .then((data: WallItemView) => {
         if (current) setRead({ state: "read", view: data });
@@ -576,7 +580,7 @@ function useItemView(jobId: string, movedAt: string): ItemRead {
     return () => {
       current = false;
     };
-  }, [jobId, movedAt]);
+  }, [orderId, movedAt]);
 
   return read;
 }
@@ -596,14 +600,14 @@ function useNow(): Date {
 function App() {
   const { snapshot, stale, unavailable, answered, lastMessage, bumped } = useSnapshot();
   const now = useNow();
-  const [opened, setOpened] = useState<WallJob | null>(null);
+  const [opened, setOpened] = useState<WallOrder | null>(null);
   const feed = feedStateOf(unavailable, stale);
   const FeedIcon = FEED_ICON[feed];
-  const columns = jobsByLifecycle(snapshot.jobs);
-  // The board bounds what it draws, so the job a reader opened can leave the snapshot while the
+  const columns = ordersByPhase(snapshot.orders);
+  // The board bounds what it draws, so the order a reader opened can leave the snapshot while the
   // view is open. Its own card is what the view keeps showing, and the snapshot's beat is what
   // goes on prompting a re-read.
-  const onBoard = snapshot.jobs.find((job) => job.id === opened?.id);
+  const onBoard = snapshot.orders.find((order) => order.id === opened?.id);
   const openCard = onBoard ?? opened;
 
   return (
@@ -631,12 +635,12 @@ function App() {
       </header>
 
       <section className="grid grid-cols-3 items-start gap-4 pb-16" aria-label="Factory kanban board">
-        {WALL_COLUMNS.map(({ lifecycle, label }) => (
+        {WALL_COLUMNS.map(({ phase, label }) => (
           <BoardColumn
-            key={lifecycle}
+            key={phase}
             label={label}
-            jobs={columns[lifecycle]}
-            total={snapshot.totals[lifecycle]}
+            orders={columns[phase]}
+            total={snapshot.totals[phase]}
             now={now}
             bumped={bumped}
             onOpen={setOpened}
@@ -646,7 +650,7 @@ function App() {
 
       {openCard ? (
         <ItemDialog
-          // Keyed by job, so opening another card reads that record from nothing rather than
+          // Keyed by order, so opening another card reads that record from nothing rather than
           // showing the last one until its read lands.
           key={openCard.id}
           card={openCard}

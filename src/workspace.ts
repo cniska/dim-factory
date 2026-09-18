@@ -98,7 +98,7 @@ function declaredServices(root: string): Declaration<string[]> | null {
 /**
  * The sample files a repository tracks. `.env` itself is never among them: it is
  * the filled-in copy, it is gitignored precisely because it holds the secrets,
- * and a profile that opened it would carry a credential into a job report.
+ * and a profile that opened it would carry a credential into an order report.
  */
 const ENVIRONMENT_SAMPLES = [".env.example", ".env.sample", ".env.template"];
 

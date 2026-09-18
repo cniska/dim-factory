@@ -27,7 +27,7 @@ export type QueueItem = {
   dependencies: string[];
   status: QueueStatus;
   transitions: QueueTransition[];
-  job_id?: string;
+  order_id?: string;
 };
 
 export type QueueFile = {
@@ -44,7 +44,15 @@ const transitions = new Map<QueueStatus, Set<QueueStatus>>([
 ]);
 
 const queueFields = new Set(["version", "id", "items"]);
-const itemFields = new Set(["id", "title", "description", "dependencies", "status", "transitions", "job_id"]);
+const itemFields = new Set([
+  "id",
+  "title",
+  "description",
+  "dependencies",
+  "status",
+  "transitions",
+  "order_id",
+]);
 const transitionFields = new Set(["from", "to", "at", "reason"]);
 
 function isStatus(value: unknown): value is QueueStatus {
@@ -141,9 +149,9 @@ export function parseQueue(text: string): QueueFile {
       dependencies: [...sourceItem.dependencies],
       status: sourceItem.status,
       transitions: transitionsForItem,
-      ...(sourceItem.job_id === undefined
+      ...(sourceItem.order_id === undefined
         ? {}
-        : { job_id: requiredString(sourceItem.job_id, `item.job_id (${itemId})`) }),
+        : { order_id: requiredString(sourceItem.order_id, `item.order_id (${itemId})`) }),
     } as QueueItem;
   });
   const byId = new Map(items.map((item) => [item.id, item]));

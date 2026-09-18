@@ -3,19 +3,20 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import {
-  appendJobEvent,
-  createJob,
+  appendOrderEvent,
+  createOrder,
   type OrderRole,
-  recordJobCheck,
-  recordJobCommit,
-  recordJobDocument,
-  recordJobEnvironment,
-  recordJobFile,
-  recordJobFinding,
-  updateJobLocation,
-} from "./factory-job";
+  recordOrderCheck,
+  recordOrderCommit,
+  recordOrderDocument,
+  recordOrderEnvironment,
+  recordOrderFile,
+  recordOrderFinding,
+  updateOrderLocation,
+} from "./factory-order";
 import { assembleItemView, assembleWallSnapshot, serveWall } from "./factory-wall";
 import { integratedRepo } from "./fixtures.test-support";
+import { resolveHomeDir } from "./paths";
 import { SCHEMA_SQL } from "./schema";
 import { STATION_LABELS } from "./wall-board";
 import { workerName } from "./worker-name";
@@ -24,13 +25,13 @@ const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
 
 describe("factory wall snapshot", () => {
-  test("assembles current work for the board from read-only job records", () => {
+  test("assembles current work for the board from read-only order records", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createJob(
+    createOrder(
       db,
       {
-        id: "job-running",
+        id: "order-running",
         runId: "run",
         queueId: "queue",
         itemId: "wall",
@@ -43,22 +44,22 @@ describe("factory wall snapshot", () => {
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendJobEvent(
+    appendOrderEvent(
       db,
-      "job-running",
+      "order-running",
       { kind: "started", status: "running", actorId: "builder" },
       "2026-09-18T10:01:00.000Z",
     );
-    recordJobCheck(
+    recordOrderCheck(
       db,
-      "job-running",
+      "order-running",
       { command: "bun run verify", exitCode: 0, result: "green" },
       "2026-09-18T10:02:00.000Z",
     );
-    createJob(
+    createOrder(
       db,
       {
-        id: "job-blocked",
+        id: "order-blocked",
         runId: "run",
         queueId: "queue",
         itemId: "blocked",
@@ -67,16 +68,16 @@ describe("factory wall snapshot", () => {
       },
       "2026-09-18T09:00:00.000Z",
     );
-    appendJobEvent(
+    appendOrderEvent(
       db,
-      "job-blocked",
+      "order-blocked",
       { kind: "fenced", status: "fenced", fenceType: "owner-judgment", reason: "scope unclear" },
       "2026-09-18T09:05:00.000Z",
     );
-    createJob(
+    createOrder(
       db,
       {
-        id: "job-done",
+        id: "order-done",
         runId: "run",
         queueId: "queue",
         itemId: "done",
@@ -87,17 +88,17 @@ describe("factory wall snapshot", () => {
       },
       "2026-09-18T08:00:00.000Z",
     );
-    appendJobEvent(db, "job-done", { kind: "started", status: "running" }, "2026-09-18T08:00:30.000Z");
-    recordJobCommit(db, "job-done", trunk.sha, "wall", "2026-09-18T08:01:00.000Z");
-    recordJobCheck(
+    appendOrderEvent(db, "order-done", { kind: "started", status: "running" }, "2026-09-18T08:00:30.000Z");
+    recordOrderCommit(db, "order-done", trunk.sha, "wall", "2026-09-18T08:01:00.000Z");
+    recordOrderCheck(
       db,
-      "job-done",
+      "order-done",
       { command: "bun run verify", exitCode: 0, result: "green" },
       "2026-09-18T08:01:30.000Z",
     );
-    appendJobEvent(
+    appendOrderEvent(
       db,
-      "job-done",
+      "order-done",
       { kind: "completed", status: "completed", reason: "verified" },
       "2026-09-18T08:02:00.000Z",
     );
@@ -105,19 +106,19 @@ describe("factory wall snapshot", () => {
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:10:00.000Z"));
 
     expect(snapshot.source).toBe("database");
-    expect(snapshot.jobs.map((job) => [job.title, job.station, job.status, job.lifecycle])).toEqual([
+    expect(snapshot.orders.map((order) => [order.title, order.station, order.status, order.phase])).toEqual([
       ["Unblock the queue", "review", "fenced", "active"],
       ["Show the wall", "build", "running", "active"],
       ["Ship the board", "ship", "completed", "done"],
     ]);
-    expect(snapshot.jobs.map((job) => job.itemId)).toEqual(["blocked", "wall", "done"]);
-    expect(snapshot.jobs[0]?.attention).toBe("scope unclear");
-    expect(snapshot.jobs[1]).toEqual({
-      id: "job-running",
+    expect(snapshot.orders.map((order) => order.itemId)).toEqual(["blocked", "wall", "done"]);
+    expect(snapshot.orders[0]?.attention).toBe("scope unclear");
+    expect(snapshot.orders[1]).toEqual({
+      id: "order-running",
       title: "Show the wall",
       itemId: "wall",
       station: "build",
-      lifecycle: "active",
+      phase: "active",
       agent: "builder",
       worker: workerName("builder"),
       role: "builder",
@@ -129,13 +130,13 @@ describe("factory wall snapshot", () => {
     db.close();
   });
 
-  test("puts a claimed job that has not started in the todo column", () => {
+  test("puts a claimed order that has not started in the todo column", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createJob(
+    createOrder(
       db,
       {
-        id: "job-claimed",
+        id: "order-claimed",
         runId: "run",
         queueId: "queue",
         itemId: "waiting",
@@ -147,17 +148,17 @@ describe("factory wall snapshot", () => {
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z"));
 
-    expect(snapshot.jobs.map((job) => [job.status, job.lifecycle])).toEqual([["waiting", "todo"]]);
+    expect(snapshot.orders.map((order) => [order.status, order.phase])).toEqual([["waiting", "todo"]]);
     db.close();
   });
 
-  test("puts an abandoned job in the done column with its stop reason", () => {
+  test("puts an abandoned order in the done column with its stop reason", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createJob(
+    createOrder(
       db,
       {
-        id: "job-gone",
+        id: "order-gone",
         runId: "run",
         queueId: "queue",
         itemId: "gone",
@@ -166,45 +167,45 @@ describe("factory wall snapshot", () => {
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendJobEvent(db, "job-gone", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
-    appendJobEvent(
+    appendOrderEvent(db, "order-gone", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    appendOrderEvent(
       db,
-      "job-gone",
+      "order-gone",
       { kind: "abandoned", status: "abandoned", reason: "operator stopped" },
       "2026-09-18T10:02:00.000Z",
     );
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z"));
 
-    expect(snapshot.jobs.map((job) => [job.status, job.lifecycle, job.attention])).toEqual([
+    expect(snapshot.orders.map((order) => [order.status, order.phase, order.attention])).toEqual([
       ["abandoned", "done", "operator stopped"],
     ]);
     db.close();
   });
 
-  test("has an event to age every claimed job from", () => {
+  test("has an event to age every claimed order from", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createJob(
+    createOrder(
       db,
-      { id: "job-fresh", runId: "run", queueId: "queue", itemId: "fresh", title: "Only just claimed" },
+      { id: "order-fresh", runId: "run", queueId: "queue", itemId: "fresh", title: "Only just claimed" },
       "2026-09-18T10:00:00.000Z",
     );
 
     // The board reads its one figure off the last event, which holds because a claim writes an
-    // event in the same transaction as the job row.
-    expect(db.query("SELECT count(*) AS events FROM factory_job_event").get()).toEqual({ events: 1 });
-    expect(assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).jobs[0]?.age).toBe("5m");
+    // event in the same transaction as the order row.
+    expect(db.query("SELECT count(*) AS events FROM factory_order_event").get()).toEqual({ events: 1 });
+    expect(assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).orders[0]?.age).toBe("5m");
     db.close();
   });
 
-  test("ages a job from its last recorded event, not from the row's last write", () => {
+  test("ages an order from its last recorded event, not from the row's last write", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createJob(
+    createOrder(
       db,
       {
-        id: "job-quiet",
+        id: "order-quiet",
         runId: "run",
         queueId: "queue",
         itemId: "quiet",
@@ -213,26 +214,29 @@ describe("factory wall snapshot", () => {
       },
       "2026-09-18T09:00:00.000Z",
     );
-    appendJobEvent(db, "job-quiet", { kind: "started", status: "running" }, "2026-09-18T09:05:00.000Z");
-    // Writes the job row without recording an event, which is how a job's row can be newer
+    appendOrderEvent(db, "order-quiet", { kind: "started", status: "running" }, "2026-09-18T09:05:00.000Z");
+    // Writes the order row without recording an event, which is how an order's row can be newer
     // than anything that happened to it.
-    updateJobLocation(db, "job-quiet", "/tmp/quiet", "quiet");
-    db.run("UPDATE factory_job SET updated_at = ? WHERE id = ?", ["2026-09-18T10:04:00.000Z", "job-quiet"]);
+    updateOrderLocation(db, "order-quiet", "/tmp/quiet", "quiet");
+    db.run("UPDATE factory_order SET updated_at = ? WHERE id = ?", [
+      "2026-09-18T10:04:00.000Z",
+      "order-quiet",
+    ]);
 
-    const job = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).jobs[0];
+    const order = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).orders[0];
 
-    expect(job?.lastEventAt).toBe("2026-09-18T09:05:00.000Z");
-    expect(job?.age).toBe("1h 0m");
+    expect(order?.lastEventAt).toBe("2026-09-18T09:05:00.000Z");
+    expect(order?.age).toBe("1h 0m");
     db.close();
   });
 
-  test("counts the checks a running job failed and leaves a passing one silent", () => {
+  test("counts the checks a running order failed and leaves a passing one silent", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createJob(
+    createOrder(
       db,
       {
-        id: "job-struggling",
+        id: "order-struggling",
         runId: "run",
         queueId: "queue",
         itemId: "struggling",
@@ -241,30 +245,35 @@ describe("factory wall snapshot", () => {
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendJobEvent(db, "job-struggling", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
-    recordJobCheck(
+    appendOrderEvent(
       db,
-      "job-struggling",
+      "order-struggling",
+      { kind: "started", status: "running" },
+      "2026-09-18T10:01:00.000Z",
+    );
+    recordOrderCheck(
+      db,
+      "order-struggling",
       { command: "bun run verify", exitCode: 1, result: "lint failed" },
       "2026-09-18T10:02:00.000Z",
     );
-    recordJobCheck(
+    recordOrderCheck(
       db,
-      "job-struggling",
+      "order-struggling",
       { command: "bun run verify", exitCode: 2, result: "typecheck failed" },
       "2026-09-18T10:03:00.000Z",
     );
-    recordJobCheck(
+    recordOrderCheck(
       db,
-      "job-struggling",
+      "order-struggling",
       { command: "bun run verify", exitCode: 0, result: "green" },
       "2026-09-18T10:04:00.000Z",
     );
 
-    createJob(
+    createOrder(
       db,
       {
-        id: "job-clean",
+        id: "order-clean",
         runId: "run",
         queueId: "queue",
         itemId: "clean",
@@ -273,18 +282,18 @@ describe("factory wall snapshot", () => {
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendJobEvent(db, "job-clean", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
-    recordJobCheck(
+    appendOrderEvent(db, "order-clean", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    recordOrderCheck(
       db,
-      "job-clean",
+      "order-clean",
       { command: "bun run verify", exitCode: 0, result: "green" },
       "2026-09-18T10:02:00.000Z",
     );
 
     const failures = new Map(
-      assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).jobs.map((job) => [
-        job.itemId,
-        job.failedChecks,
+      assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).orders.map((order) => [
+        order.itemId,
+        order.failedChecks,
       ]),
     );
 
@@ -293,13 +302,13 @@ describe("factory wall snapshot", () => {
     db.close();
   });
 
-  test("names no worker for a job no claim and no event named an agent for", () => {
+  test("names no worker for an order no claim and no event named an agent for", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createJob(
+    createOrder(
       db,
       {
-        id: "job-unattributed",
+        id: "order-unattributed",
         runId: "run",
         queueId: "queue",
         itemId: "unattributed",
@@ -309,14 +318,14 @@ describe("factory wall snapshot", () => {
       "2026-09-18T10:00:00.000Z",
     );
 
-    const job = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).jobs[0];
+    const order = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).orders[0];
 
-    expect(job).toEqual({
-      id: "job-unattributed",
+    expect(order).toEqual({
+      id: "order-unattributed",
       title: "Claimed by nobody in particular",
       itemId: "unattributed",
       station: "build",
-      lifecycle: "todo",
+      phase: "todo",
       // Nobody was named, so nothing says what kind of worker this is either.
       role: "unknown",
       status: "waiting",
@@ -331,7 +340,7 @@ describe("factory wall snapshot", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     const claim = (id: string, recorded: OrderRole | undefined, stationValue: string, agentId: string) =>
-      createJob(
+      createOrder(
         db,
         {
           id,
@@ -353,9 +362,9 @@ describe("factory wall snapshot", () => {
     claim("unrecorded", undefined, "dim-station-build", "builder-4");
 
     const roles = new Map(
-      assembleWallSnapshot(db, new Date("2026-09-18T10:20:00.000Z")).jobs.map((job) => [
-        job.itemId,
-        job.role,
+      assembleWallSnapshot(db, new Date("2026-09-18T10:20:00.000Z")).orders.map((order) => [
+        order.itemId,
+        order.role,
       ]),
     );
 
@@ -369,10 +378,10 @@ describe("factory wall snapshot", () => {
   test("says a station it does not know is unknown rather than calling it build", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createJob(
+    createOrder(
       db,
       {
-        id: "job-line",
+        id: "order-line",
         runId: "run",
         queueId: "queue",
         itemId: "line",
@@ -381,10 +390,10 @@ describe("factory wall snapshot", () => {
       },
       "2026-09-18T10:00:00.000Z",
     );
-    createJob(
+    createOrder(
       db,
       {
-        id: "job-stationless",
+        id: "order-stationless",
         runId: "run",
         queueId: "queue",
         itemId: "stationless",
@@ -395,16 +404,16 @@ describe("factory wall snapshot", () => {
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z"));
 
-    expect(snapshot.jobs.map((job) => job.station)).toEqual(["unknown", "unknown"]);
+    expect(snapshot.orders.map((order) => order.station)).toEqual(["unknown", "unknown"]);
     expect(STATION_LABELS.unknown).toBe("Unknown");
     db.close();
   });
 
-  test("bounds each lifecycle column so finished work cannot crowd out current work", () => {
+  test("bounds each phase column so finished work cannot crowd out current work", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     const seed = (id: string, kind: "fenced" | "completed") => {
-      createJob(
+      createOrder(
         db,
         {
           id,
@@ -419,35 +428,35 @@ describe("factory wall snapshot", () => {
         "2026-09-18T09:00:00.000Z",
       );
       if (kind === "completed") {
-        appendJobEvent(db, id, { kind: "started", status: "running" }, "2026-09-18T09:00:30.000Z");
-        recordJobCommit(db, id, trunk.sha, "feat: land it", "2026-09-18T09:00:40.000Z");
-        recordJobCheck(
+        appendOrderEvent(db, id, { kind: "started", status: "running" }, "2026-09-18T09:00:30.000Z");
+        recordOrderCommit(db, id, trunk.sha, "feat: land it", "2026-09-18T09:00:40.000Z");
+        recordOrderCheck(
           db,
           id,
           { command: "bun run verify", exitCode: 0, result: "green" },
           "2026-09-18T09:00:45.000Z",
         );
       }
-      appendJobEvent(db, id, { kind, status: kind, reason: `reason-${id}` }, "2026-09-18T09:01:00.000Z");
+      appendOrderEvent(db, id, { kind, status: kind, reason: `reason-${id}` }, "2026-09-18T09:01:00.000Z");
     };
     for (let index = 0; index < 14; index += 1) seed(`fenced-${index}`, "fenced");
     for (let index = 0; index < 14; index += 1) seed(`done-${index}`, "completed");
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:10:00.000Z"));
 
-    expect(snapshot.jobs.filter((job) => job.lifecycle === "active")).toHaveLength(12);
-    expect(snapshot.jobs.filter((job) => job.lifecycle === "done")).toHaveLength(12);
+    expect(snapshot.orders.filter((order) => order.phase === "active")).toHaveLength(12);
+    expect(snapshot.orders.filter((order) => order.phase === "done")).toHaveLength(12);
     expect(snapshot.totals).toEqual({ todo: 0, active: 14, done: 14 });
     db.close();
   });
 
-  test("keeps a job that needs a person on the board and at the top of its column", () => {
+  test("keeps an order that needs a person on the board and at the top of its column", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createJob(
+    createOrder(
       db,
       {
-        id: "job-fenced-early",
+        id: "order-fenced-early",
         runId: "run",
         queueId: "queue",
         itemId: "fenced-early",
@@ -456,19 +465,19 @@ describe("factory wall snapshot", () => {
       },
       "2026-09-18T08:00:00.000Z",
     );
-    appendJobEvent(
+    appendOrderEvent(
       db,
-      "job-fenced-early",
+      "order-fenced-early",
       { kind: "fenced", status: "fenced", reason: "scope unclear" },
       "2026-09-18T08:02:00.000Z",
     );
-    // More running work than a column draws, every piece of it newer than the fenced job, which
+    // More running work than a column draws, every piece of it newer than the fenced order, which
     // is what a bound applied before the ranking would drop first.
     for (let index = 0; index < 14; index += 1) {
-      createJob(
+      createOrder(
         db,
         {
-          id: `job-busy-${index}`,
+          id: `order-busy-${index}`,
           runId: "run",
           queueId: "queue",
           itemId: `busy-${index}`,
@@ -477,18 +486,18 @@ describe("factory wall snapshot", () => {
         },
         "2026-09-18T09:00:00.000Z",
       );
-      appendJobEvent(
+      appendOrderEvent(
         db,
-        `job-busy-${index}`,
+        `order-busy-${index}`,
         { kind: "started", status: "running" },
         `2026-09-18T09:${String(index + 10).padStart(2, "0")}:00.000Z`,
       );
     }
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:00:00.000Z"));
-    const active = snapshot.jobs.filter((job) => job.lifecycle === "active");
+    const active = snapshot.orders.filter((order) => order.phase === "active");
 
-    expect(active[0]?.id).toBe("job-fenced-early");
+    expect(active[0]?.id).toBe("order-fenced-early");
     expect(active).toHaveLength(12);
     expect(snapshot.totals.active).toBe(15);
     db.close();
@@ -561,11 +570,11 @@ describe("factory wall snapshot", () => {
 });
 
 describe("factory wall item view", () => {
-  const seedWorkedJob = (db: Database): void => {
-    createJob(
+  const seedWorkedOrder = (db: Database): void => {
+    createOrder(
       db,
       {
-        id: "job-worked",
+        id: "order-worked",
         runId: "run",
         queueId: "queue",
         itemId: "worked",
@@ -577,15 +586,15 @@ describe("factory wall item view", () => {
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendJobEvent(
+    appendOrderEvent(
       db,
-      "job-worked",
+      "order-worked",
       { kind: "started", status: "running", actorId: "builder" },
       "2026-09-18T10:01:00.000Z",
     );
-    recordJobEnvironment(
+    recordOrderEnvironment(
       db,
-      "job-worked",
+      "order-worked",
       {
         phase: "setup",
         argv: ["/tmp/worked/scripts/worktree-setup.sh"],
@@ -597,37 +606,43 @@ describe("factory wall item view", () => {
       },
       "2026-09-18T10:02:00.000Z",
     );
-    recordJobCheck(
+    recordOrderCheck(
       db,
-      "job-worked",
+      "order-worked",
       { command: "bun run verify", exitCode: 1, result: "typecheck failed" },
       "2026-09-18T10:03:00.000Z",
     );
-    recordJobCheck(
+    recordOrderCheck(
       db,
-      "job-worked",
+      "order-worked",
       { command: "bun run verify", exitCode: 0, result: "green" },
       "2026-09-18T10:04:00.000Z",
     );
-    recordJobFile(db, "job-worked", "src/factory-wall.ts", "2026-09-18T10:05:00.000Z");
-    recordJobCommit(db, "job-worked", trunk.sha, "feat: read one job's record", "2026-09-18T10:06:00.000Z");
-    // The check that lets this job complete: recorded after the commit it covers,
-    // which is the order the gate reads and the loop already works in.
-    recordJobCheck(
+    recordOrderFile(db, "order-worked", "src/factory-wall.ts", "2026-09-18T10:05:00.000Z");
+    recordOrderCommit(
       db,
-      "job-worked",
+      "order-worked",
+      trunk.sha,
+      "feat: read one order's record",
+      "2026-09-18T10:06:00.000Z",
+    );
+    // The check that lets this order complete: recorded after the commit it covers,
+    // which is the order the gate reads and the loop already works in.
+    recordOrderCheck(
+      db,
+      "order-worked",
       { command: "bun run verify", exitCode: 0, result: "green" },
       "2026-09-18T10:06:30.000Z",
     );
-    recordJobFinding(
+    recordOrderFinding(
       db,
-      "job-worked",
+      "order-worked",
       { dimension: "tests", summary: "the rail has no test", answer: "fixed" },
       "2026-09-18T10:07:00.000Z",
     );
-    recordJobFinding(
+    recordOrderFinding(
       db,
-      "job-worked",
+      "order-worked",
       {
         dimension: "style",
         summary: "the dialog should use a component library",
@@ -636,21 +651,21 @@ describe("factory wall item view", () => {
       },
       "2026-09-18T10:08:00.000Z",
     );
-    recordJobDocument(db, "job-worked", "docs/human-interface.md", "2026-09-18T10:09:00.000Z");
-    appendJobEvent(
+    recordOrderDocument(db, "order-worked", "docs/human-interface.md", "2026-09-18T10:09:00.000Z");
+    appendOrderEvent(
       db,
-      "job-worked",
+      "order-worked",
       { kind: "completed", status: "completed", reason: "verified" },
       "2026-09-18T10:10:00.000Z",
     );
   };
 
-  test("reads one job's lifecycle in the order it was written", () => {
+  test("reads one order's lifecycle in the order it was written", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    seedWorkedJob(db);
+    seedWorkedOrder(db);
 
-    const view = assembleItemView(db, "job-worked", new Date("2026-09-18T10:20:00.000Z"));
+    const view = assembleItemView(db, "order-worked", new Date("2026-09-18T10:20:00.000Z"));
 
     expect(view?.entries.map((entry) => entry.kind)).toEqual([
       "claimed",
@@ -669,32 +684,57 @@ describe("factory wall item view", () => {
     db.close();
   });
 
-  test("carries the job's identity above what is being read", () => {
+  test("carries the order's identity above what is being read", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    seedWorkedJob(db);
+    seedWorkedOrder(db);
 
-    const view = assembleItemView(db, "job-worked", new Date("2026-09-18T10:20:00.000Z"));
+    const view = assembleItemView(db, "order-worked", new Date("2026-09-18T10:20:00.000Z"));
 
-    expect(view?.job.title).toBe("Work an item through");
-    expect(view?.job.station).toBe("build");
-    expect(view?.job.status).toBe("completed");
-    expect(view?.job.worker).toBe(workerName("builder"));
-    expect([view?.runId, view?.queueId, view?.job.itemId]).toEqual(["run", "queue", "worked"]);
+    expect(view?.order.title).toBe("Work an item through");
+    expect(view?.order.station).toBe("build");
+    expect(view?.order.status).toBe("completed");
+    expect(view?.order.worker).toBe(workerName("builder"));
+    expect([view?.runId, view?.queueId, view?.order.itemId]).toEqual(["run", "queue", "worked"]);
     expect([view?.worktree, view?.branch]).toEqual([trunk.dir, "worked"]);
+    db.close();
+  });
+
+  test("writes a path under the home directory the way a person does", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const home = resolveHomeDir();
+    createOrder(db, {
+      id: "order-at-home",
+      runId: "run",
+      queueId: "queue",
+      itemId: "at-home",
+      title: "Read a path as a person writes it",
+      worktree: `${home}/code/dim-factory`,
+      branch: "at-home",
+    });
+    appendOrderEvent(db, "order-at-home", { kind: "started", status: "running" });
+    recordOrderFile(db, "order-at-home", `${home}/code/dim-factory/src/paths.ts`);
+
+    const view = assembleItemView(db, "order-at-home", new Date("2026-09-18T10:20:00.000Z"));
+
+    expect(view?.worktree).toBe("~/code/dim-factory");
+    expect(view?.entries.find((entry) => entry.kind === "file_changed")?.path).toBe(
+      "~/code/dim-factory/src/paths.ts",
+    );
     db.close();
   });
 
   test("attaches each commit, check and finding to the event that produced it", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    seedWorkedJob(db);
+    seedWorkedOrder(db);
 
-    const entries = assembleItemView(db, "job-worked", new Date("2026-09-18T10:20:00.000Z"))?.entries ?? [];
+    const entries = assembleItemView(db, "order-worked", new Date("2026-09-18T10:20:00.000Z"))?.entries ?? [];
 
     expect(entries.find((entry) => entry.kind === "commit_created")?.commit).toEqual({
       sha: trunk.sha,
-      subject: "feat: read one job's record",
+      subject: "feat: read one order's record",
     });
     expect(entries.filter((entry) => entry.kind === "check_finished").map((entry) => entry.check)).toEqual([
       { command: "bun run verify", exitCode: 1, result: "typecheck failed" },
@@ -729,10 +769,10 @@ describe("factory wall item view", () => {
   test("names the worker a delegation handed to", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createJob(
+    createOrder(
       db,
       {
-        id: "job-delegating",
+        id: "order-delegating",
         runId: "run",
         queueId: "queue",
         itemId: "delegating",
@@ -742,15 +782,20 @@ describe("factory wall item view", () => {
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendJobEvent(db, "job-delegating", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
-    appendJobEvent(
+    appendOrderEvent(
       db,
-      "job-delegating",
+      "order-delegating",
+      { kind: "started", status: "running" },
+      "2026-09-18T10:01:00.000Z",
+    );
+    appendOrderEvent(
+      db,
+      "order-delegating",
       { kind: "delegated", actorId: "builder", delegatedAgentId: "reviewer", delegatedStation: "review" },
       "2026-09-18T10:02:00.000Z",
     );
 
-    const view = assembleItemView(db, "job-delegating", new Date("2026-09-18T10:20:00.000Z"));
+    const view = assembleItemView(db, "order-delegating", new Date("2026-09-18T10:20:00.000Z"));
     const delegation = view?.entries.find((entry) => entry.kind === "delegated");
 
     expect(delegation?.worker).toBe(workerName("builder"));
@@ -765,10 +810,10 @@ describe("factory wall item view", () => {
   test("keeps the grounds a fence stopped on", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createJob(
+    createOrder(
       db,
       {
-        id: "job-fenced",
+        id: "order-fenced",
         runId: "run",
         queueId: "queue",
         itemId: "fenced",
@@ -776,36 +821,36 @@ describe("factory wall item view", () => {
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendJobEvent(
+    appendOrderEvent(
       db,
-      "job-fenced",
+      "order-fenced",
       { kind: "fenced", status: "fenced", fenceType: "owner-judgment", reason: "scope unclear" },
       "2026-09-18T10:01:00.000Z",
     );
 
-    const view = assembleItemView(db, "job-fenced", new Date("2026-09-18T10:20:00.000Z"));
+    const view = assembleItemView(db, "order-fenced", new Date("2026-09-18T10:20:00.000Z"));
     const fence = view?.entries.find((entry) => entry.kind === "fenced");
 
     expect([fence?.fence, fence?.reason]).toEqual(["owner-judgment", "scope unclear"]);
     db.close();
   });
 
-  test("has nothing to show for a job it holds no record of", () => {
+  test("has nothing to show for an order it holds no record of", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
 
-    expect(assembleItemView(db, "job-absent", new Date("2026-09-18T10:20:00.000Z"))).toBeNull();
+    expect(assembleItemView(db, "order-absent", new Date("2026-09-18T10:20:00.000Z"))).toBeNull();
     db.close();
   });
 
-  test("reads only the job asked for, where another job's evidence shares its ids", () => {
+  test("reads only the order asked for, where another order's evidence shares its ids", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    seedWorkedJob(db);
-    createJob(
+    seedWorkedOrder(db);
+    createOrder(
       db,
       {
-        id: "job-other",
+        id: "order-other",
         runId: "run",
         queueId: "queue",
         itemId: "other",
@@ -815,17 +860,17 @@ describe("factory wall item view", () => {
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendJobEvent(db, "job-other", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
-    recordJobCheck(
+    appendOrderEvent(db, "order-other", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    recordOrderCheck(
       db,
-      "job-other",
+      "order-other",
       { command: "bun run other", exitCode: 0, result: "green" },
       "2026-09-18T10:03:00.000Z",
     );
-    recordJobFile(db, "job-other", "src/other.ts", "2026-09-18T10:05:00.000Z");
-    recordJobDocument(db, "job-other", "docs/other.md", "2026-09-18T10:09:00.000Z");
+    recordOrderFile(db, "order-other", "src/other.ts", "2026-09-18T10:05:00.000Z");
+    recordOrderDocument(db, "order-other", "docs/other.md", "2026-09-18T10:09:00.000Z");
 
-    const entries = assembleItemView(db, "job-other", new Date("2026-09-18T10:20:00.000Z"))?.entries ?? [];
+    const entries = assembleItemView(db, "order-other", new Date("2026-09-18T10:20:00.000Z"))?.entries ?? [];
 
     expect(entries.map((entry) => entry.kind)).toEqual([
       "claimed",
@@ -839,29 +884,29 @@ describe("factory wall item view", () => {
     db.close();
   });
 
-  test("serves one job's record and holds a job id it cannot read to 404", async () => {
+  test("serves one order's record and holds an order id it cannot read to 404", async () => {
     const file = `${tmpdir()}/wall-item-${Date.now()}.sqlite`;
     const seed = new Database(file);
     seed.run(SCHEMA_SQL);
-    seedWorkedJob(seed);
+    seedWorkedOrder(seed);
     seed.close();
     const server = await serveWall({ port: 0, databasePath: file });
     const origin = `http://127.0.0.1:${server.port}`;
     try {
-      const found = await fetch(`${origin}/api/job/job-worked`);
+      const found = await fetch(`${origin}/api/order/order-worked`);
       expect(found.status).toBe(200);
       const view = await found.json();
-      expect(view.job.title).toBe("Work an item through");
+      expect(view.order.title).toBe("Work an item through");
       expect(view.entries.at(-1)).toEqual({
         at: "2026-09-18T10:10:00.000Z",
         kind: "completed",
         reason: "verified",
       });
 
-      expect((await fetch(`${origin}/api/job/job-absent`)).status).toBe(404);
-      expect((await fetch(`${origin}/api/job/`)).status).toBe(404);
+      expect((await fetch(`${origin}/api/order/order-absent`)).status).toBe(404);
+      expect((await fetch(`${origin}/api/order/`)).status).toBe(404);
       // A percent sequence that is not valid UTF-8 is an id, not a crash.
-      expect((await fetch(`${origin}/api/job/%E0%A4%A`)).status).toBe(404);
+      expect((await fetch(`${origin}/api/order/%E0%A4%A`)).status).toBe(404);
     } finally {
       server.stop(true);
       rmSync(file, { force: true });
@@ -872,7 +917,7 @@ describe("factory wall item view", () => {
     const server = await serveWall({ port: 0, databasePath: `${tmpdir()}/wall-absent-${Date.now()}.sqlite` });
     const origin = `http://127.0.0.1:${server.port}`;
     try {
-      const item = await fetch(`${origin}/api/job/job-worked`);
+      const item = await fetch(`${origin}/api/order/order-worked`);
       expect(item.status).toBe(503);
       expect((await item.json()).error).toContain("no database at");
 

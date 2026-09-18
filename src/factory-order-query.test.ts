@@ -2,15 +2,15 @@ import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import {
-  appendJobEvent,
-  createJob,
-  recordJobCheck,
-  recordJobCommit,
-  recordJobDocument,
-  recordJobEnvironment,
-  recordJobFile,
-  recordJobFinding,
-} from "./factory-job";
+  appendOrderEvent,
+  createOrder,
+  recordOrderCheck,
+  recordOrderCommit,
+  recordOrderDocument,
+  recordOrderEnvironment,
+  recordOrderFile,
+  recordOrderFinding,
+} from "./factory-order";
 import { integratedRepo } from "./fixtures.test-support";
 import { findQuery } from "./queries";
 import { SCHEMA_SQL } from "./schema";
@@ -18,73 +18,73 @@ import { SCHEMA_SQL } from "./schema";
 const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
 
-describe("factory job query", () => {
+describe("factory order query", () => {
   test("returns one unified status row with the latest lifecycle and evidence", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createJob(
+    createOrder(
       db,
       {
-        id: "job-status",
+        id: "order-status",
         runId: "run-1",
         queueId: "queue-1",
         itemId: "item-1",
-        title: "Report one job's status",
+        title: "Report one order's status",
         worktree: trunk.dir,
         branch: "factory-item",
         station: "dim-station-build",
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendJobEvent(db, "job-status", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
-    recordJobCommit(db, "job-status", trunk.sha, "feat: status", "2026-09-18T10:02:00.000Z");
-    recordJobCommit(db, "job-status", "def456", "feat: later", "2026-09-18T10:02:00.000Z");
-    recordJobCheck(
+    appendOrderEvent(db, "order-status", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    recordOrderCommit(db, "order-status", trunk.sha, "feat: status", "2026-09-18T10:02:00.000Z");
+    recordOrderCommit(db, "order-status", "def456", "feat: later", "2026-09-18T10:02:00.000Z");
+    recordOrderCheck(
       db,
-      "job-status",
+      "order-status",
       { command: "bun run verify", exitCode: 0, result: "green" },
       "2026-09-18T10:03:00.000Z",
     );
-    recordJobCheck(
+    recordOrderCheck(
       db,
-      "job-status",
+      "order-status",
       { command: "bun run test", exitCode: 0, result: "green" },
       "2026-09-18T10:03:00.000Z",
     );
-    recordJobFinding(
+    recordOrderFinding(
       db,
-      "job-status",
+      "order-status",
       { dimension: "tests", summary: "holds", answer: "fixed" },
       "2026-09-18T10:04:00.000Z",
     );
-    recordJobFinding(
+    recordOrderFinding(
       db,
-      "job-status",
+      "order-status",
       { dimension: "docs", summary: "updated", answer: "fixed" },
       "2026-09-18T10:04:00.000Z",
     );
-    appendJobEvent(
+    appendOrderEvent(
       db,
-      "job-status",
+      "order-status",
       { kind: "completed", status: "completed", reason: "verified" },
       "2026-09-18T10:05:00.000Z",
     );
 
     const before = [
-      "factory_job",
-      "factory_job_event",
-      "factory_job_commit",
-      "factory_job_file",
-      "factory_job_check",
-      "factory_job_finding",
-      "factory_job_document",
+      "factory_order",
+      "factory_order_event",
+      "factory_order_commit",
+      "factory_order_file",
+      "factory_order_check",
+      "factory_order_finding",
+      "factory_order_document",
     ].map((table) => db.query(`SELECT * FROM ${table} ORDER BY 1`).all());
-    const result = findQuery("factory")?.run(db, { arg: "job-st" });
+    const result = findQuery("factory")?.run(db, { arg: "order-st" });
 
     expect(result?.columns).toEqual([
       "queue",
       "item",
-      "job",
+      "order",
       "status",
       "latest_event",
       "latest_event_at",
@@ -100,7 +100,7 @@ describe("factory job query", () => {
       [
         "queue-1",
         "item-1",
-        "job-status",
+        "order-status",
         "completed",
         "completed",
         "2026-09-18T10:05:00.000Z",
@@ -115,61 +115,61 @@ describe("factory job query", () => {
     ]);
     expect(result?.denominator).toContain("queue planner source absent");
     const after = [
-      "factory_job",
-      "factory_job_event",
-      "factory_job_commit",
-      "factory_job_file",
-      "factory_job_check",
-      "factory_job_finding",
-      "factory_job_document",
+      "factory_order",
+      "factory_order_event",
+      "factory_order_commit",
+      "factory_order_file",
+      "factory_order_check",
+      "factory_order_finding",
+      "factory_order_document",
     ].map((table) => db.query(`SELECT * FROM ${table} ORDER BY 1`).all());
     expect(after).toEqual(before);
     db.close();
   });
 
-  test("shows explicit absence when a blocked job has no fence or reason", () => {
+  test("shows explicit absence when a blocked order has no fence or reason", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createJob(db, {
-      id: "job-blocked",
+    createOrder(db, {
+      id: "order-blocked",
       runId: "run-1",
       queueId: "queue-1",
       itemId: "item-1",
       title: "Block on another item",
     });
-    appendJobEvent(db, "job-blocked", { kind: "blocked", status: "blocked" });
+    appendOrderEvent(db, "order-blocked", { kind: "blocked", status: "blocked" });
 
-    const result = findQuery("factory")?.run(db, { arg: "job-blocked" });
+    const result = findQuery("factory")?.run(db, { arg: "order-blocked" });
 
     expect(result?.rows[0]?.[3]).toBe("blocked");
     expect(result?.rows[0]?.[4]).toBe("blocked");
     expect(result?.rows[0]?.[12]).toBe("(none)");
 
-    createJob(db, {
-      id: "job-fenced",
+    createOrder(db, {
+      id: "order-fenced",
       runId: "run-1",
       queueId: "queue-1",
       itemId: "item-2",
       title: "Stop at a fence",
     });
-    appendJobEvent(db, "job-fenced", {
+    appendOrderEvent(db, "order-fenced", {
       kind: "fenced",
       status: "fenced",
       fenceType: "owner-judgment",
       reason: "ambiguous scope",
     });
-    const fenced = findQuery("factory")?.run(db, { arg: "job-fenced" });
+    const fenced = findQuery("factory")?.run(db, { arg: "order-fenced" });
     expect(fenced?.rows[0]?.[12]).toBe("owner-judgment: ambiguous scope");
     db.close();
   });
 
-  test("returns the aggregate and every evidence kind by job prefix", () => {
+  test("returns the aggregate and every evidence kind by order prefix", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createJob(
+    createOrder(
       db,
       {
-        id: "job-123",
+        id: "order-123",
         runId: "run-1",
         queueId: "queue-1",
         itemId: "item-1",
@@ -178,28 +178,28 @@ describe("factory job query", () => {
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendJobEvent(db, "job-123", { kind: "started", status: "running" }, "2026-09-18T10:00:30.000Z");
-    recordJobCommit(db, "job-123", "abc", "feat: report", "2026-09-18T10:01:00.000Z");
-    recordJobFile(db, "job-123", "src/factory-job.ts", "2026-09-18T10:01:30.000Z");
-    recordJobCheck(
+    appendOrderEvent(db, "order-123", { kind: "started", status: "running" }, "2026-09-18T10:00:30.000Z");
+    recordOrderCommit(db, "order-123", "abc", "feat: report", "2026-09-18T10:01:00.000Z");
+    recordOrderFile(db, "order-123", "src/factory-order.ts", "2026-09-18T10:01:30.000Z");
+    recordOrderCheck(
       db,
-      "job-123",
+      "order-123",
       { command: "bun run verify", exitCode: 0, result: "green" },
       "2026-09-18T10:02:00.000Z",
     );
-    recordJobFinding(
+    recordOrderFinding(
       db,
-      "job-123",
+      "order-123",
       { dimension: "tests", summary: "holds", answer: "fixed" },
       "2026-09-18T10:03:00.000Z",
     );
-    recordJobDocument(db, "job-123", "docs/factory.md", "2026-09-18T10:04:00.000Z");
-    recordJobEnvironment(
+    recordOrderDocument(db, "order-123", "docs/factory.md", "2026-09-18T10:04:00.000Z");
+    recordOrderEnvironment(
       db,
-      "job-123",
+      "order-123",
       {
         phase: "setup",
-        argv: ["/tmp/job-123/scripts/worktree-setup.sh"],
+        argv: ["/tmp/order-123/scripts/worktree-setup.sh"],
         exitCode: 0,
         signal: null,
         stdout: "",
@@ -208,10 +208,10 @@ describe("factory job query", () => {
       },
       "2026-09-18T10:05:00.000Z",
     );
-    const result = findQuery("job")?.run(db, { arg: "job-12" });
+    const result = findQuery("order")?.run(db, { arg: "order-12" });
     expect(result?.columns).toEqual(["section", "when", "kind", "status", "subject", "evidence"]);
     expect(result?.rows.map((row) => row[0])).toEqual([
-      "job",
+      "order",
       "event",
       "event",
       "event",
@@ -233,17 +233,17 @@ describe("factory job query", () => {
       '[{"port":5433}]',
     ]);
     expect(result?.rows[0]?.[4]).toBe("run-1/queue-1/item-1");
-    expect(result?.denominator).toContain("job job-123: running");
+    expect(result?.denominator).toContain("order order-123: running");
     db.close();
   });
 
   test("reports the signal that killed a hook where it left no exit code", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createJob(
+    createOrder(
       db,
       {
-        id: "job-killed",
+        id: "order-killed",
         runId: "run-1",
         queueId: "queue-1",
         itemId: "item-1",
@@ -251,13 +251,13 @@ describe("factory job query", () => {
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendJobEvent(db, "job-killed", { kind: "started", status: "running" }, "2026-09-18T10:00:30.000Z");
-    recordJobEnvironment(
+    appendOrderEvent(db, "order-killed", { kind: "started", status: "running" }, "2026-09-18T10:00:30.000Z");
+    recordOrderEnvironment(
       db,
-      "job-killed",
+      "order-killed",
       {
         phase: "teardown",
-        argv: ["/tmp/job-killed/scripts/worktree-teardown.sh"],
+        argv: ["/tmp/order-killed/scripts/worktree-teardown.sh"],
         exitCode: null,
         signal: "SIGKILL",
         stdout: "",
@@ -267,7 +267,7 @@ describe("factory job query", () => {
       "2026-09-18T10:05:00.000Z",
     );
 
-    const result = findQuery("job")?.run(db, { arg: "job-killed" });
+    const result = findQuery("order")?.run(db, { arg: "order-killed" });
 
     expect(result?.rows.at(-1)).toEqual([
       "environment",
@@ -280,12 +280,12 @@ describe("factory job query", () => {
     db.close();
   });
 
-  test("does not turn an unknown job into an empty report", () => {
+  test("does not turn an unknown order into an empty report", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    const result = findQuery("job")?.run(db, { arg: "missing" });
+    const result = findQuery("order")?.run(db, { arg: "missing" });
     expect(result?.rows).toEqual([]);
-    expect(result?.note).toBe("no job starts with missing");
+    expect(result?.note).toBe("no order starts with missing");
     db.close();
   });
 
@@ -297,7 +297,7 @@ describe("factory job query", () => {
 
     expect(result?.rows).toEqual([]);
     expect(result?.denominator).toContain("queue planner source absent");
-    expect(result?.note).toBe("no factory jobs are recorded");
+    expect(result?.note).toBe("no factory orders are recorded");
     db.close();
   });
 });

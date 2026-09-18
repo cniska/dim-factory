@@ -76,7 +76,7 @@ The stations are:
 
 `dim-factory` is the driver above the line: it reads a queue, chooses an unblocked item and routes it to the right entry point.
 
-See [The factory](factory.md) for job ownership, reports, queue planning and the human gates.
+See [The factory](factory.md) for order ownership, reports, queue planning and the human gates.
 
 ## Session start
 

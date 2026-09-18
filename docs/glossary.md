@@ -11,6 +11,7 @@ The words this repo uses for the factory and its record. One word per thing, def
 | Item | What the queue wants made: an id, a title, the words it is stated in, its dependencies and its status |
 | Order | The order to make one item — issued to one worker, worked in one worktree, carrying what it produced and how it ended. An item taken again is a second order for the same item. Not a task, which in this codebase is a command a repo declares ([`src/tasks.ts`](../src/tasks.ts)) |
 | Worker | The agent holding an order. Several run at once, each in its own worktree, and a card names the worker its order is recorded against |
+| Phase | How far along an order is, as the wall groups it: `todo` before it starts, `active` while it runs, `done` once it stopped. Not a station, which says where the work is rather than how far it has got |
 | Slice | One increment inside an order: a change that verifies on its own and is committed on its own |
 | Driver | What reads a queue, claims an order, hands it to a worker and integrates what comes back. It decides which work starts and when to stop, never how the work is done |
 | Queue | Where items wait, read and never inferred. A file-backed planner holds each item's id, title, description, dependencies and status; a tracker can serve the same purpose |
