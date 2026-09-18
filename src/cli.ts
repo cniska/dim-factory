@@ -33,6 +33,7 @@ import { checkTask } from "./tasks";
 import { trace } from "./trace";
 import { readWake, renderWake, type Wake, wireFor } from "./wake";
 import { resolveWalk, spoolWalk } from "./walk";
+import { DEFAULT_WALL_PORT, WALL_PORT_ENV, WallPortError, wallPort } from "./wall-port";
 import { warn } from "./warn";
 import { runWt, WtError } from "./wt-command";
 
@@ -75,7 +76,8 @@ const USAGE = `usage: dim <command>
                   persist a harness-neutral recurring schedule
   schedule pause|resume <id>
                   pause or resume a persisted schedule
-  wall            serve the local read-only factory wall on loopback
+  wall            serve the local read-only factory wall on loopback, at one
+                  address every run (${DEFAULT_WALL_PORT}, or ${WALL_PORT_ENV}); --dev adds hot reload
   label <id> <correction|clarification|not_correction> [--rule "..."]
                   record your judgement on one candidate correction
   finding --slice <name> --dimension <name> --answer <fixed|refused>
@@ -757,10 +759,20 @@ try {
       break;
     case "wall":
       {
-        const server = await serveWall({
-          port: Number(process.env.DIM_WALL_PORT ?? 0) || 0,
-          hmr: process.argv.includes("--dev"),
-        });
+        const port = wallPort();
+        const server = await serveWall({ port, hmr: process.argv.includes("--dev") }).catch(
+          (error: unknown) => {
+            // A wall is already there on that port far more often than the port
+            // is someone else's, and the second wall would be the stale one.
+            if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
+              throw new WallPortError(
+                "in-use",
+                `something already listens on ${port}; open http://127.0.0.1:${port} or set ${WALL_PORT_ENV}`,
+              );
+            }
+            throw error;
+          },
+        );
         console.log(`factory wall listening at http://${server.hostname}:${server.port}`);
       }
       break;
