@@ -316,7 +316,7 @@ The guard is to read the written text back the way the tools read it and refuse 
 
 ## A station's fix rate grades the code it is called on
 
-Asked on 2026-09-17. `q fixes` puts `simplify` among the highest rates it reports — 28 of 59 files drew a later `fix:` commit, 47.5%, against 16.3% for `build` and 24.3% for files edited with no station attached. Read as a verdict on the station that is damning, and it is the wrong reading.
+Asked on 2026-09-17. `q fixes` puts `simplify` at the top of the stations with a sizable sample — 28 of 59 files drew a later `fix:` commit, 47.5%, against 16.3% for `build` and 24.3% for files edited with no station attached. Read as a verdict on the station that is damning, and it is the wrong reading.
 
 Asking the same question in both directions settles it. For every file an agent edited, whether a `fix:` commit touched it in the seven days *before* that edit, and in the seven days *after*, counting only edits with a full seven days elapsed:
 
@@ -331,7 +331,7 @@ Asking the same question in both directions settles it. For every file an agent 
 
 Files arrive at `simplify` already being fixed at four times the rate of files arriving at `build`, and they leave at a lower rate than they came in. Nothing here says the station makes code worse; it says it is pointed at code that was already churning, which is what a simplification station is for. The aiming is the part that works, and the record can do it deliberately rather than by intuition.
 
-What these numbers carry: one owner, about a month, and only commits with a `fix:` prefix, matched by path so repos sharing a name collide. Before and after are not independent — a file fixed last week is likelier to be fixed next week whatever happened in between — so the drop from 33.3 to 25.6 is not evidence of improvement either. A thirty-day window was tried first and leaves `simplify` with too few files to read a rate off, because all of its use is recent; seven days is the widest window its own data supports, while `q fixes` counts a fix arriving at any later date, which is why its number is the larger one.
+What these numbers carry: one owner, about a month, and only commits with a `fix:` prefix, matched by path so repos sharing a name collide. Before and after are not independent — a file fixed last week is likelier to be fixed next week whatever happened in between — so the drop from 33.3 to 25.6 is not evidence of improvement either. A thirty-day window was tried first and leaves `simplify` with fewer than twenty files, too few to read a rate off, because all of its use is recent; seven days is the widest window its own data supports, while `q fixes` counts a fix arriving at any later date, which is why its number is the larger one.
 
 The row that needs explaining is `agents-md`: four times more fixes after the edit than before, on the largest station sample here. That is the shape `simplify` was accused of, and nothing has looked at it.
 
