@@ -152,7 +152,7 @@ describe("factory wall snapshot", () => {
     db.close();
   });
 
-  test("puts an abandoned order in the done column with its stop reason", () => {
+  test("puts a failed order in the done column with its stop reason", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     createOrder(
@@ -162,7 +162,7 @@ describe("factory wall snapshot", () => {
         runId: "run",
         queueId: "queue",
         itemId: "gone",
-        title: "Abandon this one",
+        title: "Stop this one",
         station: "build",
       },
       "2026-09-18T10:00:00.000Z",
@@ -171,14 +171,14 @@ describe("factory wall snapshot", () => {
     appendOrderEvent(
       db,
       "order-gone",
-      { kind: "abandoned", status: "abandoned", reason: "operator stopped" },
+      { kind: "failed", status: "failed", reason: "operator stopped" },
       "2026-09-18T10:02:00.000Z",
     );
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z"));
 
     expect(snapshot.orders.map((order) => [order.status, order.stage, order.attention])).toEqual([
-      ["abandoned", "done", "operator stopped"],
+      ["failed", "done", "operator stopped"],
     ]);
     db.close();
   });

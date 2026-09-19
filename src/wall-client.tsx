@@ -34,10 +34,9 @@ const stateLabels: Record<OrderStatus, string> = {
   fenced: "Fenced",
   completed: "Completed",
   failed: "Failed",
-  abandoned: "Abandoned",
 };
 
-const stopped = new Set<OrderStatus>(["blocked", "fenced", "failed", "abandoned"]);
+const stopped = new Set<OrderStatus>(["blocked", "fenced", "failed"]);
 
 const statusIcon: Record<OrderStatus, LucideIcon> = {
   working: CircleDot,
@@ -46,7 +45,6 @@ const statusIcon: Record<OrderStatus, LucideIcon> = {
   fenced: CircleAlert,
   completed: CircleCheck,
   failed: CircleAlert,
-  abandoned: CircleX,
 };
 
 // Color carries the agent's role and nothing else; the station stays text, so the two

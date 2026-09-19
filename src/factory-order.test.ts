@@ -154,9 +154,7 @@ describe("factory order report records", () => {
 
   test("projects every returned terminal outcome", async () => {
     const database = db();
-    for (const [index, status] of (
-      ["completed", "blocked", "fenced", "failed", "abandoned"] as const
-    ).entries()) {
+    for (const [index, status] of (["completed", "blocked", "fenced", "failed"] as const).entries()) {
       const orderId = `order-terminal-${index}`;
       const outcome = await runFactoryOrder(
         database,
@@ -481,7 +479,7 @@ describe("factory order report records", () => {
   });
 
   test("lets every other terminal status stop an unchecked order", () => {
-    for (const status of ["blocked", "fenced", "failed", "abandoned"] as const) {
+    for (const status of ["blocked", "fenced", "failed"] as const) {
       const database = db();
       createOrder(database, order, "2026-09-18T10:00:00.000Z");
       appendOrderEvent(
@@ -723,9 +721,7 @@ describe("factory order report records", () => {
 
   test("rejects lifecycle events after an order reaches a terminal status", () => {
     const database = db();
-    for (const [index, status] of (
-      ["completed", "blocked", "fenced", "failed", "abandoned"] as const
-    ).entries()) {
+    for (const [index, status] of (["completed", "blocked", "fenced", "failed"] as const).entries()) {
       const orderId = `order-terminal-${index}`;
       createOrder(
         database,
@@ -768,7 +764,7 @@ describe("factory order report records", () => {
     expect(() => appendOrderEvent(database, "order-1", { kind: "started", status: "completed" })).toThrow(
       "terminal event status must match its kind",
     );
-    expect(() => appendOrderEvent(database, "order-1", { kind: "abandoned", status: "completed" })).toThrow(
+    expect(() => appendOrderEvent(database, "order-1", { kind: "failed", status: "completed" })).toThrow(
       "terminal event kind must match its status",
     );
     expect(database.query("SELECT status FROM factory_order WHERE id = 'order-1'").get()).toEqual({

@@ -16,7 +16,6 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   blocked: "Blocked",
   completed: "Completed",
   failed: "Failed",
-  abandoned: "Abandoned",
 };
 
 /** The rail's whole vocabulary. One shape per kind of moment rather than one per kind of
@@ -48,7 +47,6 @@ const RAIL_MARK_BY_KIND: Record<WallItemKind, RailMark> = {
   blocked: "outcome",
   completed: "outcome",
   failed: "outcome",
-  abandoned: "outcome",
 };
 
 export type RailStop = {

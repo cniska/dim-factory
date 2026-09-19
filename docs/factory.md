@@ -25,7 +25,7 @@ The planned factory assigns each queue item to one self-sufficient order that ru
 - **Driver.** The factory driver schedules orders, observes their evidence and integrates completed work. It does not implement the item.
 - **Count.** An explicit item count limits a run; the default count is one. The factory does not drain the queue implicitly.
 
-The order returns a delivered-product report containing the item and queue identity, station and delegation tree, worktree and branch, changed files, commit SHA, repo check and result, checker findings and resolutions, updated docs, and final status: completed, blocked, fenced, failed or abandoned. A completed or stopped report includes the evidence the driver needs to land the work or stop at the stated boundary.
+The order returns a delivered-product report containing the item and queue identity, station and delegation tree, worktree and branch, changed files, commit SHA, repo check and result, checker findings and resolutions, updated docs, and final status: completed, blocked, fenced or failed. A completed or stopped report includes the evidence the driver needs to land the work or stop at the stated boundary.
 
 Station transfers use the factory's `dim-handoff`. It requires strict `# Handoff — <item_id> — <item name>` and `## Next` headings and carries only the routing token. The ID is canonical and the name comes from the queue. The receiving station queries the order's station, worktree, branch, commits, checks, findings, docs and fence with `dim`; the handoff is not a session-resume document or a second order report.
 
@@ -36,7 +36,7 @@ The delivered-product report is persisted in the dim database so it remains quer
 - **Identity.** Queue and item identity, the item's title and the description the queue gave it, order and run identity, agent identity, worktree and branch.
 - **Work.** Station, every move between stations, delegation tree, commit SHA, and each changed file with the lines added and removed where the recorder counted them.
 - **Verification.** Repository check command and result, checker findings and their resolutions, and updated docs.
-- **Outcome.** Final status — completed, blocked, fenced, failed or abandoned — with fence or blocker evidence and timestamps for the lifecycle events.
+- **Outcome.** Final status — completed, blocked, fenced or failed — with fence or blocker evidence and timestamps for the lifecycle events.
 - **Environment.** Each setup and teardown report the order attached: the phase, the hook command, its exit code or the signal that killed it, its output, and the resource identifiers the hook named.
 
 The item's description is copied into the record at claim time rather than read from the queue when someone asks, under the name the queue itself uses for that field. The queue is edited as work lands, so the wording an order was worked to survives only where the claim kept it; an order claimed off a queue that names its items and nothing more carries a title and no description.
@@ -49,7 +49,7 @@ An order is done when its check passed on the final commit, every finding was an
 
 Two of those are mechanical and `dim order stop <order> completed` refuses an order that fails either. The check condition: a check that exited zero, recorded no earlier than the order's last commit. The trunk condition: at least one recorded commit that is an ancestor of the trunk. The other three rest on the station loop, because nothing in the record can tell a finding answered with grounds from one waved through, a doc that describes the behavior from one that mentions it, or a worktree removed on purpose from one never made.
 
-Each refusal carries its own code — `order_not_checked`, `order_not_integrated`, `order_trunk_unknown` — so a driver can tell which condition failed without reading the prose. `blocked`, `fenced`, `failed` and `abandoned` carry no requirement at all, because they are how an unfinished order stops and refusing them would push a driver toward recording the wrong outcome.
+Each refusal carries its own code — `order_not_checked`, `order_not_integrated`, `order_trunk_unknown` — so a driver can tell which condition failed without reading the prose. `blocked`, `fenced` and `failed` carry no requirement at all, because they are how an unfinished order stops and refusing them would push a driver toward recording the wrong outcome.
 
 A check that passed and was then committed over is the case the check condition exists to catch, and an order with no commit recorded has nothing for its check to be older than. Both sides of that comparison are the time the row was written, so the shell and the driver are judged on one clock; a check may still say when it truly ran, which on a loop that checks before committing is earlier than the commit it vouches for. Those recorded times therefore say when evidence was written rather than how long an order spent verifying.
 

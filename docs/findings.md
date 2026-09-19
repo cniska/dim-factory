@@ -483,3 +483,11 @@ Two things this carries. The first is that a sample file is not a safe file: it 
 Found on 2026-09-18. `Bun.YAML.parse` is present in the Bun this repo runs and handles flow mappings, quoted keys, anchors, column-zero comments inside a block and nesting — every case a line-based scan of a compose file got wrong, including reporting an inner key such as `build` as a service name when the first service carried an anchor. `src/tasks.ts` already reads `mise.toml` through `Bun.TOML.parse` rather than scanning lines, so the precedent was there.
 
 `pubspecFacts` in `src/workspace.ts` still scans `pubspec.yaml` line by line for its workspace members and its Flutter marker. Nothing measured says it is wrong on the pubspecs on disk, and it was left alone rather than changed under a slice that had no requirement for it; it is named here so the next reader knows the constraint that would justify it does not exist.
+
+## A board rendering current data through stale code reads as empty, not as old
+
+Found on 2026-09-19. The wall showed no cards while its own Done count said 12. The data was never wrong: running `assembleWallSnapshot` directly against the live database returned `totals.done = 12` and 12 cards in the same snapshot. The serving process had started 11 hours earlier, and the three commits between renamed the order statuses.
+
+The cause is that `--dev` set Bun's `development: { hmr: true }`, which reloads the client bundle and leaves the server's module graph as it was at boot. So the half that reads the database kept the vocabulary it started with while the half that draws reloaded on every edit. Running the same command under `bun --hot` reloads both, confirmed by editing a server module against a running wall and watching the response change with no restart.
+
+Two things this carries. A process is a place state hides, and the usual signal for stale state — a page that looks old — is absent when one half is current: the board looked broken rather than out of date, which sent the reading toward the query and the renderer, where nothing was wrong. And the message the same file printed when a second wall found the port taken said the incumbent was the fresh one and pointed the reader at it, which was exactly backwards here; a claim about which of two processes is newer cannot be made from inside either.

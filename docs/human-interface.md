@@ -14,7 +14,7 @@ The client is a React static bundle that Bun serves. Its CSS custom properties a
 
 The client uses semantic HTML, CSS variables, a dark responsive layout, lightweight client state, bounded lists and fullscreen presentation. Its base palette is black, white and grayscale surfaces; semantic accents are reserved for agent roles and order states. Bun serves the React bundle beside the local read-only server. The interface owns its visual system and has no control surface.
 
-The page answers one question: where is each item in the factory flow? A three-column board puts every item in Todo, Active or Done, the stage every item shares whatever kind of work it is. An order that has been claimed but not started is Todo; a working order is Active; a completed, failed or abandoned order is Done. A blocked or fenced order stays in Active: it has not reached an outcome, and a stuck item is what a wall exists to show. Each fixed-size card carries the item's title, its station, stage and the worker it is recorded against. Blocked, fenced, failed and abandoned orders keep their operational warning on the card.
+The page answers one question: where is each item in the factory flow? A three-column board puts every item in Todo, Active or Done, the stage every item shares whatever kind of work it is. An order that has been claimed but not started is Todo; a working order is Active; a completed or failed order is Done. A blocked or fenced order stays in Active: it has not reached an outcome, and a stuck item is what a wall exists to show. Each fixed-size card carries the item's title, its station, stage and the worker it is recorded against. Blocked, fenced and failed orders keep their operational warning on the card.
 
 Column headers carry the column's whole count, not the number of cards drawn, and a column holding more work than it can draw says how many it left out. Empty columns retain only their heading and count so the board stays quiet.
 
@@ -36,7 +36,7 @@ The board is a snapshot assembled from factory order and lifecycle event records
 
 ## Acceptance
 
-The implementation is reviewed against seeded snapshots covering all three columns; the working, waiting, blocked, fenced, completed, failed and abandoned states; every station; and each agent role. The first viewport must make the work, station, state and worker identity legible without opening a detail view.
+The implementation is reviewed against seeded snapshots covering all three columns; the working, waiting, blocked, fenced, completed and failed states; every station; and each agent role. The first viewport must make the work, station, state and worker identity legible without opening a detail view.
 
 The implementation lives in `src/factory-wall.ts`, `src/wall-board.ts`, `src/wall-client.tsx`, `src/wall.html` and `src/wall.css`. `dim wall` serves the page on loopback at one address every run, so a link to the board keeps working across the restarts that pick up a change; `DIM_WALL_PORT` names another, and a value that is not a port refuses rather than serving somewhere the reader is not looking. Bun bundles the page from the HTML route, so `dim wall --dev` adds hot reload without a second way of being served; `GET /api/snapshot` reads the existing database, `GET /api/order/<order-id>` reads one order's whole record, and `/ws` sends a changed snapshot. When the database is unavailable, the wall states that condition rather than rendering fabricated operational rows.
 
@@ -63,19 +63,19 @@ Every card on the board carries the same compact identity block:
 - **What.** The item's title, in the words the queue states it in. The item id stays in the record for an agent to join on.
 - **Where.** The current station, named on the card. Plan, Build, Review and Ship are reserved for the words the record actually holds; an order claimed with anything else, or with no station at all, reads as unknown.
 - **Who.** Agent identity, with the agent's role carried by a marker and by the written role. An order that no claim or event named an agent for shows no worker, rather than a name that would read as a worker and collide with every other unattributed order.
-- **State.** Running, waiting, blocked, fenced, completed, failed or abandoned.
+- **State.** Running, waiting, blocked, fenced, completed or failed.
 - **Why stopped.** For an order that cannot move, its stop reason or fence.
 - **How long it has been silent.** Time since the order's last recorded event, which is also what orders a column. An unattended run fails by going quiet, so the one figure on the card counts from the last thing that happened to the order.
 
 These values come from persisted order claims and lifecycle events. The wall does not infer activity from a process name or a stale heartbeat, and it does not infer what kind of work an item is from its title: it shows the metadata the factory recorded.
 
-A card states what its column does not. A value repeated down a whole column is a constant, which is the rule that keeps the operator out of the cards: Todo is where an order waits, Active is where a worker holds one and Done is where a completed one ends, so those cards carry the state as a marker alone and name it only to a reader who is not looking at the column. What keeps its word is what a column cannot say — blocked, fenced, failed, abandoned — which are the cards that want a person.
+A card states what its column does not. A value repeated down a whole column is a constant, which is the rule that keeps the operator out of the cards: Todo is where an order waits, Active is where a worker holds one and Done is where a completed one ends, so those cards carry the state as a marker alone and name it only to a reader who is not looking at the column. What keeps its word is what a column cannot say — blocked, fenced, failed — which are the cards that want a person.
 
 The title is the one thing a card may not lose, so it wraps to a second line rather than being cut, and stops there: two rows of the card's rhythm hold the titles a queue writes and keep one long title from growing its card past its neighbors. An invariant the lifecycle guarantees is the same rule one level up: a completed order's check passed, so a done card says nothing about checks. The one piece of evidence a card carries is a working order's failed checks, one mark each, because an order failing its check repeatedly is struggling and that is what the owner would otherwise have to open the item view to see. Everything else the order accrued — its commits, files, findings, checks and history — is reading rather than glancing, and lives in the item view.
 
 That an outcome implies a green check is a rule the board leans on and nothing enforces: the driver records `completed` itself and could record it over a red check. [`build-order.md`](build-order.md) carries the gate that would hold it.
 
-An order the owner has to answer — blocked, fenced, failed or abandoned — is ranked above the moving work before a column is bounded, so it holds its place on the board and a column read from the top reads as what needs a person and then as what is in flight. A stopped order records nothing further, so ordering by silence alone would sink it under everything still running and a bound would drop it first.
+An order the owner has to answer — blocked, fenced or failed — is ranked above the moving work before a column is bounded, so it holds its place on the board and a column read from the top reads as what needs a person and then as what is in flight. A stopped order records nothing further, so ordering by silence alone would sink it under everything still running and a bound would drop it first.
 
 ## The item view
 

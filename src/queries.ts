@@ -1223,7 +1223,7 @@ const factory: Query = {
                         )), '(none recorded)') AS findings,
               coalesce((SELECT nullif(trim(coalesce(e.fence_type || ': ', '') || coalesce(e.reason, '')), '')
                         FROM factory_order_event e WHERE e.order_id = o.id
-                          AND e.kind IN ('completed', 'blocked', 'fenced', 'failed', 'abandoned')
+                          AND e.kind IN ('completed', 'blocked', 'fenced', 'failed')
                         ORDER BY e.ts DESC, e.id DESC LIMIT 1), '(none)') AS stop
        FROM factory_order o ${filter}
        ORDER BY o.updated_at DESC, o.id`,
