@@ -264,6 +264,25 @@ describe("rebuilding a database an older schema wrote", () => {
     db.close();
   });
 
+  test("a stopped floor is still stopped after a rebuild", () => {
+    const { db, env } = scratch();
+    // Nothing re-reads this row either, so only the drop and write-back can bring
+    // a table whose definition went stale up to the current one.
+    db.run("ALTER TABLE factory_stop DROP COLUMN order_id");
+    db.run(
+      `INSERT INTO factory_stop (reason, pulled_by, pulled_at)
+       VALUES ('the commit gate records nothing', 'operator', '2026-09-19T09:00:00.000Z')`,
+    );
+
+    rebuild(db, env);
+
+    expect(columnsOf(db, "factory_stop")).toContain("order_id");
+    expect(db.query("SELECT reason FROM factory_stop WHERE cleared_at IS NULL").all()).toEqual([
+      { reason: "the commit gate records nothing" },
+    ]);
+    db.close();
+  });
+
   test("a factory order written before the title column stops the rebuild", () => {
     const { db, env } = scratch();
     db.run("ALTER TABLE factory_order DROP COLUMN title");
