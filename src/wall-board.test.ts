@@ -48,8 +48,8 @@ describe("factory wall board", () => {
   test("keeps the order the snapshot ranked its orders in", () => {
     const needsAnswer = { ...order("fenced-item", "active", "build", "fenced"), attention: "scope unclear" };
     const columns = ordersByStage([
-      order("first-running", "active", "build", "running"),
-      order("second-running", "active", "build", "running"),
+      order("first-running", "active", "build", "working"),
+      order("second-running", "active", "build", "working"),
       needsAnswer,
     ]);
 
@@ -62,7 +62,7 @@ describe("factory wall board", () => {
 
   test("groups by stage rather than by the status the card displays", () => {
     const columns = ordersByStage([
-      order("running-item", "active", "build", "running"),
+      order("running-item", "active", "build", "working"),
       order("blocked-item", "active", "build", "blocked"),
       order("abandoned-item", "done", "build", "abandoned"),
       order("failed-item", "done", "build", "failed"),
@@ -74,10 +74,10 @@ describe("factory wall board", () => {
 
   test("keeps orders from every station in the same stage column", () => {
     const columns = ordersByStage([
-      order("building", "active", "build", "running"),
-      order("reviewing", "active", "review", "running"),
-      order("planning", "active", "plan", "running"),
-      order("shipping", "active", "ship", "running"),
+      order("building", "active", "build", "working"),
+      order("reviewing", "active", "review", "working"),
+      order("planning", "active", "plan", "working"),
+      order("shipping", "active", "ship", "working"),
     ]);
 
     expect(columns.active.map((entry) => entry.station)).toEqual(["build", "review", "plan", "ship"]);

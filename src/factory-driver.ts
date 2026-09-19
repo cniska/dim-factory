@@ -19,7 +19,7 @@ import {
 import type { WorkerHookReport } from "./worker-environment";
 
 export type FactoryOutcome = {
-  status: Exclude<OrderStatus, "claimed" | "running">;
+  status: Exclude<OrderStatus, "claimed" | "working">;
   reason?: string;
 };
 
@@ -58,7 +58,7 @@ export async function runFactoryOrder(
   build: FactoryBuilder,
 ): Promise<FactoryOutcome> {
   createOrder(db, item);
-  appendOrderEvent(db, item.id, { kind: "started", status: "running" });
+  appendOrderEvent(db, item.id, { kind: "started", status: "working" });
 
   const context: FactoryContext = {
     item,

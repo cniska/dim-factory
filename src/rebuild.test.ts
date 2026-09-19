@@ -186,7 +186,7 @@ describe("rebuilding a database an older schema wrote", () => {
     db.run("ALTER TABLE factory_order DROP COLUMN stop_reason");
     db.run(
       `INSERT INTO factory_order (id, run_id, queue_id, item_id, title, status, claimed_at, updated_at)
-       VALUES ('order-1', 'run-1', 'build-order', 'item-1', 'Survive a rebuild', 'running', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+       VALUES ('order-1', 'run-1', 'build-order', 'item-1', 'Survive a rebuild', 'working', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
     db.run(
       "INSERT INTO factory_order_event (order_id, ts, kind) VALUES ('order-1', '2026-01-01T00:00:00Z', 'claimed')",
@@ -199,7 +199,7 @@ describe("rebuilding a database an older schema wrote", () => {
 
     expect(columnsOf(db, "factory_order")).toContain("stop_reason");
     expect(db.query("SELECT id, item_id, status FROM factory_order").all()).toEqual([
-      { id: "order-1", item_id: "item-1", status: "running" },
+      { id: "order-1", item_id: "item-1", status: "working" },
     ]);
     expect(db.query("SELECT order_id, kind FROM factory_order_event").all()).toEqual([
       { order_id: "order-1", kind: "claimed" },
@@ -216,7 +216,7 @@ describe("rebuilding a database an older schema wrote", () => {
     db.run(
       `INSERT INTO factory_order (id, run_id, queue_id, item_id, title, description, status, claimed_at, updated_at)
        VALUES ('order-1', 'run-1', 'build-order', 'item-1', 'Survive a rebuild',
-               'No surface can tell a reader what an order is about.', 'running',
+               'No surface can tell a reader what an order is about.', 'working',
                '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
 
@@ -233,7 +233,7 @@ describe("rebuilding a database an older schema wrote", () => {
     db.run("ALTER TABLE factory_order DROP COLUMN title");
     db.run(
       `INSERT INTO factory_order (id, run_id, queue_id, item_id, status, claimed_at, updated_at)
-       VALUES ('order-old', 'run-1', 'build-order', 'item-1', 'running', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+       VALUES ('order-old', 'run-1', 'build-order', 'item-1', 'working', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
 
     // Named with the column and the ways out, because rebuild is the only route

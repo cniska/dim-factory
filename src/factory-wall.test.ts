@@ -47,7 +47,7 @@ describe("factory wall snapshot", () => {
     appendOrderEvent(
       db,
       "order-running",
-      { kind: "started", status: "running", actorId: "builder" },
+      { kind: "started", status: "working", actorId: "builder" },
       "2026-09-18T10:01:00.000Z",
     );
     recordOrderCheck(
@@ -88,7 +88,7 @@ describe("factory wall snapshot", () => {
       },
       "2026-09-18T08:00:00.000Z",
     );
-    appendOrderEvent(db, "order-done", { kind: "started", status: "running" }, "2026-09-18T08:00:30.000Z");
+    appendOrderEvent(db, "order-done", { kind: "started", status: "working" }, "2026-09-18T08:00:30.000Z");
     recordOrderCommit(db, "order-done", trunk.sha, "wall", "2026-09-18T08:01:00.000Z");
     recordOrderCheck(
       db,
@@ -108,7 +108,7 @@ describe("factory wall snapshot", () => {
     expect(snapshot.source).toBe("database");
     expect(snapshot.orders.map((order) => [order.title, order.station, order.status, order.stage])).toEqual([
       ["Unblock the queue", "review", "fenced", "active"],
-      ["Show the wall", "build", "running", "active"],
+      ["Show the wall", "build", "working", "active"],
       ["Ship the board", "ship", "completed", "done"],
     ]);
     expect(snapshot.orders.map((order) => order.itemId)).toEqual(["blocked", "wall", "done"]);
@@ -122,7 +122,7 @@ describe("factory wall snapshot", () => {
       agent: "builder",
       worker: workerName("builder"),
       role: "builder",
-      status: "running",
+      status: "working",
       age: "8m",
       lastEventAt: "2026-09-18T10:02:00.000Z",
       failedChecks: 0,
@@ -167,7 +167,7 @@ describe("factory wall snapshot", () => {
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendOrderEvent(db, "order-gone", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    appendOrderEvent(db, "order-gone", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
     appendOrderEvent(
       db,
       "order-gone",
@@ -214,7 +214,7 @@ describe("factory wall snapshot", () => {
       },
       "2026-09-18T09:00:00.000Z",
     );
-    appendOrderEvent(db, "order-quiet", { kind: "started", status: "running" }, "2026-09-18T09:05:00.000Z");
+    appendOrderEvent(db, "order-quiet", { kind: "started", status: "working" }, "2026-09-18T09:05:00.000Z");
     // Writes the order row without recording an event, which is how an order's row can be newer
     // than anything that happened to it.
     updateOrderLocation(db, "order-quiet", "/tmp/quiet", "quiet");
@@ -248,7 +248,7 @@ describe("factory wall snapshot", () => {
     appendOrderEvent(
       db,
       "order-struggling",
-      { kind: "started", status: "running" },
+      { kind: "started", status: "working" },
       "2026-09-18T10:01:00.000Z",
     );
     recordOrderCheck(
@@ -282,7 +282,7 @@ describe("factory wall snapshot", () => {
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendOrderEvent(db, "order-clean", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    appendOrderEvent(db, "order-clean", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
     recordOrderCheck(
       db,
       "order-clean",
@@ -428,7 +428,7 @@ describe("factory wall snapshot", () => {
         "2026-09-18T09:00:00.000Z",
       );
       if (kind === "completed") {
-        appendOrderEvent(db, id, { kind: "started", status: "running" }, "2026-09-18T09:00:30.000Z");
+        appendOrderEvent(db, id, { kind: "started", status: "working" }, "2026-09-18T09:00:30.000Z");
         recordOrderCommit(db, id, trunk.sha, "feat: land it", "2026-09-18T09:00:40.000Z");
         recordOrderCheck(
           db,
@@ -489,7 +489,7 @@ describe("factory wall snapshot", () => {
       appendOrderEvent(
         db,
         `order-busy-${index}`,
-        { kind: "started", status: "running" },
+        { kind: "started", status: "working" },
         `2026-09-18T09:${String(index + 10).padStart(2, "0")}:00.000Z`,
       );
     }
@@ -589,7 +589,7 @@ describe("factory wall item view", () => {
     appendOrderEvent(
       db,
       "order-worked",
-      { kind: "started", status: "running", actorId: "builder" },
+      { kind: "started", status: "working", actorId: "builder" },
       "2026-09-18T10:01:00.000Z",
     );
     recordOrderEnvironment(
@@ -726,7 +726,7 @@ describe("factory wall item view", () => {
       itemId: "uncounted",
       title: "Record a path and no counts",
     });
-    appendOrderEvent(db, "order-uncounted", { kind: "started", status: "running" });
+    appendOrderEvent(db, "order-uncounted", { kind: "started", status: "working" });
     recordOrderFile(db, "order-uncounted", { path: "src/binary.png" });
 
     const view = assembleItemView(db, "order-uncounted", new Date("2026-09-18T10:20:00.000Z"));
@@ -748,7 +748,7 @@ describe("factory wall item view", () => {
       worktree: `${home}/code/dim-factory`,
       branch: "at-home",
     });
-    appendOrderEvent(db, "order-at-home", { kind: "started", status: "running" });
+    appendOrderEvent(db, "order-at-home", { kind: "started", status: "working" });
     recordOrderFile(db, "order-at-home", { path: `${home}/code/dim-factory/src/paths.ts` });
 
     const view = assembleItemView(db, "order-at-home", new Date("2026-09-18T10:20:00.000Z"));
@@ -817,7 +817,7 @@ describe("factory wall item view", () => {
     appendOrderEvent(
       db,
       "order-delegating",
-      { kind: "started", status: "running" },
+      { kind: "started", status: "working" },
       "2026-09-18T10:01:00.000Z",
     );
     appendOrderEvent(
@@ -892,7 +892,7 @@ describe("factory wall item view", () => {
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendOrderEvent(db, "order-other", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    appendOrderEvent(db, "order-other", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
     recordOrderCheck(
       db,
       "order-other",
