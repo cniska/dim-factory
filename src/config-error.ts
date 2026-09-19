@@ -5,7 +5,7 @@
  */
 export class ConfigError extends Error {
   constructor(
-    readonly kind: "parse" | "not-an-array" | "not-an-object" | "unwritable",
+    readonly kind: "parse" | "not-an-array" | "not-an-object" | "unwritable" | "absent",
     readonly path: string,
     message: string,
     readonly at?: string,

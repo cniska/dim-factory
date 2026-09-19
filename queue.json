@@ -3,6 +3,70 @@
   "id": "dim-factory",
   "items": [
     {
+      "id": "hook-version-marker",
+      "title": "An installed hook says which contract it was written against",
+      "description": "Carry a version marker in every hook command dim installs, read it back to tell an out-of-date hook from a missing one, and have the installer replace a stale entry rather than append beside it.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "claim-refuses-stale-gates",
+      "title": "A claim refuses when the gates are not installed",
+      "description": "Have dim order claim refuse to issue an order while the session hooks are missing or stale, so a run cannot proceed behind gates that will record nothing.",
+      "dependencies": ["hook-version-marker"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "commit-needs-order",
+      "title": "A factory worktree refuses a commit with no running order",
+      "description": "Refuse a commit made in a factory worktree while no order is running there, so work cannot land outside the record that is supposed to hold it.",
+      "dependencies": ["claim-refuses-stale-gates"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "post-commit-records-files",
+      "title": "post-commit writes the commit and its changed files",
+      "description": "Record the commit and each file it touched with the added and removed counts git show --numstat reports, so the order's file rows stop depending on a skill typing them.",
+      "dependencies": ["commit-needs-order"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "pre-commit-records-check",
+      "title": "pre-commit writes the check row it already runs",
+      "description": "Have the pre-commit gate record the command it ran and the code it exited with, since it already runs the repo's check and nothing writes that result.",
+      "dependencies": ["commit-needs-order"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "session-end-stops-orders",
+      "title": "An ended session stops the orders it held",
+      "description": "Make --session required on claim and have SessionEnd stop every order that session holds, so an abandoned run leaves no order running forever.",
+      "dependencies": ["claim-refuses-stale-gates"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "claim-moves-queue-item",
+      "title": "Claiming an order moves its queue item",
+      "description": "Have claim and stop write the queue item's transition in the same command, so the order record and the planner file cannot disagree about what is active.",
+      "dependencies": ["claim-refuses-stale-gates"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "stop-removes-worktree",
+      "title": "Whatever writes the claim makes the worktree",
+      "description": "Create the worktree and branch in the command that records them and remove the worktree when the order stops, so a claim can no longer name a path that never existed.",
+      "dependencies": ["claim-moves-queue-item"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
       "id": "external-benchmark",
       "title": "Score recall against LongMemEval",
       "description": "Port the LongMemEval dataset adapters so a published recall claim is measured against an external set rather than only the corpus-native one.",

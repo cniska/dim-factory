@@ -8,6 +8,26 @@ An item is listed here only while it needs a slice of its own. Anything fixable 
 
 The file expresses a blocker as a dependency and has no way to say that a decision is the owner's, so `dim queue ready` offers items from every section below, briefing whichever worker takes one off it (`worker-brief`). What stops one is this page: nothing under **Waiting on a judgment only the owner can record** or **Deliberately not next** is taken without the owner, and the order among the rest is the order they are argued in here.
 
+## The gates the skill still stands in for
+
+Every rule below is written in [`dim-factory`](../skills/dim-factory/SKILL.md) today, which means it holds when the skill was read and not otherwise. Each item here is a mechanism that holds it either way, and the instruction it replaces is deleted from that file in the same slice — a rule a gate holds is cut, not shortened ([`conventions.md`](conventions.md)). The chain runs in the order given, because each item rests on the one above it.
+
+- **An installed hook says which contract it was written against** (`hook-version-marker`)**.** A hook command is matched by its exact text, so one written against an older shape reads as missing and the installer adds the current one beside it: both fire, and the older one goes on writing whatever the bump was made to stop. A version marker in the command distinguishes an out-of-date hook from an absent one, and the installer writes over the entry it found.
+
+- **A claim refuses when the gates are not installed** (`claim-refuses-stale-gates`)**.** Everything the rest of this chain records is written by a hook, so a run started behind missing or stale hooks produces an order with no evidence under it and nothing says so until the record is read. `dim order claim` is where the run begins and is the one place that can stop it.
+
+- **A factory worktree refuses a commit with no running order** (`commit-needs-order`)**.** The pair to the read-only builder in **Held at the order**: the gate there cannot see work committed outside a claimed order, and this is what makes that work impossible rather than merely discouraged.
+
+- **`post-commit` writes the commit and its changed files** (`post-commit-records-files`)**.** `dim order commit` and `dim order file` are typed by a skill today, so a run that skipped a line leaves an order whose diff is smaller than what it landed. `git show --numstat` already holds the paths and the added and removed counts.
+
+- **`pre-commit` writes the check row it already runs** (`pre-commit-records-check`)**.** The gate runs the repository's declared check and throws the result away; `dim order check` asks a skill to retype it.
+
+- **An ended session stops the orders it held** (`session-end-stops-orders`)**.** `--session` is optional on a claim and unrecorded on every claim so far, so nothing can tell which orders an abandoned session was holding and a stranded order stays running forever. Making it required is what lets `SessionEnd` close them.
+
+- **Claiming an order moves its queue item** (`claim-moves-queue-item`)**.** Two commands with nothing binding them, so a claim that lands without its transition leaves the order record and the planner file disagreeing about what is active.
+
+- **Whatever writes the claim makes the worktree** (`stop-removes-worktree`)**.** A claim records a worktree path and a branch without creating either, and four recorded paths never existed on disk. The command that creates them is the one that can record them truthfully, and the one that stops the order is where the worktree goes.
+
 ## The measurement comes before any ranking change
 
 `q search` ranks by cosine, and `dim bench` now says how well: it answers roughly half the labeled questions and misses the rest outright ([`findings.md`](findings.md)). So a tuning below can be scored against that set rather than argued, which is the rule [`recall.md`](recall.md) sets for itself. What the set cannot yet say is whether cosine beats the keyword index it replaced, since only one of them is scored.
