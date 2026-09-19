@@ -12,8 +12,10 @@ import { diagnose } from "./doctor";
 import { downloadEmbedder, EMBED_DIMS, EMBED_MODEL, embedQuestion } from "./embed";
 import { buildIndex } from "./embed-index";
 import { createSchedule, setSchedulePaused } from "./factory-schedule";
+import { clearStop, FactoryStopError, pullStop } from "./factory-stop";
 import { serveWall } from "./factory-wall";
 import { type Finding, FindingError, findingFrom, recordFinding } from "./finding";
+import { readFlags, requiredFlag } from "./flags";
 import { committerName } from "./git-identity";
 import { installHooks, planHooks } from "./hooks";
 import { withLock } from "./lock";
@@ -96,6 +98,11 @@ const USAGE = `usage: dim <command>
                   record what a running order produced — a commit and its subject,
                   a file it changed, a check and its exit status, a finding and
                   how it was answered, a doc it updated
+  factory stop --reason "..." [--order <id>] [--by <who>]
+                  stop the whole floor taking new work, because the defect is in
+                  the machinery; orders already running are left to finish
+  factory clear [--by <who>]
+                  clear the live stop, so claims are taken again
   queue ready <file> [--limit <n>]
                   print planned items whose dependencies are completed
   queue transition <file> <item> <status> [--reason <text>] [--at <iso>]
@@ -690,6 +697,35 @@ function runSchedule(args: string[]): void {
   throw new Error("usage: dim schedule define|pause|resume ...");
 }
 
+const FACTORY_USAGE = `usage: dim factory stop --reason "..." [--order <id>] [--by <who>]
+       dim factory clear [--by <who>]`;
+
+const factoryFail = (message: string): Error => new FactoryStopError("usage", message);
+
+function runFactory(args: string[]): void {
+  const [action, ...rest] = args;
+  if (action !== "stop" && action !== "clear") {
+    throw new FactoryStopError("usage", `${action ?? "factory"} is not a factory subcommand`);
+  }
+  const given = readFlags(rest, action === "stop" ? ["--reason", "--order", "--by"] : ["--by"], factoryFail);
+  const db = openDb(dbPath());
+  try {
+    if (action === "stop") {
+      const stop = pullStop(db, {
+        reason: requiredFlag(given, "--reason", factoryFail),
+        by: given.get("--by"),
+        orderId: given.get("--order"),
+      });
+      console.log(`the factory is stopped by ${stop.pulledBy}: ${stop.reason}`);
+      return;
+    }
+    const cleared = clearStop(db, given.get("--by"));
+    console.log(`the factory is taking work again; the stop was: ${cleared.reason}`);
+  } finally {
+    closeDb(db);
+  }
+}
+
 async function runQuery(args: string[]): Promise<void> {
   const name = args[0];
   if (!name || name === "list") {
@@ -765,6 +801,9 @@ try {
       break;
     case "schedule":
       runSchedule(process.argv.slice(3));
+      break;
+    case "factory":
+      runFactory(process.argv.slice(3));
       break;
     case "wall":
       {
@@ -881,6 +920,11 @@ try {
   }
   // A caller that got the line wrong is shown the line, which a database error
   // reaching the same exit would only bury.
+  if (error instanceof FactoryStopError) {
+    warn(`dim: ${error.message}`);
+    if (error.code === "usage") warn(FACTORY_USAGE);
+    process.exit(1);
+  }
   if (error instanceof OrderCommandError) {
     warn(`dim: ${error.message}`);
     warn(ORDER_USAGE);
