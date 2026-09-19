@@ -6,14 +6,22 @@ import { integratedRepo } from "./fixtures.test-support";
 import { OrderCommandError, runOrderCommand } from "./order-command";
 import { SCHEMA_SQL } from "./schema";
 
+// Held so they close: an open handle is finalized by the runtime at exit instead, which is
+// where a suite that reported no failures panics anyway.
+const opened: Database[] = [];
+
 function db(): Database {
   const database = new Database(":memory:");
   database.run(SCHEMA_SQL);
+  opened.push(database);
   return database;
 }
 
 const trunk = integratedRepo();
-afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
+afterAll(() => {
+  for (const database of opened) database.close();
+  rmSync(trunk.dir, { recursive: true, force: true });
+});
 
 /** What the gate wants before an order may complete: a commit on the trunk, then a check that passed. */
 function landed(database: Database, orderId: string): void {

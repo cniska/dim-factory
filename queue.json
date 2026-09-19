@@ -531,6 +531,30 @@
       "transitions": []
     },
     {
+      "id": "worktree-install",
+      "title": "A new worktree installs what the manifest says it needs",
+      "description": "Run the package manager the manifest and lockfile name when dim wt creates a worktree, so an ordinary repo needs no setup hook before its check can pass.",
+      "dependencies": ["manifest-readers"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "manifest-readers",
+      "title": "The check is read off whatever manifest the repo keeps",
+      "description": "Read a check from pubspec.yaml beside package.json, mise.toml and Makefile, since a check is provable from the workspace and a repo should not restate what its manifest already says.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "check-reads-as-a-bit",
+      "title": "A check reads as green or not, never as a command",
+      "description": "Show whether a check ran and passed on the surfaces the owner reads, keeping the command itself in the record where a query can ask for it.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
       "id": "event-actor",
       "title": "Every moment says which agent it was",
       "description": "Write the actor on every order event rather than on three kinds of it, so an order's history names the planner, builder and reviewer that handled it.",
