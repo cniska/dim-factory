@@ -14,7 +14,7 @@ Apply [`dim-git`](../dim-git/SKILL.md) for the worktree ownership, commit eviden
 
 What makes this front different from [`dim-line-fix`](../dim-line-fix/SKILL.md) is the shape of the work rather than a preference. A feature in the owner's own repos touches 30 files against a fix's 10 ([`findings.md`](../../docs/findings.md)). Thirty files is not one slice, so the hard part here is the cut, and that is what phase 1 buys.
 
-## 1. Scope
+## Scope
 
 Find out what is already on disk before designing anything.
 
@@ -25,19 +25,19 @@ Find out what is already on disk before designing anything.
 
 If the queries came back empty, say that. An empty record is a fact about the work being new and is worth more written down than silently skipped.
 
-## 2. Cut it into slices
+## Cut it into slices
 
 A slice changes behavior, is checked on its own, and is committed on its own. Name them before editing, and name what checks each — the repo's own task, so that what runs locally is what CI runs.
 
 A slice that only makes sense once a later slice lands is not a slice. A branch of unverified slices is one slice with a long diff.
 
-## 3. Build them
+## Build them
 
 Hand off to [`dim-station-build`](../dim-station-build/SKILL.md) and follow it, one slice at a time: the repo's own task at the end of each, the simplification pass over that slice, the task again, one checking agent on the slice's diff, an answer to every finding it raises, then the commit, then the next.
 
 Where a slice turns out to be blocked, finish every other slice in full and say plainly what was left and why. Scaling the work down is the owner's call.
 
-## 4. Review the assembled change, where there was more than one slice
+## Review the assembled change, where there was more than one slice
 
 Each slice was checked against its own diff, and nothing has yet read them together — a contract two slices agreed on separately, or a shape that only went wrong once both landed, is invisible to a per-slice check. Invoke [`dim-station-review`](../dim-station-review/SKILL.md) over the range the slices span.
 

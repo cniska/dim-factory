@@ -6,6 +6,22 @@ argument-hint: "<queue item>"
 
 # Handoff
 
-Write the transfer a later station needs from the work and evidence you actually inspected. Output a title line in the form `# Handoff — <item_id> — <item name>`, followed by an `## Next` heading and one concrete action.
+Write what a later station needs, from the work and evidence you inspected yourself.
 
-The `# Handoff` and `## Next` headings are required. Use `## Next` for one action, not a recap. The item ID is canonical; the name is the queue's display name and is never invented here. Do not infer either or the next action from context that was not recorded. The receiving station queries the order report and its evidence with `dim`. The handoff transfers only the routing token. Output only the handoff.
+## Shape
+
+Two headings, both required, and nothing else in the output:
+
+```
+# Handoff — <item id> — <item title>
+## Next
+<one action>
+```
+
+- `## Next` holds one concrete action. It is not a recap of what happened.
+- The id is the item's own, and the title is the one the queue states it in. Neither is written from memory.
+- Anything the record does not hold is not in the handoff. An action inferred from what was merely discussed sends the next station somewhere nothing can confirm.
+
+## Why it is this short
+
+The receiving station reads the order report and its evidence with `dim`, so everything the handoff would repeat is already there and already true. What it cannot get on its own is which item it is on. That pointer is the whole job.

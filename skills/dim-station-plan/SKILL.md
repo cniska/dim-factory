@@ -52,6 +52,6 @@ The plan is done when it names:
 
 If all four queries came back empty, say that in the plan. An empty record is a fact about the work being new, and it is worth more written down than silently skipped.
 
-## What this cannot tell you
+## What the record cannot tell you
 
 The record is process: what was said, run, loaded and stopped. It cannot say whether any of it was right. `dim q prior-art` cannot tell a file that was got right from one that was abandoned, and a file copied between repos looks as settled as one that was worked out. Use it to find the reading, and do the reading.

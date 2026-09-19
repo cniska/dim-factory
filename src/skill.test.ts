@@ -32,6 +32,7 @@ describe("skill install", () => {
       "dim-handoff",
       "dim-line-feat",
       "dim-line-fix",
+      "dim-rules",
       "dim-simplify",
       "dim-station-build",
       "dim-station-plan",

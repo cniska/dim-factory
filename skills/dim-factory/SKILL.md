@@ -12,7 +12,7 @@ It is not a station. The stations are operations on a subject — scope, build, 
 
 That stopping rule is the substance of this file. The argument it serves is dim rather than dark: autonomous between the gates, a person at the gates that matter, each gate earning its automation separately rather than by fiat. A driver that decided that for itself would be answering the question the factory exists to ask.
 
-## 1. Check the floor
+## Check the floor
 
 - `dim q running` — another session live in this project is editing the same tree, and two builders on one working tree is the collision nothing recovers from. Name the session and stop.
 - `dim check-command` — what this repo declares as its check. **A repo declaring none cannot be worked here**, because the slice loop has nothing to run and a slice that cannot be checked cannot be committed. Say so and stop.
@@ -20,7 +20,7 @@ That stopping rule is the substance of this file. The argument it serves is dim 
 - Working tree clean, or there is uncommitted work that is not yours to land.
 - `dim wall` — the board is what the owner watches the run on, so it goes up before the first item is taken rather than after the fact. Print the address it names back to them and leave opening it to them; a wall already listening there is the one they have open, and the refusal saying so is the answer, not a reason to start a second. Working `dim-factory` itself, run `dim wall --dev`, which adds hot reload to the page the run may be editing.
 
-## 2. Find the queue
+## Find the queue
 
 A repo's queue is **read, never inferred** — the rule `dim check-command` already follows for the check, and it binds harder here, because working the wrong queue is the confident-and-wrong failure a person is at the gate for.
 
@@ -33,7 +33,7 @@ A repo's queue is **read, never inferred** — the rule `dim check-command` alre
 
 Reading a tracker is your own tools' business — `dim` holds no credential and reaches no network, and nothing here changes that.
 
-## 3. Take an item
+## Take an item
 
 Take the first item that is **unblocked and statable in one sentence**. A queue that marks its own blockers is telling you where to start; one that does not means reading enough of each item to know.
 
@@ -53,7 +53,7 @@ This is not the fan-out `dim-station-build` argues against. That rule keeps a si
 
 Give the builder the item as the queue states it, the repo's check, and the standing instruction to run its station's loop including the checking agent. Take back what it reports: the commits, the findings, what it left. A builder that returns without a commit and without saying why is a failed attempt, and the bound below counts it.
 
-## 4. Record the order
+## Record the order
 
 Every item taken is claimed before a builder sees it, started when the builder starts, and stopped once whatever happened. An item worked without a claim is work nobody watching can see, and a claim that never stops is a card left on the floor.
 
@@ -69,8 +69,8 @@ dim order move <order-id> --station <plan|build|review|ship>
 dim order stop <order-id> <completed|blocked|fenced|failed|abandoned> [--reason "..."]
 ```
 
-- The queue id and item id are what step 2 identified: a planner file's own `id` and the item's `id` in it, or the path or tracker query that named the queue and the item's identity there.
-- **The title, the statement and the ids come from the queue, not from you.** Against a planner file they are the `id`, `title` and `description` `dim queue ready` printed, passed through unedited; against a document or a tracker the statement is the one sentence step 3 required before the item could be taken. A claim that paraphrases an item records a second version of it.
+- The queue id and item id are what finding the queue identified: a planner file's own `id` and the item's `id` in it, or the path or tracker query that named the queue and the item's identity there.
+- **The title, the statement and the ids come from the queue, not from you.** Against a planner file they are the `id`, `title` and `description` `dim queue ready` printed, passed through unedited; against a document or a tracker the statement is the one sentence taking an item required before it could be taken. A claim that paraphrases an item records a second version of it.
 - **The title is the item's name, never its id.** It is what every card is read by; the ids are there for an agent to join on.
 - A planner file also holds the item's own state, so the item moves as the order does: `dim queue transition <file> <item> claimed` before the builder, `running` when it starts, and `completed`, `blocked`, `fenced` or `failed` at the end, with `--reason` wherever the order stopped for one. An item dropped before a builder started it is `cancelled`. Every one of those five is terminal and refused a further transition, the way a stopped order is, so an item recorded `blocked` leaves `ready` until someone edits the file — record it only where that is what you mean.
 - Naming the branch is yours, because the claim records it before the builder exists. `dim wt path <branch>` prints where that worktree will be without creating it, so the claim carries the location the builder then makes.
@@ -79,7 +79,7 @@ dim order stop <order-id> <completed|blocked|fenced|failed|abandoned> [--reason 
 - Record evidence as it happens, not at the end: `dim order commit`, `dim order file`, `dim order check`, `dim order finding` and `dim order document` each take the order id and what was produced. `dim order file` takes `--added` and `--removed` straight from `git diff --numstat`, which is where the card's `+/−` comes from; pass the `-` numstat gives a binary file through as it stands rather than counting it zero. An order that records nothing leaves a card with nothing on it; `dim q factory <order-id-prefix>` reads back what was recorded.
 - **Stop exactly once, whatever happened**: the item landed (`completed`), it waits on something else (`blocked`), a fence stopped it (`fenced`, with the shape as the reason), the builder failed or returned nothing it could explain (`failed`), or it was dropped (`abandoned`). A stopped order is refused a second lifecycle event, so a retry is a new order id. `dim order stop <order> completed` is refused unless a check recorded after the order's last commit passed and that commit reaches the trunk — the gate reads git out of the order's own worktree, so merge the work, then stop the order, then remove the worktree; removing it first makes completion impossible.
 
-## 5. The fence
+## The fence
 
 Three shapes stop a run wherever they are met, including partway into an item that read as ready:
 
@@ -91,7 +91,7 @@ A queue may draw its own fence on top of these — a section its rules file mark
 
 Stopping means writing down what was found, leaving the item where it was, naming which shape stopped it, and stopping the order as `fenced` with that shape as the reason. Waiting for permission mid-run is not running unattended; deciding one of these alone is what the fence exists to prevent.
 
-## 6. Keep the line moving
+## Keep the line moving
 
 **Work the queue until it is empty.** Take the next item the moment one lands, and do not come back between items to say a thing went well — a line that halts after every order is not running, and a report per item is the report at the end read one piece at a time.
 
@@ -106,7 +106,7 @@ Four things stop it, and nothing else does:
 
 A failed attempt usually leaves the queue exactly as it was, so nothing but these keeps a run from taking the same item forever.
 
-## 7. Report
+## Report
 
 Per item, landed or not:
 
