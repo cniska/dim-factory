@@ -27,7 +27,7 @@ The useful comparison is the boundary between the shared mechanism and the diffe
 | StrongDM pattern | This repo's counterpart | Status here |
 |---|---|---|
 | Seed | A queue item routed through the line, with the repository's rules and declared check as its constraints | Live in [`factory.md`](factory.md) and [`build-order.md`](build-order.md) |
-| Shift work | The driver passes an item and base revision; an isolated worker owns the line or station run | Live in [`factory.md`](factory.md) |
+| Shift work | The operator passes an item and base revision; an isolated worker owns the line or station run | Live in [`factory.md`](factory.md) |
 | Validation harness and feedback loop | Repo checks, read-only review, persisted findings, and the factory stop conditions | Live in the line and station contracts; the evidence is recorded in the session database |
 | Holdout scenarios and satisfaction | Not the same as the current repository checks; this is application-level behavioral validation | Not adopted as a factory-wide contract |
 | Digital Twin Universe | A possible application-specific test fixture, not a requirement of the session factory | Not adopted |

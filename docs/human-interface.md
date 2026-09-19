@@ -1,6 +1,6 @@
 # Human interface
 
-The factory's human interface is a local, read-only wall that makes current work, risk and progress clear without requiring a conversation with the driver.
+The factory's human interface is a local, read-only wall that makes current work, risk and progress clear without requiring a conversation with the operator.
 
 ## The wall
 
@@ -73,7 +73,7 @@ A card states what its column does not. A value repeated down a whole column is 
 
 The title is the one thing a card may not lose, so it wraps to a second line rather than being cut, and stops there: two rows of the card's rhythm hold the titles a queue writes and keep one long title from growing its card past its neighbors. An invariant the lifecycle guarantees is the same rule one level up: a completed order's check passed, so a done card says nothing about checks. The one piece of evidence a card carries is a working order's failed checks, one mark each, because an order failing its check repeatedly is struggling and that is what the owner would otherwise have to open the item view to see. Everything else the order accrued — its commits, files, findings, checks and history — is reading rather than glancing, and lives in the item view.
 
-That an outcome implies a green check is a rule the board leans on and nothing enforces: the driver records `completed` itself and could record it over a red check. [`build-order.md`](build-order.md) carries the gate that would hold it.
+That an outcome implies a green check is a rule the board leans on and nothing enforces: the operator records `completed` itself and could record it over a red check. [`build-order.md`](build-order.md) carries the gate that would hold it.
 
 An order the owner has to answer — blocked, fenced or failed — is ranked above the moving work before a column is bounded, so it holds its place on the board and a column read from the top reads as what needs a person and then as what is in flight. A stopped order records nothing further, so ordering by silence alone would sink it under everything still running and a bound would drop it first.
 

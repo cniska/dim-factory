@@ -74,7 +74,7 @@ The stations are:
 - **`dim-station-build`** — run the check, simplify the slice, obtain a read-only check, answer findings and commit.
 - **`dim-station-review`** — review a completed diff dimension by dimension without editing it.
 
-`dim-factory` is the driver above the line: it reads a queue, chooses an unblocked item and routes it to the right entry point.
+`dim-factory` is the operator above the line: it reads a queue, chooses an unblocked item and routes it to the right entry point.
 
 See [The factory](factory.md) for order ownership, reports, queue planning and the human gates.
 

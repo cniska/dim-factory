@@ -15,7 +15,7 @@ export const TIERS: Tier[] = ["cheap", "standard", "deep"];
  * where the line stops.
  */
 export const ROLE_TIERS = {
-  driver: "deep",
+  operator: "deep",
   planner: "deep",
   builder: "standard",
   simplifier: "standard",

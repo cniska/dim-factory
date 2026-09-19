@@ -10,7 +10,7 @@ What starts the work. Every station is handed a subject; this reads the repo's q
 
 It is not a station. The stations are operations on a subject — scope, build, check — and this runs the line above them, which is why it decides nothing about how work is done and everything about which work is started and when to stop.
 
-That stopping rule is the substance of this file. The argument it serves is dim rather than dark: autonomous between the gates, a person at the gates that matter, each gate earning its automation separately rather than by fiat. A driver that decided that for itself would be answering the question the factory exists to ask.
+That stopping rule is the substance of this file. The argument it serves is dim rather than dark: autonomous between the gates, a person at the gates that matter, each gate earning its automation separately rather than by fiat. An operator that decided that for itself would be answering the question the factory exists to ask.
 
 ## Check the floor
 
