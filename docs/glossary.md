@@ -25,6 +25,7 @@ The words this repo uses for the factory and its record. One word per thing, def
 | Term | Definition |
 |---|---|
 | Claim | The moment a worker takes a queued order, recording the run, the worker and the station. It is also the start, because the order already existed |
+| Ship | Landing a working order's own commits on the repo's trunk without rewriting them — `dim order ship`, under the factory lock. What it means differs per repo: this one merges locally, another opens a pull request; a repo that landed is the only fact `dim order stop <order> completed` reads, not whether `ship` ran |
 | Evidence | What an order produced, recorded as it happens: commits, changed files, checks and their exit status, findings and how each was answered, and the documents it updated |
 | Finding | Something a checking agent raised on a slice, ending either fixed or refused with the grounds the refusal rested on |
 | Done | An order whose check passed on its final commit, whose findings were all answered, whose docs changed with the behavior, whose commits are on the trunk, and whose worktree is gone |
