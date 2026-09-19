@@ -16,6 +16,7 @@ import type {
   WallSnapshot,
 } from "./factory-wall";
 import { cn } from "./lib/utils";
+import { msUntilNextMinute } from "./minute-beat";
 import { FAILURE_MARKS_SHOWN, ordersByStage, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
 import { ITEM_KIND_LABELS, RAIL_MARK_GLYPH, type RailStop, railStops, shortSha } from "./wall-item";
 import "./wall.css";
@@ -494,7 +495,7 @@ function BoardColumn({
         <h2 id={id} className="text-lg tracking-tight">
           {label}
         </h2>
-        <span className="text-lg text-muted-foreground tabular-nums">
+        <span className="text-lg text-quiet tabular-nums">
           <Digits value={String(total)} />
         </span>
       </header>
@@ -643,13 +644,30 @@ function useItemView(orderId: string, movedAt: string): ItemRead {
   return read;
 }
 
-/** A clock the board reads, so every age advances on the same beat. */
-function useNow(): Date {
+/**
+ * A clock the board reads, so every age advances on the same beat.
+ *
+ * `freshAt` is the last answer the feed gave: a board left on a screen is a tab nobody has
+ * touched, whose timers the browser throttles or stops outright, so a snapshot arriving after
+ * that would otherwise be drawn against a clock as stale as the data it replaced.
+ */
+function useNow(freshAt: number | null): Date {
   const [now, setNow] = useState(() => new Date());
+  const [read, setRead] = useState(freshAt);
+
+  if (freshAt !== read) {
+    setRead(freshAt);
+    setNow(new Date());
+  }
 
   useEffect(() => {
-    const tick = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(tick);
+    let timer = 0;
+    const beat = () => {
+      setNow(new Date());
+      timer = window.setTimeout(beat, msUntilNextMinute(Date.now()));
+    };
+    timer = window.setTimeout(beat, msUntilNextMinute(Date.now()));
+    return () => window.clearTimeout(timer);
   }, []);
 
   return now;
@@ -657,7 +675,7 @@ function useNow(): Date {
 
 function App() {
   const { snapshot, stale, unavailable, answered, lastMessage, bumped } = useSnapshot();
-  const now = useNow();
+  const now = useNow(lastMessage);
   const [opened, setOpened] = useState<WallOrder | null>(null);
   const feed = feedStateOf(unavailable, stale);
   const FeedIcon = FEED_ICON[feed];
@@ -692,7 +710,7 @@ function App() {
           <FeedIcon size={15} aria-hidden="true" />
           <span>{FEED_LABEL[feed]}</span>
           {lastMessage ? (
-            <span className="text-quiet">· {timeLabel(new Date(lastMessage).toISOString())}</span>
+            <span className="text-quiet">· {age(new Date(lastMessage).toISOString(), now)}</span>
           ) : null}
         </div>
       </header>
