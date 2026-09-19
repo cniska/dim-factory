@@ -2,7 +2,21 @@ import type { Database } from "bun:sqlite";
 import { reachesTrunk } from "./trunk";
 import type { WorkerHookReport } from "./worker-environment";
 
-export type OrderStatus = "claimed" | "working" | "completed" | "blocked" | "fenced" | "failed" | "abandoned";
+/**
+ * What state the order is in. `claimed` is an event and not one of these: the act
+ * of claiming leaves the order waiting for the worker that will start it.
+ */
+export const ORDER_STATUSES = [
+  "waiting",
+  "working",
+  "completed",
+  "blocked",
+  "fenced",
+  "failed",
+  "abandoned",
+] as const;
+
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export type OrderEventKind =
   | "claimed"
   | "delegated"
@@ -111,7 +125,7 @@ export function createOrder(db: Database, order: Order, at = now()): void {
     db.run(
       `INSERT INTO factory_order
        (id, run_id, queue_id, item_id, title, description, agent_id, role, session_id, worktree, branch, station, status, claimed_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'claimed', ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?)`,
       [
         order.id,
         order.runId,
@@ -145,7 +159,7 @@ export function updateOrderLocation(db: Database, orderId: string, worktree: str
   } | null;
   if (!order) throw new Error(`order not found: ${orderId}`);
   const status = orderStatus(db, orderId);
-  if (status !== "claimed" && status !== "working") {
+  if (status !== "waiting" && status !== "working") {
     throw new Error(`order ${orderId} is already terminal`);
   }
   if (order.worktree && (order.worktree !== worktree || order.branch !== branch)) {
@@ -200,7 +214,7 @@ function appendOrderEventInTransaction(db: Database, orderId: string, event: Ord
     throw new Error(`order ${orderId} is already ${order.status}`);
   }
   if (event.kind !== "claimed") {
-    if (event.kind === "started" && order.status !== "claimed") {
+    if (event.kind === "started" && order.status !== "waiting") {
       throw new Error(`order ${orderId} must be claimed before it can start`);
     }
     const mayStopBeforeWorking =
@@ -429,6 +443,6 @@ function assertOrderWorking(db: Database, orderId: string): void {
   // A claimed order is short of the point that takes evidence rather than past it,
   // and this refusal is read by whoever typed the command.
   throw new Error(
-    status === "claimed" ? `order ${orderId} has not started` : `order ${orderId} is already ${status}`,
+    status === "waiting" ? `order ${orderId} has not started` : `order ${orderId} is already ${status}`,
   );
 }

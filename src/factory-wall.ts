@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
 import { age } from "./age";
-import type { OrderEventKind } from "./factory-order";
+import { ORDER_STATUSES, type OrderEventKind, type OrderStatus } from "./factory-order";
 import { dbPath, tildePath } from "./paths";
 import { openReadOnly } from "./read-db";
 import wallPage from "./wall.html";
@@ -15,7 +15,6 @@ export type WallStation = "plan" | "build" | "review" | "ship" | "unknown";
  * what keeps the two from being one list.
  */
 export type WallStage = "todo" | "active" | "done";
-export type WallStatus = "working" | "waiting" | "blocked" | "fenced" | "completed" | "failed" | "abandoned";
 export type WallRole = "builder" | "reviewer" | "planner" | "unknown";
 
 export type WallOrder = {
@@ -29,7 +28,7 @@ export type WallOrder = {
   /** What the floor calls this worker, so a card never shows an internal identity. */
   worker?: string;
   role: WallRole;
-  status: WallStatus;
+  status: OrderStatus;
   age: string;
   /** When the order last recorded an event. An order's age on the board is its silence, so it counts
    *  from the last thing that happened rather than from the claim. */
@@ -117,17 +116,9 @@ const ORDER_ROW_SELECT = `SELECT o.id, o.item_id, o.title, o.agent_id, o.role, o
        FROM factory_order o
        LEFT JOIN factory_order_event e ON e.id = (SELECT e2.id FROM factory_order_event e2 WHERE e2.order_id = o.id ORDER BY e2.ts DESC, e2.id DESC LIMIT 1)`;
 
-const wallStatusByOrderStatus: Record<string, WallStatus> = {
-  claimed: "waiting",
-  working: "working",
-  blocked: "blocked",
-  fenced: "fenced",
-  completed: "completed",
-  failed: "failed",
-  abandoned: "abandoned",
-};
+const WALL_STATUSES = new Set<string>(ORDER_STATUSES);
 
-const stageByStatus: Record<WallStatus, WallStage> = {
+const stageByStatus: Record<OrderStatus, WallStage> = {
   waiting: "todo",
   working: "active",
   blocked: "active",
@@ -137,7 +128,7 @@ const stageByStatus: Record<WallStatus, WallStage> = {
   abandoned: "done",
 };
 
-const attentionStatuses = new Set<WallStatus>(["blocked", "fenced", "failed", "abandoned"]);
+const attentionStatuses = new Set<OrderStatus>(["blocked", "fenced", "failed", "abandoned"]);
 
 // An order is claimed with whatever word the caller passed, and a line or a typo is not a station.
 // Naming one of the four for a value that is none of them puts a card at a station nobody sent
@@ -166,10 +157,10 @@ function role(value: string | null): WallRole {
   return value === "planner" || value === "builder" || value === "reviewer" ? value : "unknown";
 }
 
-function status(value: string): WallStatus {
-  const mapped = wallStatusByOrderStatus[value];
-  if (!mapped) throw new Error(`unknown factory order status: ${value}`);
-  return mapped;
+/** The column is text, so a status this build does not know is refused rather than drawn. */
+function status(value: string): OrderStatus {
+  if (!WALL_STATUSES.has(value)) throw new Error(`unknown factory order status: ${value}`);
+  return value as OrderStatus;
 }
 
 function mapOrder(row: OrderRow, now: Date): WallOrder {
