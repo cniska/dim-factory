@@ -15,13 +15,14 @@ That stopping rule is the substance of this file. The argument it serves is dim 
 ## 1. Check the floor
 
 - `dim q running` — another session live in this project is editing the same tree, and two builders on one working tree is the collision nothing recovers from. Name the session and stop.
-- `dim check-task` — what this repo declares as its check. **A repo declaring none cannot be worked here**, because the slice loop has nothing to run and a slice that cannot be checked cannot be committed. Say so and stop.
+- `dim check-command` — what this repo declares as its check. **A repo declaring none cannot be worked here**, because the slice loop has nothing to run and a slice that cannot be checked cannot be committed. Say so and stop.
 - `dim doctor` — a warn on the commit gate means nothing refuses an unchecked commit in a run nobody is watching.
 - Working tree clean, or there is uncommitted work that is not yours to land.
+- `dim wall` — the board is what the owner watches the run on, so it goes up before the first item is taken rather than after the fact. Print the address it names back to them and leave opening it to them; a wall already listening there is the one they have open, and the refusal saying so is the answer, not a reason to start a second. Working `dim-factory` itself, run `dim wall --dev`, which adds hot reload to the page the run may be editing.
 
 ## 2. Find the queue
 
-A repo's queue is **read, never inferred** — the rule `dim check-task` already follows for the check command, and it binds harder here, because working the wrong queue is the confident-and-wrong failure a person is at the gate for.
+A repo's queue is **read, never inferred** — the rule `dim check-command` already follows for the check, and it binds harder here, because working the wrong queue is the confident-and-wrong failure a person is at the gate for.
 
 1. **The argument is the queue**, when one is given. `/dim-factory queue.json` works that planner file, `/dim-factory docs/backlog.md` works that document, and a tracker query works those issues. Nothing is discovered and nothing else is read as a queue.
 2. **Otherwise the repo declares it**, in its `AGENTS.md` or `CLAUDE.md`: a Linear team or project, an issue label, a path.

@@ -1,7 +1,14 @@
 import { statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { checkoutRoot } from "./checkout";
-import { checkTask, declaredTasks, formatTask, packageManager, readManifest, type Task } from "./tasks";
+import {
+  checkCommand,
+  declaredCommands,
+  formatCommand,
+  packageManager,
+  readManifest,
+  type WorkspaceCommand,
+} from "./workspace-commands";
 import { worktreeOf } from "./worktree";
 
 export type WorkspaceMember = { path: string; source: string };
@@ -21,9 +28,9 @@ export type WorkspaceContract = {
   ecosystems: string[];
   packageManagers: string[];
   members: WorkspaceMember[];
-  tasks: Task[];
-  checkTask: Task | null;
-  formatTask: Task | null;
+  commands: WorkspaceCommand[];
+  checkCommand: WorkspaceCommand | null;
+  formatCommand: WorkspaceCommand | null;
   bootstrap: Declaration<string[]> | null;
   capabilities: { format: boolean; analyze: boolean; test: boolean };
   services: Declaration<string[]> | null;
@@ -135,8 +142,8 @@ function declaredEnvironment(root: string): Declaration<string[]> | null {
   return null;
 }
 
-function declaredCapability(tasks: Task[], names: string[]): boolean {
-  return tasks.some((task) => names.includes(task.name));
+function declaredCapability(commands: WorkspaceCommand[], names: string[]): boolean {
+  return commands.some((one) => names.includes(one.name));
 }
 
 function gitBranch(root: string): string | null {
@@ -162,7 +169,7 @@ function hook(root: string, name: string): WorkerHook | null {
 export function workspaceContract(dir: string): WorkspaceContract | null {
   const root = checkoutRoot(resolve(dir));
   if (root === null) return null;
-  const tasks = declaredTasks(root);
+  const commands = declaredCommands(root);
   const pubspec = pubspecFacts(root);
   const hasPackageJson = readManifest(join(root, "package.json")) !== null;
   const manager = packageManager(root);
@@ -178,14 +185,14 @@ export function workspaceContract(dir: string): WorkspaceContract | null {
     ecosystems,
     packageManagers,
     members: pubspec?.members ?? [],
-    tasks,
-    checkTask: checkTask(root),
-    formatTask: formatTask(root),
+    commands,
+    checkCommand: checkCommand(root),
+    formatCommand: formatCommand(root),
     bootstrap,
     capabilities: {
-      format: declaredCapability(tasks, ["format", "fmt"]),
-      analyze: declaredCapability(tasks, ["analyze", "analyse"]),
-      test: declaredCapability(tasks, ["test", "tests"]),
+      format: declaredCapability(commands, ["format", "fmt"]),
+      analyze: declaredCapability(commands, ["analyze", "analyse"]),
+      test: declaredCapability(commands, ["test", "tests"]),
     },
     services: declaredServices(root),
     requiredEnvironment: declaredEnvironment(root),

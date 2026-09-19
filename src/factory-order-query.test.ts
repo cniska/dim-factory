@@ -84,7 +84,7 @@ describe("factory order query", () => {
     expect(result?.columns).toEqual([
       "queue",
       "item",
-      "order",
+      "order_id",
       "status",
       "latest_event",
       "latest_event_at",

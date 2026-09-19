@@ -33,8 +33,8 @@ describe("workspace contract", () => {
 
     expect(contract.checkoutRoot).toBe(root);
     expect(contract.packageManagers).toEqual(["bun"]);
-    expect(contract.checkTask).toBeNull();
-    expect(contract.formatTask?.command).toBe("bun run format");
+    expect(contract.checkCommand).toBeNull();
+    expect(contract.formatCommand?.command).toBe("bun run format");
     expect(contract.worktree.path).toBe(root);
     expect(contract.languages).toEqual(["javascript"]);
     expect(contract.ecosystems).toEqual(["node"]);

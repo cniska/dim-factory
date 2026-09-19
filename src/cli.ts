@@ -30,12 +30,12 @@ import { DEFAULT_WINDOW, windowFromArgs } from "./since";
 import { installSkill, planSkill, SKILL_NAMES } from "./skill";
 import { ensureSpoolDirs } from "./spool";
 import { rebuild, type SyncReport, sync } from "./sync";
-import { checkTask } from "./tasks";
 import { trace } from "./trace";
 import { readWake, renderWake, type Wake, wireFor } from "./wake";
 import { resolveWalk, spoolWalk } from "./walk";
 import { DEFAULT_WALL_PORT, WALL_PORT_ENV, WallPortError, wallPort } from "./wall-port";
 import { warn } from "./warn";
+import { checkCommand } from "./workspace-commands";
 import { runWt, WtError } from "./wt-command";
 
 const USAGE = `usage: dim <command>
@@ -61,7 +61,7 @@ const USAGE = `usage: dim <command>
   wt              parallel-task worktrees, one per agent; dim wt for usage
   wake            the one thing a cold start here cannot work out: what the last
                   session in this directory left as Next (for the SessionStart hook)
-  check-task      print the check command this repo declares, and nothing if it
+  check-command   print the check command this repo declares, and nothing if it
                   declares none or this is not a checkout (the pre-commit hook
                   reads this, and takes silence as no gate)
   route [<role>]  print the capability tier a factory role runs at and what this
@@ -832,14 +832,14 @@ try {
     case "wake":
       await runWake(process.argv.slice(3));
       break;
-    case "check-task":
-      // The pre-commit hook asks this; silence means no declared task and no gate.
+    case "check-command":
+      // The pre-commit hook asks this; silence means nothing declared and no gate.
       // Git runs a hook at the toplevel, but a person types this wherever they
       // are, and the answer is the repo's rather than the directory's.
       {
         const root = checkoutRoot(process.cwd());
-        const task = root === null ? null : checkTask(root);
-        if (task) console.log(task.command);
+        const declared = root === null ? null : checkCommand(root);
+        if (declared) console.log(declared.command);
       }
       break;
     case "route":
@@ -852,7 +852,10 @@ try {
       await runBenchCommand(process.argv.slice(3));
       break;
     default:
-      console.log(USAGE);
+      // To stderr, because a subcommand that does not exist must put nothing on
+      // stdout: the pre-commit hook evaluates what `dim check-command` prints,
+      // and a usage blob arriving there is a gate running the help text.
+      warn(USAGE);
       process.exit(1);
   }
 } catch (error) {

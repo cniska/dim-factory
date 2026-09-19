@@ -10,7 +10,7 @@ Files use a domain-concern name where the boundary is useful: `factory-order.ts`
 
 | Group | Files | Responsibility |
 | --- | --- | --- |
-| CLI and commands | `cli.ts`, `tasks.ts`, `wt-command.ts` | Parse commands and connect them to operations |
+| CLI and commands | `cli.ts`, `workspace-commands.ts`, `wt-command.ts` | Parse commands and connect them to operations |
 | Collection | `claude-source.ts`, `codex-source.ts`, `parse-*.ts`, `ingest.ts`, `sync.ts` | Read session sources and persist normalized records |
 | Database | `db.ts`, `schema.ts`, `rebuild.ts`, `read-db.ts`, `session-records.ts` | Open, rebuild and write the SQLite store |
 | Retrieval | `distilled.ts`, `embed*.ts`, `queries.ts`, `render.ts`, `rank-metrics.ts` | Distill, index, query and render the record |

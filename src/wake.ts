@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { checkoutRoot } from "./checkout";
-import { checkTask, formatTask } from "./tasks";
 import type { Tool } from "./tools";
+import { checkCommand, formatCommand } from "./workspace-commands";
 
 /**
  * Claude Code adds a SessionStart hook's plain-text stdout to the session as
@@ -67,16 +67,16 @@ export function wireFor(tool: Tool, block: string): string {
 /**
  * What the repo declares, in one line. A cold start can reach these by opening a
  * manifest, which costs a tool call and its output — more than the line costs,
- * which is the whole test for what goes in here. Running the declared task is
- * what makes a local check the check CI runs, so nothing here is derived from
+ * which is the whole test for what goes in here. Running what the repo declares
+ * is what makes a local check the check CI runs, so nothing here is derived from
  * the tool underneath the script.
  */
 export function projectLine(dir: string): string {
   const repo = checkoutRoot(dir);
   if (repo === null) return "";
   const declared: string[] = [];
-  const check = checkTask(repo);
-  const format = formatTask(repo);
+  const check = checkCommand(repo);
+  const format = formatCommand(repo);
   if (check) declared.push(`check \`${check.command}\``);
   if (format) declared.push(`format \`${format.command}\``);
   return declared.length === 0 ? "" : `This repo declares: ${declared.join(", ")}.`;
@@ -84,7 +84,7 @@ export function projectLine(dir: string): string {
 
 /**
  * Empty when there is nothing a cold start does not already know: silence costs
- * no tokens. A repo that declares a task is never silent, because that line is
+ * no tokens. A repo that declares a check is never silent, because that line is
  * worth reading whether or not a session left anything behind.
  */
 export function renderWake(wake: Wake | null, repo: string): string {

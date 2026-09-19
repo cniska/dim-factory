@@ -28,13 +28,13 @@ export function readManifest(path: string): string | null {
 }
 
 /**
- * What a repo says to run, read rather than inferred. Running the repo's own
- * task is what makes a local check the same check CI runs, so a detector that
+ * What a repo says to run, read rather than inferred. Running what the workspace
+ * declares is what makes a local check the same check CI runs, so a detector that
  * reaches past the declared script to the tool underneath would name
  * `biome check` where the repo's script is `biome format`, and `bun test` where
  * the gate is `bun run verify`.
  */
-export type Task = { name: string; command: string; source: string };
+export type WorkspaceCommand = { name: string; command: string; source: string };
 
 /** The lock file names the package manager; the manifest alone does not. */
 const LOCKS: [string, string][] = [
@@ -50,7 +50,7 @@ export function packageManager(repo: string): string | null {
   return null;
 }
 
-function fromPackageJson(repo: string): Task[] {
+function fromPackageJson(repo: string): WorkspaceCommand[] {
   const text = readManifest(join(repo, "package.json"));
   if (text === null) return [];
   let scripts: Record<string, unknown>;
@@ -71,7 +71,7 @@ function fromPackageJson(repo: string): Task[] {
   }));
 }
 
-function fromMise(repo: string): Task[] {
+function fromMise(repo: string): WorkspaceCommand[] {
   const text = readManifest(join(repo, "mise.toml"));
   if (text === null) return [];
   let parsed: { tasks?: Record<string, unknown> };
@@ -90,27 +90,27 @@ function fromMise(repo: string): Task[] {
 /** A target is a line-initial name before a colon; `.PHONY` and pattern rules are not targets. */
 const MAKE_TARGET = /^([A-Za-z][\w-]*)\s*:(?!=)/;
 
-function fromMakefile(repo: string): Task[] {
+function fromMakefile(repo: string): WorkspaceCommand[] {
   const text = readManifest(join(repo, "Makefile"));
   if (text === null) return [];
-  const tasks: Task[] = [];
+  const commands: WorkspaceCommand[] = [];
   const seen = new Set<string>();
   for (const line of text.split("\n")) {
     const name = MAKE_TARGET.exec(line)?.[1];
     if (name && !seen.has(name)) {
       seen.add(name);
-      tasks.push({ name, command: `make ${name}`, source: "Makefile" });
+      commands.push({ name, command: `make ${name}`, source: "Makefile" });
     }
   }
-  return tasks;
+  return commands;
 }
 
-export function declaredTasks(repo: string): Task[] {
+export function declaredCommands(repo: string): WorkspaceCommand[] {
   return [...fromPackageJson(repo), ...fromMise(repo), ...fromMakefile(repo)];
 }
 
 /**
- * The one task that stands for "this change is sound". Named in preference
+ * The one command that stands for "this change is sound". Named in preference
  * order, because a repo that declares both `verify` and `test` means the wider
  * one — `bun run verify` here runs lint, types, tests and the shell suite, and
  * gating on `test` alone would pass a change that does not compile.
@@ -124,19 +124,19 @@ const CHECK_ORDER = ["verify", "check", "ci", "validate", "test"];
  */
 const FORMAT_ORDER = ["format", "fmt"];
 
-function firstDeclared(repo: string, order: string[]): Task | null {
-  const tasks = declaredTasks(repo);
+function firstDeclared(repo: string, order: string[]): WorkspaceCommand | null {
+  const commands = declaredCommands(repo);
   for (const name of order) {
-    const found = tasks.find((t) => t.name === name);
+    const found = commands.find((one) => one.name === name);
     if (found) return found;
   }
   return null;
 }
 
-export function checkTask(repo: string): Task | null {
+export function checkCommand(repo: string): WorkspaceCommand | null {
   return firstDeclared(repo, CHECK_ORDER);
 }
 
-export function formatTask(repo: string): Task | null {
+export function formatCommand(repo: string): WorkspaceCommand | null {
   return firstDeclared(repo, FORMAT_ORDER);
 }

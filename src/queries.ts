@@ -1202,7 +1202,7 @@ const factory: Query = {
     const filter = arg ? "WHERE o.id LIKE ? || '%'" : "";
     const found = table(
       db,
-      `SELECT o.queue_id AS queue, o.item_id AS item, o.id AS "order", o.status,
+      `SELECT o.queue_id AS queue, o.item_id AS item, o.id AS order_id, o.status,
               (SELECT e.kind FROM factory_order_event e
                WHERE e.order_id = o.id ORDER BY e.ts DESC, e.id DESC LIMIT 1) AS latest_event,
               (SELECT e.ts FROM factory_order_event e
@@ -1232,7 +1232,7 @@ const factory: Query = {
     const columns = [
       "queue",
       "item",
-      "order",
+      "order_id",
       "status",
       "latest_event",
       "latest_event_at",
@@ -2218,8 +2218,8 @@ const slices: Query = {
       note:
         records.length === 0
           ? "no commit was made through a shell call in this window"
-          : "A check is the exact command recorded from the repository's declared task; a repository with no " +
-            "declared task reads as undeclared. `checked` means a check ran in the same session since the " +
+          : "A check is the exact command the repository declares; a repository that declares none " +
+            "reads as undeclared. `checked` means a check ran in the same session since the " +
             "previous commit, never that it passed — a failing run and a passing one look alike here. " +
             "This observes; `dim install-commit-gate` is what enforces.",
     };
