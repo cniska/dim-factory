@@ -162,6 +162,8 @@ describe("workspace contract", () => {
         "# Copy to .env and fill in.",
         "SUPABASE_URL=http://127.0.0.1:54321",
         "",
+        // Shaped like a key but matching no scanner's pattern: a fixture that reads as a live
+        // credential is one a push protection rule blocks, and the test is about the name only.
         "export STRIPE_SECRET_KEY=placeholder-value-never-recorded",
         "  SPACED_NAME = value",
         "SUPABASE_URL=repeated",
@@ -175,7 +177,7 @@ describe("workspace contract", () => {
       value: ["SUPABASE_URL", "STRIPE_SECRET_KEY", "SPACED_NAME"],
       source: ".env.example",
     });
-    expect(JSON.stringify(contract)).not.toContain("sk_live_51");
+    expect(JSON.stringify(contract)).not.toContain("placeholder-value-never-recorded");
     expect(JSON.stringify(contract)).not.toContain("54321");
   });
 
