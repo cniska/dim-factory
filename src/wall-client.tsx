@@ -291,20 +291,10 @@ function ItemChanges({ changes }: { changes: WallItemChange[] }) {
   );
 }
 
-/** A worker as a moment names it, falling back to the worker the order is held by. Only the
+/** A worker as a moment names it, and nothing where the record names none. Only the
  *  order's own worker takes its role's tint: a delegated agent's role is not recorded, so tinting
  *  it would state a role nothing holds. */
-function EntryWorker({
-  stop,
-  order,
-  held,
-}: {
-  stop: RailStop | undefined;
-  order: WallOrder;
-  /** The worker every unattributed moment belongs to, or nothing where the order delegated: a
-   *  delegated moment records no actor either, and the holder would be the wrong name on it. */
-  held: string | undefined;
-}) {
+function EntryWorker({ stop, order }: { stop: RailStop | undefined; order: WallOrder }) {
   const marker = (worker: string) => (
     <>
       <Robot
@@ -319,7 +309,7 @@ function EntryWorker({
     </>
   );
 
-  const worker = stop?.worker ?? held;
+  const worker = stop?.worker;
   if (!worker && !stop?.handedTo) return <span />;
 
   return (
@@ -342,10 +332,6 @@ function EntryWorker({
  *  reads down the page on its own. */
 function ItemHistory({ entries, order }: { entries: WallItemEntry[]; order: WallOrder }) {
   const stops = railStops(entries);
-  // Only a claim, a start and a delegation record an actor, so every other moment of an
-  // undelegated order belongs to the worker holding it. Once one was delegated, an unattributed
-  // moment could be either agent's, and the holder's name on it would be the wrong one.
-  const held = entries.some((entry) => entry.kind === "delegated") ? undefined : order.worker;
 
   return (
     <ol className="flex min-w-0 grow flex-col gap-2">
@@ -372,7 +358,7 @@ function ItemHistory({ entries, order }: { entries: WallItemEntry[]; order: Wall
               {entry.reason ? <span>{entry.reason}</span> : null}
               {entry.hold ? <span className="text-warn-foreground">{entry.hold}</span> : null}
             </span>
-            <EntryWorker stop={stop} order={order} held={held} />
+            <EntryWorker stop={stop} order={order} />
           </li>
         );
       })}
