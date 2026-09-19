@@ -27,7 +27,7 @@ Before committing:
 4. Update the long-lived documentation that describes the changed behavior.
 5. Use the repository's commit convention and let its commit gate enforce the subject.
 
-Record the commit SHA, changed files, check command and result, checker findings and resolutions, and documentation updated. A fence or infrastructure failure is part of the report; it is not green evidence.
+Record the commit SHA, changed files, check command and result, checker findings and resolutions, and documentation updated. A hold or infrastructure failure is part of the report; it is not green evidence.
 
 ## Review work
 
@@ -35,9 +35,9 @@ Review reads a diff, history and evidence without changing the worktree. It does
 
 ## Land work
 
-Integration is serialized. Before integrating a completed item, verify its report, commit ancestry, repository check, documentation status and fence. Integrate only the commits that belong to the item, then verify the resulting target branch.
+Integration is serialized. Before integrating a completed item, verify its report, commit ancestry, repository check, documentation status and hold. Integrate only the commits that belong to the item, then verify the resulting target branch.
 
-Do not force-push, rewrite a shared branch, or push outside the explicit owner authorization. A push is an outward-facing fence even when the local checks are green.
+Do not force-push, rewrite a shared branch, or push outside the explicit owner authorization. A push is an outward-facing hold even when the local checks are green.
 
 ## Report the boundary
 
@@ -47,7 +47,7 @@ Every stopped or completed operation says:
 - the commit or commits involved
 - the check and review evidence
 - the documentation status
-- the fence, blocker or final outcome
+- the hold, blocker or final outcome
 
 ## Red flags
 

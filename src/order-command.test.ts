@@ -161,10 +161,10 @@ describe("order command", () => {
     expect(runOrderCommand(database, claim)).toBe("order-1 is working");
   });
 
-  test("a fenced order is refused to a claim until the owner releases it", () => {
+  test("a held order is refused to a claim until the owner releases it", () => {
     const database = db();
     queued(database);
-    runOrderCommand(database, ["fence", "order-1", "--reason", "outward-facing"]);
+    runOrderCommand(database, ["hold", "order-1", "--reason", "outward-facing"]);
 
     expect(() => runOrderCommand(database, claim)).toThrow(/outward-facing/);
 
@@ -172,7 +172,7 @@ describe("order command", () => {
     expect(runOrderCommand(database, claim)).toBe("order-1 is working");
   });
 
-  test("ready lists the unheld orders most urgent first, fenced ones apart", () => {
+  test("ready lists the unheld orders most urgent first, held ones apart", () => {
     const database = db();
     runOrderCommand(database, add);
     runOrderCommand(database, ["add", "order-2", "--title", "Later", "--project", "cniska/dim-factory"]);
@@ -184,14 +184,14 @@ describe("order command", () => {
       "Owner's",
       "--project",
       "cniska/dim-factory",
-      "--fence",
+      "--hold",
       "outward-facing",
     ]);
 
     const read = JSON.parse(runOrderCommand(database, ["ready", "--project", "cniska/dim-factory"]));
 
     expect(read.ready.map((one: { id: string }) => one.id)).toEqual(["order-2", "order-1"]);
-    expect(read.fenced.map((one: { id: string }) => one.id)).toEqual(["order-3"]);
+    expect(read.held.map((one: { id: string }) => one.id)).toEqual(["order-3"]);
   });
 
   test("a running order records the evidence the work produced", () => {

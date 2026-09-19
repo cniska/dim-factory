@@ -14,7 +14,7 @@ export type FactoryStopCode =
   | "already_live"
   | "none_live"
   | "floor_stopped"
-  | "order_fenced";
+  | "order_held";
 
 /** Carries a code because a caller deciding which condition failed must not match on prose. */
 export class FactoryStopError extends Error {

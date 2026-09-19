@@ -16,21 +16,21 @@ import {
   recordOrderDocument,
   recordOrderFile,
   recordOrderFinding,
-  setOrderFence,
+  setOrderHold,
   setOrderPriority,
 } from "./factory-order";
 import { readFlags, requiredFlag } from "./flags";
-import { fencedOrders, readyOrders } from "./order-ready";
+import { heldOrders, readyOrders } from "./order-ready";
 
 export class OrderCommandError extends Error {}
 
 export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--description "..."]
-                     [--priority <${ORDER_PRIORITIES.join("|")}>] [--fence "..."] [--project <owner/repo>]
+                     [--priority <${ORDER_PRIORITIES.join("|")}>] [--hold "..."] [--project <owner/repo>]
        dim order ready [--limit <n>] [--project <owner/repo>]
        dim order claim <order-id> --run <id> [--agent <id>] [--role <planner|builder|reviewer>]
                       [--session <id>] [--station <name>]
        dim order priority <order-id> <${ORDER_PRIORITIES.join("|")}>
-       dim order fence <order-id> --reason "..."
+       dim order hold <order-id> --reason "..."
        dim order release <order-id>
        dim order move <order-id> --station <name>
        dim order commit <order-id> --sha <sha> [--subject "..."]
@@ -45,7 +45,7 @@ An order defaults to this checkout's owner/repo, so work belongs to the project 
 is built in rather than to wherever the command was typed.`;
 
 const CLAIM_FLAGS = ["--run", "--agent", "--role", "--session", "--station"];
-const ADD_FLAGS = ["--title", "--description", "--priority", "--fence", "--project"];
+const ADD_FLAGS = ["--title", "--description", "--priority", "--hold", "--project"];
 
 const fail = (message: string): Error => new OrderCommandError(message);
 
@@ -89,7 +89,7 @@ function add(db: Database, orderId: string, args: string[], defaultProject: stri
     title: required(given, "--title"),
     description: given.get("--description"),
     priority: priority(given.get("--priority")),
-    fence: given.get("--fence"),
+    hold: given.get("--hold"),
   });
   return `queued ${orderId} on ${project}`;
 }
@@ -245,7 +245,7 @@ export function runOrderCommand(
     return JSON.stringify(
       {
         ready: readyOrders(db, project, limit === undefined ? undefined : Number(limit)),
-        fenced: fencedOrders(db, project),
+        held: heldOrders(db, project),
       },
       null,
       2,
@@ -261,14 +261,14 @@ export function runOrderCommand(
     setOrderPriority(db, orderId, chosen);
     return `${orderId} is ${chosen}`;
   }
-  if (command === "fence") {
+  if (command === "hold") {
     const reason = required(flags(rest, ["--reason"]), "--reason");
-    setOrderFence(db, orderId, reason);
-    return `${orderId} is fenced: ${reason}`;
+    setOrderHold(db, orderId, reason);
+    return `${orderId} is held: ${reason}`;
   }
   if (command === "release") {
     flags(rest, []);
-    setOrderFence(db, orderId, null);
+    setOrderHold(db, orderId, null);
     return `${orderId} is released`;
   }
   if (command === "move") {

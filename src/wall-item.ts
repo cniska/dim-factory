@@ -6,7 +6,6 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   queued: "Queued",
   claimed: "Claimed",
   moved: "Moved",
-  delegated: "Delegated",
   commit_created: "Commit",
   check_finished: "Check",
   review_finished: "Finding",
@@ -32,10 +31,9 @@ export const RAIL_MARK_GLYPH: Record<RailMark, string> = {
 const RAIL_MARK_BY_KIND: Record<WallItemKind, RailMark> = {
   queued: "moment",
   claimed: "moment",
-  // A station move is the order itself crossing to other work, which reads as the
-  // same kind of passing-on as a delegation even though no agent changes.
+  // A station move is the order itself crossing to other work, which reads as a
+  // passing-on even though no worker changes.
   moved: "handover",
-  delegated: "handover",
   commit_created: "moment",
   check_finished: "moment",
   review_finished: "moment",
@@ -51,8 +49,6 @@ export type RailStop = {
   /** The worker the record names for this moment. A moment recorded against no agent leaves it
    *  empty rather than borrowing the one beside it. */
   worker?: string;
-  /** Where one agent's run ends and another's begins, the worker it was handed to. */
-  handedTo?: string;
 };
 
 export function railStops(entries: WallItemEntry[]): RailStop[] {
@@ -60,7 +56,6 @@ export function railStops(entries: WallItemEntry[]): RailStop[] {
     at: entry.at,
     mark: RAIL_MARK_BY_KIND[entry.kind],
     ...(entry.worker ? { worker: entry.worker } : {}),
-    ...(entry.delegatedTo ? { handedTo: entry.delegatedTo.worker } : {}),
   }));
 }
 

@@ -9,7 +9,7 @@ export type ReadyOrder = {
   status: OrderStatus;
   priority: OrderPriority;
   createdAt: string;
-  fence?: string;
+  hold?: string;
   /** Why the last attempt handed it back, where one did. */
   stoppedBecause?: string;
 };
@@ -27,7 +27,7 @@ type Row = {
   status: string;
   priority: string;
   created_at: string;
-  fence: string | null;
+  hold: string | null;
   stop_reason: string | null;
 };
 
@@ -40,27 +40,27 @@ function orderFrom(row: Row): ReadyOrder {
     status: row.status as OrderStatus,
     priority: row.priority as OrderPriority,
     createdAt: row.created_at,
-    ...(row.fence === null ? {} : { fence: row.fence }),
+    ...(row.hold === null ? {} : { hold: row.hold }),
     ...(row.stop_reason === null ? {} : { stoppedBecause: row.stop_reason }),
   };
 }
 
-const SELECT = `SELECT id, project, title, description, status, priority, created_at, fence, stop_reason
+const SELECT = `SELECT id, project, title, description, status, priority, created_at, hold, stop_reason
                   FROM factory_order
                  WHERE project = ? AND status = 'queued'`;
 
 /** Orders nobody holds, in the order to take them. */
 export function readyOrders(db: Database, project: string, limit?: number): ReadyOrder[] {
   const rows = db
-    .query<Row, [string]>(`${SELECT} AND fence IS NULL ORDER BY ${PRIORITY_RANK}, created_at, id`)
+    .query<Row, [string]>(`${SELECT} AND hold IS NULL ORDER BY ${PRIORITY_RANK}, created_at, id`)
     .all(project);
   return (limit === undefined ? rows : rows.slice(0, limit)).map(orderFrom);
 }
 
-/** Reported beside the ready ones so a fence is visible rather than a silent absence. */
-export function fencedOrders(db: Database, project: string): ReadyOrder[] {
+/** Reported beside the ready ones so a hold is visible rather than a silent absence. */
+export function heldOrders(db: Database, project: string): ReadyOrder[] {
   return db
-    .query<Row, [string]>(`${SELECT} AND fence IS NOT NULL ORDER BY ${PRIORITY_RANK}, created_at, id`)
+    .query<Row, [string]>(`${SELECT} AND hold IS NOT NULL ORDER BY ${PRIORITY_RANK}, created_at, id`)
     .all(project)
     .map(orderFrom);
 }

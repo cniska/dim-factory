@@ -18,7 +18,7 @@
 
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 27;
+export const SCHEMA_VERSION = 28;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -189,7 +189,7 @@ CREATE INDEX IF NOT EXISTS factory_schedule_due ON factory_schedule(enabled, pau
 -- it was going to come from. Running orders are left alone, because killing a
 -- worker mid-write leaves a worktree nobody owns and a commit half made.
 --
--- A worker does not stop the factory. One that hits a defect fences its own order,
+-- A worker does not stop the factory. One that hits a defect holds its own order,
 -- which is already how it says the owner has to look, and the operator stops the
 -- floor having seen whether the defect is in the machinery or in the one piece of
 -- work. Nothing in the database can tell who ran the command, so that is held by
@@ -236,12 +236,14 @@ CREATE TABLE IF NOT EXISTS factory_order (
   priority        TEXT NOT NULL DEFAULT 'unset'
                   CHECK (priority IN ('urgent', 'high', 'medium', 'low', 'unset')),
   -- Why the owner has to release this before anyone takes it, NULL when nobody
-  -- does. A fence met while working is recorded the same way, so what happened to
+  -- does. A hold met while working is recorded the same way, so what happened to
   -- the attempt and who may let the work go stay two facts.
-  fence           TEXT,
+  hold            TEXT,
   -- Set by the claim: an order waits in the queue before any run exists.
   run_id          TEXT,
-  agent_id        TEXT,
+  -- The worker holding the order. One at a time, which is what makes a reviewer a
+  -- worker on the order rather than its assignee.
+  assignee_id     TEXT,
   -- What the worker was called in as. Set when the operator spawns it and never again:
   -- a builder stays a builder wherever its work sits, so nothing downstream has to
   -- guess a worker's kind from the station, which says where the work is and not who
@@ -265,21 +267,30 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,
   order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   ts                    TEXT NOT NULL,
-  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'delegated', 'moved', 'commit_created', 'check_finished', 'review_finished', 'completed', 'failed')),
-  actor_id              TEXT,
+  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'commit_created', 'check_finished', 'review_finished', 'completed', 'failed')),
   session_id            TEXT,
   station               TEXT,
-  delegated_agent_id    TEXT,
-  delegated_session_id  TEXT,
-  delegated_station     TEXT,
   commit_sha            TEXT,
   check_id              INTEGER,
   finding_id            INTEGER,
-  fence_type            TEXT,
+  hold_type             TEXT,
   status                TEXT,
   reason                TEXT
 );
 CREATE INDEX IF NOT EXISTS factory_order_event_order_ts ON factory_order_event(order_id, ts, id);
+
+-- Which worker wrote each event, derived by re-reading the hook spool rather than
+-- recorded by the writer: a \`dim order\` process is told nothing about which agent
+-- it runs as, so anything it typed about itself would be testimony. The command
+-- prints the event id it wrote, the PostToolUse payload carries that stdout beside
+-- the harness's own agent id, and the join is on a row id dim minted. A root
+-- session has no agent id and attributes to its session instead.
+CREATE TABLE IF NOT EXISTS factory_order_event_worker (
+  event_id      INTEGER PRIMARY KEY REFERENCES factory_order_event(id) ON DELETE CASCADE,
+  worker_id     TEXT,
+  session_id    TEXT NOT NULL,
+  tool_use_id   TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS factory_order_commit (
   order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,

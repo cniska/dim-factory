@@ -90,7 +90,7 @@ describe("factory order query", () => {
       "status",
       "latest_event",
       "latest_event_at",
-      "fence",
+      "hold",
       "station",
       "commit",
       "check",
@@ -145,18 +145,18 @@ describe("factory order query", () => {
     expect(result?.rows[0]?.[11]).toBe("(none)");
 
     queueOrder(db, {
-      id: "order-fenced",
+      id: "order-held",
       project: "cniska/dim-factory",
-      title: "Stop at a fence",
+      title: "Stop at a hold",
     });
-    claimOrder(db, "order-fenced", claim);
-    appendOrderEvent(db, "order-fenced", {
+    claimOrder(db, "order-held", claim);
+    appendOrderEvent(db, "order-held", {
       kind: "failed",
-      fenceType: "owner-judgment",
+      holdType: "owner-judgment",
       reason: "ambiguous scope",
     });
-    const fenced = findQuery("factory")?.run(db, { arg: "order-fenced" });
-    expect(fenced?.rows[0]?.[11]).toBe("owner-judgment: ambiguous scope");
+    const held = findQuery("factory")?.run(db, { arg: "order-held" });
+    expect(held?.rows[0]?.[11]).toBe("owner-judgment: ambiguous scope");
     db.close();
   });
 

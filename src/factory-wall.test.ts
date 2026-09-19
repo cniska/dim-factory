@@ -56,7 +56,7 @@ describe("factory wall snapshot", () => {
     appendOrderEvent(
       db,
       "order-blocked",
-      { kind: "failed", fenceType: "owner-judgment", reason: "scope unclear" },
+      { kind: "failed", holdType: "owner-judgment", reason: "scope unclear" },
       "2026-09-18T09:05:00.000Z",
     );
     queueOrder(
@@ -666,60 +666,50 @@ describe("factory wall item view", () => {
     db.close();
   });
 
-  test("names the worker a delegation handed to", () => {
+  test("names the worker the harness recorded against a moment", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     queueOrder(
       db,
-      { id: "order-delegating", project: "cniska/dim-factory", title: "Hand work to a reviewer" },
+      { id: "order-reviewed", project: "cniska/dim-factory", title: "Hand work to a reviewer" },
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(
-      db,
-      "order-delegating",
-      { runId: "run", agentId: "builder", station: "build" },
-      "2026-09-18T10:00:00.000Z",
+    claimOrder(db, "order-reviewed", { runId: "run", station: "build" }, "2026-09-18T10:00:00.000Z");
+    appendOrderEvent(db, "order-reviewed", { kind: "moved", station: "review" }, "2026-09-18T10:02:00.000Z");
+    // Written by the sync join rather than by the command, which is the whole point: the
+    // worker a moment names is a fact the harness recorded, not one the writer stated.
+    db.run(
+      `INSERT INTO factory_order_event_worker (event_id, worker_id, session_id, tool_use_id)
+       SELECT id, 'reviewer', 'session-1', 'toolu_1' FROM factory_order_event WHERE kind = 'moved'`,
     );
 
-    appendOrderEvent(
-      db,
-      "order-delegating",
-      { kind: "delegated", actorId: "builder", delegatedAgentId: "reviewer", delegatedStation: "review" },
-      "2026-09-18T10:02:00.000Z",
-    );
+    const view = assembleItemView(db, "order-reviewed", new Date("2026-09-18T10:20:00.000Z"));
+    const moved = view?.entries.find((entry) => entry.kind === "moved");
 
-    const view = assembleItemView(db, "order-delegating", new Date("2026-09-18T10:20:00.000Z"));
-    const delegation = view?.entries.find((entry) => entry.kind === "delegated");
-
-    expect(delegation?.worker).toBe(workerName("builder"));
-    expect(delegation?.delegatedTo).toEqual({
-      agent: "reviewer",
-      worker: workerName("reviewer"),
-      station: "review",
-    });
+    expect(moved?.worker).toBe(workerName("reviewer"));
     db.close();
   });
 
-  test("keeps the grounds a fence stopped on", () => {
+  test("keeps the grounds a hold stopped on", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     queueOrder(
       db,
-      { id: "order-fenced", project: "cniska/dim-factory", title: "Stop at a fence" },
+      { id: "order-held", project: "cniska/dim-factory", title: "Stop at a hold" },
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(db, "order-fenced", { runId: "run" }, "2026-09-18T10:00:00.000Z");
+    claimOrder(db, "order-held", { runId: "run" }, "2026-09-18T10:00:00.000Z");
     appendOrderEvent(
       db,
-      "order-fenced",
-      { kind: "failed", fenceType: "owner-judgment", reason: "scope unclear" },
+      "order-held",
+      { kind: "failed", holdType: "owner-judgment", reason: "scope unclear" },
       "2026-09-18T10:01:00.000Z",
     );
 
-    const view = assembleItemView(db, "order-fenced", new Date("2026-09-18T10:20:00.000Z"));
-    const fence = view?.entries.find((entry) => entry.kind === "failed");
+    const view = assembleItemView(db, "order-held", new Date("2026-09-18T10:20:00.000Z"));
+    const held = view?.entries.find((entry) => entry.kind === "failed");
 
-    expect([fence?.fence, fence?.reason]).toEqual(["owner-judgment", "scope unclear"]);
+    expect([held?.hold, held?.reason]).toEqual(["owner-judgment", "scope unclear"]);
     db.close();
   });
 

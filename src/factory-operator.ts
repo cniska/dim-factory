@@ -27,7 +27,6 @@ export type FactoryContext = {
   item: { id: string };
   baseRevision: string;
   appendEvent(event: OrderEvent): void;
-  delegate(agentId: string, sessionId?: string, station?: string): void;
   stop(outcome: FactoryOutcome): void;
   recordCommit(sha: string, subject?: string): void;
   recordFile(file: OrderFile): void;
@@ -72,13 +71,6 @@ export async function runFactoryOrder(
     item,
     baseRevision: options.baseRevision,
     appendEvent: (event) => appendOrderEvent(db, item.id, event, undefined, options.worktree),
-    delegate: (agentId, sessionId, station) =>
-      appendOrderEvent(db, item.id, {
-        kind: "delegated",
-        delegatedAgentId: agentId,
-        delegatedSessionId: sessionId,
-        delegatedStation: station,
-      }),
     stop: (outcome) => appendOrderEvent(db, item.id, stopEvent(outcome), undefined, options.worktree),
     recordCommit: (sha, subject) => recordOrderCommit(db, item.id, sha, subject),
     recordFile: (file) => recordOrderFile(db, item.id, file),

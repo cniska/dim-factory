@@ -25,19 +25,15 @@ describe("factory wall item view", () => {
     ]);
   });
 
-  test("reads a delegation as a handover and an outcome as an end", () => {
+  test("reads a station move as a handover and an outcome as an end", () => {
     const stops = railStops([
       entry({ kind: "claimed", worker: "copper-7" }),
-      entry({
-        kind: "delegated",
-        worker: "copper-7",
-        delegatedTo: { agent: "reviewer", worker: "rivet-2", station: "review" },
-      }),
+      entry({ kind: "moved", worker: "rivet-2", station: "review" }),
       entry({ kind: "completed" }),
     ]);
 
     expect(stops.map((stop) => stop.mark)).toEqual(["moment", "handover", "outcome"]);
-    expect(stops[1]?.handedTo).toBe("rivet-2");
+    expect(stops[1]?.worker).toBe("rivet-2");
     expect(stops[0]?.worker).toBe("copper-7");
   });
 

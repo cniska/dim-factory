@@ -370,7 +370,7 @@ function ItemHistory({ entries, order }: { entries: WallItemEntry[]; order: Wall
               <span className="w-[9rem] shrink-0 text-foreground">{ITEM_KIND_LABELS[entry.kind]}</span>
               <EntryEvidence entry={entry} />
               {entry.reason ? <span>{entry.reason}</span> : null}
-              {entry.fence ? <span className="text-warn-foreground">{entry.fence}</span> : null}
+              {entry.hold ? <span className="text-warn-foreground">{entry.hold}</span> : null}
             </span>
             <EntryWorker stop={stop} order={order} held={held} />
           </li>

@@ -1123,18 +1123,18 @@ const order: Query = {
       kind: "report",
       status: report.status,
       subject: `${report.project}/${report.id}`,
-      evidence: [report.priority, report.fence, report.station, report.stop_reason]
+      evidence: [report.priority, report.hold, report.station, report.stop_reason]
         .filter(Boolean)
         .join(" | "),
     };
     const evidence: Record<string, unknown>[] = [
       ...table(
         db,
-        `SELECT 'event' AS section, ts AS "when", kind, coalesce(status, '') AS status,
-                coalesce(station, delegated_station, '') AS subject,
-                coalesce(reason, fence_type, commit_sha, cast(check_id AS TEXT), cast(finding_id AS TEXT),
-                         delegated_agent_id, '') AS evidence
-         FROM factory_order_event WHERE order_id = ?`,
+        `SELECT 'event' AS section, e.ts AS "when", e.kind, coalesce(e.status, '') AS status,
+                coalesce(e.station, '') AS subject,
+                coalesce(e.reason, e.hold_type, e.commit_sha, cast(e.check_id AS TEXT),
+                         cast(e.finding_id AS TEXT), '') AS evidence
+         FROM factory_order_event e WHERE e.order_id = ?`,
         [id],
       ),
       ...table(
@@ -1207,7 +1207,7 @@ const factory: Query = {
                WHERE e.order_id = o.id ORDER BY e.ts DESC, e.id DESC LIMIT 1) AS latest_event,
               (SELECT e.ts FROM factory_order_event e
                WHERE e.order_id = o.id ORDER BY e.ts DESC, e.id DESC LIMIT 1) AS latest_event_at,
-              coalesce(o.fence, '(none)') AS fence,
+              coalesce(o.hold, '(none)') AS hold,
               coalesce(o.station, '(absent)') AS station,
               coalesce((SELECT c.sha || coalesce(' ' || c.subject, '')
                         FROM factory_order_commit c WHERE c.order_id = o.id
@@ -1220,7 +1220,7 @@ const factory: Query = {
                           FROM factory_order_finding f WHERE f.order_id = o.id
                           ORDER BY f.recorded_at, f.id
                         )), '(none recorded)') AS findings,
-              coalesce((SELECT nullif(trim(coalesce(e.fence_type || ': ', '') || coalesce(e.reason, '')), '')
+              coalesce((SELECT nullif(trim(coalesce(e.hold_type || ': ', '') || coalesce(e.reason, '')), '')
                         FROM factory_order_event e WHERE e.order_id = o.id
                           AND e.kind IN ('completed', 'failed')
                         ORDER BY e.ts DESC, e.id DESC LIMIT 1), '(none)') AS stop
@@ -1235,7 +1235,7 @@ const factory: Query = {
       "status",
       "latest_event",
       "latest_event_at",
-      "fence",
+      "hold",
       "station",
       "commit",
       "check",

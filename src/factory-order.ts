@@ -11,7 +11,6 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export type OrderEventKind =
   | "queued"
   | "claimed"
-  | "delegated"
   | "moved"
   | "commit_created"
   | "check_finished"
@@ -38,7 +37,7 @@ export type Order = {
   title: string;
   description?: string;
   priority?: OrderPriority;
-  fence?: string;
+  hold?: string;
 };
 
 /** What the operator knows only once it has a worker to hand the order to. */
@@ -52,16 +51,12 @@ export type OrderClaim = {
 
 export type OrderEvent = {
   kind: OrderEventKind;
-  actorId?: string;
   sessionId?: string;
   station?: string;
-  delegatedAgentId?: string;
-  delegatedSessionId?: string;
-  delegatedStation?: string;
   commitSha?: string;
   checkId?: number;
   findingId?: number;
-  fenceType?: string;
+  holdType?: string;
   status?: OrderStatus;
   reason?: string;
   ts?: string;
@@ -97,16 +92,12 @@ function eventValues(orderId: string, event: OrderEvent, ts: string): (string | 
     orderId,
     ts,
     event.kind,
-    event.actorId ?? null,
     event.sessionId ?? null,
     event.station ?? null,
-    event.delegatedAgentId ?? null,
-    event.delegatedSessionId ?? null,
-    event.delegatedStation ?? null,
     event.commitSha ?? null,
     event.checkId ?? null,
     event.findingId ?? null,
-    event.fenceType ?? null,
+    event.holdType ?? null,
     event.status ?? null,
     event.reason ?? null,
   ];
@@ -116,7 +107,7 @@ export function queueOrder(db: Database, order: Order, at = now()): void {
   db.transaction(() => {
     db.run(
       `INSERT INTO factory_order
-       (id, project, title, description, priority, fence, status, created_at, updated_at)
+       (id, project, title, description, priority, hold, status, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)`,
       [
         order.id,
@@ -124,7 +115,7 @@ export function queueOrder(db: Database, order: Order, at = now()): void {
         order.title,
         order.description ?? null,
         order.priority ?? "unset",
-        order.fence ?? null,
+        order.hold ?? null,
         at,
         at,
       ],
@@ -148,20 +139,20 @@ export function claimOrder(db: Database, orderId: string, claim: OrderClaim, at 
           `(${stop.pulledBy}, ${stop.pulledAt}); clear it with \`dim factory clear\``,
       );
     }
-    const order = db.query("SELECT status, fence FROM factory_order WHERE id = ?").get(orderId) as {
+    const order = db.query("SELECT status, hold FROM factory_order WHERE id = ?").get(orderId) as {
       status: OrderStatus;
-      fence: string | null;
+      hold: string | null;
     } | null;
     if (!order) throw new Error(`order not found: ${orderId}`);
-    if (order.fence) {
+    if (order.hold) {
       throw new FactoryStopError(
-        "order_fenced",
-        `order ${orderId} is fenced and the owner releases it: ${order.fence}`,
+        "order_held",
+        `order ${orderId} is held and the owner releases it: ${order.hold}`,
       );
     }
     if (order.status !== "queued") throw new Error(`order ${orderId} is already ${order.status}`);
     db.run(
-      `UPDATE factory_order SET run_id = ?, agent_id = ?, role = ?, session_id = ?, station = ?,
+      `UPDATE factory_order SET run_id = ?, assignee_id = ?, role = ?, session_id = ?, station = ?,
          status = 'working', claimed_at = ?, updated_at = ? WHERE id = ?`,
       [
         claim.runId,
@@ -177,7 +168,7 @@ export function claimOrder(db: Database, orderId: string, claim: OrderClaim, at 
     appendOrderEventInTransaction(
       db,
       orderId,
-      { kind: "claimed", actorId: claim.agentId, sessionId: claim.sessionId, station: claim.station },
+      { kind: "claimed", sessionId: claim.sessionId, station: claim.station },
       at,
     );
   })();
@@ -206,9 +197,9 @@ export function setOrderPriority(db: Database, orderId: string, priority: OrderP
   if (result.changes !== 1) throw new Error(`order not found: ${orderId}`);
 }
 
-export function setOrderFence(db: Database, orderId: string, fence: string | null): void {
-  const result = db.run("UPDATE factory_order SET fence = ?, updated_at = ? WHERE id = ?", [
-    fence,
+export function setOrderHold(db: Database, orderId: string, hold: string | null): void {
+  const result = db.run("UPDATE factory_order SET hold = ?, updated_at = ? WHERE id = ?", [
+    hold,
     now(),
     orderId,
   ]);
@@ -268,9 +259,9 @@ function appendOrderEventInTransaction(
 
   db.run(
     `INSERT INTO factory_order_event
-       (order_id, ts, kind, actor_id, session_id, station, delegated_agent_id, delegated_session_id,
-        delegated_station, commit_sha, check_id, finding_id, fence_type, status, reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (order_id, ts, kind, session_id, station, commit_sha, check_id, finding_id, hold_type,
+        status, reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     eventValues(orderId, event, event.ts ?? at),
   );
   // A failure hands the work back rather than ending it, so the row returns to the

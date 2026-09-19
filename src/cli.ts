@@ -104,11 +104,11 @@ const USAGE = `usage: dim <command>
   factory clear [--by <who>]
                   clear the live stop, so claims are taken again
   order add <order-id> --title "..." [--description "..."] [--priority <p>]
-            [--fence "..."] [--project <owner/repo>]
+            [--hold "..."] [--project <owner/repo>]
                   queue one order on a project, which defaults to its owner/repo
   order ready [--limit <n>] [--project <owner/repo>]
                   print the orders nobody holds, most urgent first and oldest
-                  before newest within a priority, with the fenced ones beside them
+                  before newest within a priority, with the held ones beside them
 `;
 
 function printReport(report: SyncReport | RebuildReport): void {

@@ -57,8 +57,7 @@ export type WallItemEntry = {
   worker?: string;
   station?: WallStation;
   reason?: string;
-  fence?: string;
-  delegatedTo?: { agent: string; worker: string; station?: WallStation };
+  hold?: string;
   commit?: { sha: string; subject?: string };
   check?: { command: string; exitCode: number; result?: string };
   finding?: { dimension: string; answer: string; summary: string; resolution?: string };
@@ -87,7 +86,7 @@ const MAX_COLUMN_CARDS = 12;
 type OrderRow = {
   id: string;
   title: string;
-  agent_id: string | null;
+  assignee_id: string | null;
   role: string | null;
   station: string | null;
   status: string;
@@ -95,22 +94,23 @@ type OrderRow = {
   run_id: string | null;
   project: string;
   priority: string;
-  fence: string | null;
+  hold: string | null;
   last_event_at: string;
   latest_reason: string | null;
   latest_station: string | null;
-  latest_actor: string | null;
+  latest_worker: string | null;
   failed_check_count: number;
 };
 
-const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.agent_id, o.role, o.station, o.status,
-              o.stop_reason, o.run_id, o.project, o.priority, o.fence,
+const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.assignee_id, o.role, o.station, o.status,
+              o.stop_reason, o.run_id, o.project, o.priority, o.hold,
               e.ts AS last_event_at, e.reason AS latest_reason, e.station AS latest_station,
-              e.actor_id AS latest_actor,
+              w.worker_id AS latest_worker,
               (SELECT count(*) FROM factory_order_check c
                 WHERE c.order_id = o.id AND c.exit_code <> 0) AS failed_check_count
        FROM factory_order o
-       LEFT JOIN factory_order_event e ON e.id = (SELECT e2.id FROM factory_order_event e2 WHERE e2.order_id = o.id ORDER BY e2.ts DESC, e2.id DESC LIMIT 1)`;
+       LEFT JOIN factory_order_event e ON e.id = (SELECT e2.id FROM factory_order_event e2 WHERE e2.order_id = o.id ORDER BY e2.ts DESC, e2.id DESC LIMIT 1)
+       LEFT JOIN factory_order_event_worker w ON w.event_id = e.id`;
 
 const WALL_STATUSES = new Set<string>(ORDER_STATUSES);
 
@@ -154,7 +154,7 @@ function status(value: string): OrderStatus {
 }
 
 function mapOrder(row: OrderRow, now: Date): WallOrder {
-  const agentId = row.latest_actor ?? row.agent_id;
+  const agentId = row.latest_worker ?? row.assignee_id;
   const stationName = station(row.station ?? row.latest_station);
   const orderStatus = status(row.status);
   // A queued order carrying a stop reason was tried and handed back, which is the one
@@ -199,11 +199,9 @@ export function assembleWallSnapshot(db: Database, now = new Date()): WallSnapsh
 type EventRow = {
   ts: string;
   kind: WallItemKind;
-  actor_id: string | null;
+  worker_id: string | null;
   station: string | null;
-  delegated_agent_id: string | null;
-  delegated_station: string | null;
-  fence_type: string | null;
+  hold_type: string | null;
   reason: string | null;
   commit_sha: string | null;
   commit_subject: string | null;
@@ -263,19 +261,10 @@ function eventEntry(row: EventRow): WallItemEntry {
   return {
     at: row.ts,
     kind: row.kind,
-    ...(row.actor_id ? { agent: row.actor_id, worker: workerName(row.actor_id) } : {}),
+    ...(row.worker_id ? { agent: row.worker_id, worker: workerName(row.worker_id) } : {}),
     ...(row.station ? { station: station(row.station) } : {}),
     ...(row.reason ? { reason: row.reason } : {}),
-    ...(row.fence_type ? { fence: row.fence_type } : {}),
-    ...(row.delegated_agent_id
-      ? {
-          delegatedTo: {
-            agent: row.delegated_agent_id,
-            worker: workerName(row.delegated_agent_id),
-            ...(row.delegated_station ? { station: station(row.delegated_station) } : {}),
-          },
-        }
-      : {}),
+    ...(row.hold_type ? { hold: row.hold_type } : {}),
     ...(row.commit_sha
       ? { commit: { sha: row.commit_sha, ...(row.commit_subject ? { subject: row.commit_subject } : {}) } }
       : {}),
@@ -310,12 +299,12 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
   if (!row) return null;
   const events = db
     .query(
-      `SELECT e.ts, e.kind, e.actor_id, e.station, e.delegated_agent_id, e.delegated_station,
-              e.fence_type, e.reason,
+      `SELECT e.ts, e.kind, w.worker_id, e.station, e.hold_type, e.reason,
               coalesce(c.sha, e.commit_sha) AS commit_sha, c.subject AS commit_subject,
               ch.command, ch.exit_code, ch.result,
               f.dimension, f.answer, f.summary, f.resolution
        FROM factory_order_event e
+       LEFT JOIN factory_order_event_worker w ON w.event_id = e.id
        LEFT JOIN factory_order_commit c ON c.order_id = e.order_id AND c.sha = e.commit_sha
        LEFT JOIN factory_order_check ch ON ch.id = e.check_id AND ch.order_id = e.order_id
        LEFT JOIN factory_order_finding f ON f.id = e.finding_id AND f.order_id = e.order_id

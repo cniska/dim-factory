@@ -78,7 +78,6 @@ describe("factory order report records", () => {
       async (context) => {
         expect(context.item.id).toBe("order-2");
         expect(context.baseRevision).toBe("abc123");
-        context.delegate("agent-3", "session-3", "dim-station-review");
         context.recordCommit(trunk.sha, "feat: observable order");
         context.recordFile({ path: "src/factory-operator.ts", added: 18, removed: 2 });
         context.recordCheck({ command: "bun run verify", exitCode: 0, result: "green" });
@@ -102,7 +101,6 @@ describe("factory order report records", () => {
     ).toEqual([
       { kind: "queued", status: null },
       { kind: "claimed", status: null },
-      { kind: "delegated", status: null },
       { kind: "commit_created", status: null },
       { kind: "check_finished", status: null },
       { kind: "review_finished", status: null },
@@ -537,12 +535,15 @@ describe("factory order report records", () => {
         .query("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'factory_lane%'")
         .all(),
     ).toEqual([]);
-    expect(
-      database.query("SELECT kind, actor_id, session_id FROM factory_order_event ORDER BY id DESC").get(),
-    ).toEqual({
-      kind: "claimed",
-      actor_id: "agent-1",
-      session_id: "session-1",
+    expect(database.query("SELECT kind, session_id FROM factory_order_event ORDER BY id DESC").get()).toEqual(
+      {
+        kind: "claimed",
+        session_id: "session-1",
+      },
+    );
+    // The worker is joined in from the harness spool, so a claim writes none of its own.
+    expect(database.query("SELECT assignee_id FROM factory_order").get()).toEqual({
+      assignee_id: "agent-1",
     });
     database.close();
   });

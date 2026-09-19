@@ -8,15 +8,16 @@ The words this repo uses for the factory and its record. One word per thing, def
 |---|---|
 | Line | Which kind of work an order is: `feat` for work that adds, `fix` for work that repairs. `dim-line-feat` and `dim-line-fix` are the entry points onto the factory line |
 | Station | A skill that does one repeatable operation, with an entry contract and an exit check — `dim-station-plan`, `dim-station-build`, `dim-station-review` |
-| Order | One piece of work: an id, a title, the words it is stated in, a priority, a fence where the owner holds it, and a status. It is written down before anyone takes it, and a worker taking it fills in the run and the agent, works it in one worktree, and records what it produced and how it ended. Work taken again is the same order claimed again |
+| Order | One piece of work: an id, a title, the words it is stated in, a priority, a hold where the owner keeps it, and a status. It is written down before anyone takes it, and a worker taking it fills in the run and the agent, works it in one worktree, and records what it produced and how it ended. Work taken again is the same order claimed again |
 | Worker | The agent holding an order. Several run at once, each in its own worktree, and a card names the worker its order is recorded against |
 | Stage | How far along the line an order has got: `todo` before it starts, `active` while it runs, `done` once it stopped. The manufacturing split between material waiting, material in process and material finished. Not a station, which says which operation the work is at rather than how far it has got |
 | Status | The state an order is in: `queued`, `working`, `completed`. Work that stopped without landing goes back to `queued`, carrying why, because it is work nobody is holding |
 | Slice | One increment inside an order: a change that verifies on its own and is committed on its own |
 | Operator | What reads a queue, claims an order, hands it to a worker and integrates what comes back. It decides which work starts and when to stop, never how the work is done |
-| Owner | The person the floor runs for. They decide what a fence is crossed for and read the run on the wall; how the factory itself is built and run is the operator's, and the wall is the one surface designed to the owner's needs |
+| Owner | The person the floor runs for. They decide what a hold is released for and read the run on the wall; how the factory itself is built and run is the operator's, and the wall is the one surface designed to the owner's needs |
 | Queue | The orders nobody holds, in the order they are taken: most urgent first, then oldest. Read and never inferred |
-| Fence | A boundary a run stops at rather than crossing alone: work that is hard to reverse, work that is outward-facing, or a change that spends something on every session. An order carries one as the reason the owner has to release it before anyone takes it |
+| Hold | A boundary a run stops at rather than crossing alone: work that is hard to reverse, work that is outward-facing, or a change that spends something on every session. An order carries one as the reason the owner has to release it before anyone takes it |
+| Assignee | The worker an order is assigned to, one at a time. A reviewer is a worker on the order without being its assignee |
 | Workspace command | A command a repo declares in its manifest — a `package.json` script, a `mise` task, a `Makefile` target — read and never inferred, carrying the name it answers to and the file it was read from ([`src/workspace-commands.ts`](../src/workspace-commands.ts)). The check is the one that stands for "this change is sound", and `dim check-command` prints it |
 
 ## The record
