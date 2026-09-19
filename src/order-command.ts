@@ -16,6 +16,7 @@ import {
   recordOrderFinding,
   TERMINAL_ORDER_STATUSES,
 } from "./factory-order";
+import { readFlags, requiredFlag } from "./flags";
 
 export class OrderCommandError extends Error {}
 
@@ -47,31 +48,14 @@ const CLAIM_FLAGS = [
   "--branch",
 ];
 
-/**
- * A flag given twice is refused rather than resolved to either value: a skill
- * assembles these from a shell line, and a title that silently lost half of
- * itself reads on the wall as an order nobody can match back to its item.
- */
+const fail = (message: string): Error => new OrderCommandError(message);
+
 function flags(args: string[], allowed: string[]): Map<string, string> {
-  const given = new Map<string, string>();
-  for (let index = 0; index < args.length; index += 2) {
-    const flag = args[index] as string;
-    const value = args[index + 1];
-    if (!allowed.includes(flag)) throw new OrderCommandError(`${flag} is not an option this takes`);
-    if (value === undefined) throw new OrderCommandError(`${flag} needs a value`);
-    // A value that reads as a flag is refused rather than taken, so a missing
-    // argument cannot quietly consume the next option as its own text.
-    if (value.startsWith("--")) throw new OrderCommandError(`${flag} needs a value that is not an option`);
-    if (given.has(flag)) throw new OrderCommandError(`${flag} may be given once`);
-    given.set(flag, value);
-  }
-  return given;
+  return readFlags(args, allowed, fail);
 }
 
 function required(given: Map<string, string>, flag: string): string {
-  const value = given.get(flag);
-  if (value === undefined) throw new OrderCommandError(`${flag} is required`);
-  return value;
+  return requiredFlag(given, flag, fail);
 }
 
 /**
