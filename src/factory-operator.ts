@@ -1,12 +1,11 @@
 import type { Database } from "bun:sqlite";
 import {
   appendOrderEvent,
-  createOrder,
+  claimOrder,
   isTerminalOrderStatus,
-  type Order,
+  type OrderClaim,
   type OrderEvent,
   type OrderFile,
-  type OrderStatus,
   orderStatus,
   recordOrderCheck,
   recordOrderCommit,
@@ -14,19 +13,19 @@ import {
   recordOrderEnvironment,
   recordOrderFile,
   recordOrderFinding,
-  updateOrderLocation,
 } from "./factory-order";
 import type { WorkerHookReport } from "./worker-environment";
 
+/** How an order stopped: it landed, or it did not and goes back among the work
+ *  nobody holds, carrying why. */
 export type FactoryOutcome = {
-  status: Exclude<OrderStatus, "waiting" | "working">;
+  status: "completed" | "failed";
   reason?: string;
 };
 
 export type FactoryContext = {
-  item: Order;
+  item: { id: string };
   baseRevision: string;
-  setLocation(worktree: string, branch: string): void;
   appendEvent(event: OrderEvent): void;
   delegate(agentId: string, sessionId?: string, station?: string): void;
   stop(outcome: FactoryOutcome): void;
@@ -51,20 +50,28 @@ export type FactoryContext = {
 
 export type FactoryBuilder = (context: FactoryContext) => FactoryOutcome | Promise<FactoryOutcome>;
 
+/** Only a completion projects a status; a failure hands the work back, which the
+ *  event itself does. */
+function stopEvent(outcome: FactoryOutcome): OrderEvent {
+  return {
+    kind: outcome.status,
+    ...(outcome.status === "completed" ? { status: "completed" as const } : {}),
+    ...(outcome.reason === undefined ? {} : { reason: outcome.reason }),
+  };
+}
+
 export async function runFactoryOrder(
   db: Database,
-  item: Order,
-  options: { baseRevision: string },
+  item: { id: string },
+  options: { baseRevision: string; claim: OrderClaim; worktree?: string },
   build: FactoryBuilder,
 ): Promise<FactoryOutcome> {
-  createOrder(db, item);
-  appendOrderEvent(db, item.id, { kind: "started", status: "working" });
+  claimOrder(db, item.id, options.claim);
 
   const context: FactoryContext = {
     item,
     baseRevision: options.baseRevision,
-    setLocation: (worktree, branch) => updateOrderLocation(db, item.id, worktree, branch),
-    appendEvent: (event) => appendOrderEvent(db, item.id, event),
+    appendEvent: (event) => appendOrderEvent(db, item.id, event, undefined, options.worktree),
     delegate: (agentId, sessionId, station) =>
       appendOrderEvent(db, item.id, {
         kind: "delegated",
@@ -72,8 +79,7 @@ export async function runFactoryOrder(
         delegatedSessionId: sessionId,
         delegatedStation: station,
       }),
-    stop: (outcome) =>
-      appendOrderEvent(db, item.id, { kind: outcome.status, status: outcome.status, reason: outcome.reason }),
+    stop: (outcome) => appendOrderEvent(db, item.id, stopEvent(outcome), undefined, options.worktree),
     recordCommit: (sha, subject) => recordOrderCommit(db, item.id, sha, subject),
     recordFile: (file) => recordOrderFile(db, item.id, file),
     recordCheck: (check) => recordOrderCheck(db, item.id, check),
@@ -86,7 +92,7 @@ export async function runFactoryOrder(
     const outcome = await build(context);
     const status = orderStatus(db, item.id);
     if (!isTerminalOrderStatus(status)) {
-      appendOrderEvent(db, item.id, { kind: outcome.status, status: outcome.status, reason: outcome.reason });
+      appendOrderEvent(db, item.id, stopEvent(outcome), undefined, options.worktree);
     } else if (status !== outcome.status) {
       throw new Error(`order ${item.id} stopped as ${status} but builder returned ${outcome.status}`);
     }
@@ -95,7 +101,7 @@ export async function runFactoryOrder(
     const reason = error instanceof Error ? error.message : String(error);
     if (!isTerminalOrderStatus(orderStatus(db, item.id))) {
       try {
-        appendOrderEvent(db, item.id, { kind: "failed", status: "failed", reason });
+        appendOrderEvent(db, item.id, { kind: "failed", reason }, undefined, options.worktree);
       } catch (failureError) {
         throw new AggregateError([error, failureError], reason);
       }

@@ -23,7 +23,6 @@ import { withLock } from "./lock";
 import { ORDER_USAGE, OrderCommandError, runOrderCommand } from "./order-command";
 import { dbPath, resolveHomeDir } from "./paths";
 import { findQuery, QUERIES, type QueryResult } from "./queries";
-import { runQueueCommand } from "./queue-command";
 import { openReadOnly } from "./read-db";
 import { isHostQualified, remoteSlug } from "./remote-slug";
 import { DEFAULT_MAX_ROWS, renderTable, rowsFromArgs } from "./render";
@@ -104,14 +103,12 @@ const USAGE = `usage: dim <command>
                   the machinery; orders already running are left to finish
   factory clear [--by <who>]
                   clear the live stop, so claims are taken again
-  queue add <item-id> --title "..." [--description "..."] [--priority <p>]
-            [--needs <id,id>] [--order <order-id>] [--queue <queue-id>]
-                  add an item to a repo's queue, which defaults to its owner/repo
-  queue ready [--limit <n>] [--queue <queue-id>]
-                  print planned items whose dependencies are completed, most
-                  urgent first and oldest before newest within a priority
-  queue transition <item-id> <status> [--reason "..."] [--order <order-id>]
-                  record an item moving, and which order moved it
+  order add <order-id> --title "..." [--description "..."] [--priority <p>]
+            [--fence "..."] [--project <owner/repo>]
+                  queue one order on a project, which defaults to its owner/repo
+  order ready [--limit <n>] [--project <owner/repo>]
+                  print the orders nobody holds, most urgent first and oldest
+                  before newest within a priority, with the fenced ones beside them
 `;
 
 function printReport(report: SyncReport): void {
@@ -854,24 +851,14 @@ try {
     case "q":
       await runQuery(process.argv.slice(3));
       break;
-    case "queue":
+    case "order":
       {
         const root = checkoutRoot(process.cwd());
         const db = openDb(dbPath());
         try {
-          // The same owner/repo `repo_commit.label` and `dim finding` key on, so an item, a
+          // The same owner/repo `repo_commit.label` and `dim finding` key on, so an order, a
           // commit and a finding in one project all join on one identity.
-          console.log(runQueueCommand(db, process.argv.slice(3), root ? labelFor(root) : null));
-        } finally {
-          closeDb(db);
-        }
-      }
-      break;
-    case "order":
-      {
-        const db = openDb(dbPath());
-        try {
-          console.log(runOrderCommand(db, process.argv.slice(3)));
+          console.log(runOrderCommand(db, process.argv.slice(3), root ? labelFor(root) : null));
         } finally {
           closeDb(db);
         }

@@ -1122,8 +1122,8 @@ const order: Query = {
       when: report.updated_at,
       kind: "report",
       status: report.status,
-      subject: `${report.run_id}/${report.queue_id}/${report.item_id}`,
-      evidence: [report.station, report.worktree, report.branch, report.stop_reason]
+      subject: `${report.project}/${report.id}`,
+      evidence: [report.priority, report.fence, report.station, report.stop_reason]
         .filter(Boolean)
         .join(" | "),
     };
@@ -1202,13 +1202,12 @@ const factory: Query = {
     const filter = arg ? "WHERE o.id LIKE ? || '%'" : "";
     const found = table(
       db,
-      `SELECT o.queue_id AS queue, o.item_id AS item, o.id AS order_id, o.status,
+      `SELECT o.project AS project, o.id AS order_id, o.priority, o.status,
               (SELECT e.kind FROM factory_order_event e
                WHERE e.order_id = o.id ORDER BY e.ts DESC, e.id DESC LIMIT 1) AS latest_event,
               (SELECT e.ts FROM factory_order_event e
                WHERE e.order_id = o.id ORDER BY e.ts DESC, e.id DESC LIMIT 1) AS latest_event_at,
-              coalesce(o.worktree, '(absent)') AS worktree,
-              coalesce(o.branch, '(absent)') AS branch,
+              coalesce(o.fence, '(none)') AS fence,
               coalesce(o.station, '(absent)') AS station,
               coalesce((SELECT c.sha || coalesce(' ' || c.subject, '')
                         FROM factory_order_commit c WHERE c.order_id = o.id
@@ -1223,21 +1222,20 @@ const factory: Query = {
                         )), '(none recorded)') AS findings,
               coalesce((SELECT nullif(trim(coalesce(e.fence_type || ': ', '') || coalesce(e.reason, '')), '')
                         FROM factory_order_event e WHERE e.order_id = o.id
-                          AND e.kind IN ('completed', 'blocked', 'fenced', 'failed')
+                          AND e.kind IN ('completed', 'failed')
                         ORDER BY e.ts DESC, e.id DESC LIMIT 1), '(none)') AS stop
        FROM factory_order o ${filter}
        ORDER BY o.updated_at DESC, o.id`,
       arg ? [arg] : [],
     );
     const columns = [
-      "queue",
-      "item",
+      "project",
       "order_id",
+      "priority",
       "status",
       "latest_event",
       "latest_event_at",
-      "worktree",
-      "branch",
+      "fence",
       "station",
       "commit",
       "check",
@@ -1246,7 +1244,7 @@ const factory: Query = {
     ];
     if (found.length === 0) {
       return {
-        denominator: "queue planner source absent; no factory order matched",
+        denominator: "no factory order matched",
         columns,
         rows: [],
         note: arg ? `no order starts with ${arg}` : "no factory orders are recorded",

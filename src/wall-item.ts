@@ -3,8 +3,8 @@ import type { WallItemEntry, WallItemKind } from "./factory-wall";
 /** What each moment in an order's record is called on the item view. Human words lead; the ids
  *  they stand for are on the entry for an agent to join on. */
 export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
+  queued: "Queued",
   claimed: "Claimed",
-  started: "Started",
   moved: "Moved",
   delegated: "Delegated",
   commit_created: "Commit",
@@ -12,8 +12,6 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   review_finished: "Finding",
   document_updated: "Document",
   environment_reported: "Worker environment",
-  fenced: "Fenced",
-  blocked: "Blocked",
   completed: "Completed",
   failed: "Failed",
 };
@@ -32,8 +30,8 @@ export const RAIL_MARK_GLYPH: Record<RailMark, string> = {
 };
 
 const RAIL_MARK_BY_KIND: Record<WallItemKind, RailMark> = {
+  queued: "moment",
   claimed: "moment",
-  started: "moment",
   // A station move is the order itself crossing to other work, which reads as the
   // same kind of passing-on as a delegation even though no agent changes.
   moved: "handover",
@@ -43,8 +41,6 @@ const RAIL_MARK_BY_KIND: Record<WallItemKind, RailMark> = {
   review_finished: "moment",
   document_updated: "moment",
   environment_reported: "moment",
-  fenced: "outcome",
-  blocked: "outcome",
   completed: "outcome",
   failed: "outcome",
 };

@@ -20,7 +20,6 @@ export type WallRole = "builder" | "reviewer" | "planner" | "unknown";
 export type WallOrder = {
   id: string;
   title: string;
-  itemId: string;
   station: WallStation;
   stage: WallStage;
   /** Absent where no claim and no event named an agent: an order nobody is recorded against. */
@@ -77,10 +76,8 @@ export type WallItemChange = {
 
 export type WallItemView = {
   order: WallOrder;
-  runId: string;
-  queueId: string;
-  worktree?: string;
-  branch?: string;
+  runId?: string;
+  project: string;
   entries: WallItemEntry[];
   changes: WallItemChange[];
 };
@@ -89,17 +86,16 @@ const MAX_COLUMN_CARDS = 12;
 
 type OrderRow = {
   id: string;
-  item_id: string;
   title: string;
   agent_id: string | null;
   role: string | null;
   station: string | null;
   status: string;
   stop_reason: string | null;
-  run_id: string;
-  queue_id: string;
-  worktree: string | null;
-  branch: string | null;
+  run_id: string | null;
+  project: string;
+  priority: string;
+  fence: string | null;
   last_event_at: string;
   latest_reason: string | null;
   latest_station: string | null;
@@ -107,8 +103,8 @@ type OrderRow = {
   failed_check_count: number;
 };
 
-const ORDER_ROW_SELECT = `SELECT o.id, o.item_id, o.title, o.agent_id, o.role, o.station, o.status,
-              o.stop_reason, o.run_id, o.queue_id, o.worktree, o.branch,
+const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.agent_id, o.role, o.station, o.status,
+              o.stop_reason, o.run_id, o.project, o.priority, o.fence,
               e.ts AS last_event_at, e.reason AS latest_reason, e.station AS latest_station,
               e.actor_id AS latest_actor,
               (SELECT count(*) FROM factory_order_check c
@@ -119,15 +115,10 @@ const ORDER_ROW_SELECT = `SELECT o.id, o.item_id, o.title, o.agent_id, o.role, o
 const WALL_STATUSES = new Set<string>(ORDER_STATUSES);
 
 const stageByStatus: Record<OrderStatus, WallStage> = {
-  waiting: "todo",
+  queued: "todo",
   working: "active",
-  blocked: "active",
-  fenced: "active",
   completed: "done",
-  failed: "done",
 };
-
-const attentionStatuses = new Set<OrderStatus>(["blocked", "fenced", "failed"]);
 
 // An order is claimed with whatever word the caller passed, and a line or a typo is not a station.
 // Naming one of the four for a value that is none of them puts a card at a station nobody sent
@@ -166,15 +157,15 @@ function mapOrder(row: OrderRow, now: Date): WallOrder {
   const agentId = row.latest_actor ?? row.agent_id;
   const stationName = station(row.station ?? row.latest_station);
   const orderStatus = status(row.status);
-  const attention = attentionStatuses.has(orderStatus)
-    ? (row.stop_reason ?? row.latest_reason ?? orderStatus)
-    : undefined;
+  // A queued order carrying a stop reason was tried and handed back, which is the one
+  // thing a reader looking at the waiting work needs to see.
+  const attention =
+    orderStatus === "queued" ? (row.stop_reason ?? row.latest_reason ?? undefined) : undefined;
   // A claim writes its own event in the same transaction, so an order row always has one.
   const lastEventAt = row.last_event_at;
   return {
     id: row.id,
     title: row.title,
-    itemId: row.item_id,
     station: stationName,
     stage: stageByStatus[orderStatus],
     ...(agentId ? { agent: agentId, worker: workerName(agentId) } : {}),
@@ -362,10 +353,8 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
   ].sort((a, b) => a.at.localeCompare(b.at));
   return {
     order: mapOrder(row, now),
-    runId: row.run_id,
-    queueId: row.queue_id,
-    ...(row.worktree ? { worktree: tildePath(row.worktree) } : {}),
-    ...(row.branch ? { branch: row.branch } : {}),
+    ...(row.run_id ? { runId: row.run_id } : {}),
+    project: row.project,
     entries,
     changes: files.map((file) => ({
       path: tildePath(file.path),

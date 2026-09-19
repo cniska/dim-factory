@@ -38,5 +38,5 @@ bun run verify
 - [Session database](docs/design.md) — sources, schema and read path
 - [Reaching a session without being asked](docs/recall.md) — wake, handoffs and retrieval
 - [Worktrees](docs/worktrees.md) — isolated checkouts and write recovery
-- [Build order](docs/build-order.md) — why each unbuilt item is next, over the queue `dim queue` reads
+- [Build order](docs/build-order.md) — why each unbuilt piece is next, over the orders `dim order ready` reads
 - [Findings](docs/findings.md) — measured observations and their limits

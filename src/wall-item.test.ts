@@ -42,7 +42,7 @@ describe("factory wall item view", () => {
   });
 
   test("leaves a moment recorded against no agent without a worker", () => {
-    const stops = railStops([entry({ kind: "started" })]);
+    const stops = railStops([entry({ kind: "queued" })]);
 
     expect(stops[0]).toEqual({ at: "2026-09-18T10:00:00.000Z", mark: "moment" });
   });

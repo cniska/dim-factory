@@ -13,7 +13,7 @@ Each page owns its subject. A fact lives on one of them and is linked to from th
 ## What is true now
 
 - [Findings](findings.md) — what the corpus said when asked, dated, with what each number can carry
-- [Build order](build-order.md) — why each unbuilt piece is next, over the queue `dim queue` reads
+- [Build order](build-order.md) — why each unbuilt piece is next, over the orders `dim order ready` reads
 
 ## How it is built
 

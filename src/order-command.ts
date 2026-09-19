@@ -1,30 +1,37 @@
 import type { Database } from "bun:sqlite";
 import {
   appendOrderEvent,
-  createOrder,
+  claimOrder,
   isOrderRole,
-  isTerminalOrderStatus,
   moveOrder,
+  ORDER_PRIORITIES,
   ORDER_ROLES,
   type OrderEventKind,
+  type OrderPriority,
   type OrderRole,
   type OrderStatus,
+  queueOrder,
   recordOrderCheck,
   recordOrderCommit,
   recordOrderDocument,
   recordOrderFile,
   recordOrderFinding,
-  TERMINAL_ORDER_STATUSES,
+  setOrderFence,
+  setOrderPriority,
 } from "./factory-order";
 import { readFlags, requiredFlag } from "./flags";
+import { fencedOrders, readyOrders } from "./order-ready";
 
 export class OrderCommandError extends Error {}
 
-export const ORDER_USAGE = `usage: dim order claim <order-id> --run <id> --queue <id> --item <id> --title "..."
-                      [--description "..."] [--agent <id>] [--role <planner|builder|reviewer>]
+export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--description "..."]
+                     [--priority <${ORDER_PRIORITIES.join("|")}>] [--fence "..."] [--project <owner/repo>]
+       dim order ready [--limit <n>] [--project <owner/repo>]
+       dim order claim <order-id> --run <id> [--agent <id>] [--role <planner|builder|reviewer>]
                       [--session <id>] [--station <name>]
-                      [--worktree <path>] [--branch <name>]
-       dim order start <order-id>
+       dim order priority <order-id> <${ORDER_PRIORITIES.join("|")}>
+       dim order fence <order-id> --reason "..."
+       dim order release <order-id>
        dim order move <order-id> --station <name>
        dim order commit <order-id> --sha <sha> [--subject "..."]
        dim order file <order-id> --path <path> [--added <n>] [--removed <n>]
@@ -32,21 +39,13 @@ export const ORDER_USAGE = `usage: dim order claim <order-id> --run <id> --queue
        dim order finding <order-id> --dimension <name> --summary "..." --answer <fixed|refused>
                        [--resolution "..."]
        dim order document <order-id> --path <path>
-       dim order stop <order-id> <${TERMINAL_ORDER_STATUSES.join("|")}> [--reason "..."]`;
+       dim order stop <order-id> <completed|failed> [--reason "..."]
 
-const CLAIM_FLAGS = [
-  "--run",
-  "--queue",
-  "--item",
-  "--title",
-  "--description",
-  "--agent",
-  "--role",
-  "--session",
-  "--station",
-  "--worktree",
-  "--branch",
-];
+An order defaults to this checkout's owner/repo, so work belongs to the project it
+is built in rather than to wherever the command was typed.`;
+
+const CLAIM_FLAGS = ["--run", "--agent", "--role", "--session", "--station"];
+const ADD_FLAGS = ["--title", "--description", "--priority", "--fence", "--project"];
 
 const fail = (message: string): Error => new OrderCommandError(message);
 
@@ -72,25 +71,39 @@ function role(given: string | undefined): OrderRole | undefined {
   return given;
 }
 
-function claim(db: Database, orderId: string, args: string[]): string {
-  const given = flags(args, CLAIM_FLAGS);
-  const itemId = required(given, "--item");
-  const queueId = required(given, "--queue");
-  createOrder(db, {
+function priority(given: string | undefined): OrderPriority | undefined {
+  if (given === undefined) return undefined;
+  if (!(ORDER_PRIORITIES as readonly string[]).includes(given)) {
+    throw new OrderCommandError(`${given} is not a priority; one of ${ORDER_PRIORITIES.join(", ")}`);
+  }
+  return given as OrderPriority;
+}
+
+function add(db: Database, orderId: string, args: string[], defaultProject: string | null): string {
+  const given = flags(args, ADD_FLAGS);
+  const project = given.get("--project") ?? defaultProject;
+  if (!project) throw fail("--project is required outside a checkout with a remote");
+  queueOrder(db, {
     id: orderId,
-    runId: required(given, "--run"),
-    queueId,
-    itemId,
+    project,
     title: required(given, "--title"),
     description: given.get("--description"),
+    priority: priority(given.get("--priority")),
+    fence: given.get("--fence"),
+  });
+  return `queued ${orderId} on ${project}`;
+}
+
+function claim(db: Database, orderId: string, args: string[]): string {
+  const given = flags(args, CLAIM_FLAGS);
+  claimOrder(db, orderId, {
+    runId: required(given, "--run"),
     agentId: given.get("--agent"),
     role: role(given.get("--role")),
     sessionId: given.get("--session"),
-    worktree: given.get("--worktree"),
-    branch: given.get("--branch"),
     station: given.get("--station"),
   });
-  return `claimed ${orderId} for ${itemId} on ${queueId}`;
+  return `${orderId} is working`;
 }
 
 /**
@@ -186,30 +199,77 @@ const EVIDENCE: Record<string, Evidence> = {
   },
 };
 
-function stop(db: Database, orderId: string, args: string[]): string {
-  const [status, ...rest] = args;
-  if (!status) throw new OrderCommandError("stop needs the status the order stopped at");
-  const terminal = status as OrderStatus;
-  if (!isTerminalOrderStatus(terminal)) {
-    throw new OrderCommandError(`${status} is not a status an order can stop at`);
+/** How an order can stop: it landed, or it did not and goes back among the work
+ *  nobody holds, carrying why. */
+const STOP_KINDS = ["completed", "failed"] as const;
+
+function stop(db: Database, orderId: string, args: string[], worktree: string): string {
+  const [kind, ...rest] = args;
+  if (!kind) throw new OrderCommandError("stop needs how the order stopped");
+  if (!(STOP_KINDS as readonly string[]).includes(kind)) {
+    throw new OrderCommandError(`${kind} is not a way an order can stop`);
   }
   const given = flags(rest, ["--reason"]);
-  appendOrderEvent(db, orderId, {
-    kind: terminal as OrderEventKind,
-    status: terminal,
-    reason: given.get("--reason"),
-  });
-  return `${orderId} stopped as ${terminal}`;
+  appendOrderEvent(
+    db,
+    orderId,
+    {
+      kind: kind as OrderEventKind,
+      ...(kind === "completed" ? { status: "completed" as OrderStatus } : {}),
+      reason: given.get("--reason"),
+    },
+    undefined,
+    worktree,
+  );
+  return kind === "completed" ? `${orderId} is completed` : `${orderId} is queued again`;
 }
 
-export function runOrderCommand(db: Database, args: string[]): string {
+export function runOrderCommand(
+  db: Database,
+  args: string[],
+  defaultProject: string | null = null,
+  worktree = process.cwd(),
+): string {
   const [command, orderId, ...rest] = args;
+  if (command === "ready") {
+    const given = flags(
+      [orderId, ...rest].filter((one) => one !== undefined),
+      ["--limit", "--project"],
+    );
+    const project = given.get("--project") ?? defaultProject;
+    if (!project) throw fail("--project is required outside a checkout with a remote");
+    const limit = given.get("--limit");
+    if (limit !== undefined && !/^[1-9]\d*$/.test(limit)) throw fail("--limit takes a positive whole number");
+    // JSON because a station reads this rather than a person: an order's own words reach
+    // the worker unedited only if nothing in between reformats them.
+    return JSON.stringify(
+      {
+        ready: readyOrders(db, project, limit === undefined ? undefined : Number(limit)),
+        fenced: fencedOrders(db, project),
+      },
+      null,
+      2,
+    );
+  }
   if (!command || !orderId) throw new OrderCommandError("order takes a subcommand and an order id");
+  if (command === "add") return add(db, orderId, rest, defaultProject);
   if (command === "claim") return claim(db, orderId, rest);
-  if (command === "start") {
+  if (command === "priority") {
+    const [level] = rest;
+    const chosen = priority(level);
+    if (!chosen) throw fail("priority takes the level to set");
+    setOrderPriority(db, orderId, chosen);
+    return `${orderId} is ${chosen}`;
+  }
+  if (command === "fence") {
+    const reason = required(flags(rest, ["--reason"]), "--reason");
+    setOrderFence(db, orderId, reason);
+    return `${orderId} is fenced: ${reason}`;
+  }
+  if (command === "release") {
     flags(rest, []);
-    appendOrderEvent(db, orderId, { kind: "started", status: "working" });
-    return `${orderId} is working`;
+    setOrderFence(db, orderId, null);
+    return `${orderId} is released`;
   }
   if (command === "move") {
     const station = required(flags(rest, ["--station"]), "--station");
@@ -222,6 +282,6 @@ export function runOrderCommand(db: Database, args: string[]): string {
     const evidence = EVIDENCE[command] as Evidence;
     return evidence.record(db, orderId, flags(rest, evidence.flags));
   }
-  if (command === "stop") return stop(db, orderId, rest);
+  if (command === "stop") return stop(db, orderId, rest, worktree);
   throw new OrderCommandError(`${command} is not an order subcommand`);
 }

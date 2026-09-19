@@ -28,21 +28,17 @@ const unavailableSnapshot: WallSnapshot = {
 };
 
 const statusLabels: Record<OrderStatus, string> = {
+  queued: "Queued",
   working: "Working",
-  waiting: "Waiting",
-  blocked: "Blocked",
-  fenced: "Fenced",
   completed: "Completed",
   failed: "Failed",
 };
 
-const stopped = new Set<OrderStatus>(["blocked", "fenced", "failed"]);
+const stopped = new Set<OrderStatus>(["failed"]);
 
 const statusIcon: Record<OrderStatus, LucideIcon> = {
+  queued: CircleDot,
   working: CircleDot,
-  waiting: CircleDot,
-  blocked: CircleAlert,
-  fenced: CircleAlert,
   completed: CircleCheck,
   failed: CircleAlert,
 };
@@ -426,8 +422,8 @@ function ItemDialog({
           <h2 className="text-[15px] text-foreground">{order.title}</h2>
           <dl className="flex flex-wrap items-center gap-x-6 gap-y-1 text-quiet">
             <div className="flex items-center gap-2">
-              <dt>item</dt>
-              <dd className="text-muted-foreground">{order.itemId}</dd>
+              <dt>project</dt>
+              <dd className="text-muted-foreground">{read.view?.project}</dd>
             </div>
             <div className="flex items-center gap-2">
               <dt>station</dt>
@@ -453,18 +449,6 @@ function ItemDialog({
               <dt>order</dt>
               <dd className="text-muted-foreground">{order.id}</dd>
             </div>
-            {read.view?.branch ? (
-              <div className="flex items-center gap-2">
-                <dt>branch</dt>
-                <dd className="text-muted-foreground">{read.view.branch}</dd>
-              </div>
-            ) : null}
-            {read.view?.worktree ? (
-              <div className="flex items-center gap-2">
-                <dt>worktree</dt>
-                <dd className="text-muted-foreground">{read.view.worktree}</dd>
-              </div>
-            ) : null}
           </dl>
         </header>
 

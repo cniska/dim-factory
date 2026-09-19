@@ -185,8 +185,8 @@ describe("rebuilding a database an older schema wrote", () => {
     const { db, env } = scratch();
     db.run("ALTER TABLE factory_order DROP COLUMN stop_reason");
     db.run(
-      `INSERT INTO factory_order (id, run_id, queue_id, item_id, title, status, claimed_at, updated_at)
-       VALUES ('order-1', 'run-1', 'build-order', 'item-1', 'Survive a rebuild', 'working', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+      `INSERT INTO factory_order (id, project, title, status, created_at, updated_at)
+       VALUES ('order-1', 'cniska/dim-factory', 'Survive a rebuild', 'working', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
     db.run(
       "INSERT INTO factory_order_event (order_id, ts, kind) VALUES ('order-1', '2026-01-01T00:00:00Z', 'claimed')",
@@ -198,8 +198,8 @@ describe("rebuilding a database an older schema wrote", () => {
     rebuild(db, env);
 
     expect(columnsOf(db, "factory_order")).toContain("stop_reason");
-    expect(db.query("SELECT id, item_id, status FROM factory_order").all()).toEqual([
-      { id: "order-1", item_id: "item-1", status: "working" },
+    expect(db.query("SELECT id, project, status FROM factory_order").all()).toEqual([
+      { id: "order-1", project: "cniska/dim-factory", status: "working" },
     ]);
     expect(db.query("SELECT order_id, kind FROM factory_order_event").all()).toEqual([
       { order_id: "order-1", kind: "claimed" },
@@ -211,11 +211,11 @@ describe("rebuilding a database an older schema wrote", () => {
     db.close();
   });
 
-  test("a factory order keeps the description the queue gave its item", () => {
+  test("a factory order keeps the words it was queued with", () => {
     const { db, env } = scratch();
     db.run(
-      `INSERT INTO factory_order (id, run_id, queue_id, item_id, title, description, status, claimed_at, updated_at)
-       VALUES ('order-1', 'run-1', 'build-order', 'item-1', 'Survive a rebuild',
+      `INSERT INTO factory_order (id, project, title, description, status, created_at, updated_at)
+       VALUES ('order-1', 'cniska/dim-factory', 'Survive a rebuild',
                'No surface can tell a reader what an order is about.', 'working',
                '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
@@ -225,42 +225,6 @@ describe("rebuilding a database an older schema wrote", () => {
     expect(db.query("SELECT id, description FROM factory_order").all()).toEqual([
       { id: "order-1", description: "No surface can tell a reader what an order is about." },
     ]);
-    db.close();
-  });
-
-  test("a queue item reaches the current schema with its dependencies and history", () => {
-    const { db, env } = scratch();
-    // Nothing re-reads these rows, so only the drop and write-back can bring a
-    // table whose definition went stale up to the current one.
-    db.run("ALTER TABLE queue_item DROP COLUMN priority");
-    db.run(
-      `INSERT INTO queue_item (queue_id, id, title, status, created_at)
-       VALUES ('build-order', 'item-1', 'Come first', 'completed', '2026-01-01T00:00:00Z'),
-              ('build-order', 'item-2', 'Come after', 'planned', '2026-01-01T00:00:00Z')`,
-    );
-    db.run(
-      "INSERT INTO queue_item_dependency (queue_id, item_id, depends_on_id) VALUES ('build-order', 'item-2', 'item-1')",
-    );
-    db.run(
-      `INSERT INTO queue_item_transition (queue_id, item_id, from_status, to_status, ts, order_id)
-       VALUES ('build-order', 'item-1', 'planned', 'claimed', '2026-01-01T00:00:00Z', 'order-1'),
-              ('build-order', 'item-1', 'claimed', 'completed', '2026-01-01T01:00:00Z', 'order-1')`,
-    );
-
-    rebuild(db, env);
-
-    expect(db.query("SELECT id, status FROM queue_item ORDER BY id").all()).toEqual([
-      { id: "item-1", status: "completed" },
-      { id: "item-2", status: "planned" },
-    ]);
-    expect(db.query("SELECT item_id, depends_on_id FROM queue_item_dependency").all()).toEqual([
-      { item_id: "item-2", depends_on_id: "item-1" },
-    ]);
-    expect(db.query("SELECT to_status FROM queue_item_transition ORDER BY id").all()).toEqual([
-      { to_status: "claimed" },
-      { to_status: "completed" },
-    ]);
-    expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
     db.close();
   });
 
@@ -287,8 +251,8 @@ describe("rebuilding a database an older schema wrote", () => {
     const { db, env } = scratch();
     db.run("ALTER TABLE factory_order DROP COLUMN title");
     db.run(
-      `INSERT INTO factory_order (id, run_id, queue_id, item_id, status, claimed_at, updated_at)
-       VALUES ('order-old', 'run-1', 'build-order', 'item-1', 'working', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+      `INSERT INTO factory_order (id, project, status, created_at, updated_at)
+       VALUES ('order-old', 'cniska/dim-factory', 'working', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
 
     // Named with the column and the ways out, because rebuild is the only route

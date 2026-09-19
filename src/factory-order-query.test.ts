@@ -3,7 +3,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import {
   appendOrderEvent,
-  createOrder,
+  claimOrder,
+  queueOrder,
   recordOrderCheck,
   recordOrderCommit,
   recordOrderDocument,
@@ -18,25 +19,22 @@ import { SCHEMA_SQL } from "./schema";
 const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
 
+const claim = { runId: "run-1", agentId: "agent-1", station: "dim-station-build" };
+
 describe("factory order query", () => {
   test("returns one unified status row with the latest lifecycle and evidence", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createOrder(
+    queueOrder(
       db,
       {
         id: "order-status",
-        runId: "run-1",
-        queueId: "queue-1",
-        itemId: "item-1",
+        project: "cniska/dim-factory",
         title: "Report one order's status",
-        worktree: trunk.dir,
-        branch: "factory-item",
-        station: "dim-station-build",
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendOrderEvent(db, "order-status", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
+    claimOrder(db, "order-status", claim, "2026-09-18T10:01:00.000Z");
     recordOrderCommit(db, "order-status", trunk.sha, "feat: status", "2026-09-18T10:02:00.000Z");
     // Two commits recorded at one instant, the later one sorting below the earlier as a
     // string: the row reported is the one recorded last, never whichever sha reads highest.
@@ -71,6 +69,7 @@ describe("factory order query", () => {
       "order-status",
       { kind: "completed", status: "completed", reason: "verified" },
       "2026-09-18T10:05:00.000Z",
+      trunk.dir,
     );
 
     const before = [
@@ -85,14 +84,13 @@ describe("factory order query", () => {
     const result = findQuery("factory")?.run(db, { arg: "order-st" });
 
     expect(result?.columns).toEqual([
-      "queue",
-      "item",
+      "project",
       "order_id",
+      "priority",
       "status",
       "latest_event",
       "latest_event_at",
-      "worktree",
-      "branch",
+      "fence",
       "station",
       "commit",
       "check",
@@ -101,14 +99,13 @@ describe("factory order query", () => {
     ]);
     expect(result?.rows).toEqual([
       [
-        "queue-1",
-        "item-1",
+        "cniska/dim-factory",
         "order-status",
+        "unset",
         "completed",
         "completed",
         "2026-09-18T10:05:00.000Z",
-        trunk.dir,
-        "factory-item",
+        "(none)",
         "dim-station-build",
         "aaa222 feat: later",
         "bun run test (0, green)",
@@ -116,7 +113,7 @@ describe("factory order query", () => {
         "verified",
       ],
     ]);
-    expect(result?.denominator).toContain("queue planner source absent");
+    expect(result?.denominator).toContain("factory order");
     const after = [
       "factory_order",
       "factory_order_event",
@@ -130,58 +127,52 @@ describe("factory order query", () => {
     db.close();
   });
 
-  test("shows explicit absence when a blocked order has no fence or reason", () => {
+  test("shows explicit absence when a failed order has no reason", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createOrder(db, {
+    queueOrder(db, {
       id: "order-blocked",
-      runId: "run-1",
-      queueId: "queue-1",
-      itemId: "item-1",
-      title: "Block on another item",
+      project: "cniska/dim-factory",
+      title: "Block on another order",
     });
-    appendOrderEvent(db, "order-blocked", { kind: "blocked", status: "blocked" });
+    claimOrder(db, "order-blocked", claim);
+    appendOrderEvent(db, "order-blocked", { kind: "failed" });
 
     const result = findQuery("factory")?.run(db, { arg: "order-blocked" });
 
-    expect(result?.rows[0]?.[3]).toBe("blocked");
-    expect(result?.rows[0]?.[4]).toBe("blocked");
-    expect(result?.rows[0]?.[12]).toBe("(none)");
+    expect(result?.rows[0]?.[3]).toBe("queued");
+    expect(result?.rows[0]?.[4]).toBe("failed");
+    expect(result?.rows[0]?.[11]).toBe("(none)");
 
-    createOrder(db, {
+    queueOrder(db, {
       id: "order-fenced",
-      runId: "run-1",
-      queueId: "queue-1",
-      itemId: "item-2",
+      project: "cniska/dim-factory",
       title: "Stop at a fence",
     });
+    claimOrder(db, "order-fenced", claim);
     appendOrderEvent(db, "order-fenced", {
-      kind: "fenced",
-      status: "fenced",
+      kind: "failed",
       fenceType: "owner-judgment",
       reason: "ambiguous scope",
     });
     const fenced = findQuery("factory")?.run(db, { arg: "order-fenced" });
-    expect(fenced?.rows[0]?.[12]).toBe("owner-judgment: ambiguous scope");
+    expect(fenced?.rows[0]?.[11]).toBe("owner-judgment: ambiguous scope");
     db.close();
   });
 
   test("returns the aggregate and every evidence kind by order prefix", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createOrder(
+    queueOrder(
       db,
       {
         id: "order-123",
-        runId: "run-1",
-        queueId: "queue-1",
-        itemId: "item-1",
+        project: "cniska/dim-factory",
         title: "Read the detailed report",
-        station: "dim-station-build",
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendOrderEvent(db, "order-123", { kind: "started", status: "working" }, "2026-09-18T10:00:30.000Z");
+    claimOrder(db, "order-123", claim, "2026-09-18T10:00:30.000Z");
     recordOrderCommit(db, "order-123", "abc", "feat: report", "2026-09-18T10:01:00.000Z");
     recordOrderFile(
       db,
@@ -240,7 +231,7 @@ describe("factory order query", () => {
       "setup",
       '[{"port":5433}]',
     ]);
-    expect(result?.rows[0]?.[4]).toBe("run-1/queue-1/item-1");
+    expect(result?.rows[0]?.[4]).toBe("cniska/dim-factory/order-123");
     expect(result?.rows.find((row) => row[0] === "file")?.slice(4)).toEqual([
       "src/factory-order.ts",
       "+12 -3",
@@ -252,18 +243,16 @@ describe("factory order query", () => {
   test("reports the signal that killed a hook where it left no exit code", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
-    createOrder(
+    queueOrder(
       db,
       {
         id: "order-killed",
-        runId: "run-1",
-        queueId: "queue-1",
-        itemId: "item-1",
+        project: "cniska/dim-factory",
         title: "Teardown hook killed",
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendOrderEvent(db, "order-killed", { kind: "started", status: "working" }, "2026-09-18T10:00:30.000Z");
+    claimOrder(db, "order-killed", claim, "2026-09-18T10:00:30.000Z");
     recordOrderEnvironment(
       db,
       "order-killed",
@@ -308,7 +297,7 @@ describe("factory order query", () => {
     const result = findQuery("factory")?.run(db, {});
 
     expect(result?.rows).toEqual([]);
-    expect(result?.denominator).toContain("queue planner source absent");
+    expect(result?.denominator).toContain("factory order");
     expect(result?.note).toBe("no factory orders are recorded");
     db.close();
   });

@@ -2,9 +2,8 @@
 // by re-reading them, so a schema change is `dim rebuild`, not a migration. The
 // exceptions carry the reason at the table: guidance_walk, command_trace and
 // finding have no source to re-read, embedding holds vectors only a model can
-// produce again, and correction_label, hook_event, the queue and the factory
-// order records have no source either but are dropped and written back row for
-// row.
+// produce again, and correction_label, hook_event and the factory order records
+// have no source either but are dropped and written back row for row.
 // SCHEMA_VERSION exists so sync can refuse to run against a database only a
 // re-read can correct: a changed column, or a changed rule for what identifies a
 // row, since rows already written keep the old identity. Adding a table is
@@ -19,7 +18,7 @@
 
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 26;
+export const SCHEMA_VERSION = 27;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -185,63 +184,6 @@ CREATE TABLE IF NOT EXISTS factory_schedule (
 );
 CREATE INDEX IF NOT EXISTS factory_schedule_due ON factory_schedule(enabled, paused, last_evaluated_at);
 
--- What a repo has waiting. Nothing on disk holds it, so rebuild writes these rows
--- back rather than re-reading them. The statuses are the item's and not the
--- order's: an order that stops blocked, fenced or failed leaves its item
--- claimable again, and why it stopped is the order's to say.
-CREATE TABLE IF NOT EXISTS queue_item (
-  queue_id        TEXT NOT NULL,
-  id              TEXT NOT NULL,
-  title           TEXT NOT NULL,
-  description     TEXT,
-  status          TEXT NOT NULL CHECK (status IN ('planned', 'claimed', 'completed', 'dropped')),
-  -- The order that added this item, where one did. Most items are found by an
-  -- order mid-slice — a prerequisite, a finding worth its own cut — and a title
-  -- with nothing pointing back at what found it cannot be judged months later.
-  -- Which order holds the item now is not here: factory_order.item_id says that,
-  -- and a second copy is free to disagree with it. No foreign key either way,
-  -- since an order can run against a tracker with no row here at all.
-  discovered_by_order_id TEXT,
-  -- Ready items come back most urgent first, unset last, then oldest, then id.
-  -- Named rather than numbered so a row reads without a key, and five levels
-  -- because a tracker feeding this queue has about that many to hand over.
-  priority        TEXT NOT NULL DEFAULT 'unset'
-                  CHECK (priority IN ('urgent', 'high', 'medium', 'low', 'unset')),
-  created_at      TEXT NOT NULL,
-  PRIMARY KEY (queue_id, id)
-);
-CREATE INDEX IF NOT EXISTS queue_item_status ON queue_item(queue_id, status);
-
-CREATE TABLE IF NOT EXISTS queue_item_dependency (
-  queue_id        TEXT NOT NULL,
-  item_id         TEXT NOT NULL,
-  depends_on_id   TEXT NOT NULL,
-  -- The one cycle short enough for the database to refuse; longer ones are the
-  -- planner's to catch.
-  CHECK (depends_on_id <> item_id),
-  PRIMARY KEY (queue_id, item_id, depends_on_id),
-  FOREIGN KEY (queue_id, item_id) REFERENCES queue_item(queue_id, id) ON DELETE CASCADE,
-  FOREIGN KEY (queue_id, depends_on_id) REFERENCES queue_item(queue_id, id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS queue_item_dependency_target ON queue_item_dependency(queue_id, depends_on_id);
-
--- An item outlives the orders run against it, so its history threads across all of
--- them; what happened inside one order is factory_order_event. Read back by id
--- and not by ts, since two transitions can share a timestamp and only the order
--- they were written in tells a re-claim from a first claim.
-CREATE TABLE IF NOT EXISTS queue_item_transition (
-  id              INTEGER PRIMARY KEY,
-  queue_id        TEXT NOT NULL,
-  item_id         TEXT NOT NULL,
-  from_status     TEXT NOT NULL,
-  to_status       TEXT NOT NULL,
-  ts              TEXT NOT NULL,
-  reason          TEXT,
-  order_id        TEXT,
-  FOREIGN KEY (queue_id, item_id) REFERENCES queue_item(queue_id, id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS queue_item_transition_item ON queue_item_transition(queue_id, item_id, id);
-
 -- What stops the whole factory rather than one queue: a defect hit mid-slice is in
 -- the machinery every queue is run by, so the next claim is refused whichever repo
 -- it was going to come from. Running orders are left alone, because killing a
@@ -271,23 +213,34 @@ CREATE TABLE IF NOT EXISTS factory_stop (
 CREATE UNIQUE INDEX IF NOT EXISTS factory_stop_live
   ON factory_stop((cleared_at IS NULL)) WHERE cleared_at IS NULL;
 
--- Operational factory evidence is written by the operator, not derived from
--- transcripts or repository files. No source could reproduce a claim, event or
--- report after the fact, so rebuild writes these rows back rather than re-reading
--- them.
+-- Every piece of work, waiting or worked, and the evidence of what it produced.
+-- Nothing on disk holds it and no source could reproduce a claim, event or report
+-- after the fact, so rebuild writes these rows back rather than re-reading them.
+-- An order is queued before any worker exists, which is why the run, the agent and
+-- the claim time are set later rather than at creation.
 CREATE TABLE IF NOT EXISTS factory_order (
+  -- The subject, which is also the branch and the worktree directory it will be
+  -- built in: one string the record states once rather than three that can
+  -- disagree. It exists before any run, so it carries no run timestamp.
   id              TEXT PRIMARY KEY,
-  run_id          TEXT NOT NULL,
-  queue_id        TEXT NOT NULL,
-  item_id         TEXT NOT NULL,
-  -- What the item is called, so a card can be read across a room. The id beside
+  -- The canonical owner/repo the work belongs to, so one board carries more than
+  -- one project and a path cannot stand in for an identity.
+  project         TEXT NOT NULL,
+  -- What the order is called, so a card can be read across a room. The id beside
   -- it is what a query joins on and never what a person is shown.
   title           TEXT NOT NULL,
-  -- The queue item's own description, copied in at claim time: the queue is edited
-  -- as work lands, so by the time anyone reads the order back the wording that was
-  -- worked to is gone. Nullable because a queue that names its items and nothing
-  -- more has none to copy, and an invented one would read as the owner's words.
   description     TEXT,
+  -- Ready orders come back most urgent first, unset last, then oldest, then id.
+  -- Named rather than numbered so a row reads without a key, and five levels
+  -- because a tracker feeding this queue has about that many to hand over.
+  priority        TEXT NOT NULL DEFAULT 'unset'
+                  CHECK (priority IN ('urgent', 'high', 'medium', 'low', 'unset')),
+  -- Why the owner has to release this before anyone takes it, NULL when nobody
+  -- does. A fence met while working is recorded the same way, so what happened to
+  -- the attempt and who may let the work go stay two facts.
+  fence           TEXT,
+  -- Set by the claim: an order waits in the queue before any run exists.
+  run_id          TEXT,
   agent_id        TEXT,
   -- What the worker was called in as. Set when the operator spawns it and never again:
   -- a builder stays a builder wherever its work sits, so nothing downstream has to
@@ -295,16 +248,16 @@ CREATE TABLE IF NOT EXISTS factory_order (
   -- is holding it.
   role            TEXT CHECK (role IN ('planner', 'builder', 'reviewer')),
   session_id      TEXT,
-  worktree        TEXT,
-  branch          TEXT,
   station         TEXT,
-  status          TEXT NOT NULL CHECK (status IN ('waiting', 'working', 'completed', 'blocked', 'fenced', 'failed')),
-  claimed_at      TEXT NOT NULL,
-  started_at      TEXT,
+  -- One status per column on the board. Work that stopped without landing goes back
+  -- to queued, because it is work nobody is holding; that it was tried, and why it
+  -- stopped, is the failed event and stop_reason rather than a state of its own.
+  status          TEXT NOT NULL CHECK (status IN ('queued', 'working', 'completed')),
+  created_at      TEXT NOT NULL,
+  claimed_at      TEXT,
   updated_at      TEXT NOT NULL,
   completed_at    TEXT,
-  stop_reason     TEXT,
-  UNIQUE (run_id, item_id)
+  stop_reason     TEXT
 );
 CREATE INDEX IF NOT EXISTS factory_order_status ON factory_order(status, updated_at);
 
@@ -312,7 +265,7 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,
   order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   ts                    TEXT NOT NULL,
-  kind                  TEXT NOT NULL CHECK (kind IN ('claimed', 'delegated', 'started', 'moved', 'commit_created', 'check_finished', 'review_finished', 'fenced', 'blocked', 'completed', 'failed')),
+  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'delegated', 'moved', 'commit_created', 'check_finished', 'review_finished', 'completed', 'failed')),
   actor_id              TEXT,
   session_id            TEXT,
   station               TEXT,

@@ -30,81 +30,73 @@ function landed(database: Database, orderId: string): void {
   runOrderCommand(database, ["check", orderId, "--command", "bun run verify", "--exit", "0"]);
 }
 
-const claim = [
-  "claim",
+const add = [
+  "add",
   "order-1",
-  "--run",
-  "run-1",
-  "--queue",
-  "build-order",
-  "--item",
-  "record-a-factory-order",
   "--title",
   "Record a factory order as work is taken",
   "--description",
-  "The record holds what an item is called and never what it says.",
-  "--agent",
-  "agent-1",
-  "--station",
-  "dim-station-build",
-  "--worktree",
-  trunk.dir,
-  "--branch",
-  "order-1",
+  "The record holds what an order is called and never what it says.",
+  "--project",
+  "cniska/dim-factory",
 ];
 
+const claim = ["claim", "order-1", "--run", "run-1", "--agent", "agent-1", "--station", "dim-station-build"];
+
+function queued(database: Database): void {
+  runOrderCommand(database, add);
+}
+
 describe("order command", () => {
-  test("a claim puts one waiting card on the wall under the item's name", () => {
+  test("an added order waits on the board under its own name", () => {
     const database = db();
 
-    expect(runOrderCommand(database, claim)).toBe(
-      "claimed order-1 for record-a-factory-order on build-order",
-    );
+    expect(runOrderCommand(database, add)).toBe("queued order-1 on cniska/dim-factory");
 
     const snapshot = assembleWallSnapshot(database);
     expect(snapshot.totals).toEqual({ todo: 1, active: 0, done: 0 });
     expect(snapshot.orders[0]?.title).toBe("Record a factory order as work is taken");
-    expect(snapshot.orders[0]?.itemId).toBe("record-a-factory-order");
-    expect(snapshot.orders[0]?.status).toBe("waiting");
+    expect(snapshot.orders[0]?.status).toBe("queued");
+  });
+
+  test("a claim moves it into the active column", () => {
+    const database = db();
+    queued(database);
+
+    expect(runOrderCommand(database, claim)).toBe("order-1 is working");
+
+    const snapshot = assembleWallSnapshot(database);
+    expect(snapshot.totals).toEqual({ todo: 0, active: 1, done: 0 });
+    expect(snapshot.orders[0]?.status).toBe("working");
     expect(snapshot.orders[0]?.station).toBe("build");
   });
 
-  test("a claim keeps the item's description as the queue worded it", () => {
+  test("an order keeps the description it was queued with", () => {
     const database = db();
 
+    queued(database);
     runOrderCommand(database, claim);
 
     expect(database.query("SELECT description FROM factory_order WHERE id = 'order-1'").get()).toEqual({
-      description: "The record holds what an item is called and never what it says.",
+      description: "The record holds what an order is called and never what it says.",
     });
   });
 
-  test("a claim with no description records the order without one", () => {
+  test("an order queued with no description records without one", () => {
     const database = db();
-    const at = claim.indexOf("--description");
+    const at = add.indexOf("--description");
 
-    runOrderCommand(database, [...claim.slice(0, at), ...claim.slice(at + 2)]);
+    runOrderCommand(database, [...add.slice(0, at), ...add.slice(at + 2)]);
 
     expect(database.query("SELECT description FROM factory_order WHERE id = 'order-1'").get()).toEqual({
       description: null,
     });
   });
 
-  test("a start moves that card into the active column", () => {
-    const database = db();
-    runOrderCommand(database, claim);
-
-    expect(runOrderCommand(database, ["start", "order-1"])).toBe("order-1 is working");
-
-    const snapshot = assembleWallSnapshot(database);
-    expect(snapshot.totals).toEqual({ todo: 0, active: 1, done: 0 });
-    expect(snapshot.orders[0]?.status).toBe("working");
-  });
-
   test("a move sends the card to the station the work is at now", () => {
     const database = db();
+    queued(database);
     runOrderCommand(database, claim);
-    runOrderCommand(database, ["start", "order-1"]);
 
     expect(runOrderCommand(database, ["move", "order-1", "--station", "dim-station-review"])).toBe(
       "order-1 moved to dim-station-review",
@@ -115,8 +107,8 @@ describe("order command", () => {
 
   test("a move with no station to move to is refused", () => {
     const database = db();
+    queued(database);
     runOrderCommand(database, claim);
-    runOrderCommand(database, ["start", "order-1"]);
 
     expect(() => runOrderCommand(database, ["move", "order-1"])).toThrow(OrderCommandError);
 
@@ -125,11 +117,13 @@ describe("order command", () => {
 
   test("a stop moves that card into the done column", () => {
     const database = db();
+    queued(database);
     runOrderCommand(database, claim);
-    runOrderCommand(database, ["start", "order-1"]);
     landed(database, "order-1");
 
-    expect(runOrderCommand(database, ["stop", "order-1", "completed"])).toBe("order-1 stopped as completed");
+    expect(runOrderCommand(database, ["stop", "order-1", "completed"], null, trunk.dir)).toBe(
+      "order-1 is completed",
+    );
 
     const snapshot = assembleWallSnapshot(database);
     expect(snapshot.totals).toEqual({ todo: 0, active: 0, done: 1 });
@@ -138,37 +132,72 @@ describe("order command", () => {
 
   test("a stop as completed is refused until a check has passed", () => {
     const database = db();
+    queued(database);
     runOrderCommand(database, claim);
-    runOrderCommand(database, ["start", "order-1"]);
     runOrderCommand(database, ["check", "order-1", "--command", "bun run verify", "--exit", "1"]);
 
-    expect(() => runOrderCommand(database, ["stop", "order-1", "completed"])).toThrow(
+    expect(() => runOrderCommand(database, ["stop", "order-1", "completed"], null, trunk.dir)).toThrow(
       expect.objectContaining({ code: "order_not_checked" }),
     );
 
     expect(assembleWallSnapshot(database).orders[0]?.status).toBe("working");
-    expect(runOrderCommand(database, ["stop", "order-1", "blocked", "--reason", "waits on the wall"])).toBe(
-      "order-1 stopped as blocked",
+    expect(runOrderCommand(database, ["stop", "order-1", "failed", "--reason", "waits on the wall"])).toBe(
+      "order-1 is queued again",
     );
   });
 
-  test("a fence keeps the card active and shows why it stopped", () => {
+  test("a failure puts the order back among the work nobody holds, carrying why", () => {
     const database = db();
+    queued(database);
     runOrderCommand(database, claim);
-    runOrderCommand(database, ["start", "order-1"]);
 
-    runOrderCommand(database, ["stop", "order-1", "fenced", "--reason", "outward-facing"]);
+    runOrderCommand(database, ["stop", "order-1", "failed", "--reason", "the check never passed"]);
 
     const snapshot = assembleWallSnapshot(database);
-    expect(snapshot.totals).toEqual({ todo: 0, active: 1, done: 0 });
-    expect(snapshot.orders[0]?.status).toBe("fenced");
-    expect(snapshot.orders[0]?.attention).toBe("outward-facing");
+    expect(snapshot.totals).toEqual({ todo: 1, active: 0, done: 0 });
+    expect(snapshot.orders[0]?.status).toBe("queued");
+    expect(snapshot.orders[0]?.attention).toBe("the check never passed");
+    // Taking it again is the same act as taking one that never started.
+    expect(runOrderCommand(database, claim)).toBe("order-1 is working");
+  });
+
+  test("a fenced order is refused to a claim until the owner releases it", () => {
+    const database = db();
+    queued(database);
+    runOrderCommand(database, ["fence", "order-1", "--reason", "outward-facing"]);
+
+    expect(() => runOrderCommand(database, claim)).toThrow(/outward-facing/);
+
+    runOrderCommand(database, ["release", "order-1"]);
+    expect(runOrderCommand(database, claim)).toBe("order-1 is working");
+  });
+
+  test("ready lists the unheld orders most urgent first, fenced ones apart", () => {
+    const database = db();
+    runOrderCommand(database, add);
+    runOrderCommand(database, ["add", "order-2", "--title", "Later", "--project", "cniska/dim-factory"]);
+    runOrderCommand(database, ["priority", "order-2", "urgent"]);
+    runOrderCommand(database, [
+      "add",
+      "order-3",
+      "--title",
+      "Owner's",
+      "--project",
+      "cniska/dim-factory",
+      "--fence",
+      "outward-facing",
+    ]);
+
+    const read = JSON.parse(runOrderCommand(database, ["ready", "--project", "cniska/dim-factory"]));
+
+    expect(read.ready.map((one: { id: string }) => one.id)).toEqual(["order-2", "order-1"]);
+    expect(read.fenced.map((one: { id: string }) => one.id)).toEqual(["order-3"]);
   });
 
   test("a running order records the evidence the work produced", () => {
     const database = db();
+    queued(database);
     runOrderCommand(database, claim);
-    runOrderCommand(database, ["start", "order-1"]);
 
     expect(
       runOrderCommand(database, ["commit", "order-1", "--sha", "abc123", "--subject", "feat: land it"]),
@@ -237,17 +266,17 @@ describe("order command", () => {
     });
   });
 
-  test("evidence is refused before the order started and after it stopped", () => {
+  test("evidence is refused before the order is claimed and after it stopped", () => {
     const database = db();
-    runOrderCommand(database, claim);
+    queued(database);
 
     expect(() => runOrderCommand(database, ["commit", "order-1", "--sha", "abc123"])).toThrow(
-      "order order-1 has not started",
+      "order order-1 is not claimed",
     );
 
-    runOrderCommand(database, ["start", "order-1"]);
+    runOrderCommand(database, claim);
     landed(database, "order-1");
-    runOrderCommand(database, ["stop", "order-1", "completed"]);
+    runOrderCommand(database, ["stop", "order-1", "completed"], null, trunk.dir);
 
     expect(() => runOrderCommand(database, ["commit", "order-1", "--sha", "abc123"])).toThrow(
       "order order-1 is already completed",
@@ -259,8 +288,8 @@ describe("order command", () => {
 
   test("a line count that is not a number is refused, and git's binary dash is no count", () => {
     const database = db();
+    queued(database);
     runOrderCommand(database, claim);
-    runOrderCommand(database, ["start", "order-1"]);
 
     for (const spec of ["", " ", "1e3", "-4", "many"]) {
       expect(() =>
@@ -287,8 +316,8 @@ describe("order command", () => {
 
   test("a check with no exit status and a finding with no answer are refused", () => {
     const database = db();
+    queued(database);
     runOrderCommand(database, claim);
-    runOrderCommand(database, ["start", "order-1"]);
 
     expect(() =>
       runOrderCommand(database, ["check", "order-1", "--command", "bun run verify", "--exit", "green"]),
@@ -317,8 +346,8 @@ describe("order command", () => {
 
   test("a refused finding is not recorded without the grounds it rests on", () => {
     const database = db();
+    queued(database);
     runOrderCommand(database, claim);
-    runOrderCommand(database, ["start", "order-1"]);
 
     expect(() =>
       runOrderCommand(database, [
@@ -336,22 +365,24 @@ describe("order command", () => {
     expect(database.query("SELECT count(*) AS rows FROM factory_order_finding").get()).toEqual({ rows: 0 });
   });
 
-  test("a status an order cannot stop at is refused rather than written", () => {
+  test("a way an order cannot stop is refused rather than written", () => {
     const database = db();
+    queued(database);
     runOrderCommand(database, claim);
-    runOrderCommand(database, ["start", "order-1"]);
 
     expect(() => runOrderCommand(database, ["stop", "order-1", "working"])).toThrow(OrderCommandError);
 
     expect(assembleWallSnapshot(database).orders[0]?.status).toBe("working");
     landed(database, "order-1");
-    expect(runOrderCommand(database, ["stop", "order-1", "completed"])).toBe("order-1 stopped as completed");
+    expect(runOrderCommand(database, ["stop", "order-1", "completed"], null, trunk.dir)).toBe(
+      "order-1 is completed",
+    );
   });
 
-  test("a claim missing identity is refused before any row is written", () => {
+  test("an order queued without a title is refused before any row is written", () => {
     const database = db();
 
-    expect(() => runOrderCommand(database, ["claim", "order-1", "--run", "run-1"])).toThrow(
+    expect(() => runOrderCommand(database, ["add", "order-1", "--project", "cniska/dim-factory"])).toThrow(
       OrderCommandError,
     );
     expect(assembleWallSnapshot(database).orders).toEqual([]);

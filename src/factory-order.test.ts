@@ -7,15 +7,15 @@ import { closeDb, openDb } from "./db";
 import { runFactoryOrder } from "./factory-operator";
 import {
   appendOrderEvent,
-  createOrder,
+  claimOrder,
   moveOrder,
+  queueOrder,
   recordOrderCheck,
   recordOrderCommit,
   recordOrderDocument,
   recordOrderEnvironment,
   recordOrderFile,
   recordOrderFinding,
-  updateOrderLocation,
 } from "./factory-order";
 import { clearStop, FactoryStopError, pullStop } from "./factory-stop";
 import { commitOffTrunk, integratedRepo, repoWithoutTrunk } from "./fixtures.test-support";
@@ -35,16 +35,11 @@ afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
 
 const order = {
   id: "order-1",
-  runId: "run-1",
-  queueId: "queue-1",
-  itemId: "item-1",
+  project: "cniska/dim-factory",
   title: "Record a factory order",
-  agentId: "agent-1",
-  sessionId: "session-1",
-  worktree: trunk.dir,
-  branch: "order-1",
-  station: "dim-station-build",
 };
+
+const claim = { runId: "run-1", agentId: "agent-1", sessionId: "session-1", station: "dim-station-build" };
 
 /** What the gate wants before an order may complete: a commit on the trunk, then a check that passed. */
 function landed(database: Database, orderId: string, at?: string): void {
@@ -75,21 +70,14 @@ const teardownReport: WorkerHookReport = {
 describe("factory order report records", () => {
   test("runs one item through a builder and records its observable lifecycle", async () => {
     const database = db();
+    queueOrder(database, { ...order, id: "order-2" });
     const result = await runFactoryOrder(
       database,
-      {
-        id: "order-2",
-        runId: "run-2",
-        queueId: "build-order",
-        itemId: "self-sufficient-factory-order",
-        title: "Make an order self-sufficient",
-        agentId: "agent-2",
-      },
-      { baseRevision: "abc123" },
+      { id: "order-2" },
+      { baseRevision: "abc123", claim, worktree: trunk.dir },
       async (context) => {
-        expect(context.item.itemId).toBe("self-sufficient-factory-order");
+        expect(context.item.id).toBe("order-2");
         expect(context.baseRevision).toBe("abc123");
-        context.setLocation(trunk.dir, "order-2");
         context.delegate("agent-3", "session-3", "dim-station-review");
         context.recordCommit(trunk.sha, "feat: observable order");
         context.recordFile({ path: "src/factory-operator.ts", added: 18, removed: 2 });
@@ -104,20 +92,16 @@ describe("factory order report records", () => {
 
     expect(result).toEqual({ status: "completed", reason: "verified" });
     expect(
-      database
-        .query("SELECT status, stop_reason, worktree, branch FROM factory_order WHERE id = 'order-2'")
-        .get(),
+      database.query("SELECT status, stop_reason FROM factory_order WHERE id = 'order-2'").get(),
     ).toEqual({
       status: "completed",
       stop_reason: "verified",
-      worktree: trunk.dir,
-      branch: "order-2",
     });
     expect(
       database.query("SELECT kind, status FROM factory_order_event WHERE order_id = 'order-2'").all(),
     ).toEqual([
+      { kind: "queued", status: null },
       { kind: "claimed", status: null },
-      { kind: "started", status: "working" },
       { kind: "delegated", status: null },
       { kind: "commit_created", status: null },
       { kind: "check_finished", status: null },
@@ -153,22 +137,15 @@ describe("factory order report records", () => {
     database.close();
   });
 
-  test("projects every returned terminal outcome", async () => {
+  test("projects a completion as done and a failure back into the queue", async () => {
     const database = db();
-    for (const [index, status] of (["completed", "blocked", "fenced", "failed"] as const).entries()) {
+    for (const [index, status] of (["completed", "failed"] as const).entries()) {
       const orderId = `order-terminal-${index}`;
+      queueOrder(database, { ...order, id: orderId });
       const outcome = await runFactoryOrder(
         database,
-        {
-          id: orderId,
-          runId: `run-${orderId}`,
-          queueId: "queue-1",
-          itemId: orderId,
-          title: `Run ${orderId} beside the others`,
-          worktree: trunk.dir,
-          branch: orderId,
-        },
-        { baseRevision: "abc123" },
+        { id: orderId },
+        { baseRevision: "abc123", claim, worktree: trunk.dir },
         (context) => {
           if (status === "completed") {
             context.recordCommit(trunk.sha, "feat: land it");
@@ -181,21 +158,21 @@ describe("factory order report records", () => {
       expect(
         database.query("SELECT status, stop_reason FROM factory_order WHERE id = ?").get(orderId),
       ).toEqual({
-        status,
+        status: status === "completed" ? "completed" : "queued",
         stop_reason: "stopped",
       });
       expect(
         database.query("SELECT kind, status FROM factory_order_event WHERE order_id = ?").all(orderId),
       ).toEqual([
+        { kind: "queued", status: null },
         { kind: "claimed", status: null },
-        { kind: "started", status: "working" },
         ...(status === "completed"
           ? [
               { kind: "commit_created", status: null },
               { kind: "check_finished", status: null },
             ]
           : []),
-        { kind: status, status },
+        { kind: status, status: status === "completed" ? "completed" : null },
       ]);
     }
     database.close();
@@ -204,36 +181,34 @@ describe("factory order report records", () => {
   test("fails a builder that returns completed with no check recorded", async () => {
     const database = db();
 
+    queueOrder(database, { ...order, id: "order-unchecked" });
+
     await expect(
       runFactoryOrder(
         database,
-        {
-          id: "order-unchecked",
-          runId: "run-unchecked",
-          queueId: "queue-1",
-          itemId: "item-1",
-          title: "Complete without checking",
-          worktree: "/tmp/wt",
-          branch: "order-unchecked",
-        },
-        { baseRevision: "abc123" },
-        () => ({ status: "completed", reason: "verified" }),
+        { id: "order-unchecked" },
+        { baseRevision: "abc123", claim, worktree: trunk.dir },
+        () => ({
+          status: "completed",
+          reason: "verified",
+        }),
       ),
     ).rejects.toThrow(expect.objectContaining({ code: "order_not_checked" }));
 
     expect(database.query("SELECT status FROM factory_order WHERE id = 'order-unchecked'").get()).toEqual({
-      status: "failed",
+      status: "queued",
     });
     database.close();
   });
 
   test("records a failed builder before rethrowing its error", async () => {
     const database = db();
+    queueOrder(database, { ...order, id: "order-3" });
     await expect(
       runFactoryOrder(
         database,
-        { id: "order-3", runId: "run-3", queueId: "queue-1", itemId: "item-3", title: "Fail in the builder" },
-        { baseRevision: "abc123" },
+        { id: "order-3" },
+        { baseRevision: "abc123", claim, worktree: trunk.dir },
         () => {
           throw new Error("builder stopped");
         },
@@ -242,71 +217,66 @@ describe("factory order report records", () => {
     expect(
       database.query("SELECT status, stop_reason FROM factory_order WHERE id = 'order-3'").get(),
     ).toEqual({
-      status: "failed",
+      status: "queued",
       stop_reason: "builder stopped",
     });
     expect(database.query("SELECT kind FROM factory_order_event WHERE order_id = 'order-3'").all()).toEqual([
+      { kind: "queued" },
       { kind: "claimed" },
-      { kind: "started" },
       { kind: "failed" },
     ]);
     database.close();
   });
 
-  test("requires one worktree before an order can stop", async () => {
+  test("refuses a completion with no check behind it", async () => {
     const database = db();
+
+    queueOrder(database, { ...order, id: "order-no-worktree" });
 
     await expect(
       runFactoryOrder(
         database,
-        {
-          id: "order-no-worktree",
-          runId: "run-no-worktree",
-          queueId: "queue-1",
-          itemId: "item-1",
-          title: "Complete without a worktree",
-        },
-        { baseRevision: "abc123" },
-        () => ({ status: "completed", reason: "verified" }),
+        { id: "order-no-worktree" },
+        { baseRevision: "abc123", claim, worktree: trunk.dir },
+        () => ({
+          status: "completed",
+          reason: "verified",
+        }),
       ),
-    ).rejects.toThrow("order order-no-worktree has no worktree");
+    ).rejects.toThrow(expect.objectContaining({ code: "order_not_checked" }));
     expect(database.query("SELECT status FROM factory_order WHERE id = 'order-no-worktree'").get()).toEqual({
-      status: "failed",
+      status: "queued",
     });
     database.close();
   });
 
-  test("keeps the owned worktree and rejects lifecycle events out of order", () => {
+  test("rejects lifecycle events out of order", () => {
     const database = db();
-    createOrder(database, order, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
 
-    expect(() => appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" })).toThrow(
-      "order order-1 must be working before it can complete",
-    );
-    appendOrderEvent(database, "order-1", { kind: "started", status: "working" });
-    expect(() => updateOrderLocation(database, "order-1", "/other", "other")).toThrow(
-      "order order-1 already owns a worktree",
-    );
+    expect(() =>
+      appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" }, undefined, trunk.dir),
+    ).toThrow("order order-1 must be working before it can complete");
     database.close();
   });
 
   test("refuses to complete an order whose commits never reached the trunk", () => {
     const repo = integratedRepo();
     const database = db();
-    const landed = { ...order, worktree: repo.dir };
-    createOrder(database, landed, "2026-09-18T10:00:00.000Z");
-    appendOrderEvent(database, "order-1", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
+    const landed = order;
+    queueOrder(database, landed, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, "2026-09-18T10:01:00.000Z");
     recordOrderCommit(database, "order-1", commitOffTrunk(repo.dir, "item-statement"), "feat: land it");
     recordOrderCheck(database, "order-1", { command: "bun run verify", exitCode: 0, result: "green" });
 
-    expect(() => appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" })).toThrow(
-      expect.objectContaining({ code: "order_not_integrated" }),
-    );
+    expect(() =>
+      appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" }, undefined, repo.dir),
+    ).toThrow(expect.objectContaining({ code: "order_not_integrated" }));
     expect(database.query("SELECT status FROM factory_order").get()).toEqual({ status: "working" });
 
     recordOrderCommit(database, "order-1", repo.sha, "feat: on the trunk");
     recordOrderCheck(database, "order-1", { command: "bun run verify", exitCode: 0, result: "green" });
-    appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" });
+    appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" }, undefined, repo.dir);
 
     expect(database.query("SELECT status FROM factory_order").get()).toEqual({ status: "completed" });
     database.close();
@@ -316,8 +286,8 @@ describe("factory order report records", () => {
   test("counts a check by when it was recorded, not by when it says it ran", () => {
     const repo = integratedRepo();
     const database = db();
-    createOrder(database, { ...order, worktree: repo.dir }, "2026-09-18T10:00:00.000Z");
-    appendOrderEvent(database, "order-1", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, "2026-09-18T10:01:00.000Z");
     recordOrderCommit(database, "order-1", repo.sha, "feat: land it", "2026-09-18T10:03:00.000Z");
     // The order the station loop runs in: the check finishes, then the commit it
     // vouches for is made, then both are recorded.
@@ -333,7 +303,7 @@ describe("factory order report records", () => {
       "2026-09-18T10:04:00.000Z",
     );
 
-    appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" });
+    appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" }, undefined, repo.dir);
 
     expect(database.query("SELECT status FROM factory_order").get()).toEqual({ status: "completed" });
     database.close();
@@ -351,14 +321,14 @@ describe("factory order report records", () => {
       "refs/remotes/origin/trunk",
     ]);
     const database = db();
-    createOrder(database, { ...order, worktree: repo.dir }, "2026-09-18T10:00:00.000Z");
-    appendOrderEvent(database, "order-1", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, "2026-09-18T10:01:00.000Z");
     recordOrderCommit(database, "order-1", repo.sha, "feat: land it");
     recordOrderCheck(database, "order-1", { command: "bun run verify", exitCode: 0, result: "green" });
 
-    expect(() => appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" })).toThrow(
-      /names trunk as its trunk but has no local branch/,
-    );
+    expect(() =>
+      appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" }, undefined, repo.dir),
+    ).toThrow(/names trunk as its trunk but has no local branch/);
     database.close();
     rmSync(repo.dir, { recursive: true, force: true });
   });
@@ -366,28 +336,28 @@ describe("factory order report records", () => {
   test("says the worktree is gone rather than that it names no trunk", () => {
     const database = db();
     const gone = join(tmpdir(), `dim-gone-${Date.now()}`);
-    createOrder(database, { ...order, worktree: gone }, "2026-09-18T10:00:00.000Z");
-    appendOrderEvent(database, "order-1", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, "2026-09-18T10:01:00.000Z");
     recordOrderCommit(database, "order-1", trunk.sha, "feat: land it");
     recordOrderCheck(database, "order-1", { command: "bun run verify", exitCode: 0, result: "green" });
 
-    expect(() => appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" })).toThrow(
-      /is not a git repo that can be read/,
-    );
+    expect(() =>
+      appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" }, undefined, gone),
+    ).toThrow(/is not a git repo that can be read/);
     database.close();
   });
 
   test("says a commit is missing rather than unmerged when the repo lacks it", () => {
     const repo = integratedRepo();
     const database = db();
-    createOrder(database, { ...order, worktree: repo.dir }, "2026-09-18T10:00:00.000Z");
-    appendOrderEvent(database, "order-1", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, "2026-09-18T10:01:00.000Z");
     recordOrderCommit(database, "order-1", "0000000000000000000000000000000000000000", "feat: mistyped");
     recordOrderCheck(database, "order-1", { command: "bun run verify", exitCode: 0, result: "green" });
 
-    expect(() => appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" })).toThrow(
-      /does not have, so nothing there can place them/,
-    );
+    expect(() =>
+      appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" }, undefined, repo.dir),
+    ).toThrow(/does not have, so nothing there can place them/);
     database.close();
     rmSync(repo.dir, { recursive: true, force: true });
   });
@@ -395,13 +365,13 @@ describe("factory order report records", () => {
   test("refuses to complete an order that recorded no commit at all", () => {
     const repo = integratedRepo();
     const database = db();
-    createOrder(database, { ...order, worktree: repo.dir }, "2026-09-18T10:00:00.000Z");
-    appendOrderEvent(database, "order-1", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, "2026-09-18T10:01:00.000Z");
     recordOrderCheck(database, "order-1", { command: "bun run verify", exitCode: 0, result: "green" });
 
-    expect(() => appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" })).toThrow(
-      expect.objectContaining({ code: "order_not_integrated" }),
-    );
+    expect(() =>
+      appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" }, undefined, repo.dir),
+    ).toThrow(expect.objectContaining({ code: "order_not_integrated" }));
     database.close();
     rmSync(repo.dir, { recursive: true, force: true });
   });
@@ -409,14 +379,14 @@ describe("factory order report records", () => {
   test("refuses to complete where the repo does not name a trunk to reach", () => {
     const repo = repoWithoutTrunk();
     const database = db();
-    createOrder(database, { ...order, worktree: repo.dir }, "2026-09-18T10:00:00.000Z");
-    appendOrderEvent(database, "order-1", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, "2026-09-18T10:01:00.000Z");
     recordOrderCommit(database, "order-1", repo.sha, "feat: land it");
     recordOrderCheck(database, "order-1", { command: "bun run verify", exitCode: 0, result: "green" });
 
-    expect(() => appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" })).toThrow(
-      expect.objectContaining({ code: "order_trunk_unknown" }),
-    );
+    expect(() =>
+      appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" }, undefined, repo.dir),
+    ).toThrow(expect.objectContaining({ code: "order_trunk_unknown" }));
     expect(database.query("SELECT status FROM factory_order").get()).toEqual({ status: "working" });
     database.close();
     rmSync(repo.dir, { recursive: true, force: true });
@@ -424,8 +394,8 @@ describe("factory order report records", () => {
 
   test("refuses to complete an order no passing check was recorded for", () => {
     const database = db();
-    createOrder(database, order, "2026-09-18T10:00:00.000Z");
-    appendOrderEvent(database, "order-1", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, "2026-09-18T10:01:00.000Z");
     recordOrderCheck(
       database,
       "order-1",
@@ -434,9 +404,9 @@ describe("factory order report records", () => {
     );
     recordOrderCommit(database, "order-1", trunk.sha, "feat: land it", "2026-09-18T10:02:30.000Z");
 
-    expect(() => appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" })).toThrow(
-      expect.objectContaining({ code: "order_not_checked" }),
-    );
+    expect(() =>
+      appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" }, undefined, trunk.dir),
+    ).toThrow(expect.objectContaining({ code: "order_not_checked" }));
     expect(database.query("SELECT status FROM factory_order").get()).toEqual({ status: "working" });
 
     recordOrderCheck(
@@ -445,7 +415,7 @@ describe("factory order report records", () => {
       { command: "bun run verify", exitCode: 0, result: "green" },
       "2026-09-18T10:03:00.000Z",
     );
-    appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" });
+    appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" }, undefined, trunk.dir);
 
     expect(database.query("SELECT status FROM factory_order").get()).toEqual({ status: "completed" });
     database.close();
@@ -453,8 +423,8 @@ describe("factory order report records", () => {
 
   test("refuses a check that passed before the order's last commit", () => {
     const database = db();
-    createOrder(database, order, "2026-09-18T10:00:00.000Z");
-    appendOrderEvent(database, "order-1", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, "2026-09-18T10:01:00.000Z");
     recordOrderCheck(
       database,
       "order-1",
@@ -463,9 +433,9 @@ describe("factory order report records", () => {
     );
     recordOrderCommit(database, "order-1", trunk.sha, "feat: land it", "2026-09-18T10:03:00.000Z");
 
-    expect(() => appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" })).toThrow(
-      expect.objectContaining({ code: "order_not_checked" }),
-    );
+    expect(() =>
+      appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" }, undefined, trunk.dir),
+    ).toThrow(expect.objectContaining({ code: "order_not_checked" }));
 
     recordOrderCheck(
       database,
@@ -473,48 +443,44 @@ describe("factory order report records", () => {
       { command: "bun run verify", exitCode: 0, result: "green" },
       "2026-09-18T10:04:00.000Z",
     );
-    appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" });
+    appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" }, undefined, trunk.dir);
 
     expect(database.query("SELECT status FROM factory_order").get()).toEqual({ status: "completed" });
     database.close();
   });
 
-  test("lets every other terminal status stop an unchecked order", () => {
-    for (const status of ["blocked", "fenced", "failed"] as const) {
-      const database = db();
-      createOrder(database, order, "2026-09-18T10:00:00.000Z");
-      appendOrderEvent(
-        database,
-        "order-1",
-        { kind: "started", status: "working" },
-        "2026-09-18T10:01:00.000Z",
-      );
+  test("hands an unchecked order back to the queue, and it is claimed again", () => {
+    const database = db();
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, "2026-09-18T10:01:00.000Z");
 
-      appendOrderEvent(database, "order-1", { kind: status, status });
+    appendOrderEvent(database, "order-1", { kind: "failed", reason: "the check never passed" });
 
-      expect(database.query("SELECT status FROM factory_order").get()).toEqual({ status });
-      database.close();
-    }
+    expect(database.query("SELECT status, run_id, stop_reason FROM factory_order").get()).toEqual({
+      status: "queued",
+      run_id: null,
+      stop_reason: "the check never passed",
+    });
+    claimOrder(database, "order-1", claim);
+    expect(database.query("SELECT status FROM factory_order").get()).toEqual({ status: "working" });
+    database.close();
   });
 
-  test("records an explicit stop and rejects evidence after it", () => {
+  test("records a failure and refuses evidence once the order is back in the queue", () => {
     const database = db();
-    createOrder(database, order, "2026-09-18T10:00:00.000Z");
-    appendOrderEvent(database, "order-1", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, "2026-09-18T10:01:00.000Z");
     appendOrderEvent(
       database,
       "order-1",
-      { kind: "fenced", status: "fenced", fenceType: "owner-decision", reason: "needs approval" },
+      { kind: "failed", reason: "needs approval" },
       "2026-09-18T10:02:00.000Z",
     );
     expect(() => recordOrderFile(database, "order-1", { path: "src/after-stop.ts" })).toThrow(
-      "order order-1 is already fenced",
+      "order order-1 is not claimed",
     );
     expect(() => recordOrderEnvironment(database, "order-1", teardownReport)).toThrow(
-      "order order-1 is already fenced",
-    );
-    expect(() => updateOrderLocation(database, "order-1", "/other", "other")).toThrow(
-      "order order-1 is already terminal",
+      "order order-1 is not claimed",
     );
     expect(database.query("SELECT count(*) AS count FROM factory_order_file").get()).toEqual({ count: 0 });
     expect(database.query("SELECT count(*) AS count FROM factory_order_environment").get()).toEqual({
@@ -525,21 +491,14 @@ describe("factory order report records", () => {
 
   test("preserves a builder error after the builder records a terminal outcome", async () => {
     const database = db();
+    queueOrder(database, { ...order, id: "order-4" });
     await expect(
       runFactoryOrder(
         database,
-        {
-          id: "order-4",
-          runId: "run-4",
-          queueId: "queue-1",
-          itemId: "item-4",
-          title: "Record evidence as it lands",
-          worktree: "/repo/.claude/worktrees/order-4",
-          branch: "order-4",
-        },
-        { baseRevision: "abc123" },
+        { id: "order-4" },
+        { baseRevision: "abc123", claim, worktree: trunk.dir },
         (context) => {
-          context.appendEvent({ kind: "blocked", status: "blocked", reason: "builder stopped" });
+          context.appendEvent({ kind: "failed", reason: "builder stopped" });
           throw new Error("builder failed after stopping");
         },
       ),
@@ -547,39 +506,40 @@ describe("factory order report records", () => {
     expect(
       database.query("SELECT status, stop_reason FROM factory_order WHERE id = 'order-4'").get(),
     ).toEqual({
-      status: "blocked",
+      status: "queued",
       stop_reason: "builder stopped",
     });
     expect(database.query("SELECT kind FROM factory_order_event WHERE order_id = 'order-4'").all()).toEqual([
+      { kind: "queued" },
       { kind: "claimed" },
-      { kind: "started" },
-      { kind: "blocked" },
+      { kind: "failed" },
     ]);
     database.close();
   });
 
-  test("creates a claim and keeps its identity and current status", () => {
+  test("queues an order with no run behind it, then a claim fills one in", () => {
     const database = db();
-    createOrder(database, order, "2026-09-18T10:00:00.000Z");
-    expect(
-      database
-        .query("SELECT run_id, queue_id, item_id, worktree, branch, station, status FROM factory_order")
-        .get(),
-    ).toEqual({
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
+    expect(database.query("SELECT run_id, project, station, status FROM factory_order").get()).toEqual({
+      run_id: null,
+      project: "cniska/dim-factory",
+      station: null,
+      status: "queued",
+    });
+    claimOrder(database, "order-1", claim, "2026-09-18T10:01:00.000Z");
+    expect(database.query("SELECT run_id, station, status FROM factory_order").get()).toEqual({
       run_id: "run-1",
-      queue_id: "queue-1",
-      item_id: "item-1",
-      worktree: trunk.dir,
-      branch: "order-1",
       station: "dim-station-build",
-      status: "waiting",
+      status: "working",
     });
     expect(
       database
         .query("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'factory_lane%'")
         .all(),
     ).toEqual([]);
-    expect(database.query("SELECT kind, actor_id, session_id FROM factory_order_event").get()).toEqual({
+    expect(
+      database.query("SELECT kind, actor_id, session_id FROM factory_order_event ORDER BY id DESC").get(),
+    ).toEqual({
       kind: "claimed",
       actor_id: "agent-1",
       session_id: "session-1",
@@ -589,8 +549,8 @@ describe("factory order report records", () => {
 
   test("moves a running order to another station and keeps where it came from", () => {
     const database = db();
-    createOrder(database, order, "2026-09-18T10:00:00.000Z");
-    appendOrderEvent(database, "order-1", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, "2026-09-18T10:01:00.000Z");
 
     moveOrder(database, "order-1", "dim-station-review", "2026-09-18T10:02:00.000Z");
 
@@ -599,8 +559,8 @@ describe("factory order report records", () => {
       updated_at: "2026-09-18T10:02:00.000Z",
     });
     expect(database.query("SELECT kind, station FROM factory_order_event ORDER BY id").all()).toEqual([
+      { kind: "queued", station: null },
       { kind: "claimed", station: "dim-station-build" },
-      { kind: "started", station: null },
       { kind: "moved", station: "dim-station-review" },
     ]);
     database.close();
@@ -608,18 +568,16 @@ describe("factory order report records", () => {
 
   test("refuses a move before the order started and after it stopped", () => {
     const database = db();
-    createOrder(database, order, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
 
     expect(() => moveOrder(database, "order-1", "dim-station-review")).toThrow(
       "order order-1 must be working before it can move",
     );
-    expect(database.query("SELECT station FROM factory_order").get()).toEqual({
-      station: "dim-station-build",
-    });
+    expect(database.query("SELECT station FROM factory_order").get()).toEqual({ station: null });
 
-    appendOrderEvent(database, "order-1", { kind: "started", status: "working" });
+    claimOrder(database, "order-1", claim);
     landed(database, "order-1");
-    appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" });
+    appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" }, undefined, trunk.dir);
 
     expect(() => moveOrder(database, "order-1", "dim-station-review")).toThrow(/already completed/);
     expect(database.query("SELECT station FROM factory_order").get()).toEqual({
@@ -630,8 +588,8 @@ describe("factory order report records", () => {
 
   test("stores normalized evidence and projects terminal status from events", () => {
     const database = db();
-    createOrder(database, order, "2026-09-18T10:00:00.000Z");
-    appendOrderEvent(database, "order-1", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, "2026-09-18T10:01:00.000Z");
     recordOrderCommit(database, "order-1", trunk.sha, "feat: order", "2026-09-18T10:02:00.000Z");
     recordOrderFile(
       database,
@@ -657,6 +615,7 @@ describe("factory order report records", () => {
       "order-1",
       { kind: "completed", status: "completed", reason: "verified", checkId: check, findingId: finding },
       "2026-09-18T10:06:00.000Z",
+      trunk.dir,
     );
     expect(database.query("SELECT status, completed_at, stop_reason FROM factory_order").get()).toEqual({
       status: "completed",
@@ -683,8 +642,8 @@ describe("factory order report records", () => {
 
   test("attaches a worktree's setup and teardown reports to the order", () => {
     const database = db();
-    createOrder(database, order, "2026-09-18T10:00:00.000Z");
-    appendOrderEvent(database, "order-1", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, "2026-09-18T10:01:00.000Z");
     recordOrderEnvironment(database, "order-1", setupReport, "2026-09-18T10:02:00.000Z");
     recordOrderEnvironment(database, "order-1", teardownReport, "2026-09-18T10:07:00.000Z");
 
@@ -722,54 +681,41 @@ describe("factory order report records", () => {
 
   test("rejects lifecycle events after an order reaches a terminal status", () => {
     const database = db();
-    for (const [index, status] of (["completed", "blocked", "fenced", "failed"] as const).entries()) {
-      const orderId = `order-terminal-${index}`;
-      createOrder(
-        database,
-        { ...order, id: orderId, runId: `run-${orderId}`, itemId: orderId },
-        "2026-09-18T10:00:00.000Z",
-      );
-      appendOrderEvent(database, orderId, { kind: "started", status: "working" }, "2026-09-18T10:00:30.000Z");
-      // A completed order needs its commit and check on the record before the gate lets it stop.
-      const staged = status === "completed" ? 2 : 0;
-      if (staged) landed(database, orderId, "2026-09-18T10:00:45.000Z");
-      appendOrderEvent(database, orderId, { kind: status, status }, "2026-09-18T10:01:00.000Z");
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, "2026-09-18T10:00:30.000Z");
+    landed(database, "order-1", "2026-09-18T10:00:45.000Z");
+    appendOrderEvent(
+      database,
+      "order-1",
+      { kind: "completed", status: "completed" },
+      "2026-09-18T10:01:00.000Z",
+      trunk.dir,
+    );
 
-      expect(() => appendOrderEvent(database, orderId, { kind: "started", status: "working" })).toThrow();
-      expect(() => appendOrderEvent(database, orderId, { kind: "started" })).toThrow();
-      expect(
-        database.query("SELECT status, completed_at FROM factory_order WHERE id = ?").get(orderId),
-      ).toEqual({
-        status,
-        completed_at: "2026-09-18T10:01:00.000Z",
-      });
-      expect(
-        database.query("SELECT count(*) AS count FROM factory_order_event WHERE order_id = ?").get(orderId),
-      ).toEqual({
-        count: 3 + staged,
-      });
-    }
+    expect(() => appendOrderEvent(database, "order-1", { kind: "claimed" })).toThrow();
+    expect(() => appendOrderEvent(database, "order-1", { kind: "moved", station: "review" })).toThrow();
+    expect(database.query("SELECT status, completed_at FROM factory_order").get()).toEqual({
+      status: "completed",
+      completed_at: "2026-09-18T10:01:00.000Z",
+    });
     database.close();
   });
 
   test("rejects terminal events whose kind and status disagree", () => {
     const database = db();
-    createOrder(database, order, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
 
-    expect(() => appendOrderEvent(database, "order-1", { kind: "completed", status: "failed" })).toThrow(
+    expect(() => appendOrderEvent(database, "order-1", { kind: "completed", status: "queued" })).toThrow(
       "terminal event kind must match its status",
     );
     expect(() => appendOrderEvent(database, "order-1", { kind: "completed" })).toThrow(
       "terminal event kind must match its status",
     );
-    expect(() => appendOrderEvent(database, "order-1", { kind: "started", status: "completed" })).toThrow(
+    expect(() => appendOrderEvent(database, "order-1", { kind: "moved", status: "completed" })).toThrow(
       "terminal event status must match its kind",
     );
-    expect(() => appendOrderEvent(database, "order-1", { kind: "failed", status: "completed" })).toThrow(
-      "terminal event kind must match its status",
-    );
     expect(database.query("SELECT status FROM factory_order WHERE id = 'order-1'").get()).toEqual({
-      status: "waiting",
+      status: "queued",
     });
     expect(
       database.query("SELECT count(*) AS count FROM factory_order_event WHERE order_id = 'order-1'").get(),
@@ -781,29 +727,22 @@ describe("factory order report records", () => {
 
   test("rolls back an event when projecting it fails", () => {
     const database = db();
-    createOrder(database, order, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
     database.run(
       `CREATE TRIGGER reject_order_projection BEFORE UPDATE ON factory_order
        BEGIN SELECT RAISE(ABORT, 'projection rejected'); END`,
     );
 
-    expect(() =>
-      appendOrderEvent(
-        database,
-        "order-1",
-        { kind: "started", status: "working" },
-        "2026-09-18T10:01:00.000Z",
-      ),
-    ).toThrow();
+    expect(() => claimOrder(database, "order-1", claim, "2026-09-18T10:01:00.000Z")).toThrow();
     expect(database.query("SELECT count(*) AS count FROM factory_order_event").get()).toEqual({ count: 1 });
-    expect(database.query("SELECT status FROM factory_order").get()).toEqual({ status: "waiting" });
+    expect(database.query("SELECT status FROM factory_order").get()).toEqual({ status: "queued" });
     database.close();
   });
 
   test("rolls back evidence when its lifecycle event cannot project", () => {
     const database = db();
-    createOrder(database, order, "2026-09-18T10:00:00.000Z");
-    appendOrderEvent(database, "order-1", { kind: "started", status: "working" });
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim);
     database.run(
       `CREATE TRIGGER reject_order_evidence_projection BEFORE UPDATE ON factory_order
        BEGIN SELECT RAISE(ABORT, 'projection rejected'); END`,
@@ -823,7 +762,7 @@ describe("factory order report records", () => {
 
   test("refused findings require a resolution", () => {
     const database = db();
-    createOrder(database, order);
+    queueOrder(database, order);
     expect(() =>
       recordOrderFinding(database, "order-1", { dimension: "docs", summary: "missing", answer: "refused" }),
     ).toThrow();
@@ -834,8 +773,8 @@ describe("factory order report records", () => {
     const home = mkdtempSync(join(tmpdir(), "dim-order-"));
     const environment = { HOME: home, DIM_HOME: home };
     const database = openDb(dbPath(environment));
-    createOrder(database, order, "2026-09-18T10:00:00.000Z");
-    appendOrderEvent(database, "order-1", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
+    queueOrder(database, order, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, "2026-09-18T10:01:00.000Z");
     recordOrderEnvironment(database, "order-1", teardownReport, "2026-09-18T10:02:00.000Z");
     closeDb(database);
     const rebuilt = openDb(dbPath(environment), { forRebuild: true });
@@ -847,44 +786,45 @@ describe("factory order report records", () => {
       rebuilt.query("SELECT phase, signal FROM factory_order_environment WHERE order_id = 'order-1'").get(),
     ).toEqual({ phase: "teardown", signal: "SIGKILL" });
     expect(rebuilt.query("SELECT kind FROM factory_order_event WHERE order_id = 'order-1'").get()).toEqual({
-      kind: "claimed",
+      kind: "queued",
     });
     closeDb(rebuilt);
     rmSync(home, { recursive: true, force: true });
   });
 
-  test("refuses a claim while the floor is stopped, writing nothing", () => {
+  test("refuses a claim while the floor is stopped, leaving the order queued", () => {
     const database = db();
+    queueOrder(database, order);
     pullStop(database, { reason: "the commit gate records nothing" });
 
-    expect(() => createOrder(database, order)).toThrow(FactoryStopError);
-    expect(database.query("SELECT count(*) AS n FROM factory_order").get()).toEqual({ n: 0 });
-    expect(database.query("SELECT count(*) AS n FROM factory_order_event").get()).toEqual({ n: 0 });
+    expect(() => claimOrder(database, "order-1", claim)).toThrow(FactoryStopError);
+    expect(database.query("SELECT status FROM factory_order").get()).toEqual({ status: "queued" });
 
     database.close();
   });
 
   test("takes a claim once the stop is cleared", () => {
     const database = db();
+    queueOrder(database, order);
     pullStop(database, { reason: "the commit gate records nothing" });
     clearStop(database);
 
-    createOrder(database, order);
+    claimOrder(database, "order-1", claim);
 
     expect(database.query("SELECT status FROM factory_order WHERE id = 'order-1'").get()).toEqual({
-      status: "waiting",
+      status: "working",
     });
     database.close();
   });
 
   test("lets an order already running record and stop while the floor is stopped", () => {
     const database = db();
-    createOrder(database, order);
-    appendOrderEvent(database, "order-1", { kind: "started", status: "working" });
+    queueOrder(database, order);
+    claimOrder(database, "order-1", claim);
     pullStop(database, { reason: "the commit gate records nothing" });
 
     landed(database, "order-1");
-    appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" });
+    appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" }, undefined, trunk.dir);
 
     expect(database.query("SELECT status FROM factory_order WHERE id = 'order-1'").get()).toEqual({
       status: "completed",

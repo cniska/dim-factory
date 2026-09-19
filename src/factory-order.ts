@@ -3,23 +3,19 @@ import { FactoryStopError, liveStop } from "./factory-stop";
 import { reachesTrunk } from "./trunk";
 import type { WorkerHookReport } from "./worker-environment";
 
-/**
- * What state the order is in. `claimed` is an event and not one of these: the act
- * of claiming leaves the order waiting for the worker that will start it.
- */
-export const ORDER_STATUSES = ["waiting", "working", "completed", "blocked", "fenced", "failed"] as const;
+/** What state the order is in. A claim takes it straight to `working`: an order
+ *  already exists before a worker sees it, so taking one and starting it are one act. */
+export const ORDER_STATUSES = ["queued", "working", "completed"] as const;
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export type OrderEventKind =
+  | "queued"
   | "claimed"
   | "delegated"
-  | "started"
   | "moved"
   | "commit_created"
   | "check_finished"
   | "review_finished"
-  | "fenced"
-  | "blocked"
   | "completed"
   | "failed";
 
@@ -31,18 +27,26 @@ export function isOrderRole(value: string): value is OrderRole {
   return (ORDER_ROLES as readonly string[]).includes(value);
 }
 
+export const ORDER_PRIORITIES = ["urgent", "high", "medium", "low", "unset"] as const;
+export type OrderPriority = (typeof ORDER_PRIORITIES)[number];
+
+/** What is written down before anyone takes it. The branch and the worktree are
+ *  derived from the id, so neither is stored. */
 export type Order = {
   id: string;
-  runId: string;
-  queueId: string;
-  itemId: string;
+  project: string;
   title: string;
   description?: string;
+  priority?: OrderPriority;
+  fence?: string;
+};
+
+/** What the operator knows only once it has a worker to hand the order to. */
+export type OrderClaim = {
+  runId: string;
   agentId?: string;
   role?: OrderRole;
   sessionId?: string;
-  worktree?: string;
-  branch?: string;
   station?: string;
 };
 
@@ -76,7 +80,9 @@ export class OrderNotDone extends Error {
 }
 
 const now = (): string => new Date().toISOString();
-export const TERMINAL_ORDER_STATUSES: readonly OrderStatus[] = ["completed", "blocked", "fenced", "failed"];
+/** Only `completed` ends an order. Work that stopped without landing goes back to
+ *  `queued`, because it is work nobody is holding. */
+export const TERMINAL_ORDER_STATUSES: readonly OrderStatus[] = ["completed"];
 const terminalStatuses = new Set<OrderStatus>(TERMINAL_ORDER_STATUSES);
 
 /** A refusal is read by whoever typed the command, so it names the act and not the event kind. */
@@ -106,12 +112,33 @@ function eventValues(orderId: string, event: OrderEvent, ts: string): (string | 
   ];
 }
 
+export function queueOrder(db: Database, order: Order, at = now()): void {
+  db.transaction(() => {
+    db.run(
+      `INSERT INTO factory_order
+       (id, project, title, description, priority, fence, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)`,
+      [
+        order.id,
+        order.project,
+        order.title,
+        order.description ?? null,
+        order.priority ?? "unset",
+        order.fence ?? null,
+        at,
+        at,
+      ],
+    );
+    appendOrderEventInTransaction(db, order.id, { kind: "queued" }, at);
+  })();
+}
+
 /**
  * A stopped floor finishes what it holds and takes nothing new: killing a worker
  * mid-write leaves a worktree nobody owns and a commit half made, so the refusal
- * sits here, where work enters, and nowhere an order already running passes.
+ * sits here, where work enters the floor, and nowhere an order already running passes.
  */
-export function createOrder(db: Database, order: Order, at = now()): void {
+export function claimOrder(db: Database, orderId: string, claim: OrderClaim, at = now()): void {
   db.transaction(() => {
     const stop = liveStop(db);
     if (stop) {
@@ -121,56 +148,39 @@ export function createOrder(db: Database, order: Order, at = now()): void {
           `(${stop.pulledBy}, ${stop.pulledAt}); clear it with \`dim factory clear\``,
       );
     }
+    const order = db.query("SELECT status, fence FROM factory_order WHERE id = ?").get(orderId) as {
+      status: OrderStatus;
+      fence: string | null;
+    } | null;
+    if (!order) throw new Error(`order not found: ${orderId}`);
+    if (order.fence) {
+      throw new FactoryStopError(
+        "order_fenced",
+        `order ${orderId} is fenced and the owner releases it: ${order.fence}`,
+      );
+    }
+    if (order.status !== "queued") throw new Error(`order ${orderId} is already ${order.status}`);
     db.run(
-      `INSERT INTO factory_order
-       (id, run_id, queue_id, item_id, title, description, agent_id, role, session_id, worktree, branch, station, status, claimed_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?)`,
+      `UPDATE factory_order SET run_id = ?, agent_id = ?, role = ?, session_id = ?, station = ?,
+         status = 'working', claimed_at = ?, updated_at = ? WHERE id = ?`,
       [
-        order.id,
-        order.runId,
-        order.queueId,
-        order.itemId,
-        order.title,
-        order.description ?? null,
-        order.agentId ?? null,
-        order.role ?? null,
-        order.sessionId ?? null,
-        order.worktree ?? null,
-        order.branch ?? null,
-        order.station ?? null,
+        claim.runId,
+        claim.agentId ?? null,
+        claim.role ?? null,
+        claim.sessionId ?? null,
+        claim.station ?? null,
         at,
         at,
+        orderId,
       ],
     );
-    appendOrderEvent(
+    appendOrderEventInTransaction(
       db,
-      order.id,
-      { kind: "claimed", actorId: order.agentId, sessionId: order.sessionId, station: order.station },
+      orderId,
+      { kind: "claimed", actorId: claim.agentId, sessionId: claim.sessionId, station: claim.station },
       at,
     );
   })();
-}
-
-export function updateOrderLocation(db: Database, orderId: string, worktree: string, branch: string): void {
-  const order = db.query("SELECT worktree, branch FROM factory_order WHERE id = ?").get(orderId) as {
-    worktree: string | null;
-    branch: string | null;
-  } | null;
-  if (!order) throw new Error(`order not found: ${orderId}`);
-  const status = orderStatus(db, orderId);
-  if (status !== "waiting" && status !== "working") {
-    throw new Error(`order ${orderId} is already terminal`);
-  }
-  if (order.worktree && (order.worktree !== worktree || order.branch !== branch)) {
-    throw new Error(`order ${orderId} already owns a worktree`);
-  }
-  const result = db.run("UPDATE factory_order SET worktree = ?, branch = ?, updated_at = ? WHERE id = ?", [
-    worktree,
-    branch,
-    now(),
-    orderId,
-  ]);
-  if (result.changes !== 1) throw new Error(`order not found: ${orderId}`);
 }
 
 /**
@@ -185,6 +195,26 @@ export function moveOrder(db: Database, orderId: string, station: string, at = n
   })();
 }
 
+/** Current state rather than history: nothing has wanted to read back what an order
+ *  used to be ranked at, and a row that wants one is its own change. */
+export function setOrderPriority(db: Database, orderId: string, priority: OrderPriority): void {
+  const result = db.run("UPDATE factory_order SET priority = ?, updated_at = ? WHERE id = ?", [
+    priority,
+    now(),
+    orderId,
+  ]);
+  if (result.changes !== 1) throw new Error(`order not found: ${orderId}`);
+}
+
+export function setOrderFence(db: Database, orderId: string, fence: string | null): void {
+  const result = db.run("UPDATE factory_order SET fence = ?, updated_at = ? WHERE id = ?", [
+    fence,
+    now(),
+    orderId,
+  ]);
+  if (result.changes !== 1) throw new Error(`order not found: ${orderId}`);
+}
+
 export function orderStatus(db: Database, orderId: string): OrderStatus {
   const order = db.query("SELECT status FROM factory_order WHERE id = ?").get(orderId) as {
     status: OrderStatus;
@@ -193,39 +223,46 @@ export function orderStatus(db: Database, orderId: string): OrderStatus {
   return order.status;
 }
 
-export function appendOrderEvent(db: Database, orderId: string, event: OrderEvent, at = now()): void {
-  db.transaction(() => appendOrderEventInTransaction(db, orderId, event, at))();
+/** `worktree` is where the completion gate reads git: the checkout the work was done
+ *  in, which the caller knows and a stored path is free to be wrong about. */
+export function appendOrderEvent(
+  db: Database,
+  orderId: string,
+  event: OrderEvent,
+  at = now(),
+  worktree = process.cwd(),
+): void {
+  db.transaction(() => appendOrderEventInTransaction(db, orderId, event, at, worktree))();
 }
 
-function appendOrderEventInTransaction(db: Database, orderId: string, event: OrderEvent, at: string): void {
+function appendOrderEventInTransaction(
+  db: Database,
+  orderId: string,
+  event: OrderEvent,
+  at: string,
+  worktree = process.cwd(),
+): void {
   if (isTerminalOrderStatus(event.kind as OrderStatus) && event.status !== event.kind) {
     throw new Error(`terminal event kind must match its status: ${event.kind}`);
   }
   if (event.status && isTerminalOrderStatus(event.status) && event.kind !== event.status) {
     throw new Error(`terminal event status must match its kind: ${event.status}`);
   }
-  const order = db.query("SELECT status, worktree FROM factory_order WHERE id = ?").get(orderId) as {
+  const order = db.query("SELECT status FROM factory_order WHERE id = ?").get(orderId) as {
     status: OrderStatus;
-    worktree: string | null;
   } | null;
   if (!order) throw new Error(`order not found: ${orderId}`);
   if (isTerminalOrderStatus(order.status)) {
     throw new Error(`order ${orderId} is already ${order.status}`);
   }
-  if (event.kind !== "claimed") {
-    if (event.kind === "started" && order.status !== "waiting") {
-      throw new Error(`order ${orderId} must be claimed before it can start`);
-    }
-    const mayStopBeforeWorking =
-      isTerminalOrderStatus(event.kind as OrderStatus) && event.kind !== "completed";
-    if (event.kind !== "started" && order.status !== "working" && !mayStopBeforeWorking) {
+  if (event.kind !== "queued" && event.kind !== "claimed") {
+    if (order.status !== "working") {
       const action = VERB_FOR_KIND[event.kind] ?? event.kind;
       throw new Error(`order ${orderId} must be working before it can ${action}`);
     }
     if (event.kind === "completed") {
-      if (!order.worktree) throw new Error(`order ${orderId} has no worktree`);
       assertChecked(db, orderId);
-      assertIntegrated(db, orderId, order.worktree);
+      assertIntegrated(db, orderId, worktree);
     }
   }
 
@@ -236,18 +273,24 @@ function appendOrderEventInTransaction(db: Database, orderId: string, event: Ord
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     eventValues(orderId, event, event.ts ?? at),
   );
+  // A failure hands the work back rather than ending it, so the row returns to the
+  // queue and the run it was claimed for is cleared with it.
+  const projected = event.kind === "failed" ? "queued" : (event.status ?? null);
   db.run(
-    `UPDATE factory_order SET status = coalesce(?, status), updated_at = ?, started_at = coalesce(started_at, ?),
-       completed_at = CASE WHEN ? IN ('completed', 'blocked', 'fenced', 'failed') THEN ? ELSE completed_at END,
-       stop_reason = coalesce(?, stop_reason)
+    `UPDATE factory_order SET status = coalesce(?, status), updated_at = ?,
+       completed_at = CASE WHEN ? = 'completed' THEN ? ELSE completed_at END,
+       stop_reason = coalesce(?, stop_reason),
+       run_id = CASE WHEN ? = 'failed' THEN NULL ELSE run_id END,
+       claimed_at = CASE WHEN ? = 'failed' THEN NULL ELSE claimed_at END
        WHERE id = ?`,
     [
-      event.status ?? null,
+      projected,
       event.ts ?? at,
-      event.kind === "started" ? (event.ts ?? at) : null,
-      event.status ?? null,
+      projected,
       event.ts ?? at,
       event.reason ?? null,
+      event.kind,
+      event.kind,
       orderId,
     ],
   );
@@ -387,7 +430,7 @@ function assertChecked(db: Database, orderId: string): void {
       "order_not_checked",
       `order ${orderId} cannot complete without a check that passed after its last commit: ` +
         `record one with \`dim order check ${orderId} --command "..." --exit 0\`, ` +
-        "or stop the order as blocked, fenced or failed.",
+        "or stop it as failed.",
     );
   }
 }
@@ -409,7 +452,7 @@ function assertIntegrated(db: Database, orderId: string, worktree: string): void
       "order_not_integrated",
       `order ${orderId} recorded no commit, so nothing of it is on the trunk: ` +
         `record what it landed with \`dim order commit ${orderId} --sha <sha>\`, ` +
-        "or stop the order as blocked, fenced or failed.",
+        "or stop it as failed.",
     );
   }
   const reach = shas.map((sha) => reachesTrunk(worktree, sha));
@@ -432,16 +475,16 @@ function assertIntegrated(db: Database, orderId: string, worktree: string): void
   throw new OrderNotDone(
     "order_not_integrated",
     `order ${orderId} has no recorded commit on the trunk: merge its branch before completing it, ` +
-      "or stop the order as blocked, fenced or failed.",
+      "or stop it as failed.",
   );
 }
 
 function assertOrderWorking(db: Database, orderId: string): void {
   const status = orderStatus(db, orderId);
   if (status === "working") return;
-  // A claimed order is short of the point that takes evidence rather than past it,
+  // A queued order is short of the point that takes evidence rather than past it,
   // and this refusal is read by whoever typed the command.
   throw new Error(
-    status === "waiting" ? `order ${orderId} has not started` : `order ${orderId} is already ${status}`,
+    status === "queued" ? `order ${orderId} is not claimed` : `order ${orderId} is already ${status}`,
   );
 }
