@@ -148,6 +148,9 @@ const FACTORY_ORDER_TABLES = [
   "factory_order_environment",
 ];
 
+/** Parent first for the same reason, and dropped in reverse for the other one. */
+const QUEUE_TABLES = ["queue_item", "queue_item_dependency", "queue_item_transition"];
+
 /**
  * Columns are read off each table rather than listed here, because the reason
  * these are dropped at all is that `SCHEMA_SQL` holds a column they do not, and
@@ -201,16 +204,18 @@ function carryThroughRebuild(db: Database, tables: string[]): () => void {
  * there fails.
  *
  * Which tables are left instead, and why, is stated at each of them in
- * `schema.ts`. `correction_label`, `hook_event` and the factory order records are
- * the ones that are neither: nothing can re-read them — the spool deletes each
- * file once it is read, and an order's claims and judgements were never in a source
- * at all — so they are dropped with the rest and written back row for row. A
+ * `schema.ts`. `correction_label`, `hook_event`, the queue and the factory order
+ * records are the ones that are neither: nothing can re-read them — the spool
+ * deletes each file once it is read, and a queue's items and an order's judgements
+ * were never in a source at all — so they are dropped with the rest and written
+ * back row for row. A
  * table kept instead of dropped keeps whatever shape it was created with, and
  * a check widened in `SCHEMA_SQL` would never reach it.
  */
 export function rebuild(db: Database, env: Env = process.env): SyncReport {
   db.transaction(() => {
     const restoreFactoryOrders = carryThroughRebuild(db, FACTORY_ORDER_TABLES);
+    const restoreQueue = carryThroughRebuild(db, QUEUE_TABLES);
     // Read out before the drop because no source can re-read them, and dropped
     // ahead of message because an older database has a foreign key to it that
     // would refuse that drop.
@@ -249,6 +254,7 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
     db.run("DROP TABLE IF EXISTS factory_handoff");
     db.run(SCHEMA_SQL);
     restoreFactoryOrders();
+    restoreQueue();
     const restore = db.prepare<void, [string, string, string | null, string | null, string]>(
       `INSERT INTO correction_label (message_id, label, skill_name, rule, labeled_at)
        VALUES (?, ?, ?, ?, ?)`,
