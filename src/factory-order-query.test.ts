@@ -12,19 +12,29 @@ import {
   recordOrderFile,
   recordOrderFinding,
 } from "./factory-order";
-import { integratedRepo } from "./fixtures.test-support";
+import { integratedRepo, workerIn } from "./fixtures.test-support";
 import { findQuery } from "./queries";
 import { SCHEMA_SQL } from "./schema";
+
+// One hand per database, set where the database is made: every moment names a worker,
+// and what these tests are about is what the query reports rather than who touched it.
+let worker = "";
+
+function floor(): Database {
+  const db = new Database(":memory:");
+  db.run(SCHEMA_SQL);
+  worker = workerIn(db);
+  return db;
+}
 
 const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
 
-const claim = { runId: "run-1", agentId: "agent-1", station: "dim-station-build" };
+const claim = { runId: "run-1", station: "dim-station-build" };
 
 describe("factory order query", () => {
   test("returns one unified status row with the latest lifecycle and evidence", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     queueOrder(
       db,
       {
@@ -32,42 +42,47 @@ describe("factory order query", () => {
         project: "cniska/dim-factory",
         title: "Report one order's status",
       },
+      worker,
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(db, "order-status", claim, "2026-09-18T10:01:00.000Z");
-    recordOrderCommit(db, "order-status", trunk.sha, "feat: status", "2026-09-18T10:02:00.000Z");
+    claimOrder(db, "order-status", claim, worker, "2026-09-18T10:01:00.000Z");
+    recordOrderCommit(db, "order-status", trunk.sha, worker, "feat: status", "2026-09-18T10:02:00.000Z");
     // Two commits recorded at one instant, the later one sorting below the earlier as a
     // string: the row reported is the one recorded last, never whichever sha reads highest.
-    recordOrderCommit(db, "order-status", "fff111", "feat: middle", "2026-09-18T10:02:00.000Z");
-    recordOrderCommit(db, "order-status", "aaa222", "feat: later", "2026-09-18T10:02:00.000Z");
+    recordOrderCommit(db, "order-status", "fff111", worker, "feat: middle", "2026-09-18T10:02:00.000Z");
+    recordOrderCommit(db, "order-status", "aaa222", worker, "feat: later", "2026-09-18T10:02:00.000Z");
     recordOrderCheck(
       db,
       "order-status",
       { command: "bun run verify", exitCode: 0, result: "green" },
+      worker,
       "2026-09-18T10:03:00.000Z",
     );
     recordOrderCheck(
       db,
       "order-status",
       { command: "bun run test", exitCode: 0, result: "green" },
+      worker,
       "2026-09-18T10:03:00.000Z",
     );
     recordOrderFinding(
       db,
       "order-status",
       { dimension: "tests", summary: "holds", answer: "fixed" },
+      worker,
       "2026-09-18T10:04:00.000Z",
     );
     recordOrderFinding(
       db,
       "order-status",
       { dimension: "docs", summary: "updated", answer: "fixed" },
+      worker,
       "2026-09-18T10:04:00.000Z",
     );
     appendOrderEvent(
       db,
       "order-status",
-      { kind: "completed", status: "completed", reason: "verified" },
+      { worker, kind: "completed", status: "completed", reason: "verified" },
       "2026-09-18T10:05:00.000Z",
       trunk.dir,
     );
@@ -128,15 +143,18 @@ describe("factory order query", () => {
   });
 
   test("shows explicit absence when a failed order has no reason", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
-    queueOrder(db, {
-      id: "order-blocked",
-      project: "cniska/dim-factory",
-      title: "Block on another order",
-    });
-    claimOrder(db, "order-blocked", claim);
-    appendOrderEvent(db, "order-blocked", { kind: "failed" });
+    const db = floor();
+    queueOrder(
+      db,
+      {
+        id: "order-blocked",
+        project: "cniska/dim-factory",
+        title: "Block on another order",
+      },
+      worker,
+    );
+    claimOrder(db, "order-blocked", claim, worker);
+    appendOrderEvent(db, "order-blocked", { worker, kind: "failed" });
 
     const result = findQuery("factory")?.run(db, { arg: "order-blocked" });
 
@@ -144,13 +162,18 @@ describe("factory order query", () => {
     expect(result?.rows[0]?.[4]).toBe("failed");
     expect(result?.rows[0]?.[11]).toBe("(none)");
 
-    queueOrder(db, {
-      id: "order-held",
-      project: "cniska/dim-factory",
-      title: "Stop at a hold",
-    });
-    claimOrder(db, "order-held", claim);
+    queueOrder(
+      db,
+      {
+        id: "order-held",
+        project: "cniska/dim-factory",
+        title: "Stop at a hold",
+      },
+      worker,
+    );
+    claimOrder(db, "order-held", claim, worker);
     appendOrderEvent(db, "order-held", {
+      worker,
       kind: "failed",
       holdType: "owner-judgment",
       reason: "ambiguous scope",
@@ -161,8 +184,7 @@ describe("factory order query", () => {
   });
 
   test("returns the aggregate and every evidence kind by order prefix", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     queueOrder(
       db,
       {
@@ -170,10 +192,11 @@ describe("factory order query", () => {
         project: "cniska/dim-factory",
         title: "Read the detailed report",
       },
+      worker,
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(db, "order-123", claim, "2026-09-18T10:00:30.000Z");
-    recordOrderCommit(db, "order-123", "abc", "feat: report", "2026-09-18T10:01:00.000Z");
+    claimOrder(db, "order-123", claim, worker, "2026-09-18T10:00:30.000Z");
+    recordOrderCommit(db, "order-123", "abc", worker, "feat: report", "2026-09-18T10:01:00.000Z");
     recordOrderFile(
       db,
       "order-123",
@@ -184,12 +207,14 @@ describe("factory order query", () => {
       db,
       "order-123",
       { command: "bun run verify", exitCode: 0, result: "green" },
+      worker,
       "2026-09-18T10:02:00.000Z",
     );
     recordOrderFinding(
       db,
       "order-123",
       { dimension: "tests", summary: "holds", answer: "fixed" },
+      worker,
       "2026-09-18T10:03:00.000Z",
     );
     recordOrderDocument(db, "order-123", "docs/factory.md", "2026-09-18T10:04:00.000Z");
@@ -241,8 +266,7 @@ describe("factory order query", () => {
   });
 
   test("reports the signal that killed a hook where it left no exit code", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     queueOrder(
       db,
       {
@@ -250,9 +274,10 @@ describe("factory order query", () => {
         project: "cniska/dim-factory",
         title: "Teardown hook killed",
       },
+      worker,
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(db, "order-killed", claim, "2026-09-18T10:00:30.000Z");
+    claimOrder(db, "order-killed", claim, worker, "2026-09-18T10:00:30.000Z");
     recordOrderEnvironment(
       db,
       "order-killed",
@@ -282,8 +307,7 @@ describe("factory order query", () => {
   });
 
   test("does not turn an unknown order into an empty report", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     const result = findQuery("order")?.run(db, { arg: "missing" });
     expect(result?.rows).toEqual([]);
     expect(result?.note).toBe("no order starts with missing");
@@ -291,8 +315,7 @@ describe("factory order query", () => {
   });
 
   test("reports absent queue planning without inventing queue rows", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
 
     const result = findQuery("factory")?.run(db, {});
 

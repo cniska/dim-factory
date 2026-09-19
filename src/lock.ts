@@ -1,20 +1,12 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { dataDir, type Env } from "./paths";
+import { pidIsAlive } from "./pid";
 
 export class LockHeldError extends Error {
   readonly code = "LOCK_HELD";
   constructor(path: string, pid: number) {
     super(`another dim run holds ${path} (pid ${pid})`);
-  }
-}
-
-function pidIsAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0); // signal 0 tests for the process without touching it
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM";
   }
 }
 

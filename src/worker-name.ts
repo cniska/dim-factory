@@ -1,10 +1,10 @@
 /**
- * What a factory worker is called on the wall: `copper-7`, `relay-3`.
+ * What a factory worker is called: `copper-7`, `relay-3`.
  *
  * A word and a number rather than a written-out list of names, because a pair drawn from a
- * list and a range is as many names as the two multiplied, where a list of finished names is
- * as long as it is. Two agents can land on one name, which costs nothing while the name
- * labels a card and `agent_id` remains what anything joins on.
+ * list and a counter is as many names as anyone will ever need, where a list of finished
+ * names is as long as it is. The factory issues the name, so it is the identity every
+ * moment holds rather than a label over one, and no two workers can be handed the same one.
  *
  * The vocabulary is a factory's — materials, signals and parts — so a worker never reads as
  * a person and never borrows a name from somewhere a reader has to recognize.
@@ -269,22 +269,18 @@ const WORDS = [
   "rondel",
 ] as const;
 
-/** djb2, held to 32 bits so a worker names itself the same on every machine and every run. */
-function hash(value: string): number {
-  let result = 5381;
-  for (let index = 0; index < value.length; index += 1) {
-    result = (Math.imul(result, 33) + value.charCodeAt(index)) >>> 0;
-  }
-  return result;
+/**
+ * The next name to issue, given how many workers exist and how many of them already
+ * carry the word this one will. Walking the list by the total spreads the words
+ * instead of exhausting one, and the number is unbounded, so the vocabulary never
+ * runs out and a name is never reused.
+ */
+export function nextWorkerName(workers: number, onWord: number): string {
+  const word = WORDS[workers % WORDS.length] as string;
+  return `${word}-${onWord + 1}`;
 }
 
-/** The count is the word list times the number range, and it names the collision odds. */
-export const WORKER_NAME_SPACE = WORDS.length * 100;
-
-export function workerName(agentId: string): string {
-  const seed = hash(agentId);
-  const word = WORDS[seed % WORDS.length] as string;
-  // A second slice of the seed, so two agents sharing a word rarely share the number too.
-  const number = Math.floor(seed / WORDS.length) % 100;
-  return `${word}-${number}`;
+/** Which word `nextWorkerName` will draw, so a caller can count that word before issuing it. */
+export function wordFor(workers: number): string {
+  return WORDS[workers % WORDS.length] as string;
 }

@@ -6,7 +6,6 @@ import { type GuidanceReport, ingestGuidance } from "./guidance";
 import { backfillHandoffs, type HandoffLinkReport, linkHandoffs } from "./handoff";
 import { type HistoryReport, ingestHistory } from "./history";
 import { createIngester, type FileSpec } from "./ingest";
-import { attributeOrderEvents, type OrderWorkerReport } from "./order-worker";
 import type { Env } from "./paths";
 import { type RepoCheckReport, recordRepoChecks } from "./repo-check";
 import { indexRepoFiles, type RepoFileReport } from "./repo-files";
@@ -31,7 +30,6 @@ export type SyncReport = {
   guidance: GuidanceReport;
   chain: HandoffLinkReport;
   walk: WalkReport;
-  orderWorkers: OrderWorkerReport;
 };
 
 export type RebuildReport = SyncReport & { orphans: OrphanReport[]; retired: string[] };
@@ -59,7 +57,6 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     guidance: { files: 0, versions: 0 },
     chain: { pasted: 0, linked: 0 },
     walk: drainWalk(db, env),
-    orderWorkers: { attributed: 0 },
   };
 
   const run = (spec: FileSpec): void => {
@@ -113,7 +110,6 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
   backfillHandoffs(db);
   report.chain = linkHandoffs(db);
   // After the hook spool is drained, since the rows it attributes are the ones just written.
-  report.orderWorkers = attributeOrderEvents(db);
   return report;
 }
 
@@ -147,6 +143,9 @@ const PARENT_ORDER_TABLE = "factory_order";
  * with nothing to show for it.
  */
 const FACTORY_ORDER_TABLES = [
+  // Ahead of the events that name a worker, for the same reason the order is ahead
+  // of its own children.
+  "factory_worker",
   PARENT_ORDER_TABLE,
   "factory_order_event",
   "factory_order_commit",

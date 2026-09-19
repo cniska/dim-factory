@@ -1,7 +1,24 @@
+import type { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { mintWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR, type WorkerRole } from "./factory-worker";
 import type { Env } from "./paths";
+
+/**
+ * A worker to record against, because every moment names one. Built rather than
+ * stubbed for the same reason the trunk fixture is: the write path reads the row back,
+ * and a name no row backs is exactly what it refuses.
+ */
+export function workerIn(db: Database, role?: WorkerRole): string {
+  return mintWorker(db, role === undefined ? {} : { role }).name;
+}
+
+/** The environment the factory starts a worker in, which is where `dim order` reads it. */
+export function workerEnv(db: Database, role?: WorkerRole): Env {
+  const minted = mintWorker(db, role === undefined ? {} : { role });
+  return { [WORKER_NAME_VAR]: minted.name, [WORKER_TOKEN_VAR]: minted.token };
+}
 
 /**
  * A repo whose one commit is on a trunk the repo names itself, which is what the

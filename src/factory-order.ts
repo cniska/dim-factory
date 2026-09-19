@@ -18,14 +18,6 @@ export type OrderEventKind =
   | "completed"
   | "failed";
 
-/** What a worker was called in as. The operator runs the line and holds no order, so it is not one. */
-export const ORDER_ROLES = ["planner", "builder", "reviewer"] as const;
-export type OrderRole = (typeof ORDER_ROLES)[number];
-
-export function isOrderRole(value: string): value is OrderRole {
-  return (ORDER_ROLES as readonly string[]).includes(value);
-}
-
 export const ORDER_PRIORITIES = ["urgent", "high", "medium", "low", "unset"] as const;
 export type OrderPriority = (typeof ORDER_PRIORITIES)[number];
 
@@ -40,17 +32,18 @@ export type Order = {
   hold?: string;
 };
 
-/** What the operator knows only once it has a worker to hand the order to. */
+/** What the operator knows only once it has a worker to hand the order to. Who that
+ *  worker is comes from the environment it was started in, never from the claim. */
 export type OrderClaim = {
   runId: string;
-  agentId?: string;
-  role?: OrderRole;
   sessionId?: string;
   station?: string;
 };
 
 export type OrderEvent = {
   kind: OrderEventKind;
+  /** Required, because a moment nobody did is not a moment this record can hold. */
+  worker: string;
   sessionId?: string;
   station?: string;
   commitSha?: string;
@@ -92,6 +85,7 @@ function eventValues(orderId: string, event: OrderEvent, ts: string): (string | 
     orderId,
     ts,
     event.kind,
+    event.worker,
     event.sessionId ?? null,
     event.station ?? null,
     event.commitSha ?? null,
@@ -103,7 +97,7 @@ function eventValues(orderId: string, event: OrderEvent, ts: string): (string | 
   ];
 }
 
-export function queueOrder(db: Database, order: Order, at = now()): number {
+export function queueOrder(db: Database, order: Order, worker: string, at = now()): number {
   return db.transaction(() => {
     db.run(
       `INSERT INTO factory_order
@@ -120,7 +114,7 @@ export function queueOrder(db: Database, order: Order, at = now()): number {
         at,
       ],
     );
-    return appendOrderEventInTransaction(db, order.id, { kind: "queued" }, at);
+    return appendOrderEventInTransaction(db, order.id, { kind: "queued", worker }, at);
   })();
 }
 
@@ -129,7 +123,13 @@ export function queueOrder(db: Database, order: Order, at = now()): number {
  * mid-write leaves a worktree nobody owns and a commit half made, so the refusal
  * sits here, where work enters the floor, and nowhere an order already running passes.
  */
-export function claimOrder(db: Database, orderId: string, claim: OrderClaim, at = now()): number {
+export function claimOrder(
+  db: Database,
+  orderId: string,
+  claim: OrderClaim,
+  worker: string,
+  at = now(),
+): number {
   return db.transaction(() => {
     const stop = liveStop(db);
     if (stop) {
@@ -152,23 +152,14 @@ export function claimOrder(db: Database, orderId: string, claim: OrderClaim, at 
     }
     if (order.status !== "queued") throw new Error(`order ${orderId} is already ${order.status}`);
     db.run(
-      `UPDATE factory_order SET run_id = ?, assignee_id = ?, role = ?, session_id = ?, station = ?,
+      `UPDATE factory_order SET run_id = ?, session_id = ?, station = ?,
          status = 'working', claimed_at = ?, updated_at = ? WHERE id = ?`,
-      [
-        claim.runId,
-        claim.agentId ?? null,
-        claim.role ?? null,
-        claim.sessionId ?? null,
-        claim.station ?? null,
-        at,
-        at,
-        orderId,
-      ],
+      [claim.runId, claim.sessionId ?? null, claim.station ?? null, at, at, orderId],
     );
     return appendOrderEventInTransaction(
       db,
       orderId,
-      { kind: "claimed", sessionId: claim.sessionId, station: claim.station },
+      { kind: "claimed", worker, sessionId: claim.sessionId, station: claim.station },
       at,
     );
   })();
@@ -179,9 +170,15 @@ export function claimOrder(db: Database, orderId: string, claim: OrderClaim, at 
  * (`src/factory-wall.ts` prefers it over the latest event's station), and the
  * event ledger keeps every station the order passed through.
  */
-export function moveOrder(db: Database, orderId: string, station: string, at = now()): number {
+export function moveOrder(
+  db: Database,
+  orderId: string,
+  station: string,
+  worker: string,
+  at = now(),
+): number {
   return db.transaction(() => {
-    const event = appendOrderEventInTransaction(db, orderId, { kind: "moved", station }, at);
+    const event = appendOrderEventInTransaction(db, orderId, { kind: "moved", worker, station }, at);
     db.run("UPDATE factory_order SET station = ? WHERE id = ?", [station, orderId]);
     return event;
   })();
@@ -261,9 +258,9 @@ function appendOrderEventInTransaction(
 
   const written = db.run(
     `INSERT INTO factory_order_event
-       (order_id, ts, kind, session_id, station, commit_sha, check_id, finding_id, hold_type,
-        status, reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (order_id, ts, kind, worker, session_id, station, commit_sha, check_id, finding_id,
+        hold_type, status, reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     eventValues(orderId, event, event.ts ?? at),
   );
   // A failure hands the work back rather than ending it, so the row returns to the
@@ -294,6 +291,7 @@ export function recordOrderCommit(
   db: Database,
   orderId: string,
   sha: string,
+  worker: string,
   subject?: string,
   at = now(),
 ): number {
@@ -305,7 +303,7 @@ export function recordOrderCommit(
       subject ?? null,
       at,
     ]);
-    return appendOrderEventInTransaction(db, orderId, { kind: "commit_created", commitSha: sha }, at);
+    return appendOrderEventInTransaction(db, orderId, { kind: "commit_created", worker, commitSha: sha }, at);
   })();
 }
 
@@ -323,6 +321,7 @@ export function recordOrderCheck(
   db: Database,
   orderId: string,
   check: { command: string; exitCode: number; startedAt?: string; finishedAt?: string; result?: string },
+  worker: string,
   at = now(),
 ): number {
   assertOrderWorking(db, orderId);
@@ -341,7 +340,7 @@ export function recordOrderCheck(
       ],
     );
     const id = Number(result.lastInsertRowid);
-    return appendOrderEventInTransaction(db, orderId, { kind: "check_finished", checkId: id }, at);
+    return appendOrderEventInTransaction(db, orderId, { kind: "check_finished", worker, checkId: id }, at);
   })();
 }
 
@@ -349,6 +348,7 @@ export function recordOrderFinding(
   db: Database,
   orderId: string,
   finding: { dimension: string; summary: string; answer: "fixed" | "refused"; resolution?: string },
+  worker: string,
   at = now(),
 ): number {
   assertOrderWorking(db, orderId);
@@ -359,7 +359,7 @@ export function recordOrderFinding(
       [orderId, finding.dimension, finding.summary, finding.answer, finding.resolution ?? null, at],
     );
     const id = Number(result.lastInsertRowid);
-    return appendOrderEventInTransaction(db, orderId, { kind: "review_finished", findingId: id }, at);
+    return appendOrderEventInTransaction(db, orderId, { kind: "review_finished", worker, findingId: id }, at);
   })();
 }
 

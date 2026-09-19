@@ -18,7 +18,7 @@
 
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 28;
+export const SCHEMA_VERSION = 29;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -241,14 +241,9 @@ CREATE TABLE IF NOT EXISTS factory_order (
   hold            TEXT,
   -- Set by the claim: an order waits in the queue before any run exists.
   run_id          TEXT,
-  -- The worker holding the order. One at a time, which is what makes a reviewer a
-  -- worker on the order rather than its assignee.
-  assignee_id     TEXT,
-  -- What the worker was called in as. Set when the operator spawns it and never again:
-  -- a builder stays a builder wherever its work sits, so nothing downstream has to
-  -- guess a worker's kind from the station, which says where the work is and not who
-  -- is holding it.
-  role            TEXT CHECK (role IN ('planner', 'builder', 'reviewer')),
+  -- Who holds the order is read off the worker on its latest moment, and the role
+  -- off that worker's own row, so neither is stated here. A holder a claim asserts
+  -- is testimony, and it disagreed with the record the moment work was delegated.
   session_id      TEXT,
   station         TEXT,
   -- One status per column on the board. Work that stopped without landing goes back
@@ -263,11 +258,48 @@ CREATE TABLE IF NOT EXISTS factory_order (
 );
 CREATE INDEX IF NOT EXISTS factory_order_status ON factory_order(status, updated_at);
 
+-- Who did the work, issued by the factory before the work starts rather than read off
+-- the harness after it. A \`dim order\` process is told nothing about which agent it
+-- runs as, so an identity it stated about itself would be testimony; this one is
+-- minted here, handed to the worker in the environment it is started in, and written
+-- on every moment by the statement that writes the moment.
+--
+-- Nothing on disk can reproduce a worker, so rebuild writes these rows back like the
+-- rest of the factory records.
+CREATE TABLE IF NOT EXISTS factory_worker (
+  -- Issued rather than derived, so it is unique by construction and is what every
+  -- moment names. A name hashed out of some other identity would trade that for
+  -- collisions and would need the other identity to exist first.
+  name          TEXT PRIMARY KEY,
+  -- What the worker was called in as, fixed when it is issued: a builder stays a
+  -- builder wherever its work sits, while the station says where the work is.
+  role          TEXT CHECK (role IN ('planner', 'builder', 'reviewer')),
+  -- The digest of the secret the worker carries, never the secret. The issued set is
+  -- readable through \`dim sql\`, so without something only the worker holds, any
+  -- worker could write under another's name. It is a capability rather than a
+  -- credential: it is minted here, never leaves this machine, and stops working when
+  -- the worker does.
+  token_digest  TEXT NOT NULL,
+  -- The process the worker was issued for, so that it is over is a signal sent to a
+  -- pid rather than a heartbeat something has to keep writing. NULL for a worker
+  -- issued to a shell instead of to a process this spawned.
+  pid           INTEGER,
+  started_at    TEXT NOT NULL,
+  -- Written by SessionEnd for a spawned worker and by \`dim worker end\` for one issued
+  -- at a terminal. A worker whose pid has stopped answering is over whether or not
+  -- this was written, which is what keeps a killed worker from holding a live token.
+  ended_at      TEXT
+);
+
 CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,
   order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   ts                    TEXT NOT NULL,
   kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'commit_created', 'check_finished', 'review_finished', 'completed', 'failed')),
+  -- Who did it, written by the statement that writes the moment and never after.
+  -- An entry completed later is a mutation of a record someone may already have
+  -- read, and a log that can be amended is not evidence of anything.
+  worker                TEXT NOT NULL REFERENCES factory_worker(name),
   session_id            TEXT,
   station               TEXT,
   commit_sha            TEXT,
@@ -278,24 +310,6 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   reason                TEXT
 );
 CREATE INDEX IF NOT EXISTS factory_order_event_order_ts ON factory_order_event(order_id, ts, id);
-
--- Which worker wrote each event, derived by re-reading the hook spool rather than
--- recorded by the writer: a \`dim order\` process is told nothing about which agent
--- it runs as, so anything it typed about itself would be testimony. The command
--- prints the event id it wrote, the PostToolUse payload carries that stdout beside
--- the harness's own agent id, and the join is on a row id dim minted. A root
--- session has no agent id and attributes to its session instead.
---
--- The hook fires after the command it reports, so a moment is attributed by the
--- next sync rather than by the one running when it was written. Anything gating
--- on a worker drains the spool first, or it reads a row that is merely late as
--- one that is unattributed.
-CREATE TABLE IF NOT EXISTS factory_order_event_worker (
-  event_id      INTEGER PRIMARY KEY REFERENCES factory_order_event(id) ON DELETE CASCADE,
-  worker_id     TEXT,
-  session_id    TEXT NOT NULL,
-  tool_use_id   TEXT NOT NULL
-);
 
 CREATE TABLE IF NOT EXISTS factory_order_commit (
   order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,

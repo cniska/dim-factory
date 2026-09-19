@@ -6,7 +6,6 @@ import { dbPath, tildePath } from "./paths";
 import { openReadOnly } from "./read-db";
 import wallPage from "./wall.html";
 import type { ResourceEvidence, WorkerEnvironmentPhase, WorkerHookReport } from "./worker-environment";
-import { workerName } from "./worker-name";
 
 export type WallStation = "plan" | "build" | "review" | "ship" | "unknown";
 /**
@@ -22,9 +21,8 @@ export type WallOrder = {
   title: string;
   station: WallStation;
   stage: WallStage;
-  /** Absent where no claim and no event named an agent: an order nobody is recorded against. */
+  /** Absent until the order has a moment: the worker is read off the latest one. */
   agent?: string;
-  /** What the floor calls this worker, so a card never shows an internal identity. */
   worker?: string;
   role: WallRole;
   status: OrderStatus;
@@ -86,8 +84,6 @@ const MAX_COLUMN_CARDS = 12;
 type OrderRow = {
   id: string;
   title: string;
-  assignee_id: string | null;
-  role: string | null;
   station: string | null;
   status: string;
   stop_reason: string | null;
@@ -99,18 +95,21 @@ type OrderRow = {
   latest_reason: string | null;
   latest_station: string | null;
   latest_worker: string | null;
+  latest_role: string | null;
   failed_check_count: number;
 };
 
-const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.assignee_id, o.role, o.station, o.status,
+// Who holds an order is the worker on its latest moment, and the role is that worker's
+// own: neither is stated on the order, where a claim would be asserting it.
+const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.station, o.status,
               o.stop_reason, o.run_id, o.project, o.priority, o.hold,
               e.ts AS last_event_at, e.reason AS latest_reason, e.station AS latest_station,
-              coalesce(w.worker_id, w.session_id) AS latest_worker,
+              e.worker AS latest_worker, fw.role AS latest_role,
               (SELECT count(*) FROM factory_order_check c
                 WHERE c.order_id = o.id AND c.exit_code <> 0) AS failed_check_count
        FROM factory_order o
        LEFT JOIN factory_order_event e ON e.id = (SELECT e2.id FROM factory_order_event e2 WHERE e2.order_id = o.id ORDER BY e2.ts DESC, e2.id DESC LIMIT 1)
-       LEFT JOIN factory_order_event_worker w ON w.event_id = e.id`;
+       LEFT JOIN factory_worker fw ON fw.name = e.worker`;
 
 const WALL_STATUSES = new Set<string>(ORDER_STATUSES);
 
@@ -139,7 +138,7 @@ function station(value: string | null): WallStation {
 }
 
 /**
- * Read from the claim, never worked out from the station: a worker is called in as one
+ * The worker's own, never worked out from the station: a worker is called in as one
  * thing and stays it, while the station says where the work is. A role the record does
  * not hold reads as unknown rather than as whatever the station suggests.
  */
@@ -154,7 +153,7 @@ function status(value: string): OrderStatus {
 }
 
 function mapOrder(row: OrderRow, now: Date): WallOrder {
-  const agentId = row.latest_worker ?? row.assignee_id;
+  const worker = row.latest_worker;
   const stationName = station(row.station ?? row.latest_station);
   const orderStatus = status(row.status);
   // A queued order carrying a stop reason was tried and handed back, which is the one
@@ -168,8 +167,8 @@ function mapOrder(row: OrderRow, now: Date): WallOrder {
     title: row.title,
     station: stationName,
     stage: stageByStatus[orderStatus],
-    ...(agentId ? { agent: agentId, worker: workerName(agentId) } : {}),
-    role: role(row.role),
+    ...(worker ? { agent: worker, worker } : {}),
+    role: role(row.latest_role),
     status: orderStatus,
     age: age(lastEventAt, now),
     lastEventAt,
@@ -261,7 +260,7 @@ function eventEntry(row: EventRow): WallItemEntry {
   return {
     at: row.ts,
     kind: row.kind,
-    ...(row.worker_id ? { agent: row.worker_id, worker: workerName(row.worker_id) } : {}),
+    ...(row.worker_id ? { agent: row.worker_id, worker: row.worker_id } : {}),
     ...(row.station ? { station: station(row.station) } : {}),
     ...(row.reason ? { reason: row.reason } : {}),
     ...(row.hold_type ? { hold: row.hold_type } : {}),
@@ -299,13 +298,11 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
   if (!row) return null;
   const events = db
     .query(
-      `SELECT e.ts, e.kind, coalesce(w.worker_id, w.session_id) AS worker_id,
-              e.station, e.hold_type, e.reason,
+      `SELECT e.ts, e.kind, e.worker AS worker_id, e.station, e.hold_type, e.reason,
               coalesce(c.sha, e.commit_sha) AS commit_sha, c.subject AS commit_subject,
               ch.command, ch.exit_code, ch.result,
               f.dimension, f.answer, f.summary, f.resolution
        FROM factory_order_event e
-       LEFT JOIN factory_order_event_worker w ON w.event_id = e.id
        LEFT JOIN factory_order_commit c ON c.order_id = e.order_id AND c.sha = e.commit_sha
        LEFT JOIN factory_order_check ch ON ch.id = e.check_id AND ch.order_id = e.order_id
        LEFT JOIN factory_order_finding f ON f.id = e.finding_id AND f.order_id = e.order_id

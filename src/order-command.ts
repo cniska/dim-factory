@@ -2,13 +2,10 @@ import type { Database } from "bun:sqlite";
 import {
   appendOrderEvent,
   claimOrder,
-  isOrderRole,
   moveOrder,
   ORDER_PRIORITIES,
-  ORDER_ROLES,
   type OrderEventKind,
   type OrderPriority,
-  type OrderRole,
   type OrderStatus,
   queueOrder,
   recordOrderCheck,
@@ -19,16 +16,17 @@ import {
   setOrderHold,
   setOrderPriority,
 } from "./factory-order";
+import { resolveWorker } from "./factory-worker";
 import { readFlags, requiredFlag } from "./flags";
 import { heldOrders, readyOrders } from "./order-ready";
+import type { Env } from "./paths";
 
 export class OrderCommandError extends Error {}
 
 export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--description "..."]
                      [--priority <${ORDER_PRIORITIES.join("|")}>] [--hold "..."] [--project <owner/repo>]
        dim order ready [--limit <n>] [--project <owner/repo>]
-       dim order claim <order-id> --run <id> [--agent <id>] [--role <planner|builder|reviewer>]
-                      [--session <id>] [--station <name>]
+       dim order claim <order-id> --run <id> [--session <id>] [--station <name>]
        dim order priority <order-id> <${ORDER_PRIORITIES.join("|")}>
        dim order hold <order-id> --reason "..."
        dim order release <order-id>
@@ -44,7 +42,7 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--des
 An order defaults to this checkout's owner/repo, so work belongs to the project it
 is built in rather than to wherever the command was typed.`;
 
-const CLAIM_FLAGS = ["--run", "--agent", "--role", "--session", "--station"];
+const CLAIM_FLAGS = ["--run", "--session", "--station"];
 const ADD_FLAGS = ["--title", "--description", "--priority", "--hold", "--project"];
 
 const fail = (message: string): Error => new OrderCommandError(message);
@@ -57,31 +55,6 @@ function required(given: Map<string, string>, flag: string): string {
   return requiredFlag(given, flag, fail);
 }
 
-/**
- * The event id rides out on stdout because that is the only thing the harness records
- * beside the agent that ran the command: nothing tells a `dim` process which worker it
- * is, so the worker is joined on afterwards through a row id this wrote.
- */
-export const EVENT_MARK = "event=";
-
-function written(message: string, event: number): string {
-  return `${message} ${EVENT_MARK}${event}`;
-}
-
-/**
- * What the worker was called in as, which the operator knows when it spawns one and
- * nothing downstream can recover: a station says where the work is, never who holds it.
- */
-function role(given: string | undefined): OrderRole | undefined {
-  if (given === undefined) return undefined;
-  if (!isOrderRole(given)) {
-    throw new OrderCommandError(
-      `${given} is not a role a worker holds an order as; one of ${ORDER_ROLES.join(", ")}`,
-    );
-  }
-  return given;
-}
-
 function priority(given: string | undefined): OrderPriority | undefined {
   if (given === undefined) return undefined;
   if (!(ORDER_PRIORITIES as readonly string[]).includes(given)) {
@@ -90,31 +63,44 @@ function priority(given: string | undefined): OrderPriority | undefined {
   return given as OrderPriority;
 }
 
-function add(db: Database, orderId: string, args: string[], defaultProject: string | null): string {
+function add(
+  db: Database,
+  orderId: string,
+  args: string[],
+  defaultProject: string | null,
+  worker: string,
+): string {
   const given = flags(args, ADD_FLAGS);
   const project = given.get("--project") ?? defaultProject;
   if (!project) throw fail("--project is required outside a checkout with a remote");
-  const event = queueOrder(db, {
-    id: orderId,
-    project,
-    title: required(given, "--title"),
-    description: given.get("--description"),
-    priority: priority(given.get("--priority")),
-    hold: given.get("--hold"),
-  });
-  return written(`queued ${orderId} on ${project}`, event);
+  queueOrder(
+    db,
+    {
+      id: orderId,
+      project,
+      title: required(given, "--title"),
+      description: given.get("--description"),
+      priority: priority(given.get("--priority")),
+      hold: given.get("--hold"),
+    },
+    worker,
+  );
+  return `queued ${orderId} on ${project}`;
 }
 
-function claim(db: Database, orderId: string, args: string[]): string {
+function claim(db: Database, orderId: string, args: string[], worker: string): string {
   const given = flags(args, CLAIM_FLAGS);
-  const event = claimOrder(db, orderId, {
-    runId: required(given, "--run"),
-    agentId: given.get("--agent"),
-    role: role(given.get("--role")),
-    sessionId: given.get("--session"),
-    station: given.get("--station"),
-  });
-  return written(`${orderId} is working`, event);
+  claimOrder(
+    db,
+    orderId,
+    {
+      runId: required(given, "--run"),
+      sessionId: given.get("--session"),
+      station: given.get("--station"),
+    },
+    worker,
+  );
+  return `${orderId} is working`;
 }
 
 /**
@@ -153,16 +139,16 @@ function answer(given: Map<string, string>): "fixed" | "refused" {
  */
 type Evidence = {
   flags: string[];
-  record: (db: Database, id: string, given: Map<string, string>) => string;
+  record: (db: Database, id: string, given: Map<string, string>, worker: string) => string;
 };
 
 const EVIDENCE: Record<string, Evidence> = {
   commit: {
     flags: ["--sha", "--subject"],
-    record: (db, id, given) => {
+    record: (db, id, given, worker) => {
       const sha = required(given, "--sha");
-      const event = recordOrderCommit(db, id, sha, given.get("--subject"));
-      return written(`${id} recorded commit ${sha}`, event);
+      recordOrderCommit(db, id, sha, worker, given.get("--subject"));
+      return `${id} recorded commit ${sha}`;
     },
   },
   file: {
@@ -179,29 +165,30 @@ const EVIDENCE: Record<string, Evidence> = {
   },
   check: {
     flags: ["--command", "--exit", "--result"],
-    record: (db, id, given) => {
+    record: (db, id, given, worker) => {
       const command = required(given, "--command");
       const code = exitCode(given);
-      const event = recordOrderCheck(db, id, {
-        command,
-        exitCode: code,
-        result: given.get("--result"),
-      });
-      return written(`${id} recorded ${command} (${code})`, event);
+      recordOrderCheck(db, id, { command, exitCode: code, result: given.get("--result") }, worker);
+      return `${id} recorded ${command} (${code})`;
     },
   },
   finding: {
     flags: ["--dimension", "--summary", "--answer", "--resolution"],
-    record: (db, id, given) => {
+    record: (db, id, given, worker) => {
       const dimension = required(given, "--dimension");
       const ended = answer(given);
-      const event = recordOrderFinding(db, id, {
-        dimension,
-        summary: required(given, "--summary"),
-        answer: ended,
-        resolution: given.get("--resolution"),
-      });
-      return written(`${id} recorded a ${ended} finding on ${dimension}`, event);
+      recordOrderFinding(
+        db,
+        id,
+        {
+          dimension,
+          summary: required(given, "--summary"),
+          answer: ended,
+          resolution: given.get("--resolution"),
+        },
+        worker,
+      );
+      return `${id} recorded a ${ended} finding on ${dimension}`;
     },
   },
   document: {
@@ -218,25 +205,26 @@ const EVIDENCE: Record<string, Evidence> = {
  *  nobody holds, carrying why. */
 const STOP_KINDS = ["completed", "failed"] as const;
 
-function stop(db: Database, orderId: string, args: string[], worktree: string): string {
+function stop(db: Database, orderId: string, args: string[], worktree: string, worker: string): string {
   const [kind, ...rest] = args;
   if (!kind) throw new OrderCommandError("stop needs how the order stopped");
   if (!(STOP_KINDS as readonly string[]).includes(kind)) {
     throw new OrderCommandError(`${kind} is not a way an order can stop`);
   }
   const given = flags(rest, ["--reason"]);
-  const event = appendOrderEvent(
+  appendOrderEvent(
     db,
     orderId,
     {
       kind: kind as OrderEventKind,
+      worker,
       ...(kind === "completed" ? { status: "completed" as OrderStatus } : {}),
       reason: given.get("--reason"),
     },
     undefined,
     worktree,
   );
-  return written(kind === "completed" ? `${orderId} is completed` : `${orderId} is queued again`, event);
+  return kind === "completed" ? `${orderId} is completed` : `${orderId} is queued again`;
 }
 
 export function runOrderCommand(
@@ -244,6 +232,7 @@ export function runOrderCommand(
   args: string[],
   defaultProject: string | null = null,
   worktree = process.cwd(),
+  env: Env = process.env,
 ): string {
   const [command, orderId, ...rest] = args;
   if (command === "ready") {
@@ -267,8 +256,11 @@ export function runOrderCommand(
     );
   }
   if (!command || !orderId) throw new OrderCommandError("order takes a subcommand and an order id");
-  if (command === "add") return add(db, orderId, rest, defaultProject);
-  if (command === "claim") return claim(db, orderId, rest);
+  // Resolved once, before anything is written: every act below records who did it, and a
+  // caller that cannot say is refused here rather than writing a moment nobody did.
+  const worker = resolveWorker(db, env);
+  if (command === "add") return add(db, orderId, rest, defaultProject, worker);
+  if (command === "claim") return claim(db, orderId, rest, worker);
   if (command === "priority") {
     const [level] = rest;
     const chosen = priority(level);
@@ -288,14 +280,15 @@ export function runOrderCommand(
   }
   if (command === "move") {
     const station = required(flags(rest, ["--station"]), "--station");
-    return written(`${orderId} moved to ${station}`, moveOrder(db, orderId, station));
+    moveOrder(db, orderId, station, worker);
+    return `${orderId} moved to ${station}`;
   }
   // Own property only: an object literal inherits `toString` and `constructor`, and
   // `dim order toString` would reach one instead of the refusal every other name gets.
   if (Object.hasOwn(EVIDENCE, command)) {
     const evidence = EVIDENCE[command] as Evidence;
-    return evidence.record(db, orderId, flags(rest, evidence.flags));
+    return evidence.record(db, orderId, flags(rest, evidence.flags), worker);
   }
-  if (command === "stop") return stop(db, orderId, rest, worktree);
+  if (command === "stop") return stop(db, orderId, rest, worktree, worker);
   throw new OrderCommandError(`${command} is not an order subcommand`);
 }

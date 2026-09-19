@@ -14,6 +14,7 @@ import { buildIndex } from "./embed-index";
 import { createSchedule, setSchedulePaused } from "./factory-schedule";
 import { clearStop, FactoryStopError, pullStop } from "./factory-stop";
 import { serveWall } from "./factory-wall";
+import { WorkerUnknown } from "./factory-worker";
 import { type Finding, FindingError, findingFrom, recordFinding } from "./finding";
 import { readFlags, requiredFlag } from "./flags";
 import { committerName } from "./git-identity";
@@ -37,6 +38,7 @@ import { readWake, renderWake, type Wake, wireFor } from "./wake";
 import { resolveWalk, spoolWalk } from "./walk";
 import { DEFAULT_WALL_PORT, WALL_HOT_ENV, WALL_PORT_ENV, WallPortError, wallPort } from "./wall-port";
 import { warn } from "./warn";
+import { runWorkerCommand, WORKER_USAGE, WorkerCommandError } from "./worker-command";
 import { checkCommand } from "./workspace-commands";
 import { runWt, WtError } from "./wt-command";
 
@@ -109,6 +111,11 @@ const USAGE = `usage: dim <command>
   order ready [--limit <n>] [--project <owner/repo>]
                   print the orders nobody holds, most urgent first and oldest
                   before newest within a priority, with the held ones beside them
+  worker mint [--role <r>] [--pid <n>]
+                  issue a worker and print the two exports that make a shell one;
+                  every order moment names the worker that recorded it
+  worker end <name>
+                  mark a worker as stopped, so its name can write nothing further
 `;
 
 function printReport(report: SyncReport | RebuildReport): void {
@@ -145,9 +152,6 @@ function printReport(report: SyncReport | RebuildReport): void {
     console.log(
       `walk: ${report.walk.surfaces} rules surfaces recorded for ${report.walk.sessions} session starts`,
     );
-  }
-  if (report.orderWorkers.attributed > 0) {
-    console.log(`orders: ${report.orderWorkers.attributed} moments attributed to the worker that wrote them`);
   }
   if (report.chain.pasted > 0) {
     console.log(
@@ -875,6 +879,16 @@ try {
         }
       }
       break;
+    case "worker":
+      {
+        const db = openDb(dbPath());
+        try {
+          console.log(runWorkerCommand(db, process.argv.slice(3)));
+        } finally {
+          closeDb(db);
+        }
+      }
+      break;
     case "embed":
       await runEmbed();
       break;
@@ -941,6 +955,17 @@ try {
   if (error instanceof OrderCommandError) {
     warn(`dim: ${error.message}`);
     warn(ORDER_USAGE);
+    process.exit(1);
+  }
+  if (error instanceof WorkerCommandError) {
+    warn(`dim: ${error.message}`);
+    if (error.message !== WORKER_USAGE) warn(WORKER_USAGE);
+    process.exit(1);
+  }
+  // Every `dim order` write names the worker that made it, so a caller nothing issued
+  // is told how to become one rather than left with a constraint violation.
+  if (error instanceof WorkerUnknown) {
+    warn(`dim: ${error.message}`);
     process.exit(1);
   }
   warn(`dim: ${error instanceof Error ? error.message : String(error)}`);

@@ -1,30 +1,31 @@
 import { describe, expect, test } from "bun:test";
-import { WORKER_NAME_SPACE, workerName } from "./worker-name";
+import { nextWorkerName, wordFor } from "./worker-name";
 
 describe("naming a factory worker", () => {
-  test("the same agent is always the same worker", () => {
-    expect(workerName("claude-builder")).toBe(workerName("claude-builder"));
-  });
-
   test("names read as a word and a number", () => {
-    expect(workerName("claude-builder")).toMatch(/^[a-z]+-\d{1,2}$/);
+    expect(nextWorkerName(0, 0)).toMatch(/^[a-z]+-\d+$/);
   });
 
-  test("different agents get different names", () => {
-    const names = ["claude-builder", "codex-fixer", "codex-reviewer", "claude-planner"].map(workerName);
-
-    expect(new Set(names).size).toBe(names.length);
+  test("the words are walked in turn, so the second worker is not the first's word", () => {
+    expect(wordFor(0)).not.toBe(wordFor(1));
   });
 
-  // A name labels a card and `agent_id` is what anything joins on, so collisions are
-  // tolerable — but they have to stay rare enough that the wall reads as distinct workers.
-  test("a thousand agents draw nearly a thousand names", () => {
-    const names = new Set(Array.from({ length: 1000 }, (_, index) => workerName(`agent-${index}`)));
+  test("no two workers are handed the same name", () => {
+    const issued = new Set<string>();
+    const onWord = new Map<string, number>();
+    for (let workers = 0; workers < 5000; workers += 1) {
+      const word = wordFor(workers);
+      const taken = onWord.get(word) ?? 0;
+      issued.add(nextWorkerName(workers, taken));
+      onWord.set(word, taken + 1);
+    }
 
-    expect(names.size).toBeGreaterThan(950);
+    expect(issued.size).toBe(5000);
   });
 
-  test("the name space is the word list times the number range", () => {
-    expect(WORKER_NAME_SPACE).toBe(25600);
+  test("the number is what grows, so the vocabulary never runs out", () => {
+    const word = wordFor(0);
+
+    expect(nextWorkerName(0, 999)).toBe(`${word}-1000`);
   });
 });

@@ -59,8 +59,8 @@ Every order taken is claimed before a builder sees it and stopped once whatever 
 Mint one run id per invocation — `run-$(date -u +%Y%m%dT%H%M%SZ)`. The order id already exists: it is what `dim order ready` printed, and it is also the branch and the worktree directory the work is built in.
 
 ```
-dim order claim <order-id> --run <run-id> --agent <builder-id> \
-  --station <plan|build|review|ship> [--role <planner|builder|reviewer>] [--session <id>]
+dim order claim <order-id> --run <run-id> \
+  --station <plan|build|review|ship> [--session <id>]
 dim order move <order-id> --station <plan|build|review|ship>
 dim order stop <order-id> <completed|failed> [--reason "..."]
 ```
@@ -68,7 +68,7 @@ dim order stop <order-id> <completed|failed> [--reason "..."]
 - **The id, the title and the statement come from the row, not from you.** A claim takes the order by its id and nothing else; the words are already on it, so nothing can record a second version of them.
 - **A claim is also the start.** The order existed before the worker did, so taking it is starting it and there is no separate step.
 - The branch and the worktree are the order id: `dim wt <order-id>` makes the worktree the builder works in, and nothing stores the path.
-- **`--agent <id>` names the builder, and is not optional in practice.** Without it the card names no worker, and several orders running at once are indistinguishable — pass the stable identifier the harness gives the builder it spawns.
+- **The worker comes from the environment, never from a flag.** `DIM_WORKER_NAME` and `DIM_WORKER_TOKEN` are what the factory hands a worker it starts, and every `dim order` write reads them and records that name on the moment. A shell that was started by nothing becomes a worker with `eval "$(dim worker mint --role builder)"`; without one, every write is refused rather than recorded against nobody.
 - **The station is a word the wall holds — `plan`, `build`, `review` or `ship` — never the line running it.** `dim-line-feat` and `dim-line-fix` are the line, not the station; the station is where the work is, and `dim order move <order-id> --station <name>` records it changing as the work moves through planning, building and review.
 - Record evidence as it happens, not at the end: `dim order commit`, `dim order file`, `dim order check`, `dim order finding` and `dim order document` each take the order id and what was produced. `dim order file` takes `--added` and `--removed` straight from `git diff --numstat`, which is where the card's `+/−` comes from; pass the `-` numstat gives a binary file through as it stands rather than counting it zero. An order that records nothing leaves a card with nothing on it; `dim q factory <order-id-prefix>` reads back what was recorded.
 - **Stop exactly once, whatever happened**: the work landed (`completed`), or it did not (`failed`, with the reason saying why). A failure puts the order back among the work nobody holds, carrying its reason, so taking it again is an ordinary claim rather than a new card. `dim order stop <order> completed` is refused unless a check recorded after the order's last commit passed and that commit reaches the trunk — the gate reads git out of the worktree the command is typed in, so merge the work, then stop the order, then remove the worktree; removing it first makes completion impossible.

@@ -196,7 +196,11 @@ describe("rebuilding a database an older schema wrote", () => {
        VALUES ('order-1', 'cniska/dim-factory', 'Survive a rebuild', 'working', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
     db.run(
-      "INSERT INTO factory_order_event (order_id, ts, kind) VALUES ('order-1', '2026-01-01T00:00:00Z', 'claimed')",
+      "INSERT INTO factory_worker (name, token_digest, started_at) VALUES ('copper-1', 'x', '2026-01-01T00:00:00Z')",
+    );
+    db.run(
+      `INSERT INTO factory_order_event (order_id, ts, kind, worker)
+       VALUES ('order-1', '2026-01-01T00:00:00Z', 'claimed', 'copper-1')`,
     );
     db.run(
       "INSERT INTO factory_order_commit (order_id, sha, recorded_at) VALUES ('order-1', 'abc', '2026-01-01T00:00:00Z')",
@@ -264,9 +268,12 @@ describe("rebuilding a database an older schema wrote", () => {
        VALUES ('order-kept', 'cniska/dim-factory', 'Survive a rebuild', 'working', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
     db.run(
-      `INSERT INTO factory_order_event (order_id, ts, kind)
-       VALUES ('order-kept', '2026-01-01T00:00:00Z', 'claimed'),
-              ('order-gone', '2026-01-01T00:00:00Z', 'claimed')`,
+      "INSERT INTO factory_worker (name, token_digest, started_at) VALUES ('copper-1', 'x', '2026-01-01T00:00:00Z')",
+    );
+    db.run(
+      `INSERT INTO factory_order_event (order_id, ts, kind, worker)
+       VALUES ('order-kept', '2026-01-01T00:00:00Z', 'claimed', 'copper-1'),
+              ('order-gone', '2026-01-01T00:00:00Z', 'claimed', 'copper-1')`,
     );
     db.run(
       `INSERT INTO factory_order_commit (order_id, sha, recorded_at)

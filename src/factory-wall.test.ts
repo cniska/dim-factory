@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import {
   appendOrderEvent,
   claimOrder,
-  type OrderRole,
   queueOrder,
   recordOrderCheck,
   recordOrderCommit,
@@ -16,66 +15,76 @@ import {
   setOrderPriority,
 } from "./factory-order";
 import { assembleItemView, assembleWallSnapshot, serveWall } from "./factory-wall";
-import { integratedRepo } from "./fixtures.test-support";
+import type { WorkerRole } from "./factory-worker";
+import { integratedRepo, workerIn } from "./fixtures.test-support";
 import { resolveHomeDir } from "./paths";
 import { SCHEMA_SQL } from "./schema";
 import { STATION_LABELS } from "./wall-board";
-import { workerName } from "./worker-name";
+
+// One hand per database, set where the database is made: every moment names a worker,
+// and what these tests are about is what the wall draws rather than who touched it.
+let worker = "";
+
+function floor(): Database {
+  const db = new Database(":memory:");
+  db.run(SCHEMA_SQL);
+  worker = workerIn(db);
+  return db;
+}
 
 const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
 
 describe("factory wall snapshot", () => {
   test("assembles current work for the board from read-only order records", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     queueOrder(
       db,
       { id: "order-running", project: "cniska/dim-factory", title: "Show the wall" },
+      worker,
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(
-      db,
-      "order-running",
-      { runId: "run", agentId: "builder", role: "builder", station: "build" },
-      "2026-09-18T10:00:00.000Z",
-    );
+    claimOrder(db, "order-running", { runId: "run", station: "build" }, worker, "2026-09-18T10:00:00.000Z");
 
     recordOrderCheck(
       db,
       "order-running",
       { command: "bun run verify", exitCode: 0, result: "green" },
+      worker,
       "2026-09-18T10:02:00.000Z",
     );
     queueOrder(
       db,
       { id: "order-blocked", project: "cniska/dim-factory", title: "Unblock the queue" },
+      worker,
       "2026-09-18T09:00:00.000Z",
     );
-    claimOrder(db, "order-blocked", { runId: "run", station: "review" }, "2026-09-18T09:00:00.000Z");
+    claimOrder(db, "order-blocked", { runId: "run", station: "review" }, worker, "2026-09-18T09:00:00.000Z");
     appendOrderEvent(
       db,
       "order-blocked",
-      { kind: "failed", holdType: "owner-judgment", reason: "scope unclear" },
+      { worker, kind: "failed", holdType: "owner-judgment", reason: "scope unclear" },
       "2026-09-18T09:05:00.000Z",
     );
     queueOrder(
       db,
       { id: "order-done", project: "cniska/dim-factory", title: "Ship the board" },
+      worker,
       "2026-09-18T08:00:00.000Z",
     );
-    claimOrder(db, "order-done", { runId: "run", station: "ship" }, "2026-09-18T08:00:00.000Z");
-    recordOrderCommit(db, "order-done", trunk.sha, "wall", "2026-09-18T08:01:00.000Z");
+    claimOrder(db, "order-done", { runId: "run", station: "ship" }, worker, "2026-09-18T08:00:00.000Z");
+    recordOrderCommit(db, "order-done", trunk.sha, worker, "wall", "2026-09-18T08:01:00.000Z");
     recordOrderCheck(
       db,
       "order-done",
       { command: "bun run verify", exitCode: 0, result: "green" },
+      worker,
       "2026-09-18T08:01:30.000Z",
     );
     appendOrderEvent(
       db,
       "order-done",
-      { kind: "completed", status: "completed", reason: "verified" },
+      { worker, kind: "completed", status: "completed", reason: "verified" },
       "2026-09-18T08:02:00.000Z",
       trunk.dir,
     );
@@ -94,9 +103,9 @@ describe("factory wall snapshot", () => {
       title: "Show the wall",
       station: "build",
       stage: "active",
-      agent: "builder",
-      worker: workerName("builder"),
-      role: "builder",
+      agent: worker,
+      worker,
+      role: "unknown",
       status: "working",
       age: "8m",
       lastEventAt: "2026-09-18T10:02:00.000Z",
@@ -106,14 +115,14 @@ describe("factory wall snapshot", () => {
   });
 
   test("puts a claimed order in the active column", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     queueOrder(
       db,
       { id: "order-claimed", project: "cniska/dim-factory", title: "Wait for a builder" },
+      worker,
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(db, "order-claimed", { runId: "run", station: "plan" }, "2026-09-18T10:00:00.000Z");
+    claimOrder(db, "order-claimed", { runId: "run", station: "plan" }, worker, "2026-09-18T10:00:00.000Z");
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z"));
 
@@ -122,18 +131,18 @@ describe("factory wall snapshot", () => {
   });
 
   test("puts a handed-back order in the todo column with why it stopped", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     queueOrder(
       db,
       { id: "order-gone", project: "cniska/dim-factory", title: "Stop this one" },
+      worker,
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(db, "order-gone", { runId: "run", station: "build" }, "2026-09-18T10:00:00.000Z");
+    claimOrder(db, "order-gone", { runId: "run", station: "build" }, worker, "2026-09-18T10:00:00.000Z");
     appendOrderEvent(
       db,
       "order-gone",
-      { kind: "failed", reason: "operator stopped" },
+      { worker, kind: "failed", reason: "operator stopped" },
       "2026-09-18T10:02:00.000Z",
     );
 
@@ -146,14 +155,14 @@ describe("factory wall snapshot", () => {
   });
 
   test("has an event to age every claimed order from", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     queueOrder(
       db,
       { id: "order-quiet", project: "cniska/dim-factory", title: "Go quiet after being claimed" },
+      worker,
       "2026-09-18T09:00:00.000Z",
     );
-    claimOrder(db, "order-quiet", { runId: "run", station: "build" }, "2026-09-18T09:05:00.000Z");
+    claimOrder(db, "order-quiet", { runId: "run", station: "build" }, worker, "2026-09-18T09:05:00.000Z");
     // Writes the order row without recording an event, which is how an order's row can be newer
     // than anything that happened to it.
     setOrderPriority(db, "order-quiet", "high");
@@ -170,44 +179,55 @@ describe("factory wall snapshot", () => {
   });
 
   test("counts the checks a running order failed and leaves a passing one silent", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     queueOrder(
       db,
       { id: "order-struggling", project: "cniska/dim-factory", title: "Fail the check twice" },
+      worker,
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(db, "order-struggling", { runId: "run", station: "build" }, "2026-09-18T10:00:00.000Z");
+    claimOrder(
+      db,
+      "order-struggling",
+      { runId: "run", station: "build" },
+      worker,
+      "2026-09-18T10:00:00.000Z",
+    );
 
     recordOrderCheck(
       db,
       "order-struggling",
       { command: "bun run verify", exitCode: 1, result: "lint failed" },
+      worker,
       "2026-09-18T10:02:00.000Z",
     );
     recordOrderCheck(
       db,
       "order-struggling",
       { command: "bun run verify", exitCode: 2, result: "typecheck failed" },
+      worker,
       "2026-09-18T10:03:00.000Z",
     );
     recordOrderCheck(
       db,
       "order-struggling",
       { command: "bun run verify", exitCode: 0, result: "green" },
+      worker,
       "2026-09-18T10:04:00.000Z",
     );
 
     queueOrder(
       db,
       { id: "order-clean", project: "cniska/dim-factory", title: "Pass the check first time" },
+      worker,
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(db, "order-clean", { runId: "run", station: "build" }, "2026-09-18T10:00:00.000Z");
+    claimOrder(db, "order-clean", { runId: "run", station: "build" }, worker, "2026-09-18T10:00:00.000Z");
     recordOrderCheck(
       db,
       "order-clean",
       { command: "bun run verify", exitCode: 0, result: "green" },
+      worker,
       "2026-09-18T10:02:00.000Z",
     );
 
@@ -223,56 +243,45 @@ describe("factory wall snapshot", () => {
     db.close();
   });
 
-  test("names no worker for an order no claim and no event named an agent for", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+  test("a moment no worker did cannot be written, so no card is left unattributed", () => {
+    const db = floor();
     queueOrder(
       db,
-      { id: "order-unattributed", project: "cniska/dim-factory", title: "Claimed by nobody in particular" },
-      "2026-09-18T10:00:00.000Z",
-    );
-    claimOrder(
-      db,
-      "order-unattributed",
-      { runId: "run", station: "dim-station-build" },
+      { id: "order-named", project: "cniska/dim-factory", title: "Name the hand that took it" },
+      worker,
       "2026-09-18T10:00:00.000Z",
     );
 
-    const order = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).orders[0];
-
-    expect(order).toEqual({
-      id: "order-unattributed",
-      title: "Claimed by nobody in particular",
-      station: "build",
-      stage: "active",
-      // Nobody was named, so nothing says what kind of worker this is either.
-      role: "unknown",
-      status: "working",
-      age: "5m",
-      lastEventAt: "2026-09-18T10:00:00.000Z",
-      failedChecks: 0,
-    });
+    expect(() =>
+      db.run(
+        `INSERT INTO factory_order_event (order_id, ts, kind, worker)
+         VALUES ('order-named', '2026-09-18T10:01:00.000Z', 'claimed', NULL)`,
+      ),
+    ).toThrow(/NOT NULL/);
+    // What `openDb` runs on every connection; a name no worker row backs is refused only
+    // while it is on, which is why it is turned on there rather than left to the caller.
+    db.run("PRAGMA foreign_keys = ON");
+    expect(() =>
+      db.run(
+        `INSERT INTO factory_order_event (order_id, ts, kind, worker)
+         VALUES ('order-named', '2026-09-18T10:01:00.000Z', 'claimed', 'nobody-9')`,
+      ),
+    ).toThrow(/FOREIGN KEY/);
     db.close();
   });
 
-  test("reads a role off the claim, never off the station or the agent's name", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
-    const take = (id: string, recorded: OrderRole | undefined, stationValue: string, agentId: string) => {
-      queueOrder(db, { id, project: "cniska/dim-factory", title: id }, "2026-09-18T10:00:00.000Z");
-      claimOrder(
-        db,
-        id,
-        { runId: "run", agentId, ...(recorded ? { role: recorded } : {}), station: stationValue },
-        "2026-09-18T10:00:00.000Z",
-      );
+  test("reads a role off the worker, never off the station it is sitting at", () => {
+    const db = floor();
+    const take = (id: string, called: WorkerRole | undefined, stationValue: string) => {
+      const hand = workerIn(db, called);
+      queueOrder(db, { id, project: "cniska/dim-factory", title: id }, hand, "2026-09-18T10:00:00.000Z");
+      claimOrder(db, id, { runId: "run", station: stationValue }, hand, "2026-09-18T10:00:00.000Z");
     };
-    // A builder sitting at the review station is still a builder, and a name that reads
-    // like a role is a string somebody typed.
-    take("planning", "planner", "dim-station-build", "agent-1");
-    take("building", "builder", "dim-station-review", "planner-2");
-    take("reviewing", "reviewer", "dim-station-plan", "agent-3");
-    take("unrecorded", undefined, "dim-station-build", "builder-4");
+    // A builder sitting at the review station is still a builder.
+    take("planning", "planner", "dim-station-build");
+    take("building", "builder", "dim-station-review");
+    take("reviewing", "reviewer", "dim-station-plan");
+    take("unrecorded", undefined, "dim-station-build");
 
     const roles = new Map(
       assembleWallSnapshot(db, new Date("2026-09-18T10:20:00.000Z")).orders.map((order) => [
@@ -289,20 +298,27 @@ describe("factory wall snapshot", () => {
   });
 
   test("says a station it does not know is unknown rather than calling it build", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     queueOrder(
       db,
       { id: "order-line", project: "cniska/dim-factory", title: "Claimed with a line, not a station" },
+      worker,
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(db, "order-line", { runId: "run", station: "dim-line-feat" }, "2026-09-18T10:00:00.000Z");
+    claimOrder(
+      db,
+      "order-line",
+      { runId: "run", station: "dim-line-feat" },
+      worker,
+      "2026-09-18T10:00:00.000Z",
+    );
     queueOrder(
       db,
       { id: "order-stationless", project: "cniska/dim-factory", title: "Claimed with no station at all" },
+      worker,
       "2026-09-18T09:00:00.000Z",
     );
-    claimOrder(db, "order-stationless", { runId: "run" }, "2026-09-18T09:00:00.000Z");
+    claimOrder(db, "order-stationless", { runId: "run" }, worker, "2026-09-18T09:00:00.000Z");
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z"));
 
@@ -312,17 +328,17 @@ describe("factory wall snapshot", () => {
   });
 
   test("bounds each stage column so finished work cannot crowd out current work", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     const seed = (id: string, kind: "failed" | "completed") => {
-      queueOrder(db, { id, project: "cniska/dim-factory", title: id }, "2026-09-18T09:00:00.000Z");
-      claimOrder(db, id, { runId: "run", station: "build" }, "2026-09-18T09:00:00.000Z");
+      queueOrder(db, { id, project: "cniska/dim-factory", title: id }, worker, "2026-09-18T09:00:00.000Z");
+      claimOrder(db, id, { runId: "run", station: "build" }, worker, "2026-09-18T09:00:00.000Z");
       if (kind === "completed") {
-        recordOrderCommit(db, id, trunk.sha, "feat: land it", "2026-09-18T09:00:40.000Z");
+        recordOrderCommit(db, id, trunk.sha, worker, "feat: land it", "2026-09-18T09:00:40.000Z");
         recordOrderCheck(
           db,
           id,
           { command: "bun run verify", exitCode: 0, result: "green" },
+          worker,
           "2026-09-18T09:00:45.000Z",
         );
       }
@@ -330,6 +346,7 @@ describe("factory wall snapshot", () => {
         db,
         id,
         {
+          worker,
           kind,
           ...(kind === "completed" ? { status: "completed" as const } : {}),
           reason: `reason-${id}`,
@@ -350,18 +367,24 @@ describe("factory wall snapshot", () => {
   });
 
   test("keeps an order that needs a person on the board and at the top of its column", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     queueOrder(
       db,
       { id: "order-failed-early", project: "cniska/dim-factory", title: "Stop and wait for the owner" },
+      worker,
       "2026-09-18T08:00:00.000Z",
     );
-    claimOrder(db, "order-failed-early", { runId: "run", station: "build" }, "2026-09-18T08:00:00.000Z");
+    claimOrder(
+      db,
+      "order-failed-early",
+      { runId: "run", station: "build" },
+      worker,
+      "2026-09-18T08:00:00.000Z",
+    );
     appendOrderEvent(
       db,
       "order-failed-early",
-      { kind: "failed", reason: "scope unclear" },
+      { worker, kind: "failed", reason: "scope unclear" },
       "2026-09-18T08:02:00.000Z",
     );
     // More waiting work than a column draws, every piece of it newer than the order that
@@ -370,6 +393,7 @@ describe("factory wall snapshot", () => {
       queueOrder(
         db,
         { id: `order-busy-${index}`, project: "cniska/dim-factory", title: `Busy ${index}` },
+        worker,
         `2026-09-18T09:${String(index + 10).padStart(2, "0")}:00.000Z`,
       );
     }
@@ -454,14 +478,10 @@ describe("factory wall item view", () => {
     queueOrder(
       db,
       { id: "order-worked", project: "cniska/dim-factory", title: "Work an item through" },
+      worker,
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(
-      db,
-      "order-worked",
-      { runId: "run", agentId: "builder", station: "build" },
-      "2026-09-18T10:00:00.000Z",
-    );
+    claimOrder(db, "order-worked", { runId: "run", station: "build" }, worker, "2026-09-18T10:00:00.000Z");
 
     recordOrderEnvironment(
       db,
@@ -481,12 +501,14 @@ describe("factory wall item view", () => {
       db,
       "order-worked",
       { command: "bun run verify", exitCode: 1, result: "typecheck failed" },
+      worker,
       "2026-09-18T10:03:00.000Z",
     );
     recordOrderCheck(
       db,
       "order-worked",
       { command: "bun run verify", exitCode: 0, result: "green" },
+      worker,
       "2026-09-18T10:04:00.000Z",
     );
     recordOrderFile(
@@ -499,6 +521,7 @@ describe("factory wall item view", () => {
       db,
       "order-worked",
       trunk.sha,
+      worker,
       "feat: read one order's record",
       "2026-09-18T10:06:00.000Z",
     );
@@ -508,12 +531,14 @@ describe("factory wall item view", () => {
       db,
       "order-worked",
       { command: "bun run verify", exitCode: 0, result: "green" },
+      worker,
       "2026-09-18T10:06:30.000Z",
     );
     recordOrderFinding(
       db,
       "order-worked",
       { dimension: "tests", summary: "the rail has no test", answer: "fixed" },
+      worker,
       "2026-09-18T10:07:00.000Z",
     );
     recordOrderFinding(
@@ -525,21 +550,21 @@ describe("factory wall item view", () => {
         answer: "refused",
         resolution: "the design doc rules a library out for this surface",
       },
+      worker,
       "2026-09-18T10:08:00.000Z",
     );
     recordOrderDocument(db, "order-worked", "docs/human-interface.md", "2026-09-18T10:09:00.000Z");
     appendOrderEvent(
       db,
       "order-worked",
-      { kind: "completed", status: "completed", reason: "verified" },
+      { worker, kind: "completed", status: "completed", reason: "verified" },
       "2026-09-18T10:10:00.000Z",
       trunk.dir,
     );
   };
 
   test("reads one order's lifecycle in the order it was written", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     seedWorkedOrder(db);
 
     const view = assembleItemView(db, "order-worked", new Date("2026-09-18T10:20:00.000Z"));
@@ -561,8 +586,7 @@ describe("factory wall item view", () => {
   });
 
   test("carries the order's identity above what is being read", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     seedWorkedOrder(db);
 
     const view = assembleItemView(db, "order-worked", new Date("2026-09-18T10:20:00.000Z"));
@@ -570,7 +594,7 @@ describe("factory wall item view", () => {
     expect(view?.order.title).toBe("Work an item through");
     expect(view?.order.station).toBe("build");
     expect(view?.order.status).toBe("completed");
-    expect(view?.order.worker).toBe(workerName("builder"));
+    expect(view?.order.worker).toBe(worker);
     expect([view?.runId, view?.project, view?.order.id]).toEqual([
       "run",
       "cniska/dim-factory",
@@ -580,8 +604,7 @@ describe("factory wall item view", () => {
   });
 
   test("reads the changes beside the history rather than as moments in it", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     seedWorkedOrder(db);
 
     const view = assembleItemView(db, "order-worked", new Date("2026-09-18T10:20:00.000Z"));
@@ -592,14 +615,17 @@ describe("factory wall item view", () => {
   });
 
   test("leaves an uncounted change without a count rather than calling it zero", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
-    queueOrder(db, {
-      id: "order-uncounted",
-      project: "cniska/dim-factory",
-      title: "Record a path and no counts",
-    });
-    claimOrder(db, "order-uncounted", { runId: "run" });
+    const db = floor();
+    queueOrder(
+      db,
+      {
+        id: "order-uncounted",
+        project: "cniska/dim-factory",
+        title: "Record a path and no counts",
+      },
+      worker,
+    );
+    claimOrder(db, "order-uncounted", { runId: "run" }, worker);
     recordOrderFile(db, "order-uncounted", { path: "src/binary.png" });
 
     const view = assembleItemView(db, "order-uncounted", new Date("2026-09-18T10:20:00.000Z"));
@@ -609,15 +635,18 @@ describe("factory wall item view", () => {
   });
 
   test("writes a path under the home directory the way a person does", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     const home = resolveHomeDir();
-    queueOrder(db, {
-      id: "order-at-home",
-      project: "cniska/dim-factory",
-      title: "Read a path as a person writes it",
-    });
-    claimOrder(db, "order-at-home", { runId: "run" });
+    queueOrder(
+      db,
+      {
+        id: "order-at-home",
+        project: "cniska/dim-factory",
+        title: "Read a path as a person writes it",
+      },
+      worker,
+    );
+    claimOrder(db, "order-at-home", { runId: "run" }, worker);
     recordOrderFile(db, "order-at-home", { path: `${home}/code/dim-factory/src/paths.ts` });
 
     const view = assembleItemView(db, "order-at-home", new Date("2026-09-18T10:20:00.000Z"));
@@ -627,8 +656,7 @@ describe("factory wall item view", () => {
   });
 
   test("attaches each commit, check and finding to the event that produced it", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     seedWorkedOrder(db);
 
     const entries = assembleItemView(db, "order-worked", new Date("2026-09-18T10:20:00.000Z"))?.entries ?? [];
@@ -666,66 +694,47 @@ describe("factory wall item view", () => {
     db.close();
   });
 
-  test("names the worker the harness recorded against a moment", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+  test("each moment names the worker that recorded it, not the one holding the order", () => {
+    const db = floor();
+    const reviewer = workerIn(db, "reviewer");
     queueOrder(
       db,
       { id: "order-reviewed", project: "cniska/dim-factory", title: "Hand work to a reviewer" },
+      worker,
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(db, "order-reviewed", { runId: "run", station: "build" }, "2026-09-18T10:00:00.000Z");
-    appendOrderEvent(db, "order-reviewed", { kind: "moved", station: "review" }, "2026-09-18T10:02:00.000Z");
-    // Written by the sync join rather than by the command, which is the whole point: the
-    // worker a moment names is a fact the harness recorded, not one the writer stated.
-    db.run(
-      `INSERT INTO factory_order_event_worker (event_id, worker_id, session_id, tool_use_id)
-       SELECT id, 'reviewer', 'session-1', 'toolu_1' FROM factory_order_event WHERE kind = 'moved'`,
+    claimOrder(db, "order-reviewed", { runId: "run", station: "build" }, worker, "2026-09-18T10:00:00.000Z");
+    appendOrderEvent(
+      db,
+      "order-reviewed",
+      { worker: reviewer, kind: "moved", station: "review" },
+      "2026-09-18T10:02:00.000Z",
     );
 
     const view = assembleItemView(db, "order-reviewed", new Date("2026-09-18T10:20:00.000Z"));
-    const moved = view?.entries.find((entry) => entry.kind === "moved");
 
-    expect(moved?.worker).toBe(workerName("reviewer"));
-    db.close();
-  });
-
-  test("names the session where the harness recorded no agent of its own", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
-    queueOrder(
-      db,
-      { id: "order-root", project: "cniska/dim-factory", title: "Worked from a root session" },
-      "2026-09-18T10:00:00.000Z",
-    );
-    claimOrder(db, "order-root", { runId: "run", station: "build" }, "2026-09-18T10:00:00.000Z");
-    appendOrderEvent(db, "order-root", { kind: "moved", station: "review" }, "2026-09-18T10:02:00.000Z");
-    db.run(
-      `INSERT INTO factory_order_event_worker (event_id, worker_id, session_id, tool_use_id)
-       SELECT id, NULL, 'session-root', 'toolu_2' FROM factory_order_event WHERE kind = 'moved'`,
-    );
-
-    const view = assembleItemView(db, "order-root", new Date("2026-09-18T10:20:00.000Z"));
-    const board = assembleWallSnapshot(db, new Date("2026-09-18T10:20:00.000Z"));
-
-    expect(view?.entries.find((entry) => entry.kind === "moved")?.worker).toBe(workerName("session-root"));
-    expect(board.orders.find((order) => order.id === "order-root")?.worker).toBe(workerName("session-root"));
+    expect(view?.entries.find((entry) => entry.kind === "moved")?.worker).toBe(reviewer);
+    expect(view?.entries.find((entry) => entry.kind === "claimed")?.worker).toBe(worker);
+    // The card follows the latest moment, so the order reads as the reviewer's while it
+    // is the reviewer's, and the role comes off that worker rather than off the claim.
+    expect(view?.order.worker).toBe(reviewer);
+    expect(view?.order.role).toBe("reviewer");
     db.close();
   });
 
   test("keeps the grounds a hold stopped on", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     queueOrder(
       db,
       { id: "order-held", project: "cniska/dim-factory", title: "Stop at a hold" },
+      worker,
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(db, "order-held", { runId: "run" }, "2026-09-18T10:00:00.000Z");
+    claimOrder(db, "order-held", { runId: "run" }, worker, "2026-09-18T10:00:00.000Z");
     appendOrderEvent(
       db,
       "order-held",
-      { kind: "failed", holdType: "owner-judgment", reason: "scope unclear" },
+      { worker, kind: "failed", holdType: "owner-judgment", reason: "scope unclear" },
       "2026-09-18T10:01:00.000Z",
     );
 
@@ -737,27 +746,27 @@ describe("factory wall item view", () => {
   });
 
   test("has nothing to show for an order it holds no record of", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
 
     expect(assembleItemView(db, "order-absent", new Date("2026-09-18T10:20:00.000Z"))).toBeNull();
     db.close();
   });
 
   test("reads only the order asked for, where another order's evidence shares its ids", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
+    const db = floor();
     seedWorkedOrder(db);
     queueOrder(
       db,
       { id: "order-other", project: "cniska/dim-factory", title: "Work a second item" },
+      worker,
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(db, "order-other", { runId: "run" }, "2026-09-18T10:01:00.000Z");
+    claimOrder(db, "order-other", { runId: "run" }, worker, "2026-09-18T10:01:00.000Z");
     recordOrderCheck(
       db,
       "order-other",
       { command: "bun run other", exitCode: 0, result: "green" },
+      worker,
       "2026-09-18T10:03:00.000Z",
     );
     recordOrderFile(db, "order-other", { path: "src/other.ts" }, "2026-09-18T10:05:00.000Z");
@@ -792,6 +801,8 @@ describe("factory wall item view", () => {
       expect(view.entries.at(-1)).toEqual({
         at: "2026-09-18T10:10:00.000Z",
         kind: "completed",
+        agent: worker,
+        worker,
         reason: "verified",
       });
 
