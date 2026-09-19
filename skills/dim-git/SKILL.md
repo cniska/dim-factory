@@ -8,14 +8,14 @@ argument-hint: "<git operation or factory context>"
 
 The shared Git boundary for the factory. Use this skill whenever Git work affects ownership, evidence, or the factory's serialized line.
 
-## 1. Establish ownership
+## Establish ownership
 
 - Read the current status, worktree, branch and recent commits before changing anything.
 - Work in the isolated worktree assigned to the item. The parent worktree is not a worker workspace.
 - One order owns one item end to end. Do not edit another order's worktree or combine unrelated changes into its commit.
 - Preserve uncommitted changes you did not create. Stop when the target or ownership is unclear.
 
-## 2. Commit a slice
+## Commit a slice
 
 A commit is evidence that one slice passed its boundary, not a save point for unfinished work.
 
@@ -29,17 +29,17 @@ Before committing:
 
 Record the commit SHA, changed files, check command and result, checker findings and resolutions, and documentation updated. A fence or infrastructure failure is part of the report; it is not green evidence.
 
-## 3. Review work
+## Review work
 
 Review reads a diff, history and evidence without changing the worktree. It does not repair a finding in place or create a commit for someone else's item. The owner answers findings in the item's worktree, then reruns the relevant check and review.
 
-## 4. Land work
+## Land work
 
 Integration is serialized. Before integrating a completed item, verify its report, commit ancestry, repository check, documentation status and fence. Integrate only the commits that belong to the item, then verify the resulting target branch.
 
 Do not force-push, rewrite a shared branch, or push outside the explicit owner authorization. A push is an outward-facing fence even when the local checks are green.
 
-## 5. Report the boundary
+## Report the boundary
 
 Every stopped or completed operation says:
 

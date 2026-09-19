@@ -16,7 +16,7 @@ The record says why this is one station and not three pointers. `debug` has load
 
 A fix is also smaller than a feature and localized differently: 10 files to a feature's 30. That is why the slicing phase is borrowed rather than owned, and the reading phase is owned rather than borrowed.
 
-## 1. Triage
+## Triage
 
 Establish what is wrong before changing anything. The record aims this, because these files have a history.
 
@@ -26,7 +26,7 @@ Establish what is wrong before changing anything. The record aims this, because 
 
 Form one explanation that accounts for every symptom, and name the line you believe is wrong. Two candidate explanations means triage is not finished — the test in phase 2 is what distinguishes them.
 
-## 2. Prove it
+## Prove it
 
 **Where triage found no defect, stop here and say so.** That is a finding, not a failure of the station: the behavior is intended, or the report was about something else. Report what the code actually does and why it is right, and do not write a test to justify having started.
 
@@ -36,7 +36,7 @@ This is the gate between reading and editing, and skipping it is how a fix lands
 
 The test names the behavior in plain terms, and pins wire values as literals rather than importing the production constant, so a rename cannot ratify itself.
 
-## 3. Build the fix
+## Build the fix
 
 Hand off to [`dim-station-build`](../dim-station-build/SKILL.md) and follow it: the repo's own task at the end of each slice, the simplification pass over that slice, the task again, one checking agent on the slice's diff, an answer to every finding it raises, then the commit. The test that proved the defect is part of the slice and stays; the simplification pass is the one step that may not touch a test file. A fix is usually one slice; where it is more, it is still one slice at a time.
 

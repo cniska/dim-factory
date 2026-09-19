@@ -49,6 +49,6 @@ The review is done when:
 
 A dimension's finding is a claim, and a claim carried forward unchecked is how a wrong one becomes the standard. Checking it is this station's work whether or not the reviewer wrote the code — where the author is in the session, [`dim-station-build`](../dim-station-build/SKILL.md) says what answering one looks like.
 
-## What the record cannot say
+## What the record cannot tell you
 
 Every query here is process or history, never a verdict on this diff. `fixes` says how often work under a skill drew a later fix commit, which is the repo's own judgement on earlier changes, not on this one. Read all of it as where to look hardest, and let the reading decide.

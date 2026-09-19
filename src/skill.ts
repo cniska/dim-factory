@@ -26,6 +26,7 @@ export const SKILL_NAMES = [
   "dim-git",
   "dim-tdd",
   "dim-simplify",
+  "dim-rules",
 ] as const;
 
 export type SkillName = (typeof SKILL_NAMES)[number];
