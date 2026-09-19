@@ -12,7 +12,7 @@ The words this repo uses for the factory and its record. One word per thing, def
 | Worker | A hand the factory issues before any work starts, named `copper-7` and carrying the role it was called in as. Every moment on an order names one, written when the moment is written; several run at once, each in its own worktree, and a card names the worker its order is recorded against. What a harness calls its own agent is a later-learned attribute of the worker and never of a moment |
 | Role | What a hand is called in as, fixed when it is issued and never read off where its work sits ([`src/roles.ts`](../src/roles.ts)). `operator` runs the line and the rest are what it hands work to. Every worker carries one, which is what lets a card draw it and the router answer for it |
 | Stage | How far along the line an order has got: `todo` before it starts, `active` while it runs, `done` once it stopped. The manufacturing split between material waiting, material in process and material finished. Not a station, which says which operation the work is at rather than how far it has got |
-| Status | The state an order is in: `queued`, `working`, `completed`. Work that stopped without landing goes back to `queued`, carrying why, because it is work nobody is holding |
+| Status | The state an order is in: `queued`, `working`, `completed` or `dropped`. Work that stopped without landing goes back to `queued`, carrying why, because it is work nobody is holding; a drop is terminal instead, since deciding not to build something is not an attempt that failed |
 | Slice | One increment inside an order: a change that verifies on its own and is committed on its own |
 | Operator | What reads a queue, claims an order, hands it to a worker and integrates what comes back. It decides which work starts and when to stop, never how the work is done |
 | Owner | The person the floor runs for. They decide what a hold is released for and read the run on the wall; how the factory itself is built and run is the operator's, and the wall is the one surface designed to the owner's needs |
@@ -25,6 +25,7 @@ The words this repo uses for the factory and its record. One word per thing, def
 | Term | Definition |
 |---|---|
 | Claim | The moment a worker takes a queued order, recording the run, the worker and the station. It is also the start, because the order already existed |
+| Drop | The owner's decision not to build a queued order, carrying the reason — `dim order drop <order-id> --reason "..."`. A status rather than a delete, so why it was not built stays on the row; refused once a claim has copied the order's words into the record, the same boundary `dim order amend` is refused past |
 | Ship | Landing a working order's own commits on the repo's trunk without rewriting them — `dim order ship`, under the factory lock. What it means differs per repo: this one merges locally, another opens a pull request; a repo that landed is the only fact `dim order stop <order> completed` reads, not whether `ship` ran |
 | Evidence | What an order produced, recorded as it happens: commits, changed files, checks and their exit status, findings and how each was answered, and the documents it updated |
 | Finding | Something a checking agent raised on a slice, ending either fixed or refused with the grounds the refusal rested on |
