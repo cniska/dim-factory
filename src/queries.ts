@@ -1212,7 +1212,7 @@ const factory: Query = {
               coalesce(o.station, '(absent)') AS station,
               coalesce((SELECT c.sha || coalesce(' ' || c.subject, '')
                         FROM factory_order_commit c WHERE c.order_id = o.id
-                        ORDER BY c.recorded_at DESC, c.sha DESC LIMIT 1), '(none recorded)') AS "commit",
+                        ORDER BY c.recorded_at DESC, c.rowid DESC LIMIT 1), '(none recorded)') AS "commit",
               coalesce((SELECT c.command || ' (' || c.exit_code || ', ' || coalesce(c.result, 'no result') || ')'
                         FROM factory_order_check c WHERE c.order_id = o.id
                         ORDER BY c.finished_at DESC, c.id DESC LIMIT 1), '(none recorded)') AS "check",

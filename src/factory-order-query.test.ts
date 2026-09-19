@@ -38,7 +38,10 @@ describe("factory order query", () => {
     );
     appendOrderEvent(db, "order-status", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
     recordOrderCommit(db, "order-status", trunk.sha, "feat: status", "2026-09-18T10:02:00.000Z");
-    recordOrderCommit(db, "order-status", "def456", "feat: later", "2026-09-18T10:02:00.000Z");
+    // Two commits recorded at one instant, the later one sorting below the earlier as a
+    // string: the row reported is the one recorded last, never whichever sha reads highest.
+    recordOrderCommit(db, "order-status", "fff111", "feat: middle", "2026-09-18T10:02:00.000Z");
+    recordOrderCommit(db, "order-status", "aaa222", "feat: later", "2026-09-18T10:02:00.000Z");
     recordOrderCheck(
       db,
       "order-status",
@@ -107,7 +110,7 @@ describe("factory order query", () => {
         trunk.dir,
         "factory-item",
         "dim-station-build",
-        "def456 feat: later",
+        "aaa222 feat: later",
         "bun run test (0, green)",
         "tests: fixed - holds; docs: fixed - updated",
         "verified",
