@@ -224,8 +224,8 @@ export function runOrderCommand(db: Database, args: string[]): string {
   if (command === "claim") return claim(db, orderId, rest);
   if (command === "start") {
     flags(rest, []);
-    appendOrderEvent(db, orderId, { kind: "started", status: "running" });
-    return `${orderId} is running`;
+    appendOrderEvent(db, orderId, { kind: "started", status: "working" });
+    return `${orderId} is working`;
   }
   if (command === "move") {
     const station = required(flags(rest, ["--station"]), "--station");

@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { reachesTrunk } from "./trunk";
 import type { WorkerHookReport } from "./worker-environment";
 
-export type OrderStatus = "claimed" | "running" | "completed" | "blocked" | "fenced" | "failed" | "abandoned";
+export type OrderStatus = "claimed" | "working" | "completed" | "blocked" | "fenced" | "failed" | "abandoned";
 export type OrderEventKind =
   | "claimed"
   | "delegated"
@@ -145,7 +145,7 @@ export function updateOrderLocation(db: Database, orderId: string, worktree: str
   } | null;
   if (!order) throw new Error(`order not found: ${orderId}`);
   const status = orderStatus(db, orderId);
-  if (status !== "claimed" && status !== "running") {
+  if (status !== "claimed" && status !== "working") {
     throw new Error(`order ${orderId} is already terminal`);
   }
   if (order.worktree && (order.worktree !== worktree || order.branch !== branch)) {
@@ -203,11 +203,11 @@ function appendOrderEventInTransaction(db: Database, orderId: string, event: Ord
     if (event.kind === "started" && order.status !== "claimed") {
       throw new Error(`order ${orderId} must be claimed before it can start`);
     }
-    const mayStopBeforeRunning =
+    const mayStopBeforeWorking =
       isTerminalOrderStatus(event.kind as OrderStatus) && event.kind !== "completed";
-    if (event.kind !== "started" && order.status !== "running" && !mayStopBeforeRunning) {
+    if (event.kind !== "started" && order.status !== "working" && !mayStopBeforeWorking) {
       const action = VERB_FOR_KIND[event.kind] ?? event.kind;
-      throw new Error(`order ${orderId} must be running before it can ${action}`);
+      throw new Error(`order ${orderId} must be working before it can ${action}`);
     }
     if (event.kind === "completed") {
       if (!order.worktree) throw new Error(`order ${orderId} has no worktree`);
@@ -247,7 +247,7 @@ export function recordOrderCommit(
   subject?: string,
   at = now(),
 ): void {
-  assertOrderRunning(db, orderId);
+  assertOrderWorking(db, orderId);
   db.transaction(() => {
     db.run("INSERT INTO factory_order_commit (order_id, sha, subject, recorded_at) VALUES (?, ?, ?, ?)", [
       orderId,
@@ -262,7 +262,7 @@ export function recordOrderCommit(
 export type OrderFile = { path: string; added?: number; removed?: number };
 
 export function recordOrderFile(db: Database, orderId: string, file: OrderFile, at = now()): void {
-  assertOrderRunning(db, orderId);
+  assertOrderWorking(db, orderId);
   db.run(
     "INSERT INTO factory_order_file (order_id, path, added, removed, recorded_at) VALUES (?, ?, ?, ?, ?)",
     [orderId, file.path, file.added ?? null, file.removed ?? null, at],
@@ -275,7 +275,7 @@ export function recordOrderCheck(
   check: { command: string; exitCode: number; startedAt?: string; finishedAt?: string; result?: string },
   at = now(),
 ): number {
-  assertOrderRunning(db, orderId);
+  assertOrderWorking(db, orderId);
   return db.transaction(() => {
     const result = db.run(
       `INSERT INTO factory_order_check (order_id, command, exit_code, started_at, finished_at, result, recorded_at)
@@ -302,7 +302,7 @@ export function recordOrderFinding(
   finding: { dimension: string; summary: string; answer: "fixed" | "refused"; resolution?: string },
   at = now(),
 ): number {
-  assertOrderRunning(db, orderId);
+  assertOrderWorking(db, orderId);
   return db.transaction(() => {
     const result = db.run(
       `INSERT INTO factory_order_finding (order_id, dimension, summary, answer, resolution, recorded_at)
@@ -321,7 +321,7 @@ export function recordOrderEnvironment(
   report: WorkerHookReport,
   at = now(),
 ): void {
-  assertOrderRunning(db, orderId);
+  assertOrderWorking(db, orderId);
   db.run(
     `INSERT INTO factory_order_environment
        (order_id, phase, argv, exit_code, signal, stdout, stderr, resources, recorded_at)
@@ -341,7 +341,7 @@ export function recordOrderEnvironment(
 }
 
 export function recordOrderDocument(db: Database, orderId: string, path: string, at = now()): void {
-  assertOrderRunning(db, orderId);
+  assertOrderWorking(db, orderId);
   db.run("INSERT INTO factory_order_document (order_id, path, recorded_at) VALUES (?, ?, ?)", [
     orderId,
     path,
@@ -423,9 +423,9 @@ function assertIntegrated(db: Database, orderId: string, worktree: string): void
   );
 }
 
-function assertOrderRunning(db: Database, orderId: string): void {
+function assertOrderWorking(db: Database, orderId: string): void {
   const status = orderStatus(db, orderId);
-  if (status === "running") return;
+  if (status === "working") return;
   // A claimed order is short of the point that takes evidence rather than past it,
   // and this refusal is read by whoever typed the command.
   throw new Error(

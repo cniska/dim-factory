@@ -15,7 +15,7 @@ export type WallStation = "plan" | "build" | "review" | "ship" | "unknown";
  * what keeps the two from being one list.
  */
 export type WallStage = "todo" | "active" | "done";
-export type WallStatus = "running" | "waiting" | "blocked" | "fenced" | "completed" | "failed" | "abandoned";
+export type WallStatus = "working" | "waiting" | "blocked" | "fenced" | "completed" | "failed" | "abandoned";
 export type WallRole = "builder" | "reviewer" | "planner" | "unknown";
 
 export type WallOrder = {
@@ -119,7 +119,7 @@ const ORDER_ROW_SELECT = `SELECT o.id, o.item_id, o.title, o.agent_id, o.role, o
 
 const wallStatusByOrderStatus: Record<string, WallStatus> = {
   claimed: "waiting",
-  running: "running",
+  working: "working",
   blocked: "blocked",
   fenced: "fenced",
   completed: "completed",
@@ -129,7 +129,7 @@ const wallStatusByOrderStatus: Record<string, WallStatus> = {
 
 const stageByStatus: Record<WallStatus, WallStage> = {
   waiting: "todo",
-  running: "active",
+  working: "active",
   blocked: "active",
   fenced: "active",
   completed: "done",

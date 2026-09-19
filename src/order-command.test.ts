@@ -85,11 +85,11 @@ describe("order command", () => {
     const database = db();
     runOrderCommand(database, claim);
 
-    expect(runOrderCommand(database, ["start", "order-1"])).toBe("order-1 is running");
+    expect(runOrderCommand(database, ["start", "order-1"])).toBe("order-1 is working");
 
     const snapshot = assembleWallSnapshot(database);
     expect(snapshot.totals).toEqual({ todo: 0, active: 1, done: 0 });
-    expect(snapshot.orders[0]?.status).toBe("running");
+    expect(snapshot.orders[0]?.status).toBe("working");
   });
 
   test("a move sends the card to the station the work is at now", () => {
@@ -137,7 +137,7 @@ describe("order command", () => {
       expect.objectContaining({ code: "order_not_checked" }),
     );
 
-    expect(assembleWallSnapshot(database).orders[0]?.status).toBe("running");
+    expect(assembleWallSnapshot(database).orders[0]?.status).toBe("working");
     expect(runOrderCommand(database, ["stop", "order-1", "blocked", "--reason", "waits on the wall"])).toBe(
       "order-1 stopped as blocked",
     );
@@ -332,9 +332,9 @@ describe("order command", () => {
     runOrderCommand(database, claim);
     runOrderCommand(database, ["start", "order-1"]);
 
-    expect(() => runOrderCommand(database, ["stop", "order-1", "running"])).toThrow(OrderCommandError);
+    expect(() => runOrderCommand(database, ["stop", "order-1", "working"])).toThrow(OrderCommandError);
 
-    expect(assembleWallSnapshot(database).orders[0]?.status).toBe("running");
+    expect(assembleWallSnapshot(database).orders[0]?.status).toBe("working");
     landed(database, "order-1");
     expect(runOrderCommand(database, ["stop", "order-1", "completed"])).toBe("order-1 stopped as completed");
   });

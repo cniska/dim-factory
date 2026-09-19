@@ -36,7 +36,7 @@ describe("factory order query", () => {
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendOrderEvent(db, "order-status", { kind: "started", status: "running" }, "2026-09-18T10:01:00.000Z");
+    appendOrderEvent(db, "order-status", { kind: "started", status: "working" }, "2026-09-18T10:01:00.000Z");
     recordOrderCommit(db, "order-status", trunk.sha, "feat: status", "2026-09-18T10:02:00.000Z");
     recordOrderCommit(db, "order-status", "def456", "feat: later", "2026-09-18T10:02:00.000Z");
     recordOrderCheck(
@@ -178,7 +178,7 @@ describe("factory order query", () => {
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendOrderEvent(db, "order-123", { kind: "started", status: "running" }, "2026-09-18T10:00:30.000Z");
+    appendOrderEvent(db, "order-123", { kind: "started", status: "working" }, "2026-09-18T10:00:30.000Z");
     recordOrderCommit(db, "order-123", "abc", "feat: report", "2026-09-18T10:01:00.000Z");
     recordOrderFile(
       db,
@@ -242,7 +242,7 @@ describe("factory order query", () => {
       "src/factory-order.ts",
       "+12 -3",
     ]);
-    expect(result?.denominator).toContain("order order-123: running");
+    expect(result?.denominator).toContain("order order-123: working");
     db.close();
   });
 
@@ -260,7 +260,7 @@ describe("factory order query", () => {
       },
       "2026-09-18T10:00:00.000Z",
     );
-    appendOrderEvent(db, "order-killed", { kind: "started", status: "running" }, "2026-09-18T10:00:30.000Z");
+    appendOrderEvent(db, "order-killed", { kind: "started", status: "working" }, "2026-09-18T10:00:30.000Z");
     recordOrderEnvironment(
       db,
       "order-killed",

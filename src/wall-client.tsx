@@ -28,7 +28,7 @@ const unavailableSnapshot: WallSnapshot = {
 };
 
 const stateLabels: Record<WallStatus, string> = {
-  running: "Running",
+  working: "Working",
   waiting: "Waiting",
   blocked: "Blocked",
   fenced: "Fenced",
@@ -40,7 +40,7 @@ const stateLabels: Record<WallStatus, string> = {
 const stopped = new Set<WallStatus>(["blocked", "fenced", "failed", "abandoned"]);
 
 const statusIcon: Record<WallStatus, LucideIcon> = {
-  running: CircleDot,
+  working: CircleDot,
   waiting: CircleDot,
   blocked: CircleAlert,
   fenced: CircleAlert,
@@ -143,7 +143,7 @@ function OrderCard({
             size={12}
             strokeWidth={1.8}
             aria-hidden="true"
-            className={order.status === "running" ? "breathing" : undefined}
+            className={order.status === "working" ? "breathing" : undefined}
           />
           {stateLabels[order.status]}
         </span>
@@ -164,7 +164,7 @@ function OrderCard({
       {/* The row stands whether or not it holds anything, so a card does not change height the
           moment its first check fails and the column does not step as work arrives. */}
       <div className={ROW}>
-        {order.status === "running" && order.failedChecks > 0 ? (
+        {order.status === "working" && order.failedChecks > 0 ? (
           <FailedChecks count={order.failedChecks} />
         ) : null}
       </div>

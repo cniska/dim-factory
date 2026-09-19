@@ -12,7 +12,7 @@
 
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 24;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -205,7 +205,7 @@ CREATE TABLE IF NOT EXISTS factory_order (
   worktree        TEXT,
   branch          TEXT,
   station         TEXT,
-  status          TEXT NOT NULL CHECK (status IN ('claimed', 'running', 'completed', 'blocked', 'fenced', 'failed', 'abandoned')),
+  status          TEXT NOT NULL CHECK (status IN ('claimed', 'working', 'completed', 'blocked', 'fenced', 'failed', 'abandoned')),
   claimed_at      TEXT NOT NULL,
   started_at      TEXT,
   updated_at      TEXT NOT NULL,
