@@ -6,6 +6,7 @@ import { Badge } from "./components/ui/badge";
 import { Card, CardFooter, CardHeader } from "./components/ui/card";
 import { Digits } from "./components/ui/digits";
 import { Robot } from "./components/ui/robot";
+import type { OrderStatus } from "./factory-order";
 import type {
   WallItemChange,
   WallItemEntry,
@@ -13,7 +14,6 @@ import type {
   WallOrder,
   WallRole,
   WallSnapshot,
-  WallStatus,
 } from "./factory-wall";
 import { cn } from "./lib/utils";
 import { FAILURE_MARKS_SHOWN, ordersByStage, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
@@ -27,7 +27,7 @@ const unavailableSnapshot: WallSnapshot = {
   totals: { todo: 0, active: 0, done: 0 },
 };
 
-const stateLabels: Record<WallStatus, string> = {
+const stateLabels: Record<OrderStatus, string> = {
   working: "Working",
   waiting: "Waiting",
   blocked: "Blocked",
@@ -37,9 +37,9 @@ const stateLabels: Record<WallStatus, string> = {
   abandoned: "Abandoned",
 };
 
-const stopped = new Set<WallStatus>(["blocked", "fenced", "failed", "abandoned"]);
+const stopped = new Set<OrderStatus>(["blocked", "fenced", "failed", "abandoned"]);
 
-const statusIcon: Record<WallStatus, LucideIcon> = {
+const statusIcon: Record<OrderStatus, LucideIcon> = {
   working: CircleDot,
   waiting: CircleDot,
   blocked: CircleAlert,
@@ -61,7 +61,7 @@ const roleTint: Record<WallRole, string | undefined> = {
 
 const NO_WORKER = "no worker recorded";
 
-function statusTint(status: WallStatus): string {
+function statusTint(status: OrderStatus): string {
   return stopped.has(status) ? "text-warn-foreground" : "text-muted-foreground";
 }
 

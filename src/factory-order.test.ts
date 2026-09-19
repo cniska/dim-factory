@@ -573,7 +573,7 @@ describe("factory order report records", () => {
       worktree: trunk.dir,
       branch: "order-1",
       station: "dim-station-build",
-      status: "claimed",
+      status: "waiting",
     });
     expect(
       database
@@ -772,7 +772,7 @@ describe("factory order report records", () => {
       "terminal event kind must match its status",
     );
     expect(database.query("SELECT status FROM factory_order WHERE id = 'order-1'").get()).toEqual({
-      status: "claimed",
+      status: "waiting",
     });
     expect(
       database.query("SELECT count(*) AS count FROM factory_order_event WHERE order_id = 'order-1'").get(),
@@ -799,7 +799,7 @@ describe("factory order report records", () => {
       ),
     ).toThrow();
     expect(database.query("SELECT count(*) AS count FROM factory_order_event").get()).toEqual({ count: 1 });
-    expect(database.query("SELECT status FROM factory_order").get()).toEqual({ status: "claimed" });
+    expect(database.query("SELECT status FROM factory_order").get()).toEqual({ status: "waiting" });
     database.close();
   });
 

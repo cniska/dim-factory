@@ -19,7 +19,7 @@ import {
 import type { WorkerHookReport } from "./worker-environment";
 
 export type FactoryOutcome = {
-  status: Exclude<OrderStatus, "claimed" | "working">;
+  status: Exclude<OrderStatus, "waiting" | "working">;
   reason?: string;
 };
 
