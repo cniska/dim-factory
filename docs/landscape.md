@@ -35,6 +35,25 @@ The useful comparison is the boundary between the shared mechanism and the diffe
 
 The distinction matters. StrongDM treats generated code as opaque and replaces traditional review with behavioral validation ([techniques](https://factory.strongdm.ai/techniques)); this repo keeps source review and mechanical checks because its subject is the development process itself. The borrowed lesson is to make validation describe observed behavior and feed failures back into the next run, not to remove every human gate or to make code disposable.
 
+## Symphony separates the two states this repo collapses
+
+OpenAI's [Symphony](https://github.com/openai/symphony), read on 2026-09-19 from `SPEC.md` at `be10a1b`, is an orchestrator that dispatches a coding agent against issues in a tracker. It is the nearest published description of the execution model this repo arrived at, and it holds one distinction that is missing here.
+
+Symphony keeps the tracker's state and its own claim state apart, and says so outright: "This is not the same as tracker states (`Todo`, `In Progress`, etc.). This is the service's internal claim state." An issue is `Unclaimed`, `Claimed`, `Running`, `RetryQueued` or `Released`, while a single attempt runs through `PreparingWorkspace`, `BuildingPrompt`, `LaunchingAgentProcess`, `InitializingSession`, `StreamingTurn`, `Finishing` and then one of `Succeeded`, `Failed`, `TimedOut`, `Stalled` or `CanceledByReconciliation`.
+
+`factory_order.status` is both of those at once — `queued`, `working`, `completed` — which is why a failure here has to be modelled as the row going back to `queued`, and why an order whose worker died silently stays `working` with nothing able to say so.
+
+| Symphony | This repo's counterpart | Status here |
+|---|---|---|
+| Claim reserves an issue "to prevent duplicate dispatch"; dispatch requires it is "not already in `running`" and "not already in `claimed`" | `dim order claim` refuses an order that is not `queued`, so the row is the reservation | Live, and the same shape |
+| One workspace per issue, named from its identifier and "reused across runs for the same issue" | Worktree, branch and order id are one string ([`glossary.md`](glossary.md)) | Live, and arrived at independently |
+| Workspace cleanup only "for terminal issues" | Nothing removes a worktree | `stop-removes-worktree` |
+| Reconcile before dispatch: refresh tracker state for every running issue, cancel what is no longer routable | Nothing checks whether a `working` order's worker still exists | `session-end-stops-orders`, reached from the other side |
+| `Stalled` when elapsed time passes `stall_timeout_ms`, distinct from `TimedOut` and `Failed` | One `failed` | Unbuilt; `wall-gaps` wants the same threshold for the board |
+| Retry backoff bounded by `max_retry_backoff_ms` | A skill says to stop after one order fails twice | `stuck-slice-counter` — a rule a mechanism does not hold |
+
+What does not transfer is the shape of the thing. Symphony is a service with a poll tick, in-memory runtime state and timers; this repo has no daemon, so a claim cannot live in memory and is a row instead — which is what makes it readable after the run rather than only during it. And Symphony's product is dispatch: it holds no evidence ledger, no gate an order must pass to be called done, and no independent review. The record is this repo's product, so the states worth borrowing are the ones that make an unattended run legible afterwards, not the ones that keep a service ticking.
+
 ## What was not found is the instrument
 
 Osmani's essay proposes no measurement. It closes on judgement: "The hard, skilled job is deciding where to put each switch." The governance writing sets its thresholds by policy — critical paths get a human, low-risk actions get auto-approval — and the threshold is asserted rather than derived.
