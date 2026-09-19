@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
@@ -16,9 +16,17 @@ import {
   recordOrderEnvironment,
   recordOrderFile,
   recordOrderFinding,
+  shipOrder,
 } from "./factory-order";
 import { clearStop, FactoryStopError, pullStop } from "./factory-stop";
-import { commitOffTrunk, integratedRepo, repoWithoutTrunk, workerIn } from "./fixtures.test-support";
+import {
+  commitOffTrunk,
+  integratedRepo,
+  orderWorktree,
+  repoWithoutTrunk,
+  scratchEnv,
+  workerIn,
+} from "./fixtures.test-support";
 import { dbPath } from "./paths";
 import { SCHEMA_SQL } from "./schema";
 import { rebuild } from "./sync";
@@ -324,6 +332,50 @@ describe("factory order report records", () => {
     expect(database.query("SELECT status FROM factory_order").get()).toEqual({ status: "completed" });
     database.close();
     rmSync(repo.dir, { recursive: true, force: true });
+  });
+
+  test("ships a commit onto the trunk, which then reads as integrated", () => {
+    const repo = integratedRepo();
+    const home = mkdtempSync(join(tmpdir(), "dim-ship-"));
+    const env = scratchEnv(home);
+    const database = db();
+    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, worker, "2026-09-18T10:01:00.000Z");
+    const wt = orderWorktree(repo.dir, "ship-slice");
+    writeFileSync(join(wt, "ship-slice.txt"), "slice");
+    Bun.spawnSync(["git", "-C", wt, "add", "."]);
+    Bun.spawnSync(["git", "-C", wt, "commit", "-q", "-m", "feat: ship-slice"]);
+    const sha = Bun.spawnSync(["git", "-C", wt, "rev-parse", "HEAD"], { stdout: "pipe" })
+      .stdout.toString()
+      .trim();
+    recordOrderCommit(database, "order-1", sha, worker, "feat: ship-slice");
+
+    expect(shipOrder(database, "order-1", wt, env)).toEqual({ landed: "fast_forward" });
+    expect(Bun.spawnSync(["git", "-C", repo.dir, "merge-base", "--is-ancestor", sha, "HEAD"]).success).toBe(
+      true,
+    );
+
+    database.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+    rmSync(wt, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  test("a ship is refused for an order that recorded no commit", () => {
+    const repo = integratedRepo();
+    const home = mkdtempSync(join(tmpdir(), "dim-ship-"));
+    const env = scratchEnv(home);
+    const database = db();
+    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, worker, "2026-09-18T10:01:00.000Z");
+
+    expect(() => shipOrder(database, "order-1", repo.dir, env)).toThrow(
+      expect.objectContaining({ code: "order_not_integrated" }),
+    );
+
+    database.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
   });
 
   test("counts a check by when it was recorded, not by when it says it ran", () => {

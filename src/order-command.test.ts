@@ -5,7 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pullStop } from "./factory-stop";
 import { assembleWallSnapshot } from "./factory-wall";
-import { collectingMachine, integratedRepo, scratchEnv, workerEnv } from "./fixtures.test-support";
+import {
+  collectingMachine,
+  integratedRepo,
+  orderWorktree,
+  scratchEnv,
+  workerEnv,
+} from "./fixtures.test-support";
 import { hookConfigPath } from "./hooks";
 import { OrderCommandError, runOrderCommand as runCommand } from "./order-command";
 import type { Env } from "./paths";
@@ -42,11 +48,19 @@ function runOrderCommand(
 }
 
 const trunk = integratedRepo();
+const worktrees: string[] = [];
 afterAll(() => {
   for (const database of opened) database.close();
   rmSync(trunk.dir, { recursive: true, force: true });
   rmSync(machine.dir, { recursive: true, force: true });
+  for (const path of worktrees) rmSync(path, { recursive: true, force: true });
 });
+
+function shippableWorktree(branch: string): string {
+  const path = orderWorktree(trunk.dir, branch);
+  worktrees.push(path);
+  return path;
+}
 
 /** What the gate wants before an order may complete: a commit on the trunk, then a check that passed. */
 function landed(database: Database, orderId: string): void {
@@ -137,6 +151,62 @@ describe("order command", () => {
     expect(() => runOrderCommand(database, ["move", "order-1"])).toThrow(OrderCommandError);
 
     expect(assembleWallSnapshot(database).orders[0]?.station).toBe("build");
+  });
+
+  test("a ship lands the order's own commits on the trunk", () => {
+    const database = db();
+    queued(database);
+    runOrderCommand(database, claim);
+    const wt = shippableWorktree("ship-a");
+    writeFileSync(join(wt, "ship-a.txt"), "a");
+    Bun.spawnSync(["git", "-C", wt, "add", "."]);
+    Bun.spawnSync(["git", "-C", wt, "commit", "-q", "-m", "feat: ship-a"]);
+    const sha = Bun.spawnSync(["git", "-C", wt, "rev-parse", "HEAD"], { stdout: "pipe" })
+      .stdout.toString()
+      .trim();
+    runOrderCommand(database, ["commit", "order-1", "--sha", sha, "--subject", "feat: ship-a"]);
+
+    expect(runOrderCommand(database, ["ship", "order-1"], null, wt)).toBe(
+      "order-1 is fast-forwarded onto the trunk",
+    );
+
+    expect(Bun.spawnSync(["git", "-C", trunk.dir, "merge-base", "--is-ancestor", sha, "HEAD"]).success).toBe(
+      true,
+    );
+    runOrderCommand(database, ["check", "order-1", "--command", "bun run verify", "--exit", "0"]);
+    expect(runOrderCommand(database, ["stop", "order-1", "completed"], null, trunk.dir)).toBe(
+      "order-1 is completed",
+    );
+  });
+
+  test("a ship of a commit already on the trunk reports it as already landed", () => {
+    const database = db();
+    queued(database);
+    runOrderCommand(database, claim);
+    landed(database, "order-1");
+
+    expect(runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toBe(
+      "order-1 is already on the trunk",
+    );
+  });
+
+  test("a ship is refused before the order recorded any commit", () => {
+    const database = db();
+    queued(database);
+    runOrderCommand(database, claim);
+
+    expect(() => runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toThrow(
+      expect.objectContaining({ code: "order_not_integrated" }),
+    );
+  });
+
+  test("a ship is refused before the order is claimed", () => {
+    const database = db();
+    queued(database);
+
+    expect(() => runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toThrow(
+      "order order-1 is not claimed",
+    );
   });
 
   test("a stop moves that card into the done column", () => {

@@ -1,5 +1,8 @@
 import type { Database } from "bun:sqlite";
 import { FactoryStopError, liveStop } from "./factory-stop";
+import { withLock } from "./lock";
+import type { Env } from "./paths";
+import { type ShipOutcome, shipToTrunk } from "./ship";
 import { reachesTrunk } from "./trunk";
 import type { WorkerHookReport } from "./worker-environment";
 
@@ -479,4 +482,32 @@ function assertOrderWorking(db: Database, orderId: string): void {
   throw new Error(
     status === "queued" ? `order ${orderId} is not claimed` : `order ${orderId} is already ${status}`,
   );
+}
+
+/**
+ * Lands an order's own commits on the repo's trunk. Nothing here is written back to the
+ * order: whether it shipped is the trunk fact `assertIntegrated` already reads, not a bit
+ * this sets, which is what lets a repo that opens a pull request instead arrive later
+ * without this gate having to change. Held under the factory lock because two orders
+ * shipping at once is a race on the same git checkout, not on the database.
+ */
+export function shipOrder(
+  db: Database,
+  orderId: string,
+  worktree: string,
+  env: Env = process.env,
+): ShipOutcome {
+  assertOrderWorking(db, orderId);
+  const shas = db
+    .query<{ sha: string }, [string]>("SELECT sha FROM factory_order_commit WHERE order_id = ?")
+    .all(orderId)
+    .map((row) => row.sha);
+  if (shas.length === 0) {
+    throw new OrderNotDone(
+      "order_not_integrated",
+      `order ${orderId} recorded no commit, so nothing of it can ship: ` +
+        `record what it landed with \`dim order commit ${orderId} --sha <sha>\`.`,
+    );
+  }
+  return withLock(() => shipToTrunk(worktree, shas), env);
 }

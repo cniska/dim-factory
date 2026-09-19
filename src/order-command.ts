@@ -15,6 +15,7 @@ import {
   recordOrderFinding,
   setOrderHold,
   setOrderPriority,
+  shipOrder,
 } from "./factory-order";
 import { resolveWorker } from "./factory-worker";
 import { readFlags, requiredFlag } from "./flags";
@@ -38,6 +39,7 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--des
        dim order finding <order-id> --dimension <name> --summary "..." --answer <fixed|refused>
                        [--resolution "..."]
        dim order document <order-id> --path <path>
+       dim order ship <order-id>
        dim order stop <order-id> <completed|failed> [--reason "..."]
 
 An order defaults to this checkout's owner/repo, so work belongs to the project it
@@ -209,6 +211,18 @@ const EVIDENCE: Record<string, Evidence> = {
   },
 };
 
+const SHIP_OUTCOME_TEXT: Record<string, string> = {
+  already: "already on the trunk",
+  fast_forward: "fast-forwarded onto the trunk",
+  merged: "merged onto the trunk",
+};
+
+function ship(db: Database, orderId: string, args: string[], worktree: string, env: Env): string {
+  flags(args, []);
+  const outcome = shipOrder(db, orderId, worktree, env);
+  return `${orderId} is ${SHIP_OUTCOME_TEXT[outcome.landed]}`;
+}
+
 /** How an order can stop: it landed, or it did not and goes back among the work
  *  nobody holds, carrying why. */
 const STOP_KINDS = ["completed", "failed"] as const;
@@ -297,6 +311,7 @@ export function runOrderCommand(
     const evidence = EVIDENCE[command] as Evidence;
     return evidence.record(db, orderId, flags(rest, evidence.flags), worker);
   }
+  if (command === "ship") return ship(db, orderId, rest, worktree, env);
   if (command === "stop") return stop(db, orderId, rest, worktree, worker);
   throw new OrderCommandError(`${command} is not an order subcommand`);
 }

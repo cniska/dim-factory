@@ -96,6 +96,9 @@ const USAGE = `usage: dim <command>
                   record a factory order as it is taken, started, moved between
                   stations and stopped, so the wall shows the work while it is
                   happening (dim order for the flags each subcommand takes)
+  order ship <order-id>
+                  land a working order's commits on the repo's trunk without
+                  rewriting them, under the factory lock
   order commit|file|check|finding|document <order-id> ...
                   record what a running order produced — a commit and its subject,
                   a file it changed, a check and its exit status, a finding and
