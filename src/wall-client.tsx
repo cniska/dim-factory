@@ -491,10 +491,10 @@ function BoardColumn({
   return (
     <section className="min-w-0" aria-labelledby={id}>
       <header className="mb-3 flex items-baseline justify-between border-b px-0.5 pb-2">
-        <h2 id={id} className="text-sm tracking-tight">
+        <h2 id={id} className="text-lg tracking-tight">
           {label}
         </h2>
-        <span className="text-xs text-muted-foreground tabular-nums">
+        <span className="text-lg text-muted-foreground tabular-nums">
           <Digits value={String(total)} />
         </span>
       </header>
@@ -670,10 +670,15 @@ function App() {
 
   return (
     <main className="wall-shell mx-auto flex min-h-screen w-full max-w-[90rem] flex-col p-[clamp(1rem,2.6vw,2.4rem)]">
-      <header className="flex items-end justify-between gap-6 pb-5">
-        <h1 className="flex flex-col gap-0.5 leading-none">
-          <span className="text-xs tracking-[0.18em] text-quiet">dim factory</span>
-          <span className="text-[clamp(1.25rem,2vw,1.75rem)] tracking-tight">wall</span>
+      <header className="flex items-center justify-between gap-6 pb-5">
+        {/* The board is what the page is for, so its name sits at the weight of the feed
+            state beside it rather than above the work as a title. */}
+        <h1 className="flex h-9 items-center gap-2 text-[clamp(1.25rem,2vw,1.75rem)] tracking-tight whitespace-nowrap">
+          <span className="text-quiet">dim-factory</span>
+          <span className="text-border" aria-hidden="true">
+            /
+          </span>
+          <span>wall</span>
         </h1>
         <div
           className={cn(
