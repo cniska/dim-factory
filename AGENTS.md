@@ -19,7 +19,7 @@ Only what holds here and nowhere else is written below. General engineering conv
 
 ## Working
 
-- Commits go straight to `main`; no topic branch, no PR. One slice at a time: `bun run verify`, check the slice, commit, then start the next.
+- Commits go straight to `main`; no topic branch, no PR. One slice at a time: check the slice, commit, then start the next. The commit gate runs `bun run verify` and refuses on a failure, so run it by hand only to read a failure you are working through, never to confirm what the gate is about to confirm.
 - Stop where the choice is the owner's: work that is hard to reverse, work that is outward-facing, or a change that spends something on every session rather than this one. How the factory itself is built and run is not one of them — it is the machinery you work in, so settle its shape and say what you settled. The wall is the exception, being the surface the owner reads the floor on, and its design answers to them.
 - Measurements live in [`docs/findings.md`](docs/findings.md), dated, with what each number can carry. Write a finding when it is found — a number left in a conversation is gone when the session is, and the next agent re-measures it or assumes it.
 - One word per concept, in code, docs, comments and skills alike, and [`docs/glossary.md`](docs/glossary.md) is where it is settled: read it before naming a thing, add the word there when a concept is new, and rename rather than let a second word for the same thing stand. Name the concept and never the container it currently sits in.
