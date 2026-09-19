@@ -12,7 +12,7 @@ afterEach(() => {
   while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
 });
 
-test("sync records the repository check returned by checkTask", () => {
+test("sync records the repository check returned by checkCommand", () => {
   const repo = mkdtempSync(join(tmpdir(), "dim-repo-check-"));
   roots.push(repo);
   writeFileSync(join(repo, "package.json"), JSON.stringify({ scripts: { verify: "bun test" } }));

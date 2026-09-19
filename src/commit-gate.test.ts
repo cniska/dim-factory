@@ -215,15 +215,15 @@ describe("the check gate", () => {
   test("runs nothing for a repo that is not the owner's", () => {
     const script = preCommitScript(["cniska"]);
     expect(script).toContain('case " cniska " in');
-    expect(script.indexOf('case " cniska " in')).toBeLessThan(script.indexOf("dim check-task"));
+    expect(script.indexOf('case " cniska " in')).toBeLessThan(script.indexOf("dim check-command"));
   });
 
   // It runs before every commit on the machine, so anything it cannot establish
   // has to let the commit through.
-  test("exits 0 where dim or the declared task is missing", () => {
+  test("exits 0 where dim or the declared check is missing", () => {
     const script = preCommitScript(["cniska"]);
     expect(script).toContain("command -v dim >/dev/null 2>&1 || exit 0");
-    expect(script).toContain('[ -n "$task" ] || exit 0');
+    expect(script).toContain('[ -n "$check" ] || exit 0');
   });
 
   // Git exports these to a hook, so a check that runs git itself would inherit
@@ -233,7 +233,7 @@ describe("the check gate", () => {
     for (const v of ["GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE", "GIT_OBJECT_DIRECTORY"]) {
       expect(script).toContain(v);
     }
-    expect(script.indexOf("unset GIT_DIR")).toBeLessThan(script.indexOf('eval "$task"'));
+    expect(script.indexOf("unset GIT_DIR")).toBeLessThan(script.indexOf('eval "$check"'));
   });
 
   test("refuses the commit when the check fails, and names the way past it", () => {
@@ -244,10 +244,10 @@ describe("the check gate", () => {
 });
 
 /**
- * The pre-commit gate runs `eval "$task"` over whatever the repo's own manifest
+ * The pre-commit gate runs `eval "$check"` over whatever the repo's own manifest
  * declares, so arming it in a repo the owner does not own is arbitrary code
  * execution on the first commit in a clone. A `dim` shim stands in for
- * `check-task` so the arming is what is under test and not the task lookup.
+ * `check-command` so the arming is what is under test and not the lookup.
  */
 function repoRunningItsOwnCheck(origin: string, owners: string[]): { dir: string; marker: string } {
   const dir = mkdtempSync(join(tmpdir(), "dim-arm-"));

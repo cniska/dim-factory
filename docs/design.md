@@ -416,7 +416,7 @@ A result longer than the cap says how many rows were cut and names `--rows`, so 
 
 - Not a cost calculator: no price table, no derived dollars.
 - Not a judge of skill quality: no outcome ranking, no skill-vs-no-skill comparison, no length-vs-outcome metric.
-- Not a search tool over transcript content; `search-sessions` already does that against the files.
+- Not a search tool over transcript content; reading the session files answers that directly.
 - Not a compliance checker for skill instructions; that is `evals/`.
 - Not multi-machine or multi-user; one home directory, one SQLite file.
 - Not a hook-heavy telemetry layer: three hook events per tool, each a file write.

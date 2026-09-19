@@ -92,7 +92,7 @@ describe("the wake block", () => {
     }
   });
 
-  // The declared task is the half of the project tier a manifest already holds,
+  // The declared check is the half of the project tier a manifest already holds,
   // and reaching it costs a cold start a tool call and its output.
   test("carries what the repo declares, with or without a Next to carry", () => {
     const repo = mkdtempSync(join(tmpdir(), "dim-wake-"));
@@ -107,7 +107,7 @@ describe("the wake block", () => {
       const line = projectLine(repo);
       expect(line).toContain("check `bun run verify`");
       expect(line).toContain("format `bun run format`");
-      // `lint` is not the format task, and a repo declaring both means two things.
+      // `lint` is not the format command, and a repo declaring both means two things.
       expect(line).not.toContain("lint");
 
       // It reaches a session that has no handoff to read, which is the start

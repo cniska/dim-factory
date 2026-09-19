@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkTask, declaredTasks, packageManager } from "./tasks";
+import { checkCommand, declaredCommands, packageManager } from "./workspace-commands";
 
 const roots: string[] = [];
 
@@ -18,13 +18,13 @@ afterEach(() => {
   while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
 });
 
-describe("declared tasks", () => {
+describe("declared workspace commands", () => {
   test("names the script as the repo declares it, through its own package manager", () => {
     const root = repo({
       "package.json": JSON.stringify({ scripts: { verify: "biome check && bun test" } }),
       "bun.lock": "",
     });
-    expect(declaredTasks(root)).toEqual([
+    expect(declaredCommands(root)).toEqual([
       { name: "verify", command: "bun run verify", source: "package.json" },
     ]);
   });
@@ -41,7 +41,7 @@ describe("declared tasks", () => {
       "mise.toml": '[tasks.lint]\nrun = "biome check"\n',
       Makefile: ".PHONY: build\nbuild:\n\tgo build ./...\nVAR := x\n",
     });
-    const names = declaredTasks(root).map((t) => [t.name, t.command]);
+    const names = declaredCommands(root).map((t) => [t.name, t.command]);
     expect(names).toContainEqual(["lint", "mise run lint"]);
     expect(names).toContainEqual(["build", "make build"]);
     // `VAR := x` is an assignment, not a target.
@@ -49,12 +49,12 @@ describe("declared tasks", () => {
   });
 
   test("returns nothing for a repo that declares nothing, rather than guessing", () => {
-    expect(declaredTasks(repo({}))).toEqual([]);
-    expect(checkTask(repo({}))).toBeNull();
+    expect(declaredCommands(repo({}))).toEqual([]);
+    expect(checkCommand(repo({}))).toBeNull();
   });
 
   test("survives a manifest that does not parse", () => {
-    expect(declaredTasks(repo({ "package.json": "{ not json" }))).toEqual([]);
+    expect(declaredCommands(repo({ "package.json": "{ not json" }))).toEqual([]);
   });
 });
 
@@ -66,16 +66,16 @@ describe("the check task", () => {
       "package.json": JSON.stringify({ scripts: { test: "bun test", verify: "bun run lint && bun test" } }),
       "bun.lock": "",
     });
-    expect(checkTask(root)?.name).toBe("verify");
+    expect(checkCommand(root)?.name).toBe("verify");
   });
 
   test("falls back to test where that is all the repo declares", () => {
     const root = repo({ "package.json": JSON.stringify({ scripts: { test: "bun test" } }), "bun.lock": "" });
-    expect(checkTask(root)?.command).toBe("bun run test");
+    expect(checkCommand(root)?.command).toBe("bun run test");
   });
 
   test("finds this repo's own check task", () => {
-    expect(checkTask(new URL("..", import.meta.url).pathname)?.command).toBe("bun run verify");
+    expect(checkCommand(new URL("..", import.meta.url).pathname)?.command).toBe("bun run verify");
   });
 });
 
@@ -89,7 +89,7 @@ describe("a manifest that is not a manifest", () => {
     const root = mkdtempSync(join(tmpdir(), "dim-tasks-"));
     roots.push(root);
     mkdirSync(join(root, "Makefile"));
-    expect(declaredTasks(root)).toEqual([]);
+    expect(declaredCommands(root)).toEqual([]);
   });
 
   test("does not block on a path that never delivers", async () => {
@@ -101,7 +101,7 @@ describe("a manifest that is not a manifest", () => {
       [
         "bun",
         "-e",
-        `import {declaredTasks} from "${join(import.meta.dir, "tasks.ts")}"; declaredTasks("${root}")`,
+        `import {declaredCommands} from "${join(import.meta.dir, "workspace-commands.ts")}"; declaredCommands("${root}")`,
       ],
       { stdout: "ignore", stderr: "ignore" },
     );
@@ -121,6 +121,6 @@ describe("the package manager", () => {
   test("names no command where no lock file names a manager", () => {
     const root = repo({ "package.json": JSON.stringify({ scripts: { verify: "vitest" } }) });
     expect(packageManager(root)).toBeNull();
-    expect(declaredTasks(root)).toEqual([]);
+    expect(declaredCommands(root)).toEqual([]);
   });
 });

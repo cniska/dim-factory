@@ -351,7 +351,7 @@ export function recordOrderDocument(db: Database, orderId: string, path: string,
 
 /**
  * A check older than the last commit is the case the gate exists to catch: an order
- * that ran the repo's task and then kept committing has no evidence for what it
+ * that ran the repo's check and then kept committing has no evidence for what it
  * landed. With no commit recorded there is nothing for a check to be older than,
  * so any passing one satisfies it.
  *

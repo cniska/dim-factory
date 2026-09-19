@@ -147,7 +147,7 @@ That is an autonomous cell rather than a factory: a bounded unit that runs work 
 
 Planned. "On its own merit" needs something to read the merit off, and the owner's verdicts are not written down anywhere today. `factory_order_finding` records an agent's finding with the grounds a refusal rested on; the owner's decision on a finished order has no such row.
 
-The two things a verdict is passed on already have writers. [`dim-station-plan`](../skills/dim-station-plan/SKILL.md) returns a plan in slices, and the `explain-diff` skill reads a built diff back as intent and risk. Neither persists against an order, so both end in a transcript; an account written for the owner also names the commits it describes, since that is what makes it checkable rather than trusted.
+The two things a verdict is passed on already have writers. [`dim-station-plan`](../skills/dim-station-plan/SKILL.md) returns a plan in slices, and reading a built diff back as intent and risk is what the reviewing station does. Neither persists against an order, so both end in a transcript; an account written for the owner also names the commits it describes, since that is what makes it checkable rather than trusted.
 
 - **The verdict.** Per order: landed as it came, sent back, or changed before landing — with the grounds whenever it was not the first.
 - **What it answers.** Which kinds of work stopped needing a reading, and which still earn one. That is the question "how involved should I be" resolves into, and it is a query over verdicts rather than a memory of how the last few felt.
@@ -157,7 +157,7 @@ Reviewing everything is the honest starting point, because a gate cannot earn it
 
 ## A role runs at the tier its work needs
 
-Every station names its agents by role and brief — driver, planner, builder, simplifier, reviewer, checker, judge, and the search that finds where a thing already lives. Each role runs at one of three capability tiers, declared in [`src/routing.ts`](../src/routing.ts) and never worked out from the task at hand, which is the rule `src/tasks.ts` already follows for a repo's check.
+Every station names its agents by role and brief — driver, planner, builder, simplifier, reviewer, checker, judge, and the search that finds where a thing already lives. Each role runs at one of three capability tiers, declared in [`src/routing.ts`](../src/routing.ts) and never worked out from the work at hand, which is the rule `src/workspace-commands.ts` already follows for a repo's check.
 
 - **`cheap`** reads one thing against a fixed brief: check one diff against four closed questions, settle one disputed claim at its source, find where a shape exists on disk. That is the checker, the judge and the search.
 - **`standard`** makes the mechanical edit and the doc that goes with it: the builder, the simplification pass, and a review dimension reading an assembled change.

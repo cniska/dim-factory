@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { checkTask } from "./tasks";
+import { checkCommand } from "./workspace-commands";
 
 export type RepoCheckReport = { repos: number };
 
@@ -13,7 +13,7 @@ export function recordRepoChecks(db: Database): RepoCheckReport {
      ON CONFLICT(repo) DO UPDATE SET command = excluded.command`,
   );
   db.transaction(() => {
-    for (const { repo } of repos) upsert.run(repo, checkTask(repo)?.command ?? null);
+    for (const { repo } of repos) upsert.run(repo, checkCommand(repo)?.command ?? null);
   })();
   return { repos: repos.length };
 }
