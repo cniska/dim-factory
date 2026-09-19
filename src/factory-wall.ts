@@ -105,7 +105,7 @@ type OrderRow = {
 const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.assignee_id, o.role, o.station, o.status,
               o.stop_reason, o.run_id, o.project, o.priority, o.hold,
               e.ts AS last_event_at, e.reason AS latest_reason, e.station AS latest_station,
-              w.worker_id AS latest_worker,
+              coalesce(w.worker_id, w.session_id) AS latest_worker,
               (SELECT count(*) FROM factory_order_check c
                 WHERE c.order_id = o.id AND c.exit_code <> 0) AS failed_check_count
        FROM factory_order o
@@ -299,7 +299,8 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
   if (!row) return null;
   const events = db
     .query(
-      `SELECT e.ts, e.kind, w.worker_id, e.station, e.hold_type, e.reason,
+      `SELECT e.ts, e.kind, coalesce(w.worker_id, w.session_id) AS worker_id,
+              e.station, e.hold_type, e.reason,
               coalesce(c.sha, e.commit_sha) AS commit_sha, c.subject AS commit_subject,
               ch.command, ch.exit_code, ch.result,
               f.dimension, f.answer, f.summary, f.resolution

@@ -690,6 +690,29 @@ describe("factory wall item view", () => {
     db.close();
   });
 
+  test("names the session where the harness recorded no agent of its own", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    queueOrder(
+      db,
+      { id: "order-root", project: "cniska/dim-factory", title: "Worked from a root session" },
+      "2026-09-18T10:00:00.000Z",
+    );
+    claimOrder(db, "order-root", { runId: "run", station: "build" }, "2026-09-18T10:00:00.000Z");
+    appendOrderEvent(db, "order-root", { kind: "moved", station: "review" }, "2026-09-18T10:02:00.000Z");
+    db.run(
+      `INSERT INTO factory_order_event_worker (event_id, worker_id, session_id, tool_use_id)
+       SELECT id, NULL, 'session-root', 'toolu_2' FROM factory_order_event WHERE kind = 'moved'`,
+    );
+
+    const view = assembleItemView(db, "order-root", new Date("2026-09-18T10:20:00.000Z"));
+    const board = assembleWallSnapshot(db, new Date("2026-09-18T10:20:00.000Z"));
+
+    expect(view?.entries.find((entry) => entry.kind === "moved")?.worker).toBe(workerName("session-root"));
+    expect(board.orders.find((order) => order.id === "order-root")?.worker).toBe(workerName("session-root"));
+    db.close();
+  });
+
   test("keeps the grounds a hold stopped on", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
