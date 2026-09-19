@@ -40,6 +40,8 @@ describe("starting a worker", () => {
 
     runWorkerCommand(db, [
       "run",
+      "--role",
+      "builder",
       "--",
       "sh",
       "-c",
@@ -57,7 +59,7 @@ describe("starting a worker", () => {
   test("the worker ends with the process, so its name writes nothing after", () => {
     const db = floor();
 
-    runWorkerCommand(db, ["run", "--", "sh", "-c", "true"]);
+    runWorkerCommand(db, ["run", "--role", "builder", "--", "sh", "-c", "true"]);
 
     const ended = db.query("SELECT ended_at FROM factory_worker").get() as { ended_at: string | null };
     expect(ended.ended_at).not.toBeNull();
@@ -67,7 +69,9 @@ describe("starting a worker", () => {
   test("a process that failed still ends its worker, and says what it exited", () => {
     const db = floor();
 
-    expect(() => runWorkerCommand(db, ["run", "--", "sh", "-c", "exit 3"])).toThrow(/exited 3/);
+    expect(() => runWorkerCommand(db, ["run", "--role", "builder", "--", "sh", "-c", "exit 3"])).toThrow(
+      /exited 3/,
+    );
 
     const ended = db.query("SELECT ended_at FROM factory_worker").get() as { ended_at: string | null };
     expect(ended.ended_at).not.toBeNull();
@@ -78,7 +82,7 @@ describe("starting a worker", () => {
     const db = floor();
 
     expect(() => runWorkerCommand(db, ["run", "--role", "builder"])).toThrow(WorkerCommandError);
-    expect(() => runWorkerCommand(db, ["run", "--"])).toThrow(WorkerCommandError);
+    expect(() => runWorkerCommand(db, ["run", "--role", "builder", "--"])).toThrow(WorkerCommandError);
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 0 });
     db.close();
   });
@@ -101,7 +105,7 @@ describe("issuing a worker to a shell", () => {
 
   test("ending one twice says so rather than failing", () => {
     const db = floor();
-    const printed = runWorkerCommand(db, ["mint"]);
+    const printed = runWorkerCommand(db, ["mint", "--role", "operator"]);
     const name = printed.split("\n")[0]?.replace(`export ${WORKER_NAME_VAR}=`, "") as string;
 
     expect(runWorkerCommand(db, ["end", name])).toBe(`${name} ended`);

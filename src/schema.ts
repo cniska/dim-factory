@@ -16,9 +16,10 @@
 // a wall reloading mid-edit before it was ever committed, so a column that
 // changes after the statement has run once changes with a bump.
 
+import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 30;
+export const SCHEMA_VERSION = 31;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -285,8 +286,11 @@ CREATE TABLE IF NOT EXISTS factory_worker (
   -- collisions and would need the other identity to exist first.
   name          TEXT PRIMARY KEY,
   -- What the worker was called in as, fixed when it is issued: a builder stays a
-  -- builder wherever its work sits, while the station says where the work is.
-  role          TEXT CHECK (role IN ('planner', 'builder', 'reviewer')),
+  -- builder wherever its work sits, while the station says where the work is. The
+  -- vocabulary is \`src/roles.ts\`, which is also what the router reads a tier off,
+  -- so a role the record refuses cannot be one the line routes. Under NOT NULL
+  -- because a hand with no role is one nothing can route and nothing can draw.
+  role          TEXT NOT NULL CHECK (role IN (${ROLES_SQL})),
   -- The digest of the secret the worker carries, never the secret. The issued set is
   -- readable through \`dim sql\`, so without something only the worker holds, any
   -- worker could write under another's name. It is a capability rather than a

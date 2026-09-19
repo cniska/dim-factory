@@ -26,6 +26,9 @@
      station hues it sits beside: at 13px a desaturated mid-tone is indistinguishable from the
      body grey, which is what these replaced. Held clear of the warn amber, which means
      something else. */
+  /* The operator is the one hand that runs the line rather than doing the work, so it takes
+     the foreground white and every worked role takes a hue. */
+  --color-role-operator: #f5f7f8;
   --color-role-planner: #c39fe0;
   --color-role-builder: #7fd7a4;
   --color-role-reviewer: #8ab6f5;

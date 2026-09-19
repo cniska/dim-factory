@@ -3,16 +3,17 @@ import { join } from "node:path";
 import { duplicateKeys, parseJsonc } from "./jsonc";
 import { readJsoncText } from "./jsonc-file";
 import { dataDir, type Env } from "./paths";
+import { ROLES, type Role } from "./roles";
 
 export type Tier = "cheap" | "standard" | "deep";
 
 export const TIERS: Tier[] = ["cheap", "standard", "deep"];
 
 /**
- * The roles the station skills already name, each given a tier here rather than
- * anywhere a caller could infer one: `cheap` reads one thing against a fixed
- * brief, `standard` makes the mechanical edit, `deep` cuts the work and decides
- * where the line stops.
+ * A tier for every role, rather than anywhere a caller could infer one: `cheap` reads one
+ * thing against a fixed brief, `standard` makes the mechanical edit, `deep` cuts the work
+ * and decides where the line stops. Keyed by `Role`, so a role added to the vocabulary
+ * does not compile until it is given a tier here.
  */
 export const ROLE_TIERS = {
   operator: "deep",
@@ -23,11 +24,7 @@ export const ROLE_TIERS = {
   checker: "cheap",
   judge: "cheap",
   searcher: "cheap",
-} as const satisfies Record<string, Tier>;
-
-export type Role = keyof typeof ROLE_TIERS;
-
-export const ROLES = Object.keys(ROLE_TIERS) as Role[];
+} as const satisfies Record<Role, Tier>;
 
 export type HarnessMap = Record<Tier, string>;
 

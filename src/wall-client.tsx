@@ -48,13 +48,25 @@ const statusIcon: Record<OrderStatus, LucideIcon> = {
 // never compete for the same signal. A tint that can be wrong about the one thing it carries
 // is worse than a mark with none, so an unknown role takes no color.
 const roleTint: Record<WallRole, string | undefined> = {
+  operator: "text-role-operator",
   planner: "text-role-planner",
   builder: "text-role-builder",
   reviewer: "text-role-reviewer",
+  simplifier: undefined,
+  checker: undefined,
+  judge: undefined,
+  searcher: undefined,
   unknown: undefined,
 };
 
 const NO_WORKER = "no worker recorded";
+const NO_ROLE = "no role recorded";
+
+/** A role arrives with the worker it belongs to, so the absent one takes the absent tint
+ *  rather than a color standing for a role nothing holds. */
+function tint(role: WallRole | undefined): string | undefined {
+  return role ? roleTint[role] : undefined;
+}
 
 function statusTint(status: OrderStatus): string {
   return stopped.has(status) ? "text-warn-foreground" : "text-muted-foreground";
@@ -123,11 +135,11 @@ function OrderCard({
       onClick={() => onOpen(order)}
       stopped={stopped.has(order.status)}
       className={cn(
-        "gap-0 p-2.5 text-left text-[11px] transition-colors duration-1000",
+        "gap-0 p-2.5 text-left text-[11px]",
         "cursor-pointer hover:border-accent focus-visible:border-accent focus-visible:outline-none",
-        // Lit on the beat this card changed and left to fade, so a glance a moment later
-        // still shows which card moved.
-        bumped && "border-accent duration-0",
+        // Lit until the bump expires, so a glance a moment after a card moved still shows
+        // which one did.
+        bumped && "border-accent",
       )}
     >
       <CardHeader className={cn(ROW, "justify-between text-quiet")}>
@@ -188,10 +200,7 @@ function OrderCard({
         <span className="flex min-w-0 items-center gap-1.5">
           {order.worker ? (
             <>
-              <Robot
-                label={`${order.worker}, ${order.role === "unknown" ? "role unknown" : order.role}`}
-                className={roleTint[order.role]}
-              />
+              <Robot label={`${order.worker}, ${order.role ?? NO_ROLE}`} className={tint(order.role)} />
               <span className="truncate">{order.worker}</span>
             </>
           ) : null}
@@ -298,12 +307,8 @@ function EntryWorker({ stop, order }: { stop: RailStop | undefined; order: WallO
   const marker = (worker: string) => (
     <>
       <Robot
-        label={
-          worker === order.worker && order.role !== "unknown"
-            ? `${worker}, ${order.role}`
-            : `${worker}, role unknown`
-        }
-        className={worker === order.worker ? roleTint[order.role] : roleTint.unknown}
+        label={worker === order.worker && order.role ? `${worker}, ${order.role}` : `${worker}, ${NO_ROLE}`}
+        className={worker === order.worker ? tint(order.role) : undefined}
       />
       <span className="truncate">{worker}</span>
     </>
@@ -432,8 +437,8 @@ function ItemDialog({
               <dt>worker</dt>
               <dd className="flex items-center gap-1.5 text-muted-foreground">
                 <Robot
-                  label={`${order.worker ?? NO_WORKER}, ${order.role === "unknown" ? "role unknown" : order.role}`}
-                  className={roleTint[order.role]}
+                  label={`${order.worker ?? NO_WORKER}, ${order.role ?? NO_ROLE}`}
+                  className={tint(order.role)}
                 />
                 {order.worker ?? NO_WORKER}
               </dd>

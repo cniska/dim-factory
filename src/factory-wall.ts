@@ -4,6 +4,7 @@ import { age } from "./age";
 import { ORDER_STATUSES, type OrderEventKind, type OrderStatus } from "./factory-order";
 import { dbPath, tildePath } from "./paths";
 import { openReadOnly } from "./read-db";
+import { isRole, type Role } from "./roles";
 import wallPage from "./wall.html";
 import type { ResourceEvidence, WorkerEnvironmentPhase, WorkerHookReport } from "./worker-environment";
 
@@ -14,7 +15,7 @@ export type WallStation = "plan" | "build" | "review" | "ship" | "unknown";
  * what keeps the two from being one list.
  */
 export type WallStage = "todo" | "active" | "done";
-export type WallRole = "builder" | "reviewer" | "planner" | "unknown";
+export type WallRole = Role;
 
 export type WallOrder = {
   id: string;
@@ -24,7 +25,9 @@ export type WallOrder = {
   /** Absent until the order has a moment: the worker is read off the latest one. */
   agent?: string;
   worker?: string;
-  role: WallRole;
+  /** Absent with the worker and never apart from it: a hand is issued with a role, so an
+   *  order that names one names what it was called in as. */
+  role?: WallRole;
   status: OrderStatus;
   age: string;
   /** When the order last recorded an event. An order's age on the board is its silence, so it counts
@@ -139,11 +142,13 @@ function station(value: string | null): WallStation {
 
 /**
  * The worker's own, never worked out from the station: a worker is called in as one
- * thing and stays it, while the station says where the work is. A role the record does
- * not hold reads as unknown rather than as whatever the station suggests.
+ * thing and stays it, while the station says where the work is. A hand is issued with a
+ * role, so a value this build cannot read is refused rather than drawn as a guess.
  */
-function role(value: string | null): WallRole {
-  return value === "planner" || value === "builder" || value === "reviewer" ? value : "unknown";
+function role(value: string | null): WallRole | undefined {
+  if (value === null) return undefined;
+  if (!isRole(value)) throw new Error(`unknown factory worker role: ${value}`);
+  return value;
 }
 
 /** The column is text, so a status this build does not know is refused rather than drawn. */
@@ -154,6 +159,7 @@ function status(value: string): OrderStatus {
 
 function mapOrder(row: OrderRow, now: Date): WallOrder {
   const worker = row.latest_worker;
+  const workerRole = role(row.latest_role);
   const stationName = station(row.station ?? row.latest_station);
   const orderStatus = status(row.status);
   // A queued order carrying a stop reason was tried and handed back, which is the one
@@ -168,7 +174,7 @@ function mapOrder(row: OrderRow, now: Date): WallOrder {
     station: stationName,
     stage: stageByStatus[orderStatus],
     ...(worker ? { agent: worker, worker } : {}),
-    role: role(row.latest_role),
+    ...(workerRole ? { role: workerRole } : {}),
     status: orderStatus,
     age: age(lastEventAt, now),
     lastEventAt,

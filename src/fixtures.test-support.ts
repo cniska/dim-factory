@@ -2,22 +2,23 @@ import type { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { mintWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR, type WorkerRole } from "./factory-worker";
+import { mintWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { installHooks } from "./hooks";
 import type { Env } from "./paths";
+import type { Role } from "./roles";
 
 /**
  * A worker to record against, because every moment names one. Built rather than
  * stubbed for the same reason the trunk fixture is: the write path reads the row back,
  * and a name no row backs is exactly what it refuses.
  */
-export function workerIn(db: Database, role?: WorkerRole): string {
-  return mintWorker(db, role === undefined ? {} : { role }).name;
+export function workerIn(db: Database, role: Role = "builder"): string {
+  return mintWorker(db, { role }).name;
 }
 
 /** The environment the factory starts a worker in, which is where `dim order` reads it. */
-export function workerEnv(db: Database, role?: WorkerRole): Env {
-  const minted = mintWorker(db, role === undefined ? {} : { role });
+export function workerEnv(db: Database, role: Role = "builder"): Env {
+  const minted = mintWorker(db, { role });
   return { [WORKER_NAME_VAR]: minted.name, [WORKER_TOKEN_VAR]: minted.token };
 }
 
@@ -50,6 +51,20 @@ export function commitOffTrunk(dir: string, branch: string): string {
   const sha = git(["rev-parse", "HEAD"]).stdout.toString().trim();
   git(["checkout", "-q", "main"]);
   return sha;
+}
+
+/**
+ * A second working tree of `dir`, checked out on a fresh branch off its trunk — an
+ * order's own checkout, distinct from the primary one a ship has to merge into.
+ */
+export function orderWorktree(dir: string, branch: string): string {
+  // Alongside `dir` rather than inside it: a worktree nested under the primary
+  // checkout's own tree shows up in its `git status` as an untracked directory.
+  const path = `${dir}-wt-${branch}`;
+  const git = (args: string[]) =>
+    Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe", stderr: "pipe" });
+  git(["worktree", "add", "-q", "-b", branch, path]);
+  return path;
 }
 
 /** A repo that never names a trunk, as `git init` leaves one. */

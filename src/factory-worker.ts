@@ -2,18 +2,12 @@ import type { Database } from "bun:sqlite";
 import { createHash, randomBytes } from "node:crypto";
 import type { Env } from "./paths";
 import { pidIsAlive } from "./pid";
+import type { Role } from "./roles";
 import { nextWorkerName, wordFor } from "./worker-name";
 
 /** What the factory hands a worker, and the only thing it reads back to know who wrote. */
 export const WORKER_NAME_VAR = "DIM_WORKER_NAME";
 export const WORKER_TOKEN_VAR = "DIM_WORKER_TOKEN";
-
-export const WORKER_ROLES = ["planner", "builder", "reviewer"] as const;
-export type WorkerRole = (typeof WORKER_ROLES)[number];
-
-export function isWorkerRole(value: string): value is WorkerRole {
-  return (WORKER_ROLES as readonly string[]).includes(value);
-}
 
 export type WorkerUnknownCode = "worker_missing" | "worker_unissued" | "worker_over";
 
@@ -41,11 +35,7 @@ function digest(token: string): string {
  * the same count would be handed the same name, and SQLite's write lock is what makes
  * the read and the insert one step.
  */
-export function mintWorker(
-  db: Database,
-  worker: { role?: WorkerRole; pid?: number } = {},
-  at = now(),
-): MintedWorker {
+export function mintWorker(db: Database, worker: { role: Role; pid?: number }, at = now()): MintedWorker {
   const token = randomBytes(16).toString("hex");
   return db.transaction(() => {
     const workers = (db.query<{ n: number }, []>("SELECT count(*) AS n FROM factory_worker").get()?.n ??

@@ -15,9 +15,9 @@ import {
   setOrderPriority,
 } from "./factory-order";
 import { assembleItemView, assembleWallSnapshot, serveWall } from "./factory-wall";
-import type { WorkerRole } from "./factory-worker";
 import { integratedRepo, workerIn } from "./fixtures.test-support";
 import { resolveHomeDir } from "./paths";
+import type { Role } from "./roles";
 import { SCHEMA_SQL } from "./schema";
 import { STATION_LABELS } from "./wall-board";
 
@@ -105,7 +105,7 @@ describe("factory wall snapshot", () => {
       stage: "active",
       agent: worker,
       worker,
-      role: "unknown",
+      role: "builder",
       status: "working",
       age: "8m",
       lastEventAt: "2026-09-18T10:02:00.000Z",
@@ -272,7 +272,7 @@ describe("factory wall snapshot", () => {
 
   test("reads a role off the worker, never off the station it is sitting at", () => {
     const db = floor();
-    const take = (id: string, called: WorkerRole | undefined, stationValue: string) => {
+    const take = (id: string, called: Role, stationValue: string) => {
       const hand = workerIn(db, called);
       queueOrder(db, { id, project: "cniska/dim-factory", title: id }, hand, "2026-09-18T10:00:00.000Z");
       claimOrder(db, id, { runId: "run", station: stationValue }, hand, "2026-09-18T10:00:00.000Z");
@@ -281,7 +281,7 @@ describe("factory wall snapshot", () => {
     take("planning", "planner", "dim-station-build");
     take("building", "builder", "dim-station-review");
     take("reviewing", "reviewer", "dim-station-plan");
-    take("unrecorded", undefined, "dim-station-build");
+    take("operating", "operator", "dim-station-build");
 
     const roles = new Map(
       assembleWallSnapshot(db, new Date("2026-09-18T10:20:00.000Z")).orders.map((order) => [
@@ -293,7 +293,7 @@ describe("factory wall snapshot", () => {
     expect(roles.get("planning")).toBe("planner");
     expect(roles.get("building")).toBe("builder");
     expect(roles.get("reviewing")).toBe("reviewer");
-    expect(roles.get("unrecorded")).toBe("unknown");
+    expect(roles.get("operating")).toBe("operator");
     db.close();
   });
 

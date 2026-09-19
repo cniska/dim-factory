@@ -1,33 +1,27 @@
 import type { Database } from "bun:sqlite";
-import {
-  endWorker,
-  isWorkerRole,
-  mintWorker,
-  WORKER_NAME_VAR,
-  WORKER_ROLES,
-  WORKER_TOKEN_VAR,
-  type WorkerRole,
-  workerExports,
-} from "./factory-worker";
+import { endWorker, mintWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR, workerExports } from "./factory-worker";
 import { readFlags } from "./flags";
+import { isRole, ROLES, type Role } from "./roles";
 
 export class WorkerCommandError extends Error {}
 
-export const WORKER_USAGE = `usage: dim worker mint [--role <${WORKER_ROLES.join("|")}>] [--pid <n>]
-       dim worker run [--role <${WORKER_ROLES.join("|")}>] -- <command> [args...]
+export const WORKER_USAGE = `usage: dim worker mint --role <${ROLES.join("|")}> [--pid <n>]
+       dim worker run --role <${ROLES.join("|")}> -- <command> [args...]
        dim worker end <name>
 
 A worker is issued before it does anything, and every moment it records names it.
 \`run\` issues one and starts the command carrying it, which is how a worker gets an
 identity it cannot state about itself. \`mint\` prints two export lines instead, for a
-shell nothing started: \`eval "$(dim worker mint)"\`.`;
+shell nothing started: \`eval "$(dim worker mint --role operator)"\`.`;
 
 const fail = (message: string): Error => new WorkerCommandError(message);
 
-function role(given: string | undefined): WorkerRole | undefined {
-  if (given === undefined) return undefined;
-  if (!isWorkerRole(given)) {
-    throw fail(`${given} is not a role a worker is called in as; one of ${WORKER_ROLES.join(", ")}`);
+/** Required, because a hand with no role is one nothing can route and no card can draw. */
+function role(given: string | undefined): Role {
+  if (given === undefined)
+    throw fail(`--role says what this hand is called in as; one of ${ROLES.join(", ")}`);
+  if (!isRole(given)) {
+    throw fail(`${given} is not a role a worker is called in as; one of ${ROLES.join(", ")}`);
   }
   return given;
 }
@@ -47,8 +41,8 @@ function pid(given: string | undefined): number | undefined {
  * a pid that stops answering, which is what keeps a dead worker's token from staying good
  * forever. The child's own pid is never observable from a call that blocks on it.
  */
-function start(db: Database, argv: string[], role: WorkerRole | undefined): string {
-  const minted = mintWorker(db, { pid: process.pid, ...(role === undefined ? {} : { role }) });
+function start(db: Database, argv: string[], role: Role): string {
+  const minted = mintWorker(db, { role, pid: process.pid });
   const [command, ...args] = argv as [string, ...string[]];
   const child = Bun.spawnSync([command, ...args], {
     env: {

@@ -3,7 +3,8 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Glob } from "bun";
-import { harnessMapPath, ROLE_TIERS, ROLES, RoutingError, route, routeReport } from "./routing";
+import { ROLES } from "./roles";
+import { harnessMapPath, ROLE_TIERS, RoutingError, route, routeReport } from "./routing";
 
 function machine(map?: string): { DIM_HOME: string } {
   const home = mkdtempSync(join(tmpdir(), "dim-routing-"));

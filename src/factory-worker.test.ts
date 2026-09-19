@@ -25,7 +25,7 @@ const carried = (minted: { name: string; token: string }): Env => ({
 describe("issuing a factory worker", () => {
   test("hands out a name and the secret that proves it", () => {
     const db = floor();
-    const minted = mintWorker(db);
+    const minted = mintWorker(db, { role: "builder" });
 
     expect(minted.name).toMatch(/^[a-z]+-\d+$/);
     expect(resolveWorker(db, carried(minted))).toBe(minted.name);
@@ -34,7 +34,7 @@ describe("issuing a factory worker", () => {
 
   test("no two workers are handed the same name", () => {
     const db = floor();
-    const names = new Set(Array.from({ length: 200 }, () => mintWorker(db).name));
+    const names = new Set(Array.from({ length: 200 }, () => mintWorker(db, { role: "builder" }).name));
 
     expect(names.size).toBe(200);
     db.close();
@@ -42,7 +42,7 @@ describe("issuing a factory worker", () => {
 
   test("holds the digest of the token and never the token", () => {
     const db = floor();
-    const minted = mintWorker(db);
+    const minted = mintWorker(db, { role: "builder" });
 
     const stored = db.query("SELECT token_digest FROM factory_worker").get() as { token_digest: string };
     expect(stored.token_digest).not.toBe(minted.token);
@@ -61,7 +61,7 @@ describe("reading which worker a command is", () => {
 
   test("refuses a name this factory never issued", () => {
     const db = floor();
-    const minted = mintWorker(db);
+    const minted = mintWorker(db, { role: "builder" });
 
     expect(() =>
       resolveWorker(db, { [WORKER_NAME_VAR]: "nobody-9", [WORKER_TOKEN_VAR]: minted.token }),
@@ -73,8 +73,8 @@ describe("reading which worker a command is", () => {
   // only its holder can make.
   test("refuses one worker writing under another's name", () => {
     const db = floor();
-    const one = mintWorker(db);
-    const other = mintWorker(db);
+    const one = mintWorker(db, { role: "builder" });
+    const other = mintWorker(db, { role: "builder" });
 
     expect(() => resolveWorker(db, { [WORKER_NAME_VAR]: other.name, [WORKER_TOKEN_VAR]: one.token })).toThrow(
       expect.objectContaining({ code: "worker_unissued" }),
@@ -84,7 +84,7 @@ describe("reading which worker a command is", () => {
 
   test("refuses a worker that has ended", () => {
     const db = floor();
-    const minted = mintWorker(db);
+    const minted = mintWorker(db, { role: "builder" });
 
     expect(endWorker(db, minted.name)).toBe(true);
 
@@ -96,7 +96,7 @@ describe("reading which worker a command is", () => {
 
   test("ending a worker twice keeps the time it first stopped", () => {
     const db = floor();
-    const minted = mintWorker(db);
+    const minted = mintWorker(db, { role: "builder" });
     endWorker(db, minted.name, "2026-09-19T10:00:00.000Z");
 
     expect(endWorker(db, minted.name, "2026-09-19T11:00:00.000Z")).toBe(false);
@@ -109,7 +109,7 @@ describe("reading which worker a command is", () => {
   // Nothing writes `ended_at` for a worker that was killed, so the pid is what says so.
   test("refuses a worker whose process is gone, though nothing wrote it down", () => {
     const db = floor();
-    const minted = mintWorker(db, { pid: 0x7fffffff });
+    const minted = mintWorker(db, { role: "builder", pid: 0x7fffffff });
 
     expect(() => resolveWorker(db, carried(minted))).toThrow(
       expect.objectContaining({ code: "worker_over" }),
@@ -119,7 +119,7 @@ describe("reading which worker a command is", () => {
 
   test("takes a worker whose process is still running", () => {
     const db = floor();
-    const minted = mintWorker(db, { pid: process.pid });
+    const minted = mintWorker(db, { role: "builder", pid: process.pid });
 
     expect(resolveWorker(db, carried(minted))).toBe(minted.name);
     db.close();
@@ -129,7 +129,7 @@ describe("reading which worker a command is", () => {
 describe("becoming a worker at a terminal", () => {
   test("prints two lines a shell evaluates into the environment the command reads", () => {
     const db = floor();
-    const minted = mintWorker(db);
+    const minted = mintWorker(db, { role: "builder" });
 
     const env: Env = {};
     for (const line of workerExports(minted).split("\n")) {
