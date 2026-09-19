@@ -236,6 +236,35 @@ CREATE TABLE IF NOT EXISTS queue_item_transition (
 );
 CREATE INDEX IF NOT EXISTS queue_item_transition_item ON queue_item_transition(queue_id, item_id, id);
 
+-- What stops the whole factory rather than one queue: a defect hit mid-slice is in
+-- the machinery every queue is run by, so the next claim is refused whichever repo
+-- it was going to come from. Running orders are left alone, because killing a
+-- worker mid-write leaves a worktree nobody owns and a commit half made.
+--
+-- A worker does not stop the factory. One that hits a defect fences its own order,
+-- which is already how it says the owner has to look, and the operator stops the
+-- floor having seen whether the defect is in the machinery or in the one piece of
+-- work. Nothing in the database can tell who ran the command, so that is held by
+-- dim factory stop and not by a constraint.
+--
+-- A live stop is a row with no cleared_at rather than a flag, so there is no second
+-- copy of the state to go stale, and the index is what holds the floor to one stop
+-- at a time. The reason is required: a stopped factory nobody can explain is one
+-- the next operator clears to get moving.
+CREATE TABLE IF NOT EXISTS factory_stop (
+  id              INTEGER PRIMARY KEY,
+  reason          TEXT NOT NULL CHECK (trim(reason) <> ''),
+  pulled_by       TEXT NOT NULL,
+  pulled_at       TEXT NOT NULL,
+  -- Where the defect surfaced, where it surfaced under an order at all.
+  order_id        TEXT,
+  cleared_at      TEXT,
+  cleared_by      TEXT,
+  CHECK ((cleared_at IS NULL) = (cleared_by IS NULL))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS factory_stop_live
+  ON factory_stop((cleared_at IS NULL)) WHERE cleared_at IS NULL;
+
 -- Operational factory evidence is written by the order driver, not derived from
 -- transcripts or repository files. No source could reproduce a claim, event or
 -- report after the fact, so rebuild writes these rows back rather than re-reading
