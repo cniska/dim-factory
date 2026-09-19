@@ -212,16 +212,17 @@ function withDb(fn: (db: ReturnType<typeof openDb>) => SyncReport, forRebuild = 
 function printHookPlan(write: boolean): void {
   ensureSpoolDirs();
   const plans = planHooks();
-  const missing = plans.filter((p) => !p.present);
-  if (missing.length === 0) {
+  const pending = plans.filter((p) => p.state !== "installed");
+  if (pending.length === 0) {
     console.log(`hooks: all ${plans.length} session hooks are already installed`);
     return;
   }
-  for (const plan of missing) {
-    console.log(`${plan.configPath}\n  hooks.${plan.event} += ${plan.command}`);
+  for (const plan of pending) {
+    const where = plan.state === "stale" ? (plan.at as (string | number)[]).join(".") : `hooks.${plan.event}`;
+    console.log(`${plan.configPath}\n  ${where} ${plan.state === "stale" ? "=" : "+="} ${plan.command}`);
   }
   if (!write) {
-    console.log(`\n${missing.length} to add. Re-run with --write to apply.`);
+    console.log(`\n${pending.length} to write. Re-run with --write to apply.`);
     return;
   }
   const report = installHooks();

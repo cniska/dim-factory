@@ -13,7 +13,15 @@ import { join } from "node:path";
 import { ConfigError } from "./config-error";
 import { closeDb, openDb } from "./db";
 import { scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
-import { hookCommand, installHooks, planHooks, wakeCommand } from "./hooks";
+import {
+  HOOK_CONTRACT_VERSION,
+  hookCommand,
+  hookContractVersion,
+  installHooks,
+  planHooks,
+  wakeCommand,
+  wantedHooks,
+} from "./hooks";
 import { dbPath, type Env } from "./paths";
 import { drainSpool, ensureSpoolDirs, toolSpoolDir } from "./spool";
 import { rebuild, sync } from "./sync";
@@ -286,7 +294,7 @@ describe("installHooks", () => {
     const after = readFileSync(paths.claude, "utf8");
     expect(after).toContain("// the notifier, do not remove");
     expect(after).toContain('\n                "hooks": [');
-    expect(planHooks(env).every((p) => p.present)).toBe(true);
+    expect(planHooks(env).every((p) => p.state === "installed")).toBe(true);
   });
 
   // A key written twice is edited at its first copy and read at its last, so a
@@ -325,14 +333,14 @@ describe("installHooks", () => {
     const first = readFileSync(configs(env).claude, "utf8");
     expect(installHooks(env)).toMatchObject({ written: [], alreadyPresent: 8 });
     expect(readFileSync(configs(env).claude, "utf8")).toBe(first);
-    expect(planHooks(env).every((p) => p.present)).toBe(true);
+    expect(planHooks(env).every((p) => p.state === "installed")).toBe(true);
   });
 
   // It runs before every session starts, so a missing database, an unreadable
   // one, or no `dim` at all has to end as silence rather than a failed start.
   test("the wake hook cannot fail a session either", () => {
     const command = wakeCommand("claude");
-    expect(command).toEndWith("2>/dev/null || true");
+    expect(command).toMatch(/2>\/dev\/null \|\| true( # dim-hook:\d+)?$/);
     expect(command).toContain("wake --tool=claude");
   });
 
@@ -341,7 +349,77 @@ describe("installHooks", () => {
     // No jq, no sqlite, no network, and it always exits 0.
     const command = hookCommand("claude", env);
     expect(command).toStartWith("cat > ");
-    expect(command).toEndWith("; exit 0");
+    expect(command).toMatch(/; exit 0( # dim-hook:\d+)?$/);
     expect(command).not.toContain("|");
+  });
+
+  test("every command it installs says which contract wrote it", () => {
+    const env = hookEnv(newRoot());
+    for (const { command } of wantedHooks("claude", env)) {
+      expect(hookContractVersion(command)).toBe(HOOK_CONTRACT_VERSION);
+    }
+  });
+
+  // A hook from an older contract runs on every session and records what that
+  // contract recorded, so a config holding one reads as installed and collects
+  // the wrong thing. Told apart from missing, it is something the plan can fix.
+  test("a command from an older contract reads as stale, not as missing", () => {
+    const dir = newRoot();
+    const env = hookEnv(dir);
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    const old = `${hookCommand("claude", env).replace(/ # dim-hook:\d+$/, "")} # dim-hook:0`;
+    writeFileSync(
+      configs(env).claude,
+      JSON.stringify({
+        hooks: { SessionEnd: [{ hooks: [{ type: "command", command: old }] }] },
+      }),
+    );
+
+    const plan = planHooks(env).find((p) => p.tool === "claude" && p.event === "SessionEnd");
+    expect(plan).toMatchObject({ state: "stale", installedVersion: 0 });
+  });
+
+  test("a command carrying no contract at all reads as stale", () => {
+    const dir = newRoot();
+    const env = hookEnv(dir);
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    const unmarked = hookCommand("claude", env).replace(/ # dim-hook:\d+$/, "");
+    writeFileSync(
+      configs(env).claude,
+      JSON.stringify({
+        hooks: { PostToolUse: [{ hooks: [{ type: "command", command: unmarked }] }] },
+      }),
+    );
+
+    const plan = planHooks(env).find((p) => p.tool === "claude" && p.event === "PostToolUse");
+    expect(plan).toMatchObject({ state: "stale", installedVersion: null });
+  });
+
+  // Both would fire. The older one would go on writing whatever the bump was
+  // made to stop, and nothing in the config would say which of the two did it.
+  test("a stale command is written over rather than added beside", () => {
+    const dir = newRoot();
+    const env = hookEnv(dir);
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    const old = `${hookCommand("claude", env).replace(/ # dim-hook:\d+$/, "")} # dim-hook:0`;
+    writeFileSync(
+      configs(env).claude,
+      JSON.stringify({
+        hooks: {
+          SessionEnd: [
+            { hooks: [{ type: "command", command: "existing-notifier" }] },
+            { hooks: [{ type: "command", command: old }] },
+          ],
+        },
+      }),
+    );
+
+    expect(installHooks(env)).toMatchObject({ refreshed: 1 });
+
+    const after = JSON.parse(readFileSync(configs(env).claude, "utf8"));
+    expect(after.hooks.SessionEnd).toHaveLength(2);
+    expect(after.hooks.SessionEnd[0].hooks[0].command).toBe("existing-notifier");
+    expect(after.hooks.SessionEnd[1].hooks[0].command).toBe(hookCommand("claude", env));
+    expect(readFileSync(configs(env).claude, "utf8")).not.toContain("dim-hook:0");
   });
 });

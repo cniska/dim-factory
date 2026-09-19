@@ -42,26 +42,42 @@ function unreadable(name: string, error: ConfigError): Health {
   return { name, state: "fail", detail: error.message, fix: `repair ${error.path} by hand` };
 }
 
-type HookRead = { read: true; missing: HookPlan[] } | { read: false; error: ConfigError };
+type HookRead = { read: true; missing: HookPlan[]; stale: HookPlan[] } | { read: false; error: ConfigError };
 
 function readHooks(env: Env): HookRead {
   try {
-    return { read: true, missing: planHooks(env).filter((p) => !p.present) };
+    const plans = planHooks(env);
+    return {
+      read: true,
+      missing: plans.filter((p) => p.state === "missing"),
+      stale: plans.filter((p) => p.state === "stale"),
+    };
   } catch (error) {
     if (!(error instanceof ConfigError)) throw error;
     return { read: false, error };
   }
 }
 
+/**
+ * Stale fails alongside missing: a hook written against an older contract runs on
+ * every session and records whatever that contract recorded, so the config reads
+ * as installed while the evidence arrives in a shape nothing downstream expects.
+ */
 function sessionHooks(hooks: HookRead): Health {
   if (!hooks.read) return unreadable("hooks", hooks.error);
-  if (hooks.missing.length === 0) {
+  if (hooks.missing.length === 0 && hooks.stale.length === 0) {
     return { name: "hooks", state: "ok", detail: "installed in both tools" };
   }
+  const counts = [
+    hooks.missing.length > 0 &&
+      `${hooks.missing.length} missing (${hooks.missing.map((p) => p.event).join(", ")})`,
+    hooks.stale.length > 0 &&
+      `${hooks.stale.length} written against an older contract (${hooks.stale.map((p) => `${p.event}: ${p.installedVersion ?? "unmarked"}`).join(", ")})`,
+  ].filter((c): c is string => c !== false);
   return {
     name: "hooks",
     state: "fail",
-    detail: `${hooks.missing.length} session hooks missing (${hooks.missing.map((p) => p.event).join(", ")})`,
+    detail: `session hooks: ${counts.join("; ")}`,
     fix: "dim install-hooks --write",
   };
 }

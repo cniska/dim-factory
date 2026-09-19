@@ -1,17 +1,55 @@
 import { dirname, join } from "node:path";
+import type { JSONPath } from "jsonc-parser";
 import { ConfigError } from "./config-error";
-import { appendToJsoncArray, parseJsonc } from "./jsonc";
+import { appendToJsoncArray, parseJsonc, setJsoncValue } from "./jsonc";
 import { readJsonc, readJsoncText, writeJsoncFile } from "./jsonc-file";
 import { claudeProjectsDir, codexDir, type Env } from "./paths";
 import { toolSpoolDir } from "./spool";
 import { TOOLS, type Tool } from "./tools";
 
+/**
+ * Bumped whenever an installed command's text changes. It rides in the command as
+ * a shell comment because the tool's config is the only record of what a session
+ * will run, and a hook written against an older contract is otherwise
+ * indistinguishable from the current one.
+ */
+export const HOOK_CONTRACT_VERSION = 1;
+
+const CONTRACT_MARKER = /#\s*dim-hook:(\d+)\s*$/;
+
+function marked(command: string): string {
+  return `${command} # dim-hook:${HOOK_CONTRACT_VERSION}`;
+}
+
+export function hookContractVersion(command: string): number | null {
+  const found = CONTRACT_MARKER.exec(command);
+  return found ? Number(found[1]) : null;
+}
+
+export type HookKind = "spool" | "wake";
+
+/**
+ * Read off what a command does rather than off its text matching in full: one
+ * whose text still matched would be the current command, and what this has to
+ * recognize is one that no longer does.
+ */
+function hookKind(command: string, tool: Tool, env: Env): HookKind | null {
+  if (command.includes(toolSpoolDir(tool, env))) return "spool";
+  if (command.includes(`wake --tool=${tool}`)) return "wake";
+  return null;
+}
+
 export type HookPlan = {
   tool: Tool;
   configPath: string;
   event: string;
+  kind: HookKind;
   command: string;
-  present: boolean;
+  state: "installed" | "stale" | "missing";
+  /** Where the out-of-date command sits, for the installer to write over. Stale only. */
+  at?: JSONPath;
+  /** The contract the installed command carries, null where it carries none. Stale only. */
+  installedVersion?: number | null;
 };
 
 /**
@@ -20,7 +58,7 @@ export type HookPlan = {
  * every session on this machine. `sync` does the work later, under its lock.
  */
 export function hookCommand(tool: Tool, env: Env = process.env): string {
-  return `cat > "${toolSpoolDir(tool, env)}/$(date +%s%N)-$$.json" 2>/dev/null; exit 0`;
+  return marked(`cat > "${toolSpoolDir(tool, env)}/$(date +%s%N)-$$.json" 2>/dev/null; exit 0`);
 }
 
 /**
@@ -31,7 +69,7 @@ export function hookCommand(tool: Tool, env: Env = process.env): string {
  * can fail is a hook that can stop one from starting.
  */
 export function wakeCommand(tool: Tool): string {
-  return `${dimPath()} wake --tool=${tool} 2>/dev/null || true`;
+  return marked(`${dimPath()} wake --tool=${tool} 2>/dev/null || true`);
 }
 
 /** The linked `dim`, falling back to the name so a plan reads sensibly where it is not installed. */
@@ -48,7 +86,7 @@ export function hookConfigPath(tool: Tool, env: Env = process.env): string {
 export type HookEntry = { matcher?: string; hooks?: { type?: string; command?: string; timeout?: number }[] };
 type HookConfig = { hooks?: Record<string, HookEntry[]> };
 
-export type WantedHook = { event: string; command: string };
+export type WantedHook = { event: string; kind: HookKind; command: string };
 
 /**
  * The installer and the Codex trust check read this one list, because a hook the
@@ -60,10 +98,10 @@ export type WantedHook = { event: string; command: string };
  */
 export function wantedHooks(tool: Tool, env: Env = process.env): WantedHook[] {
   return [
-    { event: "SessionStart", command: hookCommand(tool, env) },
-    { event: "SessionStart", command: wakeCommand(tool) },
-    { event: "SessionEnd", command: hookCommand(tool, env) },
-    { event: "PostToolUse", command: hookCommand(tool, env) },
+    { event: "SessionStart", kind: "spool", command: hookCommand(tool, env) },
+    { event: "SessionStart", kind: "wake", command: wakeCommand(tool) },
+    { event: "SessionEnd", kind: "spool", command: hookCommand(tool, env) },
+    { event: "PostToolUse", kind: "spool", command: hookCommand(tool, env) },
   ];
 }
 
@@ -75,20 +113,48 @@ function hasCommand(entries: HookEntry[], command: string): boolean {
   return entries.some((e) => e.hooks?.some((h) => h.command === command));
 }
 
+/** The first command at this event that is dim's own, whatever contract wrote it. */
+function findOwn(
+  entries: HookEntry[],
+  kind: HookKind,
+  tool: Tool,
+  env: Env,
+): { index: [number, number]; command: string } | null {
+  for (const [entry, e] of entries.entries()) {
+    for (const [hook, h] of (e.hooks ?? []).entries()) {
+      if (h.command && hookKind(h.command, tool, env) === kind) {
+        return { index: [entry, hook], command: h.command };
+      }
+    }
+  }
+  return null;
+}
+
 /** Both tools take the same shape: hooks.<Event>[].hooks[].command. */
 export function planHooks(env: Env = process.env): HookPlan[] {
   const plans: HookPlan[] = [];
   for (const tool of TOOLS) {
     const configPath = hookConfigPath(tool, env);
     const config = readConfig(configPath);
-    for (const { event, command } of wantedHooks(tool, env)) {
-      plans.push({
-        tool,
-        configPath,
-        event,
-        command,
-        present: hasCommand(config.hooks?.[event] ?? [], command),
-      });
+    for (const { event, kind, command } of wantedHooks(tool, env)) {
+      const entries = config.hooks?.[event] ?? [];
+      const own = findOwn(entries, kind, tool, env);
+      if (own?.command === command) {
+        plans.push({ tool, configPath, event, kind, command, state: "installed" });
+      } else if (own) {
+        plans.push({
+          tool,
+          configPath,
+          event,
+          kind,
+          command,
+          state: "stale",
+          at: ["hooks", event, own.index[0], "hooks", own.index[1], "command"],
+          installedVersion: hookContractVersion(own.command),
+        });
+      } else {
+        plans.push({ tool, configPath, event, kind, command, state: "missing" });
+      }
     }
   }
   return plans;
@@ -114,11 +180,21 @@ function refuseIneffective(text: string, configPath: string, plans: HookPlan[]):
   }
 }
 
-export type InstallReport = { written: string[]; alreadyPresent: number; backups: string[] };
+export type InstallReport = {
+  written: string[];
+  alreadyPresent: number;
+  refreshed: number;
+  backups: string[];
+};
 
-/** Append the spool hook to each config, leaving every hook already there alone. */
+/**
+ * Bring each config up to the current contract, leaving every hook that is not
+ * dim's alone. An out-of-date command is written over where it sits rather than
+ * added beside: both would fire, and the older one would keep writing whatever
+ * the bump was made to stop.
+ */
 export function installHooks(env: Env = process.env): InstallReport {
-  const report: InstallReport = { written: [], alreadyPresent: 0, backups: [] };
+  const report: InstallReport = { written: [], alreadyPresent: 0, refreshed: 0, backups: [] };
   const byConfig = new Map<string, HookPlan[]>();
   for (const plan of planHooks(env)) {
     const list = byConfig.get(plan.configPath) ?? [];
@@ -130,16 +206,23 @@ export function installHooks(env: Env = process.env): InstallReport {
   // second leaves the first alone and the message holds for both.
   const pending: { configPath: string; text: string }[] = [];
   for (const [configPath, plans] of byConfig) {
-    const missing = plans.filter((p) => !p.present);
-    report.alreadyPresent += plans.length - missing.length;
-    if (missing.length === 0) continue;
+    const stale = plans.filter((p) => p.state === "stale");
+    const missing = plans.filter((p) => p.state === "missing");
+    report.alreadyPresent += plans.length - stale.length - missing.length;
+    if (stale.length === 0 && missing.length === 0) continue;
 
     let text = readJsoncText(configPath);
+    // Rewrites first: an append changes an array's length, and every position a
+    // stale plan holds was read before any of this config was touched.
+    for (const plan of stale) {
+      text = setJsoncValue(text, plan.at as JSONPath, plan.command, configPath);
+    }
     for (const plan of missing) {
       const entry: HookEntry = { hooks: [{ type: "command", command: plan.command }] };
       text = appendToJsoncArray(text, ["hooks", plan.event], entry, configPath);
     }
-    refuseIneffective(text, configPath, missing);
+    refuseIneffective(text, configPath, [...stale, ...missing]);
+    report.refreshed += stale.length;
     pending.push({ configPath, text });
   }
 

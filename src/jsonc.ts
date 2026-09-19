@@ -80,6 +80,20 @@ function pathLabel(path: JSONPath, depth: number): string {
 }
 
 /**
+ * Replace the value at `path`, which has to be there already. Absent is a refusal
+ * rather than a write, because every caller replacing something is correcting an
+ * entry it located, and creating one instead leaves the entry it meant to correct.
+ */
+export function setJsoncValue(text: string, path: JSONPath, value: unknown, file: string): string {
+  const root = parseTree(text, [], { allowTrailingComma: true });
+  const label = path.join(".");
+  if (!root || !findNodeAtLocation(root, path)) {
+    throw new ConfigError("absent", file, `${file}: ${label} is not there to replace`, label);
+  }
+  return applyEdits(text, modify(text, path, value, { formattingOptions: indentOf(text) }));
+}
+
+/**
  * Append to the array at `path`, creating it and its parents where absent. A
  * comment, a sibling key and the file's own indent survive, which round-tripping
  * through `JSON.stringify` discards; the array written into is reformatted,
