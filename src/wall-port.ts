@@ -9,6 +9,9 @@ export const DEFAULT_WALL_PORT = 7326;
 
 export const WALL_PORT_ENV = "DIM_WALL_PORT";
 
+/** Set on the run that is already under `bun --hot`, so it does not spawn a third. */
+export const WALL_HOT_ENV = "DIM_WALL_HOT";
+
 export class WallPortError extends Error {
   constructor(
     readonly kind: "not-a-port" | "in-use",
