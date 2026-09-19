@@ -63,7 +63,7 @@ Every card on the board carries the same compact identity block:
 - **What.** The item's title, in the words the queue states it in. The item id stays in the record for an agent to join on.
 - **Where.** The current station, named on the card. Plan, Build, Review and Ship are reserved for the words the record actually holds; an order claimed with anything else, or with no station at all, reads as unknown.
 - **Who.** Agent identity, with the agent's role carried by a marker and by the written role. An order that no claim or event named an agent for shows no worker, rather than a name that would read as a worker and collide with every other unattributed order.
-- **State.** Running, waiting, blocked, fenced, completed or failed.
+- **Status.** Working, waiting, blocked, fenced, completed or failed.
 - **Why stopped.** For an order that cannot move, its stop reason or fence.
 - **How long it has been silent.** Time since the order's last recorded event, which is also what orders a column. An unattended run fails by going quiet, so the one figure on the card counts from the last thing that happened to the order.
 
