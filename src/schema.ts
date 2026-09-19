@@ -2,8 +2,9 @@
 // by re-reading them, so a schema change is `dim rebuild`, not a migration. The
 // exceptions carry the reason at the table: guidance_walk, command_trace and
 // finding have no source to re-read, embedding holds vectors only a model can
-// produce again, and correction_label, hook_event and the factory order records
-// have no source either but are dropped and written back row for row.
+// produce again, and correction_label, hook_event, the queue and the factory
+// order records have no source either but are dropped and written back row for
+// row.
 // SCHEMA_VERSION exists so sync can refuse to run against a database only a
 // re-read can correct: a changed column, or a changed rule for what identifies a
 // row, since rows already written keep the old identity. A table added with
@@ -177,6 +178,63 @@ CREATE TABLE IF NOT EXISTS factory_schedule (
   last_due_at         TEXT
 );
 CREATE INDEX IF NOT EXISTS factory_schedule_due ON factory_schedule(enabled, paused, last_evaluated_at);
+
+-- What a repo has waiting. Nothing on disk holds it, so rebuild writes these rows
+-- back rather than re-reading them. The statuses are the item's and not the
+-- order's: an order that stops blocked, fenced or failed leaves its item
+-- claimable again, and why it stopped is the order's to say.
+CREATE TABLE IF NOT EXISTS queue_item (
+  queue_id        TEXT NOT NULL,
+  id              TEXT NOT NULL,
+  title           TEXT NOT NULL,
+  description     TEXT,
+  status          TEXT NOT NULL CHECK (status IN ('planned', 'claimed', 'completed', 'dropped')),
+  -- The order that added this item, where one did. Most items are found by an
+  -- order mid-slice — a prerequisite, a finding worth its own cut — and a title
+  -- with nothing pointing back at what found it cannot be judged months later.
+  -- Which order holds the item now is not here: factory_order.item_id says that,
+  -- and a second copy is free to disagree with it. No foreign key either way,
+  -- since an order can run against a tracker with no row here at all.
+  discovered_by_order_id TEXT,
+  -- Ready items come back most urgent first, unset last, then oldest, then id.
+  -- Named rather than numbered so a row reads without a key, and five levels
+  -- because a tracker feeding this queue has about that many to hand over.
+  priority        TEXT NOT NULL DEFAULT 'unset'
+                  CHECK (priority IN ('urgent', 'high', 'medium', 'low', 'unset')),
+  created_at      TEXT NOT NULL,
+  PRIMARY KEY (queue_id, id)
+);
+CREATE INDEX IF NOT EXISTS queue_item_status ON queue_item(queue_id, status);
+
+CREATE TABLE IF NOT EXISTS queue_item_dependency (
+  queue_id        TEXT NOT NULL,
+  item_id         TEXT NOT NULL,
+  depends_on_id   TEXT NOT NULL,
+  -- The one cycle short enough for the database to refuse; longer ones are the
+  -- planner's to catch.
+  CHECK (depends_on_id <> item_id),
+  PRIMARY KEY (queue_id, item_id, depends_on_id),
+  FOREIGN KEY (queue_id, item_id) REFERENCES queue_item(queue_id, id) ON DELETE CASCADE,
+  FOREIGN KEY (queue_id, depends_on_id) REFERENCES queue_item(queue_id, id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS queue_item_dependency_target ON queue_item_dependency(queue_id, depends_on_id);
+
+-- An item outlives the orders run against it, so its history threads across all of
+-- them; what happened inside one order is factory_order_event. Read back by id
+-- and not by ts, since two transitions can share a timestamp and only the order
+-- they were written in tells a re-claim from a first claim.
+CREATE TABLE IF NOT EXISTS queue_item_transition (
+  id              INTEGER PRIMARY KEY,
+  queue_id        TEXT NOT NULL,
+  item_id         TEXT NOT NULL,
+  from_status     TEXT NOT NULL,
+  to_status       TEXT NOT NULL,
+  ts              TEXT NOT NULL,
+  reason          TEXT,
+  order_id        TEXT,
+  FOREIGN KEY (queue_id, item_id) REFERENCES queue_item(queue_id, id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS queue_item_transition_item ON queue_item_transition(queue_id, item_id, id);
 
 -- Operational factory evidence is written by the order driver, not derived from
 -- transcripts or repository files. No source could reproduce a claim, event or

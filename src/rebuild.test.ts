@@ -228,6 +228,42 @@ describe("rebuilding a database an older schema wrote", () => {
     db.close();
   });
 
+  test("a queue item reaches the current schema with its dependencies and history", () => {
+    const { db, env } = scratch();
+    // Nothing re-reads these rows, so only the drop and write-back can bring a
+    // table whose definition went stale up to the current one.
+    db.run("ALTER TABLE queue_item DROP COLUMN priority");
+    db.run(
+      `INSERT INTO queue_item (queue_id, id, title, status, created_at)
+       VALUES ('build-order', 'item-1', 'Come first', 'completed', '2026-01-01T00:00:00Z'),
+              ('build-order', 'item-2', 'Come after', 'planned', '2026-01-01T00:00:00Z')`,
+    );
+    db.run(
+      "INSERT INTO queue_item_dependency (queue_id, item_id, depends_on_id) VALUES ('build-order', 'item-2', 'item-1')",
+    );
+    db.run(
+      `INSERT INTO queue_item_transition (queue_id, item_id, from_status, to_status, ts, order_id)
+       VALUES ('build-order', 'item-1', 'planned', 'claimed', '2026-01-01T00:00:00Z', 'order-1'),
+              ('build-order', 'item-1', 'claimed', 'completed', '2026-01-01T01:00:00Z', 'order-1')`,
+    );
+
+    rebuild(db, env);
+
+    expect(db.query("SELECT id, status FROM queue_item ORDER BY id").all()).toEqual([
+      { id: "item-1", status: "completed" },
+      { id: "item-2", status: "planned" },
+    ]);
+    expect(db.query("SELECT item_id, depends_on_id FROM queue_item_dependency").all()).toEqual([
+      { item_id: "item-2", depends_on_id: "item-1" },
+    ]);
+    expect(db.query("SELECT to_status FROM queue_item_transition ORDER BY id").all()).toEqual([
+      { to_status: "claimed" },
+      { to_status: "completed" },
+    ]);
+    expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
+    db.close();
+  });
+
   test("a factory order written before the title column stops the rebuild", () => {
     const { db, env } = scratch();
     db.run("ALTER TABLE factory_order DROP COLUMN title");
