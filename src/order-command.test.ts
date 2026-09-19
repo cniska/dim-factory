@@ -1,12 +1,16 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
-import { rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { pullStop } from "./factory-stop";
 import { assembleWallSnapshot } from "./factory-wall";
-import { integratedRepo, workerEnv } from "./fixtures.test-support";
+import { collectingMachine, integratedRepo, scratchEnv, workerEnv } from "./fixtures.test-support";
+import { hookConfigPath } from "./hooks";
 import { OrderCommandError, runOrderCommand as runCommand } from "./order-command";
 import type { Env } from "./paths";
 import { SCHEMA_SQL } from "./schema";
+import { TOOLS } from "./tools";
 
 // Held so they close: an open handle is finalized by the runtime at exit instead, which is
 // where a suite that reported no failures panics anyway.
@@ -16,10 +20,14 @@ const opened: Database[] = [];
 // it is. Set where the database is made, because the worker's row lives in that database.
 let env: Env = {};
 
+// A claim reads this machine's session hooks before it lets a run start, so every command
+// below runs on one whose hooks are installed at the current contract.
+const machine = collectingMachine();
+
 function db(): Database {
   const database = new Database(":memory:");
   database.run(SCHEMA_SQL);
-  env = workerEnv(database);
+  env = { ...machine.env, ...workerEnv(database) };
   opened.push(database);
   return database;
 }
@@ -37,6 +45,7 @@ const trunk = integratedRepo();
 afterAll(() => {
   for (const database of opened) database.close();
   rmSync(trunk.dir, { recursive: true, force: true });
+  rmSync(machine.dir, { recursive: true, force: true });
 });
 
 /** What the gate wants before an order may complete: a commit on the trunk, then a check that passed. */
@@ -409,6 +418,34 @@ describe("order command", () => {
 
     expect(() => runOrderCommand(database, claim)).toThrow(/the commit gate records nothing/);
     expect(assembleWallSnapshot(database).orders).toEqual([]);
+  });
+
+  test("a claim is refused on a machine whose session hooks were never installed", () => {
+    const database = db();
+    queued(database);
+    const bare = mkdtempSync(join(tmpdir(), "dim-bare-"));
+
+    expect(() => runCommand(database, claim, null, undefined, { ...env, ...scratchEnv(bare) })).toThrow(
+      expect.objectContaining({ code: "hooks_missing" }),
+    );
+    expect(assembleWallSnapshot(database).totals).toEqual({ todo: 1, active: 0, done: 0 });
+    rmSync(bare, { recursive: true, force: true });
+  });
+
+  test("a claim is refused where a session hook is written against an older contract", () => {
+    const database = db();
+    queued(database);
+    const older = collectingMachine();
+    for (const tool of TOOLS) {
+      const config = hookConfigPath(tool, older.env);
+      writeFileSync(config, readFileSync(config, "utf8").replaceAll(/dim-hook:\d+/g, "dim-hook:1"));
+    }
+
+    expect(() => runCommand(database, claim, null, undefined, { ...env, ...older.env })).toThrow(
+      expect.objectContaining({ code: "hooks_stale" }),
+    );
+    expect(assembleWallSnapshot(database).totals).toEqual({ todo: 1, active: 0, done: 0 });
+    rmSync(older.dir, { recursive: true, force: true });
   });
 
   test("every write is refused where nothing says which worker is making it", () => {

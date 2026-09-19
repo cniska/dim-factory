@@ -166,6 +166,58 @@ export function planHooks(env: Env = process.env): HookPlan[] {
   return plans;
 }
 
+/** What is not collecting: a hook nothing wrote, and one written against an older contract. */
+export type HookGaps = { missing: HookPlan[]; stale: HookPlan[] };
+
+export function hookGaps(env: Env = process.env): HookGaps {
+  const plans = planHooks(env);
+  return {
+    missing: plans.filter((p) => p.state === "missing"),
+    stale: plans.filter((p) => p.state === "stale"),
+  };
+}
+
+export type HooksNotCurrentCode = "hooks_missing" | "hooks_stale";
+
+/** Carries a code because a caller deciding which condition failed must not match on prose. */
+export class HooksNotCurrent extends Error {
+  constructor(
+    readonly code: HooksNotCurrentCode,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+const INSTALL = "the owner installs them with `dim install-hooks --write`";
+
+/**
+ * Missing is reported first because the two failures are not the same size: a hook
+ * nothing wrote records nothing at all, where an older contract still writes and writes
+ * a shape nothing downstream reads. A config that cannot be parsed throws its own
+ * ConfigError, which is a machine that cannot be proven collecting either.
+ */
+export function requireCurrentHooks(env: Env = process.env): void {
+  const gaps = hookGaps(env);
+  if (gaps.missing.length > 0) {
+    const where = gaps.missing.map((p) => `${p.tool} ${p.event}`).join(", ");
+    throw new HooksNotCurrent(
+      "hooks_missing",
+      `${gaps.missing.length} session hooks are not installed (${where}), so nothing would be recorded; ${INSTALL}`,
+    );
+  }
+  if (gaps.stale.length > 0) {
+    const where = gaps.stale
+      .map((p) => `${p.tool} ${p.event}: ${p.installedVersion ?? "unmarked"}`)
+      .join(", ");
+    throw new HooksNotCurrent(
+      "hooks_stale",
+      `${gaps.stale.length} session hooks are written against a contract older than ${HOOK_CONTRACT_VERSION} ` +
+        `(${where}), so what they record is not what is read back; ${INSTALL}`,
+    );
+  }
+}
+
 /**
  * A key written twice resolves to the first copy when the file is edited and to
  * the last when it is read, so an edit can land somewhere nothing will look. The

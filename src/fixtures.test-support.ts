@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { mintWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR, type WorkerRole } from "./factory-worker";
+import { installHooks } from "./hooks";
 import type { Env } from "./paths";
 
 /**
@@ -62,6 +63,19 @@ export function repoWithoutTrunk(): { dir: string; sha: string } {
   git(["add", "."]);
   git(["commit", "-q", "-m", "feat: land it"]);
   return { dir, sha: git(["rev-parse", "HEAD"]).stdout.toString().trim() };
+}
+
+/**
+ * A machine whose session hooks are installed at the current contract, which is what a
+ * claim reads before it lets a run start. Installed rather than stubbed: the gate reads
+ * the config off disk, and a fixture that answered for it would agree with whatever the
+ * planner got wrong. The caller removes the directory.
+ */
+export function collectingMachine(): { dir: string; env: Env } {
+  const dir = mkdtempSync(join(tmpdir(), "dim-hooks-"));
+  const env = scratchEnv(dir);
+  installHooks(env);
+  return { dir, env };
 }
 
 export function scratchEnv(root: string): Env {

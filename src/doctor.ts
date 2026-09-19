@@ -5,7 +5,7 @@ import { AGENT_LABEL, agentPlistPath } from "./agent";
 import { codexConfigPath, planCodexTrust, type TrustState } from "./codex-trust";
 import { installedOwners, planCommitGate, sharedHooksDir } from "./commit-gate";
 import { ConfigError } from "./config-error";
-import { type HookPlan, planHooks } from "./hooks";
+import { type HookPlan, hookGaps } from "./hooks";
 import { readJsonc } from "./jsonc-file";
 import { dataDir, type Env, resolveHomeDir } from "./paths";
 import { unarmedCheckouts } from "./push-gate";
@@ -46,12 +46,7 @@ type HookRead = { read: true; missing: HookPlan[]; stale: HookPlan[] } | { read:
 
 function readHooks(env: Env): HookRead {
   try {
-    const plans = planHooks(env);
-    return {
-      read: true,
-      missing: plans.filter((p) => p.state === "missing"),
-      stale: plans.filter((p) => p.state === "stale"),
-    };
+    return { read: true, ...hookGaps(env) };
   } catch (error) {
     if (!(error instanceof ConfigError)) throw error;
     return { read: false, error };

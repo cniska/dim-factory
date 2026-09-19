@@ -18,6 +18,7 @@ import {
 } from "./factory-order";
 import { resolveWorker } from "./factory-worker";
 import { readFlags, requiredFlag } from "./flags";
+import { requireCurrentHooks } from "./hooks";
 import { heldOrders, readyOrders } from "./order-ready";
 import type { Env } from "./paths";
 
@@ -88,8 +89,15 @@ function add(
   return `queued ${orderId} on ${project}`;
 }
 
-function claim(db: Database, orderId: string, args: string[], worker: string): string {
+/**
+ * Everything the order records after this is written by a session hook, so a run started
+ * behind one that is missing or out of date leaves an order with no evidence under it and
+ * nothing says so until the record is read. The claim is where a run begins and the one
+ * place that can stop it, so the machine is read here rather than after work has started.
+ */
+function claim(db: Database, orderId: string, args: string[], worker: string, env: Env): string {
   const given = flags(args, CLAIM_FLAGS);
+  requireCurrentHooks(env);
   claimOrder(
     db,
     orderId,
@@ -260,7 +268,7 @@ export function runOrderCommand(
   // caller that cannot say is refused here rather than writing a moment nobody did.
   const worker = resolveWorker(db, env);
   if (command === "add") return add(db, orderId, rest, defaultProject, worker);
-  if (command === "claim") return claim(db, orderId, rest, worker);
+  if (command === "claim") return claim(db, orderId, rest, worker, env);
   if (command === "priority") {
     const [level] = rest;
     const chosen = priority(level);
