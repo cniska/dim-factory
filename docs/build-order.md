@@ -12,8 +12,6 @@ An order is queued when it is ready to be built, so what waits here is what is n
 
 Every rule below is written in [`dim-factory`](../skills/dim-factory/SKILL.md) today, which means it holds when the skill was read and not otherwise. Each item here is a mechanism that holds it either way, and the instruction it replaces is deleted from that file in the same slice — a rule a gate holds is cut, not shortened ([`conventions.md`](conventions.md)).
 
-- **An installed hook says which contract it was written against** (`hook-version-marker`)**.** A hook command is matched by its exact text, so one written against an older shape reads as missing and the installer adds the current one beside it: both fire, and the older one goes on writing whatever the bump was made to stop. A version marker in the command distinguishes an out-of-date hook from an absent one, and the installer writes over the entry it found.
-
 - **A factory worktree refuses a commit with no running order** (`commit-needs-order`)**.** The pair to the read-only builder in **Held at the order**: the gate there cannot see work committed outside a claimed order, and this is what makes that work impossible rather than merely discouraged.
 
 - **`post-commit` writes the commit and its changed files** (`post-commit-records-files`)**.** `dim order commit` and `dim order file` are typed by a skill today, so a run that skipped a line leaves an order whose diff is smaller than what it landed. `git show --numstat` already holds the paths and the added and removed counts.
