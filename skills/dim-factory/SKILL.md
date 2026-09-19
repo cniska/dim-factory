@@ -25,7 +25,7 @@ That stopping rule is the substance of this file. The argument it serves is dim 
 A repo's queue is **read, never inferred** — the rule `dim check-command` already follows for the check, and it binds harder here, because working the wrong queue is the confident-and-wrong failure a person is at the gate for.
 
 1. **The argument is the queue**, when one is given. `/dim-factory queue.json` works that planner file, `/dim-factory docs/backlog.md` works that document, and a tracker query works those issues. Nothing is discovered and nothing else is read as a queue.
-2. **Otherwise the repo declares it**, in its `AGENTS.md` or `CLAUDE.md`: a Linear team or project, an issue label, a path.
+2. **Otherwise the repo declares it**, in its `AGENTS.md` or `CLAUDE.md`: a tracker's team or project, an issue label, a path.
 3. **Otherwise look**, in this order, and say which was found: a planner file the repo tracks — `queue.json` at its root, or the path its rules file names, and only where `dim queue ready` parses it, since another file of that name is another format; a queue doc the repo's rules file links; `TODO.md`; open issues in the repo's tracker.
 4. **Two plausible queues is a question, not a coin flip.** Name both and stop.
 

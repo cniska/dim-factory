@@ -501,7 +501,7 @@
     {
       "id": "dim-queue-skill",
       "title": "A station that fills a queue",
-      "description": "Write the station that turns a document, a Linear project or a tracker query into queue items with their dependencies and priority.",
+      "description": "Write the station that turns a subject, a file or an issue tracker URL into queue items with their dependencies and priority.",
       "dependencies": ["queue-commands"],
       "status": "planned",
       "transitions": []
@@ -526,6 +526,30 @@
       "id": "worktree-identity",
       "title": "The worktree a card names twice",
       "description": "Drop the stored worktree path from the order, since a path is true of one machine at one moment and the branch it is derived from is the durable identity.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "event-actor",
+      "title": "Every moment says which agent it was",
+      "description": "Write the actor on every order event rather than on three kinds of it, so an order's history names the planner, builder and reviewer that handled it.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "order-report-columns",
+      "title": "An order's report read as columns rather than as one cell",
+      "description": "Give each fact in dim q order its own column sized to what it holds, instead of packing the station, worktree, branch and reason into one cell joined by a pipe.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "item-view-close",
+      "title": "A way out of the item view you can see",
+      "description": "Give the item dialog a close control, since Escape and a backdrop click both work and neither is visible on the surface they apply to.",
       "dependencies": [],
       "status": "planned",
       "transitions": []
