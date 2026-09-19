@@ -457,6 +457,102 @@
       "dependencies": [],
       "status": "planned",
       "transitions": []
+    },
+    {
+      "id": "claim-refuses-stopped-floor",
+      "title": "A claim refuses while the floor is stopped",
+      "description": "Have dim order claim read factory_stop and refuse a new order while a stop is live, so stopping the floor stops work entering it rather than only recording that someone wanted it stopped.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "queue-commands",
+      "title": "The queue read and written as rows",
+      "description": "Build dim queue add, ready and transition against the queue tables, ordering ready by priority then by when an item was added, and taking --blocks so a prerequisite found mid-slice becomes an edge.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "queue-import",
+      "title": "The items moved out of the file",
+      "description": "Import every item queue.json holds into the queue tables, carrying its id, title, statement and dependencies unchanged.",
+      "dependencies": ["queue-commands"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "queue-file-removed",
+      "title": "The planner file deleted",
+      "description": "Delete queue.json, the half of src/queue-planner.ts that parses it, src/repo-queue.test.ts and every page that names it, in one slice.",
+      "dependencies": ["queue-import"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "order-project",
+      "title": "Which project an order belongs to",
+      "description": "Record the canonical owner/repo on every order and queue item and show it on the card, so one board can carry work from more than one repo.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "dim-queue-skill",
+      "title": "A station that fills a queue",
+      "description": "Write the station that turns a document, a Linear project or a tracker query into queue items with their dependencies and priority.",
+      "dependencies": ["queue-commands"],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "wall-notifications",
+      "title": "The wall asks for the owner when it needs them",
+      "description": "Send a notification when an order stops fenced or failed, since those are the states that need a person and they arrive when nobody is watching the board.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "unified-status-flake",
+      "title": "A test reading another test's commit",
+      "description": "Isolate the factory order query test that picks up a commit sha another test wrote when the whole suite runs, since a check that fails for an unrelated reason is one people re-run rather than read.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "worktree-identity",
+      "title": "The worktree a card names twice",
+      "description": "Drop the stored worktree path from the order, since a path is true of one machine at one moment and the branch it is derived from is the durable identity.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "agents-worktrees-dir",
+      "title": "Worktrees under a directory no tool owns",
+      "description": "Move task worktrees from .claude/worktrees to .agents/worktrees, the harness-neutral convention this repo already follows for skills.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "moved-checkout-identity",
+      "title": "A moved checkout reads as a second repo",
+      "description": "Key the repo tables on the owner/repo label the remote gives rather than on the git toplevel, so moving a checkout stops splitting one repo's rows into two.",
+      "dependencies": [],
+      "status": "planned",
+      "transitions": []
+    },
+    {
+      "id": "tracker-prior-art",
+      "title": "What a tracker settled and what it did not",
+      "description": "Write the page stating where this queue converges with an issue tracker and where it diverges, with the mechanism behind each divergence and no claim of a benchmark nobody ran.",
+      "dependencies": ["queue-commands"],
+      "status": "planned",
+      "transitions": []
     }
   ]
 }
