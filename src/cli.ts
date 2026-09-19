@@ -116,6 +116,9 @@ function printReport(report: SyncReport | RebuildReport): void {
     for (const { table, rows } of report.orphans) {
       warn(`dim: dropped ${rows} ${table} rows whose order is gone`);
     }
+    if (report.retired.length > 0) {
+      console.log(`retired: dropped ${report.retired.join(", ")}`);
+    }
   }
   console.log(
     `claude: ${report.claudeTranscripts} transcripts, ${report.claudeSubagents} subagents; ` +

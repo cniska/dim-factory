@@ -32,7 +32,7 @@ export type SyncReport = {
   walk: WalkReport;
 };
 
-export type RebuildReport = SyncReport & { orphans: OrphanReport[] };
+export type RebuildReport = SyncReport & { orphans: OrphanReport[]; retired: string[] };
 
 export function sync(db: Database, env: Env = process.env): SyncReport {
   const ingester = createIngester(db);
@@ -132,6 +132,8 @@ type HookEvent = {
   payload: string;
 };
 
+const PARENT_ORDER_TABLE = "factory_order";
+
 /**
  * Parent first, which the restore needs: a child written before the order it
  * references fails the foreign key. The drop runs in reverse for a different
@@ -139,8 +141,6 @@ type HookEvent = {
  * instead of refusing, and a save ever moved after the drop would lose them
  * with nothing to show for it.
  */
-const PARENT_ORDER_TABLE = "factory_order";
-
 const FACTORY_ORDER_TABLES = [
   PARENT_ORDER_TABLE,
   "factory_order_event",
@@ -182,6 +182,32 @@ function dropOrphans(
     entry.rows = kept;
   }
   return orphans;
+}
+
+/**
+ * `CREATE TABLE IF NOT EXISTS` only ever adds, so a table `SCHEMA_SQL` has
+ * stopped defining sits in every database that once ran the old statement with
+ * nothing left to remove it. What belongs is read off `SCHEMA_SQL` so that
+ * deleting the statement is the whole change, and FTS5 keeps its index in
+ * tables named after the virtual table, which the schema never names itself.
+ */
+function dropRetiredTables(db: Database): string[] {
+  const named = (pattern: RegExp): string[] =>
+    [...SCHEMA_SQL.matchAll(pattern)].map((match) => match[1] as string);
+  const defined = new Set(named(/CREATE (?:VIRTUAL )?TABLE IF NOT EXISTS (\w+)/g));
+  const virtual = named(/CREATE VIRTUAL TABLE IF NOT EXISTS (\w+)/g);
+  const retired = db
+    .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table'")
+    .all()
+    .map((row) => row.name)
+    .filter((name) => !defined.has(name) && !name.startsWith("sqlite_"))
+    .filter((name) => !virtual.some((table) => name.startsWith(`${table}_`)));
+  // One of these can reference another, and the order they come back in is not
+  // the order they can be dropped in; by the commit they are all gone.
+  db.run("PRAGMA defer_foreign_keys = ON");
+  for (const name of retired) db.run(`DROP TABLE IF EXISTS ${name}`);
+  db.run("PRAGMA defer_foreign_keys = OFF");
+  return retired;
 }
 
 /**
@@ -251,6 +277,7 @@ function carryThroughRebuild(
  */
 export function rebuild(db: Database, env: Env = process.env): RebuildReport {
   let orphans: OrphanReport[] = [];
+  let retired: string[] = [];
   db.transaction(() => {
     const carried = carryThroughRebuild(db, FACTORY_ORDER_TABLES);
     orphans = carried.orphans;
@@ -292,6 +319,7 @@ export function rebuild(db: Database, env: Env = process.env): RebuildReport {
     db.run("DROP TABLE IF EXISTS handoff_link");
     db.run("DROP TABLE IF EXISTS factory_handoff");
     db.run(SCHEMA_SQL);
+    retired = dropRetiredTables(db);
     restoreFactoryOrders();
     const restore = db.prepare<void, [string, string, string | null, string | null, string]>(
       `INSERT INTO correction_label (message_id, label, skill_name, rule, labeled_at)
@@ -323,5 +351,5 @@ export function rebuild(db: Database, env: Env = process.env): RebuildReport {
   })();
   const report = sync(db, env);
   db.run("UPDATE schema_version SET version = ?", [SCHEMA_VERSION]);
-  return { ...report, orphans };
+  return { ...report, orphans, retired };
 }

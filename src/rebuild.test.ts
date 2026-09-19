@@ -47,6 +47,13 @@ function fill(db: Database): void {
   );
 }
 
+function tablesOf(db: Database): string[] {
+  return db
+    .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table'")
+    .all()
+    .map((row) => row.name);
+}
+
 function columnsOf(db: Database, table: string): string[] {
   return db
     .query<{ name: string }, []>(`PRAGMA table_info(${table})`)
@@ -275,6 +282,26 @@ describe("rebuilding a database an older schema wrote", () => {
       { table: "factory_order_event", rows: 1 },
       { table: "factory_order_commit", rows: 1 },
     ]);
+    db.close();
+  });
+
+  test("a table the schema has stopped defining is gone, and the search index is not", () => {
+    const { db, env } = scratch();
+    db.run("CREATE TABLE queue_item (queue_id TEXT, id TEXT, PRIMARY KEY (queue_id, id))");
+    db.run(
+      `CREATE TABLE queue_item_transition (
+         queue_id TEXT NOT NULL, item_id TEXT NOT NULL,
+         FOREIGN KEY (queue_id, item_id) REFERENCES queue_item(queue_id, id) ON DELETE CASCADE)`,
+    );
+    db.run("INSERT INTO queue_item (queue_id, id) VALUES ('build-order', 'item-1')");
+    db.run("INSERT INTO queue_item_transition (queue_id, item_id) VALUES ('build-order', 'item-1')");
+
+    rebuild(db, env);
+
+    expect(tablesOf(db)).not.toContain("queue_item");
+    expect(tablesOf(db)).not.toContain("queue_item_transition");
+    expect(tablesOf(db)).toContain("message_fts");
+    expect(tablesOf(db)).toContain("message_fts_data");
     db.close();
   });
 
