@@ -16,10 +16,11 @@
 // a wall reloading mid-edit before it was ever committed, so a column that
 // changes after the statement has run once changes with a bump.
 
+import { ORDER_STATUSES_SQL } from "./factory-order";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 31;
+export const SCHEMA_VERSION = 32;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -260,10 +261,12 @@ CREATE TABLE IF NOT EXISTS factory_order (
   -- is testimony, and it disagreed with the record the moment work was delegated.
   session_id      TEXT,
   station         TEXT,
-  -- One status per column on the board. Work that stopped without landing goes back
-  -- to queued, because it is work nobody is holding; that it was tried, and why it
-  -- stopped, is the failed event and stop_reason rather than a state of its own.
-  status          TEXT NOT NULL CHECK (status IN ('queued', 'working', 'completed')),
+  -- One status per column on the board, except dropped, which leaves the board rather
+  -- than taking a column: a decision not to work is none of todo, active or done. Work
+  -- that stopped without landing goes back to queued, because it is work nobody is
+  -- holding; that it was tried, and why it stopped, is the failed event and stop_reason
+  -- rather than a state of its own.
+  status          TEXT NOT NULL CHECK (status IN (${ORDER_STATUSES_SQL})),
   created_at      TEXT NOT NULL,
   claimed_at      TEXT,
   updated_at      TEXT NOT NULL,
@@ -312,7 +315,7 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,
   order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   ts                    TEXT NOT NULL,
-  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'commit_created', 'check_finished', 'review_finished', 'completed', 'failed')),
+  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'commit_created', 'check_finished', 'review_finished', 'completed', 'dropped', 'failed')),
   -- Who did it, written by the statement that writes the moment and never after.
   -- An entry completed later is a mutation of a record someone may already have
   -- read, and a log that can be amended is not evidence of anything.

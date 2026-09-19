@@ -114,9 +114,13 @@ const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.station, o.status,
        LEFT JOIN factory_order_event e ON e.id = (SELECT e2.id FROM factory_order_event e2 WHERE e2.order_id = o.id ORDER BY e2.ts DESC, e2.id DESC LIMIT 1)
        LEFT JOIN factory_worker fw ON fw.name = e.worker`;
 
-const WALL_STATUSES = new Set<string>(ORDER_STATUSES);
+/** A decision not to work is none of `todo`, `active` or `done`, so a dropped order
+ *  never reaches `mapOrder`: the snapshot query excludes it and the item view answers
+ *  not found, the way it does for an id nothing holds. */
+type BoardStatus = Exclude<OrderStatus, "dropped">;
+const WALL_STATUSES = new Set<string>(ORDER_STATUSES.filter((status) => status !== "dropped"));
 
-const stageByStatus: Record<OrderStatus, WallStage> = {
+const stageByStatus: Record<BoardStatus, WallStage> = {
   queued: "todo",
   working: "active",
   completed: "done",
@@ -151,10 +155,11 @@ function role(value: string | null): WallRole | undefined {
   return value;
 }
 
-/** The column is text, so a status this build does not know is refused rather than drawn. */
-function status(value: string): OrderStatus {
+/** The column is text, so a status this build does not know — dropped included, since it
+ *  never reaches this function — is refused rather than drawn. */
+function status(value: string): BoardStatus {
   if (!WALL_STATUSES.has(value)) throw new Error(`unknown factory order status: ${value}`);
-  return value as OrderStatus;
+  return value as BoardStatus;
 }
 
 function mapOrder(row: OrderRow, now: Date): WallOrder {
@@ -187,7 +192,9 @@ export function assembleWallSnapshot(db: Database, now = new Date()): WallSnapsh
   // Ordered by the same clock the card shows, so a column's ages read down the page. An order that
   // needs a person stops recording events, so it sinks under the moving work and would be the
   // first card a bound dropped — it is ranked ahead of the bound rather than after it.
-  const rows = db.query(`${ORDER_ROW_SELECT} ORDER BY e.ts DESC, o.id`).all() as OrderRow[];
+  const rows = db
+    .query(`${ORDER_ROW_SELECT} WHERE o.status <> 'dropped' ORDER BY e.ts DESC, o.id`)
+    .all() as OrderRow[];
   const mapped = rows.map((row) => mapOrder(row, now));
   const totals: Record<WallStage, number> = { todo: 0, active: 0, done: 0 };
   const orders: WallOrder[] = [];
@@ -301,7 +308,9 @@ function eventEntry(row: EventRow): WallItemEntry {
  *  time. */
 export function assembleItemView(db: Database, orderId: string, now = new Date()): WallItemView | null {
   const row = db.query(`${ORDER_ROW_SELECT} WHERE o.id = ?`).get(orderId) as OrderRow | null;
-  if (!row) return null;
+  // A dropped order left the wall entirely, so its item view answers not found the same
+  // way an id nothing holds does, rather than drawing a card for a stage it is none of.
+  if (!row || row.status === "dropped") return null;
   const events = db
     .query(
       `SELECT e.ts, e.kind, e.worker AS worker_id, e.station, e.hold_type, e.reason,

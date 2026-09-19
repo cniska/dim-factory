@@ -1,7 +1,9 @@
 import type { Database } from "bun:sqlite";
 import {
+  amendOrder,
   appendOrderEvent,
   claimOrder,
+  dropOrder,
   moveOrder,
   ORDER_PRIORITIES,
   type OrderEventKind,
@@ -41,6 +43,8 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--des
        dim order document <order-id> --path <path>
        dim order ship <order-id>
        dim order stop <order-id> <completed|failed> [--reason "..."]
+       dim order amend <order-id> [--title "..."] [--description "..."]
+       dim order drop <order-id> --reason "..."
 
 An order defaults to this checkout's owner/repo, so work belongs to the project it
 is built in rather than to wherever the command was typed.`;
@@ -249,6 +253,25 @@ function stop(db: Database, orderId: string, args: string[], worktree: string, w
   return kind === "completed" ? `${orderId} is completed` : `${orderId} is queued again`;
 }
 
+const AMEND_FLAGS = ["--title", "--description"];
+
+function amend(db: Database, orderId: string, args: string[]): string {
+  const given = flags(args, AMEND_FLAGS);
+  const title = given.get("--title");
+  const description = given.get("--description");
+  if (title === undefined && description === undefined) {
+    throw fail("amend needs --title or --description; nothing to change is not a call");
+  }
+  amendOrder(db, orderId, { title, description });
+  return `${orderId} amended`;
+}
+
+function drop(db: Database, orderId: string, args: string[], worker: string): string {
+  const reason = required(flags(args, ["--reason"]), "--reason");
+  dropOrder(db, orderId, reason, worker);
+  return `${orderId} is dropped: ${reason}`;
+}
+
 export function runOrderCommand(
   db: Database,
   args: string[],
@@ -313,5 +336,7 @@ export function runOrderCommand(
   }
   if (command === "ship") return ship(db, orderId, rest, worktree, env);
   if (command === "stop") return stop(db, orderId, rest, worktree, worker);
+  if (command === "amend") return amend(db, orderId, rest);
+  if (command === "drop") return drop(db, orderId, rest, worker);
   throw new OrderCommandError(`${command} is not an order subcommand`);
 }

@@ -7,10 +7,16 @@ import { reachesTrunk } from "./trunk";
 import type { WorkerHookReport } from "./worker-environment";
 
 /** What state the order is in. A claim takes it straight to `working`: an order
- *  already exists before a worker sees it, so taking one and starting it are one act. */
-export const ORDER_STATUSES = ["queued", "working", "completed"] as const;
+ *  already exists before a worker sees it, so taking one and starting it are one act.
+ *  `dropped` is the owner's decision not to build a queued order at all, which is a
+ *  different fact from an attempt that failed and goes back to `queued`. */
+export const ORDER_STATUSES = ["queued", "working", "completed", "dropped"] as const;
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
+/** Binds at creation only: a table already on disk keeps the CHECK it was born with. */
+export const ORDER_STATUSES_SQL = ORDER_STATUSES.map((status) => `'${status}'`).join(",");
+
 export type OrderEventKind =
   | "queued"
   | "claimed"
@@ -19,6 +25,7 @@ export type OrderEventKind =
   | "check_finished"
   | "review_finished"
   | "completed"
+  | "dropped"
   | "failed";
 
 export const ORDER_PRIORITIES = ["urgent", "high", "medium", "low", "unset"] as const;
@@ -58,7 +65,11 @@ export type OrderEvent = {
   ts?: string;
 };
 
-export type OrderNotDoneCode = "order_not_checked" | "order_not_integrated" | "order_trunk_unknown";
+export type OrderNotDoneCode =
+  | "order_not_checked"
+  | "order_not_integrated"
+  | "order_trunk_unknown"
+  | "order_not_queued";
 
 /** Carries a code because a caller deciding which condition failed must not match on prose. */
 export class OrderNotDone extends Error {
@@ -71,13 +82,30 @@ export class OrderNotDone extends Error {
 }
 
 const now = (): string => new Date().toISOString();
-/** Only `completed` ends an order. Work that stopped without landing goes back to
- *  `queued`, because it is work nobody is holding. */
-export const TERMINAL_ORDER_STATUSES: readonly OrderStatus[] = ["completed"];
+/** `completed` and `dropped` end an order. Work that stopped without landing goes back to
+ *  `queued`, because it is work nobody is holding; a drop is the owner deciding not to
+ *  build it at all, which is not an attempt and does not go back. */
+export const TERMINAL_ORDER_STATUSES: readonly OrderStatus[] = ["completed", "dropped"];
 const terminalStatuses = new Set<OrderStatus>(TERMINAL_ORDER_STATUSES);
 
 /** A refusal is read by whoever typed the command, so it names the act and not the event kind. */
 const VERB_FOR_KIND: Record<string, string> = { completed: "complete", moved: "move" };
+
+/** A claim copies an order's description into the record, so amending or dropping the
+ *  words after that would leave a worker building to one statement and the queue
+ *  showing another. */
+function assertOrderQueued(db: Database, orderId: string, act: string): void {
+  const order = db.query("SELECT status FROM factory_order WHERE id = ?").get(orderId) as {
+    status: OrderStatus;
+  } | null;
+  if (!order) throw new Error(`order not found: ${orderId}`);
+  if (order.status !== "queued") {
+    throw new OrderNotDone(
+      "order_not_queued",
+      `order ${orderId} is ${order.status} and only a queued order can be ${act}`,
+    );
+  }
+}
 
 export function isTerminalOrderStatus(status: OrderStatus): boolean {
   return terminalStatuses.has(status);
@@ -207,6 +235,37 @@ export function setOrderHold(db: Database, orderId: string, hold: string | null)
   if (result.changes !== 1) throw new Error(`order not found: ${orderId}`);
 }
 
+/**
+ * The owner's decision not to build a queued order at all, kept as a status rather than a
+ * delete: why an order was not built is worth finding later, and a deletion is the one write
+ * this record cannot hold. Refused once anything has claimed the order, for the same reason
+ * `amendOrder` is: a claim already copied the order's words into the record.
+ */
+export function dropOrder(db: Database, orderId: string, reason: string, worker: string, at = now()): number {
+  return db.transaction(() =>
+    appendOrderEventInTransaction(db, orderId, { kind: "dropped", worker, status: "dropped", reason }, at),
+  )();
+}
+
+/**
+ * Corrects a queued order's own words. Refused once anything has claimed it: a claim copies
+ * the description into the record, so amending afterward would leave a worker building to
+ * one statement while the queue shows another.
+ */
+export function amendOrder(
+  db: Database,
+  orderId: string,
+  changes: { title?: string; description?: string },
+  at = now(),
+): void {
+  assertOrderQueued(db, orderId, "amended");
+  db.run(
+    `UPDATE factory_order SET title = coalesce(?, title), description = coalesce(?, description),
+       updated_at = ? WHERE id = ?`,
+    [changes.title ?? null, changes.description ?? null, at, orderId],
+  );
+}
+
 export function orderStatus(db: Database, orderId: string): OrderStatus {
   const order = db.query("SELECT status FROM factory_order WHERE id = ?").get(orderId) as {
     status: OrderStatus;
@@ -248,7 +307,14 @@ function appendOrderEventInTransaction(
   if (isTerminalOrderStatus(order.status)) {
     throw new Error(`order ${orderId} is already ${order.status}`);
   }
-  if (event.kind !== "queued" && event.kind !== "claimed") {
+  if (event.kind === "dropped") {
+    if (order.status !== "queued") {
+      throw new OrderNotDone(
+        "order_not_queued",
+        `order ${orderId} is ${order.status} and only a queued order can be dropped`,
+      );
+    }
+  } else if (event.kind !== "queued" && event.kind !== "claimed") {
     if (order.status !== "working") {
       const action = VERB_FOR_KIND[event.kind] ?? event.kind;
       throw new Error(`order ${orderId} must be working before it can ${action}`);

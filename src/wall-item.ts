@@ -12,6 +12,7 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   document_updated: "Document",
   environment_reported: "Worker environment",
   completed: "Completed",
+  dropped: "Dropped",
   failed: "Failed",
 };
 
@@ -40,6 +41,7 @@ const RAIL_MARK_BY_KIND: Record<WallItemKind, RailMark> = {
   document_updated: "moment",
   environment_reported: "moment",
   completed: "outcome",
+  dropped: "outcome",
   failed: "outcome",
 };
 

@@ -549,4 +549,85 @@ describe("order command", () => {
     expect(() => runOrderCommand(database, [...claim, "--colour", "red"])).toThrow(OrderCommandError);
     expect(() => runOrderCommand(database, [...claim, "--title", "second"])).toThrow(OrderCommandError);
   });
+
+  test("an amend corrects a queued order's own words", () => {
+    const database = db();
+    queued(database);
+
+    expect(runOrderCommand(database, ["amend", "order-1", "--title", "A corrected title"])).toBe(
+      "order-1 amended",
+    );
+
+    expect(database.query("SELECT title, description FROM factory_order WHERE id = 'order-1'").get()).toEqual(
+      {
+        title: "A corrected title",
+        description: "The record holds what an order is called and never what it says.",
+      },
+    );
+  });
+
+  test("an amend with neither flag is a refusal, not a no-op", () => {
+    const database = db();
+    queued(database);
+
+    expect(() => runOrderCommand(database, ["amend", "order-1"])).toThrow(OrderCommandError);
+  });
+
+  test("an amend is refused once the order is claimed", () => {
+    const database = db();
+    queued(database);
+    runOrderCommand(database, claim);
+
+    expect(() => runOrderCommand(database, ["amend", "order-1", "--title", "too late"])).toThrow(
+      expect.objectContaining({ code: "order_not_queued" }),
+    );
+  });
+
+  test("a drop takes a queued order off the wall entirely, carrying the reason", () => {
+    const database = db();
+    queued(database);
+
+    expect(runOrderCommand(database, ["drop", "order-1", "--reason", "superseded elsewhere"])).toBe(
+      "order-1 is dropped: superseded elsewhere",
+    );
+
+    expect(database.query("SELECT status FROM factory_order WHERE id = 'order-1'").get()).toEqual({
+      status: "dropped",
+    });
+    const snapshot = assembleWallSnapshot(database);
+    expect(snapshot.totals).toEqual({ todo: 0, active: 0, done: 0 });
+    expect(snapshot.orders).toEqual([]);
+  });
+
+  test("a drop needs a reason", () => {
+    const database = db();
+    queued(database);
+
+    expect(() => runOrderCommand(database, ["drop", "order-1"])).toThrow(OrderCommandError);
+  });
+
+  test("a drop is refused once the order is claimed", () => {
+    const database = db();
+    queued(database);
+    runOrderCommand(database, claim);
+
+    expect(() => runOrderCommand(database, ["drop", "order-1", "--reason", "too late to drop"])).toThrow(
+      expect.objectContaining({ code: "order_not_queued" }),
+    );
+  });
+
+  test("a dropped order cannot be claimed, amended or dropped again", () => {
+    const database = db();
+    queued(database);
+    runOrderCommand(database, ["drop", "order-1", "--reason", "not worth building"]);
+
+    expect(() => runOrderCommand(database, claim)).toThrow();
+    expect(() => runOrderCommand(database, ["amend", "order-1", "--title", "too late"])).toThrow(
+      expect.objectContaining({ code: "order_not_queued" }),
+    );
+    // Dropped is terminal, so a second drop meets that refusal rather than order_not_queued.
+    expect(() => runOrderCommand(database, ["drop", "order-1", "--reason", "again"])).toThrow(
+      "order-1 is already dropped",
+    );
+  });
 });

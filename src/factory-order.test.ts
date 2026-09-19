@@ -6,8 +6,11 @@ import { join } from "node:path";
 import { closeDb, openDb } from "./db";
 import { runFactoryOrder } from "./factory-operator";
 import {
+  amendOrder,
   appendOrderEvent,
   claimOrder,
+  dropOrder,
+  isTerminalOrderStatus,
   moveOrder,
   queueOrder,
   recordOrderCheck,
@@ -1052,6 +1055,57 @@ describe("factory order report records", () => {
     expect(database.query("SELECT status FROM factory_order WHERE id = 'order-1'").get()).toEqual({
       status: "completed",
     });
+    database.close();
+  });
+
+  test("drops a queued order, leaving dropped as a terminal status with its reason", () => {
+    const database = db();
+    queueOrder(database, order, worker);
+
+    dropOrder(database, "order-1", "superseded by other work", worker);
+
+    expect(
+      database.query("SELECT status, stop_reason FROM factory_order WHERE id = 'order-1'").get(),
+    ).toEqual({ status: "dropped", stop_reason: "superseded by other work" });
+    expect(isTerminalOrderStatus("dropped")).toBe(true);
+    // Terminal, so nothing can be appended against it afterward.
+    expect(() => appendOrderEvent(database, "order-1", { worker, kind: "moved", station: "review" })).toThrow(
+      "order order-1 is already dropped",
+    );
+    database.close();
+  });
+
+  test("refuses to drop an order once it is claimed", () => {
+    const database = db();
+    queueOrder(database, order, worker);
+    claimOrder(database, "order-1", claim, worker);
+
+    expect(() => dropOrder(database, "order-1", "too late", worker)).toThrow(
+      expect.objectContaining({ code: "order_not_queued" }),
+    );
+    database.close();
+  });
+
+  test("amends a queued order's title and description", () => {
+    const database = db();
+    queueOrder(database, order, worker);
+
+    amendOrder(database, "order-1", { title: "A corrected title" });
+
+    expect(database.query("SELECT title, description FROM factory_order WHERE id = 'order-1'").get()).toEqual(
+      { title: "A corrected title", description: null },
+    );
+    database.close();
+  });
+
+  test("refuses to amend an order once it is claimed", () => {
+    const database = db();
+    queueOrder(database, order, worker);
+    claimOrder(database, "order-1", claim, worker);
+
+    expect(() => amendOrder(database, "order-1", { title: "too late" })).toThrow(
+      expect.objectContaining({ code: "order_not_queued" }),
+    );
     database.close();
   });
 });
