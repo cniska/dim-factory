@@ -285,6 +285,11 @@ CREATE INDEX IF NOT EXISTS factory_order_event_order_ts ON factory_order_event(o
 -- prints the event id it wrote, the PostToolUse payload carries that stdout beside
 -- the harness's own agent id, and the join is on a row id dim minted. A root
 -- session has no agent id and attributes to its session instead.
+--
+-- The hook fires after the command it reports, so a moment is attributed by the
+-- next sync rather than by the one running when it was written. Anything gating
+-- on a worker drains the spool first, or it reads a row that is merely late as
+-- one that is unattributed.
 CREATE TABLE IF NOT EXISTS factory_order_event_worker (
   event_id      INTEGER PRIMARY KEY REFERENCES factory_order_event(id) ON DELETE CASCADE,
   worker_id     TEXT,
