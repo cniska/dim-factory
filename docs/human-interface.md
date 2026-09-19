@@ -98,7 +98,7 @@ Beside the history runs the order's timeline, in the order things happened, with
 
 Keeping it lean is what makes it readable: the rail carries a mark, a worker and a time, and nothing else. An event's words belong to the report it came from, so a rail that starts quoting them becomes a second copy of the history it indexes. The marks stay uniform, so four review rounds read as four marks rather than four paragraphs, and a delegation reads as the handover it was — one agent's run ending where another's begins. The rail and the history are one list in two columns, because two lists side by side drift apart at the first line that wraps and the rail stops indexing what it sits beside.
 
-The wall's primitives are small and its runtime dependencies are few, so the dialog is worth building on the platform's own `<dialog>` element, which carries modality, focus and dismissal already. Pulling in a component library for one surface would cost more than the surface.
+The wall's primitives are small and its runtime dependencies are few, so the dialog is worth building on the platform's own `<dialog>` element, which carries modality, focus and dismissal already. Pulling in a component library for one surface would cost more than the surface. Escape and a click on the backdrop both close it, and neither states itself, so a close control sits in the header beside the title: the one way out a reader does not have to already know.
 
 `dim q order <order-id>` already reads this record from the same tables, so the view renders what that query reads rather than assembling a second account of an order. Where the two would disagree, the query is the one to fix.
 

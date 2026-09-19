@@ -1,4 +1,4 @@
-import { CircleAlert, CircleCheck, CircleDot, CircleX, type LucideIcon, Radio } from "lucide-react";
+import { CircleAlert, CircleCheck, CircleDot, CircleX, type LucideIcon, Radio, X } from "lucide-react";
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { age } from "./age";
@@ -420,7 +420,19 @@ function ItemDialog({
     >
       <div className="flex max-h-[85vh] flex-col">
         <header className="flex flex-col gap-2 border-b p-5">
-          <h2 className="text-[15px] text-foreground">{order.title}</h2>
+          <div className="flex items-start justify-between gap-4">
+            <h2 className="text-[15px] text-foreground">{order.title}</h2>
+            {/* Escape and a backdrop click already close the dialog; neither is visible, so this
+                is the one way out a reader does not have to already know. */}
+            <button
+              type="button"
+              onClick={() => dialog.current?.close()}
+              aria-label="Close"
+              className="shrink-0 rounded-wall p-1 text-quiet transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
+            >
+              <X size={16} strokeWidth={1.8} aria-hidden="true" />
+            </button>
+          </div>
           <dl className="flex flex-wrap items-center gap-x-6 gap-y-1 text-quiet">
             <div className="flex items-center gap-2">
               <dt>project</dt>
