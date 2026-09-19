@@ -1,9 +1,9 @@
-import type { WallOrder, WallPhase, WallStation } from "./factory-wall";
+import type { WallOrder, WallStage, WallStation } from "./factory-wall";
 
-export const WALL_COLUMNS: ReadonlyArray<{ phase: WallPhase; label: string }> = [
-  { phase: "todo", label: "Todo" },
-  { phase: "active", label: "Active" },
-  { phase: "done", label: "Done" },
+export const WALL_COLUMNS: ReadonlyArray<{ stage: WallStage; label: string }> = [
+  { stage: "todo", label: "Todo" },
+  { stage: "active", label: "Active" },
+  { stage: "done", label: "Done" },
 ];
 
 export const STATION_LABELS: Record<WallStation, string> = {
@@ -20,12 +20,12 @@ export const FAILURE_MARKS_SHOWN = 6;
 
 /** The snapshot arrives ranked — what needs a person first, then the rest by how recently
  *  something happened — so a column keeps the order it was handed. */
-export function ordersByPhase(orders: WallOrder[]): Record<WallPhase, WallOrder[]> {
+export function ordersByStage(orders: WallOrder[]): Record<WallStage, WallOrder[]> {
   return WALL_COLUMNS.reduce(
     (columns, column) => {
-      columns[column.phase] = orders.filter((order) => order.phase === column.phase);
+      columns[column.stage] = orders.filter((order) => order.stage === column.stage);
       return columns;
     },
-    { todo: [], active: [], done: [] } as Record<WallPhase, WallOrder[]>,
+    { todo: [], active: [], done: [] } as Record<WallStage, WallOrder[]>,
   );
 }
