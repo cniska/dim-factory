@@ -424,6 +424,6 @@ A result longer than the cap says how many rows were cut and names `--rows`, so 
 
 ## 12. What is left
 
-[`build-order.md`](build-order.md) holds why each unbuilt piece is next, and [`queue.json`](../queue.json) holds each item's status and what it waits on, changing as work lands. Those two say what is true now; the sections above argue for the shape rather than track it.
+[`build-order.md`](build-order.md) holds why each unbuilt piece is next, and the queue `dim queue` reads holds each item's status and what it waits on, changing as work lands. Those two say what is true now; the sections above argue for the shape rather than track it.
 
 The original cut was ten slices, and the rule that governed it still holds: every table reads only the source files, so it rebuilds at any time and a schema change is `dim rebuild` rather than a migration. The spool is the exception, because it is the one input that exists only if something was running when the session ended.

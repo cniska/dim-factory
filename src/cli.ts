@@ -17,6 +17,7 @@ import { serveWall } from "./factory-wall";
 import { type Finding, FindingError, findingFrom, recordFinding } from "./finding";
 import { readFlags, requiredFlag } from "./flags";
 import { committerName } from "./git-identity";
+import { labelFor } from "./git-remote";
 import { installHooks, planHooks } from "./hooks";
 import { withLock } from "./lock";
 import { ORDER_USAGE, OrderCommandError, runOrderCommand } from "./order-command";
@@ -103,10 +104,14 @@ const USAGE = `usage: dim <command>
                   the machinery; orders already running are left to finish
   factory clear [--by <who>]
                   clear the live stop, so claims are taken again
-  queue ready <file> [--limit <n>]
-                  print planned items whose dependencies are completed
-  queue transition <file> <item> <status> [--reason <text>] [--at <iso>]
-                  append a validated status transition to the queue file
+  queue add <item-id> --title "..." [--description "..."] [--priority <p>]
+            [--needs <id,id>] [--order <order-id>] [--queue <queue-id>]
+                  add an item to a repo's queue, which defaults to its owner/repo
+  queue ready [--limit <n>] [--queue <queue-id>]
+                  print planned items whose dependencies are completed, most
+                  urgent first and oldest before newest within a priority
+  queue transition <item-id> <status> [--reason "..."] [--order <order-id>]
+                  record an item moving, and which order moved it
 `;
 
 function printReport(report: SyncReport): void {
@@ -850,7 +855,17 @@ try {
       await runQuery(process.argv.slice(3));
       break;
     case "queue":
-      console.log(await runQueueCommand(process.argv.slice(3)));
+      {
+        const root = checkoutRoot(process.cwd());
+        const db = openDb(dbPath());
+        try {
+          // The same owner/repo `repo_commit.label` and `dim finding` key on, so an item, a
+          // commit and a finding in one project all join on one identity.
+          console.log(runQueueCommand(db, process.argv.slice(3), root ? labelFor(root) : null));
+        } finally {
+          closeDb(db);
+        }
+      }
       break;
     case "order":
       {

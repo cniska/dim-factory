@@ -24,12 +24,11 @@ That stopping rule is the substance of this file. The argument it serves is dim 
 
 A repo's queue is **read, never inferred** — the rule `dim check-command` already follows for the check, and it binds harder here, because working the wrong queue is the confident-and-wrong failure a person is at the gate for.
 
-1. **The argument is the queue**, when one is given. `/dim-factory queue.json` works that planner file, `/dim-factory docs/backlog.md` works that document, and a tracker query works those issues. Nothing is discovered and nothing else is read as a queue.
-2. **Otherwise the repo declares it**, in its `AGENTS.md` or `CLAUDE.md`: a tracker's team or project, an issue label, a path.
-3. **Otherwise look**, in this order, and say which was found: a planner file the repo tracks — `queue.json` at its root, or the path its rules file names, and only where `dim queue ready` parses it, since another file of that name is another format; a queue doc the repo's rules file links; `TODO.md`; open issues in the repo's tracker.
-4. **Two plausible queues is a question, not a coin flip.** Name both and stop.
+1. **The repo's own queue**, which `dim queue ready` prints. It is keyed on the checkout's `owner/repo`, so the queue is the project's rather than the directory's, and `--queue <id>` works another one deliberately.
+2. **The argument is the queue**, when one is given. `/dim-factory docs/backlog.md` works that document and a tracker query works those issues. Nothing is discovered and nothing else is read as a queue.
+3. **Two plausible queues is a question, not a coin flip.** Name both and stop.
 
-**A planner file states its own items, so nothing about one is retyped.** `dim queue ready <file> [--limit <n>]` prints every unblocked item as JSON — its `id`, `title`, one-sentence `description` and `status` — and `dim queue transition <file> <item> <status> [--reason <text>]` records it moving. A repo may keep a document beside the file carrying the same ids: the file owns each item's state, and the document owns the order and any fence the file cannot express.
+**The rows state their own items, so nothing about one is retyped.** `dim queue ready [--limit <n>]` prints every unblocked item as JSON — its `id`, `title`, one-sentence `description`, `priority` and `status` — most urgent first and oldest before newest within a priority. `dim queue transition <item> <status> [--reason "..."] [--order <id>]` records it moving and which order moved it, and `dim queue add` puts a new item in, including one found mid-slice.
 
 Reading a tracker is your own tools' business — `dim` holds no credential and reaches no network, and nothing here changes that.
 
@@ -37,7 +36,7 @@ Reading a tracker is your own tools' business — `dim` holds no credential and 
 
 Take the first item that is **unblocked and statable in one sentence**. A queue that marks its own blockers is telling you where to start; one that does not means reading enough of each item to know.
 
-From a planner file, `dim queue ready <file>` is that list: an item it does not print is either waiting on a dependency or already past `planned`, and either way is not yours to take. It sorts by id, which is not priority, so where a document beside the file carries the order, take the item that document ranks highest among the ones `ready` printed, and read that item's section for a fence before taking it.
+`dim queue ready` is that list, in the order to take them: an item it does not print is either waiting on a dependency or already past `planned`, and either way is not yours to take. Where a document carries the argument for the same ids, read the taken item's section there for a fence before starting.
 
 An item you cannot state needs scoping, which is `dim-station-plan` — run it, leave the sharpened item in the queue, and stop there.
 
@@ -69,10 +68,10 @@ dim order move <order-id> --station <plan|build|review|ship>
 dim order stop <order-id> <completed|blocked|fenced|failed> [--reason "..."]
 ```
 
-- The queue id and item id are what finding the queue identified: a planner file's own `id` and the item's `id` in it, or the path or tracker query that named the queue and the item's identity there.
-- **The title, the statement and the ids come from the queue, not from you.** Against a planner file they are the `id`, `title` and `description` `dim queue ready` printed, passed through unedited; against a document or a tracker the statement is the one sentence taking an item required before it could be taken. A claim that paraphrases an item records a second version of it.
+- The queue id and item id are what finding the queue identified: the `queueId` and `id` `dim queue ready` printed, or the path or tracker query that named the queue and the item's identity there.
+- **The title, the statement and the ids come from the queue, not from you.** From the rows they are the `id`, `title` and `description` `dim queue ready` printed, passed through unedited; against a document or a tracker the statement is the one sentence taking an item required before it could be taken. A claim that paraphrases an item records a second version of it.
 - **The title is the item's name, never its id.** It is what every card is read by; the ids are there for an agent to join on.
-- A planner file also holds the item's own state, so the item moves as the order does: `dim queue transition <file> <item> claimed` before the builder, `running` when it starts, and `completed`, `blocked`, `fenced` or `failed` at the end, with `--reason` wherever the order stopped for one. An item dropped before a builder started it is `cancelled`. Every one of those five is terminal and refused a further transition, the way a stopped order is, so an item recorded `blocked` leaves `ready` until someone edits the file — record it only where that is what you mean.
+- The item moves as the order does, and its statuses are its own rather than the order's: `dim queue transition <item> claimed --order <order-id>` before the builder, then `completed` where the work landed or `planned` where it did not, so an order that stopped blocked, fenced or failed leaves its item claimable again and why it stopped stays the order's to say. `dropped` is for an item that will not be built at all. Both `completed` and `dropped` are terminal and refuse a further move.
 - Naming the branch is yours, because the claim records it before the builder exists. `dim wt path <branch>` prints where that worktree will be without creating it, so the claim carries the location the builder then makes.
 - **`--agent <id>` names the builder, and is not optional in practice.** Without it the card names no worker, and several orders running at once are indistinguishable — pass the stable identifier the harness gives the builder it spawns.
 - **The station is a word the wall holds — `plan`, `build`, `review` or `ship` — never the line running it.** `dim-line-feat` and `dim-line-fix` are the line, not the station; the station is where the work is, and `dim order move <order-id> --station <name>` records it changing as the work moves through planning, building and review.

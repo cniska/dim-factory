@@ -1,138 +1,99 @@
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { parseQueue, type QueueStatus, readyItems, transitionQueue } from "./queue-planner";
+import type { Database } from "bun:sqlite";
+import { readFlags, requiredFlag } from "./flags";
+import {
+  addItem,
+  QUEUE_PRIORITIES,
+  QUEUE_STATUSES,
+  type QueuePriority,
+  type QueueStatus,
+  readyItems,
+  transitionItem,
+} from "./queue-store";
 
-const usage = "usage: dim queue <ready|transition> <queue-file> ...";
+export class QueueCommandError extends Error {}
 
-function valueAfter(args: string[], flag: string): string | undefined {
-  const indexes = args.flatMap((value, index) => (value === flag ? [index] : []));
-  if (indexes.length > 1) throw new Error(`${flag} may be provided once`);
-  const index = indexes[0];
-  if (index === undefined) return undefined;
-  const value = args[index + 1];
-  if (value === undefined || value.startsWith("--")) throw new Error(`${flag} requires a value`);
-  return value;
+export const QUEUE_USAGE = `usage: dim queue add <item-id> --title "..." [--description "..."]
+                     [--priority <${QUEUE_PRIORITIES.join("|")}>] [--needs <id,id>]
+                     [--order <order-id>] [--queue <queue-id>]
+       dim queue ready [--limit <n>] [--queue <queue-id>]
+       dim queue transition <item-id> <${QUEUE_STATUSES.join("|")}> [--reason "..."]
+                     [--order <order-id>] [--queue <queue-id>]
+
+The queue defaults to this checkout's owner/repo, so an item belongs to the project
+it is built in rather than to wherever the command was typed.`;
+
+const fail = (message: string): Error => new QueueCommandError(message);
+
+function isPriority(value: string): value is QueuePriority {
+  return (QUEUE_PRIORITIES as readonly string[]).includes(value);
 }
 
-function assertFlags(args: string[], allowed: Set<string>): void {
-  for (const [index, arg] of args.entries()) {
-    if (!arg.startsWith("--")) continue;
-    if (!allowed.has(arg)) throw new Error(`unknown option: ${arg}`);
-    if (index === args.length - 1 || args[index + 1]?.startsWith("--")) {
-      throw new Error(`${arg} requires a value`);
-    }
-  }
+function isStatus(value: string): value is QueueStatus {
+  return (QUEUE_STATUSES as readonly string[]).includes(value);
 }
 
-function positiveLimit(value: string | undefined): number {
-  if (value === undefined) return Number.POSITIVE_INFINITY;
+function positiveLimit(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
   const limit = Number(value);
-  if (!Number.isInteger(limit) || limit < 1) throw new Error("limit must be a positive integer");
+  if (!Number.isInteger(limit) || limit < 1) throw fail("--limit takes a positive whole number");
   return limit;
 }
 
-async function readQueue(path: string): Promise<ReturnType<typeof parseQueue>> {
-  return parseQueue(await readFile(path, "utf8"));
-}
+export function runQueueCommand(db: Database, args: string[], defaultQueue: string | null): string {
+  const action = args[0];
+  const queueOf = (given: Map<string, string>): string => {
+    const queue = given.get("--queue") ?? defaultQueue;
+    if (!queue) throw fail("--queue is required outside a checkout with a remote");
+    return queue;
+  };
+  const now = new Date().toISOString();
 
-async function withQueueLock<T>(path: string, action: () => Promise<T>): Promise<T> {
-  const lock = `${path}.lock`;
-  const staging = `${lock}.${process.pid}`;
-  while (true) {
-    try {
-      await rm(staging, { recursive: true, force: true });
-      await mkdir(staging);
-      await writeFile(join(staging, "pid"), String(process.pid), "utf8");
-      await rename(staging, lock);
-      break;
-    } catch (error) {
-      await rm(staging, { recursive: true, force: true });
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      const stale = `${lock}.stale-${process.pid}`;
-      try {
-        await rm(stale, { recursive: true, force: true });
-        await rename(lock, stale);
-      } catch {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        continue;
-      }
-      let holder: number | undefined;
-      try {
-        holder = Number.parseInt(await readFile(join(stale, "pid"), "utf8"), 10);
-      } catch {
-        holder = undefined;
-      }
-      if (holder === undefined || !Number.isInteger(holder) || holder <= 0 || !pidIsAlive(holder)) {
-        await rm(stale, { recursive: true, force: true });
-        continue;
-      }
-      await rename(stale, lock);
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-  }
-  try {
-    return await action();
-  } finally {
-    await rm(lock, { recursive: true, force: true });
-  }
-}
-
-function pidIsAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM";
-  }
-}
-
-async function writeQueue(path: string, queue: ReturnType<typeof parseQueue>): Promise<void> {
-  const temporaryDirectory = await mkdtemp(join(dirname(path), ".queue-tmp-"));
-  const temporary = join(temporaryDirectory, "queue.json");
-  try {
-    await writeFile(temporary, `${JSON.stringify(queue, null, 2)}\n`, { encoding: "utf8", mode: 0o644 });
-    await rename(temporary, path);
-  } finally {
-    await rm(temporaryDirectory, { recursive: true, force: true });
-  }
-}
-
-export async function runQueueCommand(args: string[]): Promise<string> {
-  const command = args[0];
-  const path = args[1];
-  if (!command || !path) throw new Error(usage);
-  assertFlags(args, command === "ready" ? new Set(["--limit"]) : new Set(["--reason", "--at"]));
-  if (command === "ready") {
-    if (args.slice(2).length !== 0 && args.slice(2).length !== 2) {
-      throw new Error(usage);
-    }
-    if (args.slice(2).length === 2 && args[2] !== "--limit") throw new Error(usage);
-    const items = readyItems(await readQueue(path), positiveLimit(valueAfter(args, "--limit"))).map(
-      ({ id, title, status }) => ({
+  if (action === "add") {
+    const id = args[1];
+    if (!id || id.startsWith("--")) throw fail(QUEUE_USAGE);
+    const given = readFlags(
+      args.slice(2),
+      ["--title", "--description", "--priority", "--needs", "--order", "--queue"],
+      fail,
+    );
+    const priority = given.get("--priority");
+    if (priority !== undefined && !isPriority(priority)) throw fail(`${priority} is not a priority`);
+    const needs = given.get("--needs");
+    const item = addItem(
+      db,
+      {
+        queueId: queueOf(given),
         id,
-        title,
-        status,
-      }),
+        title: requiredFlag(given, "--title", fail),
+        ...(given.get("--description") === undefined ? {} : { description: given.get("--description") }),
+        ...(priority === undefined ? {} : { priority }),
+        ...(needs === undefined ? {} : { dependsOn: needs.split(",").map((one) => one.trim()) }),
+        ...(given.get("--order") === undefined ? {} : { discoveredByOrderId: given.get("--order") }),
+      },
+      now,
     );
-    return JSON.stringify(items);
+    return `added ${item.id} to ${item.queueId}`;
   }
-  if (command !== "transition") throw new Error(usage);
-  const itemId = args[2];
-  const status = args[3] as QueueStatus | undefined;
-  if (!itemId || !status) throw new Error(usage);
-  const options = args.slice(4);
-  if (options.length % 2 !== 0 || options.some((arg, index) => index % 2 === 0 && !arg.startsWith("--"))) {
-    throw new Error(usage);
+
+  if (action === "ready") {
+    const given = readFlags(args.slice(1), ["--limit", "--queue"], fail);
+    const items = readyItems(db, queueOf(given), positiveLimit(given.get("--limit")));
+    // JSON because a station reads this rather than a person: an item's own words reach the
+    // claim unedited only if nothing in between reformats them.
+    return JSON.stringify(items, null, 2);
   }
-  return withQueueLock(path, async () => {
-    const updated = transitionQueue(
-      await readQueue(path),
-      itemId,
-      status,
-      valueAfter(args, "--reason"),
-      valueAfter(args, "--at") ?? new Date().toISOString(),
-    );
-    await writeQueue(path, updated);
-    return JSON.stringify({ id: itemId, status });
-  });
+
+  if (action === "transition") {
+    const id = args[1];
+    const status = args[2];
+    if (!id || !status || !isStatus(status)) throw fail(QUEUE_USAGE);
+    const given = readFlags(args.slice(3), ["--reason", "--order", "--queue"], fail);
+    const item = transitionItem(db, queueOf(given), id, status, now, {
+      ...(given.get("--reason") === undefined ? {} : { reason: given.get("--reason") }),
+      ...(given.get("--order") === undefined ? {} : { orderId: given.get("--order") }),
+    });
+    return `${item.id} is ${item.status}`;
+  }
+
+  throw fail(QUEUE_USAGE);
 }
