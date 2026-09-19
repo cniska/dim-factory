@@ -125,10 +125,9 @@ const stageByStatus: Record<OrderStatus, WallStage> = {
   fenced: "active",
   completed: "done",
   failed: "done",
-  abandoned: "done",
 };
 
-const attentionStatuses = new Set<OrderStatus>(["blocked", "fenced", "failed", "abandoned"]);
+const attentionStatuses = new Set<OrderStatus>(["blocked", "fenced", "failed"]);
 
 // An order is claimed with whatever word the caller passed, and a line or a typo is not a station.
 // Naming one of the four for a value that is none of them puts a card at a station nobody sent

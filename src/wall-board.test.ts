@@ -64,12 +64,12 @@ describe("factory wall board", () => {
     const columns = ordersByStage([
       order("running-item", "active", "build", "working"),
       order("blocked-item", "active", "build", "blocked"),
-      order("abandoned-item", "done", "build", "abandoned"),
+      order("completed-item", "done", "build", "completed"),
       order("failed-item", "done", "build", "failed"),
     ]);
 
     expect(columns.active.map((entry) => entry.id)).toEqual(["running-item", "blocked-item"]);
-    expect(columns.done.map((entry) => entry.id)).toEqual(["abandoned-item", "failed-item"]);
+    expect(columns.done.map((entry) => entry.id)).toEqual(["completed-item", "failed-item"]);
   });
 
   test("keeps orders from every station in the same stage column", () => {

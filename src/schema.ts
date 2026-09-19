@@ -13,7 +13,7 @@
 
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 25;
+export const SCHEMA_VERSION = 26;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -292,7 +292,7 @@ CREATE TABLE IF NOT EXISTS factory_order (
   worktree        TEXT,
   branch          TEXT,
   station         TEXT,
-  status          TEXT NOT NULL CHECK (status IN ('waiting', 'working', 'completed', 'blocked', 'fenced', 'failed', 'abandoned')),
+  status          TEXT NOT NULL CHECK (status IN ('waiting', 'working', 'completed', 'blocked', 'fenced', 'failed')),
   claimed_at      TEXT NOT NULL,
   started_at      TEXT,
   updated_at      TEXT NOT NULL,
@@ -306,7 +306,7 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,
   order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   ts                    TEXT NOT NULL,
-  kind                  TEXT NOT NULL CHECK (kind IN ('claimed', 'delegated', 'started', 'moved', 'commit_created', 'check_finished', 'review_finished', 'fenced', 'blocked', 'completed', 'failed', 'abandoned')),
+  kind                  TEXT NOT NULL CHECK (kind IN ('claimed', 'delegated', 'started', 'moved', 'commit_created', 'check_finished', 'review_finished', 'fenced', 'blocked', 'completed', 'failed')),
   actor_id              TEXT,
   session_id            TEXT,
   station               TEXT,

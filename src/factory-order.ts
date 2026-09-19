@@ -6,15 +6,7 @@ import type { WorkerHookReport } from "./worker-environment";
  * What state the order is in. `claimed` is an event and not one of these: the act
  * of claiming leaves the order waiting for the worker that will start it.
  */
-export const ORDER_STATUSES = [
-  "waiting",
-  "working",
-  "completed",
-  "blocked",
-  "fenced",
-  "failed",
-  "abandoned",
-] as const;
+export const ORDER_STATUSES = ["waiting", "working", "completed", "blocked", "fenced", "failed"] as const;
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export type OrderEventKind =
@@ -28,8 +20,7 @@ export type OrderEventKind =
   | "fenced"
   | "blocked"
   | "completed"
-  | "failed"
-  | "abandoned";
+  | "failed";
 
 /** What a worker was called in as. The operator runs the line and holds no order, so it is not one. */
 export const ORDER_ROLES = ["planner", "builder", "reviewer"] as const;
@@ -84,13 +75,7 @@ export class OrderNotDone extends Error {
 }
 
 const now = (): string => new Date().toISOString();
-export const TERMINAL_ORDER_STATUSES: readonly OrderStatus[] = [
-  "completed",
-  "blocked",
-  "fenced",
-  "failed",
-  "abandoned",
-];
+export const TERMINAL_ORDER_STATUSES: readonly OrderStatus[] = ["completed", "blocked", "fenced", "failed"];
 const terminalStatuses = new Set<OrderStatus>(TERMINAL_ORDER_STATUSES);
 
 /** A refusal is read by whoever typed the command, so it names the act and not the event kind. */
@@ -239,7 +224,7 @@ function appendOrderEventInTransaction(db: Database, orderId: string, event: Ord
   );
   db.run(
     `UPDATE factory_order SET status = coalesce(?, status), updated_at = ?, started_at = coalesce(started_at, ?),
-       completed_at = CASE WHEN ? IN ('completed', 'blocked', 'fenced', 'failed', 'abandoned') THEN ? ELSE completed_at END,
+       completed_at = CASE WHEN ? IN ('completed', 'blocked', 'fenced', 'failed') THEN ? ELSE completed_at END,
        stop_reason = coalesce(?, stop_reason)
        WHERE id = ?`,
     [
@@ -388,7 +373,7 @@ function assertChecked(db: Database, orderId: string): void {
       "order_not_checked",
       `order ${orderId} cannot complete without a check that passed after its last commit: ` +
         `record one with \`dim order check ${orderId} --command "..." --exit 0\`, ` +
-        "or stop the order as blocked, fenced, failed or abandoned.",
+        "or stop the order as blocked, fenced or failed.",
     );
   }
 }
@@ -410,7 +395,7 @@ function assertIntegrated(db: Database, orderId: string, worktree: string): void
       "order_not_integrated",
       `order ${orderId} recorded no commit, so nothing of it is on the trunk: ` +
         `record what it landed with \`dim order commit ${orderId} --sha <sha>\`, ` +
-        "or stop the order as blocked, fenced, failed or abandoned.",
+        "or stop the order as blocked, fenced or failed.",
     );
   }
   const reach = shas.map((sha) => reachesTrunk(worktree, sha));
@@ -433,7 +418,7 @@ function assertIntegrated(db: Database, orderId: string, worktree: string): void
   throw new OrderNotDone(
     "order_not_integrated",
     `order ${orderId} has no recorded commit on the trunk: merge its branch before completing it, ` +
-      "or stop the order as blocked, fenced, failed or abandoned.",
+      "or stop the order as blocked, fenced or failed.",
   );
 }
 
