@@ -33,7 +33,7 @@ import { rebuild, type SyncReport, sync } from "./sync";
 import { trace } from "./trace";
 import { readWake, renderWake, type Wake, wireFor } from "./wake";
 import { resolveWalk, spoolWalk } from "./walk";
-import { DEFAULT_WALL_PORT, WALL_PORT_ENV, WallPortError, wallPort } from "./wall-port";
+import { DEFAULT_WALL_PORT, WALL_HOT_ENV, WALL_PORT_ENV, WallPortError, wallPort } from "./wall-port";
 import { warn } from "./warn";
 import { checkCommand } from "./workspace-commands";
 import { runWt, WtError } from "./wt-command";
@@ -80,7 +80,8 @@ const USAGE = `usage: dim <command>
   schedule pause|resume <id>
                   pause or resume a persisted schedule
   wall            serve the local read-only factory wall on loopback, at one
-                  address every run (${DEFAULT_WALL_PORT}, or ${WALL_PORT_ENV}); --dev adds hot reload
+                  address every run (${DEFAULT_WALL_PORT}, or ${WALL_PORT_ENV}); --dev reloads
+                  both the page and the server as you edit
   label <id> <correction|clarification|not_correction> [--rule "..."]
                   record your judgement on one candidate correction
   finding --slice <name> --dimension <name> --answer <fixed|refused>
@@ -767,20 +768,33 @@ try {
       break;
     case "wall":
       {
+        const dev = process.argv.includes("--dev");
+        // Bun's own hmr reloads the client bundle and nothing else, so a server
+        // module edited after boot keeps serving what it was loaded with: the board
+        // re-renders against stale logic and looks wrong rather than old. `--hot`
+        // reloads both halves, and re-running under it here is what makes --dev mean
+        // what it says. The variable is how the second run knows not to do it again.
+        if (dev && process.env[WALL_HOT_ENV] !== "1") {
+          const child = Bun.spawn(["bun", "--hot", import.meta.path, ...process.argv.slice(2)], {
+            env: { ...process.env, [WALL_HOT_ENV]: "1" },
+            stdio: ["inherit", "inherit", "inherit"],
+          });
+          process.exit(await child.exited);
+        }
         const port = wallPort();
-        const server = await serveWall({ port, hmr: process.argv.includes("--dev") }).catch(
-          (error: unknown) => {
-            // A wall is already there on that port far more often than the port
-            // is someone else's, and the second wall would be the stale one.
-            if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
-              throw new WallPortError(
-                "in-use",
-                `something already listens on ${port}; open http://127.0.0.1:${port} or set ${WALL_PORT_ENV}`,
-              );
-            }
-            throw error;
-          },
-        );
+        const server = await serveWall({ port, hmr: dev }).catch((error: unknown) => {
+          // Which of the two is stale is not knowable from here — today's was the one
+          // already listening, eleven hours old — so this names both ways out rather
+          // than sending the reader to whichever happens to hold the port.
+          if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
+            throw new WallPortError(
+              "in-use",
+              `something already listens on ${port}. It may be an older wall: open ` +
+                `http://127.0.0.1:${port}, or stop it and run this again, or set ${WALL_PORT_ENV}`,
+            );
+          }
+          throw error;
+        });
         console.log(`factory wall listening at http://${server.hostname}:${server.port}`);
       }
       break;
