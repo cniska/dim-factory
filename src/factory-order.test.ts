@@ -17,6 +17,7 @@ import {
   recordOrderFinding,
   updateOrderLocation,
 } from "./factory-order";
+import { clearStop, FactoryStopError, pullStop } from "./factory-stop";
 import { commitOffTrunk, integratedRepo, repoWithoutTrunk } from "./fixtures.test-support";
 import { dbPath } from "./paths";
 import { SCHEMA_SQL } from "./schema";
@@ -850,5 +851,44 @@ describe("factory order report records", () => {
     });
     closeDb(rebuilt);
     rmSync(home, { recursive: true, force: true });
+  });
+
+  test("refuses a claim while the floor is stopped, writing nothing", () => {
+    const database = db();
+    pullStop(database, { reason: "the commit gate records nothing" });
+
+    expect(() => createOrder(database, order)).toThrow(FactoryStopError);
+    expect(database.query("SELECT count(*) AS n FROM factory_order").get()).toEqual({ n: 0 });
+    expect(database.query("SELECT count(*) AS n FROM factory_order_event").get()).toEqual({ n: 0 });
+
+    database.close();
+  });
+
+  test("takes a claim once the stop is cleared", () => {
+    const database = db();
+    pullStop(database, { reason: "the commit gate records nothing" });
+    clearStop(database);
+
+    createOrder(database, order);
+
+    expect(database.query("SELECT status FROM factory_order WHERE id = 'order-1'").get()).toEqual({
+      status: "waiting",
+    });
+    database.close();
+  });
+
+  test("lets an order already running record and stop while the floor is stopped", () => {
+    const database = db();
+    createOrder(database, order);
+    appendOrderEvent(database, "order-1", { kind: "started", status: "working" });
+    pullStop(database, { reason: "the commit gate records nothing" });
+
+    landed(database, "order-1");
+    appendOrderEvent(database, "order-1", { kind: "completed", status: "completed" });
+
+    expect(database.query("SELECT status FROM factory_order WHERE id = 'order-1'").get()).toEqual({
+      status: "completed",
+    });
+    database.close();
   });
 });

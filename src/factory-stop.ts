@@ -8,7 +8,7 @@ export type FactoryStop = {
   orderId?: string;
 };
 
-export type FactoryStopCode = "usage" | "reason_missing" | "already_live" | "none_live";
+export type FactoryStopCode = "usage" | "reason_missing" | "already_live" | "none_live" | "floor_stopped";
 
 /** Carries a code because a caller deciding which condition failed must not match on prose. */
 export class FactoryStopError extends Error {

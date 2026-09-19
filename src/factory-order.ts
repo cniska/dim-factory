@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { FactoryStopError, liveStop } from "./factory-stop";
 import { reachesTrunk } from "./trunk";
 import type { WorkerHookReport } from "./worker-environment";
 
@@ -105,8 +106,21 @@ function eventValues(orderId: string, event: OrderEvent, ts: string): (string | 
   ];
 }
 
+/**
+ * A stopped floor finishes what it holds and takes nothing new: killing a worker
+ * mid-write leaves a worktree nobody owns and a commit half made, so the refusal
+ * sits here, where work enters, and nowhere an order already running passes.
+ */
 export function createOrder(db: Database, order: Order, at = now()): void {
   db.transaction(() => {
+    const stop = liveStop(db);
+    if (stop) {
+      throw new FactoryStopError(
+        "floor_stopped",
+        `the factory is stopped and takes no new order: ${stop.reason} ` +
+          `(${stop.pulledBy}, ${stop.pulledAt}); clear it with \`dim factory clear\``,
+      );
+    }
     db.run(
       `INSERT INTO factory_order
        (id, run_id, queue_id, item_id, title, description, agent_id, role, session_id, worktree, branch, station, status, claimed_at, updated_at)

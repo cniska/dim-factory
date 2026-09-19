@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
+import { pullStop } from "./factory-stop";
 import { assembleWallSnapshot } from "./factory-wall";
 import { integratedRepo } from "./fixtures.test-support";
 import { OrderCommandError, runOrderCommand } from "./order-command";
@@ -353,6 +354,14 @@ describe("order command", () => {
     expect(() => runOrderCommand(database, ["claim", "order-1", "--run", "run-1"])).toThrow(
       OrderCommandError,
     );
+    expect(assembleWallSnapshot(database).orders).toEqual([]);
+  });
+
+  test("a claim onto a stopped floor is refused with the reason the floor was stopped for", () => {
+    const database = db();
+    pullStop(database, { reason: "the commit gate records nothing" });
+
+    expect(() => runOrderCommand(database, claim)).toThrow(/the commit gate records nothing/);
     expect(assembleWallSnapshot(database).orders).toEqual([]);
   });
 
