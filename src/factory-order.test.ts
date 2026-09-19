@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
-import { runFactoryOrder } from "./factory-driver";
+import { runFactoryOrder } from "./factory-operator";
 import {
   appendOrderEvent,
   createOrder,
@@ -91,7 +91,7 @@ describe("factory order report records", () => {
         context.setLocation(trunk.dir, "order-2");
         context.delegate("agent-3", "session-3", "dim-station-review");
         context.recordCommit(trunk.sha, "feat: observable order");
-        context.recordFile({ path: "src/factory-driver.ts", added: 18, removed: 2 });
+        context.recordFile({ path: "src/factory-operator.ts", added: 18, removed: 2 });
         context.recordCheck({ command: "bun run verify", exitCode: 0, result: "green" });
         context.recordFinding({ dimension: "tests", summary: "holds", answer: "fixed" });
         context.recordDocument("docs/factory.md");
@@ -127,7 +127,7 @@ describe("factory order report records", () => {
       sha: trunk.sha,
     });
     expect(database.query("SELECT path FROM factory_order_file WHERE order_id = 'order-2'").get()).toEqual({
-      path: "src/factory-driver.ts",
+      path: "src/factory-operator.ts",
     });
     expect(
       database.query("SELECT command FROM factory_order_check WHERE order_id = 'order-2'").get(),

@@ -8,7 +8,7 @@ argument-hint: "<what is broken>"
 
 The front door for a defect. It runs the whole line: triage, a test that fails on the bug, then the slice loop in [`dim-station-build`](../dim-station-build/SKILL.md). You type this once; it invokes what it needs.
 
-When `dim-factory` hands this line a queue item, create the isolated checkout first with `dim wt <branch>`, then continue from inside that worktree. The factory driver routes the item; this line owns the checkout and work.
+When `dim-factory` hands this line a queue item, create the isolated checkout first with `dim wt <branch>`, then continue from inside that worktree. The operator routes the item; this line owns the checkout and work.
 
 Apply [`dim-git`](../dim-git/SKILL.md) for the worktree ownership, commit evidence and integration boundaries; this line decides the defect's cause and fix slices, not a second Git policy.
 

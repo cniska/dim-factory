@@ -59,7 +59,7 @@ function required(given: Map<string, string>, flag: string): string {
 }
 
 /**
- * What the worker was called in as, which the driver knows when it spawns one and
+ * What the worker was called in as, which the operator knows when it spawns one and
  * nothing downstream can recover: a station says where the work is, never who holds it.
  */
 function role(given: string | undefined): OrderRole | undefined {

@@ -271,7 +271,7 @@ CREATE TABLE IF NOT EXISTS factory_stop (
 CREATE UNIQUE INDEX IF NOT EXISTS factory_stop_live
   ON factory_stop((cleared_at IS NULL)) WHERE cleared_at IS NULL;
 
--- Operational factory evidence is written by the order driver, not derived from
+-- Operational factory evidence is written by the operator, not derived from
 -- transcripts or repository files. No source could reproduce a claim, event or
 -- report after the fact, so rebuild writes these rows back rather than re-reading
 -- them.
@@ -289,7 +289,7 @@ CREATE TABLE IF NOT EXISTS factory_order (
   -- more has none to copy, and an invented one would read as the owner's words.
   description     TEXT,
   agent_id        TEXT,
-  -- What the worker was called in as. Set when the driver spawns it and never again:
+  -- What the worker was called in as. Set when the operator spawns it and never again:
   -- a builder stays a builder wherever its work sits, so nothing downstream has to
   -- guess a worker's kind from the station, which says where the work is and not who
   -- is holding it.

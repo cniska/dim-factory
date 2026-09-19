@@ -20,7 +20,7 @@ describe("resolving a role", () => {
   test("every role runs at the tier the factory declares for it", () => {
     const env = machine(COMPLETE);
 
-    expect(route("driver", env)).toEqual({ tier: "deep", model: "large" });
+    expect(route("operator", env)).toEqual({ tier: "deep", model: "large" });
     expect(route("planner", env)).toEqual({ tier: "deep", model: "large" });
     expect(route("builder", env)).toEqual({ tier: "standard", model: "middling" });
     expect(route("simplifier", env)).toEqual({ tier: "standard", model: "middling" });
@@ -32,7 +32,7 @@ describe("resolving a role", () => {
 
   test("declares no role the report cannot print", () => {
     expect(ROLES).toEqual([
-      "driver",
+      "operator",
       "planner",
       "builder",
       "simplifier",
