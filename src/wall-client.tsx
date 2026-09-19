@@ -673,9 +673,47 @@ function useNow(freshAt: number | null): Date {
   return now;
 }
 
+/**
+ * A beat of its own, on the second, for the clock's separator alone.
+ *
+ * The clock reads this machine's time, so it goes on ticking whether or not anything is behind
+ * it; the separator stopping is the wall's only sign that the feed did. It is kept off the
+ * board's own beat, which counts in minutes and would redraw every card to blink one character.
+ */
+function useBlink(live: boolean): boolean {
+  const [on, setOn] = useState(true);
+
+  useEffect(() => {
+    if (!live) return;
+    const tick = setInterval(() => setOn((was) => !was), 1000);
+    return () => clearInterval(tick);
+  }, [live]);
+
+  return live ? on : true;
+}
+
+/** The clock, its separator blinking while the feed is landing. */
+function Clock({ at, beat }: { at: string; beat: boolean }) {
+  // Read out of the string rather than assumed, so a clock with no separator is shown whole.
+  const parts = /^(\d+)(\D)(\d+)$/.exec(at);
+  if (!parts) return <span className="tabular-nums">{at}</span>;
+  const [, hours = "", separator = "", minutes = ""] = parts;
+
+  return (
+    <span className="inline-flex tabular-nums">
+      <Digits value={hours} />
+      <span className={cn("transition-opacity duration-200", beat ? "opacity-100" : "opacity-25")}>
+        {separator}
+      </span>
+      <Digits value={minutes} />
+    </span>
+  );
+}
+
 function App() {
   const { snapshot, stale, unavailable, answered, lastMessage, bumped } = useSnapshot();
   const now = useNow(lastMessage);
+  const blink = useBlink(!stale && !unavailable);
   const [opened, setOpened] = useState<WallOrder | null>(null);
   const feed = feedStateOf(unavailable, stale);
   const FeedIcon = FEED_ICON[feed];
@@ -709,9 +747,10 @@ function App() {
         >
           <FeedIcon size={15} aria-hidden="true" />
           <span>{FEED_LABEL[feed]}</span>
-          {lastMessage ? (
-            <span className="text-quiet">· {age(new Date(lastMessage).toISOString(), now)}</span>
-          ) : null}
+          <span className="flex items-baseline gap-1.5 text-quiet">
+            <span aria-hidden="true">·</span>
+            <Clock at={timeLabel(now.toISOString())} beat={blink} />
+          </span>
         </div>
       </header>
 
