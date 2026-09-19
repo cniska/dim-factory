@@ -16,7 +16,7 @@ import type {
   WallStatus,
 } from "./factory-wall";
 import { cn } from "./lib/utils";
-import { FAILURE_MARKS_SHOWN, ordersByPhase, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
+import { FAILURE_MARKS_SHOWN, ordersByStage, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
 import { ITEM_KIND_LABELS, RAIL_MARK_GLYPH, type RailStop, railStops, shortSha } from "./wall-item";
 import "./wall.css";
 
@@ -679,7 +679,7 @@ function App() {
   const [opened, setOpened] = useState<WallOrder | null>(null);
   const feed = feedStateOf(unavailable, stale);
   const FeedIcon = FEED_ICON[feed];
-  const columns = ordersByPhase(snapshot.orders);
+  const columns = ordersByStage(snapshot.orders);
   // The board bounds what it draws, so the order a reader opened can leave the snapshot while the
   // view is open. Its own card is what the view keeps showing, and the snapshot's beat is what
   // goes on prompting a re-read.
@@ -711,12 +711,12 @@ function App() {
       </header>
 
       <section className="grid grid-cols-3 items-start gap-4 pb-16" aria-label="Factory kanban board">
-        {WALL_COLUMNS.map(({ phase, label }) => (
+        {WALL_COLUMNS.map(({ stage, label }) => (
           <BoardColumn
-            key={phase}
+            key={stage}
             label={label}
-            orders={columns[phase]}
-            total={snapshot.totals[phase]}
+            orders={columns[stage]}
+            total={snapshot.totals[stage]}
             now={now}
             bumped={bumped}
             onOpen={setOpened}

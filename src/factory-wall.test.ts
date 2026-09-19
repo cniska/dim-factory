@@ -106,7 +106,7 @@ describe("factory wall snapshot", () => {
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:10:00.000Z"));
 
     expect(snapshot.source).toBe("database");
-    expect(snapshot.orders.map((order) => [order.title, order.station, order.status, order.phase])).toEqual([
+    expect(snapshot.orders.map((order) => [order.title, order.station, order.status, order.stage])).toEqual([
       ["Unblock the queue", "review", "fenced", "active"],
       ["Show the wall", "build", "running", "active"],
       ["Ship the board", "ship", "completed", "done"],
@@ -118,7 +118,7 @@ describe("factory wall snapshot", () => {
       title: "Show the wall",
       itemId: "wall",
       station: "build",
-      phase: "active",
+      stage: "active",
       agent: "builder",
       worker: workerName("builder"),
       role: "builder",
@@ -148,7 +148,7 @@ describe("factory wall snapshot", () => {
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z"));
 
-    expect(snapshot.orders.map((order) => [order.status, order.phase])).toEqual([["waiting", "todo"]]);
+    expect(snapshot.orders.map((order) => [order.status, order.stage])).toEqual([["waiting", "todo"]]);
     db.close();
   });
 
@@ -177,7 +177,7 @@ describe("factory wall snapshot", () => {
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z"));
 
-    expect(snapshot.orders.map((order) => [order.status, order.phase, order.attention])).toEqual([
+    expect(snapshot.orders.map((order) => [order.status, order.stage, order.attention])).toEqual([
       ["abandoned", "done", "operator stopped"],
     ]);
     db.close();
@@ -325,7 +325,7 @@ describe("factory wall snapshot", () => {
       title: "Claimed by nobody in particular",
       itemId: "unattributed",
       station: "build",
-      phase: "todo",
+      stage: "todo",
       // Nobody was named, so nothing says what kind of worker this is either.
       role: "unknown",
       status: "waiting",
@@ -409,7 +409,7 @@ describe("factory wall snapshot", () => {
     db.close();
   });
 
-  test("bounds each phase column so finished work cannot crowd out current work", () => {
+  test("bounds each stage column so finished work cannot crowd out current work", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     const seed = (id: string, kind: "fenced" | "completed") => {
@@ -444,8 +444,8 @@ describe("factory wall snapshot", () => {
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:10:00.000Z"));
 
-    expect(snapshot.orders.filter((order) => order.phase === "active")).toHaveLength(12);
-    expect(snapshot.orders.filter((order) => order.phase === "done")).toHaveLength(12);
+    expect(snapshot.orders.filter((order) => order.stage === "active")).toHaveLength(12);
+    expect(snapshot.orders.filter((order) => order.stage === "done")).toHaveLength(12);
     expect(snapshot.totals).toEqual({ todo: 0, active: 14, done: 14 });
     db.close();
   });
@@ -495,7 +495,7 @@ describe("factory wall snapshot", () => {
     }
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:00:00.000Z"));
-    const active = snapshot.orders.filter((order) => order.phase === "active");
+    const active = snapshot.orders.filter((order) => order.stage === "active");
 
     expect(active[0]?.id).toBe("order-fenced-early");
     expect(active).toHaveLength(12);

@@ -14,7 +14,7 @@ The client is a React static bundle that Bun serves. Its CSS custom properties a
 
 The client uses semantic HTML, CSS variables, a dark responsive layout, lightweight client state, bounded lists and fullscreen presentation. Its base palette is black, white and grayscale surfaces; semantic accents are reserved for agent roles and order states. Bun serves the React bundle beside the local read-only server. The interface owns its visual system and has no control surface.
 
-The page answers one question: where is each item in the factory flow? A three-column board puts every item in Todo, Active or Done, the phase every item shares whatever kind of work it is. An order that has been claimed but not started is Todo; a running order is Active; a completed, failed or abandoned order is Done. A blocked or fenced order stays in Active: it has not reached an outcome, and a stuck item is what a wall exists to show. Each fixed-size card carries the item's title, its station, phase and the worker it is recorded against. Blocked, fenced, failed and abandoned orders keep their operational warning on the card.
+The page answers one question: where is each item in the factory flow? A three-column board puts every item in Todo, Active or Done, the stage every item shares whatever kind of work it is. An order that has been claimed but not started is Todo; a working order is Active; a completed, failed or abandoned order is Done. A blocked or fenced order stays in Active: it has not reached an outcome, and a stuck item is what a wall exists to show. Each fixed-size card carries the item's title, its station, stage and the worker it is recorded against. Blocked, fenced, failed and abandoned orders keep their operational warning on the card.
 
 Column headers carry the column's whole count, not the number of cards drawn, and a column holding more work than it can draw says how many it left out. Empty columns retain only their heading and count so the board stays quiet.
 
@@ -47,7 +47,7 @@ The review checks the same wall at a 1440×900 fullscreen desktop viewport and b
 The wall should feel like a software production floor:
 
 - **Stations are visible.** Every card names the station its order is at; an order's current station is immediately clear without the layout being built around it.
-- **Work-in-progress is concrete.** An order card names the item, its station, phase and worker; what it counts is the order's own failed checks, and everything else it accrued waits in the item view.
+- **Work-in-progress is concrete.** An order card names the item, its station, stage and worker; what it counts is the order's own failed checks, and everything else it accrued waits in the item view.
 - **Flow is legible.** The page shows work moving from Todo through Active to Done and makes a stopped item interrupt that flow visually.
 - **Stopped work says why.** The reason an order cannot move is on the card, without opening raw logs.
 - **Quality is part of the surface.** Checks, review findings, setup state and fences sit beside progress rather than behind a separate admin page.
@@ -129,7 +129,7 @@ The board shows the work; the operator is who is driving the floor. An order's a
 
 The wall remains an overview as the factory grows:
 
-- **Columns absorb volume.** Each phase column draws its most recently updated work in bounded cards rather than expanding into a history list, and is bounded on its own, so a growing Done column cannot push Active work off the board.
+- **Columns absorb volume.** Each stage column draws its most recently updated work in bounded cards rather than expanding into a history list, and is bounded on its own, so a growing Done column cannot push Active work off the board.
 - **Details stay on the card.** The item's title, station, state and the worker it is recorded against are visible without turning the wall into a table.
 - **The transport stays quiet.** WebSocket updates send changed snapshots or bounded deltas, not an ever-growing event log.
 - **The layout adapts.** The same hierarchy works as a fullscreen wall, a wide desktop page and a narrow browser window.

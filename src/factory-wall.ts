@@ -9,7 +9,12 @@ import type { ResourceEvidence, WorkerEnvironmentPhase, WorkerHookReport } from 
 import { workerName } from "./worker-name";
 
 export type WallStation = "plan" | "build" | "review" | "ship" | "unknown";
-export type WallPhase = "todo" | "active" | "done";
+/**
+ * How far along the line an order is, which several statuses share: a card can
+ * change status without changing column, and reading the stage off the status is
+ * what keeps the two from being one list.
+ */
+export type WallStage = "todo" | "active" | "done";
 export type WallStatus = "running" | "waiting" | "blocked" | "fenced" | "completed" | "failed" | "abandoned";
 export type WallRole = "builder" | "reviewer" | "planner" | "unknown";
 
@@ -18,7 +23,7 @@ export type WallOrder = {
   title: string;
   itemId: string;
   station: WallStation;
-  phase: WallPhase;
+  stage: WallStage;
   /** Absent where no claim and no event named an agent: an order nobody is recorded against. */
   agent?: string;
   /** What the floor calls this worker, so a card never shows an internal identity. */
@@ -39,7 +44,7 @@ export type WallSnapshot = {
   generatedAt: string;
   source: "database" | "unavailable";
   orders: WallOrder[];
-  totals: Record<WallPhase, number>;
+  totals: Record<WallStage, number>;
 };
 
 /** Every kind an order event carries, plus the two kinds of evidence written without one,
@@ -122,7 +127,7 @@ const wallStatusByOrderStatus: Record<string, WallStatus> = {
   abandoned: "abandoned",
 };
 
-const phaseByStatus: Record<WallStatus, WallPhase> = {
+const stageByStatus: Record<WallStatus, WallStage> = {
   waiting: "todo",
   running: "active",
   blocked: "active",
@@ -181,7 +186,7 @@ function mapOrder(row: OrderRow, now: Date): WallOrder {
     title: row.title,
     itemId: row.item_id,
     station: stationName,
-    phase: phaseByStatus[orderStatus],
+    stage: stageByStatus[orderStatus],
     ...(agentId ? { agent: agentId, worker: workerName(agentId) } : {}),
     role: role(row.role),
     status: orderStatus,
@@ -198,14 +203,14 @@ export function assembleWallSnapshot(db: Database, now = new Date()): WallSnapsh
   // first card a bound dropped — it is ranked ahead of the bound rather than after it.
   const rows = db.query(`${ORDER_ROW_SELECT} ORDER BY e.ts DESC, o.id`).all() as OrderRow[];
   const mapped = rows.map((row) => mapOrder(row, now));
-  const totals: Record<WallPhase, number> = { todo: 0, active: 0, done: 0 };
+  const totals: Record<WallStage, number> = { todo: 0, active: 0, done: 0 };
   const orders: WallOrder[] = [];
   for (const order of [
     ...mapped.filter((order) => order.attention),
     ...mapped.filter((order) => !order.attention),
   ]) {
-    totals[order.phase] += 1;
-    if (totals[order.phase] <= MAX_COLUMN_CARDS) orders.push(order);
+    totals[order.stage] += 1;
+    if (totals[order.stage] <= MAX_COLUMN_CARDS) orders.push(order);
   }
   return { generatedAt: now.toISOString(), source: "database", orders, totals };
 }
