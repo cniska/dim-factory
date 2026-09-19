@@ -27,7 +27,7 @@ const unavailableSnapshot: WallSnapshot = {
   totals: { todo: 0, active: 0, done: 0 },
 };
 
-const stateLabels: Record<OrderStatus, string> = {
+const statusLabels: Record<OrderStatus, string> = {
   working: "Working",
   waiting: "Waiting",
   blocked: "Blocked",
@@ -143,7 +143,7 @@ function OrderCard({
             aria-hidden="true"
             className={order.status === "working" ? "breathing" : undefined}
           />
-          {stateLabels[order.status]}
+          {statusLabels[order.status]}
         </span>
         {/* Re-derived from the timestamp every second rather than read off the snapshot, so
             the board keeps moving between pushes instead of standing still. */}
@@ -444,9 +444,9 @@ function ItemDialog({
               </dd>
             </div>
             <div className="flex items-center gap-2">
-              <dt>state</dt>
+              <dt>status</dt>
               <dd className={stopped.has(order.status) ? "text-warn-foreground" : "text-muted-foreground"}>
-                {stateLabels[order.status]}
+                {statusLabels[order.status]}
               </dd>
             </div>
             <div className="flex items-center gap-2">
