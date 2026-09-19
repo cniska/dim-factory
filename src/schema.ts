@@ -7,9 +7,15 @@
 // row.
 // SCHEMA_VERSION exists so sync can refuse to run against a database only a
 // re-read can correct: a changed column, or a changed rule for what identifies a
-// row, since rows already written keep the old identity. A table added with
-// nothing existing feeding it is neither — every write opens the database
-// through SCHEMA_SQL, which creates it — so adding one is not a version bump.
+// row, since rows already written keep the old identity. Adding a table is
+// neither, because every write opens the database through SCHEMA_SQL, which
+// creates it. That exemption covers the run that adds it and nothing after: from
+// the first write onward a database holds the table, CREATE TABLE IF NOT EXISTS
+// leaves it as it is, and changing one of its columns strands every database that
+// already ran the old statement. Whether a table is new is a fact about the
+// databases on disk rather than about the diff, and this one was materialized by
+// a wall reloading mid-edit before it was ever committed, so a column that
+// changes after the statement has run once changes with a bump.
 
 import { TOOLS_SQL } from "./tools";
 
