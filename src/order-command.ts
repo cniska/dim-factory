@@ -58,6 +58,17 @@ function required(given: Map<string, string>, flag: string): string {
 }
 
 /**
+ * The event id rides out on stdout because that is the only thing the harness records
+ * beside the agent that ran the command: nothing tells a `dim` process which worker it
+ * is, so the worker is joined on afterwards through a row id this wrote.
+ */
+export const EVENT_MARK = "event=";
+
+function written(message: string, event: number): string {
+  return `${message} ${EVENT_MARK}${event}`;
+}
+
+/**
  * What the worker was called in as, which the operator knows when it spawns one and
  * nothing downstream can recover: a station says where the work is, never who holds it.
  */
@@ -83,7 +94,7 @@ function add(db: Database, orderId: string, args: string[], defaultProject: stri
   const given = flags(args, ADD_FLAGS);
   const project = given.get("--project") ?? defaultProject;
   if (!project) throw fail("--project is required outside a checkout with a remote");
-  queueOrder(db, {
+  const event = queueOrder(db, {
     id: orderId,
     project,
     title: required(given, "--title"),
@@ -91,19 +102,19 @@ function add(db: Database, orderId: string, args: string[], defaultProject: stri
     priority: priority(given.get("--priority")),
     hold: given.get("--hold"),
   });
-  return `queued ${orderId} on ${project}`;
+  return written(`queued ${orderId} on ${project}`, event);
 }
 
 function claim(db: Database, orderId: string, args: string[]): string {
   const given = flags(args, CLAIM_FLAGS);
-  claimOrder(db, orderId, {
+  const event = claimOrder(db, orderId, {
     runId: required(given, "--run"),
     agentId: given.get("--agent"),
     role: role(given.get("--role")),
     sessionId: given.get("--session"),
     station: given.get("--station"),
   });
-  return `${orderId} is working`;
+  return written(`${orderId} is working`, event);
 }
 
 /**
@@ -150,8 +161,8 @@ const EVIDENCE: Record<string, Evidence> = {
     flags: ["--sha", "--subject"],
     record: (db, id, given) => {
       const sha = required(given, "--sha");
-      recordOrderCommit(db, id, sha, given.get("--subject"));
-      return `${id} recorded commit ${sha}`;
+      const event = recordOrderCommit(db, id, sha, given.get("--subject"));
+      return written(`${id} recorded commit ${sha}`, event);
     },
   },
   file: {
@@ -171,8 +182,12 @@ const EVIDENCE: Record<string, Evidence> = {
     record: (db, id, given) => {
       const command = required(given, "--command");
       const code = exitCode(given);
-      recordOrderCheck(db, id, { command, exitCode: code, result: given.get("--result") });
-      return `${id} recorded ${command} (${code})`;
+      const event = recordOrderCheck(db, id, {
+        command,
+        exitCode: code,
+        result: given.get("--result"),
+      });
+      return written(`${id} recorded ${command} (${code})`, event);
     },
   },
   finding: {
@@ -180,13 +195,13 @@ const EVIDENCE: Record<string, Evidence> = {
     record: (db, id, given) => {
       const dimension = required(given, "--dimension");
       const ended = answer(given);
-      recordOrderFinding(db, id, {
+      const event = recordOrderFinding(db, id, {
         dimension,
         summary: required(given, "--summary"),
         answer: ended,
         resolution: given.get("--resolution"),
       });
-      return `${id} recorded a ${ended} finding on ${dimension}`;
+      return written(`${id} recorded a ${ended} finding on ${dimension}`, event);
     },
   },
   document: {
@@ -210,7 +225,7 @@ function stop(db: Database, orderId: string, args: string[], worktree: string): 
     throw new OrderCommandError(`${kind} is not a way an order can stop`);
   }
   const given = flags(rest, ["--reason"]);
-  appendOrderEvent(
+  const event = appendOrderEvent(
     db,
     orderId,
     {
@@ -221,7 +236,7 @@ function stop(db: Database, orderId: string, args: string[], worktree: string): 
     undefined,
     worktree,
   );
-  return kind === "completed" ? `${orderId} is completed` : `${orderId} is queued again`;
+  return written(kind === "completed" ? `${orderId} is completed` : `${orderId} is queued again`, event);
 }
 
 export function runOrderCommand(
@@ -273,8 +288,7 @@ export function runOrderCommand(
   }
   if (command === "move") {
     const station = required(flags(rest, ["--station"]), "--station");
-    moveOrder(db, orderId, station);
-    return `${orderId} moved to ${station}`;
+    return written(`${orderId} moved to ${station}`, moveOrder(db, orderId, station));
   }
   // Own property only: an object literal inherits `toString` and `constructor`, and
   // `dim order toString` would reach one instead of the refusal every other name gets.

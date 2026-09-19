@@ -6,6 +6,7 @@ import { type GuidanceReport, ingestGuidance } from "./guidance";
 import { backfillHandoffs, type HandoffLinkReport, linkHandoffs } from "./handoff";
 import { type HistoryReport, ingestHistory } from "./history";
 import { createIngester, type FileSpec } from "./ingest";
+import { attributeOrderEvents, type OrderWorkerReport } from "./order-worker";
 import type { Env } from "./paths";
 import { type RepoCheckReport, recordRepoChecks } from "./repo-check";
 import { indexRepoFiles, type RepoFileReport } from "./repo-files";
@@ -30,6 +31,7 @@ export type SyncReport = {
   guidance: GuidanceReport;
   chain: HandoffLinkReport;
   walk: WalkReport;
+  orderWorkers: OrderWorkerReport;
 };
 
 export type RebuildReport = SyncReport & { orphans: OrphanReport[]; retired: string[] };
@@ -57,6 +59,7 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     guidance: { files: 0, versions: 0 },
     chain: { pasted: 0, linked: 0 },
     walk: drainWalk(db, env),
+    orderWorkers: { attributed: 0 },
   };
 
   const run = (spec: FileSpec): void => {
@@ -109,6 +112,8 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
   // Derived from the messages just written, so it follows every transcript pass.
   backfillHandoffs(db);
   report.chain = linkHandoffs(db);
+  // After the hook spool is drained, since the rows it attributes are the ones just written.
+  report.orderWorkers = attributeOrderEvents(db);
   return report;
 }
 

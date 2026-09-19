@@ -24,6 +24,14 @@ afterAll(() => {
   rmSync(trunk.dir, { recursive: true, force: true });
 });
 
+/**
+ * What a write says, without the event id it prints for the spool to attribute it by. The id
+ * is the row the write happened to get, so a test that pinned it would be asserting a counter.
+ */
+function said(output: string): string {
+  return output.replace(/ event=\d+$/, "");
+}
+
 /** What the gate wants before an order may complete: a commit on the trunk, then a check that passed. */
 function landed(database: Database, orderId: string): void {
   runOrderCommand(database, ["commit", orderId, "--sha", trunk.sha, "--subject", "feat: land it"]);
@@ -51,7 +59,7 @@ describe("order command", () => {
   test("an added order waits on the board under its own name", () => {
     const database = db();
 
-    expect(runOrderCommand(database, add)).toBe("queued order-1 on cniska/dim-factory");
+    expect(said(runOrderCommand(database, add))).toBe("queued order-1 on cniska/dim-factory");
 
     const snapshot = assembleWallSnapshot(database);
     expect(snapshot.totals).toEqual({ todo: 1, active: 0, done: 0 });
@@ -63,7 +71,7 @@ describe("order command", () => {
     const database = db();
     queued(database);
 
-    expect(runOrderCommand(database, claim)).toBe("order-1 is working");
+    expect(said(runOrderCommand(database, claim))).toBe("order-1 is working");
 
     const snapshot = assembleWallSnapshot(database);
     expect(snapshot.totals).toEqual({ todo: 0, active: 1, done: 0 });
@@ -98,7 +106,7 @@ describe("order command", () => {
     queued(database);
     runOrderCommand(database, claim);
 
-    expect(runOrderCommand(database, ["move", "order-1", "--station", "dim-station-review"])).toBe(
+    expect(said(runOrderCommand(database, ["move", "order-1", "--station", "dim-station-review"]))).toBe(
       "order-1 moved to dim-station-review",
     );
 
@@ -121,7 +129,7 @@ describe("order command", () => {
     runOrderCommand(database, claim);
     landed(database, "order-1");
 
-    expect(runOrderCommand(database, ["stop", "order-1", "completed"], null, trunk.dir)).toBe(
+    expect(said(runOrderCommand(database, ["stop", "order-1", "completed"], null, trunk.dir))).toBe(
       "order-1 is completed",
     );
 
@@ -141,9 +149,9 @@ describe("order command", () => {
     );
 
     expect(assembleWallSnapshot(database).orders[0]?.status).toBe("working");
-    expect(runOrderCommand(database, ["stop", "order-1", "failed", "--reason", "waits on the wall"])).toBe(
-      "order-1 is queued again",
-    );
+    expect(
+      said(runOrderCommand(database, ["stop", "order-1", "failed", "--reason", "waits on the wall"])),
+    ).toBe("order-1 is queued again");
   });
 
   test("a failure puts the order back among the work nobody holds, carrying why", () => {
@@ -158,7 +166,7 @@ describe("order command", () => {
     expect(snapshot.orders[0]?.status).toBe("queued");
     expect(snapshot.orders[0]?.attention).toBe("the check never passed");
     // Taking it again is the same act as taking one that never started.
-    expect(runOrderCommand(database, claim)).toBe("order-1 is working");
+    expect(said(runOrderCommand(database, claim))).toBe("order-1 is working");
   });
 
   test("a held order is refused to a claim until the owner releases it", () => {
@@ -169,7 +177,7 @@ describe("order command", () => {
     expect(() => runOrderCommand(database, claim)).toThrow(/outward-facing/);
 
     runOrderCommand(database, ["release", "order-1"]);
-    expect(runOrderCommand(database, claim)).toBe("order-1 is working");
+    expect(said(runOrderCommand(database, claim))).toBe("order-1 is working");
   });
 
   test("ready lists the unheld orders most urgent first, held ones apart", () => {
@@ -200,7 +208,7 @@ describe("order command", () => {
     runOrderCommand(database, claim);
 
     expect(
-      runOrderCommand(database, ["commit", "order-1", "--sha", "abc123", "--subject", "feat: land it"]),
+      said(runOrderCommand(database, ["commit", "order-1", "--sha", "abc123", "--subject", "feat: land it"])),
     ).toBe("order-1 recorded commit abc123");
     expect(
       runOrderCommand(database, [
@@ -225,7 +233,7 @@ describe("order command", () => {
         "--result",
         "green",
       ]),
-    ).toBe("order-1 recorded bun run verify (0)");
+    ).toMatch(/^order-1 recorded bun run verify \(0\) event=\d+$/);
     expect(
       runOrderCommand(database, [
         "finding",
@@ -237,7 +245,7 @@ describe("order command", () => {
         "--answer",
         "fixed",
       ]),
-    ).toBe("order-1 recorded a fixed finding on tests");
+    ).toMatch(/^order-1 recorded a fixed finding on tests event=\d+$/);
     expect(runOrderCommand(database, ["document", "order-1", "--path", "docs/factory.md"])).toBe(
       "order-1 recorded docs/factory.md",
     );
@@ -374,7 +382,7 @@ describe("order command", () => {
 
     expect(assembleWallSnapshot(database).orders[0]?.status).toBe("working");
     landed(database, "order-1");
-    expect(runOrderCommand(database, ["stop", "order-1", "completed"], null, trunk.dir)).toBe(
+    expect(said(runOrderCommand(database, ["stop", "order-1", "completed"], null, trunk.dir))).toBe(
       "order-1 is completed",
     );
   });

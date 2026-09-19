@@ -103,8 +103,8 @@ function eventValues(orderId: string, event: OrderEvent, ts: string): (string | 
   ];
 }
 
-export function queueOrder(db: Database, order: Order, at = now()): void {
-  db.transaction(() => {
+export function queueOrder(db: Database, order: Order, at = now()): number {
+  return db.transaction(() => {
     db.run(
       `INSERT INTO factory_order
        (id, project, title, description, priority, hold, status, created_at, updated_at)
@@ -120,7 +120,7 @@ export function queueOrder(db: Database, order: Order, at = now()): void {
         at,
       ],
     );
-    appendOrderEventInTransaction(db, order.id, { kind: "queued" }, at);
+    return appendOrderEventInTransaction(db, order.id, { kind: "queued" }, at);
   })();
 }
 
@@ -129,8 +129,8 @@ export function queueOrder(db: Database, order: Order, at = now()): void {
  * mid-write leaves a worktree nobody owns and a commit half made, so the refusal
  * sits here, where work enters the floor, and nowhere an order already running passes.
  */
-export function claimOrder(db: Database, orderId: string, claim: OrderClaim, at = now()): void {
-  db.transaction(() => {
+export function claimOrder(db: Database, orderId: string, claim: OrderClaim, at = now()): number {
+  return db.transaction(() => {
     const stop = liveStop(db);
     if (stop) {
       throw new FactoryStopError(
@@ -165,7 +165,7 @@ export function claimOrder(db: Database, orderId: string, claim: OrderClaim, at 
         orderId,
       ],
     );
-    appendOrderEventInTransaction(
+    return appendOrderEventInTransaction(
       db,
       orderId,
       { kind: "claimed", sessionId: claim.sessionId, station: claim.station },
@@ -179,10 +179,11 @@ export function claimOrder(db: Database, orderId: string, claim: OrderClaim, at 
  * (`src/factory-wall.ts` prefers it over the latest event's station), and the
  * event ledger keeps every station the order passed through.
  */
-export function moveOrder(db: Database, orderId: string, station: string, at = now()): void {
-  db.transaction(() => {
-    appendOrderEventInTransaction(db, orderId, { kind: "moved", station }, at);
+export function moveOrder(db: Database, orderId: string, station: string, at = now()): number {
+  return db.transaction(() => {
+    const event = appendOrderEventInTransaction(db, orderId, { kind: "moved", station }, at);
     db.run("UPDATE factory_order SET station = ? WHERE id = ?", [station, orderId]);
+    return event;
   })();
 }
 
@@ -222,17 +223,18 @@ export function appendOrderEvent(
   event: OrderEvent,
   at = now(),
   worktree = process.cwd(),
-): void {
-  db.transaction(() => appendOrderEventInTransaction(db, orderId, event, at, worktree))();
+): number {
+  return db.transaction(() => appendOrderEventInTransaction(db, orderId, event, at, worktree))();
 }
 
+/** Returns the row it wrote, which is the id a command prints for the spool to attribute. */
 function appendOrderEventInTransaction(
   db: Database,
   orderId: string,
   event: OrderEvent,
   at: string,
   worktree = process.cwd(),
-): void {
+): number {
   if (isTerminalOrderStatus(event.kind as OrderStatus) && event.status !== event.kind) {
     throw new Error(`terminal event kind must match its status: ${event.kind}`);
   }
@@ -257,7 +259,7 @@ function appendOrderEventInTransaction(
     }
   }
 
-  db.run(
+  const written = db.run(
     `INSERT INTO factory_order_event
        (order_id, ts, kind, session_id, station, commit_sha, check_id, finding_id, hold_type,
         status, reason)
@@ -285,6 +287,7 @@ function appendOrderEventInTransaction(
       orderId,
     ],
   );
+  return Number(written.lastInsertRowid);
 }
 
 export function recordOrderCommit(
@@ -293,16 +296,16 @@ export function recordOrderCommit(
   sha: string,
   subject?: string,
   at = now(),
-): void {
+): number {
   assertOrderWorking(db, orderId);
-  db.transaction(() => {
+  return db.transaction(() => {
     db.run("INSERT INTO factory_order_commit (order_id, sha, subject, recorded_at) VALUES (?, ?, ?, ?)", [
       orderId,
       sha,
       subject ?? null,
       at,
     ]);
-    appendOrderEventInTransaction(db, orderId, { kind: "commit_created", commitSha: sha }, at);
+    return appendOrderEventInTransaction(db, orderId, { kind: "commit_created", commitSha: sha }, at);
   })();
 }
 
@@ -338,8 +341,7 @@ export function recordOrderCheck(
       ],
     );
     const id = Number(result.lastInsertRowid);
-    appendOrderEventInTransaction(db, orderId, { kind: "check_finished", checkId: id }, at);
-    return id;
+    return appendOrderEventInTransaction(db, orderId, { kind: "check_finished", checkId: id }, at);
   })();
 }
 
@@ -357,8 +359,7 @@ export function recordOrderFinding(
       [orderId, finding.dimension, finding.summary, finding.answer, finding.resolution ?? null, at],
     );
     const id = Number(result.lastInsertRowid);
-    appendOrderEventInTransaction(db, orderId, { kind: "review_finished", findingId: id }, at);
-    return id;
+    return appendOrderEventInTransaction(db, orderId, { kind: "review_finished", findingId: id }, at);
   })();
 }
 

@@ -146,6 +146,9 @@ function printReport(report: SyncReport | RebuildReport): void {
       `walk: ${report.walk.surfaces} rules surfaces recorded for ${report.walk.sessions} session starts`,
     );
   }
+  if (report.orderWorkers.attributed > 0) {
+    console.log(`orders: ${report.orderWorkers.attributed} moments attributed to the worker that wrote them`);
+  }
   if (report.chain.pasted > 0) {
     console.log(
       `chain: ${report.chain.linked} of ${report.chain.pasted} pasted handoffs joined to the session that wrote them`,
