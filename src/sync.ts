@@ -32,6 +32,8 @@ export type SyncReport = {
   walk: WalkReport;
 };
 
+export type RebuildReport = SyncReport & { orphans: OrphanReport[] };
+
 export function sync(db: Database, env: Env = process.env): SyncReport {
   const ingester = createIngester(db);
   const sessionExists = db.prepare<{ one: number }, [string]>("SELECT 1 AS one FROM session WHERE id = ?");
@@ -137,8 +139,10 @@ type HookEvent = {
  * instead of refusing, and a save ever moved after the drop would lose them
  * with nothing to show for it.
  */
+const PARENT_ORDER_TABLE = "factory_order";
+
 const FACTORY_ORDER_TABLES = [
-  "factory_order",
+  PARENT_ORDER_TABLE,
   "factory_order_event",
   "factory_order_commit",
   "factory_order_file",
@@ -150,6 +154,36 @@ const FACTORY_ORDER_TABLES = [
   "factory_stop",
 ];
 
+export type OrphanReport = { table: string; rows: number };
+
+/**
+ * `sqlite3` has foreign keys off by default, so an order deleted by hand leaves
+ * children pointing at nothing, and the restore below — which writes them back
+ * with the keys on — would refuse the one command that can heal the database.
+ * No source holds the order, so the children go with it rather than be repaired.
+ */
+function dropOrphans(
+  db: Database,
+  saved: { table: string; rows: Record<string, SQLQueryBindings>[] }[],
+): OrphanReport[] {
+  const parent = saved.find((entry) => entry.table === PARENT_ORDER_TABLE);
+  if (!parent) return [];
+  const ids = new Set(parent.rows.map((row) => row.id as string));
+  const orphans: OrphanReport[] = [];
+  for (const entry of saved) {
+    const key = db
+      .query<{ from: string; table: string }, []>(`PRAGMA foreign_key_list(${entry.table})`)
+      .all()
+      .find((column) => column.table === PARENT_ORDER_TABLE);
+    if (!key) continue;
+    const kept = entry.rows.filter((row) => ids.has(row[key.from] as string));
+    if (kept.length === entry.rows.length) continue;
+    orphans.push({ table: entry.table, rows: entry.rows.length - kept.length });
+    entry.rows = kept;
+  }
+  return orphans;
+}
+
 /**
  * Columns are read off each table rather than listed here, because the reason
  * these are dropped at all is that `SCHEMA_SQL` holds a column they do not, and
@@ -160,13 +194,17 @@ const FACTORY_ORDER_TABLES = [
  * such a row should hold is the owner's to say, and inventing a placeholder
  * would put it in the record as though someone had meant it.
  */
-function carryThroughRebuild(db: Database, tables: string[]): () => void {
+function carryThroughRebuild(
+  db: Database,
+  tables: string[],
+): { restore: () => void; orphans: OrphanReport[] } {
   const saved = tables.map((table) => ({
     table,
     rows: db.query(`SELECT * FROM ${table}`).all() as Record<string, SQLQueryBindings>[],
   }));
+  const orphans = dropOrphans(db, saved);
   for (const table of [...tables].reverse()) db.run(`DROP TABLE IF EXISTS ${table}`);
-  return () => {
+  const restore = () => {
     for (const { table, rows } of saved) {
       const info = db
         .query<{ name: string; notnull: number; dflt_value: unknown }, []>(`PRAGMA table_info(${table})`)
@@ -192,6 +230,7 @@ function carryThroughRebuild(db: Database, tables: string[]): () => void {
       }
     }
   };
+  return { restore, orphans };
 }
 
 /**
@@ -210,9 +249,12 @@ function carryThroughRebuild(db: Database, tables: string[]): () => void {
  * table kept instead of dropped keeps whatever shape it was created with, and
  * a check widened in `SCHEMA_SQL` would never reach it.
  */
-export function rebuild(db: Database, env: Env = process.env): SyncReport {
+export function rebuild(db: Database, env: Env = process.env): RebuildReport {
+  let orphans: OrphanReport[] = [];
   db.transaction(() => {
-    const restoreFactoryOrders = carryThroughRebuild(db, FACTORY_ORDER_TABLES);
+    const carried = carryThroughRebuild(db, FACTORY_ORDER_TABLES);
+    orphans = carried.orphans;
+    const restoreFactoryOrders = carried.restore;
     // Read out before the drop because no source can re-read them, and dropped
     // ahead of message because an older database has a foreign key to it that
     // would refuse that drop.
@@ -281,5 +323,5 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
   })();
   const report = sync(db, env);
   db.run("UPDATE schema_version SET version = ?", [SCHEMA_VERSION]);
-  return report;
+  return { ...report, orphans };
 }

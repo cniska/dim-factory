@@ -31,7 +31,7 @@ import { installRules, planRules } from "./rules";
 import { DEFAULT_WINDOW, windowFromArgs } from "./since";
 import { installSkill, planSkill, SKILL_NAMES } from "./skill";
 import { ensureSpoolDirs } from "./spool";
-import { rebuild, type SyncReport, sync } from "./sync";
+import { type RebuildReport, rebuild, type SyncReport, sync } from "./sync";
 import { trace } from "./trace";
 import { readWake, renderWake, type Wake, wireFor } from "./wake";
 import { resolveWalk, spoolWalk } from "./walk";
@@ -111,7 +111,12 @@ const USAGE = `usage: dim <command>
                   before newest within a priority, with the fenced ones beside them
 `;
 
-function printReport(report: SyncReport): void {
+function printReport(report: SyncReport | RebuildReport): void {
+  if ("orphans" in report) {
+    for (const { table, rows } of report.orphans) {
+      warn(`dim: dropped ${rows} ${table} rows whose order is gone`);
+    }
+  }
   console.log(
     `claude: ${report.claudeTranscripts} transcripts, ${report.claudeSubagents} subagents; ` +
       `codex: ${report.codexRollouts} rollouts; ${report.filesRead} files with new bytes`,
@@ -208,7 +213,7 @@ function printStats(): void {
   }
 }
 
-function withDb(fn: (db: ReturnType<typeof openDb>) => SyncReport, forRebuild = false): void {
+function withDb(fn: (db: ReturnType<typeof openDb>) => SyncReport | RebuildReport, forRebuild = false): void {
   withLock(() => {
     const db = openDb(dbPath(), { forRebuild });
     try {

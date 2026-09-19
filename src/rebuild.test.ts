@@ -247,6 +247,37 @@ describe("rebuilding a database an older schema wrote", () => {
     db.close();
   });
 
+  test("evidence left behind by an order deleted outside the code goes with the order", () => {
+    const { db, env } = scratch();
+    // What a hand-run `sqlite3` does: its foreign keys are off by default, so a
+    // deleted order leaves its children behind for the restore to be refused on.
+    db.run("PRAGMA foreign_keys = OFF");
+    db.run(
+      `INSERT INTO factory_order (id, project, title, status, created_at, updated_at)
+       VALUES ('order-kept', 'cniska/dim-factory', 'Survive a rebuild', 'working', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+    );
+    db.run(
+      `INSERT INTO factory_order_event (order_id, ts, kind)
+       VALUES ('order-kept', '2026-01-01T00:00:00Z', 'claimed'),
+              ('order-gone', '2026-01-01T00:00:00Z', 'claimed')`,
+    );
+    db.run(
+      `INSERT INTO factory_order_commit (order_id, sha, recorded_at)
+       VALUES ('order-gone', 'abc', '2026-01-01T00:00:00Z')`,
+    );
+    db.run("PRAGMA foreign_keys = ON");
+
+    const report = rebuild(db, env);
+
+    expect(db.query("SELECT order_id FROM factory_order_event").all()).toEqual([{ order_id: "order-kept" }]);
+    expect(db.query("SELECT order_id FROM factory_order_commit").all()).toEqual([]);
+    expect(report.orphans).toEqual([
+      { table: "factory_order_event", rows: 1 },
+      { table: "factory_order_commit", rows: 1 },
+    ]);
+    db.close();
+  });
+
   test("a factory order written before the title column stops the rebuild", () => {
     const { db, env } = scratch();
     db.run("ALTER TABLE factory_order DROP COLUMN title");
