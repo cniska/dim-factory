@@ -13,7 +13,7 @@ import { TOOLS, type Tool } from "./tools";
  * will run, and a hook written against an older contract is otherwise
  * indistinguishable from the current one.
  */
-export const HOOK_CONTRACT_VERSION = 1;
+export const HOOK_CONTRACT_VERSION = 2;
 
 const CONTRACT_MARKER = /#\s*dim-hook:(\d+)\s*$/;
 
@@ -58,7 +58,13 @@ export type HookPlan = {
  * every session on this machine. `sync` does the work later, under its lock.
  */
 export function hookCommand(tool: Tool, env: Env = process.env): string {
-  return marked(`cat > "${toolSpoolDir(tool, env)}/$(date +%s%N)-$$.json" 2>/dev/null; exit 0`);
+  // The worker's name rides in the filename because the hook runs in the environment the
+  // factory started the worker in, so which worker wrote a session's first payload is
+  // recorded by the harness rather than stated by anything the model can reach. Empty for a
+  // session nothing spawned, which is a session belonging to no worker and not an error.
+  return marked(
+    `cat > "${toolSpoolDir(tool, env)}/$(date +%s%N)-$$-\${DIM_WORKER_NAME:-}.json" 2>/dev/null; exit 0`,
+  );
 }
 
 /**

@@ -1,0 +1,111 @@
+import { Database } from "bun:sqlite";
+import { describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { resolveWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
+import { SCHEMA_SQL } from "./schema";
+import { runWorkerCommand, WorkerCommandError } from "./worker-command";
+
+function floor(): Database {
+  const db = new Database(":memory:");
+  db.run(SCHEMA_SQL);
+  return db;
+}
+
+describe("starting a worker", () => {
+  test("hands the process a worker it can write as", () => {
+    const db = floor();
+    const out = Bun.spawnSync(["sh", "-c", "true"]);
+    expect(out.success).toBe(true);
+
+    runWorkerCommand(db, ["run", "--role", "builder", "--", "sh", "-c", "true"]);
+
+    const issued = db.query("SELECT name, role, pid FROM factory_worker").get() as {
+      name: string;
+      role: string;
+      pid: number;
+    };
+    expect(issued.role).toBe("builder");
+    // This process waits for the child, so its pid is what says the worker is still there.
+    expect(issued.pid).toBe(process.pid);
+    db.close();
+  });
+
+  // The whole design rests on the environment being the carrier, so this reads what the
+  // child was actually handed rather than what the row says was intended.
+  test("the name and the token reach the started process, and resolve there", () => {
+    const db = floor();
+    const out = join(mkdtempSync(join(tmpdir(), "dim-worker-run-")), "carried");
+
+    runWorkerCommand(db, [
+      "run",
+      "--",
+      "sh",
+      "-c",
+      `printf '%s\\n%s' "$${WORKER_NAME_VAR}" "$${WORKER_TOKEN_VAR}" > ${out}`,
+    ]);
+
+    const [name, token] = readFileSync(out, "utf8").split("\n") as [string, string];
+    // Ended with the process, so what the child held is read back against a live row.
+    db.run("UPDATE factory_worker SET ended_at = NULL");
+    expect(resolveWorker(db, { [WORKER_NAME_VAR]: name, [WORKER_TOKEN_VAR]: token })).toBe(name);
+    rmSync(out, { force: true });
+    db.close();
+  });
+
+  test("the worker ends with the process, so its name writes nothing after", () => {
+    const db = floor();
+
+    runWorkerCommand(db, ["run", "--", "sh", "-c", "true"]);
+
+    const ended = db.query("SELECT ended_at FROM factory_worker").get() as { ended_at: string | null };
+    expect(ended.ended_at).not.toBeNull();
+    db.close();
+  });
+
+  test("a process that failed still ends its worker, and says what it exited", () => {
+    const db = floor();
+
+    expect(() => runWorkerCommand(db, ["run", "--", "sh", "-c", "exit 3"])).toThrow(/exited 3/);
+
+    const ended = db.query("SELECT ended_at FROM factory_worker").get() as { ended_at: string | null };
+    expect(ended.ended_at).not.toBeNull();
+    db.close();
+  });
+
+  test("refuses a run with no command to start", () => {
+    const db = floor();
+
+    expect(() => runWorkerCommand(db, ["run", "--role", "builder"])).toThrow(WorkerCommandError);
+    expect(() => runWorkerCommand(db, ["run", "--"])).toThrow(WorkerCommandError);
+    expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 0 });
+    db.close();
+  });
+});
+
+describe("issuing a worker to a shell", () => {
+  test("prints exports a shell can read back into a resolvable worker", () => {
+    const db = floor();
+
+    const printed = runWorkerCommand(db, ["mint", "--role", "reviewer"]);
+
+    const env: Record<string, string> = {};
+    for (const line of printed.split("\n")) {
+      const [name, value] = line.replace("export ", "").split("=");
+      env[name as string] = value as string;
+    }
+    expect(resolveWorker(db, env)).toBe(env[WORKER_NAME_VAR] as string);
+    db.close();
+  });
+
+  test("ending one twice says so rather than failing", () => {
+    const db = floor();
+    const printed = runWorkerCommand(db, ["mint"]);
+    const name = printed.split("\n")[0]?.replace(`export ${WORKER_NAME_VAR}=`, "") as string;
+
+    expect(runWorkerCommand(db, ["end", name])).toBe(`${name} ended`);
+    expect(runWorkerCommand(db, ["end", name])).toBe(`${name} had already ended`);
+    db.close();
+  });
+});

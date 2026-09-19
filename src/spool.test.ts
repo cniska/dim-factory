@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfigError } from "./config-error";
 import { closeDb, openDb } from "./db";
+import { mintWorker } from "./factory-worker";
 import { scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
 import {
   HOOK_CONTRACT_VERSION,
@@ -40,8 +41,16 @@ afterEach(() => {
   while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
 });
 
-/** Mimic the hook: one JSON file named with nanoseconds and a pid. */
-function spool(env: Env, tool: Tool, nanos: string, payload: unknown): string {
+/** Mimic the hook: one JSON file named with nanoseconds, a pid and the worker it ran as. */
+function spool(env: Env, tool: Tool, nanos: string, payload: unknown, worker = ""): string {
+  ensureSpoolDirs(env);
+  const path = join(toolSpoolDir(tool, env), `${nanos}-4242-${worker}.json`);
+  writeFileSync(path, JSON.stringify(payload));
+  return path;
+}
+
+/** What an older hook wrote, which a database drains long after the bump. */
+function spoolWithoutWorker(env: Env, tool: Tool, nanos: string, payload: unknown): string {
   ensureSpoolDirs(env);
   const path = join(toolSpoolDir(tool, env), `${nanos}-4242.json`);
   writeFileSync(path, JSON.stringify(payload));
@@ -421,5 +430,44 @@ describe("installHooks", () => {
     expect(after.hooks.SessionEnd[0].hooks[0].command).toBe("existing-notifier");
     expect(after.hooks.SessionEnd[1].hooks[0].command).toBe(hookCommand("claude", env));
     expect(readFileSync(configs(env).claude, "utf8")).not.toContain("dim-hook:0");
+  });
+});
+
+describe("joining a worker to the session it ran in", () => {
+  test("records the worker the hook named in its own file", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    const db = openDb(dbPath(env));
+    try {
+      const minted = mintWorker(db);
+      spool(env, "claude", "1789000000000000000", endEvent(SESSION, "logout"), minted.name);
+
+      drainSpool(db, env);
+
+      expect(db.prepare("SELECT worker, session_id FROM factory_worker_session").all()).toEqual([
+        { worker: minted.name, session_id: SESSION },
+      ]);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("takes a session from a file no worker named, and a name it never issued, as no sighting", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    const db = openDb(dbPath(env));
+    try {
+      spool(env, "claude", "1789000000000000000", endEvent(SESSION, "logout"));
+      spool(env, "claude", "1789000000000000001", endEvent("other-session", "logout"), "nobody-9");
+      spoolWithoutWorker(env, "claude", "1789000000000000002", endEvent("older-session", "logout"));
+
+      drainSpool(db, env);
+
+      expect(db.prepare("SELECT count(*) AS n FROM factory_worker_session").get()).toEqual({ n: 0 });
+      // All three are still hook events: a sighting is a bonus, never a condition.
+      expect(db.prepare("SELECT count(*) AS n FROM hook_event").get()).toEqual({ n: 3 });
+    } finally {
+      closeDb(db);
+    }
   });
 });

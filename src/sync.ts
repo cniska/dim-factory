@@ -146,6 +146,7 @@ const FACTORY_ORDER_TABLES = [
   // Ahead of the events that name a worker, for the same reason the order is ahead
   // of its own children.
   "factory_worker",
+  "factory_worker_session",
   PARENT_ORDER_TABLE,
   "factory_order_event",
   "factory_order_commit",

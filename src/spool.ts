@@ -6,9 +6,11 @@ import { TOOLS, type Tool } from "./tools";
 
 export type DrainReport = { applied: number; duplicate: number; unreadable: number };
 
-// The hook writes "<nanoseconds>-<pid>.json"; the timestamp is the filename
-// because a hook payload is not documented to carry one.
-const SPOOL_NAME = /^(\d{10,})-(\d+)\.json$/;
+// The hook writes "<nanoseconds>-<pid>-<worker>.json"; the timestamp is in the filename
+// because a hook payload is not documented to carry one, and the worker because the hook
+// runs in the environment the factory started it in. The worker is empty for a session
+// nothing spawned, and absent entirely on a file an older hook wrote.
+const SPOOL_NAME = /^(\d{10,})-(\d+)(?:-([A-Za-z0-9-]*))?\.json$/;
 
 export function spoolDir(env: Env = process.env): string {
   return join(dataDir(env), "spool");
@@ -65,6 +67,14 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
      VALUES ($tool, $sessionId, $event, $ts, $source, $reason, $model, $cwd, $payload)
      ON CONFLICT(session_id, event, ts) DO NOTHING`,
   );
+  // Only for a worker this database issued: the filename is written by the hook in the
+  // environment the factory set, and a name no worker row backs is a file from somewhere
+  // else rather than a sighting.
+  const sighting = db.prepare(
+    `INSERT INTO factory_worker_session (worker, session_id, seen_at)
+     SELECT $worker, $sessionId, $seenAt FROM factory_worker WHERE name = $worker
+     ON CONFLICT DO NOTHING`,
+  );
 
   for (const tool of TOOLS) {
     const dir = toolSpoolDir(tool, env);
@@ -91,6 +101,10 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
       // here makes two events that really happened one, and the file holding the
       // second of them is the only copy there is.
       const ts = new Date(Number(match[1]) / 1e6).toISOString();
+      const worker = match[3];
+      if (worker) {
+        sighting.run({ $worker: worker, $sessionId: payload.session_id as string, $seenAt: ts });
+      }
       const changes = db.transaction(() =>
         insert.run({
           $tool: tool,

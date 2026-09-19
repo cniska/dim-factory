@@ -18,7 +18,7 @@
 
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 29;
+export const SCHEMA_VERSION = 30;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -218,6 +218,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS factory_stop_live
 -- after the fact, so rebuild writes these rows back rather than re-reading them.
 -- An order is queued before any worker exists, which is why the run, the agent and
 -- the claim time are set later rather than at creation.
+-- Which session a worker turned out to be running, learned from the spool filename the
+-- hook wrote in the environment the factory started that worker in. It is a fact about
+-- the worker and never about a moment, so a session that never arrives leaves nothing
+-- incomplete: the log already names the worker, and this only says where to read its
+-- transcript. A worker can be seen in more than one session, and each sighting is its
+-- own row rather than a column anything overwrites.
+CREATE TABLE IF NOT EXISTS factory_worker_session (
+  worker        TEXT NOT NULL REFERENCES factory_worker(name),
+  session_id    TEXT NOT NULL,
+  seen_at       TEXT NOT NULL,
+  PRIMARY KEY (worker, session_id)
+);
+
 CREATE TABLE IF NOT EXISTS factory_order (
   -- The subject, which is also the branch and the worktree directory it will be
   -- built in: one string the record states once rather than three that can
