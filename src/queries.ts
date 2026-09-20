@@ -835,16 +835,23 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryRes
     return { denominator: "", columns: ["error"], rows: [["nothing to search for but whitespace"]] };
   }
   const matchAny = quoted.join(" OR ");
-  // A term with no match anywhere in the corpus is the one thing a caller
-  // cannot see from the ranked rows, so it is checked and named on its own.
+  const w = window("m.ts", ctx);
+  // A term with no match among the rows the search can actually rank is the
+  // one thing a caller cannot see from the ranked rows, so it is checked
+  // against the same population — SAID and the window — and named on its own.
   const byWord = new Map(raw.map((word, i) => [word, quoted[i] as string]));
   const missing = [...byWord]
     .filter(
       ([, quote]) =>
-        scalar(db, "SELECT count(*) AS n FROM message_fts WHERE message_fts MATCH ?", quote) === 0,
+        scalar(
+          db,
+          `SELECT count(*) AS n FROM message_fts JOIN message m ON m.rowid = message_fts.rowid
+           WHERE message_fts MATCH ? AND ${SAID}${w.sql}`,
+          quote,
+          ...w.params,
+        ) === 0,
     )
     .map(([word]) => word);
-  const w = window("m.ts", ctx);
   const perTerm = quoted
     .map(() => "SELECT rowid FROM message_fts WHERE message_fts MATCH ?")
     .join(" UNION ALL ");
@@ -878,9 +885,9 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryRes
     denominator:
       `keywords over ${said} of ${all} messages that carry text anyone said (${windowLine(ctx)}); ` +
       `ranked by how many of the ${quoted.length} terms matched, ties broken by relevance then recency; ` +
-      `newest 40 shown.${dropped > 0 ? ` Only the first ${MAX_TERMS} words were searched; ${dropped} more were dropped.` : ""}` +
+      `top 40 shown.${dropped > 0 ? ` Only the first ${MAX_TERMS} words were searched; ${dropped} more were dropped.` : ""}` +
       (missing.length > 0
-        ? ` ${missing.length === 1 ? "This term matched" : "These terms matched"} nothing anywhere: ${missing.join(", ")}.`
+        ? ` ${missing.length === 1 ? "This term matched" : "These terms matched"} nothing anyone said in this window: ${missing.join(", ")}.`
         : ""),
     columns,
     rows: toRows(records, columns),

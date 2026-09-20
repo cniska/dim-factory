@@ -328,12 +328,24 @@ describe("keywords, asked directly", () => {
     db.close();
   });
 
-  test("a term matching nothing anywhere is named, not just dropped from the rows", async () => {
+  test("a term matching nothing anyone said is named, not just dropped from the rows", async () => {
     const db = seeded();
     const result = ask(db, { arg: "checkout zzznoword" });
-    expect(result.denominator).toContain("This term matched nothing anywhere: zzznoword");
+    expect(result.denominator).toContain("This term matched nothing anyone said in this window: zzznoword");
     expect(result.rows.map((r) => String(r[0]))).toEqual(["s1"]);
     expect(result.rows[0]?.[4]).toBe("1/2");
+    db.close();
+  });
+
+  test("a term found only in a meta message is still named missing, not credited as a match", async () => {
+    const db = seeded();
+    db.run(
+      `INSERT INTO message (id, session_id, ts, role, text, is_meta, src_file, src_line)
+       VALUES ('m-injected', 's1', '2026-09-02T09:00:00Z', 'user', 'zzzmetaword', 1, '/f.jsonl', 12)`,
+    );
+    const result = ask(db, { arg: "checkout zzzmetaword" });
+    expect(result.denominator).toContain("This term matched nothing anyone said in this window: zzzmetaword");
+    expect(result.rows.every((r) => !String(r[5]).includes("zzzmetaword"))).toBe(true);
     db.close();
   });
 });
