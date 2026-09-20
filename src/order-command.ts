@@ -24,7 +24,7 @@ import { readFlags, requiredFlag } from "./flags";
 import { requireCurrentHooks } from "./hooks";
 import { heldOrders, readyOrders } from "./order-ready";
 import type { Env } from "./paths";
-import { removeWorktree, repoRoot, worktreePath } from "./wt-command";
+import { removeWorktree, repoRoot } from "./wt-command";
 
 export class OrderCommandError extends Error {}
 
@@ -235,8 +235,12 @@ function ship(db: Database, orderId: string, args: string[], worktree: string, e
 const STOP_KINDS = ["completed", "failed"] as const;
 
 /**
- * Reads the order's own worktree rather than trusting `cwd` to already be it: the
- * operator that stops an order is not always the builder that was working in it.
+ * The completion gate is answered from the primary checkout rather than from the order's
+ * own worktree: whether a commit reaches the trunk is a fact about the repository, and
+ * `refs/remotes/origin/HEAD` and the trunk branch are shared by every worktree of it. A
+ * worktree is one place that fact can be read from and the one place that can be missing —
+ * an order worked in the primary checkout never had one, and a completed order's is removed
+ * a line below — so reading it there would refuse an order that had plainly landed.
  */
 function stop(db: Database, orderId: string, args: string[], cwd: string, worker: string): string {
   const [kind, ...rest] = args;
@@ -255,7 +259,7 @@ function stop(db: Database, orderId: string, args: string[], cwd: string, worker
       reason: given.get("--reason"),
     },
     undefined,
-    worktreePath(repoRoot(cwd), orderId),
+    repoRoot(cwd),
   );
   // Completing an order lands everything it will, so its worktree is gone; failing
   // one keeps it, because it may hold work no commit has and is claimed again in place.
