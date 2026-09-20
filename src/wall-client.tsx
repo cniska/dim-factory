@@ -465,6 +465,7 @@ function ItemDialog({
   }, []);
 
   const order = read.view?.order ?? card;
+  const StatusIcon = statusIcon[order.status];
   const failedChecks =
     read.view?.entries.filter((entry) => entry.check && entry.check.exitCode !== 0).length ?? 0;
   const refusedFindings =
@@ -521,7 +522,18 @@ function ItemDialog({
             </div>
             <div className="flex items-center gap-2">
               <dt>status</dt>
-              <dd className={isStopped(order) ? "text-warn-foreground" : "text-muted-foreground"}>
+              <dd
+                className={cn(
+                  "flex items-center gap-1.5",
+                  isStopped(order) ? "text-warn-foreground" : "text-muted-foreground",
+                )}
+              >
+                <StatusIcon
+                  size={12}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                  className={order.status === "working" ? "breathing" : undefined}
+                />
                 {statusLabels[order.status]}
               </dd>
             </div>
