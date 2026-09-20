@@ -8,6 +8,8 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   moved: "Moved",
   commit_created: "Commit",
   check_finished: "Check",
+  review_opened: "Review opened",
+  review_closed: "Review closed",
   finding_raised: "Finding raised",
   finding_answered: "Finding answered",
   document_updated: "Document",
@@ -38,6 +40,10 @@ const RAIL_MARK_BY_KIND: Record<WallItemKind, RailMark> = {
   moved: "handover",
   commit_created: "moment",
   check_finished: "moment",
+  // A round is another hand taking the work and giving it back, which is the one thing
+  // the rail's arrow is for.
+  review_opened: "handover",
+  review_closed: "handover",
   finding_raised: "moment",
   finding_answered: "moment",
   document_updated: "moment",

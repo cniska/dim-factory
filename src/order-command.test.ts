@@ -3,8 +3,10 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { openOrderReview } from "./factory-order";
 import { pullStop } from "./factory-stop";
 import { assembleWallSnapshot } from "./factory-wall";
+import { mintWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import {
   collectingMachine,
   integratedRepo,
@@ -45,8 +47,25 @@ function runOrderCommand(
   args: string[],
   project: string | null = null,
   cwd: string = trunk.dir,
+  as: Env = env,
 ): string {
-  return runCommand(database, args, project, cwd, env);
+  return runCommand(database, args, project, cwd, as);
+}
+
+/**
+ * Opens a round and returns the environment its reviewer was started in. Minted here rather
+ * than through `dim worker mint`, which refuses a read-only hand — a reviewer exists only
+ * because the station that spawns it made one, and that is the whole of its worth.
+ */
+function reviewerEnv(database: Database, orderId: string): Env {
+  const minted = mintWorker(database, { role: "reviewer" });
+  openOrderReview(
+    database,
+    orderId,
+    { reviewer: minted.name, baseSha: "base000", headSha: "head000" },
+    env[WORKER_NAME_VAR] as string,
+  );
+  return { ...machine.env, [WORKER_NAME_VAR]: minted.name, [WORKER_TOKEN_VAR]: minted.token };
 }
 
 const trunk = integratedRepo();
@@ -323,14 +342,13 @@ describe("order command", () => {
       ]),
     ).toMatch(/^order-1 recorded bun run verify \(0\)$/);
     expect(
-      runOrderCommand(database, [
-        "finding",
-        "order-1",
-        "--dimension",
-        "tests",
-        "--summary",
-        "the invariant holds",
-      ]),
+      runOrderCommand(
+        database,
+        ["finding", "order-1", "--dimension", "tests", "--summary", "the invariant holds"],
+        null,
+        trunk.dir,
+        reviewerEnv(database, "order-1"),
+      ),
     ).toBe("order-1 raised finding 1 on tests");
     expect(runOrderCommand(database, ["answer", "1", "--answer", "fixed"])).toBe("finding 1 is fixed");
     expect(runOrderCommand(database, ["document", "order-1", "--path", "docs/factory.md"])).toBe(
@@ -417,7 +435,13 @@ describe("order command", () => {
     expect(() =>
       runOrderCommand(database, ["check", "order-1", "--command", "bun run verify", "--exit", "green"]),
     ).toThrow(OrderCommandError);
-    runOrderCommand(database, ["finding", "order-1", "--dimension", "tests", "--summary", "s"]);
+    runOrderCommand(
+      database,
+      ["finding", "order-1", "--dimension", "tests", "--summary", "s"],
+      null,
+      trunk.dir,
+      reviewerEnv(database, "order-1"),
+    );
     expect(() => runOrderCommand(database, ["answer", "1", "--answer", "maybe"])).toThrow(OrderCommandError);
     expect(() => runOrderCommand(database, ["answer", "nope", "--answer", "fixed"])).toThrow(
       OrderCommandError,
@@ -436,14 +460,13 @@ describe("order command", () => {
     const database = db();
     queued(database);
     runOrderCommand(database, claim);
-    runOrderCommand(database, [
-      "finding",
-      "order-1",
-      "--dimension",
-      "docs",
-      "--summary",
-      "a doc did not move",
-    ]);
+    runOrderCommand(
+      database,
+      ["finding", "order-1", "--dimension", "docs", "--summary", "a doc did not move"],
+      null,
+      trunk.dir,
+      reviewerEnv(database, "order-1"),
+    );
 
     expect(() => runOrderCommand(database, ["answer", "1", "--answer", "refused"])).toThrow(
       expect.objectContaining({ code: "SQLITE_CONSTRAINT_CHECK" }),
@@ -460,7 +483,13 @@ describe("order command", () => {
     const database = db();
     queued(database);
     runOrderCommand(database, claim);
-    runOrderCommand(database, ["finding", "order-1", "--dimension", "tests", "--summary", "thin"]);
+    runOrderCommand(
+      database,
+      ["finding", "order-1", "--dimension", "tests", "--summary", "thin"],
+      null,
+      trunk.dir,
+      reviewerEnv(database, "order-1"),
+    );
     runOrderCommand(database, ["answer", "1", "--answer", "fixed"]);
 
     expect(() =>

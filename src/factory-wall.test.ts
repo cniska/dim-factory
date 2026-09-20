@@ -17,7 +17,7 @@ import {
   setOrderPriority,
 } from "./factory-order";
 import { assembleItemView, assembleWallSnapshot, serveWall } from "./factory-wall";
-import { integratedRepo, workerIn } from "./fixtures.test-support";
+import { integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
 import { resolveHomeDir } from "./paths";
 import type { Role } from "./roles";
 import { SCHEMA_SQL } from "./schema";
@@ -542,11 +542,12 @@ describe("factory wall item view", () => {
       worker,
       "2026-09-18T10:06:30.000Z",
     );
+    const reviewer = reviewIn(db, "order-worked", worker, "2026-09-18T10:06:45.000Z").reviewer;
     const onTests = raiseOrderFinding(
       db,
       "order-worked",
       { dimension: "tests", summary: "the rail has no test" },
-      worker,
+      reviewer,
       "2026-09-18T10:07:00.000Z",
     );
     answerOrderFinding(db, onTests, { answer: "fixed" }, worker, "2026-09-18T10:07:00.000Z");
@@ -557,7 +558,7 @@ describe("factory wall item view", () => {
         dimension: "style",
         summary: "the dialog should use a component library",
       },
-      worker,
+      reviewer,
       "2026-09-18T10:08:00.000Z",
     );
     answerOrderFinding(
@@ -591,6 +592,7 @@ describe("factory wall item view", () => {
       "check_finished",
       "commit_created",
       "check_finished",
+      "review_opened",
       "finding_raised",
       "finding_answered",
       "finding_raised",

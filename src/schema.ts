@@ -20,7 +20,7 @@ import { ORDER_STATUSES_SQL } from "./factory-order";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 33;
+export const SCHEMA_VERSION = 34;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -315,7 +315,7 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,
   order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   ts                    TEXT NOT NULL,
-  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'commit_created', 'check_finished', 'finding_raised', 'finding_answered', 'completed', 'dropped', 'failed')),
+  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'commit_created', 'check_finished', 'review_opened', 'review_closed', 'finding_raised', 'finding_answered', 'completed', 'dropped', 'failed')),
   -- Who did it, written by the statement that writes the moment and never after.
   -- An entry completed later is a mutation of a record someone may already have
   -- read, and a log that can be amended is not evidence of anything.
@@ -324,6 +324,7 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   station               TEXT,
   commit_sha            TEXT,
   check_id              INTEGER,
+  review_id             INTEGER,
   finding_id            INTEGER,
   hold_type             TEXT,
   status                TEXT,
@@ -362,6 +363,28 @@ CREATE TABLE IF NOT EXISTS factory_order_check (
   recorded_at   TEXT NOT NULL
 );
 
+-- One reading of one diff, named by the two shas that bound it rather than by the state
+-- of a tree: a sha cannot move while it is being read, and a worktree can. The reviewer
+-- is minted when the round opens and its name is recorded here, which is what binds a
+-- finding to the hand the factory spawned rather than to any hand holding a token.
+--
+-- How it ended is written from the spawned process's exit code, never from anything the
+-- reviewer says about itself: a reviewer that crashed and one that finished clean would
+-- otherwise be told apart only by its own testimony.
+CREATE TABLE IF NOT EXISTS factory_order_review (
+  id            INTEGER PRIMARY KEY,
+  order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  round         INTEGER NOT NULL,
+  reviewer      TEXT NOT NULL REFERENCES factory_worker(name),
+  base_sha      TEXT NOT NULL,
+  head_sha      TEXT NOT NULL,
+  opened_at     TEXT NOT NULL,
+  closed_at     TEXT,
+  outcome       TEXT CHECK (outcome IN ('closed', 'aborted')),
+  CHECK ((outcome IS NULL) = (closed_at IS NULL)),
+  UNIQUE (order_id, round)
+);
+
 -- Raising a finding and answering it are two acts by two hands: the reviewer that read
 -- the diff and the builder that wrote it. The events carry who did which, and this row
 -- carries the finding's own state, so an unanswered finding is one with no answer yet
@@ -369,6 +392,9 @@ CREATE TABLE IF NOT EXISTS factory_order_check (
 CREATE TABLE IF NOT EXISTS factory_order_finding (
   id            INTEGER PRIMARY KEY,
   order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  -- The round that raised it, so a finding names the diff it was read against and the
+  -- reviewer it came from is the one the factory spawned for that round.
+  review_id     INTEGER NOT NULL REFERENCES factory_order_review(id) ON DELETE CASCADE,
   dimension     TEXT NOT NULL,
   summary       TEXT NOT NULL,
   answer        TEXT CHECK (answer IN ('fixed', 'refused')),

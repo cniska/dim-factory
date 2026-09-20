@@ -230,6 +230,18 @@ What the loads and delegations do show, since 2026-08-21:
 
 What these carry: loads and delegation counts are the harness's own attribution per call, so they say which skill was in context and what it spawned. They do not say a review found anything, that a plan was good, or that a round changed a decision.
 
+## Learning moved into the workflow, not out of the code
+
+Asked on 2026-09-20, after the owner stopped doing delayed module-by-module reviews. The record supports learning in the process, but not a claim that the resulting code is always right.
+
+The repeated failure patterns now have workflow counterparts: contract review before build, structured communication, read-only review dimensions, module-level review during each slice, simplification, and durable evidence. Those are responses to observed failures around heuristics, implicit contracts, weak tests, silent fallbacks, review debt, and undocumented decisions. The changes are visible in [`workflow.md`](workflow.md), but their presence is not proof that every agent follows them.
+
+The review record shows what the checking loop is finding. Across 47 slices it raised 231 findings: docs 50, correctness 46, tests 42, style 17, architecture 13, and untested invariants 7 were the largest dimensions. Review answered 43 of the 50 documentation findings, 42 of 46 correctness findings, and 35 of 42 test findings by fixing or refusing them. This demonstrates an active correction loop, not a defect rate: the findings are selected by review and the corpus does not contain a controlled comparison with owner-led code inspection.
+
+The later-fix record remains a warning against overclaiming. Since 2026-08-21, 4,918 `fix:` commits were matched against 23,242 commits; files edited under `dim-feat` later appeared in a fix commit 16 of 26 times, while files edited under `review` did so 23 of 99 times. These joins are by file path and commit convention, so they do not prove who caused a defect or whether an untouched file is correct. They do show why the factory needs independent review and outcome measurement even after the owner leaves implementation review.
+
+What the evidence supports is narrower and more useful: the owner has converted repeated personal corrections into workflow rules and checking stations. Whether those rules reduce later fixes is the next measurement, not a conclusion this corpus can make yet.
+
 ## Git is the most-run tool and the least-guided one
 
 Asked on 2026-09-17, over the whole corpus. Git is the busiest thing an agent does here: 3,655 `commit` operations, 3,418 `add`, 656 `push`, and 1,474 operations that destroy work if aimed wrong — 503 worktree discards, 294 `branch -D`, 242 `reset --hard`, 207 amends, 72 force pushes. `reset --hard` fails at 23% against a roughly 4% baseline for git calls generally.

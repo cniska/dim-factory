@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { openOrderReview } from "./factory-order";
 import { mintWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { installHooks } from "./hooks";
 import type { Env } from "./paths";
@@ -14,6 +15,23 @@ import type { Role } from "./roles";
  */
 export function workerIn(db: Database, role: Role = "builder"): string {
   return mintWorker(db, { role }).name;
+}
+
+/**
+ * A round open over one sha, with the reviewer it was opened for. Minted here rather than
+ * through `dim worker mint`, which refuses a read-only hand: a reviewer exists only because
+ * the station that briefs it made one, and this stands in for that station.
+ */
+export function reviewIn(
+  db: Database,
+  orderId: string,
+  by: string,
+  at?: string,
+  sha = "base0000",
+): { review: number; reviewer: string } {
+  const reviewer = mintWorker(db, { role: "reviewer" }).name;
+  const opened = openOrderReview(db, orderId, { reviewer, baseSha: sha, headSha: sha }, by, at);
+  return { review: opened.id, reviewer };
 }
 
 /** The environment the factory starts a worker in, which is where `dim order` reads it. */

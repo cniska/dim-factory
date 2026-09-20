@@ -14,7 +14,7 @@ import {
   recordOrderEnvironment,
   recordOrderFile,
 } from "./factory-order";
-import { integratedRepo, workerIn } from "./fixtures.test-support";
+import { integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
 import { findQuery } from "./queries";
 import { SCHEMA_SQL } from "./schema";
 
@@ -73,6 +73,7 @@ describe("factory order query", () => {
       worker,
       "2026-09-18T10:03:00.000Z",
     );
+    const reviewer = reviewIn(db, "order-status", worker, "2026-09-18T10:03:30.000Z").reviewer;
     for (const [dimension, summary] of [
       ["tests", "holds"],
       ["docs", "updated"],
@@ -81,7 +82,7 @@ describe("factory order query", () => {
         db,
         "order-status",
         { dimension, summary },
-        worker,
+        reviewer,
         "2026-09-18T10:04:00.000Z",
       );
       answerOrderFinding(db, raised, { answer: "fixed" }, worker, "2026-09-18T10:04:00.000Z");
@@ -221,7 +222,7 @@ describe("factory order query", () => {
       db,
       "order-123",
       { dimension: "tests", summary: "holds" },
-      worker,
+      reviewIn(db, "order-123", worker, "2026-09-18T10:02:30.000Z").reviewer,
       "2026-09-18T10:03:00.000Z",
     );
     answerOrderFinding(db, raised, { answer: "fixed" }, worker, "2026-09-18T10:03:00.000Z");
@@ -251,6 +252,7 @@ describe("factory order query", () => {
       "file",
       "event",
       "check",
+      "event",
       "event",
       "event",
       "finding",

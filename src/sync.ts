@@ -152,6 +152,8 @@ const FACTORY_ORDER_TABLES = [
   "factory_order_commit",
   "factory_order_file",
   "factory_order_check",
+  // Ahead of the findings that name it, for the same reason the order is ahead of its children.
+  "factory_order_review",
   "factory_order_finding",
   "factory_order_document",
   "factory_order_environment",

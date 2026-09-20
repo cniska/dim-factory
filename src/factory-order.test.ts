@@ -29,6 +29,7 @@ import {
   integratedRepo,
   orderWorktree,
   repoWithoutTrunk,
+  reviewIn,
   scratchEnv,
   workerIn,
 } from "./fixtures.test-support";
@@ -117,9 +118,14 @@ describe("factory order report records", () => {
         context.recordCommit(trunk.sha, "feat: observable order");
         context.recordFile({ path: "src/factory-operator.ts", added: 18, removed: 2 });
         context.recordCheck({ command: "bun run verify", exitCode: 0, result: "green" });
-        context.answerFinding(context.raiseFinding({ dimension: "tests", summary: "holds" }), {
-          answer: "fixed",
-        });
+        const round = reviewIn(database, "order-2", worker);
+        const raised = raiseOrderFinding(
+          database,
+          "order-2",
+          { dimension: "tests", summary: "holds" },
+          round.reviewer,
+        );
+        context.answerFinding(raised, { answer: "fixed" });
         context.recordDocument("docs/factory.md");
         context.recordEnvironment(setupReport);
         context.stop({ status: "completed", reason: "verified" });
@@ -141,6 +147,7 @@ describe("factory order report records", () => {
       { kind: "claimed", status: null },
       { kind: "commit_created", status: null },
       { kind: "check_finished", status: null },
+      { kind: "review_opened", status: null },
       { kind: "finding_raised", status: null },
       { kind: "finding_answered", status: null },
       { kind: "completed", status: "completed" },
@@ -828,7 +835,7 @@ describe("factory order report records", () => {
       database,
       "order-1",
       { dimension: "tests", summary: "coverage is present" },
-      worker,
+      reviewIn(database, "order-1", worker).reviewer,
       "2026-09-18T10:04:00.000Z",
     );
     answerOrderFinding(database, finding, { answer: "fixed" }, worker, "2026-09-18T10:04:00.000Z");
@@ -996,7 +1003,13 @@ describe("factory order report records", () => {
     const database = db();
     queueOrder(database, order, worker);
     claimOrder(database, "order-1", claim, worker);
-    const raised = raiseOrderFinding(database, "order-1", { dimension: "docs", summary: "missing" }, worker);
+    const round = reviewIn(database, "order-1", worker);
+    const raised = raiseOrderFinding(
+      database,
+      "order-1",
+      { dimension: "docs", summary: "missing" },
+      round.reviewer,
+    );
 
     expect(() => answerOrderFinding(database, raised, { answer: "refused" }, worker)).toThrow();
     expect(database.query("SELECT answer FROM factory_order_finding WHERE id = ?").get(raised)).toEqual({

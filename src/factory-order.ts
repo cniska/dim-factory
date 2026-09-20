@@ -24,6 +24,8 @@ export type OrderEventKind =
   | "moved"
   | "commit_created"
   | "check_finished"
+  | "review_opened"
+  | "review_closed"
   | "finding_raised"
   | "finding_answered"
   | "completed"
@@ -60,6 +62,7 @@ export type OrderEvent = {
   station?: string;
   commitSha?: string;
   checkId?: number;
+  reviewId?: number;
   findingId?: number;
   holdType?: string;
   status?: OrderStatus;
@@ -123,6 +126,7 @@ function eventValues(orderId: string, event: OrderEvent, ts: string): (string | 
     event.station ?? null,
     event.commitSha ?? null,
     event.checkId ?? null,
+    event.reviewId ?? null,
     event.findingId ?? null,
     event.holdType ?? null,
     event.status ?? null,
@@ -334,9 +338,9 @@ function appendOrderEventInTransaction(
 
   const written = db.run(
     `INSERT INTO factory_order_event
-       (order_id, ts, kind, worker, session_id, station, commit_sha, check_id, finding_id,
+       (order_id, ts, kind, worker, session_id, station, commit_sha, check_id, review_id, finding_id,
         hold_type, status, reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     eventValues(orderId, event, event.ts ?? at),
   );
   // A failure hands the work back rather than ending it, so the row returns to the
@@ -420,9 +424,94 @@ export function recordOrderCheck(
   })();
 }
 
+export type ReviewRound = { id: number; round: number; reviewer: string };
+
+export class ReviewNotOpen extends Error {
+  constructor(
+    readonly code: "review_open" | "review_unknown" | "review_closed" | "review_not_its_reviewer",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 /**
- * The reviewer's own act. What it raises carries no answer, because whether the finding is
- * fixed or refused is the builder's to say and a hand may only write what it did.
+ * Opens a round over the commits between two shas. A round reads a sha rather than a tree
+ * because a sha cannot move while it is being read, so what the reviewer saw and what
+ * ships are the same thing without anything having to hold the worktree still.
+ *
+ * The reviewer is minted by the caller that spawns it and named here, which is what lets a
+ * finding be refused unless it comes from the hand this round was opened for.
+ */
+export function openOrderReview(
+  db: Database,
+  orderId: string,
+  round: { reviewer: string; baseSha: string; headSha: string },
+  worker: string,
+  at = now(),
+): ReviewRound {
+  assertOrderWorking(db, orderId);
+  return db.transaction(() => {
+    const live = db
+      .query<{ id: number }, [string]>(
+        "SELECT id FROM factory_order_review WHERE order_id = ? AND closed_at IS NULL",
+      )
+      .get(orderId);
+    if (live) {
+      throw new ReviewNotOpen("review_open", `order ${orderId} already has review ${live.id} open`);
+    }
+    const last = (db
+      .query<{ n: number }, [string]>(
+        "SELECT coalesce(max(round), 0) AS n FROM factory_order_review WHERE order_id = ?",
+      )
+      .get(orderId)?.n ?? 0) as number;
+    const next = last + 1;
+    const written = db.run(
+      `INSERT INTO factory_order_review (order_id, round, reviewer, base_sha, head_sha, opened_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [orderId, next, round.reviewer, round.baseSha, round.headSha, at],
+    );
+    const id = Number(written.lastInsertRowid);
+    appendOrderEventInTransaction(db, orderId, { kind: "review_opened", worker, reviewId: id }, at);
+    return { id, round: next, reviewer: round.reviewer };
+  })();
+}
+
+/**
+ * Written from the spawned reviewer's exit rather than from anything it said: a reviewer
+ * that died and one that finished having found nothing are the same empty set of findings,
+ * and only the exit code tells them apart.
+ */
+export function closeOrderReview(
+  db: Database,
+  reviewId: number,
+  outcome: "closed" | "aborted",
+  worker: string,
+  at = now(),
+): number {
+  const row = db
+    .query<{ order_id: string; closed_at: string | null }, [number]>(
+      "SELECT order_id, closed_at FROM factory_order_review WHERE id = ?",
+    )
+    .get(reviewId);
+  if (!row) throw new ReviewNotOpen("review_unknown", `no review ${reviewId}`);
+  if (row.closed_at !== null) {
+    throw new ReviewNotOpen("review_closed", `review ${reviewId} closed at ${row.closed_at}`);
+  }
+  return db.transaction(() => {
+    db.run("UPDATE factory_order_review SET closed_at = ?, outcome = ? WHERE id = ?", [
+      at,
+      outcome,
+      reviewId,
+    ]);
+    return appendOrderEventInTransaction(db, row.order_id, { kind: "review_closed", worker, reviewId }, at);
+  })();
+}
+
+/**
+ * The reviewer's own act, refused from any hand but the one this round was opened for.
+ * What it raises carries no answer, because whether the finding is fixed or refused is the
+ * builder's to say and a hand may only write what it did.
  *
  * Returns the finding rather than the event, since answering it is the next act and the
  * finding is what that act names.
@@ -434,11 +523,30 @@ export function raiseOrderFinding(
   worker: string,
   at = now(),
 ): number {
+  const row = db
+    .query<{ id: number; reviewer: string }, [string]>(
+      "SELECT id, reviewer FROM factory_order_review WHERE order_id = ? AND closed_at IS NULL",
+    )
+    .get(orderId);
+  if (!row) {
+    throw new ReviewNotOpen(
+      "review_unknown",
+      `order ${orderId} has no review open, and a finding belongs to the reading that raised it`,
+    );
+  }
+  if (row.reviewer !== worker) {
+    throw new ReviewNotOpen(
+      "review_not_its_reviewer",
+      `review ${row.id} was opened for ${row.reviewer}, and a finding is worth only what the hand ` +
+        `that read the diff is worth; ${worker} did not read it`,
+    );
+  }
   assertOrderWorking(db, orderId);
   return db.transaction(() => {
     const result = db.run(
-      "INSERT INTO factory_order_finding (order_id, dimension, summary, raised_at) VALUES (?, ?, ?, ?)",
-      [orderId, finding.dimension, finding.summary, at],
+      `INSERT INTO factory_order_finding (order_id, review_id, dimension, summary, raised_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [orderId, row.id, finding.dimension, finding.summary, at],
     );
     const id = Number(result.lastInsertRowid);
     appendOrderEventInTransaction(db, orderId, { kind: "finding_raised", worker, findingId: id }, at);

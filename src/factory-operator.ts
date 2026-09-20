@@ -8,7 +8,6 @@ import {
   type OrderEvent,
   type OrderFile,
   orderStatus,
-  raiseOrderFinding,
   recordOrderCheck,
   recordOrderCommit,
   recordOrderDocument,
@@ -38,8 +37,8 @@ export type FactoryContext = {
     finishedAt?: string;
     result?: string;
   }): number;
-  /** Returns the finding, which is what `answerFinding` names. */
-  raiseFinding(finding: { dimension: string; summary: string }): number;
+  /** Answering only: a finding is raised by the reviewer the round was opened for, which is a
+   *  hand this builder does not hold and cannot reach. */
   answerFinding(findingId: number, answer: { answer: "fixed" | "refused"; resolution?: string }): number;
   recordDocument(path: string): void;
   recordEnvironment(report: WorkerHookReport): void;
@@ -75,7 +74,6 @@ export async function runFactoryOrder(
     recordCommit: (sha, subject) => recordOrderCommit(db, item.id, sha, worker, subject),
     recordFile: (file) => recordOrderFile(db, item.id, file),
     recordCheck: (check) => recordOrderCheck(db, item.id, check, worker),
-    raiseFinding: (finding) => raiseOrderFinding(db, item.id, finding, worker),
     answerFinding: (findingId, answer) => answerOrderFinding(db, findingId, answer, worker),
     recordDocument: (path) => recordOrderDocument(db, item.id, path),
     recordEnvironment: (report) => recordOrderEnvironment(db, item.id, report),
