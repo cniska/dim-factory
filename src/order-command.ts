@@ -24,6 +24,7 @@ import { resolveWorker } from "./factory-worker";
 import { readFlags, requiredFlag } from "./flags";
 import { requireCurrentHooks } from "./hooks";
 import { heldOrders, readyOrders } from "./order-ready";
+import { runOrderReview } from "./order-review";
 import type { Env } from "./paths";
 import { removeWorktree, repoRoot } from "./wt-command";
 
@@ -40,6 +41,7 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--des
        dim order commit <order-id> --sha <sha> [--subject "..."]
        dim order file <order-id> --path <path> [--added <n>] [--removed <n>]
        dim order check <order-id> --command "..." --exit <code> [--result "..."]
+       dim order review <order-id>
        dim order finding <order-id> --dimension <name> --summary "..."
        dim order answer <finding-id> --answer <fixed|refused>
                        [--resolution "..."]
@@ -366,5 +368,12 @@ export function runOrderCommand(
   if (command === "amend") return amend(db, orderId, rest);
   if (command === "drop") return drop(db, orderId, rest, worker);
   if (command === "answer") return answerFinding(db, orderId, rest, worker);
+  if (command === "review") {
+    if (!orderId) throw fail("review takes the order whose slice is to be read");
+    const done = runOrderReview(db, orderId, worker, { dir: cwd, env });
+    return done.outcome === "aborted"
+      ? `review ${done.review} aborted: ${done.reviewer} did not finish, so nothing it left is a clean reading`
+      : `review ${done.review} closed with ${done.findings} finding${done.findings === 1 ? "" : "s"}`;
+  }
   throw new OrderCommandError(`${command} is not an order subcommand`);
 }
