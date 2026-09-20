@@ -51,6 +51,7 @@ export function integratedRepo(): { dir: string; sha: string } {
   git(["init", "-q", "-b", "main"]);
   git(["config", "user.email", "t@example.com"]);
   git(["config", "user.name", "Test"]);
+  git(["config", "commit.gpgsign", "false"]);
   writeFileSync(join(dir, "landed.txt"), "landed");
   // Every repo `dim` claims an order in is expected to ignore `.claude/`, which is
   // where its own worktree lives — without it, a claim's worktree reads as an

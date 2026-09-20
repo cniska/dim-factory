@@ -261,7 +261,7 @@ describe("order command", () => {
     );
   });
 
-  test("a failure puts the order back among the work nobody holds, carrying why", () => {
+  test("a failure puts the order back among the work nobody holds", () => {
     const database = db();
     queued(database);
     runOrderCommand(database, claim);
@@ -271,7 +271,6 @@ describe("order command", () => {
     const snapshot = assembleWallSnapshot(database);
     expect(snapshot.totals).toEqual({ todo: 1, active: 0, done: 0 });
     expect(snapshot.orders[0]?.status).toBe("queued");
-    expect(snapshot.orders[0]?.attention).toBe("the check never passed");
     // Taking it again is the same act as taking one that never started.
     expect(runOrderCommand(database, claim)).toBe("order-1 is working");
   });

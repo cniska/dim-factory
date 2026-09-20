@@ -34,7 +34,7 @@ function floor(): { db: Database; worker: string; dir: string } {
   const dir = orderWorktree(trunk.dir, `review-${opened.length}`);
   worktrees.push(dir);
   queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Read a slice" }, worker);
-  claimOrder(db, "order-1", { runId: "run-1" }, worker, undefined, trunk.dir);
+  claimOrder(db, "order-1", { runId: "run-1", station: "dim-station-build" }, worker, undefined, trunk.dir);
   return { db, worker, dir };
 }
 

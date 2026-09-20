@@ -226,7 +226,7 @@ describe("factory order query", () => {
       "2026-09-18T10:03:00.000Z",
     );
     answerOrderFinding(db, raised, { answer: "fixed" }, worker, "2026-09-18T10:03:00.000Z");
-    recordOrderDocument(db, "order-123", "docs/factory.md", "2026-09-18T10:04:00.000Z");
+    recordOrderDocument(db, "order-123", "docs/factory.md", worker, "2026-09-18T10:04:00.000Z");
     recordOrderEnvironment(
       db,
       "order-123",

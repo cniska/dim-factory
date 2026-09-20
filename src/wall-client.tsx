@@ -1,5 +1,5 @@
 import { CircleAlert, CircleCheck, CircleDot, CircleX, type LucideIcon, Radio, X } from "lucide-react";
-import { StrictMode, useEffect, useRef, useState } from "react";
+import { Fragment, StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { age } from "./age";
 import { Badge } from "./components/ui/badge";
@@ -8,7 +8,6 @@ import { Digits } from "./components/ui/digits";
 import { Robot } from "./components/ui/robot";
 import type {
   BoardStatus,
-  WallItemChange,
   WallItemEntry,
   WallItemView,
   WallOrder,
@@ -18,7 +17,7 @@ import type {
 import { cn } from "./lib/utils";
 import { msUntilNextMinute } from "./minute-beat";
 import { FAILURE_MARKS_SHOWN, ordersByStage, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
-import { findingKey, ITEM_KIND_LABELS, shortSha } from "./wall-item";
+import { ITEM_KIND_LABELS } from "./wall-item";
 import "./wall.css";
 
 const unavailableSnapshot: WallSnapshot = {
@@ -173,12 +172,6 @@ function OrderCard({
         ) : null}
       </div>
 
-      {order.attention ? (
-        <p role="status" className={cn(ROW, "truncate text-warn-foreground")}>
-          {order.attention}
-        </p>
-      ) : null}
-
       <CardFooter className={cn(ROW, "mt-auto justify-between gap-1.5 text-quiet")}>
         {/* What opens the view from the keyboard, and what a screen reader is offered: the card
             around it stays readable as the article it is. */}
@@ -202,119 +195,12 @@ function OrderCard({
             </>
           ) : null}
         </span>
-        <Badge className="shrink-0">{STATION_LABELS[order.station]}</Badge>
+        {order.station === "unknown" ? null : (
+          <Badge className="shrink-0">{STATION_LABELS[order.station]}</Badge>
+        )}
       </CardFooter>
     </Card>
   );
-}
-
-/** The prose on a moment, which is the one part that can outrun its line. It is cut at the
- *  column's edge and carries the whole of itself for a reader who hovers it. */
-function Prose({ text, className }: { text: string; className?: string }) {
-  return (
-    <span className={cn("truncate", className)} title={text}>
-      {text}
-    </span>
-  );
-}
-
-function EntryEvidence({ entry }: { entry: WallItemEntry }) {
-  if (entry.commit)
-    return (
-      <>
-        {/* Shortened to what a person compares, with the whole sha on the element for an agent
-            reading the page and for anyone who copies it. */}
-        <code className="shrink-0 text-foreground" title={entry.commit.sha}>
-          {shortSha(entry.commit.sha)}
-        </code>
-        {entry.commit.subject ? <Prose text={entry.commit.subject} /> : null}
-      </>
-    );
-  if (entry.check)
-    return (
-      <>
-        <span className={cn("shrink-0", entry.check.exitCode === 0 ? "text-good" : "text-danger")}>
-          {entry.check.exitCode === 0 ? "passed" : "failed"}
-        </span>
-        {entry.check.result ? <Prose text={entry.check.result} /> : null}
-        <details className="shrink-0">
-          <summary className="cursor-pointer text-accent underline decoration-border underline-offset-2">
-            evidence
-          </summary>
-          <div className="mt-2 flex max-w-[min(44rem,70vw)] flex-col gap-2 rounded-wall border bg-background p-3 text-[11px]">
-            <code className="break-all text-foreground">{entry.check.command}</code>
-            {entry.check.result ? (
-              <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-quiet">
-                {entry.check.result}
-              </pre>
-            ) : null}
-          </div>
-        </details>
-      </>
-    );
-  if (entry.finding)
-    return (
-      <>
-        <Badge className="shrink-0">{entry.finding.dimension}</Badge>
-        <span
-          className={cn("shrink-0", entry.finding.answer === "refused" ? "text-warn-foreground" : undefined)}
-        >
-          {entry.finding.answer}
-        </span>
-        <Prose text={entry.finding.summary} />
-        {/* The grounds are what a refusal rests on, so they carry the refusal's own color; the
-            same field on a fixed finding is ordinary detail. */}
-        {entry.finding.resolution ? (
-          <Prose
-            text={entry.finding.resolution}
-            className={entry.finding.answer === "refused" ? "text-warn-foreground" : undefined}
-          />
-        ) : null}
-      </>
-    );
-  if (entry.environment)
-    return (
-      <>
-        <span className="shrink-0">{entry.environment.phase}</span>
-        <span
-          className={cn(
-            "shrink-0",
-            entry.environment.exitCode === 0
-              ? "text-good"
-              : entry.environment.exitCode === null
-                ? "text-quiet"
-                : "text-danger",
-          )}
-        >
-          {entry.environment.signal ??
-            (entry.environment.exitCode === 0
-              ? "passed"
-              : entry.environment.exitCode === null
-                ? "unrecorded"
-                : "failed")}
-        </span>
-        <details className="shrink-0">
-          <summary className="cursor-pointer text-accent underline decoration-border underline-offset-2">
-            evidence
-          </summary>
-          <div className="mt-2 flex max-w-[min(44rem,70vw)] flex-col gap-2 rounded-wall border bg-background p-3 text-[11px]">
-            <code className="break-all text-foreground">{entry.environment.argv.join(" ")}</code>
-            {entry.environment.stdout ? (
-              <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-quiet">
-                {entry.environment.stdout}
-              </pre>
-            ) : null}
-            {entry.environment.stderr ? (
-              <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-danger">
-                {entry.environment.stderr}
-              </pre>
-            ) : null}
-          </div>
-        </details>
-      </>
-    );
-  if (entry.path) return <Prose text={entry.path} className="text-foreground" />;
-  return null;
 }
 
 /** A worker as a moment names it, tinted for the role that worker holds rather than the one
@@ -331,42 +217,17 @@ function EntryWorker({ entry }: { entry: WallItemEntry }) {
   );
 }
 
-/** What the order changed, beside its history rather than inside it: a file is not a moment in
- *  the story, and a builder that touches twenty of them would bury the events among them. A count
- *  nobody recorded is left blank, because zero lines changed is a different claim. */
-export function ItemChanges({ changes }: { changes: WallItemChange[] }) {
-  return (
-    <section className="flex w-full shrink-0 flex-col gap-2 border-t pt-5 lg:w-[22rem] lg:border-t-0 lg:border-l lg:pl-5 lg:pt-0">
-      <h3 className="text-foreground">Changes</h3>
-      <ol className="flex flex-col gap-1">
-        {changes.map((change) => (
-          <li key={change.path} className="flex items-baseline justify-between gap-3 text-quiet">
-            <code className="truncate text-muted-foreground" title={change.path}>
-              {change.path}
-            </code>
-            <span className="shrink-0 tabular-nums">
-              {change.added === undefined ? null : <span className="text-role-builder">+{change.added}</span>}
-              {change.removed === undefined ? null : <span className="text-danger"> −{change.removed}</span>}
-            </span>
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
 /** An order's record as a table, because that is what it is: four columns whose widths are
  *  shared down the page, which a list of rows cannot do without pinning one to a fixed width.
  *  The time leads because it orders the page; who did it sits at the right edge, where a column
  *  of workers reads down on its own. */
 function dayLabel(at: string): string {
-  return new Intl.DateTimeFormat([], { weekday: "short", month: "short", day: "numeric" }).format(
-    new Date(at),
-  );
+  return new Intl.DateTimeFormat([], { weekday: "short", month: "short", day: "numeric" })
+    .format(new Date(at))
+    .toLowerCase();
 }
 
 function ItemHistory({ entries }: { entries: WallItemEntry[] }) {
-  const seenFindings = new Set<string>();
   const groups: Array<{ label: string; entries: WallItemEntry[] }> = [];
 
   for (const entry of entries) {
@@ -378,66 +239,36 @@ function ItemHistory({ entries }: { entries: WallItemEntry[] }) {
 
   return (
     <div className="min-w-0 flex-1 text-[12px]">
-      {groups.map((group) => (
-        <section key={group.label} aria-labelledby={`timeline-${group.label}`}>
-          <h3 id={`timeline-${group.label}`} className="mb-3 border-b pb-2 text-foreground">
-            {group.label}
-          </h3>
-          <ol className="relative ml-2 border-l border-border pl-5">
+      <ol>
+        {groups.map((group) => (
+          <Fragment key={group.label}>
+            <li className="pb-5 first:pt-0" aria-labelledby={`timeline-${group.label}`}>
+              <h3 id={`timeline-${group.label}`} className="text-[12px] leading-[18px] text-quiet">
+                {group.label}
+              </h3>
+            </li>
             {group.entries.map((entry, index) => {
-              const finding = findingKey(entry);
-              const repeatedFinding = finding !== null && seenFindings.has(finding);
-              if (finding !== null) seenFindings.add(finding);
               return (
                 <li
                   // biome-ignore lint/suspicious/noArrayIndexKey: entries can share every recorded field, so position is their identity
                   key={`${entry.at}-${entry.kind}-${index}`}
-                  className="relative pb-5 last:pb-1"
+                  className="pb-5 last:pb-1"
                 >
-                  <span
-                    className="absolute -left-[25px] top-1.5 size-2 rounded-full border border-accent bg-card"
-                    aria-hidden="true"
-                  />
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                        <time dateTime={entry.at} className="text-quiet tabular-nums">
-                          {timeLabel(entry.at)}
-                        </time>
-                        <strong className="font-normal text-foreground">
-                          {ITEM_KIND_LABELS[entry.kind]}
-                        </strong>
-                        {entry.reason ? <Prose text={entry.reason} className="text-quiet" /> : null}
-                        {entry.hold ? <span className="text-warn-foreground">{entry.hold}</span> : null}
-                      </div>
-                      <EntryWorker entry={entry} />
+                  <div className="flex min-h-[18px] flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                      <time dateTime={entry.at} className="text-quiet tabular-nums">
+                        {timeLabel(entry.at)}
+                      </time>
+                      <strong className="font-normal text-foreground">{ITEM_KIND_LABELS[entry.kind]}</strong>
                     </div>
-                    <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-                      {entry.finding && repeatedFinding ? (
-                        <>
-                          <Badge className="shrink-0">{entry.finding.dimension}</Badge>
-                          <span className="text-quiet">same finding</span>
-                          <details className="shrink-0">
-                            <summary className="cursor-pointer text-accent underline decoration-border underline-offset-2">
-                              detail
-                            </summary>
-                            <p className="mt-2 max-w-[44rem] rounded-wall border bg-background p-3 text-quiet">
-                              {entry.finding.summary}
-                              {entry.finding.resolution ? ` — ${entry.finding.resolution}` : ""}
-                            </p>
-                          </details>
-                        </>
-                      ) : (
-                        <EntryEvidence entry={entry} />
-                      )}
-                    </div>
+                    <EntryWorker entry={entry} />
                   </div>
                 </li>
               );
             })}
-          </ol>
-        </section>
-      ))}
+          </Fragment>
+        ))}
+      </ol>
     </div>
   );
 }
@@ -466,12 +297,6 @@ function ItemDialog({
 
   const order = read.view?.order ?? card;
   const StatusIcon = statusIcon[order.status];
-  const failedChecks =
-    read.view?.entries.filter((entry) => entry.check && entry.check.exitCode !== 0).length ?? 0;
-  const refusedFindings =
-    read.view?.entries.filter((entry) => entry.finding?.answer === "refused").length ?? 0;
-  const attention = order.hold || order.attention || failedChecks > 0 || refusedFindings > 0;
-
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: dismissal from the keyboard is Escape, which the element carries itself
     <dialog
@@ -542,35 +367,13 @@ function ItemDialog({
               <dd className="text-muted-foreground">{order.id}</dd>
             </div>
           </dl>
-          <div
-            role="status"
-            className={cn(
-              "flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-3 text-[11px]",
-              attention ? "text-warn-foreground" : "text-good",
-            )}
-          >
-            <strong className="font-normal">{attention ? "Attention needed" : "No attention needed"}</strong>
-            {failedChecks > 0 ? (
-              <span>
-                {failedChecks} failed check{failedChecks === 1 ? "" : "s"}
-              </span>
-            ) : null}
-            {refusedFindings > 0 ? (
-              <span>
-                {refusedFindings} refused finding{refusedFindings === 1 ? "" : "s"}
-              </span>
-            ) : null}
-          </div>
         </header>
 
         {/* The dialog holds its size and its content scrolls, so the identity above stays with
             whatever is being read. */}
         <div className="flex min-h-0 flex-col gap-8 overflow-y-auto p-5 lg:flex-row lg:gap-5">
           {read.view && read.view.entries.length > 0 ? (
-            <>
-              <ItemHistory entries={read.view.entries} />
-              {read.view.changes.length > 0 ? <ItemChanges changes={read.view.changes} /> : null}
-            </>
+            <ItemHistory entries={read.view.entries} />
           ) : (
             <p className={read.state === "unavailable" ? "text-warn-foreground" : undefined}>
               {ITEM_READ_MESSAGE[read.state]}
@@ -647,7 +450,7 @@ function feedStateOf(unavailable: boolean, stale: boolean): FeedState {
 
 /** What a card would show, so a snapshot that changed nothing lights nothing. */
 function cardState(order: WallOrder): string {
-  return `${order.status}|${order.lastEventAt}|${order.failedChecks}|${order.worker ?? ""}|${order.attention ?? ""}`;
+  return `${order.status}|${order.lastEventAt}|${order.failedChecks}|${order.worker ?? ""}`;
 }
 
 const BUMP_MS = 2000;

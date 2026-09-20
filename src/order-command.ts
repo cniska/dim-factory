@@ -23,6 +23,7 @@ import {
 import { resolveWorker } from "./factory-worker";
 import { readFlags, requiredFlag } from "./flags";
 import { requireCurrentHooks } from "./hooks";
+import { runOrderPlan } from "./order-plan";
 import { heldOrders, readyOrders } from "./order-ready";
 import { runOrderReview } from "./order-review";
 import type { Env } from "./paths";
@@ -46,6 +47,7 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--des
        dim order answer <finding-id> --answer <fixed|refused>
                        [--resolution "..."]
        dim order document <order-id> --path <path>
+       dim order plan <order-id>
        dim order ship <order-id>
        dim order stop <order-id> <completed|failed> [--reason "..."]
        dim order amend <order-id> [--title "..."] [--description "..."]
@@ -203,9 +205,9 @@ const EVIDENCE: Record<string, Evidence> = {
   },
   document: {
     flags: ["--path"],
-    record: (db, id, given) => {
+    record: (db, id, given, worker) => {
       const path = required(given, "--path");
-      recordOrderDocument(db, id, path);
+      recordOrderDocument(db, id, path, worker);
       return `${id} recorded ${path}`;
     },
   },
@@ -356,6 +358,11 @@ export function runOrderCommand(
     const station = required(flags(rest, ["--station"]), "--station");
     moveOrder(db, orderId, station, worker);
     return `${orderId} moved to ${station}`;
+  }
+  if (command === "plan") {
+    flags(rest, []);
+    const outcome = runOrderPlan(db, orderId, { env });
+    return `${orderId} planning completed by ${outcome.planner}`;
   }
   // Own property only: an object literal inherits `toString` and `constructor`, and
   // `dim order toString` would reach one instead of the refusal every other name gets.

@@ -22,6 +22,7 @@ export type OrderEventKind =
   | "queued"
   | "claimed"
   | "moved"
+  | "plan_submitted"
   | "commit_created"
   | "check_finished"
   | "review_opened"
@@ -74,7 +75,9 @@ export type OrderNotDoneCode =
   | "order_not_checked"
   | "order_not_integrated"
   | "order_trunk_unknown"
-  | "order_not_queued";
+  | "order_not_queued"
+  | "order_not_building"
+  | "order_not_planning";
 
 /** Carries a code because a caller deciding which condition failed must not match on prose. */
 export class OrderNotDone extends Error {
@@ -375,7 +378,7 @@ export function recordOrderCommit(
   subject?: string,
   at = now(),
 ): number {
-  assertOrderWorking(db, orderId);
+  assertOrderBuilding(db, orderId);
   return db.transaction(() => {
     db.run("INSERT INTO factory_order_commit (order_id, sha, subject, recorded_at) VALUES (?, ?, ?, ?)", [
       orderId,
@@ -390,7 +393,7 @@ export function recordOrderCommit(
 export type OrderFile = { path: string; added?: number; removed?: number };
 
 export function recordOrderFile(db: Database, orderId: string, file: OrderFile, at = now()): void {
-  assertOrderWorking(db, orderId);
+  assertOrderBuilding(db, orderId);
   db.run(
     "INSERT INTO factory_order_file (order_id, path, added, removed, recorded_at) VALUES (?, ?, ?, ?, ?)",
     [orderId, file.path, file.added ?? null, file.removed ?? null, at],
@@ -623,13 +626,49 @@ export function recordOrderEnvironment(
   );
 }
 
-export function recordOrderDocument(db: Database, orderId: string, path: string, at = now()): void {
+export function recordOrderDocument(
+  db: Database,
+  orderId: string,
+  path: string,
+  worker: string,
+  at = now(),
+): void {
   assertOrderWorking(db, orderId);
-  db.run("INSERT INTO factory_order_document (order_id, path, recorded_at) VALUES (?, ?, ?)", [
+  db.run("INSERT INTO factory_order_document (order_id, worker, path, recorded_at) VALUES (?, ?, ?, ?)", [
     orderId,
+    worker,
     path,
     at,
   ]);
+}
+
+export function recordOrderPlan(
+  db: Database,
+  orderId: string,
+  body: string,
+  worker: string,
+  at = now(),
+): void {
+  assertOrderWorking(db, orderId);
+  const order = db.query("SELECT station FROM factory_order WHERE id = ?").get(orderId) as {
+    station: string | null;
+  } | null;
+  if (order?.station !== "plan" && order?.station !== "dim-station-plan") {
+    throw new OrderNotDone(
+      "order_not_planning",
+      `order ${orderId} must be at plan before a plan can be submitted`,
+    );
+  }
+  if (body.trim() === "") throw new Error("plan body must not be empty");
+  db.transaction(() => {
+    db.run("INSERT INTO factory_order_plan (order_id, worker, body, recorded_at) VALUES (?, ?, ?, ?)", [
+      orderId,
+      worker,
+      body,
+      at,
+    ]);
+    appendOrderEventInTransaction(db, orderId, { kind: "plan_submitted", worker }, at);
+  })();
 }
 
 /**
@@ -713,6 +752,18 @@ function assertOrderWorking(db: Database, orderId: string): void {
   // and this refusal is read by whoever typed the command.
   throw new Error(
     status === "queued" ? `order ${orderId} is not claimed` : `order ${orderId} is already ${status}`,
+  );
+}
+
+function assertOrderBuilding(db: Database, orderId: string): void {
+  assertOrderWorking(db, orderId);
+  const order = db.query("SELECT station FROM factory_order WHERE id = ?").get(orderId) as {
+    station: string | null;
+  } | null;
+  if (order?.station === "build" || order?.station === "dim-station-build") return;
+  throw new OrderNotDone(
+    "order_not_building",
+    `order ${orderId} is at ${order?.station ?? "no station"} and must move to build before implementation evidence can be recorded`,
   );
 }
 

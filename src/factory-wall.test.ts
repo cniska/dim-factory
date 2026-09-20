@@ -6,6 +6,7 @@ import {
   answerOrderFinding,
   appendOrderEvent,
   claimOrder as claimOrderAt,
+  moveOrder,
   type OrderClaim,
   queueOrder,
   raiseOrderFinding,
@@ -80,7 +81,7 @@ describe("factory wall snapshot", () => {
       worker,
       "2026-09-18T08:00:00.000Z",
     );
-    claimOrder(db, "order-done", { runId: "run", station: "ship" }, worker, "2026-09-18T08:00:00.000Z");
+    claimOrder(db, "order-done", { runId: "run", station: "build" }, worker, "2026-09-18T08:00:00.000Z");
     recordOrderCommit(db, "order-done", trunk.sha, worker, "wall", "2026-09-18T08:01:00.000Z");
     recordOrderCheck(
       db,
@@ -89,6 +90,7 @@ describe("factory wall snapshot", () => {
       worker,
       "2026-09-18T08:01:30.000Z",
     );
+    moveOrder(db, "order-done", "ship", worker, "2026-09-18T08:01:45.000Z");
     appendOrderEvent(
       db,
       "order-done",
@@ -101,12 +103,11 @@ describe("factory wall snapshot", () => {
 
     expect(snapshot.source).toBe("database");
     expect(snapshot.orders.map((order) => [order.title, order.station, order.status, order.stage])).toEqual([
-      ["Unblock the queue", "review", "queued", "todo"],
       ["Show the wall", "build", "working", "active"],
+      ["Unblock the queue", "review", "queued", "todo"],
       ["Ship the board", "ship", "completed", "done"],
     ]);
-    expect(snapshot.orders[0]?.attention).toBe("scope unclear");
-    expect(snapshot.orders[1]).toEqual({
+    expect(snapshot.orders[0]).toEqual({
       id: "order-running",
       title: "Show the wall",
       station: "build",
@@ -156,9 +157,7 @@ describe("factory wall snapshot", () => {
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z"));
 
-    expect(snapshot.orders.map((order) => [order.status, order.stage, order.attention])).toEqual([
-      ["queued", "todo", "operator stopped"],
-    ]);
+    expect(snapshot.orders.map((order) => [order.status, order.stage])).toEqual([["queued", "todo"]]);
     db.close();
   });
 
@@ -374,47 +373,6 @@ describe("factory wall snapshot", () => {
     db.close();
   });
 
-  test("keeps an order that needs a person on the board and at the top of its column", () => {
-    const db = floor();
-    queueOrder(
-      db,
-      { id: "order-failed-early", project: "cniska/dim-factory", title: "Stop and wait for the owner" },
-      worker,
-      "2026-09-18T08:00:00.000Z",
-    );
-    claimOrder(
-      db,
-      "order-failed-early",
-      { runId: "run", station: "build" },
-      worker,
-      "2026-09-18T08:00:00.000Z",
-    );
-    appendOrderEvent(
-      db,
-      "order-failed-early",
-      { worker, kind: "failed", reason: "scope unclear" },
-      "2026-09-18T08:02:00.000Z",
-    );
-    // More waiting work than a column draws, every piece of it newer than the order that
-    // stopped, which is what a bound applied before the ranking would drop first.
-    for (let index = 0; index < 14; index += 1) {
-      queueOrder(
-        db,
-        { id: `order-busy-${index}`, project: "cniska/dim-factory", title: `Busy ${index}` },
-        worker,
-        `2026-09-18T09:${String(index + 10).padStart(2, "0")}:00.000Z`,
-      );
-    }
-
-    const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:00:00.000Z"));
-    const todo = snapshot.orders.filter((order) => order.stage === "todo");
-
-    expect(todo[0]?.id).toBe("order-failed-early");
-    expect(todo).toHaveLength(12);
-    expect(snapshot.totals.todo).toBe(15);
-    db.close();
-  });
-
   test("serves snapshots, has no control route and refuses client messages", async () => {
     const file = `${tmpdir()}/wall-${Date.now()}.sqlite`;
     const seed = new Database(file);
@@ -568,7 +526,7 @@ describe("factory wall item view", () => {
       worker,
       "2026-09-18T10:08:00.000Z",
     );
-    recordOrderDocument(db, "order-worked", "docs/human-interface.md", "2026-09-18T10:09:00.000Z");
+    recordOrderDocument(db, "order-worked", "docs/human-interface.md", worker, "2026-09-18T10:09:00.000Z");
     appendOrderEvent(
       db,
       "order-worked",
@@ -643,7 +601,7 @@ describe("factory wall item view", () => {
       },
       worker,
     );
-    claimOrder(db, "order-uncounted", { runId: "run" }, worker);
+    claimOrder(db, "order-uncounted", { runId: "run", station: "build" }, worker);
     recordOrderFile(db, "order-uncounted", { path: "src/binary.png" });
 
     const view = assembleItemView(db, "order-uncounted", new Date("2026-09-18T10:20:00.000Z"));
@@ -664,7 +622,7 @@ describe("factory wall item view", () => {
       },
       worker,
     );
-    claimOrder(db, "order-at-home", { runId: "run" }, worker);
+    claimOrder(db, "order-at-home", { runId: "run", station: "build" }, worker);
     recordOrderFile(db, "order-at-home", { path: `${home}/code/dim-factory/src/paths.ts` });
 
     const view = assembleItemView(db, "order-at-home", new Date("2026-09-18T10:20:00.000Z"));
@@ -699,7 +657,11 @@ describe("factory wall item view", () => {
         resolution: "the design doc rules a library out for this surface",
       },
     ]);
-    expect(entries.find((entry) => entry.kind === "document_updated")?.path).toBe("docs/human-interface.md");
+    expect(entries.find((entry) => entry.kind === "document_updated")).toMatchObject({
+      path: "docs/human-interface.md",
+      worker,
+      role: "builder",
+    });
     expect(entries.find((entry) => entry.kind === "environment_reported")?.environment).toEqual({
       phase: "setup",
       argv: ["/tmp/worked/scripts/worktree-setup.sh"],
@@ -779,7 +741,7 @@ describe("factory wall item view", () => {
       worker,
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(db, "order-other", { runId: "run" }, worker, "2026-09-18T10:01:00.000Z");
+    claimOrder(db, "order-other", { runId: "run", station: "build" }, worker, "2026-09-18T10:01:00.000Z");
     recordOrderCheck(
       db,
       "order-other",
@@ -788,7 +750,7 @@ describe("factory wall item view", () => {
       "2026-09-18T10:03:00.000Z",
     );
     recordOrderFile(db, "order-other", { path: "src/other.ts" }, "2026-09-18T10:05:00.000Z");
-    recordOrderDocument(db, "order-other", "docs/other.md", "2026-09-18T10:09:00.000Z");
+    recordOrderDocument(db, "order-other", "docs/other.md", worker, "2026-09-18T10:09:00.000Z");
 
     const entries = assembleItemView(db, "order-other", new Date("2026-09-18T10:20:00.000Z"))?.entries ?? [];
 

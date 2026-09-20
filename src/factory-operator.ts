@@ -75,7 +75,7 @@ export async function runFactoryOrder(
     recordFile: (file) => recordOrderFile(db, item.id, file),
     recordCheck: (check) => recordOrderCheck(db, item.id, check, worker),
     answerFinding: (findingId, answer) => answerOrderFinding(db, findingId, answer, worker),
-    recordDocument: (path) => recordOrderDocument(db, item.id, path),
+    recordDocument: (path) => recordOrderDocument(db, item.id, path, worker),
     recordEnvironment: (report) => recordOrderEnvironment(db, item.id, report),
   };
 

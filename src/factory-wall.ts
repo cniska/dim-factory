@@ -41,7 +41,6 @@ export type WallOrder = {
   /** The hold the order sits on, where it sits on one. An order on a hold is waiting for
    *  something outside the floor, which is what a stopped card says. */
   hold?: string;
-  attention?: string;
 };
 
 export type WallSnapshot = {
@@ -175,10 +174,6 @@ function mapOrder(row: OrderRow, now: Date): WallOrder {
   const workerRole = role(row.latest_role);
   const stationName = station(row.station ?? row.latest_station);
   const orderStatus = status(row.status);
-  // A queued order carrying a stop reason was tried and handed back, which is the one
-  // thing a reader looking at the waiting work needs to see.
-  const attention =
-    orderStatus === "queued" ? (row.stop_reason ?? row.latest_reason ?? undefined) : undefined;
   // A claim writes its own event in the same transaction, so an order row always has one.
   const lastEventAt = row.last_event_at;
   return {
@@ -193,7 +188,6 @@ function mapOrder(row: OrderRow, now: Date): WallOrder {
     lastEventAt,
     failedChecks: row.failed_check_count,
     ...(row.hold ? { hold: row.hold } : {}),
-    ...(attention ? { attention } : {}),
   };
 }
 
@@ -207,10 +201,7 @@ export function assembleWallSnapshot(db: Database, now = new Date()): WallSnapsh
   const mapped = rows.map((row) => mapOrder(row, now));
   const totals: Record<WallStage, number> = { todo: 0, active: 0, done: 0 };
   const orders: WallOrder[] = [];
-  for (const order of [
-    ...mapped.filter((order) => order.attention),
-    ...mapped.filter((order) => !order.attention),
-  ]) {
+  for (const order of mapped) {
     totals[order.stage] += 1;
     if (totals[order.stage] <= MAX_COLUMN_CARDS) orders.push(order);
   }
@@ -236,7 +227,7 @@ type EventRow = {
   resolution: string | null;
 };
 
-type PathRow = { recorded_at: string; path: string };
+type PathRow = { recorded_at: string; worker_id: string; worker_role: string | null; path: string };
 
 type FileRow = { path: string; added: number | null; removed: number | null };
 
@@ -344,7 +335,10 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
     .all(orderId) as FileRow[];
   const documents = db
     .query(
-      "SELECT recorded_at, path FROM factory_order_document WHERE order_id = ? ORDER BY recorded_at, path",
+      `SELECT d.recorded_at, d.worker AS worker_id, fw.role AS worker_role, d.path
+       FROM factory_order_document d
+       LEFT JOIN factory_worker fw ON fw.name = d.worker
+       WHERE d.order_id = ? ORDER BY d.recorded_at, d.path`,
     )
     .all(orderId) as PathRow[];
   const environments = db
@@ -358,6 +352,8 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
     ...documents.map((doc) => ({
       at: doc.recorded_at,
       kind: "document_updated" as const,
+      worker: doc.worker_id,
+      ...(role(doc.worker_role) ? { role: role(doc.worker_role) } : {}),
       path: tildePath(doc.path),
     })),
     ...environments.map(environmentEntry),

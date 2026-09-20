@@ -20,7 +20,7 @@ import { ORDER_STATUSES_SQL } from "./factory-order";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 34;
+export const SCHEMA_VERSION = 36;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -227,7 +227,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS factory_stop_live
 -- transcript. A worker can be seen in more than one session, and each sighting is its
 -- own row rather than a column anything overwrites.
 CREATE TABLE IF NOT EXISTS factory_worker_session (
-  worker        TEXT NOT NULL REFERENCES factory_worker(name),
+  worker        TEXT REFERENCES factory_worker(name),
   session_id    TEXT NOT NULL,
   seen_at       TEXT NOT NULL,
   PRIMARY KEY (worker, session_id)
@@ -315,7 +315,7 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,
   order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   ts                    TEXT NOT NULL,
-  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'commit_created', 'check_finished', 'review_opened', 'review_closed', 'finding_raised', 'finding_answered', 'completed', 'dropped', 'failed')),
+  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'plan_submitted', 'commit_created', 'check_finished', 'review_opened', 'review_closed', 'finding_raised', 'finding_answered', 'completed', 'dropped', 'failed')),
   -- Who did it, written by the statement that writes the moment and never after.
   -- An entry completed later is a mutation of a record someone may already have
   -- read, and a log that can be amended is not evidence of anything.
@@ -423,9 +423,17 @@ CREATE TABLE IF NOT EXISTS factory_order_environment (
 
 CREATE TABLE IF NOT EXISTS factory_order_document (
   order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  worker        TEXT REFERENCES factory_worker(name),
   path          TEXT NOT NULL,
   recorded_at   TEXT NOT NULL,
   PRIMARY KEY (order_id, path)
+);
+
+CREATE TABLE IF NOT EXISTS factory_order_plan (
+  order_id      TEXT PRIMARY KEY REFERENCES factory_order(id) ON DELETE CASCADE,
+  worker        TEXT NOT NULL REFERENCES factory_worker(name),
+  body          TEXT NOT NULL CHECK (trim(body) <> ''),
+  recorded_at   TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS turn (

@@ -21,6 +21,7 @@ import {
   recordOrderDocument,
   recordOrderEnvironment,
   recordOrderFile,
+  recordOrderPlan,
   shipOrder,
 } from "./factory-order";
 import { clearStop, FactoryStopError, pullStop } from "./factory-stop";
@@ -105,6 +106,35 @@ const teardownReport: WorkerHookReport = {
 };
 
 describe("factory order report records", () => {
+  test("refuses implementation evidence while an order is still in plan", () => {
+    const database = db();
+    queueOrder(database, { ...order, id: "order-plan" }, worker);
+    claimOrder(database, "order-plan", { ...claim, station: "dim-station-plan" }, worker);
+
+    expect(() =>
+      recordOrderCommit(database, "order-plan", trunk.sha, worker, "docs: record the plan"),
+    ).toThrow(expect.objectContaining({ code: "order_not_building" }));
+    database.close();
+  });
+
+  test("records a plan only at the plan station and permits implementation after moving to build", () => {
+    const database = db();
+    queueOrder(database, { ...order, id: "order-planned" }, worker);
+    claimOrder(database, "order-planned", { ...claim, station: "dim-station-plan" }, worker);
+
+    recordOrderPlan(database, "order-planned", "## outcome\n\nMove the order before building.", worker);
+    expect(
+      database.query("SELECT body, worker FROM factory_order_plan WHERE order_id = 'order-planned'").get(),
+    ).toEqual({ body: "## outcome\n\nMove the order before building.", worker });
+    expect(
+      database.query("SELECT kind FROM factory_order_event WHERE order_id = 'order-planned'").all(),
+    ).toEqual([{ kind: "queued" }, { kind: "claimed" }, { kind: "plan_submitted" }]);
+
+    moveOrder(database, "order-planned", "dim-station-build", worker);
+    recordOrderCommit(database, "order-planned", trunk.sha, worker, "feat: planned order");
+    database.close();
+  });
+
   test("runs one item through a builder and records its observable lifecycle", async () => {
     const database = db();
     queueOrder(database, { ...order, id: "order-2" }, worker);
@@ -839,7 +869,7 @@ describe("factory order report records", () => {
       "2026-09-18T10:04:00.000Z",
     );
     answerOrderFinding(database, finding, { answer: "fixed" }, worker, "2026-09-18T10:04:00.000Z");
-    recordOrderDocument(database, "order-1", "docs/factory.md", "2026-09-18T10:05:00.000Z");
+    recordOrderDocument(database, "order-1", "docs/factory.md", worker, "2026-09-18T10:05:00.000Z");
     appendOrderEvent(
       database,
       "order-1",
