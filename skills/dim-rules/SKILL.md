@@ -14,7 +14,7 @@ This machine can answer all three from what it has already run, which is what se
 
 Answer these before writing a line.
 
-1. **Is this rule already settled?** `dim q search "<the rule, in your words>"` ranks what a person distilled — handoff Nexts, their own commit subjects — by meaning, and `dim q keywords "<words>"` reaches what was said and never distilled. A rule re-litigated is a rule that will be re-litigated again; find what settled it and sharpen that instead.
+1. **Is this rule already settled?** `dim q search "<the rule, in your words>"` ranks what a person distilled — handoff Nexts, their own commit subjects — by meaning, and `dim q keywords "<the rule, in your words>"` reaches what was said and never distilled. A rule re-litigated is a rule that will be re-litigated again; find what settled it and sharpen that instead.
 
 2. **Is it actually being broken?** `dim q corrections` gives the turns the user physically stopped, by skill, and `dim q rework` gives the files an agent had to revisit after a pushback. A rule nobody breaks is a line paid for on every session to prevent nothing. A rule broken repeatedly under one skill belongs in that skill, not in the file every session loads.
 

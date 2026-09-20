@@ -19,7 +19,7 @@ What makes this front different from [`dim-line-fix`](../dim-line-fix/SKILL.md) 
 Find out what is already on disk before designing anything.
 
 - **Has this shape been built here before?** `dim q prior-art "<path fragment>"` names every tracked file whose path matches, across the repos on disk. It matches a path and not a meaning, so a concept whose file is named for its domain is invisible to it — `dim q search "<the question, in your words>"` is the one that ranks by meaning, over the text a person distilled.
-- **Was this already decided?** A decision already taken is not yours to re-take. `dim q keywords "<words>"` reaches one settled in conversation and never written down, which is the case `q search` is worst at. `dim q chain <id-prefix>` and `dim q resume <id-prefix>` say whether this is mid-chain with a Next already written.
+- **Was this already decided?** A decision already taken is not yours to re-take. `dim q keywords "<the question, in your words>"` reaches one settled in conversation and never written down, which is the case `q search` is worst at. `dim q chain <id-prefix>` and `dim q resume <id-prefix>` say whether this is mid-chain with a Next already written.
 
 **Invoke [`dim-station-plan`](../dim-station-plan/SKILL.md) where the cut is not obvious from those answers** — where the work crosses repos, changes a contract other code depends on, or has two shapes worth weighing. That station asks the four questions in full and hands the planning to a more capable model. Where the scope is one repo and the slices fall out of the reading, say so in a line and cut them here; loading a planning station to confirm an obvious cut spends context on agreement.
 
