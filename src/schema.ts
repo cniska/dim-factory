@@ -519,15 +519,15 @@ CREATE TABLE IF NOT EXISTS correction_label (
 
 -- No source to re-read — an answer exists only in the session that made it — so
 -- \`rebuild\` never clears this, as it does not clear hook_event. Grades the
--- checker and never the builder: measures in docs/findings.md looked like grades
+-- reviewer and never the builder: measures in docs/findings.md looked like grades
 -- and turned out to track what was being worked on instead.
 CREATE TABLE IF NOT EXISTS finding (
   id           INTEGER PRIMARY KEY,
   repo         TEXT NOT NULL,        -- as repo_commit spells it, so a row reaches commit_file
   slice        TEXT NOT NULL,
-  dimension    TEXT NOT NULL,        -- which of the checker's four questions raised it
+  dimension    TEXT NOT NULL,        -- which of the reviewer's four questions raised it
   file         TEXT,                 -- relative to the checkout
-  summary      TEXT NOT NULL,        -- the checker's words, not the builder's
+  summary      TEXT NOT NULL,        -- the reviewer's words, not the builder's
   answer       TEXT NOT NULL CHECK (answer IN ('fixed','refused')),
   reason       TEXT,
   recorded_at  TEXT NOT NULL,

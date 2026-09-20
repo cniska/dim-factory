@@ -621,8 +621,8 @@ const findings: Query = {
       columns,
       rows: toRows(records, columns),
       note:
-        "This grades the checker and never the builder: a builder scored down by a count writes duller " +
-        "slices and a checker scored up by one invents findings. A refusal ends a finding as completely " +
+        "This grades the reviewer and never the builder: a builder scored down by a count writes duller " +
+        "slices and a reviewer scored up by one invents findings. A refusal ends a finding as completely " +
         "as a fix does, so the two columns are answers and not a pass rate.",
     };
   },

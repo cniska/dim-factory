@@ -664,7 +664,7 @@ function runLabel(args: string[]): void {
 }
 
 /**
- * The builder's own record of how it answered a checker, written where the slice
+ * The builder's own record of how it answered a reviewer, written where the slice
  * was built so the repo is read rather than passed in.
  */
 function runFinding(args: string[]): void {

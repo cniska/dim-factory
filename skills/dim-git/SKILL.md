@@ -27,7 +27,7 @@ Before committing:
 4. Update the long-lived documentation that describes the changed behavior.
 5. Use the repository's commit convention and let its commit gate enforce the subject.
 
-Record the commit SHA, changed files, check command and result, checker findings and resolutions, and documentation updated. A hold or infrastructure failure is part of the report; it is not green evidence.
+Record the commit SHA, changed files, check command and result, reviewer findings and resolutions, and documentation updated. A hold or infrastructure failure is part of the report; it is not green evidence.
 
 ## Review work
 
@@ -53,6 +53,6 @@ Every stopped or completed operation says:
 
 - editing the parent worktree from a worker
 - committing before the repository check and review are complete
-- treating a checker finding as optional because tests pass
+- treating a reviewer finding as optional because tests pass
 - integrating two items together when their claims were separate
 - pushing or rewriting history without the owner's authorization

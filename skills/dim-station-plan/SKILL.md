@@ -39,7 +39,7 @@ The brief is these questions:
 - does the plan say what the record returned and what that removed, or does it read as though nothing was looked up
 - does anything here ask the owner a question one of the four queries could have answered
 
-Returning nothing is the expected result. A checker earns trust the way a test does — plant a defect once, watch it be caught, take it out.
+Returning nothing is the expected result. A reviewer earns trust the way a test does — plant a defect once, watch it be caught, take it out.
 
 ## Exit check
 
