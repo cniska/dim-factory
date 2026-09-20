@@ -257,6 +257,42 @@ describe("doctor", () => {
     expect(trust?.detail).not.toContain("trusted_hash");
   });
 
+  test("fails while no spawn profile is written, and clears once one reads", () => {
+    const env = seeded();
+
+    const missing = check(env, "spawn profile");
+    expect(missing?.state).toBe("fail");
+    expect(missing?.detail).toContain("no spawn profile");
+    expect(missing?.fix).toBeTruthy();
+
+    mkdirSync(env.DIM_HOME as string, { recursive: true });
+    writeFileSync(
+      join(env.DIM_HOME as string, "spawn.json"),
+      JSON.stringify({
+        argv: ["claude", "{brief}", "{model}", "{tools}"],
+        slots: { tools: { join: "," } },
+        grants: { "read-files": { tools: ["Read"] } },
+      }),
+    );
+    expect(check(env, "spawn profile")?.state).toBe("ok");
+  });
+
+  test("fails with a repair fix while the spawn profile is malformed", () => {
+    const env = seeded();
+    mkdirSync(env.DIM_HOME as string, { recursive: true });
+    const path = join(env.DIM_HOME as string, "spawn.json");
+    writeFileSync(
+      path,
+      JSON.stringify({ argv: ["claude", "{model}"], slots: {}, grants: { "read-file": {} } }),
+    );
+
+    const malformed = check(env, "spawn profile");
+
+    expect(malformed?.state).toBe("fail");
+    expect(malformed?.detail).not.toContain("no spawn profile");
+    expect(malformed?.fix).toContain(path);
+  });
+
   test("reports every check with something a reader can act on", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));

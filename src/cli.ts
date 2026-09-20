@@ -31,6 +31,7 @@ import { routeReport } from "./routing";
 import { installRules, planRules } from "./rules";
 import { DEFAULT_WINDOW, windowFromArgs } from "./since";
 import { installSkill, planSkill, SKILL_NAMES } from "./skill";
+import { spawnReport } from "./spawn-report";
 import { ensureSpoolDirs } from "./spool";
 import { type RebuildReport, rebuild, type SyncReport, sync } from "./sync";
 import { trace } from "./trace";
@@ -70,6 +71,9 @@ const USAGE = `usage: dim <command>
                   reads this, and takes silence as no gate)
   route [<role>]  print the capability tier a factory role runs at and what this
                   machine's harness map calls it, or every role with no argument
+  spawn [<role>]  print the argv a station would be started with, brief elided,
+                  built from this machine's spawn profile; every spawnable role
+                  with no argument
   check-commits <range>
                   judge every authored subject in a revision range by the same
                   rules the commit gate holds, and name each one that breaks
@@ -928,6 +932,9 @@ try {
       break;
     case "route":
       console.log(routeReport(process.argv[3]).join("\n"));
+      break;
+    case "spawn":
+      console.log(spawnReport(process.argv[3]).join("\n"));
       break;
     case "check-commits":
       runCheckCommits(process.argv[3]);
