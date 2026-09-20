@@ -214,6 +214,22 @@ Everything above except the fix-commit join measures process — what was said, 
 
 The one outcome signal is the repo's own: 4,880 `fix:` commits of 22,936, written at the time by whoever had to come back. It carries real limits. A fix may land on code the session never wrote. Work nobody came back to may still be wrong. A fix committed without the conventional prefix is invisible. And a fix inside the session that wrote the file is ordinary iteration, not a defect — counting those rated `simplify` worst of every skill at 53%, with a mean lag of seven hours, which measured how busy the file was rather than how wrong it was.
 
+## The workflow the factory copies was never written down
+
+Asked on 2026-09-20, to settle what the factory's line should be from what the owner actually does rather than from either party's description of it.
+
+`dim q search` cannot answer it. Asked for how work is designed, built and reviewed here, the closest distilled passages score 0.45 and below and are all commit subjects about unrelated builds. The index holds text a person distilled — a handoff's Next, an authored subject, a labeled correction — so a practice followed daily and never written down is absent from it. That absence is the reason the line had to be re-derived in conversation.
+
+What the loads and delegations do show, since 2026-08-21:
+
+- **Review is the fan-out, and it is wide.** `review` carries 186 loads across 91 sessions with 153 subagents and 103 handoffs, more delegation than any other skill. It splits into a dimension per agent: correctness 57 loads, test 56, architecture 51, doc 47, security 44, style 39. Not every review runs every dimension.
+- **A second model is asked for in prose, never by name.** `second-opinion` shows 40 loads across 20 sessions and **zero** typed by the user — the model reaches for it every time. The owner's own words are short and repeated: "ask fable to design?", "reframe again for fable?", "this is simpler right? yes reframe for fable", "what did fable suggest?". At 58 subagents over 20 sessions it averages near three agents a session, so a design is argued in rounds rather than fetched once.
+- **The second model's claims are checked, not taken.** The same sessions carry "Verified Fable's keystone claim myself" and "I was wrong and Fable caught it" in both directions.
+- **Planning as a station barely exists.** `plan` has 14 loads across 7 sessions against `spec` at 82, so what gets written down is the artifact and not the act.
+- **The handoff is the most-run step of all** — 369 loads across 157 sessions, 127 of them typed by the owner, more than any other skill by a wide margin. Any line copied from this workflow that stops at review has left out its most frequent step.
+
+What these carry: loads and delegation counts are the harness's own attribution per call, so they say which skill was in context and what it spawned. They do not say a review found anything, that a plan was good, or that a round changed a decision.
+
 ## Git is the most-run tool and the least-guided one
 
 Asked on 2026-09-17, over the whole corpus. Git is the busiest thing an agent does here: 3,655 `commit` operations, 3,418 `add`, 656 `push`, and 1,474 operations that destroy work if aimed wrong — 503 worktree discards, 294 `branch -D`, 242 `reset --hard`, 207 amends, 72 force pushes. `reset --hard` fails at 23% against a roughly 4% baseline for git calls generally.
