@@ -28,7 +28,9 @@ export type WallOrder = {
   /** Absent with the worker and never apart from it: a hand is issued with a role, so an
    *  order that names one names what it was called in as. */
   role?: WallRole;
-  status: OrderStatus;
+  /** Never `dropped`: a dropped order leaves the wall, so neither the board nor the item
+   *  view ever holds one. */
+  status: BoardStatus;
   age: string;
   /** When the order last recorded an event. An order's age on the board is its silence, so it counts
    *  from the last thing that happened rather than from the claim. */
@@ -36,6 +38,9 @@ export type WallOrder = {
   /** How many of the order's checks ended non-zero. An order failing its check repeatedly is
    *  struggling, which is the one piece of evidence a card has room to carry. */
   failedChecks: number;
+  /** The hold the order sits on, where it sits on one. An order on a hold is waiting for
+   *  something outside the floor, which is what a stopped card says. */
+  hold?: string;
   attention?: string;
 };
 
@@ -56,6 +61,9 @@ export type WallItemEntry = {
   kind: WallItemKind;
   agent?: string;
   worker?: string;
+  /** What the worker on this moment was called in as, so every hand in the history carries
+   *  its own role rather than the one the order currently sits under. */
+  role?: WallRole;
   station?: WallStation;
   reason?: string;
   hold?: string;
@@ -117,7 +125,7 @@ const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.station, o.status,
 /** A decision not to work is none of `todo`, `active` or `done`, so a dropped order
  *  never reaches `mapOrder`: the snapshot query excludes it and the item view answers
  *  not found, the way it does for an id nothing holds. */
-type BoardStatus = Exclude<OrderStatus, "dropped">;
+export type BoardStatus = Exclude<OrderStatus, "dropped">;
 const WALL_STATUSES = new Set<string>(ORDER_STATUSES.filter((status) => status !== "dropped"));
 
 const stageByStatus: Record<BoardStatus, WallStage> = {
@@ -184,6 +192,7 @@ function mapOrder(row: OrderRow, now: Date): WallOrder {
     age: age(lastEventAt, now),
     lastEventAt,
     failedChecks: row.failed_check_count,
+    ...(row.hold ? { hold: row.hold } : {}),
     ...(attention ? { attention } : {}),
   };
 }
@@ -212,6 +221,7 @@ type EventRow = {
   ts: string;
   kind: WallItemKind;
   worker_id: string | null;
+  worker_role: string | null;
   station: string | null;
   hold_type: string | null;
   reason: string | null;
@@ -274,6 +284,7 @@ function eventEntry(row: EventRow): WallItemEntry {
     at: row.ts,
     kind: row.kind,
     ...(row.worker_id ? { agent: row.worker_id, worker: row.worker_id } : {}),
+    ...(role(row.worker_role) ? { role: role(row.worker_role) } : {}),
     ...(row.station ? { station: station(row.station) } : {}),
     ...(row.reason ? { reason: row.reason } : {}),
     ...(row.hold_type ? { hold: row.hold_type } : {}),
@@ -313,11 +324,12 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
   if (!row || row.status === "dropped") return null;
   const events = db
     .query(
-      `SELECT e.ts, e.kind, e.worker AS worker_id, e.station, e.hold_type, e.reason,
+      `SELECT e.ts, e.kind, e.worker AS worker_id, fw.role AS worker_role, e.station, e.hold_type, e.reason,
               coalesce(c.sha, e.commit_sha) AS commit_sha, c.subject AS commit_subject,
               ch.command, ch.exit_code, ch.result,
               f.dimension, f.answer, f.summary, f.resolution
        FROM factory_order_event e
+       LEFT JOIN factory_worker fw ON fw.name = e.worker
        LEFT JOIN factory_order_commit c ON c.order_id = e.order_id AND c.sha = e.commit_sha
        LEFT JOIN factory_order_check ch ON ch.id = e.check_id AND ch.order_id = e.order_id
        LEFT JOIN factory_order_finding f ON f.id = e.finding_id AND f.order_id = e.order_id

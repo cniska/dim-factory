@@ -6,9 +6,9 @@ import { Badge } from "./components/ui/badge";
 import { Card, CardFooter, CardHeader } from "./components/ui/card";
 import { Digits } from "./components/ui/digits";
 import { Robot } from "./components/ui/robot";
-import type { OrderStatus } from "./factory-order";
+import { Table, TableBody, TableCell, TableRow } from "./components/ui/table";
 import type {
-  WallItemChange,
+  BoardStatus,
   WallItemEntry,
   WallItemView,
   WallOrder,
@@ -18,7 +18,7 @@ import type {
 import { cn } from "./lib/utils";
 import { msUntilNextMinute } from "./minute-beat";
 import { FAILURE_MARKS_SHOWN, ordersByStage, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
-import { ITEM_KIND_LABELS, RAIL_MARK_GLYPH, type RailStop, railStops, shortSha } from "./wall-item";
+import { ITEM_KIND_LABELS, shortSha } from "./wall-item";
 import "./wall.css";
 
 const unavailableSnapshot: WallSnapshot = {
@@ -28,20 +28,22 @@ const unavailableSnapshot: WallSnapshot = {
   totals: { todo: 0, active: 0, done: 0 },
 };
 
-const statusLabels: Record<OrderStatus, string> = {
+const statusLabels: Record<BoardStatus, string> = {
   queued: "Queued",
   working: "Working",
   completed: "Completed",
-  failed: "Failed",
 };
 
-const stopped = new Set<OrderStatus>(["failed"]);
+/** An order waiting on something off the floor, which is the one thing a card's own ground
+ *  says. The status cannot carry it: a held order is still queued or working. */
+function isStopped(order: { hold?: string }): boolean {
+  return order.hold !== undefined;
+}
 
-const statusIcon: Record<OrderStatus, LucideIcon> = {
+const statusIcon: Record<BoardStatus, LucideIcon> = {
   queued: CircleDot,
   working: CircleDot,
   completed: CircleCheck,
-  failed: CircleAlert,
 };
 
 // Color carries the agent's role and nothing else; the station stays text, so the two
@@ -63,8 +65,8 @@ function tint(role: WallRole | undefined): string | undefined {
   return role ? roleTint[role] : undefined;
 }
 
-function statusTint(status: OrderStatus): string {
-  return stopped.has(status) ? "text-warn-foreground" : "text-muted-foreground";
+function statusTint(order: WallOrder): string {
+  return isStopped(order) ? "text-warn-foreground" : "text-muted-foreground";
 }
 
 // `hourCycle` rather than `hour12: false`, which reads midnight as 24 in some locales. The
@@ -128,7 +130,7 @@ function OrderCard({
       // article rather than becoming a button, because a button's children are read as its label
       // and the state, age, worker and station on the card would stop being read at all.
       onClick={() => onOpen(order)}
-      stopped={stopped.has(order.status)}
+      stopped={isStopped(order)}
       className={cn(
         "gap-0 p-2.5 text-left text-[11px]",
         "cursor-pointer hover:border-accent focus-visible:border-accent focus-visible:outline-none",
@@ -138,7 +140,7 @@ function OrderCard({
       )}
     >
       <CardHeader className={cn(ROW, "justify-between text-quiet")}>
-        <span className={cn("flex items-center gap-1.5", statusTint(order.status))}>
+        <span className={cn("flex items-center gap-1.5", statusTint(order))}>
           {/* Where the column carries the state, the mark is what states it, so the mark is
               what has to name it to a reader who is not looking at the column. */}
           <StatusIcon
@@ -206,163 +208,121 @@ function OrderCard({
   );
 }
 
+/** The prose on a moment, which is the one part that can outrun its line. It is cut at the
+ *  column's edge and carries the whole of itself for a reader who hovers it. */
+function Prose({ text, className }: { text: string; className?: string }) {
+  return (
+    <span className={cn("truncate", className)} title={text}>
+      {text}
+    </span>
+  );
+}
+
 function EntryEvidence({ entry }: { entry: WallItemEntry }) {
   if (entry.commit)
     return (
       <>
         {/* Shortened to what a person compares, with the whole sha on the element for an agent
             reading the page and for anyone who copies it. */}
-        <code className="text-foreground" title={entry.commit.sha}>
+        <code className="shrink-0 text-foreground" title={entry.commit.sha}>
           {shortSha(entry.commit.sha)}
         </code>
-        {entry.commit.subject ? <span>{entry.commit.subject}</span> : null}
+        {entry.commit.subject ? <Prose text={entry.commit.subject} /> : null}
       </>
     );
   if (entry.check)
     return (
       <>
-        <code className="text-foreground">{entry.check.command}</code>
-        <span className={entry.check.exitCode === 0 ? undefined : "text-danger"}>
+        <code className="shrink-0 text-foreground">{entry.check.command}</code>
+        <span className={cn("shrink-0", entry.check.exitCode === 0 ? undefined : "text-danger")}>
           exit {entry.check.exitCode}
         </span>
-        {entry.check.result ? <span>{entry.check.result}</span> : null}
+        {entry.check.result ? <Prose text={entry.check.result} /> : null}
       </>
     );
   if (entry.finding)
     return (
       <>
         <Badge className="shrink-0">{entry.finding.dimension}</Badge>
-        <span className={entry.finding.answer === "refused" ? "text-warn-foreground" : undefined}>
+        <span
+          className={cn("shrink-0", entry.finding.answer === "refused" ? "text-warn-foreground" : undefined)}
+        >
           {entry.finding.answer}
         </span>
-        <span>{entry.finding.summary}</span>
+        <Prose text={entry.finding.summary} />
         {/* The grounds are what a refusal rests on, so they carry the refusal's own color; the
             same field on a fixed finding is ordinary detail. */}
         {entry.finding.resolution ? (
-          <span className={entry.finding.answer === "refused" ? "text-warn-foreground" : undefined}>
-            {entry.finding.resolution}
-          </span>
+          <Prose
+            text={entry.finding.resolution}
+            className={entry.finding.answer === "refused" ? "text-warn-foreground" : undefined}
+          />
         ) : null}
       </>
     );
   if (entry.environment)
     return (
       <>
-        <span>{entry.environment.phase}</span>
-        <code className="text-foreground">{entry.environment.argv.join(" ")}</code>
-        <span className={entry.environment.exitCode === 0 ? undefined : "text-danger"}>
+        <span className="shrink-0">{entry.environment.phase}</span>
+        <Prose text={entry.environment.argv.join(" ")} className="text-foreground" />
+        <span className={cn("shrink-0", entry.environment.exitCode === 0 ? undefined : "text-danger")}>
           {entry.environment.signal ?? `exit ${entry.environment.exitCode ?? "unrecorded"}`}
         </span>
-        {entry.environment.stdout ? <span>{entry.environment.stdout}</span> : null}
-        {entry.environment.stderr ? <span className="text-danger">{entry.environment.stderr}</span> : null}
-        {entry.environment.resources.map((resource) => (
-          <code key={JSON.stringify(resource)}>{JSON.stringify(resource)}</code>
-        ))}
+        {entry.environment.stderr ? <Prose text={entry.environment.stderr} className="text-danger" /> : null}
       </>
     );
-  if (entry.path) return <code className="text-foreground">{entry.path}</code>;
-  if (entry.delegatedTo)
-    return (
-      <span>
-        to {entry.delegatedTo.worker}
-        {entry.delegatedTo.station ? ` at ${STATION_LABELS[entry.delegatedTo.station]}` : ""}
-      </span>
-    );
+  if (entry.path) return <Prose text={entry.path} className="text-foreground" />;
   return null;
 }
 
-/** What the order changed, beside its history rather than inside it: a file is not a moment in
- *  the story, and a builder that touches twenty of them would bury the events among them. A count
- *  nobody recorded is left blank, because zero lines changed is a different claim. */
-function ItemChanges({ changes }: { changes: WallItemChange[] }) {
-  return (
-    <section className="flex w-[22rem] shrink-0 flex-col gap-2 border-l pl-5">
-      <h3 className="text-foreground">Changes</h3>
-      <ol className="flex flex-col gap-1">
-        {changes.map((change) => (
-          <li key={change.path} className="flex items-baseline justify-between gap-3 text-quiet">
-            <code className="truncate text-muted-foreground" title={change.path}>
-              {change.path}
-            </code>
-            <span className="shrink-0 tabular-nums">
-              {change.added === undefined ? null : <span className="text-role-builder">+{change.added}</span>}
-              {change.removed === undefined ? null : <span className="text-danger"> −{change.removed}</span>}
-            </span>
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
-/** A worker as a moment names it, and nothing where the record names none. Only the
- *  order's own worker takes its role's tint: a delegated agent's role is not recorded, so tinting
- *  it would state a role nothing holds. */
-function EntryWorker({ stop, order }: { stop: RailStop | undefined; order: WallOrder }) {
-  const marker = (worker: string) => (
-    <>
-      <Robot
-        label={worker === order.worker && order.role ? `${worker}, ${order.role}` : `${worker}, ${NO_ROLE}`}
-        className={worker === order.worker ? tint(order.role) : undefined}
-      />
-      <span className="truncate">{worker}</span>
-    </>
-  );
-
-  const worker = stop?.worker;
-  if (!worker && !stop?.handedTo) return <span />;
+/** A worker as a moment names it, tinted for the role that worker holds rather than the one
+ *  the order currently sits under: a history is a sequence of hands, and a reviewer's moment
+ *  wearing the builder's color says the wrong thing about who wrote it. */
+function EntryWorker({ entry }: { entry: WallItemEntry }) {
+  if (!entry.worker) return null;
 
   return (
-    <span className="flex items-center justify-end gap-1.5 whitespace-nowrap text-quiet">
-      {marker(worker ?? NO_WORKER)}
-      {stop?.handedTo ? (
-        <>
-          <span aria-hidden="true">{RAIL_MARK_GLYPH.handover}</span>
-          {marker(stop.handedTo)}
-        </>
-      ) : null}
+    <span className="flex items-center justify-end gap-1.5 text-quiet">
+      <Robot label={`${entry.worker}, ${entry.role ?? NO_ROLE}`} className={tint(entry.role)} />
+      <span>{entry.worker}</span>
     </span>
   );
 }
 
-/** The rail and the history are one list in three columns rather than lists side by side: a
- *  history line that wraps takes its own rail stop with it, where separate lists drift apart at
- *  the first wrapped line and the rail stops indexing what it sits beside. The mark and the time
- *  lead because they order the page; who did it sits at the right edge, where a column of workers
- *  reads down the page on its own. */
-function ItemHistory({ entries, order }: { entries: WallItemEntry[]; order: WallOrder }) {
-  const stops = railStops(entries);
-
+/** An order's record as a table, because that is what it is: four columns whose widths are
+ *  shared down the page, which a list of rows cannot do without pinning one to a fixed width.
+ *  The time leads because it orders the page; who did it sits at the right edge, where a column
+ *  of workers reads down on its own. */
+function ItemHistory({ entries }: { entries: WallItemEntry[] }) {
   return (
-    <ol className="flex min-w-0 grow flex-col gap-2">
-      {entries.map((entry, index) => {
-        const stop = stops[index];
-
-        return (
-          <li
+    <Table className="text-[12px]">
+      <TableBody>
+        {entries.map((entry, index) => (
+          <TableRow
             // Two entries can share a kind and an instant, and their place in the written order is
             // what tells them apart.
             // biome-ignore lint/suspicious/noArrayIndexKey: position in the written order is the entry's identity
             key={`${entry.at}-${entry.kind}-${index}`}
-            className="grid grid-cols-[minmax(5rem,auto)_1fr_auto] gap-x-5 border-b pb-2 last:border-b-0"
           >
-            <span className="flex items-baseline gap-2 border-r pr-4 whitespace-nowrap text-quiet">
-              <span aria-hidden="true" className="w-3 text-center text-foreground">
-                {stop ? RAIL_MARK_GLYPH[stop.mark] : ""}
+            <TableCell className="px-3 text-quiet tabular-nums">{timeLabel(entry.at)}</TableCell>
+            <TableCell className="px-3 text-foreground">{ITEM_KIND_LABELS[entry.kind]}</TableCell>
+            {/* The one column that takes the slack, and the one that can outrun it: `max-w-0`
+                with a full width is what makes a table cell yield to `truncate` instead of
+                widening the table to fit its longest line. */}
+            <TableCell className="w-full max-w-0 px-3">
+              <span className="flex items-baseline gap-x-2 overflow-hidden">
+                <EntryEvidence entry={entry} />
+                {entry.reason ? <Prose text={entry.reason} /> : null}
+                {entry.hold ? <span className="shrink-0 text-warn-foreground">{entry.hold}</span> : null}
               </span>
-              <span className="tabular-nums">{timeLabel(entry.at)}</span>
-            </span>
-            <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-              <span className="w-[9rem] shrink-0 text-foreground">{ITEM_KIND_LABELS[entry.kind]}</span>
-              <EntryEvidence entry={entry} />
-              {entry.reason ? <span>{entry.reason}</span> : null}
-              {entry.hold ? <span className="text-warn-foreground">{entry.hold}</span> : null}
-            </span>
-            <EntryWorker stop={stop} order={order} />
-          </li>
-        );
-      })}
-    </ol>
+            </TableCell>
+            <TableCell className="px-3 text-right">
+              <EntryWorker entry={entry} />
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 
@@ -440,7 +400,7 @@ function ItemDialog({
             </div>
             <div className="flex items-center gap-2">
               <dt>status</dt>
-              <dd className={stopped.has(order.status) ? "text-warn-foreground" : "text-muted-foreground"}>
+              <dd className={isStopped(order) ? "text-warn-foreground" : "text-muted-foreground"}>
                 {statusLabels[order.status]}
               </dd>
             </div>
@@ -455,10 +415,7 @@ function ItemDialog({
             whatever is being read. */}
         <div className="flex min-h-0 gap-5 overflow-y-auto p-5">
           {read.view && read.view.entries.length > 0 ? (
-            <>
-              <ItemHistory entries={read.view.entries} order={order} />
-              {read.view.changes.length > 0 ? <ItemChanges changes={read.view.changes} /> : null}
-            </>
+            <ItemHistory entries={read.view.entries} />
           ) : (
             <p className={read.state === "unavailable" ? "text-warn-foreground" : undefined}>
               {ITEM_READ_MESSAGE[read.state]}
