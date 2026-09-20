@@ -24,7 +24,8 @@ export type OrderEventKind =
   | "moved"
   | "commit_created"
   | "check_finished"
-  | "review_finished"
+  | "finding_raised"
+  | "finding_answered"
   | "completed"
   | "dropped"
   | "failed";
@@ -419,22 +420,73 @@ export function recordOrderCheck(
   })();
 }
 
-export function recordOrderFinding(
+/**
+ * The reviewer's own act. What it raises carries no answer, because whether the finding is
+ * fixed or refused is the builder's to say and a hand may only write what it did.
+ *
+ * Returns the finding rather than the event, since answering it is the next act and the
+ * finding is what that act names.
+ */
+export function raiseOrderFinding(
   db: Database,
   orderId: string,
-  finding: { dimension: string; summary: string; answer: "fixed" | "refused"; resolution?: string },
+  finding: { dimension: string; summary: string },
   worker: string,
   at = now(),
 ): number {
   assertOrderWorking(db, orderId);
   return db.transaction(() => {
     const result = db.run(
-      `INSERT INTO factory_order_finding (order_id, dimension, summary, answer, resolution, recorded_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [orderId, finding.dimension, finding.summary, finding.answer, finding.resolution ?? null, at],
+      "INSERT INTO factory_order_finding (order_id, dimension, summary, raised_at) VALUES (?, ?, ?, ?)",
+      [orderId, finding.dimension, finding.summary, at],
     );
     const id = Number(result.lastInsertRowid);
-    return appendOrderEventInTransaction(db, orderId, { kind: "review_finished", worker, findingId: id }, at);
+    appendOrderEventInTransaction(db, orderId, { kind: "finding_raised", worker, findingId: id }, at);
+    return id;
+  })();
+}
+
+export class FindingNotOpen extends Error {
+  constructor(
+    readonly code: "finding_unknown" | "finding_answered",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/** The builder's answer to a finding it did not raise. Answered once: a second answer would
+ *  rewrite a judgement the record may already have been read for. */
+export function answerOrderFinding(
+  db: Database,
+  findingId: number,
+  answer: { answer: "fixed" | "refused"; resolution?: string },
+  worker: string,
+  at = now(),
+): number {
+  const row = db
+    .query<{ order_id: string; answer: string | null }, [number]>(
+      "SELECT order_id, answer FROM factory_order_finding WHERE id = ?",
+    )
+    .get(findingId);
+  if (!row) throw new FindingNotOpen("finding_unknown", `no finding ${findingId}`);
+  if (row.answer !== null) {
+    throw new FindingNotOpen("finding_answered", `finding ${findingId} is already ${row.answer}`);
+  }
+  assertOrderWorking(db, row.order_id);
+  return db.transaction(() => {
+    db.run("UPDATE factory_order_finding SET answer = ?, resolution = ?, answered_at = ? WHERE id = ?", [
+      answer.answer,
+      answer.resolution ?? null,
+      at,
+      findingId,
+    ]);
+    return appendOrderEventInTransaction(
+      db,
+      row.order_id,
+      { kind: "finding_answered", worker, findingId },
+      at,
+    );
   })();
 }
 

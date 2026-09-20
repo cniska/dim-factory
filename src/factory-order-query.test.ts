@@ -2,16 +2,17 @@ import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import {
+  answerOrderFinding,
   appendOrderEvent,
   claimOrder as claimOrderAt,
   type OrderClaim,
   queueOrder,
+  raiseOrderFinding,
   recordOrderCheck,
   recordOrderCommit,
   recordOrderDocument,
   recordOrderEnvironment,
   recordOrderFile,
-  recordOrderFinding,
 } from "./factory-order";
 import { integratedRepo, workerIn } from "./fixtures.test-support";
 import { findQuery } from "./queries";
@@ -72,20 +73,19 @@ describe("factory order query", () => {
       worker,
       "2026-09-18T10:03:00.000Z",
     );
-    recordOrderFinding(
-      db,
-      "order-status",
-      { dimension: "tests", summary: "holds", answer: "fixed" },
-      worker,
-      "2026-09-18T10:04:00.000Z",
-    );
-    recordOrderFinding(
-      db,
-      "order-status",
-      { dimension: "docs", summary: "updated", answer: "fixed" },
-      worker,
-      "2026-09-18T10:04:00.000Z",
-    );
+    for (const [dimension, summary] of [
+      ["tests", "holds"],
+      ["docs", "updated"],
+    ] as const) {
+      const raised = raiseOrderFinding(
+        db,
+        "order-status",
+        { dimension, summary },
+        worker,
+        "2026-09-18T10:04:00.000Z",
+      );
+      answerOrderFinding(db, raised, { answer: "fixed" }, worker, "2026-09-18T10:04:00.000Z");
+    }
     appendOrderEvent(
       db,
       "order-status",
@@ -217,13 +217,14 @@ describe("factory order query", () => {
       worker,
       "2026-09-18T10:02:00.000Z",
     );
-    recordOrderFinding(
+    const raised = raiseOrderFinding(
       db,
       "order-123",
-      { dimension: "tests", summary: "holds", answer: "fixed" },
+      { dimension: "tests", summary: "holds" },
       worker,
       "2026-09-18T10:03:00.000Z",
     );
+    answerOrderFinding(db, raised, { answer: "fixed" }, worker, "2026-09-18T10:03:00.000Z");
     recordOrderDocument(db, "order-123", "docs/factory.md", "2026-09-18T10:04:00.000Z");
     recordOrderEnvironment(
       db,
@@ -250,6 +251,7 @@ describe("factory order query", () => {
       "file",
       "event",
       "check",
+      "event",
       "event",
       "finding",
       "document",

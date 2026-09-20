@@ -12,8 +12,8 @@ describe("factory wall item view", () => {
     const stops = railStops([
       entry({ kind: "check_finished", at: "2026-09-18T10:01:00.000Z" }),
       entry({ kind: "check_finished", at: "2026-09-18T10:02:00.000Z" }),
-      entry({ kind: "review_finished", at: "2026-09-18T10:03:00.000Z" }),
-      entry({ kind: "review_finished", at: "2026-09-18T10:04:00.000Z" }),
+      entry({ kind: "finding_raised", at: "2026-09-18T10:03:00.000Z" }),
+      entry({ kind: "finding_answered", at: "2026-09-18T10:04:00.000Z" }),
     ]);
 
     expect(stops.map((stop) => stop.mark)).toEqual(["moment", "moment", "moment", "moment"]);
@@ -45,7 +45,8 @@ describe("factory wall item view", () => {
 
   test("calls a record's kinds what a person calls them, not what the column holds", () => {
     expect(ITEM_KIND_LABELS.commit_created).toBe("Commit");
-    expect(ITEM_KIND_LABELS.review_finished).toBe("Finding");
+    expect(ITEM_KIND_LABELS.finding_raised).toBe("Finding raised");
+    expect(ITEM_KIND_LABELS.finding_answered).toBe("Finding answered");
     expect(ITEM_KIND_LABELS.environment_reported).toBe("Worker environment");
     expect(Object.values(ITEM_KIND_LABELS).every((label) => !label.includes("_"))).toBe(true);
   });

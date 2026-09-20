@@ -315,7 +315,7 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,
   order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   ts                    TEXT NOT NULL,
-  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'commit_created', 'check_finished', 'review_finished', 'completed', 'dropped', 'failed')),
+  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'commit_created', 'check_finished', 'finding_raised', 'finding_answered', 'completed', 'dropped', 'failed')),
   -- Who did it, written by the statement that writes the moment and never after.
   -- An entry completed later is a mutation of a record someone may already have
   -- read, and a log that can be amended is not evidence of anything.
@@ -362,15 +362,21 @@ CREATE TABLE IF NOT EXISTS factory_order_check (
   recorded_at   TEXT NOT NULL
 );
 
+-- Raising a finding and answering it are two acts by two hands: the reviewer that read
+-- the diff and the builder that wrote it. The events carry who did which, and this row
+-- carries the finding's own state, so an unanswered finding is one with no answer yet
+-- rather than one nobody wrote down.
 CREATE TABLE IF NOT EXISTS factory_order_finding (
   id            INTEGER PRIMARY KEY,
   order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   dimension     TEXT NOT NULL,
   summary       TEXT NOT NULL,
-  answer        TEXT NOT NULL CHECK (answer IN ('fixed', 'refused')),
+  answer        TEXT CHECK (answer IN ('fixed', 'refused')),
   resolution    TEXT,
-  recorded_at   TEXT NOT NULL,
-  CHECK (answer <> 'refused' OR (resolution IS NOT NULL AND trim(resolution) <> ''))
+  raised_at     TEXT NOT NULL,
+  answered_at   TEXT,
+  CHECK (answer <> 'refused' OR (resolution IS NOT NULL AND trim(resolution) <> '')),
+  CHECK ((answer IS NULL) = (answered_at IS NULL))
 );
 
 -- What a worktree's setup and teardown hooks reported. resources holds the
