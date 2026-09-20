@@ -29,20 +29,26 @@ export function parseJsonc<T>(text: string, file: string): T {
 /**
  * `parse` keeps the last of a repeated key and reports no error, so a file a
  * person edits by hand needs the tree to see that one value was overwritten by
- * another. Top-level keys only, which is the depth a hand-edit collides at.
+ * another. Top-level keys only by default, which is the depth a flat map like
+ * `routing.json` collides at; `deep` walks every nested object, for a config
+ * whose keys can collide more than one level down.
  */
-export function duplicateKeys(text: string): string[] {
-  const tree = parseTree(text, [], { allowTrailingComma: true });
-  if (tree?.type !== "object") return [];
-  const seen = new Set<string>();
-  const repeated: string[] = [];
-  for (const property of tree.children ?? []) {
-    const key = property.children?.[0]?.value;
-    if (typeof key !== "string") continue;
-    if (seen.has(key)) repeated.push(key);
-    seen.add(key);
+export function duplicateKeys(text: string, options: { deep?: boolean } = {}): string[] {
+  const root = parseTree(text, [], { allowTrailingComma: true });
+  const found: string[] = [];
+  function walk(node: Node | undefined, path: string[]): void {
+    if (node?.type !== "object") return;
+    const seen = new Set<string>();
+    for (const property of node.children ?? []) {
+      const key = property.children?.[0]?.value;
+      if (typeof key !== "string") continue;
+      if (seen.has(key)) found.push([...path, key].join("."));
+      seen.add(key);
+      if (options.deep) walk(property.children?.[1], [...path, key]);
+    }
   }
-  return repeated;
+  walk(root, []);
+  return found;
 }
 
 /** The file's own indent, so what is inserted lines up with what is already there. */
