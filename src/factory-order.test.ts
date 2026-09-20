@@ -8,10 +8,11 @@ import { runFactoryOrder } from "./factory-operator";
 import {
   amendOrder,
   appendOrderEvent,
-  claimOrder,
+  claimOrder as claimOrderAt,
   dropOrder,
   isTerminalOrderStatus,
   moveOrder,
+  type OrderClaim,
   queueOrder,
   recordOrderCheck,
   recordOrderCommit,
@@ -56,6 +57,18 @@ const order = {
 };
 
 const claim = { runId: "run-1", sessionId: "session-1", station: "dim-station-build" };
+
+// A claim now makes the worktree it names, so every direct call needs somewhere
+// safe to make one — `trunk.dir` rather than this machine's own checkout.
+function claimOrder(
+  database: Database,
+  orderId: string,
+  given: OrderClaim,
+  who: string,
+  at?: string,
+): number {
+  return claimOrderAt(database, orderId, given, who, at, trunk.dir);
+}
 
 /** What the gate wants before an order may complete: a commit on the trunk, then a check that passed. */
 function landed(database: Database, orderId: string, at?: string): void {

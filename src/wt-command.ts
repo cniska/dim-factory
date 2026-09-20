@@ -53,10 +53,13 @@ function git(args: string[], cwd?: string): { ok: boolean; out: string } {
 
 /**
  * The main working tree even when this runs inside a worktree: --git-common-dir
- * resolves to the shared .git, whose parent is the primary checkout.
+ * resolves to the shared .git, whose parent is the primary checkout. `cwd` is
+ * exposed so a caller that is not itself running from the repo — an order
+ * claim, a test fixture — can still resolve the one shared root.
  */
-function repoRoot(): string {
+export function repoRoot(cwd: string = process.cwd()): string {
   const proc = Bun.spawnSync(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], {
+    cwd,
     stdout: "pipe",
     stderr: "ignore",
   });
@@ -127,10 +130,19 @@ function worktreesDir(root: string): string {
   return join(root, ".claude", "worktrees");
 }
 
-function open(branch: string): void {
+export function worktreePath(root: string, branch: string): string {
+  return join(worktreesDir(root), branch);
+}
+
+/**
+ * Creates or reuses the one worktree a branch gets, and returns its path. Reuse
+ * is what lets a claim on a failed order pick the same checkout back up rather
+ * than losing whatever it already held.
+ */
+export function createWorktree(branch: string, cwd: string = process.cwd()): string {
   if (!branch) die("branch name required");
-  const root = repoRoot();
-  const path = join(worktreesDir(root), branch);
+  const root = repoRoot(cwd);
+  const path = worktreePath(root, branch);
 
   let created = false;
   if (isDirectory(path)) {
@@ -145,6 +157,11 @@ function open(branch: string): void {
   }
 
   if (created) bootstrap(path);
+  return path;
+}
+
+function open(branch: string): void {
+  const path = createWorktree(branch);
   console.log("wt: worktree ready at:");
   console.log(`    ${path}`);
 }
@@ -169,6 +186,28 @@ function list(): void {
   }
 }
 
+/**
+ * Removes a branch's worktree. A teardown failure keeps the worktree rather
+ * than losing whatever it holds — `--force` is the deliberate override, and
+ * `dim order stop <id> completed` takes the same default rather than a second
+ * position on what a failed removal should do.
+ */
+export function removeWorktree(branch: string, options: { force?: boolean; cwd?: string } = {}): void {
+  if (!branch) die("branch name required");
+  const force = options.force ?? false;
+  const root = repoRoot(options.cwd);
+  const path = worktreePath(root, branch);
+  if (!isDirectory(path)) die(`no worktree at ${path}`);
+
+  teardown(path, force);
+  const args2 = force
+    ? ["-C", root, "worktree", "remove", "--force", path]
+    : ["-C", root, "worktree", "remove", path];
+  if (!git(args2).ok) die(`could not remove the worktree at ${path}`);
+  console.log(`wt: removed worktree ${path}`);
+  console.log(`wt: branch '${branch}' kept — delete with 'git -C ${root} branch -d ${branch}' once merged`);
+}
+
 function remove(args: string[]): void {
   let force = false;
   let branch = "";
@@ -184,19 +223,7 @@ function remove(args: string[]): void {
       branch = arg;
     }
   }
-  if (!branch) die("branch name required");
-
-  const root = repoRoot();
-  const path = join(worktreesDir(root), branch);
-  if (!isDirectory(path)) die(`no worktree at ${path}`);
-
-  teardown(path, force);
-  const args2 = force
-    ? ["-C", root, "worktree", "remove", "--force", path]
-    : ["-C", root, "worktree", "remove", path];
-  if (!git(args2).ok) die(`could not remove the worktree at ${path}`);
-  console.log(`wt: removed worktree ${path}`);
-  console.log(`wt: branch '${branch}' kept — delete with 'git -C ${root} branch -d ${branch}' once merged`);
+  removeWorktree(branch, { force });
 }
 
 export function runWt(args: string[]): void {

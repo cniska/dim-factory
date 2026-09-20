@@ -5,6 +5,7 @@ import type { Env } from "./paths";
 import { type ShipOutcome, shipToTrunk } from "./ship";
 import { reachesTrunk } from "./trunk";
 import type { WorkerHookReport } from "./worker-environment";
+import { createWorktree } from "./wt-command";
 
 /** What state the order is in. A claim takes it straight to `working`: an order
  *  already exists before a worker sees it, so taking one and starting it are one act.
@@ -160,6 +161,7 @@ export function claimOrder(
   claim: OrderClaim,
   worker: string,
   at = now(),
+  cwd: string = process.cwd(),
 ): number {
   return db.transaction(() => {
     const stop = liveStop(db);
@@ -182,6 +184,10 @@ export function claimOrder(
       );
     }
     if (order.status !== "queued") throw new Error(`order ${orderId} is already ${order.status}`);
+    // Made before the claim is written, and inside the same transaction, so a claim
+    // that cannot get a worktree writes no claim — reusing one already there is how
+    // a failed order is taken again in place.
+    createWorktree(orderId, cwd);
     db.run(
       `UPDATE factory_order SET run_id = ?, session_id = ?, station = ?,
          status = 'working', claimed_at = ?, updated_at = ? WHERE id = ?`,

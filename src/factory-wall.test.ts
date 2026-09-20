@@ -4,7 +4,8 @@ import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import {
   appendOrderEvent,
-  claimOrder,
+  claimOrder as claimOrderAt,
+  type OrderClaim,
   queueOrder,
   recordOrderCheck,
   recordOrderCommit,
@@ -34,6 +35,12 @@ function floor(): Database {
 
 const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
+
+// A claim now makes the worktree it names, so every direct call needs somewhere
+// safe to make one — `trunk.dir` rather than this machine's own checkout.
+function claimOrder(db: Database, orderId: string, given: OrderClaim, who: string, at?: string): number {
+  return claimOrderAt(db, orderId, given, who, at, trunk.dir);
+}
 
 describe("factory wall snapshot", () => {
   test("assembles current work for the board from read-only order records", () => {

@@ -38,13 +38,15 @@ function db(): Database {
   return database;
 }
 
+// A claim now makes the worktree it names, so every call needs somewhere safe
+// to make one — `trunk.dir` rather than this machine's own checkout.
 function runOrderCommand(
   database: Database,
   args: string[],
   project: string | null = null,
-  worktree?: string,
+  cwd: string = trunk.dir,
 ): string {
-  return runCommand(database, args, project, worktree, env);
+  return runCommand(database, args, project, cwd, env);
 }
 
 const trunk = integratedRepo();

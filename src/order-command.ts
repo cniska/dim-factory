@@ -24,6 +24,7 @@ import { readFlags, requiredFlag } from "./flags";
 import { requireCurrentHooks } from "./hooks";
 import { heldOrders, readyOrders } from "./order-ready";
 import type { Env } from "./paths";
+import { removeWorktree, repoRoot, worktreePath } from "./wt-command";
 
 export class OrderCommandError extends Error {}
 
@@ -101,7 +102,7 @@ function add(
  * nothing says so until the record is read. The claim is where a run begins and the one
  * place that can stop it, so the machine is read here rather than after work has started.
  */
-function claim(db: Database, orderId: string, args: string[], worker: string, env: Env): string {
+function claim(db: Database, orderId: string, args: string[], worker: string, env: Env, cwd: string): string {
   const given = flags(args, CLAIM_FLAGS);
   requireCurrentHooks(env);
   claimOrder(
@@ -113,6 +114,8 @@ function claim(db: Database, orderId: string, args: string[], worker: string, en
       station: given.get("--station"),
     },
     worker,
+    undefined,
+    cwd,
   );
   return `${orderId} is working`;
 }
@@ -231,7 +234,11 @@ function ship(db: Database, orderId: string, args: string[], worktree: string, e
  *  nobody holds, carrying why. */
 const STOP_KINDS = ["completed", "failed"] as const;
 
-function stop(db: Database, orderId: string, args: string[], worktree: string, worker: string): string {
+/**
+ * Reads the order's own worktree rather than trusting `cwd` to already be it: the
+ * operator that stops an order is not always the builder that was working in it.
+ */
+function stop(db: Database, orderId: string, args: string[], cwd: string, worker: string): string {
   const [kind, ...rest] = args;
   if (!kind) throw new OrderCommandError("stop needs how the order stopped");
   if (!(STOP_KINDS as readonly string[]).includes(kind)) {
@@ -248,8 +255,11 @@ function stop(db: Database, orderId: string, args: string[], worktree: string, w
       reason: given.get("--reason"),
     },
     undefined,
-    worktree,
+    worktreePath(repoRoot(cwd), orderId),
   );
+  // Completing an order lands everything it will, so its worktree is gone; failing
+  // one keeps it, because it may hold work no commit has and is claimed again in place.
+  if (kind === "completed") removeWorktree(orderId, { cwd });
   return kind === "completed" ? `${orderId} is completed` : `${orderId} is queued again`;
 }
 
@@ -276,7 +286,7 @@ export function runOrderCommand(
   db: Database,
   args: string[],
   defaultProject: string | null = null,
-  worktree = process.cwd(),
+  cwd = process.cwd(),
   env: Env = process.env,
 ): string {
   const [command, orderId, ...rest] = args;
@@ -305,7 +315,7 @@ export function runOrderCommand(
   // caller that cannot say is refused here rather than writing a moment nobody did.
   const worker = resolveWorker(db, env);
   if (command === "add") return add(db, orderId, rest, defaultProject, worker);
-  if (command === "claim") return claim(db, orderId, rest, worker, env);
+  if (command === "claim") return claim(db, orderId, rest, worker, env, cwd);
   if (command === "priority") {
     const [level] = rest;
     const chosen = priority(level);
@@ -334,8 +344,8 @@ export function runOrderCommand(
     const evidence = EVIDENCE[command] as Evidence;
     return evidence.record(db, orderId, flags(rest, evidence.flags), worker);
   }
-  if (command === "ship") return ship(db, orderId, rest, worktree, env);
-  if (command === "stop") return stop(db, orderId, rest, worktree, worker);
+  if (command === "ship") return ship(db, orderId, rest, cwd, env);
+  if (command === "stop") return stop(db, orderId, rest, cwd, worker);
   if (command === "amend") return amend(db, orderId, rest);
   if (command === "drop") return drop(db, orderId, rest, worker);
   throw new OrderCommandError(`${command} is not an order subcommand`);

@@ -67,7 +67,7 @@ export async function runFactoryOrder(
   build: FactoryBuilder,
 ): Promise<FactoryOutcome> {
   const { worker } = options;
-  claimOrder(db, item.id, options.claim, worker);
+  claimOrder(db, item.id, options.claim, worker, undefined, options.worktree);
 
   const context: FactoryContext = {
     item,
