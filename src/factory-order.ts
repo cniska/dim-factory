@@ -180,9 +180,10 @@ export function claimOrder(
           `(${stop.pulledBy}, ${stop.pulledAt}); clear it with \`dim factory clear\``,
       );
     }
-    const order = db.query("SELECT status, hold FROM factory_order WHERE id = ?").get(orderId) as {
+    const order = db.query("SELECT status, hold, run_id FROM factory_order WHERE id = ?").get(orderId) as {
       status: OrderStatus;
       hold: string | null;
+      run_id: string | null;
     } | null;
     if (!order) throw new Error(`order not found: ${orderId}`);
     if (order.hold) {
@@ -191,7 +192,15 @@ export function claimOrder(
         `order ${orderId} is held and the owner releases it: ${order.hold}`,
       );
     }
-    if (order.status !== "queued") throw new Error(`order ${orderId} is already ${order.status}`);
+    // A move hands the order to the next station rather than finishing it, and lets go of
+    // the run that held it, so the hand waiting there takes it while the order stays
+    // `working`. A run still on the order is a hand still on the work.
+    if (order.run_id) {
+      throw new Error(`order ${orderId} is already working under ${order.run_id}`);
+    }
+    if (order.status !== "queued" && order.status !== "working") {
+      throw new Error(`order ${orderId} is already ${order.status}`);
+    }
     // Made before the claim is written, and inside the same transaction, so a claim
     // that cannot get a worktree writes no claim — reusing one already there is how
     // a failed order is taken again in place.
@@ -214,6 +223,9 @@ export function claimOrder(
  * The projection follows the move because that column is what a card is read by
  * (`src/factory-wall.ts` prefers it over the latest event's station), and the
  * event ledger keeps every station the order passed through.
+ *
+ * The run goes with it: the hand that worked the order at the station it is leaving is
+ * done with it, and an order carrying no run is one the next station's worker can claim.
  */
 export function moveOrder(
   db: Database,
@@ -224,7 +236,10 @@ export function moveOrder(
 ): number {
   return db.transaction(() => {
     const event = appendOrderEventInTransaction(db, orderId, { kind: "moved", worker, station }, at);
-    db.run("UPDATE factory_order SET station = ? WHERE id = ?", [station, orderId]);
+    db.run("UPDATE factory_order SET station = ?, run_id = NULL, session_id = NULL WHERE id = ?", [
+      station,
+      orderId,
+    ]);
     return event;
   })();
 }

@@ -135,6 +135,48 @@ describe("factory order report records", () => {
     database.close();
   });
 
+  test("the next station's worker takes an order the move handed on", () => {
+    const database = db();
+    const builder = workerIn(database, "builder");
+    queueOrder(database, { ...order, id: "order-handed" }, worker);
+    claimOrder(database, "order-handed", { ...claim, station: "dim-station-plan" }, worker);
+    moveOrder(database, "order-handed", "dim-station-build", worker);
+
+    claimOrder(database, "order-handed", { ...claim, runId: "run-2", station: "dim-station-build" }, builder);
+
+    expect(
+      database.query("SELECT status, station, run_id FROM factory_order WHERE id = 'order-handed'").get(),
+    ).toEqual({ status: "working", station: "dim-station-build", run_id: "run-2" });
+    expect(
+      database
+        .query(
+          "SELECT worker, station FROM factory_order_event WHERE order_id = 'order-handed' AND kind = 'claimed' ORDER BY id",
+        )
+        .all(),
+    ).toEqual([
+      { worker, station: "dim-station-plan" },
+      { worker: builder, station: "dim-station-build" },
+    ]);
+    database.close();
+  });
+
+  test("a second hand cannot take an order at the station already working it", () => {
+    const database = db();
+    const builder = workerIn(database, "builder");
+    queueOrder(database, { ...order, id: "order-taken" }, worker);
+    claimOrder(database, "order-taken", { ...claim, station: "dim-station-build" }, worker);
+
+    expect(() =>
+      claimOrder(
+        database,
+        "order-taken",
+        { ...claim, runId: "run-2", station: "dim-station-build" },
+        builder,
+      ),
+    ).toThrow(/already working under run-1/);
+    database.close();
+  });
+
   test("runs one item through a builder and records its observable lifecycle", async () => {
     const database = db();
     queueOrder(database, { ...order, id: "order-2" }, worker);
