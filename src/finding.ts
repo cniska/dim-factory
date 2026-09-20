@@ -21,8 +21,8 @@ type Flag = (typeof FLAGS)[number];
 
 /**
  * A flag given twice is refused rather than resolved to either value: the caller
- * is an agent assembling a command from a checker's output, and a summary that
- * silently lost half of itself reads as a checker that said less than it did.
+ * is an agent assembling a command from a reviewer's output, and a summary that
+ * silently lost half of itself reads as a reviewer that said less than it did.
  */
 export function parseFinding(args: string[]): Map<Flag, string> {
   const given = new Map<Flag, string>();

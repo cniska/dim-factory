@@ -92,7 +92,7 @@ describe("issuing a worker to a shell", () => {
   test("prints exports a shell can read back into a resolvable worker", () => {
     const db = floor();
 
-    const printed = runWorkerCommand(db, ["mint", "--role", "reviewer"]);
+    const printed = runWorkerCommand(db, ["mint", "--role", "builder"]);
 
     const env: Record<string, string> = {};
     for (const line of printed.split("\n")) {
@@ -100,6 +100,20 @@ describe("issuing a worker to a shell", () => {
       env[name as string] = value as string;
     }
     expect(resolveWorker(db, env)).toBe(env[WORKER_NAME_VAR] as string);
+    db.close();
+  });
+
+  // The identity a reviewer carries is worth only what the hand it reads cannot reach, so
+  // the one command a builder's shell can run must not hand it one.
+  test("a read-only hand cannot be minted or run by a caller", () => {
+    const db = floor();
+
+    expect(() => runWorkerCommand(db, ["mint", "--role", "reviewer"])).toThrow(WorkerCommandError);
+    expect(() => runWorkerCommand(db, ["mint", "--role", "planner"])).toThrow(/issued by the station/);
+    expect(() => runWorkerCommand(db, ["run", "--role", "reviewer", "--", "sh", "-c", "true"])).toThrow(
+      /issued by the station/,
+    );
+    expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 0 });
     db.close();
   });
 

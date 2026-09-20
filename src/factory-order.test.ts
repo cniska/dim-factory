@@ -7,6 +7,7 @@ import { closeDb, openDb } from "./db";
 import { runFactoryOrder } from "./factory-operator";
 import {
   amendOrder,
+  answerOrderFinding,
   appendOrderEvent,
   claimOrder as claimOrderAt,
   dropOrder,
@@ -14,12 +15,12 @@ import {
   moveOrder,
   type OrderClaim,
   queueOrder,
+  raiseOrderFinding,
   recordOrderCheck,
   recordOrderCommit,
   recordOrderDocument,
   recordOrderEnvironment,
   recordOrderFile,
-  recordOrderFinding,
   shipOrder,
 } from "./factory-order";
 import { clearStop, FactoryStopError, pullStop } from "./factory-stop";
@@ -116,7 +117,9 @@ describe("factory order report records", () => {
         context.recordCommit(trunk.sha, "feat: observable order");
         context.recordFile({ path: "src/factory-operator.ts", added: 18, removed: 2 });
         context.recordCheck({ command: "bun run verify", exitCode: 0, result: "green" });
-        context.recordFinding({ dimension: "tests", summary: "holds", answer: "fixed" });
+        context.answerFinding(context.raiseFinding({ dimension: "tests", summary: "holds" }), {
+          answer: "fixed",
+        });
         context.recordDocument("docs/factory.md");
         context.recordEnvironment(setupReport);
         context.stop({ status: "completed", reason: "verified" });
@@ -138,7 +141,8 @@ describe("factory order report records", () => {
       { kind: "claimed", status: null },
       { kind: "commit_created", status: null },
       { kind: "check_finished", status: null },
-      { kind: "review_finished", status: null },
+      { kind: "finding_raised", status: null },
+      { kind: "finding_answered", status: null },
       { kind: "completed", status: "completed" },
     ]);
     expect(database.query("SELECT sha FROM factory_order_commit WHERE order_id = 'order-2'").get()).toEqual({
@@ -820,13 +824,14 @@ describe("factory order report records", () => {
       worker,
       "2026-09-18T10:03:00.000Z",
     );
-    const finding = recordOrderFinding(
+    const finding = raiseOrderFinding(
       database,
       "order-1",
-      { dimension: "tests", summary: "coverage is present", answer: "fixed" },
+      { dimension: "tests", summary: "coverage is present" },
       worker,
       "2026-09-18T10:04:00.000Z",
     );
+    answerOrderFinding(database, finding, { answer: "fixed" }, worker, "2026-09-18T10:04:00.000Z");
     recordOrderDocument(database, "order-1", "docs/factory.md", "2026-09-18T10:05:00.000Z");
     appendOrderEvent(
       database,
@@ -990,14 +995,16 @@ describe("factory order report records", () => {
   test("refused findings require a resolution", () => {
     const database = db();
     queueOrder(database, order, worker);
-    expect(() =>
-      recordOrderFinding(
-        database,
-        "order-1",
-        { dimension: "docs", summary: "missing", answer: "refused" },
-        worker,
-      ),
-    ).toThrow();
+    claimOrder(database, "order-1", claim, worker);
+    const raised = raiseOrderFinding(database, "order-1", { dimension: "docs", summary: "missing" }, worker);
+
+    expect(() => answerOrderFinding(database, raised, { answer: "refused" }, worker)).toThrow();
+    expect(database.query("SELECT answer FROM factory_order_finding WHERE id = ?").get(raised)).toEqual({
+      answer: null,
+    });
+    expect(
+      answerOrderFinding(database, raised, { answer: "refused", resolution: "out of scope" }, worker),
+    ).toBeGreaterThan(0);
     database.close();
   });
 

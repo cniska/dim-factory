@@ -16,7 +16,7 @@ Answer all four before proposing an approach.
 
 1. **Has this shape been built here before?** `dim q prior-art "<path fragment>"` names every tracked file whose path matches, across the repos on disk, dated by the commits that touched it. Every path it prints opens, so the answer is a file to read rather than a memory. Read the repo column before the file — a repo that was only cloned ranks beside the owner's own — and treat recency and commit count as where to look, never as quality.
 
-2. **Was this already decided?** `dim q search "<the question, in your words>"` ranks the text a person distilled by hand — handoff Nexts, their own commit subjects — by meaning. A decision settled in conversation and never distilled is not in that index, and `dim q keywords "<words>"` is what reaches it, over every message anyone said. A decision already taken is not yours to re-take; find it and say what it settled. Where both come back empty and only a file sweep will answer, that sweep is one agent with a fixed question, at the tier `dim route searcher` gives you.
+2. **Was this already decided?** `dim q search "<the question, in your words>"` ranks the text a person distilled by hand — handoff Nexts, their own commit subjects — by meaning. A decision settled in conversation and never distilled is not in that index, and `dim q keywords "<words>"` is what reaches it, over every message anyone said. A decision already taken is not yours to re-take; find it and say what it settled. Where both come back empty and only a file sweep will answer, the planner sweeps for itself: it reads the repo under the same fixed question, and a separate hand to search would return a conclusion whose grounds the planner then could not check.
 
 3. **Is this a continuation?** `dim q chain <id-prefix>` gives the sessions either side of one, joined by the handoff between them, and `dim q resume <id-prefix>` gives the branch, the files in play and the last pushback. Work that is mid-chain has a Next already written, and planning over it is how the same thing gets built twice.
 
@@ -30,7 +30,7 @@ Ask the owner only when the choice is genuinely theirs, which is narrower than i
 
 ## Check the plan before acting on it
 
-A plan is cheaper to fix than the code written from it, so it gets the same treatment a slice gets in [`dim-station-build`](../dim-station-build/SKILL.md): one agent at the tier `dim route checker` gives you, working from a fixed brief, and not the agent that wrote the plan. Give it the plan and what the four queries returned — not the reasoning that got there, or what comes back is agreement.
+A plan is cheaper to fix than the code written from it, so it gets the same treatment a slice gets in [`dim-station-build`](../dim-station-build/SKILL.md): one agent at the tier `dim route reviewer` gives you, working from a fixed brief, and not the agent that wrote the plan. Give it the plan and what the four queries returned — not the reasoning that got there, or what comes back is agreement.
 
 The brief is these questions:
 
@@ -39,7 +39,7 @@ The brief is these questions:
 - does the plan say what the record returned and what that removed, or does it read as though nothing was looked up
 - does anything here ask the owner a question one of the four queries could have answered
 
-Returning nothing is the expected result. A checker earns trust the way a test does — plant a defect once, watch it be caught, take it out.
+Returning nothing is the expected result. A reviewer earns trust the way a test does — plant a defect once, watch it be caught, take it out.
 
 ## Exit check
 

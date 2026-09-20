@@ -25,7 +25,7 @@ The planned factory assigns each queue item to one self-sufficient order that ru
 - **Operator.** The operator schedules orders, observes their evidence and integrates completed work. It does not implement the item.
 - **Count.** An explicit item count limits a run; the default count is one. The factory does not drain the queue implicitly.
 
-The order returns a delivered-product report containing the item and queue identity, station, worktree and branch, changed files, commit SHA, repo check and result, checker findings and resolutions, updated docs, and final status: completed, blocked, held or failed. A completed or stopped report includes the evidence the operator needs to land the work or stop at the stated boundary.
+The order returns a delivered-product report containing the item and queue identity, station, worktree and branch, changed files, commit SHA, repo check and result, reviewer findings and resolutions, updated docs, and final status: completed, blocked, held or failed. A completed or stopped report includes the evidence the operator needs to land the work or stop at the stated boundary.
 
 Station transfers use the factory's `dim-handoff`. It requires strict `# Handoff — <item_id> — <item name>` and `## Next` headings and carries only the routing token. The ID is canonical and the name comes from the queue. The receiving station queries the order's station, worktree, branch, commits, checks, findings, docs and hold with `dim`; the handoff is not a session-resume document or a second order report.
 
@@ -35,7 +35,7 @@ The delivered-product report is persisted in the dim database so it remains quer
 
 - **Identity.** Queue and item identity, the item's title and the description the queue gave it, order and run identity, the worker that did each act, worktree and branch.
 - **Work.** Station, every move between stations, the worker each moment is attributed to, commit SHA, and each changed file with the lines added and removed where the recorder counted them.
-- **Verification.** Repository check command and result, checker findings and their resolutions, and updated docs.
+- **Verification.** Repository check command and result, reviewer findings and their resolutions, and updated docs.
 - **Outcome.** Final status — completed, blocked, held or failed — with hold or blocker evidence and timestamps for the lifecycle events.
 - **Environment.** Each setup and teardown report the order attached: the phase, the hook command, its exit code or the signal that killed it, its output, and the resource identifiers the hook named.
 
@@ -172,26 +172,28 @@ Reviewing everything is the honest starting point, because a gate cannot earn it
 
 ## A role runs at the tier its work needs
 
-Every station names its agents by role and brief — operator, planner, builder, simplifier, reviewer, checker, judge, and the search that finds where a thing already lives. Each role runs at one of three capability tiers, declared in [`src/routing.ts`](../src/routing.ts) and never worked out from the work at hand, which is the rule `src/workspace-commands.ts` already follows for a repo's check.
+Every station names its agents by role and brief — operator, planner, builder and reviewer. A role exists where the record must tell one hand from another or a gate must refuse that hand something, so searching and settling a disputed claim are acts a hand performs rather than hands of their own. Each role runs at one of three capability tiers, declared in [`src/routing.ts`](../src/routing.ts) and never worked out from the work at hand, which is the rule `src/workspace-commands.ts` already follows for a repo's check.
 
-- **`cheap`** reads one thing against a fixed brief: check one diff against four closed questions, settle one disputed claim at its source, find where a shape exists on disk. That is the checker, the judge and the search.
-- **`standard`** makes the mechanical edit and the doc that goes with it: the builder, the simplification pass, and a review dimension reading an assembled change.
+- **`cheap`** reads one thing against a fixed brief.
+- **`standard`** makes the mechanical edit and the doc that goes with it, and reads an assembled change against what it claims: the builder and the reviewer.
 - **`deep`** cuts the work and decides where the line stops: the planner, and the operator whose stopping rule is the substance of this file.
 
-What a tier is called locally is a separate thing, and it is data rather than code. `routing.json` beside the database maps `cheap`, `standard` and `deep` to whatever the harness driving the floor calls them; another harness writes its own names, and a harness with one model maps all three to it and loses nothing. `dim route <role>` prints the tier and the mapped name, so a station says "spawn the checker at the tier `dim route checker` gives you" and names no model. No model name appears in this repo's source or in a skill, and a test fails when one does.
+The reviewer sits at `standard` on a judgement nothing here has measured. Whether a cheap reviewer raises fewer real findings than an expensive one is what `model-routing` and `checking-pays-arm` exist to answer, and `cheap` is where the reviewer moves if they say so.
+
+What a tier is called locally is a separate thing, and it is data rather than code. `routing.json` beside the database maps `cheap`, `standard` and `deep` to whatever the harness driving the floor calls them; another harness writes its own names, and a harness with one model maps all three to it and loses nothing. `dim route <role>` prints the tier and the mapped name, so a station says "spawn the reviewer at the tier `dim route reviewer` gives you" and names no model. No model name appears in this repo's source or in a skill, and a test fails when one does.
 
 The map is per machine and not per repo. Which models exist is a property of the harness driving the line, not of the code being worked on, and the same factory run from a different harness must resolve differently; a repo-level override waits until something asks for one.
 
 **A map that does not say exactly one thing refuses to route.** That covers a file that is absent, a tier left unnamed, a key that is no tier, and a tier named twice — which JSON resolves to the last value without complaining, so a copied line would quietly change the model every cheap role runs on. `dim route` names the file and what is wrong with it, and exits nonzero. A default tier chosen here would be a guess about cost and capability made where nobody would see it, and the run that silently took it is the one that cost the most.
 
-This is the first preference `dim` holds rather than a record of something that happened, and it is worth saying plainly because everything else here is history. It qualifies: it is one file, hand-written, read and never inferred, and it is the machine's answer to a question the record cannot answer — no row says what a model is called here. Whether a cheap checker raises fewer real findings than an expensive one is still a measurement, and it waits on the tier being recorded against an order.
+This is the first preference `dim` holds rather than a record of something that happened, and it is worth saying plainly because everything else here is history. It qualifies: it is one file, hand-written, read and never inferred, and it is the machine's answer to a question the record cannot answer — no row says what a model is called here. Whether a cheap reviewer raises fewer real findings than an expensive one is still a measurement, and it waits on the tier being recorded against an order.
 
 ## What the assembly line already settled
 
 Borrowed, and each kept only where a mechanism here carries it. The names are worth keeping because they are searchable, and because each one names a mistake that is easy to make twice.
 
 - **Stop on a defect, never on success** (*jidoka*). A machine that detects an abnormality halts itself rather than passing the part along. The `pre-commit` gate is this: the check fails, git refuses, nothing downstream sees it. The factory operator halts on a second failure of one item and on two failures in a row, and on nothing else — finishing an item is not a reason to stop a line.
-- **Anyone may halt the line** (*andon*). A checker's finding stops its slice until the finding is answered, by a fix or by a stated refusal. The same for a finding that keeps recurring is unbuilt; [`build-order.md`](build-order.md) holds it.
+- **Anyone may halt the line** (*andon*). A reviewer's finding stops its slice until the finding is answered, by a fix or by a stated refusal. The same for a finding that keeps recurring is unbuilt; [`build-order.md`](build-order.md) holds it.
 - **Fix the process, not the part.** A defect found once is repaired; a defect found repeatedly is a gate that does not exist yet. `dim q findings` counts by dimension, which is what names the candidate. The worked example is a diagnostic written through a console API: the instance was fixed, and then `noConsole` in [`biome.json`](../biome.json) stopped the class being representable.
 - **Make the error impossible rather than forbidden** (*poka-yoke*). The argument under "Checks use model judgement, not pattern matching" in [`AGENTS.md`](../AGENTS.md): express as a gate whatever is mechanical, and leave to judgement only what needs it.
 - **One piece at a time.** A slice is verified and committed before the next begins. A branch of unverified slices is one slice with a long diff, which is a batch waiting to be reworked.

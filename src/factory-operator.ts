@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import {
+  answerOrderFinding,
   appendOrderEvent,
   claimOrder,
   isTerminalOrderStatus,
@@ -7,12 +8,12 @@ import {
   type OrderEvent,
   type OrderFile,
   orderStatus,
+  raiseOrderFinding,
   recordOrderCheck,
   recordOrderCommit,
   recordOrderDocument,
   recordOrderEnvironment,
   recordOrderFile,
-  recordOrderFinding,
 } from "./factory-order";
 import type { WorkerHookReport } from "./worker-environment";
 
@@ -37,12 +38,9 @@ export type FactoryContext = {
     finishedAt?: string;
     result?: string;
   }): number;
-  recordFinding(finding: {
-    dimension: string;
-    summary: string;
-    answer: "fixed" | "refused";
-    resolution?: string;
-  }): number;
+  /** Returns the finding, which is what `answerFinding` names. */
+  raiseFinding(finding: { dimension: string; summary: string }): number;
+  answerFinding(findingId: number, answer: { answer: "fixed" | "refused"; resolution?: string }): number;
   recordDocument(path: string): void;
   recordEnvironment(report: WorkerHookReport): void;
 };
@@ -77,7 +75,8 @@ export async function runFactoryOrder(
     recordCommit: (sha, subject) => recordOrderCommit(db, item.id, sha, worker, subject),
     recordFile: (file) => recordOrderFile(db, item.id, file),
     recordCheck: (check) => recordOrderCheck(db, item.id, check, worker),
-    recordFinding: (finding) => recordOrderFinding(db, item.id, finding, worker),
+    raiseFinding: (finding) => raiseOrderFinding(db, item.id, finding, worker),
+    answerFinding: (findingId, answer) => answerOrderFinding(db, findingId, answer, worker),
     recordDocument: (path) => recordOrderDocument(db, item.id, path),
     recordEnvironment: (report) => recordOrderEnvironment(db, item.id, report),
   };

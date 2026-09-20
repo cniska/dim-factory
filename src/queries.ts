@@ -621,8 +621,8 @@ const findings: Query = {
       columns,
       rows: toRows(records, columns),
       note:
-        "This grades the checker and never the builder: a builder scored down by a count writes duller " +
-        "slices and a checker scored up by one invents findings. A refusal ends a finding as completely " +
+        "This grades the reviewer and never the builder: a builder scored down by a count writes duller " +
+        "slices and a reviewer scored up by one invents findings. A refusal ends a finding as completely " +
         "as a fix does, so the two columns are answers and not a pass rate.",
     };
   },
@@ -1161,8 +1161,9 @@ const order: Query = {
       ),
       ...table(
         db,
-        `SELECT 'finding' AS section, recorded_at AS "when", 'review_finished' AS kind,
-                answer AS status, dimension AS subject, summary AS evidence
+        `SELECT 'finding' AS section, raised_at AS "when",
+                CASE WHEN answer IS NULL THEN 'finding_raised' ELSE 'finding_answered' END AS kind,
+                coalesce(answer, 'unanswered') AS status, dimension AS subject, summary AS evidence
          FROM factory_order_finding WHERE order_id = ?`,
         [id],
       ),
@@ -1216,9 +1217,9 @@ const factory: Query = {
                         FROM factory_order_check c WHERE c.order_id = o.id
                         ORDER BY c.finished_at DESC, c.id DESC LIMIT 1), '(none recorded)') AS "check",
               coalesce((SELECT group_concat(finding, '; ') FROM (
-                          SELECT f.dimension || ': ' || f.answer || ' - ' || f.summary AS finding
+                          SELECT f.dimension || ': ' || coalesce(f.answer, 'unanswered') || ' - ' || f.summary AS finding
                           FROM factory_order_finding f WHERE f.order_id = o.id
-                          ORDER BY f.recorded_at, f.id
+                          ORDER BY f.raised_at, f.id
                         )), '(none recorded)') AS findings,
               coalesce((SELECT nullif(trim(coalesce(e.hold_type || ': ', '') || coalesce(e.reason, '')), '')
                         FROM factory_order_event e WHERE e.order_id = o.id

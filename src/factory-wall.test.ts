@@ -3,16 +3,17 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import {
+  answerOrderFinding,
   appendOrderEvent,
   claimOrder as claimOrderAt,
   type OrderClaim,
   queueOrder,
+  raiseOrderFinding,
   recordOrderCheck,
   recordOrderCommit,
   recordOrderDocument,
   recordOrderEnvironment,
   recordOrderFile,
-  recordOrderFinding,
   setOrderPriority,
 } from "./factory-order";
 import { assembleItemView, assembleWallSnapshot, serveWall } from "./factory-wall";
@@ -541,22 +542,28 @@ describe("factory wall item view", () => {
       worker,
       "2026-09-18T10:06:30.000Z",
     );
-    recordOrderFinding(
+    const onTests = raiseOrderFinding(
       db,
       "order-worked",
-      { dimension: "tests", summary: "the rail has no test", answer: "fixed" },
+      { dimension: "tests", summary: "the rail has no test" },
       worker,
       "2026-09-18T10:07:00.000Z",
     );
-    recordOrderFinding(
+    answerOrderFinding(db, onTests, { answer: "fixed" }, worker, "2026-09-18T10:07:00.000Z");
+    const onStyle = raiseOrderFinding(
       db,
       "order-worked",
       {
         dimension: "style",
         summary: "the dialog should use a component library",
-        answer: "refused",
-        resolution: "the design doc rules a library out for this surface",
       },
+      worker,
+      "2026-09-18T10:08:00.000Z",
+    );
+    answerOrderFinding(
+      db,
+      onStyle,
+      { answer: "refused", resolution: "the design doc rules a library out for this surface" },
       worker,
       "2026-09-18T10:08:00.000Z",
     );
@@ -584,8 +591,10 @@ describe("factory wall item view", () => {
       "check_finished",
       "commit_created",
       "check_finished",
-      "review_finished",
-      "review_finished",
+      "finding_raised",
+      "finding_answered",
+      "finding_raised",
+      "finding_answered",
       "document_updated",
       "completed",
     ]);
@@ -677,17 +686,17 @@ describe("factory wall item view", () => {
       { command: "bun run verify", exitCode: 0, result: "green" },
       { command: "bun run verify", exitCode: 0, result: "green" },
     ]);
-    expect(entries.filter((entry) => entry.kind === "review_finished").map((entry) => entry.finding)).toEqual(
-      [
-        { dimension: "tests", answer: "fixed", summary: "the rail has no test" },
-        {
-          dimension: "style",
-          answer: "refused",
-          summary: "the dialog should use a component library",
-          resolution: "the design doc rules a library out for this surface",
-        },
-      ],
-    );
+    expect(
+      entries.filter((entry) => entry.kind === "finding_answered").map((entry) => entry.finding),
+    ).toEqual([
+      { dimension: "tests", answer: "fixed", summary: "the rail has no test" },
+      {
+        dimension: "style",
+        answer: "refused",
+        summary: "the dialog should use a component library",
+        resolution: "the design doc rules a library out for this surface",
+      },
+    ]);
     expect(entries.find((entry) => entry.kind === "document_updated")?.path).toBe("docs/human-interface.md");
     expect(entries.find((entry) => entry.kind === "environment_reported")?.environment).toEqual({
       phase: "setup",

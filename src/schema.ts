@@ -20,7 +20,7 @@ import { ORDER_STATUSES_SQL } from "./factory-order";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 32;
+export const SCHEMA_VERSION = 33;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -315,7 +315,7 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,
   order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   ts                    TEXT NOT NULL,
-  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'commit_created', 'check_finished', 'review_finished', 'completed', 'dropped', 'failed')),
+  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'commit_created', 'check_finished', 'finding_raised', 'finding_answered', 'completed', 'dropped', 'failed')),
   -- Who did it, written by the statement that writes the moment and never after.
   -- An entry completed later is a mutation of a record someone may already have
   -- read, and a log that can be amended is not evidence of anything.
@@ -362,15 +362,21 @@ CREATE TABLE IF NOT EXISTS factory_order_check (
   recorded_at   TEXT NOT NULL
 );
 
+-- Raising a finding and answering it are two acts by two hands: the reviewer that read
+-- the diff and the builder that wrote it. The events carry who did which, and this row
+-- carries the finding's own state, so an unanswered finding is one with no answer yet
+-- rather than one nobody wrote down.
 CREATE TABLE IF NOT EXISTS factory_order_finding (
   id            INTEGER PRIMARY KEY,
   order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   dimension     TEXT NOT NULL,
   summary       TEXT NOT NULL,
-  answer        TEXT NOT NULL CHECK (answer IN ('fixed', 'refused')),
+  answer        TEXT CHECK (answer IN ('fixed', 'refused')),
   resolution    TEXT,
-  recorded_at   TEXT NOT NULL,
-  CHECK (answer <> 'refused' OR (resolution IS NOT NULL AND trim(resolution) <> ''))
+  raised_at     TEXT NOT NULL,
+  answered_at   TEXT,
+  CHECK (answer <> 'refused' OR (resolution IS NOT NULL AND trim(resolution) <> '')),
+  CHECK ((answer IS NULL) = (answered_at IS NULL))
 );
 
 -- What a worktree's setup and teardown hooks reported. resources holds the
@@ -519,15 +525,15 @@ CREATE TABLE IF NOT EXISTS correction_label (
 
 -- No source to re-read — an answer exists only in the session that made it — so
 -- \`rebuild\` never clears this, as it does not clear hook_event. Grades the
--- checker and never the builder: measures in docs/findings.md looked like grades
+-- reviewer and never the builder: measures in docs/findings.md looked like grades
 -- and turned out to track what was being worked on instead.
 CREATE TABLE IF NOT EXISTS finding (
   id           INTEGER PRIMARY KEY,
   repo         TEXT NOT NULL,        -- as repo_commit spells it, so a row reaches commit_file
   slice        TEXT NOT NULL,
-  dimension    TEXT NOT NULL,        -- which of the checker's four questions raised it
+  dimension    TEXT NOT NULL,        -- which of the reviewer's four questions raised it
   file         TEXT,                 -- relative to the checkout
-  summary      TEXT NOT NULL,        -- the checker's words, not the builder's
+  summary      TEXT NOT NULL,        -- the reviewer's words, not the builder's
   answer       TEXT NOT NULL CHECK (answer IN ('fixed','refused')),
   reason       TEXT,
   recorded_at  TEXT NOT NULL,

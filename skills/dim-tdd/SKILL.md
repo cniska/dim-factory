@@ -22,7 +22,7 @@ Simplify the implementation while the test is green. Preserve behavior, run the 
 
 ## Repeat and report
 
-Repeat one behavior at a time. Run the repository's declared check before the slice reaches the checker. Report the red failure, green result, refactor result and any behavior intentionally left outside the slice.
+Repeat one behavior at a time. Run the repository's declared check before the slice reaches the reviewer. Report the red failure, green result, refactor result and any behavior intentionally left outside the slice.
 
 ## Red flags
 

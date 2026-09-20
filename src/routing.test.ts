@@ -24,24 +24,11 @@ describe("resolving a role", () => {
     expect(route("operator", env)).toEqual({ tier: "deep", model: "large" });
     expect(route("planner", env)).toEqual({ tier: "deep", model: "large" });
     expect(route("builder", env)).toEqual({ tier: "standard", model: "middling" });
-    expect(route("simplifier", env)).toEqual({ tier: "standard", model: "middling" });
     expect(route("reviewer", env)).toEqual({ tier: "standard", model: "middling" });
-    expect(route("checker", env)).toEqual({ tier: "cheap", model: "small" });
-    expect(route("judge", env)).toEqual({ tier: "cheap", model: "small" });
-    expect(route("searcher", env)).toEqual({ tier: "cheap", model: "small" });
   });
 
   test("declares no role the report cannot print", () => {
-    expect(ROLES).toEqual([
-      "operator",
-      "planner",
-      "builder",
-      "simplifier",
-      "reviewer",
-      "checker",
-      "judge",
-      "searcher",
-    ]);
+    expect(ROLES).toEqual(["operator", "planner", "builder", "reviewer"]);
   });
 
   test("refuses a role no station names", () => {
@@ -65,7 +52,7 @@ describe("resolving a role", () => {
   });
 
   test("prints the tier and the model on one line", () => {
-    expect(routeReport("judge", machine(COMPLETE))).toEqual(["cheap small"]);
+    expect(routeReport("reviewer", machine(COMPLETE))).toEqual(["standard middling"]);
   });
 });
 
@@ -74,7 +61,7 @@ describe("a map that cannot be trusted", () => {
     const env = machine();
 
     try {
-      route("checker", env);
+      route("reviewer", env);
       throw new Error("expected a throw");
     } catch (e) {
       expect(e).toBeInstanceOf(RoutingError);
@@ -85,14 +72,14 @@ describe("a map that cannot be trusted", () => {
   });
 
   test("refuses a map that is not an object of tiers", () => {
-    expect(() => route("checker", machine('["small", "large"]'))).toThrow(/not an object/);
+    expect(() => route("reviewer", machine('["small", "large"]'))).toThrow(/not an object/);
   });
 
   test("refuses a tier the map leaves unnamed", () => {
-    expect(() => route("checker", machine('{ "cheap": "small", "standard": "middling" }'))).toThrow(
+    expect(() => route("reviewer", machine('{ "cheap": "small", "standard": "middling" }'))).toThrow(
       /the deep tier names no model/,
     );
-    expect(() => route("checker", machine('{ "cheap": " ", "standard": "m", "deep": "l" }'))).toThrow(
+    expect(() => route("reviewer", machine('{ "cheap": " ", "standard": "m", "deep": "l" }'))).toThrow(
       /the cheap tier names no model/,
     );
   });
@@ -102,13 +89,13 @@ describe("a map that cannot be trusted", () => {
   test("refuses a key that is no tier, which is how a typo is caught", () => {
     const env = machine('{ "cheap": "s", "standard": "m", "deep": "l", "cheep": "x" }');
 
-    expect(() => route("checker", env)).toThrow(/cheep, which is no tier/);
+    expect(() => route("reviewer", env)).toThrow(/cheep, which is no tier/);
   });
 
   test("refuses a tier named twice, which JSON would silently resolve", () => {
     const env = machine('{ "cheap": "first", "cheap": "second", "standard": "m", "deep": "l" }');
 
-    expect(() => route("checker", env)).toThrow(/names cheap twice/);
+    expect(() => route("reviewer", env)).toThrow(/names cheap twice/);
   });
 });
 

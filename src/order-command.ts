@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import {
   amendOrder,
+  answerOrderFinding,
   appendOrderEvent,
   claimOrder,
   dropOrder,
@@ -10,11 +11,11 @@ import {
   type OrderPriority,
   type OrderStatus,
   queueOrder,
+  raiseOrderFinding,
   recordOrderCheck,
   recordOrderCommit,
   recordOrderDocument,
   recordOrderFile,
-  recordOrderFinding,
   setOrderHold,
   setOrderPriority,
   shipOrder,
@@ -39,7 +40,8 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--des
        dim order commit <order-id> --sha <sha> [--subject "..."]
        dim order file <order-id> --path <path> [--added <n>] [--removed <n>]
        dim order check <order-id> --command "..." --exit <code> [--result "..."]
-       dim order finding <order-id> --dimension <name> --summary "..." --answer <fixed|refused>
+       dim order finding <order-id> --dimension <name> --summary "..."
+       dim order answer <finding-id> --answer <fixed|refused>
                        [--resolution "..."]
        dim order document <order-id> --path <path>
        dim order ship <order-id>
@@ -190,22 +192,11 @@ const EVIDENCE: Record<string, Evidence> = {
     },
   },
   finding: {
-    flags: ["--dimension", "--summary", "--answer", "--resolution"],
+    flags: ["--dimension", "--summary"],
     record: (db, id, given, worker) => {
       const dimension = required(given, "--dimension");
-      const ended = answer(given);
-      recordOrderFinding(
-        db,
-        id,
-        {
-          dimension,
-          summary: required(given, "--summary"),
-          answer: ended,
-          resolution: given.get("--resolution"),
-        },
-        worker,
-      );
-      return `${id} recorded a ${ended} finding on ${dimension}`;
+      const raised = raiseOrderFinding(db, id, { dimension, summary: required(given, "--summary") }, worker);
+      return `${id} raised finding ${raised} on ${dimension}`;
     },
   },
   document: {
@@ -286,6 +277,28 @@ function drop(db: Database, orderId: string, args: string[], worker: string): st
   return `${orderId} is dropped: ${reason}`;
 }
 
+/** Named by the finding rather than the order, because answering is a reply to one thing
+ *  a reviewer said and an order may be carrying several. */
+function answerFinding(
+  db: Database,
+  findingSpec: string | undefined,
+  args: string[],
+  worker: string,
+): string {
+  if (findingSpec === undefined || !/^[1-9]\d*$/.test(findingSpec)) {
+    throw fail("answer names the finding it replies to: `dim order answer <finding-id> --answer ...`");
+  }
+  const given = flags(args, ["--answer", "--resolution"]);
+  const ended = answer(given);
+  answerOrderFinding(
+    db,
+    Number(findingSpec),
+    { answer: ended, resolution: given.get("--resolution") },
+    worker,
+  );
+  return `finding ${findingSpec} is ${ended}`;
+}
+
 export function runOrderCommand(
   db: Database,
   args: string[],
@@ -352,5 +365,6 @@ export function runOrderCommand(
   if (command === "stop") return stop(db, orderId, rest, cwd, worker);
   if (command === "amend") return amend(db, orderId, rest);
   if (command === "drop") return drop(db, orderId, rest, worker);
+  if (command === "answer") return answerFinding(db, orderId, rest, worker);
   throw new OrderCommandError(`${command} is not an order subcommand`);
 }

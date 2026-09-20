@@ -330,10 +330,9 @@ describe("order command", () => {
         "tests",
         "--summary",
         "the invariant holds",
-        "--answer",
-        "fixed",
       ]),
-    ).toBe("order-1 recorded a fixed finding on tests");
+    ).toBe("order-1 raised finding 1 on tests");
+    expect(runOrderCommand(database, ["answer", "1", "--answer", "fixed"])).toBe("finding 1 is fixed");
     expect(runOrderCommand(database, ["document", "order-1", "--path", "docs/factory.md"])).toBe(
       "order-1 recorded docs/factory.md",
     );
@@ -418,18 +417,11 @@ describe("order command", () => {
     expect(() =>
       runOrderCommand(database, ["check", "order-1", "--command", "bun run verify", "--exit", "green"]),
     ).toThrow(OrderCommandError);
-    expect(() =>
-      runOrderCommand(database, [
-        "finding",
-        "order-1",
-        "--dimension",
-        "tests",
-        "--summary",
-        "s",
-        "--answer",
-        "maybe",
-      ]),
-    ).toThrow(OrderCommandError);
+    runOrderCommand(database, ["finding", "order-1", "--dimension", "tests", "--summary", "s"]);
+    expect(() => runOrderCommand(database, ["answer", "1", "--answer", "maybe"])).toThrow(OrderCommandError);
+    expect(() => runOrderCommand(database, ["answer", "nope", "--answer", "fixed"])).toThrow(
+      OrderCommandError,
+    );
     for (const spec of ["", " ", "1e3"]) {
       expect(() =>
         runOrderCommand(database, ["check", "order-1", "--command", "bun run verify", "--exit", spec]),
@@ -437,28 +429,46 @@ describe("order command", () => {
     }
 
     expect(database.query("SELECT count(*) AS rows FROM factory_order_check").get()).toEqual({ rows: 0 });
-    expect(database.query("SELECT count(*) AS rows FROM factory_order_finding").get()).toEqual({ rows: 0 });
+    expect(database.query("SELECT answer FROM factory_order_finding").get()).toEqual({ answer: null });
   });
 
-  test("a refused finding is not recorded without the grounds it rests on", () => {
+  test("a refused finding is not answered without the grounds it rests on", () => {
     const database = db();
     queued(database);
     runOrderCommand(database, claim);
+    runOrderCommand(database, [
+      "finding",
+      "order-1",
+      "--dimension",
+      "docs",
+      "--summary",
+      "a doc did not move",
+    ]);
+
+    expect(() => runOrderCommand(database, ["answer", "1", "--answer", "refused"])).toThrow(
+      expect.objectContaining({ code: "SQLITE_CONSTRAINT_CHECK" }),
+    );
+
+    expect(database.query("SELECT answer FROM factory_order_finding WHERE id = 1").get()).toEqual({
+      answer: null,
+    });
+  });
+
+  // Answering is a reply to one thing a reviewer said, and a second reply would rewrite a
+  // judgement the record may already have been read for.
+  test("a finding is answered once", () => {
+    const database = db();
+    queued(database);
+    runOrderCommand(database, claim);
+    runOrderCommand(database, ["finding", "order-1", "--dimension", "tests", "--summary", "thin"]);
+    runOrderCommand(database, ["answer", "1", "--answer", "fixed"]);
 
     expect(() =>
-      runOrderCommand(database, [
-        "finding",
-        "order-1",
-        "--dimension",
-        "docs",
-        "--summary",
-        "a doc did not move",
-        "--answer",
-        "refused",
-      ]),
-    ).toThrow(expect.objectContaining({ code: "SQLITE_CONSTRAINT_CHECK" }));
-
-    expect(database.query("SELECT count(*) AS rows FROM factory_order_finding").get()).toEqual({ rows: 0 });
+      runOrderCommand(database, ["answer", "1", "--answer", "refused", "--resolution", "no"]),
+    ).toThrow(/already fixed/);
+    expect(database.query("SELECT answer FROM factory_order_finding WHERE id = 1").get()).toEqual({
+      answer: "fixed",
+    });
   });
 
   test("a way an order cannot stop is refused rather than written", () => {

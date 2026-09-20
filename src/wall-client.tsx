@@ -52,11 +52,6 @@ const roleTint: Record<WallRole, string | undefined> = {
   planner: "text-role-planner",
   builder: "text-role-builder",
   reviewer: "text-role-reviewer",
-  simplifier: undefined,
-  checker: undefined,
-  judge: undefined,
-  searcher: undefined,
-  unknown: undefined,
 };
 
 const NO_WORKER = "no worker recorded";
