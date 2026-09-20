@@ -22,6 +22,14 @@ The station — Plan, Build, Review or Ship — is card metadata rather than a c
 
 The board is a snapshot assembled from factory order and lifecycle event records. The board itself stays an overview and does not grow into a table.
 
+The wall has three questions, in this order:
+
+1. **What needs attention?** Holds, blockers, repeated failures, stale work, missing contracts, and a stopped floor.
+2. **Where is the work?** Project, stage, station, worker, current attempt, and time since the last event.
+3. **Is the floor healthy?** Feed connection, active operator, active workers, due scheduled reviews, and counts of work waiting, moving, held, failed, and complete.
+
+The first viewport shows the first two questions. Floor health stays in a compact header or status rail; it does not become a dashboard of derived metrics. A card may add project identity, attempt count, and the current owner action when those facts exist. It does not show the audit log, changed-file list, call graph, or plan body.
+
 ## Visual language
 
 - **Dark ground.** A stable dark surface keeps status colors and text legible for a display that may stay open.
@@ -83,6 +91,19 @@ A card answers where an item is; the item view answers what happened to it. Open
 
 It is a dialog over the board, the shape a detail surface already takes in this owner's other work: a titled header, the order's facts in a term-and-value grid, and the content below it. Two things differ. It is sized for reading rather than for a form, so a history as long as the order was fits without the dialog outgrowing the viewport — the dialog holds its size and its content scrolls, and the plan and the account below will have the same room. And it carries no action row, because opening a record is the whole of what it does.
 
+The dialog is a decision surface, not only an audit-log viewer. In addition to the audit log and changed-file list, it shows the following sections in this order:
+
+- **Current decision.** State, station, project, owner action, active hold or blocker, current attempt, silence age, and the latest check or finding that explains the state.
+- **Intent.** Queue statement, approved plan revision, approval state, risks, non-goals, and the implementation outline. The queue statement is what was requested; the plan is what the order decided to do about it.
+- **Result.** A builder or reviewer account linked to the exact commits it describes, the final check, integration state, and owner verdict. A result that differs from the approved plan makes the difference visible rather than silently replacing the plan.
+- **Shipping account.** An independent explanation of what was built, why it has this shape, what risks remain, and where it differs from the approved plan. In the first version it is an evidence artifact, not a blocking approval; a later gate may use it if the record shows that it pays.
+- **Program design.** The bounded file tree, key signatures, call path, data flow, and planned boundary crossings. Show the graph collapsed by default; expand it when the owner is investigating a scope or architecture question.
+- **Execution summary.** Attempts, loop iterations, failed checks, review rounds, simplification fixpoints, worker and operator attribution, model or tier where recorded, and setup or teardown state.
+- **Audit log.** The immutable lifecycle sequence, including claims, station moves, delegations, checks, findings, documents, environment reports, outcomes, and integration.
+- **Changes.** The changed-file set with added and removed lines, kept separate from the time-ordered story.
+
+The first three sections answer whether the order is understood, what it intended, and what it delivered. The remaining sections provide proof. Raw transcript text is not part of the default view; a source reference may be offered when an evidence row needs investigation.
+
 Covering the board is the right trade: reading one item is a deliberate act at the machine, while the board is what carries the room. The view stays live while it is open, re-reading the record on every beat the board reports for that order.
 
 - **One item.** The view opens from a card and shows that order's own record. It is a place to look at one thing, not a table of everything, and the board is still the way to find it.
@@ -93,6 +114,8 @@ Covering the board is the right trade: reading one item is a deliberate act at t
 - **Human words, machine ids.** The same split the board follows: the item's title and its description lead, in the words the queue stated them in and as the claim recorded them, and the order id, item id, branch, worktree and commit shas are present for an agent to join on. A sha is shortened to what a person compares and carries the whole of itself for anything that reads the page.
 
 The order's identity stays above whatever is being read — which item, which station, which worker, which state — because it answers "what am I looking at" and a reader who has to go back for it has lost the thread. It is the card's own identity, on screen from the moment the dialog opens rather than once the record arrives, and a record that cannot be read says so instead of reading as one still loading. Below it the reports divide: what the order set out to do, what it did, and what it built. Each is a document in its own right and long enough that stacking them makes the one being read hard to find.
+
+The dialog does not put every section at the same visual weight. Current decision stays open; intent and result are the primary comparison; program design and execution summary are deliberate disclosures; the audit log and changes remain available for verification. This preserves the wall's glanceable role while making a single order understandable without returning to the transcript.
 
 Beside the history runs the order's timeline, in the order things happened, with the time each one occurred and the worker the record names for it. It is the audit record in its most compact form — what happened, who was named for it, who they handed to, and when — and it answers at a glance the question the reports answer at length. Most moments name no agent today, because only a claim, a start and a delegation are recorded against one; a stop the record leaves unattributed stays unattributed here rather than borrowing the worker beside it.
 
@@ -142,7 +165,20 @@ Controls are expected here eventually, and the boundary holds until the factory 
 
 ## Human attention
 
-The wall exposes holds, blockers and other places where the factory needs human attention. The recurring decisions, their evidence and whether any response belongs in this interface are not known yet; the factory should reveal that shape before this page gains controls.
+The wall exposes holds, blockers and other places where the factory needs human attention. The dialog explains the reason and presents the evidence for that decision. The first human-facing states are:
+
+- a plan awaiting approval
+- an ambiguous or changed contract
+- a repeated failed attempt or review finding
+- a missing project or workspace contract
+- a stale or silent order
+- a factory stop or unsafe environment
+- a result that differs from the approved plan
+- a ship or owner verdict awaiting a decision
+
+When a human shipping gate is enabled, the shipping account is its default focus. Until then, the dialog exposes it for observation and future measurement while the operator continues through the mechanical shipping conditions.
+
+These are visibility states, not controls. The wall remains read-only until the factory record shows which decisions recur often enough to earn a safe control surface.
 
 ## Server shape
 
