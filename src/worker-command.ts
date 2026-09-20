@@ -1,12 +1,16 @@
 import type { Database } from "bun:sqlite";
 import { endWorker, mintWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR, workerExports } from "./factory-worker";
 import { readFlags } from "./flags";
-import { isRole, ROLES, type Role } from "./roles";
+import { isReadOnly, isRole, ROLES, type Role } from "./roles";
 
 export class WorkerCommandError extends Error {}
 
-export const WORKER_USAGE = `usage: dim worker mint --role <${ROLES.join("|")}> [--pid <n>]
-       dim worker run --role <${ROLES.join("|")}> -- <command> [args...]
+/** What a person or a station may ask for here. The rest are issued by the station that
+ *  spawns them and never by a caller naming a role. */
+const ISSUABLE_ROLES = ROLES.filter((role) => !isReadOnly(role));
+
+export const WORKER_USAGE = `usage: dim worker mint --role <${ISSUABLE_ROLES.join("|")}> [--pid <n>]
+       dim worker run --role <${ISSUABLE_ROLES.join("|")}> -- <command> [args...]
        dim worker end <name>
 
 A worker is issued before it does anything, and every moment it records names it.
@@ -19,9 +23,18 @@ const fail = (message: string): Error => new WorkerCommandError(message);
 /** Required, because a hand with no role is one nothing can route and no card can draw. */
 function role(given: string | undefined): Role {
   if (given === undefined)
-    throw fail(`--role says what this hand is called in as; one of ${ROLES.join(", ")}`);
+    throw fail(`--role says what this hand is called in as; one of ${ISSUABLE_ROLES.join(", ")}`);
   if (!isRole(given)) {
-    throw fail(`${given} is not a role a worker is called in as; one of ${ROLES.join(", ")}`);
+    throw fail(`${given} is not a role a worker is called in as; one of ${ISSUABLE_ROLES.join(", ")}`);
+  }
+  // A read-only hand is spawned by the station that briefs it, which is what keeps its
+  // token out of the process whose work it reads. Minting one here would hand any caller
+  // the identity whose whole value is that the caller does not hold it.
+  if (isReadOnly(given)) {
+    throw fail(
+      `a ${given} is issued by the station that spawns it, never minted: its token stays out of ` +
+        "the hand whose work it reads, or the record cannot tell the two apart",
+    );
   }
   return given;
 }

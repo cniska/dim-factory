@@ -20,7 +20,7 @@ import { ORDER_STATUSES_SQL } from "./factory-order";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 32;
+export const SCHEMA_VERSION = 33;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
