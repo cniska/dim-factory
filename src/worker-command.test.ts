@@ -13,13 +13,18 @@ function floor(): Database {
   return db;
 }
 
+// The command falls back to `process.env` when no caller names an environment, and every
+// builder runs this suite from a shell already carrying a worker, whose name and token
+// would then be resolved in place of the one the test issues.
+const shell = { DIM_SESSION_ID: "session-under-test" };
+
 describe("starting a worker", () => {
   test("hands the process a worker it can write as", () => {
     const db = floor();
     const out = Bun.spawnSync(["sh", "-c", "true"]);
     expect(out.success).toBe(true);
 
-    runWorkerCommand(db, ["run", "--role", "builder", "--", "sh", "-c", "true"]);
+    runWorkerCommand(db, ["run", "--role", "builder", "--", "sh", "-c", "true"], shell);
 
     const issued = db.query("SELECT name, role, pid FROM factory_worker").get() as {
       name: string;
@@ -38,15 +43,19 @@ describe("starting a worker", () => {
     const db = floor();
     const out = join(mkdtempSync(join(tmpdir(), "dim-worker-run-")), "carried");
 
-    runWorkerCommand(db, [
-      "run",
-      "--role",
-      "builder",
-      "--",
-      "sh",
-      "-c",
-      `printf '%s\\n%s' "$${WORKER_NAME_VAR}" "$${WORKER_TOKEN_VAR}" > ${out}`,
-    ]);
+    runWorkerCommand(
+      db,
+      [
+        "run",
+        "--role",
+        "builder",
+        "--",
+        "sh",
+        "-c",
+        `printf '%s\\n%s' "$${WORKER_NAME_VAR}" "$${WORKER_TOKEN_VAR}" > ${out}`,
+      ],
+      shell,
+    );
 
     const [name, token] = readFileSync(out, "utf8").split("\n") as [string, string];
     // Ended with the process, so what the child held is read back against a live row.
@@ -59,7 +68,7 @@ describe("starting a worker", () => {
   test("the worker ends with the process, so its name writes nothing after", () => {
     const db = floor();
 
-    runWorkerCommand(db, ["run", "--role", "builder", "--", "sh", "-c", "true"]);
+    runWorkerCommand(db, ["run", "--role", "builder", "--", "sh", "-c", "true"], shell);
 
     const ended = db.query("SELECT ended_at FROM factory_worker").get() as { ended_at: string | null };
     expect(ended.ended_at).not.toBeNull();
@@ -69,9 +78,9 @@ describe("starting a worker", () => {
   test("a process that failed still ends its worker, and says what it exited", () => {
     const db = floor();
 
-    expect(() => runWorkerCommand(db, ["run", "--role", "builder", "--", "sh", "-c", "exit 3"])).toThrow(
-      /exited 3/,
-    );
+    expect(() =>
+      runWorkerCommand(db, ["run", "--role", "builder", "--", "sh", "-c", "exit 3"], shell),
+    ).toThrow(/exited 3/);
 
     const ended = db.query("SELECT ended_at FROM factory_worker").get() as { ended_at: string | null };
     expect(ended.ended_at).not.toBeNull();
@@ -81,8 +90,8 @@ describe("starting a worker", () => {
   test("refuses a run with no command to start", () => {
     const db = floor();
 
-    expect(() => runWorkerCommand(db, ["run", "--role", "builder"])).toThrow(WorkerCommandError);
-    expect(() => runWorkerCommand(db, ["run", "--role", "builder", "--"])).toThrow(WorkerCommandError);
+    expect(() => runWorkerCommand(db, ["run", "--role", "builder"], shell)).toThrow(WorkerCommandError);
+    expect(() => runWorkerCommand(db, ["run", "--role", "builder", "--"], shell)).toThrow(WorkerCommandError);
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 0 });
     db.close();
   });
@@ -92,7 +101,7 @@ describe("issuing a worker to a shell", () => {
   test("prints exports a shell can read back into a resolvable worker", () => {
     const db = floor();
 
-    const printed = runWorkerCommand(db, ["mint", "--role", "builder"]);
+    const printed = runWorkerCommand(db, ["mint", "--role", "builder"], shell);
 
     const env: Record<string, string> = {};
     for (const line of printed.split("\n")) {
@@ -132,11 +141,11 @@ describe("issuing a worker to a shell", () => {
   test("a read-only hand cannot be minted or run by a caller", () => {
     const db = floor();
 
-    expect(() => runWorkerCommand(db, ["mint", "--role", "reviewer"])).toThrow(WorkerCommandError);
-    expect(() => runWorkerCommand(db, ["mint", "--role", "planner"])).toThrow(/issued by the station/);
-    expect(() => runWorkerCommand(db, ["run", "--role", "reviewer", "--", "sh", "-c", "true"])).toThrow(
-      /issued by the station/,
-    );
+    expect(() => runWorkerCommand(db, ["mint", "--role", "reviewer"], shell)).toThrow(WorkerCommandError);
+    expect(() => runWorkerCommand(db, ["mint", "--role", "planner"], shell)).toThrow(/issued by the station/);
+    expect(() =>
+      runWorkerCommand(db, ["run", "--role", "reviewer", "--", "sh", "-c", "true"], shell),
+    ).toThrow(/issued by the station/);
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 0 });
     db.close();
   });
