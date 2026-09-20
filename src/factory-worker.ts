@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { Env } from "./paths";
 import { pidIsAlive } from "./pid";
 import type { Role } from "./roles";
-import { nextWorkerName, wordFor } from "./worker-name";
+import { randomWorkerName } from "./worker-name";
 
 /** What the factory hands a worker, and the only thing it reads back to know who wrote. */
 export const WORKER_NAME_VAR = "DIM_WORKER_NAME";
@@ -31,20 +31,15 @@ function digest(token: string): string {
 }
 
 /**
- * Issued in one transaction, because the name is drawn from a count: two runs reading
- * the same count would be handed the same name, and SQLite's write lock is what makes
- * the read and the insert one step.
+ * Issued in one transaction, because the name is drawn from the names already held: two
+ * runs reading the same set would be handed the same name, and SQLite's write lock is what
+ * makes the read and the insert one step.
  */
 export function mintWorker(db: Database, worker: { role: Role; pid?: number }, at = now()): MintedWorker {
   const token = randomBytes(16).toString("hex");
   return db.transaction(() => {
-    const workers = (db.query<{ n: number }, []>("SELECT count(*) AS n FROM factory_worker").get()?.n ??
-      0) as number;
-    const word = wordFor(workers);
-    const onWord = (db
-      .query<{ n: number }, [string]>("SELECT count(*) AS n FROM factory_worker WHERE name LIKE ?")
-      .get(`${word}-%`)?.n ?? 0) as number;
-    const name = nextWorkerName(workers, onWord);
+    const held = db.query<{ name: string }, []>("SELECT name FROM factory_worker").all();
+    const name = randomWorkerName(new Set(held.map((row) => row.name)));
     db.run("INSERT INTO factory_worker (name, role, token_digest, pid, started_at) VALUES (?, ?, ?, ?, ?)", [
       name,
       worker.role ?? null,

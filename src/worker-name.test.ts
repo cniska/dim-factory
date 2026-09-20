@@ -1,31 +1,29 @@
 import { describe, expect, test } from "bun:test";
-import { nextWorkerName, wordFor } from "./worker-name";
+import { randomWorkerName, WORKER_NAMES } from "./worker-name";
 
 describe("naming a factory worker", () => {
   test("names read as a word and a number", () => {
-    expect(nextWorkerName(0, 0)).toMatch(/^[a-z]+-\d+$/);
+    expect(randomWorkerName(new Set())).toMatch(/^[a-z]+-\d{1,2}$/);
   });
 
-  test("the words are walked in turn, so the second worker is not the first's word", () => {
-    expect(wordFor(0)).not.toBe(wordFor(1));
-  });
-
-  test("no two workers are handed the same name", () => {
-    const issued = new Set<string>();
-    const onWord = new Map<string, number>();
-    for (let workers = 0; workers < 5000; workers += 1) {
-      const word = wordFor(workers);
-      const taken = onWord.get(word) ?? 0;
-      issued.add(nextWorkerName(workers, taken));
-      onWord.set(word, taken + 1);
+  test("a name nothing holds is never drawn twice", () => {
+    const taken = new Set<string>();
+    for (let issued = 0; issued < 500; issued += 1) {
+      const name = randomWorkerName(taken);
+      expect(taken.has(name)).toBe(false);
+      taken.add(name);
     }
 
-    expect(issued.size).toBe(5000);
+    expect(taken.size).toBe(500);
   });
 
-  test("the number is what grows, so the vocabulary never runs out", () => {
-    const word = wordFor(0);
+  test("the draw skips a held name rather than colliding with it", () => {
+    const first = randomWorkerName(new Set(), () => 0);
 
-    expect(nextWorkerName(0, 999)).toBe(`${word}-1000`);
+    expect(randomWorkerName(new Set([first]), () => 0)).not.toBe(first);
+  });
+
+  test("a full vocabulary is refused rather than handed a repeat", () => {
+    expect(() => randomWorkerName(new Set(WORKER_NAMES))).toThrow(/worker names is held/);
   });
 });
