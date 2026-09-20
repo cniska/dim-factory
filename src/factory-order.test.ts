@@ -441,7 +441,7 @@ describe("factory order report records", () => {
     const database = db();
     queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
     claimOrder(database, "order-1", claim, worker, "2026-09-18T10:01:00.000Z");
-    const wt = orderWorktree(repo.dir, "ship-slice");
+    const wt = orderWorktree(repo.dir, "order-1");
     writeFileSync(join(wt, "ship-slice.txt"), "slice");
     Bun.spawnSync(["git", "-C", wt, "add", "."]);
     Bun.spawnSync(["git", "-C", wt, "commit", "-q", "-m", "feat: ship-slice"]);

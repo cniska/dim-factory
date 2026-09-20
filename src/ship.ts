@@ -9,7 +9,7 @@ export type ShipRefusalCode =
   | "ship_no_trunk"
   | "ship_wrong_head"
   | "ship_dirty_trunk"
-  | "ship_detached"
+  | "ship_no_branch"
   | "ship_conflict";
 
 /** Carries a code because a caller deciding which condition failed must not match on prose. */
@@ -40,23 +40,27 @@ function primaryCheckout(dir: string): string {
 }
 
 /**
- * Lands `worktree`'s commits on the repo's trunk without rewriting them: a fast-forward
+ * Lands `branch`'s commits on the repo's trunk without rewriting them: a fast-forward
  * where one reaches, an ordinary merge commit otherwise, and never a rebase or a squash,
  * since either would give the order's commits a new sha and fail their own completion gate.
+ *
+ * `branch` is always the branch to land — never read off any HEAD, so calling this from
+ * the trunk checkout itself cannot be mistaken for shipping the trunk into itself.
+ * `cwd` is used only to find the repo and its primary checkout.
  *
  * Only the local flow a repo with no remote can be tested against: opening a pull request
  * instead is a second flow this leaves reachable rather than one it builds ahead of a
  * caller that needs it.
  */
-export function shipToTrunk(worktree: string, shas: string[]): ShipOutcome {
-  const trunk = trunkBranch(worktree);
+export function shipToTrunk(cwd: string, branch: string, shas: string[]): ShipOutcome {
+  const trunk = trunkBranch(cwd);
   if ("why" in trunk) throw new ShipRefusal("ship_no_trunk", trunk.why);
 
-  if (shas.map((sha) => reachesTrunk(worktree, sha)).some((reach) => reach.reach === "reached")) {
+  if (shas.map((sha) => reachesTrunk(cwd, sha)).some((reach) => reach.reach === "reached")) {
     return { landed: "already" };
   }
 
-  const root = primaryCheckout(worktree);
+  const root = primaryCheckout(cwd);
   const head = git(root, ["symbolic-ref", "--short", "HEAD"]);
   if (!head.success || head.out !== trunk.name) {
     throw new ShipRefusal(
@@ -72,16 +76,15 @@ export function shipToTrunk(worktree: string, shas: string[]): ShipOutcome {
     );
   }
 
-  const branch = git(worktree, ["symbolic-ref", "--short", "HEAD"]);
-  if (!branch.success) {
-    throw new ShipRefusal("ship_detached", `${worktree} has no branch checked out to ship`);
+  if (!git(root, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]).success) {
+    throw new ShipRefusal("ship_no_branch", `${root} has no branch named ${branch} to ship`);
   }
 
-  if (git(root, ["merge", "--ff-only", branch.out]).success) return { landed: "fast_forward" };
-  const merge = git(root, ["merge", "--no-edit", branch.out]);
+  if (git(root, ["merge", "--ff-only", branch]).success) return { landed: "fast_forward" };
+  const merge = git(root, ["merge", "--no-edit", branch]);
   if (!merge.success) {
     git(root, ["merge", "--abort"]);
-    throw new ShipRefusal("ship_conflict", `merging ${branch.out} into ${trunk.name} failed: ${merge.out}`);
+    throw new ShipRefusal("ship_conflict", `merging ${branch} into ${trunk.name} failed: ${merge.out}`);
   }
   return { landed: "merged" };
 }

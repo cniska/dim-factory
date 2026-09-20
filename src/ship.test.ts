@@ -34,11 +34,21 @@ function worktree(dir: string, branch: string): string {
 }
 
 describe("shipToTrunk", () => {
+  test("shipping from the primary checkout still lands the order's own branch", () => {
+    const { dir } = repo();
+    const wt = worktree(dir, "feat-a");
+    const sha = commitFile(wt, "feat-a.txt", "a");
+
+    shipToTrunk(dir, "feat-a", [sha]);
+
+    expect(reachesNow(dir, sha)).toBe(true);
+  });
+
   test("a commit already on the trunk ships as already landed", () => {
     const { dir } = repo();
     const sha = git(dir, ["rev-parse", "HEAD"]).out;
 
-    expect(shipToTrunk(dir, [sha])).toEqual({ landed: "already" });
+    expect(shipToTrunk(dir, "main", [sha])).toEqual({ landed: "already" });
   });
 
   test("a worktree ahead of the trunk with no divergence fast-forwards", () => {
@@ -46,7 +56,7 @@ describe("shipToTrunk", () => {
     const wt = worktree(dir, "feat-a");
     const sha = commitFile(wt, "feat-a.txt", "a");
 
-    expect(shipToTrunk(wt, [sha])).toEqual({ landed: "fast_forward" });
+    expect(shipToTrunk(wt, "feat-a", [sha])).toEqual({ landed: "fast_forward" });
     expect(reachesNow(dir, sha)).toBe(true);
   });
 
@@ -56,7 +66,7 @@ describe("shipToTrunk", () => {
     const sha = commitFile(wt, "feat-b.txt", "b");
     commitFile(dir, "trunk-moved.txt", "moved");
 
-    expect(shipToTrunk(wt, [sha])).toEqual({ landed: "merged" });
+    expect(shipToTrunk(wt, "feat-b", [sha])).toEqual({ landed: "merged" });
     expect(reachesNow(dir, sha)).toBe(true);
   });
 
@@ -66,7 +76,7 @@ describe("shipToTrunk", () => {
     const sha = commitFile(wt, "feat-c.txt", "c");
     commitFile(dir, "trunk-moved-2.txt", "moved");
 
-    shipToTrunk(wt, [sha]);
+    shipToTrunk(wt, "feat-c", [sha]);
 
     expect(git(dir, ["cat-file", "-e", `${sha}^{commit}`]).success).toBe(true);
   });
@@ -85,7 +95,7 @@ describe("shipToTrunk", () => {
     git(dir, ["add", "."]);
     git(dir, ["commit", "-q", "-m", "feat: shared moved on the trunk"]);
 
-    expect(() => shipToTrunk(wt, [sha])).toThrow(
+    expect(() => shipToTrunk(wt, "feat-conflict", [sha])).toThrow(
       expect.objectContaining({ code: "ship_conflict" } satisfies Partial<ShipRefusal>),
     );
     expect(git(dir, ["status", "--porcelain"]).out).toBe("");
@@ -95,7 +105,7 @@ describe("shipToTrunk", () => {
     const { dir, sha } = repoWithoutTrunk();
     cleanup.push(dir);
 
-    expect(() => shipToTrunk(dir, [sha])).toThrow(
+    expect(() => shipToTrunk(dir, "main", [sha])).toThrow(
       expect.objectContaining({ code: "ship_no_trunk" } satisfies Partial<ShipRefusal>),
     );
   });
@@ -106,7 +116,7 @@ describe("shipToTrunk", () => {
     const sha = commitFile(wt, "feat-d.txt", "d");
     writeFileSync(join(dir, "dirty.txt"), "uncommitted");
 
-    expect(() => shipToTrunk(wt, [sha])).toThrow(
+    expect(() => shipToTrunk(wt, "feat-d", [sha])).toThrow(
       expect.objectContaining({ code: "ship_dirty_trunk" } satisfies Partial<ShipRefusal>),
     );
   });
@@ -117,19 +127,18 @@ describe("shipToTrunk", () => {
     const sha = commitFile(wt, "feat-f.txt", "f");
     git(dir, ["checkout", "-q", "-b", "not-trunk"]);
 
-    expect(() => shipToTrunk(wt, [sha])).toThrow(
+    expect(() => shipToTrunk(wt, "feat-f", [sha])).toThrow(
       expect.objectContaining({ code: "ship_wrong_head" } satisfies Partial<ShipRefusal>),
     );
   });
 
-  test("a worktree with no branch checked out cannot be shipped", () => {
+  test("a branch that names no ref cannot be shipped", () => {
     const { dir } = repo();
     const wt = worktree(dir, "feat-e");
     const sha = commitFile(wt, "feat-e.txt", "e");
-    git(wt, ["checkout", "-q", "--detach", "HEAD"]);
 
-    expect(() => shipToTrunk(wt, [sha])).toThrow(
-      expect.objectContaining({ code: "ship_detached" } satisfies Partial<ShipRefusal>),
+    expect(() => shipToTrunk(wt, "no-such-branch", [sha])).toThrow(
+      expect.objectContaining({ code: "ship_no_branch" } satisfies Partial<ShipRefusal>),
     );
   });
 });

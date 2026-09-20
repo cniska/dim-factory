@@ -7,13 +7,7 @@ import { openOrderReview } from "./factory-order";
 import { pullStop } from "./factory-stop";
 import { assembleWallSnapshot } from "./factory-wall";
 import { mintWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
-import {
-  collectingMachine,
-  integratedRepo,
-  orderWorktree,
-  scratchEnv,
-  workerEnv,
-} from "./fixtures.test-support";
+import { collectingMachine, integratedRepo, scratchEnv, workerEnv } from "./fixtures.test-support";
 import { hookConfigPath } from "./hooks";
 import { OrderCommandError, runOrderCommand as runCommand } from "./order-command";
 import type { Env } from "./paths";
@@ -69,19 +63,11 @@ function reviewerEnv(database: Database, orderId: string): Env {
 }
 
 const trunk = integratedRepo();
-const worktrees: string[] = [];
 afterAll(() => {
   for (const database of opened) database.close();
   rmSync(trunk.dir, { recursive: true, force: true });
   rmSync(machine.dir, { recursive: true, force: true });
-  for (const path of worktrees) rmSync(path, { recursive: true, force: true });
 });
-
-function shippableWorktree(branch: string): string {
-  const path = orderWorktree(trunk.dir, branch);
-  worktrees.push(path);
-  return path;
-}
 
 /** What the gate wants before an order may complete: a commit on the trunk, then a check that passed. */
 function landed(database: Database, orderId: string): void {
@@ -178,7 +164,7 @@ describe("order command", () => {
     const database = db();
     queued(database);
     runOrderCommand(database, claim);
-    const wt = shippableWorktree("ship-a");
+    const wt = join(trunk.dir, ".claude", "worktrees", "order-1");
     writeFileSync(join(wt, "ship-a.txt"), "a");
     Bun.spawnSync(["git", "-C", wt, "add", "."]);
     Bun.spawnSync(["git", "-C", wt, "commit", "-q", "-m", "feat: ship-a"]);
@@ -197,6 +183,28 @@ describe("order command", () => {
     runOrderCommand(database, ["check", "order-1", "--command", "bun run verify", "--exit", "0"]);
     expect(runOrderCommand(database, ["stop", "order-1", "completed"], null, trunk.dir)).toBe(
       "order-1 is completed",
+    );
+  });
+
+  test("a ship run from the trunk checkout still lands the order's branch", () => {
+    const database = db();
+    queued(database);
+    runOrderCommand(database, claim);
+    const wt = join(trunk.dir, ".claude", "worktrees", "order-1");
+    writeFileSync(join(wt, "ship-b.txt"), "b");
+    Bun.spawnSync(["git", "-C", wt, "add", "."]);
+    Bun.spawnSync(["git", "-C", wt, "commit", "-q", "-m", "feat: ship-b"]);
+    const sha = Bun.spawnSync(["git", "-C", wt, "rev-parse", "HEAD"], { stdout: "pipe" })
+      .stdout.toString()
+      .trim();
+    runOrderCommand(database, ["commit", "order-1", "--sha", sha, "--subject", "feat: ship-b"]);
+
+    expect(runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toBe(
+      "order-1 is fast-forwarded onto the trunk",
+    );
+
+    expect(Bun.spawnSync(["git", "-C", trunk.dir, "merge-base", "--is-ancestor", sha, "HEAD"]).success).toBe(
+      true,
     );
   });
 

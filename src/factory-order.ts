@@ -842,5 +842,5 @@ export function shipOrder(
         `record what it landed with \`dim order commit ${orderId} --sha <sha>\`.`,
     );
   }
-  return withLock(() => shipToTrunk(worktree, shas), env);
+  return withLock(() => shipToTrunk(worktree, orderId, shas), env);
 }
