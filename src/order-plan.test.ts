@@ -17,6 +17,18 @@ describe("planner station", () => {
       join(home, "routing.json"),
       '{ "cheap": "small", "standard": "middling", "deep": "large" }',
     );
+    writeFileSync(
+      join(home, "spawn.json"),
+      JSON.stringify({
+        argv: ["claude", "-p", "{brief}", "--model", "{model}", "--allowedTools", "{tools}"],
+        slots: { tools: { join: "," } },
+        grants: {
+          "read-files": { tools: ["Read", "Grep", "Glob"] },
+          "read-history": { tools: ["Bash(git diff:*)", "Bash(git show:*)", "Bash(git log:*)"] },
+          "ask-dim": { tools: ["Bash(dim q:*)"] },
+        },
+      }),
+    );
     const repo = integratedRepo();
     const operator = workerIn(db, "operator");
     queueOrder(db, { id: "planner-order", project: "cniska/dim-factory", title: "Plan this" }, operator);
@@ -41,7 +53,14 @@ describe("planner station", () => {
     });
 
     expect(outcome.body).toBe("## outcome\n\nBuild the smallest path.");
-    expect(argv).toContain("--allowedTools");
+    expect(argv[0]).toBe("claude");
+    expect(argv[1]).toBe("-p");
+    expect(argv.slice(3)).toEqual([
+      "--model",
+      "large",
+      "--allowedTools",
+      "Read,Grep,Glob,Bash(git diff:*),Bash(git show:*),Bash(git log:*),Bash(dim q:*)",
+    ]);
     expect(argv.at(-1)).not.toContain("dim order");
     expect(db.query("SELECT role FROM factory_worker WHERE name = ?").get(outcome.planner)).toEqual({
       role: "planner",

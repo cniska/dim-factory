@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import type { Capability } from "./capabilities";
 import { recordOrderPlan } from "./factory-order";
 import {
   mintWorker,
@@ -8,16 +9,10 @@ import {
   WORKER_TOKEN_VAR,
 } from "./factory-worker";
 import { route } from "./routing";
+import { readSpawnProfile, spawnArgv } from "./spawn-profile";
 
-export const PLANNER_TOOLS = [
-  "Read",
-  "Grep",
-  "Glob",
-  "Bash(git diff:*)",
-  "Bash(git show:*)",
-  "Bash(git log:*)",
-  "Bash(dim q:*)",
-];
+/** Reads and searches the repository, its history and the record — never edits, never raises a finding. */
+export const PLANNER_CAPABILITIES: Capability[] = ["read-files", "read-history", "ask-dim"];
 
 export type PlannerSpawn = (
   argv: string[],
@@ -72,9 +67,10 @@ export function runOrderPlan(
     sessionId: `${parentSession}/planner/${orderId}`,
   });
   const { model } = route("planner", options.env);
+  const profile = readSpawnProfile(options.env);
   const spawn = options.spawn ?? spawnPlanner;
   const run = spawn(
-    ["claude", "-p", plannerBrief(order), "--model", model, "--allowedTools", PLANNER_TOOLS.join(",")],
+    spawnArgv(profile, { model, brief: plannerBrief(order), capabilities: PLANNER_CAPABILITIES }),
     {
       [WORKER_NAME_VAR]: minted.name,
       [WORKER_TOKEN_VAR]: minted.token,

@@ -188,6 +188,10 @@ The map is per machine and not per repo. Which models exist is a property of the
 
 This is the first preference `dim` holds rather than a record of something that happened, and it is worth saying plainly because everything else here is history. It qualifies: it is one file, hand-written, read and never inferred, and it is the machine's answer to a question the record cannot answer — no row says what a model is called here. Whether a cheap reviewer raises fewer real findings than an expensive one is still a measurement, and it waits on the tier being recorded against an order.
 
+## A station asks for a capability, not a harness's flag
+
+A station also declares what its work needs, never what a harness calls the permission for it: `read-files`, `edit-files`, `read-history`, `ask-dim`, `raise-finding`, `run-check`, a closed vocabulary in [`src/capabilities.ts`](../src/capabilities.ts) that a station's capability set is checked against the same way a role is checked against [`src/roles.ts`](../src/roles.ts). `spawn.json` beside the database, next to `routing.json`, turns a capability set and a tier's model into one harness's argv: an argv template carrying `{model}`, `{brief}` and one placeholder per slot, a slot per shape of flag the harness exposes, and a map from capability to the values it grants that slot. Every value a station's capabilities grant a slot is joined into one argument, deduplicated. `spawnArgv` in [`src/spawn-profile.ts`](../src/spawn-profile.ts) is pure — no process, no environment, no database — which is what lets every shape be tested without a harness installed. A profile that does not say exactly one thing refuses to build argv: a missing file, a slot no argv placeholder names, a capability that grants into a slot the profile never declared, and a capability a station asked for that the profile grants nothing for — refused rather than silently started short a permission it needed.
+
 ## What the assembly line already settled
 
 Borrowed, and each kept only where a mechanism here carries it. The names are worth keeping because they are searchable, and because each one names a mistake that is easy to make twice.
