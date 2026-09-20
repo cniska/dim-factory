@@ -157,9 +157,37 @@ const FACTORY_ORDER_TABLES = [
   "factory_order_finding",
   "factory_order_document",
   "factory_order_environment",
+  "factory_order_plan",
   // No parent and no children, so its place in the list does not matter.
   "factory_stop",
 ];
+
+/**
+ * Whether a source can re-read a table is a judgement, so the list above is written down
+ * rather than derived. What it has to reach is not: dropping a carried table empties every
+ * child that cascades from it, and a child left out is gone with no row left to say it was
+ * ever there. The rebuild stops on that instead of losing the rows.
+ */
+function assertCascadesCarried(db: Database, tables: string[]): void {
+  const carried = new Set(tables);
+  const lost = db
+    .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table'")
+    .all()
+    .map((row) => row.name)
+    .filter((name) => !carried.has(name) && !name.startsWith("sqlite_"))
+    .filter((name) =>
+      db
+        .query<{ table: string; on_delete: string }, []>(`PRAGMA foreign_key_list(${name})`)
+        .all()
+        .some((key) => carried.has(key.table) && key.on_delete === "CASCADE"),
+    );
+  if (lost.length > 0) {
+    throw new Error(
+      `${lost.join(", ")} cascades from a table the rebuild drops and nothing carries it back: ` +
+        "add it to FACTORY_ORDER_TABLES in src/sync.ts, below the table it hangs off.",
+    );
+  }
+}
 
 export type OrphanReport = { table: string; rows: number };
 
@@ -231,6 +259,7 @@ function carryThroughRebuild(
   db: Database,
   tables: string[],
 ): { restore: () => void; orphans: OrphanReport[] } {
+  assertCascadesCarried(db, tables);
   const saved = tables.map((table) => ({
     table,
     rows: db.query(`SELECT * FROM ${table}`).all() as Record<string, SQLQueryBindings>[],

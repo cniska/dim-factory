@@ -239,6 +239,28 @@ describe("rebuilding a database an older schema wrote", () => {
     db.close();
   });
 
+  test("a plan an order was built from is still readable after a rebuild", () => {
+    const { db, env } = scratch();
+    db.run(
+      `INSERT INTO factory_order (id, project, title, status, created_at, updated_at)
+       VALUES ('order-1', 'cniska/dim-factory', 'Keep the plan', 'working', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+    );
+    db.run(
+      "INSERT INTO factory_worker (name, role, token_digest, started_at) VALUES ('copper-1', 'planner', 'x', '2026-01-01T00:00:00Z')",
+    );
+    db.run(
+      `INSERT INTO factory_order_plan (order_id, worker, body, recorded_at)
+       VALUES ('order-1', 'copper-1', '## outcome\n\nMove the order before building.', '2026-01-01T00:00:00Z')`,
+    );
+
+    rebuild(db, env);
+
+    expect(db.query("SELECT order_id, body FROM factory_order_plan").all()).toEqual([
+      { order_id: "order-1", body: "## outcome\n\nMove the order before building." },
+    ]);
+    db.close();
+  });
+
   test("a stopped floor is still stopped after a rebuild", () => {
     const { db, env } = scratch();
     // Nothing re-reads this row either, so only the drop and write-back can bring
