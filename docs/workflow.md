@@ -31,7 +31,7 @@ The factory starts with the smallest complete lifecycle and adds planning machin
 | **Core order loop** | Queue, claim, plan, delegate verified slices, review, produce an account, ship, complete | The durable order, plan, slice, check, finding, account, commit, and outcome records; no blocking human gate |
 | **Targeted planning** | The core loop plus independent read-only planning workers | Prior-art, contract, program-design, or risk workers for unfamiliar, multi-file, boundary, or irreversible work |
 | **Plan comparison** | Targeted planning plus plan revisions and implementation comparison | Call and dependency graphs, attempt identities, loop iterations, owner verdicts, and plan-versus-result queries |
-| **Self-maintaining factory** | Plan comparison plus scheduled reviews and measured process changes | Architecture, test, docs, security, dependency, and simplification sweeps whose findings become ordinary orders |
+| **Self-maintaining factory** | Plan comparison plus scheduled reviews and measured process changes | Architecture, test, docs, security, dependency, and simplification sweeps for projects and the factory itself, whose findings become ordinary orders |
 
 The meta-station shape is stable across the phases, but participation is conditional. A small local change can use one planner and one reviewer. A schema or boundary change can fan out to contract, program-design, and risk workers. The planner still synthesizes one authoritative plan, regardless of how many workers contributed. Build delegation is part of the core factory shape; parallel slices are not.
 
@@ -79,6 +79,7 @@ A plan contains:
 - **Outcome.** What becomes true, the boundary of the change, and explicit non-goals.
 - **Evidence.** Prior art, existing decisions, project conventions, and unresolved gaps.
 - **Contracts.** Types, schemas, closed vocabularies, invariants, errors, and ownership of responsibilities.
+- **Executable contract checks.** Where a boundary can be exercised, the contract includes a focused check or fixture for the consumer's expectations and the provider's response. Prose records the decision; the check protects it during implementation.
 - **Slices.** Independently verifiable vertical cuts, each with a behavior, boundary, affected area, and check.
 - **Risks and holds.** Choices that need the owner or conditions that must be true before building.
 - **Predictions.** Expected slice count, review dimensions, checks, and whether approval is required. These are compared with the result; they are not promises of duration.
@@ -150,6 +151,21 @@ An outline change that alters the approved outcome or contract requires a plan r
 
 **The factory target.** The build station is a meta-skill that assigns one worker to each slice while the operator observes the order through the wall. This removes the owner from the implementation path without turning the first version into a parallel worker swarm. Slices run sequentially until the record shows that independent slices can be isolated and integrated safely.
 
+### Default slice order
+
+When a slice has persisted state and a consuming surface, its default dependency order is authoritative contracts and state, the provider path, asynchronous effects or agent integration, then the consumer surface. In practice that means:
+
+```text
+contract and data model
+  → schema, migration, lifecycle and ownership
+  → repository, service and API path
+  → jobs or agent dispatch
+  → UI, mobile, widget or other consumer
+  → end-to-end check
+```
+
+This is a dependency order, not a rule to complete one technical layer across the whole feature. Tests, documentation and boundary checks accompany each step, and a slice still closes one usable path before the next slice begins. A repository without persisted state starts at its own authoritative contract rather than inventing a database layer.
+
 Each slice passes through the same loop:
 
 ```text
@@ -168,6 +184,8 @@ The slice records its commit, changed files, check, findings, documents, and sim
 The owner does not need to watch the worker's session directly. The wall shows the order's station, worker, silence, holds, failed checks, and current owner action; the order dialog shows the plan, result, execution summary, audit log, changes, and bounded program graph. The operator handles routine delegation and stops; the owner enters at plan approval, holds, repeated failures, architectural risk, ship, and verdict.
 
 The build record also carries the worker, slice, and attempt identities needed to count loops honestly. A loop is not inferred from elapsed time or from the number of messages; it is a recorded iteration containing its start, end, slice, check or review result, worker, and outcome. Delegated and owner-driven builds remain distinguishable so the factory can compare owner attention, implementation time, loops, findings, and later `fix:` commits.
+
+Long-running work may cross context windows. A context reset starts a fresh worker with a structured handoff containing the approved plan revision, current slice, committed state, checks, findings, decisions, and next action. Compaction may shorten a session, but it is not the recovery contract; the handoff is the durable state the next worker can verify.
 
 ## Review
 
@@ -205,6 +223,12 @@ planned call/dependency graph
 
 The review result records findings and answers, not a score for the builder. A later fix commit is evidence that the changed files needed attention, but it is not by itself proof that the original agent caused the defect.
 
+### Evaluation discipline
+
+An evaluator receives a fixed brief and explicit criteria before it reads the result. The builder cannot evaluate its own work as the only review, and a reviewer has no mutation tools. The evaluator returns findings and evidence; it does not edit the order or convert uncertainty into a passing score. Subjective criteria are calibrated against accepted examples and rechecked when the model, prompt, or review skill changes.
+
+The factory chooses the cheapest reliable sensor for each question. Repository checks, schema validation, structural tests, dependency scans, and architecture rules run mechanically and as early as practical. Semantic review, broad architecture review, mutation testing, and other expensive evaluators run at the slice, integration, or scheduled-project level when their evidence justifies the cost. A green evaluator result is evidence about the tested question, not a certificate that the whole project is correct.
+
 ## Ship
 
 **Live in part; the explanation gate, owner verdict, and separate integration evidence are planned.** The history repeatedly converges on a plan-before/account-after pair, and prior project workflows use an explicit ship/change/rethink verdict. The order therefore produces an independent account of what was built before shipping.
@@ -238,6 +262,8 @@ If the order cannot complete, it stops explicitly as held, blocked, or failed. A
 
 **Planned.** A host such as launchd, cron, or Codex only invokes Dim. Dim owns schedule definitions, due evaluation, selected orders, invocation outcomes, and holds. Scheduled reviews are read-only passes over a risk-relevant project or boundary; their findings become bounded orders, holds, or refusals rather than direct mutations.
 
+Maintenance has two sensor classes. Change sensors run inside the order lifecycle and give the worker feedback before commit or integration. Health sensors run outside an order against accumulated project or factory state: architectural drift, dead code, test quality, dependency exposure, documentation drift, review debt, runtime signals, and factory-process regressions. A scheduled review selects sensors from the risk and history of the project rather than running every sensor on every cadence.
+
 Maintenance uses the same lifecycle as feature work:
 
 ```text
@@ -250,6 +276,19 @@ schedule due
 ```
 
 This keeps tests, architecture, docs, security, dependency, and simplification reviews inside the factory record instead of creating a second maintenance system.
+
+The factory also reviews itself. Changes to skills, prompts, routing, evaluator criteria, schemas, or orchestration are run against representative workflow cases and compared with the previous behavior. A factory change is released only with evidence of what improved, what regressed, and what remains unknown.
+
+```text
+project or factory signal
+  → read-only diagnostic
+  → diagnosis with evidence
+  → bounded prescription
+  → ordinary order
+  → measured outcome
+```
+
+Maintenance must not manufacture queue noise. A repeated finding carries its fingerprint and prior attempts, duplicate findings are grouped, and an automated repair has a bounded failure budget. A diagnostic that cannot justify an order remains a recorded observation rather than a speculative change.
 
 ## Human gates
 

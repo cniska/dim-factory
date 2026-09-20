@@ -1,6 +1,6 @@
 # The landscape
 
-What else exists, surveyed 2026-09-17–18, and which part of this repo it reaches. The survey is a web search over public projects and writing, so it can only say what is findable and published — a private line running the same idea is invisible to it, and the judgement of what counts as "the same" is the author's.
+What else exists, surveyed 2026-09-17–20, and which part of this repo it reaches. The survey is a web search over public projects and writing, so it can only say what is findable and published — a private line running the same idea is invisible to it, and the judgement of what counts as "the same" is the author's.
 
 The answer splits along the same seam the repo does. The argument in [`factory.md`](factory.md) has been made by other people, in close to the same words. The collector is a crowded field. What was not found is the join between them: a gate whose rule is decided by evidence read out of a session corpus. One project gates on a record of past failures, and [what it reads](#a-gate-that-reads-a-record-of-past-failures) is the distance left.
 
@@ -18,9 +18,47 @@ The surrounding writing is dense: [BCG Platinion](https://www.bcgplatinion.com/i
 
 So the metaphor is not the contribution, and neither is the position that the answer is dim rather than dark. Both are held widely enough that holding them is evidence of being right rather than of being first.
 
+## Harness engineering closes the factory gap
+
+[Martin Fowler's harness-engineering work](https://martinfowler.com/articles/harness-engineering.html) gives the clearest public vocabulary for the layer between an agent and a repository. It separates feed-forward guides from feedback sensors, and computational sensors from inferential ones. Fast deterministic checks should run close to every change; expensive semantic evaluators should be aimed at the changes and projects where they add confidence; continuous health sensors should look for drift outside the change lifecycle.
+
+[OpenAI's account of building with Codex](https://openai.com/index/harness-engineering/) is a concrete instance of that model. Repository knowledge is treated as the system of record, architecture is enforced with custom linters and structural tests, observability is made legible inside isolated worktrees, agents review agent work, and recurring garbage collection is used to control entropy. This is close to the factory's quality floor and its planned self-maintaining loop.
+
+[Anthropic's long-running harness](https://www.anthropic.com/engineering/harness-design-long-running-apps) adds the execution details: decompose work into tractable chunks, pass structured artifacts between sessions, reset context when necessary, and separate the generator from the evaluator. Its evaluator is not automatically useful; it improves only when its criteria are made concrete and its disagreements with the owner's judgement are used to tune it. [Anthropic's eval guidance](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) likewise treats the final environment state and the complete trace as evaluation inputs, not merely the agent's final prose.
+
+| Public pattern | This repo's counterpart | Status here |
+|---|---|---|
+| Feed-forward guides | Project rules, prior art, contracts and the approved plan | Live in the stations; the workflow makes their order explicit |
+| Fast computational sensors | Repository checks, schema validation, structural rules and commit gates | Live in part; the factory still needs more project-declared checks |
+| Independent inferential sensors | Read-only review dimensions and the what-was-built account | Review is live; the account and its gate are partly planned |
+| Continuous health sensors | Scheduled project and factory reviews that create bounded orders | Planned in [`workflow.md`](workflow.md) and [`build-order.md`](build-order.md) |
+| Structured context reset | A durable handoff containing the plan revision, committed state, checks, findings and next action | Planned in [`workflow.md`](workflow.md) |
+| Repository legibility | Project-owned conventions, bounded program design, observable worktrees and typed factory events | Mixed: the factory supplies the common evidence, the project supplies local structure |
+
+The borrowing boundary is important. These sources validate the direction, but their harnesses are tuned to their own model, repository and deployment environment. Dim should take the separation of guides, sensors, evaluators, health loops and durable artifacts—not their prompts, thresholds or architecture rules.
+
+The project boundary is part of that borrowing rule. Dim can standardize the order lifecycle and the evidence it records, while each repository supplies its own conventions, checks, architecture and vocabulary. Project maintenance and factory maintenance are separate loops: one creates orders to improve a project, while the other checks whether the factory's own workflow and evidence still support reliable work.
+
+## HumanLayer makes the artifact lifecycle concrete
+
+[HumanLayer](https://www.humanlayer.com/) makes research, designs, plans, worktrees, sessions and diffs part of one task rather than separate conversations. Its workflow separates investigation, decisions and code changes, and its design documents support comments and decisions that feed back into the agent before implementation. Its structure outlines divide work into vertical, testable phases, while later artifacts take precedence when feedback changes the result ([workflow phases](https://docs.humanlayer.com/explanation/workflow-phases), [artifact reference](https://docs.humanlayer.com/reference/skills-workflows)).
+
+The useful comparison is not the product surface but the artifact rule:
+
+| HumanLayer pattern | This repo's counterpart | Boundary |
+|---|---|---|
+| Versioned research, design and plan artifacts | Research, plan, program design and implementation outline | Dim keeps the local record and factory order as the source of truth |
+| Comments and decisions attached to the artifact they affect | Findings, answers, holds and plan revisions | Dim records the decision as typed evidence rather than relying on document comments alone |
+| Vertical structure phases with checks | Verified slices and per-slice review | The project still owns its conventions and checks |
+| Context carried across sessions by task artifacts | Structured handoffs and durable order evidence | Dim also records the machine events that artifacts cannot reconstruct |
+
+HumanLayer is the strongest precedent found for keeping the plan and its feedback close to the code without making the plan a second source of truth. The part to borrow is artifact locality and precedence; its hosted workspace, cloud synchronization and approval timing are adapter choices.
+
 ## StrongDM makes the loop concrete
 
 [StrongDM's factory](https://factory.strongdm.ai/) gives the factory argument a more specific operating loop: a seed, an end-to-end validation harness, feedback from observed output, and repetition until holdout scenarios pass. It calls those end-to-end user stories *scenarios* rather than tests, and measures satisfaction empirically instead of treating a green test suite as the whole answer ([principles](https://factory.strongdm.ai/principles)).
+
+[Dan Shapiro's account](https://www.danshapiro.com/blog/2026/02/you-dont-write-the-code/) sharpens the responsibility shift behind that model: once agents write and review the code, the human team's job becomes solving how the system knows whether the result works and is getting better. That reinforces Dim's factory-health loop and the decision to make observability, evaluation and maintenance first-class rather than treating them as reporting added after shipping.
 
 The useful comparison is the boundary between the shared mechanism and the different product:
 
@@ -69,6 +107,8 @@ Osmani's essay proposes no measurement. It closes on judgement: "The hard, skill
 This repo answers the same question from a record. [`goals.md`](goals.md) states what the factory is measured against, [`findings.md`](findings.md) is what the corpus said when asked, [`evals-and-hooks.md`](evals-and-hooks.md) is the instrument that decides whether a rule earns its place, and [`loop.md`](loop.md) is how one gets cut. A finding like *a rule can be missing rather than ignored* — a convention that never reached the tool that was breaking it — is not reachable from an essay, because it requires the transcripts.
 
 No surveyed project makes that join. The people arguing the position are not instrumenting it, and the people instrumenting sessions are not arguing a position — [claude-gates](#a-gate-that-reads-a-record-of-past-failures) comes closest and reads a log it writes itself rather than the sessions.
+
+The missing precedent is therefore a composition rather than a missing feature: a project-aware workflow, a durable event record with attribution, queryable evidence, scheduled maintenance for both projects and the factory, and a wall that lets a person follow an order from its plan through its changes, findings and holds. The surveyed systems reach one or two of these surfaces, but none joins them into one local operating record.
 
 A source-level survey reaches the same place from the other side. [Inside the Scaffold](https://arxiv.org/abs/2604.03515) (Rombaut, April 2026) reads 13 open-source coding-agent scaffolds at pinned commit hashes across 12 dimensions, one of which is persistent memory — added mid-study "after the source code revealed architectural variation not captured by the initial set", prompted by Aider's conventions files, with agents that have no inter-session storage recorded as absent rather than omitted. What it finds there is static project instructions and the model as memory author. No scaffold feeds what it stores back into anything that refuses. It is also the source-level reading this survey admits it is not, since every row below is a README.
 
