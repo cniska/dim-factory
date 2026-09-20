@@ -408,6 +408,21 @@ This matters because of who writes the argument. A search string reaches the que
 
 What this carries: one corpus, one machine, English stopwords as the terms — the worst case, since a rare word intersects almost nothing. A query of ordinary words is faster than this table at every count.
 
+## The any-term match costs a fraction of the intersection it replaces
+
+Measured on 2026-09-20 against the corpus of the day, 280,092 messages with 97,605 carrying text anyone said, on the same machine as the table above. `keywords` now unions one FTS5 match per term instead of intersecting one phrase per word (`keywords-any-term`), and the per-term read is linear where the intersection was superlinear:
+
+| terms | ordinary words | English stopwords |
+|---|---|---|
+| 1 | 80ms | 292ms |
+| 2 | 79ms | 286ms |
+| 6 | 167ms | 392ms |
+| 16 | 255ms | 634ms |
+
+Stopwords cost more than ordinary words at every count, since a term with a doclist touching most of the corpus is grouped rather than skipped — but even the 16-term worst case stays under a second, next to the AND table's 63.6s at 400 words and 1h43m at 4,000. The decision this measurement was taken against: if the 16-term worst case stayed under two seconds, `MAX_TERMS` would stay at 16 rather than drop. It stayed under two seconds, so it stays at 16.
+
+What this carries: one corpus, one machine, sixteen ordinary words and sixteen English stopwords, each run once after a warm-up query absorbed the first-query-in-process cost SQLite pays opening the FTS5 index — a single-word query timed before any warm-up, repeated across two otherwise-identical runs, cost 1964ms and 1974ms regardless of which sixteen words followed it, so it is excluded from the table as a one-time cost rather than a per-term one. The AND table this replaces is not deleted — a caller who still ANDs a phrase by hand, or a future path that wants an intersection, has a real cost curve to read it against.
+
 ## A proof by removal can pass without proving anything
 
 Found on 2026-09-18, checking `dim q findings`. A test claiming an invariant is proved by deleting the invariant and watching the test go red. That proof was attempted through a scripted shell edit, which silently matched nothing — the formatter had rewrapped the target line since it was read — so the deletion never happened and the suite stayed green. A green suite is the same output a removal produces when the test does not actually hold the invariant, so the two are indistinguishable from the result alone.
