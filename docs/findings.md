@@ -218,7 +218,7 @@ The one outcome signal is the repo's own: 4,880 `fix:` commits of 22,936, writte
 
 Asked on 2026-09-20, to settle what the factory's line should be from what the owner actually does rather than from either party's description of it.
 
-`dim q search` cannot answer it. Asked for how work is designed, built and reviewed here, the closest distilled passages score 0.45 and below and are all commit subjects about unrelated builds. The index holds text a person distilled — a handoff's Next, an authored subject, a labeled correction — so a practice followed daily and never written down is absent from it. That absence is the reason the line had to be re-derived in conversation.
+`dim q search` cannot answer it. Asked for how work is designed, built and reviewed here, the closest distilled passages score 0.45 and below and are all commit subjects about unrelated builds. The index holds text a person distilled — a handoff's Next, an authored subject, a labeled correction — so a practice followed daily and never written down is absent from it. The owner wrote it down the same day, from the same corpus, and [`workflow.md`](workflow.md) is where it lives; the numbers below are what the record could say on its own.
 
 What the loads and delegations do show, since 2026-08-21:
 

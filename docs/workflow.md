@@ -72,7 +72,7 @@ The research artifact records the queries, the relevant references, the conclusi
 
 ## Design and plan
 
-**Live as a station; durable order artifacts are planned.** The planner returns a plan, and the operator records the exact plan that the owner approves. A revised plan is a new version linked to the version it replaces; the previous version remains readable.
+**Live as a station; durable order artifacts are planned.** The planner writes its plan under its own name, and the owner's release is recorded as its own act — a plan carrying the name of whoever transcribed it says that hand planned it. A revised plan is a new version linked to the version it replaces; the previous version remains readable.
 
 A plan contains:
 
