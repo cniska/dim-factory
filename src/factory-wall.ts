@@ -104,22 +104,27 @@ type OrderRow = {
   last_event_at: string;
   latest_reason: string | null;
   latest_station: string | null;
-  latest_worker: string | null;
-  latest_role: string | null;
+  holder_worker: string | null;
+  holder_role: string | null;
   failed_check_count: number;
 };
 
-// Who holds an order is the worker on its latest moment, and the role is that worker's
-// own: neither is stated on the order, where a claim would be asserting it.
+// Who holds an order is the worker on its latest claim. A move is an operator's audit
+// event, not a reassignment, so the latest event cannot stand in for the holder.
 const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.station, o.status,
               o.stop_reason, o.run_id, o.project, o.priority, o.hold,
               e.ts AS last_event_at, e.reason AS latest_reason, e.station AS latest_station,
-              e.worker AS latest_worker, fw.role AS latest_role,
+              (SELECT e2.worker FROM factory_order_event e2
+                WHERE e2.order_id = o.id AND e2.kind = 'claimed'
+                ORDER BY e2.ts DESC, e2.id DESC LIMIT 1) AS holder_worker,
+              fw.role AS holder_role,
               (SELECT count(*) FROM factory_order_check c
                 WHERE c.order_id = o.id AND c.exit_code <> 0) AS failed_check_count
        FROM factory_order o
        LEFT JOIN factory_order_event e ON e.id = (SELECT e2.id FROM factory_order_event e2 WHERE e2.order_id = o.id ORDER BY e2.ts DESC, e2.id DESC LIMIT 1)
-       LEFT JOIN factory_worker fw ON fw.name = e.worker`;
+       LEFT JOIN factory_worker fw ON fw.name = (SELECT e2.worker FROM factory_order_event e2
+         WHERE e2.order_id = o.id AND e2.kind = 'claimed'
+         ORDER BY e2.ts DESC, e2.id DESC LIMIT 1)`;
 
 /** A decision not to work is none of `todo`, `active` or `done`, so a dropped order
  *  never reaches `mapOrder`: the snapshot query excludes it and the item view answers
@@ -170,8 +175,8 @@ function status(value: string): BoardStatus {
 }
 
 function mapOrder(row: OrderRow, now: Date): WallOrder {
-  const worker = row.latest_worker;
-  const workerRole = role(row.latest_role);
+  const worker = row.holder_worker;
+  const workerRole = role(row.holder_role);
   const stationName = station(row.station ?? row.latest_station);
   const orderStatus = status(row.status);
   // A claim writes its own event in the same transaction, so an order row always has one.

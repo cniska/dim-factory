@@ -695,10 +695,10 @@ describe("factory wall item view", () => {
 
     expect(view?.entries.find((entry) => entry.kind === "moved")?.worker).toBe(reviewer);
     expect(view?.entries.find((entry) => entry.kind === "claimed")?.worker).toBe(worker);
-    // The card follows the latest moment, so the order reads as the reviewer's while it
-    // is the reviewer's, and the role comes off that worker rather than off the claim.
-    expect(view?.order.worker).toBe(reviewer);
-    expect(view?.order.role).toBe("reviewer");
+    // A reviewer writing a moment does not take the order, so the card keeps naming the
+    // worker whose claim holds it, and the role comes off that claim.
+    expect(view?.order.worker).toBe(worker);
+    expect(view?.order.role).toBe("builder");
     db.close();
   });
 
