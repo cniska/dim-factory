@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Glob } from "bun";
 import {
   readSpawnProfile,
   type SpawnProfile,
@@ -173,5 +174,52 @@ describe("building argv from a profile", () => {
       expect((e as SpawnProfileError).kind).toBe("ungranted");
       expect((e as Error).message).toContain("edit-files");
     }
+  });
+});
+
+// The files that read a harness's own leavings, each for the reason stated: whose format is
+// being read is the whole of what they do, so naming the harness there is the job rather than
+// a shortcut around this order's reader. Written out rather than derived from a pattern, the
+// same argument src/routing.test.ts makes for writing its tier table out: a glob a file could
+// be added to for the sole purpose of turning this test green would ratify the very thing it
+// exists to catch.
+const READING_SET: { file: string; reason: string }[] = [
+  { file: "src/tools.ts", reason: "declares the Tool vocabulary itself" },
+  { file: "src/hooks.ts", reason: "resolves which harness's own hook config to write" },
+  { file: "src/walk.ts", reason: "resolves which harness's own rules file to read" },
+  { file: "src/wake.ts", reason: "branches on which harness woke the hook" },
+  { file: "src/history.ts", reason: "loads each harness's own history file" },
+  { file: "src/claude-source.ts", reason: "tags a session read from Claude's own transcripts" },
+  { file: "src/codex-source.ts", reason: "tags a session read from Codex's own transcripts" },
+  { file: "src/codex-trust.ts", reason: "resolves Codex's own trust config path" },
+  { file: "src/cli.ts", reason: "dim wake defaults its --tool flag to claude" },
+  { file: "src/queries.ts", reason: "reports counts by which harness recorded the session" },
+];
+
+const HARNESS_LITERAL = /"claude"|'claude'|"codex"|'codex'/;
+
+describe("no harness name reaches source outside the files that read one", () => {
+  test("names none in a file that is not on the reading set", () => {
+    const root = join(import.meta.dir, "..");
+    const allowed = new Set(READING_SET.map((r) => r.file));
+    const offenders: string[] = [];
+    for (const pattern of ["src/**/*.ts", "src/**/*.tsx", "skills/**/*.md"]) {
+      for (const file of new Glob(pattern).scanSync(root)) {
+        if (file.includes(".test.") || file.includes(".test-support.")) continue;
+        if (allowed.has(file)) continue;
+        if (HARNESS_LITERAL.test(readFileSync(join(root, file), "utf8"))) offenders.push(file);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  // A file kept on the list after its own literal was removed would read as permission for
+  // the next one, so the list is checked against the source it claims rather than trusted.
+  test("names one in every file the reading set excuses", () => {
+    const root = join(import.meta.dir, "..");
+    const stale = READING_SET.filter(
+      (r) => !HARNESS_LITERAL.test(readFileSync(join(root, r.file), "utf8")),
+    ).map((r) => r.file);
+    expect(stale).toEqual([]);
   });
 });
