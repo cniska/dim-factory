@@ -48,7 +48,7 @@ What earns an edit is a reader's cost — a name that has to be held in the head
 
 ## Check the slice before the next one
 
-Between the simplification pass and the commit, hand the slice's diff to one agent working from a fixed brief, at the tier `dim route checker` gives you. This is not the fan-out the top of this file argues against: that objection is about delegating the edits, which need the context that produced them. A checker returns findings and keeps nothing, which is the trade [`dim-station-review`](../dim-station-review/SKILL.md) makes and the one the corpus measured as costing nothing.
+Between the simplification pass and the commit, hand the slice's diff to one agent working from a fixed brief, at the tier `dim route reviewer` gives you. This is not the fan-out the top of this file argues against: that objection is about delegating the edits, which need the context that produced them. A reviewer returns findings and keeps nothing, which is the trade [`dim-station-review`](../dim-station-review/SKILL.md) makes and the one the corpus measured as costing nothing.
 
 **Give the checker read-only tools.** An agent that can edit answers a finding by editing, and what it overwrites is the fix the builder already made — one was reverted that way on 2026-09-18, caught only because the file tools report an on-disk change ([`build-order.md`](../../docs/build-order.md)).
 
@@ -65,7 +65,7 @@ Returning nothing is the expected result and not a sign the check was wasted: of
 
 ### Every finding gets an answer
 
-**Answer each finding before the commit: fix it, or refuse it and write down why**, so the diff goes out with nothing in it that was merely not mentioned. Check the claim at its source before either answer — a checker's reading is a claim like any other, and one taken on trust is how a wrong finding becomes the standard. Where a refusal turns on whether a finding is true rather than on whether it matters, a third agent settles it cheaply, at the tier `dim route judge` gives you: hand it the finding, the diff and one question — is this true at its source, cited to `file:line`. Nothing judges that in turn; its answer is recorded with the slice.
+**Answer each finding before the commit: fix it, or refuse it and write down why**, so the diff goes out with nothing in it that was merely not mentioned. Check the claim at its source before either answer — a checker's reading is a claim like any other, and one taken on trust is how a wrong finding becomes the standard. Where a refusal turns on whether a finding is true rather than on whether it matters, the operator settles it: a refused finding holds the ship until it is acknowledged, which puts a hand that neither wrote the code nor raised the finding on the disagreement, and costs no model call.
 
 **Run the repo's task over the answers, then hand the checker what it had the first time plus the diff that answers.** The same brief, the same conventions, the same four questions — a checker given only a patch has nothing to judge it against but its own taste. The answering diff is the one part of the slice nothing has read: it was written after the checker's pass, which is what the round is for.
 

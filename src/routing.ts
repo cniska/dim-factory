@@ -19,11 +19,7 @@ export const ROLE_TIERS = {
   operator: "deep",
   planner: "deep",
   builder: "standard",
-  simplifier: "standard",
   reviewer: "standard",
-  checker: "cheap",
-  judge: "cheap",
-  searcher: "cheap",
 } as const satisfies Record<Role, Tier>;
 
 export type HarnessMap = Record<Tier, string>;
