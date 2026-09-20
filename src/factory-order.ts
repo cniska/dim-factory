@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { FactoryStopError, liveStop } from "./factory-stop";
+import { workerIsOver } from "./factory-worker";
 import { withLock } from "./lock";
 import type { Env } from "./paths";
 import { type ShipOutcome, shipToTrunk } from "./ship";
@@ -9,7 +10,7 @@ import { createWorktree } from "./wt-command";
 
 /** What state the order is in. A claim takes it straight to `working`: an order
  *  already exists before a worker sees it, so taking one and starting it are one act.
- *  `dropped` is the owner's decision not to build a queued order at all, which is a
+ *  `dropped` is the owner's decision that the order will not be built, which is a
  *  different fact from an attempt that failed and goes back to `queued`. */
 export const ORDER_STATUSES = ["queued", "working", "completed", "dropped"] as const;
 
@@ -76,6 +77,7 @@ export type OrderNotDoneCode =
   | "order_not_integrated"
   | "order_trunk_unknown"
   | "order_not_queued"
+  | "order_held_by_run"
   | "order_not_building"
   | "order_not_planning";
 
@@ -111,6 +113,44 @@ function assertOrderQueued(db: Database, orderId: string, act: string): void {
     throw new OrderNotDone(
       "order_not_queued",
       `order ${orderId} is ${order.status} and only a queued order can be ${act}`,
+    );
+  }
+}
+
+/**
+ * The hand on an order right now, or nothing. The order carries the run, and the worker that
+ * claimed it says whether anyone is still behind that run: a hand can stop without letting
+ * go — killed, crashed, a session closed — and an order held by a run nobody is running is
+ * an order nobody can take and nobody can drop.
+ */
+function liveHolder(db: Database, orderId: string): { worker: string; runId: string } | null {
+  const order = db.query("SELECT run_id FROM factory_order WHERE id = ?").get(orderId) as {
+    run_id: string | null;
+  } | null;
+  if (!order?.run_id) return null;
+  const claimed = db
+    .query<{ worker: string }, [string]>(
+      `SELECT worker FROM factory_order_event WHERE order_id = ? AND kind = 'claimed'
+       ORDER BY ts DESC, id DESC LIMIT 1`,
+    )
+    .get(orderId);
+  if (!claimed || workerIsOver(db, claimed.worker)) return null;
+  return { worker: claimed.worker, runId: order.run_id };
+}
+
+/**
+ * A drop says the order will not be built, which stays true of an order that was taken and
+ * handed on: an order can turn out to have been built already, or to have been the wrong
+ * thing to ask for, and the owner's word for that is the same one either way. The one thing
+ * it cannot be said over is a hand still on the work, which the drop would take from it.
+ */
+function assertDroppable(db: Database, orderId: string): void {
+  const holder = liveHolder(db, orderId);
+  if (holder) {
+    throw new OrderNotDone(
+      "order_held_by_run",
+      `order ${orderId} is being worked by ${holder.worker} under ${holder.runId} and a drop would take ` +
+        "it from that hand: stop the run, or move the order on, before dropping it",
     );
   }
 }
@@ -194,9 +234,10 @@ export function claimOrder(
     }
     // A move hands the order to the next station rather than finishing it, and lets go of
     // the run that held it, so the hand waiting there takes it while the order stays
-    // `working`. A run still on the order is a hand still on the work.
-    if (order.run_id) {
-      throw new Error(`order ${orderId} is already working under ${order.run_id}`);
+    // `working`. What refuses a second hand is a first one still there.
+    const holder = liveHolder(db, orderId);
+    if (holder) {
+      throw new Error(`order ${orderId} is already working under ${holder.runId}, held by ${holder.worker}`);
     }
     if (order.status !== "queued" && order.status !== "working") {
       throw new Error(`order ${orderId} is already ${order.status}`);
@@ -265,10 +306,9 @@ export function setOrderHold(db: Database, orderId: string, hold: string | null)
 }
 
 /**
- * The owner's decision not to build a queued order at all, kept as a status rather than a
+ * The owner's decision that an order will not be built, kept as a status rather than a
  * delete: why an order was not built is worth finding later, and a deletion is the one write
- * this record cannot hold. Refused once anything has claimed the order, for the same reason
- * `amendOrder` is: a claim already copied the order's words into the record.
+ * this record cannot hold. What it is refused on is `assertDroppable`.
  */
 export function dropOrder(db: Database, orderId: string, reason: string, worker: string, at = now()): number {
   return db.transaction(() =>
@@ -337,12 +377,7 @@ function appendOrderEventInTransaction(
     throw new Error(`order ${orderId} is already ${order.status}`);
   }
   if (event.kind === "dropped") {
-    if (order.status !== "queued") {
-      throw new OrderNotDone(
-        "order_not_queued",
-        `order ${orderId} is ${order.status} and only a queued order can be dropped`,
-      );
-    }
+    assertDroppable(db, orderId);
   } else if (event.kind !== "queued" && event.kind !== "claimed") {
     if (order.status !== "working") {
       const action = VERB_FOR_KIND[event.kind] ?? event.kind;

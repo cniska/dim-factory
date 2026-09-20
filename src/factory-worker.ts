@@ -102,6 +102,21 @@ export function resolveWorker(db: Database, env: Env = process.env): string {
   return row.name;
 }
 
+/**
+ * Whether a hand is still there to hold anything, which is what `resolveWorker` refuses on
+ * and what an order's holder is read through. A worker never issued is over by the same
+ * answer: nothing is holding what nothing can write as.
+ */
+export function workerIsOver(db: Database, name: string): boolean {
+  const row = db
+    .query<{ pid: number | null; ended_at: string | null }, [string]>(
+      "SELECT pid, ended_at FROM factory_worker WHERE name = ?",
+    )
+    .get(name);
+  if (!row) return true;
+  return row.ended_at !== null || (row.pid !== null && !pidIsAlive(row.pid));
+}
+
 /** Ending twice is not an error: a worker that already stopped keeps the time it stopped at. */
 export function endWorker(db: Database, name: string, at = now()): boolean {
   const done = db.run("UPDATE factory_worker SET ended_at = ? WHERE name = ? AND ended_at IS NULL", [

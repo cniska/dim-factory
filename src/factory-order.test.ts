@@ -25,6 +25,7 @@ import {
   shipOrder,
 } from "./factory-order";
 import { clearStop, FactoryStopError, pullStop } from "./factory-stop";
+import { endWorker } from "./factory-worker";
 import {
   commitOffTrunk,
   integratedRepo,
@@ -1180,14 +1181,61 @@ describe("factory order report records", () => {
     database.close();
   });
 
-  test("refuses to drop an order once it is claimed", () => {
+  test("refuses to drop an order while a hand is holding it", () => {
     const database = db();
     queueOrder(database, order, worker);
     claimOrder(database, "order-1", claim, worker);
 
     expect(() => dropOrder(database, "order-1", "too late", worker)).toThrow(
-      expect.objectContaining({ code: "order_not_queued" }),
+      expect.objectContaining({ code: "order_held_by_run" }),
     );
+    database.close();
+  });
+
+  // An order can turn out to have been built already, and the owner's word for that is the
+  // same one a queued order gets: it is not going to be worked.
+  test("drops an order nobody is holding though it was once claimed", () => {
+    const database = db();
+    queueOrder(database, order, worker);
+    claimOrder(database, "order-1", { ...claim, station: "dim-station-plan" }, worker);
+    moveOrder(database, "order-1", "dim-station-build", worker);
+
+    dropOrder(database, "order-1", "already on trunk", worker);
+
+    expect(
+      database.query("SELECT status, stop_reason FROM factory_order WHERE id = 'order-1'").get(),
+    ).toEqual({ status: "dropped", stop_reason: "already on trunk" });
+    database.close();
+  });
+
+  // A hand can stop without letting go — killed, crashed, or a session closed — and the run
+  // it left on the order would otherwise hold the order for good.
+  test("an order whose hand is over is taken again in place", () => {
+    const database = db();
+    const builder = workerIn(database, "builder");
+    queueOrder(database, { ...order, id: "order-stranded" }, worker);
+    claimOrder(database, "order-stranded", claim, worker);
+    endWorker(database, worker);
+
+    claimOrder(database, "order-stranded", { ...claim, runId: "run-2" }, builder);
+
+    expect(database.query("SELECT run_id FROM factory_order WHERE id = 'order-stranded'").get()).toEqual({
+      run_id: "run-2",
+    });
+    database.close();
+  });
+
+  test("an order whose hand is over can be dropped", () => {
+    const database = db();
+    queueOrder(database, { ...order, id: "order-abandoned" }, worker);
+    claimOrder(database, "order-abandoned", claim, worker);
+    endWorker(database, worker);
+
+    dropOrder(database, "order-abandoned", "nobody is coming back to it", workerIn(database, "operator"));
+
+    expect(database.query("SELECT status FROM factory_order WHERE id = 'order-abandoned'").get()).toEqual({
+      status: "dropped",
+    });
     database.close();
   });
 

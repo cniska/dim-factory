@@ -646,13 +646,13 @@ describe("order command", () => {
     expect(() => runOrderCommand(database, ["drop", "order-1"])).toThrow(OrderCommandError);
   });
 
-  test("a drop is refused once the order is claimed", () => {
+  test("a drop is refused while a hand is holding the order", () => {
     const database = db();
     queued(database);
     runOrderCommand(database, claim);
 
     expect(() => runOrderCommand(database, ["drop", "order-1", "--reason", "too late to drop"])).toThrow(
-      expect.objectContaining({ code: "order_not_queued" }),
+      expect.objectContaining({ code: "order_held_by_run" }),
     );
   });
 
