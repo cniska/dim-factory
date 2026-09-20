@@ -129,6 +129,41 @@ describe("the shared hook", () => {
     }
   });
 
+  // Git generates a merge subject; there is no author to hold it to the
+  // Conventional Commit shape, so MERGE_HEAD being present is what exempts it.
+  test("passes a merge commit through unjudged", () => {
+    const { dir } = repoWithHook("git@github.com:cniska/thing.git");
+    try {
+      expect(commit(dir, "feat: start the repo").ok).toBe(true);
+      const base = execFileSync("git", ["-C", dir, "branch", "--show-current"], { encoding: "utf8" }).trim();
+      execFileSync("git", ["-C", dir, "checkout", "-qb", "side"]);
+      writeFileSync(join(dir, "side"), "x");
+      execFileSync("git", ["-C", dir, "add", "-A"]);
+      execFileSync("git", ["-C", dir, "commit", "-m", "feat: add side file"]);
+      execFileSync("git", ["-C", dir, "checkout", "-q", base]);
+      execFileSync("git", ["-C", dir, "merge", "--no-ff", "--no-commit", "side"], { stdio: "pipe" });
+
+      expect(existsSync(join(dir, ".git", "MERGE_HEAD"))).toBe(true);
+      const merged = commit(dir, "Merge branch 'side'");
+      expect(merged.ok).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // The exemption is MERGE_HEAD alone; an ordinary commit still holds to the
+  // rule, so it cannot widen into "anything goes".
+  test("still refuses an ordinary bad subject outside a merge", () => {
+    const { dir } = repoWithHook("git@github.com:cniska/thing.git");
+    try {
+      const shape = commit(dir, "just did some stuff");
+      expect(shape.ok).toBe(false);
+      expect(shape.err).toContain("Conventional Commit");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("puts the one hook under the reader's own config directory", () => {
     const home = mkdtempSync(join(tmpdir(), "dim-home-"));
     try {

@@ -58,6 +58,9 @@ case " ${owners.map(foldAscii).join(" ")} " in
   *) exit 0 ;;
 esac
 
+merge_head=$(git rev-parse --git-path MERGE_HEAD 2>/dev/null || true)
+[ -n "$merge_head" ] && [ -e "$merge_head" ] && exit 0
+
 subject=$(sed -n '1p' "$msg_file" 2>/dev/null || true)
 body=$(sed -n '2,$p' "$msg_file" 2>/dev/null | grep -v '^#' | sed '/^[[:space:]]*$/d' || true)
 
