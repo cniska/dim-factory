@@ -103,6 +103,20 @@ describe("issuing a worker to a shell", () => {
     db.close();
   });
 
+  test("reuses the identity already carried by a session", () => {
+    const db = floor();
+    const first = runWorkerCommand(db, ["mint", "--role", "operator"], {});
+    const env: Record<string, string> = {};
+    for (const line of first.split("\n")) {
+      const [name, value] = line.replace("export ", "").split("=");
+      env[name as string] = value as string;
+    }
+
+    expect(runWorkerCommand(db, ["mint", "--role", "operator"], env)).toBe(first);
+    expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 1 });
+    db.close();
+  });
+
   // The identity a reviewer carries is worth only what the hand it reads cannot reach, so
   // the one command a builder's shell can run must not hand it one.
   test("a read-only hand cannot be minted or run by a caller", () => {
@@ -120,7 +134,10 @@ describe("issuing a worker to a shell", () => {
   test("ending one twice says so rather than failing", () => {
     const db = floor();
     const printed = runWorkerCommand(db, ["mint", "--role", "operator"]);
-    const name = printed.split("\n")[0]?.replace(`export ${WORKER_NAME_VAR}=`, "") as string;
+    const name = printed
+      .split("\n")
+      .find((line) => line.startsWith(`export ${WORKER_NAME_VAR}=`))
+      ?.replace(`export ${WORKER_NAME_VAR}=`, "") as string;
 
     expect(runWorkerCommand(db, ["end", name])).toBe(`${name} ended`);
     expect(runWorkerCommand(db, ["end", name])).toBe(`${name} had already ended`);

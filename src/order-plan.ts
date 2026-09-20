@@ -1,6 +1,12 @@
 import type { Database } from "bun:sqlite";
 import { recordOrderPlan } from "./factory-order";
-import { mintWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
+import {
+  mintWorker,
+  newWorkerSession,
+  WORKER_NAME_VAR,
+  WORKER_SESSION_VAR,
+  WORKER_TOKEN_VAR,
+} from "./factory-worker";
 import { route } from "./routing";
 
 export const PLANNER_TOOLS = [
@@ -60,12 +66,20 @@ export function runOrderPlan(
     )
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
-  const minted = mintWorker(db, { role: "planner" });
+  const parentSession = options.env?.[WORKER_SESSION_VAR] ?? newWorkerSession("parent");
+  const minted = mintWorker(db, {
+    role: "planner",
+    sessionId: `${parentSession}/planner/${orderId}`,
+  });
   const { model } = route("planner", options.env);
   const spawn = options.spawn ?? spawnPlanner;
   const run = spawn(
     ["claude", "-p", plannerBrief(order), "--model", model, "--allowedTools", PLANNER_TOOLS.join(",")],
-    { [WORKER_NAME_VAR]: minted.name, [WORKER_TOKEN_VAR]: minted.token },
+    {
+      [WORKER_NAME_VAR]: minted.name,
+      [WORKER_TOKEN_VAR]: minted.token,
+      [WORKER_SESSION_VAR]: minted.sessionId,
+    },
   );
   if (run.exitCode !== 0) throw new Error(`${minted.name} did not finish planning`);
   const body = run.stdout.trim();

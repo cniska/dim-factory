@@ -40,6 +40,17 @@ describe("issuing a factory worker", () => {
     db.close();
   });
 
+  test("refuses a second identity for one session", () => {
+    const db = floor();
+    mintWorker(db, { role: "builder", sessionId: "session-1" });
+
+    expect(() => mintWorker(db, { role: "operator", sessionId: "session-1" })).toThrow(
+      expect.objectContaining({ code: "worker_session_taken" }),
+    );
+    expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 1 });
+    db.close();
+  });
+
   test("holds the digest of the token and never the token", () => {
     const db = floor();
     const minted = mintWorker(db, { role: "builder" });

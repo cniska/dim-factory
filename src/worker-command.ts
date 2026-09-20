@@ -1,5 +1,14 @@
 import type { Database } from "bun:sqlite";
-import { endWorker, mintWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR, workerExports } from "./factory-worker";
+import {
+  endWorker,
+  mintWorker,
+  newWorkerSession,
+  resolveWorker,
+  WORKER_NAME_VAR,
+  WORKER_SESSION_VAR,
+  WORKER_TOKEN_VAR,
+  workerExports,
+} from "./factory-worker";
 import { readFlags } from "./flags";
 import { isReadOnly, isRole, ROLES, type Role } from "./roles";
 
@@ -54,14 +63,20 @@ function pid(given: string | undefined): number | undefined {
  * a pid that stops answering, which is what keeps a dead worker's token from staying good
  * forever. The child's own pid is never observable from a call that blocks on it.
  */
-function start(db: Database, argv: string[], role: Role): string {
-  const minted = mintWorker(db, { role, pid: process.pid });
+function session(env: Record<string, string | undefined>): string {
+  return env[WORKER_SESSION_VAR] ?? newWorkerSession();
+}
+
+function start(db: Database, argv: string[], role: Role, env: Record<string, string | undefined>): string {
+  const childSession = `${session(env)}/run-${newWorkerSession("child")}`;
+  const minted = mintWorker(db, { role, pid: process.pid, sessionId: childSession });
   const [command, ...args] = argv as [string, ...string[]];
   const child = Bun.spawnSync([command, ...args], {
     env: {
       ...process.env,
       [WORKER_NAME_VAR]: minted.name,
       [WORKER_TOKEN_VAR]: minted.token,
+      [WORKER_SESSION_VAR]: minted.sessionId,
     },
     stdout: "inherit",
     stderr: "inherit",
@@ -72,11 +87,34 @@ function start(db: Database, argv: string[], role: Role): string {
   return `${minted.name} ran ${command}`;
 }
 
-export function runWorkerCommand(db: Database, args: string[]): string {
+export function runWorkerCommand(db: Database, args: string[], env = process.env): string {
   const [command, ...rest] = args;
   if (command === "mint") {
     const given = readFlags(rest, ["--role", "--pid"], fail);
-    return workerExports(mintWorker(db, { role: role(given.get("--role")), pid: pid(given.get("--pid")) }));
+    const workerName = env[WORKER_NAME_VAR];
+    const workerToken = env[WORKER_TOKEN_VAR];
+    if (workerName && workerToken) {
+      const name = resolveWorker(db, env);
+      const row = db
+        .query<{ session_id: string; role: Role }, [string]>(
+          "SELECT session_id, role FROM factory_worker WHERE name = ?",
+        )
+        .get(name);
+      if (!row || row.session_id !== env[WORKER_SESSION_VAR]) {
+        throw fail("the current worker does not match the current factory session");
+      }
+      if (row.role !== role(given.get("--role"))) {
+        throw fail(`this factory session already carries ${row.role}, not ${given.get("--role")}`);
+      }
+      return workerExports({ name, token: workerToken, sessionId: row.session_id });
+    }
+    return workerExports(
+      mintWorker(db, {
+        role: role(given.get("--role")),
+        pid: pid(given.get("--pid")),
+        sessionId: session(env),
+      }),
+    );
   }
   if (command === "run") {
     const at = rest.indexOf("--");
@@ -84,7 +122,7 @@ export function runWorkerCommand(db: Database, args: string[]): string {
     const given = readFlags(rest.slice(0, at), ["--role"], fail);
     const argv = rest.slice(at + 1);
     if (argv.length === 0) throw fail("run takes the command to start after `--`");
-    return start(db, argv, role(given.get("--role")));
+    return start(db, argv, role(given.get("--role")), env);
   }
   if (command === "end") {
     const [name] = rest;

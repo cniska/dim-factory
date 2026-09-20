@@ -1,6 +1,12 @@
 import type { Database } from "bun:sqlite";
 import { closeOrderReview, openOrderReview } from "./factory-order";
-import { mintWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
+import {
+  mintWorker,
+  newWorkerSession,
+  WORKER_NAME_VAR,
+  WORKER_SESSION_VAR,
+  WORKER_TOKEN_VAR,
+} from "./factory-worker";
 import { route } from "./routing";
 
 export class ReviewRefused extends Error {
@@ -145,7 +151,11 @@ export function runOrderReview(
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
   const range = reviewRange(db, orderId, options.dir);
-  const minted = mintWorker(db, { role: "reviewer" });
+  const parentSession = options.env?.[WORKER_SESSION_VAR] ?? newWorkerSession("parent");
+  const minted = mintWorker(db, {
+    role: "reviewer",
+    sessionId: `${parentSession}/reviewer/${orderId}/${newWorkerSession("round")}`,
+  });
   const opened = openOrderReview(
     db,
     orderId,
@@ -164,7 +174,11 @@ export function runOrderReview(
       "--allowedTools",
       REVIEWER_TOOLS.join(","),
     ],
-    { [WORKER_NAME_VAR]: minted.name, [WORKER_TOKEN_VAR]: minted.token },
+    {
+      [WORKER_NAME_VAR]: minted.name,
+      [WORKER_TOKEN_VAR]: minted.token,
+      [WORKER_SESSION_VAR]: minted.sessionId,
+    },
   );
   const outcome = run.exitCode === 0 ? "closed" : "aborted";
   closeOrderReview(db, opened.id, outcome, worker);

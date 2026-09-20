@@ -8,8 +8,13 @@ import { randomWorkerName } from "./worker-name";
 /** What the factory hands a worker, and the only thing it reads back to know who wrote. */
 export const WORKER_NAME_VAR = "DIM_WORKER_NAME";
 export const WORKER_TOKEN_VAR = "DIM_WORKER_TOKEN";
+export const WORKER_SESSION_VAR = "DIM_SESSION_ID";
 
 export type WorkerUnknownCode = "worker_missing" | "worker_unissued" | "worker_over";
+
+export class WorkerSessionTaken extends Error {
+  readonly code = "worker_session_taken";
+}
 
 /** Carries a code because a caller deciding which condition failed must not match on prose. */
 export class WorkerUnknown extends Error {
@@ -22,7 +27,7 @@ export class WorkerUnknown extends Error {
 }
 
 /** The name is public and names the worker everywhere; the token is what proves it is that one. */
-export type MintedWorker = { name: string; token: string };
+export type MintedWorker = { name: string; token: string; sessionId: string };
 
 const now = (): string => new Date().toISOString();
 
@@ -35,19 +40,29 @@ function digest(token: string): string {
  * runs reading the same set would be handed the same name, and SQLite's write lock is what
  * makes the read and the insert one step.
  */
-export function mintWorker(db: Database, worker: { role: Role; pid?: number }, at = now()): MintedWorker {
+export function mintWorker(
+  db: Database,
+  worker: { role: Role; pid?: number; sessionId?: string },
+  at = now(),
+): MintedWorker {
+  const sessionId = worker.sessionId ?? newWorkerSession("unbound");
+  if (sessionId.trim() === "") throw new Error("worker session id cannot be empty");
   const token = randomBytes(16).toString("hex");
   return db.transaction(() => {
     const held = db.query<{ name: string }, []>("SELECT name FROM factory_worker").all();
     const name = randomWorkerName(new Set(held.map((row) => row.name)));
-    db.run("INSERT INTO factory_worker (name, role, token_digest, pid, started_at) VALUES (?, ?, ?, ?, ?)", [
-      name,
-      worker.role ?? null,
-      digest(token),
-      worker.pid ?? null,
-      at,
-    ]);
-    return { name, token };
+    try {
+      db.run(
+        "INSERT INTO factory_worker (name, role, session_id, token_digest, pid, started_at) VALUES (?, ?, ?, ?, ?, ?)",
+        [name, worker.role ?? null, sessionId, digest(token), worker.pid ?? null, at],
+      );
+    } catch (error) {
+      if (String(error).includes("UNIQUE constraint failed: factory_worker.session_id")) {
+        throw new WorkerSessionTaken(`session ${sessionId} already has a factory identity`);
+      }
+      throw error;
+    }
+    return { name, token, sessionId };
   })();
 }
 
@@ -98,5 +113,12 @@ export function endWorker(db: Database, name: string, at = now()): boolean {
 
 /** The two lines a shell evaluates to become the worker, which is how a person is one. */
 export function workerExports(minted: MintedWorker): string {
-  return `export ${WORKER_NAME_VAR}=${minted.name}\nexport ${WORKER_TOKEN_VAR}=${minted.token}`;
+  return (
+    `export ${WORKER_SESSION_VAR}=${minted.sessionId}\n` +
+    `export ${WORKER_NAME_VAR}=${minted.name}\nexport ${WORKER_TOKEN_VAR}=${minted.token}`
+  );
+}
+
+export function newWorkerSession(prefix = "session"): string {
+  return `${prefix}-${randomBytes(12).toString("hex")}`;
 }
