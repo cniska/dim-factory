@@ -10,7 +10,8 @@ export type ShipRefusalCode =
   | "ship_wrong_head"
   | "ship_dirty_trunk"
   | "ship_no_branch"
-  | "ship_conflict";
+  | "ship_conflict"
+  | "ship_not_landed";
 
 /** Carries a code because a caller deciding which condition failed must not match on prose. */
 export class ShipRefusal extends Error {
@@ -48,6 +49,10 @@ function primaryCheckout(dir: string): string {
  * the trunk checkout itself cannot be mistaken for shipping the trunk into itself.
  * `cwd` is used only to find the repo and its primary checkout.
  *
+ * A returned outcome means every sha in `shas` reaches the trunk, checked back against
+ * git rather than assumed from the merge's own exit code: a recorded sha the branch never
+ * carried would otherwise ship silently, reported the same as one that actually landed.
+ *
  * Only the local flow a repo with no remote can be tested against: opening a pull request
  * instead is a second flow this leaves reachable rather than one it builds ahead of a
  * caller that needs it.
@@ -56,7 +61,7 @@ export function shipToTrunk(cwd: string, branch: string, shas: string[]): ShipOu
   const trunk = trunkBranch(cwd);
   if ("why" in trunk) throw new ShipRefusal("ship_no_trunk", trunk.why);
 
-  if (shas.map((sha) => reachesTrunk(cwd, sha)).some((reach) => reach.reach === "reached")) {
+  if (shas.every((sha) => reachesTrunk(cwd, sha).reach === "reached")) {
     return { landed: "already" };
   }
 
@@ -80,11 +85,24 @@ export function shipToTrunk(cwd: string, branch: string, shas: string[]): ShipOu
     throw new ShipRefusal("ship_no_branch", `${root} has no branch named ${branch} to ship`);
   }
 
-  if (git(root, ["merge", "--ff-only", branch]).success) return { landed: "fast_forward" };
-  const merge = git(root, ["merge", "--no-edit", branch]);
-  if (!merge.success) {
-    git(root, ["merge", "--abort"]);
-    throw new ShipRefusal("ship_conflict", `merging ${branch} into ${trunk.name} failed: ${merge.out}`);
+  let outcome: ShipOutcome;
+  if (git(root, ["merge", "--ff-only", branch]).success) {
+    outcome = { landed: "fast_forward" };
+  } else {
+    const merge = git(root, ["merge", "--no-edit", branch]);
+    if (!merge.success) {
+      git(root, ["merge", "--abort"]);
+      throw new ShipRefusal("ship_conflict", `merging ${branch} into ${trunk.name} failed: ${merge.out}`);
+    }
+    outcome = { landed: "merged" };
   }
-  return { landed: "merged" };
+
+  const unreached = shas.filter((sha) => reachesTrunk(root, sha).reach !== "reached");
+  if (unreached.length > 0) {
+    throw new ShipRefusal(
+      "ship_not_landed",
+      `${branch} landed on ${trunk.name} but does not reach: ${unreached.join(", ")}`,
+    );
+  }
+  return outcome;
 }

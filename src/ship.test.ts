@@ -141,6 +141,31 @@ describe("shipToTrunk", () => {
       expect.objectContaining({ code: "ship_no_branch" } satisfies Partial<ShipRefusal>),
     );
   });
+
+  test("a recorded sha the shipped branch never carried is refused after the branch lands", () => {
+    const { dir } = repo();
+    const wt = worktree(dir, "feat-g");
+    const landedSha = commitFile(wt, "feat-g.txt", "g");
+    const strayWt = worktree(dir, "stray");
+    const strayShaOffBranch = commitFile(strayWt, "stray.txt", "stray");
+
+    expect(() => shipToTrunk(wt, "feat-g", [landedSha, strayShaOffBranch])).toThrow(
+      expect.objectContaining({ code: "ship_not_landed" } satisfies Partial<ShipRefusal>),
+    );
+    expect(reachesNow(dir, landedSha)).toBe(true);
+  });
+
+  test("shipping is refused if only some of the recorded shas already reached the trunk", () => {
+    const { dir } = repo();
+    const alreadyLandedSha = git(dir, ["rev-parse", "HEAD"]).out;
+    const wt = worktree(dir, "feat-h");
+    const strayWt = worktree(dir, "stray-2");
+    const strayShaOffBranch = commitFile(strayWt, "stray-2.txt", "stray");
+
+    expect(() => shipToTrunk(wt, "feat-h", [alreadyLandedSha, strayShaOffBranch])).toThrow(
+      expect.objectContaining({ code: "ship_not_landed" } satisfies Partial<ShipRefusal>),
+    );
+  });
 });
 
 function reachesNow(dir: string, sha: string): boolean {
