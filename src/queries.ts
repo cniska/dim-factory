@@ -790,26 +790,25 @@ const rework: Query = {
 };
 
 /**
- * An ANDed phrase costs FTS5 an intersection, and the cost of the whole is
- * superlinear in how many there are: measured on this corpus at 1.7s for 50
- * terms, 4.4s for 100 and 63.6s for 400. An argument arrives from a file or a
- * transcript as readily as from a person, so the terms past the cap are dropped
- * and the caller is told, rather than the query running until someone kills it.
+ * A term like "the" touches most of the corpus, and an argument arrives from a
+ * file or a transcript as readily as from a person, so terms past the cap are
+ * dropped and the caller is told, rather than the query running until someone
+ * kills it.
  */
 const MAX_TERMS = 16;
 
 /**
  * Every term is quoted before it reaches FTS5, which otherwise reads `-` as NOT
  * and `:` as a column filter — so a branch name or a flag searches as the word
- * it is. Terms are ANDed; the query language is not exposed.
+ * it is. `raw` is what the caller typed, for the words a term-by-term check
+ * can name; `quoted` is what FTS5 matches on.
  */
-const asPhrases = (terms: string): { match: string; dropped: number } => {
+const quotedTerms = (terms: string): { raw: string[]; quoted: string[]; dropped: number } => {
   const words = terms.split(/\s+/).filter(Boolean);
+  const kept = words.slice(0, MAX_TERMS);
   return {
-    match: words
-      .slice(0, MAX_TERMS)
-      .map((t) => `"${t.replaceAll('"', '""')}"`)
-      .join(" "),
+    raw: kept,
+    quoted: kept.map((t) => `"${t.replaceAll('"', '""')}"`),
     dropped: Math.max(0, words.length - MAX_TERMS),
   };
 };
@@ -830,23 +829,40 @@ const SAID = "(m.is_meta = 0 OR m.origin_kind IN ('coordinator', 'peer'))";
  * this is a front door for one and a degradation for another.
  */
 function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryResult {
-  const columns = ["session", "when", "role", "project", "text"];
-  const { match, dropped } = asPhrases(terms);
-  if (!match) {
+  const columns = ["session", "when", "role", "project", "terms", "text"];
+  const { raw, quoted, dropped } = quotedTerms(terms);
+  if (quoted.length === 0) {
     return { denominator: "", columns: ["error"], rows: [["nothing to search for but whitespace"]] };
   }
+  const matchAny = quoted.join(" OR ");
+  // A term with no match anywhere in the corpus is the one thing a caller
+  // cannot see from the ranked rows, so it is checked and named on its own.
+  const byWord = new Map(raw.map((word, i) => [word, quoted[i] as string]));
+  const missing = [...byWord]
+    .filter(
+      ([, quote]) =>
+        scalar(db, "SELECT count(*) AS n FROM message_fts WHERE message_fts MATCH ?", quote) === 0,
+    )
+    .map(([word]) => word);
   const w = window("m.ts", ctx);
+  const perTerm = quoted
+    .map(() => "SELECT rowid FROM message_fts WHERE message_fts MATCH ?")
+    .join(" UNION ALL ");
   const records = table(
     db,
-    `SELECT substr(m.session_id, 1, 8) AS session, substr(m.ts, 1, 16) AS "when", m.role,
+    `WITH per_term AS (${perTerm}),
+          counted AS (SELECT rowid, count(*) AS matched FROM per_term GROUP BY rowid)
+     SELECT substr(m.session_id, 1, 8) AS session, substr(m.ts, 1, 16) AS "when", m.role,
             replace(coalesce(s.project, ''), ? || '/', '') AS project,
+            c.matched || '/' || ? AS terms,
             replace(snippet(message_fts, 0, '[', ']', '…', 12), char(10), ' ') AS text
-     FROM message_fts
-     JOIN message m ON m.rowid = message_fts.rowid
+     FROM counted c
+     JOIN message_fts ON message_fts.rowid = c.rowid
+     JOIN message m ON m.rowid = c.rowid
      JOIN session s ON s.id = m.session_id
      WHERE message_fts MATCH ? AND ${SAID}${w.sql}
-     ORDER BY m.ts DESC LIMIT 40`,
-    [homeOf(ctx), match, ...w.params],
+     ORDER BY c.matched DESC, bm25(message_fts) ASC, m.ts DESC LIMIT 40`,
+    [...quoted, homeOf(ctx), String(quoted.length), matchAny, ...w.params],
   );
   // Both counts carry the window the rows were drawn under, or the base
   // describes a corpus the search never looked at.
@@ -861,7 +877,11 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryRes
   return {
     denominator:
       `keywords over ${said} of ${all} messages that carry text anyone said (${windowLine(ctx)}); ` +
-      `newest 40 shown.${dropped > 0 ? ` Only the first ${MAX_TERMS} words were searched; ${dropped} more were dropped.` : ""}`,
+      `ranked by how many of the ${quoted.length} terms matched, ties broken by relevance then recency; ` +
+      `newest 40 shown.${dropped > 0 ? ` Only the first ${MAX_TERMS} words were searched; ${dropped} more were dropped.` : ""}` +
+      (missing.length > 0
+        ? ` ${missing.length === 1 ? "This term matched" : "These terms matched"} nothing anywhere: ${missing.join(", ")}.`
+        : ""),
     columns,
     rows: toRows(records, columns),
     note:

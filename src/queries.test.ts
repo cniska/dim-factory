@@ -372,7 +372,7 @@ describe("read path", () => {
     try {
       const hit = findQuery("search")?.run(db, { arg: "parser", question: unranked });
       expect(hit?.rows.length).toBeGreaterThan(0);
-      expect(String(hit?.rows[0]?.[4])).toContain("parser");
+      expect(String(hit?.rows[0]?.[5])).toContain("parser");
 
       const miss = findQuery("search")?.run(db, { arg: "nothingmatchesthis", question: unranked });
       expect(miss?.rows).toEqual([]);

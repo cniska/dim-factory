@@ -89,7 +89,7 @@ describe("search degrades instead of failing", () => {
     const result = run(db, { arg: "shadow", question: await asked("shadow") });
     expect(result.denominator).toContain("keywords over");
     expect(result.denominator).toContain("nothing is embedded in this window");
-    expect(result.columns).toEqual(["session", "when", "role", "project", "text"]);
+    expect(result.columns).toEqual(["session", "when", "role", "project", "terms", "text"]);
     db.close();
   });
 
@@ -136,7 +136,7 @@ describe("search degrades instead of failing", () => {
     const db = seeded();
     const result = run(db, { arg: "checkout", question: await asked("checkout") });
     expect(result.rows.map((r) => String(r[0]))).toEqual(["s1"]);
-    expect(String(result.rows[0]?.[4])).not.toContain("Injected");
+    expect(String(result.rows[0]?.[5])).not.toContain("Injected");
     expect(result.denominator).toContain("1 of 2 messages that carry text anyone said");
     db.close();
   });
@@ -259,6 +259,81 @@ describe("keywords, asked directly", () => {
     expect(result.rows).toEqual([]);
     expect(result.note).toContain("nothing matches promulgate");
     expect(result.note).toContain("a reminder the harness injected is nothing anyone said");
+    db.close();
+  });
+
+  // A row matching only some of the terms still appears — ranked behind one
+  // that matches more — rather than being excluded for missing any.
+  test("a message carrying more of the terms outranks one carrying fewer, and returns rows rather than nothing", async () => {
+    const db = seeded();
+    db.run(
+      `INSERT INTO message (id, session_id, ts, role, text, src_file, src_line)
+       VALUES ('m-strong', 's1', '2026-09-02T09:00:00Z', 'user', 'orchard bramble candlewick driftwood', '/f.jsonl', 10)`,
+    );
+    db.run(
+      `INSERT INTO message (id, session_id, ts, role, text, src_file, src_line)
+       VALUES ('m-weak', 's1', '2026-09-02T09:05:00Z', 'user', 'orchard alone', '/f.jsonl', 11)`,
+    );
+    const result = ask(db, { arg: "orchard bramble candlewick driftwood emberfall" });
+    expect(result.rows.length).toBe(2);
+    const strongIndex = result.rows.findIndex((r) => String(r[5]).includes("bramble"));
+    const weakIndex = result.rows.findIndex((r) => String(r[5]).includes("alone"));
+    expect(strongIndex).toBeLessThan(weakIndex);
+    expect(result.rows[strongIndex]?.[4]).toBe("4/5");
+    expect(result.rows[weakIndex]?.[4]).toBe("1/5");
+    db.close();
+  });
+
+  test("a tie on matched count and relevance falls back to recency", async () => {
+    const db = seeded();
+    db.run(
+      `INSERT INTO message (id, session_id, ts, role, text, src_file, src_line)
+       VALUES ('m-early', 's1', '2026-09-02T09:00:00Z', 'user', 'thistledown', '/f.jsonl', 10)`,
+    );
+    db.run(
+      `INSERT INTO message (id, session_id, ts, role, text, src_file, src_line)
+       VALUES ('m-late', 's1', '2026-09-02T09:05:00Z', 'user', 'thistledown', '/f.jsonl', 11)`,
+    );
+    const result = ask(db, { arg: "thistledown" });
+    expect(result.rows.map((r) => String(r[1]))).toEqual(["2026-09-02T09:05", "2026-09-02T09:00"]);
+    db.close();
+  });
+
+  // Two rows matching the same count of terms are not a tie: a shorter message
+  // that says little else scores more relevant than a long one repeating filler
+  // around the same words, and relevance outranks the long one's later timestamp.
+  test("relevance breaks a tie in matched-term count before recency does", async () => {
+    const db = seeded();
+    db.run(
+      `INSERT INTO message (id, session_id, ts, role, text, src_file, src_line)
+       VALUES ('m-terse', 's1', '2026-09-02T09:00:00Z', 'user', 'candlewick driftwood', '/f.jsonl', 10)`,
+    );
+    db.run(
+      `INSERT INTO message (id, session_id, ts, role, text, src_file, src_line)
+       VALUES ('m-diluted', 's1', '2026-09-02T09:05:00Z', 'user', ?, '/f.jsonl', 11)`,
+      [`candlewick driftwood ${"filler ".repeat(60)}`],
+    );
+    const result = ask(db, { arg: "candlewick driftwood" });
+    expect(result.rows.map((r) => String(r[4]))).toEqual(["2/2", "2/2"]);
+    expect(String(result.rows[0]?.[1])).toBe("2026-09-02T09:00");
+    db.close();
+  });
+
+  test("the denominator states the ranking", async () => {
+    const db = seeded();
+    const result = ask(db, { arg: "checkout" });
+    expect(result.denominator).toContain(
+      "ranked by how many of the 1 terms matched, ties broken by relevance then recency",
+    );
+    db.close();
+  });
+
+  test("a term matching nothing anywhere is named, not just dropped from the rows", async () => {
+    const db = seeded();
+    const result = ask(db, { arg: "checkout zzznoword" });
+    expect(result.denominator).toContain("This term matched nothing anywhere: zzznoword");
+    expect(result.rows.map((r) => String(r[0]))).toEqual(["s1"]);
+    expect(result.rows[0]?.[4]).toBe("1/2");
     db.close();
   });
 });
