@@ -13,7 +13,7 @@ The shared Git boundary for the factory. Use this skill whenever Git work affect
 - Read the current status, worktree, branch and recent commits before changing anything.
 - Work in the isolated worktree assigned to the item. The parent worktree is not a worker workspace.
 - One order owns one item end to end. Do not edit another order's worktree or combine unrelated changes into its commit.
-- Preserve uncommitted changes you did not create. Stop when the target or ownership is unclear.
+- Preserve uncommitted changes you did not create. Stage by naming paths, never `git add -A`, `git add .` or `git add --all`. Stop when the target or ownership is unclear.
 
 ## Commit a slice
 
@@ -52,6 +52,7 @@ Every stopped or completed operation says:
 ## Red flags
 
 - editing the parent worktree from a worker
+- staging a whole tree rather than the paths the slice changed
 - committing before the repository check and review are complete
 - treating a reviewer finding as optional because tests pass
 - integrating two items together when their claims were separate
