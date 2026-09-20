@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { claimOrder, queueOrder, raiseOrderFinding, recordOrderCommit } from "./factory-order";
 import { WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { integratedRepo, orderWorktree, workerIn } from "./fixtures.test-support";
-import { REVIEWER_TOOLS, type ReviewerSpawn, ReviewRefused, runOrderReview } from "./order-review";
+import { type ReviewerSpawn, ReviewRefused, runOrderReview } from "./order-review";
 import { SCHEMA_SQL } from "./schema";
 
 const trunk = integratedRepo();
@@ -17,12 +17,37 @@ afterAll(() => {
   rmSync(trunk.dir, { recursive: true, force: true });
 });
 
-// A harness map, because routing resolves the reviewer's model through one and refuses
-// without it. The names are the map's, never a model this repo knows.
+const REVIEWER_TOOLS = [
+  "Read",
+  "Grep",
+  "Glob",
+  "Bash(git diff:*)",
+  "Bash(git show:*)",
+  "Bash(git log:*)",
+  "Bash(dim q:*)",
+  "Bash(dim order finding:*)",
+];
+
+// A harness map and a spawn profile, because routing resolves the reviewer's model
+// through one and spawnArgv resolves its argv through the other, and both refuse
+// without their file. The names are the map's, never a model this repo knows.
 const machine = (() => {
   const home = orderWorktree(trunk.dir, "routing-home");
   worktrees.push(home);
   writeFileSync(join(home, "routing.json"), '{ "cheap": "s", "standard": "m", "deep": "l" }');
+  writeFileSync(
+    join(home, "spawn.json"),
+    JSON.stringify({
+      argv: ["claude", "-p", "{brief}", "--model", "{model}", "--allowedTools", "{tools}"],
+      slots: { tools: { join: "," } },
+      grants: {
+        "read-files": { tools: ["Read", "Grep", "Glob"] },
+        "read-history": { tools: ["Bash(git diff:*)", "Bash(git show:*)", "Bash(git log:*)"] },
+        "ask-dim": { tools: ["Bash(dim q:*)"] },
+        "raise-finding": { tools: ["Bash(dim order finding:*)"] },
+      },
+    }),
+  );
   return { DIM_HOME: home };
 })();
 

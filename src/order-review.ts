@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import type { Capability } from "./capabilities";
 import { closeOrderReview, openOrderReview } from "./factory-order";
 import {
   mintWorker,
@@ -8,6 +9,7 @@ import {
   WORKER_TOKEN_VAR,
 } from "./factory-worker";
 import { route } from "./routing";
+import { readSpawnProfile, spawnArgv } from "./spawn-profile";
 
 export class ReviewRefused extends Error {
   constructor(
@@ -19,21 +21,12 @@ export class ReviewRefused extends Error {
 }
 
 /**
- * What the reviewer may reach. The allowlist is the boundary rather than the brief: an
- * instruction not to edit is a sentence the model may weigh against others, and a tool it
- * was never given is not reachable however it reasons. `dim order finding` is the one
+ * What the reviewer may reach. The capability set is the boundary rather than the brief: an
+ * instruction not to edit is a sentence the model may weigh against others, and a capability
+ * it was never granted is not reachable however it reasons. `raise-finding` is the one
  * write, and the round refuses even that from any hand but this one.
  */
-export const REVIEWER_TOOLS = [
-  "Read",
-  "Grep",
-  "Glob",
-  "Bash(git diff:*)",
-  "Bash(git show:*)",
-  "Bash(git log:*)",
-  "Bash(dim q:*)",
-  "Bash(dim order finding:*)",
-];
+export const REVIEWER_CAPABILITIES: Capability[] = ["read-files", "read-history", "ask-dim", "raise-finding"];
 
 /** Replaced in tests, which have no model to call and need the exit code to be theirs. */
 export type ReviewerSpawn = (argv: string[], env: Record<string, string>) => { exitCode: number };
@@ -163,17 +156,10 @@ export function runOrderReview(
     worker,
   );
   const { model } = route("reviewer", options.env);
+  const profile = readSpawnProfile(options.env);
   const spawn = options.spawn ?? spawnReviewer;
   const run = spawn(
-    [
-      "claude",
-      "-p",
-      reviewerBrief(order, range),
-      "--model",
-      model,
-      "--allowedTools",
-      REVIEWER_TOOLS.join(","),
-    ],
+    spawnArgv(profile, { model, brief: reviewerBrief(order, range), capabilities: REVIEWER_CAPABILITIES }),
     {
       [WORKER_NAME_VAR]: minted.name,
       [WORKER_TOKEN_VAR]: minted.token,
