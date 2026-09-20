@@ -9,6 +9,7 @@ import { Robot } from "./components/ui/robot";
 import { Table, TableBody, TableCell, TableRow } from "./components/ui/table";
 import type {
   BoardStatus,
+  WallItemChange,
   WallItemEntry,
   WallItemView,
   WallOrder,
@@ -289,6 +290,30 @@ function EntryWorker({ entry }: { entry: WallItemEntry }) {
   );
 }
 
+/** What the order changed, beside its history rather than inside it: a file is not a moment in
+ *  the story, and a builder that touches twenty of them would bury the events among them. A count
+ *  nobody recorded is left blank, because zero lines changed is a different claim. */
+export function ItemChanges({ changes }: { changes: WallItemChange[] }) {
+  return (
+    <section className="flex w-[22rem] shrink-0 flex-col gap-2 border-l pl-5">
+      <h3 className="text-foreground">Changes</h3>
+      <ol className="flex flex-col gap-1">
+        {changes.map((change) => (
+          <li key={change.path} className="flex items-baseline justify-between gap-3 text-quiet">
+            <code className="truncate text-muted-foreground" title={change.path}>
+              {change.path}
+            </code>
+            <span className="shrink-0 tabular-nums">
+              {change.added === undefined ? null : <span className="text-role-builder">+{change.added}</span>}
+              {change.removed === undefined ? null : <span className="text-danger"> −{change.removed}</span>}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 /** An order's record as a table, because that is what it is: four columns whose widths are
  *  shared down the page, which a list of rows cannot do without pinning one to a fixed width.
  *  The time leads because it orders the page; who did it sits at the right edge, where a column
@@ -415,7 +440,10 @@ function ItemDialog({
             whatever is being read. */}
         <div className="flex min-h-0 gap-5 overflow-y-auto p-5">
           {read.view && read.view.entries.length > 0 ? (
-            <ItemHistory entries={read.view.entries} />
+            <>
+              <ItemHistory entries={read.view.entries} />
+              {read.view.changes.length > 0 ? <ItemChanges changes={read.view.changes} /> : null}
+            </>
           ) : (
             <p className={read.state === "unavailable" ? "text-warn-foreground" : undefined}>
               {ITEM_READ_MESSAGE[read.state]}
