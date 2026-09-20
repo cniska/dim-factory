@@ -122,3 +122,7 @@ export function workerExports(minted: MintedWorker): string {
 export function newWorkerSession(prefix = "session"): string {
   return `${prefix}-${randomBytes(12).toString("hex")}`;
 }
+
+export function sessionIdFromEnv(env: Record<string, string | undefined> = process.env): string | undefined {
+  return env[WORKER_SESSION_VAR] ?? env.CODEX_SESSION_ID ?? env.CLAUDE_SESSION_ID;
+}

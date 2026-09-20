@@ -105,7 +105,7 @@ describe("issuing a worker to a shell", () => {
 
   test("reuses the identity already carried by a session", () => {
     const db = floor();
-    const first = runWorkerCommand(db, ["mint", "--role", "operator"], {});
+    const first = runWorkerCommand(db, ["mint", "--role", "operator"], { DIM_SESSION_ID: "session-1" });
     const env: Record<string, string> = {};
     for (const line of first.split("\n")) {
       const [name, value] = line.replace("export ", "").split("=");
@@ -114,6 +114,16 @@ describe("issuing a worker to a shell", () => {
 
     expect(runWorkerCommand(db, ["mint", "--role", "operator"], env)).toBe(first);
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 1 });
+    db.close();
+  });
+
+  test("refuses to mint without a runtime session id", () => {
+    const db = floor();
+
+    expect(() => runWorkerCommand(db, ["mint", "--role", "operator"], {})).toThrow(
+      /no factory session id is available/,
+    );
+    expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 0 });
     db.close();
   });
 
@@ -133,7 +143,7 @@ describe("issuing a worker to a shell", () => {
 
   test("ending one twice says so rather than failing", () => {
     const db = floor();
-    const printed = runWorkerCommand(db, ["mint", "--role", "operator"]);
+    const printed = runWorkerCommand(db, ["mint", "--role", "operator"], { DIM_SESSION_ID: "session-2" });
     const name = printed
       .split("\n")
       .find((line) => line.startsWith(`export ${WORKER_NAME_VAR}=`))

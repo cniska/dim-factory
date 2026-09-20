@@ -4,6 +4,7 @@ import {
   mintWorker,
   newWorkerSession,
   resolveWorker,
+  sessionIdFromEnv,
   WORKER_NAME_VAR,
   WORKER_SESSION_VAR,
   WORKER_TOKEN_VAR,
@@ -64,7 +65,12 @@ function pid(given: string | undefined): number | undefined {
  * forever. The child's own pid is never observable from a call that blocks on it.
  */
 function session(env: Record<string, string | undefined>): string {
-  return env[WORKER_SESSION_VAR] ?? newWorkerSession();
+  const id = sessionIdFromEnv(env);
+  if (!id)
+    throw fail(
+      `no factory session id is available in ${WORKER_SESSION_VAR}, CODEX_SESSION_ID, or CLAUDE_SESSION_ID`,
+    );
+  return id;
 }
 
 function start(db: Database, argv: string[], role: Role, env: Record<string, string | undefined>): string {
