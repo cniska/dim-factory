@@ -16,6 +16,7 @@ import { type Env, resolveHomeDir } from "./paths";
  * local record, and adding one is a directory beside this file plus a name here.
  */
 export const SKILL_NAMES = [
+  "dim-add",
   "dim-line-feat",
   "dim-line-fix",
   "dim-station-plan",

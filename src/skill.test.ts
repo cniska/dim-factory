@@ -27,6 +27,7 @@ describe("skill install", () => {
   // ratify its own removal.
   test("ships the skills that need dim on PATH", () => {
     expect(shipped()).toEqual([
+      "dim-add",
       "dim-factory",
       "dim-git",
       "dim-handoff",
