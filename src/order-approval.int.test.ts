@@ -154,4 +154,28 @@ describe("plan approval integration", () => {
     });
     db.close();
   });
+
+  test("refuses planning delegation from a non-operator worker", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const repo = integratedRepo();
+    repos.push(repo.dir);
+    const operator = mintWorker(db, { role: "operator", sessionId: "delegate-operator" });
+    const builder = mintWorker(db, {
+      role: "builder",
+      parentWorker: operator.name,
+      sessionId: "delegate-operator/builder",
+    });
+    queueOrder(
+      db,
+      { id: "delegation-order", project: "cniska/dim-factory", title: "Delegate this" },
+      operator.name,
+    );
+
+    expect(() => runOrderCommand(db, ["plan", "delegation-order"], null, repo.dir, env(builder))).toThrow(
+      expect.objectContaining({ code: "worker_not_operator" }),
+    );
+    expect(db.query("SELECT count(*) AS n FROM factory_order_plan").get()).toEqual({ n: 0 });
+    db.close();
+  });
 });

@@ -84,7 +84,7 @@ The research artifact records the queries, the relevant references, the conclusi
 
 ## Design and plan
 
-**The first executable process delegates planning to a planner worker.** The planner writes the plan under its own name. The operator checks that the plan answers the order, then records its decision before delegating implementation. This approval authorizes execution; it is not an independent quality review. Planner fan-out, synthesis, and independent plan review remain later additions after the core order loop works.
+**The first executable process delegates planning to a planner worker.** The planner writes the plan under its own name. Only the operator may invoke planning or review delegation; the command boundary refuses those actions from station workers. The operator checks that the plan answers the order, then records its decision before delegating implementation. This approval authorizes execution; it is not an independent quality review. Planner fan-out, synthesis, and independent plan review remain later additions after the core order loop works.
 
 A plan contains:
 

@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { assertOperator } from "./factory-operator";
 import {
   amendOrder,
   answerOrderFinding,
@@ -367,6 +368,7 @@ export function runOrderCommand(
   }
   if (command === "plan") {
     flags(rest, []);
+    assertOperator(db, worker, "delegate planning");
     const outcome = runOrderPlan(db, orderId, { env });
     return `${orderId} planning completed by ${outcome.planner}`;
   }
@@ -398,6 +400,7 @@ export function runOrderCommand(
   if (command === "answer") return answerFinding(db, orderId, rest, worker);
   if (command === "review") {
     if (!orderId) throw fail("review takes the order whose slice is to be read");
+    assertOperator(db, worker, "delegate review");
     const done = runOrderReview(db, orderId, worker, { dir: cwd, env });
     return done.outcome === "aborted"
       ? `review ${done.review} aborted: ${done.reviewer} did not finish, so nothing it left is a clean reading`
