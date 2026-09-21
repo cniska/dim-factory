@@ -13,6 +13,7 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   check_finished: "Check",
   review_opened: "Review opened",
   review_closed: "Review closed",
+  review_approved: "Review approved",
   finding_raised: "Finding raised",
   finding_answered: "Finding answered",
   document_updated: "Document",

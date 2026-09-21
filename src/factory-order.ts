@@ -30,6 +30,7 @@ export type OrderEventKind =
   | "check_finished"
   | "review_opened"
   | "review_closed"
+  | "review_approved"
   | "finding_raised"
   | "finding_answered"
   | "completed"
@@ -83,7 +84,8 @@ export type OrderNotDoneCode =
   | "order_held_by_run"
   | "order_not_building"
   | "order_not_planning"
-  | "build_not_approved";
+  | "build_not_approved"
+  | "review_not_approved";
 
 /** Carries a code because a caller deciding which condition failed must not match on prose. */
 export class OrderNotDone extends Error {
@@ -107,6 +109,21 @@ export class PlanApprovalRefused extends Error {
 export class BuildApprovalRefused extends Error {
   constructor(
     readonly code: "worker_not_operator" | "commit_missing" | "build_not_checked" | "build_already_approved",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+export class ReviewApprovalRefused extends Error {
+  constructor(
+    readonly code:
+      | "worker_not_operator"
+      | "review_missing"
+      | "review_not_closed"
+      | "review_aborted"
+      | "findings_present"
+      | "review_already_approved",
     message: string,
   ) {
     super(message);
@@ -298,6 +315,14 @@ export function moveOrder(
   worker: string,
   at = now(),
 ): number {
+  if (station === "ship" || station === "dim-station-ship") {
+    const role = db
+      .query<{ role: string }, [string]>("SELECT role FROM factory_worker WHERE name = ?")
+      .get(worker)?.role;
+    if (role !== "operator")
+      throw new ReviewApprovalRefused("worker_not_operator", `${worker} cannot move an order to ship`);
+    assertReviewApproved(db, orderId);
+  }
   return db.transaction(() => {
     const event = appendOrderEventInTransaction(db, orderId, { kind: "moved", worker, station }, at);
     db.run("UPDATE factory_order SET station = ?, run_id = NULL, session_id = NULL WHERE id = ?", [
@@ -332,6 +357,40 @@ export function assertBuildApproved(db: Database, orderId: string): { sha: strin
     );
   }
   return { sha: commit.sha };
+}
+
+function latestReview(
+  db: Database,
+  orderId: string,
+): { id: number; outcome: string | null; headSha: string } | null {
+  return db
+    .query<{ id: number; outcome: string | null; headSha: string }, [string]>(
+      "SELECT id, outcome, head_sha AS headSha FROM factory_order_review WHERE order_id = ? ORDER BY round DESC, id DESC LIMIT 1",
+    )
+    .get(orderId);
+}
+
+export function assertReviewApproved(db: Database, orderId: string): void {
+  const review = latestReview(db, orderId);
+  if (!review) throw new OrderNotDone("review_not_approved", `order ${orderId} has no review to approve`);
+  const commit = latestOrderCommit(db, orderId);
+  if (!commit || commit.sha !== review.headSha) {
+    throw new OrderNotDone(
+      "review_not_approved",
+      `order ${orderId} has a commit newer than its approved review`,
+    );
+  }
+  const approved = db
+    .query(
+      "SELECT 1 FROM factory_order_event WHERE order_id = ? AND kind = 'review_approved' AND review_id = ?",
+    )
+    .get(orderId, review.id);
+  if (!approved) {
+    throw new OrderNotDone(
+      "review_not_approved",
+      `review ${review.id} for order ${orderId} is not approved by the operator`,
+    );
+  }
 }
 
 /** Current state rather than history: nothing has wanted to read back what an order
@@ -840,6 +899,44 @@ export function approveOrderBuild(
     );
   }
   appendOrderEvent(db, orderId, { kind: "build_approved", worker, commitSha: commit.sha, reason }, at);
+}
+
+export function approveOrderReview(db: Database, orderId: string, worker: string, at = now()): void {
+  assertOrderWorking(db, orderId);
+  const role = db
+    .query<{ role: string }, [string]>("SELECT role FROM factory_worker WHERE name = ?")
+    .get(worker)?.role;
+  if (role !== "operator")
+    throw new ReviewApprovalRefused("worker_not_operator", `worker ${worker} is not an operator`);
+  const review = latestReview(db, orderId);
+  if (!review) throw new ReviewApprovalRefused("review_missing", `order ${orderId} has no review to approve`);
+  if (review.outcome === null)
+    throw new ReviewApprovalRefused(
+      "review_not_closed",
+      `review ${review.id} for order ${orderId} is still open`,
+    );
+  if (review.outcome !== "closed")
+    throw new ReviewApprovalRefused("review_aborted", `review ${review.id} for order ${orderId} was aborted`);
+  const findings = db
+    .query<{ n: number }, [number]>("SELECT count(*) AS n FROM factory_order_finding WHERE review_id = ?")
+    .get(review.id)?.n;
+  if (findings) {
+    throw new ReviewApprovalRefused(
+      "findings_present",
+      `review ${review.id} for order ${orderId} has ${findings} finding${findings === 1 ? "" : "s"}`,
+    );
+  }
+  const approved = db
+    .query(
+      "SELECT 1 FROM factory_order_event WHERE order_id = ? AND kind = 'review_approved' AND review_id = ?",
+    )
+    .get(orderId, review.id);
+  if (approved)
+    throw new ReviewApprovalRefused(
+      "review_already_approved",
+      `review ${review.id} for order ${orderId} is already approved`,
+    );
+  appendOrderEvent(db, orderId, { kind: "review_approved", worker, reviewId: review.id }, at);
 }
 
 /**

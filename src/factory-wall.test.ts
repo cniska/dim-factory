@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import {
   answerOrderFinding,
   appendOrderEvent,
+  approveOrderBuild,
+  approveOrderReview,
   claimOrder as claimOrderAt,
+  closeOrderReview,
   moveOrder,
   type OrderClaim,
   queueOrder,
@@ -90,7 +93,12 @@ describe("factory wall snapshot", () => {
       worker,
       "2026-09-18T08:01:30.000Z",
     );
-    moveOrder(db, "order-done", "ship", worker, "2026-09-18T08:01:45.000Z");
+    const operator = workerIn(db, "operator");
+    approveOrderBuild(db, "order-done", operator, "the board change is complete", "2026-09-18T08:01:35.000Z");
+    const review = reviewIn(db, "order-done", operator, "2026-09-18T08:01:36.000Z", trunk.sha);
+    closeOrderReview(db, review.review, "closed", operator, "2026-09-18T08:01:37.000Z");
+    approveOrderReview(db, "order-done", operator, "2026-09-18T08:01:38.000Z");
+    moveOrder(db, "order-done", "ship", operator, "2026-09-18T08:01:45.000Z");
     appendOrderEvent(
       db,
       "order-done",
