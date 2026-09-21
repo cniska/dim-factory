@@ -1,15 +1,20 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
-import { rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { claimOrder, queueOrder, recordOrderPlan } from "./factory-order";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { integratedRepo } from "./fixtures.test-support";
 import { runOrderCommand } from "./order-command";
+import { runOrderPlan } from "./order-plan";
 import { SCHEMA_SQL } from "./schema";
 
 const repos: string[] = [];
+const homes: string[] = [];
 afterAll(() => {
   for (const repo of repos) rmSync(repo, { recursive: true, force: true });
+  for (const home of homes) rmSync(home, { recursive: true, force: true });
 });
 
 function env(worker: { name: string; token: string; sessionId: string }): Record<string, string> {
@@ -21,6 +26,74 @@ function env(worker: { name: string; token: string; sessionId: string }): Record
 }
 
 describe("plan approval integration", () => {
+  test("the operator delegates planning and approves the attributed plan", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const repo = integratedRepo();
+    repos.push(repo.dir);
+    const home = mkdtempSync(join(tmpdir(), "dim-plan-approval-"));
+    homes.push(home);
+    writeFileSync(
+      join(home, "routing.json"),
+      '{ "cheap": "small", "standard": "middling", "deep": "large" }',
+    );
+    writeFileSync(
+      join(home, "spawn.json"),
+      JSON.stringify({
+        argv: ["planner", "{brief}", "{model}", "{tools}"],
+        slots: { tools: { join: "," } },
+        grants: {
+          "read-files": { tools: ["Read"] },
+          "read-history": { tools: ["Bash(git log:*)"] },
+          "ask-dim": { tools: ["Bash(dim q:*)"] },
+        },
+      }),
+    );
+    const operator = mintWorker(db, { role: "operator", sessionId: "operator-plan-session" });
+    queueOrder(
+      db,
+      { id: "operator-plan-order", project: "cniska/dim-factory", title: "Delegate planning" },
+      operator.name,
+    );
+    claimOrder(
+      db,
+      "operator-plan-order",
+      { runId: "operator-run", station: "dim-station-plan" },
+      operator.name,
+      undefined,
+      repo.dir,
+    );
+
+    const outcome = runOrderPlan(db, "operator-plan-order", {
+      env: { ...env(operator), DIM_HOME: home },
+      spawn: (_argv, worker) => ({
+        exitCode: 0,
+        stdout: `## Outcome\n\nPlan for ${worker[WORKER_NAME_VAR]}.`,
+      }),
+    });
+    runOrderCommand(db, ["approve", "operator-plan-order"], null, repo.dir, env(operator));
+
+    expect(
+      db.query("SELECT role, parent_worker FROM factory_worker WHERE name = ?").get(outcome.planner),
+    ).toEqual({
+      role: "planner",
+      parent_worker: operator.name,
+    });
+    expect(
+      db
+        .query<{ kind: string; worker: string }, []>(
+          "SELECT kind, worker FROM factory_order_event WHERE order_id = 'operator-plan-order' ORDER BY id",
+        )
+        .all(),
+    ).toEqual([
+      { kind: "queued", worker: operator.name },
+      { kind: "claimed", worker: operator.name },
+      { kind: "plan_submitted", worker: outcome.planner },
+      { kind: "plan_approved", worker: operator.name },
+    ]);
+    db.close();
+  });
+
   test("records operator approval after an attributed plan submission", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);

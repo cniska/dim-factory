@@ -1,127 +1,90 @@
 ---
 name: dim-factory
-description: Run a repo's queue — read the orders that repo has waiting, take the next one nobody holds, route it to the station that fits, and stop at a hold. Use to work a backlog without being handed a subject.
-argument-hint: "[the queue: a file, a tracker query, or nothing to find it] [how many items, default 1]"
+description: Operate one explicit factory order by delegating each station and checking every returned outcome.
+argument-hint: "<order-id>"
 ---
 
 # Factory
 
-What starts the work. Every station is handed a subject; this reads the repo's queue and picks one, then invokes the station that fits.
+Run the order named by the caller. The operator owns the request and the route; station workers own the work they were delegated. This skill is the headless control loop, not a wall and not an implementation station.
 
-It is not a station. The stations are operations on a subject — scope, build, check — and this runs the line above them, which is why it decides nothing about how work is done and everything about which work is started and when to stop.
+## Entry contract
 
-That stopping rule is the substance of this file. The argument it serves is dim rather than dark: autonomous between the gates, a person at the gates that matter, each gate earning its automation separately rather than by fiat. An operator that decided that for itself would be answering the question the factory exists to ask.
+- The caller supplies one existing order id. Intake belongs to `dim-add`.
+- Read the order with `dim q order <order-id>` before acting. Its title, description, project, current station, latest plan, evidence, findings, and holds are the record.
+- Read the repository rules and current check before claiming work.
+- Run as an operator. Do not lend the operator identity to a station worker.
+- Work only in the order's project and isolated worktree. Do not edit the project from the operator session.
 
-## Check the floor
+## Start or resume the order
 
-- `dim q running` — another session live in this project is editing the same tree, and two builders on one working tree is the collision nothing recovers from. Name the session and stop.
-- `dim check-command` — what this repo declares as its check. **A repo declaring none cannot be worked here**, because the slice loop has nothing to run and a slice that cannot be checked cannot be committed. Say so and stop.
-- `dim doctor` — a warn on the commit gate means nothing refuses an unchecked commit in a run nobody is watching.
-- Working tree clean, or there is uncommitted work that is not yours to land.
-- `dim wall` — the board is what the owner watches the run on, so it goes up before the first item is taken rather than after the fact. Print the address it names back to them and leave opening it to them; a wall already listening there is the one they have open, and the refusal saying so is the answer, not a reason to start a second. Working `dim-factory` itself, run `dim wall --dev`, which adds hot reload to the page the run may be editing.
+1. Check `dim q order <order-id>` for an active hand, hold, failed attempt, or completed outcome.
+2. If the order is queued and has no required hold, claim it as the operator at the station the next action needs:
 
-## Find the queue
+   ```text
+   dim order claim <order-id> --run <run-id> --station <dim-station-plan|dim-station-build|dim-station-review|ship>
+   ```
 
-A repo's queue is **read, never inferred** — the rule `dim check-command` already follows for the check, and it binds harder here, because working the wrong queue is the confident-and-wrong failure a person is at the gate for.
+3. If the order is already working, continue from its recorded station. Never claim an order another worker still holds.
 
-1. **The repo's own queue**, which `dim order ready` prints. It is keyed on the checkout's `owner/repo`, so the queue is the project's rather than the directory's, and `--project <owner/repo>` works another one deliberately.
-2. **The argument is the queue**, when one is given. `/dim-factory docs/backlog.md` works that document and a tracker query works those issues. Nothing is discovered and nothing else is read as a queue.
-3. **Two plausible queues is a question, not a coin flip.** Name both and stop.
+## Delegate planning
 
-**The rows state their own work, so nothing about one is retyped.** `dim order ready [--limit <n>]` prints every order nobody holds as JSON — its `id`, `title`, one-sentence `description`, `priority` and `status` — most urgent first and oldest before newest within a priority, with the held ones listed beside them. `dim order add` puts a new order in, including one found mid-slice.
+For an order without an approved current plan:
 
-Reading a tracker is your own tools' business — `dim` holds no credential and reaches no network, and nothing here changes that.
+1. Move the order to `dim-station-plan` when it is not already there.
+2. Run `dim order plan <order-id>`. The command mints the planner worker under the operator and records the planner's plan under the planner identity.
+3. Read the returned plan and `dim q order <order-id>`.
+4. Check that it answers the order, names independently verifiable slices, uses the repository's own check, and states risks, holds, and non-goals.
+5. Approve the exact current plan with `dim order approve <order-id>`, or hold the order with the reason that prevents approval.
 
-## Take an order
+Approval is the operator's check that the returned artifact answers the request. It is not a substitute for the independent review station.
 
-Take the first order that is **unheld and statable in one sentence**. A queue that marks its own blockers is telling you where to start; one that does not means reading enough of each item to know.
+## Delegate build and review
 
-`dim order ready` is that list, in the order to take them: an order it does not print is either held for the owner or already taken, and either way is not yours. Where a document carries the argument for the same ids, read the taken item's section there for a hold before starting.
+After plan approval:
 
-An order you cannot state needs scoping, which is `dim-station-plan` — run it, leave the sharpened order in the queue, and stop there.
+1. Move the order to `dim-station-build`.
+2. Start one builder worker with `dim worker run --role builder -- <command>`, passing the order id, approved plan, worktree, and repository check. The builder claims the build hand under its own identity and records commits, files, checks, documents, and findings as they occur.
+3. Read the builder's returned outcome and `dim q order <order-id>`. Approve the exact checked build with `dim order approve-build <order-id> --reason "..."` only when it answers the requested outcome.
+4. Move the order to `dim-station-review` and run `dim order review <order-id>`. The command mints a separate reviewer under the operator and records findings under the reviewer identity.
+5. Read the review outcome. If findings exist, hand the order back to the builder with their ids and required fixes. The operator approves the next build before starting another review round.
+6. When a review is clean, run `dim order approve-review <order-id>` as the operator.
 
-| the order | the entry point |
-|---|---|
-| adds functionality | `dim-line-feat` |
-| repairs something wrong | `dim-line-fix` |
-| neither — a refactor, a doc, a rule | `dim-station-build` |
+The loop is:
 
-**Assign the order by starting a builder**, at the tier `dim route builder` gives you. Run the builder with `dim worker run --role builder -- <command>` and give it the order, base revision and repo check. Its first act is `dim order claim`, made under the worker identity the factory started; that claim creates the isolated worktree, after which the builder `cd`s there, invokes the station itself and takes the order end to end. The operator never claims on the builder's behalf, because the claim is the assignment and its worker is the assignee. Running the station in this session makes the line one worker long, and then the queue is worked one item per invocation whatever this file says about emptying it.
-
-This is not the fan-out `dim-station-build` argues against. That rule keeps a single slice from being split across agents, because edits need the context that produced them — a builder holding one whole order has exactly that context. What it forbids is two agents editing one slice.
-
-Give the builder the order as the row states it, the repo's check, and the standing instruction to run its station's loop including the checking agent. Take back what it reports: the commits, the findings, what it left. A builder that returns without a commit and without saying why is a failed attempt, and the bound below counts it.
-
-**The floor is the builder's while it holds the order.** Read the record rather than the tree until it hands back, and queue what you find instead of fixing it: a builder cannot tell an operator's half-written edit from a broken repo, and the check it has to pass runs over the whole tree rather than its own diff, so an operator editing beside it fails the builder's gate with the operator's work. The same holds for anything that stops every hand at once — a schema bump refuses every `dim` write on the machine from the moment it lands until `dim rebuild`, so an order that changes the schema runs alone.
-
-**The factory starts the builder before it can read the order.** `dim worker run --role builder -- <command>` mints the worker, puts its name and token in the child environment, and ends it when the command exits. The builder's first command is the claim, so the order's first working event names the builder rather than the operator. A builder running inside the operator's process is not an assignment: it has no factory identity until it mints one, and the operator must stop and fix that boundary rather than let unattributed work continue.
-
-**Take back a claim rather than a summary.** What a builder says it did and what the record holds are two different things, and the second is the one that survives the session. Read the diff and run the repo's check yourself before the order is stopped.
-
-## Record the order
-
-Every order taken is claimed before a builder sees it and stopped once whatever happened. Work done without a claim is work nobody watching can see, and a claim that never stops is a card left on the floor.
-
-Mint one run id per invocation — `run-$(date -u +%Y%m%dT%H%M%SZ)`. The order id already exists: it is what `dim order ready` printed, and it is also the branch and the worktree directory the work is built in. The operator starts the builder with the order's unchanged words; the builder writes the claim below as its first act.
-
-```
-dim order claim <order-id> --run <run-id> \
-  --station <plan|build|review|ship> [--session <id>]
-dim order plan <order-id>
-dim order approve <order-id>
-dim order approve-build <order-id> --reason "..."
-dim order move <order-id> --station <plan|build|review|ship>
-dim order review <order-id>
-dim order approve-review <order-id>
-dim order ship <order-id>
-dim order stop <order-id> <completed|failed> [--reason "..."]
+```text
+operator delegates → worker returns attributed artifact → operator checks outcome
+       ↑                                                    ↓
+       └──────────── findings or failed outcome ────────────┘
 ```
 
-- **The id, the title and the statement come from the row, not from you.** A claim takes the order by its id and nothing else; the words are already on it, so nothing can record a second version of them.
-- **A claim is also the start.** The order existed before the worker did, so taking it is starting it and there is no separate step.
-- The branch and the worktree are the order id, and neither is stored: the claim makes the worktree, reusing `dim wt`'s own machinery at `<repo>/.claude/worktrees/<order-id>`, which is where the builder works. A claim that cannot make one is refused and writes no claim; a claim on an order whose worktree is already there reuses it, which is how a failed order is taken again.
-- **The worker comes from the environment, never from a flag.** `DIM_WORKER_NAME` and `DIM_WORKER_TOKEN` are what the factory hands a worker it starts, and every `dim order` write reads them and records that name on the moment. The operator may mint its own identity for queue and gate actions with `eval "$(dim worker mint --role operator)"`; it never lends that identity to a builder. A builder claim without the builder environment is refused rather than recorded against the operator.
-- **The station is a word the wall holds — `plan`, `build`, `review` or `ship` — never the line running it.** `dim-line-feat` and `dim-line-fix` are the line, not the station; the station is where the work is, and `dim order move <order-id> --station <name>` records it changing as the work moves through planning, building and review.
-- **The operator delegates and approves each returned outcome.** `dim order plan` and `dim order review` require the operator identity; station workers cannot delegate those phases. After `dim order plan`, the operator runs `dim order approve` before build delegation. After the builder records its latest commit and passing check, the operator runs `dim order approve-build` before `dim order review`. A review that raises findings returns to the builder; only a closed review with no findings can be accepted by `dim order approve-review`, after which the operator moves the order to ship.
-- Record evidence as it happens, not at the end: `dim order commit`, `dim order file`, `dim order check`, `dim order finding` and `dim order document` each take the order id and what was produced. `dim order finding` raises one and prints its number; `dim order answer <finding-id> --answer fixed|refused` replies to it, because raising and answering are two acts by two hands and each writes only its own. `dim order file` takes `--added` and `--removed` straight from `git diff --numstat`, which is where the card's `+/−` comes from; pass the `-` numstat gives a binary file through as it stands rather than counting it zero. An order that records nothing leaves a card with nothing on it; `dim q factory <order-id-prefix>` reads back what was recorded.
-- **Stop exactly once, whatever happened**: the work landed (`completed`), or it did not (`failed`, with the reason saying why). A failure puts the order back among the work nobody holds, carrying its reason, and keeps its worktree, since a failed order is claimed again in place and may hold work no commit has. `dim order stop <order> completed` is refused unless a check recorded after the order's last commit passed and that commit reaches the trunk — the gate reads the trunk itself, not the order's worktree, so `dim order ship <order-id>` lands the work, run from either checkout, before you stop the order. Completing removes the worktree once the status is written; a failed order keeps its worktree instead.
-- Work found mid-slice goes in with `dim order add`, so a run that surfaces "we should also do X" ends in a row rather than a paragraph nobody reads. A row that turns out to be wrong is corrected in place — `dim order amend <order-id> --title --description` while it is still queued — and one the work made unnecessary is `dim order drop <order-id> --reason "..."`, which keeps why it was not built and takes it off the board.
+## Ship and stop
 
-## The hold
+- Run `dim order ship <order-id>` only after the operator has approved the plan, the checked build, and the clean review.
+- Run `dim order stop <order-id> completed` only after the shipped commit and repository check satisfy the completion gate.
+- On a failed attempt, run `dim order stop <order-id> failed --reason "..."`; do not turn an absent artifact into success.
+- Stop at a hold for an owner decision, an outward-facing action, a hard-to-reverse choice, or a machine-wide change.
 
-Three shapes stop a run wherever they are met, including partway into an order that read as ready:
+## Audit rules
 
-- work that is hard to reverse
-- work that is outward-facing — a push to a shared branch, a comment on someone's issue, anything leaving this machine
-- a change that spends something on every session rather than this one
+- Every command that changes the order runs under the identity it is meant to record.
+- The operator delegates and approves; it does not impersonate planner, builder, or reviewer.
+- A planner, builder, and reviewer are separate worker identities, and every event names the worker that performed the act.
+- Read the persisted order report after every delegation. Chat output is not evidence.
+- Never infer success from process exit alone; require the artifact and its recorded evidence.
+- Never use the wall as an input or a second state store.
 
-A queue may add a hold of its own on top of these — a section its rules file marks as the owner's call, a label, a state. Read it as binding and never lift it: the owner releases a hold on the row, not an agent deciding an order looked fine.
+## Result
 
-Stopping means writing down what was found, leaving the order where it was, naming which shape stopped it, then `dim order hold <order-id> --reason "<shape>"` and stopping it as `failed`. Waiting for permission mid-run is not running unattended; deciding one of these alone is what the hold exists to prevent.
+Return the order id, current station, latest outcome, outstanding findings or hold, and the next operator action. If the order stopped, state the persisted reason and the worker identities that performed the last actions.
 
-## Keep the line moving
+## Red flags
 
-**Work the queue until it is empty.** Take the next order the moment one lands, and do not come back between items to say a thing went well — a line that halts after every order is not running, and a report per order is the report at the end read one piece at a time.
-
-The skill may be invoked repeatedly by whatever is driving it. Each invocation starts by reading the current floor and queue state; it never assumes that an earlier invocation finished, failed, or released an item. An order already held is observed rather than claimed again. Independent orders may run in parallel only when their claims are isolated; claiming and integration remain serialized. Repetition never crosses a hold or turns an unrecorded outcome into success.
-
-Four things stop it, and nothing else does:
-
-- a hold, per above
-- the order count, when one was given as an argument
-- **the same order failing twice** — a second failure says the order is wrong, not the attempt, so leave it and take the next one
-- **two orders failing in a row** — that is the floor moving rather than the orders, and the next thing to do is read why rather than start a third
-
-A failed attempt usually leaves the queue exactly as it was, so nothing but these keeps a run from taking the same item forever.
-
-## Report
-
-Per order, landed or not:
-
-- the order taken, quoted, and the project it belongs to
-- the order id and the status it stopped at
-- where it went, and the commits
-- what `dim q findings` recorded for the slice
-- what stopped the run, and which shape it was
-
-A run that took nothing and says why is a complete run. A queue with no startable order is a finding about the queue.
+- selecting an order from a queue when the caller supplied an explicit id
+- letting a builder claim planning or a reviewer delegate review
+- approving an artifact the operator did not read
+- running the next station before the current outcome is approved
+- treating a clean process exit as a completed order
+- writing evidence after the fact from memory
+- editing the project from the operator's checkout
+- using the wall to control or infer order state
