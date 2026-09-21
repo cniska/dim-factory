@@ -22,6 +22,8 @@ describe("subject rules", () => {
     expect(checkSubject("")).toBe("empty");
     expect(checkSubject("feat: a thing", "and why it happened")).toBe("body");
     expect(checkSubject("added a thing")).toBe("not-conventional");
+    // Nothing here is ever reverted, so there is no type to write one under.
+    expect(checkSubject("revert: the wall feed time")).toBe("not-conventional");
     expect(checkSubject("feat: résumé the session")).toBe("not-ascii");
   });
 

@@ -46,7 +46,7 @@ dim install-commit-gate --owner=<host>/<account>
 
 Commands that change a shared installation require `--write`. `dim doctor` reports missing or stale hooks, missing trust, database drift and unloaded agents together with the repair for each failure.
 
-The commit gate checks the repository's declared task before a commit. The push gate protects the remote default branch from rewrites and deletion. A repository's own `core.hooksPath` or an existing managed global hooks path is left alone. The gate rules and ownership model are described in [The factory](factory.md).
+The commit gate checks the repository's declared task before a commit. The push gate protects the remote default branch from rewrites and deletion, and refuses any push carrying a revert — git commits a revert without running the commit gate, so the push is where one is caught. A repository's own `core.hooksPath` or an existing managed global hooks path is left alone. The gate rules and ownership model are described in [The factory](factory.md).
 
 ## Worktrees and stations
 

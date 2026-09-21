@@ -98,6 +98,37 @@ describe("the push gate", () => {
     }
   });
 
+  // Git's sequencer commits a revert without running commit-msg, so the subject
+  // gate never sees one and this is the first gate that can refuse it.
+  test("refuses a push carrying a revert", () => {
+    const { root, work } = clonedRepo("gated-owner");
+    try {
+      commit(work, "second");
+      git(work, "revert", "--no-edit", "HEAD");
+
+      const pushed = push(work, "origin", "main");
+      expect(pushed.ok).toBe(false);
+      expect(pushed.err).toContain("pushes a revert");
+      expect(pushed.err).toContain("reset or rebase it out");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // The refusal follows the commit, not the branch it sits on.
+  test("refuses a revert pushed on a branch of its own", () => {
+    const { root, work } = clonedRepo("gated-owner");
+    try {
+      git(work, "checkout", "-qb", "side");
+      commit(work, "second");
+      git(work, "revert", "--no-edit", "HEAD");
+
+      expect(push(work, "origin", "side").err).toContain("pushes a revert");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("refuses a delete of the default branch", () => {
     const { root, work } = clonedRepo("gated-owner");
     try {

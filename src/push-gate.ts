@@ -90,6 +90,23 @@ protected="refs/heads/\${head#"$remote"/}"
 
 status=0
 while read -r _local_ref local_oid remote_ref remote_oid; do
+  # A revert is judged on every branch, not only the shared one: git's sequencer
+  # commits one without running commit-msg, so this is the first gate that sees it.
+  if [ -n "\${local_oid//0/}" ]; then
+    if [ -n "\${remote_oid//0/}" ] && git cat-file -e "$remote_oid" 2>/dev/null; then
+      span="$remote_oid..$local_oid"
+    else
+      span="$local_oid --not --remotes=$remote"
+    fi
+    reverts=$(git log --no-merges --format='  %h %s' --grep='^Revert "' $span 2>/dev/null || true)
+    if [ -n "$reverts" ]; then
+      echo "pre-push: this pushes a revert." >&2
+      echo "$reverts" >&2
+      echo "  drop the commit instead: reset or rebase it out." >&2
+      status=1
+    fi
+  fi
+
   [ "$remote_ref" = "$protected" ] || continue
 
   # An all-zero oid is git's way of saying the ref is absent on one side.

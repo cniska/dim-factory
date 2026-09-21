@@ -12,7 +12,7 @@ import { foldAscii, SLUG_SED } from "./remote-slug";
  */
 export const SUBJECT_LIMIT = 50;
 
-const TYPES = ["feat", "fix", "refactor", "docs", "test", "chore", "style", "perf", "build", "ci", "revert"];
+const TYPES = ["feat", "fix", "refactor", "docs", "test", "chore", "style", "perf", "build", "ci"];
 
 export type Violation = "empty" | "body" | "not-conventional" | "too-long" | "not-ascii";
 

@@ -27,6 +27,8 @@ Before committing:
 4. Update the long-lived documentation that describes the changed behavior.
 5. Use the repository's commit convention and let its commit gate enforce the subject.
 
+An unwanted commit is dropped, never reverted: reset or rebase it out while it is still local. Once it is pushed, dropping it rewrites the shared branch, which is the owner's call — stop and ask. A revert leaves both commits in the history and the message git writes for it answers to no one.
+
 Record the commit SHA, changed files, check command and result, reviewer findings and resolutions, and documentation updated. A hold or infrastructure failure is part of the report; it is not green evidence.
 
 ## Review work
@@ -57,3 +59,4 @@ Every stopped or completed operation says:
 - treating a reviewer finding as optional because tests pass
 - integrating two items together when their claims were separate
 - pushing or rewriting history without the owner's authorization
+- reverting a commit instead of dropping it
