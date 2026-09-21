@@ -45,6 +45,12 @@ describe("build approval integration", () => {
       undefined,
       repo.dir,
     );
+    expect(
+      db.query("SELECT role, parent_worker FROM factory_worker WHERE name = ?").get(builder.name),
+    ).toEqual({
+      role: "builder",
+      parent_worker: operator.name,
+    });
 
     expect(() =>
       runOrderCommand(db, ["review", "build-approval-order"], null, repo.dir, env(operator)),
