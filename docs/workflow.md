@@ -195,7 +195,17 @@ The slice records its commit, changed files, check, findings, documents, and sim
 
 The owner does not need to watch the worker's session directly. The wall shows the order's station, worker, silence, holds, failed checks, and current owner action; the order dialog shows the plan, result, execution summary, audit log, changes, and bounded program graph. The operator handles routine delegation and phase decisions; the owner enters at holds, repeated failures, architectural risk, ship, and verdict.
 
-The operator works above the stations. It delegates planning, building, and review; it does not re-review implementation or substitute for an independent reviewer. Because it owns the original request and the delegation contract, it checks whether each returned artifact answers that request before moving the order forward. It decides whether the work returns for another attempt, advances to the next station, or is held. The decision names the operator, phase, outcome, reason, and artifact it acted on.
+The operator works above the stations. Every station follows the same contract:
+
+```text
+operator states the outcome and constraints
+  → station worker performs its responsibility
+  → worker returns an attributed artifact and evidence
+  → operator checks the result against the request
+  → operator advances, returns, or holds the order
+```
+
+The artifact changes by station — a plan, a verified build with its simplification evidence, or a review — but the control boundary does not. Simplification is part of the build station's loop, not a separate station or worker role. The operator delegates planning, building, and review; it does not re-review implementation or substitute for an independent reviewer. Because it owns the original request and the delegation contract, it checks whether each returned artifact answers that request before moving the order forward. It decides whether the work returns for another attempt, advances to the next station, or is held. The decision names the operator, phase, outcome, reason, and artifact it acted on.
 
 Before tasking review, the operator approves the builder's exact latest commit after a passing check. The review command refuses to spawn without that decision, so a clean process cannot mistake a builder's successful exit for an outcome the operator has checked. A later commit requires a new approval for that commit.
 
