@@ -20,7 +20,7 @@ import { ORDER_STATUSES_SQL } from "./factory-order";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 40;
+export const SCHEMA_VERSION = 41;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -321,7 +321,7 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,
   order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   ts                    TEXT NOT NULL,
-  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'plan_submitted', 'plan_approved', 'commit_created', 'check_finished', 'review_opened', 'review_closed', 'finding_raised', 'finding_answered', 'completed', 'dropped', 'failed')),
+  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'plan_submitted', 'plan_approved', 'build_approved', 'commit_created', 'check_finished', 'review_opened', 'review_closed', 'finding_raised', 'finding_answered', 'completed', 'dropped', 'failed')),
   -- Who did it, written by the statement that writes the moment and never after.
   -- An entry completed later is a mutation of a record someone may already have
   -- read, and a log that can be amended is not evidence of anything.

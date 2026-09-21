@@ -2,7 +2,14 @@ import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { claimOrder, queueOrder, raiseOrderFinding, recordOrderCommit } from "./factory-order";
+import {
+  approveOrderBuild,
+  claimOrder,
+  queueOrder,
+  raiseOrderFinding,
+  recordOrderCheck,
+  recordOrderCommit,
+} from "./factory-order";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { integratedRepo, orderWorktree } from "./fixtures.test-support";
 import { type ReviewerSpawn, ReviewRefused, runOrderReview } from "./order-review";
@@ -60,11 +67,12 @@ function floor(): {
 } {
   const db = new Database(":memory:");
   db.run(SCHEMA_SQL);
+  const operator = mintWorker(db, { role: "operator", sessionId: `operator-${opened.length}` });
   opened.push(db);
   const builder = mintWorker(db, { role: "builder", sessionId: `builder-${opened.length}` });
   const dir = orderWorktree(trunk.dir, `review-${opened.length}`);
   worktrees.push(dir);
-  queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Read a slice" }, builder.name);
+  queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Read a slice" }, operator.name);
   claimOrder(
     db,
     "order-1",
@@ -85,6 +93,12 @@ function slice(db: Database, dir: string, worker: string, name: string): string 
     .stdout.toString()
     .trim();
   recordOrderCommit(db, "order-1", sha, worker, `feat: ${name}`);
+  recordOrderCheck(db, "order-1", { command: "bun run verify", exitCode: 0 }, worker);
+  const operator = db
+    .query<{ name: string }, []>("SELECT name FROM factory_worker WHERE role = 'operator'")
+    .get();
+  if (!operator) throw new Error("review fixture has no operator");
+  approveOrderBuild(db, "order-1", operator.name, `review ${name}`);
   return sha;
 }
 

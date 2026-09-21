@@ -25,6 +25,7 @@ export type OrderEventKind =
   | "moved"
   | "plan_submitted"
   | "plan_approved"
+  | "build_approved"
   | "commit_created"
   | "check_finished"
   | "review_opened"
@@ -81,7 +82,8 @@ export type OrderNotDoneCode =
   | "order_not_queued"
   | "order_held_by_run"
   | "order_not_building"
-  | "order_not_planning";
+  | "order_not_planning"
+  | "build_not_approved";
 
 /** Carries a code because a caller deciding which condition failed must not match on prose. */
 export class OrderNotDone extends Error {
@@ -96,6 +98,15 @@ export class OrderNotDone extends Error {
 export class PlanApprovalRefused extends Error {
   constructor(
     readonly code: "worker_not_operator" | "plan_missing" | "plan_already_approved",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+export class BuildApprovalRefused extends Error {
+  constructor(
+    readonly code: "worker_not_operator" | "commit_missing" | "build_not_checked" | "build_already_approved",
     message: string,
   ) {
     super(message);
@@ -295,6 +306,32 @@ export function moveOrder(
     ]);
     return event;
   })();
+}
+
+function latestOrderCommit(db: Database, orderId: string): { sha: string; recordedAt: string } | null {
+  return db
+    .query<{ sha: string; recordedAt: string }, [string]>(
+      "SELECT sha, recorded_at AS recordedAt FROM factory_order_commit WHERE order_id = ? ORDER BY recorded_at DESC, rowid DESC LIMIT 1",
+    )
+    .get(orderId);
+}
+
+export function assertBuildApproved(db: Database, orderId: string): { sha: string } {
+  const commit = latestOrderCommit(db, orderId);
+  if (!commit)
+    throw new OrderNotDone("build_not_approved", `order ${orderId} has no build commit to approve`);
+  const approved = db
+    .query(
+      "SELECT id FROM factory_order_event WHERE order_id = ? AND kind = 'build_approved' AND commit_sha = ?",
+    )
+    .get(orderId, commit.sha);
+  if (!approved) {
+    throw new OrderNotDone(
+      "build_not_approved",
+      `order ${orderId} must have its latest build commit approved before review`,
+    );
+  }
+  return { sha: commit.sha };
 }
 
 /** Current state rather than history: nothing has wanted to read back what an order
@@ -760,6 +797,49 @@ export function approveOrderPlan(db: Database, orderId: string, worker: string, 
       `plan ${plan.id} for order ${orderId} is already approved`,
     );
   appendOrderEvent(db, orderId, { kind: "plan_approved", worker, planId: plan.id }, at);
+}
+
+export function approveOrderBuild(
+  db: Database,
+  orderId: string,
+  worker: string,
+  reason: string,
+  at = now(),
+): void {
+  assertOrderWorking(db, orderId);
+  const role = db
+    .query<{ role: string }, [string]>("SELECT role FROM factory_worker WHERE name = ?")
+    .get(worker)?.role;
+  if (role !== "operator")
+    throw new BuildApprovalRefused("worker_not_operator", `worker ${worker} is not an operator`);
+  if (reason.trim() === "") throw new Error("build approval reason must not be empty");
+  const commit = latestOrderCommit(db, orderId);
+  if (!commit)
+    throw new BuildApprovalRefused("commit_missing", `order ${orderId} has no build commit to approve`);
+  const check = db
+    .query(
+      `SELECT 1 FROM factory_order_check
+       WHERE order_id = ? AND exit_code = 0 AND recorded_at >= ? LIMIT 1`,
+    )
+    .get(orderId, commit.recordedAt);
+  if (!check) {
+    throw new BuildApprovalRefused(
+      "build_not_checked",
+      `order ${orderId} has no passing check after its latest build commit`,
+    );
+  }
+  const approved = db
+    .query(
+      "SELECT id FROM factory_order_event WHERE order_id = ? AND kind = 'build_approved' AND commit_sha = ?",
+    )
+    .get(orderId, commit.sha);
+  if (approved) {
+    throw new BuildApprovalRefused(
+      "build_already_approved",
+      `build ${commit.sha} for order ${orderId} is already approved`,
+    );
+  }
+  appendOrderEvent(db, orderId, { kind: "build_approved", worker, commitSha: commit.sha, reason }, at);
 }
 
 /**

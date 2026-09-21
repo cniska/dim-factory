@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { Capability } from "./capabilities";
-import { closeOrderReview, openOrderReview } from "./factory-order";
+import { assertBuildApproved, closeOrderReview, openOrderReview } from "./factory-order";
 import {
   mintWorker,
   newWorkerSession,
@@ -144,6 +144,7 @@ export function runOrderReview(
     )
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
+  assertBuildApproved(db, orderId);
   const range = reviewRange(db, orderId, options.dir);
   const parentSession = options.env?.[WORKER_SESSION_VAR] ?? newWorkerSession("parent");
   const parentWorker =

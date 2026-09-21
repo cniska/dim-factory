@@ -8,6 +8,7 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   moved: "Moved",
   plan_submitted: "Plan submitted",
   plan_approved: "Plan approved",
+  build_approved: "Build approved",
   commit_created: "Commit",
   check_finished: "Check",
   review_opened: "Review opened",

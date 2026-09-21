@@ -197,6 +197,8 @@ The owner does not need to watch the worker's session directly. The wall shows t
 
 The operator works above the stations. It delegates planning, building, and review; it does not re-review implementation or substitute for an independent reviewer. Because it owns the original request and the delegation contract, it checks whether each returned artifact answers that request before moving the order forward. It decides whether the work returns for another attempt, advances to the next station, or is held. The decision names the operator, phase, outcome, reason, and artifact it acted on.
 
+Before tasking review, the operator approves the builder's exact latest commit after a passing check. The review command refuses to spawn without that decision, so a clean process cannot mistake a builder's successful exit for an outcome the operator has checked. A later commit requires a new approval for that commit.
+
 The build record also carries the worker, slice, and attempt identities needed to count loops honestly. A loop is not inferred from elapsed time or from the number of messages; it is a recorded iteration containing its start, end, slice, check or review result, worker, and outcome. Delegated and owner-driven builds remain distinguishable so the factory can compare owner attention, implementation time, loops, findings, and later `fix:` commits.
 
 Long-running work may cross context windows. A context reset starts a fresh worker with a structured handoff containing the approved plan revision, current slice, committed state, checks, findings, decisions, and next action. Compaction may shorten a session, but it is not the recovery contract; the handoff is the durable state the next worker can verify.
