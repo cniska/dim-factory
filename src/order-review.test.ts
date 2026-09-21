@@ -123,7 +123,7 @@ describe("a review round", () => {
 
   // The whole of the fix: the hand that writes the finding is one the builder was handed
   // no token for, and the record can tell them apart afterwards.
-  test("the finding names the spawned reviewer and not the builder that asked for it", () => {
+  test("the finding names the spawned reviewer and not the operator that delegated it", () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     const spawn: ReviewerSpawn = (_argv, env) => {
