@@ -32,6 +32,7 @@ describe("planner station", () => {
     );
     const repo = integratedRepo();
     const operator = mintWorker(db, { role: "operator", sessionId: "operator-session" });
+    const builder = mintWorker(db, { role: "builder", sessionId: "builder-session" });
     queueOrder(db, { id: "planner-order", project: "cniska/dim-factory", title: "Plan this" }, operator.name);
     claimOrder(
       db,
@@ -41,6 +42,17 @@ describe("planner station", () => {
       undefined,
       repo.dir,
     );
+
+    expect(() =>
+      runOrderPlan(db, "planner-order", {
+        env: {
+          DIM_HOME: home,
+          [WORKER_NAME_VAR]: builder.name,
+          [WORKER_TOKEN_VAR]: builder.token,
+          [WORKER_SESSION_VAR]: builder.sessionId,
+        },
+      }),
+    ).toThrow(expect.objectContaining({ code: "worker_not_operator" }));
 
     let argv: string[] = [];
     const outcome = runOrderPlan(db, "planner-order", {

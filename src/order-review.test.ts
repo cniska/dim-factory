@@ -61,6 +61,7 @@ const machine = (() => {
 function floor(): {
   db: Database;
   worker: string;
+  operator: string;
   builderToken: string;
   builderSession: string;
   dir: string;
@@ -81,7 +82,14 @@ function floor(): {
     undefined,
     trunk.dir,
   );
-  return { db, worker: builder.name, builderToken: builder.token, builderSession: builder.sessionId, dir };
+  return {
+    db,
+    worker: builder.name,
+    operator: operator.name,
+    builderToken: builder.token,
+    builderSession: builder.sessionId,
+    dir,
+  };
 }
 
 /** A commit in the order's own worktree, recorded the way a builder records one. */
@@ -103,10 +111,20 @@ function slice(db: Database, dir: string, worker: string, name: string): string 
 }
 
 describe("a review round", () => {
+  test("refuses review delegation from a non-operator worker before opening a round", () => {
+    const { db, worker, dir } = floor();
+    slice(db, dir, worker, "a");
+
+    expect(() => runOrderReview(db, "order-1", worker, { dir, env: machine })).toThrow(
+      expect.objectContaining({ code: "worker_not_operator" }),
+    );
+    expect(db.query("SELECT count(*) AS n FROM factory_order_review").get()).toEqual({ n: 0 });
+  });
+
   // The whole of the fix: the hand that writes the finding is one the builder was handed
   // no token for, and the record can tell them apart afterwards.
   test("the finding names the spawned reviewer and not the builder that asked for it", () => {
-    const { db, worker, dir } = floor();
+    const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     const spawn: ReviewerSpawn = (_argv, env) => {
       raiseOrderFinding(
@@ -118,7 +136,7 @@ describe("a review round", () => {
       return { exitCode: 0 };
     };
 
-    const done = runOrderReview(db, "order-1", worker, { dir, spawn, env: machine });
+    const done = runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
 
     expect(done).toMatchObject({ findings: 1, outcome: "closed" });
     expect(done.reviewer).not.toBe(worker);
@@ -130,11 +148,11 @@ describe("a review round", () => {
     expect(row).toEqual({ worker: done.reviewer, role: "reviewer" });
   });
 
-  test("records the builder as the reviewer's parent", () => {
-    const { db, worker, builderToken, builderSession, dir } = floor();
+  test("records the operator as the reviewer's parent", () => {
+    const { db, worker, operator, builderToken, builderSession, dir } = floor();
     slice(db, dir, worker, "parent");
 
-    const done = runOrderReview(db, "order-1", worker, {
+    const done = runOrderReview(db, "order-1", operator, {
       dir,
       spawn: () => ({ exitCode: 0 }),
       env: {
@@ -146,15 +164,15 @@ describe("a review round", () => {
     });
 
     expect(db.query("SELECT parent_worker FROM factory_worker WHERE name = ?").get(done.reviewer)).toEqual({
-      parent_worker: worker,
+      parent_worker: operator,
     });
   });
 
   test("the builder cannot raise one under its own name", () => {
-    const { db, worker, dir } = floor();
+    const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     const spawn: ReviewerSpawn = () => ({ exitCode: 0 });
-    runOrderReview(db, "order-1", worker, { dir, spawn, env: machine });
+    runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
 
     expect(() => raiseOrderFinding(db, "order-1", { dimension: "tests", summary: "mine" }, worker)).toThrow(
       /no review open/,
@@ -162,11 +180,11 @@ describe("a review round", () => {
   });
 
   test("a reviewer that did not finish leaves an aborted round, not a clean one", () => {
-    const { db, worker, dir } = floor();
+    const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     const spawn: ReviewerSpawn = () => ({ exitCode: 3 });
 
-    const done = runOrderReview(db, "order-1", worker, { dir, spawn, env: machine });
+    const done = runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
 
     expect(done).toMatchObject({ findings: 0, outcome: "aborted" });
     expect(db.query("SELECT outcome FROM factory_order_review WHERE id = ?").get(done.review)).toEqual({
@@ -175,7 +193,7 @@ describe("a review round", () => {
   });
 
   test("the reviewer is handed no tool that could edit", () => {
-    const { db, worker, dir } = floor();
+    const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     let handed: string[] = [];
     const spawn: ReviewerSpawn = (argv) => {
@@ -183,7 +201,7 @@ describe("a review round", () => {
       return { exitCode: 0 };
     };
 
-    runOrderReview(db, "order-1", worker, { dir, spawn, env: machine });
+    runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
 
     const allowed = (handed[handed.indexOf("--allowedTools") + 1] as string).split(",");
     expect(allowed).toEqual(REVIEWER_TOOLS);
@@ -195,7 +213,7 @@ describe("a review round", () => {
   // The token is the whole of the separation, so it must reach the child's environment and
   // nothing the builder's process can read back off the command line.
   test("the reviewer's token rides in its environment and not its argv", () => {
-    const { db, worker, dir } = floor();
+    const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     let argv: string[] = [];
     let env: Record<string, string> = {};
@@ -205,7 +223,7 @@ describe("a review round", () => {
       return { exitCode: 0 };
     };
 
-    const done = runOrderReview(db, "order-1", worker, { dir, spawn, env: machine });
+    const done = runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
 
     expect(env[WORKER_NAME_VAR]).toBe(done.reviewer);
     expect(env[WORKER_TOKEN_VAR]).toMatch(/^[0-9a-f]{32}$/);
@@ -213,14 +231,14 @@ describe("a review round", () => {
   });
 
   test("a second round reads only what the first one did not", () => {
-    const { db, worker, dir } = floor();
+    const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     const quiet: ReviewerSpawn = () => ({ exitCode: 0 });
-    const first = runOrderReview(db, "order-1", worker, { dir, spawn: quiet, env: machine });
+    const first = runOrderReview(db, "order-1", operator, { dir, spawn: quiet, env: machine });
     const fixed = slice(db, dir, worker, "b");
 
     let read = "";
-    runOrderReview(db, "order-1", worker, {
+    runOrderReview(db, "order-1", operator, {
       dir,
       env: machine,
       spawn: (argv) => {
@@ -236,36 +254,36 @@ describe("a review round", () => {
   });
 
   test("a round is refused over a tree that can still move", () => {
-    const { db, worker, dir } = floor();
+    const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     writeFileSync(join(dir, "uncommitted.txt"), "still moving");
 
-    expect(() => runOrderReview(db, "order-1", worker, { dir, env: machine })).toThrow(ReviewRefused);
+    expect(() => runOrderReview(db, "order-1", operator, { dir, env: machine })).toThrow(ReviewRefused);
     expect(db.query("SELECT count(*) AS n FROM factory_order_review").get()).toEqual({ n: 0 });
   });
 
   test("a round is refused over a head the order never recorded", () => {
-    const { db, worker, dir } = floor();
+    const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     writeFileSync(join(dir, "unrecorded.txt"), "b");
     Bun.spawnSync(["git", "-C", dir, "add", "."]);
     Bun.spawnSync(["git", "-C", dir, "commit", "-q", "-m", "feat: unrecorded"]);
 
-    expect(() => runOrderReview(db, "order-1", worker, { dir, env: machine })).toThrow(
+    expect(() => runOrderReview(db, "order-1", operator, { dir, env: machine })).toThrow(
       /is not a commit order order-1 recorded/,
     );
   });
 
   test("two rounds cannot be open over one order", () => {
-    const { db, worker, dir } = floor();
+    const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     const spawn: ReviewerSpawn = () => {
-      expect(() => runOrderReview(db, "order-1", worker, { dir, env: machine })).toThrow(
+      expect(() => runOrderReview(db, "order-1", operator, { dir, env: machine })).toThrow(
         /already has review/,
       );
       return { exitCode: 0 };
     };
 
-    runOrderReview(db, "order-1", worker, { dir, spawn, env: machine });
+    runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
   });
 });

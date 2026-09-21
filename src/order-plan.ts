@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { Capability } from "./capabilities";
+import { assertOperator } from "./factory-operator";
 import { recordOrderPlan } from "./factory-order";
 import {
   mintWorker,
@@ -62,11 +63,9 @@ export function runOrderPlan(
     )
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
+  const parentWorker = resolveWorker(db, options.env);
+  assertOperator(db, parentWorker, "delegate planning");
   const parentSession = options.env?.[WORKER_SESSION_VAR] ?? newWorkerSession("parent");
-  const parentWorker =
-    options.env?.[WORKER_NAME_VAR] && options.env?.[WORKER_TOKEN_VAR]
-      ? resolveWorker(db, options.env)
-      : undefined;
   const minted = mintWorker(db, {
     role: "planner",
     parentWorker,

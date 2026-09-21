@@ -1,10 +1,10 @@
 import type { Database } from "bun:sqlite";
 import type { Capability } from "./capabilities";
+import { assertOperator } from "./factory-operator";
 import { assertBuildApproved, closeOrderReview, openOrderReview } from "./factory-order";
 import {
   mintWorker,
   newWorkerSession,
-  resolveWorker,
   WORKER_NAME_VAR,
   WORKER_SESSION_VAR,
   WORKER_TOKEN_VAR,
@@ -126,7 +126,7 @@ export type ReviewOutcome = {
 };
 
 /**
- * Mints the reviewer, spawns it and closes the round from its exit code. The builder that
+ * Mints the reviewer, spawns it and closes the round from its exit code. The operator that
  * invokes this never holds the reviewer's token and never writes its brief, which is what
  * makes the finding evidence rather than the builder's own account of itself.
  */
@@ -144,16 +144,13 @@ export function runOrderReview(
     )
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
+  assertOperator(db, worker, "delegate review");
   assertBuildApproved(db, orderId);
   const range = reviewRange(db, orderId, options.dir);
   const parentSession = options.env?.[WORKER_SESSION_VAR] ?? newWorkerSession("parent");
-  const parentWorker =
-    options.env?.[WORKER_NAME_VAR] && options.env?.[WORKER_TOKEN_VAR]
-      ? resolveWorker(db, options.env)
-      : undefined;
   const minted = mintWorker(db, {
     role: "reviewer",
-    parentWorker,
+    parentWorker: worker,
     sessionId: `${parentSession}/reviewer/${orderId}/${newWorkerSession("round")}`,
   });
   const opened = openOrderReview(
