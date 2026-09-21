@@ -310,7 +310,7 @@ The evidence supports human attention at boundaries where the system cannot esta
 
 | Gate | Keep the owner when | Automate when | Evidence to record |
 |---|---|---|---|
-| **Plan approval** | The change is hard to reverse, outward-facing, machine-wide, or changes the project's direction | The planner can proceed under settled conventions and the order explicitly waives approval | Plan revision, approver, decision, grounds, time to approval |
+| **Plan approval** | The change is hard to reverse, outward-facing, machine-wide, or changes the project's direction | The planner can proceed under settled conventions and the order explicitly waives approval | Plan revision, operator, decision, grounds, time to approval |
 | **Contract and program design** | A schema, boundary, security rule, data model, or public behavior is changing | The change stays inside an established contract and the reviewer finds no boundary drift | Contract revision, program design, call path, owner decision if any |
 | **Architecture review** | The change crosses modules, queues, hooks, persistence, or project boundaries | The slice is local and its bounded graph matches the approved design | Graph comparison, findings, fixes or refusals |
 | **Hold or repeated failure** | The order lacks a required project contract, exceeds its retry policy, or encounters an ambiguous or unsafe condition | A mechanical gate can state the exact refusal and the next action | Hold reason, failed attempts, release actor, resolution |
