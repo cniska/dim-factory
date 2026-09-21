@@ -67,6 +67,7 @@ export type OrderEvent = {
   checkId?: number;
   reviewId?: number;
   findingId?: number;
+  planId?: number;
   holdType?: string;
   status?: OrderStatus;
   reason?: string;
@@ -181,6 +182,7 @@ function eventValues(orderId: string, event: OrderEvent, ts: string): (string | 
     event.checkId ?? null,
     event.reviewId ?? null,
     event.findingId ?? null,
+    event.planId ?? null,
     event.holdType ?? null,
     event.status ?? null,
     event.reason ?? null,
@@ -401,9 +403,9 @@ function appendOrderEventInTransaction(
 
   const written = db.run(
     `INSERT INTO factory_order_event
-       (order_id, ts, kind, worker, session_id, station, commit_sha, check_id, review_id, finding_id,
+       (order_id, ts, kind, worker, session_id, station, commit_sha, check_id, review_id, finding_id, plan_id,
         hold_type, status, reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     eventValues(orderId, event, event.ts ?? at),
   );
   // A failure hands the work back rather than ending it, so the row returns to the
@@ -708,7 +710,7 @@ export function recordOrderPlan(
   body: string,
   worker: string,
   at = now(),
-): void {
+): number {
   assertOrderWorking(db, orderId);
   const order = db.query("SELECT station FROM factory_order WHERE id = ?").get(orderId) as {
     station: string | null;
@@ -720,14 +722,19 @@ export function recordOrderPlan(
     );
   }
   if (body.trim() === "") throw new Error("plan body must not be empty");
-  db.transaction(() => {
-    db.run("INSERT INTO factory_order_plan (order_id, worker, body, recorded_at) VALUES (?, ?, ?, ?)", [
-      orderId,
-      worker,
-      body,
-      at,
-    ]);
-    appendOrderEventInTransaction(db, orderId, { kind: "plan_submitted", worker }, at);
+  return db.transaction(() => {
+    const revision = (db
+      .query<{ revision: number }, [string]>(
+        "SELECT coalesce(max(revision), 0) + 1 AS revision FROM factory_order_plan WHERE order_id = ?",
+      )
+      .get(orderId)?.revision ?? 1) as number;
+    const written = db.run(
+      "INSERT INTO factory_order_plan (order_id, revision, worker, body, recorded_at) VALUES (?, ?, ?, ?, ?)",
+      [orderId, revision, worker, body, at],
+    );
+    const planId = Number(written.lastInsertRowid);
+    appendOrderEventInTransaction(db, orderId, { kind: "plan_submitted", worker, planId }, at);
+    return planId;
   })();
 }
 
@@ -738,14 +745,21 @@ export function approveOrderPlan(db: Database, orderId: string, worker: string, 
     .get(worker)?.role;
   if (role !== "operator")
     throw new PlanApprovalRefused("worker_not_operator", `worker ${worker} is not an operator`);
-  const plan = db.query("SELECT order_id FROM factory_order_plan WHERE order_id = ?").get(orderId);
+  const plan = db
+    .query<{ id: number }, [string]>(
+      "SELECT id FROM factory_order_plan WHERE order_id = ? ORDER BY revision DESC, id DESC LIMIT 1",
+    )
+    .get(orderId);
   if (!plan) throw new PlanApprovalRefused("plan_missing", `order ${orderId} has no plan to approve`);
   const approved = db
-    .query("SELECT id FROM factory_order_event WHERE order_id = ? AND kind = 'plan_approved'")
-    .get(orderId);
+    .query("SELECT id FROM factory_order_event WHERE order_id = ? AND kind = 'plan_approved' AND plan_id = ?")
+    .get(orderId, plan.id);
   if (approved)
-    throw new PlanApprovalRefused("plan_already_approved", `order ${orderId} already has an approved plan`);
-  appendOrderEvent(db, orderId, { kind: "plan_approved", worker }, at);
+    throw new PlanApprovalRefused(
+      "plan_already_approved",
+      `plan ${plan.id} for order ${orderId} is already approved`,
+    );
+  appendOrderEvent(db, orderId, { kind: "plan_approved", worker, planId: plan.id }, at);
 }
 
 /**

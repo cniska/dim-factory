@@ -20,7 +20,7 @@ import { ORDER_STATUSES_SQL } from "./factory-order";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 39;
+export const SCHEMA_VERSION = 40;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -332,6 +332,7 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   check_id              INTEGER,
   review_id             INTEGER,
   finding_id            INTEGER,
+  plan_id               INTEGER,
   hold_type             TEXT,
   status                TEXT,
   reason                TEXT
@@ -436,10 +437,13 @@ CREATE TABLE IF NOT EXISTS factory_order_document (
 );
 
 CREATE TABLE IF NOT EXISTS factory_order_plan (
-  order_id      TEXT PRIMARY KEY REFERENCES factory_order(id) ON DELETE CASCADE,
+  id            INTEGER PRIMARY KEY,
+  order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  revision      INTEGER NOT NULL DEFAULT 1,
   worker        TEXT NOT NULL REFERENCES factory_worker(name),
   body          TEXT NOT NULL CHECK (trim(body) <> ''),
-  recorded_at   TEXT NOT NULL
+  recorded_at   TEXT NOT NULL,
+  UNIQUE (order_id, revision)
 );
 
 CREATE TABLE IF NOT EXISTS turn (
