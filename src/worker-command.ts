@@ -75,7 +75,8 @@ function session(env: Record<string, string | undefined>): string {
 
 function start(db: Database, argv: string[], role: Role, env: Record<string, string | undefined>): string {
   const childSession = `${session(env)}/run-${newWorkerSession("child")}`;
-  const minted = mintWorker(db, { role, pid: process.pid, sessionId: childSession });
+  const parentWorker = env[WORKER_NAME_VAR] && env[WORKER_TOKEN_VAR] ? resolveWorker(db, env) : undefined;
+  const minted = mintWorker(db, { role, parentWorker, pid: process.pid, sessionId: childSession });
   const [command, ...args] = argv as [string, ...string[]];
   const child = Bun.spawnSync([command, ...args], {
     env: {

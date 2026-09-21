@@ -3,8 +3,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { claimOrder, queueOrder, raiseOrderFinding, recordOrderCommit } from "./factory-order";
-import { WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
-import { integratedRepo, orderWorktree, workerIn } from "./fixtures.test-support";
+import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
+import { integratedRepo, orderWorktree } from "./fixtures.test-support";
 import { type ReviewerSpawn, ReviewRefused, runOrderReview } from "./order-review";
 import { SCHEMA_SQL } from "./schema";
 
@@ -51,16 +51,29 @@ const machine = (() => {
   return { DIM_HOME: home };
 })();
 
-function floor(): { db: Database; worker: string; dir: string } {
+function floor(): {
+  db: Database;
+  worker: string;
+  builderToken: string;
+  builderSession: string;
+  dir: string;
+} {
   const db = new Database(":memory:");
   db.run(SCHEMA_SQL);
   opened.push(db);
-  const worker = workerIn(db);
+  const builder = mintWorker(db, { role: "builder", sessionId: `builder-${opened.length}` });
   const dir = orderWorktree(trunk.dir, `review-${opened.length}`);
   worktrees.push(dir);
-  queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Read a slice" }, worker);
-  claimOrder(db, "order-1", { runId: "run-1", station: "dim-station-build" }, worker, undefined, trunk.dir);
-  return { db, worker, dir };
+  queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Read a slice" }, builder.name);
+  claimOrder(
+    db,
+    "order-1",
+    { runId: "run-1", station: "dim-station-build" },
+    builder.name,
+    undefined,
+    trunk.dir,
+  );
+  return { db, worker: builder.name, builderToken: builder.token, builderSession: builder.sessionId, dir };
 }
 
 /** A commit in the order's own worktree, recorded the way a builder records one. */
@@ -101,6 +114,26 @@ describe("a review round", () => {
       )
       .get();
     expect(row).toEqual({ worker: done.reviewer, role: "reviewer" });
+  });
+
+  test("records the builder as the reviewer's parent", () => {
+    const { db, worker, builderToken, builderSession, dir } = floor();
+    slice(db, dir, worker, "parent");
+
+    const done = runOrderReview(db, "order-1", worker, {
+      dir,
+      spawn: () => ({ exitCode: 0 }),
+      env: {
+        ...machine,
+        [WORKER_NAME_VAR]: worker,
+        [WORKER_TOKEN_VAR]: builderToken,
+        [WORKER_SESSION_VAR]: builderSession,
+      },
+    });
+
+    expect(db.query("SELECT parent_worker FROM factory_worker WHERE name = ?").get(done.reviewer)).toEqual({
+      parent_worker: worker,
+    });
   });
 
   test("the builder cannot raise one under its own name", () => {

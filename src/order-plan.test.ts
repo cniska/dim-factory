@@ -4,7 +4,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { claimOrder, queueOrder } from "./factory-order";
-import { integratedRepo, workerIn } from "./fixtures.test-support";
+import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
+import { integratedRepo } from "./fixtures.test-support";
 import { runOrderPlan } from "./order-plan";
 import { SCHEMA_SQL } from "./schema";
 
@@ -30,20 +31,25 @@ describe("planner station", () => {
       }),
     );
     const repo = integratedRepo();
-    const operator = workerIn(db, "operator");
-    queueOrder(db, { id: "planner-order", project: "cniska/dim-factory", title: "Plan this" }, operator);
+    const operator = mintWorker(db, { role: "operator", sessionId: "operator-session" });
+    queueOrder(db, { id: "planner-order", project: "cniska/dim-factory", title: "Plan this" }, operator.name);
     claimOrder(
       db,
       "planner-order",
       { runId: "run", station: "dim-station-plan" },
-      operator,
+      operator.name,
       undefined,
       repo.dir,
     );
 
     let argv: string[] = [];
     const outcome = runOrderPlan(db, "planner-order", {
-      env: { DIM_HOME: home },
+      env: {
+        DIM_HOME: home,
+        [WORKER_NAME_VAR]: operator.name,
+        [WORKER_TOKEN_VAR]: operator.token,
+        [WORKER_SESSION_VAR]: operator.sessionId,
+      },
       spawn: (given, env) => {
         argv = given;
         expect(env.DIM_WORKER_NAME).toBeString();
@@ -64,6 +70,9 @@ describe("planner station", () => {
     expect(argv.at(-1)).not.toContain("dim order");
     expect(db.query("SELECT role FROM factory_worker WHERE name = ?").get(outcome.planner)).toEqual({
       role: "planner",
+    });
+    expect(db.query("SELECT parent_worker FROM factory_worker WHERE name = ?").get(outcome.planner)).toEqual({
+      parent_worker: operator.name,
     });
     expect(db.query("SELECT body, worker FROM factory_order_plan").get()).toEqual({
       body: outcome.body,

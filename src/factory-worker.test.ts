@@ -51,6 +51,38 @@ describe("issuing a factory worker", () => {
     db.close();
   });
 
+  test("records the worker that requested a child identity", () => {
+    const db = floor();
+    const parent = mintWorker(db, { role: "operator", sessionId: "operator-session" });
+    const child = mintWorker(db, {
+      role: "builder",
+      parentWorker: parent.name,
+      sessionId: "operator-session/builder-session",
+    });
+
+    expect(db.query("SELECT role, parent_worker FROM factory_worker WHERE name = ?").get(child.name)).toEqual(
+      {
+        role: "builder",
+        parent_worker: parent.name,
+      },
+    );
+    db.close();
+  });
+
+  test("refuses a child whose parent is unknown or over", () => {
+    const db = floor();
+
+    expect(() => mintWorker(db, { role: "builder", parentWorker: "missing-1" })).toThrow(
+      "parent worker missing-1 does not exist",
+    );
+    const parent = mintWorker(db, { role: "operator" });
+    endWorker(db, parent.name);
+    expect(() => mintWorker(db, { role: "builder", parentWorker: parent.name })).toThrow(
+      `parent worker ${parent.name} has ended`,
+    );
+    db.close();
+  });
+
   test("holds the digest of the token and never the token", () => {
     const db = floor();
     const minted = mintWorker(db, { role: "builder" });

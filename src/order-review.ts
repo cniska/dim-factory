@@ -4,6 +4,7 @@ import { closeOrderReview, openOrderReview } from "./factory-order";
 import {
   mintWorker,
   newWorkerSession,
+  resolveWorker,
   WORKER_NAME_VAR,
   WORKER_SESSION_VAR,
   WORKER_TOKEN_VAR,
@@ -145,8 +146,13 @@ export function runOrderReview(
   if (!order) throw new Error(`order not found: ${orderId}`);
   const range = reviewRange(db, orderId, options.dir);
   const parentSession = options.env?.[WORKER_SESSION_VAR] ?? newWorkerSession("parent");
+  const parentWorker =
+    options.env?.[WORKER_NAME_VAR] && options.env?.[WORKER_TOKEN_VAR]
+      ? resolveWorker(db, options.env)
+      : undefined;
   const minted = mintWorker(db, {
     role: "reviewer",
+    parentWorker,
     sessionId: `${parentSession}/reviewer/${orderId}/${newWorkerSession("round")}`,
   });
   const opened = openOrderReview(

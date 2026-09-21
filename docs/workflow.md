@@ -59,6 +59,18 @@ The repository owns setup and teardown details: dependencies, services, ports, e
 
 Every meaningful act names its worker at write time. Harness identity, model, tier, and operator are recorded as attributes of the run or event rather than inferred later from a transcript join.
 
+## Delegation and worker trees
+
+The operator owns one project run, while each station owns the shape of its internal delegation. A station worker may request child workers for independent work; the factory mints their identities, starts them with the requested capabilities, and records the parent-child relationship. The station chooses the dimensions, and the operator does not repeat that knowledge by spawning each child manually.
+
+```text
+operator
+  → station worker
+      → child workers
+```
+
+The station coordinator receives the children’s evidence and returns one station result to the operator. A coordinator may request `spawn-workers`; a child worker does not receive that capability. Every request, spawn, result, and finding names the worker that performed it. Worker minting records the direct parent; request, result, and finding records remain part of the station slices that use this tree.
+
 ## Research
 
 **Live.** The planning station starts with the machine's record rather than a blank page. It asks:
@@ -72,7 +84,7 @@ The research artifact records the queries, the relevant references, the conclusi
 
 ## Design and plan
 
-**Live as a station; durable order artifacts are planned.** The planner writes its plan under its own name, and the owner's release is recorded as its own act — a plan carrying the name of whoever transcribed it says that hand planned it. A revised plan is a new version linked to the version it replaces; the previous version remains readable.
+**The first executable process uses an operator-authored plan.** The operator writes the plan under its own name and explicitly approves it for the builder. This approval authorizes execution; it is not an independent quality review. Planner fan-out, synthesis, and independent plan review remain later additions after the core order loop works.
 
 A plan contains:
 

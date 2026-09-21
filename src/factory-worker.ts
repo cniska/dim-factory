@@ -42,19 +42,36 @@ function digest(token: string): string {
  */
 export function mintWorker(
   db: Database,
-  worker: { role: Role; pid?: number; sessionId?: string },
+  worker: { role: Role; parentWorker?: string; pid?: number; sessionId?: string },
   at = now(),
 ): MintedWorker {
   const sessionId = worker.sessionId ?? newWorkerSession("unbound");
   if (sessionId.trim() === "") throw new Error("worker session id cannot be empty");
   const token = randomBytes(16).toString("hex");
   return db.transaction(() => {
+    if (worker.parentWorker !== undefined) {
+      const parent = db
+        .query<{ name: string; ended_at: string | null }, [string]>(
+          "SELECT name, ended_at FROM factory_worker WHERE name = ?",
+        )
+        .get(worker.parentWorker);
+      if (!parent) throw new Error(`parent worker ${worker.parentWorker} does not exist`);
+      if (parent.ended_at !== null) throw new Error(`parent worker ${worker.parentWorker} has ended`);
+    }
     const held = db.query<{ name: string }, []>("SELECT name FROM factory_worker").all();
     const name = randomWorkerName(new Set(held.map((row) => row.name)));
     try {
       db.run(
-        "INSERT INTO factory_worker (name, role, session_id, token_digest, pid, started_at) VALUES (?, ?, ?, ?, ?, ?)",
-        [name, worker.role ?? null, sessionId, digest(token), worker.pid ?? null, at],
+        "INSERT INTO factory_worker (name, role, parent_worker, session_id, token_digest, pid, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+          name,
+          worker.role ?? null,
+          worker.parentWorker ?? null,
+          sessionId,
+          digest(token),
+          worker.pid ?? null,
+          at,
+        ],
       );
     } catch (error) {
       if (String(error).includes("UNIQUE constraint failed: factory_worker.session_id")) {

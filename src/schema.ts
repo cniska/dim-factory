@@ -20,7 +20,7 @@ import { ORDER_STATUSES_SQL } from "./factory-order";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 37;
+export const SCHEMA_VERSION = 38;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -294,6 +294,9 @@ CREATE TABLE IF NOT EXISTS factory_worker (
   -- so a role the record refuses cannot be one the line routes. Under NOT NULL
   -- because a hand with no role is one nothing can route and nothing can draw.
   role          TEXT NOT NULL CHECK (role IN (${ROLES_SQL})),
+  -- The worker that requested this one. Roots have no parent; a child never infers
+  -- its parent from a session string, because session naming is not the audit record.
+  parent_worker TEXT REFERENCES factory_worker(name),
   -- The session that holds this identity. One session can mint one worker; a station
   -- spawned child uses its own explicit session id.
   session_id    TEXT UNIQUE,
