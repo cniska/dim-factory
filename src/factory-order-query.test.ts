@@ -209,6 +209,7 @@ describe("factory order query", () => {
       db,
       "order-123",
       { path: "src/factory-order.ts", added: 12, removed: 3 },
+      worker,
       "2026-09-18T10:01:30.000Z",
     );
     recordOrderCheck(

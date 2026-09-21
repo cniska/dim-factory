@@ -185,11 +185,11 @@ const EVIDENCE: Record<string, Evidence> = {
   },
   file: {
     flags: ["--path", "--added", "--removed"],
-    record: (db, id, given) => {
+    record: (db, id, given, worker) => {
       const path = required(given, "--path");
       const added = lineCount(given, "--added");
       const removed = lineCount(given, "--removed");
-      recordOrderFile(db, id, { path, added, removed });
+      recordOrderFile(db, id, { path, added, removed }, worker);
       const counted =
         added === undefined && removed === undefined ? "" : ` (+${added ?? 0}/-${removed ?? 0})`;
       return `${id} recorded ${path}${counted}`;

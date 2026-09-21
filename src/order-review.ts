@@ -2,13 +2,7 @@ import type { Database } from "bun:sqlite";
 import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
 import { assertBuildApproved, closeOrderReview, openOrderReview } from "./factory-order";
-import {
-  mintWorker,
-  newWorkerSession,
-  WORKER_NAME_VAR,
-  WORKER_SESSION_VAR,
-  WORKER_TOKEN_VAR,
-} from "./factory-worker";
+import { mintWorker, newWorkerSession, WORKER_SESSION_VAR, workerProcessEnv } from "./factory-worker";
 import { route } from "./routing";
 import { readSpawnProfile, spawnArgv } from "./spawn-profile";
 
@@ -164,11 +158,7 @@ export function runOrderReview(
   const spawn = options.spawn ?? spawnReviewer;
   const run = spawn(
     spawnArgv(profile, { model, brief: reviewerBrief(order, range), capabilities: REVIEWER_CAPABILITIES }),
-    {
-      [WORKER_NAME_VAR]: minted.name,
-      [WORKER_TOKEN_VAR]: minted.token,
-      [WORKER_SESSION_VAR]: minted.sessionId,
-    },
+    workerProcessEnv(options.env, minted),
   );
   const outcome = run.exitCode === 0 ? "closed" : "aborted";
   closeOrderReview(db, opened.id, outcome, worker);

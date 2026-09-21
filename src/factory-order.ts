@@ -550,11 +550,17 @@ export function recordOrderCommit(
 
 export type OrderFile = { path: string; added?: number; removed?: number };
 
-export function recordOrderFile(db: Database, orderId: string, file: OrderFile, at = now()): void {
+export function recordOrderFile(
+  db: Database,
+  orderId: string,
+  file: OrderFile,
+  worker: string,
+  at = now(),
+): void {
   assertOrderBuilding(db, orderId);
   db.run(
-    "INSERT INTO factory_order_file (order_id, path, added, removed, recorded_at) VALUES (?, ?, ?, ?, ?)",
-    [orderId, file.path, file.added ?? null, file.removed ?? null, at],
+    "INSERT INTO factory_order_file (order_id, worker, path, added, removed, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
+    [orderId, worker, file.path, file.added ?? null, file.removed ?? null, at],
   );
 }
 

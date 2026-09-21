@@ -767,7 +767,7 @@ describe("factory order report records", () => {
       { worker, kind: "failed", reason: "needs approval" },
       "2026-09-18T10:02:00.000Z",
     );
-    expect(() => recordOrderFile(database, "order-1", { path: "src/after-stop.ts" })).toThrow(
+    expect(() => recordOrderFile(database, "order-1", { path: "src/after-stop.ts" }, worker)).toThrow(
       "order order-1 is not claimed",
     );
     expect(() => recordOrderEnvironment(database, "order-1", teardownReport)).toThrow(
@@ -895,6 +895,7 @@ describe("factory order report records", () => {
       database,
       "order-1",
       { path: "src/factory-order.ts", added: 40, removed: 9 },
+      worker,
       "2026-09-18T10:02:30.000Z",
     );
     const check = recordOrderCheck(

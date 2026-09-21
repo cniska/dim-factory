@@ -29,6 +29,18 @@ export class WorkerUnknown extends Error {
 /** The name is public and names the worker everywhere; the token is what proves it is that one. */
 export type MintedWorker = { name: string; token: string; sessionId: string };
 
+export function workerProcessEnv(machine: Env | undefined, worker: MintedWorker): Record<string, string> {
+  const inherited = Object.fromEntries(
+    Object.entries(machine ?? {}).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  );
+  return {
+    ...inherited,
+    [WORKER_NAME_VAR]: worker.name,
+    [WORKER_TOKEN_VAR]: worker.token,
+    [WORKER_SESSION_VAR]: worker.sessionId,
+  };
+}
+
 const now = (): string => new Date().toISOString();
 
 function digest(token: string): string {

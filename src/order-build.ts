@@ -12,9 +12,8 @@ import {
   endWorker,
   mintWorker,
   newWorkerSession,
-  WORKER_NAME_VAR,
   WORKER_SESSION_VAR,
-  WORKER_TOKEN_VAR,
+  workerProcessEnv,
 } from "./factory-worker";
 import type { Env } from "./paths";
 import { route } from "./routing";
@@ -133,11 +132,7 @@ export function runOrderBuild(
         brief: builderBrief(order, plan.body, runId),
         capabilities: BUILDER_CAPABILITIES,
       }),
-      {
-        [WORKER_NAME_VAR]: minted.name,
-        [WORKER_TOKEN_VAR]: minted.token,
-        [WORKER_SESSION_VAR]: minted.sessionId,
-      },
+      workerProcessEnv(options.env, minted),
       worktree,
     );
     if (run.exitCode !== 0) {

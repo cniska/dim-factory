@@ -20,7 +20,7 @@ import { ORDER_STATUSES_SQL } from "./factory-order";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 42;
+export const SCHEMA_VERSION = 43;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -352,6 +352,7 @@ CREATE TABLE IF NOT EXISTS factory_order_commit (
 -- and git reports no line counts at all for a binary file.
 CREATE TABLE IF NOT EXISTS factory_order_file (
   order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  worker        TEXT REFERENCES factory_worker(name),
   path          TEXT NOT NULL,
   added         INTEGER,
   removed       INTEGER,

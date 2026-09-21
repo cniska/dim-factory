@@ -93,7 +93,7 @@ export async function runFactoryOrder(
     appendEvent: (event) => appendOrderEvent(db, item.id, event, undefined, options.worktree),
     stop: (outcome) => appendOrderEvent(db, item.id, stopEvent(outcome, worker), undefined, options.worktree),
     recordCommit: (sha, subject) => recordOrderCommit(db, item.id, sha, worker, subject),
-    recordFile: (file) => recordOrderFile(db, item.id, file),
+    recordFile: (file) => recordOrderFile(db, item.id, file, worker),
     recordCheck: (check) => recordOrderCheck(db, item.id, check, worker),
     answerFinding: (findingId, answer) => answerOrderFinding(db, findingId, answer, worker),
     recordDocument: (path) => recordOrderDocument(db, item.id, path, worker),

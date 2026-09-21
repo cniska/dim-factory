@@ -489,6 +489,7 @@ describe("factory wall item view", () => {
       db,
       "order-worked",
       { path: "src/factory-wall.ts", added: 62, removed: 7 },
+      worker,
       "2026-09-18T10:05:00.000Z",
     );
     recordOrderCommit(
@@ -610,7 +611,7 @@ describe("factory wall item view", () => {
       worker,
     );
     claimOrder(db, "order-uncounted", { runId: "run", station: "build" }, worker);
-    recordOrderFile(db, "order-uncounted", { path: "src/binary.png" });
+    recordOrderFile(db, "order-uncounted", { path: "src/binary.png" }, worker);
 
     const view = assembleItemView(db, "order-uncounted", new Date("2026-09-18T10:20:00.000Z"));
 
@@ -631,7 +632,7 @@ describe("factory wall item view", () => {
       worker,
     );
     claimOrder(db, "order-at-home", { runId: "run", station: "build" }, worker);
-    recordOrderFile(db, "order-at-home", { path: `${home}/code/dim-factory/src/paths.ts` });
+    recordOrderFile(db, "order-at-home", { path: `${home}/code/dim-factory/src/paths.ts` }, worker);
 
     const view = assembleItemView(db, "order-at-home", new Date("2026-09-18T10:20:00.000Z"));
 
@@ -757,7 +758,7 @@ describe("factory wall item view", () => {
       worker,
       "2026-09-18T10:03:00.000Z",
     );
-    recordOrderFile(db, "order-other", { path: "src/other.ts" }, "2026-09-18T10:05:00.000Z");
+    recordOrderFile(db, "order-other", { path: "src/other.ts" }, worker, "2026-09-18T10:05:00.000Z");
     recordOrderDocument(db, "order-other", "docs/other.md", worker, "2026-09-18T10:09:00.000Z");
 
     const entries = assembleItemView(db, "order-other", new Date("2026-09-18T10:20:00.000Z"))?.entries ?? [];

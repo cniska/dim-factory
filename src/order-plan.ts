@@ -6,9 +6,8 @@ import {
   mintWorker,
   newWorkerSession,
   resolveWorker,
-  WORKER_NAME_VAR,
   WORKER_SESSION_VAR,
-  WORKER_TOKEN_VAR,
+  workerProcessEnv,
 } from "./factory-worker";
 import { route } from "./routing";
 import { readSpawnProfile, spawnArgv } from "./spawn-profile";
@@ -76,11 +75,7 @@ export function runOrderPlan(
   const spawn = options.spawn ?? spawnPlanner;
   const run = spawn(
     spawnArgv(profile, { model, brief: plannerBrief(order), capabilities: PLANNER_CAPABILITIES }),
-    {
-      [WORKER_NAME_VAR]: minted.name,
-      [WORKER_TOKEN_VAR]: minted.token,
-      [WORKER_SESSION_VAR]: minted.sessionId,
-    },
+    workerProcessEnv(options.env, minted),
   );
   if (run.exitCode !== 0) throw new Error(`${minted.name} did not finish planning`);
   const body = run.stdout.trim();
