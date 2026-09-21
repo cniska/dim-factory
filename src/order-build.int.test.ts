@@ -1,0 +1,199 @@
+import { Database } from "bun:sqlite";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { approveOrderPlan, claimOrder, moveOrder, queueOrder, recordOrderPlan } from "./factory-order";
+import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
+import { integratedRepo } from "./fixtures.test-support";
+import { runOrderBuild } from "./order-build";
+import { SCHEMA_SQL } from "./schema";
+
+const repos: string[] = [];
+const homes: string[] = [];
+afterAll(() => {
+  for (const repo of repos) rmSync(repo, { recursive: true, force: true });
+  for (const home of homes) rmSync(home, { recursive: true, force: true });
+});
+
+describe("builder station", () => {
+  test("starts an attributed builder in the operator-allocated worktree", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const repo = integratedRepo();
+    repos.push(repo.dir);
+    const home = mkdtempSync(join(tmpdir(), "dim-builder-"));
+    homes.push(home);
+    writeFileSync(
+      join(home, "routing.json"),
+      '{ "cheap": "small", "standard": "middling", "deep": "large" }',
+    );
+    writeFileSync(
+      join(home, "spawn.json"),
+      JSON.stringify({
+        argv: ["builder", "{brief}", "{model}", "{tools}"],
+        slots: { tools: { join: "," } },
+        grants: {
+          "read-files": { tools: ["Read"] },
+          "edit-files": { tools: ["Edit"] },
+          "read-history": { tools: ["Bash(git log:*)"] },
+          "ask-dim": { tools: ["Bash(dim q:*)"] },
+          "run-check": { tools: ["Bash(bun run verify:*)"] },
+        },
+      }),
+    );
+    const operator = mintWorker(db, { role: "operator", sessionId: "build-operator" });
+    queueOrder(
+      db,
+      { id: "builder-order", project: "cniska/dim-factory", title: "Build this" },
+      operator.name,
+    );
+    claimOrder(
+      db,
+      "builder-order",
+      { runId: "plan-run", station: "dim-station-plan" },
+      operator.name,
+      undefined,
+      repo.dir,
+    );
+    const planner = mintWorker(db, {
+      role: "planner",
+      parentWorker: operator.name,
+      sessionId: "build-operator/planner",
+    });
+    recordOrderPlan(db, "builder-order", "## Outcome\n\nBuild the requested result.", planner.name);
+    approveOrderPlan(db, "builder-order", operator.name);
+    moveOrder(db, "builder-order", "dim-station-build", operator.name);
+
+    let spawnedCwd = "";
+    let spawnedBrief = "";
+    const outcome = runOrderBuild(db, "builder-order", operator.name, {
+      dir: repo.dir,
+      env: {
+        DIM_HOME: home,
+        [WORKER_NAME_VAR]: operator.name,
+        [WORKER_TOKEN_VAR]: operator.token,
+        [WORKER_SESSION_VAR]: operator.sessionId,
+      },
+      spawn: (argv, childEnv, cwd) => {
+        spawnedCwd = cwd;
+        spawnedBrief = argv[1] ?? "";
+        const builder = childEnv[WORKER_NAME_VAR] as string;
+        claimOrder(
+          db,
+          "builder-order",
+          { runId: "builder-run", sessionId: childEnv[WORKER_SESSION_VAR], station: "dim-station-build" },
+          builder,
+          undefined,
+          repo.dir,
+        );
+        return { exitCode: 0 };
+      },
+    });
+
+    expect(spawnedCwd).toBe(realpathSync(join(repo.dir, ".claude", "worktrees", "builder-order")));
+    expect(spawnedBrief).toContain("The operator approved the following plan");
+    expect(spawnedBrief).toContain("Build the requested result.");
+    expect(outcome.worktree).toBe(spawnedCwd);
+    expect(
+      db
+        .query("SELECT role, parent_worker, ended_at FROM factory_worker WHERE name = ?")
+        .get(outcome.builder),
+    ).toEqual({
+      role: "builder",
+      parent_worker: operator.name,
+      ended_at: expect.any(String),
+    });
+    expect(
+      db
+        .query("SELECT kind, worker, station FROM factory_order_event WHERE order_id = ?")
+        .all("builder-order"),
+    ).toEqual([
+      { kind: "queued", worker: operator.name, station: null },
+      { kind: "claimed", worker: operator.name, station: "dim-station-plan" },
+      { kind: "plan_submitted", worker: planner.name, station: null },
+      { kind: "plan_approved", worker: operator.name, station: null },
+      { kind: "moved", worker: operator.name, station: "dim-station-build" },
+      { kind: "claimed", worker: outcome.builder, station: "dim-station-build" },
+    ]);
+    db.close();
+  });
+
+  test("records a failed build when the configured harness cannot start", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const repo = integratedRepo();
+    repos.push(repo.dir);
+    const home = mkdtempSync(join(tmpdir(), "dim-builder-failure-"));
+    homes.push(home);
+    writeFileSync(
+      join(home, "routing.json"),
+      '{ "cheap": "small", "standard": "middling", "deep": "large" }',
+    );
+    writeFileSync(
+      join(home, "spawn.json"),
+      JSON.stringify({
+        argv: ["builder", "{brief}", "{model}", "{tools}"],
+        slots: { tools: { join: "," } },
+        grants: {
+          "read-files": { tools: ["Read"] },
+          "edit-files": { tools: ["Edit"] },
+          "read-history": { tools: ["Bash(git log:*)"] },
+          "ask-dim": { tools: ["Bash(dim q:*)"] },
+          "run-check": { tools: ["Bash(bun run verify:*)"] },
+        },
+      }),
+    );
+    const operator = mintWorker(db, { role: "operator", sessionId: "failed-build-operator" });
+    queueOrder(
+      db,
+      { id: "failed-builder-order", project: "cniska/dim-factory", title: "Fail this build" },
+      operator.name,
+    );
+    claimOrder(
+      db,
+      "failed-builder-order",
+      { runId: "failed-plan-run", station: "dim-station-plan" },
+      operator.name,
+      undefined,
+      repo.dir,
+    );
+    const planner = mintWorker(db, {
+      role: "planner",
+      parentWorker: operator.name,
+      sessionId: "failed-build-operator/planner",
+    });
+    recordOrderPlan(db, "failed-builder-order", "## Outcome\n\nTry the build.", planner.name);
+    approveOrderPlan(db, "failed-builder-order", operator.name);
+    moveOrder(db, "failed-builder-order", "dim-station-build", operator.name);
+
+    expect(() =>
+      runOrderBuild(db, "failed-builder-order", operator.name, {
+        dir: repo.dir,
+        env: { DIM_HOME: home },
+        spawn: () => {
+          throw new Error("harness unavailable");
+        },
+      }),
+    ).toThrow("harness unavailable");
+
+    const builder = db
+      .query<{ name: string; ended_at: string | null }, []>(
+        "SELECT name, ended_at FROM factory_worker WHERE role = 'builder'",
+      )
+      .get();
+    expect(builder?.ended_at).toEqual(expect.any(String));
+    expect(
+      db
+        .query("SELECT kind, worker, reason FROM factory_order_event WHERE order_id = ?")
+        .all("failed-builder-order"),
+    ).toContainEqual({ kind: "failed", worker: builder?.name, reason: "harness unavailable" });
+    expect(
+      db.query("SELECT status, run_id FROM factory_order WHERE id = ?").get("failed-builder-order"),
+    ).toEqual({
+      status: "queued",
+      run_id: null,
+    });
+    db.close();
+  });
+});

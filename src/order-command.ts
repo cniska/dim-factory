@@ -27,6 +27,7 @@ import {
 import { resolveWorker } from "./factory-worker";
 import { readFlags, requiredFlag } from "./flags";
 import { requireCurrentHooks } from "./hooks";
+import { runOrderBuild } from "./order-build";
 import { runOrderPlan } from "./order-plan";
 import { heldOrders, readyOrders } from "./order-ready";
 import { runOrderReview } from "./order-review";
@@ -52,6 +53,7 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--des
                        [--resolution "..."]
        dim order document <order-id> --path <path>
        dim order plan <order-id>
+       dim order build <order-id>
        dim order approve <order-id>
        dim order approve-build <order-id> --reason "..."
        dim order approve-review <order-id>
@@ -371,6 +373,11 @@ export function runOrderCommand(
     assertOperator(db, worker, "delegate planning");
     const outcome = runOrderPlan(db, orderId, { env });
     return `${orderId} planning completed by ${outcome.planner}`;
+  }
+  if (command === "build") {
+    flags(rest, []);
+    const outcome = runOrderBuild(db, orderId, worker, { dir: cwd, env });
+    return `${orderId} building started by ${outcome.builder}`;
   }
   if (command === "approve") {
     flags(rest, []);

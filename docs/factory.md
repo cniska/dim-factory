@@ -77,7 +77,7 @@ A worker is over when its process stops answering. `factory_worker.pid` holds th
 
 ## Operator presence
 
-The planner and the reviewer already spawn harness-agnostically: each asks for a capability set rather than a harness's flags, and `spawn.json` turns that set and a tier's model into one harness's argv ([`src/spawn-profile.ts`](../src/spawn-profile.ts)). Planning and review are operator delegation actions, so the spawned planner and reviewer record the operator as their direct parent. The builder and the operator are not spawned through this mechanism yet, and the wider operator boundary remains planned: Codex, Claude Code, Claude Desktop or another local harness may in time operate the same factory when it uses `dim` as the record and coordination boundary, with the active harness as the operator for that project and factory run.
+The planner, builder and reviewer spawn harness-agnostically: each asks for a capability set rather than a harness's flags, and `spawn.json` turns that set and a tier's model into one harness's argv ([`src/spawn-profile.ts`](../src/spawn-profile.ts)). Planning, build and review are operator delegation actions, so each spawned worker records the operator as its direct parent. The operator remains the active harness for the project and factory run; workers perform only the responsibility named in their handoff.
 
 - **Clock-in.** An operator explicitly clocks in through `dim`, recording the harness, operator identity and session identity before it starts taking work.
 - **Clock-out.** The operator explicitly clocks out through `dim` when it stops operating the factory. An unclosed presence remains visible as stale rather than being treated as a clean departure.

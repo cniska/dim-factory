@@ -44,7 +44,7 @@ Approval is the operator's check that the returned artifact answers the request.
 After plan approval:
 
 1. Move the order to `dim-station-build`.
-2. Start one builder worker with `dim worker run --role builder -- <command>`, passing the order id, approved plan, worktree, and repository check. The builder claims the build hand under its own identity and records commits, files, checks, documents, and findings as they occur.
+2. Run `dim order build <order-id>`. The factory mints one builder identity, starts the configured harness in the order's worktree, and the builder claims the build hand before recording commits, files, checks, documents, and findings as they occur.
 3. Read the builder's returned outcome and `dim q order <order-id>`. Approve the exact checked build with `dim order approve-build <order-id> --reason "..."` only when it answers the requested outcome.
 4. Move the order to `dim-station-review` and run `dim order review <order-id>`. The command mints a separate reviewer under the operator and records findings under the reviewer identity.
 5. Read the review outcome. If findings exist, hand the order back to the builder with their ids and required fixes. The operator approves the next build before starting another review round.
