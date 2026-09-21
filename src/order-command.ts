@@ -3,6 +3,7 @@ import {
   amendOrder,
   answerOrderFinding,
   appendOrderEvent,
+  approveOrderPlan,
   claimOrder,
   dropOrder,
   moveOrder,
@@ -48,6 +49,7 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--des
                        [--resolution "..."]
        dim order document <order-id> --path <path>
        dim order plan <order-id>
+       dim order approve <order-id>
        dim order ship <order-id>
        dim order stop <order-id> <completed|failed> [--reason "..."]
        dim order amend <order-id> [--title "..."] [--description "..."]
@@ -363,6 +365,11 @@ export function runOrderCommand(
     flags(rest, []);
     const outcome = runOrderPlan(db, orderId, { env });
     return `${orderId} planning completed by ${outcome.planner}`;
+  }
+  if (command === "approve") {
+    flags(rest, []);
+    approveOrderPlan(db, orderId, worker);
+    return `${orderId} plan approved by ${worker}`;
   }
   // Own property only: an object literal inherits `toString` and `constructor`, and
   // `dim order toString` would reach one instead of the refusal every other name gets.

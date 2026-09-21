@@ -24,6 +24,7 @@ export type OrderEventKind =
   | "claimed"
   | "moved"
   | "plan_submitted"
+  | "plan_approved"
   | "commit_created"
   | "check_finished"
   | "review_opened"
@@ -85,6 +86,15 @@ export type OrderNotDoneCode =
 export class OrderNotDone extends Error {
   constructor(
     readonly code: OrderNotDoneCode,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+export class PlanApprovalRefused extends Error {
+  constructor(
+    readonly code: "worker_not_operator" | "plan_missing" | "plan_already_approved",
     message: string,
   ) {
     super(message);
@@ -719,6 +729,23 @@ export function recordOrderPlan(
     ]);
     appendOrderEventInTransaction(db, orderId, { kind: "plan_submitted", worker }, at);
   })();
+}
+
+export function approveOrderPlan(db: Database, orderId: string, worker: string, at = now()): void {
+  assertOrderWorking(db, orderId);
+  const role = db
+    .query<{ role: string }, [string]>("SELECT role FROM factory_worker WHERE name = ?")
+    .get(worker)?.role;
+  if (role !== "operator")
+    throw new PlanApprovalRefused("worker_not_operator", `worker ${worker} is not an operator`);
+  const plan = db.query("SELECT order_id FROM factory_order_plan WHERE order_id = ?").get(orderId);
+  if (!plan) throw new PlanApprovalRefused("plan_missing", `order ${orderId} has no plan to approve`);
+  const approved = db
+    .query("SELECT id FROM factory_order_event WHERE order_id = ? AND kind = 'plan_approved'")
+    .get(orderId);
+  if (approved)
+    throw new PlanApprovalRefused("plan_already_approved", `order ${orderId} already has an approved plan`);
+  appendOrderEvent(db, orderId, { kind: "plan_approved", worker }, at);
 }
 
 /**

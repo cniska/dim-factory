@@ -84,7 +84,7 @@ The research artifact records the queries, the relevant references, the conclusi
 
 ## Design and plan
 
-**The first executable process uses an operator-authored plan.** The operator writes the plan under its own name and explicitly approves it for the builder. This approval authorizes execution; it is not an independent quality review. Planner fan-out, synthesis, and independent plan review remain later additions after the core order loop works.
+**The first executable process delegates planning to a planner worker.** The planner writes the plan under its own name. The operator checks that the plan answers the order, then records its decision before delegating implementation. This approval authorizes execution; it is not an independent quality review. Planner fan-out, synthesis, and independent plan review remain later additions after the core order loop works.
 
 A plan contains:
 
@@ -193,7 +193,9 @@ edit
 
 The slice records its commit, changed files, check, findings, documents, and simplification result. A simplification pass that changes nothing is still an explicit fixpoint. A failed attempt is distinct from the order's queue state and can be retried under a bounded policy.
 
-The owner does not need to watch the worker's session directly. The wall shows the order's station, worker, silence, holds, failed checks, and current owner action; the order dialog shows the plan, result, execution summary, audit log, changes, and bounded program graph. The operator handles routine delegation and stops; the owner enters at plan approval, holds, repeated failures, architectural risk, ship, and verdict.
+The owner does not need to watch the worker's session directly. The wall shows the order's station, worker, silence, holds, failed checks, and current owner action; the order dialog shows the plan, result, execution summary, audit log, changes, and bounded program graph. The operator handles routine delegation and phase decisions; the owner enters at holds, repeated failures, architectural risk, ship, and verdict.
+
+The operator works above the stations. It delegates planning, building, and review; it does not re-review implementation or substitute for an independent reviewer. Because it owns the original request and the delegation contract, it checks whether each returned artifact answers that request before moving the order forward. It decides whether the work returns for another attempt, advances to the next station, or is held. The decision names the operator, phase, outcome, reason, and artifact it acted on.
 
 The build record also carries the worker, slice, and attempt identities needed to count loops honestly. A loop is not inferred from elapsed time or from the number of messages; it is a recorded iteration containing its start, end, slice, check or review result, worker, and outcome. Delegated and owner-driven builds remain distinguishable so the factory can compare owner attention, implementation time, loops, findings, and later `fix:` commits.
 
