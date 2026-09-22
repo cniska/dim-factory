@@ -287,6 +287,7 @@ function amend(db: Database, orderId: string, args: string[]): string {
 }
 
 function drop(db: Database, orderId: string, args: string[], worker: string): string {
+  assertOperator(db, worker, "drop an order");
   const reason = required(flags(args, ["--reason"]), "--reason");
   dropOrder(db, orderId, reason, worker);
   return `${orderId} is dropped: ${reason}`;

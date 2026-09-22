@@ -92,6 +92,11 @@ function queued(database: Database): void {
   runOrderCommand(database, add);
 }
 
+function operatorEnv(database: Database): Env {
+  const operator = mintWorker(database, { role: "operator", sessionId: newWorkerSession("test-operator") });
+  return { ...machine.env, [WORKER_NAME_VAR]: operator.name, [WORKER_TOKEN_VAR]: operator.token };
+}
+
 describe("order command", () => {
   test("an added order waits on the board under its own name", () => {
     const database = db();
@@ -635,9 +640,15 @@ describe("order command", () => {
     const database = db();
     queued(database);
 
-    expect(runOrderCommand(database, ["drop", "order-1", "--reason", "superseded elsewhere"])).toBe(
-      "order-1 is dropped: superseded elsewhere",
-    );
+    expect(
+      runOrderCommand(
+        database,
+        ["drop", "order-1", "--reason", "superseded elsewhere"],
+        null,
+        trunk.dir,
+        operatorEnv(database),
+      ),
+    ).toBe("order-1 is dropped: superseded elsewhere");
 
     expect(database.query("SELECT status FROM factory_order WHERE id = 'order-1'").get()).toEqual({
       status: "dropped",
@@ -651,7 +662,30 @@ describe("order command", () => {
     const database = db();
     queued(database);
 
-    expect(() => runOrderCommand(database, ["drop", "order-1"])).toThrow(OrderCommandError);
+    expect(() =>
+      runOrderCommand(database, ["drop", "order-1"], null, trunk.dir, operatorEnv(database)),
+    ).toThrow(OrderCommandError);
+  });
+
+  test("a station worker cannot drop an order", () => {
+    const database = db();
+    queued(database);
+    const builder = mintWorker(database, {
+      role: "builder",
+      parentWorker: env[WORKER_NAME_VAR] as string,
+      sessionId: newWorkerSession("drop-builder"),
+    });
+
+    expect(() =>
+      runOrderCommand(database, ["drop", "order-1", "--reason", "disposable"], null, trunk.dir, {
+        ...machine.env,
+        [WORKER_NAME_VAR]: builder.name,
+        [WORKER_TOKEN_VAR]: builder.token,
+      }),
+    ).toThrow(expect.objectContaining({ code: "worker_not_operator" }));
+    expect(database.query("SELECT status FROM factory_order WHERE id = 'order-1'").get()).toEqual({
+      status: "queued",
+    });
   });
 
   test("a drop is refused while a hand is holding the order", () => {
@@ -659,23 +693,41 @@ describe("order command", () => {
     queued(database);
     runOrderCommand(database, claim);
 
-    expect(() => runOrderCommand(database, ["drop", "order-1", "--reason", "too late to drop"])).toThrow(
-      expect.objectContaining({ code: "order_held_by_run" }),
-    );
+    expect(() =>
+      runOrderCommand(
+        database,
+        ["drop", "order-1", "--reason", "too late to drop"],
+        null,
+        trunk.dir,
+        operatorEnv(database),
+      ),
+    ).toThrow(expect.objectContaining({ code: "order_held_by_run" }));
   });
 
   test("a dropped order cannot be claimed, amended or dropped again", () => {
     const database = db();
     queued(database);
-    runOrderCommand(database, ["drop", "order-1", "--reason", "not worth building"]);
+    runOrderCommand(
+      database,
+      ["drop", "order-1", "--reason", "not worth building"],
+      null,
+      trunk.dir,
+      operatorEnv(database),
+    );
 
     expect(() => runOrderCommand(database, claim)).toThrow();
     expect(() => runOrderCommand(database, ["amend", "order-1", "--title", "too late"])).toThrow(
       expect.objectContaining({ code: "order_not_queued" }),
     );
     // Dropped is terminal, so a second drop meets that refusal rather than order_not_queued.
-    expect(() => runOrderCommand(database, ["drop", "order-1", "--reason", "again"])).toThrow(
-      "order-1 is already dropped",
-    );
+    expect(() =>
+      runOrderCommand(
+        database,
+        ["drop", "order-1", "--reason", "again"],
+        null,
+        trunk.dir,
+        operatorEnv(database),
+      ),
+    ).toThrow("order-1 is already dropped");
   });
 });
