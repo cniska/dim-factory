@@ -17,6 +17,7 @@ const tables = [
   "factory_order_commit",
   "factory_order_attempt",
   "factory_order_event",
+  "factory_order_worker",
   "factory_order",
   "factory_stop",
   "factory_schedule",
