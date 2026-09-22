@@ -35,6 +35,7 @@ describe("builder station", () => {
         argv: ["builder", "{brief}", "{model}", "{tools}"],
         slots: { tools: { join: "," } },
         grants: {
+          "bootstrap-worker": { tools: ["Bash(dim worker bootstrap:*)"] },
           "read-files": { tools: ["Read"] },
           "edit-files": { tools: ["Edit"] },
           "read-history": { tools: ["Bash(git log:*)"] },
@@ -143,6 +144,7 @@ describe("builder station", () => {
         argv: ["builder", "{brief}", "{model}", "{tools}"],
         slots: { tools: { join: "," } },
         grants: {
+          "bootstrap-worker": { tools: ["Bash(dim worker bootstrap:*)"] },
           "read-files": { tools: ["Read"] },
           "edit-files": { tools: ["Edit"] },
           "read-history": { tools: ["Bash(git log:*)"] },

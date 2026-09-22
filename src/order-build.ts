@@ -16,6 +16,7 @@ import { assignedWorker, assignmentProcessEnv, assignWorker } from "./worker-ass
 import { repoRoot, worktreePath } from "./wt-command";
 
 export const BUILDER_CAPABILITIES: Capability[] = [
+  "bootstrap-worker",
   "read-files",
   "edit-files",
   "read-history",

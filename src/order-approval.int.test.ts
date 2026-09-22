@@ -44,6 +44,7 @@ describe("plan approval integration", () => {
         argv: ["planner", "{brief}", "{model}", "{tools}"],
         slots: { tools: { join: "," } },
         grants: {
+          "bootstrap-worker": { tools: ["Bash(dim worker bootstrap:*)"] },
           "read-files": { tools: ["Read"] },
           "read-history": { tools: ["Bash(git log:*)"] },
           "ask-dim": { tools: ["Bash(dim q:*)"] },

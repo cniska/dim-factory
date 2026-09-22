@@ -36,6 +36,7 @@ const machine = (() => {
       argv: ["claude", "-p", "{brief}", "--model", "{model}", "--allowedTools", "{tools}"],
       slots: { tools: { join: "," } },
       grants: {
+        "bootstrap-worker": { tools: ["Bash(dim worker bootstrap:*)"] },
         "read-files": { tools: ["Read"] },
         "read-history": { tools: ["Bash(git diff:*)"] },
         "ask-dim": { tools: ["Bash(dim q:*)"] },

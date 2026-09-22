@@ -25,6 +25,7 @@ describe("planner station", () => {
         argv: ["claude", "-p", "{brief}", "--model", "{model}", "--allowedTools", "{tools}"],
         slots: { tools: { join: "," } },
         grants: {
+          "bootstrap-worker": { tools: ["Bash(dim worker bootstrap:*)"] },
           "read-files": { tools: ["Read", "Grep", "Glob"] },
           "read-history": { tools: ["Bash(git diff:*)", "Bash(git show:*)", "Bash(git log:*)"] },
           "ask-dim": { tools: ["Bash(dim q:*)"] },
@@ -84,7 +85,7 @@ describe("planner station", () => {
       "--model",
       "large",
       "--allowedTools",
-      "Read,Grep,Glob,Bash(git diff:*),Bash(git show:*),Bash(git log:*),Bash(dim q:*)",
+      "Bash(dim worker bootstrap:*),Read,Grep,Glob,Bash(git diff:*),Bash(git show:*),Bash(git log:*),Bash(dim q:*)",
     ]);
     expect(argv.at(-1)).not.toContain("dim order");
     expect(db.query("SELECT role FROM factory_worker WHERE name = ?").get(outcome.planner)).toEqual({

@@ -8,7 +8,12 @@ import { readSpawnProfile, spawnArgv } from "./spawn-profile";
 import { assignedWorker, assignmentProcessEnv, assignWorker } from "./worker-assignment";
 
 /** Reads and searches the repository, its history and the record — never edits, never raises a finding. */
-export const PLANNER_CAPABILITIES: Capability[] = ["read-files", "read-history", "ask-dim"];
+export const PLANNER_CAPABILITIES: Capability[] = [
+  "bootstrap-worker",
+  "read-files",
+  "read-history",
+  "ask-dim",
+];
 
 export type PlannerSpawn = (
   argv: string[],

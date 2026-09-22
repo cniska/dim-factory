@@ -4,6 +4,7 @@
  * into one harness's argv, which is what keeps a brief harness-neutral.
  */
 export type Capability =
+  | "bootstrap-worker"
   | "read-files"
   | "edit-files"
   | "read-history"
@@ -12,6 +13,7 @@ export type Capability =
   | "run-check";
 
 export const CAPABILITIES: readonly Capability[] = [
+  "bootstrap-worker",
   "read-files",
   "edit-files",
   "read-history",

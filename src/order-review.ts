@@ -21,7 +21,13 @@ export class ReviewRefused extends Error {
  * it was never granted is not reachable however it reasons. `raise-finding` is the one
  * write, and the round refuses even that from any hand but this one.
  */
-export const REVIEWER_CAPABILITIES: Capability[] = ["read-files", "read-history", "ask-dim", "raise-finding"];
+export const REVIEWER_CAPABILITIES: Capability[] = [
+  "bootstrap-worker",
+  "read-files",
+  "read-history",
+  "ask-dim",
+  "raise-finding",
+];
 
 /** Replaced in tests, which have no model to call and need the exit code to be theirs. */
 export type ReviewerSpawn = (argv: string[], env: Record<string, string>) => { exitCode: number };

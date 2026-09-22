@@ -38,7 +38,7 @@ export function spawnProfilePath(env: Env = process.env): string {
 const TEMPLATE =
   '{ "argv": ["<harness>", "{brief}", "--model", "{model}", "--tools", "{tools}"], ' +
   '"slots": { "tools": { "join": "," } }, ' +
-  '"grants": { "read-files": { "tools": ["Read"] } } }';
+  '"grants": { "bootstrap-worker": { "tools": ["Bash(dim worker bootstrap:*)"] }, "read-files": { "tools": ["Read"] } } }';
 
 export function readSpawnProfile(env: Env = process.env): SpawnProfile {
   const path = spawnProfilePath(env);

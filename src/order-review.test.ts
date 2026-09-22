@@ -19,13 +19,8 @@ import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./work
 const trunk = integratedRepo();
 const worktrees: string[] = [];
 const opened: Database[] = [];
-afterAll(() => {
-  for (const db of opened) db.close();
-  for (const path of worktrees) rmSync(path, { recursive: true, force: true });
-  rmSync(trunk.dir, { recursive: true, force: true });
-});
-
 const REVIEWER_TOOLS = [
+  "Bash(dim worker bootstrap:*)",
   "Read",
   "Grep",
   "Glob",
@@ -35,6 +30,11 @@ const REVIEWER_TOOLS = [
   "Bash(dim q:*)",
   "Bash(dim order finding:*)",
 ];
+afterAll(() => {
+  for (const db of opened) db.close();
+  for (const path of worktrees) rmSync(path, { recursive: true, force: true });
+  rmSync(trunk.dir, { recursive: true, force: true });
+});
 
 function bootstrapReviewer(db: Database, env: Record<string, string>): string {
   const reviewer = bootstrapWorker(db, {
@@ -61,6 +61,7 @@ const machine = (() => {
       argv: ["claude", "-p", "{brief}", "--model", "{model}", "--allowedTools", "{tools}"],
       slots: { tools: { join: "," } },
       grants: {
+        "bootstrap-worker": { tools: ["Bash(dim worker bootstrap:*)"] },
         "read-files": { tools: ["Read", "Grep", "Glob"] },
         "read-history": { tools: ["Bash(git diff:*)", "Bash(git show:*)", "Bash(git log:*)"] },
         "ask-dim": { tools: ["Bash(dim q:*)"] },

@@ -14,6 +14,7 @@ function machine(): { DIM_HOME: string } {
       argv: ["claude", "-p", "{brief}", "--model", "{model}", "--allowedTools", "{tools}"],
       slots: { tools: { join: "," } },
       grants: {
+        "bootstrap-worker": { tools: ["Bash(dim worker bootstrap:*)"] },
         "read-files": { tools: ["Read", "Grep", "Glob"] },
         "read-history": { tools: ["Bash(git diff:*)"] },
         "ask-dim": { tools: ["Bash(dim q:*)"] },
@@ -31,7 +32,7 @@ describe("what a station would be started with", () => {
     const line = spawnReport("planner", env)[0] as string;
 
     expect(line).toBe(
-      "claude -p <brief> --model large --allowedTools Read,Grep,Glob,Bash(git diff:*),Bash(dim q:*)",
+      "claude -p <brief> --model large --allowedTools Bash(dim worker bootstrap:*),Read,Grep,Glob,Bash(git diff:*),Bash(dim q:*)",
     );
   });
 
@@ -42,7 +43,7 @@ describe("what a station would be started with", () => {
 
     expect(report).toContain("planner\tclaude -p <brief> --model large");
     expect(report).toContain(
-      "reviewer\tclaude -p <brief> --model middling --allowedTools Read,Grep,Glob,Bash(git diff:*),Bash(dim q:*),Bash(dim order finding:*)",
+      "reviewer\tclaude -p <brief> --model middling --allowedTools Bash(dim worker bootstrap:*),Read,Grep,Glob,Bash(git diff:*),Bash(dim q:*),Bash(dim order finding:*)",
     );
     expect(report).toContain(spawnProfilePath(env));
   });

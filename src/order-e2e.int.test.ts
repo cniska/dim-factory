@@ -105,6 +105,7 @@ describe("headless factory loop", () => {
         argv: ["bun", join(machine.dir, "harness.ts"), "{brief}", "{model}", "{tools}"],
         slots: { tools: { join: "," } },
         grants: {
+          "bootstrap-worker": { tools: ["Bash(dim worker bootstrap:*)"] },
           "read-files": { tools: ["Read"] },
           "edit-files": { tools: ["Edit"] },
           "read-history": { tools: ["Bash(git log:*)"] },

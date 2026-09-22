@@ -125,6 +125,7 @@ export function spawnProfileFixture(): string {
     argv: ["claude", "-p", "{brief}", "--model", "{model}", "--allowedTools", "{tools}"],
     slots: { tools: { join: "," } },
     grants: {
+      "bootstrap-worker": { tools: ["Bash(dim worker bootstrap:*)"] },
       "read-files": { tools: ["Read", "Grep", "Glob"] },
       "read-history": { tools: ["Bash(git diff:*)", "Bash(git show:*)", "Bash(git log:*)"] },
       "ask-dim": { tools: ["Bash(dim q:*)"] },
