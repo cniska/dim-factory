@@ -3,7 +3,12 @@ import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
 import { assertBuildApproved, closeOrderReview, openAssignedOrderReview } from "./factory-order";
 import { endWorker } from "./factory-worker";
-import { harnessArgv, runHarnessCommand, runHarnessCommandLive } from "./harness-command";
+import {
+  harnessArgv,
+  runHarnessCommand,
+  runHarnessCommandLive,
+  workerFailureReason,
+} from "./harness-command";
 import type { HarnessName } from "./harness-name";
 import { route } from "./routing";
 import { assignedWorker, assignmentProcessEnv, assignWorker, bootstrapWorker } from "./worker-assignment";
@@ -163,7 +168,11 @@ export async function runOrderReviewLive(
   }
   db.run("UPDATE factory_order_review SET reviewer = ? WHERE id = ?", [reviewer, opened.id]);
   const outcome = run.exitCode === 0 ? "closed" : "aborted";
-  closeOrderReview(db, opened.id, outcome, worker);
+  const reason =
+    outcome === "aborted"
+      ? workerFailureReason("reviewer did not finish reviewing", run.output, run.failureReason)
+      : undefined;
+  closeOrderReview(db, opened.id, outcome, worker, undefined, reason);
   const raised = (db
     .query<{ n: number }, [number]>("SELECT count(*) AS n FROM factory_order_finding WHERE review_id = ?")
     .get(opened.id)?.n ?? 0) as number;

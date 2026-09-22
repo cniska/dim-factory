@@ -1,19 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { buildFailureReason } from "./order-build";
+import { workerFailureReason } from "./harness-command";
 
-describe("builder failure explanations", () => {
+describe("worker failure explanations", () => {
   test("keeps the harness explanation beside the failure", () => {
     expect(
-      buildFailureReason(
-        "builder did not record a commit",
+      workerFailureReason(
+        "worker did not finish",
         "I stopped before committing because the check failed.",
+        "Codex turn failed",
       ),
-    ).toBe("builder did not record a commit: I stopped before committing because the check failed.");
+    ).toBe("worker did not finish: Codex turn failed; I stopped before committing because the check failed.");
   });
 
-  test("does not add an empty explanation", () => {
-    expect(buildFailureReason("builder did not record a commit", "  ")).toBe(
-      "builder did not record a commit",
-    );
+  test("does not add empty explanations", () => {
+    expect(workerFailureReason("worker did not finish", "  ", undefined)).toBe("worker did not finish");
   });
 });

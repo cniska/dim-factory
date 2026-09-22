@@ -9,7 +9,12 @@ import {
   PlanApprovalRefused,
 } from "./factory-order";
 import { endWorker } from "./factory-worker";
-import { harnessArgv, runHarnessCommand, runHarnessCommandLive } from "./harness-command";
+import {
+  harnessArgv,
+  runHarnessCommand,
+  runHarnessCommandLive,
+  workerFailureReason,
+} from "./harness-command";
 import type { HarnessName } from "./harness-name";
 import type { Env } from "./paths";
 import { route } from "./routing";
@@ -27,11 +32,6 @@ export const BUILDER_CAPABILITIES: Capability[] = [
 ];
 
 export type BuilderSpawn = (argv: string[], env: Record<string, string>, cwd: string) => { exitCode: number };
-
-export function buildFailureReason(message: string, output: string | undefined): string {
-  const explanation = output?.trim();
-  return explanation ? `${message}: ${explanation}` : message;
-}
 
 export function builderBrief(
   order: { id: string; title: string; description: string | null },
@@ -126,6 +126,7 @@ export async function runOrderBuildLive(
   const workspace = workspaceContract(worktree);
   let builder: string | undefined;
   let harnessOutput = "";
+  let harnessFailureReason: string | undefined;
   let failureRecorded = false;
   const recordFailure = (reason: string): void => {
     if (failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
@@ -150,6 +151,7 @@ export async function runOrderBuildLive(
       },
     );
     harnessOutput = run.output;
+    harnessFailureReason = run.failureReason;
     builder = assignedWorker(db, assignment.id);
     if (!builder) throw new Error("builder did not bootstrap its worker assignment");
     if (run.exitCode !== 0) {
@@ -158,7 +160,11 @@ export async function runOrderBuildLive(
     requireBuildEvidence(db, orderId);
     return { builder, runId, worktree, exitCode: run.exitCode };
   } catch (error) {
-    const reason = buildFailureReason(error instanceof Error ? error.message : String(error), harnessOutput);
+    const reason = workerFailureReason(
+      error instanceof Error ? error.message : String(error),
+      harnessOutput,
+      harnessFailureReason,
+    );
     recordFailure(reason);
     throw new Error(reason, { cause: error });
   } finally {

@@ -1,9 +1,14 @@
 import type { Database } from "bun:sqlite";
 import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
-import { recordOrderPlan } from "./factory-order";
-import { resolveWorker } from "./factory-worker";
-import { harnessArgv, runHarnessCommand, runHarnessCommandLive } from "./harness-command";
+import { appendOrderEvent, recordOrderPlan } from "./factory-order";
+import { endWorker, resolveWorker } from "./factory-worker";
+import {
+  harnessArgv,
+  runHarnessCommand,
+  runHarnessCommandLive,
+  workerFailureReason,
+} from "./harness-command";
 import type { HarnessName } from "./harness-name";
 import { route } from "./routing";
 import { assignedWorker, assignmentProcessEnv, assignWorker, bootstrapWorker } from "./worker-assignment";
@@ -104,13 +109,24 @@ export async function runOrderPlanLive(
     capabilities: PLANNER_CAPABILITIES,
     env,
   };
-  const run = await runHarnessCommandLive(request, (providerSessionId) => {
-    bootstrapWorker(db, { id: assignment.id, token: assignment.token, sessionId: providerSessionId });
-  });
-  if (run.exitCode !== 0) throw new Error("planner did not finish planning");
-  const planner = assignedWorker(db, assignment.id);
-  if (!planner) throw new Error("planner did not bootstrap its worker assignment");
-  const body = run.output.trim();
-  recordOrderPlan(db, orderId, body, planner);
-  return { planner, body };
+  let planner: string | undefined;
+  try {
+    const run = await runHarnessCommandLive(request, (providerSessionId) => {
+      bootstrapWorker(db, { id: assignment.id, token: assignment.token, sessionId: providerSessionId });
+    });
+    planner = assignedWorker(db, assignment.id);
+    if (!planner) throw new Error("planner did not bootstrap its worker assignment");
+    if (run.exitCode !== 0) {
+      throw new Error(workerFailureReason("planner did not finish planning", run.output, run.failureReason));
+    }
+    const body = run.output.trim();
+    recordOrderPlan(db, orderId, body, planner);
+    return { planner, body };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    if (planner) appendOrderEvent(db, orderId, { kind: "failed", worker: planner, reason });
+    throw error;
+  } finally {
+    if (planner) endWorker(db, planner);
+  }
 }

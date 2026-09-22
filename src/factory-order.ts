@@ -776,6 +776,7 @@ export function closeOrderReview(
   outcome: "closed" | "aborted",
   worker: string,
   at = now(),
+  reason?: string,
 ): number {
   const row = db
     .query<{ order_id: string; closed_at: string | null }, [number]>(
@@ -792,7 +793,12 @@ export function closeOrderReview(
       outcome,
       reviewId,
     ]);
-    return appendOrderEventInTransaction(db, row.order_id, { kind: "review_closed", worker, reviewId }, at);
+    return appendOrderEventInTransaction(
+      db,
+      row.order_id,
+      { kind: "review_closed", worker, reviewId, reason },
+      at,
+    );
   })();
 }
 

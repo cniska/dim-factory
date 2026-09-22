@@ -11,7 +11,17 @@ export type HarnessCommandResult = {
   exitCode: number;
   output: string;
   events: HarnessEvent[];
+  failureReason?: string;
 };
+
+export function workerFailureReason(
+  message: string,
+  output: string | undefined,
+  harnessReason: string | undefined,
+): string {
+  const details = [harnessReason, output?.trim()].filter((value): value is string => Boolean(value));
+  return details.length === 0 ? message : `${message}: ${details.join("; ")}`;
+}
 
 export type HarnessStarted = (providerSessionId: string) => void;
 
@@ -59,5 +69,10 @@ export async function runHarnessCommandLive(
     .filter((event): event is Extract<HarnessEvent, { type: "message" }> => event.type === "message")
     .map((event) => event.text)
     .join("\n");
-  return { exitCode: result.outcome === "completed" ? 0 : 1, output, events: result.events };
+  return {
+    exitCode: result.outcome === "completed" ? 0 : 1,
+    output,
+    events: result.events,
+    failureReason: result.outcome === "completed" ? undefined : result.reason,
+  };
 }
