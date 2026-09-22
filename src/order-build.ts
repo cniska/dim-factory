@@ -14,6 +14,7 @@ import type { HarnessName } from "./harness-name";
 import type { Env } from "./paths";
 import { route } from "./routing";
 import { assignedWorker, assignmentProcessEnv, assignWorker, bootstrapWorker } from "./worker-assignment";
+import { workspaceContract } from "./workspace";
 import { repoRoot, worktreePath } from "./wt-command";
 
 export const BUILDER_CAPABILITIES: Capability[] = [
@@ -31,19 +32,40 @@ export function builderBrief(
   order: { id: string; title: string; description: string | null },
   plan: string,
   runId: string,
+  workspace: ReturnType<typeof workspaceContract>,
 ): string {
+  const detected = workspace?.detected;
+  const command = (value: { bin: string; args: readonly string[] } | null | undefined): string | null =>
+    value ? [value.bin, ...value.args].join(" ") : null;
+  const workspaceContext = workspace
+    ? [
+        `Workspace ecosystem: ${workspace.ecosystems.join(", ") || "unknown"}.`,
+        `Workspace package managers: ${workspace.packageManagers.join(", ") || "none declared"}.`,
+        `Declared check: ${workspace.checkCommand?.command ?? "none"}.`,
+        `Declared format: ${workspace.formatCommand?.command ?? "none"}.`,
+        `Detected install: ${command(detected?.installCommand) ?? "none"}.`,
+        `Detected analyze/lint: ${command(detected?.lintCommand) ?? "none"}.`,
+        `Detected format: ${command(detected?.formatCommand) ?? "none"}.`,
+        `Detected test: ${command(detected?.testCommand) ?? "none"}.`,
+        "Replace $FILES in a detected command with the changed paths when the command is scoped.",
+        "Use these workspace commands; do not infer a different project tool.",
+      ]
+    : ["The workspace profile could not be read; stop and report that before editing."];
   return [
     `You are the builder for factory order ${order.id} in this repository.`,
     "",
     `# ${order.title}`,
     order.description ?? "",
     "",
+    "# Workspace",
+    ...workspaceContext,
+    "",
     "The operator approved the following plan. Implement only this outcome:",
     "",
     plan,
     "",
     `Your first act is to claim this order under your worker identity: dim order claim ${order.id} --run ${runId} --station dim-station-build.`,
-    "Work in the current order worktree. Run the repository's declared check, record every commit, changed file, check, document, and build finding with dim order, and run the build station loop including simplification.",
+    "Work in the current order worktree. Run the command supplied by the workspace profile, record every commit, changed file, check, document, and build finding with dim order, and run the build station loop including simplification.",
     "Return a concise outcome. Do not approve the plan or build, start review, ship, or edit outside the order worktree.",
   ].join("\n");
 }
@@ -102,6 +124,7 @@ export async function runOrderBuildLive(
   const assignment = assignWorker(db, { role: "builder", parentWorker: operator });
   const runId = `build-${crypto.randomUUID()}`;
   const worktree = worktreePath(repoRoot(options.dir), orderId);
+  const workspace = workspaceContract(worktree);
   let builder: string | undefined;
   let failureRecorded = false;
   const recordFailure = (reason: string): void => {
@@ -117,7 +140,7 @@ export async function runOrderBuildLive(
       {
         harness,
         cwd: worktree,
-        brief: builderBrief(order, plan.body, runId),
+        brief: builderBrief(order, plan.body, runId, workspace),
         model,
         capabilities: BUILDER_CAPABILITIES,
         env,
@@ -186,6 +209,7 @@ export function runOrderBuild(
   const assignment = assignWorker(db, { role: "builder", parentWorker: operator });
   const runId = `build-${crypto.randomUUID()}`;
   const worktree = worktreePath(repoRoot(options.dir), orderId);
+  const workspace = workspaceContract(worktree);
   let builder: string | undefined;
   let failureRecorded = false;
   const recordFailure = (reason: string): void => {
@@ -204,7 +228,7 @@ export function runOrderBuild(
     const request = {
       harness,
       cwd: worktree,
-      brief: builderBrief(order, plan.body, runId),
+      brief: builderBrief(order, plan.body, runId, workspace),
       model,
       capabilities: BUILDER_CAPABILITIES,
       env,

@@ -9,6 +9,7 @@ import {
   readManifest,
   type WorkspaceCommand,
 } from "./workspace-commands";
+import { detectWorkspace, type WorkspaceDetection } from "./workspace-detectors";
 import { worktreeOf } from "./worktree";
 
 export type WorkspaceMember = { path: string; source: string };
@@ -37,6 +38,7 @@ export type WorkspaceContract = {
   requiredEnvironment: Declaration<string[]> | null;
   setup: WorkerHook | null;
   teardown: WorkerHook | null;
+  detected: WorkspaceDetection | null;
 };
 export type WorkspaceProfile = Omit<WorkspaceContract, "worktree">;
 
@@ -170,6 +172,7 @@ export function workspaceContract(dir: string): WorkspaceContract | null {
   const root = checkoutRoot(resolve(dir));
   if (root === null) return null;
   const commands = declaredCommands(root);
+  const detected = detectWorkspace(root);
   const pubspec = pubspecFacts(root);
   const hasPackageJson = readManifest(join(root, "package.json")) !== null;
   const manager = packageManager(root);
@@ -198,5 +201,6 @@ export function workspaceContract(dir: string): WorkspaceContract | null {
     requiredEnvironment: declaredEnvironment(root),
     setup: hook(root, "worktree-setup.sh"),
     teardown: hook(root, "worktree-teardown.sh"),
+    detected,
   };
 }
