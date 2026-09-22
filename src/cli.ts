@@ -787,6 +787,7 @@ async function runQuery(args: string[]): Promise<void> {
       // In the `finally`, so a query that threw still records which branch it
       // was on — the case where that is least obvious from the output.
       trace({
+        event: "query.completed",
         command: "q",
         name: query.name,
         path: result?.path,

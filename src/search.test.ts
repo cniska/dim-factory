@@ -180,7 +180,7 @@ describe("keywords, asked directly", () => {
   });
 
   // `path` names the branch that answered where a query has more than one. This
-  // one has a single branch, and `command_trace` keeps the column: a value here
+  // one has a single branch, and `trace_event` keeps the column: a value here
   // would read in the trace as `search` having degraded.
   test("claims no branch, so a trace cannot read it as a fallback", async () => {
     const db = await indexed();

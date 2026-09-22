@@ -182,7 +182,7 @@ Neither of those is a defect a second pair of eyes would obviously catch either.
 
 Asked on 2026-09-17. Every `dim q` an agent runs is a shell call in a transcript, so usage needs no instrumentation: `search` 30 runs, `thread` 14, `prior-art` 9, `skills` 8, `resume` 8, down to `chain` at 4. That is what retired two shipped skills on the same day — `df-delegate` had never loaded once.
 
-What the transcripts cannot hold is which branch inside a command answered, because `q search` falling back from cosine to the keyword index produces the same shape of rows either way, and any command run from a terminal belongs to no session at all. That gap is what `command_trace` exists for, and it is the whole of what it adds.
+What the transcripts cannot hold is which branch inside a command answered, because `q search` falling back from cosine to the keyword index produces the same shape of rows either way, and any command run from a terminal belongs to no session at all. That gap is what `trace_event` exists for; query completion is its first event type, and order and harness execution will use the same diagnostic stream.
 
 ## `prior-art` matches a path, not a meaning
 

@@ -23,19 +23,63 @@ afterEach(() => {
 function rows(env: Env): Record<string, unknown>[] {
   const db = new Database(dbPath(env), { readonly: true });
   try {
-    return db.query("SELECT * FROM command_trace ORDER BY id").all() as Record<string, unknown>[];
+    return db.query("SELECT * FROM trace_event ORDER BY id").all() as Record<string, unknown>[];
   } finally {
     db.close();
   }
 }
 
-describe("the command trace", () => {
+describe("the diagnostic trace", () => {
   test("records which branch answered, with the shape of the result", () => {
     const env = scratch();
     closeDb(openDb(dbPath(env)));
-    trace({ command: "q", name: "search", path: "keyword", rowCount: 3, durationMs: 12 }, env);
+    trace(
+      {
+        event: "query.completed",
+        command: "q",
+        name: "search",
+        path: "keyword",
+        rowCount: 3,
+        durationMs: 12,
+      },
+      env,
+    );
     expect(rows(env)).toMatchObject([
-      { command: "q", name: "search", path: "keyword", row_count: 3, duration_ms: 12 },
+      {
+        event: "query.completed",
+        command: "q",
+        name: "search",
+        path: "keyword",
+        row_count: 3,
+        duration_ms: 12,
+      },
+    ]);
+  });
+
+  test("records order context and event fields", () => {
+    const env = scratch();
+    trace(
+      {
+        event: "station.spawned",
+        orderId: "order-1",
+        attemptId: "attempt-1",
+        station: "dim-station-plan",
+        worker: "planner-1",
+        sessionId: "session-1",
+        fields: { harness: "codex", interactive: false },
+      },
+      env,
+    );
+    expect(rows(env)).toMatchObject([
+      {
+        event: "station.spawned",
+        order_id: "order-1",
+        attempt_id: "attempt-1",
+        station: "dim-station-plan",
+        worker: "planner-1",
+        session_id: "session-1",
+        fields: JSON.stringify({ harness: "codex", interactive: false }),
+      },
     ]);
   });
 
@@ -51,14 +95,17 @@ describe("the command trace", () => {
     db.run("INSERT INTO schema_version (version) VALUES (?)", [SCHEMA_VERSION]);
     db.close();
 
-    trace({ command: "q", name: "chain" }, env);
+    trace({ event: "query.completed", command: "q", name: "chain" }, env);
     expect(rows(env)).toHaveLength(1);
   });
 
   test("drops the row rather than failing the command it traces", () => {
     const env = scratch();
     expect(() =>
-      trace({ command: "q", name: "chain" }, { ...env, DIM_HOME: "/nowhere/at/all" }),
+      trace(
+        { event: "query.completed", command: "q", name: "chain" },
+        { ...env, DIM_HOME: "/nowhere/at/all" },
+      ),
     ).not.toThrow();
   });
 });

@@ -1,6 +1,6 @@
 // Every table here is one-to-one with records in the source files and is rebuilt
 // by re-reading them, so a schema change is `dim rebuild`, not a migration. The
-// exceptions carry the reason at the table: guidance_walk, command_trace and
+// exceptions carry the reason at the table: guidance_walk, trace_event and
 // finding have no source to re-read, embedding holds vectors only a model can
 // produce again, and correction_label, hook_event and the factory order records
 // have no source either but are dropped and written back row for row.
@@ -20,7 +20,7 @@ import { ORDER_STATUSES_SQL } from "./factory-order";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 52;
+export const SCHEMA_VERSION = 53;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -152,23 +152,29 @@ CREATE TABLE IF NOT EXISTS guidance_walk (
 );
 CREATE INDEX IF NOT EXISTS guidance_walk_path ON guidance_walk(path, seen_at);
 
--- One row per traced invocation. Which commands an agent runs is already in
--- tool_call, because every one is a shell call in a transcript; what is not
--- anywhere else is which branch answered — \`q search\` falling back from cosine
--- to the keyword index is invisible in its rows — and any run from a terminal,
--- which belongs to no session. Like hook_event it has no source to re-read, so
+-- One ordered, diagnostic event stream. It is deliberately separate from the
+-- factory order audit: trace explains execution, while order events prove
+-- attributed business actions. Like hook_event it has no source to re-read, so
 -- \`rebuild\` never clears it.
-CREATE TABLE IF NOT EXISTS command_trace (
-  id          INTEGER PRIMARY KEY,
-  ts          TEXT NOT NULL,
-  command     TEXT NOT NULL,       -- the dim subcommand; only q writes one today
-  name        TEXT,                -- the query name, where the command is q
-  path        TEXT,                -- which branch answered, where the query names one
-  row_count   INTEGER,
-  duration_ms INTEGER,
-  cwd         TEXT
+CREATE TABLE IF NOT EXISTS trace_event (
+  id            INTEGER PRIMARY KEY,
+  ts            TEXT NOT NULL,
+  event         TEXT NOT NULL,
+  order_id      TEXT,
+  attempt_id    TEXT,
+  station       TEXT,
+  worker        TEXT,
+  session_id    TEXT,
+  command       TEXT,
+  name          TEXT,
+  path          TEXT,
+  row_count     INTEGER,
+  duration_ms   INTEGER,
+  cwd           TEXT,
+  fields        TEXT NOT NULL DEFAULT '{}'
 );
-CREATE INDEX IF NOT EXISTS command_trace_name ON command_trace(command, name, ts);
+CREATE INDEX IF NOT EXISTS trace_event_order_ts ON trace_event(order_id, ts, id);
+CREATE INDEX IF NOT EXISTS trace_event_name ON trace_event(event, name, ts);
 
 -- Persisted scheduler definitions are operational control state, not source-derived
 -- rows and not factory order execution reports. The latest evaluation fields let the
