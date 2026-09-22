@@ -12,9 +12,16 @@ import {
   recordOrderCommit,
   recordOrderPlan,
 } from "./factory-order";
-import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
+import {
+  mintWorker,
+  resolveWorker,
+  WORKER_NAME_VAR,
+  WORKER_SESSION_VAR,
+  WORKER_TOKEN_VAR,
+} from "./factory-worker";
+import { fakeHarness } from "./fake-harness";
 import { integratedRepo } from "./fixtures.test-support";
-import { runOrderBuild } from "./order-build";
+import { runOrderBuild, runOrderBuildLive } from "./order-build";
 import { SCHEMA_SQL } from "./schema";
 import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
 
@@ -184,6 +191,87 @@ describe("builder station", () => {
       status: "queued",
       run_id: null,
     });
+    db.close();
+  });
+
+  test("resumes the same builder after a failed build turn", async () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const repo = integratedRepo();
+    repos.push(repo.dir);
+    const home = mkdtempSync(join(tmpdir(), "dim-builder-resume-"));
+    homes.push(home);
+    writeFileSync(
+      join(home, "routing.json"),
+      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
+    );
+    const operator = mintWorker(db, { role: "operator", sessionId: "builder-resume-operator" });
+    queueOrder(
+      db,
+      { id: "builder-resume-order", project: "cniska/dim-factory", title: "Retry this build" },
+      operator.name,
+    );
+    claimOrder(
+      db,
+      "builder-resume-order",
+      { runId: "plan-run", station: "dim-station-plan" },
+      operator.name,
+      undefined,
+      repo.dir,
+    );
+    const planner = mintWorker(db, {
+      role: "planner",
+      parentWorker: operator.name,
+      sessionId: "builder-resume-operator/planner",
+    });
+    recordOrderPlan(db, "builder-resume-order", "## Outcome\n\nBuild the requested result.", planner.name);
+    approveOrderPlan(db, "builder-resume-order", operator.name);
+    moveOrder(db, "builder-resume-order", "dim-station-build", operator.name);
+
+    const base = fakeHarness("crash");
+    let starts = 0;
+    let resumes = 0;
+    const adapter = {
+      ...base,
+      start: async (request: Parameters<typeof base.start>[0]) => {
+        starts += 1;
+        return base.start(request);
+      },
+      resume: async (sessionId: string, request: Parameters<typeof base.start>[0]) => {
+        resumes += 1;
+        expect(sessionId).toBe("fake-session");
+        const builder = resolveWorker(db, request.env);
+        claimOrder(
+          db,
+          "builder-resume-order",
+          { runId: "builder-resume-run", sessionId, station: "dim-station-build" },
+          builder,
+          undefined,
+          repo.dir,
+        );
+        return base.resume(sessionId, request);
+      },
+    };
+    const env = {
+      DIM_HOME: home,
+      [WORKER_NAME_VAR]: operator.name,
+      [WORKER_TOKEN_VAR]: operator.token,
+      [WORKER_SESSION_VAR]: operator.sessionId,
+    };
+
+    await expect(
+      runOrderBuildLive(db, "builder-resume-order", operator.name, { dir: repo.dir, env, adapter }),
+    ).rejects.toThrow("fake process crashed");
+    await expect(
+      runOrderBuildLive(db, "builder-resume-order", operator.name, { dir: repo.dir, env, adapter }),
+    ).rejects.toThrow("fake process crashed");
+
+    expect(starts).toBe(1);
+    expect(resumes).toBe(1);
+    expect(db.query("SELECT count(*) AS n FROM factory_worker WHERE role = 'builder'").get()).toEqual({
+      n: 1,
+    });
+    expect(db.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 1 });
     db.close();
   });
 });
