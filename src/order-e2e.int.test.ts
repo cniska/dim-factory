@@ -46,16 +46,20 @@ function run(args) {
   }
 }
 
-if (process.env.DIM_WORKER_INVITATION_ID) {
-  const accepted = Bun.spawnSync(["bun", cli, "worker", "accept", process.env.DIM_WORKER_INVITATION_ID], {
+if (process.env.DIM_WORKER_ASSIGNMENT_ID) {
+  const bootstrapped = Bun.spawnSync(["bun", cli, "worker", "bootstrap", process.env.DIM_WORKER_ASSIGNMENT_ID], {
     cwd: process.cwd(),
     env: childEnv,
     stdout: "pipe",
     stderr: "pipe",
   });
-  if (!accepted.success) {
-    console.error(accepted.stdout.toString(), accepted.stderr.toString());
-    process.exit(accepted.exitCode ?? 1);
+  if (!bootstrapped.success) {
+    console.error(bootstrapped.stdout.toString(), bootstrapped.stderr.toString());
+    process.exit(bootstrapped.exitCode ?? 1);
+  }
+  for (const line of bootstrapped.stdout.toString().trim().split("\\n")) {
+    const [name, value] = line.replace("export ", "").split("=");
+    if (name && value) childEnv[name] = value;
   }
 }
 

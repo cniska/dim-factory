@@ -9,7 +9,7 @@ import { integratedRepo } from "./fixtures.test-support";
 import { runOrderCommand } from "./order-command";
 import { runOrderPlan } from "./order-plan";
 import { SCHEMA_SQL } from "./schema";
-import { acceptWorker, INVITATION_ID_VAR, INVITATION_TOKEN_VAR } from "./worker-invitation";
+import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
 
 const repos: string[] = [];
 const homes: string[] = [];
@@ -70,9 +70,9 @@ describe("plan approval integration", () => {
       spawn: (_argv, worker) => ({
         exitCode: 0,
         stdout: (() => {
-          const child = acceptWorker(db, {
-            id: worker[INVITATION_ID_VAR] as string,
-            token: worker[INVITATION_TOKEN_VAR] as string,
+          const child = bootstrapWorker(db, {
+            id: worker[ASSIGNMENT_ID_VAR] as string,
+            token: worker[ASSIGNMENT_TOKEN_VAR] as string,
             sessionId: "planner-approval-session",
           });
           return `## Outcome\n\nPlan for ${child.name}.`;

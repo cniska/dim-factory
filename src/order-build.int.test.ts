@@ -8,6 +8,7 @@ import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } fro
 import { integratedRepo } from "./fixtures.test-support";
 import { runOrderBuild } from "./order-build";
 import { SCHEMA_SQL } from "./schema";
+import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
 
 const repos: string[] = [];
 const homes: string[] = [];
@@ -78,12 +79,18 @@ describe("builder station", () => {
       spawn: (argv, childEnv, cwd) => {
         spawnedCwd = cwd;
         spawnedBrief = argv[1] ?? "";
-        const builder = childEnv[WORKER_NAME_VAR] as string;
+        const builder = bootstrapWorker(db, {
+          id: childEnv[ASSIGNMENT_ID_VAR] as string,
+          token: childEnv[ASSIGNMENT_TOKEN_VAR] as string,
+          sessionId: "builder-session",
+        });
+        childEnv[WORKER_NAME_VAR] = builder.name;
+        childEnv[WORKER_SESSION_VAR] = builder.sessionId;
         claimOrder(
           db,
           "builder-order",
           { runId: "builder-run", sessionId: childEnv[WORKER_SESSION_VAR], station: "dim-station-build" },
-          builder,
+          builder.name,
           undefined,
           repo.dir,
         );
@@ -177,17 +184,11 @@ describe("builder station", () => {
       }),
     ).toThrow("harness unavailable");
 
-    const builder = db
-      .query<{ name: string; ended_at: string | null }, []>(
-        "SELECT name, ended_at FROM factory_worker WHERE role = 'builder'",
-      )
-      .get();
-    expect(builder?.ended_at).toEqual(expect.any(String));
     expect(
       db
         .query("SELECT kind, worker, reason FROM factory_order_event WHERE order_id = ?")
         .all("failed-builder-order"),
-    ).toContainEqual({ kind: "failed", worker: builder?.name, reason: "harness unavailable" });
+    ).toContainEqual({ kind: "failed", worker: operator.name, reason: "harness unavailable" });
     expect(
       db.query("SELECT status, run_id FROM factory_order WHERE id = ?").get("failed-builder-order"),
     ).toEqual({

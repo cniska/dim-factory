@@ -5,7 +5,7 @@ import { recordOrderPlan } from "./factory-order";
 import { resolveWorker } from "./factory-worker";
 import { route } from "./routing";
 import { readSpawnProfile, spawnArgv } from "./spawn-profile";
-import { invitationProcessEnv, inviteWorker } from "./worker-invitation";
+import { assignedWorker, assignmentProcessEnv, assignWorker } from "./worker-assignment";
 
 /** Reads and searches the repository, its history and the record — never edits, never raises a finding. */
 export const PLANNER_CAPABILITIES: Capability[] = ["read-files", "read-history", "ask-dim"];
@@ -37,7 +37,7 @@ export function plannerBrief(order: { id: string; title: string; description: st
     "Read the repository rules and prior decisions before proposing work.",
     "Write one plain Markdown plan for the owner to read on the factory wall.",
     "Include the outcome, evidence, contracts, independently verifiable slices, risks, holds, and non-goals.",
-    "Your first act must be `dim worker accept $DIM_WORKER_INVITATION_ID` using the invitation in your environment.",
+    "Your first act must be `dim worker bootstrap $DIM_WORKER_ASSIGNMENT_ID` using the assignment in your environment.",
     "Return only the Markdown plan. Do not edit files, commit, or run mutation commands.",
   ].join("\n");
 }
@@ -60,22 +60,18 @@ export function runOrderPlan(
   if (!order) throw new Error(`order not found: ${orderId}`);
   const parentWorker = resolveWorker(db, options.env);
   assertOperator(db, parentWorker, "delegate planning");
-  const invitation = inviteWorker(db, { role: "planner", parentWorker });
+  const assignment = assignWorker(db, { role: "planner", parentWorker });
   const { model } = route("planner", options.env);
   const profile = readSpawnProfile(options.env);
   const spawn = options.spawn ?? spawnPlanner;
   const run = spawn(
     spawnArgv(profile, { model, brief: plannerBrief(order), capabilities: PLANNER_CAPABILITIES }),
-    invitationProcessEnv(options.env ?? process.env, invitation),
+    assignmentProcessEnv(options.env ?? process.env, assignment),
   );
   if (run.exitCode !== 0) throw new Error("planner did not finish planning");
   const body = run.stdout.trim();
-  const planner = db
-    .query<{ accepted_worker: string | null }, [string]>(
-      "SELECT accepted_worker FROM factory_worker_invitation WHERE id = ?",
-    )
-    .get(invitation.id)?.accepted_worker;
-  if (!planner) throw new Error("planner did not accept its worker invitation");
+  const planner = assignedWorker(db, assignment.id);
+  if (!planner) throw new Error("planner did not bootstrap its worker assignment");
   recordOrderPlan(db, orderId, body, planner);
   return { planner, body };
 }

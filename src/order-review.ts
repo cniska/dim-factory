@@ -1,10 +1,10 @@
 import type { Database } from "bun:sqlite";
 import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
-import { assertBuildApproved, closeOrderReview, openOrderReview } from "./factory-order";
-import { mintWorker, newWorkerSession, WORKER_SESSION_VAR, workerProcessEnv } from "./factory-worker";
+import { assertBuildApproved, closeOrderReview, openAssignedOrderReview } from "./factory-order";
 import { route } from "./routing";
 import { readSpawnProfile, spawnArgv } from "./spawn-profile";
+import { assignedWorker, assignmentProcessEnv, assignWorker } from "./worker-assignment";
 
 export class ReviewRefused extends Error {
   constructor(
@@ -120,7 +120,7 @@ export type ReviewOutcome = {
 };
 
 /**
- * Mints the reviewer, spawns it and closes the round from its exit code. The operator that
+ * Assigns the reviewer, spawns it and closes the round from its exit code. The operator that
  * invokes this never holds the reviewer's token and never writes its brief, which is what
  * makes the finding evidence rather than the builder's own account of itself.
  */
@@ -141,16 +141,11 @@ export function runOrderReview(
   assertOperator(db, worker, "delegate review");
   assertBuildApproved(db, orderId);
   const range = reviewRange(db, orderId, options.dir);
-  const parentSession = options.env?.[WORKER_SESSION_VAR] ?? newWorkerSession("parent");
-  const minted = mintWorker(db, {
-    role: "reviewer",
-    parentWorker: worker,
-    sessionId: `${parentSession}/reviewer/${orderId}/${newWorkerSession("round")}`,
-  });
-  const opened = openOrderReview(
+  const assignment = assignWorker(db, { role: "reviewer", parentWorker: worker });
+  const opened = openAssignedOrderReview(
     db,
     orderId,
-    { reviewer: minted.name, baseSha: range.base, headSha: range.head },
+    { assignmentId: assignment.id, baseSha: range.base, headSha: range.head },
     worker,
   );
   const { model } = route("reviewer", options.env);
@@ -158,12 +153,18 @@ export function runOrderReview(
   const spawn = options.spawn ?? spawnReviewer;
   const run = spawn(
     spawnArgv(profile, { model, brief: reviewerBrief(order, range), capabilities: REVIEWER_CAPABILITIES }),
-    workerProcessEnv(options.env, minted),
+    assignmentProcessEnv(options.env, assignment),
   );
+  const reviewer = assignedWorker(db, assignment.id);
+  if (!reviewer) {
+    closeOrderReview(db, opened.id, "aborted", worker);
+    throw new Error("reviewer did not bootstrap its worker assignment");
+  }
+  db.run("UPDATE factory_order_review SET reviewer = ? WHERE id = ?", [reviewer, opened.id]);
   const outcome = run.exitCode === 0 ? "closed" : "aborted";
   closeOrderReview(db, opened.id, outcome, worker);
   const raised = (db
     .query<{ n: number }, [number]>("SELECT count(*) AS n FROM factory_order_finding WHERE review_id = ?")
     .get(opened.id)?.n ?? 0) as number;
-  return { review: opened.id, reviewer: minted.name, findings: raised, outcome };
+  return { review: opened.id, reviewer, findings: raised, outcome };
 }

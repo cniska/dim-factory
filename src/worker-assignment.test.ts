@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { mintWorker } from "./factory-worker";
 import { SCHEMA_SQL } from "./schema";
-import { acceptWorker, inviteWorker } from "./worker-invitation";
+import { assignWorker, bootstrapWorker } from "./worker-assignment";
 
 function floor(): Database {
   const db = new Database(":memory:");
@@ -10,16 +10,16 @@ function floor(): Database {
   return db;
 }
 
-describe("worker invitations", () => {
-  test("creates a child only when its harness session accepts", () => {
+describe("worker assignments", () => {
+  test("creates a child only when its harness session bootstraps", () => {
     const db = floor();
     const parent = mintWorker(db, { role: "operator", sessionId: "operator-session" });
-    const invitation = inviteWorker(db, { parentWorker: parent.name, role: "planner" });
+    const assignment = assignWorker(db, { parentWorker: parent.name, role: "planner" });
 
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 1 });
-    const child = acceptWorker(db, {
-      id: invitation.id,
-      token: invitation.token,
+    const child = bootstrapWorker(db, {
+      id: assignment.id,
+      token: assignment.token,
       sessionId: "planner-session",
     });
 
@@ -30,33 +30,33 @@ describe("worker invitations", () => {
       },
     );
     expect(
-      db.query("SELECT accepted_worker FROM factory_worker_invitation WHERE id = ?").get(invitation.id),
+      db.query("SELECT accepted_worker FROM factory_worker_assignment WHERE id = ?").get(assignment.id),
     ).toEqual({
       accepted_worker: child.name,
     });
     db.close();
   });
 
-  test("uses an invitation once", () => {
+  test("uses an assignment once", () => {
     const db = floor();
     const parent = mintWorker(db, { role: "operator", sessionId: "operator-session" });
-    const invitation = inviteWorker(db, { parentWorker: parent.name, role: "builder" });
-    acceptWorker(db, { id: invitation.id, token: invitation.token, sessionId: "builder-session" });
+    const assignment = assignWorker(db, { parentWorker: parent.name, role: "builder" });
+    bootstrapWorker(db, { id: assignment.id, token: assignment.token, sessionId: "builder-session" });
 
     expect(() =>
-      acceptWorker(db, { id: invitation.id, token: invitation.token, sessionId: "other-session" }),
-    ).toThrow(expect.objectContaining({ code: "invitation_used" }));
+      bootstrapWorker(db, { id: assignment.id, token: assignment.token, sessionId: "other-session" }),
+    ).toThrow(expect.objectContaining({ code: "assignment_used" }));
     db.close();
   });
 
-  test("does not let a child choose another invitation's token", () => {
+  test("does not let a child choose another assignment's token", () => {
     const db = floor();
     const parent = mintWorker(db, { role: "operator", sessionId: "operator-session" });
-    const invitation = inviteWorker(db, { parentWorker: parent.name, role: "reviewer" });
+    const assignment = assignWorker(db, { parentWorker: parent.name, role: "reviewer" });
 
     expect(() =>
-      acceptWorker(db, { id: invitation.id, token: "wrong", sessionId: "reviewer-session" }),
-    ).toThrow(expect.objectContaining({ code: "invitation_token" }));
+      bootstrapWorker(db, { id: assignment.id, token: "wrong", sessionId: "reviewer-session" }),
+    ).toThrow(expect.objectContaining({ code: "assignment_token" }));
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 1 });
     db.close();
   });

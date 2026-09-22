@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { SCHEMA_SQL } from "./schema";
+import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR } from "./worker-assignment";
 import { runWorkerCommand, WorkerCommandError } from "./worker-command";
-import { INVITATION_ID_VAR, INVITATION_TOKEN_VAR } from "./worker-invitation";
 
 function floor(): Database {
   const db = new Database(":memory:");
@@ -99,7 +99,7 @@ describe("starting a worker", () => {
 });
 
 describe("issuing a worker to a shell", () => {
-  test("a child accepts an invitation under its own harness session", () => {
+  test("a child bootstraps an assignment under its own harness session", () => {
     const db = floor();
     const parentLines = runWorkerCommand(db, ["mint", "--role", "operator"], {
       DIM_SESSION_ID: "operator-session",
@@ -110,23 +110,23 @@ describe("issuing a worker to a shell", () => {
       parent[name as string] = value as string;
     }
 
-    const invitationLines = runWorkerCommand(db, ["invite", "--role", "planner"], parent).split("\n");
+    const assignmentLines = runWorkerCommand(db, ["assign", "--role", "planner"], parent).split("\n");
     const child: Record<string, string> = { [WORKER_SESSION_VAR]: "planner-session" };
-    for (const line of invitationLines) {
+    for (const line of assignmentLines) {
       const [name, value] = line.replace("export ", "").split("=");
       child[name as string] = value as string;
     }
 
-    const accepted = runWorkerCommand(db, ["accept", child[INVITATION_ID_VAR] as string], child);
+    const bootstrapped = runWorkerCommand(db, ["bootstrap", child[ASSIGNMENT_ID_VAR] as string], child);
     const acceptedEnv: Record<string, string> = { [WORKER_SESSION_VAR]: child[WORKER_SESSION_VAR] as string };
-    for (const line of accepted.split("\n")) {
+    for (const line of bootstrapped.split("\n")) {
       const [name, value] = line.replace("export ", "").split("=");
       acceptedEnv[name as string] = value as string;
     }
 
     expect(resolveWorker(db, acceptedEnv)).toBe(acceptedEnv[WORKER_NAME_VAR] as string);
     expect(acceptedEnv[WORKER_TOKEN_VAR]).toBeString();
-    expect(child[INVITATION_TOKEN_VAR]).toBeString();
+    expect(child[ASSIGNMENT_TOKEN_VAR]).toBeString();
     db.close();
   });
 

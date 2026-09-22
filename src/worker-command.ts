@@ -12,7 +12,7 @@ import {
 } from "./factory-worker";
 import { readFlags } from "./flags";
 import { isReadOnly, isRole, ROLES, type Role } from "./roles";
-import { acceptWorker, INVITATION_TOKEN_VAR, inviteWorker } from "./worker-invitation";
+import { ASSIGNMENT_TOKEN_VAR, assignWorker, bootstrapWorker } from "./worker-assignment";
 
 export class WorkerCommandError extends Error {}
 
@@ -22,8 +22,8 @@ const ISSUABLE_ROLES = ROLES.filter((role) => !isReadOnly(role));
 
 export const WORKER_USAGE = `usage: dim worker mint --role <${ISSUABLE_ROLES.join("|")}> [--pid <n>]
        dim worker run --role <${ISSUABLE_ROLES.join("|")}> -- <command> [args...]
-       dim worker invite --role <${ROLES.join("|")}>
-       dim worker accept <invitation-id>
+       dim worker assign --role <${ROLES.join("|")}>
+       dim worker bootstrap <assignment-id>
        dim worker end <name>
 
 A worker is issued before it does anything, and every moment it records names it.
@@ -52,7 +52,7 @@ function role(given: string | undefined): Role {
   return given;
 }
 
-function invitationRole(given: string | undefined): Role {
+function assignmentRole(given: string | undefined): Role {
   if (given === undefined)
     throw fail(`--role says what this hand is called in as; one of ${ROLES.join(", ")}`);
   if (!isRole(given))
@@ -142,23 +142,23 @@ export function runWorkerCommand(db: Database, args: string[], env = process.env
     if (argv.length === 0) throw fail("run takes the command to start after `--`");
     return start(db, argv, role(given.get("--role")), env);
   }
-  if (command === "invite") {
+  if (command === "assign") {
     const given = readFlags(rest, ["--role"], fail);
     const parentWorker = resolveWorker(db, env);
-    const invitation = inviteWorker(db, { parentWorker, role: invitationRole(given.get("--role")) });
-    return `export DIM_WORKER_INVITATION_ID=${invitation.id}\nexport DIM_WORKER_INVITATION_TOKEN=${invitation.token}`;
+    const assignment = assignWorker(db, { parentWorker, role: assignmentRole(given.get("--role")) });
+    return `export DIM_WORKER_ASSIGNMENT_ID=${assignment.id}\nexport DIM_WORKER_ASSIGNMENT_TOKEN=${assignment.token}`;
   }
-  if (command === "accept") {
+  if (command === "bootstrap") {
     const [id, ...flags] = rest;
-    if (!id) throw fail("accept takes the invitation id");
+    if (!id) throw fail("bootstrap takes the assignment id");
     readFlags(flags, [], fail);
-    const token = env[INVITATION_TOKEN_VAR];
-    if (!token) throw fail(`${INVITATION_TOKEN_VAR} is required to accept an invitation`);
-    const minted = acceptWorker(db, {
+    const token = env[ASSIGNMENT_TOKEN_VAR];
+    if (!token) throw fail(`${ASSIGNMENT_TOKEN_VAR} is required to bootstrap an assignment`);
+    const minted = bootstrapWorker(db, {
       id,
       token,
       sessionId: session(env),
-      pid: process.pid,
+      pid: process.ppid,
     });
     return workerExports(minted);
   }

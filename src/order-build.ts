@@ -8,16 +8,11 @@ import {
   orderStatus,
   PlanApprovalRefused,
 } from "./factory-order";
-import {
-  endWorker,
-  mintWorker,
-  newWorkerSession,
-  WORKER_SESSION_VAR,
-  workerProcessEnv,
-} from "./factory-worker";
+import { endWorker } from "./factory-worker";
 import type { Env } from "./paths";
 import { route } from "./routing";
 import { readSpawnProfile, spawnArgv } from "./spawn-profile";
+import { assignedWorker, assignmentProcessEnv, assignWorker } from "./worker-assignment";
 import { repoRoot, worktreePath } from "./wt-command";
 
 export const BUILDER_CAPABILITIES: Capability[] = [
@@ -104,21 +99,17 @@ export function runOrderBuild(
   if (!plan) {
     throw new PlanApprovalRefused("plan_missing", `order ${orderId} has no approved plan to build`);
   }
-  const parentSession = options.env?.[WORKER_SESSION_VAR] ?? newWorkerSession("parent");
-  const minted = mintWorker(db, {
-    role: "builder",
-    parentWorker: operator,
-    sessionId: `${parentSession}/builder/${orderId}/${newWorkerSession("attempt")}`,
-  });
-  const runId = `build-${newWorkerSession(orderId)}`;
+  const assignment = assignWorker(db, { role: "builder", parentWorker: operator });
+  const runId = `build-${crypto.randomUUID()}`;
   const worktree = worktreePath(repoRoot(options.dir), orderId);
+  let builder: string | undefined;
   let failureRecorded = false;
   const recordFailure = (reason: string): void => {
     if (failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
     failureRecorded = true;
     appendOrderEvent(db, orderId, {
       kind: "failed",
-      worker: minted.name,
+      worker: builder ?? operator,
       reason,
     });
   };
@@ -132,19 +123,23 @@ export function runOrderBuild(
         brief: builderBrief(order, plan.body, runId),
         capabilities: BUILDER_CAPABILITIES,
       }),
-      workerProcessEnv(options.env, minted),
+      assignmentProcessEnv(options.env, assignment),
       worktree,
     );
+    builder = assignedWorker(db, assignment.id);
+    if (!builder) throw new Error("builder did not bootstrap its worker assignment");
     if (run.exitCode !== 0) {
-      const reason = `${minted.name} exited with code ${run.exitCode}`;
+      const reason = `${builder} exited with code ${run.exitCode}`;
       recordFailure(reason);
-      throw new Error(`${minted.name} did not finish building`);
+      throw new Error(`${builder} did not finish building`);
     }
-    return { builder: minted.name, runId, worktree, exitCode: run.exitCode };
+    return { builder, runId, worktree, exitCode: run.exitCode };
   } catch (error) {
     recordFailure(error instanceof Error ? error.message : String(error));
     throw error;
   } finally {
-    endWorker(db, minted.name);
+    if (builder) {
+      endWorker(db, builder);
+    }
   }
 }

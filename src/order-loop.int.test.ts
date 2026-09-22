@@ -17,6 +17,7 @@ import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } fro
 import { integratedRepo, orderWorktree } from "./fixtures.test-support";
 import { runOrderReview } from "./order-review";
 import { SCHEMA_SQL } from "./schema";
+import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
 
 const repo = integratedRepo();
 const worktrees: string[] = [];
@@ -94,7 +95,12 @@ describe("the operator loop", () => {
       dir: worktree,
       env: workerEnv(operator),
       spawn: (_argv, env) => {
-        const reviewer = env[WORKER_NAME_VAR] as string;
+        const reviewerWorker = bootstrapWorker(db, {
+          id: env[ASSIGNMENT_ID_VAR] as string,
+          token: env[ASSIGNMENT_TOKEN_VAR] as string,
+          sessionId: `reviewer-${crypto.randomUUID()}`,
+        });
+        const reviewer = reviewerWorker.name;
         raiseOrderFinding(
           db,
           "loop-order",
@@ -134,7 +140,14 @@ describe("the operator loop", () => {
     const secondReview = runOrderReview(db, "loop-order", operator.name, {
       dir: worktree,
       env: workerEnv(operator),
-      spawn: () => ({ exitCode: 0 }),
+      spawn: (_argv, env) => {
+        bootstrapWorker(db, {
+          id: env[ASSIGNMENT_ID_VAR] as string,
+          token: env[ASSIGNMENT_TOKEN_VAR] as string,
+          sessionId: `reviewer-${crypto.randomUUID()}`,
+        });
+        return { exitCode: 0 };
+      },
     });
     expect(secondReview.findings).toBe(0);
     expect(() => moveOrder(db, "loop-order", "ship", operator.name)).toThrow(

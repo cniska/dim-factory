@@ -662,7 +662,7 @@ export function recordOrderCheck(
   })();
 }
 
-export type ReviewRound = { id: number; round: number; reviewer: string };
+export type ReviewRound = { id: number; round: number; reviewer: string | null };
 
 export class ReviewNotOpen extends Error {
   constructor(
@@ -715,6 +715,39 @@ export function openOrderReview(
   })();
 }
 
+export function openAssignedOrderReview(
+  db: Database,
+  orderId: string,
+  round: { assignmentId: string; baseSha: string; headSha: string },
+  worker: string,
+  at = now(),
+): ReviewRound {
+  assertOrderWorking(db, orderId);
+  return db.transaction(() => {
+    const live = db
+      .query<{ id: number }, [string]>(
+        "SELECT id FROM factory_order_review WHERE order_id = ? AND closed_at IS NULL",
+      )
+      .get(orderId);
+    if (live) throw new ReviewNotOpen("review_open", `order ${orderId} already has review ${live.id} open`);
+    const next =
+      ((db
+        .query<{ n: number }, [string]>(
+          "SELECT coalesce(max(round), 0) AS n FROM factory_order_review WHERE order_id = ?",
+        )
+        .get(orderId)?.n ?? 0) as number) + 1;
+    const written = db.run(
+      `INSERT INTO factory_order_review
+       (order_id, round, reviewer, assignment_id, base_sha, head_sha, opened_at)
+       VALUES (?, ?, NULL, ?, ?, ?, ?)`,
+      [orderId, next, round.assignmentId, round.baseSha, round.headSha, at],
+    );
+    const id = Number(written.lastInsertRowid);
+    appendOrderEventInTransaction(db, orderId, { kind: "review_opened", worker, reviewId: id }, at);
+    return { id, round: next, reviewer: null };
+  })();
+}
+
 /**
  * Written from the spawned reviewer's exit rather than from anything it said: a reviewer
  * that died and one that finished having found nothing are the same empty set of findings,
@@ -762,8 +795,11 @@ export function raiseOrderFinding(
   at = now(),
 ): number {
   const row = db
-    .query<{ id: number; reviewer: string }, [string]>(
-      "SELECT id, reviewer FROM factory_order_review WHERE order_id = ? AND closed_at IS NULL",
+    .query<{ id: number; reviewer: string | null }, [string]>(
+      `SELECT r.id, coalesce(r.reviewer, a.accepted_worker) AS reviewer
+       FROM factory_order_review r
+       LEFT JOIN factory_worker_assignment a ON a.id = r.assignment_id
+       WHERE r.order_id = ? AND r.closed_at IS NULL`,
     )
     .get(orderId);
   if (!row) {

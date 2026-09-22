@@ -14,6 +14,7 @@ import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } fro
 import { integratedRepo, orderWorktree } from "./fixtures.test-support";
 import { type ReviewerSpawn, ReviewRefused, runOrderReview } from "./order-review";
 import { SCHEMA_SQL } from "./schema";
+import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
 
 const trunk = integratedRepo();
 const worktrees: string[] = [];
@@ -34,6 +35,18 @@ const REVIEWER_TOOLS = [
   "Bash(dim q:*)",
   "Bash(dim order finding:*)",
 ];
+
+function bootstrapReviewer(db: Database, env: Record<string, string>): string {
+  const reviewer = bootstrapWorker(db, {
+    id: env[ASSIGNMENT_ID_VAR] as string,
+    token: env[ASSIGNMENT_TOKEN_VAR] as string,
+    sessionId: `reviewer-${crypto.randomUUID()}`,
+  });
+  env[WORKER_NAME_VAR] = reviewer.name;
+  env[WORKER_TOKEN_VAR] = reviewer.token;
+  env[WORKER_SESSION_VAR] = reviewer.sessionId;
+  return reviewer.name;
+}
 
 // A harness map and a spawn profile, because routing resolves the reviewer's model
 // through one and spawnArgv resolves its argv through the other, and both refuse
@@ -127,11 +140,12 @@ describe("a review round", () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     const spawn: ReviewerSpawn = (_argv, env) => {
+      const reviewer = bootstrapReviewer(db, env);
       raiseOrderFinding(
         db,
         "order-1",
         { dimension: "correctness", summary: "the guard is the wrong way round" },
-        env[WORKER_NAME_VAR] as string,
+        reviewer,
       );
       return { exitCode: 0 };
     };
@@ -154,7 +168,10 @@ describe("a review round", () => {
 
     const done = runOrderReview(db, "order-1", operator, {
       dir,
-      spawn: () => ({ exitCode: 0 }),
+      spawn: (_argv, env) => {
+        bootstrapReviewer(db, env);
+        return { exitCode: 0 };
+      },
       env: {
         ...machine,
         [WORKER_NAME_VAR]: worker,
@@ -171,7 +188,10 @@ describe("a review round", () => {
   test("the builder cannot raise one under its own name", () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
-    const spawn: ReviewerSpawn = () => ({ exitCode: 0 });
+    const spawn: ReviewerSpawn = (_argv, env) => {
+      bootstrapReviewer(db, env);
+      return { exitCode: 0 };
+    };
     runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
 
     expect(() => raiseOrderFinding(db, "order-1", { dimension: "tests", summary: "mine" }, worker)).toThrow(
@@ -182,7 +202,10 @@ describe("a review round", () => {
   test("a reviewer that did not finish leaves an aborted round, not a clean one", () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
-    const spawn: ReviewerSpawn = () => ({ exitCode: 3 });
+    const spawn: ReviewerSpawn = (_argv, env) => {
+      bootstrapReviewer(db, env);
+      return { exitCode: 3 };
+    };
 
     const done = runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
 
@@ -196,7 +219,8 @@ describe("a review round", () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     let handed: string[] = [];
-    const spawn: ReviewerSpawn = (argv) => {
+    const spawn: ReviewerSpawn = (argv, env) => {
+      bootstrapReviewer(db, env);
       handed = argv;
       return { exitCode: 0 };
     };
@@ -218,6 +242,7 @@ describe("a review round", () => {
     let argv: string[] = [];
     let env: Record<string, string> = {};
     const spawn: ReviewerSpawn = (given, environment) => {
+      bootstrapReviewer(db, environment);
       argv = given;
       env = environment;
       return { exitCode: 0 };
@@ -233,7 +258,10 @@ describe("a review round", () => {
   test("a second round reads only what the first one did not", () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
-    const quiet: ReviewerSpawn = () => ({ exitCode: 0 });
+    const quiet: ReviewerSpawn = (_argv, env) => {
+      bootstrapReviewer(db, env);
+      return { exitCode: 0 };
+    };
     const first = runOrderReview(db, "order-1", operator, { dir, spawn: quiet, env: machine });
     const fixed = slice(db, dir, worker, "b");
 
@@ -241,7 +269,8 @@ describe("a review round", () => {
     runOrderReview(db, "order-1", operator, {
       dir,
       env: machine,
-      spawn: (argv) => {
+      spawn: (argv, env) => {
+        bootstrapReviewer(db, env);
         read = argv[2] as string;
         return { exitCode: 0 };
       },
@@ -277,7 +306,8 @@ describe("a review round", () => {
   test("two rounds cannot be open over one order", () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
-    const spawn: ReviewerSpawn = () => {
+    const spawn: ReviewerSpawn = (_argv, env) => {
+      bootstrapReviewer(db, env);
       expect(() => runOrderReview(db, "order-1", operator, { dir, env: machine })).toThrow(
         /already has review/,
       );

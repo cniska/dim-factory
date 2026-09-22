@@ -118,7 +118,7 @@ const USAGE = `usage: dim <command>
   order ready [--limit <n>] [--project <owner/repo>]
                   print the orders nobody holds, most urgent first and oldest
                   before newest within a priority, with the held ones beside them
-  worker mint|invite|accept [--role <r>] [--pid <n>]
+  worker mint|assign|bootstrap [--role <r>] [--pid <n>]
                   issue a worker and print the two exports that make a shell one;
                   every order moment names the worker that recorded it
   worker end <name>

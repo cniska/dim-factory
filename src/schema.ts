@@ -20,7 +20,7 @@ import { ORDER_STATUSES_SQL } from "./factory-order";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 50;
+export const SCHEMA_VERSION = 52;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -331,10 +331,10 @@ CREATE TABLE IF NOT EXISTS factory_worker (
   ended_at      TEXT
 );
 
--- A station can authorize a child before the harness has created that child's session.
--- The invitation carries the parent and requested role; acceptance supplies the session
--- identity and creates the worker, so the factory never invents a child identity.
-CREATE TABLE IF NOT EXISTS factory_worker_invitation (
+-- A station can assign a child before the harness has created that child's session.
+-- Bootstrap supplies the session identity and creates the worker, so the factory never
+-- invents a child identity.
+CREATE TABLE IF NOT EXISTS factory_worker_assignment (
   id              TEXT PRIMARY KEY,
   parent_worker   TEXT NOT NULL REFERENCES factory_worker(name),
   role            TEXT NOT NULL CHECK (role IN (${ROLES_SQL})),
@@ -344,8 +344,8 @@ CREATE TABLE IF NOT EXISTS factory_worker_invitation (
   accepted_worker TEXT REFERENCES factory_worker(name),
   CHECK ((accepted_at IS NULL) = (accepted_worker IS NULL))
 );
-CREATE INDEX IF NOT EXISTS factory_worker_invitation_parent
-  ON factory_worker_invitation(parent_worker, created_at);
+CREATE INDEX IF NOT EXISTS factory_worker_assignment_parent
+  ON factory_worker_assignment(parent_worker, created_at);
 
 CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,
@@ -403,8 +403,8 @@ CREATE TABLE IF NOT EXISTS factory_order_check (
 
 -- One reading of one diff, named by the two shas that bound it rather than by the state
 -- of a tree: a sha cannot move while it is being read, and a worktree can. The reviewer
--- is minted when the round opens and its name is recorded here, which is what binds a
--- finding to the hand the factory spawned rather than to any hand holding a token.
+-- is bound to the assignment when the round opens. Bootstrap supplies the worker name
+-- before a finding is accepted, which binds it to the hand the factory spawned.
 --
 -- How it ended is written from the spawned process's exit code, never from anything the
 -- reviewer says about itself: a reviewer that crashed and one that finished clean would
@@ -413,13 +413,15 @@ CREATE TABLE IF NOT EXISTS factory_order_review (
   id            INTEGER PRIMARY KEY,
   order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   round         INTEGER NOT NULL,
-  reviewer      TEXT NOT NULL REFERENCES factory_worker(name),
+  reviewer      TEXT REFERENCES factory_worker(name),
+  assignment_id TEXT REFERENCES factory_worker_assignment(id),
   base_sha      TEXT NOT NULL,
   head_sha      TEXT NOT NULL,
   opened_at     TEXT NOT NULL,
   closed_at     TEXT,
   outcome       TEXT CHECK (outcome IN ('closed', 'aborted')),
   CHECK ((outcome IS NULL) = (closed_at IS NULL)),
+  CHECK (reviewer IS NOT NULL OR assignment_id IS NOT NULL),
   UNIQUE (order_id, round)
 );
 
