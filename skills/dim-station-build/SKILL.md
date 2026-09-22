@@ -48,7 +48,7 @@ What earns an edit is a reader's cost — a name that has to be held in the head
 
 ## Check the slice before the next one
 
-Between the simplification pass and the commit, hand the slice's diff to one agent working from a fixed brief, at the tier `dim route reviewer` gives you. This is not the fan-out the top of this file argues against: that objection is about delegating the edits, which need the context that produced them. A reviewer returns findings and keeps nothing, which is the trade `dim-station-review` makes and the one the corpus measured as costing nothing.
+Between the simplification pass and the commit, hand the slice's diff to one agent working from a fixed brief, at the tier `dim route codex reviewer` gives you. This is not the fan-out the top of this file argues against: that objection is about delegating the edits, which need the context that produced them. A reviewer returns findings and keeps nothing, which is the trade `dim-station-review` makes and the one the corpus measured as costing nothing.
 
 **Give the reviewer read-only tools.** An agent that can edit answers a finding by editing, and what it overwrites is the fix the builder already made — one was reverted that way on 2026-09-18, caught only because the file tools report an on-disk change ([`build-order.md`](../../docs/build-order.md)).
 

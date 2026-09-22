@@ -102,7 +102,7 @@ describe("headless factory loop", () => {
     mkdirSync(machine.env.DIM_HOME as string, { recursive: true });
     writeFileSync(
       join(machine.env.DIM_HOME as string, "routing.json"),
-      '{ "cheap": "small", "standard": "middling", "deep": "large" }',
+      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
     );
     const bin = join(machine.dir, "bin");
     mkdirSync(bin);

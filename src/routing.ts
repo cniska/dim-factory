@@ -1,16 +1,17 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { HARNESSES, type HarnessName } from "./harness-name";
 import { duplicateKeys, parseJsonc } from "./jsonc";
 import { readJsoncText } from "./jsonc-file";
 import { dataDir, type Env } from "./paths";
 import { ROLES, type Role } from "./roles";
 
-export type Tier = "cheap" | "standard" | "deep";
+export type Tier = "light" | "standard" | "deep";
 
-export const TIERS: Tier[] = ["cheap", "standard", "deep"];
+export const TIERS: Tier[] = ["light", "standard", "deep"];
 
 /**
- * A tier for every role, rather than anywhere a caller could infer one: `cheap` reads one
+ * A tier for every role, rather than anywhere a caller could infer one: `light` reads one
  * thing against a fixed brief, `standard` makes the mechanical edit, `deep` cuts the work
  * and decides where the line stops. Keyed by `Role`, so a role added to the vocabulary
  * does not compile until it is given a tier here.
@@ -23,6 +24,8 @@ export const ROLE_TIERS = {
 } as const satisfies Record<Role, Tier>;
 
 export type HarnessMap = Record<Tier, string>;
+export type RoutingMap = Record<HarnessName, HarnessMap>;
+export type RouteRecord = { harness: HarnessName; role: Role; tier: Tier; model: string };
 
 /** `path` is the harness map, and is unset where the role rather than the file is wrong. */
 export class RoutingError extends Error {
@@ -45,9 +48,9 @@ export function harnessMapPath(env: Env = process.env): string {
   return join(dataDir(env), "routing.json");
 }
 
-const TEMPLATE = '{ "cheap": "<model>", "standard": "<model>", "deep": "<model>" }';
+const TEMPLATE = '{ "codex": { "light": "<model>", "standard": "<model>", "deep": "<model>" } }';
 
-export function readHarnessMap(env: Env = process.env): HarnessMap {
+export function readHarnessMap(harness: HarnessName, env: Env = process.env): HarnessMap {
   const path = harnessMapPath(env);
   if (!existsSync(path)) {
     throw new RoutingError(
@@ -57,7 +60,7 @@ export function readHarnessMap(env: Env = process.env): HarnessMap {
     );
   }
   const text = readJsoncText(path);
-  const repeated = duplicateKeys(text);
+  const repeated = duplicateKeys(text, { deep: true });
   if (repeated.length > 0) {
     throw new RoutingError(
       "malformed",
@@ -69,7 +72,27 @@ export function readHarnessMap(env: Env = process.env): HarnessMap {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     throw new RoutingError("malformed", `${path}: the harness map is not an object of ${TEMPLATE}`, path);
   }
-  const entries = raw as Record<string, unknown>;
+  const maps = raw as Record<string, unknown>;
+  const unknownHarnesses = Object.keys(maps).filter((key) => !HARNESSES.includes(key as HarnessName));
+  if (unknownHarnesses.length > 0) {
+    throw new RoutingError(
+      "malformed",
+      `${path}: names ${unknownHarnesses.join(", ")}, which is no supported harness`,
+      path,
+    );
+  }
+  const selected = maps[harness];
+  if (!(harness in maps)) {
+    throw new RoutingError("malformed", `${path}: no map for the ${harness} harness`, path);
+  }
+  if (selected === null || typeof selected !== "object" || Array.isArray(selected)) {
+    throw new RoutingError(
+      "malformed",
+      `${path}: the ${harness} harness map is not an object of tiers`,
+      path,
+    );
+  }
+  const entries = selected as Record<string, unknown>;
   const unknown = Object.keys(entries).filter((key) => !TIERS.includes(key as Tier));
   if (unknown.length > 0) {
     throw new RoutingError(
@@ -89,7 +112,11 @@ export function readHarnessMap(env: Env = process.env): HarnessMap {
   return map;
 }
 
-export function route(role: string, env: Env = process.env): { tier: Tier; model: string } {
+export function route(
+  role: string,
+  harness: HarnessName,
+  env: Env = process.env,
+): { tier: Tier; model: string } {
   if (!(role in ROLE_TIERS)) {
     throw new RoutingError(
       "unknown-role",
@@ -97,18 +124,18 @@ export function route(role: string, env: Env = process.env): { tier: Tier; model
     );
   }
   const tier = ROLE_TIERS[role as Role];
-  return { tier, model: readHarnessMap(env)[tier] };
+  return { tier, model: readHarnessMap(harness, env)[tier] };
 }
 
-export function routeReport(role: string | undefined, env: Env = process.env): string[] {
+export function routeReport(
+  harness: HarnessName,
+  role: string | undefined,
+  env: Env = process.env,
+): RouteRecord[] {
   if (role !== undefined) {
-    const { tier, model } = route(role, env);
-    return [`${tier} ${model}`];
+    const { tier, model } = route(role, harness, env);
+    return [{ harness, role: role as Role, tier, model }];
   }
-  const map = readHarnessMap(env);
-  return [
-    ...ROLES.map((r) => `${r}\t${ROLE_TIERS[r]}\t${map[ROLE_TIERS[r]]}`),
-    "",
-    `harness map: ${harnessMapPath(env)}`,
-  ];
+  const map = readHarnessMap(harness, env);
+  return ROLES.map((r) => ({ harness, role: r, tier: ROLE_TIERS[r], model: map[ROLE_TIERS[r]] }));
 }

@@ -29,7 +29,7 @@ afterAll(() => {
 const machine = (() => {
   const home = orderWorktree(repo.dir, "loop-home");
   worktrees.push(home);
-  writeFileSync(join(home, "routing.json"), '{ "cheap": "s", "standard": "m", "deep": "l" }');
+  writeFileSync(join(home, "routing.json"), '{ "codex": { "light": "s", "standard": "m", "deep": "l" } }');
   return { DIM_HOME: home };
 })();
 

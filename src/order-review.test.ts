@@ -41,7 +41,7 @@ function bootstrapReviewer(db: Database, env: Record<string, string>): string {
 const machine = (() => {
   const home = orderWorktree(trunk.dir, "routing-home");
   worktrees.push(home);
-  writeFileSync(join(home, "routing.json"), '{ "cheap": "s", "standard": "m", "deep": "l" }');
+  writeFileSync(join(home, "routing.json"), '{ "codex": { "light": "s", "standard": "m", "deep": "l" } }');
   return { DIM_HOME: home };
 })();
 

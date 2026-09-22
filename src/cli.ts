@@ -20,6 +20,7 @@ import { type Finding, FindingError, findingFrom, recordFinding } from "./findin
 import { readFlags, requiredFlag } from "./flags";
 import { committerName } from "./git-identity";
 import { labelFor } from "./git-remote";
+import { parseHarness } from "./harness-name";
 import { installHooks, planHooks } from "./hooks";
 import { withLock } from "./lock";
 import { ORDER_USAGE, OrderCommandError, runOrderCommand } from "./order-command";
@@ -70,8 +71,9 @@ const USAGE = `usage: dim <command>
   check-command   print the check command this repo declares, and nothing if it
                   declares none or this is not a checkout (the pre-commit hook
                   reads this, and takes silence as no gate)
-  route [<role>]  print the capability tier a factory role runs at and what this
-                  machine's harness map calls it, or every role with no argument
+  route <harness> [<role>]
+                  print the capability tier a factory role runs at and what this
+                  harness's map calls it, or every role with no role argument
   check-commits <range>
                   judge every authored subject in a revision range by the same
                   rules the commit gate holds, and name each one that breaks
@@ -942,7 +944,7 @@ try {
       }
       break;
     case "route":
-      console.log(routeReport(process.argv[3]).join("\n"));
+      writeFactorySuccess("route", routeReport(parseHarness(process.argv[3]), process.argv[4]));
       break;
     case "check-commits":
       runCheckCommits(process.argv[3]);
@@ -963,7 +965,8 @@ try {
     factoryCommand === "order" ||
     factoryCommand === "schedule" ||
     factoryCommand === "factory" ||
-    factoryCommand === "trace"
+    factoryCommand === "trace" ||
+    factoryCommand === "route"
   ) {
     writeFactoryError(factoryCommand, error);
     process.exit(1);

@@ -2,7 +2,8 @@ import type { Database } from "bun:sqlite";
 import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
 import { assertBuildApproved, closeOrderReview, openAssignedOrderReview } from "./factory-order";
-import { type HarnessName, harnessArgv, runHarnessCommand } from "./harness-command";
+import { harnessArgv, runHarnessCommand } from "./harness-command";
+import type { HarnessName } from "./harness-name";
 import { route } from "./routing";
 import { assignedWorker, assignmentProcessEnv, assignWorker } from "./worker-assignment";
 
@@ -150,9 +151,9 @@ export function runOrderReview(
     { assignmentId: assignment.id, baseSha: range.base, headSha: range.head },
     worker,
   );
-  const { model } = route("reviewer", options.env);
   const env = assignmentProcessEnv(options.env, assignment);
   const harness = options.harness ?? "codex";
+  const { model } = route("reviewer", harness, options.env);
   const request = {
     harness,
     cwd: options.dir,

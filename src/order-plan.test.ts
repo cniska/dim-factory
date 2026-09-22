@@ -17,7 +17,7 @@ describe("planner station", () => {
     const home = mkdtempSync(join(tmpdir(), "dim-planner-"));
     writeFileSync(
       join(home, "routing.json"),
-      '{ "cheap": "small", "standard": "middling", "deep": "large" }',
+      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
     );
     const repo = integratedRepo();
     const operator = mintWorker(db, { role: "operator", sessionId: "operator-session" });

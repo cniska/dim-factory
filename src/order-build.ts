@@ -9,7 +9,8 @@ import {
   PlanApprovalRefused,
 } from "./factory-order";
 import { endWorker } from "./factory-worker";
-import { type HarnessName, harnessArgv, runHarnessCommand } from "./harness-command";
+import { harnessArgv, runHarnessCommand } from "./harness-command";
+import type { HarnessName } from "./harness-name";
 import type { Env } from "./paths";
 import { route } from "./routing";
 import { assignedWorker, assignmentProcessEnv, assignWorker } from "./worker-assignment";
@@ -104,9 +105,9 @@ export function runOrderBuild(
     });
   };
   try {
-    const { model } = route("builder", options.env);
     const env = assignmentProcessEnv(options.env, assignment);
     const harness = options.harness ?? "codex";
+    const { model } = route("builder", harness, options.env);
     const request = {
       harness,
       cwd: worktree,

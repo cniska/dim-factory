@@ -161,11 +161,14 @@ describe("issuing a worker to a shell", () => {
 
   test("refuses to mint without a runtime session id", () => {
     const db = floor();
+    const home = mkdtempSync(join(tmpdir(), "dim-worker-session-"));
+    const env = { DIM_HOME: join(home, "data") };
 
-    expect(() => runWorkerCommand(db, ["mint", "--role", "operator"], {})).toThrow(
+    expect(() => runWorkerCommand(db, ["mint", "--role", "operator"], env)).toThrow(
       /no factory session id is available/,
     );
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 0 });
+    rmSync(home, { recursive: true, force: true });
     db.close();
   });
 

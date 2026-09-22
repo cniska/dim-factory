@@ -1,7 +1,8 @@
 import { codexArgv, parseCodexHarnessEvent } from "./codex-harness";
 import type { HarnessEvent, HarnessRequest } from "./harness";
+import type { HarnessName } from "./harness-name";
 
-export type HarnessName = "codex";
+export type { HarnessName } from "./harness-name";
 
 export type HarnessCommandRequest = HarnessRequest & { harness: HarnessName };
 

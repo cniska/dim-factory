@@ -3,7 +3,8 @@ import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
 import { recordOrderPlan } from "./factory-order";
 import { resolveWorker } from "./factory-worker";
-import { type HarnessName, harnessArgv, runHarnessCommand } from "./harness-command";
+import { harnessArgv, runHarnessCommand } from "./harness-command";
+import type { HarnessName } from "./harness-name";
 import { route } from "./routing";
 import { assignedWorker, assignmentProcessEnv, assignWorker } from "./worker-assignment";
 
@@ -58,9 +59,9 @@ export function runOrderPlan(
   const parentWorker = resolveWorker(db, options.env);
   assertOperator(db, parentWorker, "delegate planning");
   const assignment = assignWorker(db, { role: "planner", parentWorker });
-  const { model } = route("planner", options.env);
-  const env = assignmentProcessEnv(options.env ?? process.env, assignment);
   const harness = options.harness ?? "codex";
+  const { model } = route("planner", harness, options.env);
+  const env = assignmentProcessEnv(options.env ?? process.env, assignment);
   const request = {
     harness,
     cwd: process.cwd(),

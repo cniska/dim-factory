@@ -27,7 +27,7 @@ describe("builder station", () => {
     homes.push(home);
     writeFileSync(
       join(home, "routing.json"),
-      '{ "cheap": "small", "standard": "middling", "deep": "large" }',
+      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
     );
     const operator = mintWorker(db, { role: "operator", sessionId: "build-operator" });
     queueOrder(
@@ -121,7 +121,7 @@ describe("builder station", () => {
     homes.push(home);
     writeFileSync(
       join(home, "routing.json"),
-      '{ "cheap": "small", "standard": "middling", "deep": "large" }',
+      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
     );
     const operator = mintWorker(db, { role: "operator", sessionId: "failed-build-operator" });
     queueOrder(

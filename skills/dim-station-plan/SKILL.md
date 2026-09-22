@@ -32,7 +32,7 @@ Ask the owner only when the choice is genuinely theirs, which is narrower than i
 
 ## Check the plan before acting on it
 
-A plan is cheaper to fix than the code written from it, so it gets the same treatment a slice gets in `dim-station-build`: one agent at the tier `dim route reviewer` gives you, working from a fixed brief, and not the agent that wrote the plan. Give it the plan and what the four queries returned — not the reasoning that got there, or what comes back is agreement.
+A plan is cheaper to fix than the code written from it, so it gets the same treatment a slice gets in `dim-station-build`: one agent at the tier `dim route codex reviewer` gives you, working from a fixed brief, and not the agent that wrote the plan. Give it the plan and what the four queries returned — not the reasoning that got there, or what comes back is agreement.
 
 The brief is these questions:
 
