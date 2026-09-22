@@ -204,7 +204,7 @@ This is the first preference `dim` holds rather than a record of something that 
 
 ## A station asks for a capability, not a harness's flag
 
-A station also declares what its work needs, never what a harness calls the permission for it: `bootstrap-worker`, `read-files`, `edit-files`, `read-history`, `ask-dim`, `raise-finding`, `run-check`, a closed vocabulary in [`src/capabilities.ts`](../src/capabilities.ts) that a station's capability set is checked against the same way a role is checked against [`src/roles.ts`](../src/roles.ts). The selected harness adapter receives that set with the tier's model and brief, and owns the harness-specific command and permission mapping. This keeps station orchestration, worker identity and audit records independent of Codex and leaves later harnesses to implement the same adapter contract.
+A station also declares what its work needs, never what a harness calls the permission for it: `bootstrap-worker`, `read-files`, `edit-files`, `read-history`, `ask-dim`, `raise-finding`, `run-check`, a closed vocabulary in [`src/capabilities.ts`](../src/capabilities.ts) that a station's capability set is checked against the same way a role is checked against [`src/roles.ts`](../src/roles.ts). The selected harness adapter receives that set with the tier's model and brief, and owns the harness-specific command, continuation and permission mapping. This keeps station orchestration, worker identity and audit records independent of Codex and leaves later harnesses to implement the same adapter contract.
 
 ## What the assembly line already settled
 

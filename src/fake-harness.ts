@@ -1,4 +1,4 @@
-import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
+import type { HarnessAdapter, HarnessEvent, HarnessRun } from "./harness";
 
 export type FakeHarnessScenario = "success" | "findings" | "crash" | "hang" | "bootstrap-failure";
 
@@ -45,28 +45,30 @@ function scenario(name: FakeHarnessScenario): Scenario {
 }
 
 export function fakeHarness(scenarioName: FakeHarnessScenario): HarnessAdapter {
+  const run = async (): Promise<HarnessRun> => {
+    const plan = scenario(scenarioName);
+    let cancelled = false;
+    let release: (() => void) | undefined;
+    const cancellation = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return {
+      events: (async function* () {
+        for (const event of plan.events) {
+          if (cancelled) return;
+          yield event;
+        }
+        if (!plan.completes) await cancellation;
+      })(),
+      cancel() {
+        cancelled = true;
+        release?.();
+      },
+    };
+  };
   return {
     name: "fake",
-    async start(_request: HarnessRequest): Promise<HarnessRun> {
-      const plan = scenario(scenarioName);
-      let cancelled = false;
-      let release: (() => void) | undefined;
-      const cancellation = new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      return {
-        events: (async function* () {
-          for (const event of plan.events) {
-            if (cancelled) return;
-            yield event;
-          }
-          if (!plan.completes) await cancellation;
-        })(),
-        cancel() {
-          cancelled = true;
-          release?.();
-        },
-      };
-    },
+    start: run,
+    resume: run,
   };
 }

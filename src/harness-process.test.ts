@@ -9,6 +9,7 @@ function command(script: string) {
   return processHarness({
     name: "fixture",
     argv: () => [process.execPath, "-e", script],
+    resumeArgv: () => [process.execPath, "-e", script],
     parse: (line) => JSON.parse(line) as HarnessEvent,
   });
 }

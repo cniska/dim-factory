@@ -66,7 +66,6 @@ export function codexArgv(command: string, request: HarnessRequest): string[] {
     command,
     "exec",
     "--json",
-    "--ephemeral",
     "-s",
     sandbox,
     "--add-dir",
@@ -79,10 +78,19 @@ export function codexArgv(command: string, request: HarnessRequest): string[] {
   ];
 }
 
+export function codexResumeArgv(
+  command: string,
+  providerSessionId: string,
+  request: HarnessRequest,
+): string[] {
+  return [command, "exec", "resume", "--json", providerSessionId, "-m", request.model, request.brief];
+}
+
 export function codexHarness(command = "codex"): HarnessAdapter {
   return processHarness({
     name: "codex",
     argv: (request) => codexArgv(command, request),
+    resumeArgv: (providerSessionId, request) => codexResumeArgv(command, providerSessionId, request),
     parse: parseCodexHarnessEvent,
   });
 }

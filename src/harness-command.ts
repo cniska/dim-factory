@@ -1,5 +1,5 @@
 import { codexArgv, codexHarness, parseCodexHarnessEvent } from "./codex-harness";
-import type { HarnessAdapter, HarnessEvent, HarnessRequest } from "./harness";
+import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
 import type { HarnessName } from "./harness-name";
 import { runHarness } from "./harness-runner";
 
@@ -59,8 +59,25 @@ export async function runHarnessCommandLive(
   onStarted: HarnessStarted,
   adapter: HarnessAdapter = codexHarness(),
 ): Promise<HarnessCommandResult> {
+  return runHarnessSessionLive(request, onStarted, () => adapter.start(request));
+}
+
+export async function runHarnessCommandResumeLive(
+  request: HarnessCommandRequest,
+  providerSessionId: string,
+  onStarted: HarnessStarted,
+  adapter: HarnessAdapter = codexHarness(),
+): Promise<HarnessCommandResult> {
+  return runHarnessSessionLive(request, onStarted, () => adapter.resume(providerSessionId, request));
+}
+
+async function runHarnessSessionLive(
+  request: HarnessCommandRequest,
+  onStarted: HarnessStarted,
+  start: () => Promise<HarnessRun>,
+): Promise<HarnessCommandResult> {
   if (request.harness !== "codex") throw new Error(`unsupported harness ${request.harness}`);
-  const result = await runHarness(adapter, request, {
+  const result = await runHarness({ name: "selected", start, resume: () => start() }, request, {
     timeoutMs: 10 * 60 * 1000,
     onEvent: (event) => {
       if (event.type === "run.started" && event.providerSessionId) onStarted(event.providerSessionId);

@@ -27,4 +27,5 @@ export type HarnessRun = {
 export type HarnessAdapter = {
   name: string;
   start(request: HarnessRequest): Promise<HarnessRun>;
+  resume(providerSessionId: string, request: HarnessRequest): Promise<HarnessRun>;
 };

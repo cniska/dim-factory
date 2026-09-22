@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { fakeHarness } from "./fake-harness";
-import { harnessArgv, runHarnessCommandLive } from "./harness-command";
+import { harnessArgv, runHarnessCommandLive, runHarnessCommandResumeLive } from "./harness-command";
 
 describe("selected harness commands", () => {
   test("gives a read-only planning request to Codex", () => {
@@ -17,7 +17,6 @@ describe("selected harness commands", () => {
       "codex",
       "exec",
       "--json",
-      "--ephemeral",
       "-s",
       "read-only",
       "--add-dir",
@@ -58,5 +57,23 @@ describe("selected harness commands", () => {
     );
 
     expect(result).toMatchObject({ exitCode: 1, failureReason: "fake process crashed", output: "" });
+  });
+
+  test("resumes a deterministic adapter through the live command boundary", async () => {
+    const result = await runHarnessCommandResumeLive(
+      {
+        harness: "codex",
+        cwd: "/worktree",
+        brief: "continue the work",
+        model: "standard-model",
+        capabilities: ["read-files"],
+        env: {},
+      },
+      "fake-session",
+      () => undefined,
+      fakeHarness("success"),
+    );
+
+    expect(result).toMatchObject({ exitCode: 0, output: "completed" });
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { codexArgv, codexHarness, parseCodexHarnessEvent } from "./codex-harness";
+import { codexArgv, codexHarness, codexResumeArgv, parseCodexHarnessEvent } from "./codex-harness";
 import type { HarnessRequest } from "./harness";
 
 const request: HarnessRequest = {
@@ -56,7 +56,6 @@ describe("the Codex harness adapter", () => {
       "codex-test",
       "exec",
       "--json",
-      "--ephemeral",
       "-s",
       "workspace-write",
       "--add-dir",
@@ -69,5 +68,18 @@ describe("the Codex harness adapter", () => {
     ]);
     expect(readOnly).toContain("read-only");
     expect(codexHarness("codex-test").name).toBe("codex");
+  });
+
+  test("resumes a Codex session by its provider id", () => {
+    expect(codexResumeArgv("codex-test", "thread-1", request)).toEqual([
+      "codex-test",
+      "exec",
+      "resume",
+      "--json",
+      "thread-1",
+      "-m",
+      "gpt-5-codex",
+      "build it",
+    ]);
   });
 });
