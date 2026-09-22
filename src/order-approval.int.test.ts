@@ -38,19 +38,6 @@ describe("plan approval integration", () => {
       join(home, "routing.json"),
       '{ "cheap": "small", "standard": "middling", "deep": "large" }',
     );
-    writeFileSync(
-      join(home, "spawn.json"),
-      JSON.stringify({
-        argv: ["planner", "{brief}", "{model}", "{tools}"],
-        slots: { tools: { join: "," } },
-        grants: {
-          "bootstrap-worker": { tools: ["Bash(dim worker bootstrap:*)"] },
-          "read-files": { tools: ["Read"] },
-          "read-history": { tools: ["Bash(git log:*)"] },
-          "ask-dim": { tools: ["Bash(dim q:*)"] },
-        },
-      }),
-    );
     const operator = mintWorker(db, { role: "operator", sessionId: "operator-plan-session" });
     queueOrder(
       db,
@@ -254,9 +241,9 @@ describe("plan approval integration", () => {
       operator.name,
     );
 
-    expect(() => runOrderCommand(db, ["plan", "delegation-order"], null, repo.dir, env(builder))).toThrow(
-      expect.objectContaining({ code: "worker_not_operator" }),
-    );
+    expect(() =>
+      runOrderCommand(db, ["plan", "delegation-order", "--harness", "codex"], null, repo.dir, env(builder)),
+    ).toThrow(expect.objectContaining({ code: "worker_not_operator" }));
     expect(db.query("SELECT count(*) AS n FROM factory_order_plan").get()).toEqual({ n: 0 });
     db.close();
   });

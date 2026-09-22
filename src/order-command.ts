@@ -26,6 +26,7 @@ import {
 } from "./factory-order";
 import { resolveWorker } from "./factory-worker";
 import { readFlags, requiredFlag } from "./flags";
+import type { HarnessName } from "./harness-command";
 import { requireCurrentHooks } from "./hooks";
 import { runOrderBuild } from "./order-build";
 import { runOrderPlan } from "./order-plan";
@@ -47,13 +48,13 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--des
        dim order commit <order-id> --sha <sha> [--subject "..."]
        dim order file <order-id> --path <path> [--added <n>] [--removed <n>]
        dim order check <order-id> --command "..." --exit <code> [--result "..."]
-       dim order review <order-id>
+       dim order review <order-id> --harness <codex>
        dim order finding <order-id> --dimension <name> --summary "..."
        dim order answer <finding-id> --answer <fixed|refused>
                        [--resolution "..."]
        dim order document <order-id> --path <path>
-       dim order plan <order-id>
-       dim order build <order-id>
+       dim order plan <order-id> --harness <codex>
+       dim order build <order-id> --harness <codex>
        dim order approve <order-id>
        dim order approve-build <order-id> --reason "..."
        dim order approve-review <order-id>
@@ -369,14 +370,18 @@ export function runOrderCommand(
     return `${orderId} moved to ${station}`;
   }
   if (command === "plan") {
-    flags(rest, []);
+    const given = flags(rest, ["--harness"]);
     assertOperator(db, worker, "delegate planning");
-    const outcome = runOrderPlan(db, orderId, { env });
+    const harness = given.get("--harness");
+    if (harness !== "codex") throw fail("--harness must be codex");
+    const outcome = runOrderPlan(db, orderId, { env, harness: harness as HarnessName });
     return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;
   }
   if (command === "build") {
-    flags(rest, []);
-    const outcome = runOrderBuild(db, orderId, worker, { dir: cwd, env });
+    const given = flags(rest, ["--harness"]);
+    const harness = given.get("--harness");
+    if (harness !== "codex") throw fail("--harness must be codex");
+    const outcome = runOrderBuild(db, orderId, worker, { dir: cwd, env, harness: harness as HarnessName });
     return `${orderId} building started by ${outcome.builder}`;
   }
   if (command === "approve") {
@@ -406,9 +411,11 @@ export function runOrderCommand(
   if (command === "drop") return drop(db, orderId, rest, worker);
   if (command === "answer") return answerFinding(db, orderId, rest, worker);
   if (command === "review") {
-    if (!orderId) throw fail("review takes the order whose slice is to be read");
+    const given = flags(rest, ["--harness"]);
+    const harness = given.get("--harness");
+    if (harness !== "codex") throw fail("--harness must be codex");
     assertOperator(db, worker, "delegate review");
-    const done = runOrderReview(db, orderId, worker, { dir: cwd, env });
+    const done = runOrderReview(db, orderId, worker, { dir: cwd, env, harness: harness as HarnessName });
     return done.outcome === "aborted"
       ? `review ${done.review} aborted: ${done.reviewer} did not finish, so nothing it left is a clean reading`
       : `review ${done.review} closed with ${done.findings} finding${done.findings === 1 ? "" : "s"}`;

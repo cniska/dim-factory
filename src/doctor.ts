@@ -13,7 +13,6 @@ import { isHostQualified } from "./remote-slug";
 import { planRules } from "./rules";
 import { SCHEMA_VERSION } from "./schema";
 import { planSkill } from "./skill";
-import { readSpawnProfile, SpawnProfileError } from "./spawn-profile";
 import { TOOLS } from "./tools";
 
 /**
@@ -182,22 +181,6 @@ function retention(env: Env): Health {
 
 /** Absent or malformed stops the planner and reviewer stations cold, so it is checked here
  *  rather than left for the first station that tries to spawn to discover it. */
-function spawnProfile(env: Env): Health {
-  try {
-    readSpawnProfile(env);
-    return { name: "spawn profile", state: "ok", detail: "read and well formed" };
-  } catch (error) {
-    if (!(error instanceof SpawnProfileError)) throw error;
-    return {
-      name: "spawn profile",
-      state: "fail",
-      detail: error.message,
-      fix:
-        error.kind === "no-profile" ? "write the template the error names" : `repair ${error.path} by hand`,
-    };
-  }
-}
-
 function spool(env: Env): Health {
   const root = join(dataDir(env), "spool");
   let waiting = 0;
@@ -409,8 +392,6 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
 
   checks.push(retention(env));
   checks.push(spool(env));
-  checks.push(spawnProfile(env));
-
   const commits = scalar(db, "SELECT count(*) AS n FROM repo_commit");
   checks.push(
     commits === 0

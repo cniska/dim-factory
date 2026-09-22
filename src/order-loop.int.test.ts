@@ -30,20 +30,6 @@ const machine = (() => {
   const home = orderWorktree(repo.dir, "loop-home");
   worktrees.push(home);
   writeFileSync(join(home, "routing.json"), '{ "cheap": "s", "standard": "m", "deep": "l" }');
-  writeFileSync(
-    join(home, "spawn.json"),
-    JSON.stringify({
-      argv: ["claude", "-p", "{brief}", "--model", "{model}", "--allowedTools", "{tools}"],
-      slots: { tools: { join: "," } },
-      grants: {
-        "bootstrap-worker": { tools: ["Bash(dim worker bootstrap:*)"] },
-        "read-files": { tools: ["Read"] },
-        "read-history": { tools: ["Bash(git diff:*)"] },
-        "ask-dim": { tools: ["Bash(dim q:*)"] },
-        "raise-finding": { tools: ["Bash(dim order finding:*)"] },
-      },
-    }),
-  );
   return { DIM_HOME: home };
 })();
 

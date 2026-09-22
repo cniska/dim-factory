@@ -3,8 +3,8 @@ import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
 import { recordOrderPlan } from "./factory-order";
 import { resolveWorker } from "./factory-worker";
+import { type HarnessName, harnessArgv, runHarnessCommand } from "./harness-command";
 import { route } from "./routing";
-import { readSpawnProfile, spawnArgv } from "./spawn-profile";
 import { assignedWorker, assignmentProcessEnv, assignWorker } from "./worker-assignment";
 
 /** Reads and searches the repository, its history and the record — never edits, never raises a finding. */
@@ -21,15 +21,6 @@ export type PlannerSpawn = (
 ) => {
   exitCode: number;
   stdout: string;
-};
-
-const spawnPlanner: PlannerSpawn = (argv, env) => {
-  const run = Bun.spawnSync(argv, {
-    env,
-    stdout: "pipe",
-    stderr: "inherit",
-  });
-  return { exitCode: run.exitCode ?? 1, stdout: run.stdout.toString() };
 };
 
 export function plannerBrief(order: { id: string; title: string; description: string | null }): string {
@@ -55,6 +46,7 @@ export function runOrderPlan(
   options: {
     env?: Record<string, string | undefined>;
     spawn?: PlannerSpawn;
+    harness?: HarnessName;
   } = {},
 ): PlanOutcome {
   const order = db
@@ -67,14 +59,19 @@ export function runOrderPlan(
   assertOperator(db, parentWorker, "delegate planning");
   const assignment = assignWorker(db, { role: "planner", parentWorker });
   const { model } = route("planner", options.env);
-  const profile = readSpawnProfile(options.env);
-  const spawn = options.spawn ?? spawnPlanner;
-  const run = spawn(
-    spawnArgv(profile, { model, brief: plannerBrief(order), capabilities: PLANNER_CAPABILITIES }),
-    assignmentProcessEnv(options.env ?? process.env, assignment),
-  );
+  const env = assignmentProcessEnv(options.env ?? process.env, assignment);
+  const harness = options.harness ?? "codex";
+  const request = {
+    harness,
+    cwd: process.cwd(),
+    brief: plannerBrief(order),
+    model,
+    capabilities: PLANNER_CAPABILITIES,
+    env,
+  };
+  const run = options.spawn ? options.spawn(harnessArgv(request), env) : runHarnessCommand(request);
   if (run.exitCode !== 0) throw new Error("planner did not finish planning");
-  const body = run.stdout.trim();
+  const body = ("stdout" in run ? run.stdout : run.output).trim();
   const planner = assignedWorker(db, assignment.id);
   if (!planner) throw new Error("planner did not bootstrap its worker assignment");
   recordOrderPlan(db, orderId, body, planner);

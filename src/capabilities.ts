@@ -1,7 +1,7 @@
 /**
  * What a station's work needs, named for the work rather than for any harness's
- * flag. A station declares a set of these and the spawn profile turns the set
- * into one harness's argv, which is what keeps a brief harness-neutral.
+ * flag. A station declares a set of these and the selected harness adapter
+ * turns the set into harness-specific capability controls.
  */
 export type Capability =
   | "bootstrap-worker"

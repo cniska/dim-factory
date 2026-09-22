@@ -116,24 +116,6 @@ export function collectingMachine(): { dir: string; env: Env } {
   return { dir, env };
 }
 
-/**
- * Shared because every site that spawns either station in a test needs the same shape;
- * a copy per call site is a fourth hand-typed literal that could drift from the others.
- */
-export function spawnProfileFixture(): string {
-  return JSON.stringify({
-    argv: ["claude", "-p", "{brief}", "--model", "{model}", "--allowedTools", "{tools}"],
-    slots: { tools: { join: "," } },
-    grants: {
-      "bootstrap-worker": { tools: ["Bash(dim worker bootstrap:*)"] },
-      "read-files": { tools: ["Read", "Grep", "Glob"] },
-      "read-history": { tools: ["Bash(git diff:*)", "Bash(git show:*)", "Bash(git log:*)"] },
-      "ask-dim": { tools: ["Bash(dim q:*)"] },
-      "raise-finding": { tools: ["Bash(dim order finding:*)"] },
-    },
-  });
-}
-
 export function scratchEnv(root: string): Env {
   return {
     DIM_HOME: join(root, "home"),

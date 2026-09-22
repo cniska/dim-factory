@@ -2,8 +2,8 @@ import type { Database } from "bun:sqlite";
 import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
 import { assertBuildApproved, closeOrderReview, openAssignedOrderReview } from "./factory-order";
+import { type HarnessName, harnessArgv, runHarnessCommand } from "./harness-command";
 import { route } from "./routing";
-import { readSpawnProfile, spawnArgv } from "./spawn-profile";
 import { assignedWorker, assignmentProcessEnv, assignWorker } from "./worker-assignment";
 
 export class ReviewRefused extends Error {
@@ -31,15 +31,6 @@ export const REVIEWER_CAPABILITIES: Capability[] = [
 
 /** Replaced in tests, which have no model to call and need the exit code to be theirs. */
 export type ReviewerSpawn = (argv: string[], env: Record<string, string>) => { exitCode: number };
-
-const spawnReviewer: ReviewerSpawn = (argv, env) => {
-  const run = Bun.spawnSync(argv, {
-    env: { ...process.env, ...env },
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  return { exitCode: run.exitCode ?? 1 };
-};
 
 function git(dir: string, args: string[]): { ok: boolean; out: string } {
   const run = Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe", stderr: "ignore" });
@@ -134,7 +125,12 @@ export function runOrderReview(
   db: Database,
   orderId: string,
   worker: string,
-  options: { dir: string; spawn?: ReviewerSpawn; env?: Record<string, string | undefined> } = {
+  options: {
+    dir: string;
+    spawn?: ReviewerSpawn;
+    env?: Record<string, string | undefined>;
+    harness?: HarnessName;
+  } = {
     dir: process.cwd(),
   },
 ): ReviewOutcome {
@@ -155,12 +151,17 @@ export function runOrderReview(
     worker,
   );
   const { model } = route("reviewer", options.env);
-  const profile = readSpawnProfile(options.env);
-  const spawn = options.spawn ?? spawnReviewer;
-  const run = spawn(
-    spawnArgv(profile, { model, brief: reviewerBrief(order, range), capabilities: REVIEWER_CAPABILITIES }),
-    assignmentProcessEnv(options.env, assignment),
-  );
+  const env = assignmentProcessEnv(options.env, assignment);
+  const harness = options.harness ?? "codex";
+  const request = {
+    harness,
+    cwd: options.dir,
+    brief: reviewerBrief(order, range),
+    model,
+    capabilities: REVIEWER_CAPABILITIES,
+    env,
+  };
+  const run = options.spawn ? options.spawn(harnessArgv(request), env) : runHarnessCommand(request);
   const reviewer = assignedWorker(db, assignment.id);
   if (!reviewer) {
     closeOrderReview(db, opened.id, "aborted", worker);

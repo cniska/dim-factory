@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { openDb } from "./db";
 import { claimOrder, queueOrder } from "./factory-order";
@@ -26,7 +26,7 @@ function harness(cli: string): string {
   return `
 import { writeFileSync } from "node:fs";
 
-const brief = Bun.argv[2] ?? "";
+const brief = Bun.argv.find((arg) => arg.includes("factory order ")) ?? "";
 const cli = ${JSON.stringify(cli)};
 const order = /factory order ([^\\s]+)/.exec(brief)?.[1];
 if (!order) process.exit(2);
@@ -64,7 +64,7 @@ if (process.env.DIM_WORKER_ASSIGNMENT_ID) {
 }
 
 if (brief.includes("planner")) {
-  console.log("## Outcome\\n\\nBuild the requested result.");
+  console.log(JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "## Outcome\\n\\nBuild the requested result." } }));
 } else if (brief.includes("builder")) {
   const runId = /--run ([^\\s]+)/.exec(brief)?.[1];
   if (!runId) process.exit(3);
@@ -99,23 +99,12 @@ describe("headless factory loop", () => {
       join(machine.env.DIM_HOME as string, "routing.json"),
       '{ "cheap": "small", "standard": "middling", "deep": "large" }',
     );
-    writeFileSync(
-      join(machine.env.DIM_HOME as string, "spawn.json"),
-      JSON.stringify({
-        argv: ["bun", join(machine.dir, "harness.ts"), "{brief}", "{model}", "{tools}"],
-        slots: { tools: { join: "," } },
-        grants: {
-          "bootstrap-worker": { tools: ["Bash(dim worker bootstrap:*)"] },
-          "read-files": { tools: ["Read"] },
-          "edit-files": { tools: ["Edit"] },
-          "read-history": { tools: ["Bash(git log:*)"] },
-          "ask-dim": { tools: ["Bash(dim q:*)"] },
-          "run-check": { tools: ["Bash(true:*)"] },
-          "raise-finding": { tools: ["Bash(dim order finding:*)"] },
-        },
-      }),
-    );
-    writeFileSync(join(machine.dir, "harness.ts"), harness(join(import.meta.dir, "cli.ts")));
+    const bin = join(machine.dir, "bin");
+    mkdirSync(bin);
+    const fakeCodex = join(bin, "codex");
+    writeFileSync(fakeCodex, `#!/usr/bin/env bun\n${harness(join(import.meta.dir, "cli.ts"))}`);
+    chmodSync(fakeCodex, 0o755);
+    machine.env.PATH = `${bin}:${process.env.PATH ?? ""}`;
 
     const db = openDb(dbPath(machine.env));
     const operator = mintWorker(db, { role: "operator", sessionId: "e2e-operator" });
@@ -134,16 +123,18 @@ describe("headless factory loop", () => {
       repo.dir,
     );
 
-    expect(runOrderCommand(db, ["plan", "headless-order"], null, repo.dir, env)).toContain("## Outcome");
+    expect(
+      runOrderCommand(db, ["plan", "headless-order", "--harness", "codex"], null, repo.dir, env),
+    ).toContain("## Outcome");
     expect(runOrderCommand(db, ["approve", "headless-order"], null, repo.dir, env)).toContain(
       "plan approved",
     );
     expect(
       runOrderCommand(db, ["move", "headless-order", "--station", "dim-station-build"], null, repo.dir, env),
     ).toContain("moved");
-    expect(runOrderCommand(db, ["build", "headless-order"], null, repo.dir, env)).toContain(
-      "building started",
-    );
+    expect(
+      runOrderCommand(db, ["build", "headless-order", "--harness", "codex"], null, repo.dir, env),
+    ).toContain("building started");
 
     const worktree = join(repo.dir, ".claude", "worktrees", "headless-order");
     expect(existsSync(join(worktree, "built-by-real-harness.txt"))).toBe(true);
@@ -157,7 +148,9 @@ describe("headless factory loop", () => {
       ),
     ).toContain("build approved");
     runOrderCommand(db, ["move", "headless-order", "--station", "dim-station-review"], null, repo.dir, env);
-    expect(runOrderCommand(db, ["review", "headless-order"], null, worktree, env)).toContain("0 findings");
+    expect(
+      runOrderCommand(db, ["review", "headless-order", "--harness", "codex"], null, worktree, env),
+    ).toContain("0 findings");
     expect(runOrderCommand(db, ["approve-review", "headless-order"], null, repo.dir, env)).toContain(
       "review approved",
     );

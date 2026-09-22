@@ -29,21 +29,6 @@ describe("builder station", () => {
       join(home, "routing.json"),
       '{ "cheap": "small", "standard": "middling", "deep": "large" }',
     );
-    writeFileSync(
-      join(home, "spawn.json"),
-      JSON.stringify({
-        argv: ["builder", "{brief}", "{model}", "{tools}"],
-        slots: { tools: { join: "," } },
-        grants: {
-          "bootstrap-worker": { tools: ["Bash(dim worker bootstrap:*)"] },
-          "read-files": { tools: ["Read"] },
-          "edit-files": { tools: ["Edit"] },
-          "read-history": { tools: ["Bash(git log:*)"] },
-          "ask-dim": { tools: ["Bash(dim q:*)"] },
-          "run-check": { tools: ["Bash(bun run verify:*)"] },
-        },
-      }),
-    );
     const operator = mintWorker(db, { role: "operator", sessionId: "build-operator" });
     queueOrder(
       db,
@@ -79,7 +64,7 @@ describe("builder station", () => {
       },
       spawn: (argv, childEnv, cwd) => {
         spawnedCwd = cwd;
-        spawnedBrief = argv[1] ?? "";
+        spawnedBrief = argv.find((argument) => argument.includes("factory order ")) ?? "";
         const builder = bootstrapWorker(db, {
           id: childEnv[ASSIGNMENT_ID_VAR] as string,
           token: childEnv[ASSIGNMENT_TOKEN_VAR] as string,
@@ -137,21 +122,6 @@ describe("builder station", () => {
     writeFileSync(
       join(home, "routing.json"),
       '{ "cheap": "small", "standard": "middling", "deep": "large" }',
-    );
-    writeFileSync(
-      join(home, "spawn.json"),
-      JSON.stringify({
-        argv: ["builder", "{brief}", "{model}", "{tools}"],
-        slots: { tools: { join: "," } },
-        grants: {
-          "bootstrap-worker": { tools: ["Bash(dim worker bootstrap:*)"] },
-          "read-files": { tools: ["Read"] },
-          "edit-files": { tools: ["Edit"] },
-          "read-history": { tools: ["Bash(git log:*)"] },
-          "ask-dim": { tools: ["Bash(dim q:*)"] },
-          "run-check": { tools: ["Bash(bun run verify:*)"] },
-        },
-      }),
     );
     const operator = mintWorker(db, { role: "operator", sessionId: "failed-build-operator" });
     queueOrder(

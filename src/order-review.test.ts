@@ -19,17 +19,6 @@ import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./work
 const trunk = integratedRepo();
 const worktrees: string[] = [];
 const opened: Database[] = [];
-const REVIEWER_TOOLS = [
-  "Bash(dim worker bootstrap:*)",
-  "Read",
-  "Grep",
-  "Glob",
-  "Bash(git diff:*)",
-  "Bash(git show:*)",
-  "Bash(git log:*)",
-  "Bash(dim q:*)",
-  "Bash(dim order finding:*)",
-];
 afterAll(() => {
   for (const db of opened) db.close();
   for (const path of worktrees) rmSync(path, { recursive: true, force: true });
@@ -48,27 +37,11 @@ function bootstrapReviewer(db: Database, env: Record<string, string>): string {
   return reviewer.name;
 }
 
-// A harness map and a spawn profile, because routing resolves the reviewer's model
-// through one and spawnArgv resolves its argv through the other, and both refuse
-// without their file. The names are the map's, never a model this repo knows.
+// Routing resolves the reviewer's tier to the model name supplied to the adapter.
 const machine = (() => {
   const home = orderWorktree(trunk.dir, "routing-home");
   worktrees.push(home);
   writeFileSync(join(home, "routing.json"), '{ "cheap": "s", "standard": "m", "deep": "l" }');
-  writeFileSync(
-    join(home, "spawn.json"),
-    JSON.stringify({
-      argv: ["claude", "-p", "{brief}", "--model", "{model}", "--allowedTools", "{tools}"],
-      slots: { tools: { join: "," } },
-      grants: {
-        "bootstrap-worker": { tools: ["Bash(dim worker bootstrap:*)"] },
-        "read-files": { tools: ["Read", "Grep", "Glob"] },
-        "read-history": { tools: ["Bash(git diff:*)", "Bash(git show:*)", "Bash(git log:*)"] },
-        "ask-dim": { tools: ["Bash(dim q:*)"] },
-        "raise-finding": { tools: ["Bash(dim order finding:*)"] },
-      },
-    }),
-  );
   return { DIM_HOME: home };
 })();
 
@@ -228,11 +201,8 @@ describe("a review round", () => {
 
     runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
 
-    const allowed = (handed[handed.indexOf("--allowedTools") + 1] as string).split(",");
-    expect(allowed).toEqual(REVIEWER_TOOLS);
-    for (const tool of ["Edit", "Write", "NotebookEdit", "Bash", "Bash(*)"]) {
-      expect(allowed).not.toContain(tool);
-    }
+    expect(handed).toContain("-s");
+    expect(handed[handed.indexOf("-s") + 1]).toBe("read-only");
   });
 
   // The token is the whole of the separation, so it must reach the child's environment and
@@ -272,7 +242,7 @@ describe("a review round", () => {
       env: machine,
       spawn: (argv, env) => {
         bootstrapReviewer(db, env);
-        read = argv[2] as string;
+        read = argv.find((argument) => argument.includes("git diff ")) ?? "";
         return { exitCode: 0 };
       },
     });

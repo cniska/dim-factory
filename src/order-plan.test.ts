@@ -19,19 +19,6 @@ describe("planner station", () => {
       join(home, "routing.json"),
       '{ "cheap": "small", "standard": "middling", "deep": "large" }',
     );
-    writeFileSync(
-      join(home, "spawn.json"),
-      JSON.stringify({
-        argv: ["claude", "-p", "{brief}", "--model", "{model}", "--allowedTools", "{tools}"],
-        slots: { tools: { join: "," } },
-        grants: {
-          "bootstrap-worker": { tools: ["Bash(dim worker bootstrap:*)"] },
-          "read-files": { tools: ["Read", "Grep", "Glob"] },
-          "read-history": { tools: ["Bash(git diff:*)", "Bash(git show:*)", "Bash(git log:*)"] },
-          "ask-dim": { tools: ["Bash(dim q:*)"] },
-        },
-      }),
-    );
     const repo = integratedRepo();
     const operator = mintWorker(db, { role: "operator", sessionId: "operator-session" });
     const builder = mintWorker(db, { role: "builder", sessionId: "builder-session" });
@@ -79,14 +66,8 @@ describe("planner station", () => {
     });
 
     expect(outcome.body).toBe("## outcome\n\nBuild the smallest path.");
-    expect(argv[0]).toBe("claude");
-    expect(argv[1]).toBe("-p");
-    expect(argv.slice(3)).toEqual([
-      "--model",
-      "large",
-      "--allowedTools",
-      "Bash(dim worker bootstrap:*),Read,Grep,Glob,Bash(git diff:*),Bash(git show:*),Bash(git log:*),Bash(dim q:*)",
-    ]);
+    expect(argv.slice(0, 7)).toEqual(["codex", "exec", "--json", "--ephemeral", "-s", "read-only", "-C"]);
+    expect(argv).toContain("large");
     expect(argv.at(-1)).not.toContain("dim order");
     expect(db.query("SELECT role FROM factory_worker WHERE name = ?").get(outcome.planner)).toEqual({
       role: "planner",

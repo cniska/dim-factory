@@ -53,11 +53,23 @@ describe("build approval integration", () => {
     });
 
     expect(() =>
-      runOrderCommand(db, ["review", "build-approval-order"], null, repo.dir, env(operator)),
+      runOrderCommand(
+        db,
+        ["review", "build-approval-order", "--harness", "codex"],
+        null,
+        repo.dir,
+        env(operator),
+      ),
     ).toThrow(expect.objectContaining({ code: "build_not_approved" }));
 
     expect(() =>
-      runOrderCommand(db, ["review", "build-approval-order"], null, repo.dir, env(builder)),
+      runOrderCommand(
+        db,
+        ["review", "build-approval-order", "--harness", "codex"],
+        null,
+        repo.dir,
+        env(builder),
+      ),
     ).toThrow(expect.objectContaining({ code: "worker_not_operator" }));
 
     recordOrderCommit(db, "build-approval-order", repo.sha, builder.name, "feat: build it");

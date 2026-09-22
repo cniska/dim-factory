@@ -9,9 +9,9 @@ import {
   PlanApprovalRefused,
 } from "./factory-order";
 import { endWorker } from "./factory-worker";
+import { type HarnessName, harnessArgv, runHarnessCommand } from "./harness-command";
 import type { Env } from "./paths";
 import { route } from "./routing";
-import { readSpawnProfile, spawnArgv } from "./spawn-profile";
 import { assignedWorker, assignmentProcessEnv, assignWorker } from "./worker-assignment";
 import { repoRoot, worktreePath } from "./wt-command";
 
@@ -25,17 +25,6 @@ export const BUILDER_CAPABILITIES: Capability[] = [
 ];
 
 export type BuilderSpawn = (argv: string[], env: Record<string, string>, cwd: string) => { exitCode: number };
-
-const spawnBuilder: BuilderSpawn = (argv, env, cwd) => {
-  const run = Bun.spawnSync(argv, {
-    cwd,
-    env: { ...process.env, ...env },
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  return { exitCode: run.exitCode ?? 1 };
-};
 
 export function builderBrief(
   order: { id: string; title: string; description: string | null },
@@ -64,7 +53,7 @@ export function runOrderBuild(
   db: Database,
   orderId: string,
   operator: string,
-  options: { dir: string; env?: Env; spawn?: BuilderSpawn },
+  options: { dir: string; env?: Env; spawn?: BuilderSpawn; harness?: HarnessName },
 ): BuildOutcome {
   const order = db
     .query<{ id: string; title: string; description: string | null }, [string]>(
@@ -116,17 +105,19 @@ export function runOrderBuild(
   };
   try {
     const { model } = route("builder", options.env);
-    const profile = readSpawnProfile(options.env);
-    const spawn = options.spawn ?? spawnBuilder;
-    const run = spawn(
-      spawnArgv(profile, {
-        model,
-        brief: builderBrief(order, plan.body, runId),
-        capabilities: BUILDER_CAPABILITIES,
-      }),
-      assignmentProcessEnv(options.env, assignment),
-      worktree,
-    );
+    const env = assignmentProcessEnv(options.env, assignment);
+    const harness = options.harness ?? "codex";
+    const request = {
+      harness,
+      cwd: worktree,
+      brief: builderBrief(order, plan.body, runId),
+      model,
+      capabilities: BUILDER_CAPABILITIES,
+      env,
+    };
+    const run = options.spawn
+      ? options.spawn(harnessArgv(request), env, worktree)
+      : runHarnessCommand(request);
     builder = assignedWorker(db, assignment.id);
     if (!builder) throw new Error("builder did not bootstrap its worker assignment");
     if (run.exitCode !== 0) {
