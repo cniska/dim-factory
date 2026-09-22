@@ -5,7 +5,7 @@ import { openDb } from "./db";
 import { claimOrder, queueOrder } from "./factory-order";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { collectingMachine, integratedRepo } from "./fixtures.test-support";
-import { runOrderCommand } from "./order-command";
+import { runOrderCommand, runOrderCommandLive } from "./order-command";
 import { dbPath, type Env } from "./paths";
 
 const roots: string[] = [];
@@ -46,23 +46,6 @@ function run(args) {
   }
 }
 
-if (process.env.DIM_WORKER_ASSIGNMENT_ID) {
-  const bootstrapped = Bun.spawnSync(["bun", cli, "worker", "bootstrap", process.env.DIM_WORKER_ASSIGNMENT_ID], {
-    cwd: process.cwd(),
-    env: childEnv,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  if (!bootstrapped.success) {
-    console.error(bootstrapped.stdout.toString(), bootstrapped.stderr.toString());
-    process.exit(bootstrapped.exitCode ?? 1);
-  }
-  for (const line of bootstrapped.stdout.toString().trim().split("\\n")) {
-    const [name, value] = line.replace("export ", "").split("=");
-    if (name && value) childEnv[name] = value;
-  }
-}
-
 const emit = (event) => process.stdout.write(JSON.stringify(event) + "\\n");
 
 emit({ type: "thread.started", thread_id: "harness-" + role + "-" + order });
@@ -86,7 +69,7 @@ if (brief.includes("planner")) {
   run(["file", order, "--path", "built-by-real-harness.txt", "--added", "1", "--removed", "0"]);
   run(["check", order, "--command", "true", "--exit", "0", "--result", "green"]);
 } else if (brief.includes("reviewer")) {
-  process.exit(0);
+  // The harness emits its terminal event after the station work returns.
 } else {
   process.exit(4);
 }
@@ -95,7 +78,7 @@ emit({ type: "turn.completed" });
 }
 
 describe("headless factory loop", () => {
-  test("runs an order through real configured station processes", () => {
+  test("runs an order through real configured station processes", async () => {
     const repo = integratedRepo();
     const machine = collectingMachine();
     roots.push(repo.dir, machine.dir);
@@ -129,7 +112,7 @@ describe("headless factory loop", () => {
     );
 
     expect(
-      runOrderCommand(db, ["plan", "headless-order", "--harness", "codex"], null, repo.dir, env),
+      await runOrderCommandLive(db, ["plan", "headless-order", "--harness", "codex"], null, repo.dir, env),
     ).toContain("## Outcome");
     expect(runOrderCommand(db, ["approve", "headless-order"], null, repo.dir, env)).toContain(
       "plan approved",
@@ -138,8 +121,8 @@ describe("headless factory loop", () => {
       runOrderCommand(db, ["move", "headless-order", "--station", "dim-station-build"], null, repo.dir, env),
     ).toContain("moved");
     expect(
-      runOrderCommand(db, ["build", "headless-order", "--harness", "codex"], null, repo.dir, env),
-    ).toContain("building started");
+      await runOrderCommandLive(db, ["build", "headless-order", "--harness", "codex"], null, repo.dir, env),
+    ).toContain("build completed by");
 
     const worktree = join(repo.dir, ".claude", "worktrees", "headless-order");
     expect(existsSync(join(worktree, "built-by-real-harness.txt"))).toBe(true);
@@ -154,7 +137,7 @@ describe("headless factory loop", () => {
     ).toContain("build approved");
     runOrderCommand(db, ["move", "headless-order", "--station", "dim-station-review"], null, repo.dir, env);
     expect(
-      runOrderCommand(db, ["review", "headless-order", "--harness", "codex"], null, worktree, env),
+      await runOrderCommandLive(db, ["review", "headless-order", "--harness", "codex"], null, worktree, env),
     ).toContain("0 findings");
     expect(runOrderCommand(db, ["approve-review", "headless-order"], null, repo.dir, env)).toContain(
       "review approved",
@@ -194,6 +177,38 @@ describe("headless factory loop", () => {
       worker: expect.any(String),
       path: "built-by-real-harness.txt",
     });
+    expect(
+      db
+        .query<{ role: string; worker: string; provider_session_id: string }, [string]>(
+          `SELECT w.role, ow.worker, ow.provider_session_id
+           FROM factory_order_worker ow
+           JOIN factory_worker w ON w.name = ow.worker
+           WHERE ow.order_id = ? ORDER BY w.role`,
+        )
+        .all("headless-order"),
+    ).toEqual([
+      { role: "builder", worker: expect.any(String), provider_session_id: "harness-builder-headless-order" },
+      { role: "planner", worker: expect.any(String), provider_session_id: "harness-planner-headless-order" },
+      {
+        role: "reviewer",
+        worker: expect.any(String),
+        provider_session_id: "harness-reviewer-headless-order",
+      },
+    ]);
+    expect(
+      db
+        .query<{ role: string; n: number; ended: number }, [string]>(
+          `SELECT w.role, count(*) AS n, count(w.ended_at) AS ended
+           FROM factory_order_worker ow
+           JOIN factory_worker w ON w.name = ow.worker
+           WHERE ow.order_id = ? GROUP BY w.role ORDER BY w.role`,
+        )
+        .all("headless-order"),
+    ).toEqual([
+      { role: "builder", n: 1, ended: 0 },
+      { role: "planner", n: 1, ended: 0 },
+      { role: "reviewer", n: 1, ended: 0 },
+    ]);
     db.close();
   });
 });
