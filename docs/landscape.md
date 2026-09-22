@@ -1,6 +1,6 @@
 # The landscape
 
-What else exists, surveyed 2026-09-17–20, and which part of this repo it reaches. The survey is a web search over public projects and writing, so it can only say what is findable and published — a private line running the same idea is invisible to it, and the judgement of what counts as "the same" is the author's.
+What else exists, surveyed 2026-09-17–22, and which part of this repo it reaches. The survey is a web search over public projects and writing, so it can only say what is findable and published — a private line running the same idea is invisible to it, and the judgement of what counts as "the same" is the author's.
 
 The answer splits along the same seam the repo does. The argument in [`factory.md`](factory.md) has been made by other people, in close to the same words. The collector is a crowded field. What was not found is the join between them: a gate whose rule is decided by evidence read out of a session corpus. One project gates on a record of past failures, and [what it reads](#a-gate-that-reads-a-record-of-past-failures) is the distance left.
 
@@ -38,6 +38,31 @@ So the metaphor is not the contribution, and neither is the position that the an
 The borrowing boundary is important. These sources validate the direction, but their harnesses are tuned to their own model, repository and deployment environment. Dim should take the separation of guides, sensors, evaluators, health loops and durable artifacts—not their prompts, thresholds or architecture rules.
 
 The project boundary is part of that borrowing rule. Dim can standardize the order lifecycle and the evidence it records, while each repository supplies its own conventions, checks, architecture and vocabulary. Project maintenance and factory maintenance are separate loops: one creates orders to improve a project, while the other checks whether the factory's own workflow and evidence still support reliable work.
+
+## OpenAI's agent manager pattern matches the operator boundary
+
+The [OpenAI Agents SDK orchestration guide](https://openai.github.io/openai-agents-python/multi_agent/), read on 2026-09-22, names two ways to combine agents: a manager keeps control and calls specialists as tools, while a handoff transfers control to a specialist. It also describes code-directed orchestration for structured outputs, chained stages, evaluator loops and parallel independent work.
+
+The factory is the durable, external-process version of the first pattern. The operator keeps control of the order and delegates bounded station work to planner, builder and reviewer workers; the reviewer can return findings, but the operator decides whether the outcome is acceptable and whether the order moves. The review loop therefore resembles the SDK's evaluator loop, while the worker boundary does not: each station is a separate harness session with its own attributed identity, assignment, audit events and worktree.
+
+| OpenAI pattern | This repo's counterpart | Boundary |
+|---|---|---|
+| Manager agent retains control and invokes specialists | Operator delegates station work and approves plans, builds and reviews | The operator's control is durable and auditable rather than an in-process conversation state |
+| Handoff makes a specialist the active agent | Assignment gives one worker a bounded station responsibility | The assignment does not transfer order authority; the operator remains the approver |
+| Code-directed chain, evaluator loop and parallel agents | Plan → build → review, findings back to the builder, and later station fan-out | The factory persists each transition and attribution in the order record |
+
+The borrowing stops at orchestration vocabulary. The SDK explains how agents can coordinate inside an application; it does not supply the factory's harness adapter, worker identity model, append-only audit trail or completion evidence. Those remain Dim's boundary and are documented in [`factory.md`](factory.md) and [`workflow.md`](workflow.md).
+
+[Cloudflare's enterprise AI agent workspace](https://developers.cloudflare.com/reference-architecture/diagrams/ai/enterprise-ai-agent-workspace/), read on 2026-09-22, covers the runtime around that manager: one durable workspace owns conversation state, tasks, schedules, consent decisions and an event queue; it selects isolated execution environments; and it saves outputs as durable work products. Cloudflare's [Agents documentation](https://developers.cloudflare.com/agents/) also gives each agent session a durable identity, storage, scheduling and recoverable execution, while [Workflows](https://developers.cloudflare.com/agents/harnesses/think/workflows/) is the durable multi-step layer for approval gates, long waits and retryable effects.
+
+| Cloudflare pattern | This repo's counterpart | Boundary |
+|---|---|---|
+| Durable workspace with state, events and schedules | Factory order record, attempt ledger, trace stream and planned scheduler | Cloudflare makes the workspace the runtime authority; Dim makes the append-only order audit authoritative over external workers |
+| Durable agent identity and recoverable execution | One attributed worker identity per harness session and a runner that will supervise it | The factory identity answers who acted; Cloudflare's identity primarily makes a hosted agent resumable and addressable |
+| Isolated Dynamic Worker, Sandbox or browser execution | Per-order worktree and the future harness adapter | Cloudflare chooses a managed execution environment; Dim must launch local or user-selected harnesses without coupling the order model to one provider |
+| Workflow approval gates, waits and retryable effects | Operator approvals, finding loop and scheduled factory work | The business gate is the same shape, but Dim records the approver and evidence as order facts |
+
+Cloudflare is therefore useful prior art for the runtime we still need around the line: durable execution, explicit waiting, scheduling, isolation and trace export. It is not a replacement for the line design. Its workspace is the product surface; Dim's product is the attributed factory record that coordinates independent planner, builder and reviewer sessions.
 
 ## HumanLayer makes the artifact lifecycle concrete
 
