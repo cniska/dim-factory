@@ -22,9 +22,11 @@ Answer all four before proposing an approach.
 
 4. **Does the earlier conclusion still hold?** `dim q stale <id-prefix>` says how much the code a session touched has moved since it ran. High movement is evidence to re-read what that session concluded, never evidence it was wrong.
 
-## Hand the planning up
+## Design the change
 
-The four answers are gathering, not planning. Pass them, with the task and the constraints they imply, to a planning agent at the tier `dim route planner` gives you, and let it return the plan. Give it what the record returned rather than your reading of it: hand over a conclusion and what comes back is agreement with that conclusion.
+The four answers are evidence, not the design. Invoke `dim-design` with the task, the current project context and the record's returned facts. Let it define the outcome, boundary, invariants and independently verifiable slices. The design skill is reusable across projects; this station supplies the record evidence and keeps the result attributable to the planning hand.
+
+Pass the record's returned facts rather than your reading of them: hand over a conclusion and what comes back is agreement with that conclusion.
 
 Ask the owner only when the choice is genuinely theirs, which is narrower than it feels. It is theirs when the work is hard to reverse, when it is outward-facing, or when it spends something that lands on every session rather than this one. Everything else — which of two shapes, what to name it, what order to slice it in — is settled here and stated, not asked. A question that a query could have answered is a question that should have been a query.
 
