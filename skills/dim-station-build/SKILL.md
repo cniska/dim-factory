@@ -24,6 +24,8 @@ What makes this a station is that the record aims it. This machine knows which f
 
 A slice is a vertical cut: it changes behavior, it is checked on its own, and it is committed on its own. Work through them one at a time, running the repo's task at the end of each, and commit what passes before starting the next. A branch of unverified slices is one slice with a long diff.
 
+A red check is feedback to the builder. Diagnose and fix its cause, rerun the check, and continue until the final commit passes; report a blocker only when the cause cannot be resolved in the current station.
+
 Commit in the same order every time: the task passes, the slice is simplified, the task passes again, the reviewer reads what will land, every finding it raises is answered and the task passes over the answers, then the commit, then the next slice.
 
 Use `dim-git` at the commit boundary. It owns the repository status, worktree ownership, evidence recorded with the commit and the rules for later integration; this station owns the slice loop.

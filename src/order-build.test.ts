@@ -1,7 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { workerFailureReason } from "./harness-command";
+import { builderBrief } from "./order-build";
 
 describe("worker failure explanations", () => {
+  test("tells the builder to fix a red check before finishing", () => {
+    expect(
+      builderBrief(
+        { id: "order-1", title: "Build it", description: null },
+        "## Outcome\n\nBuild it.",
+        "run-1",
+        null,
+      ),
+    ).toContain("A red check is feedback, not completion");
+  });
+
   test("keeps the harness explanation beside the failure", () => {
     expect(
       workerFailureReason(

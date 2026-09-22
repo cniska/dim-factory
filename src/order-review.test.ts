@@ -11,8 +11,9 @@ import {
   recordOrderCommit,
 } from "./factory-order";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
+import { fakeHarness } from "./fake-harness";
 import { integratedRepo, orderWorktree } from "./fixtures.test-support";
-import { type ReviewerSpawn, ReviewRefused, runOrderReview } from "./order-review";
+import { type ReviewerSpawn, ReviewRefused, runOrderReview, runOrderReviewLive } from "./order-review";
 import { SCHEMA_SQL } from "./schema";
 import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
 
@@ -49,6 +50,8 @@ function floor(): {
   db: Database;
   worker: string;
   operator: string;
+  operatorToken: string;
+  operatorSession: string;
   builderToken: string;
   builderSession: string;
   dir: string;
@@ -73,6 +76,8 @@ function floor(): {
     db,
     worker: builder.name,
     operator: operator.name,
+    operatorToken: operator.token,
+    operatorSession: operator.sessionId,
     builderToken: builder.token,
     builderSession: builder.sessionId,
     dir,
@@ -186,6 +191,42 @@ describe("a review round", () => {
     expect(done).toMatchObject({ findings: 0, outcome: "aborted" });
     expect(db.query("SELECT outcome FROM factory_order_review WHERE id = ?").get(done.review)).toEqual({
       outcome: "aborted",
+    });
+  });
+
+  test("records a crashed reviewer with the harness explanation", async () => {
+    const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
+    slice(db, dir, worker, "crashed-review");
+
+    const outcome = await runOrderReviewLive(db, "order-1", operator, {
+      dir,
+      adapter: fakeHarness("crash"),
+      env: {
+        ...machine,
+        [WORKER_NAME_VAR]: operator,
+        [WORKER_TOKEN_VAR]: operatorToken,
+        [WORKER_SESSION_VAR]: operatorSession,
+      },
+    });
+
+    expect(outcome).toMatchObject({ findings: 0, outcome: "aborted" });
+    expect(
+      db
+        .query<{ reason: string | null }, [number]>(
+          "SELECT reason FROM factory_order_event WHERE review_id = ? AND kind = 'review_closed'",
+        )
+        .get(outcome.review),
+    ).toEqual({ reason: expect.stringContaining("fake process crashed") });
+    const reviewer = db
+      .query<{ reviewer: string }, [number]>("SELECT reviewer FROM factory_order_review WHERE id = ?")
+      .get(outcome.review);
+    if (!reviewer?.reviewer) throw new Error("reviewer was not recorded");
+    expect(
+      db
+        .query<{ role: string }, [string]>("SELECT role FROM factory_worker WHERE name = ?")
+        .get(reviewer.reviewer),
+    ).toEqual({
+      role: "reviewer",
     });
   });
 
