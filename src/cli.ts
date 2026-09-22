@@ -35,6 +35,7 @@ import { spawnReport } from "./spawn-report";
 import { ensureSpoolDirs } from "./spool";
 import { type RebuildReport, rebuild, type SyncReport, sync } from "./sync";
 import { trace } from "./trace";
+import { runTraceCommand } from "./trace-command";
 import { readWake, renderWake, type Wake, wireFor } from "./wake";
 import { resolveWalk, spoolWalk } from "./walk";
 import { DEFAULT_WALL_PORT, WALL_HOT_ENV, WALL_PORT_ENV, WallPortError, wallPort } from "./wall-port";
@@ -83,6 +84,7 @@ const USAGE = `usage: dim <command>
   q <name> [arg]  ask the database a named question (q list names them; --json)
                   covers the last ${DEFAULT_WINDOW}; --since <n>d|YYYY-MM-DD or --all to widen
                   prints ${DEFAULT_MAX_ROWS} rows; --rows <n> for more
+  trace <order-id> stream an order's diagnostic events as JSONL until it reaches a terminal state
   schedule define <id> <queue> --every <seconds> [--paused]
                   persist a harness-neutral recurring schedule
   schedule pause|resume <id>
@@ -873,6 +875,9 @@ try {
       break;
     case "q":
       await runQuery(process.argv.slice(3));
+      break;
+    case "trace":
+      await runTraceCommand(process.argv[3]);
       break;
     case "order":
       {
