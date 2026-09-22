@@ -6,13 +6,13 @@ argument-hint: "<what to build>"
 
 # Feature
 
-The front door for new work. It runs the whole line: scope, then the slice loop in [`dim-station-build`](../dim-station-build/SKILL.md). You type this once; it invokes what it needs.
+The front door for new work. It runs the whole line: scope, then the slice loop in `dim-station-build`. You type this once; it invokes what it needs.
 
 When `dim-factory` hands this line a queue item, create the isolated checkout first with `dim wt <branch>`, then continue from inside that worktree. The operator routes the item; this line owns the checkout and work.
 
-Apply [`dim-git`](../dim-git/SKILL.md) for the worktree ownership, commit evidence and integration boundaries; this line decides the feature's scope and slices, not a second Git policy.
+Use `dim-git` for the worktree ownership, commit evidence and integration boundaries; this line decides the feature's scope and slices, not a second Git policy.
 
-What makes this front different from [`dim-line-fix`](../dim-line-fix/SKILL.md) is the shape of the work rather than a preference. A feature in the owner's own repos touches 30 files against a fix's 10 ([`findings.md`](../../docs/findings.md)). Thirty files is not one slice, so the hard part here is the cut, and that is what phase 1 buys.
+What makes this front different from `dim-line-fix` is the shape of the work rather than a preference. A feature in the owner's own repos touches 30 files against a fix's 10 ([`findings.md`](../../docs/findings.md)). Thirty files is not one slice, so the hard part here is the cut, and that is what phase 1 buys.
 
 ## Scope
 
@@ -21,7 +21,7 @@ Find out what is already on disk before designing anything.
 - **Has this shape been built here before?** `dim q prior-art "<path fragment>"` names every tracked file whose path matches, across the repos on disk. It matches a path and not a meaning, so a concept whose file is named for its domain is invisible to it — `dim q search "<the question, in your words>"` is the one that ranks by meaning, over the text a person distilled.
 - **Was this already decided?** A decision already taken is not yours to re-take. `dim q keywords "<the question, in your words>"` reaches one settled in conversation and never written down, which is the case `q search` is worst at. `dim q chain <id-prefix>` and `dim q resume <id-prefix>` say whether this is mid-chain with a Next already written.
 
-**Invoke [`dim-station-plan`](../dim-station-plan/SKILL.md) where the cut is not obvious from those answers** — where the work crosses repos, changes a contract other code depends on, or has two shapes worth weighing. That station asks the four questions in full and hands the planning to a more capable model. Where the scope is one repo and the slices fall out of the reading, say so in a line and cut them here; loading a planning station to confirm an obvious cut spends context on agreement.
+**Use `dim-station-plan` where the cut is not obvious from those answers** — where the work crosses repos, changes a contract other code depends on, or has two shapes worth weighing. That station asks the four questions in full and hands the planning to a more capable model. Where the scope is one repo and the slices fall out of the reading, say so in a line and cut them here; loading a planning station to confirm an obvious cut spends context on agreement.
 
 If the queries came back empty, say that. An empty record is a fact about the work being new and is worth more written down than silently skipped.
 
@@ -33,13 +33,13 @@ A slice that only makes sense once a later slice lands is not a slice. A branch 
 
 ## Build them
 
-Hand off to [`dim-station-build`](../dim-station-build/SKILL.md) and follow it, one slice at a time: the repo's own task at the end of each, the simplification pass over that slice, the task again, one checking agent on the slice's diff, an answer to every finding it raises, then the commit, then the next.
+Use `dim-station-build` one slice at a time: the repo's own task at the end of each, the simplification pass over that slice, the task again, one checking agent on the slice's diff, an answer to every finding it raises, then the commit, then the next.
 
 Where a slice turns out to be blocked, finish every other slice in full and say plainly what was left and why. Scaling the work down is the owner's call.
 
 ## Review the assembled change, where there was more than one slice
 
-Each slice was checked against its own diff, and nothing has yet read them together — a contract two slices agreed on separately, or a shape that only went wrong once both landed, is invisible to a per-slice check. Invoke [`dim-station-review`](../dim-station-review/SKILL.md) over the range the slices span.
+Each slice was checked against its own diff, and nothing has yet read them together — a contract two slices agreed on separately, or a shape that only went wrong once both landed, is invisible to a per-slice check. Use `dim-station-review` over the range the slices span.
 
 One slice means this is already done: reviewing the same diff a second time is the checking agent's job run twice.
 

@@ -24,7 +24,7 @@ Answer all four before proposing an approach.
 
 ## Design the change
 
-The four answers are evidence, not the design. Invoke `dim-design` with the task, the current project context and the record's returned facts. Let it define the outcome, boundary, invariants and independently verifiable slices. The design skill is reusable across projects; this station supplies the record evidence and keeps the result attributable to the planning hand.
+The four answers are evidence, not the design. Use `dim-design` with the task, the current project context and the record's returned facts. Let it define the outcome, boundary, invariants and independently verifiable slices. The design skill is reusable across projects; this station supplies the record evidence and keeps the result attributable to the planning hand.
 
 Pass the record's returned facts rather than your reading of them: hand over a conclusion and what comes back is agreement with that conclusion.
 
@@ -32,7 +32,7 @@ Ask the owner only when the choice is genuinely theirs, which is narrower than i
 
 ## Check the plan before acting on it
 
-A plan is cheaper to fix than the code written from it, so it gets the same treatment a slice gets in [`dim-station-build`](../dim-station-build/SKILL.md): one agent at the tier `dim route reviewer` gives you, working from a fixed brief, and not the agent that wrote the plan. Give it the plan and what the four queries returned — not the reasoning that got there, or what comes back is agreement.
+A plan is cheaper to fix than the code written from it, so it gets the same treatment a slice gets in `dim-station-build`: one agent at the tier `dim route reviewer` gives you, working from a fixed brief, and not the agent that wrote the plan. Give it the plan and what the four queries returned — not the reasoning that got there, or what comes back is agreement.
 
 The brief is these questions:
 

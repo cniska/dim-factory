@@ -10,7 +10,7 @@ One pass per dimension, each in its own agent. A single reader carrying six chec
 
 What makes this a station rather than a checklist is that the record says where to aim. This machine knows which kinds of work have been drawing later `fix:` commits and which code shipped with nothing coming back, so a dimension arrives knowing what it is reading against instead of sweeping.
 
-Apply [`dim-git`](../dim-git/SKILL.md) for the read-only diff boundary and handoff evidence. Review does not edit, commit or land the work it inspects.
+Use `dim-git` for the read-only diff boundary and handoff evidence. Review does not edit, commit or land the work it inspects.
 
 This station carries its review briefs directly. Each dimension supplies findings; this station supplies the factory grounding, read-only boundary and finding convergence.
 
@@ -47,7 +47,7 @@ The review is done when:
 - every finding a dimension raised was checked at its source before it was passed on, cited to `file:line`
 - a path the record named as having held is read against that, and a finding against it is either addressed or explicitly cleared
 
-A dimension's finding is a claim, and a claim carried forward unchecked is how a wrong one becomes the standard. Checking it is this station's work whether or not the reviewer wrote the code — where the author is in the session, [`dim-station-build`](../dim-station-build/SKILL.md) says what answering one looks like.
+A dimension's finding is a claim, and a claim carried forward unchecked is how a wrong one becomes the standard. Checking it is this station's work whether or not the reviewer wrote the code — where the author is in the session, `dim-station-build` says what answering one looks like.
 
 ## What the record cannot tell you
 

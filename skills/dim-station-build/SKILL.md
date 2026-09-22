@@ -6,7 +6,7 @@ argument-hint: "<what to build>"
 
 # Build
 
-The shared half of both fronts. [`dim-line-feat`](../dim-line-feat/SKILL.md) arrives here having cut the work into slices; [`dim-line-fix`](../dim-line-fix/SKILL.md) arrives with a failing test and a named cause. What follows is the same either way.
+The shared half of both fronts. `dim-line-feat` arrives here having cut the work into slices; `dim-line-fix` arrives with a failing test and a named cause. What follows is the same either way.
 
 One agent, in one session. The work is edits, and edits need the context that produced them to stay coherent across slices; a subagent returns a conclusion and keeps its evidence. That is a good trade for a review, where findings are the product, and a bad one here.
 
@@ -26,9 +26,9 @@ A slice is a vertical cut: it changes behavior, it is checked on its own, and it
 
 Commit in the same order every time: the task passes, the slice is simplified, the task passes again, the reviewer reads what will land, every finding it raises is answered and the task passes over the answers, then the commit, then the next slice.
 
-Apply [`dim-git`](../dim-git/SKILL.md) at the commit boundary. It owns the repository status, worktree ownership, evidence recorded with the commit and the rules for later integration; this station owns the slice loop.
+Use `dim-git` at the commit boundary. It owns the repository status, worktree ownership, evidence recorded with the commit and the rules for later integration; this station owns the slice loop.
 
-Use [`dim-tdd`](../dim-tdd/SKILL.md) for behavior-changing slices and [`dim-simplify`](../dim-simplify/SKILL.md) for the simplification pass. Their methods remain shared; this station supplies the slice boundary, repository evidence and finding loop.
+Use `dim-tdd` for behavior-changing slices and `dim-simplify` for the simplification pass. Their methods remain shared; this station supplies the slice boundary, repository evidence and finding loop.
 
 Where a slice turns out to be blocked, finish every other slice in full and say plainly what was left and why. Scaling the work down is the owner's call.
 
@@ -48,7 +48,7 @@ What earns an edit is a reader's cost — a name that has to be held in the head
 
 ## Check the slice before the next one
 
-Between the simplification pass and the commit, hand the slice's diff to one agent working from a fixed brief, at the tier `dim route reviewer` gives you. This is not the fan-out the top of this file argues against: that objection is about delegating the edits, which need the context that produced them. A reviewer returns findings and keeps nothing, which is the trade [`dim-station-review`](../dim-station-review/SKILL.md) makes and the one the corpus measured as costing nothing.
+Between the simplification pass and the commit, hand the slice's diff to one agent working from a fixed brief, at the tier `dim route reviewer` gives you. This is not the fan-out the top of this file argues against: that objection is about delegating the edits, which need the context that produced them. A reviewer returns findings and keeps nothing, which is the trade `dim-station-review` makes and the one the corpus measured as costing nothing.
 
 **Give the reviewer read-only tools.** An agent that can edit answers a finding by editing, and what it overwrites is the fix the builder already made — one was reverted that way on 2026-09-18, caught only because the file tools report an on-disk change ([`build-order.md`](../../docs/build-order.md)).
 

@@ -6,11 +6,11 @@ argument-hint: "<what is broken>"
 
 # Fix
 
-The front door for a defect. It runs the whole line: triage, a test that fails on the bug, then the slice loop in [`dim-station-build`](../dim-station-build/SKILL.md). You type this once; it invokes what it needs.
+The front door for a defect. It runs the whole line: triage, a test that fails on the bug, then the slice loop in `dim-station-build`. You type this once; it invokes what it needs.
 
 When `dim-factory` hands this line a queue item, create the isolated checkout first with `dim wt <branch>`, then continue from inside that worktree. The operator routes the item; this line owns the checkout and work.
 
-Apply [`dim-git`](../dim-git/SKILL.md) for the worktree ownership, commit evidence and integration boundaries; this line decides the defect's cause and fix slices, not a second Git policy.
+Use `dim-git` for the worktree ownership, commit evidence and integration boundaries; this line decides the defect's cause and fix slices, not a second Git policy.
 
 The record says why this is one station and not three pointers. `debug` has loaded in 9 sessions in this corpus, against 1,470 `fix:` commits in the owner's own repos ([`findings.md`](../../docs/findings.md)). A phase named in prose is a phase that does not run — so triage is performed here rather than delegated to a skill the agent has to remember.
 
@@ -38,11 +38,11 @@ The test names the behavior in plain terms, and pins wire values as literals rat
 
 ## Build the fix
 
-Hand off to [`dim-station-build`](../dim-station-build/SKILL.md) and follow it: the repo's own task at the end of each slice, the simplification pass over that slice, the task again, one checking agent on the slice's diff, an answer to every finding it raises, then the commit. The test that proved the defect is part of the slice and stays; the simplification pass is the one step that may not touch a test file. A fix is usually one slice; where it is more, it is still one slice at a time.
+Use `dim-station-build` and follow it: the repo's own task at the end of each slice, the simplification pass over that slice, the task again, one checking agent on the slice's diff, an answer to every finding it raises, then the commit. The test that proved the defect is part of the slice and stays; the simplification pass is the one step that may not touch a test file. A fix is usually one slice; where it is more, it is still one slice at a time.
 
 Fix the cause. Where the cause is out of reach, stop and say what the real options are rather than patching the patch — a band-aid is how the next fix commit to this file gets written.
 
-Where the fix ran to more than one slice, invoke [`dim-station-review`](../dim-station-review/SKILL.md) over the range they span before calling it done: each slice was checked against its own diff, and nothing has yet read them together. One slice needs none — that is the checking agent's job run twice.
+Where the fix ran to more than one slice, invoke `dim-station-review` over the range they span before calling it done: each slice was checked against its own diff, and nothing has yet read them together. One slice needs none — that is the checking agent's job run twice.
 
 ## Exit check
 
