@@ -85,7 +85,7 @@ The planner, builder and reviewer spawn harness-agnostically: each asks for a ca
 
 **Live.** The machine has one active spawn profile. It names the harness command and maps factory capabilities to that harness's permission arguments; the station code does not contain harness-specific flags.
 
-**Planned.** Harness detection will report the profiles available on the machine, and the operator will select a profile for each assignment. The factory will refuse a profile that is unavailable or does not grant every capability the station requests. The operator and its workers may therefore use different harnesses, while each worker remains bound to the profile recorded for its assignment.
+**Planned.** The factory will define one harness-neutral profile and adapter contract, with Codex as the first adapter. A profile will validate capabilities, build the harness command and normalize its machine-readable events. Later adapters such as Claude, Cursor, Grok, Pi and OpenCode will implement that contract without changing station orchestration, worker identity or audit records. Profile discovery and operator selection per assignment come after the first adapter is proven; an unavailable or incomplete profile is refused rather than silently replaced.
 
 - **Clock-in.** An operator explicitly clocks in through `dim`, recording the harness, operator identity and session identity before it starts taking work.
 - **Clock-out.** The operator explicitly clocks out through `dim` when it stops operating the factory. An unclosed presence remains visible as stale rather than being treated as a clean departure.
