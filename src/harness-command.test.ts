@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { harnessArgv } from "./harness-command";
+import { fakeHarness } from "./fake-harness";
+import { harnessArgv, runHarnessCommandLive } from "./harness-command";
 
 describe("selected harness commands", () => {
   test("gives a read-only planning request to Codex", () => {
@@ -40,5 +41,22 @@ describe("selected harness commands", () => {
         env: {},
       }),
     ).toContain("workspace-write");
+  });
+
+  test("runs a deterministic adapter through the live command boundary", async () => {
+    const result = await runHarnessCommandLive(
+      {
+        harness: "codex",
+        cwd: "/worktree",
+        brief: "run the fake worker",
+        model: "standard-model",
+        capabilities: ["read-files"],
+        env: {},
+      },
+      () => undefined,
+      fakeHarness("crash"),
+    );
+
+    expect(result).toMatchObject({ exitCode: 1, failureReason: "fake process crashed", output: "" });
   });
 });

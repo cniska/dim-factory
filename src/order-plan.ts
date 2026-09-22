@@ -3,6 +3,7 @@ import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
 import { appendOrderEvent, recordOrderPlan } from "./factory-order";
 import { endWorker, resolveWorker } from "./factory-worker";
+import type { HarnessAdapter } from "./harness";
 import {
   harnessArgv,
   runHarnessCommand,
@@ -87,7 +88,11 @@ export function runOrderPlan(
 export async function runOrderPlanLive(
   db: Database,
   orderId: string,
-  options: { env?: Record<string, string | undefined>; harness?: HarnessName } = {},
+  options: {
+    env?: Record<string, string | undefined>;
+    harness?: HarnessName;
+    adapter?: HarnessAdapter;
+  } = {},
 ): Promise<PlanOutcome> {
   const order = db
     .query<{ id: string; title: string; description: string | null }, [string]>(
@@ -111,9 +116,13 @@ export async function runOrderPlanLive(
   };
   let planner: string | undefined;
   try {
-    const run = await runHarnessCommandLive(request, (providerSessionId) => {
-      bootstrapWorker(db, { id: assignment.id, token: assignment.token, sessionId: providerSessionId });
-    });
+    const run = await runHarnessCommandLive(
+      request,
+      (providerSessionId) => {
+        bootstrapWorker(db, { id: assignment.id, token: assignment.token, sessionId: providerSessionId });
+      },
+      options.adapter,
+    );
     planner = assignedWorker(db, assignment.id);
     if (!planner) throw new Error("planner did not bootstrap its worker assignment");
     if (run.exitCode !== 0) {

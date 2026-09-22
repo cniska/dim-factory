@@ -1,5 +1,5 @@
 import { codexArgv, codexHarness, parseCodexHarnessEvent } from "./codex-harness";
-import type { HarnessEvent, HarnessRequest } from "./harness";
+import type { HarnessAdapter, HarnessEvent, HarnessRequest } from "./harness";
 import type { HarnessName } from "./harness-name";
 import { runHarness } from "./harness-runner";
 
@@ -57,9 +57,10 @@ export function runHarnessCommand(request: HarnessCommandRequest): HarnessComman
 export async function runHarnessCommandLive(
   request: HarnessCommandRequest,
   onStarted: HarnessStarted,
+  adapter: HarnessAdapter = codexHarness(),
 ): Promise<HarnessCommandResult> {
   if (request.harness !== "codex") throw new Error(`unsupported harness ${request.harness}`);
-  const result = await runHarness(codexHarness(), request, {
+  const result = await runHarness(adapter, request, {
     timeoutMs: 10 * 60 * 1000,
     onEvent: (event) => {
       if (event.type === "run.started" && event.providerSessionId) onStarted(event.providerSessionId);

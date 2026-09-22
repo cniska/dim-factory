@@ -3,6 +3,7 @@ import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
 import { assertBuildApproved, closeOrderReview, openAssignedOrderReview } from "./factory-order";
 import { endWorker } from "./factory-worker";
+import type { HarnessAdapter } from "./harness";
 import {
   harnessArgv,
   runHarnessCommand,
@@ -127,7 +128,12 @@ export async function runOrderReviewLive(
   db: Database,
   orderId: string,
   worker: string,
-  options: { dir: string; env?: Record<string, string | undefined>; harness?: HarnessName },
+  options: {
+    dir: string;
+    env?: Record<string, string | undefined>;
+    harness?: HarnessName;
+    adapter?: HarnessAdapter;
+  },
 ): Promise<ReviewOutcome> {
   const order = db
     .query<{ id: string; title: string; description: string | null }, [string]>(
@@ -160,6 +166,7 @@ export async function runOrderReviewLive(
     (providerSessionId) => {
       bootstrapWorker(db, { id: assignment.id, token: assignment.token, sessionId: providerSessionId });
     },
+    options.adapter,
   );
   const reviewer = assignedWorker(db, assignment.id);
   if (!reviewer) {

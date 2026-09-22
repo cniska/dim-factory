@@ -9,6 +9,7 @@ import {
   PlanApprovalRefused,
 } from "./factory-order";
 import { endWorker } from "./factory-worker";
+import type { HarnessAdapter } from "./harness";
 import {
   harnessArgv,
   runHarnessCommand,
@@ -86,7 +87,7 @@ export async function runOrderBuildLive(
   db: Database,
   orderId: string,
   operator: string,
-  options: { dir: string; env?: Env; harness?: HarnessName },
+  options: { dir: string; env?: Env; harness?: HarnessName; adapter?: HarnessAdapter },
 ): Promise<BuildOutcome> {
   const order = db
     .query<{ id: string; title: string; description: string | null }, [string]>(
@@ -149,6 +150,7 @@ export async function runOrderBuildLive(
       (providerSessionId) => {
         bootstrapWorker(db, { id: assignment.id, token: assignment.token, sessionId: providerSessionId });
       },
+      options.adapter,
     );
     harnessOutput = run.output;
     harnessFailureReason = run.failureReason;
