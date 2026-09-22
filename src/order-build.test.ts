@@ -5,20 +5,10 @@ import { builderBrief } from "./order-build";
 describe("worker failure explanations", () => {
   test("tells the builder to fix a red check before finishing", () => {
     expect(
-      builderBrief(
-        { id: "order-1", title: "Build it", description: null },
-        "## Outcome\n\nBuild it.",
-        "run-1",
-        null,
-      ),
+      builderBrief({ id: "order-1", title: "Build it", description: null }, "## Outcome\n\nBuild it.", null),
     ).toContain("A red check is feedback, not completion");
     expect(
-      builderBrief(
-        { id: "order-1", title: "Build it", description: null },
-        "## Outcome\n\nBuild it.",
-        "run-1",
-        null,
-      ),
+      builderBrief({ id: "order-1", title: "Build it", description: null }, "## Outcome\n\nBuild it.", null),
     ).toContain("Do not run dim order stop");
   });
 

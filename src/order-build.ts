@@ -3,6 +3,7 @@ import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
 import {
   appendOrderEvent,
+  claimOrder,
   isTerminalOrderStatus,
   OrderNotDone,
   orderStatus,
@@ -39,7 +40,6 @@ export type BuilderSpawn = (argv: string[], env: Record<string, string>, cwd: st
 export function builderBrief(
   order: { id: string; title: string; description: string | null },
   plan: string,
-  runId: string,
   workspace: ReturnType<typeof workspaceContract>,
 ): string {
   const workspaceContext = workspace
@@ -66,7 +66,7 @@ export function builderBrief(
     "",
     plan,
     "",
-    `Your first act is to claim this order under your worker identity: dim order claim ${order.id} --run ${runId} --station dim-station-build.`,
+    "The factory runner has already claimed this order for this build turn under your worker identity.",
     "Work in the current order worktree. Run the command supplied by the workspace profile, record every commit, changed file, check, document, and build finding with dim order, and run the build station loop including simplification.",
     "A red check is feedback, not completion: diagnose it, fix the cause, rerun the check, and continue until the final commit has a passing check. If the cause is genuinely blocked, report the blocker instead of claiming success.",
     "Do not run dim order stop: the factory runner records this attempt and makes the order retryable when the turn fails.",
@@ -145,7 +145,7 @@ export async function runOrderBuildLive(
     const request = {
       harness,
       cwd: worktree,
-      brief: builderBrief(order, plan.body, runId, workspace),
+      brief: builderBrief(order, plan.body, workspace),
       model,
       capabilities: BUILDER_CAPABILITIES,
       env,
@@ -157,15 +157,24 @@ export async function runOrderBuildLive(
             `builder resumed as provider session ${providerSessionId}, expected ${orderWorker.providerSessionId}`,
           );
         }
-        return;
+      } else {
+        const minted = bootstrapWorker(db, {
+          id: orderWorker.assignment.id,
+          token: orderWorker.assignment.token,
+          sessionId: providerSessionId,
+        });
+        bindOrderWorker(db, orderId, "builder", orderWorker.assignment.id, minted);
+        builder = minted.name;
       }
-      const minted = bootstrapWorker(db, {
-        id: orderWorker.assignment.id,
-        token: orderWorker.assignment.token,
-        sessionId: providerSessionId,
-      });
-      bindOrderWorker(db, orderId, "builder", orderWorker.assignment.id, minted);
-      builder = minted.name;
+      if (!builder) throw new Error("builder did not bootstrap its worker assignment");
+      claimOrder(
+        db,
+        orderId,
+        { runId, sessionId: providerSessionId, station: "dim-station-build" },
+        builder,
+        undefined,
+        worktree,
+      );
     };
     const run = orderWorker.providerSessionId
       ? await runHarnessCommandResumeLive(request, orderWorker.providerSessionId, onStarted, options.adapter)
@@ -251,7 +260,7 @@ export function runOrderBuild(
     const request = {
       harness,
       cwd: worktree,
-      brief: builderBrief(order, plan.body, runId, workspace),
+      brief: builderBrief(order, plan.body, workspace),
       model,
       capabilities: BUILDER_CAPABILITIES,
       env,

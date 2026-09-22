@@ -53,9 +53,6 @@ emit({ type: "turn.started" });
 if (brief.includes("planner")) {
   emit({ type: "item.completed", item: { type: "agent_message", text: "## Outcome\\n\\nBuild the requested result." } });
 } else if (brief.includes("builder")) {
-  const runId = /--run ([^\\s]+)/.exec(brief)?.[1];
-  if (!runId) process.exit(3);
-  run(["claim", order, "--run", runId, "--station", "dim-station-build"]);
   writeFileSync("built-by-real-harness.txt", "built\\n");
   for (const args of [
     ["add", "built-by-real-harness.txt"],

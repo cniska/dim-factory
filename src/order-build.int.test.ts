@@ -12,13 +12,7 @@ import {
   recordOrderCommit,
   recordOrderPlan,
 } from "./factory-order";
-import {
-  mintWorker,
-  resolveWorker,
-  WORKER_NAME_VAR,
-  WORKER_SESSION_VAR,
-  WORKER_TOKEN_VAR,
-} from "./factory-worker";
+import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { fakeHarness } from "./fake-harness";
 import { integratedRepo } from "./fixtures.test-support";
 import { runOrderBuild, runOrderBuildLive } from "./order-build";
@@ -240,15 +234,6 @@ describe("builder station", () => {
       resume: async (sessionId: string, request: Parameters<typeof base.start>[0]) => {
         resumes += 1;
         expect(sessionId).toBe("fake-session");
-        const builder = resolveWorker(db, request.env);
-        claimOrder(
-          db,
-          "builder-resume-order",
-          { runId: "builder-resume-run", sessionId, station: "dim-station-build" },
-          builder,
-          undefined,
-          repo.dir,
-        );
         return base.resume(sessionId, request);
       },
     };
