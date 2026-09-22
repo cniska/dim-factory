@@ -25,7 +25,7 @@ import {
   shipOrder,
 } from "./factory-order";
 import { clearStop, FactoryStopError, pullStop } from "./factory-stop";
-import { endWorker } from "./factory-worker";
+import { endWorker, mintWorker, newWorkerSession } from "./factory-worker";
 import {
   commitOffTrunk,
   integratedRepo,
@@ -138,7 +138,11 @@ describe("factory order report records", () => {
 
   test("the next station's worker takes an order the move handed on", () => {
     const database = db();
-    const builder = workerIn(database, "builder");
+    const builder = mintWorker(database, {
+      role: "builder",
+      parentWorker: worker,
+      sessionId: newWorkerSession("test-builder"),
+    }).name;
     queueOrder(database, { ...order, id: "order-handed" }, worker);
     claimOrder(database, "order-handed", { ...claim, station: "dim-station-plan" }, worker);
     moveOrder(database, "order-handed", "dim-station-build", worker);
@@ -157,6 +161,114 @@ describe("factory order report records", () => {
     ).toEqual([
       { worker, station: "dim-station-plan" },
       { worker: builder, station: "dim-station-build" },
+    ]);
+    database.close();
+  });
+
+  test("keeps each station hand attributed across a failed retry", () => {
+    const database = db();
+    const operator = mintWorker(database, {
+      role: "operator",
+      sessionId: newWorkerSession("test-operator"),
+    }).name;
+    const station = mintWorker(database, {
+      role: "reviewer",
+      parentWorker: operator,
+      sessionId: newWorkerSession("test-station"),
+    }).name;
+    const builder = mintWorker(database, {
+      role: "builder",
+      parentWorker: station,
+      sessionId: newWorkerSession("test-builder"),
+    }).name;
+    queueOrder(database, { ...order, id: "order-attempts" }, operator);
+    claimOrder(
+      database,
+      "order-attempts",
+      { ...claim, runId: "plan-run", station: "dim-station-plan" },
+      operator,
+      "2026-09-22T10:00:00.000Z",
+    );
+    moveOrder(database, "order-attempts", "dim-station-build", operator, "2026-09-22T10:01:00.000Z");
+    claimOrder(
+      database,
+      "order-attempts",
+      { ...claim, runId: "build-run", station: "dim-station-build" },
+      builder,
+      "2026-09-22T10:02:00.000Z",
+    );
+    appendOrderEvent(
+      database,
+      "order-attempts",
+      { kind: "failed", worker: builder, reason: "the check failed" },
+      "2026-09-22T10:03:00.000Z",
+    );
+    claimOrder(
+      database,
+      "order-attempts",
+      { ...claim, runId: "build-retry", station: "dim-station-build" },
+      builder,
+      "2026-09-22T10:04:00.000Z",
+    );
+
+    expect(
+      database
+        .query(
+          `SELECT run_id, worker, operator_worker, station, recorded_at, kind, outcome, reason
+           FROM factory_order_attempt WHERE order_id = ? ORDER BY id`,
+        )
+        .all("order-attempts"),
+    ).toEqual([
+      {
+        run_id: "plan-run",
+        worker: operator,
+        operator_worker: operator,
+        station: "dim-station-plan",
+        recorded_at: "2026-09-22T10:00:00.000Z",
+        kind: "started",
+        outcome: "running",
+        reason: null,
+      },
+      {
+        run_id: "plan-run",
+        worker: operator,
+        operator_worker: operator,
+        station: "dim-station-build",
+        recorded_at: "2026-09-22T10:01:00.000Z",
+        kind: "finished",
+        outcome: "succeeded",
+        reason: "handed to dim-station-build",
+      },
+      {
+        run_id: "build-run",
+        worker: builder,
+        operator_worker: operator,
+        station: "dim-station-build",
+        recorded_at: "2026-09-22T10:02:00.000Z",
+        kind: "started",
+        outcome: "running",
+        reason: null,
+      },
+      {
+        run_id: "build-run",
+        worker: builder,
+        operator_worker: operator,
+        station: "dim-station-build",
+        recorded_at: "2026-09-22T10:03:00.000Z",
+        kind: "finished",
+        outcome: "failed",
+        reason: "the check failed",
+      },
+      {
+        run_id: "build-retry",
+        worker: builder,
+        operator_worker: operator,
+        station: "dim-station-build",
+        recorded_at: "2026-09-22T10:04:00.000Z",
+        kind: "started",
+        outcome: "running",
+        reason: null,
+      },
     ]);
     database.close();
   });

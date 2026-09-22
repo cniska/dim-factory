@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { openOrderReview } from "./factory-order";
-import { mintWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
+import { mintWorker, newWorkerSession, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { installHooks } from "./hooks";
 import type { Env } from "./paths";
 import type { Role } from "./roles";
@@ -14,7 +14,7 @@ import type { Role } from "./roles";
  * and a name no row backs is exactly what it refuses.
  */
 export function workerIn(db: Database, role: Role = "builder"): string {
-  return mintWorker(db, { role }).name;
+  return mintWorker(db, { role, sessionId: newWorkerSession("test-worker") }).name;
 }
 
 /**
@@ -29,14 +29,14 @@ export function reviewIn(
   at?: string,
   sha = "base0000",
 ): { review: number; reviewer: string } {
-  const reviewer = mintWorker(db, { role: "reviewer" }).name;
+  const reviewer = mintWorker(db, { role: "reviewer", sessionId: newWorkerSession("test-reviewer") }).name;
   const opened = openOrderReview(db, orderId, { reviewer, baseSha: sha, headSha: sha }, by, at);
   return { review: opened.id, reviewer };
 }
 
 /** The environment the factory starts a worker in, which is where `dim order` reads it. */
 export function workerEnv(db: Database, role: Role = "builder"): Env {
-  const minted = mintWorker(db, { role });
+  const minted = mintWorker(db, { role, sessionId: newWorkerSession("test-worker") });
   return { [WORKER_NAME_VAR]: minted.name, [WORKER_TOKEN_VAR]: minted.token };
 }
 

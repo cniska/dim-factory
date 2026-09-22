@@ -439,7 +439,7 @@ describe("joining a worker to the session it ran in", () => {
     const env = scratchEnv(root);
     const db = openDb(dbPath(env));
     try {
-      const minted = mintWorker(db, { role: "builder" });
+      const minted = mintWorker(db, { role: "builder", sessionId: "spool-worker" });
       spool(env, "claude", "1789000000000000000", endEvent(SESSION, "logout"), minted.name);
 
       drainSpool(db, env);

@@ -29,6 +29,7 @@ The words this repo uses for the factory and its record. One word per thing, def
 | Term | Definition |
 |---|---|
 | Claim | The moment a worker takes a queued order, recording the run, the worker and the station, and making the worktree the order is worked in. It is also the start, because the order already existed |
+| Attempt | One station hand's work on an order, recorded as append-only `started` and `finished` rows with the worker, operator, run, station and outcome. It is separate from order status: a failed attempt returns the order to `queued` |
 | Drop | The owner's decision not to build a queued order, carrying the reason — `dim order drop <order-id> --reason "..."`. A status rather than a delete, so why it was not built stays on the row; refused once a claim has copied the order's words into the record, the same boundary `dim order amend` is refused past |
 | Ship | Landing a working order's own commits on the repo's trunk without rewriting them — `dim order ship`, under the factory lock. What it means differs per repo: this one merges locally, another opens a pull request; a repo that landed is the only fact `dim order stop <order> completed` reads, not whether `ship` ran |
 | Evidence | What an order produced, recorded as it happens: commits, changed files, checks and their exit status, findings and how each was answered, and the documents it updated |

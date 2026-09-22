@@ -248,6 +248,7 @@ describe("factory order query", () => {
       "order",
       "event",
       "event",
+      "attempt",
       "event",
       "commit",
       "file",

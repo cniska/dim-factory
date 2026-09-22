@@ -1166,6 +1166,17 @@ const order: Query = {
       ),
       ...table(
         db,
+        `SELECT 'attempt' AS section, recorded_at AS "when",
+                'attempt_' || kind AS kind,
+                outcome AS status,
+                coalesce(station, '') || ' / ' || worker AS subject,
+                run_id || ' | operator=' || coalesce(operator_worker, '(none)') ||
+                coalesce(' | ' || reason, '') AS evidence
+         FROM factory_order_attempt WHERE order_id = ? ORDER BY id`,
+        [id],
+      ),
+      ...table(
+        db,
         `SELECT 'commit' AS section, recorded_at AS "when", 'commit_created' AS kind, '' AS status,
                 sha AS subject, coalesce(subject, '') AS evidence
          FROM factory_order_commit WHERE order_id = ?`,

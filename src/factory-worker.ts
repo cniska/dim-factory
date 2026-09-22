@@ -54,11 +54,11 @@ function digest(token: string): string {
  */
 export function mintWorker(
   db: Database,
-  worker: { role: Role; parentWorker?: string; pid?: number; sessionId?: string },
+  worker: { role: Role; parentWorker?: string; pid?: number; sessionId: string },
   at = now(),
 ): MintedWorker {
-  const sessionId = worker.sessionId ?? newWorkerSession("unbound");
-  if (sessionId.trim() === "") throw new Error("worker session id cannot be empty");
+  const sessionId = worker.sessionId;
+  if (!sessionId || sessionId.trim() === "") throw new Error("worker session id is required");
   const token = randomBytes(16).toString("hex");
   return db.transaction(() => {
     if (worker.parentWorker !== undefined) {

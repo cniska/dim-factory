@@ -53,7 +53,7 @@ The operator is responsible for starting and observing the order. It does not im
 
 ## Claim, isolation, and environment
 
-**Live in part; durable attempt history is planned.** A claim creates or reuses the order worktree, records the worker, operator/session attribution, station, branch, and attempt identity, and moves the order to working. Claims and integration are serialized; independent orders may run in parallel.
+**Live.** A claim creates or reuses the order worktree, records the worker, operator attribution, station, branch, and run identity, and moves the order to working. The append-only attempt ledger records a `started` row for every claim and a `finished` row when that station hands the order onward or records failure. Its outcomes are `running`, `succeeded`, and `failed`; order status remains the queue projection. Claims and integration are serialized; independent orders may run in parallel.
 
 The repository owns setup and teardown details: dependencies, services, ports, environment files, and health checks. Dim owns the worktree lifecycle and records the setup and teardown reports. A setup failure holds the order before implementation rather than allowing a worker to produce misleading evidence.
 

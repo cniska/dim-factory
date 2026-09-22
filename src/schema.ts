@@ -20,7 +20,7 @@ import { ORDER_STATUSES_SQL } from "./factory-order";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 43;
+export const SCHEMA_VERSION = 49;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -273,6 +273,20 @@ CREATE TABLE IF NOT EXISTS factory_order (
   completed_at    TEXT,
   stop_reason     TEXT
 );
+
+CREATE TABLE IF NOT EXISTS factory_order_attempt (
+  id              INTEGER PRIMARY KEY,
+  order_id        TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  run_id          TEXT NOT NULL,
+  worker          TEXT NOT NULL REFERENCES factory_worker(name),
+  operator_worker TEXT REFERENCES factory_worker(name),
+  station         TEXT,
+  recorded_at     TEXT NOT NULL,
+  kind            TEXT NOT NULL CHECK (kind IN ('started', 'finished')),
+  outcome         TEXT NOT NULL CHECK (outcome IN ('running', 'succeeded', 'failed')),
+  reason          TEXT
+);
+CREATE INDEX IF NOT EXISTS factory_order_attempt_order ON factory_order_attempt(order_id, recorded_at, id);
 CREATE INDEX IF NOT EXISTS factory_order_status ON factory_order(status, updated_at);
 
 -- Who did the work, issued by the factory before the work starts rather than read off

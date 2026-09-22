@@ -59,6 +59,8 @@ export type OrderClaim = {
   station?: string;
 };
 
+type AttemptOutcome = "running" | "succeeded" | "failed";
+
 export type OrderEvent = {
   kind: OrderEventKind;
   /** Required, because a moment nobody did is not a moment this record can hold. */
@@ -217,6 +219,42 @@ function eventValues(orderId: string, event: OrderEvent, ts: string): (string | 
   ];
 }
 
+function operatorFor(db: Database, worker: string): string | null {
+  const seen = new Set<string>();
+  let current: string | null = worker;
+  while (current !== null && !seen.has(current)) {
+    seen.add(current);
+    const row = db
+      .query<{ name: string; role: string; parent_worker: string | null }, [string]>(
+        "SELECT name, role, parent_worker FROM factory_worker WHERE name = ?",
+      )
+      .get(current);
+    if (!row) return null;
+    if (row.role === "operator") return row.name;
+    current = row.parent_worker;
+  }
+  return null;
+}
+
+function recordAttemptFinish(
+  db: Database,
+  orderId: string,
+  runId: string | null,
+  worker: string,
+  station: string | null,
+  outcome: Exclude<AttemptOutcome, "running">,
+  reason: string | undefined,
+  at: string,
+): void {
+  if (!runId) return;
+  db.run(
+    `INSERT INTO factory_order_attempt
+       (order_id, run_id, worker, operator_worker, station, recorded_at, kind, outcome, reason)
+     VALUES (?, ?, ?, ?, ?, ?, 'finished', ?, ?)`,
+    [orderId, runId, worker, operatorFor(db, worker), station, at, outcome, reason ?? null],
+  );
+}
+
 export function queueOrder(db: Database, order: Order, worker: string, at = now()): number {
   return db.transaction(() => {
     db.run(
@@ -291,6 +329,12 @@ export function claimOrder(
          status = 'working', claimed_at = ?, updated_at = ? WHERE id = ?`,
       [claim.runId, claim.sessionId ?? null, claim.station ?? null, at, at, orderId],
     );
+    db.run(
+      `INSERT INTO factory_order_attempt
+         (order_id, run_id, worker, operator_worker, station, recorded_at, kind, outcome)
+       VALUES (?, ?, ?, ?, ?, ?, 'started', 'running')`,
+      [orderId, claim.runId, worker, operatorFor(db, worker), claim.station ?? null, at],
+    );
     return appendOrderEventInTransaction(
       db,
       orderId,
@@ -324,11 +368,24 @@ export function moveOrder(
     assertReviewApproved(db, orderId);
   }
   return db.transaction(() => {
+    const current = db
+      .query<{ run_id: string | null }, [string]>("SELECT run_id FROM factory_order WHERE id = ?")
+      .get(orderId);
     const event = appendOrderEventInTransaction(db, orderId, { kind: "moved", worker, station }, at);
     db.run("UPDATE factory_order SET station = ?, run_id = NULL, session_id = NULL WHERE id = ?", [
       station,
       orderId,
     ]);
+    recordAttemptFinish(
+      db,
+      orderId,
+      current?.run_id ?? null,
+      worker,
+      station,
+      "succeeded",
+      `handed to ${station}`,
+      at,
+    );
     return event;
   })();
 }
@@ -477,8 +534,10 @@ function appendOrderEventInTransaction(
   if (event.status && isTerminalOrderStatus(event.status) && event.kind !== event.status) {
     throw new Error(`terminal event status must match its kind: ${event.status}`);
   }
-  const order = db.query("SELECT status FROM factory_order WHERE id = ?").get(orderId) as {
+  const order = db.query("SELECT status, run_id, station FROM factory_order WHERE id = ?").get(orderId) as {
     status: OrderStatus;
+    run_id: string | null;
+    station: string | null;
   } | null;
   if (!order) throw new Error(`order not found: ${orderId}`);
   if (isTerminalOrderStatus(order.status)) {
@@ -525,6 +584,18 @@ function appendOrderEventInTransaction(
       orderId,
     ],
   );
+  if (event.kind === "failed") {
+    recordAttemptFinish(
+      db,
+      orderId,
+      order.run_id,
+      event.worker,
+      order.station,
+      "failed",
+      event.reason,
+      event.ts ?? at,
+    );
+  }
   return Number(written.lastInsertRowid);
 }
 

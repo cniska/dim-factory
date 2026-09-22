@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { openOrderReview } from "./factory-order";
 import { pullStop } from "./factory-stop";
 import { assembleWallSnapshot } from "./factory-wall";
-import { mintWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
+import { mintWorker, newWorkerSession, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { collectingMachine, integratedRepo, scratchEnv, workerEnv } from "./fixtures.test-support";
 import { hookConfigPath } from "./hooks";
 import { OrderCommandError, runOrderCommand as runCommand } from "./order-command";
@@ -52,7 +52,7 @@ function runOrderCommand(
  * because the station that spawns it made one, and that is the whole of its worth.
  */
 function reviewerEnv(database: Database, orderId: string): Env {
-  const minted = mintWorker(database, { role: "reviewer" });
+  const minted = mintWorker(database, { role: "reviewer", sessionId: newWorkerSession("test-reviewer") });
   openOrderReview(
     database,
     orderId,
