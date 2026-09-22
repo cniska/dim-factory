@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 import { closeDb, openDb } from "../src/db";
-import { dbPath } from "../src/paths";
+import { dataDir, dbPath } from "../src/paths";
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 
 const required = "--confirm-factory-reset";
 const carried = new Set(["factory_handoff"]);
@@ -47,9 +49,11 @@ try {
   db.transaction(() => {
     for (const table of tables) db.run(`DELETE FROM ${table}`);
   })();
+  rmSync(join(dataDir(), "worker-credentials"), { recursive: true, force: true });
 
   for (const count of counts) console.log(`${count.table}\t${count.rows}`);
   console.log(`preserved\t${[...carried].join(", ")}`);
+  console.log("removed\tworker-credentials");
 } finally {
   closeDb(db);
 }

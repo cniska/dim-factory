@@ -63,8 +63,12 @@ if (process.env.DIM_WORKER_ASSIGNMENT_ID) {
   }
 }
 
+const emit = (event) => process.stdout.write(JSON.stringify(event) + "\\n");
+
+emit({ type: "thread.started", thread_id: "harness-" + role + "-" + order });
+emit({ type: "turn.started" });
 if (brief.includes("planner")) {
-  console.log(JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "## Outcome\\n\\nBuild the requested result." } }));
+  emit({ type: "item.completed", item: { type: "agent_message", text: "## Outcome\\n\\nBuild the requested result." } });
 } else if (brief.includes("builder")) {
   const runId = /--run ([^\\s]+)/.exec(brief)?.[1];
   if (!runId) process.exit(3);
@@ -86,6 +90,7 @@ if (brief.includes("planner")) {
 } else {
   process.exit(4);
 }
+emit({ type: "turn.completed" });
 `;
 }
 

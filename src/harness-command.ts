@@ -20,6 +20,7 @@ export function runHarnessCommand(request: HarnessCommandRequest): HarnessComman
   const child = Bun.spawnSync(harnessArgv(request), {
     cwd: request.cwd,
     env: { ...process.env, ...request.env },
+    stdin: "ignore",
     stdout: "pipe",
     stderr: "inherit",
   });

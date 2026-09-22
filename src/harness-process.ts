@@ -23,6 +23,7 @@ export function processHarness(options: HarnessProcessOptions): HarnessAdapter {
       const child = Bun.spawn(options.argv(request), {
         cwd: request.cwd,
         env: { ...globalThis.process.env, ...request.env },
+        stdin: "ignore",
         stdout: "pipe",
         stderr: "pipe",
       });
