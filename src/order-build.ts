@@ -34,20 +34,14 @@ export function builderBrief(
   runId: string,
   workspace: ReturnType<typeof workspaceContract>,
 ): string {
-  const detected = workspace?.detected;
-  const command = (value: { bin: string; args: readonly string[] } | null | undefined): string | null =>
-    value ? [value.bin, ...value.args].join(" ") : null;
   const workspaceContext = workspace
     ? [
         `Workspace ecosystem: ${workspace.ecosystems.join(", ") || "unknown"}.`,
         `Workspace package managers: ${workspace.packageManagers.join(", ") || "none declared"}.`,
         `Declared check: ${workspace.checkCommand?.command ?? "none"}.`,
         `Declared format: ${workspace.formatCommand?.command ?? "none"}.`,
-        `Detected install: ${command(detected?.installCommand) ?? "none"}.`,
-        `Detected analyze/lint: ${command(detected?.lintCommand) ?? "none"}.`,
-        `Detected format: ${command(detected?.formatCommand) ?? "none"}.`,
-        `Detected test: ${command(detected?.testCommand) ?? "none"}.`,
-        "Replace $FILES in a detected command with the changed paths when the command is scoped.",
+        `Workspace commands: ${workspace.commands.map((one) => `${one.name}=${one.command} (${one.source})`).join("; ") || "none"}.`,
+        "Replace $FILES in a workspace command with the changed paths when the command is scoped.",
         "Use these workspace commands; do not infer a different project tool.",
       ]
     : ["The workspace profile could not be read; stop and report that before editing."];

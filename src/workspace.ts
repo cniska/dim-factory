@@ -5,11 +5,10 @@ import {
   checkCommand,
   declaredCommands,
   formatCommand,
-  packageManager,
   readManifest,
   type WorkspaceCommand,
 } from "./workspace-commands";
-import { detectWorkspace, type WorkspaceDetection } from "./workspace-detectors";
+import { detectWorkspace } from "./workspace-detectors";
 import { worktreeOf } from "./worktree";
 
 export type WorkspaceMember = { path: string; source: string };
@@ -38,7 +37,6 @@ export type WorkspaceContract = {
   requiredEnvironment: Declaration<string[]> | null;
   setup: WorkerHook | null;
   teardown: WorkerHook | null;
-  detected: WorkspaceDetection | null;
 };
 export type WorkspaceProfile = Omit<WorkspaceContract, "worktree">;
 
@@ -173,22 +171,20 @@ export function workspaceContract(dir: string): WorkspaceContract | null {
   if (root === null) return null;
   const commands = declaredCommands(root);
   const detected = detectWorkspace(root);
+  const detectedCommands = detected?.commands ?? [];
   const pubspec = pubspecFacts(root);
-  const hasPackageJson = readManifest(join(root, "package.json")) !== null;
-  const manager = packageManager(root);
-  const packageManagers = manager ? [manager] : [];
-  if (pubspec) packageManagers.push(pubspec.kind);
-  const languages = [...(pubspec ? ["dart"] : []), ...(hasPackageJson ? ["javascript"] : [])];
-  const ecosystems = [...(pubspec ? [pubspec.kind] : []), ...(hasPackageJson ? ["node"] : [])];
+  const packageManagers = detected?.packageManagers ?? [];
+  const languages = [...(detected?.languages ?? [])];
+  const ecosystems = [...(detected?.ecosystems ?? [])];
   const bootstrap = pubspec ? { value: [pubspec.kind, "pub", "get"], source: "pubspec.yaml" } : null;
   return {
     checkoutRoot: root,
     worktree: { path: root, name: worktreeOf(root), branch: gitBranch(root) },
     languages,
     ecosystems,
-    packageManagers,
+    packageManagers: [...packageManagers],
     members: pubspec?.members ?? [],
-    commands,
+    commands: [...commands, ...detectedCommands],
     checkCommand: checkCommand(root),
     formatCommand: formatCommand(root),
     bootstrap,
@@ -201,6 +197,5 @@ export function workspaceContract(dir: string): WorkspaceContract | null {
     requiredEnvironment: declaredEnvironment(root),
     setup: hook(root, "worktree-setup.sh"),
     teardown: hook(root, "worktree-teardown.sh"),
-    detected,
   };
 }

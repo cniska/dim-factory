@@ -1,16 +1,14 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { readManifest } from "./workspace-commands";
+import { readManifest, type WorkspaceCommand } from "./workspace-commands";
 
-export type DetectedCommand = { readonly bin: string; readonly args: readonly string[] };
+type DetectedCommand = { readonly bin: string; readonly args: readonly string[] };
 
 export type WorkspaceDetection = {
-  readonly ecosystem: string;
-  readonly packageManager: string | null;
-  readonly installCommand: DetectedCommand | null;
-  readonly lintCommand: DetectedCommand | null;
-  readonly formatCommand: DetectedCommand | null;
-  readonly testCommand: DetectedCommand | null;
+  readonly languages: readonly string[];
+  readonly ecosystems: readonly string[];
+  readonly packageManagers: readonly string[];
+  readonly commands: readonly WorkspaceCommand[];
 };
 
 type DetectionContext = { workspace: string; packageManager: string | null };
@@ -255,16 +253,50 @@ export const WORKSPACE_DETECTORS: readonly Detector[] = [
 ];
 
 export function detectWorkspace(workspace: string): WorkspaceDetection | null {
-  const detector = WORKSPACE_DETECTORS.find((candidate) => candidate.match(workspace));
-  if (!detector) return null;
-  const packageManager = detector.packageManager?.(workspace) ?? null;
-  const context = { workspace, packageManager };
+  const detectors = WORKSPACE_DETECTORS.filter((candidate) => candidate.match(workspace));
+  if (detectors.length === 0) return null;
+
+  const languages = new Set<string>();
+  const ecosystems = new Set<string>();
+  const packageManagers = new Set<string>();
+  const commands: WorkspaceCommand[] = [];
+  const seenCommands = new Set<string>();
+
+  for (const detector of detectors) {
+    const packageManager = detector.packageManager?.(workspace) ?? null;
+    const context = { workspace, packageManager };
+    const ecosystem =
+      detector.id === "typescript"
+        ? "node"
+        : detector.id === "dart"
+          ? (packageManager ?? "dart")
+          : detector.id;
+    languages.add(detector.id === "typescript" ? "javascript" : detector.id);
+    ecosystems.add(ecosystem);
+    if (packageManager !== null) packageManagers.add(packageManager);
+    for (const [name, command] of [
+      ["install", detector.install?.(context) ?? null],
+      ["analyze", detector.lint?.(context) ?? null],
+      ["format", detector.format?.(context) ?? null],
+      ["test", detector.test?.(context) ?? null],
+    ] as const) {
+      if (command === null) continue;
+      const value = `${command.bin} ${command.args.join(" ")}`;
+      const key = `${name}:${value}`;
+      if (seenCommands.has(key)) continue;
+      seenCommands.add(key);
+      commands.push({
+        name,
+        command: value,
+        source: `detector:${detector.id}`,
+      });
+    }
+  }
+
   return {
-    ecosystem: detector.id === "dart" ? (packageManager ?? "dart") : detector.id,
-    packageManager,
-    installCommand: detector.install?.(context) ?? null,
-    lintCommand: detector.lint?.(context) ?? null,
-    formatCommand: detector.format?.(context) ?? null,
-    testCommand: detector.test?.(context) ?? null,
+    languages: [...languages],
+    ecosystems: [...ecosystems],
+    packageManagers: [...packageManagers],
+    commands,
   };
 }

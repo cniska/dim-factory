@@ -80,14 +80,12 @@ describe("workspace contract", () => {
     expect(contract.packageManagers).toEqual(["dart"]);
     expect(contract.bootstrap).toEqual({ value: ["dart", "pub", "get"], source: "pubspec.yaml" });
     expect(contract.capabilities).toEqual({ format: false, analyze: false, test: false });
-    expect(contract.detected).toEqual({
-      ecosystem: "dart",
-      packageManager: "dart",
-      installCommand: { bin: "dart", args: ["pub", "get"] },
-      lintCommand: { bin: "dart", args: ["analyze", "$FILES"] },
-      formatCommand: { bin: "dart", args: ["format", "$FILES"] },
-      testCommand: { bin: "dart", args: ["test", "$FILES"] },
-    });
+    expect(contract.commands.filter((one) => one.source === "detector:dart")).toEqual([
+      { name: "install", command: "dart pub get", source: "detector:dart" },
+      { name: "analyze", command: "dart analyze $FILES", source: "detector:dart" },
+      { name: "format", command: "dart format $FILES", source: "detector:dart" },
+      { name: "test", command: "dart test $FILES", source: "detector:dart" },
+    ]);
   });
 
   test("detects Flutter tooling when the repository has no declared tasks", () => {
@@ -97,9 +95,11 @@ describe("workspace contract", () => {
     const contract = workspaceContract(root);
     if (contract === null) throw new Error("expected a workspace contract");
 
-    expect(contract.detected?.ecosystem).toBe("flutter");
-    expect(contract.detected?.packageManager).toBe("flutter");
-    expect(contract.detected?.testCommand).toEqual({ bin: "flutter", args: ["test", "$FILES"] });
+    expect(contract.commands.find((one) => one.name === "test" && one.source === "detector:dart")).toEqual({
+      name: "test",
+      command: "flutter test $FILES",
+      source: "detector:dart",
+    });
   });
 
   test("separates a repository with no compose file from one whose compose file names no services", () => {

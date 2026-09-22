@@ -28,36 +28,70 @@ describe("workspace detectors", () => {
     );
 
     expect(profile).toEqual({
-      ecosystem: "typescript",
-      packageManager: "pnpm",
-      installCommand: { bin: "pnpm", args: ["install"] },
-      lintCommand: { bin: "pnpx", args: ["biome", "check", "$FILES"] },
-      formatCommand: { bin: "pnpx", args: ["biome", "check", "--write", "$FILES"] },
-      testCommand: null,
+      languages: ["javascript"],
+      ecosystems: ["node"],
+      packageManagers: ["pnpm"],
+      commands: [
+        { name: "install", command: "pnpm install", source: "detector:typescript" },
+        {
+          name: "analyze",
+          command: "pnpx biome check $FILES",
+          source: "detector:typescript",
+        },
+        {
+          name: "format",
+          command: "pnpx biome check --write $FILES",
+          source: "detector:typescript",
+        },
+      ],
     });
   });
 
   test("detects Python tooling from Ruff configuration", () => {
     const profile = detectWorkspace(workspace({ "pyproject.toml": "[tool.ruff]\n" }));
 
-    expect(profile?.ecosystem).toBe("python");
-    expect(profile?.packageManager).toBe("pip");
-    expect(profile?.lintCommand).toEqual({ bin: "ruff", args: ["check", "$FILES"] });
-    expect(profile?.formatCommand).toEqual({ bin: "ruff", args: ["format", "$FILES"] });
-    expect(profile?.testCommand).toEqual({ bin: "pytest", args: ["$FILES"] });
+    expect(profile?.ecosystems).toEqual(["python"]);
+    expect(profile?.packageManagers).toEqual(["pip"]);
+    expect(profile?.commands).toEqual([
+      { name: "install", command: "pip install -e .", source: "detector:python" },
+      { name: "analyze", command: "ruff check $FILES", source: "detector:python" },
+      { name: "format", command: "ruff format $FILES", source: "detector:python" },
+      { name: "test", command: "pytest $FILES", source: "detector:python" },
+    ]);
   });
 
   test("detects Go and Rust lifecycle commands", () => {
     const go = detectWorkspace(workspace({ "go.mod": "module example.test/app" }));
     const rust = detectWorkspace(workspace({ "Cargo.toml": '[package]\nname = "app"\n' }));
 
-    expect(go?.testCommand).toEqual({ bin: "go", args: ["test", "$FILES"] });
-    expect(go?.formatCommand).toEqual({ bin: "gofmt", args: ["-w", "$FILES"] });
-    expect(rust?.lintCommand).toEqual({
-      bin: "cargo",
-      args: ["clippy", "--all-targets", "--", "-D", "warnings", "$FILES"],
-    });
-    expect(rust?.testCommand).toEqual({ bin: "cargo", args: ["test", "--", "$FILES"] });
+    expect(go?.commands.map((one) => one.command)).toEqual([
+      "go mod download",
+      "go vet $FILES",
+      "gofmt -w $FILES",
+      "go test $FILES",
+    ]);
+    expect(rust?.commands.map((one) => one.command)).toEqual([
+      "cargo fetch",
+      "cargo clippy --all-targets -- -D warnings $FILES",
+      "cargo fmt -- $FILES",
+      "cargo test -- $FILES",
+    ]);
+  });
+
+  test("composes every matching ecosystem", () => {
+    const profile = detectWorkspace(
+      workspace({
+        "package.json": "{}",
+        "pnpm-lock.yaml": "",
+        "pubspec.yaml": "name: app\n",
+      }),
+    );
+
+    expect(profile?.languages).toEqual(["javascript", "dart"]);
+    expect(profile?.ecosystems).toEqual(["node", "dart"]);
+    expect(profile?.packageManagers).toEqual(["pnpm", "dart"]);
+    expect(profile?.commands.map((one) => one.source)).toContain("detector:typescript");
+    expect(profile?.commands.map((one) => one.source)).toContain("detector:dart");
   });
 
   test("returns no profile for an unknown workspace", () => {
