@@ -66,7 +66,7 @@ Cloudflare is therefore useful prior art for the runtime we still need around th
 
 ## Headless harnesses converge on a semantic adapter boundary
 
-The primary harnesses were checked on 2026-09-22 before defining the factory contract. They do not share one wire protocol: [Claude Code](https://code.claude.com/docs/en/cli-usage) and [Codex](https://github.com/openai/codex/blob/main/codex-rs/exec/src/exec_events.rs) expose machine-readable JSON streams, [OpenCode](https://dev.opencode.ai/docs/cli/) exposes an ACP nd-JSON server as well as an HTTP server, [Grok Build](https://docs.x.ai/build/overview) exposes streaming JSON and ACP, and [Pi](https://pi.dev/docs/latest/rpc) exposes JSON event mode and JSON-RPC over stdin/stdout.
+The primary harnesses do not share one wire protocol: [Claude Code](https://code.claude.com/docs/en/cli-usage) and [Codex](https://github.com/openai/codex/blob/main/codex-rs/exec/src/exec_events.rs) expose machine-readable JSON streams, [OpenCode](https://dev.opencode.ai/docs/cli/) exposes an ACP nd-JSON server as well as an HTTP server, [Grok Build](https://docs.x.ai/build/overview) exposes streaming JSON and ACP, and [Pi](https://pi.dev/docs/latest/rpc) exposes JSON event mode and JSON-RPC over stdin/stdout. [OMP](https://github.com/atyrode/omp) is a Pi-derived fork with its own CLI, RPC and ACP surfaces: it belongs to the same semantic contract, but gets its own adapter if the factory supports it rather than being treated as Pi by name.
 
 | Shared semantic | Evidence across harnesses | Contract implication |
 |---|---|---|
