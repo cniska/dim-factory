@@ -63,6 +63,8 @@ Where the gate sits has consequences. A shell caller that is refused keeps the o
 
 The report lifecycle is a durable sequence from claim through working to completion or a stopped outcome, with evidence recorded as the order progresses. A terminal status cannot transition to another status, and each lifecycle event, attempt ledger row, its aggregate projection and its paired commit, check or finding evidence are written atomically. `dim q factory [order-id-prefix]` reads one unified current-status row per matching order with selected evidence; `dim q order <order-id>` remains the detailed event, attempt and evidence view, including every changed file and updated document. `dim trace <order-id>` emits the order's diagnostic events as JSONL and follows them until the order is terminal. These operational tables survive `dim rebuild`, deliberately like `hook_event`, `trace_event` and `finding`: no transcript or file source can recreate an order's claims and judgements after the fact.
 
+When a station process returns an explanation, a failed attempt carries that explanation in its reason so the operator can diagnose the hand without reopening the harness session.
+
 Factory command responses are JSONL for an agent to consume. A successful response names the command and carries a structured result; a refusal names the command and carries an error name, stable code and message. Usage text is not mixed into the response, and diagnostic output never shares the harness protocol stream.
 
 ## Who did it

@@ -28,6 +28,11 @@ export const BUILDER_CAPABILITIES: Capability[] = [
 
 export type BuilderSpawn = (argv: string[], env: Record<string, string>, cwd: string) => { exitCode: number };
 
+export function buildFailureReason(message: string, output: string | undefined): string {
+  const explanation = output?.trim();
+  return explanation ? `${message}: ${explanation}` : message;
+}
+
 export function builderBrief(
   order: { id: string; title: string; description: string | null },
   plan: string,
@@ -120,6 +125,7 @@ export async function runOrderBuildLive(
   const worktree = worktreePath(repoRoot(options.dir), orderId);
   const workspace = workspaceContract(worktree);
   let builder: string | undefined;
+  let harnessOutput = "";
   let failureRecorded = false;
   const recordFailure = (reason: string): void => {
     if (failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
@@ -143,18 +149,18 @@ export async function runOrderBuildLive(
         bootstrapWorker(db, { id: assignment.id, token: assignment.token, sessionId: providerSessionId });
       },
     );
+    harnessOutput = run.output;
     builder = assignedWorker(db, assignment.id);
     if (!builder) throw new Error("builder did not bootstrap its worker assignment");
     if (run.exitCode !== 0) {
-      const reason = `${builder} exited with code ${run.exitCode}`;
-      recordFailure(reason);
-      throw new Error(`${builder} did not finish building`);
+      throw new Error(`${builder} exited with code ${run.exitCode}`);
     }
     requireBuildEvidence(db, orderId);
     return { builder, runId, worktree, exitCode: run.exitCode };
   } catch (error) {
-    recordFailure(error instanceof Error ? error.message : String(error));
-    throw error;
+    const reason = buildFailureReason(error instanceof Error ? error.message : String(error), harnessOutput);
+    recordFailure(reason);
+    throw new Error(reason, { cause: error });
   } finally {
     if (builder) endWorker(db, builder);
   }
