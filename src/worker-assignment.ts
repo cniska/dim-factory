@@ -122,3 +122,18 @@ export function assignedWorker(db: Database, assignmentId: string): string | und
       .get(assignmentId)?.accepted_worker ?? undefined
   );
 }
+
+export function resolveAssignedWorker(db: Database, env: Record<string, string | undefined>): string {
+  const id = env[ASSIGNMENT_ID_VAR];
+  const token = env[ASSIGNMENT_TOKEN_VAR];
+  if (!id || !token) throw new WorkerAssignmentError("assignment_missing");
+  const row = db
+    .query<{ accepted_worker: string | null; token_digest: string }, [string]>(
+      "SELECT accepted_worker, token_digest FROM factory_worker_assignment WHERE id = ?",
+    )
+    .get(id);
+  if (!row) throw new WorkerAssignmentError("assignment_missing");
+  if (row.token_digest !== digest(token)) throw new WorkerAssignmentError("assignment_token");
+  if (!row.accepted_worker) throw new WorkerAssignmentError("assignment_used");
+  return row.accepted_worker;
+}

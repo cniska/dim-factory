@@ -3,10 +3,10 @@ import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
 import { recordOrderPlan } from "./factory-order";
 import { resolveWorker } from "./factory-worker";
-import { harnessArgv, runHarnessCommand } from "./harness-command";
+import { harnessArgv, runHarnessCommand, runHarnessCommandLive } from "./harness-command";
 import type { HarnessName } from "./harness-name";
 import { route } from "./routing";
-import { assignedWorker, assignmentProcessEnv, assignWorker } from "./worker-assignment";
+import { assignedWorker, assignmentProcessEnv, assignWorker, bootstrapWorker } from "./worker-assignment";
 
 /** Reads and searches the repository, its history and the record — never edits, never raises a finding. */
 export const PLANNER_CAPABILITIES: Capability[] = [
@@ -34,7 +34,7 @@ export function plannerBrief(order: { id: string; title: string; description: st
     "Read the repository rules and prior decisions before proposing work.",
     "Write one plain Markdown plan for the owner to read on the factory wall.",
     "Include the outcome, evidence, contracts, independently verifiable slices, risks, holds, and non-goals.",
-    "Your first act must be `dim worker bootstrap $DIM_WORKER_ASSIGNMENT_ID` using the assignment in your environment.",
+    "The factory runner has already created your worker identity from this harness session before your first tool call.",
     "Return only the Markdown plan. Do not edit files, commit, or run mutation commands.",
   ].join("\n");
 }
@@ -75,6 +75,42 @@ export function runOrderPlan(
   const body = ("stdout" in run ? run.stdout : run.output).trim();
   const planner = assignedWorker(db, assignment.id);
   if (!planner) throw new Error("planner did not bootstrap its worker assignment");
+  recordOrderPlan(db, orderId, body, planner);
+  return { planner, body };
+}
+
+export async function runOrderPlanLive(
+  db: Database,
+  orderId: string,
+  options: { env?: Record<string, string | undefined>; harness?: HarnessName } = {},
+): Promise<PlanOutcome> {
+  const order = db
+    .query<{ id: string; title: string; description: string | null }, [string]>(
+      "SELECT id, title, description FROM factory_order WHERE id = ?",
+    )
+    .get(orderId);
+  if (!order) throw new Error(`order not found: ${orderId}`);
+  const parentWorker = resolveWorker(db, options.env);
+  assertOperator(db, parentWorker, "delegate planning");
+  const assignment = assignWorker(db, { role: "planner", parentWorker });
+  const harness = options.harness ?? "codex";
+  const { model } = route("planner", harness, options.env);
+  const env = assignmentProcessEnv(options.env ?? process.env, assignment);
+  const request = {
+    harness,
+    cwd: process.cwd(),
+    brief: plannerBrief(order),
+    model,
+    capabilities: PLANNER_CAPABILITIES,
+    env,
+  };
+  const run = await runHarnessCommandLive(request, (providerSessionId) => {
+    bootstrapWorker(db, { id: assignment.id, token: assignment.token, sessionId: providerSessionId });
+  });
+  if (run.exitCode !== 0) throw new Error("planner did not finish planning");
+  const planner = assignedWorker(db, assignment.id);
+  if (!planner) throw new Error("planner did not bootstrap its worker assignment");
+  const body = run.output.trim();
   recordOrderPlan(db, orderId, body, planner);
   return { planner, body };
 }

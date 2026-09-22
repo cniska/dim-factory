@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { mintWorker } from "./factory-worker";
 import { SCHEMA_SQL } from "./schema";
-import { assignWorker, bootstrapWorker } from "./worker-assignment";
+import { assignWorker, bootstrapWorker, resolveAssignedWorker } from "./worker-assignment";
 
 function floor(): Database {
   const db = new Database(":memory:");
@@ -46,6 +46,25 @@ describe("worker assignments", () => {
     expect(() =>
       bootstrapWorker(db, { id: assignment.id, token: assignment.token, sessionId: "other-session" }),
     ).toThrow(expect.objectContaining({ code: "assignment_used" }));
+    db.close();
+  });
+
+  test("lets the harness assignment authenticate the bootstrapped worker", () => {
+    const db = floor();
+    const parent = mintWorker(db, { role: "operator", sessionId: "operator-session" });
+    const assignment = assignWorker(db, { parentWorker: parent.name, role: "reviewer" });
+    const child = bootstrapWorker(db, {
+      id: assignment.id,
+      token: assignment.token,
+      sessionId: "reviewer-session",
+    });
+
+    expect(
+      resolveAssignedWorker(db, {
+        DIM_WORKER_ASSIGNMENT_ID: assignment.id,
+        DIM_WORKER_ASSIGNMENT_TOKEN: assignment.token,
+      }),
+    ).toBe(child.name);
     db.close();
   });
 

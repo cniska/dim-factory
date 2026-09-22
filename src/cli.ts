@@ -23,7 +23,7 @@ import { labelFor } from "./git-remote";
 import { parseHarness } from "./harness-name";
 import { installHooks, planHooks } from "./hooks";
 import { withLock } from "./lock";
-import { ORDER_USAGE, OrderCommandError, runOrderCommand } from "./order-command";
+import { ORDER_USAGE, OrderCommandError, runOrderCommandLive } from "./order-command";
 import { dbPath, resolveHomeDir } from "./paths";
 import { findQuery, QUERIES, type QueryResult } from "./queries";
 import { openReadOnly } from "./read-db";
@@ -892,7 +892,7 @@ try {
           // commit and a finding in one project all join on one identity.
           writeFactorySuccess(
             "order",
-            runOrderCommand(db, process.argv.slice(3), root ? labelFor(root) : null),
+            await runOrderCommandLive(db, process.argv.slice(3), root ? labelFor(root) : null),
           );
         } finally {
           closeDb(db);

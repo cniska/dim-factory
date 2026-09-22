@@ -1,6 +1,7 @@
-import { codexArgv, parseCodexHarnessEvent } from "./codex-harness";
+import { codexArgv, codexHarness, parseCodexHarnessEvent } from "./codex-harness";
 import type { HarnessEvent, HarnessRequest } from "./harness";
 import type { HarnessName } from "./harness-name";
+import { runHarness } from "./harness-runner";
 
 export type { HarnessName } from "./harness-name";
 
@@ -11,6 +12,8 @@ export type HarnessCommandResult = {
   output: string;
   events: HarnessEvent[];
 };
+
+export type HarnessStarted = (providerSessionId: string) => void;
 
 export function harnessArgv(request: HarnessCommandRequest): string[] {
   if (request.harness === "codex") return codexArgv("codex", request);
@@ -39,4 +42,22 @@ export function runHarnessCommand(request: HarnessCommandRequest): HarnessComman
       .join("\n"),
     events,
   };
+}
+
+export async function runHarnessCommandLive(
+  request: HarnessCommandRequest,
+  onStarted: HarnessStarted,
+): Promise<HarnessCommandResult> {
+  if (request.harness !== "codex") throw new Error(`unsupported harness ${request.harness}`);
+  const result = await runHarness(codexHarness(), request, {
+    timeoutMs: 10 * 60 * 1000,
+    onEvent: (event) => {
+      if (event.type === "run.started" && event.providerSessionId) onStarted(event.providerSessionId);
+    },
+  });
+  const output = result.events
+    .filter((event): event is Extract<HarnessEvent, { type: "message" }> => event.type === "message")
+    .map((event) => event.text)
+    .join("\n");
+  return { exitCode: result.outcome === "completed" ? 0 : 1, output, events: result.events };
 }

@@ -29,10 +29,11 @@ import { readFlags, requiredFlag } from "./flags";
 import type { HarnessName } from "./harness-command";
 import { requireCurrentHooks } from "./hooks";
 import { runOrderBuild } from "./order-build";
-import { runOrderPlan } from "./order-plan";
+import { runOrderPlan, runOrderPlanLive } from "./order-plan";
 import { heldOrders, readyOrders } from "./order-ready";
 import { runOrderReview } from "./order-review";
 import type { Env } from "./paths";
+import { resolveAssignedWorker } from "./worker-assignment";
 import { removeWorktree, repoRoot } from "./wt-command";
 
 export class OrderCommandError extends Error {}
@@ -344,7 +345,7 @@ export function runOrderCommand(
   if (!command || !orderId) throw new OrderCommandError("order takes a subcommand and an order id");
   // Resolved once, before anything is written: every act below records who did it, and a
   // caller that cannot say is refused here rather than writing a moment nobody did.
-  const worker = resolveWorker(db, env);
+  const worker = env.DIM_WORKER_ASSIGNMENT_ID ? resolveAssignedWorker(db, env) : resolveWorker(db, env);
   if (command === "add") return add(db, orderId, rest, defaultProject, worker);
   if (command === "claim") return claim(db, orderId, rest, worker, env, cwd);
   if (command === "priority") {
@@ -421,4 +422,21 @@ export function runOrderCommand(
       : `review ${done.review} closed with ${done.findings} finding${done.findings === 1 ? "" : "s"}`;
   }
   throw new OrderCommandError(`${command} is not an order subcommand`);
+}
+
+export async function runOrderCommandLive(
+  db: Database,
+  args: string[],
+  defaultProject: string | null = null,
+  cwd = process.cwd(),
+  env: Env = process.env,
+): Promise<string> {
+  if (args[0] !== "plan") return runOrderCommand(db, args, defaultProject, cwd, env);
+  const [, orderId, ...rest] = args;
+  if (!orderId) throw new OrderCommandError("order takes a subcommand and an order id");
+  const given = flags(rest, ["--harness"]);
+  const harness = given.get("--harness");
+  if (harness !== "codex") throw fail("--harness must be codex");
+  const outcome = await runOrderPlanLive(db, orderId, { env, harness: harness as HarnessName });
+  return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;
 }
