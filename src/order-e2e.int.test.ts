@@ -30,17 +30,32 @@ const brief = Bun.argv[2] ?? "";
 const cli = ${JSON.stringify(cli)};
 const order = /factory order ([^\\s]+)/.exec(brief)?.[1];
 if (!order) process.exit(2);
+const role = brief.includes("planner") ? "planner" : brief.includes("builder") ? "builder" : "reviewer";
+const childEnv = { ...process.env, DIM_SESSION_ID: \`harness-\${role}-\${order}\` };
 
 function run(args) {
   const result = Bun.spawnSync(["bun", cli, "order", ...args], {
     cwd: process.cwd(),
-    env: process.env,
+    env: childEnv,
     stdout: "pipe",
     stderr: "pipe",
   });
   if (!result.success) {
     console.error(result.stdout.toString(), result.stderr.toString());
     process.exit(result.exitCode ?? 1);
+  }
+}
+
+if (process.env.DIM_WORKER_INVITATION_ID) {
+  const accepted = Bun.spawnSync(["bun", cli, "worker", "accept", process.env.DIM_WORKER_INVITATION_ID], {
+    cwd: process.cwd(),
+    env: childEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (!accepted.success) {
+    console.error(accepted.stdout.toString(), accepted.stderr.toString());
+    process.exit(accepted.exitCode ?? 1);
   }
 }
 

@@ -18,6 +18,7 @@ const tables = [
   "factory_order",
   "factory_stop",
   "factory_schedule",
+  "factory_worker_invitation",
   "factory_worker_session",
   "factory_worker",
 ];

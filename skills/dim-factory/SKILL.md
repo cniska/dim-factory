@@ -32,7 +32,7 @@ Run the order named by the caller. The operator owns the request and the route; 
 For an order without an approved current plan:
 
 1. Move the order to `dim-station-plan` when it is not already there.
-2. Run `dim order plan <order-id>`. The command mints the planner worker under the operator and records the planner's plan under the planner identity.
+2. Run `dim order plan <order-id>`. The command invites a planner under the operator, and the planner accepts that invitation under its own harness session before its plan is recorded under the planner identity.
 3. Read the returned plan and `dim q order <order-id>`.
 4. Check that it answers the order, names independently verifiable slices, uses the repository's own check, and states risks, holds, and non-goals.
 5. Approve the exact current plan with `dim order approve <order-id>`, or hold the order with the reason that prevents approval.

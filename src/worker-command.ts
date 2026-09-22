@@ -12,6 +12,7 @@ import {
 } from "./factory-worker";
 import { readFlags } from "./flags";
 import { isReadOnly, isRole, ROLES, type Role } from "./roles";
+import { acceptWorker, INVITATION_TOKEN_VAR, inviteWorker } from "./worker-invitation";
 
 export class WorkerCommandError extends Error {}
 
@@ -21,6 +22,8 @@ const ISSUABLE_ROLES = ROLES.filter((role) => !isReadOnly(role));
 
 export const WORKER_USAGE = `usage: dim worker mint --role <${ISSUABLE_ROLES.join("|")}> [--pid <n>]
        dim worker run --role <${ISSUABLE_ROLES.join("|")}> -- <command> [args...]
+       dim worker invite --role <${ROLES.join("|")}>
+       dim worker accept <invitation-id>
        dim worker end <name>
 
 A worker is issued before it does anything, and every moment it records names it.
@@ -46,6 +49,14 @@ function role(given: string | undefined): Role {
         "the hand whose work it reads, or the record cannot tell the two apart",
     );
   }
+  return given;
+}
+
+function invitationRole(given: string | undefined): Role {
+  if (given === undefined)
+    throw fail(`--role says what this hand is called in as; one of ${ROLES.join(", ")}`);
+  if (!isRole(given))
+    throw fail(`${given} is not a role a worker is called in as; one of ${ROLES.join(", ")}`);
   return given;
 }
 
@@ -130,6 +141,26 @@ export function runWorkerCommand(db: Database, args: string[], env = process.env
     const argv = rest.slice(at + 1);
     if (argv.length === 0) throw fail("run takes the command to start after `--`");
     return start(db, argv, role(given.get("--role")), env);
+  }
+  if (command === "invite") {
+    const given = readFlags(rest, ["--role"], fail);
+    const parentWorker = resolveWorker(db, env);
+    const invitation = inviteWorker(db, { parentWorker, role: invitationRole(given.get("--role")) });
+    return `export DIM_WORKER_INVITATION_ID=${invitation.id}\nexport DIM_WORKER_INVITATION_TOKEN=${invitation.token}`;
+  }
+  if (command === "accept") {
+    const [id, ...flags] = rest;
+    if (!id) throw fail("accept takes the invitation id");
+    readFlags(flags, [], fail);
+    const token = env[INVITATION_TOKEN_VAR];
+    if (!token) throw fail(`${INVITATION_TOKEN_VAR} is required to accept an invitation`);
+    const minted = acceptWorker(db, {
+      id,
+      token,
+      sessionId: session(env),
+      pid: process.pid,
+    });
+    return workerExports(minted);
   }
   if (command === "end") {
     const [name] = rest;

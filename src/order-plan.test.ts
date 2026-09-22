@@ -8,6 +8,7 @@ import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } fro
 import { integratedRepo } from "./fixtures.test-support";
 import { runOrderPlan } from "./order-plan";
 import { SCHEMA_SQL } from "./schema";
+import { acceptWorker, INVITATION_ID_VAR, INVITATION_TOKEN_VAR } from "./worker-invitation";
 
 describe("planner station", () => {
   test("spawns a read-only planner and records its Markdown report", () => {
@@ -64,8 +65,14 @@ describe("planner station", () => {
       },
       spawn: (given, env) => {
         argv = given;
-        expect(env.DIM_WORKER_NAME).toBeString();
-        expect(env.DIM_WORKER_TOKEN).toBeString();
+        expect(env.DIM_WORKER_NAME).toBeUndefined();
+        expect(env.DIM_WORKER_TOKEN).toBeUndefined();
+        expect(env[INVITATION_ID_VAR]).toBeString();
+        acceptWorker(db, {
+          id: env[INVITATION_ID_VAR] as string,
+          token: env[INVITATION_TOKEN_VAR] as string,
+          sessionId: "planner-harness-session",
+        });
         return { exitCode: 0, stdout: "## outcome\n\nBuild the smallest path.\n" };
       },
     });

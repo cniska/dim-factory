@@ -20,7 +20,7 @@ import { ORDER_STATUSES_SQL } from "./factory-order";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 49;
+export const SCHEMA_VERSION = 50;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -330,6 +330,22 @@ CREATE TABLE IF NOT EXISTS factory_worker (
   -- this was written, which is what keeps a killed worker from holding a live token.
   ended_at      TEXT
 );
+
+-- A station can authorize a child before the harness has created that child's session.
+-- The invitation carries the parent and requested role; acceptance supplies the session
+-- identity and creates the worker, so the factory never invents a child identity.
+CREATE TABLE IF NOT EXISTS factory_worker_invitation (
+  id              TEXT PRIMARY KEY,
+  parent_worker   TEXT NOT NULL REFERENCES factory_worker(name),
+  role            TEXT NOT NULL CHECK (role IN (${ROLES_SQL})),
+  token_digest    TEXT NOT NULL UNIQUE,
+  created_at      TEXT NOT NULL,
+  accepted_at     TEXT,
+  accepted_worker TEXT REFERENCES factory_worker(name),
+  CHECK ((accepted_at IS NULL) = (accepted_worker IS NULL))
+);
+CREATE INDEX IF NOT EXISTS factory_worker_invitation_parent
+  ON factory_worker_invitation(parent_worker, created_at);
 
 CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,

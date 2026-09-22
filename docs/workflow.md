@@ -61,7 +61,7 @@ Every meaningful act names its worker at write time. Harness identity, model, ti
 
 ## Delegation and worker trees
 
-The operator owns one project run, while each station owns the shape of its internal delegation. A station worker may request child workers for independent work; the factory mints their identities, starts them with the requested capabilities, and records the parent-child relationship. The station chooses the dimensions, and the operator does not repeat that knowledge by spawning each child manually.
+The operator owns one project run, while each station owns the shape of its internal delegation. A station worker may request child workers for independent work; the factory issues a one-use invitation, and the child harness accepts it under its own session before the factory creates the worker and records the parent-child relationship. The station chooses the dimensions, and the operator does not repeat that knowledge by spawning each child manually.
 
 ```text
 operator

@@ -3,9 +3,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
+import { resolveWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { SCHEMA_SQL } from "./schema";
 import { runWorkerCommand, WorkerCommandError } from "./worker-command";
+import { INVITATION_ID_VAR, INVITATION_TOKEN_VAR } from "./worker-invitation";
 
 function floor(): Database {
   const db = new Database(":memory:");
@@ -98,6 +99,37 @@ describe("starting a worker", () => {
 });
 
 describe("issuing a worker to a shell", () => {
+  test("a child accepts an invitation under its own harness session", () => {
+    const db = floor();
+    const parentLines = runWorkerCommand(db, ["mint", "--role", "operator"], {
+      DIM_SESSION_ID: "operator-session",
+    }).split("\n");
+    const parent: Record<string, string> = {};
+    for (const line of parentLines) {
+      const [name, value] = line.replace("export ", "").split("=");
+      parent[name as string] = value as string;
+    }
+
+    const invitationLines = runWorkerCommand(db, ["invite", "--role", "planner"], parent).split("\n");
+    const child: Record<string, string> = { [WORKER_SESSION_VAR]: "planner-session" };
+    for (const line of invitationLines) {
+      const [name, value] = line.replace("export ", "").split("=");
+      child[name as string] = value as string;
+    }
+
+    const accepted = runWorkerCommand(db, ["accept", child[INVITATION_ID_VAR] as string], child);
+    const acceptedEnv: Record<string, string> = { [WORKER_SESSION_VAR]: child[WORKER_SESSION_VAR] as string };
+    for (const line of accepted.split("\n")) {
+      const [name, value] = line.replace("export ", "").split("=");
+      acceptedEnv[name as string] = value as string;
+    }
+
+    expect(resolveWorker(db, acceptedEnv)).toBe(acceptedEnv[WORKER_NAME_VAR] as string);
+    expect(acceptedEnv[WORKER_TOKEN_VAR]).toBeString();
+    expect(child[INVITATION_TOKEN_VAR]).toBeString();
+    db.close();
+  });
+
   test("prints exports a shell can read back into a resolvable worker", () => {
     const db = floor();
 
