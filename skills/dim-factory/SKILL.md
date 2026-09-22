@@ -15,6 +15,7 @@ Run the order named by the caller. The operator owns the request and the route; 
 - Read the repository rules and current check before claiming work.
 - Run as an operator. Do not lend the operator identity to a station worker.
 - Work only in the order's project and isolated worktree. Do not edit the project from the operator session.
+- Ensure the operator identity exists with `eval "$(dim worker mint --role operator)"`; the command uses the current harness session recorded by its startup hook when no session variable is exposed.
 
 ## Start or resume the order
 

@@ -1,10 +1,11 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { SCHEMA_SQL } from "./schema";
+import { ensureSpoolDirs, toolSpoolDir } from "./spool";
 import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR } from "./worker-assignment";
 import { runWorkerCommand, WorkerCommandError } from "./worker-command";
 
@@ -165,6 +166,28 @@ describe("issuing a worker to a shell", () => {
       /no factory session id is available/,
     );
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 0 });
+    db.close();
+  });
+
+  test("takes the session from the current harness SessionStart hook", () => {
+    const db = floor();
+    const home = mkdtempSync(join(tmpdir(), "dim-worker-session-"));
+    const cwd = join(home, "project");
+    const env = { DIM_HOME: join(home, "data") };
+    mkdirSync(cwd);
+    ensureSpoolDirs(env);
+    writeFileSync(
+      join(toolSpoolDir("codex", env), "1770000000000000000-123.json"),
+      JSON.stringify({ session_id: "harness-session", hook_event_name: "SessionStart", cwd }),
+    );
+
+    const printed = runWorkerCommand(db, ["mint", "--role", "operator"], env, cwd);
+
+    expect(printed).toContain(`export ${WORKER_SESSION_VAR}=harness-session`);
+    expect(db.query("SELECT session_id FROM factory_worker").get()).toEqual({
+      session_id: "harness-session",
+    });
+    rmSync(home, { recursive: true, force: true });
     db.close();
   });
 

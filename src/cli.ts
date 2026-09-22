@@ -892,7 +892,7 @@ try {
       {
         const db = openDb(dbPath());
         try {
-          console.log(runWorkerCommand(db, process.argv.slice(3)));
+          console.log(runWorkerCommand(db, process.argv.slice(3), process.env, process.cwd()));
         } finally {
           closeDb(db);
         }

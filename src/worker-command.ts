@@ -12,6 +12,7 @@ import {
 } from "./factory-worker";
 import { readFlags } from "./flags";
 import { isReadOnly, isRole, ROLES, type Role } from "./roles";
+import { drainSpool } from "./spool";
 import { ASSIGNMENT_TOKEN_VAR, assignWorker, bootstrapWorker } from "./worker-assignment";
 
 export class WorkerCommandError extends Error {}
@@ -75,17 +76,40 @@ function pid(given: string | undefined): number | undefined {
  * a pid that stops answering, which is what keeps a dead worker's token from staying good
  * forever. The child's own pid is never observable from a call that blocks on it.
  */
-function session(env: Record<string, string | undefined>): string {
+function session(db: Database, env: Record<string, string | undefined>, cwd: string): string {
   const id = sessionIdFromEnv(env);
-  if (!id)
-    throw fail(
-      `no factory session id is available in ${WORKER_SESSION_VAR}, CODEX_SESSION_ID, or CLAUDE_SESSION_ID`,
-    );
-  return id;
+  if (id) return id;
+  drainSpool(db, env);
+  const active = db
+    .query<{ session_id: string }, [string]>(
+      `SELECT DISTINCT start.session_id
+       FROM hook_event start
+       WHERE start.event = 'session_start' AND start.cwd = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM hook_event ended
+           WHERE ended.session_id = start.session_id AND ended.event = 'session_end'
+         )`,
+    )
+    .all(cwd);
+  const [current] = active;
+  if (current) return current.session_id;
+  if (active.length > 1) {
+    throw fail(`more than one active harness session is recorded for ${cwd}; carry ${WORKER_SESSION_VAR}`);
+  }
+  throw fail(
+    `no factory session id is available in ${WORKER_SESSION_VAR}, CODEX_SESSION_ID, or CLAUDE_SESSION_ID, ` +
+      `and no active SessionStart hook is recorded for ${cwd}`,
+  );
 }
 
-function start(db: Database, argv: string[], role: Role, env: Record<string, string | undefined>): string {
-  const childSession = `${session(env)}/run-${newWorkerSession("child")}`;
+function start(
+  db: Database,
+  argv: string[],
+  role: Role,
+  env: Record<string, string | undefined>,
+  cwd: string,
+): string {
+  const childSession = `${session(db, env, cwd)}/run-${newWorkerSession("child")}`;
   const parentWorker = env[WORKER_NAME_VAR] && env[WORKER_TOKEN_VAR] ? resolveWorker(db, env) : undefined;
   const minted = mintWorker(db, { role, parentWorker, pid: process.pid, sessionId: childSession });
   const [command, ...args] = argv as [string, ...string[]];
@@ -105,7 +129,12 @@ function start(db: Database, argv: string[], role: Role, env: Record<string, str
   return `${minted.name} ran ${command}`;
 }
 
-export function runWorkerCommand(db: Database, args: string[], env = process.env): string {
+export function runWorkerCommand(
+  db: Database,
+  args: string[],
+  env = process.env,
+  cwd = process.cwd(),
+): string {
   const [command, ...rest] = args;
   if (command === "mint") {
     const given = readFlags(rest, ["--role", "--pid"], fail);
@@ -130,7 +159,7 @@ export function runWorkerCommand(db: Database, args: string[], env = process.env
       mintWorker(db, {
         role: role(given.get("--role")),
         pid: pid(given.get("--pid")),
-        sessionId: session(env),
+        sessionId: session(db, env, cwd),
       }),
     );
   }
@@ -140,7 +169,7 @@ export function runWorkerCommand(db: Database, args: string[], env = process.env
     const given = readFlags(rest.slice(0, at), ["--role"], fail);
     const argv = rest.slice(at + 1);
     if (argv.length === 0) throw fail("run takes the command to start after `--`");
-    return start(db, argv, role(given.get("--role")), env);
+    return start(db, argv, role(given.get("--role")), env, cwd);
   }
   if (command === "assign") {
     const given = readFlags(rest, ["--role"], fail);
@@ -157,7 +186,7 @@ export function runWorkerCommand(db: Database, args: string[], env = process.env
     const minted = bootstrapWorker(db, {
       id,
       token,
-      sessionId: session(env),
+      sessionId: session(db, env, cwd),
       pid: process.ppid,
     });
     return workerExports(minted);
