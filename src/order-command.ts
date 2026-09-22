@@ -372,7 +372,7 @@ export function runOrderCommand(
     flags(rest, []);
     assertOperator(db, worker, "delegate planning");
     const outcome = runOrderPlan(db, orderId, { env });
-    return `${orderId} planning completed by ${outcome.planner}`;
+    return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;
   }
   if (command === "build") {
     flags(rest, []);

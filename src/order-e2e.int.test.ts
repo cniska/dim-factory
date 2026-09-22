@@ -114,9 +114,7 @@ describe("headless factory loop", () => {
       repo.dir,
     );
 
-    expect(runOrderCommand(db, ["plan", "headless-order"], null, repo.dir, env)).toContain(
-      "planning completed",
-    );
+    expect(runOrderCommand(db, ["plan", "headless-order"], null, repo.dir, env)).toContain("## Outcome");
     expect(runOrderCommand(db, ["approve", "headless-order"], null, repo.dir, env)).toContain(
       "plan approved",
     );
