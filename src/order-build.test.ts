@@ -12,6 +12,14 @@ describe("worker failure explanations", () => {
         null,
       ),
     ).toContain("A red check is feedback, not completion");
+    expect(
+      builderBrief(
+        { id: "order-1", title: "Build it", description: null },
+        "## Outcome\n\nBuild it.",
+        "run-1",
+        null,
+      ),
+    ).toContain("Do not run dim order stop");
   });
 
   test("keeps the harness explanation beside the failure", () => {
