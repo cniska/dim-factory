@@ -5,8 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { claimOrder, queueOrder } from "./factory-order";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
+import { fakeHarness } from "./fake-harness";
 import { integratedRepo } from "./fixtures.test-support";
-import { runOrderPlan } from "./order-plan";
+import { runOrderPlan, runOrderPlanLive } from "./order-plan";
 import { SCHEMA_SQL } from "./schema";
 import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
 
@@ -94,6 +95,62 @@ describe("planner station", () => {
       { kind: "claimed" },
       { kind: "plan_submitted" },
     ]);
+    db.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  test("records a crashed planner with the harness explanation", async () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const home = mkdtempSync(join(tmpdir(), "dim-planner-crash-"));
+    writeFileSync(
+      join(home, "routing.json"),
+      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
+    );
+    const repo = integratedRepo();
+    const operator = mintWorker(db, { role: "operator", sessionId: "planner-crash-operator" });
+    queueOrder(
+      db,
+      { id: "planner-crash-order", project: "cniska/dim-factory", title: "Plan this" },
+      operator.name,
+    );
+    claimOrder(
+      db,
+      "planner-crash-order",
+      { runId: "run", station: "dim-station-plan" },
+      operator.name,
+      undefined,
+      repo.dir,
+    );
+
+    await expect(
+      runOrderPlanLive(db, "planner-crash-order", {
+        adapter: fakeHarness("crash"),
+        env: {
+          DIM_HOME: home,
+          [WORKER_NAME_VAR]: operator.name,
+          [WORKER_TOKEN_VAR]: operator.token,
+          [WORKER_SESSION_VAR]: operator.sessionId,
+        },
+      }),
+    ).rejects.toThrow("fake process crashed");
+
+    const failure = db
+      .query<{ worker: string; reason: string }, [string]>(
+        "SELECT worker, reason FROM factory_order_event WHERE order_id = ? AND kind = 'failed'",
+      )
+      .get("planner-crash-order");
+    if (!failure) throw new Error("planner failure event was not recorded");
+    expect(failure.reason).toContain("fake process crashed");
+    expect(
+      db
+        .query<{ role: string }, [string]>("SELECT role FROM factory_worker WHERE name = ?")
+        .get(failure.worker),
+    ).toEqual({
+      role: "planner",
+    });
+
     db.close();
     rmSync(repo.dir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
