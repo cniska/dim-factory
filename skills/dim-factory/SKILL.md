@@ -33,7 +33,7 @@ Run the order named by the caller. The operator owns the request and the route; 
 For an order without an approved current plan:
 
 1. Move the order to `dim-station-plan` when it is not already there.
-2. Run `dim order plan <order-id>`. The command assigns a planner under the operator, and the planner bootstraps that assignment under its own harness session before its plan is recorded under the planner identity.
+2. Run `dim order plan <order-id>`. The command assigns one planner under the operator, and the planner bootstraps that assignment under its own harness session before its plan is recorded under the planner identity. Later planning turns resume that same planner.
 3. Read the returned plan and `dim q order <order-id>`.
 4. Check that it answers the order, names independently verifiable slices, uses the repository's own check, and states risks, holds, and non-goals.
 5. Approve the exact current plan with `dim order approve <order-id>`, or hold the order with the reason that prevents approval.
@@ -45,9 +45,9 @@ Approval is the operator's check that the returned artifact answers the request.
 After plan approval:
 
 1. Move the order to `dim-station-build`.
-2. Run `dim order build <order-id> --harness codex`. The factory mints one builder identity, starts the selected harness in the order's worktree, and the builder claims the build hand before recording commits, files, checks, documents, and findings as they occur.
+2. Run `dim order build <order-id> --harness codex`. The factory assigns one builder identity for the order, starts or resumes the selected harness in the order's worktree, and the builder claims the build hand before recording commits, files, checks, documents, and findings as they occur.
 3. Read the builder's returned outcome and `dim q order <order-id>`. Approve the exact checked build with `dim order approve-build <order-id> --reason "..."` only when it answers the requested outcome.
-4. Move the order to `dim-station-review` and run `dim order review <order-id> --harness codex`. The command mints a separate reviewer under the operator and records findings under the reviewer identity.
+4. Move the order to `dim-station-review` and run `dim order review <order-id> --harness codex`. The command assigns a separate reviewer under the operator, resumes that reviewer for later rounds, and records findings under the reviewer identity.
 5. Read the review outcome. If findings exist, hand the order back to the builder with their ids and required fixes. The operator approves the next build before starting another review round.
 6. When a review is clean, run `dim order approve-review <order-id>` as the operator.
 
