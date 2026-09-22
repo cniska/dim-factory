@@ -1060,6 +1060,16 @@ describe("factory order report records", () => {
     expect(database.query("SELECT path FROM factory_order_document").get()).toEqual({
       path: "docs/factory.md",
     });
+    expect(
+      database
+        .query<{ event: string; fields: string }, []>(
+          "SELECT event, fields FROM trace_event WHERE order_id = 'order-1' ORDER BY id DESC LIMIT 1",
+        )
+        .get(),
+    ).toEqual({
+      event: "order.lifecycle",
+      fields: JSON.stringify({ kind: "completed", status: "completed", reason: "verified" }),
+    });
     database.close();
   });
 

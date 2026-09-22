@@ -4,6 +4,7 @@ import { workerIsOver } from "./factory-worker";
 import { withLock } from "./lock";
 import type { Env } from "./paths";
 import { type ShipOutcome, shipToTrunk } from "./ship";
+import { writeTrace } from "./trace-store";
 import { reachesTrunk } from "./trunk";
 import type { WorkerHookReport } from "./worker-environment";
 import { createWorktree } from "./wt-command";
@@ -596,6 +597,22 @@ function appendOrderEventInTransaction(
       event.ts ?? at,
     );
   }
+  writeTrace(
+    db,
+    {
+      event: "order.lifecycle",
+      orderId,
+      station: event.station ?? order.station ?? undefined,
+      worker: event.worker,
+      sessionId: event.sessionId,
+      fields: {
+        kind: event.kind,
+        status: event.status ?? projected,
+        reason: event.reason ?? null,
+      },
+    },
+    event.ts ?? at,
+  );
   return Number(written.lastInsertRowid);
 }
 
