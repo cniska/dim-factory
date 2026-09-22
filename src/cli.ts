@@ -11,6 +11,7 @@ import { closeDb, openDb } from "./db";
 import { diagnose } from "./doctor";
 import { downloadEmbedder, EMBED_DIMS, EMBED_MODEL, embedQuestion } from "./embed";
 import { buildIndex } from "./embed-index";
+import { writeFactoryError, writeFactorySuccess } from "./factory-output";
 import { createSchedule, setSchedulePaused } from "./factory-schedule";
 import { clearStop, FactoryStopError, pullStop } from "./factory-stop";
 import { serveWall } from "./factory-wall";
@@ -700,7 +701,7 @@ function runSchedule(args: string[]): void {
     const db = openDb(dbPath());
     try {
       createSchedule(db, { id, queueId: queue, intervalSeconds, paused: args.includes("--paused") });
-      console.log(`defined schedule ${id} for queue ${queue}`);
+      writeFactorySuccess("schedule", { action: "defined", schedule_id: id, queue_id: queue });
     } finally {
       closeDb(db);
     }
@@ -710,7 +711,7 @@ function runSchedule(args: string[]): void {
     const db = openDb(dbPath());
     try {
       setSchedulePaused(db, id, action === "pause");
-      console.log(`${action}d schedule ${id}`);
+      writeFactorySuccess("schedule", { action, schedule_id: id });
     } finally {
       closeDb(db);
     }
@@ -738,11 +739,16 @@ function runFactory(args: string[]): void {
         by: given.get("--by"),
         orderId: given.get("--order"),
       });
-      console.log(`the factory is stopped by ${stop.pulledBy}: ${stop.reason}`);
+      writeFactorySuccess("factory", {
+        action: "stopped",
+        by: stop.pulledBy,
+        reason: stop.reason,
+        order_id: stop.orderId,
+      });
       return;
     }
     const cleared = clearStop(db, given.get("--by"));
-    console.log(`the factory is taking work again; the stop was: ${cleared.reason}`);
+    writeFactorySuccess("factory", { action: "cleared", reason: cleared.reason });
   } finally {
     closeDb(db);
   }
@@ -882,7 +888,10 @@ try {
         try {
           // The same owner/repo `repo_commit.label` and `dim finding` key on, so an order, a
           // commit and a finding in one project all join on one identity.
-          console.log(runOrderCommand(db, process.argv.slice(3), root ? labelFor(root) : null));
+          writeFactorySuccess(
+            "order",
+            runOrderCommand(db, process.argv.slice(3), root ? labelFor(root) : null),
+          );
         } finally {
           closeDb(db);
         }
@@ -949,6 +958,16 @@ try {
       process.exit(1);
   }
 } catch (error) {
+  const factoryCommand = process.argv[2];
+  if (
+    factoryCommand === "order" ||
+    factoryCommand === "schedule" ||
+    factoryCommand === "factory" ||
+    factoryCommand === "trace"
+  ) {
+    writeFactoryError(factoryCommand, error);
+    process.exit(1);
+  }
   // wt speaks as wt: its messages are pinned by scripts/wt.test.sh.
   if (error instanceof WtError) {
     warn(`wt: ${error.message}`);
