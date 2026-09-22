@@ -182,8 +182,10 @@ describe("issuing a worker to a shell", () => {
     );
 
     const printed = runWorkerCommand(db, ["mint", "--role", "operator"], env, cwd);
+    const repeated = runWorkerCommand(db, ["mint", "--role", "operator"], env, cwd);
 
     expect(printed).toContain(`export ${WORKER_SESSION_VAR}=harness-session`);
+    expect(repeated).toBe(printed);
     expect(db.query("SELECT session_id FROM factory_worker").get()).toEqual({
       session_id: "harness-session",
     });

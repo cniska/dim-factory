@@ -14,6 +14,7 @@ import { readFlags } from "./flags";
 import { isReadOnly, isRole, ROLES, type Role } from "./roles";
 import { drainSpool } from "./spool";
 import { ASSIGNMENT_TOKEN_VAR, assignWorker, bootstrapWorker } from "./worker-assignment";
+import { readWorkerCredential, saveWorkerCredential } from "./worker-credential";
 
 export class WorkerCommandError extends Error {}
 
@@ -155,13 +156,33 @@ export function runWorkerCommand(
       }
       return workerExports({ name, token: workerToken, sessionId: row.session_id });
     }
-    return workerExports(
-      mintWorker(db, {
-        role: role(given.get("--role")),
-        pid: pid(given.get("--pid")),
-        sessionId: session(db, env, cwd),
-      }),
-    );
+    const workerRole = role(given.get("--role"));
+    const sessionId = session(db, env, cwd);
+    const existing = db
+      .query<{ name: string; role: Role }, [string]>(
+        "SELECT name, role FROM factory_worker WHERE session_id = ?",
+      )
+      .get(sessionId);
+    if (existing) {
+      if (existing.role !== workerRole) {
+        throw fail(`this factory session already carries ${existing.role}, not ${workerRole}`);
+      }
+      const credential = readWorkerCredential(env, sessionId);
+      if (!credential || credential.name !== existing.name) {
+        throw fail(
+          `worker ${existing.name} already belongs to this session, but its credential is unavailable`,
+        );
+      }
+      resolveWorker(db, { [WORKER_NAME_VAR]: credential.name, [WORKER_TOKEN_VAR]: credential.token });
+      return workerExports(credential);
+    }
+    const minted = mintWorker(db, {
+      role: workerRole,
+      pid: pid(given.get("--pid")),
+      sessionId,
+    });
+    saveWorkerCredential(env, minted);
+    return workerExports(minted);
   }
   if (command === "run") {
     const at = rest.indexOf("--");
