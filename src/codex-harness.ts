@@ -1,5 +1,6 @@
 import type { HarnessAdapter, HarnessEvent, HarnessRequest } from "./harness";
 import { processHarness } from "./harness-process";
+import { dataDir } from "./paths";
 
 type CodexEvent = {
   type?: string;
@@ -68,6 +69,8 @@ export function codexArgv(command: string, request: HarnessRequest): string[] {
     "--ephemeral",
     "-s",
     sandbox,
+    "--add-dir",
+    dataDir(request.env),
     "-C",
     request.cwd,
     "-m",

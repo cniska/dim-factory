@@ -10,7 +10,7 @@ describe("selected harness commands", () => {
         brief: "plan the order",
         model: "deep-model",
         capabilities: ["read-files"],
-        env: {},
+        env: { DIM_HOME: "/dim-home" },
       }),
     ).toEqual([
       "codex",
@@ -19,6 +19,8 @@ describe("selected harness commands", () => {
       "--ephemeral",
       "-s",
       "read-only",
+      "--add-dir",
+      "/dim-home",
       "-C",
       "/worktree",
       "-m",

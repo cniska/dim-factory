@@ -66,7 +66,17 @@ describe("planner station", () => {
     });
 
     expect(outcome.body).toBe("## outcome\n\nBuild the smallest path.");
-    expect(argv.slice(0, 7)).toEqual(["codex", "exec", "--json", "--ephemeral", "-s", "read-only", "-C"]);
+    expect(argv.slice(0, 9)).toEqual([
+      "codex",
+      "exec",
+      "--json",
+      "--ephemeral",
+      "-s",
+      "read-only",
+      "--add-dir",
+      home,
+      "-C",
+    ]);
     expect(argv).toContain("large");
     expect(argv.at(-1)).not.toContain("dim order");
     expect(db.query("SELECT role FROM factory_worker WHERE name = ?").get(outcome.planner)).toEqual({

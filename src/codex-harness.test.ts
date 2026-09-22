@@ -7,7 +7,7 @@ const request: HarnessRequest = {
   brief: "build it",
   model: "gpt-5-codex",
   capabilities: [],
-  env: {},
+  env: { DIM_HOME: "/dim-home" },
 };
 
 describe("the Codex harness adapter", () => {
@@ -59,6 +59,8 @@ describe("the Codex harness adapter", () => {
       "--ephemeral",
       "-s",
       "workspace-write",
+      "--add-dir",
+      "/dim-home",
       "-C",
       "/repo",
       "-m",
