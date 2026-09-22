@@ -64,6 +64,21 @@ The borrowing stops at orchestration vocabulary. The SDK explains how agents can
 
 Cloudflare is therefore useful prior art for the runtime we still need around the line: durable execution, explicit waiting, scheduling, isolation and trace export. It is not a replacement for the line design. Its workspace is the product surface; Dim's product is the attributed factory record that coordinates independent planner, builder and reviewer sessions.
 
+## Headless harnesses converge on a semantic adapter boundary
+
+The primary harnesses were checked on 2026-09-22 before defining the factory contract. They do not share one wire protocol: [Claude Code](https://code.claude.com/docs/en/cli-usage) and [Codex](https://github.com/openai/codex/blob/main/codex-rs/exec/src/exec_events.rs) expose machine-readable JSON streams, [OpenCode](https://dev.opencode.ai/docs/cli/) exposes an ACP nd-JSON server as well as an HTTP server, [Grok Build](https://docs.x.ai/build/overview) exposes streaming JSON and ACP, and [Pi](https://pi.dev/docs/latest/rpc) exposes JSON event mode and JSON-RPC over stdin/stdout.
+
+| Shared semantic | Evidence across harnesses | Contract implication |
+|---|---|---|
+| Start in a working directory with a brief and model | All five provide a headless or protocol entry point with project/model context | The adapter receives a request, not a provider-shaped argv array |
+| Stream progress | Claude and Codex stream lifecycle and item events; OpenCode, Grok and Pi expose protocol or streaming events | The runner consumes an async event stream and preserves raw provider data for diagnostics |
+| Observe assistant output and tool work | Codex item events, Claude stream events, Pi tool events, and the protocol surfaces of OpenCode and Grok expose intermediate activity | Normalize message, tool, file and diagnostic events where a provider exposes them; absence is explicit rather than invented |
+| Distinguish completion from failure | Codex has turn completion, turn failure and error events; Claude has structured print results; the other protocols expose terminal responses or events | The adapter returns a terminal result separately from process exit |
+| Stop work | Every integration is a process or protocol session that the runner can close or cancel | Cancellation and timeout belong to the runner contract, not to one CLI's flags |
+| Enforce permissions | Claude has allowed and disallowed tools; Codex has sandbox modes; OpenCode, Grok and Pi expose configurable tools, workspaces or protocol clients | The factory requests capabilities; each adapter validates and translates them, refusing unsupported grants |
+
+The fake harness must implement this semantic contract, not imitate one provider's JSON. Provider adapters then get separate wire-fixture tests: the fake proves factory behavior for success, findings, crash, hang and bootstrap failure, while Claude, Codex, OpenCode, Grok and Pi fixtures prove that each adapter maps its own stream correctly. This is the boundary that keeps station orchestration, worker identity and audit records independent of the harness.
+
 ## HumanLayer makes the artifact lifecycle concrete
 
 [HumanLayer](https://www.humanlayer.com/) makes research, designs, plans, worktrees, sessions and diffs part of one task rather than separate conversations. Its workflow separates investigation, decisions and code changes, and its design documents support comments and decisions that feed back into the agent before implementation. Its structure outlines divide work into vertical, testable phases, while later artifacts take precedence when feedback changes the result ([workflow phases](https://docs.humanlayer.com/explanation/workflow-phases), [artifact reference](https://docs.humanlayer.com/reference/skills-workflows)).
