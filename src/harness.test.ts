@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { fakeHarness } from "./fake-harness";
+import { runHarness } from "./harness-runner";
 
 const REQUEST = {
   cwd: "/tmp/project",
@@ -57,5 +58,27 @@ describe("the fake harness", () => {
     });
     run.cancel();
     await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined });
+  });
+
+  test("returns a timeout when a harness produces no terminal event", async () => {
+    const seen: string[] = [];
+    const result = await runHarness(fakeHarness("hang"), REQUEST, {
+      timeoutMs: 1,
+      onEvent: (event) => seen.push(event.type),
+    });
+
+    expect(result).toMatchObject({ outcome: "timed_out", reason: "harness timed out" });
+    expect(seen).toEqual(["run.started", "turn.started"]);
+  });
+
+  test("returns terminal output and forwards every event", async () => {
+    const seen: string[] = [];
+    const result = await runHarness(fakeHarness("success"), REQUEST, {
+      timeoutMs: 100,
+      onEvent: (event) => seen.push(event.type),
+    });
+
+    expect(result).toMatchObject({ outcome: "completed", output: "completed" });
+    expect(seen).toEqual(["run.started", "turn.started", "message", "run.completed"]);
   });
 });
