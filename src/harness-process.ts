@@ -3,8 +3,14 @@ import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from ".
 type HarnessProcessOptions = {
   name: string;
   argv(request: HarnessRequest): string[];
-  parse(line: string): HarnessEvent | undefined;
+  parse(line: string): HarnessEvent | HarnessEvent[] | undefined;
 };
+
+function normalize(parsed: HarnessEvent | HarnessEvent[] | undefined): HarnessEvent[] {
+  if (!parsed) return [];
+  if (Array.isArray(parsed)) return parsed;
+  return [parsed];
+}
 
 function terminal(event: HarnessEvent): boolean {
   return event.type === "run.completed" || event.type === "run.failed";
@@ -40,16 +46,15 @@ export function processHarness(options: HarnessProcessOptions): HarnessAdapter {
               const lines = buffer.split("\n");
               buffer = lines.pop() ?? "";
               for (const line of lines) {
-                const event = options.parse(line.trim());
-                if (!event) continue;
-                terminalSeen ||= terminal(event);
-                yield event;
+                for (const event of normalize(options.parse(line.trim()))) {
+                  terminalSeen ||= terminal(event);
+                  yield event;
+                }
               }
             }
             buffer += decoder.decode();
             if (buffer.trim()) {
-              const event = options.parse(buffer.trim());
-              if (event) {
+              for (const event of normalize(options.parse(buffer.trim()))) {
                 terminalSeen ||= terminal(event);
                 yield event;
               }

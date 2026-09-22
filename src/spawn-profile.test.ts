@@ -192,6 +192,7 @@ const READING_SET: { file: string; reason: string }[] = [
   { file: "src/history.ts", reason: "loads each harness's own history file" },
   { file: "src/claude-source.ts", reason: "tags a session read from Claude's own transcripts" },
   { file: "src/codex-source.ts", reason: "tags a session read from Codex's own transcripts" },
+  { file: "src/codex-harness.ts", reason: "translates Codex's own process stream" },
   { file: "src/codex-trust.ts", reason: "resolves Codex's own trust config path" },
   { file: "src/cli.ts", reason: "dim wake defaults its --tool flag to claude" },
   { file: "src/queries.ts", reason: "reports counts by which harness recorded the session" },
