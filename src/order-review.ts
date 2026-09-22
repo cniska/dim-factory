@@ -2,15 +2,16 @@ import type { Database } from "bun:sqlite";
 import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
 import { assertBuildApproved, closeOrderReview, openAssignedOrderReview } from "./factory-order";
-import { endWorker } from "./factory-worker";
 import type { HarnessAdapter } from "./harness";
 import {
   harnessArgv,
   runHarnessCommand,
   runHarnessCommandLive,
+  runHarnessCommandResumeLive,
   workerFailureReason,
 } from "./harness-command";
 import type { HarnessName } from "./harness-name";
+import { bindOrderWorker, ensureOrderWorker, orderWorkerRequest } from "./order-worker";
 import { route } from "./routing";
 import { assignedWorker, assignmentProcessEnv, assignWorker, bootstrapWorker } from "./worker-assignment";
 
@@ -144,31 +145,45 @@ export async function runOrderReviewLive(
   assertOperator(db, worker, "delegate review");
   assertBuildApproved(db, orderId);
   const range = reviewRange(db, orderId, options.dir);
-  const assignment = assignWorker(db, { role: "reviewer", parentWorker: worker });
+  const orderWorker = ensureOrderWorker(db, orderId, "reviewer", worker);
   const opened = openAssignedOrderReview(
     db,
     orderId,
-    { assignmentId: assignment.id, baseSha: range.base, headSha: range.head },
+    { assignmentId: orderWorker.assignment.id, baseSha: range.base, headSha: range.head },
     worker,
   );
-  const env = assignmentProcessEnv(options.env, assignment);
+  const env = orderWorkerRequest(db, options.env, orderWorker);
   const harness = options.harness ?? "codex";
   const { model } = route("reviewer", harness, options.env);
-  const run = await runHarnessCommandLive(
-    {
-      harness,
-      cwd: options.dir,
-      brief: reviewerBrief(order, range),
-      model,
-      capabilities: REVIEWER_CAPABILITIES,
-      env,
-    },
-    (providerSessionId) => {
-      bootstrapWorker(db, { id: assignment.id, token: assignment.token, sessionId: providerSessionId });
-    },
-    options.adapter,
-  );
-  const reviewer = assignedWorker(db, assignment.id);
+  const request = {
+    harness,
+    cwd: options.dir,
+    brief: reviewerBrief(order, range),
+    model,
+    capabilities: REVIEWER_CAPABILITIES,
+    env,
+  };
+  let reviewer = orderWorker.worker;
+  const onStarted = (providerSessionId: string): void => {
+    if (orderWorker.worker) {
+      if (orderWorker.providerSessionId !== providerSessionId) {
+        throw new Error(
+          `reviewer resumed as provider session ${providerSessionId}, expected ${orderWorker.providerSessionId}`,
+        );
+      }
+      return;
+    }
+    const minted = bootstrapWorker(db, {
+      id: orderWorker.assignment.id,
+      token: orderWorker.assignment.token,
+      sessionId: providerSessionId,
+    });
+    bindOrderWorker(db, orderId, "reviewer", orderWorker.assignment.id, minted);
+    reviewer = minted.name;
+  };
+  const run = orderWorker.providerSessionId
+    ? await runHarnessCommandResumeLive(request, orderWorker.providerSessionId, onStarted, options.adapter)
+    : await runHarnessCommandLive(request, onStarted, options.adapter);
   if (!reviewer) {
     closeOrderReview(db, opened.id, "aborted", worker);
     throw new Error("reviewer did not bootstrap its worker assignment");
@@ -183,7 +198,6 @@ export async function runOrderReviewLive(
   const raised = (db
     .query<{ n: number }, [number]>("SELECT count(*) AS n FROM factory_order_finding WHERE review_id = ?")
     .get(opened.id)?.n ?? 0) as number;
-  endWorker(db, reviewer);
   return { review: opened.id, reviewer, findings: raised, outcome };
 }
 
