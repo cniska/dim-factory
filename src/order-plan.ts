@@ -2,15 +2,17 @@ import type { Database } from "bun:sqlite";
 import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
 import { appendOrderEvent, recordOrderPlan } from "./factory-order";
-import { endWorker, resolveWorker } from "./factory-worker";
+import { resolveWorker } from "./factory-worker";
 import type { HarnessAdapter } from "./harness";
 import {
   harnessArgv,
   runHarnessCommand,
   runHarnessCommandLive,
+  runHarnessCommandResumeLive,
   workerFailureReason,
 } from "./harness-command";
 import type { HarnessName } from "./harness-name";
+import { bindOrderWorker, ensureOrderWorker, orderWorkerRequest } from "./order-worker";
 import { route } from "./routing";
 import { assignedWorker, assignmentProcessEnv, assignWorker, bootstrapWorker } from "./worker-assignment";
 
@@ -102,10 +104,10 @@ export async function runOrderPlanLive(
   if (!order) throw new Error(`order not found: ${orderId}`);
   const parentWorker = resolveWorker(db, options.env);
   assertOperator(db, parentWorker, "delegate planning");
-  const assignment = assignWorker(db, { role: "planner", parentWorker });
+  const orderWorker = ensureOrderWorker(db, orderId, "planner", parentWorker);
   const harness = options.harness ?? "codex";
   const { model } = route("planner", harness, options.env);
-  const env = assignmentProcessEnv(options.env ?? process.env, assignment);
+  const env = orderWorkerRequest(db, options.env ?? process.env, orderWorker);
   const request = {
     harness,
     cwd: process.cwd(),
@@ -114,16 +116,28 @@ export async function runOrderPlanLive(
     capabilities: PLANNER_CAPABILITIES,
     env,
   };
-  let planner: string | undefined;
+  let planner = orderWorker.worker;
   try {
-    const run = await runHarnessCommandLive(
-      request,
-      (providerSessionId) => {
-        bootstrapWorker(db, { id: assignment.id, token: assignment.token, sessionId: providerSessionId });
-      },
-      options.adapter,
-    );
-    planner = assignedWorker(db, assignment.id);
+    const onStarted = (providerSessionId: string): void => {
+      if (orderWorker.worker) {
+        if (orderWorker.providerSessionId !== providerSessionId) {
+          throw new Error(
+            `planner resumed as provider session ${providerSessionId}, expected ${orderWorker.providerSessionId}`,
+          );
+        }
+        return;
+      }
+      const minted = bootstrapWorker(db, {
+        id: orderWorker.assignment.id,
+        token: orderWorker.assignment.token,
+        sessionId: providerSessionId,
+      });
+      bindOrderWorker(db, orderId, "planner", orderWorker.assignment.id, minted);
+      planner = minted.name;
+    };
+    const run = orderWorker.providerSessionId
+      ? await runHarnessCommandResumeLive(request, orderWorker.providerSessionId, onStarted, options.adapter)
+      : await runHarnessCommandLive(request, onStarted, options.adapter);
     if (!planner) throw new Error("planner did not bootstrap its worker assignment");
     if (run.exitCode !== 0) {
       throw new Error(workerFailureReason("planner did not finish planning", run.output, run.failureReason));
@@ -135,7 +149,5 @@ export async function runOrderPlanLive(
     const reason = error instanceof Error ? error.message : String(error);
     if (planner) appendOrderEvent(db, orderId, { kind: "failed", worker: planner, reason });
     throw error;
-  } finally {
-    if (planner) endWorker(db, planner);
   }
 }

@@ -145,4 +145,70 @@ describe("planner station", () => {
     rmSync(repo.dir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
   });
+
+  test("resumes the same planner identity for a later planning turn", async () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const home = mkdtempSync(join(tmpdir(), "dim-planner-resume-"));
+    writeFileSync(
+      join(home, "routing.json"),
+      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
+    );
+    const repo = integratedRepo();
+    const operator = mintWorker(db, { role: "operator", sessionId: "planner-resume-operator" });
+    queueOrder(
+      db,
+      { id: "planner-resume-order", project: "cniska/dim-factory", title: "Plan this" },
+      operator.name,
+    );
+    claimOrder(
+      db,
+      "planner-resume-order",
+      { runId: "run", station: "dim-station-plan" },
+      operator.name,
+      undefined,
+      repo.dir,
+    );
+    const base = fakeHarness("success");
+    let starts = 0;
+    let resumes = 0;
+    const adapter = {
+      ...base,
+      start: async (request: Parameters<typeof base.start>[0]) => {
+        starts += 1;
+        return base.start(request);
+      },
+      resume: async (sessionId: string, request: Parameters<typeof base.start>[0]) => {
+        resumes += 1;
+        expect(sessionId).toBe("fake-session");
+        return base.resume(sessionId, request);
+      },
+    };
+    const env = {
+      DIM_HOME: home,
+      [WORKER_NAME_VAR]: operator.name,
+      [WORKER_TOKEN_VAR]: operator.token,
+      [WORKER_SESSION_VAR]: operator.sessionId,
+    };
+
+    const first = await runOrderPlanLive(db, "planner-resume-order", { adapter, env });
+    const second = await runOrderPlanLive(db, "planner-resume-order", { adapter, env });
+
+    expect(second.planner).toBe(first.planner);
+    expect(starts).toBe(1);
+    expect(resumes).toBe(1);
+    expect(db.query("SELECT count(*) AS n FROM factory_worker WHERE role = 'planner'").get()).toEqual({
+      n: 1,
+    });
+    expect(db.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 1 });
+    expect(
+      db
+        .query("SELECT worker, provider_session_id FROM factory_order_worker WHERE order_id = ?")
+        .get("planner-resume-order"),
+    ).toEqual({ worker: first.planner, provider_session_id: "fake-session" });
+
+    db.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  });
 });

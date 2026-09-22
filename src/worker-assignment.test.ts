@@ -2,7 +2,12 @@ import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { mintWorker } from "./factory-worker";
 import { SCHEMA_SQL } from "./schema";
-import { assignWorker, bootstrapWorker, resolveAssignedWorker } from "./worker-assignment";
+import {
+  assignWorker,
+  bootstrapWorker,
+  renewWorkerAssignment,
+  resolveAssignedWorker,
+} from "./worker-assignment";
 
 function floor(): Database {
   const db = new Database(":memory:");
@@ -77,6 +82,23 @@ describe("worker assignments", () => {
       bootstrapWorker(db, { id: assignment.id, token: "wrong", sessionId: "reviewer-session" }),
     ).toThrow(expect.objectContaining({ code: "assignment_token" }));
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 1 });
+    db.close();
+  });
+
+  test("renews an unused assignment without changing its identity", () => {
+    const db = floor();
+    const parent = mintWorker(db, { role: "operator", sessionId: "operator-session" });
+    const assignment = assignWorker(db, { parentWorker: parent.name, role: "planner" });
+
+    const renewed = renewWorkerAssignment(db, assignment.id);
+
+    expect(renewed.id).toBe(assignment.id);
+    expect(renewed.token).not.toBe(assignment.token);
+    expect(renewed.parentWorker).toBe(parent.name);
+    expect(() => bootstrapWorker(db, { ...assignment, sessionId: "old-session" })).toThrow(
+      expect.objectContaining({ code: "assignment_token" }),
+    );
+    expect(bootstrapWorker(db, { ...renewed, sessionId: "planner-session" }).name).toBeString();
     db.close();
   });
 });

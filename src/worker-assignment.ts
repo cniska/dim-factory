@@ -57,7 +57,7 @@ function digest(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-export function assignWorker(
+export function createWorkerAssignment(
   db: Database,
   assignment: { parentWorker: string; role: Role },
   at = now(),
@@ -71,6 +71,37 @@ export function assignWorker(
     [id, assignment.parentWorker, assignment.role, digest(token), at],
   );
   return { id, token, parentWorker: assignment.parentWorker, role: assignment.role, createdAt: at };
+}
+
+export function assignWorker(
+  db: Database,
+  assignment: { parentWorker: string; role: Role },
+  at = now(),
+): WorkerAssignment {
+  return db.transaction(() => createWorkerAssignment(db, assignment, at))();
+}
+
+export function renewWorkerAssignment(db: Database, assignmentId: string): WorkerAssignment {
+  const token = randomBytes(24).toString("hex");
+  const row = db
+    .query<{ parent_worker: string; role: Role; created_at: string; accepted_at: string | null }, [string]>(
+      `SELECT parent_worker, role, created_at, accepted_at
+       FROM factory_worker_assignment WHERE id = ?`,
+    )
+    .get(assignmentId);
+  if (!row) throw new WorkerAssignmentError("assignment_missing");
+  if (row.accepted_at !== null) throw new WorkerAssignmentError("assignment_used");
+  db.run("UPDATE factory_worker_assignment SET token_digest = ? WHERE id = ? AND accepted_at IS NULL", [
+    digest(token),
+    assignmentId,
+  ]);
+  return {
+    id: assignmentId,
+    token,
+    parentWorker: row.parent_worker,
+    role: row.role,
+    createdAt: row.created_at,
+  };
 }
 
 export function bootstrapWorker(

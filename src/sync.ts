@@ -149,6 +149,7 @@ const FACTORY_ORDER_TABLES = [
   "factory_worker_assignment",
   "factory_worker_session",
   PARENT_ORDER_TABLE,
+  "factory_order_worker",
   "factory_order_attempt",
   "factory_order_event",
   "factory_order_commit",

@@ -353,6 +353,20 @@ CREATE TABLE IF NOT EXISTS factory_worker_assignment (
 CREATE INDEX IF NOT EXISTS factory_worker_assignment_parent
   ON factory_worker_assignment(parent_worker, created_at);
 
+-- The assignment for an order role is durable. A later turn gets the same worker
+-- and provider session instead of creating another hand for the same work.
+CREATE TABLE IF NOT EXISTS factory_order_worker (
+  order_id             TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  role                 TEXT NOT NULL CHECK (role IN ('planner', 'builder', 'reviewer')),
+  assignment_id        TEXT NOT NULL UNIQUE REFERENCES factory_worker_assignment(id),
+  worker               TEXT UNIQUE REFERENCES factory_worker(name),
+  provider_session_id  TEXT,
+  created_at           TEXT NOT NULL,
+  PRIMARY KEY (order_id, role),
+  CHECK ((worker IS NULL) = (provider_session_id IS NULL))
+);
+CREATE INDEX IF NOT EXISTS factory_order_worker_order ON factory_order_worker(order_id);
+
 CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,
   order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,

@@ -95,6 +95,25 @@ export function mintWorker(
   })();
 }
 
+/** Rotates the capability for a live identity without minting another identity. */
+export function renewWorkerToken(db: Database, name: string): MintedWorker {
+  const token = randomBytes(16).toString("hex");
+  const row = db
+    .query<{ name: string; session_id: string; ended_at: string | null }, [string]>(
+      "SELECT name, session_id, ended_at FROM factory_worker WHERE name = ?",
+    )
+    .get(name);
+  if (!row) throw new WorkerUnknown("worker_unissued", `this factory issued no worker ${name}`);
+  if (row.ended_at !== null)
+    throw new WorkerUnknown("worker_over", `worker ${name} ended at ${row.ended_at}`);
+  if (!row.session_id) throw new Error(`worker ${name} has no session id`);
+  db.run("UPDATE factory_worker SET token_digest = ? WHERE name = ? AND ended_at IS NULL", [
+    digest(token),
+    name,
+  ]);
+  return { name: row.name, token, sessionId: row.session_id };
+}
+
 type WorkerRow = { name: string; token_digest: string; pid: number | null; ended_at: string | null };
 
 /**
