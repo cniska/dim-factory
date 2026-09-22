@@ -28,10 +28,10 @@ import { resolveWorker } from "./factory-worker";
 import { readFlags, requiredFlag } from "./flags";
 import type { HarnessName } from "./harness-command";
 import { requireCurrentHooks } from "./hooks";
-import { runOrderBuild } from "./order-build";
+import { runOrderBuild, runOrderBuildLive } from "./order-build";
 import { runOrderPlan, runOrderPlanLive } from "./order-plan";
 import { heldOrders, readyOrders } from "./order-ready";
-import { runOrderReview } from "./order-review";
+import { runOrderReview, runOrderReviewLive } from "./order-review";
 import type { Env } from "./paths";
 import { resolveAssignedWorker } from "./worker-assignment";
 import { removeWorktree, repoRoot } from "./wt-command";
@@ -431,12 +431,33 @@ export async function runOrderCommandLive(
   cwd = process.cwd(),
   env: Env = process.env,
 ): Promise<string> {
-  if (args[0] !== "plan") return runOrderCommand(db, args, defaultProject, cwd, env);
+  if (args[0] !== "plan" && args[0] !== "build" && args[0] !== "review")
+    return runOrderCommand(db, args, defaultProject, cwd, env);
   const [, orderId, ...rest] = args;
   if (!orderId) throw new OrderCommandError("order takes a subcommand and an order id");
   const given = flags(rest, ["--harness"]);
   const harness = given.get("--harness");
   if (harness !== "codex") throw fail("--harness must be codex");
-  const outcome = await runOrderPlanLive(db, orderId, { env, harness: harness as HarnessName });
-  return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;
+  if (args[0] === "plan") {
+    const outcome = await runOrderPlanLive(db, orderId, { env, harness: harness as HarnessName });
+    return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;
+  }
+  const operator = resolveWorker(db, env);
+  assertOperator(db, operator, `delegate ${args[0]}`);
+  if (args[0] === "build") {
+    const outcome = await runOrderBuildLive(db, orderId, operator, {
+      dir: cwd,
+      env,
+      harness: harness as HarnessName,
+    });
+    return `build completed by ${outcome.builder}`;
+  }
+  const outcome = await runOrderReviewLive(db, orderId, operator, {
+    dir: cwd,
+    env,
+    harness: harness as HarnessName,
+  });
+  return outcome.outcome === "aborted"
+    ? `review ${outcome.review} aborted: ${outcome.reviewer} did not finish, so nothing it left is a clean reading`
+    : `review ${outcome.review} closed with ${outcome.findings} finding${outcome.findings === 1 ? "" : "s"}`;
 }

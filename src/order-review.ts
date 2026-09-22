@@ -2,10 +2,11 @@ import type { Database } from "bun:sqlite";
 import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
 import { assertBuildApproved, closeOrderReview, openAssignedOrderReview } from "./factory-order";
-import { harnessArgv, runHarnessCommand } from "./harness-command";
+import { endWorker } from "./factory-worker";
+import { harnessArgv, runHarnessCommand, runHarnessCommandLive } from "./harness-command";
 import type { HarnessName } from "./harness-name";
 import { route } from "./routing";
-import { assignedWorker, assignmentProcessEnv, assignWorker } from "./worker-assignment";
+import { assignedWorker, assignmentProcessEnv, assignWorker, bootstrapWorker } from "./worker-assignment";
 
 export class ReviewRefused extends Error {
   constructor(
@@ -116,6 +117,59 @@ export type ReviewOutcome = {
   findings: number;
   outcome: "closed" | "aborted";
 };
+
+export async function runOrderReviewLive(
+  db: Database,
+  orderId: string,
+  worker: string,
+  options: { dir: string; env?: Record<string, string | undefined>; harness?: HarnessName },
+): Promise<ReviewOutcome> {
+  const order = db
+    .query<{ id: string; title: string; description: string | null }, [string]>(
+      "SELECT id, title, description FROM factory_order WHERE id = ?",
+    )
+    .get(orderId);
+  if (!order) throw new Error(`order not found: ${orderId}`);
+  assertOperator(db, worker, "delegate review");
+  assertBuildApproved(db, orderId);
+  const range = reviewRange(db, orderId, options.dir);
+  const assignment = assignWorker(db, { role: "reviewer", parentWorker: worker });
+  const opened = openAssignedOrderReview(
+    db,
+    orderId,
+    { assignmentId: assignment.id, baseSha: range.base, headSha: range.head },
+    worker,
+  );
+  const env = assignmentProcessEnv(options.env, assignment);
+  const harness = options.harness ?? "codex";
+  const { model } = route("reviewer", harness, options.env);
+  const run = await runHarnessCommandLive(
+    {
+      harness,
+      cwd: options.dir,
+      brief: reviewerBrief(order, range),
+      model,
+      capabilities: REVIEWER_CAPABILITIES,
+      env,
+    },
+    (providerSessionId) => {
+      bootstrapWorker(db, { id: assignment.id, token: assignment.token, sessionId: providerSessionId });
+    },
+  );
+  const reviewer = assignedWorker(db, assignment.id);
+  if (!reviewer) {
+    closeOrderReview(db, opened.id, "aborted", worker);
+    throw new Error("reviewer did not bootstrap its worker assignment");
+  }
+  db.run("UPDATE factory_order_review SET reviewer = ? WHERE id = ?", [reviewer, opened.id]);
+  const outcome = run.exitCode === 0 ? "closed" : "aborted";
+  closeOrderReview(db, opened.id, outcome, worker);
+  const raised = (db
+    .query<{ n: number }, [number]>("SELECT count(*) AS n FROM factory_order_finding WHERE review_id = ?")
+    .get(opened.id)?.n ?? 0) as number;
+  endWorker(db, reviewer);
+  return { review: opened.id, reviewer, findings: raised, outcome };
+}
 
 /**
  * Assigns the reviewer, spawns it and closes the round from its exit code. The operator that

@@ -3,7 +3,15 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { approveOrderPlan, claimOrder, moveOrder, queueOrder, recordOrderPlan } from "./factory-order";
+import {
+  approveOrderPlan,
+  claimOrder,
+  moveOrder,
+  queueOrder,
+  recordOrderCheck,
+  recordOrderCommit,
+  recordOrderPlan,
+} from "./factory-order";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { integratedRepo } from "./fixtures.test-support";
 import { runOrderBuild } from "./order-build";
@@ -80,6 +88,13 @@ describe("builder station", () => {
           undefined,
           repo.dir,
         );
+        recordOrderCommit(db, "builder-order", repo.sha, builder.name, "feat: build it");
+        recordOrderCheck(
+          db,
+          "builder-order",
+          { command: "bun run verify", exitCode: 0, result: "green" },
+          builder.name,
+        );
         return { exitCode: 0 };
       },
     });
@@ -108,6 +123,8 @@ describe("builder station", () => {
       { kind: "plan_approved", worker: operator.name, station: null },
       { kind: "moved", worker: operator.name, station: "dim-station-build" },
       { kind: "claimed", worker: outcome.builder, station: "dim-station-build" },
+      { kind: "commit_created", worker: outcome.builder, station: null },
+      { kind: "check_finished", worker: outcome.builder, station: null },
     ]);
     db.close();
   });
