@@ -83,23 +83,7 @@ export function codexResumeArgv(
   providerSessionId: string,
   request: HarnessRequest,
 ): string[] {
-  const sandbox = request.capabilities.includes("edit-files") ? "workspace-write" : "read-only";
-  return [
-    command,
-    "exec",
-    "resume",
-    "--json",
-    providerSessionId,
-    "-s",
-    sandbox,
-    "--add-dir",
-    dataDir(request.env),
-    "-C",
-    request.cwd,
-    "-m",
-    request.model,
-    request.brief,
-  ];
+  return [command, "exec", "resume", "--json", providerSessionId, "-m", request.model, request.brief];
 }
 
 export function codexHarness(command = "codex"): HarnessAdapter {

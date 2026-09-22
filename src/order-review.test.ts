@@ -230,22 +230,16 @@ describe("a review round", () => {
     });
   });
 
-  test("resumes the same reviewer for a later review round", async () => {
+  test("keeps the same reviewer identity for a later review round", async () => {
     const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
     slice(db, dir, worker, "review-first");
     const base = fakeHarness("crash");
     let starts = 0;
-    let resumes = 0;
     const adapter = {
       ...base,
       start: async (request: Parameters<typeof base.start>[0]) => {
         starts += 1;
         return base.start(request);
-      },
-      resume: async (sessionId: string, request: Parameters<typeof base.start>[0]) => {
-        resumes += 1;
-        expect(sessionId).toBe("fake-session");
-        return base.resume(sessionId, request);
       },
     };
     const env = {
@@ -260,8 +254,7 @@ describe("a review round", () => {
     const second = await runOrderReviewLive(db, "order-1", operator, { dir, adapter, env });
 
     expect(first.reviewer).toBe(second.reviewer);
-    expect(starts).toBe(1);
-    expect(resumes).toBe(1);
+    expect(starts).toBe(2);
     expect(db.query("SELECT count(*) AS n FROM factory_worker WHERE role = 'reviewer'").get()).toEqual({
       n: 1,
     });

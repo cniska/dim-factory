@@ -188,7 +188,7 @@ describe("builder station", () => {
     db.close();
   });
 
-  test("resumes the same builder after a failed build turn", async () => {
+  test("keeps the same builder identity after a failed build turn", async () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     const repo = integratedRepo();
@@ -224,17 +224,11 @@ describe("builder station", () => {
 
     const base = fakeHarness("crash");
     let starts = 0;
-    let resumes = 0;
     const adapter = {
       ...base,
       start: async (request: Parameters<typeof base.start>[0]) => {
         starts += 1;
         return base.start(request);
-      },
-      resume: async (sessionId: string, request: Parameters<typeof base.start>[0]) => {
-        resumes += 1;
-        expect(sessionId).toBe("fake-session");
-        return base.resume(sessionId, request);
       },
     };
     const env = {
@@ -251,8 +245,7 @@ describe("builder station", () => {
       runOrderBuildLive(db, "builder-resume-order", operator.name, { dir: repo.dir, env, adapter }),
     ).rejects.toThrow("fake process crashed");
 
-    expect(starts).toBe(1);
-    expect(resumes).toBe(1);
+    expect(starts).toBe(2);
     expect(db.query("SELECT count(*) AS n FROM factory_worker WHERE role = 'builder'").get()).toEqual({
       n: 1,
     });

@@ -52,7 +52,7 @@ The corpus-native half of the measurement is built: `dim bench` scores a hand-la
 
 ## Active factory work
 
-- **The manually operated headless loop** (`factory-order-loop`). **The operator can add or receive an order, delegate planning, approve the plan, delegate the build, approve the checked result, delegate review, answer findings through another build cycle, approve a clean review and ship the result. Planner, builder and reviewer actions use separate assigned worker identities, and later turns resume the same worker for that order role. The remaining work is to exercise this path against a real order and keep the operator at each approval hold.**
+- **The manually operated headless loop** (`factory-order-loop`). **The operator can add or receive an order, delegate planning, approve the plan, delegate the build, approve the checked result, delegate review, answer findings through another build cycle, approve a clean review and ship the result. Planner, builder and reviewer actions use separate assigned worker identities, and later turns reuse the same worker for that order role while recording each harness session. The remaining work is to exercise this path against a real order and keep the operator at each approval hold.**
 
 - **The harness adapter boundary** (`harness-adapters`). **The shared request and normalized event contract has deterministic fake scenarios for success, findings, crash, hang and bootstrap failure, a transport-independent timeout runner, external process handling and a Codex adapter. The operator selects the harness for each planning, build and review delegation. Later harnesses can add adapters without changing station orchestration, worker identity or audit records.**
 

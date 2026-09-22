@@ -146,7 +146,7 @@ describe("planner station", () => {
     rmSync(home, { recursive: true, force: true });
   });
 
-  test("resumes the same planner identity for a later planning turn", async () => {
+  test("keeps the same planner identity for a later planning turn", async () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     const home = mkdtempSync(join(tmpdir(), "dim-planner-resume-"));
@@ -171,17 +171,11 @@ describe("planner station", () => {
     );
     const base = fakeHarness("success");
     let starts = 0;
-    let resumes = 0;
     const adapter = {
       ...base,
       start: async (request: Parameters<typeof base.start>[0]) => {
         starts += 1;
         return base.start(request);
-      },
-      resume: async (sessionId: string, request: Parameters<typeof base.start>[0]) => {
-        resumes += 1;
-        expect(sessionId).toBe("fake-session");
-        return base.resume(sessionId, request);
       },
     };
     const env = {
@@ -195,8 +189,7 @@ describe("planner station", () => {
     const second = await runOrderPlanLive(db, "planner-resume-order", { adapter, env });
 
     expect(second.planner).toBe(first.planner);
-    expect(starts).toBe(1);
-    expect(resumes).toBe(1);
+    expect(starts).toBe(2);
     expect(db.query("SELECT count(*) AS n FROM factory_worker WHERE role = 'planner'").get()).toEqual({
       n: 1,
     });

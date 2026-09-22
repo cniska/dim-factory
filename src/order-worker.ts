@@ -109,6 +109,21 @@ export function bindOrderWorker(
   }
 }
 
+export function bindOrderWorkerSession(
+  db: Database,
+  orderId: string,
+  role: StationRole,
+  providerSessionId: string,
+): void {
+  const result = db.run(
+    `UPDATE factory_order_worker
+     SET provider_session_id = ?
+     WHERE order_id = ? AND role = ? AND worker IS NOT NULL`,
+    [providerSessionId, orderId, role],
+  );
+  if (result.changes !== 1) throw new Error(`order ${orderId} ${role} worker session was not writable`);
+}
+
 export function orderWorkerRequest(
   db: Database,
   machine: Record<string, string | undefined> | undefined,

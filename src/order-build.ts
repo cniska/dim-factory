@@ -15,11 +15,15 @@ import {
   harnessArgv,
   runHarnessCommand,
   runHarnessCommandLive,
-  runHarnessCommandResumeLive,
   workerFailureReason,
 } from "./harness-command";
 import type { HarnessName } from "./harness-name";
-import { bindOrderWorker, ensureOrderWorker, orderWorkerRequest } from "./order-worker";
+import {
+  bindOrderWorker,
+  bindOrderWorkerSession,
+  ensureOrderWorker,
+  orderWorkerRequest,
+} from "./order-worker";
 import type { Env } from "./paths";
 import { route } from "./routing";
 import { assignedWorker, assignmentProcessEnv, assignWorker, bootstrapWorker } from "./worker-assignment";
@@ -152,11 +156,7 @@ export async function runOrderBuildLive(
     };
     const onStarted = (providerSessionId: string): void => {
       if (orderWorker.worker) {
-        if (orderWorker.providerSessionId !== providerSessionId) {
-          throw new Error(
-            `builder resumed as provider session ${providerSessionId}, expected ${orderWorker.providerSessionId}`,
-          );
-        }
+        bindOrderWorkerSession(db, orderId, "builder", providerSessionId);
       } else {
         const minted = bootstrapWorker(db, {
           id: orderWorker.assignment.id,
@@ -176,9 +176,7 @@ export async function runOrderBuildLive(
         worktree,
       );
     };
-    const run = orderWorker.providerSessionId
-      ? await runHarnessCommandResumeLive(request, orderWorker.providerSessionId, onStarted, options.adapter)
-      : await runHarnessCommandLive(request, onStarted, options.adapter);
+    const run = await runHarnessCommandLive(request, onStarted, options.adapter);
     harnessOutput = run.output;
     harnessFailureReason = run.failureReason;
     if (!builder) throw new Error("builder did not bootstrap its worker assignment");

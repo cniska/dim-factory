@@ -8,11 +8,15 @@ import {
   harnessArgv,
   runHarnessCommand,
   runHarnessCommandLive,
-  runHarnessCommandResumeLive,
   workerFailureReason,
 } from "./harness-command";
 import type { HarnessName } from "./harness-name";
-import { bindOrderWorker, ensureOrderWorker, orderWorkerRequest } from "./order-worker";
+import {
+  bindOrderWorker,
+  bindOrderWorkerSession,
+  ensureOrderWorker,
+  orderWorkerRequest,
+} from "./order-worker";
 import { route } from "./routing";
 import { assignedWorker, assignmentProcessEnv, assignWorker, bootstrapWorker } from "./worker-assignment";
 
@@ -120,24 +124,18 @@ export async function runOrderPlanLive(
   try {
     const onStarted = (providerSessionId: string): void => {
       if (orderWorker.worker) {
-        if (orderWorker.providerSessionId !== providerSessionId) {
-          throw new Error(
-            `planner resumed as provider session ${providerSessionId}, expected ${orderWorker.providerSessionId}`,
-          );
-        }
-        return;
+        bindOrderWorkerSession(db, orderId, "planner", providerSessionId);
+      } else {
+        const minted = bootstrapWorker(db, {
+          id: orderWorker.assignment.id,
+          token: orderWorker.assignment.token,
+          sessionId: providerSessionId,
+        });
+        bindOrderWorker(db, orderId, "planner", orderWorker.assignment.id, minted);
+        planner = minted.name;
       }
-      const minted = bootstrapWorker(db, {
-        id: orderWorker.assignment.id,
-        token: orderWorker.assignment.token,
-        sessionId: providerSessionId,
-      });
-      bindOrderWorker(db, orderId, "planner", orderWorker.assignment.id, minted);
-      planner = minted.name;
     };
-    const run = orderWorker.providerSessionId
-      ? await runHarnessCommandResumeLive(request, orderWorker.providerSessionId, onStarted, options.adapter)
-      : await runHarnessCommandLive(request, onStarted, options.adapter);
+    const run = await runHarnessCommandLive(request, onStarted, options.adapter);
     if (!planner) throw new Error("planner did not bootstrap its worker assignment");
     if (run.exitCode !== 0) {
       throw new Error(workerFailureReason("planner did not finish planning", run.output, run.failureReason));
