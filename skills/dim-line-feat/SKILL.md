@@ -58,3 +58,10 @@ The feature is done when:
 `dim q prior-art` cannot tell a file that was got right from one that was abandoned, and a file copied between repos looks as settled as one that was worked out. Use it to find the reading, and do the reading.
 
 Effort is not a grade either. Work that held took more turns per file than work that came back ([`findings.md`](../../docs/findings.md)) — a slice finished quickly is not a slice done well, and the check that was skipped is the usual reason it was quick.
+
+## Red flags
+
+- cutting slices by file rather than by independently verifiable behavior
+- starting implementation before the scope and dependencies are clear
+- skipping whole-change review because each slice passed alone
+- treating effort or slice count as evidence of quality

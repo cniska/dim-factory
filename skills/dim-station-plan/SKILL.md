@@ -78,3 +78,10 @@ If all four queries came back empty, say that in the plan. An empty record is a 
 ## What the record cannot tell you
 
 The record is process: what was said, run, loaded and stopped. It cannot say whether any of it was right. `dim q prior-art` cannot tell a file that was got right from one that was abandoned, and a file copied between repos looks as settled as one that was worked out. Use it to find the reading, and do the reading.
+
+## Red flags
+
+- designing from memory after a query could answer the question
+- asking the owner to decide an ordinary implementation choice
+- writing a plan the builder cannot execute or the owner cannot approve
+- adding detail that does not reduce a decision or implementation risk

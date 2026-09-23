@@ -36,7 +36,7 @@ Spawn one agent per dimension at the tier `dim route codex reviewer` gives you, 
 | correctness | whether the changed code fulfills its stated behavior, handles failure paths and preserves existing contracts; use `dim q exemplars` as grounding |
 | tests | whether meaningful behavior is covered by tests that fail when the invariant is removed; use `dim q rework` as grounding |
 | architecture | whether responsibilities, boundaries, dependencies and extension points remain coherent; use `dim q prior-art "<path fragment>"` as grounding |
-| maintainability | whether the change leaves the next worker with readable, simple, cohesive code: clear names, direct control flow, earned abstractions and no unnecessary indirection; use the project rules and nearby patterns |
+| maintainability | whether the change leaves the next worker with readable, simple, cohesive code: clear names, direct control flow, earned abstractions, one vocabulary per domain concept, and no unnecessary indirection; use the glossary, project rules and nearby patterns |
 | docs | whether long-lived docs describe the resulting behavior and terminology; use `dim q stale <id-prefix>` as grounding |
 | security | whether the diff creates a concrete trust-boundary, data-exposure or unsafe-default path; read the diff and project rules |
 | performance | whether the change introduces a material cost in latency, memory, I/O or unbounded work; run only when the plan identifies a performance-sensitive path |
@@ -59,3 +59,10 @@ A dimension's finding is a claim, and a claim carried forward unchecked is how a
 ## What the record cannot tell you
 
 Every query here is process or history, never a verdict on this diff. `fixes` says how often work under a skill drew a later fix commit, which is the repo's own judgement on earlier changes, not on this one. Read all of it as where to look hardest, and let the reading decide.
+
+## Red flags
+
+- reporting a finding without a concrete failure path
+- reviewing only the implementation and not the tests or intent
+- spawning a conditional dimension without a question it can answer
+- accepting a clean process exit as a clean review

@@ -25,3 +25,9 @@ Two headings, both required, and nothing else in the output:
 ## Why it is this short
 
 The receiving station reads the order report and its evidence with `dim`, so everything the handoff would repeat is already there and already true. What it cannot get on its own is which item it is on. That pointer is the whole job.
+
+## Red flags
+
+- recapping the session instead of naming the next action
+- naming an action the order record cannot support
+- giving the next station more than one next action

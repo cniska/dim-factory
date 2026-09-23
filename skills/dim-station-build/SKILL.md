@@ -101,3 +101,10 @@ Unattended, stop only where the choice is genuinely the owner's: work that is ha
 `dim q fixes` says work done under a skill drew later fix commits at some rate. That is the repo's verdict on earlier changes, never on yours, and code nobody came back to may have been right or may have been abandoned.
 
 And effort is not a grade. Work that held took more turns per file than work that came back, more pushback, and more commands ([`findings.md`](../../docs/findings.md), "Effort does not grade the work"). A slice finished quickly is not a slice done well, and the check that was skipped is the usual reason it was quick.
+
+## Red flags
+
+- starting the next slice before the current one is checked and committed
+- changing a test to make simplification pass
+- giving the reviewer edit access
+- treating a passing process exit as a verified build

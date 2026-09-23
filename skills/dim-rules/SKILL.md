@@ -65,3 +65,10 @@ The change is done when:
 ## What the record cannot tell you
 
 The record is process: what was said, run, loaded and stopped. `dim q corrections` counts the turns a user stopped, not the ones they should have. A rule broken often may be a rule worth holding harder or a rule worth deleting, and nothing here can tell those apart — it tells you where to look, and the judgement is still yours.
+
+## Red flags
+
+- adding a rule beside one that already carries the same constraint
+- putting a project rule in the machine-wide layer
+- writing a sentence for behavior a gate can enforce
+- introducing a second word for a glossary concept

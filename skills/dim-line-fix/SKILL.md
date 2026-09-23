@@ -56,3 +56,10 @@ The fix is done when:
 ## What the record cannot tell you
 
 `dim q fixes` says work done under a skill drew later fix commits at some rate. That is the repo's verdict on earlier changes, never on yours, and code nobody came back to may have been right or may have been abandoned. A `fix:` commit inside the session that wrote the file is ordinary iteration and not a defect at all.
+
+## Red flags
+
+- fixing before proving the defect with a failing test
+- treating a symptom as the cause
+- broadening a fix beyond the named behavior
+- skipping the slice loop because the fix looks small
