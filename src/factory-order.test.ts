@@ -165,6 +165,12 @@ describe("factory order report records", () => {
     ]);
     approveOrderPlan(database, "order-slices", operator);
     moveOrder(database, "order-slices", "dim-station-build", operator);
+    claimOrderAt(
+      database,
+      "order-slices",
+      { ...claim, runId: "slice-build-run", station: "dim-station-build" },
+      builder,
+    );
 
     const first = nextOrderSlice(database, "order-slices");
     expect(first).toMatchObject({ ordinal: 1, title: "First slice" });
@@ -179,6 +185,19 @@ describe("factory order report records", () => {
       { slice_id: 1, worker: builder },
       { slice_id: 2, worker: builder },
     ]);
+    expect(
+      database
+        .query(
+          "SELECT outcome, worker, station FROM factory_order_attempt WHERE order_id = ? ORDER BY id DESC LIMIT 1",
+        )
+        .get("order-slices"),
+    ).toEqual({ outcome: "succeeded", worker: builder, station: "dim-station-build" });
+    expect(
+      database.query("SELECT run_id, session_id FROM factory_order WHERE id = ?").get("order-slices"),
+    ).toEqual({
+      run_id: null,
+      session_id: null,
+    });
     expect(
       database.query("SELECT id FROM factory_order_plan WHERE order_id = ?").get("order-slices"),
     ).toEqual({

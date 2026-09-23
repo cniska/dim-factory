@@ -1010,6 +1010,11 @@ export function completeOrderSlice(
 ): void {
   db.transaction(() => {
     assertOrderWorking(db, orderId);
+    const order = db
+      .query<{ run_id: string | null; station: string | null }, [string]>(
+        "SELECT run_id, station FROM factory_order WHERE id = ?",
+      )
+      .get(orderId);
     const slice = db
       .query<{ id: number }, [string, number]>(
         `SELECT s.id FROM factory_order_slice s
@@ -1028,6 +1033,20 @@ export function completeOrderSlice(
       sliceId,
       worker,
       at,
+    ]);
+    recordAttemptFinish(
+      db,
+      orderId,
+      order?.run_id ?? null,
+      worker,
+      order?.station ?? null,
+      "succeeded",
+      undefined,
+      at,
+    );
+    db.run("UPDATE factory_order SET run_id = NULL, session_id = NULL, updated_at = ? WHERE id = ?", [
+      at,
+      orderId,
     ]);
   })();
 }
