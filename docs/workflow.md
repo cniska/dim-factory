@@ -163,7 +163,7 @@ An order may contain multiple slices. The factory processes them sequentially, r
 
 ## Build
 
-**The factory target.** The build station is a meta-skill that assigns one worker to each slice while the operator observes the order through the wall. This removes the owner from the implementation path without turning the first version into a parallel worker swarm. Slices run sequentially until the record shows that independent slices can be isolated and integrated safely.
+**The factory target.** The build station is a meta-skill that assigns one builder to an order and reuses that worker across its slices while the operator observes the order through the wall. The builder receives the operator-approved ordered slice outline as part of its brief. This removes the owner from the implementation path without turning the first version into a parallel worker swarm. Slices run sequentially until the record shows that independent slices can be isolated and integrated safely.
 
 ### Default slice order
 

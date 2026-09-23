@@ -5,18 +5,45 @@ import { builderBrief } from "./order-build";
 describe("worker failure explanations", () => {
   test("tells the builder to fix a red check before finishing", () => {
     expect(
-      builderBrief({ id: "order-1", title: "Build it", description: null }, "## Outcome\n\nBuild it.", null),
+      builderBrief(
+        { id: "order-1", title: "Build it", description: null },
+        {
+          body: "## Outcome\n\nBuild it.",
+          slices: [{ title: "Build it", outcome: "The result is verified." }],
+        },
+        null,
+      ),
     ).toContain("A red check is feedback, not completion");
     expect(
-      builderBrief({ id: "order-1", title: "Build it", description: null }, "## Outcome\n\nBuild it.", null),
+      builderBrief(
+        { id: "order-1", title: "Build it", description: null },
+        {
+          body: "## Outcome\n\nBuild it.",
+          slices: [{ title: "Build it", outcome: "The result is verified." }],
+        },
+        null,
+      ),
     ).toContain("Do not run dim order stop");
     expect(
       builderBrief(
         { id: "order-1", title: "Build it", description: "The wall is out of scope." },
-        "## Outcome\n\nBuild it.",
+        {
+          body: "## Outcome\n\nBuild it.",
+          slices: [{ title: "Build it", outcome: "The result is verified." }],
+        },
         null,
       ),
     ).toContain("explicitly exclude a workspace surface");
+    expect(
+      builderBrief(
+        { id: "order-1", title: "Build it", description: null },
+        {
+          body: "## Outcome\n\nBuild it.",
+          slices: [{ title: "First cut", outcome: "The cut is verified." }],
+        },
+        null,
+      ),
+    ).toContain("1. First cut: The cut is verified.");
   });
 
   test("keeps the harness explanation beside the failure", () => {

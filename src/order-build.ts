@@ -25,6 +25,7 @@ import {
   orderWorkerRequest,
 } from "./order-worker";
 import type { Env } from "./paths";
+import type { PlanSlice } from "./plan-artifact";
 import { route } from "./routing";
 import { assignedWorker, assignmentProcessEnv, assignWorker, bootstrapWorker } from "./worker-assignment";
 import { workspaceContract } from "./workspace";
@@ -43,7 +44,7 @@ export type BuilderSpawn = (argv: string[], env: Record<string, string>, cwd: st
 
 export function builderBrief(
   order: { id: string; title: string; description: string | null },
-  plan: string,
+  plan: { body: string; slices: readonly PlanSlice[] },
   workspace: ReturnType<typeof workspaceContract>,
 ): string {
   const workspaceContext = workspace
@@ -68,7 +69,10 @@ export function builderBrief(
     "",
     "The operator approved the following plan. Implement only this outcome:",
     "",
-    plan,
+    plan.body,
+    "",
+    "# Ordered slices",
+    ...plan.slices.map((slice, index) => `${index + 1}. ${slice.title}: ${slice.outcome}`),
     "",
     "The factory runner has already claimed this order for this build turn under your worker identity.",
     "Work in the current order worktree. Run the command supplied by the workspace profile, record every commit, changed file, check, document, and build finding with dim order, and run the build station loop including simplification.",
@@ -120,8 +124,8 @@ export async function runOrderBuildLive(
     throw new OrderNotDone("order_held_by_run", `order ${orderId} is already held by a run`);
   }
   const plan = db
-    .query<{ body: string }, [string]>(
-      `SELECT p.body FROM factory_order_plan p
+    .query<{ id: number; body: string }, [string]>(
+      `SELECT p.id, p.body FROM factory_order_plan p
        WHERE p.order_id = ? AND EXISTS (
          SELECT 1 FROM factory_order_event e
          WHERE e.order_id = p.order_id AND e.kind = 'plan_approved' AND e.plan_id = p.id
@@ -130,6 +134,11 @@ export async function runOrderBuildLive(
     )
     .get(orderId);
   if (!plan) throw new PlanApprovalRefused("plan_missing", `order ${orderId} has no approved plan to build`);
+  const slices = db
+    .query<PlanSlice, [number]>(
+      "SELECT title, outcome FROM factory_order_slice WHERE plan_id = ? ORDER BY ordinal",
+    )
+    .all(plan.id);
   const orderWorker = ensureOrderWorker(db, orderId, "builder", operator);
   const runId = `build-${crypto.randomUUID()}`;
   const worktree = worktreePath(repoRoot(options.dir), orderId);
@@ -150,7 +159,7 @@ export async function runOrderBuildLive(
     const request = {
       harness,
       cwd: worktree,
-      brief: builderBrief(order, plan.body, workspace),
+      brief: builderBrief(order, { body: plan.body, slices }, workspace),
       model,
       capabilities: BUILDER_CAPABILITIES,
       env,
@@ -225,8 +234,8 @@ export function runOrderBuild(
     throw new OrderNotDone("order_held_by_run", `order ${orderId} is already held by a run`);
   }
   const plan = db
-    .query<{ body: string }, [string]>(
-      `SELECT p.body FROM factory_order_plan p
+    .query<{ id: number; body: string }, [string]>(
+      `SELECT p.id, p.body FROM factory_order_plan p
        WHERE p.order_id = ? AND EXISTS (
          SELECT 1 FROM factory_order_event e
          WHERE e.order_id = p.order_id AND e.kind = 'plan_approved' AND e.plan_id = p.id
@@ -237,6 +246,11 @@ export function runOrderBuild(
   if (!plan) {
     throw new PlanApprovalRefused("plan_missing", `order ${orderId} has no approved plan to build`);
   }
+  const slices = db
+    .query<PlanSlice, [number]>(
+      "SELECT title, outcome FROM factory_order_slice WHERE plan_id = ? ORDER BY ordinal",
+    )
+    .all(plan.id);
   const assignment = assignWorker(db, { role: "builder", parentWorker: operator });
   const runId = `build-${crypto.randomUUID()}`;
   const worktree = worktreePath(repoRoot(options.dir), orderId);
@@ -259,7 +273,7 @@ export function runOrderBuild(
     const request = {
       harness,
       cwd: worktree,
-      brief: builderBrief(order, plan.body, workspace),
+      brief: builderBrief(order, { body: plan.body, slices }, workspace),
       model,
       capabilities: BUILDER_CAPABILITIES,
       env,
