@@ -1,5 +1,14 @@
 import { CircleAlert, CircleCheck, CircleDot, CircleX, type LucideIcon, Radio, X } from "lucide-react";
-import { Children, isValidElement, type ReactNode, StrictMode, useEffect, useRef, useState } from "react";
+import {
+  Children,
+  type ComponentProps,
+  isValidElement,
+  type ReactNode,
+  StrictMode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { createRoot } from "react-dom/client";
 import Markdown from "react-markdown";
 import { age } from "./age";
@@ -244,6 +253,20 @@ function MarkdownLink({ children }: { children?: ReactNode }) {
   return <code>{children}</code>;
 }
 
+function MarkdownCode({ children, className, ...props }: ComponentProps<"code">) {
+  return (
+    <code
+      className={cn(
+        "rounded-[2px] border border-border bg-background p-[var(--space-xs)] text-[11px] text-muted-foreground",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </code>
+  );
+}
+
 /** An order's record as a table, because that is what it is: four columns whose widths are
  *  shared down the page, which a list of rows cannot do without pinning one to a fixed width.
  *  The time leads because it orders the page; who did it sits at the right edge, where a column
@@ -434,21 +457,27 @@ function ItemDialog({
                 </h3>
                 <div className="flex flex-wrap items-center gap-x-[var(--space-sm)] gap-y-[var(--space-xs)] text-muted-foreground leading-5">
                   <WorkerLabel worker={read.view.plan.worker} role={read.view.plan.role} />
-                  <span aria-hidden="true">·</span>
+                  <span className="text-quiet" aria-hidden="true">
+                    ·
+                  </span>
                   <span>revision {read.view.plan.revision}</span>
-                  <span aria-hidden="true">·</span>
+                  <span className="text-quiet" aria-hidden="true">
+                    ·
+                  </span>
                   <span>{read.view.plan.approved ? "approved" : "awaiting approval"}</span>
                 </div>
               </div>
               <div
                 className={cn(
-                  "space-y-[var(--space-sm)] text-quiet",
+                  "space-y-[var(--space-md)] text-quiet",
                   "[&_a]:text-quiet [&_a]:underline",
                   "[&_h1]:text-base [&_h1]:font-medium [&_h1]:text-foreground [&_h2]:text-sm [&_h2]:font-medium [&_h2]:text-foreground [&_h3]:text-sm [&_h3]:font-medium [&_h3]:text-foreground",
-                  "[&_li]:my-[var(--space-xs)] [&_li]:leading-[18px] [&_ol]:my-[var(--space-sm)] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-[var(--space-lg)] [&_p]:leading-[18px] [&_pre]:overflow-x-auto [&_pre]:rounded-wall [&_pre]:border [&_pre]:bg-background [&_pre]:p-[var(--space-md)] [&_pre]:leading-5 [&_pre]:text-muted-foreground [&_ul]:my-[var(--space-sm)] [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-[var(--space-lg)]",
+                  "[&_code]:font-mono [&_li]:my-[var(--space-xs)] [&_li]:leading-[18px] [&_ol]:my-[var(--space-sm)] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-[var(--space-lg)] [&_p]:leading-[18px] [&_pre]:overflow-x-auto [&_pre]:rounded-wall [&_pre]:border [&_pre]:bg-background [&_pre]:p-[var(--space-sm)] [&_pre]:leading-5 [&_pre]:text-muted-foreground [&_pre_code]:rounded-none [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_ul]:my-[var(--space-sm)] [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-[var(--space-lg)]",
                 )}
               >
-                <Markdown components={{ a: MarkdownLink }}>{read.view.plan.body}</Markdown>
+                <Markdown components={{ a: MarkdownLink, code: MarkdownCode }}>
+                  {read.view.plan.body}
+                </Markdown>
               </div>
             </section>
           ) : null}
