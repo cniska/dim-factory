@@ -51,19 +51,21 @@ const emit = (event) => process.stdout.write(JSON.stringify(event) + "\\n");
 emit({ type: "thread.started", thread_id: "harness-" + role + "-" + order });
 emit({ type: "turn.started" });
 if (brief.includes("planner")) {
-  emit({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify({ body: "## Outcome\\n\\nBuild the requested result.", slices: [{ title: "Build the result", outcome: "The requested result is verified." }] }) } });
+  emit({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify({ body: "## Outcome\\n\\nBuild the requested result.", slices: [{ title: "First slice", outcome: "The first slice is verified." }, { title: "Second slice", outcome: "The second slice is verified." }] }) } });
 } else if (brief.includes("builder")) {
-  writeFileSync("built-by-real-harness.txt", "built\\n");
+  const slice = /# Current slice\\s+(\\d+)\\./.exec(brief)?.[1] ?? "1";
+  const file = "built-by-real-harness-" + slice + ".txt";
+  writeFileSync(file, "slice " + slice + "\\n");
   for (const args of [
-    ["add", "built-by-real-harness.txt"],
-    ["commit", "-m", "feat: real harness build"],
+    ["add", file],
+    ["commit", "-m", "feat: real harness slice " + slice],
   ]) {
     const result = Bun.spawnSync(["git", ...args], { cwd: process.cwd(), stdout: "pipe", stderr: "pipe" });
     if (!result.success) process.exit(result.exitCode ?? 1);
   }
   const sha = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: process.cwd(), stdout: "pipe" }).stdout.toString().trim();
-  run(["commit", order, "--sha", sha, "--subject", "feat: real harness build"]);
-  run(["file", order, "--path", "built-by-real-harness.txt", "--added", "1", "--removed", "0"]);
+  run(["commit", order, "--sha", sha, "--subject", "feat: real harness slice " + slice]);
+  run(["file", order, "--path", file, "--added", "1", "--removed", "0"]);
   run(["check", order, "--command", "true", "--exit", "0", "--result", "green"]);
 } else if (brief.includes("reviewer")) {
   // The harness emits its terminal event after the station work returns.
@@ -122,11 +124,35 @@ describe("headless factory loop", () => {
     ).toContain("build completed by");
 
     const worktree = join(repo.dir, ".claude", "worktrees", "headless-order");
-    expect(existsSync(join(worktree, "built-by-real-harness.txt"))).toBe(true);
+    expect(existsSync(join(worktree, "built-by-real-harness-1.txt"))).toBe(true);
     expect(
       runOrderCommand(
         db,
         ["approve-build", "headless-order", "--reason", "the artifact is present"],
+        null,
+        repo.dir,
+        env,
+      ),
+    ).toContain("build approved");
+    runOrderCommand(db, ["move", "headless-order", "--station", "dim-station-review"], null, repo.dir, env);
+    expect(
+      await runOrderCommandLive(db, ["review", "headless-order", "--harness", "codex"], null, repo.dir, env),
+    ).toContain("0 findings");
+    expect(runOrderCommand(db, ["approve-review", "headless-order"], null, repo.dir, env)).toContain(
+      "review approved",
+    );
+
+    expect(
+      runOrderCommand(db, ["move", "headless-order", "--station", "dim-station-build"], null, repo.dir, env),
+    ).toContain("moved");
+    expect(
+      await runOrderCommandLive(db, ["build", "headless-order", "--harness", "codex"], null, repo.dir, env),
+    ).toContain("build completed by");
+    expect(existsSync(join(worktree, "built-by-real-harness-2.txt"))).toBe(true);
+    expect(
+      runOrderCommand(
+        db,
+        ["approve-build", "headless-order", "--reason", "the second artifact is present"],
         null,
         repo.dir,
         env,
@@ -166,14 +192,41 @@ describe("headless factory loop", () => {
       "review_opened",
       "review_closed",
       "review_approved",
+      "moved",
+      "claimed",
+      "commit_created",
+      "check_finished",
+      "build_approved",
+      "moved",
+      "review_opened",
+      "review_closed",
+      "review_approved",
       "completed",
     ]);
     expect(
-      db.query("SELECT worker, path FROM factory_order_file WHERE order_id = ?").get("headless-order"),
-    ).toEqual({
-      worker: expect.any(String),
-      path: "built-by-real-harness.txt",
-    });
+      db
+        .query<{ worker: string; path: string }, [string]>(
+          "SELECT worker, path FROM factory_order_file WHERE order_id = ? ORDER BY path",
+        )
+        .all("headless-order"),
+    ).toEqual([
+      { worker: expect.any(String), path: "built-by-real-harness-1.txt" },
+      { worker: expect.any(String), path: "built-by-real-harness-2.txt" },
+    ]);
+    expect(
+      db
+        .query<{ ordinal: number; worker: string }, [string]>(
+          `SELECT s.ordinal, c.worker
+           FROM factory_order_slice_completion c
+           JOIN factory_order_slice s ON s.id = c.slice_id
+           JOIN factory_order_plan p ON p.id = s.plan_id
+           WHERE p.order_id = ? ORDER BY s.ordinal`,
+        )
+        .all("headless-order"),
+    ).toEqual([
+      { ordinal: 1, worker: expect.any(String) },
+      { ordinal: 2, worker: expect.any(String) },
+    ]);
     expect(
       db
         .query<{ role: string; worker: string; provider_session_id: string }, [string]>(
