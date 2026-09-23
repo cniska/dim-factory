@@ -35,6 +35,8 @@ describe("item history", () => {
 
     expect(source).toContain('className="line-clamp-3 min-h-[54px] shrink-0 text-quiet leading-[18px]"');
     expect(source).toContain('className="whitespace-pre-wrap text-quiet leading-5"');
+    expect(source).toContain("[&_pre]:bg-background");
+    expect(source).toContain("[&_pre]:p-[var(--space-md)]");
   });
 
   test("labels the plan and audit log in the detail view", async () => {

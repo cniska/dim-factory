@@ -445,7 +445,7 @@ function ItemDialog({
                   "space-y-[var(--space-sm)] text-quiet",
                   "[&_a]:text-quiet [&_a]:underline",
                   "[&_h1]:text-base [&_h1]:font-medium [&_h1]:text-foreground [&_h2]:text-sm [&_h2]:font-medium [&_h2]:text-foreground [&_h3]:text-sm [&_h3]:font-medium [&_h3]:text-foreground",
-                  "[&_li]:my-[var(--space-xs)] [&_li]:leading-[18px] [&_ol]:my-[var(--space-sm)] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-[var(--space-lg)] [&_p]:leading-[18px] [&_pre]:overflow-x-auto [&_pre]:rounded-wall [&_pre]:border [&_pre]:p-[var(--space-sm)] [&_ul]:my-[var(--space-sm)] [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-[var(--space-lg)]",
+                  "[&_li]:my-[var(--space-xs)] [&_li]:leading-[18px] [&_ol]:my-[var(--space-sm)] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-[var(--space-lg)] [&_p]:leading-[18px] [&_pre]:overflow-x-auto [&_pre]:rounded-wall [&_pre]:border [&_pre]:bg-background [&_pre]:p-[var(--space-md)] [&_pre]:leading-5 [&_pre]:text-muted-foreground [&_ul]:my-[var(--space-sm)] [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-[var(--space-lg)]",
                 )}
               >
                 <Markdown components={{ a: MarkdownLink }}>{read.view.plan.body}</Markdown>
