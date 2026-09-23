@@ -200,7 +200,7 @@ Every station names its agents by role and brief — operator, planner, builder 
 - **`standard`** makes the mechanical edit and the doc that goes with it, and reads an assembled change against what it claims: the builder and the reviewer.
 - **`deep`** cuts the work and decides where the line stops: the planner, and the operator whose stopping rule is the substance of this file.
 
-The reviewer sits at `standard` on a judgement nothing here has measured. Whether a light reviewer raises fewer real findings than a deep one is what `model-routing` and `checking-pays-arm` exist to answer, and `light` is where the reviewer moves if they say so.
+The planner and reviewer both use `deep` because they make the judgement calls that determine scope and whether the result is trustworthy. The builder uses `standard` for implementation. A later measurement may change a role's tier through the global routing map, not through station-specific exceptions.
 
 What a tier is called locally is a separate thing, and it is data rather than code. The global `routing.json` beside `dim`'s database maps each selected harness to the `light`, `standard` and `deep` names it accepts; a harness with one model maps all three to it and loses nothing. `dim route <harness> [<role>]` emits route records with the harness, role, tier and model, so a station can select the record for its role without parsing prose. No model name appears in this repo's source or in a skill, and a test fails when one does. The routing file is read directly for now; a future global config layer may own its resolution, and its config command will be an agent-facing JSONL API for reads, writes and refusals. Project-level routing overrides are not part of the design.
 

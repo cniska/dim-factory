@@ -25,7 +25,7 @@ describe("resolving a role", () => {
     expect(route("operator", "codex", env)).toEqual({ tier: "deep", model: "large" });
     expect(route("planner", "codex", env)).toEqual({ tier: "deep", model: "large" });
     expect(route("builder", "codex", env)).toEqual({ tier: "standard", model: "middling" });
-    expect(route("reviewer", "codex", env)).toEqual({ tier: "standard", model: "middling" });
+    expect(route("reviewer", "codex", env)).toEqual({ tier: "deep", model: "large" });
   });
 
   test("declares no role the report cannot print", () => {
@@ -53,7 +53,7 @@ describe("resolving a role", () => {
         harness: "codex",
         role,
         tier: ROLE_TIERS[role],
-        model: role === "operator" || role === "planner" ? "large" : "middling",
+        model: role === "builder" ? "middling" : "large",
       })),
     );
     expect(harnessMapPath(env)).toContain(env.DIM_HOME);
@@ -61,7 +61,7 @@ describe("resolving a role", () => {
 
   test("prints the tier and the model on one line", () => {
     expect(routeReport("codex", "reviewer", machine(COMPLETE))).toEqual([
-      { harness: "codex", role: "reviewer", tier: "standard", model: "middling" },
+      { harness: "codex", role: "reviewer", tier: "deep", model: "large" },
     ]);
   });
 });
