@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { fakeHarness } from "./fake-harness";
+import type { HarnessAdapter } from "./harness";
 import { harnessArgv, runHarnessCommandLive, runHarnessCommandResumeLive } from "./harness-command";
 
 describe("selected harness commands", () => {
@@ -75,5 +76,42 @@ describe("selected harness commands", () => {
     );
 
     expect(result).toMatchObject({ exitCode: 0, output: "completed" });
+  });
+
+  test("returns the final assistant message when the harness emits progress first", async () => {
+    const adapter: HarnessAdapter = {
+      name: "progress-then-result",
+      start: async () => ({
+        events: (async function* () {
+          yield { type: "run.started", providerSessionId: "session" } as const;
+          yield { type: "message", role: "assistant", text: "I am checking the repository." } as const;
+          yield {
+            type: "message",
+            role: "assistant",
+            text: '{"body":"done","slices":[{"title":"one","outcome":"ok"}]}',
+          } as const;
+          yield { type: "run.completed" } as const;
+        })(),
+        cancel() {},
+      }),
+      resume: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const result = await runHarnessCommandLive(
+      {
+        harness: "codex",
+        cwd: "/worktree",
+        brief: "plan the order",
+        model: "deep-model",
+        capabilities: ["read-files"],
+        env: {},
+      },
+      () => undefined,
+      adapter,
+    );
+
+    expect(result.output).toBe('{"body":"done","slices":[{"title":"one","outcome":"ok"}]}');
   });
 });

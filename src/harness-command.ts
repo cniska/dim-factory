@@ -23,6 +23,14 @@ export function workerFailureReason(
   return details.length === 0 ? message : `${message}: ${details.join("; ")}`;
 }
 
+function finalMessage(events: HarnessEvent[]): string {
+  return (
+    events
+      .filter((event): event is Extract<HarnessEvent, { type: "message" }> => event.type === "message")
+      .at(-1)?.text ?? ""
+  );
+}
+
 export type HarnessStarted = (providerSessionId: string) => void;
 
 export function harnessArgv(request: HarnessCommandRequest): string[] {
@@ -46,10 +54,7 @@ export function runHarnessCommand(request: HarnessCommandRequest): HarnessComman
   }
   return {
     exitCode: child.exitCode ?? 1,
-    output: events
-      .filter((event): event is Extract<HarnessEvent, { type: "message" }> => event.type === "message")
-      .map((event) => event.text)
-      .join("\n"),
+    output: finalMessage(events),
     events,
   };
 }
@@ -83,10 +88,7 @@ async function runHarnessSessionLive(
       if (event.type === "run.started" && event.providerSessionId) onStarted(event.providerSessionId);
     },
   });
-  const output = result.events
-    .filter((event): event is Extract<HarnessEvent, { type: "message" }> => event.type === "message")
-    .map((event) => event.text)
-    .join("\n");
+  const output = finalMessage(result.events);
   return {
     exitCode: result.outcome === "completed" ? 0 : 1,
     output,
