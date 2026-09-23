@@ -1,5 +1,5 @@
 /**
- * What a factory worker is called: `copper-73`, `relay-8`.
+ * What a factory worker is called: `nut-73`, `capacitor-8`.
  *
  * A word and a number rather than a written-out list of names, because a pair drawn from a
  * list and a range is as many names as anyone will ever need, where a list of finished
