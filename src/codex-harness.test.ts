@@ -71,6 +71,13 @@ describe("the Codex harness adapter", () => {
     expect(codexHarness("codex-test").name).toBe("codex");
   });
 
+  test("passes a response schema to Codex when a station requests one", () => {
+    const argv = codexArgv("codex-test", { ...request, outputSchema: "/dim-home/plan.json" });
+
+    expect(argv).toContain("--output-schema");
+    expect(argv).toContain("/dim-home/plan.json");
+  });
+
   test("grants builders access to the repository metadata", () => {
     const argv = codexArgv("codex-test", { ...request, cwd: process.cwd(), capabilities: ["edit-files"] });
 

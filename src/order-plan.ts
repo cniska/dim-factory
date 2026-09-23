@@ -22,6 +22,8 @@ import { type PlanSlice, parsePlanArtifact } from "./plan-artifact";
 import { route } from "./routing";
 import { assignedWorker, bootstrapWorker } from "./worker-assignment";
 
+const PLAN_OUTPUT_SCHEMA = `${import.meta.dir}/plan-artifact.schema.json`;
+
 /** Reads and searches the repository, its history and the record — never edits, never raises a finding. */
 export const PLANNER_CAPABILITIES: Capability[] = [
   "bootstrap-worker",
@@ -82,6 +84,7 @@ export function runOrderPlan(
     brief: plannerBrief(order),
     model,
     capabilities: PLANNER_CAPABILITIES,
+    outputSchema: PLAN_OUTPUT_SCHEMA,
     env,
   };
   const run = options.spawn ? options.spawn(harnessArgv(request), env) : runHarnessCommand(request);
@@ -121,6 +124,7 @@ export async function runOrderPlanLive(
     brief: plannerBrief(order),
     model,
     capabilities: PLANNER_CAPABILITIES,
+    outputSchema: PLAN_OUTPUT_SCHEMA,
     env,
   };
   let planner = orderWorker.worker;

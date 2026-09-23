@@ -76,7 +76,8 @@ describe("planner station", () => {
     expect(outcome.slices).toEqual([
       { title: "Build the smallest path", outcome: "The requested result is verified." },
     ]);
-    expect(argv.slice(0, 5)).toEqual(["codex", "exec", "--json", "-s", "read-only"]);
+    expect(argv.slice(0, 3)).toEqual(["codex", "exec", "--json"]);
+    expect(argv).toContain("--output-schema");
     expect(argv).toContain(home);
     expect(argv).toContain("-C");
     expect(argv).toContain("large");

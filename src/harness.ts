@@ -6,6 +6,7 @@ export type HarnessRequest = {
   model: string;
   capabilities: readonly Capability[];
   env: Readonly<Record<string, string>>;
+  outputSchema?: string;
 };
 
 export type HarnessEvent =
