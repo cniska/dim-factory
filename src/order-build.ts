@@ -72,6 +72,7 @@ export function builderBrief(
     "",
     "The factory runner has already claimed this order for this build turn under your worker identity.",
     "Work in the current order worktree. Run the command supplied by the workspace profile, record every commit, changed file, check, document, and build finding with dim order, and run the build station loop including simplification.",
+    "The order description and approved plan define the scope. When they explicitly exclude a workspace surface, do not edit or test that surface; record a passing check scoped to the requested result instead of treating excluded failures as blockers.",
     "A red check is feedback, not completion: diagnose it, fix the cause, rerun the check, and continue until the final commit has a passing check. If the cause is genuinely blocked, report the blocker instead of claiming success.",
     "Do not run dim order stop: the factory runner records this attempt and makes the order retryable when the turn fails.",
     "Return a concise outcome. Do not approve the plan or build, start review, ship, or edit outside the order worktree.",

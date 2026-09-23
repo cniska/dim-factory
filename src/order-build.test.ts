@@ -10,6 +10,13 @@ describe("worker failure explanations", () => {
     expect(
       builderBrief({ id: "order-1", title: "Build it", description: null }, "## Outcome\n\nBuild it.", null),
     ).toContain("Do not run dim order stop");
+    expect(
+      builderBrief(
+        { id: "order-1", title: "Build it", description: "The wall is out of scope." },
+        "## Outcome\n\nBuild it.",
+        null,
+      ),
+    ).toContain("explicitly exclude a workspace surface");
   });
 
   test("keeps the harness explanation beside the failure", () => {

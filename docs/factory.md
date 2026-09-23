@@ -65,7 +65,7 @@ The report lifecycle is a durable sequence from claim through working to complet
 
 When a station process returns an explanation, a failed attempt carries that explanation in its reason so the operator can diagnose the hand without reopening the harness session.
 
-The builder treats a red repository check as feedback: it diagnoses and fixes the cause, reruns the check, and returns only with a passing check on the final commit or an explicit blocker.
+The builder treats a red check within the approved scope as feedback: it diagnoses and fixes the cause, reruns the check, and returns only with a passing check on the final commit or an explicit blocker. An explicit order non-goal removes that surface from the check scope; the builder records the scoped command rather than repairing excluded work.
 
 Factory command responses are JSONL for an agent to consume. A successful response names the command and carries a structured result; a refusal names the command and carries an error name, stable code and message. Usage text is not mixed into the response, and diagnostic output never shares the harness protocol stream.
 
