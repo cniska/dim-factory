@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { resolve } from "node:path";
 import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
 import { assertBuildApproved, closeOrderReview, openAssignedOrderReview } from "./factory-order";
@@ -18,6 +19,7 @@ import {
 } from "./order-worker";
 import { route } from "./routing";
 import { assignedWorker, assignmentProcessEnv, assignWorker, bootstrapWorker } from "./worker-assignment";
+import { repoRoot, worktreePath } from "./wt-command";
 
 export class ReviewRefused extends Error {
   constructor(
@@ -48,6 +50,13 @@ export type ReviewerSpawn = (argv: string[], env: Record<string, string>) => { e
 function git(dir: string, args: string[]): { ok: boolean; out: string } {
   const run = Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe", stderr: "ignore" });
   return { ok: run.success, out: run.stdout.toString().trim() };
+}
+
+function reviewDirectory(dir: string, orderId: string): string {
+  const root = repoRoot(dir);
+  const current = git(dir, ["rev-parse", "--show-toplevel"]);
+  if (current.ok && resolve(current.out) === resolve(root)) return worktreePath(root, orderId);
+  return dir;
 }
 
 /**
@@ -148,7 +157,8 @@ export async function runOrderReviewLive(
   if (!order) throw new Error(`order not found: ${orderId}`);
   assertOperator(db, worker, "delegate review");
   assertBuildApproved(db, orderId);
-  const range = reviewRange(db, orderId, options.dir);
+  const dir = reviewDirectory(options.dir, orderId);
+  const range = reviewRange(db, orderId, dir);
   const orderWorker = ensureOrderWorker(db, orderId, "reviewer", worker);
   const opened = openAssignedOrderReview(
     db,
@@ -161,7 +171,7 @@ export async function runOrderReviewLive(
   const { model } = route("reviewer", harness, options.env);
   const request = {
     harness,
-    cwd: options.dir,
+    cwd: dir,
     brief: reviewerBrief(order, range),
     model,
     capabilities: REVIEWER_CAPABILITIES,
@@ -225,7 +235,8 @@ export function runOrderReview(
   if (!order) throw new Error(`order not found: ${orderId}`);
   assertOperator(db, worker, "delegate review");
   assertBuildApproved(db, orderId);
-  const range = reviewRange(db, orderId, options.dir);
+  const dir = reviewDirectory(options.dir, orderId);
+  const range = reviewRange(db, orderId, dir);
   const assignment = assignWorker(db, { role: "reviewer", parentWorker: worker });
   const opened = openAssignedOrderReview(
     db,
@@ -238,7 +249,7 @@ export function runOrderReview(
   const { model } = route("reviewer", harness, options.env);
   const request = {
     harness,
-    cwd: options.dir,
+    cwd: dir,
     brief: reviewerBrief(order, range),
     model,
     capabilities: REVIEWER_CAPABILITIES,

@@ -134,7 +134,7 @@ describe("headless factory loop", () => {
     ).toContain("build approved");
     runOrderCommand(db, ["move", "headless-order", "--station", "dim-station-review"], null, repo.dir, env);
     expect(
-      await runOrderCommandLive(db, ["review", "headless-order", "--harness", "codex"], null, worktree, env),
+      await runOrderCommandLive(db, ["review", "headless-order", "--harness", "codex"], null, repo.dir, env),
     ).toContain("0 findings");
     expect(runOrderCommand(db, ["approve-review", "headless-order"], null, repo.dir, env)).toContain(
       "review approved",
