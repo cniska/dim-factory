@@ -25,7 +25,6 @@ import { integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
 import { resolveHomeDir } from "./paths";
 import type { Role } from "./roles";
 import { SCHEMA_SQL } from "./schema";
-import { STATION_LABELS } from "./wall-board";
 
 // One hand per database, set where the database is made: every moment names a worker,
 // and what these tests are about is what the wall draws rather than who touched it.
@@ -113,7 +112,7 @@ describe("factory wall snapshot", () => {
     expect(snapshot.orders.map((order) => [order.title, order.station, order.status, order.stage])).toEqual([
       ["Show the wall", "build", "working", "active"],
       ["Unblock the queue", "review", "queued", "todo"],
-      ["Ship the board", "ship", "completed", "done"],
+      ["Ship the board", null, "completed", "done"],
     ]);
     expect(snapshot.orders[0]).toEqual({
       id: "order-running",
@@ -128,6 +127,30 @@ describe("factory wall snapshot", () => {
       lastEventAt: "2026-09-18T10:02:00.000Z",
       failedChecks: 0,
     });
+    db.close();
+  });
+
+  test("keeps an order description on the card record while it is working", () => {
+    const db = floor();
+    queueOrder(
+      db,
+      {
+        id: "order-described",
+        project: "cniska/dim-factory",
+        title: "Show the description",
+        description: "A human-facing explanation of the requested outcome.",
+      },
+      worker,
+    );
+    claimOrder(db, "order-described", { runId: "run", station: "review" }, worker);
+
+    const view = assembleWallSnapshot(db).orders[0];
+    expect(view).toMatchObject({
+      title: "Show the description",
+      description: "A human-facing explanation of the requested outcome.",
+      station: "review",
+    });
+
     db.close();
   });
 
@@ -312,7 +335,7 @@ describe("factory wall snapshot", () => {
     db.close();
   });
 
-  test("says a station it does not know is unknown rather than calling it build", () => {
+  test("omits a station it does not know rather than calling it build", () => {
     const db = floor();
     queueOrder(
       db,
@@ -337,8 +360,7 @@ describe("factory wall snapshot", () => {
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z"));
 
-    expect(snapshot.orders.map((order) => order.station)).toEqual(["unknown", "unknown"]);
-    expect(STATION_LABELS.unknown).toBe("Unknown");
+    expect(snapshot.orders.map((order) => order.station)).toEqual([null, null]);
     db.close();
   });
 
@@ -454,6 +476,10 @@ describe("factory wall item view", () => {
       { id: "order-worked", project: "cniska/dim-factory", title: "Work an item through" },
       worker,
       "2026-09-18T10:00:00.000Z",
+    );
+    db.run(
+      "INSERT INTO factory_order_plan (order_id, revision, worker, body, recorded_at) VALUES (?, ?, ?, ?, ?)",
+      ["order-worked", 1, worker, "## Outcome\n\nRead the order record.", "2026-09-18T10:00:30.000Z"],
     );
     claimOrder(db, "order-worked", { runId: "run", station: "build" }, worker, "2026-09-18T10:00:00.000Z");
 
@@ -577,9 +603,16 @@ describe("factory wall item view", () => {
     const view = assembleItemView(db, "order-worked", new Date("2026-09-18T10:20:00.000Z"));
 
     expect(view?.order.title).toBe("Work an item through");
-    expect(view?.order.station).toBe("build");
+    expect(view?.order.station).toBeNull();
     expect(view?.order.status).toBe("completed");
     expect(view?.order.worker).toBe(worker);
+    expect(view?.plan).toEqual({
+      revision: 1,
+      body: "## Outcome\n\nRead the order record.",
+      worker,
+      role: "builder",
+      approved: false,
+    });
     expect([view?.runId, view?.project, view?.order.id]).toEqual([
       "run",
       "cniska/dim-factory",
@@ -778,6 +811,7 @@ describe("factory wall item view", () => {
     const file = `${tmpdir()}/wall-item-${Date.now()}.sqlite`;
     const seed = new Database(file);
     seed.run(SCHEMA_SQL);
+    worker = workerIn(seed);
     seedWorkedOrder(seed);
     seed.close();
     const server = await serveWall({ port: 0, databasePath: file });
@@ -791,6 +825,7 @@ describe("factory wall item view", () => {
         at: "2026-09-18T10:10:00.000Z",
         kind: "completed",
         agent: worker,
+        role: "builder",
         worker,
         reason: "verified",
       });

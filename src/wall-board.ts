@@ -11,7 +11,6 @@ export const STATION_LABELS: Record<WallStation, string> = {
   build: "Build",
   review: "Review",
   ship: "Ship",
-  unknown: "Unknown",
 };
 
 /** How many failure marks a card shows before the count stands in for them, so an order that

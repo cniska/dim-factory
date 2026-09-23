@@ -1,6 +1,16 @@
 import { CircleAlert, CircleCheck, CircleDot, CircleX, type LucideIcon, Radio, X } from "lucide-react";
-import { Fragment, StrictMode, useEffect, useRef, useState } from "react";
+import {
+  Children,
+  Fragment,
+  isValidElement,
+  type ReactNode,
+  StrictMode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { createRoot } from "react-dom/client";
+import Markdown from "react-markdown";
 import { age } from "./age";
 import { Badge } from "./components/ui/badge";
 import { Card, CardFooter, CardHeader } from "./components/ui/card";
@@ -56,13 +66,6 @@ const roleTint: Record<WallRole, string | undefined> = {
 };
 
 const NO_WORKER = "no worker recorded";
-const NO_ROLE = "no role recorded";
-
-/** A role arrives with the worker it belongs to, so the absent one takes the absent tint
- *  rather than a color standing for a role nothing holds. */
-function tint(role: WallRole | undefined): string | undefined {
-  return role ? roleTint[role] : undefined;
-}
 
 function statusTint(order: WallOrder): string {
   return isStopped(order) ? "text-warn-foreground" : "text-muted-foreground";
@@ -131,7 +134,7 @@ function OrderCard({
       onClick={() => onOpen(order)}
       stopped={isStopped(order)}
       className={cn(
-        "gap-0 p-2.5 text-left text-[11px]",
+        "h-[158px] justify-between p-2.5 text-left text-[11px]",
         "cursor-pointer hover:border-accent focus-visible:border-accent focus-visible:outline-none",
         // Lit until the bump expires, so a glance a moment after a card moved still shows
         // which one did.
@@ -157,22 +160,13 @@ function OrderCard({
         </span>
       </CardHeader>
 
-      {/* The title is what the reader came for, so it wraps rather than being cut. Two rows of
-          the card's own rhythm: enough for the titles the queue writes, and a bound a runaway
-          title cannot grow the card past. */}
-      <h3 className="line-clamp-2 min-h-[36px] shrink-0 font-medium text-foreground leading-[18px]">
-        {order.title}
-      </h3>
+      {/* The title keeps one row, so a long order cannot change the card's height or push its
+          description and footer out of alignment with the cards beside it. */}
+      <h3 className="truncate font-medium text-foreground leading-[18px]">{order.title}</h3>
 
-      {/* The row stands whether or not it holds anything, so a card does not change height the
-          moment its first check fails and the column does not step as work arrives. */}
-      <div className={ROW}>
-        {order.status === "working" && order.failedChecks > 0 ? (
-          <FailedChecks count={order.failedChecks} />
-        ) : null}
-      </div>
+      <p className="line-clamp-3 min-h-[54px] shrink-0 text-quiet leading-[18px]">{order.description}</p>
 
-      <CardFooter className={cn(ROW, "mt-auto justify-between gap-1.5 text-quiet")}>
+      <CardFooter className={cn(ROW, "justify-between gap-1.5 text-quiet")}>
         {/* What opens the view from the keyboard, and what a screen reader is offered: the card
             around it stays readable as the article it is. */}
         <button
@@ -188,18 +182,25 @@ function OrderCard({
         {/* Nobody recorded leaves the slot empty rather than spending the card's
             one identity line saying so: the absence is already the message. */}
         <span className="flex min-w-0 items-center gap-1.5">
-          {order.worker ? (
-            <>
-              <Robot label={`${order.worker}, ${order.role ?? NO_ROLE}`} className={tint(order.role)} />
-              <span className="truncate">{order.worker}</span>
-            </>
+          {order.status === "working" && order.failedChecks > 0 ? (
+            <FailedChecks count={order.failedChecks} />
+          ) : null}
+          {order.worker && order.role ? (
+            <WorkerLabel worker={order.worker} role={order.role} className="truncate" />
           ) : null}
         </span>
-        {order.station === "unknown" ? null : (
-          <Badge className="shrink-0">{STATION_LABELS[order.station]}</Badge>
-        )}
+        {order.station === null ? null : <Badge className="shrink-0">{STATION_LABELS[order.station]}</Badge>}
       </CardFooter>
     </Card>
+  );
+}
+
+function WorkerLabel({ worker, role, className }: { worker: string; role: WallRole; className?: string }) {
+  return (
+    <span className={cn("flex min-w-0 items-center gap-1.5", className)}>
+      <Robot label={`${worker}, ${role}`} className={roleTint[role]} />
+      <span className="truncate">{worker}</span>
+    </span>
   );
 }
 
@@ -207,14 +208,17 @@ function OrderCard({
  *  the order currently sits under: a history is a sequence of hands, and a reviewer's moment
  *  wearing the builder's color says the wrong thing about who wrote it. */
 function EntryWorker({ entry }: { entry: WallItemEntry }) {
-  if (!entry.worker) return null;
+  if (!entry.worker || !entry.role) return null;
 
-  return (
-    <span className="flex items-center justify-end gap-1.5 text-quiet">
-      <Robot label={`${entry.worker}, ${entry.role ?? NO_ROLE}`} className={tint(entry.role)} />
-      <span>{entry.worker}</span>
-    </span>
-  );
+  return <WorkerLabel worker={entry.worker} role={entry.role} className="justify-end text-quiet" />;
+}
+
+function MarkdownLink({ children }: { children?: ReactNode }) {
+  const parts = Children.toArray(children);
+  const first = parts[0];
+
+  if (parts.length === 1 && isValidElement(first) && first.type === "code") return first;
+  return <code>{children}</code>;
 }
 
 /** An order's record as a table, because that is what it is: four columns whose widths are
@@ -238,7 +242,7 @@ function ItemHistory({ entries }: { entries: WallItemEntry[] }) {
   }
 
   return (
-    <div className="min-w-0 flex-1 text-[12px]">
+    <div className="min-w-0 text-[12px]">
       <ol>
         {groups.map((group) => (
           <Fragment key={group.label}>
@@ -252,7 +256,7 @@ function ItemHistory({ entries }: { entries: WallItemEntry[] }) {
                 <li
                   // biome-ignore lint/suspicious/noArrayIndexKey: entries can share every recorded field, so position is their identity
                   key={`${entry.at}-${entry.kind}-${index}`}
-                  className="pb-5 last:pb-1"
+                  className="pb-5 last:pb-0"
                 >
                   <div className="flex min-h-[18px] flex-wrap items-center justify-between gap-x-4 gap-y-1">
                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -314,7 +318,7 @@ function ItemDialog({
       <div className="flex max-h-[85vh] flex-col">
         <header className="flex flex-col gap-2 border-b p-5">
           <div className="flex items-start justify-between gap-4">
-            <h2 className="text-[15px] text-foreground">{order.title}</h2>
+            <h2 className="text-lg font-medium text-foreground leading-7">{order.title}</h2>
             {/* Escape and a backdrop click already close the dialog; neither is visible, so this
                 is the one way out a reader does not have to already know. */}
             <button
@@ -326,23 +330,28 @@ function ItemDialog({
               <X size={16} strokeWidth={1.8} aria-hidden="true" />
             </button>
           </div>
+          {order.description ? (
+            <p className="whitespace-pre-wrap text-quiet leading-5">{order.description}</p>
+          ) : null}
           <dl className="flex flex-wrap items-center gap-x-6 gap-y-1 text-quiet">
             <div className="flex items-center gap-2">
               <dt>project</dt>
               <dd className="text-muted-foreground">{read.view?.project}</dd>
             </div>
-            <div className="flex items-center gap-2">
-              <dt>station</dt>
-              <dd className="text-muted-foreground">{STATION_LABELS[order.station]}</dd>
-            </div>
+            {order.station ? (
+              <div className="flex items-center gap-2">
+                <dt>station</dt>
+                <dd className="text-muted-foreground">{STATION_LABELS[order.station]}</dd>
+              </div>
+            ) : null}
             <div className="flex items-center gap-2">
               <dt>worker</dt>
               <dd className="flex items-center gap-1.5 text-muted-foreground">
-                <Robot
-                  label={`${order.worker ?? NO_WORKER}, ${order.role ?? NO_ROLE}`}
-                  className={tint(order.role)}
-                />
-                {order.worker ?? NO_WORKER}
+                {order.worker && order.role ? (
+                  <WorkerLabel worker={order.worker} role={order.role} />
+                ) : (
+                  NO_WORKER
+                )}
               </dd>
             </div>
             <div className="flex items-center gap-2">
@@ -371,14 +380,44 @@ function ItemDialog({
 
         {/* The dialog holds its size and its content scrolls, so the identity above stays with
             whatever is being read. */}
-        <div className="flex min-h-0 flex-col gap-8 overflow-y-auto p-5 lg:flex-row lg:gap-5">
-          {read.view && read.view.entries.length > 0 ? (
-            <ItemHistory entries={read.view.entries} />
-          ) : (
-            <p className={read.state === "unavailable" ? "text-warn-foreground" : undefined}>
-              {ITEM_READ_MESSAGE[read.state]}
-            </p>
-          )}
+        <div className="flex min-h-0 flex-col overflow-y-auto">
+          {read.view?.plan ? (
+            <section aria-labelledby="item-plan" className="min-w-0 px-5 pb-8 pt-5">
+              <h3 id="item-plan" className="text-base font-medium text-foreground leading-6">
+                Plan
+              </h3>
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground leading-5">
+                <WorkerLabel worker={read.view.plan.worker} role={read.view.plan.role} />
+                <span aria-hidden="true">·</span>
+                <span>revision {read.view.plan.revision}</span>
+                <span aria-hidden="true">·</span>
+                <span>{read.view.plan.approved ? "approved" : "awaiting approval"}</span>
+              </div>
+              <div
+                className={cn(
+                  "mt-3 space-y-3 text-quiet",
+                  "[&_a]:text-quiet [&_a]:underline",
+                  "[&_h1]:text-base [&_h1]:font-medium [&_h1]:text-foreground [&_h2]:text-sm [&_h2]:font-medium [&_h2]:text-foreground [&_h3]:text-sm [&_h3]:font-medium [&_h3]:text-foreground",
+                  "[&_li]:my-1.5 [&_li]:leading-[18px] [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-5 [&_p]:leading-[18px] [&_pre]:overflow-x-auto [&_pre]:rounded-wall [&_pre]:border [&_pre]:p-3 [&_ul]:my-3 [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-5",
+                )}
+              >
+                <Markdown components={{ a: MarkdownLink }}>{read.view.plan.body}</Markdown>
+              </div>
+            </section>
+          ) : null}
+          <div className="border-t" aria-hidden="true" />
+          <section aria-labelledby="item-log" className="min-w-0 px-5 pb-5 pt-5">
+            <h3 id="item-log" className="mb-2 text-base font-medium text-foreground leading-6">
+              Log
+            </h3>
+            {read.view && read.view.entries.length > 0 ? (
+              <ItemHistory entries={read.view.entries} />
+            ) : (
+              <p className={read.state === "unavailable" ? "text-warn-foreground" : undefined}>
+                {ITEM_READ_MESSAGE[read.state]}
+              </p>
+            )}
+          </section>
         </div>
       </div>
     </dialog>

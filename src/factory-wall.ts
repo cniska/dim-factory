@@ -8,7 +8,7 @@ import { isRole, type Role } from "./roles";
 import wallPage from "./wall.html";
 import type { ResourceEvidence, WorkerEnvironmentPhase, WorkerHookReport } from "./worker-environment";
 
-export type WallStation = "plan" | "build" | "review" | "ship" | "unknown";
+export type WallStation = "plan" | "build" | "review" | "ship";
 /**
  * How far along the line an order is, which several statuses share: a card can
  * change status without changing column, and reading the stage off the status is
@@ -20,7 +20,8 @@ export type WallRole = Role;
 export type WallOrder = {
   id: string;
   title: string;
-  station: WallStation;
+  description?: string;
+  station: WallStation | null;
   stage: WallStage;
   /** Absent until the order has a moment: the worker is read off the latest one. */
   agent?: string;
@@ -81,10 +82,19 @@ export type WallItemChange = {
   removed?: number;
 };
 
+export type WallPlan = {
+  revision: number;
+  body: string;
+  worker: string;
+  role: WallRole;
+  approved: boolean;
+};
+
 export type WallItemView = {
   order: WallOrder;
   runId?: string;
   project: string;
+  plan?: WallPlan;
   entries: WallItemEntry[];
   changes: WallItemChange[];
 };
@@ -94,6 +104,7 @@ const MAX_COLUMN_CARDS = 12;
 type OrderRow = {
   id: string;
   title: string;
+  description: string | null;
   station: string | null;
   status: string;
   stop_reason: string | null;
@@ -111,7 +122,7 @@ type OrderRow = {
 
 // Who holds an order is the worker on its latest claim. A move is an operator's audit
 // event, not a reassignment, so the latest event cannot stand in for the holder.
-const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.station, o.status,
+const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.description, o.station, o.status,
               o.stop_reason, o.run_id, o.project, o.priority, o.hold,
               e.ts AS last_event_at, e.reason AS latest_reason, e.station AS latest_station,
               (SELECT e2.worker FROM factory_order_event e2
@@ -152,8 +163,8 @@ const stationByRecordedValue: Record<string, WallStation> = {
   "dim-station-ship": "ship",
 };
 
-function station(value: string | null): WallStation {
-  return (value === null ? undefined : stationByRecordedValue[value]) ?? "unknown";
+function station(value: string | null): WallStation | null {
+  return value === null ? null : (stationByRecordedValue[value] ?? null);
 }
 
 /**
@@ -167,6 +178,12 @@ function role(value: string | null): WallRole | undefined {
   return value;
 }
 
+function requiredRole(value: string | null): WallRole {
+  const workerRole = role(value);
+  if (!workerRole) throw new Error("factory worker role is missing");
+  return workerRole;
+}
+
 /** The column is text, so a status this build does not know — dropped included, since it
  *  never reaches this function — is refused rather than drawn. */
 function status(value: string): BoardStatus {
@@ -174,16 +191,18 @@ function status(value: string): BoardStatus {
   return value as BoardStatus;
 }
 
-function mapOrder(row: OrderRow, now: Date): WallOrder {
+function mapOrder(row: OrderRow, now: Date): WallOrder | null {
+  if (row.holder_worker !== null && row.holder_role === null) return null;
   const worker = row.holder_worker;
-  const workerRole = role(row.holder_role);
-  const stationName = station(row.station ?? row.latest_station);
+  const workerRole = worker ? requiredRole(row.holder_role) : undefined;
   const orderStatus = status(row.status);
+  const stationName = orderStatus === "completed" ? null : station(row.station ?? row.latest_station);
   // A claim writes its own event in the same transaction, so an order row always has one.
   const lastEventAt = row.last_event_at;
   return {
     id: row.id,
     title: row.title,
+    ...(row.description ? { description: row.description } : {}),
     station: stationName,
     stage: stageByStatus[orderStatus],
     ...(worker ? { agent: worker, worker } : {}),
@@ -203,7 +222,7 @@ export function assembleWallSnapshot(db: Database, now = new Date()): WallSnapsh
   const rows = db
     .query(`${ORDER_ROW_SELECT} WHERE o.status <> 'dropped' ORDER BY e.ts DESC, o.id`)
     .all() as OrderRow[];
-  const mapped = rows.map((row) => mapOrder(row, now));
+  const mapped = rows.map((row) => mapOrder(row, now)).filter((order): order is WallOrder => order !== null);
   const totals: Record<WallStage, number> = { todo: 0, active: 0, done: 0 };
   const orders: WallOrder[] = [];
   for (const order of mapped) {
@@ -276,12 +295,14 @@ function environmentEntry(row: EnvironmentRow): WallItemEntry {
 }
 
 function eventEntry(row: EventRow): WallItemEntry {
+  const eventStation = row.station ? station(row.station) : null;
+
   return {
     at: row.ts,
     kind: row.kind,
     ...(row.worker_id ? { agent: row.worker_id, worker: row.worker_id } : {}),
     ...(role(row.worker_role) ? { role: role(row.worker_role) } : {}),
-    ...(row.station ? { station: station(row.station) } : {}),
+    ...(eventStation ? { station: eventStation } : {}),
     ...(row.reason ? { reason: row.reason } : {}),
     ...(row.hold_type ? { hold: row.hold_type } : {}),
     ...(row.commit_sha
@@ -318,6 +339,8 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
   // A dropped order left the wall entirely, so its item view answers not found the same
   // way an id nothing holds does, rather than drawing a card for a stage it is none of.
   if (!row || row.status === "dropped") return null;
+  const order = mapOrder(row, now);
+  if (!order) return null;
   const events = db
     .query(
       `SELECT e.ts, e.kind, e.worker AS worker_id, fw.role AS worker_role, e.station, e.hold_type, e.reason,
@@ -352,6 +375,28 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
        FROM factory_order_environment WHERE order_id = ? ORDER BY recorded_at, id`,
     )
     .all(orderId) as EnvironmentRow[];
+  const planRow = db
+    .query<
+      { revision: number; body: string; worker: string; worker_role: string | null; approved: number },
+      [string]
+    >(
+      `SELECT p.revision, p.body, p.worker, fw.role AS worker_role,
+              EXISTS (SELECT 1 FROM factory_order_event e
+                WHERE e.order_id = p.order_id AND e.kind = 'plan_approved' AND e.plan_id = p.id) AS approved
+       FROM factory_order_plan p
+       JOIN factory_worker fw ON fw.name = p.worker
+       WHERE p.order_id = ? ORDER BY p.revision DESC, p.id DESC LIMIT 1`,
+    )
+    .get(orderId);
+  const plan = planRow
+    ? {
+        revision: planRow.revision,
+        body: planRow.body,
+        worker: planRow.worker,
+        role: requiredRole(planRow.worker_role),
+        approved: planRow.approved === 1,
+      }
+    : undefined;
   const entries: WallItemEntry[] = [
     ...events.map(eventEntry),
     ...documents.map((doc) => ({
@@ -367,9 +412,10 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
     // environment reports — rather than the two surfaces disagreeing on a tie.
   ].sort((a, b) => a.at.localeCompare(b.at));
   return {
-    order: mapOrder(row, now),
+    order,
     ...(row.run_id ? { runId: row.run_id } : {}),
     project: row.project,
+    ...(plan ? { plan } : {}),
     entries,
     changes: files.map((file) => ({
       path: tildePath(file.path),
