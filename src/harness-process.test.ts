@@ -30,7 +30,28 @@ describe("the external process harness", () => {
   test("turns an unannounced nonzero exit into a structured failure", async () => {
     const result = await runHarness(command("process.exit(7)"), request, { timeoutMs: 1000 });
 
-    expect(result).toMatchObject({ outcome: "failed", reason: "harness exited with code 7" });
+    expect(result).toMatchObject({
+      outcome: "failed",
+      reason: "harness exited with code 7",
+      exitCode: 7,
+      termination: "exited",
+    });
+  });
+
+  test("records stderr when a process exits without a terminal event", async () => {
+    const result = await runHarness(
+      command('console.error("codex stream closed"); process.exit(0)'),
+      request,
+      { timeoutMs: 1000 },
+    );
+
+    expect(result).toMatchObject({
+      outcome: "failed",
+      reason: "harness exited without a terminal event",
+      exitCode: 0,
+      stderr: "codex stream closed",
+      termination: "exited",
+    });
   });
 
   test("cancels a process that does not produce a terminal event", async () => {

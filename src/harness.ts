@@ -18,7 +18,13 @@ export type HarnessEvent =
   | { type: "tool.completed"; name: string; exitCode?: number; toolId?: string }
   | { type: "diagnostic"; level: "info" | "warning" | "error"; message: string }
   | { type: "run.completed"; output?: string }
-  | { type: "run.failed"; reason: string };
+  | {
+      type: "run.failed";
+      reason: string;
+      exitCode?: number;
+      stderr?: string;
+      termination?: "exited" | "cancelled";
+    };
 
 export type HarnessRun = {
   events: AsyncIterable<HarnessEvent>;

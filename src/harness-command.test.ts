@@ -60,6 +60,48 @@ describe("selected harness commands", () => {
     expect(result).toMatchObject({ exitCode: 1, failureReason: "fake process crashed", output: "" });
   });
 
+  test("carries process termination evidence into the worker failure", async () => {
+    const adapter: HarnessAdapter = {
+      name: "terminated-process",
+      start: async () => ({
+        events: (async function* () {
+          yield {
+            type: "run.failed",
+            reason: "harness exited without a terminal event",
+            exitCode: 0,
+            stderr: "codex stream closed",
+            termination: "exited",
+          } as const;
+        })(),
+        cancel() {},
+      }),
+      resume: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const result = await runHarnessCommandLive(
+      {
+        harness: "codex",
+        cwd: "/worktree",
+        brief: "run the worker",
+        model: "standard-model",
+        capabilities: ["read-files"],
+        env: {},
+      },
+      () => undefined,
+      adapter,
+    );
+
+    expect(result).toMatchObject({
+      exitCode: 1,
+      harnessExitCode: 0,
+      failureReason: "harness exited without a terminal event; stderr: codex stream closed",
+      stderr: "codex stream closed",
+      termination: "exited",
+    });
+  });
+
   test("resumes a deterministic adapter through the live command boundary", async () => {
     const result = await runHarnessCommandResumeLive(
       {

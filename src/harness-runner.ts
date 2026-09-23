@@ -2,7 +2,14 @@ import type { HarnessAdapter, HarnessEvent, HarnessRequest } from "./harness";
 
 export type HarnessRunResult =
   | { outcome: "completed"; events: HarnessEvent[]; output?: string }
-  | { outcome: "failed"; events: HarnessEvent[]; reason: string }
+  | {
+      outcome: "failed";
+      events: HarnessEvent[];
+      reason: string;
+      exitCode?: number;
+      stderr?: string;
+      termination?: "exited" | "cancelled";
+    }
   | { outcome: "timed_out"; events: HarnessEvent[]; reason: string };
 
 export type HarnessRunnerOptions = {
@@ -24,7 +31,16 @@ export async function runHarness(
       events.push(event);
       options.onEvent?.(event);
       if (event.type === "run.completed") return { outcome: "completed", events, output: event.output };
-      if (event.type === "run.failed") return { outcome: "failed", events, reason: event.reason };
+      if (event.type === "run.failed") {
+        return {
+          outcome: "failed",
+          events,
+          reason: event.reason,
+          ...(event.exitCode === undefined ? {} : { exitCode: event.exitCode }),
+          ...(event.stderr === undefined ? {} : { stderr: event.stderr }),
+          ...(event.termination === undefined ? {} : { termination: event.termination }),
+        };
+      }
     }
     return { outcome: "failed", events, reason: "harness stream ended without a terminal event" };
   })();

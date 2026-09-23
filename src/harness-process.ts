@@ -26,7 +26,7 @@ export function processHarness(options: HarnessProcessOptions): HarnessAdapter {
       stdout: "pipe",
       stderr: "pipe",
     });
-    if (child.stderr) void new Response(child.stderr).text();
+    const stderr = child.stderr ? new Response(child.stderr).text() : Promise.resolve("");
     let cancelled = false;
     return {
       events: (async function* () {
@@ -63,8 +63,18 @@ export function processHarness(options: HarnessProcessOptions): HarnessAdapter {
           reader.releaseLock();
         }
         const exitCode = await child.exited;
-        if (!cancelled && !terminalSeen && exitCode !== 0) {
-          yield { type: "run.failed", reason: `harness exited with code ${exitCode}` };
+        if (!cancelled && !terminalSeen) {
+          const errorOutput = (await stderr).trim();
+          yield {
+            type: "run.failed",
+            reason:
+              exitCode === 0
+                ? "harness exited without a terminal event"
+                : `harness exited with code ${exitCode}`,
+            exitCode,
+            ...(errorOutput ? { stderr: errorOutput } : {}),
+            termination: "exited",
+          };
         }
       })(),
       cancel() {

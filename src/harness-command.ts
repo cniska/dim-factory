@@ -12,6 +12,9 @@ export type HarnessCommandResult = {
   output: string;
   events: HarnessEvent[];
   failureReason?: string;
+  harnessExitCode?: number;
+  stderr?: string;
+  termination?: "exited" | "cancelled";
 };
 
 export function workerFailureReason(
@@ -89,10 +92,21 @@ async function runHarnessSessionLive(
     },
   });
   const output = finalMessage(result.events);
+  const failureReason =
+    result.outcome === "failed"
+      ? [result.reason, result.stderr ? `stderr: ${result.stderr}` : undefined]
+          .filter((detail): detail is string => Boolean(detail))
+          .join("; ")
+      : undefined;
   return {
     exitCode: result.outcome === "completed" ? 0 : 1,
     output,
     events: result.events,
-    failureReason: result.outcome === "completed" ? undefined : result.reason,
+    ...(failureReason ? { failureReason } : {}),
+    ...(result.outcome === "failed" && result.exitCode !== undefined
+      ? { harnessExitCode: result.exitCode }
+      : {}),
+    ...(result.outcome === "failed" && result.stderr ? { stderr: result.stderr } : {}),
+    ...(result.outcome === "failed" && result.termination ? { termination: result.termination } : {}),
   };
 }
