@@ -15,6 +15,15 @@ describe("item history", () => {
     expect(source).toContain('className="min-w-0 space-y-[var(--space-lg)] text-[12px]"');
     expect(source).toContain('className="flex flex-col gap-[var(--space-lg)]"');
     expect(source).toContain('className="space-y-[var(--space-lg)]"');
+    expect(source).toContain(
+      'className="mb-[var(--space-lg)] text-base font-medium text-foreground leading-6"',
+    );
+    expect(source).not.toContain('className="mb-2 text-base font-medium text-foreground leading-6"');
+    expect(source).toContain('className="flex flex-col gap-[var(--space-lg)] border-b p-5"');
+    expect(source).toContain('className="min-w-0 space-y-[var(--space-lg)] px-5 pb-8 pt-5"');
+    expect(source).toContain("cursor-pointer rounded-wall p-1");
+    expect(source).not.toContain('className="mt-2 flex flex-wrap items-center');
+    expect(source).not.toContain('"mt-3 space-y-3 text-quiet"');
     expect(source).not.toContain("first:pt-0");
   });
 

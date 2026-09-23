@@ -317,7 +317,7 @@ function ItemDialog({
       className="m-auto max-h-[85vh] w-[min(64rem,92vw)] rounded-wall border bg-card p-0 text-[12px] text-muted-foreground outline-none backdrop:bg-black/70"
     >
       <div className="flex max-h-[85vh] flex-col">
-        <header className="flex flex-col gap-2 border-b p-5">
+        <header className="flex flex-col gap-[var(--space-lg)] border-b p-5">
           <div className="flex items-start justify-between gap-4">
             <h2 className="text-lg font-medium text-foreground leading-7">{order.title}</h2>
             {/* Escape and a backdrop click already close the dialog; neither is visible, so this
@@ -326,7 +326,7 @@ function ItemDialog({
               type="button"
               onClick={() => dialog.current?.close()}
               aria-label="Close"
-              className="shrink-0 rounded-wall p-1 text-quiet transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
+              className="shrink-0 cursor-pointer rounded-wall p-1 text-quiet transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
             >
               <X size={16} strokeWidth={1.8} aria-hidden="true" />
             </button>
@@ -383,11 +383,11 @@ function ItemDialog({
             whatever is being read. */}
         <div className="flex min-h-0 flex-col overflow-y-auto">
           {read.view?.plan ? (
-            <section aria-labelledby="item-plan" className="min-w-0 px-5 pb-8 pt-5">
+            <section aria-labelledby="item-plan" className="min-w-0 space-y-[var(--space-lg)] px-5 pb-8 pt-5">
               <h3 id="item-plan" className="text-base font-medium text-foreground leading-6">
                 Plan
               </h3>
-              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground leading-5">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground leading-5">
                 <WorkerLabel worker={read.view.plan.worker} role={read.view.plan.role} />
                 <span aria-hidden="true">·</span>
                 <span>revision {read.view.plan.revision}</span>
@@ -396,7 +396,7 @@ function ItemDialog({
               </div>
               <div
                 className={cn(
-                  "mt-3 space-y-3 text-quiet",
+                  "space-y-3 text-quiet",
                   "[&_a]:text-quiet [&_a]:underline",
                   "[&_h1]:text-base [&_h1]:font-medium [&_h1]:text-foreground [&_h2]:text-sm [&_h2]:font-medium [&_h2]:text-foreground [&_h3]:text-sm [&_h3]:font-medium [&_h3]:text-foreground",
                   "[&_li]:my-1.5 [&_li]:leading-[18px] [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-5 [&_p]:leading-[18px] [&_pre]:overflow-x-auto [&_pre]:rounded-wall [&_pre]:border [&_pre]:p-3 [&_ul]:my-3 [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-5",
@@ -408,7 +408,10 @@ function ItemDialog({
           ) : null}
           {read.view?.plan ? <div className="border-t" aria-hidden="true" /> : null}
           <section aria-labelledby="item-log" className="min-w-0 px-5 pb-5 pt-5">
-            <h3 id="item-log" className="mb-2 text-base font-medium text-foreground leading-6">
+            <h3
+              id="item-log"
+              className="mb-[var(--space-lg)] text-base font-medium text-foreground leading-6"
+            >
               Log
             </h3>
             {read.view && read.view.entries.length > 0 ? (
