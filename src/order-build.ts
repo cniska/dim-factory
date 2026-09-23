@@ -159,7 +159,7 @@ export async function runOrderBuildLive(
   const recordFailure = (reason: string): void => {
     if (failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
     failureRecorded = true;
-    appendOrderEvent(db, orderId, { kind: "failed", worker: builder ?? operator, reason });
+    appendOrderEvent(db, orderId, { kind: "failed", worker: builder, reason });
   };
   try {
     const env = orderWorkerRequest(db, options.env, orderWorker);
@@ -274,7 +274,7 @@ export function runOrderBuild(
     failureRecorded = true;
     appendOrderEvent(db, orderId, {
       kind: "failed",
-      worker: builder ?? operator,
+      worker: builder,
       reason,
     });
   };

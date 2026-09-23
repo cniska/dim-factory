@@ -281,7 +281,7 @@ describe("factory wall snapshot", () => {
     db.close();
   });
 
-  test("a moment no worker did cannot be written, so no card is left unattributed", () => {
+  test("a runner failure can omit a worker without inventing one on the card", () => {
     const db = floor();
     queueOrder(
       db,
@@ -293,9 +293,14 @@ describe("factory wall snapshot", () => {
     expect(() =>
       db.run(
         `INSERT INTO factory_order_event (order_id, ts, kind, worker)
-         VALUES ('order-named', '2026-09-18T10:01:00.000Z', 'claimed', NULL)`,
+         VALUES ('order-named', '2026-09-18T10:01:00.000Z', 'failed', NULL)`,
       ),
-    ).toThrow(/NOT NULL/);
+    ).not.toThrow();
+    const card = assembleWallSnapshot(db, new Date("2026-09-18T10:02:00.000Z")).orders.find(
+      (order) => order.id === "order-named",
+    );
+    expect(card).toBeDefined();
+    expect(card).not.toHaveProperty("worker");
     // What `openDb` runs on every connection; a name no worker row backs is refused only
     // while it is on, which is why it is turned on there rather than left to the caller.
     db.run("PRAGMA foreign_keys = ON");

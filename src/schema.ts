@@ -284,7 +284,7 @@ CREATE TABLE IF NOT EXISTS factory_order_attempt (
   id              INTEGER PRIMARY KEY,
   order_id        TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   run_id          TEXT NOT NULL,
-  worker          TEXT NOT NULL REFERENCES factory_worker(name),
+  worker          TEXT REFERENCES factory_worker(name),
   operator_worker TEXT REFERENCES factory_worker(name),
   station         TEXT,
   recorded_at     TEXT NOT NULL,
@@ -373,9 +373,9 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   ts                    TEXT NOT NULL,
   kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'plan_submitted', 'plan_approved', 'build_approved', 'commit_created', 'check_finished', 'review_opened', 'review_closed', 'review_approved', 'finding_raised', 'finding_answered', 'completed', 'dropped', 'failed')),
   -- Who did it, written by the statement that writes the moment and never after.
-  -- An entry completed later is a mutation of a record someone may already have
-  -- read, and a log that can be amended is not evidence of anything.
-  worker                TEXT NOT NULL REFERENCES factory_worker(name),
+  -- A runner failure before a station worker bootstraps has no worker rather than
+  -- borrowing the operator's identity.
+  worker                TEXT REFERENCES factory_worker(name),
   session_id            TEXT,
   station               TEXT,
   commit_sha            TEXT,

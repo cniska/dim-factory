@@ -65,8 +65,8 @@ type AttemptOutcome = "running" | "succeeded" | "failed";
 
 export type OrderEvent = {
   kind: OrderEventKind;
-  /** Required, because a moment nobody did is not a moment this record can hold. */
-  worker: string;
+  /** Absent only when the runner failed before a station worker bootstrapped. */
+  worker?: string;
   sessionId?: string;
   station?: string;
   commitSha?: string;
@@ -207,7 +207,7 @@ function eventValues(orderId: string, event: OrderEvent, ts: string): (string | 
     orderId,
     ts,
     event.kind,
-    event.worker,
+    event.worker ?? null,
     event.sessionId ?? null,
     event.station ?? null,
     event.commitSha ?? null,
@@ -242,13 +242,13 @@ function recordAttemptFinish(
   db: Database,
   orderId: string,
   runId: string | null,
-  worker: string,
+  worker: string | undefined,
   station: string | null,
   outcome: Exclude<AttemptOutcome, "running">,
   reason: string | undefined,
   at: string,
 ): void {
-  if (!runId) return;
+  if (!runId || !worker) return;
   db.run(
     `INSERT INTO factory_order_attempt
        (order_id, run_id, worker, operator_worker, station, recorded_at, kind, outcome, reason)
@@ -542,6 +542,9 @@ function appendOrderEventInTransaction(
     station: string | null;
   } | null;
   if (!order) throw new Error(`order not found: ${orderId}`);
+  if (!event.worker && event.kind !== "failed") {
+    throw new Error(`order ${orderId} ${event.kind} requires a worker`);
+  }
   if (isTerminalOrderStatus(order.status)) {
     throw new Error(`order ${orderId} is already ${order.status}`);
   }

@@ -185,7 +185,7 @@ describe("builder station", () => {
       db
         .query("SELECT kind, worker, reason FROM factory_order_event WHERE order_id = ?")
         .all("failed-builder-order"),
-    ).toContainEqual({ kind: "failed", worker: operator.name, reason: "harness unavailable" });
+    ).toContainEqual({ kind: "failed", worker: null, reason: "harness unavailable" });
     expect(
       db.query("SELECT status, run_id FROM factory_order WHERE id = ?").get("failed-builder-order"),
     ).toEqual({
