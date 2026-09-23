@@ -350,6 +350,32 @@ describe("rebuilding a database an older schema wrote", () => {
     expect(db.query("SELECT id FROM factory_order").all()).toEqual([{ id: "order-old" }]);
     db.close();
   });
+
+  test("a factory table retired from the schema is dropped during rebuild", () => {
+    const { db, env } = scratch();
+    db.run(
+      `CREATE TABLE factory_order_account (
+         id INTEGER PRIMARY KEY,
+         order_id TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+         body TEXT NOT NULL
+       )`,
+    );
+    db.run(
+      `INSERT INTO factory_order (id, project, title, status, created_at, updated_at)
+       VALUES ('order-1', 'cniska/dim-factory', 'Retire an old table', 'queued', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+    );
+    db.run("INSERT INTO factory_order_account (order_id, body) VALUES ('order-1', 'old artifact')");
+
+    rebuild(db, env);
+
+    expect(
+      db
+        .query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'factory_order_account'")
+        .get(),
+    ).toBeNull();
+    expect(db.query("SELECT id FROM factory_order WHERE id = 'order-1'").get()).toEqual({ id: "order-1" });
+    db.close();
+  });
 });
 
 describe("opening a database an older schema wrote", () => {

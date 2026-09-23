@@ -171,16 +171,22 @@ const FACTORY_ORDER_TABLES = [
 /**
  * Whether a source can re-read a table is a judgement, so the list above is written down
  * rather than derived. What it has to reach is not: dropping a carried table empties every
- * child that cascades from it, and a child left out is gone with no row left to say it was
- * ever there. The rebuild stops on that instead of losing the rows.
+ * current-schema child that cascades from it, and a child left out is gone with no row left
+ * to say it was ever there. Retired tables are deliberately dropped and therefore do not
+ * belong in the preservation check.
  */
 function assertCascadesCarried(db: Database, tables: string[]): void {
   const carried = new Set(tables);
+  const defined = new Set(
+    [...SCHEMA_SQL.matchAll(/CREATE (?:VIRTUAL )?TABLE IF NOT EXISTS (\w+)/g)].map(
+      (match) => match[1] as string,
+    ),
+  );
   const lost = db
     .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table'")
     .all()
     .map((row) => row.name)
-    .filter((name) => !carried.has(name) && !name.startsWith("sqlite_"))
+    .filter((name) => defined.has(name) && !carried.has(name) && !name.startsWith("sqlite_"))
     .filter((name) =>
       db
         .query<{ table: string; on_delete: string }, []>(`PRAGMA foreign_key_list(${name})`)

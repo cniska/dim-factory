@@ -11,7 +11,10 @@ const tables = [
   "factory_order_document",
   "factory_order_finding",
   "factory_order_review",
+  "factory_order_build",
   "factory_order_plan",
+  "factory_order_slice_completion",
+  "factory_order_slice",
   "factory_order_check",
   "factory_order_file",
   "factory_order_commit",
@@ -24,6 +27,7 @@ const tables = [
   "factory_worker_assignment",
   "factory_worker_session",
   "factory_worker",
+  "factory_order_account",
 ];
 
 if (!process.argv.includes(required)) {
@@ -34,7 +38,7 @@ if (!process.env.DIM_HOME) {
   throw new Error("refusing to reset the default data directory; set DIM_HOME explicitly");
 }
 
-const db = openDb(dbPath());
+const db = openDb(dbPath(), { forRebuild: true });
 try {
   const factoryTables = db
     .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'factory_%'")
