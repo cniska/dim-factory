@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 import { codexArgv, codexHarness, codexResumeArgv, parseCodexHarnessEvent } from "./codex-harness";
 import type { HarnessRequest } from "./harness";
 
@@ -68,6 +69,12 @@ describe("the Codex harness adapter", () => {
     ]);
     expect(readOnly).toContain("read-only");
     expect(codexHarness("codex-test").name).toBe("codex");
+  });
+
+  test("grants builders access to the repository metadata", () => {
+    const argv = codexArgv("codex-test", { ...request, cwd: process.cwd(), capabilities: ["edit-files"] });
+
+    expect(argv).toContain(resolve(process.cwd(), ".git"));
   });
 
   test("resumes a Codex session by its provider id", () => {

@@ -1,3 +1,4 @@
+import { isAbsolute, resolve } from "node:path";
 import type { HarnessAdapter, HarnessEvent, HarnessRequest } from "./harness";
 import { processHarness } from "./harness-process";
 import { dataDir } from "./paths";
@@ -62,6 +63,7 @@ export function parseCodexHarnessEvent(line: string): HarnessEvent | HarnessEven
 
 export function codexArgv(command: string, request: HarnessRequest): string[] {
   const sandbox = request.capabilities.includes("edit-files") ? "workspace-write" : "read-only";
+  const gitDirs = gitMetadataDirs(request.cwd);
   return [
     command,
     "exec",
@@ -70,12 +72,24 @@ export function codexArgv(command: string, request: HarnessRequest): string[] {
     sandbox,
     "--add-dir",
     dataDir(request.env),
+    ...gitDirs.flatMap((gitDir) => ["--add-dir", gitDir]),
     "-C",
     request.cwd,
     "-m",
     request.model,
     request.brief,
   ];
+}
+
+function gitMetadataDirs(cwd: string): string[] {
+  const result = Bun.spawnSync(["git", "-C", cwd, "rev-parse", "--git-dir", "--git-common-dir"], {
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+  if (result.exitCode !== 0) return [];
+  return [...new Set(result.stdout.toString().trim().split("\n"))]
+    .filter((gitDir) => gitDir.length > 0)
+    .map((gitDir) => (isAbsolute(gitDir) ? gitDir : resolve(cwd, gitDir)));
 }
 
 export function codexResumeArgv(
