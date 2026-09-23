@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { codexArgv, codexHarness, codexResumeArgv, parseCodexHarnessEvent } from "./codex-harness";
 import type { HarnessRequest } from "./harness";
 
@@ -80,8 +80,24 @@ describe("the Codex harness adapter", () => {
 
   test("grants builders access to the repository metadata", () => {
     const argv = codexArgv("codex-test", { ...request, cwd: process.cwd(), capabilities: ["edit-files"] });
+    const gitMetadata = Bun.spawnSync(
+      ["git", "-C", process.cwd(), "rev-parse", "--git-dir", "--git-common-dir"],
+      {
+        stdout: "pipe",
+        stderr: "ignore",
+      },
+    )
+      .stdout.toString()
+      .trim()
+      .split("\n");
+    const expectedMetadata = [...new Set(gitMetadata)]
+      .filter((gitDir) => gitDir.length > 0)
+      .map((gitDir) => (isAbsolute(gitDir) ? gitDir : resolve(process.cwd(), gitDir)));
+    const addDirs = argv.flatMap((arg, index) => (arg === "--add-dir" ? [argv[index + 1]] : []));
 
-    expect(argv).toContain(resolve(process.cwd(), ".git"));
+    expect(argv).toContain("workspace-write");
+    expect(addDirs[0]).toBe("/dim-home");
+    expect(addDirs.slice(1)).toEqual(expectedMetadata);
   });
 
   test("resumes a Codex session by its provider id", () => {
