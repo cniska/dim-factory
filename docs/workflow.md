@@ -6,6 +6,8 @@ The factory moves an order from evidence-backed research to a shipped result whi
 
 The stations form one path, but an order also has queue, worker, environment, integration, and stopping state. Each station produces a different artifact. The plan explains what should be true; the implementation outline explains how this repository will make it true; the slices and evidence show what happened.
 
+Every artifact leads with a concise account for the reader and scales its supporting detail to the change's size and risk. A small fix stays short; a multi-boundary change exposes the program design and its dependencies. Scaling the explanation never removes a required contract, evidence, or attribution field. This applies to plans, Summaries, reviews, and execution reports.
+
 ```text
 intake
   → preflight
@@ -59,7 +61,7 @@ Before a station worker starts, the runner requires a clean order worktree and r
 
 The repository owns setup and teardown details: dependencies, services, ports, environment files, and health checks. Dim owns the worktree lifecycle and records the setup and teardown reports. A setup failure holds the order before implementation rather than allowing a worker to produce misleading evidence.
 
-Every meaningful act names its worker at write time. Harness identity, model, tier, and operator are recorded as attributes of the run or event rather than inferred later from a transcript join.
+Every worker act names its worker at write time. A runner failure before a worker bootstraps carries no worker and keeps its harness evidence instead of borrowing the operator's identity. Harness identity, model, tier, and operator are recorded as attributes of the run or event rather than inferred later from a transcript join.
 
 ## Delegation and worker trees
 

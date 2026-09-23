@@ -43,14 +43,32 @@ The brief is these questions:
 
 Returning nothing is the expected result. A reviewer earns trust the way a test does — plant a defect once, watch it be caught, take it out.
 
+## Write for the owner
+
+The plan is the shared artifact the owner approves and the builder executes, not a private implementation prompt. Make the first page answer what the owner needs to decide while making the rest precise enough for the builder to follow:
+
+- **Outcome.** What becomes true, the boundary of the change, explicit non-goals, and the decisions that belong to the owner.
+- **Evidence.** Prior art, settled decisions, project conventions, unresolved gaps, and what each finding ruled out.
+- **Contracts.** Inputs, outputs, invariants, states, transitions, errors, closed vocabularies, and ownership of each boundary.
+- **Program design.** The bounded file tree, key signatures, call path, data flow, and boundary crossings.
+- **Checks.** An executable check for each contract and the repository's own task for every slice.
+- **Slices.** The behavior, affected area, check, and dependency for each independently verifiable vertical cut.
+- **Risks and decisions.** Holds, unresolved questions, predictions, and the conditions under which the operator should approve the plan.
+
+Use readable Markdown and project language. Keep identifiers, commands, and paths where they let the owner verify a claim; do not make the owner reconstruct the design from a worker transcript.
+
+Scale the explanation to the change. Lead with a concise decision summary, then include the supporting detail justified by the change's size and risk. A small fix can stay short; a multi-boundary change needs the full program design. Scaling the prose never removes a required contract dimension.
+
 ## Exit check
 
 The plan is done when it names:
 
+- the outcome, boundary, non-goals, and owner decisions
+- the evidence it read and what that evidence ruled out
+- the contracts, program design, and executable checks
 - the slices, each a vertical cut that can be verified on its own
 - what checks each slice — the repo's own task, so what runs locally is what CI runs
-- what the record returned, and what that removed or changed
-- what is still unknown, and the one question that would settle it
+- the risks, holds, predictions, and what is still unknown
 
 If all four queries came back empty, say that in the plan. An empty record is a fact about the work being new, and it is worth more written down than silently skipped.
 

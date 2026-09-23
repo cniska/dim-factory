@@ -89,14 +89,13 @@ An order the owner has to answer — blocked, held or failed — is ranked above
 
 A card answers where an item is; the item view answers what happened to it. Opening one card shows that order alone, and the board stays an overview rather than growing columns to hold the detail.
 
-It is a dialog over the board, the shape a detail surface already takes in this owner's other work: a titled header, the order's facts in a term-and-value grid, and the content below it. Two things differ. It is sized for reading rather than for a form, so a history as long as the order was fits without the dialog outgrowing the viewport — the dialog holds its size and its content scrolls, and the plan and the account below will have the same room. And it carries no action row, because opening a record is the whole of what it does.
+It is a dialog over the board, the shape a detail surface already takes in this owner's other work: a titled header, the order's facts in a term-and-value grid, and the content below it. Two things differ. It is sized for reading rather than for a form, so a history as long as the order was fits without the dialog outgrowing the viewport — the dialog holds its size and its content scrolls, and the plan and Summary below will have the same room. And it carries no action row, because opening a record is the whole of what it does.
 
 The dialog is a decision surface, not only an audit-log viewer. In addition to the audit log and changed-file list, it shows the following sections in this order:
 
 - **Current decision.** State, station, project, owner action, active hold or blocker, current attempt, silence age, and the latest check or finding that explains the state.
 - **Intent.** Queue statement, approved plan revision, approval state, risks, non-goals, and the implementation outline. The queue statement is what was requested; the plan is what the order decided to do about it.
-- **Result.** A builder or reviewer account linked to the exact commits it describes, the final check, integration state, and owner verdict. A result that differs from the approved plan makes the difference visible rather than silently replacing the plan.
-- **Shipping account.** An independent explanation of what was built, why it has this shape, what risks remain, and where it differs from the approved plan. In the first version it is an evidence artifact, not a blocking approval; a later gate may use it if the record shows that it pays.
+- **Summary.** An independent explanation of what was built, why it has this shape, what risks remain, and where it differs from the approved plan. It links to the exact commits, final check, integration state, and owner verdict. It appears only when the order is ready; until then, the dialog shows the plan and evidence that explain the current state.
 - **Program design.** The bounded file tree, key signatures, call path, data flow, and planned boundary crossings. Show the graph collapsed by default; expand it when the owner is investigating a scope or architecture question.
 - **Execution summary.** Attempts, loop iterations, failed checks, review rounds, simplification fixpoints, worker and operator attribution, model or tier where recorded, and setup or teardown state.
 - **Audit log.** The immutable lifecycle sequence, including claims, station moves, delegations, checks, findings, documents, environment reports, outcomes, and integration.
@@ -176,7 +175,7 @@ The wall exposes holds, blockers and other places where the factory needs human 
 - a result that differs from the approved plan
 - a ship or owner verdict awaiting a decision
 
-When a human shipping gate is enabled, the shipping account is its default focus. Until then, the dialog exposes it for observation and future measurement while the operator continues through the mechanical shipping conditions.
+When a human shipping gate is enabled, Summary is its default focus. Until then, the dialog exposes it for observation and future measurement while the operator continues through the mechanical shipping conditions.
 
 These are visibility states, not controls. The wall remains read-only until the factory record shows which decisions recur often enough to earn a safe control surface.
 

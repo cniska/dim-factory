@@ -7,11 +7,35 @@ import { claimOrder, queueOrder } from "./factory-order";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { fakeHarness } from "./fake-harness";
 import { integratedRepo } from "./fixtures.test-support";
-import { runOrderPlan, runOrderPlanLive } from "./order-plan";
+import { plannerBrief, runOrderPlan, runOrderPlanLive } from "./order-plan";
 import { SCHEMA_SQL } from "./schema";
 import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
 
 describe("planner station", () => {
+  test("asks for the human approval dimensions in the plan", () => {
+    const brief = plannerBrief({
+      id: "human-plan",
+      title: "Make the change understandable",
+      description: "Keep the plan readable.",
+    });
+
+    expect(brief).toContain(
+      "Write one Markdown plan for the owner to read on the factory wall and the builder to execute",
+    );
+    expect(brief).toContain("Scale the explanation to the change");
+    expect(brief).toContain("outcome, boundary, non-goals, and owner decisions");
+    expect(brief).toContain("evidence and what it ruled out");
+    expect(brief).toContain("contracts, invariants, states, transitions, errors, and ownership");
+    expect(brief).toContain(
+      "program design: file tree, key signatures, call path, data flow, and boundary crossings",
+    );
+    expect(brief).toContain("executable check for each contract");
+    expect(brief).toContain("every slice a behavior, affected area, check, and dependency");
+    expect(brief).toContain(
+      "risks, holds, unresolved questions, predictions, and the conditions for approval",
+    );
+  });
+
   test("spawns a read-only planner and records its Markdown report", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
