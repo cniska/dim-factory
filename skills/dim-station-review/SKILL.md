@@ -14,6 +14,8 @@ Use `dim-git` for the read-only diff boundary and handoff evidence. Review does 
 
 This station carries its review briefs directly. Each dimension supplies findings; this station supplies the factory grounding, read-only boundary and finding convergence.
 
+The review is an artifact for the owner as well as evidence for the operator. Lead with the verdict and why it matters, then include detail proportional to the change's size and risk. Keep every finding's contract, evidence, file and worker attribution even when the prose stays short.
+
 ## Entry contract
 
 Before spawning anything:
