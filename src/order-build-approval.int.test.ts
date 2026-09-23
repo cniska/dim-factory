@@ -1,7 +1,13 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
-import { claimOrder, queueOrder, recordOrderCheck, recordOrderCommit } from "./factory-order";
+import {
+  claimOrder,
+  queueOrder,
+  recordOrderBuild,
+  recordOrderCheck,
+  recordOrderCommit,
+} from "./factory-order";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { integratedRepo } from "./fixtures.test-support";
 import { runOrderCommand } from "./order-command";
@@ -79,6 +85,13 @@ describe("build approval integration", () => {
       { command: "bun run verify", exitCode: 0, result: "green" },
       builder.name,
     );
+    recordOrderBuild(
+      db,
+      "build-approval-order",
+      "The build is complete and verified.",
+      repo.sha,
+      builder.name,
+    );
 
     expect(() =>
       runOrderCommand(
@@ -116,6 +129,7 @@ describe("build approval integration", () => {
       { kind: "claimed", worker: builder.name, commit_sha: null, reason: null },
       { kind: "commit_created", worker: builder.name, commit_sha: repo.sha, reason: null },
       { kind: "check_finished", worker: builder.name, commit_sha: null, reason: null },
+      { kind: "build_artifact_written", worker: builder.name, commit_sha: null, reason: null },
       { kind: "build_approved", worker: operator.name, commit_sha: repo.sha, reason: "answers the request" },
       { kind: "moved", worker: operator.name, commit_sha: null, reason: null },
     ]);

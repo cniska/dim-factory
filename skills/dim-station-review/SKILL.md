@@ -14,7 +14,9 @@ Use `dim-git` for the read-only diff boundary and handoff evidence. Review does 
 
 This station carries its review briefs directly. Each dimension supplies findings; this station supplies the factory grounding, read-only boundary and finding convergence.
 
-The review is an artifact for the owner as well as evidence for the operator. Lead with the verdict and why it matters, then include detail proportional to the change's size and risk. Keep every finding's contract, evidence, file and worker attribution even when the prose stays short.
+The reviewer writes an artifact for the owner as well as evidence for the operator. Lead with the verdict and why it matters, then include detail proportional to the change's size and risk. Keep every finding's contract, evidence, file and worker attribution even when the prose stays short.
+
+Use `dim-artifact` for the shared artifact-writing contract. This station supplies the review verdict, dimensions, evidence and separately attributed findings.
 
 Return one Review artifact with the verdict, dimensions covered, evidence considered, and the reason the order may advance or must return. Keep each finding separately attributed beneath it. Stop for the operator's gate after submitting the artifact; a closed review is not an accepted review until the operator approves that exact revision.
 
@@ -55,6 +57,10 @@ The review is done when:
 - a path the record named as having held is read against that, and a finding against it is either addressed or explicitly cleared
 
 A dimension's finding is a claim, and a claim carried forward unchecked is how a wrong one becomes the standard. Checking it is this station's work whether or not the reviewer wrote the code — where the author is in the session, `dim-station-build` says what answering one looks like.
+
+## See also
+
+- `dim-artifact`
 
 ## What the record cannot tell you
 

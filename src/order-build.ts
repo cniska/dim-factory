@@ -86,6 +86,7 @@ export function builderBrief(
     "The order description and approved plan define the scope. When they explicitly exclude a workspace surface, do not edit or test that surface; record a passing check scoped to the requested result instead of treating excluded failures as blockers.",
     "A red check is feedback, not completion: diagnose it, fix the cause, rerun the check, and continue until the final commit has a passing check. If the cause is genuinely blocked, report the blocker instead of claiming success.",
     "Do not run dim order stop: the factory runner records this attempt and makes the order retryable when the turn fails.",
+    `After the passing check, record the Build artifact with \`dim order build-artifact ${order.id} --body "..." --head <latest-commit-sha>\`. Explain the completed slice, evidence, deviations from the plan, and unresolved risks; keep it proportional to the change.`,
     "Return a concise outcome. Do not approve the plan or build, start review, ship, or edit outside the order worktree.",
   ].join("\n");
 }
@@ -93,7 +94,11 @@ export function builderBrief(
 export type BuildOutcome = { builder: string; runId: string; worktree: string; exitCode: number };
 
 function requireBuildEvidence(db: Database, orderId: string): void {
-  const commit = db.query("SELECT 1 FROM factory_order_commit WHERE order_id = ? LIMIT 1").get(orderId);
+  const commit = db
+    .query<{ sha: string; recorded_at: string }, [string]>(
+      "SELECT sha, recorded_at FROM factory_order_commit WHERE order_id = ? ORDER BY recorded_at DESC, rowid DESC LIMIT 1",
+    )
+    .get(orderId);
   if (!commit) throw new Error("builder did not record a commit");
   const check = db
     .query<{ exit_code: number }, [string]>(
@@ -101,6 +106,12 @@ function requireBuildEvidence(db: Database, orderId: string): void {
     )
     .get(orderId);
   if (check?.exit_code !== 0) throw new Error("builder did not record a passing check");
+  const build = db
+    .query<{ id: number }, [string, string]>(
+      "SELECT id FROM factory_order_build WHERE order_id = ? AND head_sha = ? ORDER BY revision DESC LIMIT 1",
+    )
+    .get(orderId, commit.sha);
+  if (!build) throw new Error("builder did not record a Build artifact for its latest commit");
 }
 
 export async function runOrderBuildLive(

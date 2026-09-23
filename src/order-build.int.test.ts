@@ -8,6 +8,7 @@ import {
   claimOrder,
   moveOrder,
   queueOrder,
+  recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
   recordOrderPlan,
@@ -98,6 +99,13 @@ describe("builder station", () => {
           { command: "bun run verify", exitCode: 0, result: "green" },
           builder.name,
         );
+        recordOrderBuild(
+          db,
+          "builder-order",
+          "The requested result is built and verified.",
+          repo.sha,
+          builder.name,
+        );
         return { exitCode: 0 };
       },
     });
@@ -122,12 +130,13 @@ describe("builder station", () => {
     ).toEqual([
       { kind: "queued", worker: operator.name, station: null },
       { kind: "claimed", worker: operator.name, station: "dim-station-plan" },
-      { kind: "plan_submitted", worker: planner.name, station: null },
+      { kind: "plan_artifact_written", worker: planner.name, station: null },
       { kind: "plan_approved", worker: operator.name, station: null },
       { kind: "moved", worker: operator.name, station: "dim-station-build" },
       { kind: "claimed", worker: outcome.builder, station: "dim-station-build" },
       { kind: "commit_created", worker: outcome.builder, station: null },
       { kind: "check_finished", worker: outcome.builder, station: null },
+      { kind: "build_artifact_written", worker: outcome.builder, station: null },
     ]);
     expect(db.query("SELECT worker FROM factory_order_slice_completion").get()).toEqual({
       worker: outcome.builder,

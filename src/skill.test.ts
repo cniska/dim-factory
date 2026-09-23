@@ -28,6 +28,7 @@ describe("skill install", () => {
   test("ships the skills that need dim on PATH", () => {
     expect(shipped()).toEqual([
       "dim-add",
+      "dim-artifact",
       "dim-design",
       "dim-factory",
       "dim-git",

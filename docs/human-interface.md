@@ -95,7 +95,7 @@ The dialog is a decision surface, not only an audit-log viewer. In addition to t
 
 - **Current decision.** State, station, project, owner action, active hold or blocker, current attempt, silence age, and the latest check or finding that explains the state.
 - **Intent.** Queue statement, approved plan revision, approval state, risks, non-goals, and the implementation outline. The queue statement is what was requested; the plan is what the order decided to do about it.
-- **Build.** The Summary artifact: an independent explanation of what was built, why it has this shape, what risks remain, and where it differs from the approved plan. It links to the exact commits, final check, integration state, and owner verdict. It appears when the Build station completes and remains marked provisional until the Review is accepted.
+- **Build.** The Build artifact: an independent explanation of what was built, why it has this shape, what risks remain, and where it differs from the approved plan. It links to the exact commits, final check, integration state, and owner verdict. It appears when the Build station completes and remains marked provisional until the Review is accepted.
 - **Review.** The review artifact and its attributed findings, showing why the order may advance or must return. It appears once review has been delegated.
 - **Program design.** The bounded file tree, key signatures, call path, data flow, and planned boundary crossings. Show the graph collapsed by default; expand it when the owner is investigating a scope or architecture question.
 - **Execution summary.** Attempts, loop iterations, failed checks, review rounds, simplification fixpoints, worker and operator attribution, model or tier where recorded, and setup or teardown state.
@@ -127,15 +127,15 @@ The wall's primitives are small and its runtime dependencies are few, so the dia
 
 ### Reviewing before and after
 
-Planned. An item view shows what happened; these two let the owner judge it without reading a transcript. Both already have writers and neither has a home: the plan comes from the planning station, the account from reading the built diff, and both currently end in a transcript.
+Planned. An item view shows what happened; these two let the owner judge it without reading a transcript. Both already have writers and neither has a home: the plan comes from the planning station, the Build artifact from reading the built diff, and both currently end in a transcript.
 
 They belong on one surface, against each other, however the rest of the view divides. Their value is where they disagree — scope that grew, a slice never built — and a difference nobody can see is a difference nobody finds.
 
 - **The plan, before.** What the order intends to build, in the words a person would use, written when the item is claimed and not edited afterward. A plan that can be revised once the work is done can always be made to match the work, so its value comes from being fixed at claim time and attached to the order rather than to a session. It is not the item's description, which the claim already records: that is what the queue asked for, while the plan is what the order means to do about it, and the gap between them is the thing worth reading.
-- **The Build, after.** What the order actually built, read off its diff. It names the commits it describes, because a generated Summary is indistinguishable from a checked one after the fact, and `factory_order_commit` with `factory_order_file` stay the record a reader can verify it against.
+- **The Build, after.** What the order actually built, read off its diff. It names the commits it describes, because a generated artifact is indistinguishable from a checked one after the fact, and `factory_order_commit` with `factory_order_file` stay the record a reader can verify it against.
 - **The difference between them.** The review artifact is where the two disagree: work that appeared, scope that grew, a slice planned and never built. Holding both against the same order and the same slice identity makes that a query rather than a reading exercise.
 
-Writing an account of every diff spends on every order rather than on one, which makes it a decision the owner takes once rather than a step an agent adds.
+Writing a Build artifact for every diff spends on every order rather than on one, which makes it a decision the owner takes once rather than a step an agent adds.
 
 ## The operator
 

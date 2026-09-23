@@ -354,6 +354,16 @@ describe("order command", () => {
       ]),
     ).toMatch(/^order-1 recorded bun run verify \(0\)$/);
     expect(
+      runOrderCommand(database, [
+        "build-artifact",
+        "order-1",
+        "--body",
+        "The slice is built and verified.",
+        "--head",
+        "abc123",
+      ]),
+    ).toBe("order-1 recorded build artifact 1");
+    expect(
       runOrderCommand(
         database,
         ["finding", "order-1", "--dimension", "tests", "--summary", "the invariant holds"],
@@ -380,6 +390,11 @@ describe("order command", () => {
       command: "bun run verify",
       exit_code: 0,
       result: "green",
+    });
+    expect(database.query("SELECT body, head_sha, worker FROM factory_order_build").get()).toEqual({
+      body: "The slice is built and verified.",
+      head_sha: "abc123",
+      worker: env[WORKER_NAME_VAR],
     });
     expect(database.query("SELECT dimension, summary, answer FROM factory_order_finding").get()).toEqual({
       dimension: "tests",

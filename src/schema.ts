@@ -20,7 +20,7 @@ import { ORDER_STATUSES_SQL } from "./factory-order";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 53;
+export const SCHEMA_VERSION = 54;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -367,11 +367,22 @@ CREATE TABLE IF NOT EXISTS factory_order_worker (
 );
 CREATE INDEX IF NOT EXISTS factory_order_worker_order ON factory_order_worker(order_id);
 
+CREATE TABLE IF NOT EXISTS factory_order_build (
+  id            INTEGER PRIMARY KEY,
+  order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  revision      INTEGER NOT NULL DEFAULT 1,
+  worker        TEXT NOT NULL REFERENCES factory_worker(name),
+  body          TEXT NOT NULL CHECK (trim(body) <> ''),
+  head_sha      TEXT NOT NULL,
+  recorded_at   TEXT NOT NULL,
+  UNIQUE (order_id, revision)
+);
+
 CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,
   order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   ts                    TEXT NOT NULL,
-  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'plan_submitted', 'plan_approved', 'build_approved', 'commit_created', 'check_finished', 'review_opened', 'review_closed', 'review_approved', 'finding_raised', 'finding_answered', 'completed', 'dropped', 'failed')),
+  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'plan_artifact_written', 'plan_approved', 'build_approved', 'build_artifact_written', 'commit_created', 'check_finished', 'review_opened', 'review_closed', 'review_artifact_written', 'review_approved', 'finding_raised', 'finding_answered', 'completed', 'dropped', 'failed')),
   -- Who did it, written by the statement that writes the moment and never after.
   -- A runner failure before a station worker bootstraps has no worker rather than
   -- borrowing the operator's identity.
@@ -383,6 +394,7 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   review_id             INTEGER,
   finding_id            INTEGER,
   plan_id               INTEGER,
+  build_id              INTEGER REFERENCES factory_order_build(id),
   hold_type             TEXT,
   status                TEXT,
   reason                TEXT

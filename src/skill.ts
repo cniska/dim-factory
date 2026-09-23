@@ -17,6 +17,7 @@ import { type Env, resolveHomeDir } from "./paths";
  */
 export const SKILL_NAMES = [
   "dim-add",
+  "dim-artifact",
   "dim-design",
   "dim-line-feat",
   "dim-line-fix",

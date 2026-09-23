@@ -25,13 +25,15 @@ export type OrderEventKind =
   | "queued"
   | "claimed"
   | "moved"
-  | "plan_submitted"
+  | "plan_artifact_written"
   | "plan_approved"
   | "build_approved"
+  | "build_artifact_written"
   | "commit_created"
   | "check_finished"
   | "review_opened"
   | "review_closed"
+  | "review_artifact_written"
   | "review_approved"
   | "finding_raised"
   | "finding_answered"
@@ -74,6 +76,7 @@ export type OrderEvent = {
   reviewId?: number;
   findingId?: number;
   planId?: number;
+  buildId?: number;
   holdType?: string;
   status?: OrderStatus;
   reason?: string;
@@ -89,6 +92,7 @@ export type OrderNotDoneCode =
   | "order_not_building"
   | "order_not_planning"
   | "build_not_approved"
+  | "build_artifact_missing"
   | "review_not_approved";
 
 /** Carries a code because a caller deciding which condition failed must not match on prose. */
@@ -112,7 +116,12 @@ export class PlanApprovalRefused extends Error {
 
 export class BuildApprovalRefused extends Error {
   constructor(
-    readonly code: "worker_not_operator" | "commit_missing" | "build_not_checked" | "build_already_approved",
+    readonly code:
+      | "worker_not_operator"
+      | "commit_missing"
+      | "build_not_checked"
+      | "build_artifact_missing"
+      | "build_already_approved",
     message: string,
   ) {
     super(message);
@@ -215,6 +224,7 @@ function eventValues(orderId: string, event: OrderEvent, ts: string): (string | 
     event.reviewId ?? null,
     event.findingId ?? null,
     event.planId ?? null,
+    event.buildId ?? null,
     event.holdType ?? null,
     event.status ?? null,
     event.reason ?? null,
@@ -564,8 +574,8 @@ function appendOrderEventInTransaction(
   const written = db.run(
     `INSERT INTO factory_order_event
        (order_id, ts, kind, worker, session_id, station, commit_sha, check_id, review_id, finding_id, plan_id,
-        hold_type, status, reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        build_id, hold_type, status, reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     eventValues(orderId, event, event.ts ?? at),
   );
   // A failure hands the work back rather than ending it, so the row returns to the
@@ -986,8 +996,45 @@ export function recordOrderPlan(
         slice.outcome,
       ]);
     }
-    appendOrderEventInTransaction(db, orderId, { kind: "plan_submitted", worker, planId }, at);
+    appendOrderEventInTransaction(db, orderId, { kind: "plan_artifact_written", worker, planId }, at);
     return planId;
+  })();
+}
+
+export function recordOrderBuild(
+  db: Database,
+  orderId: string,
+  body: string,
+  headSha: string,
+  worker: string,
+  at = now(),
+): number {
+  assertOrderWorking(db, orderId);
+  const order = db
+    .query<{ station: string | null }, [string]>("SELECT station FROM factory_order WHERE id = ?")
+    .get(orderId);
+  if (order?.station !== "build" && order?.station !== "dim-station-build") {
+    throw new OrderNotDone(
+      "order_not_building",
+      `order ${orderId} must be at build before a build artifact can be submitted`,
+    );
+  }
+  if (body.trim() === "") throw new Error("build artifact body must not be empty");
+  if (headSha.trim() === "") throw new Error("build artifact head must not be empty");
+  return db.transaction(() => {
+    const revision = (db
+      .query<{ revision: number }, [string]>(
+        "SELECT coalesce(max(revision), 0) + 1 AS revision FROM factory_order_build WHERE order_id = ?",
+      )
+      .get(orderId)?.revision ?? 1) as number;
+    const written = db.run(
+      `INSERT INTO factory_order_build (order_id, revision, worker, body, head_sha, recorded_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [orderId, revision, worker, body, headSha, at],
+    );
+    const buildId = Number(written.lastInsertRowid);
+    appendOrderEventInTransaction(db, orderId, { kind: "build_artifact_written", worker, buildId }, at);
+    return buildId;
   })();
 }
 
@@ -1112,6 +1159,17 @@ export function approveOrderBuild(
     throw new BuildApprovalRefused(
       "build_not_checked",
       `order ${orderId} has no passing check after its latest build commit`,
+    );
+  }
+  const buildArtifact = db
+    .query<{ id: number }, [string, string]>(
+      "SELECT id FROM factory_order_build WHERE order_id = ? AND head_sha = ? ORDER BY revision DESC LIMIT 1",
+    )
+    .get(orderId, commit.sha);
+  if (!buildArtifact) {
+    throw new BuildApprovalRefused(
+      "build_artifact_missing",
+      `build ${commit.sha} for order ${orderId} has no artifact recorded by its builder`,
     );
   }
   const approved = db

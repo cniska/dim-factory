@@ -10,6 +10,7 @@ import {
   moveOrder,
   queueOrder,
   raiseOrderFinding,
+  recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
 } from "./factory-order";
@@ -75,6 +76,7 @@ describe("the operator loop", () => {
     const first = commit(worktree, "first");
     recordOrderCommit(db, "loop-order", first, builder.name, "feat: first");
     recordOrderCheck(db, "loop-order", { command: "bun run verify", exitCode: 0 }, builder.name);
+    recordOrderBuild(db, "loop-order", "The first slice is built and verified.", first, builder.name);
     approveOrderBuild(db, "loop-order", operator.name, "the requested behavior is present");
     moveOrder(db, "loop-order", "dim-station-review", operator.name);
 
@@ -123,6 +125,7 @@ describe("the operator loop", () => {
     const second = commit(worktree, "fixed");
     recordOrderCommit(db, "loop-order", second, builder.name, "fix: complete behavior");
     recordOrderCheck(db, "loop-order", { command: "bun run verify", exitCode: 0 }, builder.name);
+    recordOrderBuild(db, "loop-order", "The finding is fixed and verified.", second, builder.name);
     approveOrderBuild(db, "loop-order", operator.name, "the finding is answered");
     moveOrder(db, "loop-order", "dim-station-review", operator.name);
     const secondReview = runOrderReview(db, "loop-order", operator.name, {

@@ -91,7 +91,7 @@ describe("plan approval integration", () => {
     ).toEqual([
       { kind: "queued", worker: operator.name },
       { kind: "claimed", worker: operator.name },
-      { kind: "plan_submitted", worker: outcome.planner },
+      { kind: "plan_artifact_written", worker: outcome.planner },
       { kind: "plan_approved", worker: operator.name },
     ]);
     db.close();
@@ -137,7 +137,7 @@ describe("plan approval integration", () => {
     ).toEqual([
       { kind: "queued", worker: operator.name },
       { kind: "claimed", worker: operator.name },
-      { kind: "plan_submitted", worker: planner.name },
+      { kind: "plan_artifact_written", worker: planner.name },
       { kind: "plan_approved", worker: operator.name },
     ]);
     expect(db.query("SELECT plan_id FROM factory_order_event WHERE kind = 'plan_approved'").get()).toEqual({
@@ -190,7 +190,9 @@ describe("plan approval integration", () => {
       db.query("SELECT plan_id FROM factory_order_event WHERE kind = 'plan_approved' ORDER BY id").all(),
     ).toEqual([{ plan_id: first }, { plan_id: second }]);
     expect(
-      db.query("SELECT plan_id FROM factory_order_event WHERE kind = 'plan_submitted' ORDER BY id").all(),
+      db
+        .query("SELECT plan_id FROM factory_order_event WHERE kind = 'plan_artifact_written' ORDER BY id")
+        .all(),
     ).toEqual([{ plan_id: first }, { plan_id: second }]);
     db.close();
   });

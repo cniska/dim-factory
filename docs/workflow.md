@@ -4,9 +4,9 @@ The factory moves an order from evidence-backed research to a shipped result whi
 
 ## Order lifecycle
 
-The stations form one path, but an order also has queue, worker, environment, integration, and stopping state. Each station produces a different artifact. The plan explains what should be true; the implementation outline explains how this repository will make it true; the slices and evidence show what happened.
+The stations form one path, but an order also has queue, worker, environment, integration, and stopping state. Each station worker writes a different artifact. The plan explains what should be true; the implementation outline explains how this repository will make it true; the slices and evidence show what happened.
 
-Every artifact leads with a concise account for the reader and scales its supporting detail to the change's size and risk. A small fix stays short; a multi-boundary change exposes the program design and its dependencies. Scaling the explanation never removes a required contract, evidence, or attribution field. This applies to plans, Summaries, reviews, and execution reports.
+Every human-facing artifact leads with a concise outcome for the reader and scales its supporting detail to the change's size and risk. A small fix stays short; a multi-boundary change exposes the program design and its dependencies. Scaling the explanation never removes a required contract, evidence, or attribution field. This applies to plans, Build artifacts, reviews, and execution reports.
 
 ```text
 intake
@@ -30,7 +30,7 @@ The factory starts with the smallest complete lifecycle and adds planning machin
 
 | Phase | Workflow | Adds when needed |
 |---|---|---|
-| **Core order loop** | Queue, claim, plan, delegate verified slices, review, produce an account, ship, complete | The durable order, plan, slice, check, finding, account, commit, and outcome records; no blocking human gate |
+| **Core order loop** | Queue, claim, plan, delegate verified slices, review, produce a Build artifact, ship, complete | The durable order, plan, slice, check, finding, artifact, commit, and outcome records; no blocking human gate |
 | **Targeted planning** | The core loop plus independent read-only planning workers | Prior-art, contract, program-design, or risk workers for unfamiliar, multi-file, boundary, or irreversible work |
 | **Plan comparison** | Targeted planning plus plan revisions and implementation comparison | Call and dependency graphs, attempt identities, loop iterations, owner verdicts, and plan-versus-result queries |
 | **Self-maintaining factory** | Plan comparison plus scheduled reviews and measured process changes | Architecture, test, docs, security, dependency, and simplification sweeps for projects and the factory itself, whose findings become ordinary orders |
@@ -253,7 +253,7 @@ The first version records coverage rather than creating a worker for every modul
 
 Reviews have two scopes. A `slice` review reads one slice's exact commit range against its brief and runs before the next slice starts. An `order` review reads the assembled range against the approved plan and outcome and runs after the final slice. The same review station and order reviewer identity handle both scopes; a one-slice order needs only its slice review.
 
-The order account reports the review coverage, unresolved review debt, cross-module edges, and the time between implementation and review. A later project-wide review is a scheduled diagnostic or a bounded repair order, not the normal way to discover whether shipped work was sound.
+The order report reports the review coverage, unresolved review debt, cross-module edges, and the time between implementation and review. A later project-wide review is a scheduled diagnostic or a bounded repair order, not the normal way to discover whether shipped work was sound.
 
 Review compares three graphs:
 
@@ -273,15 +273,15 @@ The factory chooses the cheapest reliable sensor for each question. Repository c
 
 ## Ship
 
-**Live in part; the explanation gate, owner verdict, and separate integration evidence are planned.** The history repeatedly converges on a plan-before/account-after pair, and prior project workflows use an explicit ship/change/rethink verdict. The order therefore produces an independent account of what was built before shipping.
+**Live in part; the explanation gate, owner verdict, and separate integration evidence are planned.** The history repeatedly converges on a plan-before/Build-artifact-after pair, and prior project workflows use an explicit ship/change/rethink verdict. The order therefore produces an independent artifact of what was built before shipping.
 
-The account is similar to the `explain-diff` skill, but is scoped to the order. A fresh worker reads the approved plan, implementation outline, commits, changed files, program graph, checks, and review findings. It explains the result's intent, load-bearing decisions, risks, non-obvious contracts, plan deviations, and what the owner should scrutinize. It explains; it does not review or approve.
+The Build artifact is similar to the `explain-diff` skill, but is scoped to the order. A fresh worker reads the approved plan, implementation outline, commits, changed files, program graph, checks, and review findings. It explains the result's intent, load-bearing decisions, risks, non-obvious contracts, plan deviations, and what the owner should scrutinize. It explains; it does not review or approve.
 
 When a human shipping gate is enabled, it reads:
 
 ```text
 approved plan
-  ↔ what-was-built account
+  ↔ Build artifact
   ↔ independent review artifacts
   ↔ mechanical checks and integration evidence
 ```
@@ -290,7 +290,7 @@ The owner can then choose to ship as planned, return for changes, ship with an e
 
 The owner verdict records whether the result landed as planned, was sent back, or changed before landing, with grounds for any decision other than acceptance as planned.
 
-In the first version, the operator ships when the mechanical completion conditions and independent review conditions pass. The account is recorded for observability and later evaluation; it does not block shipping and does not imply owner approval. A later phase can make it a gate after measuring whether it reduces missed scope, plan deviations, and later fixes. Shipping still verifies the order's checks and evidence, confirms the change reached the intended trunk or delivery boundary, and leaves the order's terminal outcome. Completion and integration are separate facts: verified work can exist before it is integrated. The account is not a replacement for tests or review, and a clean worker exit is not evidence of delivery.
+In the first version, the operator ships when the mechanical completion conditions and independent review conditions pass. The Build artifact is recorded for observability and later evaluation; it does not block shipping and does not imply owner approval. A later phase can make it a gate after measuring whether it reduces missed scope, plan deviations, and later fixes. Shipping still verifies the order's checks and evidence, confirms the change reached the intended trunk or delivery boundary, and leaves the order's terminal outcome. Completion and integration are separate facts: verified work can exist before it is integrated. The Build artifact is not a replacement for tests or review, and a clean worker exit is not evidence of delivery.
 
 ## Completion and cleanup
 

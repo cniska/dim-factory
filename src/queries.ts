@@ -1160,7 +1160,8 @@ const order: Query = {
         `SELECT 'event' AS section, e.ts AS "when", e.kind, coalesce(e.status, '') AS status,
                 coalesce(e.station, '') AS subject,
                 coalesce(e.reason, e.hold_type, e.commit_sha, cast(e.check_id AS TEXT),
-                         cast(e.finding_id AS TEXT), '') AS evidence
+                         cast(e.finding_id AS TEXT), cast(e.plan_id AS TEXT),
+                         cast(e.build_id AS TEXT), cast(e.review_id AS TEXT), '') AS evidence
          FROM factory_order_event e WHERE e.order_id = ?`,
         [id],
       ),
@@ -1173,6 +1174,14 @@ const order: Query = {
                 run_id || ' | operator=' || coalesce(operator_worker, '(none)') ||
                 coalesce(' | ' || reason, '') AS evidence
          FROM factory_order_attempt WHERE order_id = ? ORDER BY id`,
+        [id],
+      ),
+      ...table(
+        db,
+        `SELECT 'artifact' AS section, recorded_at AS "when", 'build_artifact_written' AS kind,
+                cast(revision AS TEXT) AS status,
+                worker || ' @ ' || head_sha AS subject, body AS evidence
+         FROM factory_order_build WHERE order_id = ? ORDER BY revision`,
         [id],
       ),
       ...table(

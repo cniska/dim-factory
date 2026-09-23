@@ -46,7 +46,7 @@ After plan approval:
 
 1. Move the order to `dim-station-build`.
 2. Run `dim order build <order-id> --harness codex`. The factory assigns one builder identity for the order, starts the selected harness in the order's worktree, and records commits, files, checks, documents, and findings under that builder as they occur.
-3. Read the builder's returned Summary and `dim q order <order-id>`. Approve the exact checked build with `dim order approve-build <order-id> --reason "..."` only when the Summary and evidence answer the requested outcome.
+3. Read the builder's returned Build artifact and `dim q order <order-id>`. Approve the exact checked build with `dim order approve-build <order-id> --reason "..."` only when the Build artifact and evidence answer the requested outcome.
 4. Move the order to `dim-station-review` and run `dim order review <order-id> --harness codex`. The command assigns a separate reviewer under the operator, reuses that reviewer identity for later rounds, and records findings under the reviewer identity.
 5. Read the Review artifact and its findings. If findings exist, hand the order back to the builder with their ids and required fixes. The operator approves the next build before starting another review round.
 6. When a review is clean, run `dim order approve-review <order-id>` as the operator.

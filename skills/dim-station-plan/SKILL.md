@@ -45,6 +45,8 @@ Returning nothing is the expected result. A reviewer earns trust the way a test 
 
 ## Write for the owner
 
+Use `dim-artifact` for the shared artifact-writing contract. This station supplies the plan's design dimensions:
+
 The plan is the shared artifact the owner approves and the builder executes, not a private implementation prompt. Make the first page answer what the owner needs to decide while making the rest precise enough for the builder to follow:
 
 - **Outcome.** What becomes true, the boundary of the change, explicit non-goals, and the decisions that belong to the owner.
@@ -74,6 +76,10 @@ The plan is done when it names:
 - the risks, holds, predictions, and what is still unknown
 
 If all four queries came back empty, say that in the plan. An empty record is a fact about the work being new, and it is worth more written down than silently skipped.
+
+## See also
+
+- `dim-artifact`
 
 ## What the record cannot tell you
 

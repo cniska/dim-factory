@@ -34,9 +34,11 @@ Use `dim-tdd` for behavior-changing slices and `dim-simplify` for the simplifica
 
 Where a slice turns out to be blocked, finish every other slice in full and say plainly what was left and why. Scaling the work down is the owner's call.
 
-## Produce the Summary
+## Produce the Build artifact
 
-After the final slice has a passing check, return one Summary for the owner. Lead with what became true and why, then name the commits, changed behavior, checks, review-relevant evidence, deviations from the approved plan, and unresolved risks. Keep the detail proportional to the change while retaining the evidence and worker attribution. The Summary is provisional until review is accepted; the operator checks it against the recorded evidence before delegating review and the builder updates it when review returns the work.
+Use `dim-artifact` for the shared artifact-writing contract. The Build artifact is the builder's explanation of the completed slice, grounded in the recorded diff and checks:
+
+After the final slice has a passing check, return one Build artifact for the owner. Lead with what became true and why, then name the commits, changed behavior, checks, review-relevant evidence, deviations from the approved plan, and unresolved risks. Keep the detail proportional to the change while retaining the evidence and worker attribution. The Build artifact is provisional until review is accepted; the operator checks it against the recorded evidence before delegating review and the builder updates it when review returns the work.
 
 ## Simplify the slice before it is checked
 
@@ -95,6 +97,10 @@ The change is done when:
 ## When to stop and ask
 
 Unattended, stop only where the choice is genuinely the owner's: work that is hard to reverse, work that is outward-facing, or a change that spends something on every session rather than this one. Everything else is settled here and stated. A question a query could have answered should have been a query.
+
+## See also
+
+- `dim-artifact`
 
 ## What the record cannot tell you
 

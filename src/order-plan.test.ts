@@ -125,7 +125,7 @@ describe("planner station", () => {
     expect(db.query("SELECT kind FROM factory_order_event WHERE order_id = 'planner-order'").all()).toEqual([
       { kind: "queued" },
       { kind: "claimed" },
-      { kind: "plan_submitted" },
+      { kind: "plan_artifact_written" },
     ]);
     db.close();
     rmSync(repo.dir, { recursive: true, force: true });

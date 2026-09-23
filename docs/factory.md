@@ -162,7 +162,7 @@ The planned scheduler makes recurring factory runs visible without choosing the 
 
 The first slice is live: `dim schedule define` persists an interval schedule, `dim schedule pause|resume` controls its enabled state, and `dim q schedules` reads the persisted definitions and due selection. Installing or mutating a host scheduler, claiming queue work and recording order execution remain outside that slice.
 
-## What is missing is not another skill
+## What makes the stations a line
 
 Two layers separate a set of stations from a line that runs itself, and neither is more instruction.
 
@@ -188,7 +188,7 @@ That is an autonomous cell rather than a factory: a bounded unit that runs work 
 
 Planned. "On its own merit" needs something to read the merit off, and the owner's verdicts are not written down anywhere today. `factory_order_finding` records an agent's finding with the grounds a refusal rested on; the owner's decision on a finished order has no such row.
 
-The two things a verdict is passed on already have writers. [`dim-station-plan`](../skills/dim-station-plan/SKILL.md) returns a plan in slices, and reading a built diff back as intent and risk is what the reviewing station does. Neither persists against an order, so both end in a transcript; an account written for the owner also names the commits it describes, since that is what makes it checkable rather than trusted.
+The two things a verdict is passed on already have writers. [`dim-station-plan`](../skills/dim-station-plan/SKILL.md) returns a plan in slices, and reading a built diff back as intent and risk is what the reviewing station does. Neither persists against an order, so both end in a transcript; a Build artifact written for the owner also names the commits it describes, since that is what makes it checkable rather than trusted.
 
 - **The verdict.** Per order: landed as it came, sent back, or changed before landing — with the grounds whenever it was not the first.
 - **What it answers.** Which kinds of work stopped needing a reading, and which still earn one. That is the question "how involved should I be" resolves into, and it is a query over verdicts rather than a memory of how the last few felt.

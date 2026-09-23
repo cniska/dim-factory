@@ -30,7 +30,7 @@ So the metaphor is not the contribution, and neither is the position that the an
 |---|---|---|
 | Feed-forward guides | Project rules, prior art, contracts and the approved plan | Live in the stations; the workflow makes their order explicit |
 | Fast computational sensors | Repository checks, schema validation, structural rules and commit gates | Live in part; the factory still needs more project-declared checks |
-| Independent inferential sensors | Read-only review dimensions and the what-was-built account | Review is live; the account and its gate are partly planned |
+| Independent inferential sensors | Read-only review dimensions and the Build artifact | Review is live; the artifact gate is partly planned |
 | Continuous health sensors | Scheduled project and factory reviews that create bounded orders | Planned in [`workflow.md`](workflow.md) and [`build-order.md`](build-order.md) |
 | Structured context reset | A durable handoff containing the plan revision, committed state, checks, findings and next action | Planned in [`workflow.md`](workflow.md) |
 | Repository legibility | Project-owned conventions, bounded program design, observable worktrees and typed factory events | Mixed: the factory supplies the common evidence, the project supplies local structure |

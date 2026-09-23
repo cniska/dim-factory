@@ -16,6 +16,7 @@ import {
   type OrderStatus,
   queueOrder,
   raiseOrderFinding,
+  recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
   recordOrderDocument,
@@ -49,6 +50,7 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--des
        dim order commit <order-id> --sha <sha> [--subject "..."]
        dim order file <order-id> --path <path> [--added <n>] [--removed <n>]
        dim order check <order-id> --command "..." --exit <code> [--result "..."]
+       dim order build-artifact <order-id> --body "..." --head <sha>
        dim order review <order-id> --harness <codex>
        dim order finding <order-id> --dimension <name> --summary "..."
        dim order answer <finding-id> --answer <fixed|refused>
@@ -204,6 +206,13 @@ const EVIDENCE: Record<string, Evidence> = {
       const code = exitCode(given);
       recordOrderCheck(db, id, { command, exitCode: code, result: given.get("--result") }, worker);
       return `${id} recorded ${command} (${code})`;
+    },
+  },
+  "build-artifact": {
+    flags: ["--body", "--head"],
+    record: (db, id, given, worker) => {
+      const buildId = recordOrderBuild(db, id, required(given, "--body"), required(given, "--head"), worker);
+      return `${id} recorded build artifact ${buildId}`;
     },
   },
   finding: {

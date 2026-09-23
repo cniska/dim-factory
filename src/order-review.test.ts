@@ -7,6 +7,7 @@ import {
   claimOrder,
   queueOrder,
   raiseOrderFinding,
+  recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
 } from "./factory-order";
@@ -97,6 +98,7 @@ function slice(db: Database, dir: string, worker: string, name: string): string 
     .trim();
   recordOrderCommit(db, "order-1", sha, worker, `feat: ${name}`);
   recordOrderCheck(db, "order-1", { command: "bun run verify", exitCode: 0 }, worker);
+  recordOrderBuild(db, "order-1", `The ${name} slice is built and verified.`, sha, worker);
   const operator = db
     .query<{ name: string }, []>("SELECT name FROM factory_worker WHERE role = 'operator'")
     .get();

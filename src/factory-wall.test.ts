@@ -13,6 +13,7 @@ import {
   type OrderClaim,
   queueOrder,
   raiseOrderFinding,
+  recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
   recordOrderDocument,
@@ -91,6 +92,14 @@ describe("factory wall snapshot", () => {
       { command: "bun run verify", exitCode: 0, result: "green" },
       worker,
       "2026-09-18T08:01:30.000Z",
+    );
+    recordOrderBuild(
+      db,
+      "order-done",
+      "The board change is built and verified.",
+      trunk.sha,
+      worker,
+      "2026-09-18T08:01:32.000Z",
     );
     const operator = workerIn(db, "operator");
     approveOrderBuild(db, "order-done", operator, "the board change is complete", "2026-09-18T08:01:35.000Z");
@@ -382,6 +391,14 @@ describe("factory wall snapshot", () => {
           { command: "bun run verify", exitCode: 0, result: "green" },
           worker,
           "2026-09-18T09:00:45.000Z",
+        );
+        recordOrderBuild(
+          db,
+          id,
+          "The change is built and verified.",
+          trunk.sha,
+          worker,
+          "2026-09-18T09:00:47.000Z",
         );
       }
       appendOrderEvent(

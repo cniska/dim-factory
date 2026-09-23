@@ -67,6 +67,7 @@ if (brief.includes("planner")) {
   run(["commit", order, "--sha", sha, "--subject", "feat: real harness slice " + slice]);
   run(["file", order, "--path", file, "--added", "1", "--removed", "0"]);
   run(["check", order, "--command", "true", "--exit", "0", "--result", "green"]);
+  run(["build-artifact", order, "--body", "The slice is built and verified by the real harness.", "--head", sha]);
 } else if (brief.includes("reviewer")) {
   // The harness emits its terminal event after the station work returns.
 } else {
@@ -181,12 +182,13 @@ describe("headless factory loop", () => {
     ).toEqual([
       "queued",
       "claimed",
-      "plan_submitted",
+      "plan_artifact_written",
       "plan_approved",
       "moved",
       "claimed",
       "commit_created",
       "check_finished",
+      "build_artifact_written",
       "build_approved",
       "moved",
       "review_opened",
@@ -196,6 +198,7 @@ describe("headless factory loop", () => {
       "claimed",
       "commit_created",
       "check_finished",
+      "build_artifact_written",
       "build_approved",
       "moved",
       "review_opened",

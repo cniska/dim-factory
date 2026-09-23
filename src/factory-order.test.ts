@@ -9,6 +9,7 @@ import {
   amendOrder,
   answerOrderFinding,
   appendOrderEvent,
+  approveOrderBuild,
   approveOrderPlan,
   claimOrder as claimOrderAt,
   completeOrderSlice,
@@ -19,6 +20,7 @@ import {
   type OrderClaim,
   queueOrder,
   raiseOrderFinding,
+  recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
   recordOrderDocument,
@@ -110,6 +112,47 @@ const teardownReport: WorkerHookReport = {
 };
 
 describe("factory order report records", () => {
+  test("build approval requires an artifact for the latest commit", () => {
+    const database = db();
+    const operator = mintWorker(database, {
+      role: "operator",
+      sessionId: newWorkerSession("build-gate-operator"),
+    });
+    const builder = mintWorker(database, {
+      role: "builder",
+      parentWorker: operator.name,
+      sessionId: newWorkerSession("build-gate-builder"),
+    });
+    queueOrder(database, { ...order, id: "order-build-artifact" }, operator.name);
+    claimOrder(database, "order-build-artifact", { ...claim, station: "dim-station-build" }, builder.name);
+    recordOrderCommit(database, "order-build-artifact", "old-head", builder.name, "feat: first");
+    recordOrderCheck(
+      database,
+      "order-build-artifact",
+      { command: "bun run verify", exitCode: 0 },
+      builder.name,
+    );
+    recordOrderBuild(
+      database,
+      "order-build-artifact",
+      "The first build is verified.",
+      "old-head",
+      builder.name,
+    );
+    recordOrderCommit(database, "order-build-artifact", "new-head", builder.name, "feat: second");
+    recordOrderCheck(
+      database,
+      "order-build-artifact",
+      { command: "bun run verify", exitCode: 0 },
+      builder.name,
+    );
+
+    expect(() =>
+      approveOrderBuild(database, "order-build-artifact", operator.name, "the build is complete"),
+    ).toThrow(expect.objectContaining({ code: "build_artifact_missing" }));
+    database.close();
+  });
+
   test("refuses implementation evidence while an order is still in plan", () => {
     const database = db();
     queueOrder(database, { ...order, id: "order-plan" }, worker);
@@ -134,7 +177,7 @@ describe("factory order report records", () => {
     ).toEqual({ body: "## outcome\n\nMove the order before building.", worker });
     expect(
       database.query("SELECT kind FROM factory_order_event WHERE order_id = 'order-planned'").all(),
-    ).toEqual([{ kind: "queued" }, { kind: "claimed" }, { kind: "plan_submitted" }]);
+    ).toEqual([{ kind: "queued" }, { kind: "claimed" }, { kind: "plan_artifact_written" }]);
 
     moveOrder(database, "order-planned", "dim-station-build", worker);
     recordOrderCommit(database, "order-planned", trunk.sha, worker, "feat: planned order");

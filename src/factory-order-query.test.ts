@@ -8,6 +8,7 @@ import {
   type OrderClaim,
   queueOrder,
   raiseOrderFinding,
+  recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
   recordOrderDocument,
@@ -219,6 +220,14 @@ describe("factory order query", () => {
       worker,
       "2026-09-18T10:02:00.000Z",
     );
+    recordOrderBuild(
+      db,
+      "order-123",
+      "The report is built and verified.",
+      "abc",
+      worker,
+      "2026-09-18T10:02:15.000Z",
+    );
     const raised = raiseOrderFinding(
       db,
       "order-123",
@@ -254,6 +263,8 @@ describe("factory order query", () => {
       "file",
       "event",
       "check",
+      "event",
+      "artifact",
       "event",
       "event",
       "event",
