@@ -63,6 +63,8 @@ The repository owns setup and teardown details: dependencies, services, ports, e
 
 Every worker act names its worker at write time. A runner failure before a worker bootstraps carries no worker and keeps its harness evidence instead of borrowing the operator's identity. Harness identity, model, tier, and operator are recorded as attributes of the run or event rather than inferred later from a transcript join.
 
+When the operator records recovery after a runner has already claimed a worker, the lifecycle event names the operator who performed the recovery while the finished attempt remains attributed to the worker that ran it. The two acts stay distinct in the audit trail.
+
 ## Delegation and worker trees
 
 The operator owns one project run, while each station owns the shape of its internal delegation. A station worker may request child workers for independent work; the factory creates a one-use assignment, and the child harness bootstraps it under its own session before the factory creates the worker and records the parent-child relationship. The station chooses the dimensions, and the operator does not repeat that knowledge by spawning each child manually.

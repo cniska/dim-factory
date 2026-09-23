@@ -343,6 +343,43 @@ describe("factory order report records", () => {
     database.close();
   });
 
+  test("keeps an operator recovery event from changing the failed worker", () => {
+    const database = db();
+    const operator = mintWorker(database, {
+      role: "operator",
+      sessionId: newWorkerSession("recovery-operator"),
+    }).name;
+    const builder = mintWorker(database, {
+      role: "builder",
+      parentWorker: operator,
+      sessionId: newWorkerSession("recovery-builder"),
+    }).name;
+    queueOrder(database, { ...order, id: "operator-recovery" }, operator);
+    claimOrder(
+      database,
+      "operator-recovery",
+      { runId: "recovery-run", station: "dim-station-build" },
+      builder,
+      "2026-09-22T11:00:00.000Z",
+    );
+
+    appendOrderEvent(
+      database,
+      "operator-recovery",
+      { kind: "failed", worker: operator, reason: "runner exited" },
+      "2026-09-22T11:01:00.000Z",
+    );
+
+    expect(
+      database
+        .query<{ worker: string; operator_worker: string }, [string]>(
+          "SELECT worker, operator_worker FROM factory_order_attempt WHERE order_id = ? AND kind = 'finished'",
+        )
+        .get("operator-recovery"),
+    ).toEqual({ worker: builder, operator_worker: operator });
+    database.close();
+  });
+
   test("a second hand cannot take an order at the station already working it", () => {
     const database = db();
     const builder = workerIn(database, "builder");

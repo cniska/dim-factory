@@ -590,11 +590,18 @@ function appendOrderEventInTransaction(
     ],
   );
   if (event.kind === "failed") {
+    const attemptWorker = order.run_id
+      ? (db
+          .query<{ worker: string | null }, [string, string]>(
+            "SELECT worker FROM factory_order_attempt WHERE order_id = ? AND run_id = ? AND kind = 'started'",
+          )
+          .get(orderId, order.run_id)?.worker ?? event.worker)
+      : event.worker;
     recordAttemptFinish(
       db,
       orderId,
       order.run_id,
-      event.worker,
+      attemptWorker ?? undefined,
       order.station,
       "failed",
       event.reason,
