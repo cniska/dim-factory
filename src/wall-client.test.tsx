@@ -30,5 +30,14 @@ describe("item history", () => {
     expect(source).toMatch(/>\s*Plan\s*</);
     expect(source).toContain('aria-labelledby="item-log"');
     expect(source).toMatch(/>\s*Log\s*</);
+    expect(source).toMatch(
+      /\{read\.view\?\.plan \? <div className="border-t" aria-hidden="true" \/> : null\}/,
+    );
+    expect(source).toContain('const NO_WORKER = "none";');
+    expect(source).toContain("<dt>assignee</dt>");
+    expect(source).toContain(
+      'if (!entry.worker || !entry.role) return <span className="text-quiet">{NO_WORKER}</span>;',
+    );
+    expect(source.indexOf("<dt>order</dt>")).toBeLessThan(source.indexOf("<dt>project</dt>"));
   });
 });

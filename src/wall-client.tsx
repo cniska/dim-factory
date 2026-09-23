@@ -65,7 +65,7 @@ const roleTint: Record<WallRole, string | undefined> = {
   reviewer: "text-role-reviewer",
 };
 
-const NO_WORKER = "no worker recorded";
+const NO_WORKER = "none";
 
 function statusTint(order: WallOrder): string {
   return isStopped(order) ? "text-warn-foreground" : "text-muted-foreground";
@@ -208,7 +208,7 @@ function WorkerLabel({ worker, role, className }: { worker: string; role: WallRo
  *  the order currently sits under: a history is a sequence of hands, and a reviewer's moment
  *  wearing the builder's color says the wrong thing about who wrote it. */
 function EntryWorker({ entry }: { entry: WallItemEntry }) {
-  if (!entry.worker || !entry.role) return null;
+  if (!entry.worker || !entry.role) return <span className="text-quiet">{NO_WORKER}</span>;
 
   return <WorkerLabel worker={entry.worker} role={entry.role} className="justify-end text-quiet" />;
 }
@@ -335,6 +335,10 @@ function ItemDialog({
           ) : null}
           <dl className="flex flex-wrap items-center gap-x-6 gap-y-1 text-quiet">
             <div className="flex items-center gap-2">
+              <dt>order</dt>
+              <dd className="text-muted-foreground">{order.id}</dd>
+            </div>
+            <div className="flex items-center gap-2">
               <dt>project</dt>
               <dd className="text-muted-foreground">{read.view?.project}</dd>
             </div>
@@ -345,7 +349,7 @@ function ItemDialog({
               </div>
             ) : null}
             <div className="flex items-center gap-2">
-              <dt>worker</dt>
+              <dt>assignee</dt>
               <dd className="flex items-center gap-1.5 text-muted-foreground">
                 {order.worker && order.role ? (
                   <WorkerLabel worker={order.worker} role={order.role} />
@@ -370,10 +374,6 @@ function ItemDialog({
                 />
                 {statusLabels[order.status]}
               </dd>
-            </div>
-            <div className="flex items-center gap-2">
-              <dt>order</dt>
-              <dd className="text-muted-foreground">{order.id}</dd>
             </div>
           </dl>
         </header>
@@ -405,7 +405,7 @@ function ItemDialog({
               </div>
             </section>
           ) : null}
-          <div className="border-t" aria-hidden="true" />
+          {read.view?.plan ? <div className="border-t" aria-hidden="true" /> : null}
           <section aria-labelledby="item-log" className="min-w-0 px-5 pb-5 pt-5">
             <h3 id="item-log" className="mb-2 text-base font-medium text-foreground leading-6">
               Log
