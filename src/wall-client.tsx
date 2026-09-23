@@ -428,15 +428,17 @@ function ItemDialog({
               aria-labelledby="item-plan"
               className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-xxl)] pt-[var(--space-lg)]"
             >
-              <h3 id="item-plan" className="text-base font-medium text-foreground leading-6">
-                Plan
-              </h3>
-              <div className="flex flex-wrap items-center gap-x-[var(--space-sm)] gap-y-[var(--space-xs)] text-muted-foreground leading-5">
-                <WorkerLabel worker={read.view.plan.worker} role={read.view.plan.role} />
-                <span aria-hidden="true">·</span>
-                <span>revision {read.view.plan.revision}</span>
-                <span aria-hidden="true">·</span>
-                <span>{read.view.plan.approved ? "approved" : "awaiting approval"}</span>
+              <div className="space-y-[var(--space-xs)]">
+                <h3 id="item-plan" className="text-base font-medium text-foreground leading-6">
+                  Plan
+                </h3>
+                <div className="flex flex-wrap items-center gap-x-[var(--space-sm)] gap-y-[var(--space-xs)] text-muted-foreground leading-5">
+                  <WorkerLabel worker={read.view.plan.worker} role={read.view.plan.role} />
+                  <span aria-hidden="true">·</span>
+                  <span>revision {read.view.plan.revision}</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{read.view.plan.approved ? "approved" : "awaiting approval"}</span>
+                </div>
               </div>
               <div
                 className={cn(
