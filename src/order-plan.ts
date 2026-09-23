@@ -54,6 +54,7 @@ export function plannerBrief(order: { id: string; title: string; description: st
     "Show the evidence and what it ruled out; state contracts, invariants, states, transitions, errors, and ownership.",
     "Include program design: file tree, key signatures, call path, data flow, and boundary crossings.",
     "Name an executable check for each contract and give every slice a behavior, affected area, check, and dependency.",
+    "Name the review dimensions this change needs; include maintainability and performance when the change materially affects them.",
     "End with risks, holds, unresolved questions, predictions, and the conditions for approval.",
     "The factory runner has already created your worker identity from this harness session before your first tool call.",
     'Return exactly one JSON object with a non-empty string "body" and a non-empty "slices" array. Each slice has a non-empty "title" and "outcome". Do not use a Markdown fence or add any text outside the JSON object. Do not edit files, commit, or run mutation commands.',

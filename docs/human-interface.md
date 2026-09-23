@@ -89,13 +89,14 @@ An order the owner has to answer — blocked, held or failed — is ranked above
 
 A card answers where an item is; the item view answers what happened to it. Opening one card shows that order alone, and the board stays an overview rather than growing columns to hold the detail.
 
-It is a dialog over the board, the shape a detail surface already takes in this owner's other work: a titled header, the order's facts in a term-and-value grid, and the content below it. Two things differ. It is sized for reading rather than for a form, so a history as long as the order was fits without the dialog outgrowing the viewport — the dialog holds its size and its content scrolls, and the plan and Summary below will have the same room. And it carries no action row, because opening a record is the whole of what it does.
+It is a dialog over the board, the shape a detail surface already takes in this owner's other work: a titled header, the order's facts in a term-and-value grid, and the content below it. Two things differ. It is sized for reading rather than for a form, so a history as long as the order was fits without the dialog outgrowing the viewport — the dialog holds its size and its content scrolls, and the Plan, Build and Review sections below will have the same room. And it carries no action row, because opening a record is the whole of what it does.
 
 The dialog is a decision surface, not only an audit-log viewer. In addition to the audit log and changed-file list, it shows the following sections in this order:
 
 - **Current decision.** State, station, project, owner action, active hold or blocker, current attempt, silence age, and the latest check or finding that explains the state.
 - **Intent.** Queue statement, approved plan revision, approval state, risks, non-goals, and the implementation outline. The queue statement is what was requested; the plan is what the order decided to do about it.
-- **Summary.** An independent explanation of what was built, why it has this shape, what risks remain, and where it differs from the approved plan. It links to the exact commits, final check, integration state, and owner verdict. It appears only when the order is ready; until then, the dialog shows the plan and evidence that explain the current state.
+- **Build.** The Summary artifact: an independent explanation of what was built, why it has this shape, what risks remain, and where it differs from the approved plan. It links to the exact commits, final check, integration state, and owner verdict. It appears only when the order is ready; until then, the dialog shows the Plan and evidence that explain the current state.
+- **Review.** The review artifact and its attributed findings, showing why the order may advance or must return. It appears once review has been delegated.
 - **Program design.** The bounded file tree, key signatures, call path, data flow, and planned boundary crossings. Show the graph collapsed by default; expand it when the owner is investigating a scope or architecture question.
 - **Execution summary.** Attempts, loop iterations, failed checks, review rounds, simplification fixpoints, worker and operator attribution, model or tier where recorded, and setup or teardown state.
 - **Audit log.** The immutable lifecycle sequence, including claims, station moves, delegations, checks, findings, documents, environment reports, outcomes, and integration.
@@ -131,7 +132,7 @@ Planned. An item view shows what happened; these two let the owner judge it with
 They belong on one surface, against each other, however the rest of the view divides. Their value is where they disagree — scope that grew, a slice never built — and a difference nobody can see is a difference nobody finds.
 
 - **The plan, before.** What the order intends to build, in the words a person would use, written when the item is claimed and not edited afterward. A plan that can be revised once the work is done can always be made to match the work, so its value comes from being fixed at claim time and attached to the order rather than to a session. It is not the item's description, which the claim already records: that is what the queue asked for, while the plan is what the order means to do about it, and the gap between them is the thing worth reading.
-- **The Summary, after.** What the order actually built, read off its diff. It names the commits it describes, because a generated Summary of a change is indistinguishable from a checked one after the fact, and `factory_order_commit` with `factory_order_file` stay the record a reader can verify it against.
+- **The Build, after.** What the order actually built, read off its diff. It names the commits it describes, because a generated Summary is indistinguishable from a checked one after the fact, and `factory_order_commit` with `factory_order_file` stay the record a reader can verify it against.
 - **The difference between them.** The review artifact is where the two disagree: work that appeared, scope that grew, a slice planned and never built. Holding both against the same order and the same slice identity makes that a query rather than a reading exercise.
 
 Writing an account of every diff spends on every order rather than on one, which makes it a decision the owner takes once rather than a step an agent adds.
@@ -175,7 +176,7 @@ The wall exposes holds, blockers and other places where the factory needs human 
 - a result that differs from the approved plan
 - a ship or owner verdict awaiting a decision
 
-When a human shipping gate is enabled, Summary is its default focus. Until then, the dialog exposes it for observation and future measurement while the operator continues through the mechanical shipping conditions.
+When a human shipping gate is enabled, Build is its default focus. Until then, the dialog exposes the Plan, Build and Review artifacts for observation while the operator continues through the mechanical shipping conditions.
 
 These are visibility states, not controls. The wall remains read-only until the factory record shows which decisions recur often enough to earn a safe control surface.
 

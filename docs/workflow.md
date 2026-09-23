@@ -229,7 +229,7 @@ Long-running work may cross context windows. A context reset starts a fresh work
 
 ## Review
 
-**Live.** Review reads the diff against its intent and uses the record to aim its dimensions. Correctness, tests, architecture, docs, security, and style are separate read-only passes. Each finding is checked at its source and then fixed or refused with a reason.
+**Live.** Review reads the diff against its intent and uses the record to aim its dimensions. Correctness, tests, architecture, maintainability, docs, security, and style are separate read-only passes; performance is added when the plan identifies a performance-sensitive path. Each finding is checked at its source and then fixed or refused with a reason.
 
 ### Review granularity
 

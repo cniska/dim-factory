@@ -34,6 +34,10 @@ Use `dim-tdd` for behavior-changing slices and `dim-simplify` for the simplifica
 
 Where a slice turns out to be blocked, finish every other slice in full and say plainly what was left and why. Scaling the work down is the owner's call.
 
+## Produce the Summary
+
+After the final slice has a passing check, return one Summary for the owner. Lead with what became true and why, then name the commits, changed behavior, checks, review-relevant evidence, deviations from the approved plan, and unresolved risks. Keep the detail proportional to the change while retaining the evidence and worker attribution. The Summary is provisional until review is accepted; the operator checks it against the recorded evidence before delegating review and the builder updates it when review returns the work.
+
 ## Simplify the slice before it is checked
 
 The slice that just went green is the code most recently written and least read, so it needs no aiming. Nothing ever asks for simplification, and a pass that has to be remembered is a pass that does not happen — which is why it runs here rather than waiting to be invoked.

@@ -16,13 +16,16 @@ This station carries its review briefs directly. Each dimension supplies finding
 
 The review is an artifact for the owner as well as evidence for the operator. Lead with the verdict and why it matters, then include detail proportional to the change's size and risk. Keep every finding's contract, evidence, file and worker attribution even when the prose stays short.
 
+Return one Review artifact with the verdict, dimensions covered, evidence considered, and the reason the order may advance or must return. Keep each finding separately attributed beneath it. Stop for the operator's gate after submitting the artifact; a closed review is not an accepted review until the operator approves that exact revision.
+
 ## Entry contract
 
 Before spawning anything:
 
-1. **Get the diff**, and the intent behind it. A review of a diff whose purpose is unstated grades style, because that is all that is left to grade.
-2. `dim q fixes` — how often files edited under each skill drew a later fix commit. It counts by skill and names no path, so it says which kind of work has been coming back, never which file in this diff did.
-3. `dim q exemplars` — code that shipped with no fix coming back. These are candidates, not verdicts: a file nobody returned to may have been right or may have been abandoned.
+1. **Size the diff**, and split it when it combines unrelated work or is too large to review as one logical change. A review that cannot hold the change is not evidence that the change is sound.
+2. **Read the tests first**, then get the intent behind the diff. Tests reveal the behavior the change claims and the failure paths the author considered; the intent explains what the tests cannot.
+3. `dim q fixes` — how often files edited under each skill drew a later fix commit. It counts by skill and names no path, so it says which kind of work has been coming back, never which file in this diff did.
+4. `dim q exemplars` — code that shipped with no fix coming back. These are candidates, not verdicts: a file nobody returned to may have been right or may have been abandoned.
 
 ## The passes
 
@@ -33,17 +36,19 @@ Spawn one agent per dimension at the tier `dim route codex reviewer` gives you, 
 | correctness | whether the changed code fulfills its stated behavior, handles failure paths and preserves existing contracts; use `dim q exemplars` as grounding |
 | tests | whether meaningful behavior is covered by tests that fail when the invariant is removed; use `dim q rework` as grounding |
 | architecture | whether responsibilities, boundaries, dependencies and extension points remain coherent; use `dim q prior-art "<path fragment>"` as grounding |
+| maintainability | whether the change leaves the next worker with readable, simple, cohesive code: clear names, direct control flow, earned abstractions and no unnecessary indirection; use the project rules and nearby patterns |
 | docs | whether long-lived docs describe the resulting behavior and terminology; use `dim q stale <id-prefix>` as grounding |
 | security | whether the diff creates a concrete trust-boundary, data-exposure or unsafe-default path; read the diff and project rules |
+| performance | whether the change introduces a material cost in latency, memory, I/O or unbounded work; run only when the plan identifies a performance-sensitive path |
 | style | whether naming, structure and local patterns remain consistent without adding comments or abstraction noise; read the diff and project rules |
 
-The last two rows are not an oversight. The record holds no signal about either, and inventing one would be worse than the gap — an agent told it has grounding it does not have stops looking.
+The performance pass is conditional: a plan that does not identify a performance-sensitive path does not spawn it. Maintainability remains a normal pass because every slice leaves code for the next worker. Both passes need concrete evidence; a preference or hypothetical cost is not a finding.
 
 ## Exit check
 
 The review is done when:
 
-- every dimension reported, including the ones that found nothing, and a dimension whose agent failed to return says so rather than being quietly dropped
+- every applicable dimension reported, including the ones that found nothing, and a dimension whose agent failed to return says so rather than being quietly dropped
 - each finding names a file and line, and what fails — a finding with no failure case is an opinion
 - findings that contradict each other are resolved here, not passed on as a list
 - every finding a dimension raised was checked at its source before it was passed on, cited to `file:line`

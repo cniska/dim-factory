@@ -32,6 +32,9 @@ describe("planner station", () => {
     expect(brief).toContain("executable check for each contract");
     expect(brief).toContain("every slice a behavior, affected area, check, and dependency");
     expect(brief).toContain(
+      "review dimensions this change needs; include maintainability and performance when the change materially affects them",
+    );
+    expect(brief).toContain(
       "risks, holds, unresolved questions, predictions, and the conditions for approval",
     );
   });

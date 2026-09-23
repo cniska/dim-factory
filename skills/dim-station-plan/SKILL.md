@@ -54,10 +54,13 @@ The plan is the shared artifact the owner approves and the builder executes, not
 - **Checks.** An executable check for each contract and the repository's own task for every slice.
 - **Slices.** The behavior, affected area, check, and dependency for each independently verifiable vertical cut.
 - **Risks and decisions.** Holds, unresolved questions, predictions, and the conditions under which the operator should approve the plan.
+- **Review scope.** The dimensions this change needs. Include maintainability and performance when the change materially affects them; do not add a dimension without a concrete question it can answer.
 
 Use readable Markdown and project language. Keep identifiers, commands, and paths where they let the owner verify a claim; do not make the owner reconstruct the design from a worker transcript.
 
 Scale the explanation to the change. Lead with a concise decision summary, then include the supporting detail justified by the change's size and risk. A small fix can stay short; a multi-boundary change needs the full program design. Scaling the prose never removes a required contract dimension.
+
+The plan is this station's human-facing artifact. Submit it with the evidence and ordered slices, then stop for the operator's gate; the next station does not start until the operator has checked and approved that exact revision.
 
 ## Exit check
 
