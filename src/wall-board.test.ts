@@ -10,6 +10,7 @@ const order = (
 ): WallOrder => ({
   id,
   title: `Work on ${id}`,
+  line: "feat",
   worker: "copper-1",
   station,
   stage,

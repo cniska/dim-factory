@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
 import { age } from "./age";
 import { ORDER_STATUSES, type OrderEventKind, type OrderStatus } from "./factory-order";
+import type { OrderLine } from "./order-line";
 import { dbPath, tildePath } from "./paths";
 import { openReadOnly } from "./read-db";
 import { isRole, type Role } from "./roles";
@@ -20,6 +21,7 @@ export type WallRole = Role;
 export type WallOrder = {
   id: string;
   title: string;
+  line: OrderLine;
   description?: string;
   station: WallStation | null;
   stage: WallStage;
@@ -104,6 +106,7 @@ const MAX_COLUMN_CARDS = 12;
 type OrderRow = {
   id: string;
   title: string;
+  line: string;
   description: string | null;
   station: string | null;
   status: string;
@@ -122,7 +125,7 @@ type OrderRow = {
 
 // Who holds an order is the worker on its latest claim. A move is an operator's audit
 // event, not a reassignment, so the latest event cannot stand in for the holder.
-const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.description, o.station, o.status,
+const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.line, o.description, o.station, o.status,
               o.stop_reason, o.run_id, o.project, o.priority, o.hold,
               e.ts AS last_event_at, e.reason AS latest_reason, e.station AS latest_station,
               (SELECT e2.worker FROM factory_order_event e2
@@ -202,6 +205,7 @@ function mapOrder(row: OrderRow, now: Date): WallOrder | null {
   return {
     id: row.id,
     title: row.title,
+    line: row.line as OrderLine,
     ...(row.description ? { description: row.description } : {}),
     station: stationName,
     stage: stageByStatus[orderStatus],

@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { FactoryStopError, liveStop } from "./factory-stop";
 import { workerIsOver } from "./factory-worker";
 import { withLock } from "./lock";
+import type { OrderLine } from "./order-line";
 import type { Env } from "./paths";
 import type { PlanSlice } from "./plan-artifact";
 import { type ShipOutcome, shipToTrunk } from "./ship";
@@ -50,6 +51,7 @@ export type Order = {
   id: string;
   project: string;
   title: string;
+  line?: OrderLine;
   description?: string;
   priority?: OrderPriority;
   hold?: string;
@@ -271,12 +273,13 @@ export function queueOrder(db: Database, order: Order, worker: string, at = now(
   return db.transaction(() => {
     db.run(
       `INSERT INTO factory_order
-       (id, project, title, description, priority, hold, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)`,
+       (id, project, title, line, description, priority, hold, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)`,
       [
         order.id,
         order.project,
         order.title,
+        order.line ?? "feat",
         order.description ?? null,
         order.priority ?? "unset",
         order.hold ?? null,

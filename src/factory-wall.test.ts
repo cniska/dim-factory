@@ -126,6 +126,7 @@ describe("factory wall snapshot", () => {
     expect(snapshot.orders[0]).toEqual({
       id: "order-running",
       title: "Show the wall",
+      line: "feat",
       station: "build",
       stage: "active",
       agent: worker,

@@ -17,10 +17,11 @@
 // changes after the statement has run once changes with a bump.
 
 import { ORDER_STATUSES_SQL } from "./factory-order";
+import { ORDER_LINES_SQL } from "./order-line";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 54;
+export const SCHEMA_VERSION = 55;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -250,6 +251,8 @@ CREATE TABLE IF NOT EXISTS factory_order (
   -- What the order is called, so a card can be read across a room. The id beside
   -- it is what a query joins on and never what a person is shown.
   title           TEXT NOT NULL,
+  line            TEXT NOT NULL DEFAULT 'feat'
+                  CHECK (line IN (${ORDER_LINES_SQL})),
   description     TEXT,
   -- Ready orders come back most urgent first, unset last, then oldest, then id.
   -- Named rather than numbered so a row reads without a key, and five levels

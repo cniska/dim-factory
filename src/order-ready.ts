@@ -1,10 +1,12 @@
 import type { Database } from "bun:sqlite";
 import type { OrderPriority, OrderStatus } from "./factory-order";
+import type { OrderLine } from "./order-line";
 
 export type ReadyOrder = {
   id: string;
   project: string;
   title: string;
+  line: OrderLine;
   description?: string;
   status: OrderStatus;
   priority: OrderPriority;
@@ -23,6 +25,7 @@ type Row = {
   id: string;
   project: string;
   title: string;
+  line: string;
   description: string | null;
   status: string;
   priority: string;
@@ -36,6 +39,7 @@ function orderFrom(row: Row): ReadyOrder {
     id: row.id,
     project: row.project,
     title: row.title,
+    line: row.line as OrderLine,
     ...(row.description === null ? {} : { description: row.description }),
     status: row.status as OrderStatus,
     priority: row.priority as OrderPriority,
@@ -45,7 +49,7 @@ function orderFrom(row: Row): ReadyOrder {
   };
 }
 
-const SELECT = `SELECT id, project, title, description, status, priority, created_at, hold, stop_reason
+const SELECT = `SELECT id, project, title, line, description, status, priority, created_at, hold, stop_reason
                   FROM factory_order
                  WHERE project = ? AND status = 'queued'`;
 

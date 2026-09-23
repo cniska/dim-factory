@@ -30,6 +30,7 @@ import { readFlags, requiredFlag } from "./flags";
 import type { HarnessName } from "./harness-command";
 import { requireCurrentHooks } from "./hooks";
 import { runOrderBuild, runOrderBuildLive } from "./order-build";
+import { isOrderLine, ORDER_LINES } from "./order-line";
 import { runOrderPlan, runOrderPlanLive } from "./order-plan";
 import { heldOrders, readyOrders } from "./order-ready";
 import { runOrderReview, runOrderReviewLive } from "./order-review";
@@ -39,7 +40,7 @@ import { removeWorktree, repoRoot } from "./wt-command";
 
 export class OrderCommandError extends Error {}
 
-export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--description "..."]
+export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--line <${ORDER_LINES.join("|")}>] [--description "..."]
                      [--priority <${ORDER_PRIORITIES.join("|")}>] [--hold "..."] [--project <owner/repo>]
        dim order ready [--limit <n>] [--project <owner/repo>]
        dim order claim <order-id> --run <id> [--session <id>] [--station <name>]
@@ -70,7 +71,7 @@ An order defaults to this checkout's owner/repo, so work belongs to the project 
 is built in rather than to wherever the command was typed.`;
 
 const CLAIM_FLAGS = ["--run", "--session", "--station"];
-const ADD_FLAGS = ["--title", "--description", "--priority", "--hold", "--project"];
+const ADD_FLAGS = ["--title", "--line", "--description", "--priority", "--hold", "--project"];
 
 const fail = (message: string): Error => new OrderCommandError(message);
 
@@ -100,12 +101,15 @@ function add(
   const given = flags(args, ADD_FLAGS);
   const project = given.get("--project") ?? defaultProject;
   if (!project) throw fail("--project is required outside a checkout with a remote");
+  const line = given.get("--line") ?? "feat";
+  if (!isOrderLine(line)) throw fail(`${line} is not a line; one of ${ORDER_LINES.join(", ")}`);
   queueOrder(
     db,
     {
       id: orderId,
       project,
       title: required(given, "--title"),
+      line,
       description: given.get("--description"),
       priority: priority(given.get("--priority")),
       hold: given.get("--hold"),

@@ -82,6 +82,8 @@ const add = [
   "Record a factory order as work is taken",
   "--description",
   "The record holds what an order is called and never what it says.",
+  "--line",
+  "fix",
   "--project",
   "cniska/dim-factory",
 ];
@@ -106,7 +108,16 @@ describe("order command", () => {
     const snapshot = assembleWallSnapshot(database);
     expect(snapshot.totals).toEqual({ todo: 1, active: 0, done: 0 });
     expect(snapshot.orders[0]?.title).toBe("Record a factory order as work is taken");
+    expect(snapshot.orders[0]?.line).toBe("fix");
     expect(snapshot.orders[0]?.status).toBe("queued");
+  });
+
+  test("an unknown order line is refused", () => {
+    const database = db();
+
+    expect(() =>
+      runOrderCommand(database, [...add.slice(0, 6), "--line", "unknown", ...add.slice(8)]),
+    ).toThrow("unknown is not a line; one of feat, fix");
   });
 
   test("a claim moves it into the active column", () => {

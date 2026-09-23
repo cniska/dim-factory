@@ -17,6 +17,7 @@ import type {
 } from "./factory-wall";
 import { cn } from "./lib/utils";
 import { msUntilNextMinute } from "./minute-beat";
+import type { OrderLine } from "./order-line";
 import { FAILURE_MARKS_SHOWN, ordersByStage, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
 import { ITEM_KIND_LABELS } from "./wall-item";
 import "./wall.css";
@@ -58,8 +59,26 @@ const roleTint: Record<WallRole, string | undefined> = {
 
 const NO_WORKER = "none";
 
+const LINE_LABELS: Record<OrderLine, string> = { feat: "feature", fix: "fix" };
+const LINE_TINT: Record<OrderLine, string> = { feat: "bg-good", fix: "bg-danger" };
+
 function statusTint(order: WallOrder): string {
   return isStopped(order) ? "text-warn-foreground" : "text-muted-foreground";
+}
+
+function LineMarker({ line, size = "card" }: { line: OrderLine; size?: "card" | "dialog" }) {
+  return (
+    <span
+      role="img"
+      aria-label={LINE_LABELS[line]}
+      className={cn(
+        "inline-block shrink-0 rounded-[1px]",
+        size === "dialog" ? "h-[20px] w-[20px]" : "h-[12px] w-[12px]",
+        LINE_TINT[line],
+      )}
+      title={LINE_LABELS[line]}
+    />
+  );
 }
 
 // `hourCycle` rather than `hour12: false`, which reads midnight as 24 in some locales. The
@@ -153,7 +172,10 @@ function OrderCard({
 
       {/* The title keeps one row, so a long order cannot change the card's height or push its
           description and footer out of alignment with the cards beside it. */}
-      <h3 className="truncate font-medium text-foreground leading-[18px]">{order.title}</h3>
+      <div className="flex min-w-0 items-center gap-[var(--space-sm)]">
+        <LineMarker line={order.line} />
+        <h3 className="min-w-0 truncate font-medium text-foreground leading-[18px]">{order.title}</h3>
+      </div>
 
       <p className="line-clamp-3 min-h-[54px] shrink-0 text-quiet leading-[18px]">{order.description}</p>
 
@@ -329,7 +351,12 @@ function ItemDialog({
       <div className="flex max-h-[85vh] flex-col">
         <header className="flex flex-col gap-[var(--space-lg)] border-b p-[var(--space-lg)]">
           <div className="flex items-start justify-between gap-[var(--space-md)]">
-            <h2 className="text-lg font-medium text-foreground leading-7">{order.title}</h2>
+            <div className="flex min-w-0 items-center gap-[var(--space-md)]">
+              <LineMarker line={order.line} size="dialog" />
+              <h2 className="min-w-0 truncate text-lg font-medium text-foreground leading-7">
+                {order.title}
+              </h2>
+            </div>
             {/* Escape and a backdrop click already close the dialog; neither is visible, so this
                 is the one way out a reader does not have to already know. */}
             <button
@@ -345,6 +372,10 @@ function ItemDialog({
             <p className="whitespace-pre-wrap text-quiet leading-5">{order.description}</p>
           ) : null}
           <dl className="flex flex-wrap items-center gap-x-[var(--space-xl)] gap-y-[var(--space-xs)] text-quiet">
+            <div className="flex items-center gap-[var(--space-sm)]">
+              <dt>line</dt>
+              <dd className="text-muted-foreground">{LINE_LABELS[order.line]}</dd>
+            </div>
             <div className="flex items-center gap-[var(--space-sm)]">
               <dt>order</dt>
               <dd className="text-muted-foreground">{order.id}</dd>
@@ -710,7 +741,7 @@ function App() {
         </h1>
         <div
           className={cn(
-            "flex h-9 items-center gap-[var(--space-sm)] rounded-wall border px-[var(--space-sm)] text-[11px] whitespace-nowrap",
+            "flex items-center gap-[var(--space-sm)] rounded-wall border p-[var(--space-sm)] text-[11px] whitespace-nowrap",
             FEED_TINT[feed],
             // The box is held rather than the element dropped, so the header does not step
             // sideways when the first answer arrives.

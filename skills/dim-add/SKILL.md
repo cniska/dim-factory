@@ -19,12 +19,13 @@ Turn the request into the one order the operator will run. This is intake, not p
 
 1. Choose a stable kebab-case order id from the request. Do not put a timestamp or model name in it.
 2. Write a short title that names the requested outcome.
-3. Keep the request's detail in `--description`; do not replace it with a plan or implementation outline.
-4. Use the repository's canonical project identity.
+3. Choose `feat` for work that adds behavior or `fix` for work that repairs behavior.
+4. Keep the request's detail in `--description`; do not replace it with a plan or implementation outline.
+5. Use the repository's canonical project identity.
 5. Run:
 
    ```text
-   dim order add <order-id> --title "<title>" --description "<request>" --project "<owner/repo>"
+   dim order add <order-id> --line <feat|fix> --title "<title>" --description "<request>" --project "<owner/repo>"
    ```
 
 6. Verify the command returned the same id and that `dim q order <order-id>` reads the queued record.

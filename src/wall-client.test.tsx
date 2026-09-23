@@ -53,6 +53,10 @@ describe("item history", () => {
     expect(source).toContain("function NoWorkerLabel()");
     expect(source).toContain('<Robot label="none" className="text-quiet opacity-60" />');
     expect(source).toContain("if (!entry.worker || !entry.role) return <NoWorkerLabel />;");
+    expect(source).toContain(
+      'const LINE_LABELS: Record<OrderLine, string> = { feat: "feature", fix: "fix" };',
+    );
+    expect(source).toContain('size === "dialog" ? "h-[20px] w-[20px]" : "h-[12px] w-[12px]"');
     expect(source.indexOf("<dt>order</dt>")).toBeLessThan(source.indexOf("<dt>project</dt>"));
     expect(source).toContain('if (days === 0) return "today";');
     expect(source).toContain('if (days === 1) return "yesterday";');
