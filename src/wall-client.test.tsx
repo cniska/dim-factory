@@ -19,9 +19,12 @@ describe("item history", () => {
       'className="mb-[var(--space-lg)] text-base font-medium text-foreground leading-6"',
     );
     expect(source).not.toContain('className="mb-2 text-base font-medium text-foreground leading-6"');
-    expect(source).toContain('className="flex flex-col gap-[var(--space-lg)] border-b p-5"');
-    expect(source).toContain('className="min-w-0 space-y-[var(--space-lg)] px-5 pb-8 pt-5"');
-    expect(source).toContain("cursor-pointer rounded-wall p-1");
+    expect(source).toContain('className="flex flex-col gap-[var(--space-lg)] border-b p-[var(--space-lg)]"');
+    expect(source).toContain(
+      'className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-xxl)] pt-[var(--space-lg)]"',
+    );
+    expect(source).toContain("h-[164px] justify-between p-[var(--space-md)] text-left text-[11px]");
+    expect(source).toContain("cursor-pointer rounded-wall p-[var(--space-xs)]");
     expect(source).not.toContain('className="mt-2 flex flex-wrap items-center');
     expect(source).not.toContain('"mt-3 space-y-3 text-quiet"');
     expect(source).not.toContain("first:pt-0");
@@ -47,9 +50,9 @@ describe("item history", () => {
     );
     expect(source).toContain('const NO_WORKER = "none";');
     expect(source).toContain("<dt>assignee</dt>");
-    expect(source).toContain(
-      'if (!entry.worker || !entry.role) return <span className="text-quiet">{NO_WORKER}</span>;',
-    );
+    expect(source).toContain("function NoWorkerLabel()");
+    expect(source).toContain('<Robot label="none" className="text-quiet opacity-60" />');
+    expect(source).toContain("if (!entry.worker || !entry.role) return <NoWorkerLabel />;");
     expect(source.indexOf("<dt>order</dt>")).toBeLessThan(source.indexOf("<dt>project</dt>"));
     expect(source).toContain('if (days === 0) return "today";');
     expect(source).toContain('if (days === 1) return "yesterday";');

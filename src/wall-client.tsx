@@ -81,7 +81,7 @@ function timeLabel(updatedAt: string): string {
 /** The box every row of a card stands in, whatever it holds. One figure rather than a gap
  *  between rows sized off each one's type: a stack set that way steps unevenly down the card,
  *  and the rows stop sharing a rhythm the eye can follow across three columns. */
-const ROW = "flex h-[18px] shrink-0 items-center gap-1.5 leading-none";
+const ROW = "flex h-[18px] shrink-0 items-center gap-[var(--space-xs)] leading-none";
 
 /** One mark per failed check, so three attempts read as three marks without a word. A cross
  *  rather than a tinted dot: the shape carries it where color is spent on roles, and the count
@@ -92,7 +92,7 @@ function FailedChecks({ count }: { count: number }) {
   return (
     <span
       role="img"
-      className="flex items-center gap-1 text-danger"
+      className="flex items-center gap-[var(--space-sm)] text-danger"
       aria-label={`${count} ${count === 1 ? "failed check" : "failed checks"}`}
     >
       {Array.from({ length: shown }, (_, index) => (
@@ -125,7 +125,7 @@ function OrderCard({
       onClick={() => onOpen(order)}
       stopped={isStopped(order)}
       className={cn(
-        "h-[158px] justify-between p-2.5 text-left text-[11px]",
+        "h-[164px] justify-between p-[var(--space-md)] text-left text-[11px]",
         "cursor-pointer hover:border-accent focus-visible:border-accent focus-visible:outline-none",
         // Lit until the bump expires, so a glance a moment after a card moved still shows
         // which one did.
@@ -133,7 +133,7 @@ function OrderCard({
       )}
     >
       <CardHeader className={cn(ROW, "justify-between text-quiet")}>
-        <span className={cn("flex items-center gap-1.5", statusTint(order))}>
+        <span className={cn("flex items-center gap-[var(--space-sm)]", statusTint(order))}>
           {/* Where the column carries the state, the mark is what states it, so the mark is
               what has to name it to a reader who is not looking at the column. */}
           <StatusIcon
@@ -157,7 +157,7 @@ function OrderCard({
 
       <p className="line-clamp-3 min-h-[54px] shrink-0 text-quiet leading-[18px]">{order.description}</p>
 
-      <CardFooter className={cn(ROW, "justify-between gap-1.5 text-quiet")}>
+      <CardFooter className={cn(ROW, "justify-between gap-[var(--space-sm)] text-quiet")}>
         {/* What opens the view from the keyboard, and what a screen reader is offered: the card
             around it stays readable as the article it is. */}
         <button
@@ -166,19 +166,20 @@ function OrderCard({
             event.stopPropagation();
             onOpen(order);
           }}
-          className="sr-only focus-visible:not-sr-only focus-visible:rounded-wall focus-visible:border focus-visible:px-1.5"
+          className="sr-only focus-visible:not-sr-only focus-visible:rounded-wall focus-visible:border focus-visible:px-[var(--space-xs)]"
         >
           Open {order.title}
         </button>
-        {/* Nobody recorded leaves the slot empty rather than spending the card's
-            one identity line saying so: the absence is already the message. */}
-        <span className="flex min-w-0 items-center gap-1.5">
+        {/* The worker slot keeps its shape when no hand has taken the order. */}
+        <span className="flex min-w-0 items-center gap-[var(--space-xs)]">
           {order.status === "working" && order.failedChecks > 0 ? (
             <FailedChecks count={order.failedChecks} />
           ) : null}
           {order.worker && order.role ? (
             <WorkerLabel worker={order.worker} role={order.role} className="truncate" />
-          ) : null}
+          ) : (
+            <NoWorkerLabel />
+          )}
         </span>
         {order.station === null ? null : <Badge className="shrink-0">{STATION_LABELS[order.station]}</Badge>}
       </CardFooter>
@@ -188,9 +189,18 @@ function OrderCard({
 
 function WorkerLabel({ worker, role, className }: { worker: string; role: WallRole; className?: string }) {
   return (
-    <span className={cn("flex min-w-0 items-center gap-1.5", className)}>
+    <span className={cn("flex min-w-0 items-center gap-[var(--space-sm)]", className)}>
       <Robot label={`${worker}, ${role}`} className={roleTint[role]} />
       <span className="truncate">{worker}</span>
+    </span>
+  );
+}
+
+function NoWorkerLabel() {
+  return (
+    <span className="flex min-w-0 items-center gap-[var(--space-sm)] text-quiet">
+      <Robot label="none" className="text-quiet opacity-60" />
+      <span>{NO_WORKER}</span>
     </span>
   );
 }
@@ -199,7 +209,7 @@ function WorkerLabel({ worker, role, className }: { worker: string; role: WallRo
  *  the order currently sits under: a history is a sequence of hands, and a reviewer's moment
  *  wearing the builder's color says the wrong thing about who wrote it. */
 function EntryWorker({ entry }: { entry: WallItemEntry }) {
-  if (!entry.worker || !entry.role) return <span className="text-quiet">{NO_WORKER}</span>;
+  if (!entry.worker || !entry.role) return <NoWorkerLabel />;
 
   return <WorkerLabel worker={entry.worker} role={entry.role} className="justify-end text-quiet" />;
 }
@@ -260,7 +270,7 @@ function ItemHistory({ entries, now }: { entries: WallItemEntry[]; now: Date }) 
                   key={`${entry.at}-${entry.kind}-${index}`}
                 >
                   <div className="flex min-h-[18px] flex-wrap items-center justify-between gap-x-4 gap-y-1">
-                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <div className="flex flex-wrap items-baseline gap-x-[var(--space-sm)] gap-y-[var(--space-xs)]">
                       <time dateTime={entry.at} className="text-quiet tabular-nums">
                         {timeLabel(entry.at)}
                       </time>
@@ -317,8 +327,8 @@ function ItemDialog({
       className="m-auto max-h-[85vh] w-[min(64rem,92vw)] rounded-wall border bg-card p-0 text-[12px] text-muted-foreground outline-none backdrop:bg-black/70"
     >
       <div className="flex max-h-[85vh] flex-col">
-        <header className="flex flex-col gap-[var(--space-lg)] border-b p-5">
-          <div className="flex items-start justify-between gap-4">
+        <header className="flex flex-col gap-[var(--space-lg)] border-b p-[var(--space-lg)]">
+          <div className="flex items-start justify-between gap-[var(--space-md)]">
             <h2 className="text-lg font-medium text-foreground leading-7">{order.title}</h2>
             {/* Escape and a backdrop click already close the dialog; neither is visible, so this
                 is the one way out a reader does not have to already know. */}
@@ -326,7 +336,7 @@ function ItemDialog({
               type="button"
               onClick={() => dialog.current?.close()}
               aria-label="Close"
-              className="shrink-0 cursor-pointer rounded-wall p-1 text-quiet transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
+              className="shrink-0 cursor-pointer rounded-wall p-[var(--space-xs)] text-quiet transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
             >
               <X size={16} strokeWidth={1.8} aria-hidden="true" />
             </button>
@@ -334,36 +344,36 @@ function ItemDialog({
           {order.description ? (
             <p className="whitespace-pre-wrap text-quiet leading-5">{order.description}</p>
           ) : null}
-          <dl className="flex flex-wrap items-center gap-x-6 gap-y-1 text-quiet">
-            <div className="flex items-center gap-2">
+          <dl className="flex flex-wrap items-center gap-x-[var(--space-xl)] gap-y-[var(--space-xs)] text-quiet">
+            <div className="flex items-center gap-[var(--space-sm)]">
               <dt>order</dt>
               <dd className="text-muted-foreground">{order.id}</dd>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-[var(--space-sm)]">
               <dt>project</dt>
               <dd className="text-muted-foreground">{read.view?.project}</dd>
             </div>
             {order.station ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-[var(--space-sm)]">
                 <dt>station</dt>
                 <dd className="text-muted-foreground">{STATION_LABELS[order.station]}</dd>
               </div>
             ) : null}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-[var(--space-sm)]">
               <dt>assignee</dt>
-              <dd className="flex items-center gap-1.5 text-muted-foreground">
+              <dd className="flex items-center gap-[var(--space-xs)] text-muted-foreground">
                 {order.worker && order.role ? (
                   <WorkerLabel worker={order.worker} role={order.role} />
                 ) : (
-                  NO_WORKER
+                  <NoWorkerLabel />
                 )}
               </dd>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-[var(--space-sm)]">
               <dt>status</dt>
               <dd
                 className={cn(
-                  "flex items-center gap-1.5",
+                  "flex items-center gap-[var(--space-sm)]",
                   isStopped(order) ? "text-warn-foreground" : "text-muted-foreground",
                 )}
               >
@@ -383,11 +393,14 @@ function ItemDialog({
             whatever is being read. */}
         <div className="flex min-h-0 flex-col overflow-y-auto">
           {read.view?.plan ? (
-            <section aria-labelledby="item-plan" className="min-w-0 space-y-[var(--space-lg)] px-5 pb-8 pt-5">
+            <section
+              aria-labelledby="item-plan"
+              className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-xxl)] pt-[var(--space-lg)]"
+            >
               <h3 id="item-plan" className="text-base font-medium text-foreground leading-6">
                 Plan
               </h3>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground leading-5">
+              <div className="flex flex-wrap items-center gap-x-[var(--space-sm)] gap-y-[var(--space-xs)] text-muted-foreground leading-5">
                 <WorkerLabel worker={read.view.plan.worker} role={read.view.plan.role} />
                 <span aria-hidden="true">·</span>
                 <span>revision {read.view.plan.revision}</span>
@@ -396,10 +409,10 @@ function ItemDialog({
               </div>
               <div
                 className={cn(
-                  "space-y-3 text-quiet",
+                  "space-y-[var(--space-sm)] text-quiet",
                   "[&_a]:text-quiet [&_a]:underline",
                   "[&_h1]:text-base [&_h1]:font-medium [&_h1]:text-foreground [&_h2]:text-sm [&_h2]:font-medium [&_h2]:text-foreground [&_h3]:text-sm [&_h3]:font-medium [&_h3]:text-foreground",
-                  "[&_li]:my-1.5 [&_li]:leading-[18px] [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-5 [&_p]:leading-[18px] [&_pre]:overflow-x-auto [&_pre]:rounded-wall [&_pre]:border [&_pre]:p-3 [&_ul]:my-3 [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-5",
+                  "[&_li]:my-[var(--space-xs)] [&_li]:leading-[18px] [&_ol]:my-[var(--space-sm)] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-[var(--space-lg)] [&_p]:leading-[18px] [&_pre]:overflow-x-auto [&_pre]:rounded-wall [&_pre]:border [&_pre]:p-[var(--space-sm)] [&_ul]:my-[var(--space-sm)] [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-[var(--space-lg)]",
                 )}
               >
                 <Markdown components={{ a: MarkdownLink }}>{read.view.plan.body}</Markdown>
@@ -407,7 +420,10 @@ function ItemDialog({
             </section>
           ) : null}
           {read.view?.plan ? <div className="border-t" aria-hidden="true" /> : null}
-          <section aria-labelledby="item-log" className="min-w-0 px-5 pb-5 pt-5">
+          <section
+            aria-labelledby="item-log"
+            className="min-w-0 px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
+          >
             <h3
               id="item-log"
               className="mb-[var(--space-lg)] text-base font-medium text-foreground leading-6"
@@ -447,7 +463,7 @@ function BoardColumn({
 
   return (
     <section className="min-w-0" aria-labelledby={id}>
-      <header className="mb-3 flex items-baseline justify-between border-b px-0.5 pb-2">
+      <header className="mb-[var(--space-sm)] flex items-baseline justify-between border-b px-0.5 pb-[var(--space-sm)]">
         <h2 id={id} className="text-lg tracking-tight">
           {label}
         </h2>
@@ -456,7 +472,7 @@ function BoardColumn({
         </span>
       </header>
       {/* An empty column says so by being empty; the count in its heading already reads 0. */}
-      <div className="grid gap-1.5">
+      <div className="grid gap-[var(--space-xs)]">
         {orders.map((order) => (
           <OrderCard order={order} key={order.id} now={now} bumped={bumped.has(order.id)} onOpen={onOpen} />
         ))}
@@ -682,10 +698,10 @@ function App() {
 
   return (
     <main className="wall-shell mx-auto flex min-h-screen w-full max-w-[90rem] flex-col p-[clamp(1rem,2.6vw,2.4rem)]">
-      <header className="flex items-center justify-between gap-6 pb-5">
+      <header className="flex items-center justify-between gap-[var(--space-xl)] pb-[var(--space-lg)]">
         {/* The board is what the page is for, so its name sits at the weight of the feed
             state beside it rather than above the work as a title. */}
-        <h1 className="flex h-9 items-center gap-2 text-[clamp(1.25rem,2vw,1.75rem)] tracking-tight whitespace-nowrap">
+        <h1 className="flex h-9 items-center gap-[var(--space-sm)] text-[clamp(1.25rem,2vw,1.75rem)] tracking-tight whitespace-nowrap">
           <span className="text-quiet">dim-factory</span>
           <span className="text-border" aria-hidden="true">
             /
@@ -694,7 +710,7 @@ function App() {
         </h1>
         <div
           className={cn(
-            "flex h-9 items-center gap-2 rounded-wall border px-3 text-[11px] whitespace-nowrap",
+            "flex h-9 items-center gap-[var(--space-sm)] rounded-wall border px-[var(--space-sm)] text-[11px] whitespace-nowrap",
             FEED_TINT[feed],
             // The box is held rather than the element dropped, so the header does not step
             // sideways when the first answer arrives.
@@ -703,14 +719,17 @@ function App() {
         >
           <FeedIcon size={15} aria-hidden="true" />
           <span>{FEED_LABEL[feed]}</span>
-          <span className="flex items-baseline gap-1.5 text-quiet">
+          <span className="flex items-baseline gap-[var(--space-xs)] text-quiet">
             <span aria-hidden="true">·</span>
             <Clock at={timeLabel(now.toISOString())} beat={blink} />
           </span>
         </div>
       </header>
 
-      <section className="grid grid-cols-3 items-start gap-4 pb-16" aria-label="Factory kanban board">
+      <section
+        className="grid grid-cols-3 items-start gap-[var(--space-md)] pb-[var(--space-xxl)]"
+        aria-label="Factory kanban board"
+      >
         {WALL_COLUMNS.map(({ stage, label }) => (
           <BoardColumn
             key={stage}
