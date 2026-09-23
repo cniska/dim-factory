@@ -242,13 +242,17 @@ function ItemHistory({ entries, now }: { entries: WallItemEntry[]; now: Date }) 
   }
 
   return (
-    <div className="min-w-0 space-y-5 text-[12px]">
+    <div className="min-w-0 space-y-[var(--space-lg)] text-[12px]">
       {groups.map((group) => (
-        <section key={group.label} aria-labelledby={`timeline-${group.label}`}>
-          <h3 id={`timeline-${group.label}`} className="mb-5 text-[12px] leading-[18px] text-quiet">
+        <section
+          key={group.label}
+          aria-labelledby={`timeline-${group.label}`}
+          className="flex flex-col gap-[var(--space-lg)]"
+        >
+          <h3 id={`timeline-${group.label}`} className="text-[12px] leading-[18px] text-quiet">
             {group.label}
           </h3>
-          <ol className="space-y-5">
+          <ol className="space-y-[var(--space-lg)]">
             {group.entries.map((entry, index) => {
               return (
                 <li

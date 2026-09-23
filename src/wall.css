@@ -40,6 +40,13 @@
   --color-station-review: #9ba9d0;
   --color-station-ship: #a9b5c0;
 
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 20px;
+  --space-xl: 24px;
+  --space-xxl: 40px;
+
   --radius-wall: 0.55rem;
 
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;

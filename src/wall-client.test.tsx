@@ -12,9 +12,9 @@ describe("item history", () => {
   test("keeps the audit log's bottom inset equal to its other sides", async () => {
     const source = await Bun.file(new URL("./wall-client.tsx", import.meta.url)).text();
 
-    expect(source).toContain('className="min-w-0 space-y-5 text-[12px]"');
-    expect(source).toContain('className="mb-5 text-[12px] leading-[18px] text-quiet"');
-    expect(source).toContain('className="space-y-5"');
+    expect(source).toContain('className="min-w-0 space-y-[var(--space-lg)] text-[12px]"');
+    expect(source).toContain('className="flex flex-col gap-[var(--space-lg)]"');
+    expect(source).toContain('className="space-y-[var(--space-lg)]"');
     expect(source).not.toContain("first:pt-0");
   });
 
@@ -27,6 +27,7 @@ describe("item history", () => {
 
   test("labels the plan and audit log in the detail view", async () => {
     const source = await Bun.file(new URL("./wall-client.tsx", import.meta.url)).text();
+    const styles = await Bun.file(new URL("./wall.css", import.meta.url)).text();
 
     expect(source).toContain('aria-labelledby="item-plan"');
     expect(source).toMatch(/>\s*Plan\s*</);
@@ -46,5 +47,6 @@ describe("item history", () => {
     expect(source).toContain(
       'const dayInYear = new Intl.DateTimeFormat([], { month: "short", day: "numeric" });',
     );
+    expect(styles).toContain("--space-lg: 20px;");
   });
 });
