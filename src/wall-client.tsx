@@ -1,14 +1,5 @@
 import { CircleAlert, CircleCheck, CircleDot, CircleX, type LucideIcon, Radio, X } from "lucide-react";
-import {
-  Children,
-  Fragment,
-  isValidElement,
-  type ReactNode,
-  StrictMode,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { Children, isValidElement, type ReactNode, StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import Markdown from "react-markdown";
 import { age } from "./age";
@@ -225,38 +216,44 @@ function MarkdownLink({ children }: { children?: ReactNode }) {
  *  shared down the page, which a list of rows cannot do without pinning one to a fixed width.
  *  The time leads because it orders the page; who did it sits at the right edge, where a column
  *  of workers reads down on its own. */
-function dayLabel(at: string): string {
-  return new Intl.DateTimeFormat([], { weekday: "short", month: "short", day: "numeric" })
-    .format(new Date(at))
+const dayKey = new Intl.DateTimeFormat("en-CA");
+const dayInYear = new Intl.DateTimeFormat([], { month: "short", day: "numeric" });
+const dayWithYear = new Intl.DateTimeFormat([], { month: "short", day: "numeric", year: "numeric" });
+
+function dayLabel(at: string, now: Date): string {
+  const date = new Date(at);
+  const days = (Date.parse(dayKey.format(now)) - Date.parse(dayKey.format(date))) / (24 * 60 * 60 * 1000);
+  if (days === 0) return "today";
+  if (days === 1) return "yesterday";
+
+  return (dayKey.format(date).slice(0, 4) === dayKey.format(now).slice(0, 4) ? dayInYear : dayWithYear)
+    .format(date)
     .toLowerCase();
 }
 
-function ItemHistory({ entries }: { entries: WallItemEntry[] }) {
+function ItemHistory({ entries, now }: { entries: WallItemEntry[]; now: Date }) {
   const groups: Array<{ label: string; entries: WallItemEntry[] }> = [];
 
   for (const entry of entries) {
-    const label = dayLabel(entry.at);
+    const label = dayLabel(entry.at, now);
     const group = groups.at(-1);
     if (!group || group.label !== label) groups.push({ label, entries: [entry] });
     else group.entries.push(entry);
   }
 
   return (
-    <div className="min-w-0 text-[12px]">
-      <ol>
-        {groups.map((group) => (
-          <Fragment key={group.label}>
-            <li className="pb-5 first:pt-0" aria-labelledby={`timeline-${group.label}`}>
-              <h3 id={`timeline-${group.label}`} className="text-[12px] leading-[18px] text-quiet">
-                {group.label}
-              </h3>
-            </li>
+    <div className="min-w-0 space-y-5 text-[12px]">
+      {groups.map((group) => (
+        <section key={group.label} aria-labelledby={`timeline-${group.label}`}>
+          <h3 id={`timeline-${group.label}`} className="mb-5 text-[12px] leading-[18px] text-quiet">
+            {group.label}
+          </h3>
+          <ol className="space-y-5">
             {group.entries.map((entry, index) => {
               return (
                 <li
                   // biome-ignore lint/suspicious/noArrayIndexKey: entries can share every recorded field, so position is their identity
                   key={`${entry.at}-${entry.kind}-${index}`}
-                  className="pb-5 last:pb-0"
                 >
                   <div className="flex min-h-[18px] flex-wrap items-center justify-between gap-x-4 gap-y-1">
                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -270,9 +267,9 @@ function ItemHistory({ entries }: { entries: WallItemEntry[] }) {
                 </li>
               );
             })}
-          </Fragment>
-        ))}
-      </ol>
+          </ol>
+        </section>
+      ))}
     </div>
   );
 }
@@ -411,7 +408,7 @@ function ItemDialog({
               Log
             </h3>
             {read.view && read.view.entries.length > 0 ? (
-              <ItemHistory entries={read.view.entries} />
+              <ItemHistory entries={read.view.entries} now={new Date()} />
             ) : (
               <p className={read.state === "unavailable" ? "text-warn-foreground" : undefined}>
                 {ITEM_READ_MESSAGE[read.state]}

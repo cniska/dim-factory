@@ -12,8 +12,10 @@ describe("item history", () => {
   test("keeps the audit log's bottom inset equal to its other sides", async () => {
     const source = await Bun.file(new URL("./wall-client.tsx", import.meta.url)).text();
 
-    expect(source).toContain('className="pb-5 last:pb-0"');
-    expect(source).not.toContain("last:pb-1");
+    expect(source).toContain('className="min-w-0 space-y-5 text-[12px]"');
+    expect(source).toContain('className="mb-5 text-[12px] leading-[18px] text-quiet"');
+    expect(source).toContain('className="space-y-5"');
+    expect(source).not.toContain("first:pt-0");
   });
 
   test("renders the description on cards and in the item dialog", async () => {
@@ -39,5 +41,10 @@ describe("item history", () => {
       'if (!entry.worker || !entry.role) return <span className="text-quiet">{NO_WORKER}</span>;',
     );
     expect(source.indexOf("<dt>order</dt>")).toBeLessThan(source.indexOf("<dt>project</dt>"));
+    expect(source).toContain('if (days === 0) return "today";');
+    expect(source).toContain('if (days === 1) return "yesterday";');
+    expect(source).toContain(
+      'const dayInYear = new Intl.DateTimeFormat([], { month: "short", day: "numeric" });',
+    );
   });
 });
