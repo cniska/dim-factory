@@ -95,7 +95,7 @@ export function mintWorker(
   })();
 }
 
-/** Rotates the capability for a live identity without minting another identity. */
+/** Rotates the capability for a live identity without registering another identity. */
 export function renewWorkerToken(db: Database, name: string): MintedWorker {
   const token = randomBytes(16).toString("hex");
   const row = db
@@ -132,7 +132,7 @@ export function resolveWorker(db: Database, env: Env = process.env): string {
     throw new WorkerUnknown(
       "worker_missing",
       `nothing says which worker this is: ${WORKER_NAME_VAR} and ${WORKER_TOKEN_VAR} are what ` +
-        "the factory hands a worker it starts. Issue one for this shell with `dim worker mint`.",
+        "the factory hands a worker it starts. Register one for this shell with `dim worker register`.",
     );
   }
   const row = db

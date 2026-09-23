@@ -62,11 +62,20 @@ describe("planner station", () => {
           token: env[ASSIGNMENT_TOKEN_VAR] as string,
           sessionId: "planner-harness-session",
         });
-        return { exitCode: 0, stdout: "## outcome\n\nBuild the smallest path.\n" };
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            body: "## outcome\n\nBuild the smallest path.",
+            slices: [{ title: "Build the smallest path", outcome: "The requested result is verified." }],
+          }),
+        };
       },
     });
 
     expect(outcome.body).toBe("## outcome\n\nBuild the smallest path.");
+    expect(outcome.slices).toEqual([
+      { title: "Build the smallest path", outcome: "The requested result is verified." },
+    ]);
     expect(argv.slice(0, 5)).toEqual(["codex", "exec", "--json", "-s", "read-only"]);
     expect(argv).toContain(home);
     expect(argv).toContain("-C");
@@ -82,6 +91,9 @@ describe("planner station", () => {
       body: outcome.body,
       worker: outcome.planner,
     });
+    expect(db.query("SELECT ordinal, title, outcome FROM factory_order_slice").all()).toEqual([
+      { ordinal: 1, title: "Build the smallest path", outcome: "The requested result is verified." },
+    ]);
     expect(db.query("SELECT kind FROM factory_order_event WHERE order_id = 'planner-order'").all()).toEqual([
       { kind: "queued" },
       { kind: "claimed" },
@@ -171,7 +183,7 @@ describe("planner station", () => {
       undefined,
       repo.dir,
     );
-    const base = fakeHarness("success");
+    const base = fakeHarness("plan");
     let starts = 0;
     const adapter = {
       ...base,

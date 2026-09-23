@@ -17,6 +17,7 @@ import {
   ensureOrderWorker,
   orderWorkerRequest,
 } from "./order-worker";
+import { type PlanSlice, parsePlanArtifact } from "./plan-artifact";
 import { route } from "./routing";
 import { assignedWorker, assignmentProcessEnv, assignWorker, bootstrapWorker } from "./worker-assignment";
 
@@ -44,14 +45,14 @@ export function plannerBrief(order: { id: string; title: string; description: st
     order.description ?? "",
     "",
     "Read the repository rules and prior decisions before proposing work.",
-    "Write one plain Markdown plan for the owner to read on the factory wall.",
+    "Write one Markdown plan for the owner to read on the factory wall, and list its independently verifiable slices.",
     "Include the outcome, evidence, contracts, independently verifiable slices, risks, holds, and non-goals.",
     "The factory runner has already created your worker identity from this harness session before your first tool call.",
-    "Return only the Markdown plan. Do not edit files, commit, or run mutation commands.",
+    'Return exactly one JSON object with a non-empty string "body" and a non-empty "slices" array. Each slice has a non-empty "title" and "outcome". Do not use a Markdown fence or add any text outside the JSON object. Do not edit files, commit, or run mutation commands.',
   ].join("\n");
 }
 
-export type PlanOutcome = { planner: string; body: string };
+export type PlanOutcome = { planner: string; body: string; slices: readonly PlanSlice[] };
 
 export function runOrderPlan(
   db: Database,
@@ -84,11 +85,11 @@ export function runOrderPlan(
   };
   const run = options.spawn ? options.spawn(harnessArgv(request), env) : runHarnessCommand(request);
   if (run.exitCode !== 0) throw new Error("planner did not finish planning");
-  const body = ("stdout" in run ? run.stdout : run.output).trim();
+  const artifact = parsePlanArtifact(("stdout" in run ? run.stdout : run.output).trim());
   const planner = assignedWorker(db, assignment.id);
   if (!planner) throw new Error("planner did not bootstrap its worker assignment");
-  recordOrderPlan(db, orderId, body, planner);
-  return { planner, body };
+  recordOrderPlan(db, orderId, artifact.body, planner, artifact.slices);
+  return { planner, ...artifact };
 }
 
 export async function runOrderPlanLive(
@@ -140,9 +141,9 @@ export async function runOrderPlanLive(
     if (run.exitCode !== 0) {
       throw new Error(workerFailureReason("planner did not finish planning", run.output, run.failureReason));
     }
-    const body = run.output.trim();
-    recordOrderPlan(db, orderId, body, planner);
-    return { planner, body };
+    const artifact = parsePlanArtifact(run.output.trim());
+    recordOrderPlan(db, orderId, artifact.body, planner, artifact.slices);
+    return { planner, ...artifact };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     if (planner) appendOrderEvent(db, orderId, { kind: "failed", worker: planner, reason });

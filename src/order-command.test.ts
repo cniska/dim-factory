@@ -48,7 +48,7 @@ function runOrderCommand(
 
 /**
  * Opens a round and returns the environment its reviewer was started in. Minted here rather
- * than through `dim worker mint`, which refuses a read-only hand — a reviewer exists only
+ * than through `dim worker register`, which refuses a read-only hand — a reviewer exists only
  * because the station that spawns it made one, and that is the whole of its worth.
  */
 function reviewerEnv(database: Database, orderId: string): Env {

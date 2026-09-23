@@ -161,6 +161,7 @@ const FACTORY_ORDER_TABLES = [
   "factory_order_document",
   "factory_order_environment",
   "factory_order_plan",
+  "factory_order_slice",
   // No parent and no children, so its place in the list does not matter.
   "factory_stop",
 ];

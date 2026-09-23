@@ -22,7 +22,7 @@ export class WorkerCommandError extends Error {}
  *  spawns them and never by a caller naming a role. */
 const ISSUABLE_ROLES = ROLES.filter((role) => !isReadOnly(role));
 
-export const WORKER_USAGE = `usage: dim worker mint --role <${ISSUABLE_ROLES.join("|")}> [--pid <n>]
+export const WORKER_USAGE = `usage: dim worker register --role <${ISSUABLE_ROLES.join("|")}> [--pid <n>]
        dim worker run --role <${ISSUABLE_ROLES.join("|")}> -- <command> [args...]
        dim worker assign --role <${ROLES.join("|")}>
        dim worker bootstrap <assignment-id>
@@ -30,8 +30,8 @@ export const WORKER_USAGE = `usage: dim worker mint --role <${ISSUABLE_ROLES.joi
 
 A worker is issued before it does anything, and every moment it records names it.
 \`run\` issues one and starts the command carrying it, which is how a worker gets an
-identity it cannot state about itself. \`mint\` prints two export lines instead, for a
-shell nothing started: \`eval "$(dim worker mint --role operator)"\`.`;
+identity it cannot state about itself. \`register\` prints two export lines instead, for a
+shell nothing started: \`eval "$(dim worker register --role operator)"\`.`;
 
 const fail = (message: string): Error => new WorkerCommandError(message);
 
@@ -43,11 +43,11 @@ function role(given: string | undefined): Role {
     throw fail(`${given} is not a role a worker is called in as; one of ${ISSUABLE_ROLES.join(", ")}`);
   }
   // A read-only hand is spawned by the station that briefs it, which is what keeps its
-  // token out of the process whose work it reads. Minting one here would hand any caller
+  // token out of the process whose work it reads. Registering one here would hand any caller
   // the identity whose whole value is that the caller does not hold it.
   if (isReadOnly(given)) {
     throw fail(
-      `a ${given} is issued by the station that spawns it, never minted: its token stays out of ` +
+      `a ${given} is issued by the station that spawns it, never registered: its token stays out of ` +
         "the hand whose work it reads, or the record cannot tell the two apart",
     );
   }
@@ -137,7 +137,7 @@ export function runWorkerCommand(
   cwd = process.cwd(),
 ): string {
   const [command, ...rest] = args;
-  if (command === "mint") {
+  if (command === "register") {
     const given = readFlags(rest, ["--role", "--pid"], fail);
     const workerName = env[WORKER_NAME_VAR];
     const workerToken = env[WORKER_TOKEN_VAR];

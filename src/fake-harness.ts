@@ -1,6 +1,6 @@
 import type { HarnessAdapter, HarnessEvent, HarnessRun } from "./harness";
 
-export type FakeHarnessScenario = "success" | "findings" | "crash" | "hang" | "bootstrap-failure";
+export type FakeHarnessScenario = "success" | "plan" | "findings" | "crash" | "hang" | "bootstrap-failure";
 
 type Scenario = {
   events: HarnessEvent[];
@@ -18,6 +18,20 @@ function scenario(name: FakeHarnessScenario): Scenario {
         ...started,
         { type: "message", role: "assistant", text: "completed" },
         { type: "run.completed", output: "completed" },
+      ],
+      completes: true,
+    };
+  }
+  if (name === "plan") {
+    const output = JSON.stringify({
+      body: "## Outcome\n\nBuild the requested result.",
+      slices: [{ title: "Complete the request", outcome: "The requested result is verified." }],
+    });
+    return {
+      events: [
+        ...started,
+        { type: "message", role: "assistant", text: output },
+        { type: "run.completed", output },
       ],
       completes: true,
     };

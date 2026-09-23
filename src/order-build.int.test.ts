@@ -57,7 +57,9 @@ describe("builder station", () => {
       parentWorker: operator.name,
       sessionId: "build-operator/planner",
     });
-    recordOrderPlan(db, "builder-order", "## Outcome\n\nBuild the requested result.", planner.name);
+    recordOrderPlan(db, "builder-order", "## Outcome\n\nBuild the requested result.", planner.name, [
+      { title: "Build the result", outcome: "The requested result is verified." },
+    ]);
     approveOrderPlan(db, "builder-order", operator.name);
     moveOrder(db, "builder-order", "dim-station-build", operator.name);
 
@@ -160,7 +162,9 @@ describe("builder station", () => {
       parentWorker: operator.name,
       sessionId: "failed-build-operator/planner",
     });
-    recordOrderPlan(db, "failed-builder-order", "## Outcome\n\nTry the build.", planner.name);
+    recordOrderPlan(db, "failed-builder-order", "## Outcome\n\nTry the build.", planner.name, [
+      { title: "Try the build", outcome: "The build result is verified." },
+    ]);
     approveOrderPlan(db, "failed-builder-order", operator.name);
     moveOrder(db, "failed-builder-order", "dim-station-build", operator.name);
 
@@ -218,7 +222,9 @@ describe("builder station", () => {
       parentWorker: operator.name,
       sessionId: "builder-resume-operator/planner",
     });
-    recordOrderPlan(db, "builder-resume-order", "## Outcome\n\nBuild the requested result.", planner.name);
+    recordOrderPlan(db, "builder-resume-order", "## Outcome\n\nBuild the requested result.", planner.name, [
+      { title: "Build the result", outcome: "The requested result is verified." },
+    ]);
     approveOrderPlan(db, "builder-resume-order", operator.name);
     moveOrder(db, "builder-resume-order", "dim-station-build", operator.name);
 

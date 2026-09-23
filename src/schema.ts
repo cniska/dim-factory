@@ -499,6 +499,15 @@ CREATE TABLE IF NOT EXISTS factory_order_plan (
   UNIQUE (order_id, revision)
 );
 
+CREATE TABLE IF NOT EXISTS factory_order_slice (
+  id            INTEGER PRIMARY KEY,
+  plan_id       INTEGER NOT NULL REFERENCES factory_order_plan(id) ON DELETE CASCADE,
+  ordinal       INTEGER NOT NULL CHECK (ordinal > 0),
+  title         TEXT NOT NULL CHECK (trim(title) <> ''),
+  outcome       TEXT NOT NULL CHECK (trim(outcome) <> ''),
+  UNIQUE (plan_id, ordinal)
+);
+
 CREATE TABLE IF NOT EXISTS turn (
   session_id      TEXT NOT NULL REFERENCES session(id),
   turn_id         TEXT NOT NULL,        -- Codex turn_id; Claude the turn_duration uuid

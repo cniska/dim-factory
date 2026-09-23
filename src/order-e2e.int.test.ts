@@ -51,7 +51,7 @@ const emit = (event) => process.stdout.write(JSON.stringify(event) + "\\n");
 emit({ type: "thread.started", thread_id: "harness-" + role + "-" + order });
 emit({ type: "turn.started" });
 if (brief.includes("planner")) {
-  emit({ type: "item.completed", item: { type: "agent_message", text: "## Outcome\\n\\nBuild the requested result." } });
+  emit({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify({ body: "## Outcome\\n\\nBuild the requested result.", slices: [{ title: "Build the result", outcome: "The requested result is verified." }] }) } });
 } else if (brief.includes("builder")) {
   writeFileSync("built-by-real-harness.txt", "built\\n");
   for (const args of [

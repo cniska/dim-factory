@@ -8,11 +8,15 @@ import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } fro
 import { integratedRepo } from "./fixtures.test-support";
 import { runOrderCommand } from "./order-command";
 import { runOrderPlan } from "./order-plan";
+import type { PlanSlice } from "./plan-artifact";
 import { SCHEMA_SQL } from "./schema";
 import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
 
 const repos: string[] = [];
 const homes: string[] = [];
+const slices: readonly PlanSlice[] = [
+  { title: "Complete the request", outcome: "The requested result is verified." },
+];
 afterAll(() => {
   for (const repo of repos) rmSync(repo, { recursive: true, force: true });
   for (const home of homes) rmSync(home, { recursive: true, force: true });
@@ -63,7 +67,10 @@ describe("plan approval integration", () => {
             token: worker[ASSIGNMENT_TOKEN_VAR] as string,
             sessionId: "planner-approval-session",
           });
-          return `## Outcome\n\nPlan for ${child.name}.`;
+          return JSON.stringify({
+            body: `## Outcome\n\nPlan for ${child.name}.`,
+            slices: [{ title: "Complete the request", outcome: "The requested result is verified." }],
+          });
         })(),
       }),
     });
@@ -119,6 +126,7 @@ describe("plan approval integration", () => {
       "approval-order",
       "## Build\n\nMake the smallest change.",
       planner.name,
+      slices,
     );
 
     expect(runOrderCommand(db, ["approve", "approval-order"], null, repo.dir, env(operator))).toContain(
@@ -165,11 +173,11 @@ describe("plan approval integration", () => {
       undefined,
       repo.dir,
     );
-    const first = recordOrderPlan(db, "approval-order-3", "## Build\n\nFirst path.", planner.name);
+    const first = recordOrderPlan(db, "approval-order-3", "## Build\n\nFirst path.", planner.name, slices);
     expect(runOrderCommand(db, ["approve", "approval-order-3"], null, repo.dir, env(operator))).toContain(
       "plan approved",
     );
-    const second = recordOrderPlan(db, "approval-order-3", "## Build\n\nRevised path.", planner.name);
+    const second = recordOrderPlan(db, "approval-order-3", "## Build\n\nRevised path.", planner.name, slices);
     expect(second).not.toBe(first);
     expect(runOrderCommand(db, ["approve", "approval-order-3"], null, repo.dir, env(operator))).toContain(
       "plan approved",
@@ -211,7 +219,7 @@ describe("plan approval integration", () => {
       undefined,
       repo.dir,
     );
-    recordOrderPlan(db, "approval-order-2", "## Build\n\nMake the smallest change.", operator.name);
+    recordOrderPlan(db, "approval-order-2", "## Build\n\nMake the smallest change.", operator.name, slices);
 
     expect(() => runOrderCommand(db, ["approve", "approval-order-2"], null, repo.dir, env(builder))).toThrow(
       expect.objectContaining({ code: "worker_not_operator" }),

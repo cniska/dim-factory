@@ -3,6 +3,7 @@ import { FactoryStopError, liveStop } from "./factory-stop";
 import { workerIsOver } from "./factory-worker";
 import { withLock } from "./lock";
 import type { Env } from "./paths";
+import type { PlanSlice } from "./plan-artifact";
 import { type ShipOutcome, shipToTrunk } from "./ship";
 import { writeTrace } from "./trace-store";
 import { reachesTrunk } from "./trunk";
@@ -941,6 +942,7 @@ export function recordOrderPlan(
   orderId: string,
   body: string,
   worker: string,
+  slices: readonly PlanSlice[],
   at = now(),
 ): number {
   assertOrderWorking(db, orderId);
@@ -954,6 +956,7 @@ export function recordOrderPlan(
     );
   }
   if (body.trim() === "") throw new Error("plan body must not be empty");
+  if (slices.length === 0) throw new Error("plan must contain at least one slice");
   return db.transaction(() => {
     const revision = (db
       .query<{ revision: number }, [string]>(
@@ -965,6 +968,14 @@ export function recordOrderPlan(
       [orderId, revision, worker, body, at],
     );
     const planId = Number(written.lastInsertRowid);
+    for (const [index, slice] of slices.entries()) {
+      db.run("INSERT INTO factory_order_slice (plan_id, ordinal, title, outcome) VALUES (?, ?, ?, ?)", [
+        planId,
+        index + 1,
+        slice.title,
+        slice.outcome,
+      ]);
+    }
     appendOrderEventInTransaction(db, orderId, { kind: "plan_submitted", worker, planId }, at);
     return planId;
   })();

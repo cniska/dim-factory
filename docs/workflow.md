@@ -69,7 +69,7 @@ operator
       → child workers
 ```
 
-The station coordinator receives the children’s evidence and returns one station result to the operator. A coordinator may request `spawn-workers`; a child worker does not receive that capability. Every request, spawn, result, and finding names the worker that performed it. Worker minting records the direct parent; request, result, and finding records remain part of the station slices that use this tree.
+The station coordinator receives the children’s evidence and returns one station result to the operator. A coordinator may request `spawn-workers`; a child worker does not receive that capability. Every request, spawn, result, and finding names the worker that performed it. Worker registration records the direct parent; request, result, and finding records remain part of the station slices that use this tree.
 
 ## Research
 
@@ -159,6 +159,8 @@ approved plan
 
 An outline change that alters the approved outcome or contract requires a plan revision rather than a silent rewrite.
 
+An order may contain multiple slices. The factory processes them sequentially, reusing the order's planner, builder and reviewer identities while giving each slice its own commit, check, simplification pass, review, findings loop and operator approval.
+
 ## Build
 
 **The factory target.** The build station is a meta-skill that assigns one worker to each slice while the operator observes the order through the wall. This removes the owner from the implementation path without turning the first version into a parallel worker swarm. Slices run sequentially until the record shows that independent slices can be isolated and integrated safely.
@@ -192,6 +194,8 @@ edit
 ```
 
 The slice records its commit, changed files, check, findings, documents, and simplification result. A simplification pass that changes nothing is still an explicit fixpoint. A failed attempt is distinct from the order's queue state and can be retried under a bounded policy.
+
+An order with multiple slices repeats this loop for each slice before starting the next one. The same order identities continue across the slices, and the record makes each slice's commit, check, review and approval measurable.
 
 The owner does not need to watch the worker's session directly. The wall shows the order's station, worker, silence, holds, failed checks, and current owner action; the order dialog shows the plan, result, execution summary, audit log, changes, and bounded program graph. The operator handles routine delegation and phase decisions; the owner enters at holds, repeated failures, architectural risk, ship, and verdict.
 
@@ -238,6 +242,8 @@ slice crosses modules or a boundary
 ```
 
 The first version records coverage rather than creating a worker for every module. A review pass names the modules and boundaries it examined; larger or higher-risk orders can fan out into module-specific or boundary-specific workers when the record shows that one pass is missing findings. An order cannot complete with a changed module or introduced boundary absent from the review record.
+
+Reviews have two scopes. A `slice` review reads one slice's exact commit range against its brief and runs before the next slice starts. An `order` review reads the assembled range against the approved plan and outcome and runs after the final slice. The same review station and order reviewer identity handle both scopes; a one-slice order needs only its slice review.
 
 The order account reports the review coverage, unresolved review debt, cross-module edges, and the time between implementation and review. A later project-wide review is a scheduled diagnostic or a bounded repair order, not the normal way to discover whether shipped work was sound.
 

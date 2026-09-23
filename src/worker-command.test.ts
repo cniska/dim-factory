@@ -102,7 +102,7 @@ describe("starting a worker", () => {
 describe("issuing a worker to a shell", () => {
   test("a child bootstraps an assignment under its own harness session", () => {
     const db = floor();
-    const parentLines = runWorkerCommand(db, ["mint", "--role", "operator"], {
+    const parentLines = runWorkerCommand(db, ["register", "--role", "operator"], {
       DIM_SESSION_ID: "operator-session",
     }).split("\n");
     const parent: Record<string, string> = {};
@@ -134,7 +134,7 @@ describe("issuing a worker to a shell", () => {
   test("prints exports a shell can read back into a resolvable worker", () => {
     const db = floor();
 
-    const printed = runWorkerCommand(db, ["mint", "--role", "builder"], shell);
+    const printed = runWorkerCommand(db, ["register", "--role", "builder"], shell);
 
     const env: Record<string, string> = {};
     for (const line of printed.split("\n")) {
@@ -147,24 +147,24 @@ describe("issuing a worker to a shell", () => {
 
   test("reuses the identity already carried by a session", () => {
     const db = floor();
-    const first = runWorkerCommand(db, ["mint", "--role", "operator"], { DIM_SESSION_ID: "session-1" });
+    const first = runWorkerCommand(db, ["register", "--role", "operator"], { DIM_SESSION_ID: "session-1" });
     const env: Record<string, string> = {};
     for (const line of first.split("\n")) {
       const [name, value] = line.replace("export ", "").split("=");
       env[name as string] = value as string;
     }
 
-    expect(runWorkerCommand(db, ["mint", "--role", "operator"], env)).toBe(first);
+    expect(runWorkerCommand(db, ["register", "--role", "operator"], env)).toBe(first);
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 1 });
     db.close();
   });
 
-  test("refuses to mint without a runtime session id", () => {
+  test("refuses to register without a runtime session id", () => {
     const db = floor();
     const home = mkdtempSync(join(tmpdir(), "dim-worker-session-"));
     const env = { DIM_HOME: join(home, "data") };
 
-    expect(() => runWorkerCommand(db, ["mint", "--role", "operator"], env)).toThrow(
+    expect(() => runWorkerCommand(db, ["register", "--role", "operator"], env)).toThrow(
       /no factory session id is available/,
     );
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 0 });
@@ -184,8 +184,8 @@ describe("issuing a worker to a shell", () => {
       JSON.stringify({ session_id: "harness-session", hook_event_name: "SessionStart", cwd }),
     );
 
-    const printed = runWorkerCommand(db, ["mint", "--role", "operator"], env, cwd);
-    const repeated = runWorkerCommand(db, ["mint", "--role", "operator"], env, cwd);
+    const printed = runWorkerCommand(db, ["register", "--role", "operator"], env, cwd);
+    const repeated = runWorkerCommand(db, ["register", "--role", "operator"], env, cwd);
 
     expect(printed).toContain(`export ${WORKER_SESSION_VAR}=harness-session`);
     expect(repeated).toBe(printed);
@@ -198,11 +198,13 @@ describe("issuing a worker to a shell", () => {
 
   // The identity a reviewer carries is worth only what the hand it reads cannot reach, so
   // the one command a builder's shell can run must not hand it one.
-  test("a read-only hand cannot be minted or run by a caller", () => {
+  test("a read-only hand cannot be registered or run by a caller", () => {
     const db = floor();
 
-    expect(() => runWorkerCommand(db, ["mint", "--role", "reviewer"], shell)).toThrow(WorkerCommandError);
-    expect(() => runWorkerCommand(db, ["mint", "--role", "planner"], shell)).toThrow(/issued by the station/);
+    expect(() => runWorkerCommand(db, ["register", "--role", "reviewer"], shell)).toThrow(WorkerCommandError);
+    expect(() => runWorkerCommand(db, ["register", "--role", "planner"], shell)).toThrow(
+      /issued by the station/,
+    );
     expect(() =>
       runWorkerCommand(db, ["run", "--role", "reviewer", "--", "sh", "-c", "true"], shell),
     ).toThrow(/issued by the station/);
@@ -212,7 +214,7 @@ describe("issuing a worker to a shell", () => {
 
   test("ending one twice says so rather than failing", () => {
     const db = floor();
-    const printed = runWorkerCommand(db, ["mint", "--role", "operator"], { DIM_SESSION_ID: "session-2" });
+    const printed = runWorkerCommand(db, ["register", "--role", "operator"], { DIM_SESSION_ID: "session-2" });
     const name = printed
       .split("\n")
       .find((line) => line.startsWith(`export ${WORKER_NAME_VAR}=`))

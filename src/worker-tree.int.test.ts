@@ -9,7 +9,7 @@ describe("worker tree integration", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     const parentSession = "operator-session";
-    const printed = runWorkerCommand(db, ["mint", "--role", "operator"], {
+    const printed = runWorkerCommand(db, ["register", "--role", "operator"], {
       DIM_SESSION_ID: parentSession,
     });
     const parentEnv: Record<string, string> = { DIM_SESSION_ID: parentSession };

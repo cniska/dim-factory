@@ -123,7 +123,9 @@ describe("factory order report records", () => {
     queueOrder(database, { ...order, id: "order-planned" }, worker);
     claimOrder(database, "order-planned", { ...claim, station: "dim-station-plan" }, worker);
 
-    recordOrderPlan(database, "order-planned", "## outcome\n\nMove the order before building.", worker);
+    recordOrderPlan(database, "order-planned", "## outcome\n\nMove the order before building.", worker, [
+      { title: "Move the order", outcome: "The order reaches build." },
+    ]);
     expect(
       database.query("SELECT body, worker FROM factory_order_plan WHERE order_id = 'order-planned'").get(),
     ).toEqual({ body: "## outcome\n\nMove the order before building.", worker });
