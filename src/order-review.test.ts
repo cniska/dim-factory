@@ -27,6 +27,9 @@ afterAll(() => {
 });
 
 function bootstrapReviewer(db: Database, env: Record<string, string>): string {
+  if (env[WORKER_NAME_VAR] && env[WORKER_TOKEN_VAR] && env[WORKER_SESSION_VAR]) {
+    return env[WORKER_NAME_VAR];
+  }
   const reviewer = bootstrapWorker(db, {
     id: env[ASSIGNMENT_ID_VAR] as string,
     token: env[ASSIGNMENT_TOKEN_VAR] as string,

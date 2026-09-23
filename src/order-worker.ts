@@ -32,9 +32,11 @@ function readOrderWorker(db: Database, orderId: string, role: StationRole): Orde
       [string, string]
     >(
       `SELECT ow.assignment_id, a.parent_worker, a.role AS assignment_role, a.created_at,
-              ow.worker, ow.provider_session_id
+              coalesce(ow.worker, a.accepted_worker) AS worker,
+              coalesce(ow.provider_session_id, w.session_id) AS provider_session_id
        FROM factory_order_worker ow
        JOIN factory_worker_assignment a ON a.id = ow.assignment_id
+       LEFT JOIN factory_worker w ON w.name = a.accepted_worker
        WHERE ow.order_id = ? AND ow.role = ?`,
     )
     .get(orderId, role);
@@ -105,6 +107,30 @@ export function bindOrderWorker(
   if (result.changes !== 1) {
     const existing = readOrderWorker(db, orderId, role);
     if (existing?.worker === worker.name && existing.providerSessionId === worker.sessionId) return;
+    throw new Error(`order ${orderId} ${role} worker binding was not writable`);
+  }
+}
+
+export function bindOrderWorkerName(
+  db: Database,
+  orderId: string,
+  role: StationRole,
+  assignmentId: string,
+  worker: string,
+): void {
+  const session = db
+    .query<{ session_id: string }, [string]>("SELECT session_id FROM factory_worker WHERE name = ?")
+    .get(worker);
+  if (!session) throw new Error(`worker ${worker} was not registered`);
+  const result = db.run(
+    `UPDATE factory_order_worker
+     SET worker = ?, provider_session_id = ?
+     WHERE order_id = ? AND role = ? AND assignment_id = ? AND worker IS NULL`,
+    [worker, session.session_id, orderId, role, assignmentId],
+  );
+  if (result.changes !== 1) {
+    const existing = readOrderWorker(db, orderId, role);
+    if (existing?.worker === worker && existing.providerSessionId === session.session_id) return;
     throw new Error(`order ${orderId} ${role} worker binding was not writable`);
   }
 }

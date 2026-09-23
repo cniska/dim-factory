@@ -113,7 +113,7 @@ describe("builder station", () => {
     ).toEqual({
       role: "builder",
       parent_worker: operator.name,
-      ended_at: expect.any(String),
+      ended_at: null,
     });
     expect(
       db
@@ -129,6 +129,9 @@ describe("builder station", () => {
       { kind: "commit_created", worker: outcome.builder, station: null },
       { kind: "check_finished", worker: outcome.builder, station: null },
     ]);
+    expect(db.query("SELECT worker FROM factory_order_slice_completion").get()).toEqual({
+      worker: outcome.builder,
+    });
     db.close();
   });
 

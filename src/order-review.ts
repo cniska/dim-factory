@@ -13,12 +13,13 @@ import {
 import type { HarnessName } from "./harness-name";
 import {
   bindOrderWorker,
+  bindOrderWorkerName,
   bindOrderWorkerSession,
   ensureOrderWorker,
   orderWorkerRequest,
 } from "./order-worker";
 import { route } from "./routing";
-import { assignedWorker, assignmentProcessEnv, assignWorker, bootstrapWorker } from "./worker-assignment";
+import { assignedWorker, bootstrapWorker } from "./worker-assignment";
 import { repoRoot, worktreePath } from "./wt-command";
 
 export class ReviewRefused extends Error {
@@ -196,6 +197,7 @@ export async function runOrderReviewLive(
     closeOrderReview(db, opened.id, "aborted", worker);
     throw new Error("reviewer did not bootstrap its worker assignment");
   }
+  bindOrderWorkerName(db, orderId, "reviewer", orderWorker.assignment.id, reviewer);
   db.run("UPDATE factory_order_review SET reviewer = ? WHERE id = ?", [reviewer, opened.id]);
   const outcome = run.exitCode === 0 ? "closed" : "aborted";
   const reason =
@@ -237,14 +239,14 @@ export function runOrderReview(
   assertBuildApproved(db, orderId);
   const dir = reviewDirectory(options.dir, orderId);
   const range = reviewRange(db, orderId, dir);
-  const assignment = assignWorker(db, { role: "reviewer", parentWorker: worker });
+  const orderWorker = ensureOrderWorker(db, orderId, "reviewer", worker);
   const opened = openAssignedOrderReview(
     db,
     orderId,
-    { assignmentId: assignment.id, baseSha: range.base, headSha: range.head },
+    { assignmentId: orderWorker.assignment.id, baseSha: range.base, headSha: range.head },
     worker,
   );
-  const env = assignmentProcessEnv(options.env, assignment);
+  const env = orderWorkerRequest(db, options.env, orderWorker);
   const harness = options.harness ?? "codex";
   const { model } = route("reviewer", harness, options.env);
   const request = {
@@ -256,11 +258,12 @@ export function runOrderReview(
     env,
   };
   const run = options.spawn ? options.spawn(harnessArgv(request), env) : runHarnessCommand(request);
-  const reviewer = assignedWorker(db, assignment.id);
+  const reviewer = assignedWorker(db, orderWorker.assignment.id);
   if (!reviewer) {
     closeOrderReview(db, opened.id, "aborted", worker);
     throw new Error("reviewer did not bootstrap its worker assignment");
   }
+  bindOrderWorkerName(db, orderId, "reviewer", orderWorker.assignment.id, reviewer);
   db.run("UPDATE factory_order_review SET reviewer = ? WHERE id = ?", [reviewer, opened.id]);
   const outcome = run.exitCode === 0 ? "closed" : "aborted";
   closeOrderReview(db, opened.id, outcome, worker);

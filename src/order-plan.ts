@@ -13,13 +13,14 @@ import {
 import type { HarnessName } from "./harness-name";
 import {
   bindOrderWorker,
+  bindOrderWorkerName,
   bindOrderWorkerSession,
   ensureOrderWorker,
   orderWorkerRequest,
 } from "./order-worker";
 import { type PlanSlice, parsePlanArtifact } from "./plan-artifact";
 import { route } from "./routing";
-import { assignedWorker, assignmentProcessEnv, assignWorker, bootstrapWorker } from "./worker-assignment";
+import { assignedWorker, bootstrapWorker } from "./worker-assignment";
 
 /** Reads and searches the repository, its history and the record — never edits, never raises a finding. */
 export const PLANNER_CAPABILITIES: Capability[] = [
@@ -71,10 +72,10 @@ export function runOrderPlan(
   if (!order) throw new Error(`order not found: ${orderId}`);
   const parentWorker = resolveWorker(db, options.env);
   assertOperator(db, parentWorker, "delegate planning");
-  const assignment = assignWorker(db, { role: "planner", parentWorker });
+  const orderWorker = ensureOrderWorker(db, orderId, "planner", parentWorker);
   const harness = options.harness ?? "codex";
   const { model } = route("planner", harness, options.env);
-  const env = assignmentProcessEnv(options.env ?? process.env, assignment);
+  const env = orderWorkerRequest(db, options.env ?? process.env, orderWorker);
   const request = {
     harness,
     cwd: process.cwd(),
@@ -86,8 +87,9 @@ export function runOrderPlan(
   const run = options.spawn ? options.spawn(harnessArgv(request), env) : runHarnessCommand(request);
   if (run.exitCode !== 0) throw new Error("planner did not finish planning");
   const artifact = parsePlanArtifact(("stdout" in run ? run.stdout : run.output).trim());
-  const planner = assignedWorker(db, assignment.id);
+  const planner = assignedWorker(db, orderWorker.assignment.id);
   if (!planner) throw new Error("planner did not bootstrap its worker assignment");
+  bindOrderWorkerName(db, orderId, "planner", orderWorker.assignment.id, planner);
   recordOrderPlan(db, orderId, artifact.body, planner, artifact.slices);
   return { planner, ...artifact };
 }

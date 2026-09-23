@@ -508,6 +508,12 @@ CREATE TABLE IF NOT EXISTS factory_order_slice (
   UNIQUE (plan_id, ordinal)
 );
 
+CREATE TABLE IF NOT EXISTS factory_order_slice_completion (
+  slice_id      INTEGER PRIMARY KEY REFERENCES factory_order_slice(id) ON DELETE CASCADE,
+  worker        TEXT NOT NULL REFERENCES factory_worker(name),
+  completed_at  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS turn (
   session_id      TEXT NOT NULL REFERENCES session(id),
   turn_id         TEXT NOT NULL,        -- Codex turn_id; Claude the turn_duration uuid

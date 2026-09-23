@@ -197,6 +197,8 @@ The slice records its commit, changed files, check, findings, documents, and sim
 
 An order with multiple slices repeats this loop for each slice before starting the next one. The same order identities continue across the slices, and the record makes each slice's commit, check, review and approval measurable.
 
+The next slice is derived from the approved plan: it is the first ordered slice without a completion record. Completing a slice records the slice, worker and time in the append-only order record. A failed or interrupted turn leaves that slice incomplete, so the same builder returns to it; a later plan revision has new slice records and starts at its own first slice. There is no separate mutable cursor.
+
 The owner does not need to watch the worker's session directly. The wall shows the order's station, worker, silence, holds, failed checks, and current owner action; the order dialog shows the plan, result, execution summary, audit log, changes, and bounded program graph. The operator handles routine delegation and phase decisions; the owner enters at holds, repeated failures, architectural risk, ship, and verdict.
 
 The operator works above the stations. Every station follows the same contract:

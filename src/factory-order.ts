@@ -981,6 +981,57 @@ export function recordOrderPlan(
   })();
 }
 
+export type OrderSlice = PlanSlice & { id: number; ordinal: number };
+
+export function nextOrderSlice(db: Database, orderId: string): OrderSlice | null {
+  return db
+    .query<OrderSlice, [string]>(
+      `SELECT s.id, s.ordinal, s.title, s.outcome
+       FROM factory_order_slice s
+       JOIN factory_order_plan p ON p.id = s.plan_id
+       WHERE p.order_id = ? AND EXISTS (
+         SELECT 1 FROM factory_order_event e
+         WHERE e.order_id = p.order_id AND e.kind = 'plan_approved' AND e.plan_id = p.id
+       ) AND NOT EXISTS (
+         SELECT 1 FROM factory_order_slice_completion c WHERE c.slice_id = s.id
+       )
+       ORDER BY p.revision DESC, p.id DESC, s.ordinal
+       LIMIT 1`,
+    )
+    .get(orderId);
+}
+
+export function completeOrderSlice(
+  db: Database,
+  orderId: string,
+  sliceId: number,
+  worker: string,
+  at = now(),
+): void {
+  db.transaction(() => {
+    assertOrderWorking(db, orderId);
+    const slice = db
+      .query<{ id: number }, [string, number]>(
+        `SELECT s.id FROM factory_order_slice s
+         JOIN factory_order_plan p ON p.id = s.plan_id
+         WHERE p.order_id = ? AND s.id = ? AND EXISTS (
+           SELECT 1 FROM factory_order_event e
+           WHERE e.order_id = p.order_id AND e.kind = 'plan_approved' AND e.plan_id = p.id
+         )`,
+      )
+      .get(orderId, sliceId);
+    if (!slice) throw new Error(`slice ${sliceId} does not belong to order ${orderId}'s approved plan`);
+    const next = nextOrderSlice(db, orderId);
+    if (!next || next.id !== sliceId)
+      throw new Error(`slice ${sliceId} is not the next slice for order ${orderId}`);
+    db.run("INSERT INTO factory_order_slice_completion (slice_id, worker, completed_at) VALUES (?, ?, ?)", [
+      sliceId,
+      worker,
+      at,
+    ]);
+  })();
+}
+
 export function approveOrderPlan(db: Database, orderId: string, worker: string, at = now()): void {
   assertOrderWorking(db, orderId);
   const role = db

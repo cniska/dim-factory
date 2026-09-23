@@ -82,12 +82,13 @@ describe("the operator loop", () => {
       dir: worktree,
       env: workerEnv(operator),
       spawn: (_argv, env) => {
-        const reviewerWorker = bootstrapWorker(db, {
-          id: env[ASSIGNMENT_ID_VAR] as string,
-          token: env[ASSIGNMENT_TOKEN_VAR] as string,
-          sessionId: `reviewer-${crypto.randomUUID()}`,
-        });
-        const reviewer = reviewerWorker.name;
+        const reviewer =
+          env[WORKER_NAME_VAR] ??
+          bootstrapWorker(db, {
+            id: env[ASSIGNMENT_ID_VAR] as string,
+            token: env[ASSIGNMENT_TOKEN_VAR] as string,
+            sessionId: `reviewer-${crypto.randomUUID()}`,
+          }).name;
         raiseOrderFinding(
           db,
           "loop-order",
@@ -127,12 +128,7 @@ describe("the operator loop", () => {
     const secondReview = runOrderReview(db, "loop-order", operator.name, {
       dir: worktree,
       env: workerEnv(operator),
-      spawn: (_argv, env) => {
-        bootstrapWorker(db, {
-          id: env[ASSIGNMENT_ID_VAR] as string,
-          token: env[ASSIGNMENT_TOKEN_VAR] as string,
-          sessionId: `reviewer-${crypto.randomUUID()}`,
-        });
+      spawn: (_argv, _env) => {
         return { exitCode: 0 };
       },
     });

@@ -11,6 +11,7 @@ describe("worker failure explanations", () => {
           body: "## Outcome\n\nBuild it.",
           slices: [{ title: "Build it", outcome: "The result is verified." }],
         },
+        { id: 1, ordinal: 1, title: "Build it", outcome: "The result is verified." },
         null,
       ),
     ).toContain("A red check is feedback, not completion");
@@ -21,6 +22,7 @@ describe("worker failure explanations", () => {
           body: "## Outcome\n\nBuild it.",
           slices: [{ title: "Build it", outcome: "The result is verified." }],
         },
+        { id: 1, ordinal: 1, title: "Build it", outcome: "The result is verified." },
         null,
       ),
     ).toContain("Do not run dim order stop");
@@ -31,6 +33,7 @@ describe("worker failure explanations", () => {
           body: "## Outcome\n\nBuild it.",
           slices: [{ title: "Build it", outcome: "The result is verified." }],
         },
+        { id: 1, ordinal: 1, title: "Build it", outcome: "The result is verified." },
         null,
       ),
     ).toContain("explicitly exclude a workspace surface");
@@ -41,6 +44,7 @@ describe("worker failure explanations", () => {
           body: "## Outcome\n\nBuild it.",
           slices: [{ title: "First cut", outcome: "The cut is verified." }],
         },
+        { id: 1, ordinal: 1, title: "First cut", outcome: "The cut is verified." },
         null,
       ),
     ).toContain("1. First cut: The cut is verified.");

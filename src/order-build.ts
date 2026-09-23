@@ -1,15 +1,17 @@
 import type { Database } from "bun:sqlite";
 import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
+import type { OrderSlice } from "./factory-order";
 import {
   appendOrderEvent,
   claimOrder,
+  completeOrderSlice,
   isTerminalOrderStatus,
+  nextOrderSlice,
   OrderNotDone,
   orderStatus,
   PlanApprovalRefused,
 } from "./factory-order";
-import { endWorker } from "./factory-worker";
 import type { HarnessAdapter } from "./harness";
 import {
   harnessArgv,
@@ -20,6 +22,7 @@ import {
 import type { HarnessName } from "./harness-name";
 import {
   bindOrderWorker,
+  bindOrderWorkerName,
   bindOrderWorkerSession,
   ensureOrderWorker,
   orderWorkerRequest,
@@ -27,7 +30,7 @@ import {
 import type { Env } from "./paths";
 import type { PlanSlice } from "./plan-artifact";
 import { route } from "./routing";
-import { assignedWorker, assignmentProcessEnv, assignWorker, bootstrapWorker } from "./worker-assignment";
+import { assignedWorker, bootstrapWorker } from "./worker-assignment";
 import { workspaceContract } from "./workspace";
 import { repoRoot, worktreePath } from "./wt-command";
 
@@ -45,6 +48,7 @@ export type BuilderSpawn = (argv: string[], env: Record<string, string>, cwd: st
 export function builderBrief(
   order: { id: string; title: string; description: string | null },
   plan: { body: string; slices: readonly PlanSlice[] },
+  currentSlice: OrderSlice,
   workspace: ReturnType<typeof workspaceContract>,
 ): string {
   const workspaceContext = workspace
@@ -70,6 +74,9 @@ export function builderBrief(
     "The operator approved the following plan. Implement only this outcome:",
     "",
     plan.body,
+    "",
+    "# Current slice",
+    `${currentSlice.ordinal}. ${currentSlice.title}: ${currentSlice.outcome}`,
     "",
     "# Ordered slices",
     ...plan.slices.map((slice, index) => `${index + 1}. ${slice.title}: ${slice.outcome}`),
@@ -139,6 +146,8 @@ export async function runOrderBuildLive(
       "SELECT title, outcome FROM factory_order_slice WHERE plan_id = ? ORDER BY ordinal",
     )
     .all(plan.id);
+  const currentSlice = nextOrderSlice(db, orderId);
+  if (!currentSlice) throw new Error(`order ${orderId} has no incomplete slice`);
   const orderWorker = ensureOrderWorker(db, orderId, "builder", operator);
   const runId = `build-${crypto.randomUUID()}`;
   const worktree = worktreePath(repoRoot(options.dir), orderId);
@@ -159,7 +168,7 @@ export async function runOrderBuildLive(
     const request = {
       harness,
       cwd: worktree,
-      brief: builderBrief(order, { body: plan.body, slices }, workspace),
+      brief: builderBrief(order, { body: plan.body, slices }, currentSlice, workspace),
       model,
       capabilities: BUILDER_CAPABILITIES,
       env,
@@ -194,6 +203,7 @@ export async function runOrderBuildLive(
       throw new Error(`${builder} exited with code ${run.exitCode}`);
     }
     requireBuildEvidence(db, orderId);
+    completeOrderSlice(db, orderId, currentSlice.id, builder);
     return { builder, runId, worktree, exitCode: run.exitCode };
   } catch (error) {
     const reason = workerFailureReason(
@@ -251,7 +261,9 @@ export function runOrderBuild(
       "SELECT title, outcome FROM factory_order_slice WHERE plan_id = ? ORDER BY ordinal",
     )
     .all(plan.id);
-  const assignment = assignWorker(db, { role: "builder", parentWorker: operator });
+  const currentSlice = nextOrderSlice(db, orderId);
+  if (!currentSlice) throw new Error(`order ${orderId} has no incomplete slice`);
+  const orderWorker = ensureOrderWorker(db, orderId, "builder", operator);
   const runId = `build-${crypto.randomUUID()}`;
   const worktree = worktreePath(repoRoot(options.dir), orderId);
   const workspace = workspaceContract(worktree);
@@ -267,13 +279,13 @@ export function runOrderBuild(
     });
   };
   try {
-    const env = assignmentProcessEnv(options.env, assignment);
+    const env = orderWorkerRequest(db, options.env, orderWorker);
     const harness = options.harness ?? "codex";
     const { model } = route("builder", harness, options.env);
     const request = {
       harness,
       cwd: worktree,
-      brief: builderBrief(order, { body: plan.body, slices }, workspace),
+      brief: builderBrief(order, { body: plan.body, slices }, currentSlice, workspace),
       model,
       capabilities: BUILDER_CAPABILITIES,
       env,
@@ -281,21 +293,19 @@ export function runOrderBuild(
     const run = options.spawn
       ? options.spawn(harnessArgv(request), env, worktree)
       : runHarnessCommand(request);
-    builder = assignedWorker(db, assignment.id);
+    builder = assignedWorker(db, orderWorker.assignment.id);
     if (!builder) throw new Error("builder did not bootstrap its worker assignment");
+    bindOrderWorkerName(db, orderId, "builder", orderWorker.assignment.id, builder);
     if (run.exitCode !== 0) {
       const reason = `${builder} exited with code ${run.exitCode}`;
       recordFailure(reason);
       throw new Error(`${builder} did not finish building`);
     }
     requireBuildEvidence(db, orderId);
+    completeOrderSlice(db, orderId, currentSlice.id, builder);
     return { builder, runId, worktree, exitCode: run.exitCode };
   } catch (error) {
     recordFailure(error instanceof Error ? error.message : String(error));
     throw error;
-  } finally {
-    if (builder) {
-      endWorker(db, builder);
-    }
   }
 }

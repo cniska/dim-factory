@@ -9,10 +9,13 @@ import {
   amendOrder,
   answerOrderFinding,
   appendOrderEvent,
+  approveOrderPlan,
   claimOrder as claimOrderAt,
+  completeOrderSlice,
   dropOrder,
   isTerminalOrderStatus,
   moveOrder,
+  nextOrderSlice,
   type OrderClaim,
   queueOrder,
   raiseOrderFinding,
@@ -135,6 +138,52 @@ describe("factory order report records", () => {
 
     moveOrder(database, "order-planned", "dim-station-build", worker);
     recordOrderCommit(database, "order-planned", trunk.sha, worker, "feat: planned order");
+    database.close();
+  });
+
+  test("derives the next slice from the approved plan and its completions", () => {
+    const database = db();
+    const operator = mintWorker(database, {
+      role: "operator",
+      sessionId: newWorkerSession("slice-operator"),
+    }).name;
+    const planner = mintWorker(database, {
+      role: "planner",
+      parentWorker: operator,
+      sessionId: newWorkerSession("slice-planner"),
+    }).name;
+    const builder = mintWorker(database, {
+      role: "builder",
+      parentWorker: operator,
+      sessionId: newWorkerSession("slice-builder"),
+    }).name;
+    queueOrder(database, { ...order, id: "order-slices" }, operator);
+    claimOrder(database, "order-slices", { ...claim, station: "dim-station-plan" }, operator);
+    const planId = recordOrderPlan(database, "order-slices", "## Outcome\n\nBuild both slices.", planner, [
+      { title: "First slice", outcome: "The first slice is verified." },
+      { title: "Second slice", outcome: "The second slice is verified." },
+    ]);
+    approveOrderPlan(database, "order-slices", operator);
+    moveOrder(database, "order-slices", "dim-station-build", operator);
+
+    const first = nextOrderSlice(database, "order-slices");
+    expect(first).toMatchObject({ ordinal: 1, title: "First slice" });
+    if (!first) throw new Error("the approved plan has no first slice");
+    completeOrderSlice(database, "order-slices", first.id, builder);
+    expect(nextOrderSlice(database, "order-slices")).toMatchObject({ ordinal: 2, title: "Second slice" });
+    completeOrderSlice(database, "order-slices", 2, builder);
+    expect(nextOrderSlice(database, "order-slices")).toBeNull();
+    expect(
+      database.query("SELECT slice_id, worker FROM factory_order_slice_completion ORDER BY slice_id").all(),
+    ).toEqual([
+      { slice_id: 1, worker: builder },
+      { slice_id: 2, worker: builder },
+    ]);
+    expect(
+      database.query("SELECT id FROM factory_order_plan WHERE order_id = ?").get("order-slices"),
+    ).toEqual({
+      id: planId,
+    });
     database.close();
   });
 
