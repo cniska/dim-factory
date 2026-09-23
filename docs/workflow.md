@@ -55,6 +55,8 @@ The operator is responsible for starting and observing the order. It does not im
 
 **Live.** A claim creates or reuses the order worktree, records the worker, operator attribution, station, branch, and run identity, and moves the order to working. The append-only attempt ledger records a `started` row for every claim and a `finished` row when that station hands the order onward or records failure. Its outcomes are `running`, `succeeded`, and `failed`; order status remains the queue projection. Claims and integration are serialized; independent orders may run in parallel.
 
+Before a station worker starts, the runner requires a clean order worktree and rebases its branch onto the repository's current local trunk. A dirty worktree or rebase conflict stops the attempt before the worker receives the order. A successful rebase is an attributed audit event with the previous and rewritten commit identities, because rebase changes commit shas; all later checks and reviews use the rewritten head.
+
 The repository owns setup and teardown details: dependencies, services, ports, environment files, and health checks. Dim owns the worktree lifecycle and records the setup and teardown reports. A setup failure holds the order before implementation rather than allowing a worker to produce misleading evidence.
 
 Every meaningful act names its worker at write time. Harness identity, model, tier, and operator are recorded as attributes of the run or event rather than inferred later from a transcript join.
