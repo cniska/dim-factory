@@ -1,3 +1,5 @@
+import { existsSync, statSync } from "node:fs";
+
 /**
  * A checkout's identity as `owner/repo`, taken from its remote. The idea is
  * Acolyte's (`acolyte/src/git-remote.ts`): the host is dropped, so a repository
@@ -31,8 +33,23 @@ export function repositoryLabel(url: string): string | null {
 }
 
 function git(args: string[], cwd: string): string | null {
-  const proc = Bun.spawnSync(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" });
-  return proc.success ? new TextDecoder().decode(proc.stdout).trim() || null : null;
+  try {
+    if (!statSync(cwd).isDirectory()) return null;
+  } catch (error) {
+    if (isMissingPath(error)) return null;
+    throw error;
+  }
+  try {
+    const proc = Bun.spawnSync(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" });
+    return proc.success ? new TextDecoder().decode(proc.stdout).trim() || null : null;
+  } catch (error) {
+    if (isMissingPath(error) && !existsSync(cwd)) return null;
+    throw error;
+  }
+}
+
+function isMissingPath(error: unknown): boolean {
+  return error instanceof Error && "code" in error && (error.code === "ENOENT" || error.code === "ENOTDIR");
 }
 
 /**
