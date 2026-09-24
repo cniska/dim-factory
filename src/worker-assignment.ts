@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { createHash, randomBytes } from "node:crypto";
 import {
   type MintedWorker,
-  mintWorker,
+  mintWorkerForSession,
   WORKER_NAME_VAR,
   WORKER_SESSION_VAR,
   WORKER_TOKEN_VAR,
@@ -106,42 +106,74 @@ export function renewWorkerAssignment(db: Database, assignmentId: string): Worke
 
 export function bootstrapWorker(
   db: Database,
-  assignment: { id: string; token: string; sessionId: string; pid?: number },
+  assignment: {
+    id: string;
+    token: string;
+    sessionId: string;
+    pid?: number;
+    credential?: MintedWorker | null;
+  },
   at = now(),
 ): MintedWorker {
   if (!assignment.token) throw new WorkerAssignmentError("assignment_token");
-  return db.transaction(() => {
-    const row = db
-      .query<
-        { parent_worker: string; role: Role; token_digest: string; accepted_at: string | null },
-        [string]
-      >(
-        `SELECT parent_worker, role, token_digest, accepted_at
+  return db
+    .transaction(() => {
+      const row = db
+        .query<
+          {
+            parent_worker: string;
+            role: Role;
+            token_digest: string;
+            accepted_at: string | null;
+            accepted_worker: string | null;
+          },
+          [string]
+        >(
+          `SELECT parent_worker, role, token_digest, accepted_at, accepted_worker
          FROM factory_worker_assignment WHERE id = ?`,
-      )
-      .get(assignment.id);
-    if (!row) throw new WorkerAssignmentError("assignment_missing");
-    if (row.accepted_at !== null) throw new WorkerAssignmentError("assignment_used");
-    if (row.token_digest !== digest(assignment.token)) throw new WorkerAssignmentError("assignment_token");
+        )
+        .get(assignment.id);
+      if (!row) throw new WorkerAssignmentError("assignment_missing");
+      if (row.token_digest !== digest(assignment.token)) throw new WorkerAssignmentError("assignment_token");
+      if (row.accepted_at !== null) {
+        const accepted = row.accepted_worker
+          ? db
+              .query<{ session_id: string; role: Role; parent_worker: string | null }, [string]>(
+                "SELECT session_id, role, parent_worker FROM factory_worker WHERE name = ?",
+              )
+              .get(row.accepted_worker)
+          : undefined;
+        if (
+          !accepted ||
+          accepted.session_id !== assignment.sessionId ||
+          accepted.role !== row.role ||
+          accepted.parent_worker !== row.parent_worker
+        ) {
+          throw new WorkerAssignmentError("assignment_used");
+        }
+        return mintWorkerForSession(db, {
+          role: row.role,
+          parentWorker: row.parent_worker,
+          sessionId: assignment.sessionId,
+          credential: assignment.credential,
+        });
+      }
 
-    const minted = mintWorker(
-      db,
-      {
+      const minted = mintWorkerForSession(db, {
         role: row.role,
         parentWorker: row.parent_worker,
         sessionId: assignment.sessionId,
         pid: assignment.pid,
-      },
-      at,
-    );
-    db.run(
-      `UPDATE factory_worker_assignment
+      });
+      db.run(
+        `UPDATE factory_worker_assignment
        SET accepted_at = ?, accepted_worker = ?
        WHERE id = ? AND accepted_at IS NULL`,
-      [at, minted.name, assignment.id],
-    );
-    return minted;
-  })();
+        [at, minted.name, assignment.id],
+      );
+      return minted;
+    })
+    .immediate();
 }
 
 export function assignedWorker(db: Database, assignmentId: string): string | undefined {

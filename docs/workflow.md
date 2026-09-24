@@ -55,7 +55,7 @@ The operator is responsible for starting and observing the order. It does not im
 
 ## Claim, isolation, and environment
 
-**Live.** A claim creates or reuses the order worktree, records the worker, operator attribution, station, branch, and run identity, and moves the order to working. The append-only attempt ledger records a `started` row for every claim and a `finished` row when that station hands the order onward or records failure. Its outcomes are `running`, `succeeded`, and `failed`; order status remains the queue projection. Claims and integration are serialized; independent orders may run in parallel.
+**Live.** A claim creates or reuses the order worktree, records the worker, operator attribution, station, branch, and run identity, and moves the order to working. The append-only attempt ledger records a `started` row for every claim and a `finished` row when that station hands the order onward or records failure. Its outcomes are `running`, `succeeded`, and `failed`; order status remains the queue projection. A runner records failure only while its own run is active, so delayed process output cannot add a second failure after a slice has completed. Claims and integration are serialized; independent orders may run in parallel.
 
 Before a station worker starts, the runner requires a clean order worktree and rebases its branch onto the repository's current local trunk. A dirty worktree or rebase conflict stops the attempt before the worker receives the order. A successful rebase is an attributed audit event with the previous and rewritten commit identities, because rebase changes commit shas; all later checks and reviews use the rewritten head.
 
@@ -63,7 +63,7 @@ The repository owns setup and teardown details: dependencies, services, ports, e
 
 Every worker act names its worker at write time. A runner failure before a worker bootstraps carries no worker and keeps its harness evidence instead of borrowing the operator's identity. Harness identity, model, tier, and operator are recorded as attributes of the run or event rather than inferred later from a transcript join.
 
-When the operator records recovery after a runner has already claimed a worker, the lifecycle event names the operator who performed the recovery while the finished attempt remains attributed to the worker that ran it. The two acts stay distinct in the audit trail.
+When the operator records recovery after a runner has already claimed a worker, the lifecycle event names the operator who performed the recovery while the finished attempt remains attributed to the worker that ran it. The attempt records the operator who delegated that run. A worker's parent records who first spawned it and does not restrict a later operator from reusing it. The two acts stay distinct in the audit trail.
 
 ## Delegation and worker trees
 
@@ -165,11 +165,11 @@ approved plan
 
 An outline change that alters the approved outcome or contract requires a plan revision rather than a silent rewrite.
 
-An order may contain multiple slices. The factory processes them sequentially, reusing the order's planner, builder and reviewer identities while giving each slice its own commit, check, simplification pass, review, findings loop and operator approval.
+An order may contain multiple slices. The factory processes them sequentially, reusing the order's planner, builder and reviewer identities while giving each slice its own commit, check, simplification pass, review and findings loop. The owner approves the build once, after the final slice and the single Build artifact are complete.
 
 ## Build
 
-**The factory target.** The build station is a meta-skill that assigns one builder to an order and reuses that worker across its slices while the operator observes the order through the wall. The builder receives the operator-approved ordered slice outline as part of its brief. This removes the owner from the implementation path without turning the first version into a parallel worker swarm. Slices run sequentially until the record shows that independent slices can be isolated and integrated safely.
+**The factory target.** The build station is a meta-skill that assigns one builder to an order and reuses that worker across its slices while the operator observes the order through the wall. The builder receives the operator-approved ordered slice outline as part of its brief. This removes the owner from the implementation path without turning the first version into a parallel worker swarm. Slices run sequentially, and the factory advances through intermediate build and review rounds without an owner gate. The owner gate opens once the final slice and the single Build artifact are complete.
 
 ### Default slice order
 
@@ -217,11 +217,11 @@ operator states the outcome and constraints
   → operator advances, returns, or holds the order
 ```
 
-The artifact changes by station — a plan, a verified build with its simplification evidence, or a review — but the control boundary does not. Simplification is part of the build station's loop, not a separate station or worker role. The operator delegates planning, building, and review; it does not re-review implementation or substitute for an independent reviewer. Because it owns the original request and the delegation contract, it checks whether each returned artifact answers that request before moving the order forward. It decides whether the work returns for another attempt, advances to the next station, or is held. The decision names the operator, phase, outcome, reason, and artifact it acted on.
+The artifact changes by station — a plan, one Build artifact for the completed order, or a review — but the control boundary does not. Intermediate build slices return commits and checks for the operator to inspect before review; the final build also returns its owner-facing artifact. For every station, `dim order approve <order-id>` approves the current artifact, while `dim order return <order-id> --reason "..."` sends it back to the same worker with feedback. The return and each new artifact revision are attributed in the event record; earlier revisions remain unchanged. Simplification is part of the build station's loop, not a separate station or worker role. The operator delegates planning, building, and review; it does not re-review implementation or substitute for an independent reviewer. Because it owns the original request and the delegation contract, it checks each returned outcome against the record before moving the order forward.
 
-Before tasking review, the operator approves the builder's exact latest commit after a passing check. The review command refuses to spawn without that decision, so a clean process cannot mistake a builder's successful exit for an outcome the operator has checked. A later commit requires a new approval for that commit.
+Before tasking review, the operator checks the builder's exact latest commit and passing check. The review command refuses to spawn without that evidence, so a clean process cannot mistake a builder's successful exit for an outcome the operator has checked. A later commit replaces the review target. The owner approves the final Build artifact before review, then approves the clean Review artifact before shipping.
 
-After a review closes, the operator approves that exact review before the order can move to ship. Approval requires a clean closed review with no findings; an aborted review or a review that raised findings returns the order to the builder loop. The ship move requires the approval and the operator's identity, so a worker cannot advance its own outcome.
+After a review closes, the operator approves that exact Review artifact before the order can move to ship. Approval requires a clean closed review with no findings; an aborted review or a review that raised findings returns the order to the builder loop. The ship move requires the approval and the operator's identity, so a worker cannot advance its own outcome.
 
 The build record also carries the worker, slice, and attempt identities needed to count loops honestly. A loop is not inferred from elapsed time or from the number of messages; it is a recorded iteration containing its start, end, slice, check or review result, worker, and outcome. Delegated and owner-driven builds remain distinguishable so the factory can compare owner attention, implementation time, loops, findings, and later `fix:` commits.
 
@@ -275,7 +275,7 @@ The factory chooses the cheapest reliable sensor for each question. Repository c
 
 **Live in part; the explanation gate, owner verdict, and separate integration evidence are planned.** The history repeatedly converges on a plan-before/Build-artifact-after pair, and prior project workflows use an explicit ship/change/rethink verdict. The order therefore produces an independent artifact of what was built before shipping.
 
-The Build artifact is similar to the `explain-diff` skill, but is scoped to the order. A fresh worker reads the approved plan, implementation outline, commits, changed files, program graph, checks, and review findings. It explains the result's intent, load-bearing decisions, risks, non-obvious contracts, plan deviations, and what the owner should scrutinize. It explains; it does not review or approve.
+The Build artifact is similar to the `explain-diff` skill, but is scoped to the order. A fresh worker reads the approved plan, implementation outline, commits, changed files, program graph, checks, and review findings. The builder's artifact leads with the outcome, then explains the meaningful implementation, why it has this shape, what verification establishes, and what the owner should scrutinize. It groups the explanation by logical change, not by file or slice, and leaves command output, exhaustive file lists, slice history, and unrelated failures in the audit record. It explains; it does not review or approve.
 
 When a human shipping gate is enabled, it reads:
 

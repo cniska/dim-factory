@@ -10,9 +10,10 @@ import { integratedRepo } from "./fixtures.test-support";
 import { plannerBrief, runOrderPlan, runOrderPlanLive } from "./order-plan";
 import { SCHEMA_SQL } from "./schema";
 import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
+import { saveWorkerCredential } from "./worker-credential";
 
 describe("planner station", () => {
-  test("asks for the human approval dimensions in the plan", () => {
+  test("uses the shared artifact contract and names the plan dimensions", () => {
     const brief = plannerBrief({
       id: "human-plan",
       title: "Make the change understandable",
@@ -22,20 +23,9 @@ describe("planner station", () => {
     expect(brief).toContain(
       "Write one Markdown plan for the owner to read on the factory wall and the builder to execute",
     );
-    expect(brief).toContain("Scale the explanation to the change");
-    expect(brief).toContain("outcome, boundary, non-goals, and owner decisions");
-    expect(brief).toContain("evidence and what it ruled out");
-    expect(brief).toContain("contracts, invariants, states, transitions, errors, and ownership");
+    expect(brief).toContain("Use dim-artifact for the shared artifact-writing and sizing contract.");
     expect(brief).toContain(
-      "program design: file tree, key signatures, call path, data flow, and boundary crossings",
-    );
-    expect(brief).toContain("executable check for each contract");
-    expect(brief).toContain("every slice a behavior, affected area, check, and dependency");
-    expect(brief).toContain(
-      "review dimensions this change needs; include maintainability and performance when the change materially affects them",
-    );
-    expect(brief).toContain(
-      "risks, holds, unresolved questions, predictions, and the conditions for approval",
+      "For this Plan artifact, include only the outcome, boundary, evidence, contracts, slices, checks, risks, and owner decisions that this change needs.",
     );
   });
 
@@ -54,7 +44,7 @@ describe("planner station", () => {
     claimOrder(
       db,
       "planner-order",
-      { runId: "run", station: "dim-station-plan" },
+      { runId: "run", station: "dim-station-plan", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,
@@ -84,11 +74,12 @@ describe("planner station", () => {
         expect(env.DIM_WORKER_NAME).toBeUndefined();
         expect(env.DIM_WORKER_TOKEN).toBeUndefined();
         expect(env[ASSIGNMENT_ID_VAR]).toBeString();
-        bootstrapWorker(db, {
+        const planner = bootstrapWorker(db, {
           id: env[ASSIGNMENT_ID_VAR] as string,
           token: env[ASSIGNMENT_TOKEN_VAR] as string,
           sessionId: "planner-harness-session",
         });
+        saveWorkerCredential(env, planner);
         return {
           exitCode: 0,
           stdout: JSON.stringify({
@@ -150,7 +141,7 @@ describe("planner station", () => {
     claimOrder(
       db,
       "planner-crash-order",
-      { runId: "run", station: "dim-station-plan" },
+      { runId: "run", station: "dim-station-plan", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,
@@ -206,18 +197,24 @@ describe("planner station", () => {
     claimOrder(
       db,
       "planner-resume-order",
-      { runId: "run", station: "dim-station-plan" },
+      { runId: "run", station: "dim-station-plan", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,
     );
     const base = fakeHarness("plan");
     let starts = 0;
+    let resumes = 0;
     const adapter = {
       ...base,
       start: async (request: Parameters<typeof base.start>[0]) => {
         starts += 1;
         return base.start(request);
+      },
+      resume: async (sessionId: string, request: Parameters<typeof base.start>[0]) => {
+        resumes += 1;
+        expect(sessionId).toBe("fake-session");
+        return base.resume(sessionId, request);
       },
     };
     const env = {
@@ -231,7 +228,8 @@ describe("planner station", () => {
     const second = await runOrderPlanLive(db, "planner-resume-order", { adapter, env });
 
     expect(second.planner).toBe(first.planner);
-    expect(starts).toBe(2);
+    expect(starts).toBe(1);
+    expect(resumes).toBe(1);
     expect(db.query("SELECT count(*) AS n FROM factory_worker WHERE role = 'planner'").get()).toEqual({
       n: 1,
     });

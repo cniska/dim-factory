@@ -2,24 +2,26 @@ import type { Database } from "bun:sqlite";
 import { resolve } from "node:path";
 import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
-import { assertBuildApproved, closeOrderReview, openAssignedOrderReview } from "./factory-order";
-import type { HarnessAdapter } from "./harness";
 import {
-  harnessArgv,
-  runHarnessCommand,
-  runHarnessCommandLive,
-  workerFailureReason,
-} from "./harness-command";
+  assertBuildReady,
+  closeOrderReview,
+  openAssignedOrderReview,
+  raiseOrderFinding,
+  recordOrderReviewArtifact,
+  returnedOrderArtifact,
+} from "./factory-order";
+import type { HarnessAdapter } from "./harness";
+import { harnessArgv, runHarnessCommand, workerFailureReason } from "./harness-command";
 import type { HarnessName } from "./harness-name";
 import {
-  bindOrderWorker,
   bindOrderWorkerName,
-  bindOrderWorkerSession,
   ensureOrderWorker,
   orderWorkerRequest,
+  runOrderWorkerHarnessLive,
 } from "./order-worker";
+import { parseReviewArtifact } from "./review-artifact";
 import { route } from "./routing";
-import { assignedWorker, bootstrapWorker } from "./worker-assignment";
+import { assignedWorker } from "./worker-assignment";
 import { repoRoot, worktreePath } from "./wt-command";
 
 export class ReviewRefused extends Error {
@@ -31,22 +33,21 @@ export class ReviewRefused extends Error {
   }
 }
 
-/**
- * What the reviewer may reach. The capability set is the boundary rather than the brief: an
- * instruction not to edit is a sentence the model may weigh against others, and a capability
- * it was never granted is not reachable however it reasons. `raise-finding` is the one
- * write, and the round refuses even that from any hand but this one.
- */
+/** Reviewers inspect commits and return structured evidence for the factory to record. */
 export const REVIEWER_CAPABILITIES: Capability[] = [
   "bootstrap-worker",
   "read-files",
   "read-history",
   "ask-dim",
-  "raise-finding",
 ];
 
+const REVIEW_OUTPUT_SCHEMA = `${import.meta.dir}/review-artifact.schema.json`;
+
 /** Replaced in tests, which have no model to call and need the exit code to be theirs. */
-export type ReviewerSpawn = (argv: string[], env: Record<string, string>) => { exitCode: number };
+export type ReviewerSpawn = (
+  argv: string[],
+  env: Record<string, string>,
+) => { exitCode: number; output: string };
 
 function git(dir: string, args: string[]): { ok: boolean; out: string } {
   const run = Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe", stderr: "ignore" });
@@ -114,7 +115,27 @@ export function reviewRange(db: Database, orderId: string, dir: string): { base:
 export function reviewerBrief(
   order: { id: string; title: string; description: string | null },
   range: { base: string; head: string },
+  revision?: { body: string; feedback: string },
 ): string {
+  if (revision) {
+    return [
+      `You are the reviewer for factory order ${order.id} in this repository.`,
+      "",
+      `# ${order.title}`,
+      order.description ?? "",
+      "",
+      "The owner returned this Review artifact for revision. Preserve the review's findings and evidence; address only the owner's feedback.",
+      "",
+      "# Previous Review artifact",
+      revision.body,
+      "",
+      "# Owner feedback",
+      revision.feedback,
+      "",
+      "Return one JSON object with a revised Markdown body and an empty findings array.",
+      "Do not edit the repository or change the findings during an artifact revision.",
+    ].join("\n");
+  }
   return [
     `You are the reviewer for factory order ${order.id} in this repository.`,
     "",
@@ -124,11 +145,11 @@ export function reviewerBrief(
     `Read the diff \`git diff ${range.base}..${range.head}\` and nothing else about how it came to be.`,
     "Check each claim at its source before raising it; a reading you did not verify is not a finding.",
     "",
-    "Raise each one with:",
-    `  dim order finding ${order.id} --dimension <name> --summary "..."`,
+    "Write one Review artifact for the owner with the verdict, dimensions covered, evidence considered, and whether the order may advance or must return. Keep it proportional to the change.",
+    'Return exactly one JSON object with a non-empty Markdown "body" and a "findings" array. Each finding has non-empty "dimension" and "summary" strings. Use an empty array when there are no findings. Do not use a Markdown fence or add text outside the JSON object.',
     "",
     "Raising nothing is the expected result and the right one when the diff is sound.",
-    "Do not edit anything. You have no tools that could.",
+    "Do not edit the repository.",
   ].join("\n");
 }
 
@@ -138,6 +159,26 @@ export type ReviewOutcome = {
   findings: number;
   outcome: "closed" | "aborted";
 };
+
+function recordReviewResult(
+  db: Database,
+  orderId: string,
+  reviewer: string,
+  raw: string,
+  returned: boolean,
+): number {
+  const artifact = parseReviewArtifact(raw);
+  if (returned && artifact.findings.length > 0) {
+    throw new Error("a returned Review artifact cannot change its findings");
+  }
+  return db.transaction(() => {
+    for (const finding of artifact.findings) {
+      raiseOrderFinding(db, orderId, finding, reviewer);
+    }
+    recordOrderReviewArtifact(db, orderId, artifact.body, reviewer);
+    return artifact.findings.length;
+  })();
+}
 
 export async function runOrderReviewLive(
   db: Database,
@@ -157,58 +198,90 @@ export async function runOrderReviewLive(
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
   assertOperator(db, worker, "delegate review");
-  assertBuildApproved(db, orderId);
+  assertBuildReady(db, orderId);
   const dir = reviewDirectory(options.dir, orderId);
-  const range = reviewRange(db, orderId, dir);
+  const returned = returnedOrderArtifact(db, orderId, "review");
+  if (returned && returned.reviewId === undefined)
+    throw new Error(`order ${orderId} has an incomplete Review return record`);
+  const returnedReviewId = returned?.reviewId;
+  const prior = returned
+    ? db
+        .query<{ body: string; revision: number; base_sha: string; head_sha: string }, [number]>(
+          `SELECT a.body, a.revision, r.base_sha, r.head_sha
+           FROM factory_order_review_artifact a
+           JOIN factory_order_review r ON r.id = a.review_id
+           WHERE a.review_id = ? ORDER BY a.revision DESC LIMIT 1`,
+        )
+        .get(returnedReviewId as number)
+    : undefined;
+  if (returned && !prior) throw new Error(`review ${returnedReviewId} has no artifact to revise`);
+  const range = prior ? { base: prior.base_sha, head: prior.head_sha } : reviewRange(db, orderId, dir);
   const orderWorker = ensureOrderWorker(db, orderId, "reviewer", worker);
-  const opened = openAssignedOrderReview(
-    db,
-    orderId,
-    { assignmentId: orderWorker.assignment.id, baseSha: range.base, headSha: range.head },
-    worker,
-  );
-  const env = orderWorkerRequest(db, options.env, orderWorker);
+  const opened = returned
+    ? { id: returnedReviewId as number }
+    : openAssignedOrderReview(
+        db,
+        orderId,
+        { assignmentId: orderWorker.assignment.id, baseSha: range.base, headSha: range.head },
+        worker,
+      );
   const harness = options.harness ?? "codex";
   const { model } = route("reviewer", harness, options.env);
   const request = {
     harness,
     cwd: dir,
-    brief: reviewerBrief(order, range),
+    brief: reviewerBrief(
+      order,
+      range,
+      prior ? { body: prior.body, feedback: returned?.reason ?? "Revise the Review artifact." } : undefined,
+    ),
     model,
     capabilities: REVIEWER_CAPABILITIES,
-    env,
+    outputSchema: REVIEW_OUTPUT_SCHEMA,
+    env: {},
   };
-  let reviewer = orderWorker.worker;
-  const onStarted = (providerSessionId: string): void => {
-    if (orderWorker.worker) {
-      bindOrderWorkerSession(db, orderId, "reviewer", providerSessionId);
-    } else {
-      const minted = bootstrapWorker(db, {
-        id: orderWorker.assignment.id,
-        token: orderWorker.assignment.token,
-        sessionId: providerSessionId,
-      });
-      bindOrderWorker(db, orderId, "reviewer", orderWorker.assignment.id, minted);
-      reviewer = minted.name;
+  let run: Awaited<ReturnType<typeof runOrderWorkerHarnessLive>>;
+  try {
+    run = await runOrderWorkerHarnessLive(db, request, orderWorker, options.env, options.adapter);
+  } catch (error) {
+    if (!returned) {
+      const reason = workerFailureReason(
+        "reviewer did not finish reviewing",
+        error instanceof Error ? error.message : String(error),
+        undefined,
+      );
+      closeOrderReview(db, opened.id, "aborted", worker, undefined, reason);
     }
-  };
-  const run = await runHarnessCommandLive(request, onStarted, options.adapter);
+    throw error;
+  }
+  const reviewer = run.worker ?? assignedWorker(db, orderWorker.assignment.id);
   if (!reviewer) {
-    closeOrderReview(db, opened.id, "aborted", worker);
+    if (!returned) closeOrderReview(db, opened.id, "aborted", worker);
     throw new Error("reviewer did not bootstrap its worker assignment");
   }
-  bindOrderWorkerName(db, orderId, "reviewer", orderWorker.assignment.id, reviewer);
   db.run("UPDATE factory_order_review SET reviewer = ? WHERE id = ?", [reviewer, opened.id]);
   const outcome = run.exitCode === 0 ? "closed" : "aborted";
   const reason =
     outcome === "aborted"
       ? workerFailureReason("reviewer did not finish reviewing", run.output, run.failureReason)
       : undefined;
-  closeOrderReview(db, opened.id, outcome, worker, undefined, reason);
-  const raised = (db
-    .query<{ n: number }, [number]>("SELECT count(*) AS n FROM factory_order_finding WHERE review_id = ?")
-    .get(opened.id)?.n ?? 0) as number;
-  return { review: opened.id, reviewer, findings: raised, outcome };
+  if (outcome === "aborted") {
+    if (returned) throw new Error(reason);
+    closeOrderReview(db, opened.id, outcome, worker, undefined, reason);
+    return { review: opened.id, reviewer, findings: 0, outcome };
+  }
+  let findings: number;
+  try {
+    findings = recordReviewResult(db, orderId, reviewer, run.output, Boolean(returned));
+  } catch (error) {
+    const failure = error instanceof Error ? error.message : String(error);
+    if (!returned) closeOrderReview(db, opened.id, "aborted", worker, undefined, failure);
+    throw error;
+  }
+  if (!returned) {
+    closeOrderReview(db, opened.id, outcome, worker, undefined, reason);
+  }
+  return { review: opened.id, reviewer, findings, outcome };
 }
 
 /**
@@ -236,7 +309,7 @@ export function runOrderReview(
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
   assertOperator(db, worker, "delegate review");
-  assertBuildApproved(db, orderId);
+  assertBuildReady(db, orderId);
   const dir = reviewDirectory(options.dir, orderId);
   const range = reviewRange(db, orderId, dir);
   const orderWorker = ensureOrderWorker(db, orderId, "reviewer", worker);
@@ -255,6 +328,7 @@ export function runOrderReview(
     brief: reviewerBrief(order, range),
     model,
     capabilities: REVIEWER_CAPABILITIES,
+    outputSchema: REVIEW_OUTPUT_SCHEMA,
     env,
   };
   const run = options.spawn ? options.spawn(harnessArgv(request), env) : runHarnessCommand(request);
@@ -266,9 +340,18 @@ export function runOrderReview(
   bindOrderWorkerName(db, orderId, "reviewer", orderWorker.assignment.id, reviewer);
   db.run("UPDATE factory_order_review SET reviewer = ? WHERE id = ?", [reviewer, opened.id]);
   const outcome = run.exitCode === 0 ? "closed" : "aborted";
+  if (outcome === "aborted") {
+    closeOrderReview(db, opened.id, outcome, worker);
+    return { review: opened.id, reviewer, findings: 0, outcome };
+  }
+  let findings: number;
+  try {
+    findings = recordReviewResult(db, orderId, reviewer, run.output, false);
+  } catch (error) {
+    const failure = error instanceof Error ? error.message : String(error);
+    closeOrderReview(db, opened.id, "aborted", worker, undefined, failure);
+    throw error;
+  }
   closeOrderReview(db, opened.id, outcome, worker);
-  const raised = (db
-    .query<{ n: number }, [number]>("SELECT count(*) AS n FROM factory_order_finding WHERE review_id = ?")
-    .get(opened.id)?.n ?? 0) as number;
-  return { review: opened.id, reviewer, findings: raised, outcome };
+  return { review: opened.id, reviewer, findings, outcome };
 }

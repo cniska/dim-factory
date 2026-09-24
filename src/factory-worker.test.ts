@@ -77,7 +77,7 @@ describe("issuing a factory worker", () => {
     db.close();
   });
 
-  test("refuses a child whose parent is unknown or over", () => {
+  test("requires a known parent and preserves it after the parent ends", () => {
     const db = floor();
 
     expect(() => issue(db, { role: "builder", parentWorker: "missing-1" })).toThrow(
@@ -85,9 +85,10 @@ describe("issuing a factory worker", () => {
     );
     const parent = issue(db, { role: "operator" });
     endWorker(db, parent.name);
-    expect(() => issue(db, { role: "builder", parentWorker: parent.name })).toThrow(
-      `parent worker ${parent.name} has ended`,
-    );
+    const child = issue(db, { role: "builder", parentWorker: parent.name });
+    expect(db.query("SELECT parent_worker FROM factory_worker WHERE name = ?").get(child.name)).toEqual({
+      parent_worker: parent.name,
+    });
     db.close();
   });
 

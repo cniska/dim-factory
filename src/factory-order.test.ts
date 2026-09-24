@@ -11,13 +11,16 @@ import {
   appendOrderEvent,
   approveOrderBuild,
   approveOrderPlan,
+  approveOrderReview,
   claimOrder as claimOrderAt,
+  closeOrderReview,
   completeOrderSlice,
   dropOrder,
   isTerminalOrderStatus,
   moveOrder,
   nextOrderSlice,
   type OrderClaim,
+  openOrderReview,
   queueOrder,
   raiseOrderFinding,
   recordOrderBuild,
@@ -27,6 +30,8 @@ import {
   recordOrderEnvironment,
   recordOrderFile,
   recordOrderPlan,
+  recordOrderReviewArtifact,
+  recoverOrderFailure,
   shipOrder,
 } from "./factory-order";
 import { clearStop, FactoryStopError, pullStop } from "./factory-stop";
@@ -48,11 +53,16 @@ import type { WorkerHookReport } from "./worker-environment";
 // One hand per database, set where the database is made: every moment names a worker,
 // and what these tests are about is the order rather than who touched it.
 let worker = "";
+let attemptOperator = "";
 
 function db(): Database {
   const database = new Database(":memory:");
   database.run(SCHEMA_SQL);
   worker = workerIn(database);
+  attemptOperator = mintWorker(database, {
+    role: "operator",
+    sessionId: newWorkerSession("test-operator"),
+  }).name;
   return database;
 }
 
@@ -67,16 +77,21 @@ const order = {
 
 const claim = { runId: "run-1", sessionId: "session-1", station: "dim-station-build" };
 
+function claimForAttempt(operatorWorker = attemptOperator): OrderClaim {
+  return { ...claim, operatorWorker };
+}
+
 // A claim now makes the worktree it names, so every direct call needs somewhere
 // safe to make one — `trunk.dir` rather than this machine's own checkout.
 function claimOrder(
   database: Database,
   orderId: string,
-  given: OrderClaim,
+  given: Omit<OrderClaim, "operatorWorker">,
   who: string,
   at?: string,
+  operatorWorker = attemptOperator,
 ): number {
-  return claimOrderAt(database, orderId, given, who, at, trunk.dir);
+  return claimOrderAt(database, orderId, { ...given, operatorWorker }, who, at, trunk.dir);
 }
 
 /** What the gate wants before an order may complete: a commit on the trunk, then a check that passed. */
@@ -112,6 +127,38 @@ const teardownReport: WorkerHookReport = {
 };
 
 describe("factory order report records", () => {
+  test("review approval requires a recorded Review artifact", () => {
+    const database = db();
+    const operator = mintWorker(database, {
+      role: "operator",
+      sessionId: newWorkerSession("review-artifact-gate-operator"),
+    });
+    const reviewer = mintWorker(database, {
+      role: "reviewer",
+      sessionId: newWorkerSession("review-artifact-gate-reviewer"),
+    });
+    const open = (id: string) => {
+      queueOrder(database, { ...order, id }, operator.name);
+      claimOrder(database, id, { ...claim, station: "dim-station-review" }, operator.name);
+      return openOrderReview(
+        database,
+        id,
+        { reviewer: reviewer.name, baseSha: "head", headSha: "head" },
+        operator.name,
+      );
+    };
+    const missing = open("order-review-artifact-missing");
+    closeOrderReview(database, missing.id, "closed", reviewer.name);
+    expect(() => approveOrderReview(database, "order-review-artifact-missing", operator.name)).toThrow(
+      expect.objectContaining({ code: "review_artifact_missing" }),
+    );
+    const ready = open("order-review-artifact-ready");
+    recordOrderReviewArtifact(database, "order-review-artifact-ready", "## Outcome\n\nClean.", reviewer.name);
+    closeOrderReview(database, ready.id, "closed", reviewer.name);
+    expect(() => approveOrderReview(database, "order-review-artifact-ready", operator.name)).not.toThrow();
+    database.close();
+  });
+
   test("build approval requires an artifact for the latest commit", () => {
     const database = db();
     const operator = mintWorker(database, {
@@ -211,7 +258,7 @@ describe("factory order report records", () => {
     claimOrderAt(
       database,
       "order-slices",
-      { ...claim, runId: "slice-build-run", station: "dim-station-build" },
+      { ...claim, runId: "slice-build-run", station: "dim-station-build", operatorWorker: operator },
       builder,
     );
 
@@ -246,6 +293,43 @@ describe("factory order report records", () => {
     ).toEqual({
       id: planId,
     });
+    database.close();
+  });
+
+  test("refuses a Build artifact before the final slice", () => {
+    const database = db();
+    const operator = mintWorker(database, {
+      role: "operator",
+      sessionId: newWorkerSession("artifact-operator"),
+    }).name;
+    const planner = mintWorker(database, {
+      role: "planner",
+      parentWorker: operator,
+      sessionId: newWorkerSession("artifact-planner"),
+    }).name;
+    const builder = mintWorker(database, {
+      role: "builder",
+      parentWorker: operator,
+      sessionId: newWorkerSession("artifact-builder"),
+    }).name;
+    queueOrder(database, { ...order, id: "order-early-artifact" }, operator);
+    claimOrder(database, "order-early-artifact", { ...claim, station: "dim-station-plan" }, operator);
+    recordOrderPlan(database, "order-early-artifact", "## Outcome\n\nBuild both slices.", planner, [
+      { title: "First slice", outcome: "The first slice is verified." },
+      { title: "Second slice", outcome: "The second slice is verified." },
+    ]);
+    approveOrderPlan(database, "order-early-artifact", operator);
+    moveOrder(database, "order-early-artifact", "dim-station-build", operator);
+    claimOrderAt(
+      database,
+      "order-early-artifact",
+      { ...claim, runId: "early-artifact-run", station: "dim-station-build", operatorWorker: operator },
+      builder,
+    );
+
+    expect(() =>
+      recordOrderBuild(database, "order-early-artifact", "The first slice is done.", "first", builder),
+    ).toThrow(expect.objectContaining({ code: "build_artifact_before_final_slice" }));
     database.close();
   });
 
@@ -301,6 +385,7 @@ describe("factory order report records", () => {
       { ...claim, runId: "plan-run", station: "dim-station-plan" },
       operator,
       "2026-09-22T10:00:00.000Z",
+      operator,
     );
     moveOrder(database, "order-attempts", "dim-station-build", operator, "2026-09-22T10:01:00.000Z");
     claimOrder(
@@ -309,6 +394,7 @@ describe("factory order report records", () => {
       { ...claim, runId: "build-run", station: "dim-station-build" },
       builder,
       "2026-09-22T10:02:00.000Z",
+      operator,
     );
     appendOrderEvent(
       database,
@@ -322,6 +408,7 @@ describe("factory order report records", () => {
       { ...claim, runId: "build-retry", station: "dim-station-build" },
       builder,
       "2026-09-22T10:04:00.000Z",
+      operator,
     );
 
     expect(
@@ -404,14 +491,21 @@ describe("factory order report records", () => {
       { runId: "recovery-run", station: "dim-station-build" },
       builder,
       "2026-09-22T11:00:00.000Z",
+      operator,
     );
 
-    appendOrderEvent(
-      database,
-      "operator-recovery",
-      { kind: "failed", worker: operator, reason: "runner exited" },
-      "2026-09-22T11:01:00.000Z",
-    );
+    recoverOrderFailure(database, "operator-recovery", operator, "runner exited", "2026-09-22T11:01:00.000Z");
+
+    expect(
+      database
+        .query<{ kind: string; worker: string | null }, [string]>(
+          "SELECT kind, worker FROM factory_order_event WHERE order_id = ? ORDER BY id DESC LIMIT 2",
+        )
+        .all("operator-recovery"),
+    ).toEqual([
+      { kind: "recovered", worker: operator },
+      { kind: "failed", worker: builder },
+    ]);
 
     expect(
       database
@@ -446,7 +540,7 @@ describe("factory order report records", () => {
     const result = await runFactoryOrder(
       database,
       { id: "order-2" },
-      { baseRevision: "abc123", claim, worker, worktree: trunk.dir },
+      { baseRevision: "abc123", claim: claimForAttempt(), worker, worktree: trunk.dir },
       async (context) => {
         expect(context.item.id).toBe("order-2");
         expect(context.baseRevision).toBe("abc123");
@@ -524,7 +618,7 @@ describe("factory order report records", () => {
       const outcome = await runFactoryOrder(
         database,
         { id: orderId },
-        { baseRevision: "abc123", claim, worker, worktree: trunk.dir },
+        { baseRevision: "abc123", claim: claimForAttempt(), worker, worktree: trunk.dir },
         (context) => {
           if (status === "completed") {
             context.recordCommit(trunk.sha, "feat: land it");
@@ -566,7 +660,7 @@ describe("factory order report records", () => {
       runFactoryOrder(
         database,
         { id: "order-unchecked" },
-        { baseRevision: "abc123", claim, worker, worktree: trunk.dir },
+        { baseRevision: "abc123", claim: claimForAttempt(), worker, worktree: trunk.dir },
         () => ({
           status: "completed",
           reason: "verified",
@@ -587,7 +681,7 @@ describe("factory order report records", () => {
       runFactoryOrder(
         database,
         { id: "order-3" },
-        { baseRevision: "abc123", claim, worker, worktree: trunk.dir },
+        { baseRevision: "abc123", claim: claimForAttempt(), worker, worktree: trunk.dir },
         () => {
           throw new Error("builder stopped");
         },
@@ -616,7 +710,7 @@ describe("factory order report records", () => {
       runFactoryOrder(
         database,
         { id: "order-no-worktree" },
-        { baseRevision: "abc123", claim, worker, worktree: trunk.dir },
+        { baseRevision: "abc123", claim: claimForAttempt(), worker, worktree: trunk.dir },
         () => ({
           status: "completed",
           reason: "verified",
@@ -1049,7 +1143,7 @@ describe("factory order report records", () => {
       runFactoryOrder(
         database,
         { id: "order-4" },
-        { baseRevision: "abc123", claim, worker, worktree: trunk.dir },
+        { baseRevision: "abc123", claim: claimForAttempt(), worker, worktree: trunk.dir },
         (context) => {
           context.appendEvent({ worker, kind: "failed", reason: "builder stopped" });
           throw new Error("builder failed after stopping");
@@ -1372,6 +1466,10 @@ describe("factory order report records", () => {
     const environment = { HOME: home, DIM_HOME: home };
     const database = openDb(dbPath(environment));
     const hand = workerIn(database);
+    attemptOperator = mintWorker(database, {
+      role: "operator",
+      sessionId: newWorkerSession("rebuild-operator"),
+    }).name;
     queueOrder(database, order, hand, "2026-09-18T10:00:00.000Z");
     claimOrder(database, "order-1", claim, hand, "2026-09-18T10:01:00.000Z");
     recordOrderEnvironment(database, "order-1", teardownReport, "2026-09-18T10:02:00.000Z");

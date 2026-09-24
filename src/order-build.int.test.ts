@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   approveOrderPlan,
   claimOrder,
+  isActiveOrderRun,
   moveOrder,
   queueOrder,
   recordOrderBuild,
@@ -13,12 +14,19 @@ import {
   recordOrderCommit,
   recordOrderPlan,
 } from "./factory-order";
-import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
+import {
+  endWorker,
+  mintWorker,
+  WORKER_NAME_VAR,
+  WORKER_SESSION_VAR,
+  WORKER_TOKEN_VAR,
+} from "./factory-worker";
 import { fakeHarness } from "./fake-harness";
 import { integratedRepo } from "./fixtures.test-support";
 import { runOrderBuild, runOrderBuildLive } from "./order-build";
 import { SCHEMA_SQL } from "./schema";
 import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
+import { saveWorkerCredential } from "./worker-credential";
 
 const repos: string[] = [];
 const homes: string[] = [];
@@ -48,7 +56,7 @@ describe("builder station", () => {
     claimOrder(
       db,
       "builder-order",
-      { runId: "plan-run", station: "dim-station-plan" },
+      { runId: "plan-run", station: "dim-station-plan", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,
@@ -83,11 +91,18 @@ describe("builder station", () => {
           sessionId: "builder-session",
         });
         childEnv[WORKER_NAME_VAR] = builder.name;
+        childEnv[WORKER_TOKEN_VAR] = builder.token;
         childEnv[WORKER_SESSION_VAR] = builder.sessionId;
+        saveWorkerCredential(childEnv, builder);
         claimOrder(
           db,
           "builder-order",
-          { runId: "builder-run", sessionId: childEnv[WORKER_SESSION_VAR], station: "dim-station-build" },
+          {
+            runId: "builder-run",
+            sessionId: childEnv[WORKER_SESSION_VAR],
+            station: "dim-station-build",
+            operatorWorker: operator.name,
+          },
           builder.name,
           undefined,
           repo.dir,
@@ -141,6 +156,7 @@ describe("builder station", () => {
     expect(db.query("SELECT worker FROM factory_order_slice_completion").get()).toEqual({
       worker: outcome.builder,
     });
+    expect(isActiveOrderRun(db, "builder-order", outcome.runId)).toBe(false);
     db.close();
   });
 
@@ -164,7 +180,7 @@ describe("builder station", () => {
     claimOrder(
       db,
       "failed-builder-order",
-      { runId: "failed-plan-run", station: "dim-station-plan" },
+      { runId: "failed-plan-run", station: "dim-station-plan", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,
@@ -216,6 +232,8 @@ describe("builder station", () => {
       '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
     );
     const operator = mintWorker(db, { role: "operator", sessionId: "builder-resume-operator" });
+    const nextOperator = mintWorker(db, { role: "operator", sessionId: "builder-resume-operator-2" });
+    const laterOperator = mintWorker(db, { role: "operator", sessionId: "builder-resume-operator-3" });
     queueOrder(
       db,
       { id: "builder-resume-order", project: "cniska/dim-factory", title: "Retry this build" },
@@ -224,7 +242,7 @@ describe("builder station", () => {
     claimOrder(
       db,
       "builder-resume-order",
-      { runId: "plan-run", station: "dim-station-plan" },
+      { runId: "plan-run", station: "dim-station-plan", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,
@@ -242,11 +260,17 @@ describe("builder station", () => {
 
     const base = fakeHarness("crash");
     let starts = 0;
+    let resumes = 0;
     const adapter = {
       ...base,
       start: async (request: Parameters<typeof base.start>[0]) => {
         starts += 1;
         return base.start(request);
+      },
+      resume: async (sessionId: string, request: Parameters<typeof base.start>[0]) => {
+        resumes += 1;
+        expect(sessionId).toBe("fake-session");
+        return base.resume(sessionId, request);
       },
     };
     const env = {
@@ -257,17 +281,66 @@ describe("builder station", () => {
     };
 
     await expect(
-      runOrderBuildLive(db, "builder-resume-order", operator.name, { dir: repo.dir, env, adapter }),
+      runOrderBuildLive(db, "builder-resume-order", operator.name, {
+        dir: repo.dir,
+        env,
+        adapter: fakeHarness("bootstrap-failure"),
+      }),
+    ).rejects.toThrow("worker bootstrap failed");
+    expect(db.query("SELECT count(*) AS n FROM factory_worker WHERE role = 'builder'").get()).toEqual({
+      n: 0,
+    });
+    endWorker(db, operator.name);
+    await expect(
+      runOrderBuildLive(db, "builder-resume-order", nextOperator.name, {
+        dir: repo.dir,
+        env: {
+          DIM_HOME: home,
+          [WORKER_NAME_VAR]: nextOperator.name,
+          [WORKER_TOKEN_VAR]: nextOperator.token,
+          [WORKER_SESSION_VAR]: nextOperator.sessionId,
+        },
+        adapter,
+      }),
     ).rejects.toThrow("fake process crashed");
     await expect(
-      runOrderBuildLive(db, "builder-resume-order", operator.name, { dir: repo.dir, env, adapter }),
+      runOrderBuildLive(db, "builder-resume-order", laterOperator.name, {
+        dir: repo.dir,
+        env: {
+          DIM_HOME: home,
+          [WORKER_NAME_VAR]: laterOperator.name,
+          [WORKER_TOKEN_VAR]: laterOperator.token,
+          [WORKER_SESSION_VAR]: laterOperator.sessionId,
+        },
+        adapter,
+      }),
     ).rejects.toThrow("fake process crashed");
 
-    expect(starts).toBe(2);
+    expect(starts).toBe(1);
+    expect(resumes).toBe(1);
     expect(db.query("SELECT count(*) AS n FROM factory_worker WHERE role = 'builder'").get()).toEqual({
       n: 1,
     });
     expect(db.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 1 });
+    expect(
+      db
+        .query(
+          "SELECT kind, operator_worker FROM factory_order_attempt WHERE kind = 'started' AND station = 'dim-station-build' ORDER BY rowid",
+        )
+        .all(),
+    ).toEqual([
+      { kind: "started", operator_worker: nextOperator.name },
+      { kind: "started", operator_worker: laterOperator.name },
+    ]);
+    expect(
+      db
+        .query(
+          `SELECT parent_worker FROM factory_worker WHERE name = (
+            SELECT worker FROM factory_order_worker WHERE order_id = ? AND role = 'builder'
+          )`,
+        )
+        .get("builder-resume-order"),
+    ).toEqual({ parent_worker: operator.name });
     db.close();
   });
 });

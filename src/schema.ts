@@ -21,7 +21,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 55;
+export const SCHEMA_VERSION = 56;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -334,9 +334,8 @@ CREATE TABLE IF NOT EXISTS factory_worker (
   -- issued to a shell instead of to a process this spawned.
   pid           INTEGER,
   started_at    TEXT NOT NULL,
-  -- Written by SessionEnd for a spawned worker and by \`dim worker end\` for one issued
-  -- at a terminal. A worker whose pid has stopped answering is over whether or not
-  -- this was written, which is what keeps a killed worker from holding a live token.
+  -- SessionEnd writes this for a spawned worker. A stopped pid is over whether or
+  -- not this row was written, which keeps a killed worker from holding a live token.
   ended_at      TEXT
 );
 
@@ -385,7 +384,7 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,
   order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   ts                    TEXT NOT NULL,
-  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'plan_artifact_written', 'plan_approved', 'build_approved', 'build_artifact_written', 'commit_created', 'check_finished', 'review_opened', 'review_closed', 'review_artifact_written', 'review_approved', 'finding_raised', 'finding_answered', 'completed', 'dropped', 'failed')),
+  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'plan_artifact_written', 'plan_approved', 'artifact_returned', 'build_approved', 'build_artifact_written', 'commit_created', 'check_finished', 'review_opened', 'review_closed', 'review_artifact_written', 'review_approved', 'finding_raised', 'finding_answered', 'completed', 'dropped', 'failed', 'recovered')),
   -- Who did it, written by the statement that writes the moment and never after.
   -- A runner failure before a station worker bootstraps has no worker rather than
   -- borrowing the operator's identity.
@@ -458,6 +457,17 @@ CREATE TABLE IF NOT EXISTS factory_order_review (
   CHECK ((outcome IS NULL) = (closed_at IS NULL)),
   CHECK (reviewer IS NOT NULL OR assignment_id IS NOT NULL),
   UNIQUE (order_id, round)
+);
+
+CREATE TABLE IF NOT EXISTS factory_order_review_artifact (
+  id            INTEGER PRIMARY KEY,
+  order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  review_id     INTEGER NOT NULL REFERENCES factory_order_review(id) ON DELETE CASCADE,
+  revision      INTEGER NOT NULL CHECK (revision > 0),
+  worker        TEXT NOT NULL REFERENCES factory_worker(name),
+  body          TEXT NOT NULL CHECK (trim(body) <> ''),
+  recorded_at   TEXT NOT NULL,
+  UNIQUE (review_id, revision)
 );
 
 -- Raising a finding and answering it are two acts by two hands: the reviewer that read

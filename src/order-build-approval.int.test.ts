@@ -27,7 +27,7 @@ function env(worker: { name: string; token: string; sessionId: string }): Record
 }
 
 describe("build approval integration", () => {
-  test("requires the operator to approve the checked commit before review", () => {
+  test("requires the operator to approve the checked final build", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     const repo = integratedRepo();
@@ -46,7 +46,7 @@ describe("build approval integration", () => {
     claimOrder(
       db,
       "build-approval-order",
-      { runId: "build-run", station: "dim-station-build" },
+      { runId: "build-run", station: "dim-station-build", operatorWorker: operator.name },
       builder.name,
       undefined,
       repo.dir,
@@ -92,11 +92,36 @@ describe("build approval integration", () => {
       repo.sha,
       builder.name,
     );
+    expect(
+      runOrderCommand(
+        db,
+        ["return", "build-approval-order", "--reason", "Explain the verified result, not the command log."],
+        null,
+        repo.dir,
+        env(operator),
+      ),
+    ).toContain("returned");
+    expect(() =>
+      runOrderCommand(
+        db,
+        ["approve", "build-approval-order", "--reason", "answers the request"],
+        null,
+        repo.dir,
+        env(operator),
+      ),
+    ).toThrow(expect.objectContaining({ code: "artifact_revision_required" }));
+    recordOrderBuild(
+      db,
+      "build-approval-order",
+      "## Outcome\n\nThe request is complete.",
+      repo.sha,
+      builder.name,
+    );
 
     expect(() =>
       runOrderCommand(
         db,
-        ["approve-build", "build-approval-order", "--reason", "answers the request"],
+        ["approve", "build-approval-order", "--reason", "answers the request"],
         null,
         repo.dir,
         env(builder),
@@ -105,7 +130,7 @@ describe("build approval integration", () => {
     expect(
       runOrderCommand(
         db,
-        ["approve-build", "build-approval-order", "--reason", "answers the request"],
+        ["approve", "build-approval-order", "--reason", "answers the request"],
         null,
         repo.dir,
         env(operator),
@@ -129,6 +154,13 @@ describe("build approval integration", () => {
       { kind: "claimed", worker: builder.name, commit_sha: null, reason: null },
       { kind: "commit_created", worker: builder.name, commit_sha: repo.sha, reason: null },
       { kind: "check_finished", worker: builder.name, commit_sha: null, reason: null },
+      { kind: "build_artifact_written", worker: builder.name, commit_sha: null, reason: null },
+      {
+        kind: "artifact_returned",
+        worker: operator.name,
+        commit_sha: repo.sha,
+        reason: "Explain the verified result, not the command log.",
+      },
       { kind: "build_artifact_written", worker: builder.name, commit_sha: null, reason: null },
       { kind: "build_approved", worker: operator.name, commit_sha: repo.sha, reason: "answers the request" },
       { kind: "moved", worker: operator.name, commit_sha: null, reason: null },

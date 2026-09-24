@@ -1,26 +1,20 @@
 import type { Database } from "bun:sqlite";
 import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
-import { appendOrderEvent, recordOrderPlan } from "./factory-order";
+import { appendOrderEvent, recordOrderPlan, returnedOrderArtifact } from "./factory-order";
 import { resolveWorker } from "./factory-worker";
 import type { HarnessAdapter } from "./harness";
-import {
-  harnessArgv,
-  runHarnessCommand,
-  runHarnessCommandLive,
-  workerFailureReason,
-} from "./harness-command";
+import { harnessArgv, runHarnessCommand, workerFailureReason } from "./harness-command";
 import type { HarnessName } from "./harness-name";
 import {
-  bindOrderWorker,
   bindOrderWorkerName,
-  bindOrderWorkerSession,
   ensureOrderWorker,
   orderWorkerRequest,
+  runOrderWorkerHarnessLive,
 } from "./order-worker";
 import { type PlanSlice, parsePlanArtifact } from "./plan-artifact";
 import { route } from "./routing";
-import { assignedWorker, bootstrapWorker } from "./worker-assignment";
+import { assignedWorker } from "./worker-assignment";
 
 const PLAN_OUTPUT_SCHEMA = `${import.meta.dir}/plan-artifact.schema.json`;
 
@@ -40,22 +34,33 @@ export type PlannerSpawn = (
   stdout: string;
 };
 
-export function plannerBrief(order: { id: string; title: string; description: string | null }): string {
+export function plannerBrief(
+  order: { id: string; title: string; description: string | null },
+  revision?: { body: string; feedback: string },
+): string {
   return [
     `You are the planner for factory order ${order.id} in this repository.`,
     "",
     `# ${order.title}`,
     order.description ?? "",
+    ...(revision
+      ? [
+          "",
+          "The owner returned this Plan artifact. Address the feedback and write a new revision.",
+          "",
+          "# Previous Plan",
+          revision.body,
+          "",
+          "# Owner feedback",
+          revision.feedback,
+        ]
+      : []),
     "",
     "Read the repository rules and prior decisions before proposing work.",
     "Write one Markdown plan for the owner to read on the factory wall and the builder to execute, and list its independently verifiable slices.",
     "Write for both readers: state the outcome, boundary, non-goals, and owner decisions.",
-    "Scale the explanation to the change: lead with a concise decision summary, then include only the supporting detail needed for its risk and size; never omit a required contract dimension.",
-    "Show the evidence and what it ruled out; state contracts, invariants, states, transitions, errors, and ownership.",
-    "Include program design: file tree, key signatures, call path, data flow, and boundary crossings.",
-    "Name an executable check for each contract and give every slice a behavior, affected area, check, and dependency.",
-    "Name the review dimensions this change needs; include maintainability and performance when the change materially affects them.",
-    "End with risks, holds, unresolved questions, predictions, and the conditions for approval.",
+    "Use dim-artifact for the shared artifact-writing and sizing contract.",
+    "For this Plan artifact, include only the outcome, boundary, evidence, contracts, slices, checks, risks, and owner decisions that this change needs.",
     "The factory runner has already created your worker identity from this harness session before your first tool call.",
     'Return exactly one JSON object with a non-empty string "body" and a non-empty "slices" array. Each slice has a non-empty "title" and "outcome". Do not use a Markdown fence or add any text outside the JSON object. Do not edit files, commit, or run mutation commands.',
   ].join("\n");
@@ -80,6 +85,12 @@ export function runOrderPlan(
   if (!order) throw new Error(`order not found: ${orderId}`);
   const parentWorker = resolveWorker(db, options.env);
   assertOperator(db, parentWorker, "delegate planning");
+  const returned = returnedOrderArtifact(db, orderId, "plan");
+  const previous = returned?.planId
+    ? db
+        .query<{ body: string }, [number]>("SELECT body FROM factory_order_plan WHERE id = ?")
+        .get(returned.planId)
+    : undefined;
   const orderWorker = ensureOrderWorker(db, orderId, "planner", parentWorker);
   const harness = options.harness ?? "codex";
   const { model } = route("planner", harness, options.env);
@@ -87,7 +98,12 @@ export function runOrderPlan(
   const request = {
     harness,
     cwd: process.cwd(),
-    brief: plannerBrief(order),
+    brief: plannerBrief(
+      order,
+      previous
+        ? { body: previous.body, feedback: returned?.reason ?? "Revise the Plan artifact." }
+        : undefined,
+    ),
     model,
     capabilities: PLANNER_CAPABILITIES,
     outputSchema: PLAN_OUTPUT_SCHEMA,
@@ -120,39 +136,38 @@ export async function runOrderPlanLive(
   if (!order) throw new Error(`order not found: ${orderId}`);
   const parentWorker = resolveWorker(db, options.env);
   assertOperator(db, parentWorker, "delegate planning");
+  const returned = returnedOrderArtifact(db, orderId, "plan");
+  const previous = returned?.planId
+    ? db
+        .query<{ body: string }, [number]>("SELECT body FROM factory_order_plan WHERE id = ?")
+        .get(returned.planId)
+    : undefined;
   const orderWorker = ensureOrderWorker(db, orderId, "planner", parentWorker);
   const harness = options.harness ?? "codex";
   const { model } = route("planner", harness, options.env);
-  const env = orderWorkerRequest(db, options.env ?? process.env, orderWorker);
   const request = {
     harness,
     cwd: process.cwd(),
-    brief: plannerBrief(order),
+    brief: plannerBrief(
+      order,
+      previous
+        ? { body: previous.body, feedback: returned?.reason ?? "Revise the Plan artifact." }
+        : undefined,
+    ),
     model,
     capabilities: PLANNER_CAPABILITIES,
     outputSchema: PLAN_OUTPUT_SCHEMA,
-    env,
+    env: {},
   };
   let planner = orderWorker.worker;
   try {
-    const onStarted = (providerSessionId: string): void => {
-      if (orderWorker.worker) {
-        bindOrderWorkerSession(db, orderId, "planner", providerSessionId);
-      } else {
-        const minted = bootstrapWorker(db, {
-          id: orderWorker.assignment.id,
-          token: orderWorker.assignment.token,
-          sessionId: providerSessionId,
-        });
-        bindOrderWorker(db, orderId, "planner", orderWorker.assignment.id, minted);
-        planner = minted.name;
-      }
-    };
-    const run = await runHarnessCommandLive(request, onStarted, options.adapter);
-    if (!planner) throw new Error("planner did not bootstrap its worker assignment");
+    const run = await runOrderWorkerHarnessLive(db, request, orderWorker, options.env, options.adapter);
+    planner = run.worker;
     if (run.exitCode !== 0) {
       throw new Error(workerFailureReason("planner did not finish planning", run.output, run.failureReason));
     }
+    if (!run.worker) throw new Error("planner did not bootstrap its worker assignment");
+    planner = run.worker;
     const artifact = parsePlanArtifact(run.output.trim());
     recordOrderPlan(db, orderId, artifact.body, planner, artifact.slices);
     return { planner, ...artifact };

@@ -22,11 +22,13 @@ import { SCHEMA_SQL } from "./schema";
 // One hand per database, set where the database is made: every moment names a worker,
 // and what these tests are about is what the query reports rather than who touched it.
 let worker = "";
+let attemptOperator = "";
 
 function floor(): Database {
   const db = new Database(":memory:");
   db.run(SCHEMA_SQL);
   worker = workerIn(db);
+  attemptOperator = workerIn(db, "operator");
   return db;
 }
 
@@ -35,8 +37,14 @@ afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
 
 // A claim now makes the worktree it names, so every direct call needs somewhere
 // safe to make one — `trunk.dir` rather than this machine's own checkout.
-function claimOrder(db: Database, orderId: string, given: OrderClaim, who: string, at?: string): number {
-  return claimOrderAt(db, orderId, given, who, at, trunk.dir);
+function claimOrder(
+  db: Database,
+  orderId: string,
+  given: Omit<OrderClaim, "operatorWorker">,
+  who: string,
+  at?: string,
+): number {
+  return claimOrderAt(db, orderId, { ...given, operatorWorker: attemptOperator }, who, at, trunk.dir);
 }
 
 const claim = { runId: "run-1", station: "dim-station-build" };

@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { readFileSync } from "node:fs";
 import { assertOperator } from "./factory-operator";
 import {
   amendOrder,
@@ -21,6 +22,9 @@ import {
   recordOrderCommit,
   recordOrderDocument,
   recordOrderFile,
+  recordOrderReviewArtifact,
+  recoverOrderFailure,
+  returnOrderArtifact,
   setOrderHold,
   setOrderPriority,
   shipOrder,
@@ -51,7 +55,8 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--lin
        dim order commit <order-id> --sha <sha> [--subject "..."]
        dim order file <order-id> --path <path> [--added <n>] [--removed <n>]
        dim order check <order-id> --command "..." --exit <code> [--result "..."]
-       dim order build-artifact <order-id> --body "..." --head <sha>
+       dim order build-artifact <order-id> --body-file <path> --head <sha>
+       dim order review-artifact <order-id> --body "..."
        dim order review <order-id> --harness <codex>
        dim order finding <order-id> --dimension <name> --summary "..."
        dim order answer <finding-id> --answer <fixed|refused>
@@ -60,8 +65,8 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--lin
        dim order plan <order-id> --harness <codex>
        dim order build <order-id> --harness <codex>
        dim order approve <order-id>
-       dim order approve-build <order-id> --reason "..."
-       dim order approve-review <order-id>
+       dim order approve <order-id> [--reason "..."]
+       dim order return <order-id> --reason "..."
        dim order ship <order-id>
        dim order stop <order-id> <completed|failed> [--reason "..."]
        dim order amend <order-id> [--title "..."] [--description "..."]
@@ -81,6 +86,10 @@ function flags(args: string[], allowed: string[]): Map<string, string> {
 
 function required(given: Map<string, string>, flag: string): string {
   return requiredFlag(given, flag, fail);
+}
+
+function markdownBody(value: string): string {
+  return value.replaceAll("\\r\\n", "\n").replaceAll("\\n", "\n").replaceAll("\\r", "\r");
 }
 
 function priority(given: string | undefined): OrderPriority | undefined {
@@ -127,6 +136,7 @@ function add(
  */
 function claim(db: Database, orderId: string, args: string[], worker: string, env: Env, cwd: string): string {
   const given = flags(args, CLAIM_FLAGS);
+  assertOperator(db, worker, "claim an order");
   requireCurrentHooks(env);
   claimOrder(
     db,
@@ -135,6 +145,7 @@ function claim(db: Database, orderId: string, args: string[], worker: string, en
       runId: required(given, "--run"),
       sessionId: given.get("--session"),
       station: given.get("--station"),
+      operatorWorker: worker,
     },
     worker,
     undefined,
@@ -213,10 +224,28 @@ const EVIDENCE: Record<string, Evidence> = {
     },
   },
   "build-artifact": {
-    flags: ["--body", "--head"],
+    flags: ["--body", "--body-file", "--head"],
     record: (db, id, given, worker) => {
-      const buildId = recordOrderBuild(db, id, required(given, "--body"), required(given, "--head"), worker);
+      const body = given.get("--body");
+      const bodyFile = given.get("--body-file");
+      if ((body === undefined) === (bodyFile === undefined)) {
+        throw new OrderCommandError("provide exactly one of --body or --body-file");
+      }
+      const buildId = recordOrderBuild(
+        db,
+        id,
+        body === undefined ? readFileSync(bodyFile as string, "utf8") : markdownBody(body),
+        required(given, "--head"),
+        worker,
+      );
       return `${id} recorded build artifact ${buildId}`;
+    },
+  },
+  "review-artifact": {
+    flags: ["--body"],
+    record: (db, id, given, worker) => {
+      const artifactId = recordOrderReviewArtifact(db, id, markdownBody(required(given, "--body")), worker);
+      return `${id} recorded Review artifact ${artifactId}`;
     },
   },
   finding: {
@@ -268,6 +297,11 @@ function stop(db: Database, orderId: string, args: string[], cwd: string, worker
     throw new OrderCommandError(`${kind} is not a way an order can stop`);
   }
   const given = flags(rest, ["--reason"]);
+  if (kind === "failed") {
+    assertOperator(db, worker, "recover a failed order");
+    recoverOrderFailure(db, orderId, worker, given.get("--reason"), undefined, repoRoot(cwd));
+    return `${orderId} is queued again`;
+  }
   appendOrderEvent(
     db,
     orderId,
@@ -379,6 +413,11 @@ export function runOrderCommand(
     setOrderHold(db, orderId, null);
     return `${orderId} is released`;
   }
+  if (command === "return") {
+    const reason = required(flags(rest, ["--reason"]), "--reason");
+    returnOrderArtifact(db, orderId, worker, reason);
+    return `${orderId} artifact returned to its station`;
+  }
   if (command === "move") {
     const station = required(flags(rest, ["--station"]), "--station");
     moveOrder(db, orderId, station, worker);
@@ -400,19 +439,26 @@ export function runOrderCommand(
     return `${orderId} building started by ${outcome.builder}`;
   }
   if (command === "approve") {
-    flags(rest, []);
-    approveOrderPlan(db, orderId, worker);
-    return `${orderId} plan approved by ${worker}`;
-  }
-  if (command === "approve-build") {
-    const reason = required(flags(rest, ["--reason"]), "--reason");
-    approveOrderBuild(db, orderId, worker, reason);
-    return `${orderId} build approved by ${worker}`;
-  }
-  if (command === "approve-review") {
-    flags(rest, []);
-    approveOrderReview(db, orderId, worker);
-    return `${orderId} review approved by ${worker}`;
+    const station = db
+      .query<{ station: string | null }, [string]>("SELECT station FROM factory_order WHERE id = ?")
+      .get(orderId)
+      ?.station?.replace("dim-station-", "");
+    if (station === "plan") {
+      flags(rest, []);
+      approveOrderPlan(db, orderId, worker);
+      return `${orderId} plan approved by ${worker}`;
+    }
+    if (station === "build") {
+      const given = flags(rest, ["--reason"]);
+      approveOrderBuild(db, orderId, worker, required(given, "--reason"));
+      return `${orderId} build approved by ${worker}`;
+    }
+    if (station === "review") {
+      flags(rest, []);
+      approveOrderReview(db, orderId, worker);
+      return `${orderId} review approved by ${worker}`;
+    }
+    throw new OrderCommandError(`${orderId} is not at an approvable station`);
   }
   // Own property only: an object literal inherits `toString` and `constructor`, and
   // `dim order toString` would reach one instead of the refusal every other name gets.

@@ -7,7 +7,7 @@ import { openOrderReview } from "./factory-order";
 import { pullStop } from "./factory-stop";
 import { assembleWallSnapshot } from "./factory-wall";
 import { mintWorker, newWorkerSession, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
-import { collectingMachine, integratedRepo, scratchEnv, workerEnv } from "./fixtures.test-support";
+import { collectingMachine, integratedRepo, scratchEnv } from "./fixtures.test-support";
 import { hookConfigPath } from "./hooks";
 import { OrderCommandError, runOrderCommand as runCommand } from "./order-command";
 import type { Env } from "./paths";
@@ -29,7 +29,8 @@ const machine = collectingMachine();
 function db(): Database {
   const database = new Database(":memory:");
   database.run(SCHEMA_SQL);
-  env = { ...machine.env, ...workerEnv(database) };
+  const operator = mintWorker(database, { role: "operator", sessionId: newWorkerSession("test-operator") });
+  env = { ...machine.env, [WORKER_NAME_VAR]: operator.name, [WORKER_TOKEN_VAR]: operator.token };
   opened.push(database);
   return database;
 }
@@ -48,7 +49,7 @@ function runOrderCommand(
 
 /**
  * Opens a round and returns the environment its reviewer was started in. Minted here rather
- * than through `dim worker register`, which refuses a read-only hand — a reviewer exists only
+ * than through `dim operator`, which resolves the owner-facing hand — a reviewer exists only
  * because the station that spawns it made one, and that is the whole of its worth.
  */
 function reviewerEnv(database: Database, orderId: string): Env {
@@ -271,6 +272,7 @@ describe("order command", () => {
 
   test("a stop as completed is refused until a check has passed", () => {
     const database = db();
+    const operator = operatorEnv(database);
     queued(database);
     runOrderCommand(database, claim);
     runOrderCommand(database, ["check", "order-1", "--command", "bun run verify", "--exit", "1"]);
@@ -280,17 +282,30 @@ describe("order command", () => {
     );
 
     expect(assembleWallSnapshot(database).orders[0]?.status).toBe("working");
-    expect(runOrderCommand(database, ["stop", "order-1", "failed", "--reason", "waits on the wall"])).toBe(
-      "order-1 is queued again",
-    );
+    expect(
+      runOrderCommand(
+        database,
+        ["stop", "order-1", "failed", "--reason", "waits on the wall"],
+        null,
+        trunk.dir,
+        operator,
+      ),
+    ).toBe("order-1 is queued again");
   });
 
   test("a failure puts the order back among the work nobody holds", () => {
     const database = db();
+    const operator = operatorEnv(database);
     queued(database);
     runOrderCommand(database, claim);
 
-    runOrderCommand(database, ["stop", "order-1", "failed", "--reason", "the check never passed"]);
+    runOrderCommand(
+      database,
+      ["stop", "order-1", "failed", "--reason", "the check never passed"],
+      null,
+      trunk.dir,
+      operator,
+    );
 
     const snapshot = assembleWallSnapshot(database);
     expect(snapshot.totals).toEqual({ todo: 1, active: 0, done: 0 });
@@ -369,7 +384,7 @@ describe("order command", () => {
         "build-artifact",
         "order-1",
         "--body",
-        "The slice is built and verified.",
+        "## Result\\n\\nThe slice is built and verified.",
         "--head",
         "abc123",
       ]),
@@ -403,7 +418,7 @@ describe("order command", () => {
       result: "green",
     });
     expect(database.query("SELECT body, head_sha, worker FROM factory_order_build").get()).toEqual({
-      body: "The slice is built and verified.",
+      body: "## Result\n\nThe slice is built and verified.",
       head_sha: "abc123",
       worker: env[WORKER_NAME_VAR],
     });

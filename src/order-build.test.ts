@@ -3,6 +3,23 @@ import { workerFailureReason } from "./harness-command";
 import { builderBrief } from "./order-build";
 
 describe("worker failure explanations", () => {
+  test("gives a returned Build artifact readable sections", () => {
+    const brief = builderBrief(
+      { id: "order-1", title: "Build it", description: null },
+      {
+        body: "## Outcome\n\nBuild it.",
+        slices: [{ title: "Build it", outcome: "The result is verified." }],
+      },
+      null,
+      null,
+      { body: "## Outcome\n\nThe artifact was a wall of text.", feedback: "Make it readable." },
+    );
+
+    expect(brief).toContain(
+      "separate Markdown headings: Outcome, Implementation, Why this shape, Verification, and Owner attention",
+    );
+  });
+
   test("tells the builder to fix a red check before finishing", () => {
     expect(
       builderBrief(
@@ -48,6 +65,21 @@ describe("worker failure explanations", () => {
         null,
       ),
     ).toContain("1. First cut: The cut is verified.");
+    const brief = builderBrief(
+      { id: "order-1", title: "Build it", description: null },
+      {
+        body: "## Outcome\n\nBuild it.",
+        slices: [{ title: "Build it", outcome: "The result is verified." }],
+      },
+      { id: 1, ordinal: 1, title: "Build it", outcome: "The result is verified." },
+      null,
+    );
+    expect(brief).toContain("Do not register or bootstrap another worker");
+    expect(brief).toContain("dim order commit order-1 --sha <latest-commit-sha>");
+    expect(brief).toContain("dim order check order-1 --command");
+    expect(brief).toContain("dim order build-artifact order-1 --body");
+    expect(brief).toContain("After the final slice, record one Build artifact for the whole order");
+    expect(brief).toContain("not the command transcript");
   });
 
   test("keeps the harness explanation beside the failure", () => {

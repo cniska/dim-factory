@@ -1,12 +1,22 @@
 import type { Database } from "bun:sqlite";
-import { type MintedWorker, renewWorkerToken, workerProcessEnv } from "./factory-worker";
+import { type MintedWorker, resolveWorker, workerProcessEnv } from "./factory-worker";
+import type { HarnessAdapter } from "./harness";
+import {
+  type HarnessCommandRequest,
+  type HarnessStarted,
+  runHarnessCommandLive,
+  runHarnessCommandResumeLive,
+} from "./harness-command";
 import type { Role } from "./roles";
 import {
+  assignedWorker,
   assignmentProcessEnv,
+  bootstrapWorker,
   createWorkerAssignment,
   renewWorkerAssignment,
   type WorkerAssignment,
 } from "./worker-assignment";
+import { readWorkerCredential, saveWorkerCredential } from "./worker-credential";
 
 export type StationRole = Exclude<Role, "operator">;
 
@@ -17,6 +27,40 @@ export type OrderWorker = {
   worker?: string;
   providerSessionId?: string;
 };
+
+export function runOrderWorkerHarnessLive(
+  db: Database,
+  request: HarnessCommandRequest,
+  worker: OrderWorker,
+  machine: Record<string, string | undefined> | undefined,
+  adapter?: HarnessAdapter,
+  onAssigned?: (worker: string, sessionId: string) => void,
+): Promise<Awaited<ReturnType<typeof runHarnessCommandLive>> & { worker?: string }> {
+  const env = orderWorkerRequest(db, machine, worker);
+  let name = worker.worker;
+  const onStarted: HarnessStarted = (sessionId) => {
+    if (name) {
+      bindOrderWorkerSession(db, worker.orderId, worker.role, sessionId);
+    } else {
+      const minted = bootstrapWorker(db, {
+        id: worker.assignment.id,
+        token: worker.assignment.token,
+        sessionId,
+      });
+      saveWorkerCredential(machine ?? process.env, minted);
+      bindOrderWorker(db, worker.orderId, worker.role, worker.assignment.id, minted);
+      name = minted.name;
+    }
+    onAssigned?.(name, sessionId);
+  };
+  const run = worker.providerSessionId
+    ? runHarnessCommandResumeLive({ ...request, env }, worker.providerSessionId, onStarted, adapter)
+    : runHarnessCommandLive({ ...request, env }, onStarted, adapter);
+  return run.then((result) => ({
+    ...result,
+    worker: name ?? assignedWorker(db, worker.assignment.id) ?? undefined,
+  }));
+}
 
 function readOrderWorker(db: Database, orderId: string, role: StationRole): OrderWorker | undefined {
   const row = db
@@ -65,11 +109,6 @@ export function ensureOrderWorker(
 ): OrderWorker {
   const existing = readOrderWorker(db, orderId, role);
   if (existing) {
-    if (existing.assignment.parentWorker !== parentWorker) {
-      throw new Error(
-        `order ${orderId} ${role} worker belongs to ${existing.assignment.parentWorker}, not ${parentWorker}`,
-      );
-    }
     if (existing.worker) {
       return existing;
     }
@@ -156,6 +195,16 @@ export function orderWorkerRequest(
   orderWorker: OrderWorker,
 ): Record<string, string> {
   if (!orderWorker.worker) return assignmentProcessEnv(machine, orderWorker.assignment);
-  const minted = renewWorkerToken(db, orderWorker.worker);
-  return workerProcessEnv(machine, minted);
+  if (!orderWorker.providerSessionId) {
+    throw new Error(`order ${orderWorker.orderId} ${orderWorker.role} worker has no provider session`);
+  }
+  const credential = readWorkerCredential(machine ?? process.env, orderWorker.providerSessionId);
+  if (credential?.name !== orderWorker.worker) {
+    throw new Error(`order ${orderWorker.orderId} ${orderWorker.role} worker credential is unavailable`);
+  }
+  const env = workerProcessEnv(machine, credential);
+  if (resolveWorker(db, env) !== orderWorker.worker) {
+    throw new Error(`order ${orderWorker.orderId} ${orderWorker.role} worker credential changed identity`);
+  }
+  return env;
 }

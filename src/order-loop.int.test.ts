@@ -9,7 +9,6 @@ import {
   claimOrder,
   moveOrder,
   queueOrder,
-  raiseOrderFinding,
   recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
@@ -19,6 +18,7 @@ import { integratedRepo, orderWorktree } from "./fixtures.test-support";
 import { runOrderReview } from "./order-review";
 import { SCHEMA_SQL } from "./schema";
 import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
+import { saveWorkerCredential } from "./worker-credential";
 
 const repo = integratedRepo();
 const worktrees: string[] = [];
@@ -67,7 +67,7 @@ describe("the operator loop", () => {
     claimOrder(
       db,
       "loop-order",
-      { runId: "build-1", station: "dim-station-build" },
+      { runId: "build-1", station: "dim-station-build", operatorWorker: operator.name },
       builder.name,
       undefined,
       repo.dir,
@@ -84,20 +84,21 @@ describe("the operator loop", () => {
       dir: worktree,
       env: workerEnv(operator),
       spawn: (_argv, env) => {
-        const reviewer =
-          env[WORKER_NAME_VAR] ??
-          bootstrapWorker(db, {
+        if (!env[WORKER_NAME_VAR]) {
+          const reviewer = bootstrapWorker(db, {
             id: env[ASSIGNMENT_ID_VAR] as string,
             token: env[ASSIGNMENT_TOKEN_VAR] as string,
             sessionId: `reviewer-${crypto.randomUUID()}`,
-          }).name;
-        raiseOrderFinding(
-          db,
-          "loop-order",
-          { dimension: "correctness", summary: "the first behavior is incomplete" },
-          reviewer,
-        );
-        return { exitCode: 0 };
+          });
+          saveWorkerCredential(env, reviewer);
+        }
+        return {
+          exitCode: 0,
+          output: JSON.stringify({
+            body: "## Outcome\n\nThe first behavior is incomplete.",
+            findings: [{ dimension: "correctness", summary: "the first behavior is incomplete" }],
+          }),
+        };
       },
     });
     expect(firstReview.findings).toBe(1);
@@ -117,7 +118,7 @@ describe("the operator loop", () => {
     claimOrder(
       db,
       "loop-order",
-      { runId: "build-2", station: "dim-station-build" },
+      { runId: "build-2", station: "dim-station-build", operatorWorker: operator.name },
       builder.name,
       undefined,
       repo.dir,
@@ -132,7 +133,7 @@ describe("the operator loop", () => {
       dir: worktree,
       env: workerEnv(operator),
       spawn: (_argv, _env) => {
-        return { exitCode: 0 };
+        return { exitCode: 0, output: JSON.stringify({ body: "## Outcome\n\nClean.", findings: [] }) };
       },
     });
     expect(secondReview.findings).toBe(0);
@@ -162,7 +163,7 @@ describe("the operator loop", () => {
     claimOrder(
       db,
       "loop-order",
-      { runId: "build-3", station: "dim-station-build" },
+      { runId: "build-3", station: "dim-station-build", operatorWorker: operator.name },
       builder.name,
       undefined,
       repo.dir,

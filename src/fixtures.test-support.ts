@@ -19,7 +19,7 @@ export function workerIn(db: Database, role: Role = "builder"): string {
 
 /**
  * A round open over one sha, with the reviewer it was opened for. Minted here rather than
- * through `dim worker register`, which refuses a read-only hand: a reviewer exists only because
+ * through `dim operator`, which resolves only the owner-facing hand: a reviewer exists only because
  * the station that briefs it made one, and this stands in for that station.
  */
 export function reviewIn(

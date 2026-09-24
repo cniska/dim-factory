@@ -5,18 +5,22 @@ import { join } from "node:path";
 import {
   approveOrderBuild,
   claimOrder,
+  moveOrder,
   queueOrder,
   raiseOrderFinding,
   recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
+  recordOrderReviewArtifact,
 } from "./factory-order";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { fakeHarness } from "./fake-harness";
 import { integratedRepo, orderWorktree } from "./fixtures.test-support";
+import { runOrderCommand } from "./order-command";
 import { type ReviewerSpawn, ReviewRefused, runOrderReview, runOrderReviewLive } from "./order-review";
 import { SCHEMA_SQL } from "./schema";
 import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
+import { saveWorkerCredential } from "./worker-credential";
 
 const trunk = integratedRepo();
 const worktrees: string[] = [];
@@ -36,10 +40,18 @@ function bootstrapReviewer(db: Database, env: Record<string, string>): string {
     token: env[ASSIGNMENT_TOKEN_VAR] as string,
     sessionId: `reviewer-${crypto.randomUUID()}`,
   });
+  saveWorkerCredential(env, reviewer);
   env[WORKER_NAME_VAR] = reviewer.name;
   env[WORKER_TOKEN_VAR] = reviewer.token;
   env[WORKER_SESSION_VAR] = reviewer.sessionId;
   return reviewer.name;
+}
+
+function reviewOutput(
+  body = "## Outcome\n\nThe change is sound.",
+  findings: { dimension: string; summary: string }[] = [],
+): string {
+  return JSON.stringify({ body, findings });
 }
 
 // Routing resolves the reviewer's tier to the model name supplied to the adapter.
@@ -71,7 +83,7 @@ function floor(): {
   claimOrder(
     db,
     "order-1",
-    { runId: "run-1", station: "dim-station-build" },
+    { runId: "run-1", station: "dim-station-build", operatorWorker: operator.name },
     builder.name,
     undefined,
     trunk.dir,
@@ -108,6 +120,73 @@ function slice(db: Database, dir: string, worker: string, name: string): string 
 }
 
 describe("a review round", () => {
+  test("returns a Review artifact to the same reviewer and approves its revision", () => {
+    const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
+    slice(db, dir, worker, "review-artifact");
+    moveOrder(db, "order-1", "dim-station-review", operator);
+    const spawn: ReviewerSpawn = (_argv, env) => {
+      const reviewer = bootstrapReviewer(db, env);
+      expect(reviewer).toBeTruthy();
+      return { exitCode: 0, output: reviewOutput() };
+    };
+    const done = runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
+
+    expect(
+      runOrderCommand(
+        db,
+        ["return", "order-1", "--reason", "Explain which checks support the verdict."],
+        null,
+        dir,
+        {
+          ...machine,
+          [WORKER_NAME_VAR]: operator,
+          [WORKER_TOKEN_VAR]: operatorToken,
+          [WORKER_SESSION_VAR]: operatorSession,
+        },
+      ),
+    ).toContain("returned");
+    expect(() =>
+      runOrderCommand(db, ["approve", "order-1"], null, dir, {
+        ...machine,
+        [WORKER_NAME_VAR]: operator,
+        [WORKER_TOKEN_VAR]: operatorToken,
+        [WORKER_SESSION_VAR]: operatorSession,
+      }),
+    ).toThrow(expect.objectContaining({ code: "artifact_revision_required" }));
+    recordOrderReviewArtifact(
+      db,
+      "order-1",
+      "## Outcome\n\nThe review evidence supports the verdict.",
+      done.reviewer,
+    );
+    expect(
+      runOrderCommand(db, ["approve", "order-1"], null, dir, {
+        ...machine,
+        [WORKER_NAME_VAR]: operator,
+        [WORKER_TOKEN_VAR]: operatorToken,
+        [WORKER_SESSION_VAR]: operatorSession,
+      }),
+    ).toContain("review approved");
+    expect(
+      db.query("SELECT revision, worker FROM factory_order_review_artifact ORDER BY revision").all(),
+    ).toEqual([
+      { revision: 1, worker: done.reviewer },
+      { revision: 2, worker: done.reviewer },
+    ]);
+    expect(
+      db
+        .query(
+          "SELECT kind, worker FROM factory_order_event WHERE kind IN ('artifact_returned', 'review_artifact_written', 'review_approved') ORDER BY id",
+        )
+        .all(),
+    ).toEqual([
+      { kind: "review_artifact_written", worker: done.reviewer },
+      { kind: "artifact_returned", worker: operator },
+      { kind: "review_artifact_written", worker: done.reviewer },
+      { kind: "review_approved", worker: operator },
+    ]);
+  });
+
   test("refuses review delegation from a non-operator worker before opening a round", () => {
     const { db, worker, dir } = floor();
     slice(db, dir, worker, "a");
@@ -125,13 +204,13 @@ describe("a review round", () => {
     slice(db, dir, worker, "a");
     const spawn: ReviewerSpawn = (_argv, env) => {
       const reviewer = bootstrapReviewer(db, env);
-      raiseOrderFinding(
-        db,
-        "order-1",
-        { dimension: "correctness", summary: "the guard is the wrong way round" },
-        reviewer,
-      );
-      return { exitCode: 0 };
+      expect(reviewer).toBeTruthy();
+      return {
+        exitCode: 0,
+        output: reviewOutput("## Outcome\n\nThe guard is reversed.", [
+          { dimension: "correctness", summary: "the guard is the wrong way round" },
+        ]),
+      };
     };
 
     const done = runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
@@ -154,7 +233,7 @@ describe("a review round", () => {
       dir,
       spawn: (_argv, env) => {
         bootstrapReviewer(db, env);
-        return { exitCode: 0 };
+        return { exitCode: 0, output: reviewOutput() };
       },
       env: {
         ...machine,
@@ -174,7 +253,7 @@ describe("a review round", () => {
     slice(db, dir, worker, "a");
     const spawn: ReviewerSpawn = (_argv, env) => {
       bootstrapReviewer(db, env);
-      return { exitCode: 0 };
+      return { exitCode: 0, output: reviewOutput() };
     };
     runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
 
@@ -188,7 +267,7 @@ describe("a review round", () => {
     slice(db, dir, worker, "a");
     const spawn: ReviewerSpawn = (_argv, env) => {
       bootstrapReviewer(db, env);
-      return { exitCode: 3 };
+      return { exitCode: 3, output: "" };
     };
 
     const done = runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
@@ -235,16 +314,43 @@ describe("a review round", () => {
     });
   });
 
+  test("records the reviewer's structured result through the factory", async () => {
+    const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
+    slice(db, dir, worker, "review-result");
+    const outcome = await runOrderReviewLive(db, "order-1", operator, {
+      dir,
+      adapter: fakeHarness("review"),
+      env: {
+        ...machine,
+        [WORKER_NAME_VAR]: operator,
+        [WORKER_TOKEN_VAR]: operatorToken,
+        [WORKER_SESSION_VAR]: operatorSession,
+      },
+    });
+
+    expect(outcome).toMatchObject({ findings: 0, outcome: "closed" });
+    expect(db.query("SELECT body, worker FROM factory_order_review_artifact").get()).toEqual({
+      body: "## Outcome\n\nThe change is sound.",
+      worker: outcome.reviewer,
+    });
+  });
+
   test("keeps the same reviewer identity for a later review round", async () => {
     const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
     slice(db, dir, worker, "review-first");
     const base = fakeHarness("crash");
     let starts = 0;
+    let resumes = 0;
     const adapter = {
       ...base,
       start: async (request: Parameters<typeof base.start>[0]) => {
         starts += 1;
         return base.start(request);
+      },
+      resume: async (sessionId: string, request: Parameters<typeof base.start>[0]) => {
+        resumes += 1;
+        expect(sessionId).toBe("fake-session");
+        return base.resume(sessionId, request);
       },
     };
     const env = {
@@ -259,7 +365,8 @@ describe("a review round", () => {
     const second = await runOrderReviewLive(db, "order-1", operator, { dir, adapter, env });
 
     expect(first.reviewer).toBe(second.reviewer);
-    expect(starts).toBe(2);
+    expect(starts).toBe(1);
+    expect(resumes).toBe(1);
     expect(db.query("SELECT count(*) AS n FROM factory_worker WHERE role = 'reviewer'").get()).toEqual({
       n: 1,
     });
@@ -273,13 +380,14 @@ describe("a review round", () => {
     const spawn: ReviewerSpawn = (argv, env) => {
       bootstrapReviewer(db, env);
       handed = argv;
-      return { exitCode: 0 };
+      return { exitCode: 0, output: reviewOutput() };
     };
 
     runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
 
     expect(handed).toContain("-s");
     expect(handed[handed.indexOf("-s") + 1]).toBe("read-only");
+    expect(handed).toContain("--output-schema");
   });
 
   // The token is the whole of the separation, so it must reach the child's environment and
@@ -293,7 +401,7 @@ describe("a review round", () => {
       bootstrapReviewer(db, environment);
       argv = given;
       env = environment;
-      return { exitCode: 0 };
+      return { exitCode: 0, output: reviewOutput() };
     };
 
     const done = runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
@@ -308,7 +416,7 @@ describe("a review round", () => {
     slice(db, dir, worker, "a");
     const quiet: ReviewerSpawn = (_argv, env) => {
       bootstrapReviewer(db, env);
-      return { exitCode: 0 };
+      return { exitCode: 0, output: reviewOutput() };
     };
     const first = runOrderReview(db, "order-1", operator, { dir, spawn: quiet, env: machine });
     const fixed = slice(db, dir, worker, "b");
@@ -320,7 +428,7 @@ describe("a review round", () => {
       spawn: (argv, env) => {
         bootstrapReviewer(db, env);
         read = argv.find((argument) => argument.includes("git diff ")) ?? "";
-        return { exitCode: 0 };
+        return { exitCode: 0, output: reviewOutput() };
       },
     });
 
@@ -359,7 +467,7 @@ describe("a review round", () => {
       expect(() => runOrderReview(db, "order-1", operator, { dir, env: machine })).toThrow(
         /already has review/,
       );
-      return { exitCode: 0 };
+      return { exitCode: 0, output: reviewOutput() };
     };
 
     runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });

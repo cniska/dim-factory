@@ -51,7 +51,7 @@ describe("plan approval integration", () => {
     claimOrder(
       db,
       "operator-plan-order",
-      { runId: "operator-run", station: "dim-station-plan" },
+      { runId: "operator-run", station: "dim-station-plan", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,
@@ -116,7 +116,7 @@ describe("plan approval integration", () => {
     claimOrder(
       db,
       "approval-order",
-      { runId: "run-1", station: "dim-station-plan" },
+      { runId: "run-1", station: "dim-station-plan", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,
@@ -129,9 +129,16 @@ describe("plan approval integration", () => {
       slices,
     );
 
+    expect(db.query("SELECT hold FROM factory_order WHERE id = ?").get("approval-order")).toEqual({
+      hold: "approval",
+    });
+
     expect(runOrderCommand(db, ["approve", "approval-order"], null, repo.dir, env(operator))).toContain(
       "plan approved",
     );
+    expect(db.query("SELECT hold FROM factory_order WHERE id = ?").get("approval-order")).toEqual({
+      hold: null,
+    });
     expect(
       db.query("SELECT kind, worker FROM factory_order_event WHERE order_id = ?").all("approval-order"),
     ).toEqual([
@@ -168,14 +175,23 @@ describe("plan approval integration", () => {
     claimOrder(
       db,
       "approval-order-3",
-      { runId: "run-3", station: "dim-station-plan" },
+      { runId: "run-3", station: "dim-station-plan", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,
     );
     const first = recordOrderPlan(db, "approval-order-3", "## Build\n\nFirst path.", planner.name, slices);
-    expect(runOrderCommand(db, ["approve", "approval-order-3"], null, repo.dir, env(operator))).toContain(
-      "plan approved",
+    expect(
+      runOrderCommand(
+        db,
+        ["return", "approval-order-3", "--reason", "Clarify why this plan is the right route."],
+        null,
+        repo.dir,
+        env(operator),
+      ),
+    ).toContain("returned");
+    expect(() => runOrderCommand(db, ["approve", "approval-order-3"], null, repo.dir, env(operator))).toThrow(
+      expect.objectContaining({ code: "artifact_revision_required" }),
     );
     const second = recordOrderPlan(db, "approval-order-3", "## Build\n\nRevised path.", planner.name, slices);
     expect(second).not.toBe(first);
@@ -188,7 +204,7 @@ describe("plan approval integration", () => {
     ]);
     expect(
       db.query("SELECT plan_id FROM factory_order_event WHERE kind = 'plan_approved' ORDER BY id").all(),
-    ).toEqual([{ plan_id: first }, { plan_id: second }]);
+    ).toEqual([{ plan_id: second }]);
     expect(
       db
         .query("SELECT plan_id FROM factory_order_event WHERE kind = 'plan_artifact_written' ORDER BY id")
@@ -216,7 +232,7 @@ describe("plan approval integration", () => {
     claimOrder(
       db,
       "approval-order-2",
-      { runId: "run-2", station: "dim-station-plan" },
+      { runId: "run-2", station: "dim-station-plan", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,

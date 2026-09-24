@@ -9,7 +9,6 @@ export type Capability =
   | "edit-files"
   | "read-history"
   | "ask-dim"
-  | "raise-finding"
   | "run-check";
 
 export const CAPABILITIES: readonly Capability[] = [
@@ -18,7 +17,6 @@ export const CAPABILITIES: readonly Capability[] = [
   "edit-files",
   "read-history",
   "ask-dim",
-  "raise-finding",
   "run-check",
 ];
 

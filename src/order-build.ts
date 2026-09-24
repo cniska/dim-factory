@@ -6,31 +6,27 @@ import {
   appendOrderEvent,
   claimOrder,
   completeOrderSlice,
+  isActiveOrderRun,
   isTerminalOrderStatus,
   nextOrderSlice,
   OrderNotDone,
   orderStatus,
   PlanApprovalRefused,
+  returnedOrderArtifact,
 } from "./factory-order";
 import type { HarnessAdapter } from "./harness";
-import {
-  harnessArgv,
-  runHarnessCommand,
-  runHarnessCommandLive,
-  workerFailureReason,
-} from "./harness-command";
+import { harnessArgv, runHarnessCommand, workerFailureReason } from "./harness-command";
 import type { HarnessName } from "./harness-name";
 import {
-  bindOrderWorker,
   bindOrderWorkerName,
-  bindOrderWorkerSession,
   ensureOrderWorker,
   orderWorkerRequest,
+  runOrderWorkerHarnessLive,
 } from "./order-worker";
 import type { Env } from "./paths";
 import type { PlanSlice } from "./plan-artifact";
 import { route } from "./routing";
-import { assignedWorker, bootstrapWorker } from "./worker-assignment";
+import { assignedWorker } from "./worker-assignment";
 import { workspaceContract } from "./workspace";
 import { repoRoot, worktreePath } from "./wt-command";
 
@@ -48,8 +44,9 @@ export type BuilderSpawn = (argv: string[], env: Record<string, string>, cwd: st
 export function builderBrief(
   order: { id: string; title: string; description: string | null },
   plan: { body: string; slices: readonly PlanSlice[] },
-  currentSlice: OrderSlice,
+  currentSlice: OrderSlice | null,
   workspace: ReturnType<typeof workspaceContract>,
+  revision?: { body: string; feedback: string },
 ): string {
   const workspaceContext = workspace
     ? [
@@ -75,25 +72,44 @@ export function builderBrief(
     "",
     plan.body,
     "",
-    "# Current slice",
-    `${currentSlice.ordinal}. ${currentSlice.title}: ${currentSlice.outcome}`,
+    ...(currentSlice
+      ? ["# Current slice", `${currentSlice.ordinal}. ${currentSlice.title}: ${currentSlice.outcome}`]
+      : [
+          "# Returned Build artifact",
+          revision?.body ?? "",
+          "",
+          "# Owner feedback",
+          revision?.feedback ?? "",
+        ]),
     "",
     "# Ordered slices",
     ...plan.slices.map((slice, index) => `${index + 1}. ${slice.title}: ${slice.outcome}`),
     "",
-    "The factory runner has already claimed this order for this build turn under your worker identity.",
-    "Work in the current order worktree. Run the command supplied by the workspace profile, record every commit, changed file, check, document, and build finding with dim order, and run the build station loop including simplification.",
+    currentSlice
+      ? "The factory runner has already claimed this order for this build turn under your worker identity."
+      : "The owner returned the Build artifact to you. The code work is complete; revise only the artifact.",
+    currentSlice
+      ? "Work in the current order worktree. Run the command supplied by the workspace profile, record every commit, changed file, check, document, and build finding with dim order, and run the build station loop including simplification."
+      : "Do not edit files, create commits, or run checks. Use the order record to correct the returned Build artifact.",
+    "The factory has already accepted your assignment before this turn starts. Do not register or bootstrap another worker, inspect worker credential files, or stop because DIM_WORKER_NAME and DIM_WORKER_TOKEN are absent; order commands authenticate this assigned process through its DIM_WORKER_ASSIGNMENT variables.",
     "The order description and approved plan define the scope. When they explicitly exclude a workspace surface, do not edit or test that surface; record a passing check scoped to the requested result instead of treating excluded failures as blockers.",
-    "A red check is feedback, not completion: diagnose it, fix the cause, rerun the check, and continue until the final commit has a passing check. If the cause is genuinely blocked, report the blocker instead of claiming success.",
-    "Do not run dim order stop: the factory runner records this attempt and makes the order retryable when the turn fails.",
-    `After the passing check, record the Build artifact with \`dim order build-artifact ${order.id} --body "..." --head <latest-commit-sha>\`. Explain the completed slice, evidence, deviations from the plan, and unresolved risks; keep it proportional to the change.`,
+    ...(currentSlice
+      ? [
+          "A red check is feedback, not completion: diagnose it, fix the cause, rerun the check, and continue until the final commit has a passing check. If the cause is genuinely blocked, report the blocker instead of claiming success.",
+          "Do not run dim order stop: the factory runner records this attempt and makes the order retryable when the turn fails.",
+          `After the passing check, record the commit with \`dim order commit ${order.id} --sha <latest-commit-sha> --subject "..."\`, record each changed path with \`dim order file ${order.id} --path <path>\`, and record the check with \`dim order check ${order.id} --command "<workspace check>" --exit 0 --result "green"\`. After the final slice, record one Build artifact for the whole order with \`dim order build-artifact ${order.id} --body "..." --head <latest-commit-sha>\`. Use dim-station-build and dim-artifact for the artifact contract: explain the result for the owner, not the command transcript, and keep it proportional to the change.`,
+        ]
+      : [
+          "Structure the returned artifact with separate Markdown headings: Outcome, Implementation, Why this shape, Verification, and Owner attention. Keep each section concise and include only claims supported by the order record.",
+          `Record a new Build artifact revision with \`dim order build-artifact ${order.id} --body "..." --head <latest-commit-sha>\`.`,
+        ]),
     "Return a concise outcome. Do not approve the plan or build, start review, ship, or edit outside the order worktree.",
   ].join("\n");
 }
 
 export type BuildOutcome = { builder: string; runId: string; worktree: string; exitCode: number };
 
-function requireBuildEvidence(db: Database, orderId: string): void {
+function requireBuildEvidence(db: Database, orderId: string, finalSlice: boolean): void {
   const commit = db
     .query<{ sha: string; recorded_at: string }, [string]>(
       "SELECT sha, recorded_at FROM factory_order_commit WHERE order_id = ? ORDER BY recorded_at DESC, rowid DESC LIMIT 1",
@@ -106,12 +122,14 @@ function requireBuildEvidence(db: Database, orderId: string): void {
     )
     .get(orderId);
   if (check?.exit_code !== 0) throw new Error("builder did not record a passing check");
-  const build = db
-    .query<{ id: number }, [string, string]>(
-      "SELECT id FROM factory_order_build WHERE order_id = ? AND head_sha = ? ORDER BY revision DESC LIMIT 1",
-    )
-    .get(orderId, commit.sha);
-  if (!build) throw new Error("builder did not record a Build artifact for its latest commit");
+  if (finalSlice) {
+    const build = db
+      .query<{ id: number }, [string, string]>(
+        "SELECT id FROM factory_order_build WHERE order_id = ? AND head_sha = ? ORDER BY revision DESC LIMIT 1",
+      )
+      .get(orderId, commit.sha);
+    if (!build) throw new Error("builder did not record a Build artifact for the completed order");
+  }
 }
 
 export async function runOrderBuildLive(
@@ -158,7 +176,14 @@ export async function runOrderBuildLive(
     )
     .all(plan.id);
   const currentSlice = nextOrderSlice(db, orderId);
-  if (!currentSlice) throw new Error(`order ${orderId} has no incomplete slice`);
+  const returned = currentSlice ? null : returnedOrderArtifact(db, orderId, "build");
+  const priorBuild = returned?.buildId
+    ? db
+        .query<{ body: string }, [number]>("SELECT body FROM factory_order_build WHERE id = ?")
+        .get(returned.buildId)
+    : undefined;
+  if (!currentSlice && !priorBuild)
+    throw new Error(`order ${orderId} has no incomplete slice or returned Build artifact`);
   const orderWorker = ensureOrderWorker(db, orderId, "builder", operator);
   const runId = `build-${crypto.randomUUID()}`;
   const worktree = worktreePath(repoRoot(options.dir), orderId);
@@ -167,54 +192,80 @@ export async function runOrderBuildLive(
   let harnessOutput = "";
   let harnessFailureReason: string | undefined;
   let failureRecorded = false;
+  let claimed = false;
   const recordFailure = (reason: string): void => {
     if (failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
+    if (claimed && !isActiveOrderRun(db, orderId, runId)) return;
     failureRecorded = true;
     appendOrderEvent(db, orderId, { kind: "failed", worker: builder, reason });
   };
   try {
-    const env = orderWorkerRequest(db, options.env, orderWorker);
     const harness = options.harness ?? "codex";
     const { model } = route("builder", harness, options.env);
     const request = {
       harness,
       cwd: worktree,
-      brief: builderBrief(order, { body: plan.body, slices }, currentSlice, workspace),
+      brief: builderBrief(
+        order,
+        { body: plan.body, slices },
+        currentSlice,
+        workspace,
+        priorBuild
+          ? { body: priorBuild.body, feedback: returned?.reason ?? "Revise the Build artifact." }
+          : undefined,
+      ),
       model,
       capabilities: BUILDER_CAPABILITIES,
-      env,
+      env: {},
     };
-    const onStarted = (providerSessionId: string): void => {
-      if (orderWorker.worker) {
-        bindOrderWorkerSession(db, orderId, "builder", providerSessionId);
-      } else {
-        const minted = bootstrapWorker(db, {
-          id: orderWorker.assignment.id,
-          token: orderWorker.assignment.token,
-          sessionId: providerSessionId,
-        });
-        bindOrderWorker(db, orderId, "builder", orderWorker.assignment.id, minted);
-        builder = minted.name;
+    const onAssigned = (assigned: string, providerSessionId: string): void => {
+      builder = assigned;
+      if (currentSlice) {
+        claimOrder(
+          db,
+          orderId,
+          {
+            runId,
+            sessionId: providerSessionId,
+            station: "dim-station-build",
+            operatorWorker: operator,
+          },
+          builder,
+          undefined,
+          worktree,
+        );
+        claimed = true;
       }
-      if (!builder) throw new Error("builder did not bootstrap its worker assignment");
-      claimOrder(
-        db,
-        orderId,
-        { runId, sessionId: providerSessionId, station: "dim-station-build" },
-        builder,
-        undefined,
-        worktree,
-      );
     };
-    const run = await runHarnessCommandLive(request, onStarted, options.adapter);
+    const run = await runOrderWorkerHarnessLive(
+      db,
+      request,
+      orderWorker,
+      options.env,
+      options.adapter,
+      onAssigned,
+    );
     harnessOutput = run.output;
     harnessFailureReason = run.failureReason;
     if (!builder) throw new Error("builder did not bootstrap its worker assignment");
     if (run.exitCode !== 0) {
       throw new Error(`${builder} exited with code ${run.exitCode}`);
     }
-    requireBuildEvidence(db, orderId);
-    completeOrderSlice(db, orderId, currentSlice.id, builder);
+    builder = run.worker;
+    if (!builder) throw new Error("builder did not bootstrap its worker assignment");
+    if (currentSlice) {
+      requireBuildEvidence(db, orderId, currentSlice.ordinal === slices.length);
+      completeOrderSlice(db, orderId, currentSlice.id, builder);
+    } else {
+      const revision = db
+        .query<{ id: number; worker: string }, [string]>(
+          "SELECT id, worker FROM factory_order_build WHERE order_id = ? ORDER BY revision DESC LIMIT 1",
+        )
+        .get(orderId);
+      if (!revision || revision.id === returned?.buildId || revision.worker !== builder) {
+        throw new Error("builder did not record a new Build artifact revision");
+      }
+    }
     return { builder, runId, worktree, exitCode: run.exitCode };
   } catch (error) {
     const reason = workerFailureReason(
@@ -312,7 +363,7 @@ export function runOrderBuild(
       recordFailure(reason);
       throw new Error(`${builder} did not finish building`);
     }
-    requireBuildEvidence(db, orderId);
+    requireBuildEvidence(db, orderId, currentSlice.ordinal === slices.length);
     completeOrderSlice(db, orderId, currentSlice.id, builder);
     return { builder, runId, worktree, exitCode: run.exitCode };
   } catch (error) {

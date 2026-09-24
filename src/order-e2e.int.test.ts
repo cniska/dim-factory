@@ -67,9 +67,18 @@ if (brief.includes("planner")) {
   run(["commit", order, "--sha", sha, "--subject", "feat: real harness slice " + slice]);
   run(["file", order, "--path", file, "--added", "1", "--removed", "0"]);
   run(["check", order, "--command", "true", "--exit", "0", "--result", "green"]);
-  run(["build-artifact", order, "--body", "The slice is built and verified by the real harness.", "--head", sha]);
+  if (slice === "2") {
+    run([
+      "build-artifact",
+      order,
+      "--body",
+      ${JSON.stringify("## Outcome\n\nThe requested queue flow is implemented across both slices.\n\n## Implementation\n\nThe factory now selects and reserves one ready order under its lock.\n\n## Why this shape\n\nReservation reuses the existing claim boundary, so selection and ownership cannot diverge.\n\n## Verification\n\nBoth slices recorded passing checks, and the final harness run completed successfully.\n\n## Owner attention\n\nThe wall remains outside this order.")},
+      "--head",
+      sha,
+    ]);
+  }
 } else if (brief.includes("reviewer")) {
-  // The harness emits its terminal event after the station work returns.
+  emit({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify({ body: "## Outcome\\n\\nNo findings; the change is ready to advance.", findings: [] }) } });
 } else {
   process.exit(4);
 }
@@ -105,7 +114,12 @@ describe("headless factory loop", () => {
     claimOrder(
       db,
       "headless-order",
-      { runId: "plan-run", station: "dim-station-plan", sessionId: operator.sessionId },
+      {
+        runId: "plan-run",
+        station: "dim-station-plan",
+        sessionId: operator.sessionId,
+        operatorWorker: operator.name,
+      },
       operator.name,
       undefined,
       repo.dir,
@@ -126,23 +140,10 @@ describe("headless factory loop", () => {
 
     const worktree = join(repo.dir, ".claude", "worktrees", "headless-order");
     expect(existsSync(join(worktree, "built-by-real-harness-1.txt"))).toBe(true);
-    expect(
-      runOrderCommand(
-        db,
-        ["approve-build", "headless-order", "--reason", "the artifact is present"],
-        null,
-        repo.dir,
-        env,
-      ),
-    ).toContain("build approved");
     runOrderCommand(db, ["move", "headless-order", "--station", "dim-station-review"], null, repo.dir, env);
     expect(
       await runOrderCommandLive(db, ["review", "headless-order", "--harness", "codex"], null, repo.dir, env),
     ).toContain("0 findings");
-    expect(runOrderCommand(db, ["approve-review", "headless-order"], null, repo.dir, env)).toContain(
-      "review approved",
-    );
-
     expect(
       runOrderCommand(db, ["move", "headless-order", "--station", "dim-station-build"], null, repo.dir, env),
     ).toContain("moved");
@@ -153,7 +154,7 @@ describe("headless factory loop", () => {
     expect(
       runOrderCommand(
         db,
-        ["approve-build", "headless-order", "--reason", "the second artifact is present"],
+        ["approve", "headless-order", "--reason", "the complete build artifact is present"],
         null,
         repo.dir,
         env,
@@ -163,7 +164,7 @@ describe("headless factory loop", () => {
     expect(
       await runOrderCommandLive(db, ["review", "headless-order", "--harness", "codex"], null, repo.dir, env),
     ).toContain("0 findings");
-    expect(runOrderCommand(db, ["approve-review", "headless-order"], null, repo.dir, env)).toContain(
+    expect(runOrderCommand(db, ["approve", "headless-order"], null, repo.dir, env)).toContain(
       "review approved",
     );
     expect(runOrderCommand(db, ["ship", "headless-order"], null, repo.dir, env)).toContain("fast-forwarded");
@@ -188,12 +189,10 @@ describe("headless factory loop", () => {
       "claimed",
       "commit_created",
       "check_finished",
-      "build_artifact_written",
-      "build_approved",
       "moved",
       "review_opened",
+      "review_artifact_written",
       "review_closed",
-      "review_approved",
       "moved",
       "claimed",
       "commit_created",
@@ -202,9 +201,18 @@ describe("headless factory loop", () => {
       "build_approved",
       "moved",
       "review_opened",
+      "review_artifact_written",
       "review_closed",
       "review_approved",
       "completed",
+    ]);
+    expect(
+      db
+        .query("SELECT body FROM factory_order_review_artifact WHERE order_id = ? ORDER BY id")
+        .all("headless-order"),
+    ).toEqual([
+      { body: "## Outcome\n\nNo findings; the change is ready to advance." },
+      { body: "## Outcome\n\nNo findings; the change is ready to advance." },
     ]);
     expect(
       db
@@ -215,6 +223,18 @@ describe("headless factory loop", () => {
     ).toEqual([
       { worker: expect.any(String), path: "built-by-real-harness-1.txt" },
       { worker: expect.any(String), path: "built-by-real-harness-2.txt" },
+    ]);
+    expect(
+      db
+        .query<{ body: string; head_sha: string }, [string]>(
+          "SELECT body, head_sha FROM factory_order_build WHERE order_id = ?",
+        )
+        .all("headless-order"),
+    ).toEqual([
+      {
+        body: expect.stringContaining("## Outcome"),
+        head_sha: expect.any(String),
+      },
     ]);
     expect(
       db

@@ -36,7 +36,7 @@ For an order without an approved current plan:
 2. Run `dim order plan <order-id>`. The command assigns one planner under the operator, and the planner bootstraps that assignment under its own harness session before its plan is recorded under the planner identity. Later planning turns reuse that same planner identity.
 3. Read the returned Plan artifact and `dim q order <order-id>`.
 4. Check that it answers the order, names independently verifiable slices, uses the repository's own check, and states risks, holds, and non-goals.
-5. Approve the exact current plan with `dim order approve <order-id>`, or hold the order with the reason that prevents approval.
+5. Approve the exact current Plan artifact with `dim order approve <order-id>`, or return it to the same planner with `dim order return <order-id> --reason "..."`.
 
 Approval is the operator's check that the returned artifact answers the request. It is not a substitute for the independent review station.
 
@@ -46,12 +46,12 @@ After plan approval:
 
 1. Move the order to `dim-station-build`.
 2. Run `dim order build <order-id> --harness codex`. The factory assigns one builder identity for the order, starts the selected harness in the order's worktree, and records commits, files, checks, documents, and findings under that builder as they occur.
-3. Read the builder's returned Build artifact and `dim q order <order-id>`. Approve the exact checked build with `dim order approve-build <order-id> --reason "..."` only when the Build artifact and evidence answer the requested outcome.
-4. Move the order to `dim-station-review` and run `dim order review <order-id> --harness codex`. The command assigns a separate reviewer under the operator, reuses that reviewer identity for later rounds, and records findings under the reviewer identity.
-5. Read the Review artifact and its findings. If findings exist, hand the order back to the builder with their ids and required fixes. The operator approves the next build before starting another review round.
-6. When a review is clean, run `dim order approve-review <order-id>` as the operator.
+3. Read the builder's returned evidence and `dim q order <order-id>`. Intermediate slices move directly to review after their passing check; they do not wait for owner approval. After the final slice, read the single Build artifact for the whole order. Approve it with `dim order approve <order-id> --reason "..."` or return it to the same builder with `dim order return <order-id> --reason "..."`.
+4. Move the order to `dim-station-review` and run `dim order review <order-id> --harness codex`. The factory creates the reviewer identity and resumes its provider session on later rounds. A clean intermediate review returns to build automatically; only the completed build is held for owner approval.
+5. Read the Review artifact and its findings. If findings exist, hand the order back to the same builder with their ids and required fixes. If the Review artifact needs revision, return it to the same reviewer with `dim order return <order-id> --reason "..."`.
+6. Approve the current clean Review artifact with `dim order approve <order-id>` as the operator.
 
-Every station has the same gate: read its one human-facing artifact, check it against persisted evidence, then approve it or return the order. The artifact is the explanation; the evidence is the source of truth.
+Every station has the same control boundary: read the worker's returned artifact, check it against persisted evidence, then approve it or return it to that worker with feedback. A return does not change the station identity or erase the earlier artifact revision. The artifact is the explanation; the evidence is the source of truth.
 
 The loop is:
 
@@ -63,9 +63,9 @@ operator delegates → worker returns attributed artifact → operator checks ou
 
 ## Ship and stop
 
-- Run `dim order ship <order-id>` only after the operator has approved the plan, the checked build, and the clean review.
+- Run `dim order ship <order-id>` only after the operator has approved the plan, the final Build artifact, and the clean review.
 - Run `dim order stop <order-id> completed` only after the shipped commit and repository check satisfy the completion gate.
-- On a failed attempt, run `dim order stop <order-id> failed --reason "..."`; do not turn an absent artifact into success.
+- A station runner records a failed attempt itself. When a runner has stopped and left a claimed order behind, the operator records recovery with `dim order stop <order-id> failed --reason "..."`; this writes the worker's failed outcome and the operator's recovery separately.
 - Stop at a hold for an owner decision, an outward-facing action, a hard-to-reverse choice, or a machine-wide change.
 
 ## Audit rules

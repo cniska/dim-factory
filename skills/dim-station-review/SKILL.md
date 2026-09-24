@@ -18,7 +18,7 @@ The reviewer writes an artifact for the owner as well as evidence for the operat
 
 Use `dim-artifact` for the shared artifact-writing contract. This station supplies the review verdict, dimensions, evidence and separately attributed findings.
 
-Record one Review artifact with the verdict, dimensions covered, evidence considered, and whether the order may advance or must return. Use `dim order review-artifact <order-id> --body "..."`; keep each finding separately attributed beneath it. Stop for the operator's gate after submitting the artifact. If it is returned, revise it under the same reviewer identity; a closed review is not accepted until the operator approves the artifact with `dim order approve <order-id>`.
+Return one structured result containing the Review artifact and its findings. The factory records each under the reviewer identity while the reviewer remains read-only. Stop for the operator's gate after returning the result. If the artifact is returned, revise its body under the same reviewer identity without changing its findings; a closed review is not accepted until the operator approves it with `dim order approve <order-id>`.
 
 ## Entry contract
 
