@@ -52,6 +52,13 @@ function activeSession(db: Database, env: Record<string, string | undefined>, cw
       .filter((session) => session.cwd && labelFor(session.cwd) === project)
       .map((session) => session.session_id),
   );
+  const harnessSessions = new Set(
+    [env.CODEX_SESSION_ID, env.CLAUDE_SESSION_ID].filter((sessionId): sessionId is string =>
+      Boolean(sessionId && sessions.has(sessionId)),
+    ),
+  );
+  const [harnessSession] = harnessSessions;
+  if (harnessSessions.size === 1 && harnessSession) return harnessSession;
   if (sessions.size > 1) {
     throw fail(`more than one active operator session is recorded for ${project}; the factory cannot choose`);
   }

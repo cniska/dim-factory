@@ -75,7 +75,7 @@ Worker actions on an order name the worker in the column the moment is written w
 
 If the operator records recovery after a worker has already claimed the order, the recovery event names the operator, while the finished attempt names the worker that ran it. The lifecycle action and the work outcome are separate audit facts.
 
-The operator resolves its identity with `dim operator`, which drains hook events and uses the sole active session for the current checkout's canonical `owner/repo`, across its worktrees. If several such sessions are active, it refuses rather than selecting one by caller-supplied ID.
+The operator resolves its identity with `dim operator`, which drains hook events and uses the sole active session for the current checkout's canonical `owner/repo`, across its worktrees. When several such sessions are active, it uses the matching Codex or Claude harness session ID and refuses if neither identifies an active session.
 
 An operator session keeps its credential on disk for later calls. `dim operator` returns the same worker when called again from that session; if the credential is missing, the factory refuses rather than replacing it based on the session ID. The database's unique session constraint prevents a second worker row for that session.
 

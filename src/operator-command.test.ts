@@ -94,10 +94,52 @@ describe("resolving the project's operator session", () => {
     db.close();
   });
 
-  test("refuses to choose between active operator sessions even when an id is supplied", () => {
+  test("uses the supplied harness id to choose among active project sessions", () => {
     const db = floor();
     const env = shell("first-session");
     env.CODEX_SESSION_ID = "first-session";
+    writeFileSync(
+      join(toolSpoolDir("codex", env), "1770000000000000001-123.json"),
+      JSON.stringify({
+        session_id: "second-session",
+        hook_event_name: "SessionStart",
+        cwd: process.cwd(),
+      }),
+    );
+
+    const printed = runOperatorCommand(db, [], env);
+
+    expect(printed).toContain(`export ${WORKER_SESSION_VAR}=first-session`);
+    expect(db.query("SELECT session_id FROM factory_worker").get()).toEqual({
+      session_id: "first-session",
+    });
+    db.close();
+  });
+
+  test("checks the second harness id when the first is not active", () => {
+    const db = floor();
+    const env = shell("claude-session");
+    const cwd = process.cwd();
+    env.CODEX_SESSION_ID = "codex-session";
+    env.CLAUDE_SESSION_ID = "claude-session";
+    writeFileSync(
+      join(toolSpoolDir("codex", env), "1770000000000000001-123.json"),
+      JSON.stringify({ session_id: "another-session", hook_event_name: "SessionStart", cwd }),
+    );
+
+    const printed = runOperatorCommand(db, [], env, cwd);
+
+    expect(printed).toContain(`export ${WORKER_SESSION_VAR}=claude-session`);
+    expect(db.query("SELECT session_id FROM factory_worker").get()).toEqual({
+      session_id: "claude-session",
+    });
+    db.close();
+  });
+
+  test("keeps refusing when supplied harness ids do not identify an active project session", () => {
+    const db = floor();
+    const env = shell("first-session");
+    env.CODEX_SESSION_ID = "unmatched-session";
     writeFileSync(
       join(toolSpoolDir("codex", env), "1770000000000000001-123.json"),
       JSON.stringify({
