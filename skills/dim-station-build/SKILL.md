@@ -36,9 +36,17 @@ Where a slice turns out to be blocked, finish every other slice in full and say 
 
 ## Produce the Build artifact
 
-Use `dim-artifact` for the shared artifact-writing contract. The Build artifact is the builder's explanation of the completed slice, grounded in the recorded diff and checks:
+Use `dim-artifact` for the shared artifact-writing contract. The Build artifact is the builder's explanation of the completed order, grounded in the recorded diff and checks:
 
-After the final slice has a passing check, return one Build artifact for the owner. Lead with what became true and why, then name the commits, changed behavior, checks, review-relevant evidence, deviations from the approved plan, and unresolved risks. Keep the detail proportional to the change while retaining the evidence and worker attribution. The Build artifact is provisional until review is accepted; the operator checks it against the recorded evidence before delegating review and the builder updates it when review returns the work.
+After the final slice has a passing check, return one Build artifact for the owner. Structure it around the questions that are not answered by the diff alone:
+
+- **Outcome.** What is true for the owner now and why it satisfies the requested result.
+- **Implementation.** The meaningful behavior and boundaries that changed, grouped by logical change rather than by file or slice.
+- **Why this shape.** The load-bearing choices, alternatives not taken, and non-obvious contracts or trust dependencies.
+- **Verification.** What the recorded checks and review evidence establish, stated as conclusions rather than a command transcript.
+- **Owner attention.** Deviations from the approved plan, unresolved risks, and what a careful reader should scrutinize.
+
+Use only the sections the change earns. Do not repeat the audit log's command output, exhaustive file list, slice history, or unrelated failures. The Build artifact explains the result; it does not replace the record, review, or approval. The Build artifact is provisional until the operator approves it. If the operator returns it for revision, address the stated gap and write a new artifact revision under the same builder identity before review starts. The builder also updates it when review returns the work.
 
 ## Simplify the slice before it is checked
 

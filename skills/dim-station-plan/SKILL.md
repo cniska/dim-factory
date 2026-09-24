@@ -62,18 +62,11 @@ Use readable Markdown and project language. Keep identifiers, commands, and path
 
 Scale the explanation to the change. Lead with a concise decision summary, then include the supporting detail justified by the change's size and risk. A small fix can stay short; a multi-boundary change needs the full program design. Scaling the prose never removes a required contract dimension.
 
-The plan is this station's human-facing artifact. Submit it with the evidence and ordered slices, then stop for the operator's gate; the next station does not start until the operator has checked and approved that exact revision.
+The plan is this station's human-facing artifact. Submit the dimensions this change needs, with its evidence and ordered slices, then stop for the operator's gate; the next station does not start until the operator has checked and approved that exact revision.
 
 ## Exit check
 
-The plan is done when it names:
-
-- the outcome, boundary, non-goals, and owner decisions
-- the evidence it read and what that evidence ruled out
-- the contracts, program design, and executable checks
-- the slices, each a vertical cut that can be verified on its own
-- what checks each slice — the repo's own task, so what runs locally is what CI runs
-- the risks, holds, predictions, and what is still unknown
+The plan is done when it names the outcome and the dimensions this change needs for approval and execution. It does not repeat dimensions that add no decision or implementation value.
 
 If all four queries came back empty, say that in the plan. An empty record is a fact about the work being new, and it is worth more written down than silently skipped.
 
