@@ -1,4 +1,5 @@
-export const HARNESSES = ["codex"] as const;
+export const DEFAULT_HARNESS = "codex" as const;
+export const HARNESSES = [DEFAULT_HARNESS] as const;
 export type HarnessName = (typeof HARNESSES)[number];
 
 export function parseHarness(value: string | undefined): HarnessName {

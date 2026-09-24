@@ -32,6 +32,7 @@ import {
 import { resolveWorker } from "./factory-worker";
 import { readFlags, requiredFlag } from "./flags";
 import type { HarnessName } from "./harness-command";
+import { DEFAULT_HARNESS } from "./harness-name";
 import { requireCurrentHooks } from "./hooks";
 import { runOrderBuild, runOrderBuildLive } from "./order-build";
 import { isOrderLine, ORDER_LINES } from "./order-line";
@@ -57,13 +58,13 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--lin
        dim order check <order-id> --command "..." --exit <code> [--result "..."]
        dim order build-artifact <order-id> --body-file <path> --head <sha>
        dim order review-artifact <order-id> --body "..."
-       dim order review <order-id> --harness <codex>
+       dim order review <order-id> [--harness <codex>]
        dim order finding <order-id> --dimension <name> --summary "..."
        dim order answer <finding-id> --answer <fixed|refused>
                        [--resolution "..."]
        dim order document <order-id> --path <path>
-       dim order plan <order-id> --harness <codex>
-       dim order build <order-id> --harness <codex>
+       dim order plan <order-id> [--harness <codex>]
+       dim order build <order-id> [--harness <codex>]
        dim order approve <order-id>
        dim order approve <order-id> [--reason "..."]
        dim order return <order-id> --reason "..."
@@ -426,15 +427,15 @@ export function runOrderCommand(
   if (command === "plan") {
     const given = flags(rest, ["--harness"]);
     assertOperator(db, worker, "delegate planning");
-    const harness = given.get("--harness");
-    if (harness !== "codex") throw fail("--harness must be codex");
+    const harness = given.get("--harness") ?? DEFAULT_HARNESS;
+    if (harness !== DEFAULT_HARNESS) throw fail(`--harness must be ${DEFAULT_HARNESS}`);
     const outcome = runOrderPlan(db, orderId, { env, harness: harness as HarnessName });
     return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;
   }
   if (command === "build") {
     const given = flags(rest, ["--harness"]);
-    const harness = given.get("--harness");
-    if (harness !== "codex") throw fail("--harness must be codex");
+    const harness = given.get("--harness") ?? DEFAULT_HARNESS;
+    if (harness !== DEFAULT_HARNESS) throw fail(`--harness must be ${DEFAULT_HARNESS}`);
     const outcome = runOrderBuild(db, orderId, worker, { dir: cwd, env, harness: harness as HarnessName });
     return `${orderId} building started by ${outcome.builder}`;
   }
@@ -473,8 +474,8 @@ export function runOrderCommand(
   if (command === "answer") return answerFinding(db, orderId, rest, worker);
   if (command === "review") {
     const given = flags(rest, ["--harness"]);
-    const harness = given.get("--harness");
-    if (harness !== "codex") throw fail("--harness must be codex");
+    const harness = given.get("--harness") ?? DEFAULT_HARNESS;
+    if (harness !== DEFAULT_HARNESS) throw fail(`--harness must be ${DEFAULT_HARNESS}`);
     assertOperator(db, worker, "delegate review");
     const done = runOrderReview(db, orderId, worker, { dir: cwd, env, harness: harness as HarnessName });
     return done.outcome === "aborted"
@@ -496,8 +497,8 @@ export async function runOrderCommandLive(
   const [, orderId, ...rest] = args;
   if (!orderId) throw new OrderCommandError("order takes a subcommand and an order id");
   const given = flags(rest, ["--harness"]);
-  const harness = given.get("--harness");
-  if (harness !== "codex") throw fail("--harness must be codex");
+  const harness = given.get("--harness") ?? DEFAULT_HARNESS;
+  if (harness !== DEFAULT_HARNESS) throw fail(`--harness must be ${DEFAULT_HARNESS}`);
   if (args[0] === "plan") {
     const outcome = await runOrderPlanLive(db, orderId, { env, harness: harness as HarnessName });
     return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;

@@ -53,10 +53,13 @@ describe("item history", () => {
     expect(source).toContain('aria-labelledby="item-log"');
     expect(source).toContain('aria-labelledby="item-build"');
     expect(source).toMatch(/>\s*Build\s*</);
+    expect(source).toContain('aria-labelledby="item-review"');
+    expect(source).toMatch(/>\s*Review\s*</);
+    expect(source).toContain("The order has not been planned.");
+    expect(source).toContain("The order has not been built.");
+    expect(source).toContain("The order has not been reviewed.");
     expect(source).toMatch(/>\s*Log\s*</);
-    expect(source).toMatch(
-      /\{read\.view\?\.plan \? <div className="border-t" aria-hidden="true" \/> : null\}/,
-    );
+    expect(source.match(/<div className="border-t" aria-hidden="true" \/>/g)).toHaveLength(3);
     expect(source).toContain('const NO_WORKER = "none";');
     expect(source).toContain("<dt>assignee</dt>");
     expect(source).toContain("STATION_LABELS[order.station]");

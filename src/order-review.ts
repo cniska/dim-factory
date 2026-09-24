@@ -12,7 +12,7 @@ import {
 } from "./factory-order";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-command";
-import type { HarnessName } from "./harness-name";
+import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
 import { runOrderStation, runOrderStationLive } from "./order-worker";
 import { parseReviewArtifact } from "./review-artifact";
 import { repoRoot, worktreePath } from "./wt-command";
@@ -118,6 +118,7 @@ export function reviewerBrief(
       order.description ?? "",
       "",
       "The owner returned this Review artifact for revision. Preserve the review's findings and evidence; address only the owner's feedback.",
+      "Use dim-artifact for the shared artifact-writing and sizing contract.",
       "",
       "# Previous Review artifact",
       revision.body,
@@ -138,6 +139,7 @@ export function reviewerBrief(
     `Read the diff \`git diff ${range.base}..${range.head}\` and nothing else about how it came to be.`,
     "Check each claim at its source before raising it; a reading you did not verify is not a finding.",
     "",
+    "Use dim-artifact for the shared artifact-writing and sizing contract.",
     "Write one Review artifact for the owner with the verdict, dimensions covered, evidence considered, and whether the order may advance or must return. Keep it proportional to the change.",
     'Return exactly one JSON object with a non-empty Markdown "body" and a "findings" array. Each finding has non-empty "dimension" and "summary" strings. Use an empty array when there are no findings. Do not use a Markdown fence or add text outside the JSON object.',
     "",
@@ -193,7 +195,7 @@ export async function runOrderReviewLive(
   assertOperator(db, worker, "delegate review");
   assertBuildReady(db, orderId);
   const dir = reviewDirectory(options.dir, orderId);
-  const harness = options.harness ?? "codex";
+  const harness = options.harness ?? DEFAULT_HARNESS;
   let returned: Extract<ReturnedOrderArtifact, { station: "review" }> | null = null;
   let opened: { id: number } | undefined;
   let turn: Awaited<ReturnType<typeof runOrderStationLive<"review">>>;
@@ -304,7 +306,7 @@ export function runOrderReview(
   if (!order) throw new Error(`order not found: ${orderId}`);
   assertBuildReady(db, orderId);
   const dir = reviewDirectory(options.dir, orderId);
-  const harness = options.harness ?? "codex";
+  const harness = options.harness ?? DEFAULT_HARNESS;
   let opened: { id: number } | undefined;
   const {
     run,

@@ -4,7 +4,7 @@ import { appendOrderEvent, recordOrderPlan } from "./factory-order";
 import { resolveWorker } from "./factory-worker";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-command";
-import type { HarnessName } from "./harness-name";
+import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
 import { runOrderStation, runOrderStationLive } from "./order-worker";
 import { type PlanSlice, parsePlanArtifact } from "./plan-artifact";
 
@@ -76,7 +76,7 @@ export function runOrderPlan(
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
   const parentWorker = resolveWorker(db, options.env);
-  const harness = options.harness ?? "codex";
+  const harness = options.harness ?? DEFAULT_HARNESS;
   const { run, worker } = runOrderStation({
     db,
     orderId,
@@ -122,7 +122,7 @@ export async function runOrderPlanLive(
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
   const parentWorker = resolveWorker(db, options.env);
-  const harness = options.harness ?? "codex";
+  const harness = options.harness ?? DEFAULT_HARNESS;
   let planner: string | undefined;
   try {
     const { run, worker } = await runOrderStationLive({

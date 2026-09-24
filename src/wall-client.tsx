@@ -410,15 +410,15 @@ function ItemDialog({
         {/* The dialog holds its size and its content scrolls, so the identity above stays with
             whatever is being read. */}
         <div className="flex min-h-0 flex-col overflow-y-auto">
-          {read.view?.plan ? (
-            <section
-              aria-labelledby="item-plan"
-              className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
-            >
-              <div className="space-y-[var(--space-xs)]">
-                <h3 id="item-plan" className="text-xl font-medium text-foreground leading-7">
-                  Plan
-                </h3>
+          <section
+            aria-labelledby="item-plan"
+            className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
+          >
+            <div className="space-y-[var(--space-xs)]">
+              <h3 id="item-plan" className="text-xl font-medium text-foreground leading-7">
+                Plan
+              </h3>
+              {read.view?.plan ? (
                 <div className="flex flex-wrap items-center gap-x-[var(--space-sm)] gap-y-[var(--space-xs)] text-muted-foreground leading-5">
                   <WorkerLabel worker={read.view.plan.worker} role={read.view.plan.role} />
                   <span className="text-quiet" aria-hidden="true">
@@ -436,7 +436,9 @@ function ItemDialog({
                     </>
                   ) : null}
                 </div>
-              </div>
+              ) : null}
+            </div>
+            {read.view?.plan ? (
               <div
                 className={cn(
                   "wall-markdown flex flex-col gap-[var(--space-md)] text-quiet",
@@ -447,18 +449,20 @@ function ItemDialog({
               >
                 <Markdown components={{ a: MarkdownLink }}>{read.view.plan.body}</Markdown>
               </div>
-            </section>
-          ) : null}
-          {read.view?.plan ? <div className="border-t" aria-hidden="true" /> : null}
-          {read.view?.build ? (
-            <section
-              aria-labelledby="item-build"
-              className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
-            >
-              <div className="space-y-[var(--space-xs)]">
-                <h3 id="item-build" className="text-xl font-medium text-foreground leading-7">
-                  Build
-                </h3>
+            ) : read.view ? (
+              <p className="text-quiet">The order has not been planned.</p>
+            ) : null}
+          </section>
+          <div className="border-t" aria-hidden="true" />
+          <section
+            aria-labelledby="item-build"
+            className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
+          >
+            <div className="space-y-[var(--space-xs)]">
+              <h3 id="item-build" className="text-xl font-medium text-foreground leading-7">
+                Build
+              </h3>
+              {read.view?.build ? (
                 <div className="flex flex-wrap items-center gap-x-[var(--space-sm)] gap-y-[var(--space-xs)] text-muted-foreground leading-5">
                   <WorkerLabel worker={read.view.build.worker} role={read.view.build.role} />
                   <span className="text-quiet" aria-hidden="true">
@@ -476,7 +480,9 @@ function ItemDialog({
                     </>
                   ) : null}
                 </div>
-              </div>
+              ) : null}
+            </div>
+            {read.view?.build ? (
               <div
                 className={cn(
                   "wall-markdown flex flex-col gap-[var(--space-md)] text-quiet",
@@ -487,18 +493,20 @@ function ItemDialog({
               >
                 <Markdown components={{ a: MarkdownLink }}>{read.view.build.body}</Markdown>
               </div>
-            </section>
-          ) : null}
-          {read.view?.build ? <div className="border-t" aria-hidden="true" /> : null}
-          {read.view?.review ? (
-            <section
-              aria-labelledby="item-review"
-              className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
-            >
-              <div className="space-y-[var(--space-xs)]">
-                <h3 id="item-review" className="text-xl font-medium text-foreground leading-7">
-                  Review
-                </h3>
+            ) : read.view ? (
+              <p className="text-quiet">The order has not been built.</p>
+            ) : null}
+          </section>
+          <div className="border-t" aria-hidden="true" />
+          <section
+            aria-labelledby="item-review"
+            className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
+          >
+            <div className="space-y-[var(--space-xs)]">
+              <h3 id="item-review" className="text-xl font-medium text-foreground leading-7">
+                Review
+              </h3>
+              {read.view?.review ? (
                 <div className="flex flex-wrap items-center gap-x-[var(--space-sm)] gap-y-[var(--space-xs)] text-muted-foreground leading-5">
                   <WorkerLabel worker={read.view.review.worker} role={read.view.review.role} />
                   <span className="text-quiet" aria-hidden="true">
@@ -516,7 +524,9 @@ function ItemDialog({
                     </>
                   ) : null}
                 </div>
-              </div>
+              ) : null}
+            </div>
+            {read.view?.review ? (
               <div
                 className={cn(
                   "wall-markdown flex flex-col gap-[var(--space-md)] text-quiet",
@@ -527,9 +537,11 @@ function ItemDialog({
               >
                 <Markdown components={{ a: MarkdownLink }}>{read.view.review.body}</Markdown>
               </div>
-            </section>
-          ) : null}
-          {read.view?.review ? <div className="border-t" aria-hidden="true" /> : null}
+            ) : read.view ? (
+              <p className="text-quiet">The order has not been reviewed.</p>
+            ) : null}
+          </section>
+          <div className="border-t" aria-hidden="true" />
           <section
             aria-labelledby="item-log"
             className="min-w-0 px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"

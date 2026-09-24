@@ -509,7 +509,7 @@ describe("factory wall snapshot", () => {
 });
 
 describe("factory wall item view", () => {
-  const seedWorkedOrder = (db: Database): void => {
+  const seedWorkedOrder = (db: Database, includeReviewArtifact = false): string => {
     queueOrder(
       db,
       { id: "order-worked", project: "cniska/dim-factory", title: "Work an item through" },
@@ -582,7 +582,8 @@ describe("factory wall item view", () => {
       worker,
       "2026-09-18T10:06:35.000Z",
     );
-    const reviewer = reviewIn(db, "order-worked", worker, "2026-09-18T10:06:45.000Z").reviewer;
+    const review = reviewIn(db, "order-worked", worker, "2026-09-18T10:06:45.000Z");
+    const reviewer = review.reviewer;
     const onTests = raiseOrderFinding(
       db,
       "order-worked",
@@ -609,6 +610,15 @@ describe("factory wall item view", () => {
       "2026-09-18T10:08:00.000Z",
     );
     recordOrderDocument(db, "order-worked", "docs/human-interface.md", worker, "2026-09-18T10:09:00.000Z");
+    if (includeReviewArtifact) {
+      recordOrderReviewArtifact(
+        db,
+        "order-worked",
+        "## Outcome\n\nThe reviewed change is ready.",
+        reviewer,
+        "2026-09-18T10:09:30.000Z",
+      );
+    }
     appendOrderEvent(
       db,
       "order-worked",
@@ -616,6 +626,7 @@ describe("factory wall item view", () => {
       "2026-09-18T10:10:00.000Z",
       trunk.dir,
     );
+    return reviewer;
   };
 
   test("reads one order's lifecycle in the order it was written", () => {
@@ -646,7 +657,7 @@ describe("factory wall item view", () => {
 
   test("carries the order's identity above what is being read", () => {
     const db = floor();
-    seedWorkedOrder(db);
+    const reviewer = seedWorkedOrder(db, true);
 
     const view = assembleItemView(db, "order-worked", new Date("2026-09-18T10:20:00.000Z"));
 
@@ -667,6 +678,13 @@ describe("factory wall item view", () => {
       headSha: trunk.sha,
       worker,
       role: "builder",
+      approved: false,
+    });
+    expect(view?.review).toEqual({
+      revision: 1,
+      body: "## Outcome\n\nThe reviewed change is ready.",
+      worker: reviewer,
+      role: "reviewer",
       approved: false,
     });
     expect([view?.runId, view?.project, view?.order.id]).toEqual([

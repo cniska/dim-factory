@@ -15,7 +15,7 @@ import {
 } from "./factory-order";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-command";
-import type { HarnessName } from "./harness-name";
+import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
 import { runOrderStation, runOrderStationLive } from "./order-worker";
 import type { Env } from "./paths";
 import type { PlanSlice } from "./plan-artifact";
@@ -183,7 +183,7 @@ export async function runOrderBuildLive(
     appendOrderEvent(db, orderId, { kind: "failed", worker: builder, reason });
   };
   try {
-    const harness = options.harness ?? "codex";
+    const harness = options.harness ?? DEFAULT_HARNESS;
     const onAssigned = (assigned: string, providerSessionId: string): void => {
       builder = assigned;
       if (currentSlice) {
@@ -326,7 +326,7 @@ export function runOrderBuild(
     });
   };
   try {
-    const harness = options.harness ?? "codex";
+    const harness = options.harness ?? DEFAULT_HARNESS;
     const { run, worker, returned } = runOrderStation({
       db,
       orderId,

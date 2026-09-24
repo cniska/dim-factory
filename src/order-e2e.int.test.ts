@@ -125,31 +125,31 @@ describe("headless factory loop", () => {
       repo.dir,
     );
 
-    expect(
-      await runOrderCommandLive(db, ["plan", "headless-order", "--harness", "codex"], null, repo.dir, env),
-    ).toContain("## Outcome");
+    expect(await runOrderCommandLive(db, ["plan", "headless-order"], null, repo.dir, env)).toContain(
+      "## Outcome",
+    );
     expect(runOrderCommand(db, ["approve", "headless-order"], null, repo.dir, env)).toContain(
       "plan approved",
     );
     expect(
       runOrderCommand(db, ["move", "headless-order", "--station", "dim-station-build"], null, repo.dir, env),
     ).toContain("moved");
-    expect(
-      await runOrderCommandLive(db, ["build", "headless-order", "--harness", "codex"], null, repo.dir, env),
-    ).toContain("build completed by");
+    expect(await runOrderCommandLive(db, ["build", "headless-order"], null, repo.dir, env)).toContain(
+      "build completed by",
+    );
 
     const worktree = join(repo.dir, ".claude", "worktrees", "headless-order");
     expect(existsSync(join(worktree, "built-by-real-harness-1.txt"))).toBe(true);
     runOrderCommand(db, ["move", "headless-order", "--station", "dim-station-review"], null, repo.dir, env);
-    expect(
-      await runOrderCommandLive(db, ["review", "headless-order", "--harness", "codex"], null, repo.dir, env),
-    ).toContain("0 findings");
+    expect(await runOrderCommandLive(db, ["review", "headless-order"], null, repo.dir, env)).toContain(
+      "0 findings",
+    );
     expect(
       runOrderCommand(db, ["move", "headless-order", "--station", "dim-station-build"], null, repo.dir, env),
     ).toContain("moved");
-    expect(
-      await runOrderCommandLive(db, ["build", "headless-order", "--harness", "codex"], null, repo.dir, env),
-    ).toContain("build completed by");
+    expect(await runOrderCommandLive(db, ["build", "headless-order"], null, repo.dir, env)).toContain(
+      "build completed by",
+    );
     expect(existsSync(join(worktree, "built-by-real-harness-2.txt"))).toBe(true);
     expect(
       runOrderCommand(
@@ -161,9 +161,9 @@ describe("headless factory loop", () => {
       ),
     ).toContain("build approved");
     runOrderCommand(db, ["move", "headless-order", "--station", "dim-station-review"], null, repo.dir, env);
-    expect(
-      await runOrderCommandLive(db, ["review", "headless-order", "--harness", "codex"], null, repo.dir, env),
-    ).toContain("0 findings");
+    expect(await runOrderCommandLive(db, ["review", "headless-order"], null, repo.dir, env)).toContain(
+      "0 findings",
+    );
     expect(runOrderCommand(db, ["approve", "headless-order"], null, repo.dir, env)).toContain(
       "review approved",
     );
