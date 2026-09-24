@@ -16,6 +16,10 @@ export class WorkerSessionTaken extends Error {
   readonly code = "worker_session_taken";
 }
 
+export class WorkerCredentialUnavailable extends Error {
+  readonly code = "worker_credential_unavailable";
+}
+
 /** Carries a code because a caller deciding which condition failed must not match on prose. */
 export class WorkerUnknown extends Error {
   constructor(
@@ -131,8 +135,8 @@ export function resolveWorker(db: Database, env: Env = process.env): string {
   if (!name || !token) {
     throw new WorkerUnknown(
       "worker_missing",
-      `nothing says which worker this is: ${WORKER_NAME_VAR} and ${WORKER_TOKEN_VAR} are what ` +
-        "the factory hands a worker it starts. Register one for this shell with `dim worker register`.",
+      `nothing says which worker this is: ${WORKER_NAME_VAR} and ${WORKER_TOKEN_VAR} identify a ` +
+        "station worker; operators resolve their identity with `dim operator`.",
     );
   }
   const row = db
@@ -148,6 +152,53 @@ export function resolveWorker(db: Database, env: Env = process.env): string {
     throw new WorkerUnknown("worker_over", `worker ${name} ran as pid ${row.pid}, which is gone`);
   }
   return row.name;
+}
+
+export function mintWorkerForSession(
+  db: Database,
+  worker: {
+    role: Role;
+    sessionId: string;
+    pid?: number;
+    parentWorker?: string;
+    credential?: MintedWorker | null;
+  },
+): MintedWorker {
+  return db
+    .transaction(() => {
+      const existing = db
+        .query<{ name: string; role: Role; parent_worker: string | null; ended_at: string | null }, [string]>(
+          "SELECT name, role, parent_worker, ended_at FROM factory_worker WHERE session_id = ?",
+        )
+        .get(worker.sessionId);
+      if (!existing) return mintWorker(db, worker);
+      if (existing.role !== worker.role) {
+        throw new Error(`this factory session already carries ${existing.role}, not ${worker.role}`);
+      }
+      if (worker.parentWorker !== undefined && existing.parent_worker !== worker.parentWorker) {
+        throw new Error(
+          `worker ${existing.name} does not belong to assignment parent ${worker.parentWorker}`,
+        );
+      }
+      if (existing.ended_at !== null)
+        throw new WorkerUnknown("worker_over", `worker ${existing.name} has ended`);
+      if (!worker.credential) {
+        throw new WorkerCredentialUnavailable(
+          `the credential for worker ${existing.name} in session ${worker.sessionId} is unavailable`,
+        );
+      }
+      if (worker.credential.name !== existing.name || worker.credential.sessionId !== worker.sessionId) {
+        throw new WorkerCredentialUnavailable(
+          `the saved credential does not belong to session ${worker.sessionId}`,
+        );
+      }
+      resolveWorker(db, {
+        [WORKER_NAME_VAR]: worker.credential.name,
+        [WORKER_TOKEN_VAR]: worker.credential.token,
+      });
+      return worker.credential;
+    })
+    .immediate();
 }
 
 /**

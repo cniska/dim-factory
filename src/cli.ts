@@ -23,6 +23,7 @@ import { labelFor } from "./git-remote";
 import { parseHarness } from "./harness-name";
 import { installHooks, planHooks } from "./hooks";
 import { withLock } from "./lock";
+import { OPERATOR_USAGE, OperatorCommandError, runOperatorCommand } from "./operator-command";
 import { ORDER_USAGE, OrderCommandError, runOrderCommandLive } from "./order-command";
 import { dbPath, resolveHomeDir } from "./paths";
 import { findQuery, QUERIES, type QueryResult } from "./queries";
@@ -41,7 +42,6 @@ import { readWake, renderWake, type Wake, wireFor } from "./wake";
 import { resolveWalk, spoolWalk } from "./walk";
 import { DEFAULT_WALL_PORT, WALL_HOT_ENV, WALL_PORT_ENV, WallPortError, wallPort } from "./wall-port";
 import { warn } from "./warn";
-import { runWorkerCommand, WORKER_USAGE, WorkerCommandError } from "./worker-command";
 import { checkCommand } from "./workspace-commands";
 import { runWt, WtError } from "./wt-command";
 
@@ -119,11 +119,8 @@ const USAGE = `usage: dim <command>
   order ready [--limit <n>] [--project <owner/repo>]
                   print the orders nobody holds, most urgent first and oldest
                   before newest within a priority, with the held ones beside them
-  worker register|assign|bootstrap [--role <r>] [--pid <n>]
-                  issue a worker and print the two exports that make a shell one;
-                  every order moment names the worker that recorded it
-  worker end <name>
-                  mark a worker as stopped, so its name can write nothing further
+  operator
+                  resolve this project's active operator identity
 `;
 
 function printReport(report: SyncReport | RebuildReport): void {
@@ -899,11 +896,11 @@ try {
         }
       }
       break;
-    case "worker":
+    case "operator":
       {
         const db = openDb(dbPath());
         try {
-          console.log(runWorkerCommand(db, process.argv.slice(3), process.env, process.cwd()));
+          console.log(runOperatorCommand(db, process.argv.slice(3), process.env, process.cwd()));
         } finally {
           closeDb(db);
         }
@@ -988,9 +985,9 @@ try {
     warn(ORDER_USAGE);
     process.exit(1);
   }
-  if (error instanceof WorkerCommandError) {
+  if (error instanceof OperatorCommandError) {
     warn(`dim: ${error.message}`);
-    if (error.message !== WORKER_USAGE) warn(WORKER_USAGE);
+    if (error.message !== OPERATOR_USAGE) warn(OPERATOR_USAGE);
     process.exit(1);
   }
   // Every `dim order` write names the worker that made it, so a caller nothing issued
