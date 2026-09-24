@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -26,14 +26,17 @@ afterAll(() => {
   for (const home of homes) rmSync(home, { recursive: true, force: true });
 });
 
-function shell(sessionId = newWorkerSession("operator-command-test")): Record<string, string> {
+function shell(
+  sessionId = newWorkerSession("operator-command-test"),
+  cwd = process.cwd(),
+): Record<string, string> {
   const home = mkdtempSync(join(tmpdir(), "dim-operator-shell-"));
   homes.push(home);
   const env = { DIM_HOME: join(home, "data") };
   ensureSpoolDirs(env);
   writeFileSync(
     join(toolSpoolDir("codex", env), "1770000000000000000-123.json"),
-    JSON.stringify({ session_id: sessionId, hook_event_name: "SessionStart", cwd: process.cwd() }),
+    JSON.stringify({ session_id: sessionId, hook_event_name: "SessionStart", cwd }),
   );
   return env;
 }
@@ -194,17 +197,10 @@ describe("resolving the project's operator session", () => {
     db.close();
   });
 
-  test("takes the session from the current harness SessionStart hook", () => {
+  test("resolves the project's session when the invocation cwd changes", () => {
     const db = floor();
-    const home = mkdtempSync(join(tmpdir(), "dim-worker-session-"));
-    const cwd = join(home, "project");
-    const env = { DIM_HOME: join(home, "data") };
-    mkdirSync(cwd);
-    ensureSpoolDirs(env);
-    writeFileSync(
-      join(toolSpoolDir("codex", env), "1770000000000000000-123.json"),
-      JSON.stringify({ session_id: "harness-session", hook_event_name: "SessionStart", cwd }),
-    );
+    const env = shell("harness-session");
+    const cwd = join(process.cwd(), "src");
 
     const printed = runOperatorCommand(db, [], env, cwd);
     const repeated = runOperatorCommand(db, [], env, cwd);
@@ -214,27 +210,37 @@ describe("resolving the project's operator session", () => {
     expect(db.query("SELECT session_id FROM factory_worker").get()).toEqual({
       session_id: "harness-session",
     });
-    rmSync(home, { recursive: true, force: true });
     db.close();
   });
 
   test("refuses to choose between active operator sessions in one checkout", () => {
     const db = floor();
-    const home = mkdtempSync(join(tmpdir(), "dim-worker-session-"));
-    const cwd = join(home, "project");
-    const env = { DIM_HOME: join(home, "data") };
-    mkdirSync(cwd);
-    ensureSpoolDirs(env);
-    for (const [index, sessionId] of ["first-session", "second-session"].entries()) {
-      writeFileSync(
-        join(toolSpoolDir("codex", env), `177000000000000000${index}-123.json`),
-        JSON.stringify({ session_id: sessionId, hook_event_name: "SessionStart", cwd }),
-      );
-    }
+    const env = shell("first-session");
+    const cwd = process.cwd();
+    writeFileSync(
+      join(toolSpoolDir("codex", env), "1770000000000000001-123.json"),
+      JSON.stringify({ session_id: "second-session", hook_event_name: "SessionStart", cwd }),
+    );
 
     expect(() => runOperatorCommand(db, [], env, cwd)).toThrow(/more than one active operator session/);
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 0 });
-    rmSync(home, { recursive: true, force: true });
+    db.close();
+  });
+
+  test("refuses active operator sessions for the same project in different directories", () => {
+    const db = floor();
+    const env = shell("first-session");
+    writeFileSync(
+      join(toolSpoolDir("codex", env), "1770000000000000001-123.json"),
+      JSON.stringify({
+        session_id: "second-session",
+        hook_event_name: "SessionStart",
+        cwd: join(process.cwd(), "src"),
+      }),
+    );
+
+    expect(() => runOperatorCommand(db, [], env)).toThrow(/more than one active operator session/);
+    expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 0 });
     db.close();
   });
 });

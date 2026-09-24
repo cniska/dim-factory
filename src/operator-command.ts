@@ -8,6 +8,7 @@ import {
   workerExports,
 } from "./factory-worker";
 import { readFlags } from "./flags";
+import { labelFor } from "./git-remote";
 import type { Role } from "./roles";
 import { drainSpool } from "./spool";
 import { readWorkerCredential, saveWorkerCredential } from "./worker-credential";
@@ -23,12 +24,14 @@ Print this project's operator credentials for the current shell.`;
 const fail = (message: string): Error => new OperatorCommandError(message);
 
 function activeSession(db: Database, env: Record<string, string | undefined>, cwd: string): string {
+  const project = labelFor(cwd);
+  if (!project) throw fail(`cannot resolve this checkout's owner/repo for ${cwd}`);
   drainSpool(db, env);
   const active = db
-    .query<{ session_id: string }, [string]>(
-      `SELECT DISTINCT start.session_id
+    .query<{ session_id: string; cwd: string | null }, []>(
+      `SELECT DISTINCT start.session_id, start.cwd
        FROM hook_event start
-       WHERE start.event = 'session_start' AND start.cwd = ?
+       WHERE start.event = 'session_start'
          AND NOT EXISTS (
            SELECT 1 FROM factory_worker worker
            WHERE worker.session_id = start.session_id AND worker.role <> 'operator'
@@ -43,13 +46,18 @@ function activeSession(db: Database, env: Record<string, string | undefined>, cw
            WHERE ended.session_id = start.session_id AND ended.event = 'session_end'
          )`,
     )
-    .all(cwd);
-  if (active.length > 1) {
-    throw fail(`more than one active operator session is recorded for ${cwd}; the factory cannot choose`);
+    .all();
+  const sessions = new Set(
+    active
+      .filter((session) => session.cwd && labelFor(session.cwd) === project)
+      .map((session) => session.session_id),
+  );
+  if (sessions.size > 1) {
+    throw fail(`more than one active operator session is recorded for ${project}; the factory cannot choose`);
   }
-  const [current] = active;
-  if (current) return current.session_id;
-  throw fail(`no active harness session is recorded for ${cwd}`);
+  const [current] = sessions;
+  if (current) return current;
+  throw fail(`no active harness session is recorded for project ${project}`);
 }
 
 function workerForSession(
