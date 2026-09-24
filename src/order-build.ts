@@ -12,21 +12,13 @@ import {
   OrderNotDone,
   orderStatus,
   PlanApprovalRefused,
-  returnedOrderArtifact,
 } from "./factory-order";
 import type { HarnessAdapter } from "./harness";
-import { harnessArgv, runHarnessCommand, workerFailureReason } from "./harness-command";
+import { workerFailureReason } from "./harness-command";
 import type { HarnessName } from "./harness-name";
-import {
-  bindOrderWorkerName,
-  ensureOrderWorker,
-  orderWorkerRequest,
-  runOrderWorkerHarnessLive,
-} from "./order-worker";
+import { runOrderStation, runOrderStationLive } from "./order-worker";
 import type { Env } from "./paths";
 import type { PlanSlice } from "./plan-artifact";
-import { route } from "./routing";
-import { assignedWorker } from "./worker-assignment";
 import { workspaceContract } from "./workspace";
 import { repoRoot, worktreePath } from "./wt-command";
 
@@ -176,41 +168,22 @@ export async function runOrderBuildLive(
     )
     .all(plan.id);
   const currentSlice = nextOrderSlice(db, orderId);
-  const returned = currentSlice ? null : returnedOrderArtifact(db, orderId, "build");
-  if (!currentSlice && !returned)
-    throw new Error(`order ${orderId} has no incomplete slice or returned Build artifact`);
-  const orderWorker = ensureOrderWorker(db, orderId, "builder", operator);
   const runId = `build-${crypto.randomUUID()}`;
   const worktree = worktreePath(repoRoot(options.dir), orderId);
   const workspace = workspaceContract(worktree);
-  let builder = orderWorker.worker;
+  let builder: string | undefined;
   let harnessOutput = "";
   let harnessFailureReason: string | undefined;
   let failureRecorded = false;
   let claimed = false;
   const recordFailure = (reason: string): void => {
-    if (returned || failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
+    if (!currentSlice || failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
     if (claimed && !isActiveOrderRun(db, orderId, runId)) return;
     failureRecorded = true;
     appendOrderEvent(db, orderId, { kind: "failed", worker: builder, reason });
   };
   try {
     const harness = options.harness ?? "codex";
-    const { model } = route("builder", harness, options.env);
-    const request = {
-      harness,
-      cwd: worktree,
-      brief: builderBrief(
-        order,
-        { body: plan.body, slices },
-        currentSlice,
-        workspace,
-        returned ? { body: returned.body, feedback: returned.reason } : undefined,
-      ),
-      model,
-      capabilities: BUILDER_CAPABILITIES,
-      env: {},
-    };
     const onAssigned = (assigned: string, providerSessionId: string): void => {
       builder = assigned;
       if (currentSlice) {
@@ -230,22 +203,43 @@ export async function runOrderBuildLive(
         claimed = true;
       }
     };
-    const run = await runOrderWorkerHarnessLive(
+    const {
+      run,
+      worker: assigned,
+      returned,
+    } = await runOrderStationLive({
       db,
-      request,
-      orderWorker,
-      options.env,
-      options.adapter,
+      orderId,
+      station: "build",
+      parentWorker: operator,
+      harness,
+      env: options.env,
+      adapter: options.adapter,
+      useReturnedArtifact: currentSlice === null,
+      requireReturnedArtifact: currentSlice === null,
+      onPrepared: (orderWorker) => {
+        builder = orderWorker.worker;
+      },
       onAssigned,
-    );
+      request: ({ returned: artifact }) => ({
+        cwd: worktree,
+        brief: builderBrief(
+          order,
+          { body: plan.body, slices },
+          currentSlice,
+          workspace,
+          artifact ? { body: artifact.body, feedback: artifact.reason } : undefined,
+        ),
+        capabilities: BUILDER_CAPABILITIES,
+      }),
+    });
     harnessOutput = run.output;
     harnessFailureReason = run.failureReason;
+    builder = assigned;
     if (!builder) throw new Error("builder did not bootstrap its worker assignment");
     if (run.exitCode !== 0) {
       throw new Error(`${builder} exited with code ${run.exitCode}`);
     }
-    builder = run.worker;
-    if (!builder) throw new Error("builder did not bootstrap its worker assignment");
     if (currentSlice) {
       requireBuildEvidence(db, orderId, currentSlice.ordinal === slices.length);
       completeOrderSlice(db, orderId, currentSlice.id, builder);
@@ -317,17 +311,13 @@ export function runOrderBuild(
     )
     .all(plan.id);
   const currentSlice = nextOrderSlice(db, orderId);
-  const returned = currentSlice ? null : returnedOrderArtifact(db, orderId, "build");
-  if (!currentSlice && !returned)
-    throw new Error(`order ${orderId} has no incomplete slice or returned Build artifact`);
-  const orderWorker = ensureOrderWorker(db, orderId, "builder", operator);
   const runId = `build-${crypto.randomUUID()}`;
   const worktree = worktreePath(repoRoot(options.dir), orderId);
   const workspace = workspaceContract(worktree);
   let builder: string | undefined;
   let failureRecorded = false;
   const recordFailure = (reason: string): void => {
-    if (returned || failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
+    if (!currentSlice || failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
     failureRecorded = true;
     appendOrderEvent(db, orderId, {
       kind: "failed",
@@ -336,29 +326,37 @@ export function runOrderBuild(
     });
   };
   try {
-    const env = orderWorkerRequest(db, options.env, orderWorker);
     const harness = options.harness ?? "codex";
-    const { model } = route("builder", harness, options.env);
-    const request = {
+    const { run, worker, returned } = runOrderStation({
+      db,
+      orderId,
+      station: "build",
+      parentWorker: operator,
       harness,
-      cwd: worktree,
-      brief: builderBrief(
-        order,
-        { body: plan.body, slices },
-        currentSlice,
-        workspace,
-        returned ? { body: returned.body, feedback: returned.reason } : undefined,
-      ),
-      model,
-      capabilities: BUILDER_CAPABILITIES,
-      env,
-    };
-    const run = options.spawn
-      ? options.spawn(harnessArgv(request), env, worktree)
-      : runHarnessCommand(request);
-    builder = assignedWorker(db, orderWorker.assignment.id);
+      env: options.env,
+      useReturnedArtifact: currentSlice === null,
+      requireReturnedArtifact: currentSlice === null,
+      spawn: options.spawn
+        ? (argv, env) => {
+            const result = options.spawn?.(argv, env, worktree);
+            if (!result) throw new Error("builder spawn was not provided");
+            return { exitCode: result.exitCode, output: "" };
+          }
+        : undefined,
+      request: ({ returned: artifact }) => ({
+        cwd: worktree,
+        brief: builderBrief(
+          order,
+          { body: plan.body, slices },
+          currentSlice,
+          workspace,
+          artifact ? { body: artifact.body, feedback: artifact.reason } : undefined,
+        ),
+        capabilities: BUILDER_CAPABILITIES,
+      }),
+    });
+    builder = worker;
     if (!builder) throw new Error("builder did not bootstrap its worker assignment");
-    bindOrderWorkerName(db, orderId, "builder", orderWorker.assignment.id, builder);
     if (run.exitCode !== 0) {
       const reason = `${builder} exited with code ${run.exitCode}`;
       recordFailure(reason);

@@ -6,22 +6,15 @@ import {
   assertBuildReady,
   closeOrderReview,
   openAssignedOrderReview,
+  type ReturnedOrderArtifact,
   raiseOrderFinding,
   recordOrderReviewArtifact,
-  returnedOrderArtifact,
 } from "./factory-order";
 import type { HarnessAdapter } from "./harness";
-import { harnessArgv, runHarnessCommand, workerFailureReason } from "./harness-command";
+import { workerFailureReason } from "./harness-command";
 import type { HarnessName } from "./harness-name";
-import {
-  bindOrderWorkerName,
-  ensureOrderWorker,
-  orderWorkerRequest,
-  runOrderWorkerHarnessLive,
-} from "./order-worker";
+import { runOrderStation, runOrderStationLive } from "./order-worker";
 import { parseReviewArtifact } from "./review-artifact";
-import { route } from "./routing";
-import { assignedWorker } from "./worker-assignment";
 import { repoRoot, worktreePath } from "./wt-command";
 
 export class ReviewRefused extends Error {
@@ -200,56 +193,73 @@ export async function runOrderReviewLive(
   assertOperator(db, worker, "delegate review");
   assertBuildReady(db, orderId);
   const dir = reviewDirectory(options.dir, orderId);
-  const returned = returnedOrderArtifact(db, orderId, "review");
-  const range = returned ? { base: returned.baseSha, head: returned.headSha } : reviewRange(db, orderId, dir);
-  const orderWorker = ensureOrderWorker(db, orderId, "reviewer", worker);
-  const opened = returned
-    ? { id: returned.reviewId }
-    : openAssignedOrderReview(
-        db,
-        orderId,
-        { assignmentId: orderWorker.assignment.id, baseSha: range.base, headSha: range.head },
-        worker,
-      );
   const harness = options.harness ?? "codex";
-  const { model } = route("reviewer", harness, options.env);
-  const request = {
-    harness,
-    cwd: dir,
-    brief: reviewerBrief(
-      order,
-      range,
-      returned ? { body: returned.body, feedback: returned.reason } : undefined,
-    ),
-    model,
-    capabilities: REVIEWER_CAPABILITIES,
-    outputSchema: REVIEW_OUTPUT_SCHEMA,
-    env: {},
-  };
-  let run: Awaited<ReturnType<typeof runOrderWorkerHarnessLive>>;
+  let returned: Extract<ReturnedOrderArtifact, { station: "review" }> | null = null;
+  let opened: { id: number } | undefined;
+  let turn: Awaited<ReturnType<typeof runOrderStationLive<"review">>>;
   try {
-    run = await runOrderWorkerHarnessLive(db, request, orderWorker, options.env, options.adapter);
+    turn = await runOrderStationLive({
+      db,
+      orderId,
+      station: "review",
+      parentWorker: worker,
+      harness,
+      env: options.env,
+      adapter: options.adapter,
+      onPrepared: (_assigned, artifact) => {
+        returned = artifact;
+      },
+      request: ({ orderWorker: assigned, returned: artifact }) => {
+        const range = artifact
+          ? { base: artifact.baseSha, head: artifact.headSha }
+          : reviewRange(db, orderId, dir);
+        opened = artifact
+          ? { id: artifact.reviewId }
+          : openAssignedOrderReview(
+              db,
+              orderId,
+              { assignmentId: assigned.assignment.id, baseSha: range.base, headSha: range.head },
+              worker,
+            );
+        return {
+          cwd: dir,
+          brief: reviewerBrief(
+            order,
+            range,
+            artifact ? { body: artifact.body, feedback: artifact.reason } : undefined,
+          ),
+          capabilities: REVIEWER_CAPABILITIES,
+          outputSchema: REVIEW_OUTPUT_SCHEMA,
+        };
+      },
+    });
   } catch (error) {
-    if (!returned) {
+    if (!returned && opened) {
       const reason = workerFailureReason(
         "reviewer did not finish reviewing",
         error instanceof Error ? error.message : String(error),
         undefined,
       );
-      closeOrderReview(db, opened.id, "aborted", worker, undefined, reason);
+      try {
+        closeOrderReview(db, opened.id, "aborted", worker, undefined, reason);
+      } catch {
+        throw error;
+      }
     }
     throw error;
   }
-  const reviewer = run.worker ?? assignedWorker(db, orderWorker.assignment.id);
+  returned = turn.returned;
+  if (!opened) throw new Error("review round was not opened");
+  const reviewer = turn.worker;
   if (!reviewer) {
     if (!returned) closeOrderReview(db, opened.id, "aborted", worker);
     throw new Error("reviewer did not bootstrap its worker assignment");
   }
   db.run("UPDATE factory_order_review SET reviewer = ? WHERE id = ?", [reviewer, opened.id]);
-  const outcome = run.exitCode === 0 ? "closed" : "aborted";
+  const outcome = turn.run.exitCode === 0 ? "closed" : "aborted";
   const reason =
     outcome === "aborted"
-      ? workerFailureReason("reviewer did not finish reviewing", run.output, run.failureReason)
+      ? workerFailureReason("reviewer did not finish reviewing", turn.run.output, turn.run.failureReason)
       : undefined;
   if (outcome === "aborted") {
     if (returned) throw new Error(reason);
@@ -258,15 +268,13 @@ export async function runOrderReviewLive(
   }
   let findings: number;
   try {
-    findings = recordReviewResult(db, orderId, reviewer, run.output, Boolean(returned));
+    findings = recordReviewResult(db, orderId, reviewer, turn.run.output, Boolean(returned));
   } catch (error) {
     const failure = error instanceof Error ? error.message : String(error);
     if (!returned) closeOrderReview(db, opened.id, "aborted", worker, undefined, failure);
     throw error;
   }
-  if (!returned) {
-    closeOrderReview(db, opened.id, outcome, worker, undefined, reason);
-  }
+  if (!returned) closeOrderReview(db, opened.id, outcome, worker, undefined, reason);
   return { review: opened.id, reviewer, findings, outcome };
 }
 
@@ -294,43 +302,51 @@ export function runOrderReview(
     )
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
-  assertOperator(db, worker, "delegate review");
   assertBuildReady(db, orderId);
   const dir = reviewDirectory(options.dir, orderId);
-  const returned = returnedOrderArtifact(db, orderId, "review");
-  const range = returned ? { base: returned.baseSha, head: returned.headSha } : reviewRange(db, orderId, dir);
-  const orderWorker = ensureOrderWorker(db, orderId, "reviewer", worker);
-  const opened = returned
-    ? { id: returned.reviewId }
-    : openAssignedOrderReview(
-        db,
-        orderId,
-        { assignmentId: orderWorker.assignment.id, baseSha: range.base, headSha: range.head },
-        worker,
-      );
-  const env = orderWorkerRequest(db, options.env, orderWorker);
   const harness = options.harness ?? "codex";
-  const { model } = route("reviewer", harness, options.env);
-  const request = {
+  let opened: { id: number } | undefined;
+  const {
+    run,
+    worker: reviewer,
+    returned,
+  } = runOrderStation({
+    db,
+    orderId,
+    station: "review",
+    parentWorker: worker,
     harness,
-    cwd: dir,
-    brief: reviewerBrief(
-      order,
-      range,
-      returned ? { body: returned.body, feedback: returned.reason } : undefined,
-    ),
-    model,
-    capabilities: REVIEWER_CAPABILITIES,
-    outputSchema: REVIEW_OUTPUT_SCHEMA,
-    env,
-  };
-  const run = options.spawn ? options.spawn(harnessArgv(request), env) : runHarnessCommand(request);
-  const reviewer = assignedWorker(db, orderWorker.assignment.id);
+    env: options.env,
+    spawn: options.spawn,
+    request: ({ orderWorker, returned: artifact }) => {
+      const range = artifact
+        ? { base: artifact.baseSha, head: artifact.headSha }
+        : reviewRange(db, orderId, dir);
+      opened = artifact
+        ? { id: artifact.reviewId }
+        : openAssignedOrderReview(
+            db,
+            orderId,
+            { assignmentId: orderWorker.assignment.id, baseSha: range.base, headSha: range.head },
+            worker,
+          );
+      return {
+        cwd: dir,
+        brief: reviewerBrief(
+          order,
+          range,
+          artifact ? { body: artifact.body, feedback: artifact.reason } : undefined,
+        ),
+        capabilities: REVIEWER_CAPABILITIES,
+        outputSchema: REVIEW_OUTPUT_SCHEMA,
+      };
+    },
+  });
+  if (!opened) throw new Error("review round was not opened");
   if (!reviewer) {
     if (!returned) closeOrderReview(db, opened.id, "aborted", worker);
     throw new Error("reviewer did not bootstrap its worker assignment");
   }
-  bindOrderWorkerName(db, orderId, "reviewer", orderWorker.assignment.id, reviewer);
   db.run("UPDATE factory_order_review SET reviewer = ? WHERE id = ?", [reviewer, opened.id]);
   const outcome = run.exitCode === 0 ? "closed" : "aborted";
   if (outcome === "aborted") {

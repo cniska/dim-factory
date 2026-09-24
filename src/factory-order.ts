@@ -643,7 +643,7 @@ export function isActiveOrderRun(db: Database, orderId: string, runId: string): 
   );
 }
 
-type ReturnedOrderArtifact =
+export type ReturnedOrderArtifact =
   | { station: "plan"; reason: string; planId: number; body: string }
   | { station: "build"; reason: string; buildId: number; body: string; headSha: string }
   | {

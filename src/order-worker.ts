@@ -1,13 +1,19 @@
 import type { Database } from "bun:sqlite";
+import { assertOperator } from "./factory-operator";
+import { type ReturnedOrderArtifact, returnedOrderArtifact } from "./factory-order";
 import { type MintedWorker, resolveWorker, workerProcessEnv } from "./factory-worker";
 import type { HarnessAdapter } from "./harness";
 import {
   type HarnessCommandRequest,
+  type HarnessCommandResult,
   type HarnessStarted,
+  harnessArgv,
+  runHarnessCommand,
   runHarnessCommandLive,
   runHarnessCommandResumeLive,
 } from "./harness-command";
 import type { Role } from "./roles";
+import { route } from "./routing";
 import {
   assignedWorker,
   assignmentProcessEnv,
@@ -27,6 +33,93 @@ export type OrderWorker = {
   worker?: string;
   providerSessionId?: string;
 };
+
+export type OrderStationName = "plan" | "build" | "review";
+
+const STATION_ROLES = {
+  plan: "planner",
+  build: "builder",
+  review: "reviewer",
+} as const satisfies Record<OrderStationName, StationRole>;
+type ReturnedFor<Station extends OrderStationName> = Extract<ReturnedOrderArtifact, { station: Station }>;
+type StationRequest = Omit<HarnessCommandRequest, "harness" | "model" | "env">;
+
+type OrderStationOptions<Station extends OrderStationName> = {
+  db: Database;
+  orderId: string;
+  station: Station;
+  parentWorker: string;
+  harness: HarnessCommandRequest["harness"];
+  env?: Record<string, string | undefined>;
+  useReturnedArtifact?: boolean;
+  requireReturnedArtifact?: boolean;
+  request(context: { returned: ReturnedFor<Station> | null; orderWorker: OrderWorker }): StationRequest;
+  onPrepared?(orderWorker: OrderWorker, returned: ReturnedFor<Station> | null): void;
+};
+
+export type OrderStationTurn<Station extends OrderStationName> = {
+  orderWorker: OrderWorker;
+  returned: ReturnedFor<Station> | null;
+  worker?: string;
+  run: Pick<HarnessCommandResult, "exitCode" | "output" | "failureReason">;
+};
+
+function prepareOrderStation<Station extends OrderStationName>(options: OrderStationOptions<Station>) {
+  const role = STATION_ROLES[options.station];
+  assertOperator(options.db, options.parentWorker, `delegate ${role}`);
+  const returned = (
+    options.useReturnedArtifact === false
+      ? null
+      : returnedOrderArtifact(options.db, options.orderId, options.station)
+  ) as ReturnedFor<Station> | null;
+  if (options.requireReturnedArtifact && !returned) {
+    throw new Error(`order ${options.orderId} has no returned ${options.station} artifact to revise`);
+  }
+  const orderWorker = ensureOrderWorker(options.db, options.orderId, role, options.parentWorker);
+  options.onPrepared?.(orderWorker, returned);
+  const { model } = route(role, options.harness, options.env);
+  const request = {
+    ...options.request({ returned, orderWorker }),
+    harness: options.harness,
+    model,
+    env: {},
+  };
+  return { orderWorker, returned, request };
+}
+
+export function runOrderStation<Station extends OrderStationName>(
+  options: OrderStationOptions<Station> & {
+    spawn?: (argv: string[], env: Record<string, string>) => { exitCode: number; output: string };
+  },
+): OrderStationTurn<Station> {
+  const { orderWorker, returned, request } = prepareOrderStation(options);
+  const env = orderWorkerRequest(options.db, options.env, orderWorker);
+  const run = options.spawn
+    ? options.spawn(harnessArgv({ ...request, env }), env)
+    : runHarnessCommand({ ...request, env });
+  const worker = assignedWorker(options.db, orderWorker.assignment.id) ?? undefined;
+  if (worker)
+    bindOrderWorkerName(options.db, options.orderId, orderWorker.role, orderWorker.assignment.id, worker);
+  return { orderWorker, returned, worker, run };
+}
+
+export async function runOrderStationLive<Station extends OrderStationName>(
+  options: OrderStationOptions<Station> & {
+    adapter?: HarnessAdapter;
+    onAssigned?: (worker: string, sessionId: string) => void;
+  },
+): Promise<OrderStationTurn<Station>> {
+  const { orderWorker, returned, request } = prepareOrderStation(options);
+  const run = await runOrderWorkerHarnessLive(
+    options.db,
+    request,
+    orderWorker,
+    options.env,
+    options.adapter,
+    options.onAssigned,
+  );
+  return { orderWorker, returned, worker: run.worker, run };
+}
 
 export function runOrderWorkerHarnessLive(
   db: Database,

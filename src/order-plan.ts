@@ -1,20 +1,12 @@
 import type { Database } from "bun:sqlite";
 import type { Capability } from "./capabilities";
-import { assertOperator } from "./factory-operator";
-import { appendOrderEvent, recordOrderPlan, returnedOrderArtifact } from "./factory-order";
+import { appendOrderEvent, recordOrderPlan } from "./factory-order";
 import { resolveWorker } from "./factory-worker";
 import type { HarnessAdapter } from "./harness";
-import { harnessArgv, runHarnessCommand, workerFailureReason } from "./harness-command";
+import { workerFailureReason } from "./harness-command";
 import type { HarnessName } from "./harness-name";
-import {
-  bindOrderWorkerName,
-  ensureOrderWorker,
-  orderWorkerRequest,
-  runOrderWorkerHarnessLive,
-} from "./order-worker";
+import { runOrderStation, runOrderStationLive } from "./order-worker";
 import { type PlanSlice, parsePlanArtifact } from "./plan-artifact";
-import { route } from "./routing";
-import { assignedWorker } from "./worker-assignment";
 
 const PLAN_OUTPUT_SCHEMA = `${import.meta.dir}/plan-artifact.schema.json`;
 
@@ -84,27 +76,32 @@ export function runOrderPlan(
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
   const parentWorker = resolveWorker(db, options.env);
-  assertOperator(db, parentWorker, "delegate planning");
-  const returned = returnedOrderArtifact(db, orderId, "plan");
-  const orderWorker = ensureOrderWorker(db, orderId, "planner", parentWorker);
   const harness = options.harness ?? "codex";
-  const { model } = route("planner", harness, options.env);
-  const env = orderWorkerRequest(db, options.env ?? process.env, orderWorker);
-  const request = {
+  const { run, worker } = runOrderStation({
+    db,
+    orderId,
+    station: "plan",
+    parentWorker,
     harness,
-    cwd: process.cwd(),
-    brief: plannerBrief(order, returned ? { body: returned.body, feedback: returned.reason } : undefined),
-    model,
-    capabilities: PLANNER_CAPABILITIES,
-    outputSchema: PLAN_OUTPUT_SCHEMA,
-    env,
-  };
-  const run = options.spawn ? options.spawn(harnessArgv(request), env) : runHarnessCommand(request);
+    env: options.env,
+    spawn: options.spawn
+      ? (argv, env) => {
+          const result = options.spawn?.(argv, env);
+          if (!result) throw new Error("planner spawn was not provided");
+          return { exitCode: result.exitCode, output: result.stdout };
+        }
+      : undefined,
+    request: ({ returned }) => ({
+      cwd: process.cwd(),
+      brief: plannerBrief(order, returned ? { body: returned.body, feedback: returned.reason } : undefined),
+      capabilities: PLANNER_CAPABILITIES,
+      outputSchema: PLAN_OUTPUT_SCHEMA,
+    }),
+  });
   if (run.exitCode !== 0) throw new Error("planner did not finish planning");
-  const artifact = parsePlanArtifact(("stdout" in run ? run.stdout : run.output).trim());
-  const planner = assignedWorker(db, orderWorker.assignment.id);
+  const artifact = parsePlanArtifact(run.output.trim());
+  const planner = worker;
   if (!planner) throw new Error("planner did not bootstrap its worker assignment");
-  bindOrderWorkerName(db, orderId, "planner", orderWorker.assignment.id, planner);
   recordOrderPlan(db, orderId, artifact.body, planner, artifact.slices);
   return { planner, ...artifact };
 }
@@ -125,29 +122,32 @@ export async function runOrderPlanLive(
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
   const parentWorker = resolveWorker(db, options.env);
-  assertOperator(db, parentWorker, "delegate planning");
-  const returned = returnedOrderArtifact(db, orderId, "plan");
-  const orderWorker = ensureOrderWorker(db, orderId, "planner", parentWorker);
   const harness = options.harness ?? "codex";
-  const { model } = route("planner", harness, options.env);
-  const request = {
-    harness,
-    cwd: process.cwd(),
-    brief: plannerBrief(order, returned ? { body: returned.body, feedback: returned.reason } : undefined),
-    model,
-    capabilities: PLANNER_CAPABILITIES,
-    outputSchema: PLAN_OUTPUT_SCHEMA,
-    env: {},
-  };
-  let planner = orderWorker.worker;
+  let planner: string | undefined;
   try {
-    const run = await runOrderWorkerHarnessLive(db, request, orderWorker, options.env, options.adapter);
-    planner = run.worker;
+    const { run, worker } = await runOrderStationLive({
+      db,
+      orderId,
+      station: "plan",
+      parentWorker,
+      harness,
+      env: options.env,
+      adapter: options.adapter,
+      onPrepared: (orderWorker) => {
+        planner = orderWorker.worker;
+      },
+      request: ({ returned }) => ({
+        cwd: process.cwd(),
+        brief: plannerBrief(order, returned ? { body: returned.body, feedback: returned.reason } : undefined),
+        capabilities: PLANNER_CAPABILITIES,
+        outputSchema: PLAN_OUTPUT_SCHEMA,
+      }),
+    });
+    planner = worker;
     if (run.exitCode !== 0) {
       throw new Error(workerFailureReason("planner did not finish planning", run.output, run.failureReason));
     }
-    if (!run.worker) throw new Error("planner did not bootstrap its worker assignment");
-    planner = run.worker;
+    if (!planner) throw new Error("planner did not bootstrap its worker assignment");
     const artifact = parsePlanArtifact(run.output.trim());
     recordOrderPlan(db, orderId, artifact.body, planner, artifact.slices);
     return { planner, ...artifact };
