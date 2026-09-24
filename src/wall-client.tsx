@@ -1,14 +1,5 @@
 import { CircleAlert, CircleCheck, CircleDot, CircleX, type LucideIcon, Radio, X } from "lucide-react";
-import {
-  Children,
-  type ComponentProps,
-  isValidElement,
-  type ReactNode,
-  StrictMode,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { Children, isValidElement, type ReactNode, StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import Markdown from "react-markdown";
 import { age } from "./age";
@@ -27,7 +18,7 @@ import type {
 import { cn } from "./lib/utils";
 import { msUntilNextMinute } from "./minute-beat";
 import type { OrderLine } from "./order-line";
-import { FAILURE_MARKS_SHOWN, ordersByStage, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
+import { ordersByStage, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
 import { ITEM_KIND_LABELS } from "./wall-item";
 import "./wall.css";
 
@@ -48,6 +39,10 @@ const statusLabels: Record<BoardStatus, string> = {
  *  says. The status cannot carry it: a held order is still queued or working. */
 function isStopped(order: { hold?: string }): boolean {
   return order.hold !== undefined;
+}
+
+function isWorking(order: Pick<WallOrder, "status" | "hold">): boolean {
+  return order.status === "working" && !isStopped(order);
 }
 
 const statusIcon: Record<BoardStatus, LucideIcon> = {
@@ -81,7 +76,8 @@ function LineMarker({ line, size = "card" }: { line: OrderLine; size?: "card" | 
       role="img"
       aria-label={LINE_LABELS[line]}
       className={cn(
-        "inline-block shrink-0 rounded-[1px]",
+        "inline-block shrink-0",
+        size === "dialog" ? "rounded-sm" : "rounded-xs",
         size === "dialog" ? "h-[20px] w-[20px]" : "h-[12px] w-[12px]",
         LINE_TINT[line],
       )}
@@ -110,27 +106,6 @@ function timeLabel(updatedAt: string): string {
  *  between rows sized off each one's type: a stack set that way steps unevenly down the card,
  *  and the rows stop sharing a rhythm the eye can follow across three columns. */
 const ROW = "flex h-[18px] shrink-0 items-center gap-[var(--space-xs)] leading-none";
-
-/** One mark per failed check, so three attempts read as three marks without a word. A cross
- *  rather than a tinted dot: the shape carries it where color is spent on roles, and the count
- *  stands in past what the card has room for. */
-function FailedChecks({ count }: { count: number }) {
-  const shown = Math.min(count, FAILURE_MARKS_SHOWN);
-
-  return (
-    <span
-      role="img"
-      className="flex items-center gap-[var(--space-sm)] text-danger"
-      aria-label={`${count} ${count === 1 ? "failed check" : "failed checks"}`}
-    >
-      {Array.from({ length: shown }, (_, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: the marks are identical, so a mark's position is the whole of its identity
-        <CircleX key={index} size={12} strokeWidth={1.8} aria-hidden="true" />
-      ))}
-      {count > shown ? <span className="tabular-nums">+{count - shown}</span> : null}
-    </span>
-  );
-}
 
 function OrderCard({
   order,
@@ -161,16 +136,18 @@ function OrderCard({
       )}
     >
       <CardHeader className={cn(ROW, "justify-between text-quiet")}>
-        <span className={cn("flex items-center gap-[var(--space-sm)]", statusTint(order))}>
+        <span className={cn("flex items-center gap-[var(--space-sm)] lowercase", statusTint(order))}>
           {/* Where the column carries the state, the mark is what states it, so the mark is
               what has to name it to a reader who is not looking at the column. */}
           <StatusIcon
             size={12}
             strokeWidth={1.8}
             aria-hidden="true"
-            className={order.status === "working" ? "breathing" : undefined}
+            className={isWorking(order) ? "breathing" : undefined}
           />
-          {statusLabels[order.status]}
+          <span className={isWorking(order) ? "breathing" : undefined}>
+            {isStopped(order) ? "Awaiting approval" : statusLabels[order.status]}
+          </span>
         </span>
         {/* Re-derived from the timestamp every second rather than read off the snapshot, so
             the board keeps moving between pushes instead of standing still. */}
@@ -203,16 +180,15 @@ function OrderCard({
         </button>
         {/* The worker slot keeps its shape when no hand has taken the order. */}
         <span className="flex min-w-0 items-center gap-[var(--space-xs)]">
-          {order.status === "working" && order.failedChecks > 0 ? (
-            <FailedChecks count={order.failedChecks} />
-          ) : null}
           {order.worker && order.role ? (
             <WorkerLabel worker={order.worker} role={order.role} className="truncate" />
           ) : (
             <NoWorkerLabel />
           )}
         </span>
-        {order.station === null ? null : <Badge className="shrink-0">{STATION_LABELS[order.station]}</Badge>}
+        {order.station === null ? null : (
+          <Badge className="shrink-0 lowercase">{STATION_LABELS[order.station]}</Badge>
+        )}
       </CardFooter>
     </Card>
   );
@@ -220,7 +196,7 @@ function OrderCard({
 
 function WorkerLabel({ worker, role, className }: { worker: string; role: WallRole; className?: string }) {
   return (
-    <span className={cn("flex min-w-0 items-center gap-[var(--space-sm)]", className)}>
+    <span className={cn("flex min-w-0 items-center gap-[var(--space-sm)] text-muted-foreground", className)}>
       <Robot label={`${worker}, ${role}`} className={roleTint[role]} />
       <span className="truncate">{worker}</span>
     </span>
@@ -242,7 +218,7 @@ function NoWorkerLabel() {
 function EntryWorker({ entry }: { entry: WallItemEntry }) {
   if (!entry.worker || !entry.role) return <NoWorkerLabel />;
 
-  return <WorkerLabel worker={entry.worker} role={entry.role} className="justify-end text-quiet" />;
+  return <WorkerLabel worker={entry.worker} role={entry.role} className="justify-end" />;
 }
 
 function MarkdownLink({ children }: { children?: ReactNode }) {
@@ -251,20 +227,6 @@ function MarkdownLink({ children }: { children?: ReactNode }) {
 
   if (parts.length === 1 && isValidElement(first) && first.type === "code") return first;
   return <code>{children}</code>;
-}
-
-function MarkdownCode({ children, className, ...props }: ComponentProps<"code">) {
-  return (
-    <code
-      className={cn(
-        "rounded-[2px] border border-border bg-background p-[var(--space-xs)] text-[11px] text-muted-foreground",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </code>
-  );
 }
 
 /** An order's record as a table, because that is what it is: four columns whose widths are
@@ -369,7 +331,7 @@ function ItemDialog({
       }}
       // The element takes focus when it opens, and the platform's focus ring on a whole dialog
       // is a blue frame around the surface rather than a mark on anything a reader can act on.
-      className="m-auto max-h-[85vh] w-[min(64rem,92vw)] rounded-wall border bg-card p-0 text-[12px] text-muted-foreground outline-none backdrop:bg-black/70"
+      className="m-auto max-h-[85vh] w-[min(64rem,92vw)] rounded-lg border bg-card p-0 text-[12px] text-muted-foreground outline-none backdrop:bg-black/70"
     >
       <div className="flex max-h-[85vh] flex-col">
         <header className="flex flex-col gap-[var(--space-lg)] border-b p-[var(--space-lg)]">
@@ -410,7 +372,7 @@ function ItemDialog({
             {order.station ? (
               <div className="flex items-center gap-[var(--space-sm)]">
                 <dt>station</dt>
-                <dd className="text-muted-foreground">{STATION_LABELS[order.station]}</dd>
+                <dd className="text-muted-foreground lowercase">{STATION_LABELS[order.station]}</dd>
               </div>
             ) : null}
             <div className="flex items-center gap-[var(--space-sm)]">
@@ -427,7 +389,7 @@ function ItemDialog({
               <dt>status</dt>
               <dd
                 className={cn(
-                  "flex items-center gap-[var(--space-sm)]",
+                  "flex items-center gap-[var(--space-sm)] lowercase",
                   isStopped(order) ? "text-warn-foreground" : "text-muted-foreground",
                 )}
               >
@@ -435,9 +397,11 @@ function ItemDialog({
                   size={12}
                   strokeWidth={1.8}
                   aria-hidden="true"
-                  className={order.status === "working" ? "breathing" : undefined}
+                  className={isWorking(order) ? "breathing" : undefined}
                 />
-                {statusLabels[order.status]}
+                <span className={isWorking(order) ? "breathing" : undefined}>
+                  {isStopped(order) ? "Awaiting approval" : statusLabels[order.status]}
+                </span>
               </dd>
             </div>
           </dl>
@@ -449,10 +413,10 @@ function ItemDialog({
           {read.view?.plan ? (
             <section
               aria-labelledby="item-plan"
-              className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-xxl)] pt-[var(--space-lg)]"
+              className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
             >
               <div className="space-y-[var(--space-xs)]">
-                <h3 id="item-plan" className="text-base font-medium text-foreground leading-6">
+                <h3 id="item-plan" className="text-xl font-medium text-foreground leading-7">
                   Plan
                 </h3>
                 <div className="flex flex-wrap items-center gap-x-[var(--space-sm)] gap-y-[var(--space-xs)] text-muted-foreground leading-5">
@@ -460,36 +424,117 @@ function ItemDialog({
                   <span className="text-quiet" aria-hidden="true">
                     ·
                   </span>
-                  <span>revision {read.view.plan.revision}</span>
-                  <span className="text-quiet" aria-hidden="true">
-                    ·
+                  <span>
+                    <span className="text-quiet">revision</span> {read.view.plan.revision}
                   </span>
-                  <span>{read.view.plan.approved ? "approved" : "awaiting approval"}</span>
+                  {read.view.plan.approved ? (
+                    <>
+                      <span className="text-quiet" aria-hidden="true">
+                        ·
+                      </span>
+                      <span className="text-good">approved</span>
+                    </>
+                  ) : null}
                 </div>
               </div>
               <div
                 className={cn(
-                  "space-y-[var(--space-md)] text-quiet",
+                  "wall-markdown flex flex-col gap-[var(--space-md)] text-quiet",
                   "[&_a]:text-quiet [&_a]:underline",
-                  "[&_h1]:text-base [&_h1]:font-medium [&_h1]:text-foreground [&_h2]:text-sm [&_h2]:font-medium [&_h2]:text-foreground [&_h3]:text-sm [&_h3]:font-medium [&_h3]:text-foreground",
-                  "[&_code]:font-mono [&_li]:my-[var(--space-xs)] [&_li]:leading-[18px] [&_ol]:my-[var(--space-sm)] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-[var(--space-lg)] [&_p]:leading-[18px] [&_pre]:overflow-x-auto [&_pre]:rounded-wall [&_pre]:border [&_pre]:bg-background [&_pre]:p-[var(--space-sm)] [&_pre]:leading-5 [&_pre]:text-muted-foreground [&_pre_code]:rounded-none [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_ul]:my-[var(--space-sm)] [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-[var(--space-lg)]",
+                  "[&_h1]:text-lg [&_h1]:font-medium [&_h1]:text-foreground [&_h2]:text-base [&_h2]:font-medium [&_h2]:text-foreground [&_h3]:text-sm [&_h3]:font-medium [&_h3]:text-foreground",
+                  "[&_code]:font-mono [&_li+li]:mt-[var(--space-xs)] [&_li]:leading-[18px] [&_ol]:my-0 [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-[var(--space-lg)] [&_p]:leading-[18px] [&_ul]:my-0 [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-[var(--space-lg)]",
                 )}
               >
-                <Markdown components={{ a: MarkdownLink, code: MarkdownCode }}>
-                  {read.view.plan.body}
-                </Markdown>
+                <Markdown components={{ a: MarkdownLink }}>{read.view.plan.body}</Markdown>
               </div>
             </section>
           ) : null}
           {read.view?.plan ? <div className="border-t" aria-hidden="true" /> : null}
+          {read.view?.build ? (
+            <section
+              aria-labelledby="item-build"
+              className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
+            >
+              <div className="space-y-[var(--space-xs)]">
+                <h3 id="item-build" className="text-xl font-medium text-foreground leading-7">
+                  Build
+                </h3>
+                <div className="flex flex-wrap items-center gap-x-[var(--space-sm)] gap-y-[var(--space-xs)] text-muted-foreground leading-5">
+                  <WorkerLabel worker={read.view.build.worker} role={read.view.build.role} />
+                  <span className="text-quiet" aria-hidden="true">
+                    ·
+                  </span>
+                  <span>
+                    <span className="text-quiet">revision</span> {read.view.build.revision}
+                  </span>
+                  {read.view.build.approved ? (
+                    <>
+                      <span className="text-quiet" aria-hidden="true">
+                        ·
+                      </span>
+                      <span className="text-good">approved</span>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+              <div
+                className={cn(
+                  "wall-markdown flex flex-col gap-[var(--space-md)] text-quiet",
+                  "[&_a]:text-quiet [&_a]:underline",
+                  "[&_h1]:text-lg [&_h1]:font-medium [&_h1]:text-foreground [&_h2]:text-base [&_h2]:font-medium [&_h2]:text-foreground [&_h3]:text-sm [&_h3]:font-medium [&_h3]:text-foreground",
+                  "[&_code]:font-mono [&_li+li]:mt-[var(--space-xs)] [&_li]:leading-[18px] [&_ol]:my-0 [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-[var(--space-lg)] [&_p]:leading-[18px] [&_ul]:my-0 [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-[var(--space-lg)]",
+                )}
+              >
+                <Markdown components={{ a: MarkdownLink }}>{read.view.build.body}</Markdown>
+              </div>
+            </section>
+          ) : null}
+          {read.view?.build ? <div className="border-t" aria-hidden="true" /> : null}
+          {read.view?.review ? (
+            <section
+              aria-labelledby="item-review"
+              className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
+            >
+              <div className="space-y-[var(--space-xs)]">
+                <h3 id="item-review" className="text-xl font-medium text-foreground leading-7">
+                  Review
+                </h3>
+                <div className="flex flex-wrap items-center gap-x-[var(--space-sm)] gap-y-[var(--space-xs)] text-muted-foreground leading-5">
+                  <WorkerLabel worker={read.view.review.worker} role={read.view.review.role} />
+                  <span className="text-quiet" aria-hidden="true">
+                    ·
+                  </span>
+                  <span>
+                    <span className="text-quiet">revision</span> {read.view.review.revision}
+                  </span>
+                  {read.view.review.approved ? (
+                    <>
+                      <span className="text-quiet" aria-hidden="true">
+                        ·
+                      </span>
+                      <span className="text-good">approved</span>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+              <div
+                className={cn(
+                  "wall-markdown flex flex-col gap-[var(--space-md)] text-quiet",
+                  "[&_a]:text-quiet [&_a]:underline",
+                  "[&_h1]:text-lg [&_h1]:font-medium [&_h1]:text-foreground [&_h2]:text-base [&_h2]:font-medium [&_h2]:text-foreground [&_h3]:text-sm [&_h3]:font-medium [&_h3]:text-foreground",
+                  "[&_code]:font-mono [&_li+li]:mt-[var(--space-xs)] [&_li]:leading-[18px] [&_ol]:my-0 [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-[var(--space-lg)] [&_p]:leading-[18px] [&_ul]:my-0 [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-[var(--space-lg)]",
+                )}
+              >
+                <Markdown components={{ a: MarkdownLink }}>{read.view.review.body}</Markdown>
+              </div>
+            </section>
+          ) : null}
+          {read.view?.review ? <div className="border-t" aria-hidden="true" /> : null}
           <section
             aria-labelledby="item-log"
             className="min-w-0 px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
           >
-            <h3
-              id="item-log"
-              className="mb-[var(--space-lg)] text-base font-medium text-foreground leading-6"
-            >
+            <h3 id="item-log" className="mb-[var(--space-lg)] text-xl font-medium text-foreground leading-7">
               Log
             </h3>
             {read.view && read.view.entries.length > 0 ? (
@@ -525,8 +570,8 @@ function BoardColumn({
 
   return (
     <section className="min-w-0" aria-labelledby={id}>
-      <header className="mb-[var(--space-sm)] flex items-baseline justify-between border-b px-0.5 pb-[var(--space-sm)]">
-        <h2 id={id} className="text-lg tracking-tight">
+      <header className="mb-[var(--space-md)] flex items-baseline justify-between border-b px-0.5 pb-[var(--space-sm)]">
+        <h2 id={id} className="text-lg tracking-tight lowercase">
           {label}
         </h2>
         <span className="text-lg text-quiet tabular-nums">
@@ -571,7 +616,7 @@ function feedStateOf(unavailable: boolean, stale: boolean): FeedState {
 
 /** What a card would show, so a snapshot that changed nothing lights nothing. */
 function cardState(order: WallOrder): string {
-  return `${order.status}|${order.lastEventAt}|${order.failedChecks}|${order.worker ?? ""}`;
+  return `${order.status}|${order.lastEventAt}|${order.worker ?? ""}`;
 }
 
 const BUMP_MS = 2000;
@@ -772,7 +817,7 @@ function App() {
         </h1>
         <div
           className={cn(
-            "flex items-center gap-[var(--space-sm)] rounded-wall border p-[var(--space-sm)] text-[11px] whitespace-nowrap",
+            "flex items-center gap-[var(--space-sm)] rounded-wall border px-[var(--space-md)] py-[var(--space-sm)] text-[11px] whitespace-nowrap",
             FEED_TINT[feed],
             // The box is held rather than the element dropped, so the header does not step
             // sideways when the first answer arrives.
@@ -781,10 +826,10 @@ function App() {
         >
           <FeedIcon size={15} aria-hidden="true" />
           <span>{FEED_LABEL[feed]}</span>
-          <span className="flex items-baseline gap-[var(--space-xs)] text-quiet">
-            <span aria-hidden="true">·</span>
-            <Clock at={timeLabel(now.toISOString())} beat={blink} />
+          <span aria-hidden="true" className="text-quiet">
+            ·
           </span>
+          <Clock at={timeLabel(now.toISOString())} beat={blink} />
         </div>
       </header>
 

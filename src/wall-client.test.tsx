@@ -16,12 +16,13 @@ describe("item history", () => {
     expect(source).toContain('className="flex flex-col gap-[var(--space-lg)]"');
     expect(source).toContain('className="space-y-[var(--space-lg)]"');
     expect(source).toContain(
-      'className="mb-[var(--space-lg)] text-base font-medium text-foreground leading-6"',
+      'className="mb-[var(--space-lg)] text-xl font-medium text-foreground leading-7"',
     );
     expect(source).not.toContain('className="mb-2 text-base font-medium text-foreground leading-6"');
     expect(source).toContain('className="flex flex-col gap-[var(--space-lg)] border-b p-[var(--space-lg)]"');
+    expect(source).toContain('className="m-auto max-h-[85vh] w-[min(64rem,92vw)] rounded-lg border');
     expect(source).toContain(
-      'className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-xxl)] pt-[var(--space-lg)]"',
+      'className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"',
     );
     expect(source).toContain("h-[164px] justify-between p-[var(--space-md)] text-left text-[11px]");
     expect(source).toContain("cursor-pointer rounded-wall p-[var(--space-xs)]");
@@ -35,13 +36,12 @@ describe("item history", () => {
 
     expect(source).toContain('className="line-clamp-3 min-h-[54px] shrink-0 text-quiet leading-[18px]"');
     expect(source).toContain('className="whitespace-pre-wrap text-quiet leading-5"');
-    expect(source).toContain("[&_pre]:bg-background");
-    expect(source).toContain("[&_pre]:p-[var(--space-sm)]");
-    expect(source).toContain("function MarkdownCode");
-    expect(source).toContain("border border-border bg-background p-[var(--space-xs)] text-[11px]");
-    expect(source).toContain("[&_pre_code]:bg-transparent");
+    expect(source).toContain('"wall-markdown flex flex-col gap-[var(--space-md)] text-quiet"');
     expect(source).toContain('className="text-quiet" aria-hidden="true"');
-    expect(source).toContain('"space-y-[var(--space-md)] text-quiet"');
+    expect(source).toContain('<span className="text-good">approved</span>');
+    expect(source).not.toContain(">awaiting approval</span>");
+    expect(source).toContain("[&_ol]:my-0");
+    expect(source).toContain("[&_ul]:my-0");
   });
 
   test("labels the plan and audit log in the detail view", async () => {
@@ -51,12 +51,15 @@ describe("item history", () => {
     expect(source).toContain('aria-labelledby="item-plan"');
     expect(source).toMatch(/>\s*Plan\s*</);
     expect(source).toContain('aria-labelledby="item-log"');
+    expect(source).toContain('aria-labelledby="item-build"');
+    expect(source).toMatch(/>\s*Build\s*</);
     expect(source).toMatch(/>\s*Log\s*</);
     expect(source).toMatch(
       /\{read\.view\?\.plan \? <div className="border-t" aria-hidden="true" \/> : null\}/,
     );
     expect(source).toContain('const NO_WORKER = "none";');
     expect(source).toContain("<dt>assignee</dt>");
+    expect(source).toContain("STATION_LABELS[order.station]");
     expect(source).toContain("function NoWorkerLabel()");
     expect(source).toContain('<Robot label="none" className="text-quiet opacity-60" />');
     expect(source).toContain("if (!entry.worker || !entry.role) return <NoWorkerLabel />;");

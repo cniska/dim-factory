@@ -19,6 +19,7 @@ import {
   recordOrderDocument,
   recordOrderEnvironment,
   recordOrderFile,
+  recordOrderReviewArtifact,
   setOrderPriority,
 } from "./factory-order";
 import { assembleItemView, assembleWallSnapshot, serveWall } from "./factory-wall";
@@ -30,11 +31,13 @@ import { SCHEMA_SQL } from "./schema";
 // One hand per database, set where the database is made: every moment names a worker,
 // and what these tests are about is what the wall draws rather than who touched it.
 let worker = "";
+let attemptOperator = "";
 
 function floor(): Database {
   const db = new Database(":memory:");
   db.run(SCHEMA_SQL);
   worker = workerIn(db);
+  attemptOperator = workerIn(db, "operator");
   return db;
 }
 
@@ -43,8 +46,14 @@ afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
 
 // A claim now makes the worktree it names, so every direct call needs somewhere
 // safe to make one — `trunk.dir` rather than this machine's own checkout.
-function claimOrder(db: Database, orderId: string, given: OrderClaim, who: string, at?: string): number {
-  return claimOrderAt(db, orderId, given, who, at, trunk.dir);
+function claimOrder(
+  db: Database,
+  orderId: string,
+  given: Omit<OrderClaim, "operatorWorker">,
+  who: string,
+  at?: string,
+): number {
+  return claimOrderAt(db, orderId, { ...given, operatorWorker: attemptOperator }, who, at, trunk.dir);
 }
 
 describe("factory wall snapshot", () => {
@@ -104,6 +113,13 @@ describe("factory wall snapshot", () => {
     const operator = workerIn(db, "operator");
     approveOrderBuild(db, "order-done", operator, "the board change is complete", "2026-09-18T08:01:35.000Z");
     const review = reviewIn(db, "order-done", operator, "2026-09-18T08:01:36.000Z", trunk.sha);
+    recordOrderReviewArtifact(
+      db,
+      "order-done",
+      "## Outcome\n\nThe change is ready.",
+      review.reviewer,
+      "2026-09-18T08:01:36.500Z",
+    );
     closeOrderReview(db, review.review, "closed", operator, "2026-09-18T08:01:37.000Z");
     approveOrderReview(db, "order-done", operator, "2026-09-18T08:01:38.000Z");
     moveOrder(db, "order-done", "ship", operator, "2026-09-18T08:01:45.000Z");
@@ -558,6 +574,14 @@ describe("factory wall item view", () => {
       worker,
       "2026-09-18T10:06:30.000Z",
     );
+    recordOrderBuild(
+      db,
+      "order-worked",
+      "## Summary\n\nThe order record is visible.",
+      trunk.sha,
+      worker,
+      "2026-09-18T10:06:35.000Z",
+    );
     const reviewer = reviewIn(db, "order-worked", worker, "2026-09-18T10:06:45.000Z").reviewer;
     const onTests = raiseOrderFinding(
       db,
@@ -608,6 +632,7 @@ describe("factory wall item view", () => {
       "check_finished",
       "commit_created",
       "check_finished",
+      "build_artifact_written",
       "review_opened",
       "finding_raised",
       "finding_answered",
@@ -632,6 +657,14 @@ describe("factory wall item view", () => {
     expect(view?.plan).toEqual({
       revision: 1,
       body: "## Outcome\n\nRead the order record.",
+      worker,
+      role: "builder",
+      approved: false,
+    });
+    expect(view?.build).toEqual({
+      revision: 1,
+      body: "## Summary\n\nThe order record is visible.",
+      headSha: trunk.sha,
       worker,
       role: "builder",
       approved: false,
@@ -835,6 +868,7 @@ describe("factory wall item view", () => {
     const seed = new Database(file);
     seed.run(SCHEMA_SQL);
     worker = workerIn(seed);
+    attemptOperator = workerIn(seed, "operator");
     seedWorkedOrder(seed);
     seed.close();
     const server = await serveWall({ port: 0, databasePath: file });

@@ -40,45 +40,24 @@
   --color-station-review: #9ba9d0;
   --color-station-ship: #a9b5c0;
 
+  --space-2xs: 2px;
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 16px;
   --space-lg: 20px;
   --space-xl: 24px;
   --space-xxl: 40px;
+  --space-code: 10px;
 
-  --radius-wall: 0.55rem;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-wall: var(--radius-md);
 
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-/* A mark swells rather than fades: it has no meaning of its own to lose, where a line of
-   words that grows and shrinks is one a reader's eye keeps re-measuring. One breath is slow
-   against every other motion here, so it reads as a pulse rather than a blink, and quick
-   enough not to become scenery. */
-@keyframes breath {
-  from {
-    transform: scale(0.9);
-  }
-  to {
-    transform: scale(1.1);
-  }
-}
-
-.breathing {
-  animation: breath 450ms ease-in-out infinite alternate;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .breathing {
-    animation: none;
-  }
-}
-
-/* Breathing in color rather than in size or ink: the mark travels between the grey a waiting
-   card rests at and the foreground, so a running card reads as the same board vocabulary in
-   motion. One breath is slow against every other motion here, so it reads as a pulse rather
-   than a blink, and quick enough not to become scenery. */
 @keyframes breath {
   from {
     color: var(--color-muted-foreground);
@@ -98,6 +77,34 @@
   }
 }
 
+@layer components {
+  .wall-markdown code:not(pre code) {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-background);
+    padding: var(--space-2xs) var(--space-xs);
+    color: var(--color-muted-foreground);
+    font-size: 11px;
+  }
+
+  .wall-markdown pre {
+    overflow-x: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-background);
+    padding: var(--space-code);
+    color: var(--color-muted-foreground);
+    line-height: 1.25rem;
+  }
+
+  .wall-markdown pre code {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+  }
+}
+
 @layer base {
   :root {
     color-scheme: dark;
@@ -112,9 +119,4 @@
     margin: 0;
   }
 
-  /* Rendered lowercase while the source keeps its real capitalization: a proper noun
-     lowercased at the source reads as a typo everywhere the text is copied or quoted. */
-  .wall-shell {
-    text-transform: lowercase;
-  }
 }

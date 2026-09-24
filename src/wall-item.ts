@@ -8,6 +8,7 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   moved: "Moved",
   plan_artifact_written: "Plan written",
   plan_approved: "Plan approved",
+  artifact_returned: "Artifact returned",
   build_approved: "Build approved",
   build_artifact_written: "Build written",
   commit_created: "Commit",
@@ -23,6 +24,7 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   completed: "Completed",
   dropped: "Dropped",
   failed: "Failed",
+  recovered: "Recovered",
 };
 
 /** As much of a sha as a person compares, with the whole of it still on the entry. */

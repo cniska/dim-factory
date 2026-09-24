@@ -13,10 +13,6 @@ export const STATION_LABELS: Record<WallStation, string> = {
   ship: "Ship",
 };
 
-/** How many failure marks a card shows before the count stands in for them, so an order that
- *  failed its check twenty times cannot widen the card. */
-export const FAILURE_MARKS_SHOWN = 6;
-
 /** The snapshot arrives ranked — what needs a person first, then the rest by how recently
  *  something happened — so a column keeps the order it was handed. */
 export function ordersByStage(orders: WallOrder[]): Record<WallStage, WallOrder[]> {

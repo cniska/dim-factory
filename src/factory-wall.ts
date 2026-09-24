@@ -92,11 +92,30 @@ export type WallPlan = {
   approved: boolean;
 };
 
+export type WallBuild = {
+  revision: number;
+  body: string;
+  headSha: string;
+  worker: string;
+  role: WallRole;
+  approved: boolean;
+};
+
+export type WallReview = {
+  revision: number;
+  body: string;
+  worker: string;
+  role: WallRole;
+  approved: boolean;
+};
+
 export type WallItemView = {
   order: WallOrder;
   runId?: string;
   project: string;
   plan?: WallPlan;
+  build?: WallBuild;
+  review?: WallReview;
   entries: WallItemEntry[];
   changes: WallItemChange[];
 };
@@ -401,6 +420,58 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
         approved: planRow.approved === 1,
       }
     : undefined;
+  const buildRow = db
+    .query<
+      {
+        revision: number;
+        body: string;
+        head_sha: string;
+        worker: string;
+        worker_role: string | null;
+        approved: number;
+      },
+      [string]
+    >(
+      `SELECT b.revision, b.body, b.head_sha, b.worker, fw.role AS worker_role,
+              EXISTS (SELECT 1 FROM factory_order_event e
+                WHERE e.order_id = b.order_id AND e.kind = 'build_approved' AND e.commit_sha = b.head_sha) AS approved
+       FROM factory_order_build b
+       JOIN factory_worker fw ON fw.name = b.worker
+       WHERE b.order_id = ? ORDER BY b.revision DESC, b.id DESC LIMIT 1`,
+    )
+    .get(orderId);
+  const build = buildRow
+    ? {
+        revision: buildRow.revision,
+        body: buildRow.body,
+        headSha: buildRow.head_sha,
+        worker: buildRow.worker,
+        role: requiredRole(buildRow.worker_role),
+        approved: buildRow.approved === 1,
+      }
+    : undefined;
+  const reviewRow = db
+    .query<
+      { revision: number; body: string; worker: string; worker_role: string | null; approved: number },
+      [string]
+    >(
+      `SELECT a.revision, a.body, a.worker, fw.role AS worker_role,
+              EXISTS (SELECT 1 FROM factory_order_event e
+                WHERE e.order_id = a.order_id AND e.kind = 'review_approved' AND e.review_id = a.review_id) AS approved
+       FROM factory_order_review_artifact a
+       JOIN factory_worker fw ON fw.name = a.worker
+       WHERE a.order_id = ? ORDER BY a.id DESC LIMIT 1`,
+    )
+    .get(orderId);
+  const review = reviewRow
+    ? {
+        revision: reviewRow.revision,
+        body: reviewRow.body,
+        worker: reviewRow.worker,
+        role: requiredRole(reviewRow.worker_role),
+        approved: reviewRow.approved === 1,
+      }
+    : undefined;
   const entries: WallItemEntry[] = [
     ...events.map(eventEntry),
     ...documents.map((doc) => ({
@@ -420,6 +491,8 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
     ...(row.run_id ? { runId: row.run_id } : {}),
     project: row.project,
     ...(plan ? { plan } : {}),
+    ...(build ? { build } : {}),
+    ...(review ? { review } : {}),
     entries,
     changes: files.map((file) => ({
       path: tildePath(file.path),
@@ -533,7 +606,7 @@ export async function serveWall(
     } catch {
       for (const client of clients) client.send(JSON.stringify({ error: "snapshot unavailable" }));
     }
-  }, 2000);
+  }, 1000);
   poll.unref();
   return server;
 }
