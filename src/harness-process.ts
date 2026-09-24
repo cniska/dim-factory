@@ -1,3 +1,6 @@
+import { closeSync, fstatSync, mkdtempSync, openSync, readSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
 
 type HarnessProcessOptions = {
@@ -6,6 +9,8 @@ type HarnessProcessOptions = {
   resumeArgv(providerSessionId: string, request: HarnessRequest): string[];
   parse(line: string): HarnessEvent | HarnessEvent[] | undefined;
 };
+
+const OUTPUT_POLL_INTERVAL_MS = 10;
 
 function normalize(parsed: HarnessEvent | HarnessEvent[] | undefined): HarnessEvent[] {
   if (!parsed) return [];
@@ -19,62 +24,113 @@ function terminal(event: HarnessEvent): boolean {
 
 export function processHarness(options: HarnessProcessOptions): HarnessAdapter {
   const run = async (argv: string[], request: HarnessRequest): Promise<HarnessRun> => {
-    const child = Bun.spawn(argv, {
-      cwd: request.cwd,
-      env: { ...globalThis.process.env, ...request.env },
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const stderr = child.stderr ? new Response(child.stderr).text() : Promise.resolve("");
+    const directory = mkdtempSync(join(tmpdir(), "dim-harness-"));
+    const stdoutPath = join(directory, "stdout");
+    const stderrPath = join(directory, "stderr");
+    let stdout: number | undefined;
+    let stderr: number | undefined;
+    let child: ReturnType<typeof Bun.spawn>;
+    try {
+      stdout = openSync(stdoutPath, "w+");
+      stderr = openSync(stderrPath, "w+");
+      child = Bun.spawn(argv, {
+        cwd: request.cwd,
+        env: { ...globalThis.process.env, ...request.env },
+        stdin: "ignore",
+        stdout,
+        stderr,
+      });
+    } catch (error) {
+      if (stdout !== undefined) closeSync(stdout);
+      if (stderr !== undefined) closeSync(stderr);
+      rmSync(directory, { recursive: true, force: true });
+      throw error;
+    }
     let cancelled = false;
+    let closed = false;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      closeSync(stdout);
+      closeSync(stderr);
+      rmSync(directory, { recursive: true, force: true });
+    };
     return {
       events: (async function* () {
-        const reader = child.stdout.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let ended = false;
+        const stdoutDecoder = new TextDecoder();
+        const stderrDecoder = new TextDecoder();
+        let stdoutCursor = 0;
+        let stderrCursor = 0;
+        let stdoutBuffer = "";
+        let stderrOutput = "";
         let terminalSeen = false;
-        try {
-          while (!ended) {
-            const chunk = await reader.read();
-            if (chunk.done) {
-              ended = true;
-            } else {
-              buffer += decoder.decode(chunk.value, { stream: true });
-            }
-            const lines = buffer.split("\n");
-            buffer = lines.pop() ?? "";
-            for (const line of lines) {
-              for (const event of normalize(options.parse(line.trim()))) {
-                terminalSeen ||= terminal(event);
-                yield event;
-              }
-            }
+        const drain = (fd: number, decoder: TextDecoder, cursor: number): [string, number] => {
+          const size = fstatSync(fd).size;
+          const bytes = Buffer.alloc(size - cursor);
+          let offset = 0;
+          while (offset < bytes.length) {
+            const count = readSync(fd, bytes, offset, bytes.length - offset, cursor + offset);
+            if (count === 0) break;
+            offset += count;
           }
-          buffer += decoder.decode();
-          if (buffer.trim()) {
-            for (const event of normalize(options.parse(buffer.trim()))) {
+          return [decoder.decode(bytes.subarray(0, offset), { stream: true }), cursor + offset];
+        };
+        const events = (text: string, final = false): HarnessEvent[] => {
+          stdoutBuffer += text;
+          const lines = stdoutBuffer.split("\n");
+          stdoutBuffer = lines.pop() ?? "";
+          if (final && stdoutBuffer.trim()) {
+            lines.push(stdoutBuffer);
+            stdoutBuffer = "";
+          }
+          return lines.flatMap((line) => normalize(options.parse(line.trim())));
+        };
+        const exited = child.exited.then((code) => ({ type: "exit" as const, code }));
+        try {
+          while (true) {
+            const [stdoutText, nextStdout] = drain(stdout, stdoutDecoder, stdoutCursor);
+            stdoutCursor = nextStdout;
+            const [stderrText, nextStderr] = drain(stderr, stderrDecoder, stderrCursor);
+            stderrCursor = nextStderr;
+            stderrOutput += stderrText;
+            for (const event of events(stdoutText)) {
               terminalSeen ||= terminal(event);
               yield event;
             }
+
+            const outcome = await Promise.race([
+              exited,
+              new Promise<{ type: "poll" }>((resolve) => {
+                setTimeout(() => resolve({ type: "poll" }), OUTPUT_POLL_INTERVAL_MS);
+              }),
+            ]);
+            if (outcome.type === "poll") continue;
+
+            const [lastStdout] = drain(stdout, stdoutDecoder, stdoutCursor);
+            const [lastStderr] = drain(stderr, stderrDecoder, stderrCursor);
+            stderrOutput += lastStderr + stderrDecoder.decode();
+            const remaining = events(lastStdout + stdoutDecoder.decode(), true);
+            for (const event of remaining) {
+              terminalSeen ||= terminal(event);
+              yield event;
+            }
+            if (!cancelled && !terminalSeen) {
+              const errorOutput = stderrOutput.trim();
+              yield {
+                type: "run.failed",
+                reason:
+                  outcome.code === 0
+                    ? "harness exited without a terminal event"
+                    : `harness exited with code ${outcome.code}`,
+                exitCode: outcome.code,
+                ...(errorOutput ? { stderr: errorOutput } : {}),
+                termination: "exited",
+              };
+            }
+            return;
           }
         } finally {
-          reader.releaseLock();
-        }
-        const exitCode = await child.exited;
-        if (!cancelled && !terminalSeen) {
-          const errorOutput = (await stderr).trim();
-          yield {
-            type: "run.failed",
-            reason:
-              exitCode === 0
-                ? "harness exited without a terminal event"
-                : `harness exited with code ${exitCode}`,
-            exitCode,
-            ...(errorOutput ? { stderr: errorOutput } : {}),
-            termination: "exited",
-          };
+          close();
         }
       })(),
       cancel() {
