@@ -86,11 +86,6 @@ export function runOrderPlan(
   const parentWorker = resolveWorker(db, options.env);
   assertOperator(db, parentWorker, "delegate planning");
   const returned = returnedOrderArtifact(db, orderId, "plan");
-  const previous = returned?.planId
-    ? db
-        .query<{ body: string }, [number]>("SELECT body FROM factory_order_plan WHERE id = ?")
-        .get(returned.planId)
-    : undefined;
   const orderWorker = ensureOrderWorker(db, orderId, "planner", parentWorker);
   const harness = options.harness ?? "codex";
   const { model } = route("planner", harness, options.env);
@@ -98,12 +93,7 @@ export function runOrderPlan(
   const request = {
     harness,
     cwd: process.cwd(),
-    brief: plannerBrief(
-      order,
-      previous
-        ? { body: previous.body, feedback: returned?.reason ?? "Revise the Plan artifact." }
-        : undefined,
-    ),
+    brief: plannerBrief(order, returned ? { body: returned.body, feedback: returned.reason } : undefined),
     model,
     capabilities: PLANNER_CAPABILITIES,
     outputSchema: PLAN_OUTPUT_SCHEMA,
@@ -137,23 +127,13 @@ export async function runOrderPlanLive(
   const parentWorker = resolveWorker(db, options.env);
   assertOperator(db, parentWorker, "delegate planning");
   const returned = returnedOrderArtifact(db, orderId, "plan");
-  const previous = returned?.planId
-    ? db
-        .query<{ body: string }, [number]>("SELECT body FROM factory_order_plan WHERE id = ?")
-        .get(returned.planId)
-    : undefined;
   const orderWorker = ensureOrderWorker(db, orderId, "planner", parentWorker);
   const harness = options.harness ?? "codex";
   const { model } = route("planner", harness, options.env);
   const request = {
     harness,
     cwd: process.cwd(),
-    brief: plannerBrief(
-      order,
-      previous
-        ? { body: previous.body, feedback: returned?.reason ?? "Revise the Plan artifact." }
-        : undefined,
-    ),
+    brief: plannerBrief(order, returned ? { body: returned.body, feedback: returned.reason } : undefined),
     model,
     capabilities: PLANNER_CAPABILITIES,
     outputSchema: PLAN_OUTPUT_SCHEMA,

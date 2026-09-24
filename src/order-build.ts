@@ -177,12 +177,7 @@ export async function runOrderBuildLive(
     .all(plan.id);
   const currentSlice = nextOrderSlice(db, orderId);
   const returned = currentSlice ? null : returnedOrderArtifact(db, orderId, "build");
-  const priorBuild = returned?.buildId
-    ? db
-        .query<{ body: string }, [number]>("SELECT body FROM factory_order_build WHERE id = ?")
-        .get(returned.buildId)
-    : undefined;
-  if (!currentSlice && !priorBuild)
+  if (!currentSlice && !returned)
     throw new Error(`order ${orderId} has no incomplete slice or returned Build artifact`);
   const orderWorker = ensureOrderWorker(db, orderId, "builder", operator);
   const runId = `build-${crypto.randomUUID()}`;
@@ -194,7 +189,7 @@ export async function runOrderBuildLive(
   let failureRecorded = false;
   let claimed = false;
   const recordFailure = (reason: string): void => {
-    if (failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
+    if (returned || failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
     if (claimed && !isActiveOrderRun(db, orderId, runId)) return;
     failureRecorded = true;
     appendOrderEvent(db, orderId, { kind: "failed", worker: builder, reason });
@@ -210,9 +205,7 @@ export async function runOrderBuildLive(
         { body: plan.body, slices },
         currentSlice,
         workspace,
-        priorBuild
-          ? { body: priorBuild.body, feedback: returned?.reason ?? "Revise the Build artifact." }
-          : undefined,
+        returned ? { body: returned.body, feedback: returned.reason } : undefined,
       ),
       model,
       capabilities: BUILDER_CAPABILITIES,
@@ -324,7 +317,9 @@ export function runOrderBuild(
     )
     .all(plan.id);
   const currentSlice = nextOrderSlice(db, orderId);
-  if (!currentSlice) throw new Error(`order ${orderId} has no incomplete slice`);
+  const returned = currentSlice ? null : returnedOrderArtifact(db, orderId, "build");
+  if (!currentSlice && !returned)
+    throw new Error(`order ${orderId} has no incomplete slice or returned Build artifact`);
   const orderWorker = ensureOrderWorker(db, orderId, "builder", operator);
   const runId = `build-${crypto.randomUUID()}`;
   const worktree = worktreePath(repoRoot(options.dir), orderId);
@@ -332,7 +327,7 @@ export function runOrderBuild(
   let builder: string | undefined;
   let failureRecorded = false;
   const recordFailure = (reason: string): void => {
-    if (failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
+    if (returned || failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
     failureRecorded = true;
     appendOrderEvent(db, orderId, {
       kind: "failed",
@@ -347,7 +342,13 @@ export function runOrderBuild(
     const request = {
       harness,
       cwd: worktree,
-      brief: builderBrief(order, { body: plan.body, slices }, currentSlice, workspace),
+      brief: builderBrief(
+        order,
+        { body: plan.body, slices },
+        currentSlice,
+        workspace,
+        returned ? { body: returned.body, feedback: returned.reason } : undefined,
+      ),
       model,
       capabilities: BUILDER_CAPABILITIES,
       env,
@@ -363,8 +364,19 @@ export function runOrderBuild(
       recordFailure(reason);
       throw new Error(`${builder} did not finish building`);
     }
-    requireBuildEvidence(db, orderId, currentSlice.ordinal === slices.length);
-    completeOrderSlice(db, orderId, currentSlice.id, builder);
+    if (currentSlice) {
+      requireBuildEvidence(db, orderId, currentSlice.ordinal === slices.length);
+      completeOrderSlice(db, orderId, currentSlice.id, builder);
+    } else {
+      const revision = db
+        .query<{ id: number; worker: string }, [string]>(
+          "SELECT id, worker FROM factory_order_build WHERE order_id = ? ORDER BY revision DESC LIMIT 1",
+        )
+        .get(orderId);
+      if (!revision || revision.id === returned?.buildId || revision.worker !== builder) {
+        throw new Error("builder did not record a new Build artifact revision");
+      }
+    }
     return { builder, runId, worktree, exitCode: run.exitCode };
   } catch (error) {
     recordFailure(error instanceof Error ? error.message : String(error));

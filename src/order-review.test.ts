@@ -11,7 +11,7 @@ import {
   recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
-  recordOrderReviewArtifact,
+  returnedOrderArtifact,
 } from "./factory-order";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { fakeHarness } from "./fake-harness";
@@ -145,6 +145,20 @@ describe("a review round", () => {
         },
       ),
     ).toContain("returned");
+    const returnedReview = returnedOrderArtifact(db, "order-1", "review");
+    const reviewRange = db
+      .query<{ base_sha: string; head_sha: string }, [number]>(
+        "SELECT base_sha, head_sha FROM factory_order_review WHERE id = ?",
+      )
+      .get(done.review);
+    expect(returnedReview).toMatchObject({
+      station: "review",
+      reason: "Explain which checks support the verdict.",
+      reviewId: done.review,
+      body: "## Outcome\n\nThe change is sound.",
+      baseSha: reviewRange?.base_sha,
+      headSha: reviewRange?.head_sha,
+    });
     expect(() =>
       runOrderCommand(db, ["approve", "order-1"], null, dir, {
         ...machine,
@@ -153,12 +167,16 @@ describe("a review round", () => {
         [WORKER_SESSION_VAR]: operatorSession,
       }),
     ).toThrow(expect.objectContaining({ code: "artifact_revision_required" }));
-    recordOrderReviewArtifact(
-      db,
-      "order-1",
-      "## Outcome\n\nThe review evidence supports the verdict.",
-      done.reviewer,
-    );
+    let revisionArgv: string[] = [];
+    const revise: ReviewerSpawn = (argv, env) => {
+      revisionArgv = argv;
+      expect(bootstrapReviewer(db, env)).toBe(done.reviewer);
+      return { exitCode: 0, output: reviewOutput("## Outcome\n\nThe review evidence supports the verdict.") };
+    };
+    const revised = runOrderReview(db, "order-1", operator, { dir, spawn: revise, env: machine });
+    expect(revised.review).toBe(done.review);
+    expect(revisionArgv.join(" ")).toContain("The owner returned this Review artifact for revision.");
+    expect(revisionArgv.join(" ")).toContain("Explain which checks support the verdict.");
     expect(
       runOrderCommand(db, ["approve", "order-1"], null, dir, {
         ...machine,

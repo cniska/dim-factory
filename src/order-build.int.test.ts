@@ -13,6 +13,7 @@ import {
   recordOrderCheck,
   recordOrderCommit,
   recordOrderPlan,
+  returnOrderArtifact,
 } from "./factory-order";
 import {
   endWorker,
@@ -36,7 +37,7 @@ afterAll(() => {
 });
 
 describe("builder station", () => {
-  test("starts an attributed builder in the operator-allocated worktree", () => {
+  test("starts an attributed builder in the operator-allocated worktree", async () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     const repo = integratedRepo();
@@ -157,6 +158,47 @@ describe("builder station", () => {
       worker: outcome.builder,
     });
     expect(isActiveOrderRun(db, "builder-order", outcome.runId)).toBe(false);
+
+    returnOrderArtifact(db, "builder-order", operator.name, "Explain what the build verified.");
+    let revisionBrief = "";
+    expect(() =>
+      runOrderBuild(db, "builder-order", operator.name, {
+        dir: repo.dir,
+        env: {
+          DIM_HOME: home,
+          [WORKER_NAME_VAR]: operator.name,
+          [WORKER_TOKEN_VAR]: operator.token,
+          [WORKER_SESSION_VAR]: operator.sessionId,
+        },
+        spawn: (argv) => {
+          revisionBrief = argv.find((argument) => argument.includes("factory order ")) ?? "";
+          throw new Error("harness unavailable");
+        },
+      }),
+    ).toThrow("harness unavailable");
+    expect(revisionBrief).toContain("The owner returned the Build artifact to you.");
+    expect(revisionBrief).toContain("Explain what the build verified.");
+    await expect(
+      runOrderBuildLive(db, "builder-order", operator.name, {
+        dir: repo.dir,
+        env: {
+          DIM_HOME: home,
+          [WORKER_NAME_VAR]: operator.name,
+          [WORKER_TOKEN_VAR]: operator.token,
+          [WORKER_SESSION_VAR]: operator.sessionId,
+        },
+        adapter: fakeHarness("crash"),
+      }),
+    ).rejects.toThrow("fake process crashed");
+    expect(db.query("SELECT status, hold FROM factory_order WHERE id = ?").get("builder-order")).toEqual({
+      status: "working",
+      hold: null,
+    });
+    expect(
+      db
+        .query("SELECT kind FROM factory_order_event WHERE order_id = ? ORDER BY id DESC LIMIT 1")
+        .get("builder-order"),
+    ).toEqual({ kind: "artifact_returned" });
     db.close();
   });
 

@@ -201,24 +201,10 @@ export async function runOrderReviewLive(
   assertBuildReady(db, orderId);
   const dir = reviewDirectory(options.dir, orderId);
   const returned = returnedOrderArtifact(db, orderId, "review");
-  if (returned && returned.reviewId === undefined)
-    throw new Error(`order ${orderId} has an incomplete Review return record`);
-  const returnedReviewId = returned?.reviewId;
-  const prior = returned
-    ? db
-        .query<{ body: string; revision: number; base_sha: string; head_sha: string }, [number]>(
-          `SELECT a.body, a.revision, r.base_sha, r.head_sha
-           FROM factory_order_review_artifact a
-           JOIN factory_order_review r ON r.id = a.review_id
-           WHERE a.review_id = ? ORDER BY a.revision DESC LIMIT 1`,
-        )
-        .get(returnedReviewId as number)
-    : undefined;
-  if (returned && !prior) throw new Error(`review ${returnedReviewId} has no artifact to revise`);
-  const range = prior ? { base: prior.base_sha, head: prior.head_sha } : reviewRange(db, orderId, dir);
+  const range = returned ? { base: returned.baseSha, head: returned.headSha } : reviewRange(db, orderId, dir);
   const orderWorker = ensureOrderWorker(db, orderId, "reviewer", worker);
   const opened = returned
-    ? { id: returnedReviewId as number }
+    ? { id: returned.reviewId }
     : openAssignedOrderReview(
         db,
         orderId,
@@ -233,7 +219,7 @@ export async function runOrderReviewLive(
     brief: reviewerBrief(
       order,
       range,
-      prior ? { body: prior.body, feedback: returned?.reason ?? "Revise the Review artifact." } : undefined,
+      returned ? { body: returned.body, feedback: returned.reason } : undefined,
     ),
     model,
     capabilities: REVIEWER_CAPABILITIES,
@@ -311,21 +297,28 @@ export function runOrderReview(
   assertOperator(db, worker, "delegate review");
   assertBuildReady(db, orderId);
   const dir = reviewDirectory(options.dir, orderId);
-  const range = reviewRange(db, orderId, dir);
+  const returned = returnedOrderArtifact(db, orderId, "review");
+  const range = returned ? { base: returned.baseSha, head: returned.headSha } : reviewRange(db, orderId, dir);
   const orderWorker = ensureOrderWorker(db, orderId, "reviewer", worker);
-  const opened = openAssignedOrderReview(
-    db,
-    orderId,
-    { assignmentId: orderWorker.assignment.id, baseSha: range.base, headSha: range.head },
-    worker,
-  );
+  const opened = returned
+    ? { id: returned.reviewId }
+    : openAssignedOrderReview(
+        db,
+        orderId,
+        { assignmentId: orderWorker.assignment.id, baseSha: range.base, headSha: range.head },
+        worker,
+      );
   const env = orderWorkerRequest(db, options.env, orderWorker);
   const harness = options.harness ?? "codex";
   const { model } = route("reviewer", harness, options.env);
   const request = {
     harness,
     cwd: dir,
-    brief: reviewerBrief(order, range),
+    brief: reviewerBrief(
+      order,
+      range,
+      returned ? { body: returned.body, feedback: returned.reason } : undefined,
+    ),
     model,
     capabilities: REVIEWER_CAPABILITIES,
     outputSchema: REVIEW_OUTPUT_SCHEMA,
@@ -334,24 +327,25 @@ export function runOrderReview(
   const run = options.spawn ? options.spawn(harnessArgv(request), env) : runHarnessCommand(request);
   const reviewer = assignedWorker(db, orderWorker.assignment.id);
   if (!reviewer) {
-    closeOrderReview(db, opened.id, "aborted", worker);
+    if (!returned) closeOrderReview(db, opened.id, "aborted", worker);
     throw new Error("reviewer did not bootstrap its worker assignment");
   }
   bindOrderWorkerName(db, orderId, "reviewer", orderWorker.assignment.id, reviewer);
   db.run("UPDATE factory_order_review SET reviewer = ? WHERE id = ?", [reviewer, opened.id]);
   const outcome = run.exitCode === 0 ? "closed" : "aborted";
   if (outcome === "aborted") {
+    if (returned) throw new Error(`${reviewer} did not finish reviewing`);
     closeOrderReview(db, opened.id, outcome, worker);
     return { review: opened.id, reviewer, findings: 0, outcome };
   }
   let findings: number;
   try {
-    findings = recordReviewResult(db, orderId, reviewer, run.output, false);
+    findings = recordReviewResult(db, orderId, reviewer, run.output, Boolean(returned));
   } catch (error) {
     const failure = error instanceof Error ? error.message : String(error);
-    closeOrderReview(db, opened.id, "aborted", worker, undefined, failure);
+    if (!returned) closeOrderReview(db, opened.id, "aborted", worker, undefined, failure);
     throw error;
   }
-  closeOrderReview(db, opened.id, outcome, worker);
+  if (!returned) closeOrderReview(db, opened.id, outcome, worker);
   return { review: opened.id, reviewer, findings, outcome };
 }

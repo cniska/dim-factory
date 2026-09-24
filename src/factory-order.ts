@@ -101,6 +101,7 @@ export type OrderNotDoneCode =
   | "build_not_final"
   | "build_artifact_before_final_slice"
   | "build_artifact_missing"
+  | "build_revision_head_mismatch"
   | "artifact_revision_required"
   | "review_not_approved";
 
@@ -642,11 +643,43 @@ export function isActiveOrderRun(db: Database, orderId: string, runId: string): 
   );
 }
 
+type ReturnedOrderArtifact =
+  | { station: "plan"; reason: string; planId: number; body: string }
+  | { station: "build"; reason: string; buildId: number; body: string; headSha: string }
+  | {
+      station: "review";
+      reason: string;
+      reviewId: number;
+      body: string;
+      baseSha: string;
+      headSha: string;
+    };
+
+export function returnedOrderArtifact(
+  db: Database,
+  orderId: string,
+  station: "plan",
+): Extract<ReturnedOrderArtifact, { station: "plan" }> | null;
+export function returnedOrderArtifact(
+  db: Database,
+  orderId: string,
+  station: "build",
+): Extract<ReturnedOrderArtifact, { station: "build" }> | null;
+export function returnedOrderArtifact(
+  db: Database,
+  orderId: string,
+  station: "review",
+): Extract<ReturnedOrderArtifact, { station: "review" }> | null;
 export function returnedOrderArtifact(
   db: Database,
   orderId: string,
   station: "plan" | "build" | "review",
-): { reason: string; planId?: number; buildId?: number; reviewId?: number } | null {
+): ReturnedOrderArtifact | null;
+export function returnedOrderArtifact(
+  db: Database,
+  orderId: string,
+  station: "plan" | "build" | "review",
+): ReturnedOrderArtifact | null {
   const artifactEvent = {
     plan: "plan_artifact_written",
     build: "build_artifact_written",
@@ -670,12 +703,48 @@ export function returnedOrderArtifact(
     )
     .get(orderId, station, `dim-station-${station}`, artifactEvent);
   if (!event) return null;
-  return {
-    reason: event.reason,
-    ...(event.plan_id === null ? {} : { planId: event.plan_id }),
-    ...(event.build_id === null ? {} : { buildId: event.build_id }),
-    ...(event.review_id === null ? {} : { reviewId: event.review_id }),
-  };
+  if (station === "plan" && event.plan_id !== null) {
+    const artifact = db
+      .query<{ body: string }, [number]>("SELECT body FROM factory_order_plan WHERE id = ?")
+      .get(event.plan_id);
+    if (!artifact) throw new Error(`Plan artifact ${event.plan_id} is missing`);
+    return { station, reason: event.reason, planId: event.plan_id, body: artifact.body };
+  }
+  if (station === "build" && event.build_id !== null) {
+    const artifact = db
+      .query<{ body: string; head_sha: string }, [number]>(
+        "SELECT body, head_sha FROM factory_order_build WHERE id = ?",
+      )
+      .get(event.build_id);
+    if (!artifact) throw new Error(`Build artifact ${event.build_id} is missing`);
+    return {
+      station,
+      reason: event.reason,
+      buildId: event.build_id,
+      body: artifact.body,
+      headSha: artifact.head_sha,
+    };
+  }
+  if (station === "review" && event.review_id !== null) {
+    const artifact = db
+      .query<{ body: string; base_sha: string; head_sha: string }, [number]>(
+        `SELECT a.body, r.base_sha, r.head_sha
+         FROM factory_order_review_artifact a
+         JOIN factory_order_review r ON r.id = a.review_id
+         WHERE a.review_id = ? ORDER BY a.revision DESC LIMIT 1`,
+      )
+      .get(event.review_id);
+    if (!artifact) throw new Error(`Review artifact ${event.review_id} is missing`);
+    return {
+      station,
+      reason: event.reason,
+      reviewId: event.review_id,
+      body: artifact.body,
+      baseSha: artifact.base_sha,
+      headSha: artifact.head_sha,
+    };
+  }
+  throw new Error(`order ${orderId} has an incomplete ${station} artifact return`);
 }
 
 function assertReturnedArtifactRevised(
@@ -1339,6 +1408,12 @@ export function recordOrderBuild(
   }
   if (body.trim() === "") throw new Error("build artifact body must not be empty");
   if (headSha.trim() === "") throw new Error("build artifact head must not be empty");
+  if (returned && headSha !== returned.headSha) {
+    throw new OrderNotDone(
+      "build_revision_head_mismatch",
+      `order ${orderId} must keep the returned Build artifact on ${returned.headSha}`,
+    );
+  }
   return db.transaction(() => {
     const revision = (db
       .query<{ revision: number }, [string]>(

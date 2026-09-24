@@ -32,6 +32,8 @@ import {
   recordOrderPlan,
   recordOrderReviewArtifact,
   recoverOrderFailure,
+  returnedOrderArtifact,
+  returnOrderArtifact,
   shipOrder,
 } from "./factory-order";
 import { clearStop, FactoryStopError, pullStop } from "./factory-stop";
@@ -228,6 +230,29 @@ describe("factory order report records", () => {
 
     moveOrder(database, "order-planned", "dim-station-build", worker);
     recordOrderCommit(database, "order-planned", trunk.sha, worker, "feat: planned order");
+    database.close();
+  });
+
+  test("loads the returned Plan payload through the shared artifact path", () => {
+    const database = db();
+    const operator = mintWorker(database, {
+      role: "operator",
+      sessionId: newWorkerSession("returned-plan-operator"),
+    }).name;
+    queueOrder(database, { ...order, id: "returned-plan" }, operator);
+    claimOrder(database, "returned-plan", { ...claim, station: "dim-station-plan" }, operator);
+    recordOrderPlan(database, "returned-plan", "## Outcome\n\nKeep the artifact concise.", worker, [
+      { title: "Keep it concise", outcome: "The owner can review the result." },
+    ]);
+
+    returnOrderArtifact(database, "returned-plan", operator, "Include the evidence behind the outcome.");
+
+    expect(returnedOrderArtifact(database, "returned-plan", "plan")).toEqual({
+      station: "plan",
+      reason: "Include the evidence behind the outcome.",
+      planId: 1,
+      body: "## Outcome\n\nKeep the artifact concise.",
+    });
     database.close();
   });
 

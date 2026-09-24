@@ -7,6 +7,7 @@ import {
   recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
+  returnedOrderArtifact,
 } from "./factory-order";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { integratedRepo } from "./fixtures.test-support";
@@ -101,6 +102,22 @@ describe("build approval integration", () => {
         env(operator),
       ),
     ).toContain("returned");
+    expect(returnedOrderArtifact(db, "build-approval-order", "build")).toEqual({
+      station: "build",
+      reason: "Explain the verified result, not the command log.",
+      buildId: 1,
+      body: "The build is complete and verified.",
+      headSha: repo.sha,
+    });
+    expect(() =>
+      recordOrderBuild(
+        db,
+        "build-approval-order",
+        "## Outcome\n\nThe wrong revision.",
+        "different-head",
+        builder.name,
+      ),
+    ).toThrow(expect.objectContaining({ code: "build_revision_head_mismatch" }));
     expect(() =>
       runOrderCommand(
         db,
