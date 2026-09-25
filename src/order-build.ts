@@ -5,6 +5,7 @@ import type { OrderSlice } from "./factory-order";
 import {
   appendOrderEvent,
   claimOrder,
+  completeOrderBuildFollowup,
   completeOrderSlice,
   isActiveOrderRun,
   isTerminalOrderStatus,
@@ -40,7 +41,9 @@ export function builderBrief(
   workspace: ReturnType<typeof workspaceContract>,
   revision?: { body: string; feedback: string },
   previousFailure?: string,
+  reviewFindings: readonly string[] = [],
 ): string {
+  const needsCodeWork = currentSlice !== null || reviewFindings.length > 0;
   const workspaceContext = workspace
     ? [
         `Workspace ecosystem: ${workspace.ecosystems.join(", ") || "unknown"}.`,
@@ -71,7 +74,8 @@ export function builderBrief(
     ...(revision
       ? ["# Returned Build artifact", revision.body, "", "# Owner feedback", revision.feedback]
       : []),
-    ...(currentSlice && previousFailure
+    ...(reviewFindings.length > 0 ? ["# Review findings", ...reviewFindings.map((one) => `- ${one}`)] : []),
+    ...(needsCodeWork && previousFailure
       ? [
           "# Previous failed Build attempt",
           previousFailure,
@@ -82,15 +86,15 @@ export function builderBrief(
     "# Ordered slices",
     ...plan.slices.map((slice, index) => `${index + 1}. ${slice.title}: ${slice.outcome}`),
     "",
-    currentSlice
+    needsCodeWork
       ? "The factory runner has already claimed this order for this build turn under your worker identity."
       : "The owner returned the Build artifact to you. The code work is complete; revise only the artifact.",
-    currentSlice
+    needsCodeWork
       ? "Work in the current order worktree. Run the command supplied by the workspace profile, record every commit, changed file, check, document, and build finding with dim order, and run the build station loop including simplification."
       : "Do not edit files or create commits. Compare worktree HEAD with the latest recorded order commit. If HEAD is unrecorded, record that existing commit and a passing workspace check after it. Use the order record to correct the returned Build artifact.",
     "The factory has already accepted your assignment before this turn starts. Do not register or bootstrap another worker, inspect worker credential files, or stop because DIM_WORKER_NAME and DIM_WORKER_TOKEN are absent; order commands authenticate this assigned process through its DIM_WORKER_ASSIGNMENT variables.",
     "The order description and approved plan define the scope. When they explicitly exclude a workspace surface, do not edit or test that surface; record a passing check scoped to the requested result instead of treating excluded failures as blockers.",
-    ...(currentSlice
+    ...(needsCodeWork
       ? [
           "A red check is feedback, not completion: diagnose it, fix the cause, rerun the check, and continue until the final commit has a passing check. If the cause is genuinely blocked, report the blocker instead of claiming success.",
           "Do not run dim order stop: the factory runner records this attempt and makes the order retryable when the turn fails.",
@@ -102,6 +106,37 @@ export function builderBrief(
         ]),
     "Return a concise outcome. Do not approve the plan or build, start review, ship, or edit outside the order worktree.",
   ].join("\n");
+}
+
+function reviewFindingsForBuild(db: Database, orderId: string): string[] {
+  const review = db
+    .query<{ id: number; event_id: number | null; outcome: string | null }, [string]>(
+      `SELECT r.id, r.outcome, e.id AS event_id
+       FROM factory_order_review r
+       LEFT JOIN factory_order_event e ON e.review_id = r.id AND e.kind = 'review_closed'
+       WHERE r.order_id = ?
+       ORDER BY r.round DESC LIMIT 1`,
+    )
+    .get(orderId);
+  if (review?.outcome !== "closed" || review.event_id === null) return [];
+  if (
+    db
+      .query(
+        "SELECT 1 FROM factory_order_event WHERE order_id = ? AND kind = 'build_artifact_written' AND id > ?",
+      )
+      .get(orderId, review.event_id)
+  ) {
+    return [];
+  }
+  const findings = db
+    .query<{ summary: string; answer: string | null }, [number]>(
+      "SELECT summary, answer FROM factory_order_finding WHERE review_id = ? ORDER BY id",
+    )
+    .all(review.id);
+  if (findings.some((finding) => finding.answer === null)) {
+    throw new Error(`order ${orderId} has unanswered review findings`);
+  }
+  return findings.map((finding) => finding.summary);
 }
 
 export type BuildOutcome = { builder: string; runId: string; worktree: string; exitCode: number };
@@ -197,6 +232,8 @@ export async function runOrderBuildLive(
     )
     .all(plan.id);
   const currentSlice = nextOrderSlice(db, orderId);
+  const reviewFindings = currentSlice ? [] : reviewFindingsForBuild(db, orderId);
+  const needsCodeWork = currentSlice !== null || reviewFindings.length > 0;
   const previousFailure = db
     .query<{ reason: string | null }, [string]>(
       `SELECT reason FROM factory_order_attempt
@@ -213,7 +250,7 @@ export async function runOrderBuildLive(
   let failureRecorded = false;
   let claimed = false;
   const recordFailure = (reason: string): void => {
-    if (!currentSlice || failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
+    if (!needsCodeWork || failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
     if (claimed && !isActiveOrderRun(db, orderId, runId)) return;
     failureRecorded = true;
     appendOrderEvent(db, orderId, { kind: "failed", worker: builder, reason });
@@ -226,7 +263,7 @@ export async function runOrderBuildLive(
       attribution: { harness: string; model: string; tier: string },
     ): void => {
       builder = assigned;
-      if (currentSlice) {
+      if (needsCodeWork) {
         claimOrder(
           db,
           orderId,
@@ -257,7 +294,7 @@ export async function runOrderBuildLive(
       harness,
       env: options.env,
       adapter: options.adapter,
-      requireReturnedArtifact: currentSlice === null,
+      requireReturnedArtifact: !needsCodeWork,
       onPrepared: (orderWorker) => {
         builder = orderWorker.worker;
       },
@@ -271,6 +308,7 @@ export async function runOrderBuildLive(
           workspace,
           artifact ? { body: artifact.body, feedback: artifact.reason } : undefined,
           previousFailure?.reason ?? undefined,
+          reviewFindings,
         ),
         capabilities: BUILDER_CAPABILITIES,
       }),
@@ -285,6 +323,9 @@ export async function runOrderBuildLive(
     if (currentSlice) {
       requireBuildEvidence(db, orderId, currentSlice.ordinal === slices.length, worktree);
       completeOrderSlice(db, orderId, currentSlice.id, builder);
+    } else if (reviewFindings.length > 0) {
+      requireBuildEvidence(db, orderId, true, worktree);
+      completeOrderBuildFollowup(db, orderId, builder);
     } else {
       const revision = db
         .query<{ id: number; worker: string }, [string]>(
@@ -354,6 +395,8 @@ export function runOrderBuild(
     )
     .all(plan.id);
   const currentSlice = nextOrderSlice(db, orderId);
+  const reviewFindings = currentSlice ? [] : reviewFindingsForBuild(db, orderId);
+  const needsCodeWork = currentSlice !== null || reviewFindings.length > 0;
   const previousFailure = db
     .query<{ reason: string | null }, [string]>(
       `SELECT reason FROM factory_order_attempt
@@ -367,7 +410,7 @@ export function runOrderBuild(
   let builder: string | undefined;
   let failureRecorded = false;
   const recordFailure = (reason: string): void => {
-    if (!currentSlice || failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
+    if (!needsCodeWork || failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
     failureRecorded = true;
     appendOrderEvent(db, orderId, {
       kind: "failed",
@@ -384,7 +427,7 @@ export function runOrderBuild(
       parentWorker: operator,
       harness,
       env: options.env,
-      requireReturnedArtifact: currentSlice === null,
+      requireReturnedArtifact: !needsCodeWork,
       spawn: options.spawn
         ? (argv, env) => {
             const result = options.spawn?.(argv, env, worktree);
@@ -401,6 +444,7 @@ export function runOrderBuild(
           workspace,
           artifact ? { body: artifact.body, feedback: artifact.reason } : undefined,
           previousFailure?.reason ?? undefined,
+          reviewFindings,
         ),
         capabilities: BUILDER_CAPABILITIES,
       }),
@@ -415,6 +459,9 @@ export function runOrderBuild(
     if (currentSlice) {
       requireBuildEvidence(db, orderId, currentSlice.ordinal === slices.length, worktree);
       completeOrderSlice(db, orderId, currentSlice.id, builder);
+    } else if (reviewFindings.length > 0) {
+      requireBuildEvidence(db, orderId, true, worktree);
+      completeOrderBuildFollowup(db, orderId, builder);
     } else {
       const revision = db
         .query<{ id: number; worker: string }, [string]>(

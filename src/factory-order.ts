@@ -1717,6 +1717,45 @@ export function completeOrderSlice(
   })();
 }
 
+export function completeOrderBuildFollowup(db: Database, orderId: string, worker: string, at = now()): void {
+  db.transaction(() => {
+    assertOrderBuilding(db, orderId);
+    if (nextOrderSlice(db, orderId) !== null) {
+      throw new Error(`order ${orderId} still has an incomplete build slice`);
+    }
+    assertChecked(db, orderId);
+    const commit = latestOrderCommit(db, orderId);
+    const review = db
+      .query<{ event_id: number }, [string]>(
+        `SELECT e.id AS event_id FROM factory_order_review r
+         JOIN factory_order_event e ON e.review_id = r.id AND e.kind = 'review_closed'
+         WHERE r.order_id = ? ORDER BY r.round DESC LIMIT 1`,
+      )
+      .get(orderId);
+    const artifact = commit
+      ? db
+          .query(
+            `SELECT 1 FROM factory_order_build b
+             JOIN factory_order_event e ON e.build_id = b.id AND e.kind = 'build_artifact_written'
+             WHERE b.order_id = ? AND b.head_sha = ? AND e.id > ?`,
+          )
+          .get(orderId, commit.sha, review?.event_id ?? Number.MAX_SAFE_INTEGER)
+      : null;
+    if (!artifact) throw new Error(`order ${orderId} has no Build artifact after its latest Review`);
+    const order = db
+      .query<{ run_id: string | null; station: string | null }, [string]>(
+        "SELECT run_id, station FROM factory_order WHERE id = ?",
+      )
+      .get(orderId);
+    if (!order?.run_id) throw new Error(`order ${orderId} has no active build follow-up`);
+    recordAttemptFinish(db, orderId, order.run_id, worker, order.station, "succeeded", undefined, at);
+    db.run("UPDATE factory_order SET run_id = NULL, session_id = NULL, updated_at = ? WHERE id = ?", [
+      at,
+      orderId,
+    ]);
+  })();
+}
+
 export function approveOrderPlan(db: Database, orderId: string, worker: string, at = now()): void {
   assertOrderWorking(db, orderId);
   const role = db

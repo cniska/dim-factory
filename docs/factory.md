@@ -83,6 +83,8 @@ Station workers are created through assignments, never direct registration. The 
 
 Planning, building and reviewing keep one assignment, worker, and provider session in `factory_order_worker`. The first station turn starts the provider session and binds it to the worker; later turns resume it, retaining both identity and context. An assignment that has not bootstrapped may be renewed without changing its order or role, so a harness-start failure does not create a second station identity.
 
+When Review closes with findings, each finding is answered before the order moves back to Build. The same builder receives the findings, records the follow-up commit and check, and writes a Build artifact for the new HEAD. That turn closes its own attempt while the completed plan slices remain complete; a later Review reads the follow-up diff.
+
 The role is required and there is no roleless hand: it is what the router reads a tier off and what a card draws, so one list holds it ([`src/roles.ts`](../src/roles.ts)) and the record refuses a word that is not in it. `operator` is the hand that runs the line rather than doing the work, which is why it is a role beside the rest and not a second kind of thing.
 
 Nothing is ever attributed afterwards. An audit entry completed later is a mutation of a record someone may already have read, and a log that can be amended is not evidence. What a harness calls its own agent is therefore a later-learned attribute of the worker rather than of any moment: a correlation that never arrives costs the log nothing, and a worker never observed as an agent reads as not observed. A runner failure before bootstrap remains explicitly unattributed to a worker, which is different from claiming that a worker acted.

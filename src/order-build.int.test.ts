@@ -4,12 +4,18 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  answerOrderFinding,
   appendOrderEvent,
+  approveOrderBuild,
   approveOrderPlan,
   claimOrder,
+  closeOrderReview,
+  completeOrderBuildFollowup,
   isActiveOrderRun,
   moveOrder,
+  openOrderReview,
   queueOrder,
+  raiseOrderFinding,
   recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
@@ -398,6 +404,164 @@ describe("builder station", () => {
         },
       }),
     ).toThrow("builder did not record an immutable commit ID");
+    db.close();
+  });
+
+  test("returns answered review findings to the same builder for a new Build artifact", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const repo = integratedRepo();
+    repos.push(repo.dir);
+    const home = mkdtempSync(join(tmpdir(), "dim-builder-review-rework-"));
+    homes.push(home);
+    writeFileSync(
+      join(home, "routing.json"),
+      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
+    );
+    const operator = mintWorker(db, { role: "operator", sessionId: "review-rework-operator" });
+    queueOrder(
+      db,
+      { id: "review-rework-order", project: "cniska/dim-factory", title: "Build this" },
+      operator.name,
+    );
+    claimOrder(
+      db,
+      "review-rework-order",
+      { runId: "plan-run", station: "dim-station-plan", operatorWorker: operator.name },
+      operator.name,
+      undefined,
+      repo.dir,
+    );
+    const planner = mintWorker(db, {
+      role: "planner",
+      parentWorker: operator.name,
+      sessionId: "review-rework-planner",
+    });
+    recordOrderPlan(db, "review-rework-order", "Build the requested result.", planner.name, [
+      { title: "Build the result", outcome: "The result is verified." },
+    ]);
+    approveOrderPlan(db, "review-rework-order", operator.name);
+    moveOrder(db, "review-rework-order", "dim-station-build", operator.name);
+
+    const firstBuild = runOrderBuild(db, "review-rework-order", operator.name, {
+      dir: repo.dir,
+      env: { DIM_HOME: home },
+      spawn: (_argv, childEnv) => {
+        const builder = bootstrapWorker(db, {
+          id: childEnv[ASSIGNMENT_ID_VAR] as string,
+          token: childEnv[ASSIGNMENT_TOKEN_VAR] as string,
+          sessionId: "review-rework-builder-session",
+        });
+        childEnv[WORKER_NAME_VAR] = builder.name;
+        childEnv[WORKER_TOKEN_VAR] = builder.token;
+        childEnv[WORKER_SESSION_VAR] = builder.sessionId;
+        saveWorkerCredential(childEnv, builder);
+        claimOrder(
+          db,
+          "review-rework-order",
+          { runId: "first-build-run", station: "dim-station-build", operatorWorker: operator.name },
+          builder.name,
+          undefined,
+          repo.dir,
+        );
+        recordOrderCommit(db, "review-rework-order", repo.sha, builder.name, "feat: build it");
+        recordOrderCheck(db, "review-rework-order", { command: "bun run verify", exitCode: 0 }, builder.name);
+        recordOrderBuild(db, "review-rework-order", "Initial Build artifact.", repo.sha, builder.name);
+        return { exitCode: 0 };
+      },
+    });
+    approveOrderBuild(db, "review-rework-order", operator.name, "Build approved.");
+    moveOrder(db, "review-rework-order", "dim-station-review", operator.name);
+    const reviewer = mintWorker(db, {
+      role: "reviewer",
+      parentWorker: operator.name,
+      sessionId: "review-rework-reviewer",
+    });
+    const review = openOrderReview(
+      db,
+      "review-rework-order",
+      { reviewer: reviewer.name, baseSha: repo.sha, headSha: repo.sha },
+      reviewer.name,
+    );
+    const finding = raiseOrderFinding(
+      db,
+      "review-rework-order",
+      { dimension: "correctness", summary: "Count the actual order provenance." },
+      reviewer.name,
+    );
+    closeOrderReview(db, review.id, "closed", reviewer.name);
+    answerOrderFinding(db, finding, { answer: "fixed" }, operator.name);
+    moveOrder(db, "review-rework-order", "dim-station-build", operator.name);
+    const newCommit = Bun.spawnSync(
+      [
+        "git",
+        "-C",
+        firstBuild.worktree,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--allow-empty",
+        "-m",
+        "fix: review finding",
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    expect(newCommit.success).toBe(true);
+    const head = Bun.spawnSync(["git", "-C", firstBuild.worktree, "rev-parse", "HEAD"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+      .stdout.toString()
+      .trim();
+
+    let brief = "";
+    const followup = runOrderBuild(db, "review-rework-order", operator.name, {
+      dir: repo.dir,
+      env: { DIM_HOME: home },
+      spawn: (argv) => {
+        brief = argv.find((argument) => argument.includes("factory order ")) ?? "";
+        claimOrder(
+          db,
+          "review-rework-order",
+          { runId: "followup-build-run", station: "dim-station-build", operatorWorker: operator.name },
+          firstBuild.builder,
+          undefined,
+          repo.dir,
+        );
+        recordOrderCheck(
+          db,
+          "review-rework-order",
+          { command: "bun run verify", exitCode: 0 },
+          firstBuild.builder,
+        );
+        expect(() => completeOrderBuildFollowup(db, "review-rework-order", firstBuild.builder)).toThrow(
+          "no Build artifact after its latest Review",
+        );
+        recordOrderCommit(db, "review-rework-order", head, firstBuild.builder, "fix: review finding");
+        recordOrderCheck(
+          db,
+          "review-rework-order",
+          { command: "bun run verify", exitCode: 0 },
+          firstBuild.builder,
+        );
+        recordOrderBuild(db, "review-rework-order", "Revised Build artifact.", head, firstBuild.builder);
+        return { exitCode: 0 };
+      },
+    });
+    expect(brief).toContain("Count the actual order provenance.");
+    expect(brief).toContain("Review findings");
+    expect(followup.builder).toBe(firstBuild.builder);
+    expect(db.query("SELECT run_id FROM factory_order WHERE id = ?").get("review-rework-order")).toEqual({
+      run_id: null,
+    });
+    expect(
+      db.query("SELECT revision, head_sha FROM factory_order_build ORDER BY revision DESC LIMIT 1").get(),
+    ).toEqual({
+      revision: 2,
+      head_sha: head,
+    });
     db.close();
   });
 
