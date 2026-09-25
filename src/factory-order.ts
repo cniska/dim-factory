@@ -444,7 +444,7 @@ export function moveOrder(
   })();
 }
 
-function latestOrderCommit(db: Database, orderId: string): { sha: string; recordedAt: string } | null {
+export function latestOrderCommit(db: Database, orderId: string): { sha: string; recordedAt: string } | null {
   return db
     .query<{ sha: string; recordedAt: string }, [string]>(
       `SELECT c.sha, c.recorded_at AS recordedAt

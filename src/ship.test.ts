@@ -60,45 +60,39 @@ describe("shipToTrunk", () => {
     expect(reachesNow(dir, sha)).toBe(true);
   });
 
-  test("a worktree that diverged from a trunk that moved on gets a merge commit", () => {
+  test("a branch the trunk has moved past is refused rather than merged, leaving the trunk as it was", () => {
     const { dir } = repo();
     const wt = worktree(dir, "feat-b");
     const sha = commitFile(wt, "feat-b.txt", "b");
-    commitFile(dir, "trunk-moved.txt", "moved");
+    const trunkAhead = commitFile(dir, "trunk-moved.txt", "moved");
 
-    expect(shipToTrunk(wt, "feat-b", [sha])).toEqual({ landed: "merged" });
-    expect(reachesNow(dir, sha)).toBe(true);
-  });
-
-  test("shipping never rewrites the commit it lands", () => {
-    const { dir } = repo();
-    const wt = worktree(dir, "feat-c");
-    const sha = commitFile(wt, "feat-c.txt", "c");
-    commitFile(dir, "trunk-moved-2.txt", "moved");
-
-    shipToTrunk(wt, "feat-c", [sha]);
-
-    expect(git(dir, ["cat-file", "-e", `${sha}^{commit}`]).success).toBe(true);
-  });
-
-  test("a conflicting merge is refused and leaves the trunk clean", () => {
-    const { dir } = repo();
-    writeFileSync(join(dir, "shared.txt"), "trunk");
-    git(dir, ["add", "."]);
-    git(dir, ["commit", "-q", "-m", "feat: shared on trunk"]);
-    const wt = worktree(dir, "feat-conflict");
-    writeFileSync(join(wt, "shared.txt"), "order");
-    git(wt, ["add", "."]);
-    git(wt, ["commit", "-q", "-m", "feat: shared on the order"]);
-    const sha = git(wt, ["rev-parse", "HEAD"]).out;
-    writeFileSync(join(dir, "shared.txt"), "trunk moved on");
-    git(dir, ["add", "."]);
-    git(dir, ["commit", "-q", "-m", "feat: shared moved on the trunk"]);
-
-    expect(() => shipToTrunk(wt, "feat-conflict", [sha])).toThrow(
-      expect.objectContaining({ code: "ship_conflict" } satisfies Partial<ShipRefusal>),
+    expect(() => shipToTrunk(wt, "feat-b", [sha])).toThrow(
+      expect.objectContaining({ code: "ship_not_fast_forward" } satisfies Partial<ShipRefusal>),
     );
-    expect(git(dir, ["status", "--porcelain"]).out).toBe("");
+    expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkAhead);
+    expect(git(dir, ["rev-list", "--merges", "--count", "HEAD"]).out).toBe("0");
+  });
+
+  test("a tag named like the branch cannot stand in for it", () => {
+    const { dir } = repo();
+    const wt = worktree(dir, "feat-tagged");
+    const sha = commitFile(wt, "feat-tagged.txt", "tagged");
+    const other = worktree(dir, "elsewhere");
+    const planted = commitFile(other, "planted.txt", "planted");
+    git(dir, ["tag", "feat-tagged", planted]);
+
+    expect(shipToTrunk(wt, "feat-tagged", [sha])).toEqual({ landed: "fast_forward" });
+    expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(sha);
+  });
+
+  test("a repository that does not sign its commits ships them unsigned", () => {
+    const { dir } = repo();
+    git(dir, ["config", "commit.gpgsign", "false"]);
+    const wt = worktree(dir, "feat-plain");
+    const sha = commitFile(wt, "feat-plain.txt", "plain");
+
+    expect(shipToTrunk(wt, "feat-plain", [sha])).toEqual({ landed: "fast_forward" });
+    expect(git(dir, ["verify-commit", sha]).success).toBe(false);
   });
 
   test("a repo that names no trunk is refused", () => {
@@ -155,7 +149,7 @@ describe("shipToTrunk", () => {
     expect(reachesNow(dir, landedSha)).toBe(true);
   });
 
-  test("a recorded commit that does not verify as signed is refused before anything lands", () => {
+  test("in a repository that signs, a commit that does not verify is refused before anything lands", () => {
     const { dir } = repo();
     const wt = worktree(dir, "feat-unsigned");
     const signed = commitFile(wt, "signed.txt", "signed");

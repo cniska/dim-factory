@@ -1,8 +1,18 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { BuildTurn } from "./build-turn";
 import {
   answerOrderFinding,
   appendOrderEvent,
@@ -30,11 +40,10 @@ import {
   WORKER_TOKEN_VAR,
 } from "./factory-worker";
 import { fakeHarness } from "./fake-harness";
-import { integratedRepo } from "./fixtures.test-support";
-import { runOrderBuild, runOrderBuildLive } from "./order-build";
+import { confiningCheckSandbox, declareCheck, integratedRepo } from "./fixtures.test-support";
+import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
+import { runOrderBuildLive } from "./order-build";
 import { SCHEMA_SQL } from "./schema";
-import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
-import { saveWorkerCredential } from "./worker-credential";
 
 const repos: string[] = [];
 const homes: string[] = [];
@@ -43,109 +52,122 @@ afterAll(() => {
   for (const home of homes) rmSync(home, { recursive: true, force: true });
 });
 
+/**
+ * A builder that acts on the worktree in-process and ends its turn with `act`'s answer — a
+ * BuildTurn as JSON on a code turn, or free text on an artifact revision turn.
+ */
+function builderTurn(act: (request: HarnessRequest) => BuildTurn | string): HarnessAdapter {
+  const run = async (request: HarnessRequest): Promise<HarnessRun> => ({
+    events: (async function* (): AsyncGenerator<HarnessEvent> {
+      yield { type: "run.started", providerSessionId: "fake-session" };
+      yield { type: "turn.started" };
+      const answer = act(request);
+      yield { type: "run.completed", output: typeof answer === "string" ? answer : JSON.stringify(answer) };
+    })(),
+    cancel() {},
+  });
+  return { start: run, resume: (_sessionId, request) => run(request) };
+}
+
+/** An adapter whose harness never starts, and the brief it was handed. */
+function unavailableHarness(): { adapter: HarnessAdapter; brief: () => string } {
+  let brief = "";
+  const refuse = async (request: HarnessRequest): Promise<HarnessRun> => {
+    brief = request.brief;
+    throw new Error("harness unavailable");
+  };
+  return { adapter: { start: refuse, resume: (_sessionId, request) => refuse(request) }, brief: () => brief };
+}
+
+function git(dir: string, args: string[]): string {
+  return Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe", stderr: "pipe" })
+    .stdout.toString()
+    .trim();
+}
+
+function home(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  homes.push(dir);
+  writeFileSync(
+    join(dir, "routing.json"),
+    '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
+  );
+  return dir;
+}
+
+/** A trunk declaring a check, and an order on it with an approved plan, moved to build. */
+function orderAtBuild(
+  db: Database,
+  orderId: string,
+  slices: { title: string; outcome: string }[],
+  check = "true",
+): { repo: { dir: string; sha: string }; operator: ReturnType<typeof mintWorker>; planner: string } {
+  const trunk = integratedRepo();
+  repos.push(trunk.dir);
+  const repo = { dir: trunk.dir, sha: declareCheck(trunk.dir, check) };
+  const operator = mintWorker(db, { role: "operator", sessionId: `${orderId}-operator` });
+  queueOrder(db, { id: orderId, project: "cniska/dim-factory", title: "Build this" }, operator.name);
+  claimOrder(
+    db,
+    orderId,
+    { runId: "plan-run", station: "dim-station-plan", operatorWorker: operator.name },
+    operator.name,
+    undefined,
+    repo.dir,
+  );
+  const planner = mintWorker(db, {
+    role: "planner",
+    parentWorker: operator.name,
+    sessionId: `${orderId}/planner`,
+  });
+  recordOrderPlan(db, orderId, "## Outcome\n\nBuild the requested result.", planner.name, slices);
+  approveOrderPlan(db, orderId, operator.name);
+  moveOrder(db, orderId, "dim-station-build", operator.name);
+  return { repo, operator, planner: planner.name };
+}
+
+function database(): Database {
+  const db = new Database(":memory:");
+  db.run(SCHEMA_SQL);
+  return db;
+}
+
 describe("builder station", () => {
   test("starts an attributed builder in the operator-allocated worktree", async () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
-    const repo = integratedRepo();
-    repos.push(repo.dir);
-    const home = mkdtempSync(join(tmpdir(), "dim-builder-"));
-    homes.push(home);
-    writeFileSync(
-      join(home, "routing.json"),
-      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
-    );
-    const operator = mintWorker(db, { role: "operator", sessionId: "build-operator" });
-    queueOrder(
-      db,
-      { id: "builder-order", project: "cniska/dim-factory", title: "Build this" },
-      operator.name,
-    );
-    claimOrder(
-      db,
-      "builder-order",
-      { runId: "plan-run", station: "dim-station-plan", operatorWorker: operator.name },
-      operator.name,
-      undefined,
-      repo.dir,
-    );
-    const planner = mintWorker(db, {
-      role: "planner",
-      parentWorker: operator.name,
-      sessionId: "build-operator/planner",
-    });
-    recordOrderPlan(db, "builder-order", "## Outcome\n\nBuild the requested result.", planner.name, [
+    const db = database();
+    const dimHome = home("dim-builder-");
+    const { repo, operator, planner } = orderAtBuild(db, "builder-order", [
       { title: "Build the result", outcome: "The requested result is verified." },
     ]);
-    approveOrderPlan(db, "builder-order", operator.name);
-    moveOrder(db, "builder-order", "dim-station-build", operator.name);
+    const env = {
+      DIM_HOME: dimHome,
+      [WORKER_NAME_VAR]: operator.name,
+      [WORKER_TOKEN_VAR]: operator.token,
+      [WORKER_SESSION_VAR]: operator.sessionId,
+    };
 
-    let spawnedCwd = "";
-    let spawnedBrief = "";
-    const outcome = runOrderBuild(db, "builder-order", operator.name, {
+    let request: HarnessRequest | undefined;
+    const outcome = await runOrderBuildLive(db, "builder-order", operator.name, {
       dir: repo.dir,
-      env: {
-        DIM_HOME: home,
-        [WORKER_NAME_VAR]: operator.name,
-        [WORKER_TOKEN_VAR]: operator.token,
-        [WORKER_SESSION_VAR]: operator.sessionId,
-      },
-      spawn: (argv, childEnv, cwd) => {
-        spawnedCwd = cwd;
-        spawnedBrief = argv.find((argument) => argument.includes("factory order ")) ?? "";
-        const builder = bootstrapWorker(db, {
-          id: childEnv[ASSIGNMENT_ID_VAR] as string,
-          token: childEnv[ASSIGNMENT_TOKEN_VAR] as string,
-          sessionId: "builder-session",
-        });
-        childEnv[WORKER_NAME_VAR] = builder.name;
-        childEnv[WORKER_TOKEN_VAR] = builder.token;
-        childEnv[WORKER_SESSION_VAR] = builder.sessionId;
-        saveWorkerCredential(childEnv, builder);
-        claimOrder(
-          db,
-          "builder-order",
-          {
-            runId: "builder-run",
-            sessionId: childEnv[WORKER_SESSION_VAR],
-            station: "dim-station-build",
-            operatorWorker: operator.name,
-          },
-          builder.name,
-          undefined,
-          repo.dir,
-        );
-        recordOrderCommit(db, "builder-order", repo.sha, builder.name, "feat: build it");
-        recordOrderCheck(
-          db,
-          "builder-order",
-          { command: "bun run verify", exitCode: 0, result: "green" },
-          builder.name,
-        );
-        recordOrderBuild(
-          db,
-          "builder-order",
-          "The requested result is built and verified.",
-          repo.sha,
-          builder.name,
-        );
-        return { exitCode: 0 };
-      },
+      env,
+      checkSandbox: confiningCheckSandbox(),
+      adapter: builderTurn((given) => {
+        request = given;
+        writeFileSync(join(given.cwd, "built.txt"), "built\n");
+        return { subject: "feat: build it", artifact: "The requested result is built and verified." };
+      }),
     });
 
-    expect(spawnedCwd).toBe(realpathSync(join(repo.dir, ".claude", "worktrees", "builder-order")));
-    expect(spawnedBrief).toContain("The operator approved the following plan");
-    expect(spawnedBrief).toContain("Build the requested result.");
-    expect(outcome.worktree).toBe(spawnedCwd);
+    expect(request?.cwd).toBe(realpathSync(join(repo.dir, ".claude", "worktrees", "builder-order")));
+    expect(request?.brief).toContain("The operator approved the following plan");
+    expect(request?.brief).toContain("Build the requested result.");
+    expect(request?.outputSchema).toEndWith("build-turn.schema.json");
+    expect(outcome.worktree).toBe(request?.cwd ?? "");
     expect(
       db
         .query("SELECT role, parent_worker, ended_at FROM factory_worker WHERE name = ?")
         .get(outcome.builder),
-    ).toEqual({
-      role: "builder",
-      parent_worker: operator.name,
-      ended_at: null,
-    });
+    ).toEqual({ role: "builder", parent_worker: operator.name, ended_at: null });
     expect(
       db
         .query("SELECT kind, worker, station FROM factory_order_event WHERE order_id = ?")
@@ -153,17 +175,42 @@ describe("builder station", () => {
     ).toEqual([
       { kind: "queued", worker: operator.name, station: null },
       { kind: "claimed", worker: operator.name, station: "dim-station-plan" },
-      { kind: "plan_artifact_written", worker: planner.name, station: null },
-      { kind: "hold_set", worker: planner.name, station: null },
+      { kind: "plan_artifact_written", worker: planner, station: null },
+      { kind: "hold_set", worker: planner, station: null },
       { kind: "owner_verdict_recorded", worker: operator.name, station: null },
       { kind: "plan_approved", worker: operator.name, station: null },
       { kind: "hold_released", worker: operator.name, station: null },
       { kind: "moved", worker: operator.name, station: "dim-station-build" },
       { kind: "claimed", worker: outcome.builder, station: "dim-station-build" },
       { kind: "commit_created", worker: outcome.builder, station: null },
-      { kind: "check_finished", worker: outcome.builder, station: null },
+      { kind: "check_finished", worker: operator.name, station: null },
       { kind: "build_artifact_written", worker: outcome.builder, station: null },
       { kind: "hold_set", worker: outcome.builder, station: null },
+    ]);
+
+    const head = git(outcome.worktree, ["rev-parse", "HEAD"]);
+    expect(git(outcome.worktree, ["rev-parse", "HEAD~1"])).toBe(repo.sha);
+    expect(git(outcome.worktree, ["status", "--porcelain"])).toBe("");
+    expect(git(outcome.worktree, ["log", "-1", "--format=%an <%ae>|%cn <%ce>|%s"])).toBe(
+      "Test <t@example.com>|Test <t@example.com>|feat: build it",
+    );
+    expect(
+      Bun.spawnSync(["git", "-C", outcome.worktree, "verify-commit", head], {
+        stdout: "pipe",
+        stderr: "pipe",
+      }).success,
+    ).toBe(true);
+    expect(db.query("SELECT sha, subject FROM factory_order_commit").all()).toEqual([
+      { sha: head, subject: "feat: build it" },
+    ]);
+    expect(db.query("SELECT worker, path, added, removed FROM factory_order_file").all()).toEqual([
+      { worker: outcome.builder, path: "built.txt", added: 1, removed: 0 },
+    ]);
+    expect(db.query("SELECT command, exit_code FROM factory_order_check").all()).toEqual([
+      { command: "bun run verify", exit_code: 0 },
+    ]);
+    expect(db.query("SELECT body, head_sha, worker FROM factory_order_build").all()).toEqual([
+      { body: "The requested result is built and verified.", head_sha: head, worker: outcome.builder },
     ]);
     expect(db.query("SELECT worker FROM factory_order_slice_completion").get()).toEqual({
       worker: outcome.builder,
@@ -171,33 +218,20 @@ describe("builder station", () => {
     expect(isActiveOrderRun(db, "builder-order", outcome.runId)).toBe(false);
 
     returnOrderArtifact(db, "builder-order", operator.name, "Explain what the build verified.");
-    let revisionBrief = "";
-    expect(() =>
-      runOrderBuild(db, "builder-order", operator.name, {
-        dir: repo.dir,
-        env: {
-          DIM_HOME: home,
-          [WORKER_NAME_VAR]: operator.name,
-          [WORKER_TOKEN_VAR]: operator.token,
-          [WORKER_SESSION_VAR]: operator.sessionId,
-        },
-        spawn: (argv) => {
-          revisionBrief = argv.find((argument) => argument.includes("factory order ")) ?? "";
-          throw new Error("harness unavailable");
-        },
-      }),
-    ).toThrow("harness unavailable");
-    expect(revisionBrief).toContain("The owner returned the Build artifact to you.");
-    expect(revisionBrief).toContain("Explain what the build verified.");
+    const unavailable = unavailableHarness();
     await expect(
       runOrderBuildLive(db, "builder-order", operator.name, {
         dir: repo.dir,
-        env: {
-          DIM_HOME: home,
-          [WORKER_NAME_VAR]: operator.name,
-          [WORKER_TOKEN_VAR]: operator.token,
-          [WORKER_SESSION_VAR]: operator.sessionId,
-        },
+        env,
+        adapter: unavailable.adapter,
+      }),
+    ).rejects.toThrow("harness unavailable");
+    expect(unavailable.brief()).toContain("The owner returned the Build artifact to you.");
+    expect(unavailable.brief()).toContain("Explain what the build verified.");
+    await expect(
+      runOrderBuildLive(db, "builder-order", operator.name, {
+        dir: repo.dir,
+        env,
         adapter: fakeHarness("crash"),
       }),
     ).rejects.toThrow("fake process crashed");
@@ -213,41 +247,281 @@ describe("builder station", () => {
     db.close();
   });
 
-  test("keeps an incomplete final slice while giving the builder returned artifact feedback", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
-    const repo = integratedRepo();
-    repos.push(repo.dir);
-    const home = mkdtempSync(join(tmpdir(), "dim-builder-return-"));
-    homes.push(home);
-    writeFileSync(
-      join(home, "routing.json"),
-      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
-    );
-    const operator = mintWorker(db, { role: "operator", sessionId: "return-operator" });
-    queueOrder(
+  test("records a red check under the runner, commits nothing, and hands the output to the next turn", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-red-");
+    const { repo, operator } = orderAtBuild(
       db,
-      { id: "returned-builder-order", project: "cniska/dim-factory", title: "Build this" },
-      operator.name,
+      "red-order",
+      [
+        { title: "First slice", outcome: "The first slice is verified." },
+        { title: "Second slice", outcome: "The second slice is verified." },
+      ],
+      'test -f ok.txt || { echo "ok.txt is missing"; exit 1; }',
     );
-    claimOrder(
-      db,
-      "returned-builder-order",
-      { runId: "plan-run", station: "dim-station-plan", operatorWorker: operator.name },
-      operator.name,
-      undefined,
-      repo.dir,
-    );
-    const planner = mintWorker(db, {
-      role: "planner",
-      parentWorker: operator.name,
-      sessionId: "return-operator/planner",
+    const options = { dir: repo.dir, env: { DIM_HOME: dimHome }, checkSandbox: confiningCheckSandbox() };
+
+    await expect(
+      runOrderBuildLive(db, "red-order", operator.name, {
+        ...options,
+        adapter: builderTurn((request) => {
+          writeFileSync(join(request.cwd, "partial.txt"), "partial\n");
+          return { subject: "feat: first slice", artifact: "" };
+        }),
+      }),
+    ).rejects.toThrow("ok.txt is missing");
+    const worktree = realpathSync(join(repo.dir, ".claude", "worktrees", "red-order"));
+    expect(git(worktree, ["rev-parse", "HEAD"])).toBe(repo.sha);
+    expect(db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 0 });
+    expect(
+      db
+        .query(
+          `SELECT c.exit_code, c.result LIKE '%ok.txt is missing%' AS carries_output, e.worker
+           FROM factory_order_check c JOIN factory_order_event e ON e.check_id = c.id`,
+        )
+        .all(),
+    ).toEqual([{ exit_code: 1, carries_output: 1, worker: operator.name }]);
+
+    let retryBrief = "";
+    const retry = await runOrderBuildLive(db, "red-order", operator.name, {
+      ...options,
+      adapter: builderTurn((request) => {
+        retryBrief = request.brief;
+        writeFileSync(join(request.cwd, "ok.txt"), "ok\n");
+        return { subject: "feat: first slice", artifact: "" };
+      }),
     });
-    recordOrderPlan(db, "returned-builder-order", "Build the requested result.", planner.name, [
+    expect(retryBrief).toContain("# Previous failed Build attempt");
+    expect(retryBrief).toContain("ok.txt is missing");
+    expect(git(worktree, ["show", "--name-only", "--format=", "HEAD"]).split("\n").sort()).toEqual([
+      "ok.txt",
+      "partial.txt",
+    ]);
+    expect(git(worktree, ["log", "-1", "--format=%an"])).toBe("Test");
+    expect(db.query("SELECT worker FROM factory_order_event WHERE kind = 'commit_created'").get()).toEqual({
+      worker: retry.builder,
+    });
+
+    await expect(
+      runOrderBuildLive(db, "red-order", operator.name, {
+        ...options,
+        adapter: builderTurn((request) => {
+          writeFileSync(join(request.cwd, "second.txt"), "second\n");
+          git(request.cwd, ["add", "second.txt"]);
+          git(request.cwd, ["commit", "-q", "-m", "feat: second slice"]);
+          return { subject: "feat: second slice", artifact: "Both slices are built." };
+        }),
+      }),
+    ).rejects.toThrow("the runner commits a turn, so leave changes uncommitted");
+    expect(db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 1 });
+    expect(db.query("SELECT count(*) AS n FROM factory_order_slice_completion").get()).toEqual({ n: 1 });
+    db.close();
+  });
+
+  test("refuses a turn whose check changed the tree it was checking", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-drift-");
+    const { repo, operator } = orderAtBuild(
+      db,
+      "drift-order",
+      [{ title: "Build the result", outcome: "The requested result is verified." }],
+      "echo planted > planted.txt",
+    );
+
+    await expect(
+      runOrderBuildLive(db, "drift-order", operator.name, {
+        dir: repo.dir,
+        env: { DIM_HOME: dimHome },
+        checkSandbox: confiningCheckSandbox(),
+        adapter: builderTurn((request) => {
+          writeFileSync(join(request.cwd, "built.txt"), "built\n");
+          return { subject: "feat: build it", artifact: "Built." };
+        }),
+      }),
+    ).rejects.toThrow("the check changed the worktree");
+    const worktree = realpathSync(join(repo.dir, ".claude", "worktrees", "drift-order"));
+    expect(git(worktree, ["rev-parse", "HEAD"])).toBe(repo.sha);
+    expect(db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 0 });
+    db.close();
+  });
+
+  test("refuses a turn that left a repository nested in the worktree, before any git runs in it", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-nested-");
+    const { repo, operator } = orderAtBuild(db, "nested-order", [
+      { title: "Build the result", outcome: "The requested result is verified." },
+    ]);
+    const fired = join(dimHome, "fired");
+
+    await expect(
+      runOrderBuildLive(db, "nested-order", operator.name, {
+        dir: repo.dir,
+        env: { DIM_HOME: dimHome },
+        checkSandbox: confiningCheckSandbox(),
+        adapter: builderTurn((request) => {
+          const nested = join(request.cwd, "vendor", "planted");
+          mkdirSync(nested, { recursive: true });
+          git(nested, ["init", "-q"]);
+          git(nested, [
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@e",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "x",
+          ]);
+          git(nested, ["config", "core.fsmonitor", `touch ${fired}`]);
+          return { subject: "feat: build it", artifact: "Built." };
+        }),
+      }),
+    ).rejects.toThrow("vendor/planted");
+    expect(existsSync(fired)).toBe(false);
+    expect(db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 0 });
+    db.close();
+  });
+
+  test("refuses a turn that left HEAD off the order's branch", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-detached-");
+    const { repo, operator } = orderAtBuild(db, "detached-order", [
+      { title: "Build the result", outcome: "The requested result is verified." },
+    ]);
+
+    await expect(
+      runOrderBuildLive(db, "detached-order", operator.name, {
+        dir: repo.dir,
+        env: { DIM_HOME: dimHome },
+        checkSandbox: confiningCheckSandbox(),
+        adapter: builderTurn((request) => {
+          git(request.cwd, ["checkout", "-q", "--detach"]);
+          writeFileSync(join(request.cwd, "built.txt"), "built\n");
+          return { subject: "feat: build it", artifact: "Built." };
+        }),
+      }),
+    ).rejects.toThrow("detached-order");
+    expect(db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 0 });
+    db.close();
+  });
+
+  test("runs a hook the repository keeps in its tree from the trunk's copy, not the builder's", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-hooks-");
+    const { repo, operator } = orderAtBuild(db, "hooks-order", [
+      { title: "Build the result", outcome: "The requested result is verified." },
+    ]);
+    const marker = join(dimHome, "hook-ran");
+    mkdirSync(join(repo.dir, ".husky"));
+    writeFileSync(join(repo.dir, ".husky", "commit-msg"), `#!/bin/sh\necho trunk > ${marker}\n`, {
+      mode: 0o755,
+    });
+    git(repo.dir, ["add", ".husky"]);
+    git(repo.dir, ["commit", "-q", "-m", "chore: add the project's hook"]);
+    git(repo.dir, ["config", "core.hooksPath", ".husky"]);
+    git(join(repo.dir, ".claude", "worktrees", "hooks-order"), ["merge", "-q", "--ff-only", "main"]);
+
+    await runOrderBuildLive(db, "hooks-order", operator.name, {
+      dir: repo.dir,
+      env: { DIM_HOME: dimHome },
+      checkSandbox: confiningCheckSandbox(),
+      adapter: builderTurn((request) => {
+        writeFileSync(join(request.cwd, ".husky", "commit-msg"), `#!/bin/sh\necho builder > ${marker}\n`, {
+          mode: 0o755,
+        });
+        writeFileSync(join(request.cwd, "built.txt"), "built\n");
+        return { subject: "feat: build it", artifact: "Built." };
+      }),
+    });
+
+    expect(readFileSync(marker, "utf8").trim()).toBe("trunk");
+    db.close();
+  });
+
+  test("records a renamed file by its plain paths", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-rename-");
+    const { repo, operator } = orderAtBuild(db, "rename-order", [
+      { title: "Build the result", outcome: "The requested result is verified." },
+    ]);
+    writeFileSync(join(repo.dir, "old.txt"), "content that stays the same\n");
+    git(repo.dir, ["add", "old.txt"]);
+    git(repo.dir, ["commit", "-q", "-m", "chore: add old.txt"]);
+    git(join(repo.dir, ".claude", "worktrees", "rename-order"), ["merge", "-q", "--ff-only", "main"]);
+
+    await runOrderBuildLive(db, "rename-order", operator.name, {
+      dir: repo.dir,
+      env: { DIM_HOME: dimHome },
+      checkSandbox: confiningCheckSandbox(),
+      adapter: builderTurn((request) => {
+        renameSync(join(request.cwd, "old.txt"), join(request.cwd, "né.txt"));
+        return { subject: "refactor: rename it", artifact: "Renamed." };
+      }),
+    });
+
+    expect(
+      db
+        .query<{ path: string }, []>("SELECT path FROM factory_order_file ORDER BY path")
+        .all()
+        .map((row) => row.path),
+    ).toEqual(["né.txt", "old.txt"]);
+    db.close();
+  });
+
+  test("refuses a commit subject that carries more than one line", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-subject-");
+    const { repo, operator } = orderAtBuild(db, "subject-order", [
+      { title: "Build the result", outcome: "The requested result is verified." },
+    ]);
+
+    await expect(
+      runOrderBuildLive(db, "subject-order", operator.name, {
+        dir: repo.dir,
+        env: { DIM_HOME: dimHome },
+        checkSandbox: confiningCheckSandbox(),
+        adapter: builderTurn((request) => {
+          writeFileSync(join(request.cwd, "built.txt"), "built\n");
+          return { subject: "feat: build it\n\nCo-authored-by: someone <x@y>", artifact: "Built." };
+        }),
+      }),
+    ).rejects.toThrow("one line");
+    expect(db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 0 });
+    db.close();
+  });
+
+  test("refuses a first turn whose builder committed on its own", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-first-");
+    const { repo, operator } = orderAtBuild(db, "first-order", [
+      { title: "Build the result", outcome: "The requested result is verified." },
+    ]);
+
+    await expect(
+      runOrderBuildLive(db, "first-order", operator.name, {
+        dir: repo.dir,
+        env: { DIM_HOME: dimHome },
+        checkSandbox: confiningCheckSandbox(),
+        adapter: builderTurn((request) => {
+          writeFileSync(join(request.cwd, "built.txt"), "built\n");
+          git(request.cwd, ["add", "built.txt"]);
+          git(request.cwd, ["commit", "-q", "-m", "feat: build it"]);
+          return { subject: "feat: build it", artifact: "Built." };
+        }),
+      }),
+    ).rejects.toThrow("leave changes uncommitted");
+    expect(db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 0 });
+    db.close();
+  });
+
+  test("keeps an incomplete final slice while giving the builder returned artifact feedback", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-return-");
+    const { repo, operator } = orderAtBuild(db, "returned-builder-order", [
       { title: "Finish the result", outcome: "The result is verified." },
     ]);
-    approveOrderPlan(db, "returned-builder-order", operator.name);
-    moveOrder(db, "returned-builder-order", "dim-station-build", operator.name);
+    const options = { dir: repo.dir, env: { DIM_HOME: dimHome }, checkSandbox: confiningCheckSandbox() };
     const builder = mintWorker(db, {
       role: "builder",
       parentWorker: operator.name,
@@ -266,7 +540,7 @@ describe("builder station", () => {
       db,
       "returned-builder-order",
       { command: "bun run verify", exitCode: 0, result: "green" },
-      builder.name,
+      operator.name,
     );
     recordOrderBuild(db, "returned-builder-order", "The initial Build artifact.", repo.sha, builder.name);
     appendOrderEvent(db, "returned-builder-order", {
@@ -281,17 +555,14 @@ describe("builder station", () => {
       "Explain the verification for the owner.",
     );
 
-    let brief = "";
-    expect(() =>
-      runOrderBuild(db, "returned-builder-order", operator.name, {
-        dir: repo.dir,
-        env: { DIM_HOME: home },
-        spawn: (argv) => {
-          brief = argv.find((argument) => argument.includes("factory order ")) ?? "";
-          throw new Error("harness unavailable");
-        },
+    const unavailable = unavailableHarness();
+    await expect(
+      runOrderBuildLive(db, "returned-builder-order", operator.name, {
+        ...options,
+        adapter: unavailable.adapter,
       }),
-    ).toThrow("harness unavailable");
+    ).rejects.toThrow("harness unavailable");
+    const brief = unavailable.brief();
     expect(brief).toContain("# Current slice");
     expect(brief).toContain("Finish the result: The result is verified.");
     expect(brief).toContain("# Returned Build artifact");
@@ -301,74 +572,35 @@ describe("builder station", () => {
     expect(brief).not.toContain("The code work is complete; revise only the artifact.");
     expect(db.query("SELECT count(*) AS n FROM factory_order_slice_completion").get()).toEqual({ n: 0 });
 
-    const outcome = runOrderBuild(db, "returned-builder-order", operator.name, {
-      dir: repo.dir,
-      env: { DIM_HOME: home },
-      spawn: (_argv, childEnv) => {
-        const resumedBuilder = bootstrapWorker(db, {
-          id: childEnv[ASSIGNMENT_ID_VAR] as string,
-          token: childEnv[ASSIGNMENT_TOKEN_VAR] as string,
-          sessionId: "returned-builder-session",
-        });
-        childEnv[WORKER_NAME_VAR] = resumedBuilder.name;
-        childEnv[WORKER_TOKEN_VAR] = resumedBuilder.token;
-        childEnv[WORKER_SESSION_VAR] = resumedBuilder.sessionId;
-        saveWorkerCredential(childEnv, resumedBuilder);
-        claimOrder(
-          db,
-          "returned-builder-order",
-          {
-            runId: "returned-build-run",
-            sessionId: resumedBuilder.sessionId,
-            station: "dim-station-build",
-            operatorWorker: operator.name,
-          },
-          resumedBuilder.name,
-          undefined,
-          repo.dir,
-        );
-        recordOrderBuild(
-          db,
-          "returned-builder-order",
-          "The revised Build artifact explains the verification.",
-          repo.sha,
-          resumedBuilder.name,
-        );
-        return { exitCode: 0 };
-      },
+    // A turn that changes nothing on top of the recorded commit is committed as nothing, and its
+    // check and artifact are recorded against that same commit.
+    const outcome = await runOrderBuildLive(db, "returned-builder-order", operator.name, {
+      ...options,
+      adapter: builderTurn(() => ({
+        subject: "feat: build it",
+        artifact: "The revised Build artifact explains the verification.",
+      })),
     });
+    expect(db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 1 });
     expect(db.query("SELECT count(*) AS n FROM factory_order_slice_completion").get()).toEqual({ n: 1 });
     expect(db.query("SELECT worker FROM factory_order_slice_completion").get()).toEqual({
       worker: outcome.builder,
     });
-    expect(db.query("SELECT revision FROM factory_order_build ORDER BY revision DESC LIMIT 1").get()).toEqual(
-      {
-        revision: 2,
-      },
-    );
+    expect(
+      db.query("SELECT revision, head_sha FROM factory_order_build ORDER BY revision DESC LIMIT 1").get(),
+    ).toEqual({ revision: 2, head_sha: repo.sha });
+
     returnOrderArtifact(db, "returned-builder-order", operator.name, "Match the actual worktree HEAD.");
     const laterCommit = Bun.spawnSync(
-      [
-        "git",
-        "-C",
-        outcome.worktree,
-        "-c",
-        "user.name=Test",
-        "-c",
-        "user.email=test@example.com",
-        "commit",
-        "--allow-empty",
-        "-m",
-        "fix: unrecorded head",
-      ],
+      ["git", "-C", outcome.worktree, "commit", "--allow-empty", "-m", "fix: unrecorded head"],
       { stdout: "pipe", stderr: "pipe" },
     );
     expect(laterCommit.success).toBe(true);
-    expect(() =>
-      runOrderBuild(db, "returned-builder-order", operator.name, {
-        dir: repo.dir,
-        env: { DIM_HOME: home },
-        spawn: () => {
+    const later = git(outcome.worktree, ["rev-parse", "HEAD"]);
+    await expect(
+      runOrderBuildLive(db, "returned-builder-order", operator.name, {
+        ...options,
+        adapter: builderTurn(() => {
           recordOrderBuild(
             db,
             "returned-builder-order",
@@ -376,23 +608,42 @@ describe("builder station", () => {
             repo.sha,
             outcome.builder,
           );
-          return { exitCode: 0 };
-        },
+          return "revised";
+        }),
       }),
-    ).toThrow("builder did not record worktree HEAD");
+    ).rejects.toThrow("builder did not record worktree HEAD");
+
+    returnOrderArtifact(db, "returned-builder-order", operator.name, "Record the check after that head.");
+    await expect(
+      runOrderBuildLive(db, "returned-builder-order", operator.name, {
+        ...options,
+        adapter: builderTurn(() => {
+          recordOrderCommit(db, "returned-builder-order", later, outcome.builder, "fix: unrecorded head");
+          recordOrderCheck(
+            db,
+            "returned-builder-order",
+            { command: "bun run verify", exitCode: 0, result: "green" },
+            outcome.builder,
+          );
+          recordOrderBuild(
+            db,
+            "returned-builder-order",
+            "Revision on the later head.",
+            later,
+            outcome.builder,
+          );
+          return "revised";
+        }),
+      }),
+    ).rejects.toThrow("the runner did not record a passing check after the latest commit");
+
     returnOrderArtifact(db, "returned-builder-order", operator.name, "Record an immutable commit ID.");
     recordOrderCommit(db, "returned-builder-order", "HEAD", outcome.builder, "fix: symbolic head");
-    recordOrderCheck(
-      db,
-      "returned-builder-order",
-      { command: "bun run verify", exitCode: 0, result: "green" },
-      outcome.builder,
-    );
-    expect(() =>
-      runOrderBuild(db, "returned-builder-order", operator.name, {
-        dir: repo.dir,
-        env: { DIM_HOME: home },
-        spawn: () => {
+    recordOrderCheck(db, "returned-builder-order", { command: "bun run verify", exitCode: 0 }, operator.name);
+    await expect(
+      runOrderBuildLive(db, "returned-builder-order", operator.name, {
+        ...options,
+        adapter: builderTurn(() => {
           recordOrderBuild(
             db,
             "returned-builder-order",
@@ -400,76 +651,29 @@ describe("builder station", () => {
             "HEAD",
             outcome.builder,
           );
-          return { exitCode: 0 };
-        },
+          return "revised";
+        }),
       }),
-    ).toThrow("builder did not record an immutable commit ID");
+    ).rejects.toThrow("builder did not record an immutable commit ID");
     db.close();
   });
 
-  test("returns answered review findings to the same builder for a new Build artifact", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
-    const repo = integratedRepo();
-    repos.push(repo.dir);
-    const home = mkdtempSync(join(tmpdir(), "dim-builder-review-rework-"));
-    homes.push(home);
-    writeFileSync(
-      join(home, "routing.json"),
-      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
-    );
-    const operator = mintWorker(db, { role: "operator", sessionId: "review-rework-operator" });
-    queueOrder(
-      db,
-      { id: "review-rework-order", project: "cniska/dim-factory", title: "Build this" },
-      operator.name,
-    );
-    claimOrder(
-      db,
-      "review-rework-order",
-      { runId: "plan-run", station: "dim-station-plan", operatorWorker: operator.name },
-      operator.name,
-      undefined,
-      repo.dir,
-    );
-    const planner = mintWorker(db, {
-      role: "planner",
-      parentWorker: operator.name,
-      sessionId: "review-rework-planner",
-    });
-    recordOrderPlan(db, "review-rework-order", "Build the requested result.", planner.name, [
+  test("returns answered review findings to the same builder for a new Build artifact", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-review-rework-");
+    const { repo, operator } = orderAtBuild(db, "review-rework-order", [
       { title: "Build the result", outcome: "The result is verified." },
     ]);
-    approveOrderPlan(db, "review-rework-order", operator.name);
-    moveOrder(db, "review-rework-order", "dim-station-build", operator.name);
+    const options = { dir: repo.dir, env: { DIM_HOME: dimHome }, checkSandbox: confiningCheckSandbox() };
 
-    const firstBuild = runOrderBuild(db, "review-rework-order", operator.name, {
-      dir: repo.dir,
-      env: { DIM_HOME: home },
-      spawn: (_argv, childEnv) => {
-        const builder = bootstrapWorker(db, {
-          id: childEnv[ASSIGNMENT_ID_VAR] as string,
-          token: childEnv[ASSIGNMENT_TOKEN_VAR] as string,
-          sessionId: "review-rework-builder-session",
-        });
-        childEnv[WORKER_NAME_VAR] = builder.name;
-        childEnv[WORKER_TOKEN_VAR] = builder.token;
-        childEnv[WORKER_SESSION_VAR] = builder.sessionId;
-        saveWorkerCredential(childEnv, builder);
-        claimOrder(
-          db,
-          "review-rework-order",
-          { runId: "first-build-run", station: "dim-station-build", operatorWorker: operator.name },
-          builder.name,
-          undefined,
-          repo.dir,
-        );
-        recordOrderCommit(db, "review-rework-order", repo.sha, builder.name, "feat: build it");
-        recordOrderCheck(db, "review-rework-order", { command: "bun run verify", exitCode: 0 }, builder.name);
-        recordOrderBuild(db, "review-rework-order", "Initial Build artifact.", repo.sha, builder.name);
-        return { exitCode: 0 };
-      },
+    const firstBuild = await runOrderBuildLive(db, "review-rework-order", operator.name, {
+      ...options,
+      adapter: builderTurn((request) => {
+        writeFileSync(join(request.cwd, "first.txt"), "first\n");
+        return { subject: "feat: build it", artifact: "Initial Build artifact." };
+      }),
     });
+    const first = git(firstBuild.worktree, ["rev-parse", "HEAD"]);
     approveOrderBuild(db, "review-rework-order", operator.name, "Build approved.");
     moveOrder(db, "review-rework-order", "dim-station-review", operator.name);
     const reviewer = mintWorker(db, {
@@ -480,7 +684,7 @@ describe("builder station", () => {
     const review = openOrderReview(
       db,
       "review-rework-order",
-      { reviewer: reviewer.name, baseSha: repo.sha, headSha: repo.sha },
+      { reviewer: reviewer.name, baseSha: repo.sha, headSha: first },
       reviewer.name,
     );
     const finding = raiseOrderFinding(
@@ -492,64 +696,21 @@ describe("builder station", () => {
     closeOrderReview(db, review.id, "closed", reviewer.name);
     answerOrderFinding(db, finding, { answer: "fixed" }, operator.name);
     moveOrder(db, "review-rework-order", "dim-station-build", operator.name);
-    const newCommit = Bun.spawnSync(
-      [
-        "git",
-        "-C",
-        firstBuild.worktree,
-        "-c",
-        "user.name=Test",
-        "-c",
-        "user.email=test@example.com",
-        "commit",
-        "--allow-empty",
-        "-m",
-        "fix: review finding",
-      ],
-      { stdout: "pipe", stderr: "pipe" },
-    );
-    expect(newCommit.success).toBe(true);
-    const head = Bun.spawnSync(["git", "-C", firstBuild.worktree, "rev-parse", "HEAD"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    })
-      .stdout.toString()
-      .trim();
 
     let brief = "";
-    const followup = runOrderBuild(db, "review-rework-order", operator.name, {
-      dir: repo.dir,
-      env: { DIM_HOME: home },
-      spawn: (argv) => {
-        brief = argv.find((argument) => argument.includes("factory order ")) ?? "";
-        claimOrder(
-          db,
-          "review-rework-order",
-          { runId: "followup-build-run", station: "dim-station-build", operatorWorker: operator.name },
-          firstBuild.builder,
-          undefined,
-          repo.dir,
-        );
-        recordOrderCheck(
-          db,
-          "review-rework-order",
-          { command: "bun run verify", exitCode: 0 },
-          firstBuild.builder,
-        );
+    const followup = await runOrderBuildLive(db, "review-rework-order", operator.name, {
+      ...options,
+      adapter: builderTurn((request) => {
+        brief = request.brief;
+        writeFileSync(join(request.cwd, "fix.txt"), "fix\n");
         expect(() => completeOrderBuildFollowup(db, "review-rework-order", firstBuild.builder)).toThrow(
           "no Build artifact after its latest Review",
         );
-        recordOrderCommit(db, "review-rework-order", head, firstBuild.builder, "fix: review finding");
-        recordOrderCheck(
-          db,
-          "review-rework-order",
-          { command: "bun run verify", exitCode: 0 },
-          firstBuild.builder,
-        );
-        recordOrderBuild(db, "review-rework-order", "Revised Build artifact.", head, firstBuild.builder);
-        return { exitCode: 0 };
-      },
+        return { subject: "fix: review finding", artifact: "Revised Build artifact." };
+      }),
     });
+    const head = git(followup.worktree, ["rev-parse", "HEAD"]);
+    expect(head).not.toBe(first);
     expect(brief).toContain("Count the actual order provenance.");
     expect(brief).toContain("Review findings");
     expect(followup.builder).toBe(firstBuild.builder);
@@ -558,58 +719,24 @@ describe("builder station", () => {
     });
     expect(
       db.query("SELECT revision, head_sha FROM factory_order_build ORDER BY revision DESC LIMIT 1").get(),
-    ).toEqual({
-      revision: 2,
-      head_sha: head,
-    });
+    ).toEqual({ revision: 2, head_sha: head });
     db.close();
   });
 
-  test("records a failed build when the configured harness cannot start", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
-    const repo = integratedRepo();
-    repos.push(repo.dir);
-    const home = mkdtempSync(join(tmpdir(), "dim-builder-failure-"));
-    homes.push(home);
-    writeFileSync(
-      join(home, "routing.json"),
-      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
-    );
-    const operator = mintWorker(db, { role: "operator", sessionId: "failed-build-operator" });
-    queueOrder(
-      db,
-      { id: "failed-builder-order", project: "cniska/dim-factory", title: "Fail this build" },
-      operator.name,
-    );
-    claimOrder(
-      db,
-      "failed-builder-order",
-      { runId: "failed-plan-run", station: "dim-station-plan", operatorWorker: operator.name },
-      operator.name,
-      undefined,
-      repo.dir,
-    );
-    const planner = mintWorker(db, {
-      role: "planner",
-      parentWorker: operator.name,
-      sessionId: "failed-build-operator/planner",
-    });
-    recordOrderPlan(db, "failed-builder-order", "## Outcome\n\nTry the build.", planner.name, [
+  test("records a failed build when the configured harness cannot start", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-failure-");
+    const { repo, operator } = orderAtBuild(db, "failed-builder-order", [
       { title: "Try the build", outcome: "The build result is verified." },
     ]);
-    approveOrderPlan(db, "failed-builder-order", operator.name);
-    moveOrder(db, "failed-builder-order", "dim-station-build", operator.name);
 
-    expect(() =>
-      runOrderBuild(db, "failed-builder-order", operator.name, {
+    await expect(
+      runOrderBuildLive(db, "failed-builder-order", operator.name, {
         dir: repo.dir,
-        env: { DIM_HOME: home },
-        spawn: () => {
-          throw new Error("harness unavailable");
-        },
+        env: { DIM_HOME: dimHome },
+        adapter: unavailableHarness().adapter,
       }),
-    ).toThrow("harness unavailable");
+    ).rejects.toThrow("harness unavailable");
 
     expect(
       db
@@ -626,42 +753,13 @@ describe("builder station", () => {
   });
 
   test("keeps the same builder identity after a failed build turn", async () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
-    const repo = integratedRepo();
-    repos.push(repo.dir);
-    const home = mkdtempSync(join(tmpdir(), "dim-builder-resume-"));
-    homes.push(home);
-    writeFileSync(
-      join(home, "routing.json"),
-      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
-    );
-    const operator = mintWorker(db, { role: "operator", sessionId: "builder-resume-operator" });
-    const nextOperator = mintWorker(db, { role: "operator", sessionId: "builder-resume-operator-2" });
-    const laterOperator = mintWorker(db, { role: "operator", sessionId: "builder-resume-operator-3" });
-    queueOrder(
-      db,
-      { id: "builder-resume-order", project: "cniska/dim-factory", title: "Retry this build" },
-      operator.name,
-    );
-    claimOrder(
-      db,
-      "builder-resume-order",
-      { runId: "plan-run", station: "dim-station-plan", operatorWorker: operator.name },
-      operator.name,
-      undefined,
-      repo.dir,
-    );
-    const planner = mintWorker(db, {
-      role: "planner",
-      parentWorker: operator.name,
-      sessionId: "builder-resume-operator/planner",
-    });
-    recordOrderPlan(db, "builder-resume-order", "## Outcome\n\nBuild the requested result.", planner.name, [
+    const db = database();
+    const dimHome = home("dim-builder-resume-");
+    const { repo, operator } = orderAtBuild(db, "builder-resume-order", [
       { title: "Build the result", outcome: "The requested result is verified." },
     ]);
-    approveOrderPlan(db, "builder-resume-order", operator.name);
-    moveOrder(db, "builder-resume-order", "dim-station-build", operator.name);
+    const nextOperator = mintWorker(db, { role: "operator", sessionId: "builder-resume-operator-2" });
+    const laterOperator = mintWorker(db, { role: "operator", sessionId: "builder-resume-operator-3" });
 
     const base = fakeHarness("crash");
     let starts = 0;
@@ -680,17 +778,17 @@ describe("builder station", () => {
         return base.resume(sessionId, request);
       },
     };
-    const env = {
-      DIM_HOME: home,
-      [WORKER_NAME_VAR]: operator.name,
-      [WORKER_TOKEN_VAR]: operator.token,
-      [WORKER_SESSION_VAR]: operator.sessionId,
-    };
+    const env = (worker: ReturnType<typeof mintWorker>) => ({
+      DIM_HOME: dimHome,
+      [WORKER_NAME_VAR]: worker.name,
+      [WORKER_TOKEN_VAR]: worker.token,
+      [WORKER_SESSION_VAR]: worker.sessionId,
+    });
 
     await expect(
       runOrderBuildLive(db, "builder-resume-order", operator.name, {
         dir: repo.dir,
-        env,
+        env: env(operator),
         adapter: fakeHarness("bootstrap-failure"),
       }),
     ).rejects.toThrow("worker bootstrap failed");
@@ -701,24 +799,14 @@ describe("builder station", () => {
     await expect(
       runOrderBuildLive(db, "builder-resume-order", nextOperator.name, {
         dir: repo.dir,
-        env: {
-          DIM_HOME: home,
-          [WORKER_NAME_VAR]: nextOperator.name,
-          [WORKER_TOKEN_VAR]: nextOperator.token,
-          [WORKER_SESSION_VAR]: nextOperator.sessionId,
-        },
+        env: env(nextOperator),
         adapter,
       }),
     ).rejects.toThrow("fake process crashed");
     await expect(
       runOrderBuildLive(db, "builder-resume-order", laterOperator.name, {
         dir: repo.dir,
-        env: {
-          DIM_HOME: home,
-          [WORKER_NAME_VAR]: laterOperator.name,
-          [WORKER_TOKEN_VAR]: laterOperator.token,
-          [WORKER_SESSION_VAR]: laterOperator.sessionId,
-        },
+        env: env(laterOperator),
         adapter,
       }),
     ).rejects.toThrow("fake process crashed");
@@ -763,42 +851,17 @@ describe("builder station", () => {
   });
 
   test("refuses a builder's next turn under another harness without failing the order", async () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
-    const repo = integratedRepo();
-    repos.push(repo.dir);
-    const home = mkdtempSync(join(tmpdir(), "dim-builder-harness-"));
-    homes.push(home);
+    const db = database();
+    const dimHome = home("dim-builder-harness-");
     writeFileSync(
-      join(home, "routing.json"),
+      join(dimHome, "routing.json"),
       '{ "codex": { "light": "a", "standard": "b", "deep": "c" }, "claude": { "light": "a", "standard": "b", "deep": "c" } }',
     );
-    const operator = mintWorker(db, { role: "operator", sessionId: "builder-harness-operator" });
-    queueOrder(
-      db,
-      { id: "harness-order", project: "cniska/dim-factory", title: "Stay on one harness" },
-      operator.name,
-    );
-    claimOrder(
-      db,
-      "harness-order",
-      { runId: "plan-run", station: "dim-station-plan", operatorWorker: operator.name },
-      operator.name,
-      undefined,
-      repo.dir,
-    );
-    const planner = mintWorker(db, {
-      role: "planner",
-      parentWorker: operator.name,
-      sessionId: "harness/planner",
-    });
-    recordOrderPlan(db, "harness-order", "## Outcome\n\nBuild it.", planner.name, [
+    const { repo, operator } = orderAtBuild(db, "harness-order", [
       { title: "Build it", outcome: "It is verified." },
     ]);
-    approveOrderPlan(db, "harness-order", operator.name);
-    moveOrder(db, "harness-order", "dim-station-build", operator.name);
     const env = {
-      DIM_HOME: home,
+      DIM_HOME: dimHome,
       [WORKER_NAME_VAR]: operator.name,
       [WORKER_TOKEN_VAR]: operator.token,
       [WORKER_SESSION_VAR]: operator.sessionId,
@@ -843,14 +906,6 @@ describe("builder station", () => {
     ).rejects.toThrow(
       "order harness-order builder runs under the claude harness; delegate it with --harness claude",
     );
-    expect(() =>
-      runOrderBuild(db, "harness-order", operator.name, {
-        dir: repo.dir,
-        env,
-        harness: "codex",
-        spawn: () => ({ exitCode: 0 }),
-      }),
-    ).toThrow("order harness-order builder runs under the claude harness; delegate it with --harness claude");
     expect(failures()).toEqual({ n: 1 });
     expect(working()).toEqual({ status: "working", run_id: null });
     db.close();

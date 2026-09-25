@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["subject", "artifact"],
+  "properties": {
+    "subject": { "type": "string", "minLength": 1, "pattern": "^[^\\r\\n]+$" },
+    "artifact": { "type": "string" }
+  }
+}

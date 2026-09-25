@@ -75,11 +75,16 @@ describe("worker failure explanations", () => {
       null,
     );
     expect(brief).toContain("Do not register or bootstrap another worker");
-    expect(brief).toContain("dim order commit order-1 --sha <latest-commit-sha>");
-    expect(brief).toContain("dim order check order-1 --command");
-    expect(brief).toContain("dim order build-artifact order-1 --body");
-    expect(brief).toContain("After the final slice, record one Build artifact for the whole order");
-    expect(brief).toContain("not the command transcript");
+    expect(brief).toContain("Leave every change uncommitted in the worktree");
+    expect(brief).toContain("Do not run git commit, git stash");
+    expect(brief).toContain("commits the worktree with the repository's own git identity and signing config");
+    expect(brief).toContain("Stay on the order's branch");
+    expect(brief).toContain('returning JSON `{"subject": "...", "artifact": "..."}`');
+    expect(brief).toContain("the Build artifact for the whole order when this turn finishes the final slice");
+    expect(brief).toContain("rather than the command transcript");
+    expect(brief).not.toContain("dim order commit");
+    expect(brief).not.toContain("dim order check");
+    expect(brief).not.toContain("dim order build-artifact");
   });
 
   test("includes the prior failed attempt when the builder resumes", () => {
@@ -92,12 +97,12 @@ describe("worker failure explanations", () => {
       { id: 1, ordinal: 1, title: "Build it", outcome: "The result is verified." },
       null,
       undefined,
-      "The builder did not record a passing check: bun run verify exited 1.",
+      "bun run verify exited 1 in the check sandbox.",
     );
 
     expect(brief).toContain("# Previous failed Build attempt");
     expect(brief).toContain("bun run verify exited 1");
-    expect(brief).toContain("Continue from this feedback and record fresh passing evidence");
+    expect(brief).toContain("Continue from this feedback and leave the worktree passing the declared check");
   });
 
   test("keeps the harness explanation beside the failure", () => {

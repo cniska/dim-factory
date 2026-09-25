@@ -171,7 +171,6 @@ describe("order command", () => {
     approveOrderPlan(database, "order-1", operator);
     moveOrder(database, "order-1", "dim-station-build", operator);
 
-    expect(() => runOrderCommand(database, ["build", "order-1", "--harness", "claude"])).toThrow(noClaudeMap);
     await expect(
       runOrderCommandLive(database, ["build", "order-1", "--harness", "claude"], null, trunk.dir, env),
     ).rejects.toThrow('{ "claude": {');
@@ -216,7 +215,7 @@ describe("order command", () => {
 
     const refusal = `${operator} runs in no recorded harness session; delegate with --harness <codex|claude>`;
     for (const station of ["plan", "build", "review"]) {
-      expect(() => runOrderCommand(database, [station, "order-1"])).toThrow(refusal);
+      if (station !== "build") expect(() => runOrderCommand(database, [station, "order-1"])).toThrow(refusal);
       await expect(runOrderCommandLive(database, [station, "order-1"], null, trunk.dir, env)).rejects.toThrow(
         refusal,
       );
@@ -229,9 +228,11 @@ describe("order command", () => {
     runOrderCommand(database, add);
 
     for (const station of ["plan", "build", "review"]) {
-      expect(() => runOrderCommand(database, [station, "order-1", "--harness", "gemini"])).toThrow(
-        "gemini: unsupported harness; supported harnesses: codex, claude",
-      );
+      if (station !== "build") {
+        expect(() => runOrderCommand(database, [station, "order-1", "--harness", "gemini"])).toThrow(
+          "gemini: unsupported harness; supported harnesses: codex, claude",
+        );
+      }
       await expect(
         runOrderCommandLive(database, [station, "order-1", "--harness", "gemini"], null, trunk.dir, env),
       ).rejects.toThrow("gemini: unsupported harness; supported harnesses: codex, claude");

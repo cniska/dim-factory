@@ -3,15 +3,15 @@ import { reachesTrunk, trunkBranch } from "./trunk";
 
 /** How the commits ended up on the trunk. Not a state anything is gated on — the trunk
  *  itself is what `stop completed` reads — only what a caller reports back. */
-export type ShipOutcome = { landed: "already" | "fast_forward" | "merged" };
+export type ShipOutcome = { landed: "already" | "fast_forward" };
 
 export type ShipRefusalCode =
   | "ship_no_trunk"
   | "ship_wrong_head"
   | "ship_dirty_trunk"
   | "ship_no_branch"
+  | "ship_not_fast_forward"
   | "ship_unsigned"
-  | "ship_conflict"
   | "ship_not_landed";
 
 /** Carries a code because a caller deciding which condition failed must not match on prose. */
@@ -42,9 +42,9 @@ function primaryCheckout(dir: string): string {
 }
 
 /**
- * Lands `branch`'s commits on the repo's trunk without rewriting them: a fast-forward
- * where one reaches, an ordinary merge commit otherwise, and never a rebase or a squash,
- * since either would give the order's commits a new sha and fail their own completion gate.
+ * Lands `branch`'s commits on the repo's trunk by fast-forward only, so the trunk's history stays
+ * linear and every commit lands with the sha the order recorded; a branch the trunk has moved past
+ * is refused, to be rebased first.
  *
  * `branch` is always the branch to land — never read off any HEAD, so calling this from
  * the trunk checkout itself cannot be mistaken for shipping the trunk into itself.
@@ -82,38 +82,46 @@ export function shipToTrunk(cwd: string, branch: string, shas: string[]): ShipOu
     );
   }
 
-  if (!git(root, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]).success) {
+  // Read once, as a sha: a bare name can resolve to a tag first, and a ref read again later can
+  // have moved, so everything checked below is the one commit the trunk is moved to.
+  const tip = git(root, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
+  if (!tip.success) {
     throw new ShipRefusal("ship_no_branch", `${root} has no branch named ${branch} to ship`);
   }
 
-  // Every commit the merge would bring, recorded or not, since a branch can carry commits no
-  // order recorded; verified against the signers git is configured to trust.
-  const landing = git(root, ["rev-list", `refs/heads/${trunk.name}..refs/heads/${branch}`]);
-  if (!landing.success) {
-    throw new ShipRefusal("ship_unsigned", `cannot list what ${branch} would land: ${landing.out}`);
-  }
-  const unsigned = landing.out
-    .split("\n")
-    .filter(Boolean)
-    .filter((sha) => !git(root, ["verify-commit", sha]).success);
-  if (unsigned.length > 0) {
+  if (!git(root, ["merge-base", "--is-ancestor", `refs/heads/${trunk.name}`, tip.out]).success) {
     throw new ShipRefusal(
-      "ship_unsigned",
-      `${branch} carries commits that do not verify as signed: ${unsigned.join(", ")}`,
+      "ship_not_fast_forward",
+      `${trunk.name} has moved past where ${branch} left it; rebase ${branch} onto ${trunk.name} before shipping`,
     );
   }
 
-  let outcome: ShipOutcome;
-  if (git(root, ["merge", "--ff-only", branch]).success) {
-    outcome = { landed: "fast_forward" };
-  } else {
-    const merge = git(root, ["merge", "--no-edit", branch]);
-    if (!merge.success) {
-      git(root, ["merge", "--abort"]);
-      throw new ShipRefusal("ship_conflict", `merging ${branch} into ${trunk.name} failed: ${merge.out}`);
+  // A repository that signs its commits holds every commit the fast-forward brings to that,
+  // recorded or not, since a branch can carry commits no order recorded.
+  if (git(root, ["config", "--bool", "commit.gpgsign"]).out === "true") {
+    const landing = git(root, ["rev-list", `refs/heads/${trunk.name}..${tip.out}`]);
+    if (!landing.success) {
+      throw new ShipRefusal("ship_unsigned", `cannot list what ${branch} would land: ${landing.out}`);
     }
-    outcome = { landed: "merged" };
+    const unsigned = landing.out
+      .split("\n")
+      .filter(Boolean)
+      .filter((sha) => !git(root, ["verify-commit", sha]).success);
+    if (unsigned.length > 0) {
+      throw new ShipRefusal(
+        "ship_unsigned",
+        `${root} signs its commits, and ${branch} carries some that do not verify: ${unsigned.join(", ")}`,
+      );
+    }
   }
+
+  if (!git(root, ["merge", "--ff-only", tip.out]).success) {
+    throw new ShipRefusal(
+      "ship_not_fast_forward",
+      `${branch} could not be fast-forwarded onto ${trunk.name}`,
+    );
+  }
+  const outcome: ShipOutcome = { landed: "fast_forward" };
 
   const unreached = shas.filter((sha) => reachesTrunk(root, sha).reach !== "reached");
   if (unreached.length > 0) {

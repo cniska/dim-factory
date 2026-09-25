@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { openDb } from "./db";
 import { claimOrder, queueOrder } from "./factory-order";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
-import { collectingMachine, integratedRepo } from "./fixtures.test-support";
+import { collectingMachine, declareCheck, integratedRepo } from "./fixtures.test-support";
 import { runOrderCommand, runOrderCommandLive } from "./order-command";
 import { dbPath, type Env } from "./paths";
 
@@ -22,29 +22,22 @@ function workerEnv(machine: Env, worker: { name: string; token: string; sessionI
   };
 }
 
-function harness(cli: string): string {
+function harness(): string {
   return `
 import { writeFileSync } from "node:fs";
 
+// The runner's check sandbox is \`codex sandbox ... -- <command>\`; this stands in for it by refusing
+// the canary write and running the check unconfined.
+if (Bun.argv[2] === "sandbox") {
+  const command = Bun.argv.slice(Bun.argv.indexOf("--") + 1);
+  if (command.join(" ").includes("check-canary-")) process.exit(1);
+  process.exit(Bun.spawnSync(command, { stdout: "inherit", stderr: "inherit" }).exitCode ?? 1);
+}
+
 const brief = Bun.argv.find((arg) => arg.includes("factory order ")) ?? "";
-const cli = ${JSON.stringify(cli)};
 const order = /factory order ([^\\s]+)/.exec(brief)?.[1];
 if (!order) process.exit(2);
 const role = brief.includes("planner") ? "planner" : brief.includes("builder") ? "builder" : "reviewer";
-const childEnv = { ...process.env, DIM_SESSION_ID: \`harness-\${role}-\${order}\` };
-
-function run(args) {
-  const result = Bun.spawnSync(["bun", cli, "order", ...args], {
-    cwd: process.cwd(),
-    env: childEnv,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  if (!result.success) {
-    console.error(result.stdout.toString(), result.stderr.toString());
-    process.exit(result.exitCode ?? 1);
-  }
-}
 
 const emit = (event) => process.stdout.write(JSON.stringify(event) + "\\n");
 
@@ -56,27 +49,8 @@ if (brief.includes("planner")) {
   const slice = /# Current slice\\s+(\\d+)\\./.exec(brief)?.[1] ?? "1";
   const file = "built-by-real-harness-" + slice + ".txt";
   writeFileSync(file, "slice " + slice + "\\n");
-  for (const args of [
-    ["add", file],
-    ["commit", "-m", "feat: real harness slice " + slice],
-  ]) {
-    const result = Bun.spawnSync(["git", ...args], { cwd: process.cwd(), stdout: "pipe", stderr: "pipe" });
-    if (!result.success) process.exit(result.exitCode ?? 1);
-  }
-  const sha = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: process.cwd(), stdout: "pipe" }).stdout.toString().trim();
-  run(["commit", order, "--sha", sha, "--subject", "feat: real harness slice " + slice]);
-  run(["file", order, "--path", file, "--added", "1", "--removed", "0"]);
-  run(["check", order, "--command", "true", "--exit", "0", "--result", "green"]);
-  if (slice === "2") {
-    run([
-      "build-artifact",
-      order,
-      "--body",
-      ${JSON.stringify("## Outcome\n\nThe requested queue flow is implemented across both slices.\n\n## Implementation\n\nThe factory now selects and reserves one ready order under its lock.\n\n## Why this shape\n\nReservation reuses the existing claim boundary, so selection and ownership cannot diverge.\n\n## Verification\n\nBoth slices recorded passing checks, and the final harness run completed successfully.\n\n## Owner attention\n\nThe wall remains outside this order.")},
-      "--head",
-      sha,
-    ]);
-  }
+  const artifact = slice === "2" ? ${JSON.stringify("## Outcome\n\nThe requested queue flow is implemented across both slices.\n\n## Implementation\n\nThe factory now selects and reserves one ready order under its lock.\n\n## Why this shape\n\nReservation reuses the existing claim boundary, so selection and ownership cannot diverge.\n\n## Verification\n\nBoth slices recorded passing checks, and the final harness run completed successfully.\n\n## Owner attention\n\nThe wall remains outside this order.")} : "";
+  emit({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify({ subject: "feat: real harness slice " + slice, artifact }) } });
 } else if (brief.includes("reviewer")) {
   emit({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify({ body: "## Outcome\\n\\nNo findings; the change is ready to advance.", findings: [] }) } });
 } else {
@@ -89,6 +63,7 @@ emit({ type: "turn.completed" });
 describe("headless factory loop", () => {
   test("runs an order through real configured station processes", async () => {
     const repo = integratedRepo();
+    const base = declareCheck(repo.dir);
     const machine = collectingMachine();
     roots.push(repo.dir, machine.dir);
     mkdirSync(machine.env.DIM_HOME as string, { recursive: true });
@@ -99,7 +74,7 @@ describe("headless factory loop", () => {
     const bin = join(machine.dir, "bin");
     mkdirSync(bin);
     const fakeCodex = join(bin, "codex");
-    writeFileSync(fakeCodex, `#!/usr/bin/env bun\n${harness(join(import.meta.dir, "cli.ts"))}`);
+    writeFileSync(fakeCodex, `#!/usr/bin/env bun\n${harness()}`);
     chmodSync(fakeCodex, 0o755);
     machine.env.PATH = `${bin}:${process.env.PATH ?? ""}`;
 
@@ -293,6 +268,40 @@ describe("headless factory loop", () => {
       { role: "planner", n: 1, ended: 0 },
       { role: "reviewer", n: 1, ended: 0 },
     ]);
+
+    const builder = db
+      .query<{ worker: string }, [string]>(
+        "SELECT worker FROM factory_order_worker WHERE order_id = ? AND role = 'builder'",
+      )
+      .get("headless-order")?.worker;
+    const git = (args: string[]) =>
+      Bun.spawnSync(["git", "-C", repo.dir, ...args], { stdout: "pipe", stderr: "pipe" });
+    const landed = git(["rev-list", "--reverse", `${base}..main`])
+      .stdout.toString()
+      .trim()
+      .split("\n");
+    expect(landed).toHaveLength(2);
+    expect(git(["rev-list", "--merges", "--count", "main"]).stdout.toString().trim()).toBe("0");
+    for (const sha of landed) {
+      expect(git(["verify-commit", sha]).success).toBe(true);
+      expect(git(["log", "-1", "--format=%an <%ae>", sha]).stdout.toString().trim()).toBe(
+        "Test <t@example.com>",
+      );
+    }
+    expect(
+      db
+        .query<{ worker: string }, [string]>(
+          "SELECT DISTINCT worker FROM factory_order_event WHERE order_id = ? AND kind = 'commit_created'",
+        )
+        .all("headless-order"),
+    ).toEqual([{ worker: builder ?? "" }]);
+    expect(
+      db
+        .query<{ worker: string }, [string]>(
+          "SELECT DISTINCT worker FROM factory_order_event WHERE order_id = ? AND kind = 'check_finished'",
+        )
+        .all("headless-order"),
+    ).toEqual([{ worker: operator.name }]);
     db.close();
   });
 });

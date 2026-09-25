@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { openOrderReview } from "./factory-order";
@@ -85,6 +85,32 @@ export function integratedRepo(): { dir: string; sha: string } {
   // The gate reads the trunk off this ref and nothing else writes it outside a clone.
   git(["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"]);
   return { dir, sha: git(["rev-parse", "HEAD"]).stdout.toString().trim() };
+}
+
+/** Commits a `package.json` declaring `verify` as the repo's check, and returns the new trunk sha. */
+export function declareCheck(dir: string, script = "true"): string {
+  const git = (args: string[]) => Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe" });
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ scripts: { verify: script } }));
+  // The lock file is what names bun as the runner; without one the script declares no command.
+  writeFileSync(join(dir, "bun.lock"), "");
+  git(["add", "package.json", "bun.lock"]);
+  git(["commit", "-q", "-m", "chore: declare the check"]);
+  return git(["rev-parse", "HEAD"]).stdout.toString().trim();
+}
+
+let checkSandboxScript: string | undefined;
+
+/**
+ * A stand-in for the check sandbox, which cannot run nested inside the one a worker's suite runs
+ * in: it refuses any command naming a check canary and runs everything else unconfined.
+ */
+export function confiningCheckSandbox(): string[] {
+  if (!checkSandboxScript) {
+    checkSandboxScript = join(mkdtempSync(join(tmpdir(), "dim-check-sandbox-")), "sandbox");
+    writeFileSync(checkSandboxScript, '#!/bin/sh\ncase "$*" in *check-canary-*) exit 1 ;; esac\nexec "$@"\n');
+    chmodSync(checkSandboxScript, 0o755);
+  }
+  return [checkSandboxScript];
 }
 
 /** A commit on a branch of that repo, real but never merged into its trunk. */

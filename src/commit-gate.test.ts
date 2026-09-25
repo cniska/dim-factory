@@ -267,7 +267,15 @@ describe("the check gate", () => {
   // the committing repo's index; the worktree suite failed exactly this way.
   test("clears git's own environment before running the check", () => {
     const script = preCommitScript(["cniska"]);
-    for (const v of ["GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE", "GIT_OBJECT_DIRECTORY"]) {
+    for (const v of [
+      "GIT_DIR",
+      "GIT_INDEX_FILE",
+      "GIT_WORK_TREE",
+      "GIT_OBJECT_DIRECTORY",
+      "GIT_AUTHOR_NAME",
+      "GIT_AUTHOR_EMAIL",
+      "GIT_AUTHOR_DATE",
+    ]) {
       expect(script).toContain(v);
     }
     expect(script.indexOf("unset GIT_DIR")).toBeLessThan(script.indexOf('eval "$check"'));

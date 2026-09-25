@@ -110,8 +110,8 @@ check=$(dim check-command 2>/dev/null || true)
 [ -n "$check" ] || exit 0
 
 # Git exports these to a hook, and a check that runs git itself would inherit
-# the committing repo's index and object store instead of its own.
-unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+# the committing repo's index, object store and author instead of its own.
+unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE
 
 echo "pre-commit: $check" >&2
 if ! eval "$check" >&2; then

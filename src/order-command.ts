@@ -34,12 +34,13 @@ import { readFlags, requiredFlag } from "./flags";
 import { HARNESSES, type HarnessName, parseHarness } from "./harness-name";
 import { requireCurrentHooks } from "./hooks";
 import { recordedHarness } from "./operator-harness";
-import { runOrderBuild, runOrderBuildLive } from "./order-build";
+import { runOrderBuildLive } from "./order-build";
 import { isOrderLine, ORDER_LINES } from "./order-line";
 import { runOrderPlan, runOrderPlanLive } from "./order-plan";
 import { heldOrders, readyOrders } from "./order-ready";
 import { runOrderReview, runOrderReviewLive } from "./order-review";
 import type { Env } from "./paths";
+import type { ShipOutcome } from "./ship";
 import { resolveAssignedWorker } from "./worker-assignment";
 import { removeWorktree, repoRoot } from "./wt-command";
 
@@ -278,10 +279,9 @@ const EVIDENCE: Record<string, Evidence> = {
   },
 };
 
-const SHIP_OUTCOME_TEXT: Record<string, string> = {
+const SHIP_OUTCOME_TEXT: Record<ShipOutcome["landed"], string> = {
   already: "already on the trunk",
   fast_forward: "fast-forwarded onto the trunk",
-  merged: "merged onto the trunk",
 };
 
 function ship(
@@ -447,11 +447,6 @@ export function runOrderCommand(
     assertOperator(db, worker, "delegate planning");
     const outcome = runOrderPlan(db, orderId, { dir: cwd, env, harness });
     return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;
-  }
-  if (command === "build") {
-    const harness = selectedHarness(db, flags(rest, ["--harness"]), worker);
-    const outcome = runOrderBuild(db, orderId, worker, { dir: cwd, env, harness });
-    return `${orderId} building started by ${outcome.builder}`;
   }
   if (command === "approve") {
     const station = db
