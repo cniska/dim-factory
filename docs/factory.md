@@ -168,6 +168,8 @@ fact.
 `dim q factory-analytics [order-id]` derives retry counts and attempt outcomes,
 hold duration, provenance, lifecycle outcomes, delivery versus integration,
 execution attribution, owner verdicts, and schedule behavior from those records.
+With an order ID, schedule counts include invocations that selected a matching
+order; provenance counts queued events carrying a provenance object.
 Its denominator names the first-party tables read, and an empty history is
 reported as absence rather than a stored zero. `dim q schedule-history` reads
 each schedule invocation separately, including selected orders and dispatch

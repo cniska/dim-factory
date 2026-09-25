@@ -1402,6 +1402,11 @@ const factoryAnalytics: Query = {
       return clauses.length === 0 ? "" : ` WHERE ${clauses.join(" AND ")}`;
     };
     const orderEventParams = (kind?: string): string[] => (kind ? [kind, ...(arg ? [arg] : [])] : params);
+    const scheduleScope = arg
+      ? " WHERE EXISTS (SELECT 1 FROM json_each(factory_schedule_invocation.selected_order_ids) selected WHERE selected.value LIKE ? || '%')"
+      : "";
+    const scheduleWhere = (predicate: string): string =>
+      `${scheduleScope ? `${scheduleScope} AND ` : " WHERE "}${predicate}`;
     const metric = (name: string, value: number): Record<string, unknown> => ({ metric: name, value });
     const rows: Record<string, unknown>[] = [];
     const attempts = scalar(
@@ -1443,7 +1448,7 @@ const factoryAnalytics: Query = {
         "provenance_events",
         scalar(
           db,
-          `SELECT count(*) AS n FROM factory_order_event${orderEvents("queued")} AND json_extract(evidence, '$.provenance') IS NOT NULL`,
+          `SELECT count(*) AS n FROM factory_order_event${orderEvents("queued")} AND EXISTS (SELECT 1 FROM json_each(factory_order_event.evidence))`,
           ...orderEventParams("queued"),
         ),
       ),
@@ -1485,18 +1490,33 @@ const factoryAnalytics: Query = {
       rows.push(metric(`worker_execution:${row.attribution}`, Number(row.n)));
     }
     rows.push(
-      metric("schedule_evaluations", scalar(db, "SELECT count(*) AS n FROM factory_schedule_invocation")),
+      metric(
+        "schedule_evaluations",
+        scalar(db, `SELECT count(*) AS n FROM factory_schedule_invocation${scheduleScope}`, ...params),
+      ),
       metric(
         "schedule_due",
-        scalar(db, "SELECT count(*) AS n FROM factory_schedule_invocation WHERE due = 1"),
+        scalar(
+          db,
+          `SELECT count(*) AS n FROM factory_schedule_invocation${scheduleWhere("due = 1")}`,
+          ...params,
+        ),
       ),
       metric(
         "schedule_dispatched",
-        scalar(db, "SELECT count(*) AS n FROM factory_schedule_invocation WHERE dispatched = 1"),
+        scalar(
+          db,
+          `SELECT count(*) AS n FROM factory_schedule_invocation${scheduleWhere("dispatched = 1")}`,
+          ...params,
+        ),
       ),
       metric(
         "schedule_dispatch_failures",
-        scalar(db, "SELECT count(*) AS n FROM factory_schedule_invocation WHERE outcome = 'failed'"),
+        scalar(
+          db,
+          `SELECT count(*) AS n FROM factory_schedule_invocation${scheduleWhere("outcome = 'failed'")}`,
+          ...params,
+        ),
       ),
     );
     return {

@@ -15,12 +15,14 @@ describe("factory analytics", () => {
     db.run(
       `INSERT INTO factory_order_event (order_id, ts, kind, evidence)
        VALUES ('order-analytics', ?, 'queued', ?),
+              ('order-analytics', ?, 'queued', '{}'),
               ('order-analytics', ?, 'hold_set', '{"hold":"approval"}'),
               ('order-analytics', ?, 'hold_released', '{"hold":null}'),
               ('order-analytics', ?, 'completed', '{}')`,
       [
         "2026-09-18T09:00:00.000Z",
-        '{"provenance":"issue-123"}',
+        '{"source":"issue-123"}',
+        "2026-09-18T09:01:00.000Z",
         "2026-09-18T09:02:00.000Z",
         "2026-09-18T09:05:00.000Z",
         "2026-09-18T09:10:00.000Z",
@@ -61,7 +63,10 @@ describe("factory analytics", () => {
       `INSERT INTO factory_schedule_invocation
          (schedule_id, evaluated_at, due, dispatched, selected_order_ids, outcome)
        VALUES ('schedule-analytics', '2026-09-18T09:01:00.000Z', 1, 1, '["order-analytics"]', 'dispatched'),
-              ('schedule-analytics', '2026-09-18T09:02:00.000Z', 1, 0, '["order-analytics"]', 'failed')`,
+              ('schedule-analytics', '2026-09-18T09:02:00.000Z', 1, 0, '["order-analytics"]', 'failed'),
+              ('schedule-analytics', '2026-09-18T09:03:00.000Z', 1, 1, '["another-order"]', 'dispatched'),
+              ('schedule-analytics', '2026-09-18T09:04:00.000Z', 1, 0, '["another-order"]', 'failed'),
+              ('schedule-analytics', '2026-09-18T09:05:00.000Z', 0, 0, '[]', 'not_due')`,
     );
 
     const result = findQuery("factory-analytics")?.run(db, { arg: "order-analytics" });
@@ -75,6 +80,8 @@ describe("factory analytics", () => {
     expect(metrics.get("integration:succeeded")).toBe(1);
     expect(metrics.get("delivery:succeeded")).toBe(1);
     expect(metrics.get("worker_execution:codex/gpt-test/standard")).toBe(2);
+    expect(metrics.get("schedule_evaluations")).toBe(2);
+    expect(metrics.get("schedule_due")).toBe(2);
     expect(metrics.get("schedule_dispatched")).toBe(1);
     expect(metrics.get("schedule_dispatch_failures")).toBe(1);
 
