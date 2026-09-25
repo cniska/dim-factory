@@ -7,3 +7,6 @@ dist/
 .claude/
 queue.json.lock*
 .queue-tmp-*
+# Creating an ONNX Runtime session writes this into the cwd under a Codex sandbox, and into
+# $TMPDIR outside one; nothing in node_modules or Bun names the file.
+:memory:.ses
