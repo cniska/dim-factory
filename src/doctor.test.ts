@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { devNull, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { codexConfigPath, planCodexTrust } from "./codex-trust";
@@ -11,6 +11,7 @@ import { scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
 import { installHooks } from "./hooks";
 import { dbPath, type Env } from "./paths";
 import { openReadOnly } from "./read-db";
+import { installSkill } from "./skill";
 import { sync } from "./sync";
 
 const roots: string[] = [];
@@ -54,6 +55,19 @@ function check(env: Env, name: string) {
 }
 
 describe("doctor", () => {
+  test("warns on a link to a skill that no longer ships", () => {
+    const env = seeded();
+    installSkill(env);
+    expect(check(env, "skill")?.state).toBe("ok");
+
+    const stale = join(env.HOME as string, ".codex", "skills", "dim-retired");
+    symlinkSync(join(dirname(import.meta.dir), "skills", "dim-retired"), stale);
+    const retired = check(env, "skill");
+    expect(retired?.state).toBe("warn");
+    expect(retired?.detail).toContain(stale);
+    expect(retired?.fix).toBe("dim install-skill --write");
+  });
+
   test("fails when retention is unset, because that deletes the sources", () => {
     const env = seeded();
     const claudeDir = join(env.HOME as string, ".claude");

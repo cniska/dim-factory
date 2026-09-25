@@ -15,7 +15,7 @@ import { isHostQualified } from "./remote-slug";
 import { RoutingError, readHarnessMap } from "./routing";
 import { planRules } from "./rules";
 import { SCHEMA_VERSION } from "./schema";
-import { planSkill } from "./skill";
+import { planSkill, retiredLinks } from "./skill";
 import { TOOLS } from "./tools";
 
 /**
@@ -332,13 +332,19 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
   checks.push(endReasons(hooks, since, judgeable, ended));
 
   const pendingLinks = planSkill(env).filter((p) => p.state !== "linked");
+  const retired = retiredLinks(env);
   checks.push(
-    pendingLinks.length === 0
+    pendingLinks.length === 0 && retired.length === 0
       ? { name: "skill", state: "ok", detail: "every skill linked for every tool" }
       : {
           name: "skill",
           state: "warn",
-          detail: `${pendingLinks.length} of ${planSkill(env).length} skill links missing`,
+          detail: [
+            ...(pendingLinks.length > 0
+              ? [`${pendingLinks.length} of ${planSkill(env).length} skill links missing`]
+              : []),
+            ...(retired.length > 0 ? [`links to skills that no longer ship: ${retired.join(", ")}`] : []),
+          ].join("; "),
           fix: "dim install-skill --write",
         },
   );

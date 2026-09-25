@@ -33,7 +33,7 @@ import { DEFAULT_MAX_ROWS, renderTable, rowsFromArgs } from "./render";
 import { routeReport } from "./routing";
 import { installRules, planRules } from "./rules";
 import { DEFAULT_WINDOW, windowFromArgs } from "./since";
-import { installSkill, planSkill, SKILL_NAMES } from "./skill";
+import { installSkill, planSkill, retiredLinks, SKILL_NAMES } from "./skill";
 import { ensureSpoolDirs } from "./spool";
 import { type RebuildReport, rebuild, type SyncReport, sync } from "./sync";
 import { trace } from "./trace";
@@ -302,7 +302,8 @@ function printRulesPlan(write: boolean): void {
 function printSkillPlan(write: boolean): void {
   const plans = planSkill();
   const pending = plans.filter((p) => p.state !== "linked");
-  if (pending.length === 0) {
+  const retired = retiredLinks();
+  if (pending.length === 0 && retired.length === 0) {
     console.log(`skills: ${SKILL_NAMES.length} already linked for every tool`);
     for (const plan of plans) console.log(`  ${plan.link}`);
     return;
@@ -311,8 +312,9 @@ function printSkillPlan(write: boolean): void {
     console.log(`${plan.link} -> ${plan.target}`);
     if (plan.state === "occupied") console.log("  something else is at that name; it would be moved aside");
   }
+  for (const link of retired) console.log(`${link}: its skill no longer ships; it would be removed`);
   if (!write) {
-    console.log(`\n${pending.length} to link. Re-run with --write to apply.`);
+    console.log(`\n${pending.length} to link, ${retired.length} to remove. Re-run with --write to apply.`);
     return;
   }
   installSkill();
@@ -320,6 +322,7 @@ function printSkillPlan(write: boolean): void {
     if (plan.state === "occupied") console.log(`previous version kept at ${plan.link}.dim-backup`);
     console.log(`linked ${plan.link}`);
   }
+  for (const link of retired) console.log(`removed ${link}`);
 }
 
 /**

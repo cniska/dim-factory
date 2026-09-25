@@ -66,6 +66,26 @@ describe("skill install", () => {
     expect(lstatSync(join(dir, "theirs")).isSymbolicLink()).toBe(true);
   });
 
+  test("install-skill --write retires a stale link when every current skill is already linked", () => {
+    const home = newHome();
+    try {
+      installSkill({ HOME: home });
+      const stale = join(home, ".codex", "skills", "dim-retired");
+      symlinkSync(join(resolve(import.meta.dir, "..", "skills"), "dim-retired"), stale);
+
+      const run = Bun.spawnSync(
+        [process.execPath, resolve(import.meta.dir, "cli.ts"), "install-skill", "--write"],
+        {
+          env: { ...process.env, HOME: home },
+        },
+      );
+      expect(run.exitCode).toBe(0);
+      expect(lstatSync(stale, { throwIfNoEntry: false })).toBeUndefined();
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   test("every skill it installs is one in this repo", () => {
     for (const name of SKILL_NAMES) {
       expect(existsSync(join(skillSourceDir(name), "SKILL.md"))).toBe(true);
