@@ -27,8 +27,6 @@ The planned factory assigns each queue item to one self-sufficient order that ru
 
 The order returns a delivered-product report containing the item and queue identity, station, worktree and branch, changed files, commit SHA, repo check and result, reviewer findings and resolutions, updated docs, and final status: completed, blocked, held or failed. A completed or stopped report includes the evidence the operator needs to land the work or stop at the stated boundary.
 
-Station transfers use the factory's `dim-handoff`. It requires strict `# Handoff — <item_id> — <item name>` and `## Next` headings and carries only the routing token. The ID is canonical and the name comes from the queue. The receiving station queries the order's station, worktree, branch, commits, checks, findings, docs and hold with `dim`; the handoff is not a session-resume document or a second order report.
-
 ## Report persistence
 
 The delivered-product report is persisted in the dim database so it remains queryable after the session rather than existing only in chat. `factory_order` is the current projection; `factory_order_event` and `factory_order_attempt` are append-only lifecycle ledgers; and the normalized evidence tables hold commits, changed files, checks, findings, updated documents and worker-environment reports. The record includes:

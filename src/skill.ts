@@ -23,7 +23,6 @@ export const SKILL_NAMES = [
   "dim-line-fix",
   "dim-station-plan",
   "dim-station-build",
-  "dim-handoff",
   "dim-station-review",
   "dim-factory",
   "dim-git",
