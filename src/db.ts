@@ -18,10 +18,15 @@ export class SchemaTooOldError extends Error {
  * new version itself once that re-read has returned: stamped here, a re-read
  * that threw would leave a database claiming a version its rows do not have,
  * and every later `sync` would pass the check and hit the same failure.
+ *
+ * The lock wait is set before the schema runs, because creating a missing table is a write another
+ * connection's lock can stand in front of. It is bounded so a lock held past it surfaces as
+ * `SQLITE_BUSY` rather than hanging the command; docs/design.md "Concurrency" says what it covers.
  */
-export function openDb(path: string, opts: { forRebuild?: boolean } = {}): Database {
+export function openDb(path: string, opts: { forRebuild?: boolean; busyTimeoutMs?: number } = {}): Database {
   mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path, { create: true });
+  db.run(`PRAGMA busy_timeout = ${opts.busyTimeoutMs ?? 5000}`);
   db.run("PRAGMA journal_mode = WAL");
   db.run("PRAGMA foreign_keys = ON");
   db.run(SCHEMA_SQL);

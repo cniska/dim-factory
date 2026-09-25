@@ -100,7 +100,7 @@ function release(path: string): void {
 }
 
 /**
- * Only sync writes the database, and never two at once. macOS ships no flock(1),
+ * Keeps sync, rebuild, embed and a ship from running at once. macOS ships no flock(1),
  * and the pid file is what makes the lock safe to run unattended: a killed run
  * leaves the directory behind, and without a pid to test, the scheduled agent
  * would fail every 15 minutes forever.
