@@ -71,10 +71,12 @@ const FACTORY_IDENTITY_VARS = [
  * An operator run from inside Claude Code exports its own session to every child, whatever
  * harness the child runs: its id, its messaging socket and token, and whether a person is
  * attending it. A worker holding those could post into the operator's unsandboxed session and
- * have its hooks filed under it. `CLAUDE_CODE_OAUTH_TOKEN` is a subscription login, as `claude
- * setup-token` issues it on a machine without a keychain, so it is kept.
+ * have its hooks filed under it. An operator run from inside Codex exports its thread id, which
+ * `dim operator` reads to pick a session, so a worker holding it would resolve as the operator. `CLAUDE_CODE_OAUTH_TOKEN` is a
+ * subscription login, as `claude setup-token` issues it on a machine without a keychain, so it
+ * is kept.
  */
-const OPERATOR_SESSION_VARS = ["CLAUDECODE", "CLAUDE_PID", "CLAUDE_EFFORT"];
+const OPERATOR_SESSION_VARS = ["CLAUDECODE", "CLAUDE_PID", "CLAUDE_EFFORT", "CODEX_THREAD_ID"];
 const SUBSCRIPTION_TOKEN_VAR = "CLAUDE_CODE_OAUTH_TOKEN";
 
 function operatorSessionVar(name: string): boolean {

@@ -53,7 +53,7 @@ function activeSession(db: Database, env: Record<string, string | undefined>, cw
       .map((session) => session.session_id),
   );
   const harnessSessions = new Set(
-    [env.CODEX_SESSION_ID, env.CLAUDE_SESSION_ID].filter((sessionId): sessionId is string =>
+    [env.CODEX_THREAD_ID, env.CLAUDE_CODE_SESSION_ID].filter((sessionId): sessionId is string =>
       Boolean(sessionId && sessions.has(sessionId)),
     ),
   );

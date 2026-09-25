@@ -83,7 +83,7 @@ describe("resolving the project's operator session", () => {
   test("resolves the sole active hook session instead of trusting a supplied session id", () => {
     const db = floor();
     const env = shell("hook-session");
-    env.CODEX_SESSION_ID = "spoofed-session";
+    env.CODEX_THREAD_ID = "spoofed-session";
 
     const printed = runOperatorCommand(db, [], env);
 
@@ -97,7 +97,7 @@ describe("resolving the project's operator session", () => {
   test("uses the supplied harness id to choose among active project sessions", () => {
     const db = floor();
     const env = shell("first-session");
-    env.CODEX_SESSION_ID = "first-session";
+    env.CODEX_THREAD_ID = "first-session";
     writeFileSync(
       join(toolSpoolDir("codex", env), "1770000000000000001-123.json"),
       JSON.stringify({
@@ -120,8 +120,8 @@ describe("resolving the project's operator session", () => {
     const db = floor();
     const env = shell("claude-session");
     const cwd = process.cwd();
-    env.CODEX_SESSION_ID = "codex-session";
-    env.CLAUDE_SESSION_ID = "claude-session";
+    env.CODEX_THREAD_ID = "codex-session";
+    env.CLAUDE_CODE_SESSION_ID = "claude-session";
     writeFileSync(
       join(toolSpoolDir("codex", env), "1770000000000000001-123.json"),
       JSON.stringify({ session_id: "another-session", hook_event_name: "SessionStart", cwd }),
@@ -139,7 +139,7 @@ describe("resolving the project's operator session", () => {
   test("keeps refusing when supplied harness ids do not identify an active project session", () => {
     const db = floor();
     const env = shell("first-session");
-    env.CODEX_SESSION_ID = "unmatched-session";
+    env.CODEX_THREAD_ID = "unmatched-session";
     writeFileSync(
       join(toolSpoolDir("codex", env), "1770000000000000001-123.json"),
       JSON.stringify({
@@ -193,12 +193,12 @@ describe("resolving the project's operator session", () => {
     const db = floor();
     const home = mkdtempSync(join(tmpdir(), "dim-worker-credential-"));
     homes.push(home);
-    const env = { DIM_HOME: join(home, "data"), CODEX_SESSION_ID: "session-reissue" };
+    const env = { DIM_HOME: join(home, "data"), CODEX_THREAD_ID: "session-reissue" };
     ensureSpoolDirs(env);
     writeFileSync(
       join(toolSpoolDir("codex", env), "1770000000000000000-123.json"),
       JSON.stringify({
-        session_id: env.CODEX_SESSION_ID,
+        session_id: env.CODEX_THREAD_ID,
         hook_event_name: "SessionStart",
         cwd: process.cwd(),
       }),
@@ -213,7 +213,7 @@ describe("resolving the project's operator session", () => {
       join(
         env.DIM_HOME,
         "worker-credentials",
-        `${createHash("sha256").update(env.CODEX_SESSION_ID).digest("hex")}.json`,
+        `${createHash("sha256").update(env.CODEX_THREAD_ID).digest("hex")}.json`,
       ),
     );
 

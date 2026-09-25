@@ -288,6 +288,7 @@ printf '%s\\n' "{\\"type\\":\\"result\\",\\"subtype\\":\\"success\\",\\"is_error
       "CLAUDE_EFFORT",
       "CLAUDE_CODE_SESSION_ID",
       "CLAUDE_CODE_MESSAGING_TOKEN",
+      "CODEX_THREAD_ID",
       "CLAUDE_CODE_OAUTH_TOKEN",
       "ANTHROPIC_API_KEY",
     ]
@@ -320,6 +321,7 @@ echo '{"type":"turn.completed"}'
       CLAUDE_EFFORT: "high",
       CLAUDE_CODE_SESSION_ID: "operator-session",
       CLAUDE_CODE_MESSAGING_TOKEN: "operator-messaging-token",
+      CODEX_THREAD_ID: "operator-thread",
       CLAUDE_CODE_OAUTH_TOKEN: "subscription",
       ANTHROPIC_API_KEY: "sk-ant",
     };
@@ -337,7 +339,7 @@ echo '{"type":"turn.completed"}'
             DIM_WORKER_ASSIGNMENT_TOKEN: "assignment-token",
           },
         };
-        const expected = `|||assignment-1|assignment-token||||||subscription|${harness === "codex" ? "sk-ant" : ""}`;
+        const expected = `|||assignment-1|assignment-token|||||||subscription|${harness === "codex" ? "sk-ant" : ""}`;
 
         expect((await runHarnessCommandLive(assigned, () => undefined)).output).toBe(expected);
         expect(runHarnessCommand(assigned).output).toBe(expected);
