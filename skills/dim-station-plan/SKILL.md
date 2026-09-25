@@ -38,6 +38,7 @@ The brief is these questions:
 
 - is every slice a cut that can be verified on its own, or does one of them only make sense once a later slice lands
 - does each slice name the repo's own task as its check, rather than a command assembled by hand
+- does the change imply an input or failure mode that no slice's test exercises
 - does the plan say what the record returned and what that removed, or does it read as though nothing was looked up
 - does anything here ask the owner a question one of the four queries could have answered
 
