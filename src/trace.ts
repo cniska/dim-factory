@@ -1,4 +1,4 @@
-import { closeDb, openDb } from "./db";
+import { openDb } from "./db";
 import { dbPath, type Env } from "./paths";
 import { type TraceEvent, writeTrace } from "./trace-store";
 
@@ -11,6 +11,8 @@ import { type TraceEvent, writeTrace } from "./trace-store";
  * the write alone. A failure is dropped on purpose — the sync agent holds the
  * write lock every fifteen minutes, and a trace must never fail the command it
  * traces — which is a degradation chosen here, not an error left unhandled.
+ * It closes without the checkpoint `closeDb` runs, which a read-only sandbox
+ * refuses and which belongs to the writers that fill the WAL.
  */
 export function trace(record: TraceEvent, env: Env = process.env): void {
   let db: ReturnType<typeof openDb> | undefined;
@@ -21,6 +23,6 @@ export function trace(record: TraceEvent, env: Env = process.env): void {
   } catch {
     // the degradation the docblock states
   } finally {
-    if (db) closeDb(db);
+    db?.close();
   }
 }

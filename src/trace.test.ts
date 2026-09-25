@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
@@ -97,6 +97,24 @@ describe("the diagnostic trace", () => {
 
     trace({ event: "query.completed", command: "q", name: "chain" }, env);
     expect(rows(env)).toHaveLength(1);
+  });
+
+  // A read-only sandbox leaves the database readable and nothing writable, and a write that has
+  // not been checkpointed yet leaves frames in the WAL for a close to fold back in.
+  test("closes without failing the command when the database cannot be written", () => {
+    const env = scratch();
+    const path = dbPath(env);
+    closeDb(openDb(path));
+    const writer = new Database(path);
+    writer.run("INSERT INTO schema_version (version) VALUES (0)");
+    const files = [path, `${path}-wal`, `${path}-shm`];
+    for (const file of files) chmodSync(file, 0o444);
+    try {
+      expect(() => trace({ event: "query.completed", command: "q", name: "search" }, env)).not.toThrow();
+    } finally {
+      for (const file of files) chmodSync(file, 0o644);
+      writer.close();
+    }
   });
 
   test("drops the row rather than failing the command it traces", () => {
