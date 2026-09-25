@@ -126,7 +126,7 @@ Symphony keeps the tracker's state and its own claim state apart, and says so ou
 | Claim reserves an issue "to prevent duplicate dispatch"; dispatch requires it is "not already in `running`" and "not already in `claimed`" | `dim order claim` refuses an order that is not `queued`, so the row is the reservation | Live, and the same shape |
 | One workspace per issue, named from its identifier and "reused across runs for the same issue" | Worktree, branch and order id are one string ([`glossary.md`](glossary.md)) | Live, and arrived at independently |
 | Workspace cleanup only "for terminal issues" | Nothing removes a worktree | `stop-removes-worktree` |
-| Reconcile before dispatch: refresh tracker state for every running issue, cancel what is no longer routable | Nothing checks whether a `working` order's worker still exists | `session-end-stops-orders`, reached from the other side |
+| Reconcile before dispatch: refresh tracker state for every running issue, cancel what is no longer routable | A worker is over when its process stops answering, and the runner cancels a run that goes silent ([`factory.md`](factory.md)) | Live |
 | `Stalled` when elapsed time passes `stall_timeout_ms`, distinct from `TimedOut` and `Failed` | One `failed` | Unbuilt; `wall-gaps` wants the same threshold for the board |
 | Retry backoff bounded by `max_retry_backoff_ms` | A skill says to stop after one order fails twice | `stuck-slice-counter` — a rule a mechanism does not hold |
 
