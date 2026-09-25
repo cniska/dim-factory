@@ -222,6 +222,58 @@ describe("rebuilding a database an older schema wrote", () => {
     db.close();
   });
 
+  test("first-party lifecycle records and diagnostics survive a rebuild together", () => {
+    const { db, env } = scratch();
+    db.run(
+      `INSERT INTO factory_order (id, project, title, status, created_at, updated_at)
+       VALUES ('order-history', 'cniska/dim-factory', 'Keep lifecycle history', 'working',
+               '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+    );
+    db.run(
+      "INSERT INTO factory_worker (name, role, token_digest, started_at, session_id) VALUES ('copper-1', 'builder', 'x', '2026-01-01T00:00:00Z', 'session-1')",
+    );
+    db.run(
+      `INSERT INTO factory_order_event (order_id, ts, kind, worker, evidence)
+       VALUES ('order-history', '2026-01-01T00:00:00Z', 'queued', 'copper-1', '{"provenance":"issue-1"}')`,
+    );
+    db.run(
+      `INSERT INTO factory_order_attempt
+         (order_id, run_id, worker, station, harness, model, tier, started_at, recorded_at, kind, outcome)
+       VALUES ('order-history', 'run-1', 'copper-1', 'build', 'codex', 'gpt-test', 'standard',
+               '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'started', 'running')`,
+    );
+    db.run(
+      "INSERT INTO factory_schedule (id, queue_id, interval_seconds, created_at, updated_at) VALUES ('schedule-history', 'queue', 60, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+    );
+    db.run(
+      `INSERT INTO factory_schedule_invocation
+         (schedule_id, evaluated_at, due, dispatched, selected_order_ids, worker, session_id, harness, model, tier, outcome)
+       VALUES ('schedule-history', '2026-01-01T00:01:00Z', 1, 1, '["order-history"]', 'copper-1', 'session-1', 'codex', 'gpt-test', 'standard', 'dispatched')`,
+    );
+    db.run(
+      `INSERT INTO factory_order_verdict (order_id, decision, grounds, worker, session_id, recorded_at)
+       VALUES ('order-history', 'approved', 'ready', 'copper-1', 'session-1', '2026-01-01T00:02:00Z')`,
+    );
+    db.run(
+      `INSERT INTO factory_order_delivery (order_id, kind, outcome, worker, session_id, recorded_at)
+       VALUES ('order-history', 'delivery', 'succeeded', 'copper-1', 'session-1', '2026-01-01T00:03:00Z')`,
+    );
+    db.run(
+      `INSERT INTO trace_event (ts, event, order_id, worker, session_id, fields)
+       VALUES ('2026-01-01T00:03:00Z', 'delivery.debug', 'order-history', 'copper-1', 'session-1', '{}')`,
+    );
+
+    rebuild(db, env);
+
+    expect(db.query("SELECT count(*) AS n FROM factory_order_event").get()).toEqual({ n: 1 });
+    expect(db.query("SELECT count(*) AS n FROM factory_order_attempt").get()).toEqual({ n: 1 });
+    expect(db.query("SELECT count(*) AS n FROM factory_schedule_invocation").get()).toEqual({ n: 1 });
+    expect(db.query("SELECT count(*) AS n FROM factory_order_verdict").get()).toEqual({ n: 1 });
+    expect(db.query("SELECT count(*) AS n FROM factory_order_delivery").get()).toEqual({ n: 1 });
+    expect(db.query("SELECT event FROM trace_event").all()).toEqual([{ event: "delivery.debug" }]);
+    db.close();
+  });
+
   test("a factory order keeps the words it was queued with", () => {
     const { db, env } = scratch();
     db.run(
