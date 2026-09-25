@@ -3,26 +3,54 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
 
-type HarnessProcessOptions = {
-  name: string;
-  argv(request: HarnessRequest): string[];
-  resumeArgv(providerSessionId: string, request: HarnessRequest): string[];
-  parse(line: string): HarnessEvent | HarnessEvent[] | undefined;
+export type ProcessEnvironment = Record<string, string | undefined>;
+
+/** Everything a harness's CLI needs to be run as a worker. */
+export type HarnessProcess = {
+  command: string;
+  args(request: HarnessRequest): string[];
+  resumeArgs(providerSessionId: string, request: HarnessRequest): string[];
+  /** Called once per run, so a parser may carry state across that run's lines. */
+  parser(): HarnessLineParser;
+  /** What this harness in particular must not inherit. */
+  environment?(inherited: ProcessEnvironment): ProcessEnvironment;
 };
+
+export type HarnessLineParser = (line: string) => HarnessEvent | HarnessEvent[] | undefined;
 
 const OUTPUT_POLL_INTERVAL_MS = 10;
 
-function normalize(parsed: HarnessEvent | HarnessEvent[] | undefined): HarnessEvent[] {
-  if (!parsed) return [];
-  if (Array.isArray(parsed)) return parsed;
-  return [parsed];
+export function commandLine(spec: HarnessProcess, request: HarnessRequest): string[] {
+  return [spec.command, ...spec.args(request)];
+}
+
+export function resumeCommandLine(
+  spec: HarnessProcess,
+  providerSessionId: string,
+  request: HarnessRequest,
+): string[] {
+  return [spec.command, ...spec.resumeArgs(providerSessionId, request)];
+}
+
+export function parseLines(parse: HarnessLineParser, lines: string[]): HarnessEvent[] {
+  return lines.flatMap((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return [];
+    const parsed = parse(trimmed);
+    if (!parsed) return [];
+    return Array.isArray(parsed) ? parsed : [parsed];
+  });
 }
 
 function terminal(event: HarnessEvent): boolean {
   return event.type === "run.completed" || event.type === "run.failed";
 }
 
-export function processHarness(options: HarnessProcessOptions): HarnessAdapter {
+/** `environment` builds what the child is started with; the caller owns what a worker may inherit. */
+export function processHarness(
+  spec: HarnessProcess,
+  environment: (request: HarnessRequest) => ProcessEnvironment,
+): HarnessAdapter {
   const run = async (argv: string[], request: HarnessRequest): Promise<HarnessRun> => {
     const directory = mkdtempSync(join(tmpdir(), "dim-harness-"));
     const stdoutPath = join(directory, "stdout");
@@ -35,7 +63,7 @@ export function processHarness(options: HarnessProcessOptions): HarnessAdapter {
       stderr = openSync(stderrPath, "w+");
       child = Bun.spawn(argv, {
         cwd: request.cwd,
-        env: { ...globalThis.process.env, ...request.env },
+        env: environment(request),
         stdin: "ignore",
         stdout,
         stderr,
@@ -46,6 +74,7 @@ export function processHarness(options: HarnessProcessOptions): HarnessAdapter {
       rmSync(directory, { recursive: true, force: true });
       throw error;
     }
+    const parse = spec.parser();
     let cancelled = false;
     let closed = false;
     const close = () => {
@@ -83,7 +112,7 @@ export function processHarness(options: HarnessProcessOptions): HarnessAdapter {
             lines.push(stdoutBuffer);
             stdoutBuffer = "";
           }
-          return lines.flatMap((line) => normalize(options.parse(line.trim())));
+          return parseLines(parse, lines);
         };
         const exited = child.exited.then((code) => ({ type: "exit" as const, code }));
         try {
@@ -140,8 +169,7 @@ export function processHarness(options: HarnessProcessOptions): HarnessAdapter {
     };
   };
   return {
-    name: options.name,
-    start: (request) => run(options.argv(request), request),
-    resume: (providerSessionId, request) => run(options.resumeArgv(providerSessionId, request), request),
+    start: (request) => run(commandLine(spec, request), request),
+    resume: (providerSessionId, request) => run(resumeCommandLine(spec, providerSessionId, request), request),
   };
 }

@@ -12,6 +12,7 @@ import {
   runHarnessCommandLive,
   runHarnessCommandResumeLive,
 } from "./harness-command";
+import type { HarnessName } from "./harness-name";
 import type { Role } from "./roles";
 import { route } from "./routing";
 import {
@@ -32,6 +33,7 @@ export type OrderWorker = {
   assignment: WorkerAssignment;
   worker?: string;
   providerSessionId?: string;
+  harness: HarnessName;
 };
 
 export type OrderStationName = "plan" | "build" | "review";
@@ -76,7 +78,13 @@ function prepareOrderStation<Station extends OrderStationName>(options: OrderSta
   if (options.requireReturnedArtifact && !returned) {
     throw new Error(`order ${options.orderId} has no returned ${options.station} artifact to revise`);
   }
-  const orderWorker = ensureOrderWorker(options.db, options.orderId, role, options.parentWorker);
+  const orderWorker = ensureOrderWorker(
+    options.db,
+    options.orderId,
+    role,
+    options.parentWorker,
+    options.harness,
+  );
   options.onPrepared?.(orderWorker, returned);
   const { model } = route(role, options.harness, options.env);
   const request = {
@@ -167,10 +175,11 @@ function readOrderWorker(db: Database, orderId: string, role: StationRole): Orde
         created_at: string;
         worker: string | null;
         provider_session_id: string | null;
+        harness: HarnessName;
       },
       [string, string]
     >(
-      `SELECT ow.assignment_id, a.parent_worker, a.role AS assignment_role, a.created_at,
+      `SELECT ow.assignment_id, a.parent_worker, a.role AS assignment_role, a.created_at, ow.harness,
               coalesce(ow.worker, a.accepted_worker) AS worker,
               coalesce(ow.provider_session_id, w.session_id) AS provider_session_id
        FROM factory_order_worker ow
@@ -192,7 +201,26 @@ function readOrderWorker(db: Database, orderId: string, role: StationRole): Orde
     },
     worker: row.worker ?? undefined,
     providerSessionId: row.provider_session_id ?? undefined,
+    harness: row.harness,
   };
+}
+
+/** A bound worker's provider session resumes only under the harness that started it. */
+function refuseHarnessSwitch(existing: OrderWorker | undefined, harness: HarnessName): void {
+  if (existing?.worker && existing.harness !== harness) {
+    throw new Error(
+      `order ${existing.orderId} ${existing.role} runs under the ${existing.harness} harness; delegate it with --harness ${existing.harness}`,
+    );
+  }
+}
+
+export function assertOrderWorkerHarness(
+  db: Database,
+  orderId: string,
+  role: StationRole,
+  harness: HarnessName,
+): void {
+  refuseHarnessSwitch(readOrderWorker(db, orderId, role), harness);
 }
 
 export function ensureOrderWorker(
@@ -200,28 +228,32 @@ export function ensureOrderWorker(
   orderId: string,
   role: StationRole,
   parentWorker: string,
+  harness: HarnessName,
   at = new Date().toISOString(),
 ): OrderWorker {
   const existing = readOrderWorker(db, orderId, role);
+  refuseHarnessSwitch(existing, harness);
   if (existing) {
-    if (existing.worker) {
-      return existing;
-    }
-    return {
-      ...existing,
-      assignment: renewWorkerAssignment(db, existing.assignment.id),
-    };
+    if (existing.worker) return existing;
+    return db.transaction(() => {
+      db.run("UPDATE factory_order_worker SET harness = ? WHERE order_id = ? AND role = ?", [
+        harness,
+        orderId,
+        role,
+      ]);
+      return { ...existing, harness, assignment: renewWorkerAssignment(db, existing.assignment.id) };
+    })();
   }
 
   return db.transaction(() => {
     const assignment = createWorkerAssignment(db, { parentWorker, role }, at);
     db.run(
       `INSERT INTO factory_order_worker
-       (order_id, role, assignment_id, created_at)
-       VALUES (?, ?, ?, ?)`,
-      [orderId, role, assignment.id, at],
+       (order_id, role, assignment_id, harness, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [orderId, role, assignment.id, harness, at],
     );
-    return { orderId, role, assignment };
+    return { orderId, role, assignment, harness };
   })();
 }
 

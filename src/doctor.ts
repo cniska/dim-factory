@@ -5,11 +5,14 @@ import { AGENT_LABEL, agentPlistPath } from "./agent";
 import { codexConfigPath, planCodexTrust, type TrustState } from "./codex-trust";
 import { installedOwners, planCommitGate, sharedHooksDir } from "./commit-gate";
 import { ConfigError } from "./config-error";
+import { harnessCommand } from "./harness-command";
+import { HARNESSES } from "./harness-name";
 import { type HookPlan, hookGaps } from "./hooks";
 import { readJsonc } from "./jsonc-file";
 import { dataDir, type Env, resolveHomeDir } from "./paths";
 import { unarmedCheckouts } from "./push-gate";
 import { isHostQualified } from "./remote-slug";
+import { RoutingError, readHarnessMap } from "./routing";
 import { planRules } from "./rules";
 import { SCHEMA_VERSION } from "./schema";
 import { planSkill } from "./skill";
@@ -194,6 +197,67 @@ function spool(env: Env): Health {
     state: waiting > 200 ? "warn" : "ok",
     detail: `${waiting} hook events written but not yet read`,
     fix: waiting > 200 ? "dim sync" : undefined,
+  };
+}
+
+/**
+ * A harness that is neither installed nor routed is one this machine does not use, and a
+ * station names its harness or inherits the operator's, so it is never started by surprise:
+ * the warnings are for one set up by half, and for a machine where no harness is set up.
+ */
+function harnesses(env: Env): Health {
+  const ready: string[] = [];
+  const gaps: string[] = [];
+  const repairs: string[] = [];
+  for (const harness of HARNESSES) {
+    const installed = Bun.which(harnessCommand(harness), { PATH: env.PATH ?? "" }) !== null;
+    let mapped: boolean;
+    try {
+      readHarnessMap(harness, env);
+      mapped = true;
+    } catch (error) {
+      if (error instanceof ConfigError) return unreadable("harnesses", error);
+      if (!(error instanceof RoutingError)) throw error;
+      if (error.kind !== "no-map") {
+        return {
+          name: "harnesses",
+          state: "fail",
+          detail: error.message,
+          fix: `repair ${error.path} by hand`,
+        };
+      }
+      mapped = false;
+    }
+    if (installed && mapped) ready.push(harness);
+    else if (installed) {
+      gaps.push(`${harness} is on PATH but routing.json has no ${harness} map`);
+      repairs.push(`add a ${harness} map to routing.json`);
+    } else if (mapped) {
+      gaps.push(`${harness} is mapped in routing.json but not on PATH`);
+      repairs.push(`install ${harness}, or remove its map`);
+    }
+  }
+  if (ready.length === 0 && gaps.length === 0) {
+    return {
+      name: "harnesses",
+      state: "warn",
+      detail: "no harness is ready, so no station can start a worker",
+      fix: "install codex or claude and map it in routing.json",
+    };
+  }
+  const readiness = ready.length > 0 ? `${ready.join(", ")} ready` : "no harness is ready";
+  if (gaps.length === 0) {
+    return {
+      name: "harnesses",
+      state: "ok",
+      detail: `${readiness}: each is on PATH and mapped in routing.json`,
+    };
+  }
+  return {
+    name: "harnesses",
+    state: "warn",
+    detail: `${readiness}; ${gaps.join("; ")}`,
+    fix: repairs.join("; "),
   };
 }
 
@@ -392,6 +456,7 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
 
   checks.push(retention(env));
   checks.push(spool(env));
+  checks.push(harnesses(env));
   const commits = scalar(db, "SELECT count(*) AS n FROM repo_commit");
   checks.push(
     commits === 0

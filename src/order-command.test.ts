@@ -3,13 +3,19 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openOrderReview } from "./factory-order";
+import { approveOrderPlan, moveOrder, openOrderReview, recordOrderPlan } from "./factory-order";
 import { pullStop } from "./factory-stop";
 import { assembleWallSnapshot } from "./factory-wall";
-import { mintWorker, newWorkerSession, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
+import {
+  mintWorker,
+  newWorkerSession,
+  resolveWorker,
+  WORKER_NAME_VAR,
+  WORKER_TOKEN_VAR,
+} from "./factory-worker";
 import { collectingMachine, integratedRepo, scratchEnv } from "./fixtures.test-support";
 import { hookConfigPath } from "./hooks";
-import { OrderCommandError, runOrderCommand as runCommand } from "./order-command";
+import { OrderCommandError, runOrderCommand as runCommand, runOrderCommandLive } from "./order-command";
 import type { Env } from "./paths";
 import { SCHEMA_SQL } from "./schema";
 import { TOOLS } from "./tools";
@@ -90,6 +96,7 @@ const add = [
 ];
 
 const claim = ["claim", "order-1", "--run", "run-1", "--station", "dim-station-build"];
+const planClaim = ["claim", "order-1", "--run", "run-1", "--station", "dim-station-plan"];
 
 function queued(database: Database): void {
   runOrderCommand(database, add);
@@ -119,6 +126,116 @@ describe("order command", () => {
     expect(() =>
       runOrderCommand(database, [...add.slice(0, 6), "--line", "unknown", ...add.slice(8)]),
     ).toThrow("unknown is not a line; one of feat, fix");
+  });
+
+  test("a delegation resolves its model through the harness it names", () => {
+    const database = db();
+    runOrderCommand(database, add);
+    runOrderCommand(database, planClaim);
+
+    expect(() => runOrderCommand(database, ["plan", "order-1", "--harness", "claude"])).toThrow(
+      expect.objectContaining({ kind: "no-map", message: expect.stringContaining('{ "claude": {') }),
+    );
+    expect(database.query("SELECT role, harness FROM factory_order_worker").all()).toEqual([
+      { role: "planner", harness: "claude" },
+    ]);
+  });
+
+  test("a build and a review resolve their models through the harness they name, live or not", async () => {
+    const noClaudeMap = expect.objectContaining({
+      kind: "no-map",
+      message: expect.stringContaining('{ "claude": {'),
+    });
+    const database = db();
+    queued(database);
+    runOrderCommand(database, claim);
+    runOrderCommand(database, ["commit", "order-1", "--sha", "abc123", "--subject", "feat: land it"]);
+
+    expect(() => runOrderCommand(database, ["review", "order-1", "--harness", "claude"])).toThrow(
+      noClaudeMap,
+    );
+    await expect(
+      runOrderCommandLive(database, ["review", "order-1", "--harness", "claude"], null, trunk.dir, env),
+    ).rejects.toThrow(noClaudeMap);
+
+    const operator = resolveWorker(database, env);
+    moveOrder(database, "order-1", "dim-station-plan", operator);
+    const planner = mintWorker(database, {
+      role: "planner",
+      parentWorker: operator,
+      sessionId: "planner-session",
+    });
+    recordOrderPlan(database, "order-1", "## Outcome\n\nBuild it.", planner.name, [
+      { title: "Build it", outcome: "It is verified." },
+    ]);
+    approveOrderPlan(database, "order-1", operator);
+    moveOrder(database, "order-1", "dim-station-build", operator);
+
+    expect(() => runOrderCommand(database, ["build", "order-1", "--harness", "claude"])).toThrow(noClaudeMap);
+    await expect(
+      runOrderCommandLive(database, ["build", "order-1", "--harness", "claude"], null, trunk.dir, env),
+    ).rejects.toThrow('{ "claude": {');
+    expect(database.query("SELECT role, harness FROM factory_order_worker ORDER BY role").all()).toEqual([
+      { role: "builder", harness: "claude" },
+      { role: "reviewer", harness: "claude" },
+    ]);
+  });
+
+  test("a delegation that names no harness runs under the one its operator is recorded in", async () => {
+    const database = db();
+    runOrderCommand(database, add);
+    runOrderCommand(database, planClaim);
+    const operator = resolveWorker(database, env);
+    const session = database
+      .query<{ session_id: string }, [string]>("SELECT session_id FROM factory_worker WHERE name = ?")
+      .get(operator)?.session_id;
+    mintWorker(database, { role: "builder", sessionId: "another-session" });
+    const recorded =
+      "INSERT INTO hook_event (tool, session_id, event, ts, payload) VALUES (?, ?, ?, ?, '{}')";
+    database.run(recorded, ["codex", "another-session", "session_start", "2025-12-31T00:00:00Z"]);
+    database.run(recorded, ["codex", session ?? "", "post_tool_use", "2025-12-31T00:00:00Z"]);
+    database.run(recorded, ["claude", session ?? "", "session_start", "2026-01-01T00:00:00Z"]);
+
+    for (const run of [
+      () => Promise.resolve().then(() => runOrderCommand(database, ["plan", "order-1"])),
+      () => runOrderCommandLive(database, ["plan", "order-1"], null, trunk.dir, env),
+    ]) {
+      await expect(run()).rejects.toThrow(
+        expect.objectContaining({ kind: "no-map", message: expect.stringContaining('{ "claude": {') }),
+      );
+    }
+    expect(database.query("SELECT role, harness FROM factory_order_worker").all()).toEqual([
+      { role: "planner", harness: "claude" },
+    ]);
+  });
+
+  test("a delegation that names no harness is refused when the record holds none for its operator", async () => {
+    const database = db();
+    runOrderCommand(database, add);
+    const operator = resolveWorker(database, env);
+
+    const refusal = `${operator} runs in no recorded harness session; delegate with --harness <codex|claude>`;
+    for (const station of ["plan", "build", "review"]) {
+      expect(() => runOrderCommand(database, [station, "order-1"])).toThrow(refusal);
+      await expect(runOrderCommandLive(database, [station, "order-1"], null, trunk.dir, env)).rejects.toThrow(
+        refusal,
+      );
+    }
+    expect(database.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 0 });
+  });
+
+  test("a delegation to a harness with no adapter is refused, live or not", async () => {
+    const database = db();
+    runOrderCommand(database, add);
+
+    for (const station of ["plan", "build", "review"]) {
+      expect(() => runOrderCommand(database, [station, "order-1", "--harness", "gemini"])).toThrow(
+        "gemini: unsupported harness; supported harnesses: codex, claude",
+      );
+      await expect(
+        runOrderCommandLive(database, [station, "order-1", "--harness", "gemini"], null, trunk.dir, env),
+      ).rejects.toThrow("gemini: unsupported harness; supported harnesses: codex, claude");
+    }
   });
 
   test("a claim moves it into the active column", () => {

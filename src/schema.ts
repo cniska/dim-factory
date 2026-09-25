@@ -18,11 +18,12 @@
 
 import { ATTEMPT_OUTCOMES_SQL, ORDER_EVENT_KINDS_SQL } from "./factory-events";
 import { ORDER_STATUSES_SQL } from "./factory-order";
+import { HARNESSES_SQL } from "./harness-name";
 import { ORDER_LINES_SQL } from "./order-line";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 57;
+export const SCHEMA_VERSION = 58;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -371,6 +372,10 @@ CREATE TABLE IF NOT EXISTS factory_order_worker (
   assignment_id        TEXT NOT NULL UNIQUE REFERENCES factory_worker_assignment(id),
   worker               TEXT UNIQUE REFERENCES factory_worker(name),
   provider_session_id  TEXT,
+  -- A provider session resumes only under the harness that started it. The default is
+  -- what a rebuild gives a row written before the column existed, when codex was the
+  -- only harness; every insert names its harness.
+  harness              TEXT NOT NULL DEFAULT 'codex' CHECK (harness IN (${HARNESSES_SQL})),
   created_at           TEXT NOT NULL,
   PRIMARY KEY (order_id, role),
   CHECK ((worker IS NULL) = (provider_session_id IS NULL))

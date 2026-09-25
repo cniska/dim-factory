@@ -273,3 +273,74 @@ describe("doctor", () => {
     }
   });
 });
+
+describe("harness readiness", () => {
+  function machine(binaries: string[], routing: string | null): Env {
+    const env = seeded();
+    const bin = join(newRoot(), "bin");
+    mkdirSync(bin);
+    for (const name of binaries) {
+      writeFileSync(join(bin, name), "#!/bin/sh\n");
+      execFileSync("chmod", ["+x", join(bin, name)]);
+    }
+    mkdirSync(env.DIM_HOME as string, { recursive: true });
+    if (routing) writeFileSync(join(env.DIM_HOME as string, "routing.json"), routing);
+    return { ...env, PATH: bin };
+  }
+  const MAP = '{ "light": "a", "standard": "b", "deep": "c" }';
+
+  test("names each harness a station can run under", () => {
+    const env = machine(["codex", "claude"], `{ "codex": ${MAP}, "claude": ${MAP} }`);
+
+    expect(check(env, "harnesses")).toEqual({
+      name: "harnesses",
+      state: "ok",
+      detail: "codex, claude ready: each is on PATH and mapped in routing.json",
+    });
+  });
+
+  test("names a harness that is installed and not routed, or routed and not installed", () => {
+    const env = machine(["codex", "claude"], `{ "codex": ${MAP} }`);
+
+    expect(check(env, "harnesses")).toMatchObject({
+      state: "warn",
+      detail: "codex ready; claude is on PATH but routing.json has no claude map",
+      fix: "add a claude map to routing.json",
+    });
+    expect(check(machine([], `{ "codex": ${MAP} }`), "harnesses")).toMatchObject({
+      state: "warn",
+      detail: "no harness is ready; codex is mapped in routing.json but not on PATH",
+      fix: "install codex, or remove its map",
+    });
+  });
+
+  test("warns when no harness is ready at all, since no station could start a worker", () => {
+    expect(check(machine([], null), "harnesses")).toEqual({
+      name: "harnesses",
+      state: "warn",
+      detail: "no harness is ready, so no station can start a worker",
+      fix: "install codex or claude and map it in routing.json",
+    });
+  });
+
+  test("fails on a routing.json no harness can be read from, and still reports every other check", () => {
+    for (const routing of ['{ "codex": ["a"] }', '{ "codex": ']) {
+      const env = machine(["codex"], routing);
+
+      expect(check(env, "harnesses")).toMatchObject({
+        state: "fail",
+        fix: `repair ${join(env.DIM_HOME as string, "routing.json")} by hand`,
+      });
+      expect(check(env, "spool")).toBeDefined();
+    }
+  });
+
+  test("leaves alone a harness that is neither installed nor routed", () => {
+    const env = machine(["codex"], `{ "codex": ${MAP} }`);
+
+    expect(check(env, "harnesses")).toMatchObject({
+      state: "ok",
+      detail: expect.stringContaining("codex ready"),
+    });
+  });
+});

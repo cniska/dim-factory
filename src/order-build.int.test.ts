@@ -761,4 +761,90 @@ describe("builder station", () => {
     ).toEqual({ parent_worker: operator.name });
     db.close();
   });
+
+  test("refuses a builder's next turn under another harness without failing the order", async () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const repo = integratedRepo();
+    repos.push(repo.dir);
+    const home = mkdtempSync(join(tmpdir(), "dim-builder-harness-"));
+    homes.push(home);
+    writeFileSync(
+      join(home, "routing.json"),
+      '{ "codex": { "light": "a", "standard": "b", "deep": "c" }, "claude": { "light": "a", "standard": "b", "deep": "c" } }',
+    );
+    const operator = mintWorker(db, { role: "operator", sessionId: "builder-harness-operator" });
+    queueOrder(
+      db,
+      { id: "harness-order", project: "cniska/dim-factory", title: "Stay on one harness" },
+      operator.name,
+    );
+    claimOrder(
+      db,
+      "harness-order",
+      { runId: "plan-run", station: "dim-station-plan", operatorWorker: operator.name },
+      operator.name,
+      undefined,
+      repo.dir,
+    );
+    const planner = mintWorker(db, {
+      role: "planner",
+      parentWorker: operator.name,
+      sessionId: "harness/planner",
+    });
+    recordOrderPlan(db, "harness-order", "## Outcome\n\nBuild it.", planner.name, [
+      { title: "Build it", outcome: "It is verified." },
+    ]);
+    approveOrderPlan(db, "harness-order", operator.name);
+    moveOrder(db, "harness-order", "dim-station-build", operator.name);
+    const env = {
+      DIM_HOME: home,
+      [WORKER_NAME_VAR]: operator.name,
+      [WORKER_TOKEN_VAR]: operator.token,
+      [WORKER_SESSION_VAR]: operator.sessionId,
+    };
+    const failures = () =>
+      db
+        .query("SELECT count(*) AS n FROM factory_order_event WHERE order_id = ? AND kind = 'failed'")
+        .get("harness-order");
+
+    await expect(
+      runOrderBuildLive(db, "harness-order", operator.name, {
+        dir: repo.dir,
+        env,
+        harness: "claude",
+        adapter: fakeHarness("crash"),
+      }),
+    ).rejects.toThrow("fake process crashed");
+    expect(failures()).toEqual({ n: 1 });
+    claimOrder(
+      db,
+      "harness-order",
+      { runId: "retake-run", station: "dim-station-build", operatorWorker: operator.name },
+      operator.name,
+      undefined,
+      repo.dir,
+    );
+    moveOrder(db, "harness-order", "dim-station-build", operator.name);
+    const working = () =>
+      db.query("SELECT status, run_id FROM factory_order WHERE id = ?").get("harness-order");
+    expect(working()).toEqual({ status: "working", run_id: null });
+
+    await expect(
+      runOrderBuildLive(db, "harness-order", operator.name, { dir: repo.dir, env, harness: "codex" }),
+    ).rejects.toThrow(
+      "order harness-order builder runs under the claude harness; delegate it with --harness claude",
+    );
+    expect(() =>
+      runOrderBuild(db, "harness-order", operator.name, {
+        dir: repo.dir,
+        env,
+        harness: "codex",
+        spawn: () => ({ exitCode: 0 }),
+      }),
+    ).toThrow("order harness-order builder runs under the claude harness; delegate it with --harness claude");
+    expect(failures()).toEqual({ n: 1 });
+    expect(working()).toEqual({ status: "working", run_id: null });
+    db.close();
+  });
 });

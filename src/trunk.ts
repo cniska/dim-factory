@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 /**
  * Whether a commit has reached the repo's trunk, read from git rather than from
  * the record: nothing in the database knows what has been merged since.
@@ -53,4 +55,20 @@ export function reachesTrunk(dir: string, sha: string): TrunkReach {
   return git(dir, ["merge-base", "--is-ancestor", sha, `refs/heads/${trunk.name}`]).success
     ? { reach: "reached" }
     : { reach: "unreached" };
+}
+
+/**
+ * The refs that decide what the trunk holds and which branch it is: its own ref, the packed
+ * refs that can hold it, and the remote HEAD that names it. A worker moving any of them would
+ * land work outside review and ship. The trunk's own ref is named only where the repo states
+ * a trunk, and these are file paths, so they hold under git's files ref storage and not under
+ * reftable.
+ */
+export function trunkRefPaths(dir: string, commonDir: string): string[] {
+  const trunk = trunkBranch(dir);
+  return [
+    join(commonDir, "packed-refs"),
+    join(commonDir, "refs", "remotes", "origin", "HEAD"),
+    ...("name" in trunk ? [join(commonDir, "refs", "heads", trunk.name)] : []),
+  ];
 }

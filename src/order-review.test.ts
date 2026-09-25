@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
-import { rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   approveOrderBuild,
@@ -17,7 +18,13 @@ import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } fro
 import { fakeHarness } from "./fake-harness";
 import { integratedRepo, orderWorktree } from "./fixtures.test-support";
 import { runOrderCommand } from "./order-command";
-import { type ReviewerSpawn, ReviewRefused, runOrderReview, runOrderReviewLive } from "./order-review";
+import {
+  type ReviewerSpawn,
+  ReviewRefused,
+  reviewRange,
+  runOrderReview,
+  runOrderReviewLive,
+} from "./order-review";
 import { SCHEMA_SQL } from "./schema";
 import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
 import { saveWorkerCredential } from "./worker-credential";
@@ -489,5 +496,88 @@ describe("a review round", () => {
     };
 
     runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
+  });
+
+  test("reads a worktree without running a command a builder's nested repository configured", () => {
+    const repo = mkdtempSync(join(tmpdir(), "dim-review-nested-"));
+    const git = (cwd: string, ...args: string[]) =>
+      Bun.spawnSync([
+        "git",
+        "-C",
+        cwd,
+        "-c",
+        "user.email=t@e",
+        "-c",
+        "user.name=T",
+        "-c",
+        "commit.gpgsign=false",
+        ...args,
+      ]);
+    git(repo, "init", "-q", "-b", "main");
+    git(repo, "commit", "-q", "--allow-empty", "-m", "init");
+    mkdirSync(join(repo, "sub"));
+    git(join(repo, "sub"), "init", "-q", "-b", "main");
+    git(join(repo, "sub"), "commit", "-q", "--allow-empty", "-m", "nested");
+    const nested = Bun.spawnSync(["git", "-C", join(repo, "sub"), "rev-parse", "HEAD"])
+      .stdout.toString()
+      .trim();
+    git(repo, "update-index", "--add", "--cacheinfo", `160000,${nested},sub`);
+    git(repo, "commit", "-q", "-m", "gitlink");
+    const marker = join(repo, "ran");
+    writeFileSync(join(repo, "fsmonitor.sh"), `#!/bin/sh\ntouch ${marker}\necho 0\n`);
+    chmodSync(join(repo, "fsmonitor.sh"), 0o755);
+    git(join(repo, "sub"), "config", "core.fsmonitor", join(repo, "fsmonitor.sh"));
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+
+    try {
+      reviewRange(db, "order-1", repo);
+    } catch {}
+
+    const ran = existsSync(marker);
+    db.close();
+    rmSync(repo, { recursive: true, force: true });
+
+    expect(ran).toBe(false);
+  });
+
+  test("refuses a worktree whose submodule moved without a commit recording it", () => {
+    const repo = mkdtempSync(join(tmpdir(), "dim-review-moved-"));
+    const git = (cwd: string, ...args: string[]) =>
+      Bun.spawnSync([
+        "git",
+        "-C",
+        cwd,
+        "-c",
+        "user.email=t@e",
+        "-c",
+        "user.name=T",
+        "-c",
+        "commit.gpgsign=false",
+        ...args,
+      ]);
+    git(repo, "init", "-q", "-b", "main");
+    mkdirSync(join(repo, "sub"));
+    git(join(repo, "sub"), "init", "-q", "-b", "main");
+    git(join(repo, "sub"), "commit", "-q", "--allow-empty", "-m", "nested");
+    const nested = Bun.spawnSync(["git", "-C", join(repo, "sub"), "rev-parse", "HEAD"])
+      .stdout.toString()
+      .trim();
+    git(repo, "update-index", "--add", "--cacheinfo", `160000,${nested},sub`);
+    git(repo, "commit", "-q", "-m", "gitlink");
+    git(join(repo, "sub"), "commit", "-q", "--allow-empty", "-m", "moved");
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+
+    let refusal: unknown;
+    try {
+      reviewRange(db, "order-1", repo);
+    } catch (error) {
+      refusal = error;
+    }
+    db.close();
+    rmSync(repo, { recursive: true, force: true });
+
+    expect(refusal).toMatchObject({ code: "worktree_dirty" });
   });
 });

@@ -62,7 +62,7 @@ describe("the fake harness", () => {
 
   test("returns a timeout when a harness produces no terminal event", async () => {
     const seen: string[] = [];
-    const result = await runHarness(fakeHarness("hang"), REQUEST, {
+    const result = await runHarness(await fakeHarness("hang").start(REQUEST), {
       timeoutMs: 1,
       onEvent: (event) => seen.push(event.type),
     });
@@ -73,12 +73,15 @@ describe("the fake harness", () => {
 
   test("returns terminal output and forwards every event", async () => {
     const seen: string[] = [];
-    const result = await runHarness(fakeHarness("success"), REQUEST, {
+    const result = await runHarness(await fakeHarness("success").start(REQUEST), {
       timeoutMs: 100,
       onEvent: (event) => seen.push(event.type),
     });
 
-    expect(result).toMatchObject({ outcome: "completed", output: "completed" });
+    expect(result).toMatchObject({
+      outcome: "completed",
+      events: expect.arrayContaining([{ type: "run.completed", output: "completed" }]),
+    });
     expect(seen).toEqual(["run.started", "turn.started", "message", "run.completed"]);
   });
 });

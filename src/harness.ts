@@ -17,6 +17,7 @@ export type HarnessEvent =
   | { type: "tool.output"; name: string; text: string; toolId?: string }
   | { type: "tool.completed"; name: string; exitCode?: number; toolId?: string }
   | { type: "diagnostic"; level: "info" | "warning" | "error"; message: string }
+  /** `output` is the run's answer, as the adapter reads it off its harness's stream. */
   | { type: "run.completed"; output?: string }
   | {
       type: "run.failed";
@@ -32,7 +33,6 @@ export type HarnessRun = {
 };
 
 export type HarnessAdapter = {
-  name: string;
   start(request: HarnessRequest): Promise<HarnessRun>;
   resume(providerSessionId: string, request: HarnessRequest): Promise<HarnessRun>;
 };

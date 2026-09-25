@@ -1513,14 +1513,8 @@ export function recordOrderDocument(
   ]);
 }
 
-export function recordOrderPlan(
-  db: Database,
-  orderId: string,
-  body: string,
-  worker: string,
-  slices: readonly PlanSlice[],
-  at = now(),
-): number {
+/** Checked before a planner starts as well as when its plan arrives, so a plan that could not be recorded is never worked. */
+export function assertOrderPlanning(db: Database, orderId: string): void {
   assertOrderWorking(db, orderId);
   const order = db.query("SELECT station FROM factory_order WHERE id = ?").get(orderId) as {
     station: string | null;
@@ -1531,6 +1525,17 @@ export function recordOrderPlan(
       `order ${orderId} must be at plan before a plan can be submitted`,
     );
   }
+}
+
+export function recordOrderPlan(
+  db: Database,
+  orderId: string,
+  body: string,
+  worker: string,
+  slices: readonly PlanSlice[],
+  at = now(),
+): number {
+  assertOrderPlanning(db, orderId);
   if (body.trim() === "") throw new Error("plan body must not be empty");
   if (slices.length === 0) throw new Error("plan must contain at least one slice");
   return db.transaction(() => {

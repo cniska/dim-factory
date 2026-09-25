@@ -274,6 +274,33 @@ describe("rebuilding a database an older schema wrote", () => {
     db.close();
   });
 
+  test("an order's worker written before harnesses were recorded comes back as codex", () => {
+    const { db, env } = scratch();
+    db.run("ALTER TABLE factory_order_worker DROP COLUMN harness");
+    db.run(
+      `INSERT INTO factory_order (id, project, title, status, created_at, updated_at)
+       VALUES ('order-1', 'cniska/dim-factory', 'Survive a rebuild', 'working', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+    );
+    db.run(
+      "INSERT INTO factory_worker (name, role, token_digest, started_at) VALUES ('copper-1', 'operator', 'x', '2026-01-01T00:00:00Z')",
+    );
+    db.run(
+      `INSERT INTO factory_worker_assignment (id, parent_worker, role, token_digest, created_at)
+       VALUES ('assignment-1', 'copper-1', 'builder', 'y', '2026-01-01T00:00:00Z')`,
+    );
+    db.run(
+      `INSERT INTO factory_order_worker (order_id, role, assignment_id, created_at)
+       VALUES ('order-1', 'builder', 'assignment-1', '2026-01-01T00:00:00Z')`,
+    );
+
+    rebuild(db, env);
+
+    expect(db.query("SELECT order_id, role, harness FROM factory_order_worker").all()).toEqual([
+      { order_id: "order-1", role: "builder", harness: "codex" },
+    ]);
+    db.close();
+  });
+
   test("a factory order keeps the words it was queued with", () => {
     const { db, env } = scratch();
     db.run(

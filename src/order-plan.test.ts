@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { claimOrder, queueOrder } from "./factory-order";
@@ -52,6 +52,7 @@ describe("planner station", () => {
 
     expect(() =>
       runOrderPlan(db, "planner-order", {
+        dir: repo.dir,
         env: {
           DIM_HOME: home,
           [WORKER_NAME_VAR]: builder.name,
@@ -63,6 +64,7 @@ describe("planner station", () => {
 
     let argv: string[] = [];
     const outcome = runOrderPlan(db, "planner-order", {
+      dir: repo.dir,
       env: {
         DIM_HOME: home,
         [WORKER_NAME_VAR]: operator.name,
@@ -94,7 +96,7 @@ describe("planner station", () => {
     expect(outcome.slices).toEqual([
       { title: "Build the smallest path", outcome: "The requested result is verified." },
     ]);
-    expect(argv.slice(0, 3)).toEqual(["codex", "exec", "--json"]);
+    expect(argv.slice(0, 5)).toEqual(["codex", "-c", 'forced_login_method="chatgpt"', "exec", "--json"]);
     expect(argv).toContain("--output-schema");
     expect(argv).toContain(home);
     expect(argv).toContain("-C");
@@ -150,6 +152,7 @@ describe("planner station", () => {
 
     await expect(
       runOrderPlanLive(db, "planner-crash-order", {
+        dir: repo.dir,
         adapter: fakeHarness("crash"),
         env: {
           DIM_HOME: home,
@@ -225,8 +228,8 @@ describe("planner station", () => {
       [WORKER_SESSION_VAR]: operator.sessionId,
     };
 
-    const first = await runOrderPlanLive(db, "planner-resume-order", { adapter, env });
-    const second = await runOrderPlanLive(db, "planner-resume-order", { adapter, env });
+    const first = await runOrderPlanLive(db, "planner-resume-order", { adapter, env, dir: repo.dir });
+    const second = await runOrderPlanLive(db, "planner-resume-order", { adapter, env, dir: repo.dir });
 
     expect(second.planner).toBe(first.planner);
     expect(starts).toBe(1);
@@ -241,6 +244,73 @@ describe("planner station", () => {
         .get("planner-resume-order"),
     ).toEqual({ worker: first.planner, provider_session_id: "fake-session" });
 
+    db.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  test("refuses to plan an order nobody claimed, before a planner exists", async () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const repo = integratedRepo();
+    const operator = mintWorker(db, { role: "operator", sessionId: "planner-unclaimed-operator" });
+    queueOrder(db, { id: "unclaimed-order", project: "cniska/dim-factory", title: "Plan me" }, operator.name);
+    const env = {
+      [WORKER_NAME_VAR]: operator.name,
+      [WORKER_TOKEN_VAR]: operator.token,
+      [WORKER_SESSION_VAR]: operator.sessionId,
+    };
+
+    await expect(
+      runOrderPlanLive(db, "unclaimed-order", { adapter: fakeHarness("plan"), env, dir: repo.dir }),
+    ).rejects.toThrow("order unclaimed-order is not claimed");
+    expect(db.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 0 });
+    db.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+  });
+
+  test("plans in the order's worktree, wherever the operator runs from", async () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const home = mkdtempSync(join(tmpdir(), "dim-planner-cwd-"));
+    writeFileSync(
+      join(home, "routing.json"),
+      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
+    );
+    const repo = integratedRepo();
+    const operator = mintWorker(db, { role: "operator", sessionId: "planner-cwd-operator" });
+    queueOrder(
+      db,
+      { id: "planner-cwd-order", project: "cniska/dim-factory", title: "Plan here" },
+      operator.name,
+    );
+    claimOrder(
+      db,
+      "planner-cwd-order",
+      { runId: "run", station: "dim-station-plan", operatorWorker: operator.name },
+      operator.name,
+      undefined,
+      repo.dir,
+    );
+    const base = fakeHarness("plan");
+    let plannedIn: string | undefined;
+    const adapter = {
+      ...base,
+      start: async (request: Parameters<typeof base.start>[0]) => {
+        plannedIn = request.cwd;
+        return base.start(request);
+      },
+    };
+    const env = {
+      DIM_HOME: home,
+      [WORKER_NAME_VAR]: operator.name,
+      [WORKER_TOKEN_VAR]: operator.token,
+      [WORKER_SESSION_VAR]: operator.sessionId,
+    };
+
+    await runOrderPlanLive(db, "planner-cwd-order", { adapter, env, dir: repo.dir });
+
+    expect(plannedIn).toBe(join(realpathSync(repo.dir), ".claude", "worktrees", "planner-cwd-order"));
     db.close();
     rmSync(repo.dir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });

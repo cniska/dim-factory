@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { HARNESSES, type HarnessName } from "./harness-name";
+import { type HarnessName, isHarness } from "./harness-name";
 import { duplicateKeys, parseJsonc } from "./jsonc";
 import { readJsoncText } from "./jsonc-file";
 import { dataDir, type Env } from "./paths";
@@ -48,14 +48,13 @@ export function harnessMapPath(env: Env = process.env): string {
   return join(dataDir(env), "routing.json");
 }
 
-const TEMPLATE = '{ "codex": { "light": "<model>", "standard": "<model>", "deep": "<model>" } }';
-
 export function readHarnessMap(harness: HarnessName, env: Env = process.env): HarnessMap {
+  const template = `{ "${harness}": { "light": "<model>", "standard": "<model>", "deep": "<model>" } }`;
   const path = harnessMapPath(env);
   if (!existsSync(path)) {
     throw new RoutingError(
       "no-map",
-      `${path}: no harness map, so no role resolves to a model; write ${TEMPLATE} naming what this harness calls each tier`,
+      `${path}: no harness map, so no role resolves to a model; write ${template} naming what this harness calls each tier`,
       path,
     );
   }
@@ -70,10 +69,10 @@ export function readHarnessMap(harness: HarnessName, env: Env = process.env): Ha
   }
   const raw = parseJsonc<unknown>(text, path);
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new RoutingError("malformed", `${path}: the harness map is not an object of ${TEMPLATE}`, path);
+    throw new RoutingError("malformed", `${path}: the harness map is not an object of ${template}`, path);
   }
   const maps = raw as Record<string, unknown>;
-  const unknownHarnesses = Object.keys(maps).filter((key) => !HARNESSES.includes(key as HarnessName));
+  const unknownHarnesses = Object.keys(maps).filter((key) => !isHarness(key));
   if (unknownHarnesses.length > 0) {
     throw new RoutingError(
       "malformed",
@@ -83,7 +82,7 @@ export function readHarnessMap(harness: HarnessName, env: Env = process.env): Ha
   }
   const selected = maps[harness];
   if (!(harness in maps)) {
-    throw new RoutingError("malformed", `${path}: no map for the ${harness} harness`, path);
+    throw new RoutingError("no-map", `${path}: no map for the ${harness} harness; add ${template}`, path);
   }
   if (selected === null || typeof selected !== "object" || Array.isArray(selected)) {
     throw new RoutingError(

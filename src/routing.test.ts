@@ -137,13 +137,12 @@ test("every role a skill cites is one that routes", () => {
   const unroutable: string[] = [];
   for (const file of new Glob("skills/**/*.md").scanSync(root)) {
     for (const [, harness, role] of readFileSync(join(root, file), "utf8").matchAll(
-      /dim route (\w+) (\w+)/g,
+      /dim route (<harness>|\w+) (\w+)/g,
     )) {
       cited.push(`${harness}:${role}`);
-      if (
-        !(HARNESSES as readonly string[]).includes(harness as string) ||
-        !((role as string) in ROLE_TIERS)
-      ) {
+      const harnessRoutes =
+        harness === "<harness>" || (HARNESSES as readonly string[]).includes(harness as string);
+      if (!harnessRoutes || !((role as string) in ROLE_TIERS)) {
         unroutable.push(`${file}: ${harness} ${role}`);
       }
     }

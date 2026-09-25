@@ -8,7 +8,6 @@ import {
   completeOrderBuildFollowup,
   completeOrderSlice,
   isActiveOrderRun,
-  isTerminalOrderStatus,
   nextOrderSlice,
   OrderNotDone,
   orderStatus,
@@ -17,7 +16,7 @@ import {
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-command";
 import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
-import { runOrderStation, runOrderStationLive } from "./order-worker";
+import { assertOrderWorkerHarness, runOrderStation, runOrderStationLive } from "./order-worker";
 import type { Env } from "./paths";
 import type { PlanSlice } from "./plan-artifact";
 import { workspaceContract } from "./workspace";
@@ -226,6 +225,8 @@ export async function runOrderBuildLive(
     )
     .get(orderId);
   if (!plan) throw new PlanApprovalRefused("plan_missing", `order ${orderId} has no approved plan to build`);
+  const harness = options.harness ?? DEFAULT_HARNESS;
+  assertOrderWorkerHarness(db, orderId, "builder", harness);
   const slices = db
     .query<PlanSlice, [number]>(
       "SELECT title, outcome FROM factory_order_slice WHERE plan_id = ? ORDER BY ordinal",
@@ -250,13 +251,12 @@ export async function runOrderBuildLive(
   let failureRecorded = false;
   let claimed = false;
   const recordFailure = (reason: string): void => {
-    if (!needsCodeWork || failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
+    if (!needsCodeWork || failureRecorded || orderStatus(db, orderId) !== "working") return;
     if (claimed && !isActiveOrderRun(db, orderId, runId)) return;
     failureRecorded = true;
     appendOrderEvent(db, orderId, { kind: "failed", worker: builder, reason });
   };
   try {
-    const harness = options.harness ?? DEFAULT_HARNESS;
     const onAssigned = (
       assigned: string,
       providerSessionId: string,
@@ -389,6 +389,8 @@ export function runOrderBuild(
   if (!plan) {
     throw new PlanApprovalRefused("plan_missing", `order ${orderId} has no approved plan to build`);
   }
+  const harness = options.harness ?? DEFAULT_HARNESS;
+  assertOrderWorkerHarness(db, orderId, "builder", harness);
   const slices = db
     .query<PlanSlice, [number]>(
       "SELECT title, outcome FROM factory_order_slice WHERE plan_id = ? ORDER BY ordinal",
@@ -410,7 +412,7 @@ export function runOrderBuild(
   let builder: string | undefined;
   let failureRecorded = false;
   const recordFailure = (reason: string): void => {
-    if (!needsCodeWork || failureRecorded || isTerminalOrderStatus(orderStatus(db, orderId))) return;
+    if (!needsCodeWork || failureRecorded || orderStatus(db, orderId) !== "working") return;
     failureRecorded = true;
     appendOrderEvent(db, orderId, {
       kind: "failed",
@@ -419,7 +421,6 @@ export function runOrderBuild(
     });
   };
   try {
-    const harness = options.harness ?? DEFAULT_HARNESS;
     const { run, worker, returned } = runOrderStation({
       db,
       orderId,

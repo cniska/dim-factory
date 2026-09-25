@@ -1,5 +1,4 @@
 import type { Database } from "bun:sqlite";
-import { resolve } from "node:path";
 import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
 import {
@@ -15,7 +14,7 @@ import { workerFailureReason } from "./harness-command";
 import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
 import { runOrderStation, runOrderStationLive } from "./order-worker";
 import { parseReviewArtifact } from "./review-artifact";
-import { repoRoot, worktreePath } from "./wt-command";
+import { stationDirectory } from "./station-directory";
 
 export class ReviewRefused extends Error {
   constructor(
@@ -47,13 +46,6 @@ function git(dir: string, args: string[]): { ok: boolean; out: string } {
   return { ok: run.success, out: run.stdout.toString().trim() };
 }
 
-function reviewDirectory(dir: string, orderId: string): string {
-  const root = repoRoot(dir);
-  const current = git(dir, ["rev-parse", "--show-toplevel"]);
-  if (current.ok && resolve(current.out) === resolve(root)) return worktreePath(root, orderId);
-  return dir;
-}
-
 /**
  * The diff a round reads is `base..head`, both recorded when it opens. A sha cannot move
  * while it is being read and a worktree can, so binding the round to shas is what makes
@@ -66,7 +58,10 @@ function reviewDirectory(dir: string, orderId: string): string {
 export function reviewRange(db: Database, orderId: string, dir: string): { base: string; head: string } {
   const head = git(dir, ["rev-parse", "HEAD"]);
   if (!head.ok) throw new ReviewRefused("not_a_repo", `${dir} is not a git repo that can be read`);
-  if (git(dir, ["status", "--porcelain"]).out !== "") {
+  // The builder writes this worktree, so a repository nested in it can carry a config its own
+  // status would obey. `dirty` still reports a submodule whose commit moved, but compares
+  // that commit without running a status inside the submodule.
+  if (git(dir, ["status", "--porcelain", "--ignore-submodules=dirty"]).out !== "") {
     throw new ReviewRefused(
       "worktree_dirty",
       `${dir} has uncommitted changes, and a round reads a commit: commit them or put them aside`,
@@ -197,7 +192,7 @@ export async function runOrderReviewLive(
   if (!order) throw new Error(`order not found: ${orderId}`);
   assertOperator(db, worker, "delegate review");
   assertBuildReady(db, orderId);
-  const dir = reviewDirectory(options.dir, orderId);
+  const dir = stationDirectory(options.dir, orderId);
   const harness = options.harness ?? DEFAULT_HARNESS;
   let returned: Extract<ReturnedOrderArtifact, { station: "review" }> | null = null;
   let opened: { id: number } | undefined;
@@ -308,7 +303,7 @@ export function runOrderReview(
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
   assertBuildReady(db, orderId);
-  const dir = reviewDirectory(options.dir, orderId);
+  const dir = stationDirectory(options.dir, orderId);
   const harness = options.harness ?? DEFAULT_HARNESS;
   let opened: { id: number } | undefined;
   const {

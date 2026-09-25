@@ -58,6 +58,7 @@ describe("plan approval integration", () => {
     );
 
     const outcome = runOrderPlan(db, "operator-plan-order", {
+      dir: repo.dir,
       env: { ...env(operator), DIM_HOME: home },
       spawn: (_argv, worker) => ({
         exitCode: 0,

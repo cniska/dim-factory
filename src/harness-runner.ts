@@ -1,7 +1,7 @@
-import type { HarnessAdapter, HarnessEvent, HarnessRequest } from "./harness";
+import type { HarnessEvent, HarnessRun } from "./harness";
 
 export type HarnessRunResult =
-  | { outcome: "completed"; events: HarnessEvent[]; output?: string }
+  | { outcome: "completed"; events: HarnessEvent[] }
   | {
       outcome: "failed";
       events: HarnessEvent[];
@@ -17,12 +17,8 @@ export type HarnessRunnerOptions = {
   onEvent?: (event: HarnessEvent) => void;
 };
 
-export async function runHarness(
-  adapter: HarnessAdapter,
-  request: HarnessRequest,
-  options: HarnessRunnerOptions,
-): Promise<HarnessRunResult> {
-  const run = await adapter.start(request);
+/** Times one run, whether its adapter started it or resumed it. */
+export async function runHarness(run: HarnessRun, options: HarnessRunnerOptions): Promise<HarnessRunResult> {
   const events: HarnessEvent[] = [];
   let timer: ReturnType<typeof setTimeout> | undefined;
   let timedOut = false;
@@ -30,7 +26,7 @@ export async function runHarness(
     for await (const event of run.events) {
       events.push(event);
       options.onEvent?.(event);
-      if (event.type === "run.completed") return { outcome: "completed", events, output: event.output };
+      if (event.type === "run.completed") return { outcome: "completed", events };
       if (event.type === "run.failed") {
         return {
           outcome: "failed",
@@ -54,5 +50,8 @@ export async function runHarness(
   const result = await Promise.race([consume, timeout]);
   if (timer) clearTimeout(timer);
   if (timedOut) void consume.catch(() => undefined);
+  // A failed run may still be working, and a refused one still spending; a completed run is
+  // left to exit on its own, since the harness records its session after the answer.
+  if (result.outcome === "failed") run.cancel();
   return result;
 }

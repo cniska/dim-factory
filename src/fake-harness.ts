@@ -102,7 +102,6 @@ export function fakeHarness(scenarioName: FakeHarnessScenario): HarnessAdapter {
     };
   };
   return {
-    name: "fake",
     start: run,
     resume: run,
   };

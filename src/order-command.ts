@@ -31,9 +31,9 @@ import {
 } from "./factory-order";
 import { resolveWorker } from "./factory-worker";
 import { readFlags, requiredFlag } from "./flags";
-import type { HarnessName } from "./harness-command";
-import { DEFAULT_HARNESS } from "./harness-name";
+import { HARNESSES, type HarnessName, parseHarness } from "./harness-name";
 import { requireCurrentHooks } from "./hooks";
+import { recordedHarness } from "./operator-harness";
 import { runOrderBuild, runOrderBuildLive } from "./order-build";
 import { isOrderLine, ORDER_LINES } from "./order-line";
 import { runOrderPlan, runOrderPlanLive } from "./order-plan";
@@ -58,13 +58,13 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--lin
        dim order check <order-id> --command "..." --exit <code> [--result "..."]
        dim order build-artifact <order-id> --body-file <path> --head <sha>
        dim order review-artifact <order-id> --body "..."
-       dim order review <order-id> [--harness <codex>]
+       dim order review <order-id> [--harness <${HARNESSES.join("|")}>]
        dim order finding <order-id> --dimension <name> --summary "..."
        dim order answer <finding-id> --answer <fixed|refused>
                        [--resolution "..."]
        dim order document <order-id> --path <path>
-       dim order plan <order-id> [--harness <codex>]
-       dim order build <order-id> [--harness <codex>]
+       dim order plan <order-id> [--harness <${HARNESSES.join("|")}>]
+       dim order build <order-id> [--harness <${HARNESSES.join("|")}>]
        dim order approve <order-id>
        dim order approve <order-id> [--reason "..."]
        dim order return <order-id> --reason "..."
@@ -80,6 +80,17 @@ const CLAIM_FLAGS = ["--run", "--session", "--station"];
 const ADD_FLAGS = ["--title", "--line", "--description", "--priority", "--hold", "--project"];
 
 const fail = (message: string): Error => new OrderCommandError(message);
+
+/** A delegation that names no harness runs under the operator's own, never under a guessed one. */
+function selectedHarness(db: Database, given: Map<string, string>, operator: string): HarnessName {
+  const named = given.get("--harness");
+  if (named !== undefined) return parseHarness(named, fail);
+  const recorded = recordedHarness(db, operator);
+  if (recorded) return recorded;
+  throw fail(
+    `${operator} runs in no recorded harness session; delegate with --harness <${HARNESSES.join("|")}>`,
+  );
+}
 
 function flags(args: string[], allowed: string[]): Map<string, string> {
   return readFlags(args, allowed, fail);
@@ -432,18 +443,14 @@ export function runOrderCommand(
     return `${orderId} moved to ${station}`;
   }
   if (command === "plan") {
-    const given = flags(rest, ["--harness"]);
+    const harness = selectedHarness(db, flags(rest, ["--harness"]), worker);
     assertOperator(db, worker, "delegate planning");
-    const harness = given.get("--harness") ?? DEFAULT_HARNESS;
-    if (harness !== DEFAULT_HARNESS) throw fail(`--harness must be ${DEFAULT_HARNESS}`);
-    const outcome = runOrderPlan(db, orderId, { env, harness: harness as HarnessName });
+    const outcome = runOrderPlan(db, orderId, { dir: cwd, env, harness });
     return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;
   }
   if (command === "build") {
-    const given = flags(rest, ["--harness"]);
-    const harness = given.get("--harness") ?? DEFAULT_HARNESS;
-    if (harness !== DEFAULT_HARNESS) throw fail(`--harness must be ${DEFAULT_HARNESS}`);
-    const outcome = runOrderBuild(db, orderId, worker, { dir: cwd, env, harness: harness as HarnessName });
+    const harness = selectedHarness(db, flags(rest, ["--harness"]), worker);
+    const outcome = runOrderBuild(db, orderId, worker, { dir: cwd, env, harness });
     return `${orderId} building started by ${outcome.builder}`;
   }
   if (command === "approve") {
@@ -480,11 +487,9 @@ export function runOrderCommand(
   if (command === "drop") return drop(db, orderId, rest, worker);
   if (command === "answer") return answerFinding(db, orderId, rest, worker);
   if (command === "review") {
-    const given = flags(rest, ["--harness"]);
-    const harness = given.get("--harness") ?? DEFAULT_HARNESS;
-    if (harness !== DEFAULT_HARNESS) throw fail(`--harness must be ${DEFAULT_HARNESS}`);
+    const harness = selectedHarness(db, flags(rest, ["--harness"]), worker);
     assertOperator(db, worker, "delegate review");
-    const done = runOrderReview(db, orderId, worker, { dir: cwd, env, harness: harness as HarnessName });
+    const done = runOrderReview(db, orderId, worker, { dir: cwd, env, harness });
     return done.outcome === "aborted"
       ? `review ${done.review} aborted: ${done.reviewer} did not finish, so nothing it left is a clean reading`
       : `review ${done.review} closed with ${done.findings} finding${done.findings === 1 ? "" : "s"}`;
@@ -504,27 +509,18 @@ export async function runOrderCommandLive(
   const [, orderId, ...rest] = args;
   if (!orderId) throw new OrderCommandError("order takes a subcommand and an order id");
   const given = flags(rest, ["--harness"]);
-  const harness = given.get("--harness") ?? DEFAULT_HARNESS;
-  if (harness !== DEFAULT_HARNESS) throw fail(`--harness must be ${DEFAULT_HARNESS}`);
+  const operator = resolveWorker(db, env);
+  const harness = selectedHarness(db, given, operator);
   if (args[0] === "plan") {
-    const outcome = await runOrderPlanLive(db, orderId, { env, harness: harness as HarnessName });
+    const outcome = await runOrderPlanLive(db, orderId, { dir: cwd, env, harness });
     return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;
   }
-  const operator = resolveWorker(db, env);
   assertOperator(db, operator, `delegate ${args[0]}`);
   if (args[0] === "build") {
-    const outcome = await runOrderBuildLive(db, orderId, operator, {
-      dir: cwd,
-      env,
-      harness: harness as HarnessName,
-    });
+    const outcome = await runOrderBuildLive(db, orderId, operator, { dir: cwd, env, harness });
     return `build completed by ${outcome.builder}`;
   }
-  const outcome = await runOrderReviewLive(db, orderId, operator, {
-    dir: cwd,
-    env,
-    harness: harness as HarnessName,
-  });
+  const outcome = await runOrderReviewLive(db, orderId, operator, { dir: cwd, env, harness });
   return outcome.outcome === "aborted"
     ? `review ${outcome.review} aborted: ${outcome.reviewer} did not finish, so nothing it left is a clean reading`
     : `review ${outcome.review} closed with ${outcome.findings} finding${outcome.findings === 1 ? "" : "s"}`;

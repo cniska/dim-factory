@@ -1,6 +1,6 @@
-import { isAbsolute, resolve } from "node:path";
-import type { HarnessAdapter, HarnessEvent, HarnessRequest } from "./harness";
-import { processHarness } from "./harness-process";
+import { gitMetadataDirs } from "./git-metadata-dirs";
+import type { HarnessEvent, HarnessRequest } from "./harness";
+import type { HarnessLineParser, HarnessProcess, ProcessEnvironment } from "./harness-process";
 import { dataDir } from "./paths";
 
 type CodexEvent = {
@@ -39,41 +39,33 @@ function itemEvents(event: CodexEvent): HarnessEvent[] {
   ];
 }
 
-export function parseCodexHarnessEvent(line: string): HarnessEvent | HarnessEvent[] | undefined {
-  let event: CodexEvent;
-  try {
-    event = JSON.parse(line) as CodexEvent;
-  } catch {
-    return { type: "diagnostic", level: "error", message: "Codex emitted invalid JSON" };
-  }
-  if (event.type === "thread.started") return { type: "run.started", providerSessionId: event.thread_id };
-  if (event.type === "turn.started") return { type: "turn.started" };
-  if (event.type === "item.completed" && event.item?.type === "agent_message" && event.item.text) {
-    return { type: "message", role: "assistant", text: event.item.text };
-  }
-  const items = itemEvents(event);
-  if (items.length > 0) return items;
-  if (event.type === "turn.completed") return { type: "run.completed" };
-  if (event.type === "turn.failed") {
-    return { type: "run.failed", reason: event.error?.message ?? "Codex turn failed" };
-  }
-  if (event.type === "error") return { type: "run.failed", reason: event.error?.message ?? "Codex failed" };
-  return undefined;
-}
-
-export function codexArgv(command: string, request: HarnessRequest): string[] {
-  return [
-    command,
-    "exec",
-    "--json",
-    ...(request.outputSchema ? ["--output-schema", request.outputSchema] : []),
-    ...codexSandboxArgs(request),
-    "-C",
-    request.cwd,
-    "-m",
-    request.model,
-    request.brief,
-  ];
+/** Stateful because Codex states no answer of its own: a run's answer is its last agent message. */
+function codexEventParser(): HarnessLineParser {
+  let answer: string | undefined;
+  return (line) => {
+    let event: CodexEvent;
+    try {
+      event = JSON.parse(line) as CodexEvent;
+    } catch {
+      return { type: "diagnostic", level: "error", message: "Codex emitted invalid JSON" };
+    }
+    if (event.type === "thread.started") return { type: "run.started", providerSessionId: event.thread_id };
+    if (event.type === "turn.started") return { type: "turn.started" };
+    if (event.type === "item.completed" && event.item?.type === "agent_message" && event.item.text) {
+      answer = event.item.text;
+      return { type: "message", role: "assistant", text: event.item.text };
+    }
+    const items = itemEvents(event);
+    if (items.length > 0) return items;
+    if (event.type === "turn.completed") {
+      return answer === undefined ? { type: "run.completed" } : { type: "run.completed", output: answer };
+    }
+    if (event.type === "turn.failed") {
+      return { type: "run.failed", reason: event.error?.message ?? "Codex turn failed" };
+    }
+    if (event.type === "error") return { type: "run.failed", reason: event.error?.message ?? "Codex failed" };
+    return undefined;
+  };
 }
 
 function codexSandboxArgs(request: HarnessRequest): string[] {
@@ -88,24 +80,27 @@ function codexSandboxArgs(request: HarnessRequest): string[] {
   ];
 }
 
-function gitMetadataDirs(cwd: string): string[] {
-  const result = Bun.spawnSync(["git", "-C", cwd, "rev-parse", "--git-dir", "--git-common-dir"], {
-    stdout: "pipe",
-    stderr: "ignore",
-  });
-  if (result.exitCode !== 0) return [];
-  return [...new Set(result.stdout.toString().trim().split("\n"))]
-    .filter((gitDir) => gitDir.length > 0)
-    .map((gitDir) => (isAbsolute(gitDir) ? gitDir : resolve(cwd, gitDir)));
+/** An API-key login stored with `codex login --with-api-key` survives any environment filter. */
+const SUBSCRIPTION_LOGIN = ["-c", 'forced_login_method="chatgpt"'];
+
+export function codexArgs(request: HarnessRequest): string[] {
+  return [
+    ...SUBSCRIPTION_LOGIN,
+    "exec",
+    "--json",
+    ...(request.outputSchema ? ["--output-schema", request.outputSchema] : []),
+    ...codexSandboxArgs(request),
+    "-C",
+    request.cwd,
+    "-m",
+    request.model,
+    request.brief,
+  ];
 }
 
-export function codexResumeArgv(
-  command: string,
-  providerSessionId: string,
-  request: HarnessRequest,
-): string[] {
+export function codexResumeArgs(providerSessionId: string, request: HarnessRequest): string[] {
   return [
-    command,
+    ...SUBSCRIPTION_LOGIN,
     ...codexSandboxArgs(request),
     "exec",
     "resume",
@@ -118,11 +113,17 @@ export function codexResumeArgv(
   ];
 }
 
-export function codexHarness(command = "codex"): HarnessAdapter {
-  return processHarness({
-    name: "codex",
-    argv: (request) => codexArgv(command, request),
-    resumeArgv: (providerSessionId, request) => codexResumeArgv(command, providerSessionId, request),
-    parse: parseCodexHarnessEvent,
-  });
+/** Codex bills an API key per token, where the worker should run on the operator's signed-in plan. */
+const PER_TOKEN_VARS = ["CODEX_API_KEY", "OPENAI_API_KEY"];
+
+function withoutPerTokenCredentials(inherited: ProcessEnvironment): ProcessEnvironment {
+  return Object.fromEntries(Object.entries(inherited).filter(([name]) => !PER_TOKEN_VARS.includes(name)));
 }
+
+export const codexProcess: HarnessProcess = {
+  command: "codex",
+  args: codexArgs,
+  resumeArgs: codexResumeArgs,
+  parser: codexEventParser,
+  environment: withoutPerTokenCredentials,
+};
