@@ -35,7 +35,12 @@ describe("item history", () => {
     const source = await Bun.file(new URL("./wall-client.tsx", import.meta.url)).text();
 
     expect(source).toContain('className="line-clamp-3 min-h-[54px] shrink-0 text-quiet leading-[18px]"');
-    expect(source).toContain('className="whitespace-pre-wrap text-quiet leading-5"');
+    expect(source).toContain(
+      'className="whitespace-pre-wrap px-[var(--space-lg)] pt-[var(--space-lg)] text-quiet leading-5"',
+    );
+    expect(source.indexOf('className="flex min-h-0 flex-col overflow-y-auto"')).toBeLessThan(
+      source.lastIndexOf("{order.description}"),
+    );
     expect(source).toContain('"wall-markdown flex flex-col gap-[var(--space-md)] text-quiet"');
     expect(source).toContain('className="text-quiet" aria-hidden="true"');
     expect(source).toContain('<span className="text-good">approved</span>');

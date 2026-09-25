@@ -353,9 +353,6 @@ function ItemDialog({
               <X size={16} strokeWidth={1.8} aria-hidden="true" />
             </button>
           </div>
-          {order.description ? (
-            <p className="whitespace-pre-wrap text-quiet leading-5">{order.description}</p>
-          ) : null}
           <dl className="flex flex-wrap items-center gap-x-[var(--space-xl)] gap-y-[var(--space-xs)] text-quiet">
             <div className="flex items-center gap-[var(--space-sm)]">
               <dt>line</dt>
@@ -408,8 +405,14 @@ function ItemDialog({
         </header>
 
         {/* The dialog holds its size and its content scrolls, so the identity above stays with
-            whatever is being read. */}
+            whatever is being read. The description scrolls too: pinned, a long one leaves
+            little room for the rest. */}
         <div className="flex min-h-0 flex-col overflow-y-auto">
+          {order.description ? (
+            <p className="whitespace-pre-wrap px-[var(--space-lg)] pt-[var(--space-lg)] text-quiet leading-5">
+              {order.description}
+            </p>
+          ) : null}
           <section
             aria-labelledby="item-plan"
             className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
