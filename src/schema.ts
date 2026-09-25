@@ -16,12 +16,13 @@
 // a wall reloading mid-edit before it was ever committed, so a column that
 // changes after the statement has run once changes with a bump.
 
+import { ATTEMPT_OUTCOMES_SQL, ORDER_EVENT_KINDS_SQL } from "./factory-events";
 import { ORDER_STATUSES_SQL } from "./factory-order";
 import { ORDER_LINES_SQL } from "./order-line";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 56;
+export const SCHEMA_VERSION = 57;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -289,10 +290,17 @@ CREATE TABLE IF NOT EXISTS factory_order_attempt (
   run_id          TEXT NOT NULL,
   worker          TEXT REFERENCES factory_worker(name),
   operator_worker TEXT REFERENCES factory_worker(name),
+  session_id      TEXT,
+  provider_session_id TEXT,
   station         TEXT,
+  harness         TEXT,
+  model           TEXT,
+  tier            TEXT,
+  started_at      TEXT,
+  ended_at        TEXT,
   recorded_at     TEXT NOT NULL,
   kind            TEXT NOT NULL CHECK (kind IN ('started', 'finished')),
-  outcome         TEXT NOT NULL CHECK (outcome IN ('running', 'succeeded', 'failed')),
+  outcome         TEXT NOT NULL CHECK (outcome IN (${ATTEMPT_OUTCOMES_SQL})),
   reason          TEXT
 );
 CREATE INDEX IF NOT EXISTS factory_order_attempt_order ON factory_order_attempt(order_id, recorded_at, id);
@@ -384,7 +392,7 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,
   order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   ts                    TEXT NOT NULL,
-  kind                  TEXT NOT NULL CHECK (kind IN ('queued', 'claimed', 'moved', 'plan_artifact_written', 'plan_approved', 'artifact_returned', 'build_approved', 'build_artifact_written', 'commit_created', 'check_finished', 'review_opened', 'review_closed', 'review_artifact_written', 'review_approved', 'finding_raised', 'finding_answered', 'completed', 'dropped', 'failed', 'recovered')),
+  kind                  TEXT NOT NULL CHECK (kind IN (${ORDER_EVENT_KINDS_SQL})),
   -- Who did it, written by the statement that writes the moment and never after.
   -- A runner failure before a station worker bootstraps has no worker rather than
   -- borrowing the operator's identity.
@@ -399,9 +407,51 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   build_id              INTEGER REFERENCES factory_order_build(id),
   hold_type             TEXT,
   status                TEXT,
-  reason                TEXT
+  reason                TEXT,
+  evidence              TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS factory_order_event_order_ts ON factory_order_event(order_id, ts, id);
+
+CREATE TABLE IF NOT EXISTS factory_schedule_invocation (
+  id                    INTEGER PRIMARY KEY,
+  schedule_id           TEXT NOT NULL REFERENCES factory_schedule(id),
+  evaluated_at          TEXT NOT NULL,
+  due                   INTEGER NOT NULL CHECK (due IN (0, 1)),
+  dispatched            INTEGER NOT NULL CHECK (dispatched IN (0, 1)),
+  selected_order_ids    TEXT NOT NULL DEFAULT '[]',
+  worker                TEXT REFERENCES factory_worker(name),
+  session_id            TEXT,
+  harness               TEXT,
+  model                 TEXT,
+  tier                  TEXT,
+  outcome               TEXT NOT NULL CHECK (outcome IN ('not_due', 'dispatched', 'failed')),
+  reason                TEXT
+);
+CREATE INDEX IF NOT EXISTS factory_schedule_invocation_schedule
+  ON factory_schedule_invocation(schedule_id, evaluated_at, id);
+
+CREATE TABLE IF NOT EXISTS factory_order_verdict (
+  id                    INTEGER PRIMARY KEY,
+  order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  decision              TEXT NOT NULL CHECK (decision IN ('approved', 'returned', 'held', 'dropped')),
+  grounds               TEXT NOT NULL,
+  worker                TEXT NOT NULL REFERENCES factory_worker(name),
+  session_id            TEXT,
+  recorded_at           TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS factory_order_delivery (
+  id                    INTEGER PRIMARY KEY,
+  order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  kind                  TEXT NOT NULL CHECK (kind IN ('integration', 'delivery')),
+  outcome               TEXT NOT NULL CHECK (outcome IN ('succeeded', 'failed')),
+  target                TEXT,
+  commit_sha            TEXT,
+  worker                TEXT REFERENCES factory_worker(name),
+  session_id            TEXT,
+  recorded_at           TEXT NOT NULL,
+  reason                TEXT
+);
 
 CREATE TABLE IF NOT EXISTS factory_order_commit (
   order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,

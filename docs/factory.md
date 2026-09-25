@@ -153,6 +153,13 @@ Every piece of work is an order, waiting or worked, and `factory_order` is the o
 
 The delivered-product report is the same row and its evidence tables: commits, changed files, checks, findings, documents, and the reason an order stopped.
 
+The order record also keeps append-only domain history. `factory_order_event`
+holds attributed actions and evidence references; attempts, schedule invocations,
+verdicts, and integration or delivery outcomes use dedicated rows where their
+fields have their own lifecycle. Analytics read those first-party records at
+query time. `trace_event` remains best-effort diagnostics and is not an analytics
+source, so losing a trace row does not remove a domain fact.
+
 ## Scheduling
 
 The planned scheduler makes recurring factory runs visible without choosing the host that wakes them.

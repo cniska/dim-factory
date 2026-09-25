@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import type { AttemptOutcome, EvidenceReference, OrderEventKind } from "./factory-events";
 import { FactoryStopError, liveStop } from "./factory-stop";
 import { workerIsOver } from "./factory-worker";
 import { withLock } from "./lock";
@@ -23,27 +24,8 @@ export const APPROVAL_HOLD = "approval";
 /** Binds at creation only: a table already on disk keeps the CHECK it was born with. */
 export const ORDER_STATUSES_SQL = ORDER_STATUSES.map((status) => `'${status}'`).join(",");
 
-export type OrderEventKind =
-  | "queued"
-  | "claimed"
-  | "moved"
-  | "plan_artifact_written"
-  | "plan_approved"
-  | "artifact_returned"
-  | "build_approved"
-  | "build_artifact_written"
-  | "commit_created"
-  | "check_finished"
-  | "review_opened"
-  | "review_closed"
-  | "review_artifact_written"
-  | "review_approved"
-  | "finding_raised"
-  | "finding_answered"
-  | "completed"
-  | "dropped"
-  | "failed"
-  | "recovered";
+export type { AttemptOutcome, EvidenceReference, OrderEventKind } from "./factory-events";
+export { ATTEMPT_OUTCOMES, ORDER_EVENT_KINDS } from "./factory-events";
 
 export const ORDER_PRIORITIES = ["urgent", "high", "medium", "low", "unset"] as const;
 export type OrderPriority = (typeof ORDER_PRIORITIES)[number];
@@ -69,8 +51,6 @@ export type OrderClaim = {
   operatorWorker: string;
 };
 
-type AttemptOutcome = "running" | "succeeded" | "failed";
-
 export type OrderEvent = {
   kind: OrderEventKind;
   /** Absent only when the runner failed before a station worker bootstrapped. */
@@ -86,6 +66,7 @@ export type OrderEvent = {
   holdType?: string;
   status?: OrderStatus;
   reason?: string;
+  evidence?: EvidenceReference;
   ts?: string;
 };
 
@@ -240,6 +221,7 @@ function eventValues(orderId: string, event: OrderEvent, ts: string): (string | 
     event.holdType ?? null,
     event.status ?? null,
     event.reason ?? null,
+    JSON.stringify(event.evidence ?? {}),
   ];
 }
 
@@ -255,17 +237,28 @@ function recordAttemptFinish(
 ): void {
   if (!runId || !worker) return;
   const started = db
-    .query<{ operator_worker: string | null }, [string, string]>(
-      `SELECT operator_worker FROM factory_order_attempt
+    .query<{ operator_worker: string | null; started_at: string }, [string, string]>(
+      `SELECT operator_worker, started_at FROM factory_order_attempt
        WHERE order_id = ? AND run_id = ? AND kind = 'started'
        ORDER BY rowid DESC LIMIT 1`,
     )
     .get(orderId, runId);
   db.run(
     `INSERT INTO factory_order_attempt
-       (order_id, run_id, worker, operator_worker, station, recorded_at, kind, outcome, reason)
-     VALUES (?, ?, ?, ?, ?, ?, 'finished', ?, ?)`,
-    [orderId, runId, worker, started?.operator_worker ?? null, station, at, outcome, reason ?? null],
+       (order_id, run_id, worker, operator_worker, station, started_at, ended_at, recorded_at, kind, outcome, reason)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'finished', ?, ?)`,
+    [
+      orderId,
+      runId,
+      worker,
+      started?.operator_worker ?? null,
+      station,
+      started?.started_at ?? at,
+      at,
+      at,
+      outcome,
+      reason ?? null,
+    ],
   );
 }
 
@@ -350,9 +343,18 @@ export function claimOrder(
     );
     db.run(
       `INSERT INTO factory_order_attempt
-         (order_id, run_id, worker, operator_worker, station, recorded_at, kind, outcome)
-       VALUES (?, ?, ?, ?, ?, ?, 'started', 'running')`,
-      [orderId, claim.runId, worker, claim.operatorWorker, claim.station ?? null, at],
+         (order_id, run_id, worker, operator_worker, session_id, station, started_at, recorded_at, kind, outcome)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'started', 'running')`,
+      [
+        orderId,
+        claim.runId,
+        worker,
+        claim.operatorWorker,
+        claim.sessionId ?? null,
+        claim.station ?? null,
+        at,
+        at,
+      ],
     );
     return appendOrderEventInTransaction(
       db,
@@ -859,8 +861,8 @@ function appendOrderEventInTransaction(
   const written = db.run(
     `INSERT INTO factory_order_event
        (order_id, ts, kind, worker, session_id, station, commit_sha, check_id, review_id, finding_id, plan_id,
-        build_id, hold_type, status, reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        build_id, hold_type, status, reason, evidence)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     eventValues(orderId, event, event.ts ?? at),
   );
   // A failure hands the work back rather than ending it, so the row returns to the
