@@ -316,6 +316,8 @@ describe("builder station", () => {
       resume: async (sessionId: string, request: Parameters<typeof base.start>[0]) => {
         resumes += 1;
         expect(sessionId).toBe("fake-session");
+        expect(request.brief).toContain("# Previous failed Build attempt");
+        expect(request.brief).toContain("fake process crashed");
         return base.resume(sessionId, request);
       },
     };

@@ -103,6 +103,10 @@ describe("the Codex harness adapter", () => {
   test("resumes a Codex session by its provider id", () => {
     expect(codexResumeArgv("codex-test", "thread-1", request)).toEqual([
       "codex-test",
+      "-s",
+      "read-only",
+      "--add-dir",
+      "/dim-home",
       "exec",
       "resume",
       "--json",
@@ -111,5 +115,27 @@ describe("the Codex harness adapter", () => {
       "gpt-5-codex",
       "build it",
     ]);
+  });
+
+  test("keeps builder metadata writable when a Codex session resumes", () => {
+    const argv = codexResumeArgv("codex-test", "thread-1", {
+      ...request,
+      cwd: process.cwd(),
+      capabilities: ["edit-files"],
+    });
+    const gitMetadata = Bun.spawnSync(
+      ["git", "-C", process.cwd(), "rev-parse", "--git-dir", "--git-common-dir"],
+      { stdout: "pipe", stderr: "ignore" },
+    )
+      .stdout.toString()
+      .trim()
+      .split("\n");
+    const expectedMetadata = [...new Set(gitMetadata)]
+      .filter((gitDir) => gitDir.length > 0)
+      .map((gitDir) => (isAbsolute(gitDir) ? gitDir : resolve(process.cwd(), gitDir)));
+    const addDirs = argv.flatMap((arg, index) => (arg === "--add-dir" ? [argv[index + 1]] : []));
+
+    expect(argv.slice(0, 3)).toEqual(["codex-test", "-s", "workspace-write"]);
+    expect(addDirs).toEqual(["/dim-home", ...expectedMetadata]);
   });
 });

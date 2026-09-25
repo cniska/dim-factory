@@ -1258,11 +1258,15 @@ const factory: Query = {
               coalesce(o.hold, '(none)') AS hold,
               coalesce(o.station, '(absent)') AS station,
               coalesce((SELECT c.sha || coalesce(' ' || c.subject, '')
-                        FROM factory_order_commit c WHERE c.order_id = o.id
-                        ORDER BY c.recorded_at DESC, c.rowid DESC LIMIT 1), '(none recorded)') AS "commit",
+                        FROM factory_order_event e
+                        JOIN factory_order_commit c ON c.order_id = e.order_id AND c.sha = e.commit_sha
+                        WHERE e.order_id = o.id AND e.kind = 'commit_created'
+                        ORDER BY e.id DESC LIMIT 1), '(none recorded)') AS "commit",
               coalesce((SELECT c.command || ' (' || c.exit_code || ', ' || coalesce(c.result, 'no result') || ')'
-                        FROM factory_order_check c WHERE c.order_id = o.id
-                        ORDER BY c.finished_at DESC, c.id DESC LIMIT 1), '(none recorded)') AS "check",
+                        FROM factory_order_event e
+                        JOIN factory_order_check c ON c.order_id = e.order_id AND c.id = e.check_id
+                        WHERE e.order_id = o.id AND e.kind = 'check_finished'
+                        ORDER BY e.id DESC LIMIT 1), '(none recorded)') AS "check",
               coalesce((SELECT group_concat(finding, '; ') FROM (
                           SELECT f.dimension || ': ' || coalesce(f.answer, 'unanswered') || ' - ' || f.summary AS finding
                           FROM factory_order_finding f WHERE f.order_id = o.id

@@ -447,7 +447,12 @@ export function moveOrder(
 function latestOrderCommit(db: Database, orderId: string): { sha: string; recordedAt: string } | null {
   return db
     .query<{ sha: string; recordedAt: string }, [string]>(
-      "SELECT sha, recorded_at AS recordedAt FROM factory_order_commit WHERE order_id = ? ORDER BY recorded_at DESC, rowid DESC LIMIT 1",
+      `SELECT c.sha, c.recorded_at AS recordedAt
+       FROM factory_order_commit c
+       JOIN factory_order_event e
+         ON e.order_id = c.order_id AND e.kind = 'commit_created' AND e.commit_sha = c.sha
+       WHERE c.order_id = ?
+       ORDER BY e.id DESC LIMIT 1`,
     )
     .get(orderId);
 }
@@ -630,7 +635,7 @@ export function returnOrderArtifact(
         "SELECT status, station, hold FROM factory_order WHERE id = ?",
       )
       .get(orderId);
-    if (order?.status !== "working" || order.hold !== APPROVAL_HOLD) {
+    if ((order?.status !== "working" && order?.status !== "queued") || order.hold !== APPROVAL_HOLD) {
       throw new Error(`order ${orderId} has no station artifact awaiting owner approval`);
     }
     const station = order.station?.replace("dim-station-", "");
@@ -655,6 +660,7 @@ export function returnOrderArtifact(
         kind: "artifact_returned",
         worker: operator,
         station: order.station ?? undefined,
+        status: order.status === "queued" ? "working" : undefined,
         planId: artifact.id,
         reason,
       };
@@ -678,6 +684,7 @@ export function returnOrderArtifact(
         kind: "artifact_returned",
         worker: operator,
         station: order.station ?? undefined,
+        status: order.status === "queued" ? "working" : undefined,
         buildId: artifact.id,
         commitSha: artifact.head_sha,
         reason,
@@ -709,13 +716,14 @@ export function returnOrderArtifact(
         kind: "artifact_returned",
         worker: operator,
         station: order.station ?? undefined,
+        status: order.status === "queued" ? "working" : undefined,
         reviewId: artifact.review_id,
         reason,
       };
     } else {
       throw new Error(`order ${orderId} is at ${order.station ?? "no station"}, which has no artifact gate`);
     }
-    appendOrderEventInTransaction(db, orderId, returned, at);
+    appendOrderEventInTransaction(db, orderId, returned, at, process.cwd(), true);
     recordOwnerVerdictInTransaction(db, orderId, "returned", reason, operator, at);
     setOrderHoldInTransaction(db, orderId, null, at);
     appendOrderEventInTransaction(
@@ -972,6 +980,7 @@ function appendOrderEventInTransaction(
   event: OrderEvent,
   at: string,
   worktree = process.cwd(),
+  allowQueuedApprovalArtifactReturn = false,
 ): number {
   if (isTerminalOrderStatus(event.kind as OrderStatus) && event.status !== event.kind) {
     throw new Error(`terminal event kind must match its status: ${event.kind}`);
@@ -979,10 +988,13 @@ function appendOrderEventInTransaction(
   if (event.status && isTerminalOrderStatus(event.status) && event.kind !== event.status) {
     throw new Error(`terminal event status must match its kind: ${event.status}`);
   }
-  const order = db.query("SELECT status, run_id, station FROM factory_order WHERE id = ?").get(orderId) as {
+  const order = db
+    .query("SELECT status, run_id, station, hold FROM factory_order WHERE id = ?")
+    .get(orderId) as {
     status: OrderStatus;
     run_id: string | null;
     station: string | null;
+    hold: string | null;
   } | null;
   if (!order) throw new Error(`order not found: ${orderId}`);
   if (!event.worker && event.kind !== "failed") {
@@ -991,6 +1003,11 @@ function appendOrderEventInTransaction(
   if (isTerminalOrderStatus(order.status)) {
     throw new Error(`order ${orderId} is already ${order.status}`);
   }
+  const returningHeldArtifact =
+    allowQueuedApprovalArtifactReturn &&
+    event.kind === "artifact_returned" &&
+    order.status === "queued" &&
+    order.hold === APPROVAL_HOLD;
   if (event.kind === "dropped") {
     assertDroppable(db, orderId);
   } else if (
@@ -1003,7 +1020,7 @@ function appendOrderEventInTransaction(
     event.kind !== "hold_released" &&
     event.kind !== "owner_verdict_recorded"
   ) {
-    if (order.status !== "working") {
+    if (order.status !== "working" && !returningHeldArtifact) {
       const action = VERB_FOR_KIND[event.kind] ?? event.kind;
       throw new Error(`order ${orderId} must be working before it can ${action}`);
     }
@@ -1597,10 +1614,14 @@ export function recordOrderBuild(
   if (body.trim() === "") throw new Error("build artifact body must not be empty");
   if (headSha.trim() === "") throw new Error("build artifact head must not be empty");
   if (returned && headSha !== returned.headSha) {
-    throw new OrderNotDone(
-      "build_revision_head_mismatch",
-      `order ${orderId} must keep the returned Build artifact on ${returned.headSha}`,
-    );
+    const latestCommit = latestOrderCommit(db, orderId);
+    if (latestCommit?.sha !== headSha) {
+      throw new OrderNotDone(
+        "build_revision_head_mismatch",
+        `order ${orderId} must use the returned Build artifact's commit or its latest recorded commit`,
+      );
+    }
+    assertChecked(db, orderId);
   }
   return db.transaction(() => {
     const revision = (db
@@ -1751,10 +1772,17 @@ export function approveOrderBuild(
     throw new BuildApprovalRefused("commit_missing", `order ${orderId} has no build commit to approve`);
   const check = db
     .query(
-      `SELECT 1 FROM factory_order_check
-       WHERE order_id = ? AND exit_code = 0 AND recorded_at >= ? LIMIT 1`,
+      `SELECT 1 FROM factory_order_check c
+       JOIN factory_order_event check_event
+         ON check_event.order_id = c.order_id AND check_event.check_id = c.id AND check_event.kind = 'check_finished'
+       WHERE c.order_id = ? AND c.exit_code = 0
+         AND check_event.id > coalesce((
+           SELECT max(commit_event.id) FROM factory_order_event commit_event
+           WHERE commit_event.order_id = c.order_id AND commit_event.kind = 'commit_created'
+         ), 0)
+       LIMIT 1`,
     )
-    .get(orderId, commit.recordedAt);
+    .get(orderId);
   if (!check) {
     throw new BuildApprovalRefused(
       "build_not_checked",
@@ -1867,26 +1895,21 @@ export function approveOrderReview(db: Database, orderId: string, worker: string
   })();
 }
 
-/**
- * A check older than the last commit is the case the gate exists to catch: an order
- * that ran the repo's check and then kept committing has no evidence for what it
- * landed. With no commit recorded there is nothing for a check to be older than,
- * so any passing one satisfies it.
- *
- * Both sides are `recorded_at`, the time the row was written, so the two paths
- * are judged on one clock. A check's `finished_at` may be supplied by its caller
- * and is free to say when the check truly ran, which on a loop that checks before
- * committing is earlier than the commit it vouches for.
- */
+/** A check must follow the latest commit in the append-only event order. */
 function assertChecked(db: Database, orderId: string): void {
   const passed = db
     .query(
-      `SELECT 1 FROM factory_order_check
-       WHERE order_id = ? AND exit_code = 0
-         AND recorded_at >= coalesce((SELECT max(recorded_at) FROM factory_order_commit WHERE order_id = ?), '')
+      `SELECT 1 FROM factory_order_check c
+       JOIN factory_order_event check_event
+         ON check_event.order_id = c.order_id AND check_event.check_id = c.id AND check_event.kind = 'check_finished'
+       WHERE c.order_id = ? AND c.exit_code = 0
+         AND check_event.id > coalesce((
+           SELECT max(commit_event.id) FROM factory_order_event commit_event
+           WHERE commit_event.order_id = c.order_id AND commit_event.kind = 'commit_created'
+         ), 0)
        LIMIT 1`,
     )
-    .get(orderId, orderId);
+    .get(orderId);
   if (!passed) {
     throw new OrderNotDone(
       "order_not_checked",

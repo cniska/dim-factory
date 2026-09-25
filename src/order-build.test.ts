@@ -82,6 +82,24 @@ describe("worker failure explanations", () => {
     expect(brief).toContain("not the command transcript");
   });
 
+  test("includes the prior failed attempt when the builder resumes", () => {
+    const brief = builderBrief(
+      { id: "order-1", title: "Build it", description: null },
+      {
+        body: "## Outcome\n\nBuild it.",
+        slices: [{ title: "Build it", outcome: "The result is verified." }],
+      },
+      { id: 1, ordinal: 1, title: "Build it", outcome: "The result is verified." },
+      null,
+      undefined,
+      "The builder did not record a passing check: bun run verify exited 1.",
+    );
+
+    expect(brief).toContain("# Previous failed Build attempt");
+    expect(brief).toContain("bun run verify exited 1");
+    expect(brief).toContain("Continue from this feedback and record fresh passing evidence");
+  });
+
   test("keeps the harness explanation beside the failure", () => {
     expect(
       workerFailureReason(

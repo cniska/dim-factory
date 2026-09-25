@@ -82,6 +82,21 @@ describe("factory order query", () => {
       worker,
       "2026-09-18T10:03:00.000Z",
     );
+    recordOrderCommit(
+      db,
+      "order-status",
+      "late-event",
+      worker,
+      "feat: event order wins",
+      "2026-09-18T09:59:00.000Z",
+    );
+    recordOrderCheck(
+      db,
+      "order-status",
+      { command: "bun run focused", exitCode: 0, result: "green" },
+      worker,
+      "2026-09-18T09:58:00.000Z",
+    );
     const reviewer = reviewIn(db, "order-status", worker, "2026-09-18T10:03:30.000Z").reviewer;
     for (const [dimension, summary] of [
       ["tests", "holds"],
@@ -139,8 +154,8 @@ describe("factory order query", () => {
         "2026-09-18T10:05:00.000Z",
         "(none)",
         "dim-station-build",
-        "aaa222 feat: later",
-        "bun run test (0, green)",
+        "late-event feat: event order wins",
+        "bun run focused (0, green)",
         "tests: fixed - holds; docs: fixed - updated",
         "verified",
       ],

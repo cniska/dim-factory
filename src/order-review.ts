@@ -79,7 +79,10 @@ export function reviewRange(db: Database, orderId: string, dir: string): { base:
     .get(orderId, head.out);
   const short = db
     .query<{ sha: string }, [string]>(
-      "SELECT sha FROM factory_order_commit WHERE order_id = ? ORDER BY recorded_at, rowid",
+      `SELECT c.sha FROM factory_order_commit c
+       JOIN factory_order_event e
+         ON e.order_id = c.order_id AND e.kind = 'commit_created' AND e.commit_sha = c.sha
+       WHERE c.order_id = ? ORDER BY e.id`,
     )
     .all(orderId);
   if (short.length === 0) {

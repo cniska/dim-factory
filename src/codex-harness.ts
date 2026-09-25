@@ -62,23 +62,29 @@ export function parseCodexHarnessEvent(line: string): HarnessEvent | HarnessEven
 }
 
 export function codexArgv(command: string, request: HarnessRequest): string[] {
-  const sandbox = request.capabilities.includes("edit-files") ? "workspace-write" : "read-only";
-  const gitDirs = gitMetadataDirs(request.cwd);
   return [
     command,
     "exec",
     "--json",
     ...(request.outputSchema ? ["--output-schema", request.outputSchema] : []),
-    "-s",
-    sandbox,
-    "--add-dir",
-    dataDir(request.env),
-    ...gitDirs.flatMap((gitDir) => ["--add-dir", gitDir]),
+    ...codexSandboxArgs(request),
     "-C",
     request.cwd,
     "-m",
     request.model,
     request.brief,
+  ];
+}
+
+function codexSandboxArgs(request: HarnessRequest): string[] {
+  const sandbox = request.capabilities.includes("edit-files") ? "workspace-write" : "read-only";
+  const gitDirs = gitMetadataDirs(request.cwd);
+  return [
+    "-s",
+    sandbox,
+    "--add-dir",
+    dataDir(request.env),
+    ...gitDirs.flatMap((gitDir) => ["--add-dir", gitDir]),
   ];
 }
 
@@ -100,6 +106,7 @@ export function codexResumeArgv(
 ): string[] {
   return [
     command,
+    ...codexSandboxArgs(request),
     "exec",
     "resume",
     "--json",

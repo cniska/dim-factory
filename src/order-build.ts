@@ -39,6 +39,7 @@ export function builderBrief(
   currentSlice: OrderSlice | null,
   workspace: ReturnType<typeof workspaceContract>,
   revision?: { body: string; feedback: string },
+  previousFailure?: string,
 ): string {
   const workspaceContext = workspace
     ? [
@@ -73,6 +74,13 @@ export function builderBrief(
           "# Owner feedback",
           revision?.feedback ?? "",
         ]),
+    ...(currentSlice && previousFailure
+      ? [
+          "# Previous failed Build attempt",
+          previousFailure,
+          "Continue from this feedback and record fresh passing evidence before completing the slice.",
+        ]
+      : []),
     "",
     "# Ordered slices",
     ...plan.slices.map((slice, index) => `${index + 1}. ${slice.title}: ${slice.outcome}`),
@@ -104,16 +112,29 @@ export type BuildOutcome = { builder: string; runId: string; worktree: string; e
 function requireBuildEvidence(db: Database, orderId: string, finalSlice: boolean): void {
   const commit = db
     .query<{ sha: string; recorded_at: string }, [string]>(
-      "SELECT sha, recorded_at FROM factory_order_commit WHERE order_id = ? ORDER BY recorded_at DESC, rowid DESC LIMIT 1",
+      `SELECT c.sha, c.recorded_at
+       FROM factory_order_commit c
+       JOIN factory_order_event e
+         ON e.order_id = c.order_id AND e.kind = 'commit_created' AND e.commit_sha = c.sha
+       WHERE c.order_id = ?
+       ORDER BY e.id DESC LIMIT 1`,
     )
     .get(orderId);
   if (!commit) throw new Error("builder did not record a commit");
   const check = db
     .query<{ exit_code: number }, [string]>(
-      "SELECT exit_code FROM factory_order_check WHERE order_id = ? ORDER BY recorded_at DESC, id DESC LIMIT 1",
+      `SELECT c.exit_code FROM factory_order_check c
+       JOIN factory_order_event check_event
+         ON check_event.order_id = c.order_id AND check_event.check_id = c.id AND check_event.kind = 'check_finished'
+       WHERE c.order_id = ? AND check_event.id > coalesce((
+         SELECT max(commit_event.id) FROM factory_order_event commit_event
+         WHERE commit_event.order_id = c.order_id AND commit_event.kind = 'commit_created'
+       ), 0)
+       ORDER BY check_event.id DESC LIMIT 1`,
     )
     .get(orderId);
-  if (check?.exit_code !== 0) throw new Error("builder did not record a passing check");
+  if (check?.exit_code !== 0)
+    throw new Error("builder did not record a passing check after the latest commit");
   if (finalSlice) {
     const build = db
       .query<{ id: number }, [string, string]>(
@@ -168,6 +189,13 @@ export async function runOrderBuildLive(
     )
     .all(plan.id);
   const currentSlice = nextOrderSlice(db, orderId);
+  const previousFailure = db
+    .query<{ reason: string | null }, [string]>(
+      `SELECT reason FROM factory_order_attempt
+       WHERE order_id = ? AND station = 'dim-station-build' AND kind = 'finished'
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .get(orderId);
   const runId = `build-${crypto.randomUUID()}`;
   const worktree = worktreePath(repoRoot(options.dir), orderId);
   const workspace = workspaceContract(worktree);
@@ -235,6 +263,7 @@ export async function runOrderBuildLive(
           currentSlice,
           workspace,
           artifact ? { body: artifact.body, feedback: artifact.reason } : undefined,
+          previousFailure?.reason ?? undefined,
         ),
         capabilities: BUILDER_CAPABILITIES,
       }),
@@ -317,6 +346,13 @@ export function runOrderBuild(
     )
     .all(plan.id);
   const currentSlice = nextOrderSlice(db, orderId);
+  const previousFailure = db
+    .query<{ reason: string | null }, [string]>(
+      `SELECT reason FROM factory_order_attempt
+       WHERE order_id = ? AND station = 'dim-station-build' AND kind = 'finished'
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .get(orderId);
   const runId = `build-${crypto.randomUUID()}`;
   const worktree = worktreePath(repoRoot(options.dir), orderId);
   const workspace = workspaceContract(worktree);
@@ -357,6 +393,7 @@ export function runOrderBuild(
           currentSlice,
           workspace,
           artifact ? { body: artifact.body, feedback: artifact.reason } : undefined,
+          previousFailure?.reason ?? undefined,
         ),
         capabilities: BUILDER_CAPABILITIES,
       }),
