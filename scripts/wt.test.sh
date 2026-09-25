@@ -2,6 +2,10 @@
 # Every case uses a throwaway repo.
 set -u
 
+# The reader's own git config would sign these commits, which fails inside a station worker's
+# sandbox; `.env.test` holds the same for `bun test`, which this script is not run under.
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+
 # The command under test, word-split so it can carry arguments. These cases pin
 # the messages and exit codes `dim wt` prints, so they are run against it rather
 # than against a copy of the logic.
