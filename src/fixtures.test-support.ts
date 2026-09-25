@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { openOrderReview } from "./factory-order";
@@ -40,6 +40,29 @@ export function workerEnv(db: Database, role: Role = "builder"): Env {
   return { [WORKER_NAME_VAR]: minted.name, [WORKER_TOKEN_VAR]: minted.token };
 }
 
+let signingKey: { key: string; allowedSigners: string } | undefined;
+
+/**
+ * Ship refuses a commit that does not verify, so a trunk fixture signs every commit, with a key
+ * made for this test process rather than the reader's own: no agent, no passphrase, and nothing a
+ * station worker's sandbox cannot reach.
+ */
+export function signCommitsIn(dir: string): void {
+  if (!signingKey) {
+    const keys = mkdtempSync(join(tmpdir(), "dim-signing-"));
+    const key = join(keys, "id_ed25519");
+    Bun.spawnSync(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "t@example.com", "-f", key]);
+    const allowedSigners = join(keys, "allowed_signers");
+    writeFileSync(allowedSigners, `t@example.com ${readFileSync(`${key}.pub`, "utf8")}`);
+    signingKey = { key, allowedSigners };
+  }
+  const git = (args: string[]) => Bun.spawnSync(["git", "-C", dir, ...args]);
+  git(["config", "gpg.format", "ssh"]);
+  git(["config", "user.signingkey", signingKey.key]);
+  git(["config", "gpg.ssh.allowedSignersFile", signingKey.allowedSigners]);
+  git(["config", "commit.gpgsign", "true"]);
+}
+
 /**
  * A repo whose one commit is on a trunk the repo names itself, which is what the
  * completion gate reads. Built rather than stubbed: the gate asks git, and a
@@ -51,7 +74,7 @@ export function integratedRepo(): { dir: string; sha: string } {
   git(["init", "-q", "-b", "main"]);
   git(["config", "user.email", "t@example.com"]);
   git(["config", "user.name", "Test"]);
-  git(["config", "commit.gpgsign", "false"]);
+  signCommitsIn(dir);
   writeFileSync(join(dir, "landed.txt"), "landed");
   // Every repo `dim` claims an order in is expected to ignore `.claude/`, which is
   // where its own worktree lives — without it, a claim's worktree reads as an

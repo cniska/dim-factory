@@ -155,6 +155,22 @@ describe("shipToTrunk", () => {
     expect(reachesNow(dir, landedSha)).toBe(true);
   });
 
+  test("a recorded commit that does not verify as signed is refused before anything lands", () => {
+    const { dir } = repo();
+    const wt = worktree(dir, "feat-unsigned");
+    const signed = commitFile(wt, "signed.txt", "signed");
+    writeFileSync(join(wt, "unsigned.txt"), "unsigned");
+    git(wt, ["add", "."]);
+    git(wt, ["-c", "commit.gpgsign=false", "commit", "-q", "-m", "feat: add unsigned.txt"]);
+    const unsigned = git(wt, ["rev-parse", "HEAD"]).out;
+    const trunkBefore = git(dir, ["rev-parse", "HEAD"]).out;
+
+    expect(() => shipToTrunk(wt, "feat-unsigned", [signed, unsigned])).toThrow(
+      expect.objectContaining({ code: "ship_unsigned" } satisfies Partial<ShipRefusal>),
+    );
+    expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkBefore);
+  });
+
   test("shipping is refused if only some of the recorded shas already reached the trunk", () => {
     const { dir } = repo();
     const alreadyLandedSha = git(dir, ["rev-parse", "HEAD"]).out;

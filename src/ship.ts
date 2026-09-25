@@ -10,6 +10,7 @@ export type ShipRefusalCode =
   | "ship_wrong_head"
   | "ship_dirty_trunk"
   | "ship_no_branch"
+  | "ship_unsigned"
   | "ship_conflict"
   | "ship_not_landed";
 
@@ -83,6 +84,23 @@ export function shipToTrunk(cwd: string, branch: string, shas: string[]): ShipOu
 
   if (!git(root, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]).success) {
     throw new ShipRefusal("ship_no_branch", `${root} has no branch named ${branch} to ship`);
+  }
+
+  // Every commit the merge would bring, recorded or not, since a branch can carry commits no
+  // order recorded; verified against the signers git is configured to trust.
+  const landing = git(root, ["rev-list", `refs/heads/${trunk.name}..refs/heads/${branch}`]);
+  if (!landing.success) {
+    throw new ShipRefusal("ship_unsigned", `cannot list what ${branch} would land: ${landing.out}`);
+  }
+  const unsigned = landing.out
+    .split("\n")
+    .filter(Boolean)
+    .filter((sha) => !git(root, ["verify-commit", sha]).success);
+  if (unsigned.length > 0) {
+    throw new ShipRefusal(
+      "ship_unsigned",
+      `${branch} carries commits that do not verify as signed: ${unsigned.join(", ")}`,
+    );
   }
 
   let outcome: ShipOutcome;
