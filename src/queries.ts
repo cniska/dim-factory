@@ -1341,6 +1341,48 @@ const schedules: Query = {
   },
 };
 
+const scheduleHistory: Query = {
+  name: "schedule-history",
+  summary: "show every persisted schedule evaluation and dispatch outcome",
+  usage: "dim q schedule-history [schedule-id]",
+  spansHistory: true,
+  window: "evaluated_at",
+  run: (db, ctx) => {
+    const filter = ctx.arg ? " WHERE schedule_id = ?" : "";
+    const params = ctx.arg ? [ctx.arg] : [];
+    const columns = [
+      "schedule_id",
+      "evaluated_at",
+      "due",
+      "dispatched",
+      "selected_order_ids",
+      "worker",
+      "session_id",
+      "harness",
+      "model",
+      "tier",
+      "outcome",
+      "reason",
+    ];
+    const rows = table(
+      db,
+      `SELECT schedule_id, evaluated_at,
+              CASE WHEN due = 1 THEN 'due' ELSE 'not due' END AS due,
+              CASE WHEN dispatched = 1 THEN 'dispatched' ELSE 'not dispatched' END AS dispatched,
+              selected_order_ids, worker, session_id, harness, model, tier, outcome, reason
+       FROM factory_schedule_invocation${filter}
+       ORDER BY evaluated_at, id`,
+      params,
+    );
+    return {
+      denominator: `${rows.length} schedule invocation${rows.length === 1 ? "" : "s"} read from factory_schedule_invocation`,
+      columns,
+      rows: toRows(rows, columns),
+      note: rows.length === 0 ? "no schedule invocations are recorded" : undefined,
+    };
+  },
+};
+
 /**
  * One skill, split at each edit to its body. A correction is tied to the version
  * that was loaded in its session at the time, not to the version loaded today,
@@ -2381,6 +2423,7 @@ export const QUERIES: Query[] = [
   thread,
   factory,
   schedules,
+  scheduleHistory,
   order,
   skill,
   resume,
