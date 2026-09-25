@@ -3,12 +3,12 @@ import { describe, expect, test } from "bun:test";
 import {
   createSchedule,
   listDueSchedules,
-  recordScheduleInvocation,
   recordScheduleEvaluation,
+  recordScheduleInvocation,
   setSchedulePaused,
 } from "./factory-schedule";
-import { SCHEMA_SQL } from "./schema";
 import { findQuery } from "./queries";
+import { SCHEMA_SQL } from "./schema";
 
 describe("factory schedules", () => {
   test("selects an unevaluated schedule and respects its interval", () => {
