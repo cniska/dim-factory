@@ -15,6 +15,9 @@
 // databases on disk rather than about the diff, and this one was materialized by
 // a wall reloading mid-edit before it was ever committed, so a column that
 // changes after the statement has run once changes with a bump.
+// src/schema-version.test.ts pins the version with a digest of SCHEMA_SQL, so
+// every edit here changes that one line and two branches editing the schema
+// conflict there rather than merging into one version number.
 
 import { ATTEMPT_OUTCOMES_SQL, ORDER_EVENT_KINDS_SQL } from "./factory-events";
 import { ORDER_STATUSES_SQL } from "./factory-order";
