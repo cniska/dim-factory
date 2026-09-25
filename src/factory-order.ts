@@ -40,6 +40,7 @@ export type Order = {
   description?: string;
   priority?: OrderPriority;
   hold?: string;
+  provenance?: EvidenceReference;
 };
 
 /** What the operator knows only once it has a worker to hand the order to. Who that
@@ -49,6 +50,10 @@ export type OrderClaim = {
   sessionId?: string;
   station?: string;
   operatorWorker: string;
+  providerSessionId?: string;
+  harness?: string;
+  model?: string;
+  tier?: string;
 };
 
 export type OrderEvent = {
@@ -237,22 +242,40 @@ function recordAttemptFinish(
 ): void {
   if (!runId || !worker) return;
   const started = db
-    .query<{ operator_worker: string | null; started_at: string }, [string, string]>(
-      `SELECT operator_worker, started_at FROM factory_order_attempt
+    .query<
+      {
+        operator_worker: string | null;
+        session_id: string | null;
+        provider_session_id: string | null;
+        harness: string | null;
+        model: string | null;
+        tier: string | null;
+        started_at: string | null;
+      },
+      [string, string]
+    >(
+      `SELECT operator_worker, session_id, provider_session_id, harness, model, tier, started_at
+       FROM factory_order_attempt
        WHERE order_id = ? AND run_id = ? AND kind = 'started'
        ORDER BY rowid DESC LIMIT 1`,
     )
     .get(orderId, runId);
   db.run(
     `INSERT INTO factory_order_attempt
-       (order_id, run_id, worker, operator_worker, station, started_at, ended_at, recorded_at, kind, outcome, reason)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'finished', ?, ?)`,
+       (order_id, run_id, worker, operator_worker, session_id, provider_session_id, station, harness, model, tier,
+        started_at, ended_at, recorded_at, kind, outcome, reason)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'finished', ?, ?)`,
     [
       orderId,
       runId,
       worker,
       started?.operator_worker ?? null,
+      started?.session_id ?? null,
+      started?.provider_session_id ?? null,
       station,
+      started?.harness ?? null,
+      started?.model ?? null,
+      started?.tier ?? null,
       started?.started_at ?? at,
       at,
       at,
@@ -280,7 +303,12 @@ export function queueOrder(db: Database, order: Order, worker: string, at = now(
         at,
       ],
     );
-    return appendOrderEventInTransaction(db, order.id, { kind: "queued", worker }, at);
+    return appendOrderEventInTransaction(
+      db,
+      order.id,
+      { kind: "queued", worker, evidence: order.provenance },
+      at,
+    );
   })();
 }
 
@@ -343,15 +371,20 @@ export function claimOrder(
     );
     db.run(
       `INSERT INTO factory_order_attempt
-         (order_id, run_id, worker, operator_worker, session_id, station, started_at, recorded_at, kind, outcome)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'started', 'running')`,
+         (order_id, run_id, worker, operator_worker, session_id, provider_session_id, station, harness, model, tier,
+          started_at, recorded_at, kind, outcome)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'started', 'running')`,
       [
         orderId,
         claim.runId,
         worker,
         claim.operatorWorker,
         claim.sessionId ?? null,
+        claim.providerSessionId ?? null,
         claim.station ?? null,
+        claim.harness ?? null,
+        claim.model ?? null,
+        claim.tier ?? null,
         at,
         at,
       ],
@@ -461,22 +494,122 @@ export function assertReviewApproved(db: Database, orderId: string): void {
 
 /** Current state rather than history: nothing has wanted to read back what an order
  *  used to be ranked at, and a row that wants one is its own change. */
-export function setOrderPriority(db: Database, orderId: string, priority: OrderPriority): void {
-  const result = db.run("UPDATE factory_order SET priority = ?, updated_at = ? WHERE id = ?", [
-    priority,
-    now(),
-    orderId,
-  ]);
-  if (result.changes !== 1) throw new Error(`order not found: ${orderId}`);
+export function setOrderPriority(
+  db: Database,
+  orderId: string,
+  priority: OrderPriority,
+  worker?: string,
+  at = now(),
+): void {
+  db.transaction(() => {
+    const result = db.run("UPDATE factory_order SET priority = ?, updated_at = ? WHERE id = ?", [
+      priority,
+      at,
+      orderId,
+    ]);
+    if (result.changes !== 1) throw new Error(`order not found: ${orderId}`);
+    if (worker) {
+      appendOrderEventInTransaction(
+        db,
+        orderId,
+        { kind: "priority_changed", worker, evidence: { priority } },
+        at,
+      );
+    }
+  })();
 }
 
-export function setOrderHold(db: Database, orderId: string, hold: string | null): void {
-  const result = setOrderHoldInTransaction(db, orderId, hold, now());
-  if (result.changes !== 1) throw new Error(`order not found: ${orderId}`);
+export function setOrderHold(
+  db: Database,
+  orderId: string,
+  hold: string | null,
+  worker?: string,
+  at = now(),
+): void {
+  db.transaction(() => {
+    const result = setOrderHoldInTransaction(db, orderId, hold, at);
+    if (result.changes !== 1) throw new Error(`order not found: ${orderId}`);
+    if (worker) {
+      appendOrderEventInTransaction(
+        db,
+        orderId,
+        {
+          kind: hold === null ? "hold_released" : "hold_set",
+          worker,
+          holdType: hold ?? undefined,
+          evidence: { hold },
+        },
+        at,
+      );
+    }
+  })();
 }
 
 function setOrderHoldInTransaction(db: Database, orderId: string, hold: string | null, at: string) {
   return db.run("UPDATE factory_order SET hold = ?, updated_at = ? WHERE id = ?", [hold, at, orderId]);
+}
+
+function recordOwnerVerdictInTransaction(
+  db: Database,
+  orderId: string,
+  decision: "approved" | "returned" | "held" | "dropped",
+  grounds: string,
+  worker: string,
+  at: string,
+): number {
+  if (grounds.trim() === "") throw new Error("owner verdict grounds must not be empty");
+  const sessionId = db
+    .query<{ session_id: string | null }, [string]>("SELECT session_id FROM factory_worker WHERE name = ?")
+    .get(worker)?.session_id;
+  const written = db.run(
+    `INSERT INTO factory_order_verdict
+       (order_id, decision, grounds, worker, session_id, recorded_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [orderId, decision, grounds, worker, sessionId ?? null, at],
+  );
+  const id = Number(written.lastInsertRowid);
+  appendOrderEventInTransaction(
+    db,
+    orderId,
+    { kind: "owner_verdict_recorded", worker, evidence: { decision, verdictId: id, grounds } },
+    at,
+  );
+  return id;
+}
+
+function recordDeliveryInTransaction(
+  db: Database,
+  orderId: string,
+  kind: "integration" | "delivery",
+  outcome: "succeeded" | "failed",
+  target: string,
+  commitSha: string | null,
+  worker: string,
+  at: string,
+  reason?: string,
+): number {
+  const sessionId = db
+    .query<{ session_id: string | null }, [string]>("SELECT session_id FROM factory_worker WHERE name = ?")
+    .get(worker)?.session_id;
+  const written = db.run(
+    `INSERT INTO factory_order_delivery
+       (order_id, kind, outcome, target, commit_sha, worker, session_id, recorded_at, reason)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [orderId, kind, outcome, target, commitSha, worker, sessionId ?? null, at, reason ?? null],
+  );
+  appendOrderEventInTransaction(
+    db,
+    orderId,
+    {
+      kind: kind === "integration" ? "integration_recorded" : "delivery_recorded",
+      worker,
+      commitSha: commitSha ?? undefined,
+      reason,
+      evidence: { deliveryId: Number(written.lastInsertRowid), outcome },
+    },
+    at,
+  );
+  return Number(written.lastInsertRowid);
 }
 
 export function returnOrderArtifact(
@@ -583,7 +716,14 @@ export function returnOrderArtifact(
       throw new Error(`order ${orderId} is at ${order.station ?? "no station"}, which has no artifact gate`);
     }
     appendOrderEventInTransaction(db, orderId, returned, at);
+    recordOwnerVerdictInTransaction(db, orderId, "returned", reason, operator, at);
     setOrderHoldInTransaction(db, orderId, null, at);
+    appendOrderEventInTransaction(
+      db,
+      orderId,
+      { kind: "hold_released", worker: operator, evidence: { hold: null } },
+      at,
+    );
   })();
 }
 
@@ -593,9 +733,15 @@ export function returnOrderArtifact(
  * this record cannot hold. What it is refused on is `assertDroppable`.
  */
 export function dropOrder(db: Database, orderId: string, reason: string, worker: string, at = now()): number {
-  return db.transaction(() =>
-    appendOrderEventInTransaction(db, orderId, { kind: "dropped", worker, status: "dropped", reason }, at),
-  )();
+  return db.transaction(() => {
+    recordOwnerVerdictInTransaction(db, orderId, "dropped", reason, worker, at);
+    return appendOrderEventInTransaction(
+      db,
+      orderId,
+      { kind: "dropped", worker, status: "dropped", reason },
+      at,
+    );
+  })();
 }
 
 /**
@@ -847,7 +993,16 @@ function appendOrderEventInTransaction(
   }
   if (event.kind === "dropped") {
     assertDroppable(db, orderId);
-  } else if (event.kind !== "queued" && event.kind !== "claimed" && event.kind !== "recovered") {
+  } else if (
+    event.kind !== "queued" &&
+    event.kind !== "claimed" &&
+    event.kind !== "recovered" &&
+    event.kind !== "provenance_recorded" &&
+    event.kind !== "priority_changed" &&
+    event.kind !== "hold_set" &&
+    event.kind !== "hold_released" &&
+    event.kind !== "owner_verdict_recorded"
+  ) {
     if (order.status !== "working") {
       const action = VERB_FOR_KIND[event.kind] ?? event.kind;
       throw new Error(`order ${orderId} must be working before it can ${action}`);
@@ -895,6 +1050,17 @@ function appendOrderEventInTransaction(
       order.station,
       "failed",
       event.reason,
+      event.ts ?? at,
+    );
+  } else if (event.kind === "completed") {
+    recordAttemptFinish(
+      db,
+      orderId,
+      order.run_id,
+      event.worker,
+      order.station,
+      "succeeded",
+      undefined,
       event.ts ?? at,
     );
   }
@@ -1106,6 +1272,12 @@ export function closeOrderReview(
         .get(reviewId)?.n ?? 0;
     if (outcome === "closed" && findings === 0 && nextOrderSlice(db, row.order_id) === null) {
       setOrderHoldInTransaction(db, row.order_id, APPROVAL_HOLD, at);
+      appendOrderEventInTransaction(
+        db,
+        row.order_id,
+        { kind: "hold_set", worker, holdType: APPROVAL_HOLD, evidence: { hold: APPROVAL_HOLD } },
+        at,
+      );
     }
     return event;
   })();
@@ -1177,7 +1349,15 @@ export function recordOrderReviewArtifact(
       { kind: "review_artifact_written", worker, reviewId: review.id },
       at,
     );
-    if (review.closed_at !== null) setOrderHoldInTransaction(db, orderId, APPROVAL_HOLD, at);
+    if (review.closed_at !== null) {
+      setOrderHoldInTransaction(db, orderId, APPROVAL_HOLD, at);
+      appendOrderEventInTransaction(
+        db,
+        orderId,
+        { kind: "hold_set", worker, holdType: APPROVAL_HOLD, evidence: { hold: APPROVAL_HOLD } },
+        at,
+      );
+    }
     return artifactId;
   })();
 }
@@ -1357,6 +1537,12 @@ export function recordOrderPlan(
     }
     appendOrderEventInTransaction(db, orderId, { kind: "plan_artifact_written", worker, planId }, at);
     setOrderHoldInTransaction(db, orderId, APPROVAL_HOLD, at);
+    appendOrderEventInTransaction(
+      db,
+      orderId,
+      { kind: "hold_set", worker, holdType: APPROVAL_HOLD, evidence: { hold: APPROVAL_HOLD } },
+      at,
+    );
     return planId;
   })();
 }
@@ -1430,6 +1616,12 @@ export function recordOrderBuild(
     const buildId = Number(written.lastInsertRowid);
     appendOrderEventInTransaction(db, orderId, { kind: "build_artifact_written", worker, buildId }, at);
     setOrderHoldInTransaction(db, orderId, APPROVAL_HOLD, at);
+    appendOrderEventInTransaction(
+      db,
+      orderId,
+      { kind: "hold_set", worker, holdType: APPROVAL_HOLD, evidence: { hold: APPROVAL_HOLD } },
+      at,
+    );
     return buildId;
   })();
 }
@@ -1527,8 +1719,15 @@ export function approveOrderPlan(db: Database, orderId: string, worker: string, 
       `plan ${plan.id} for order ${orderId} is already approved`,
     );
   db.transaction(() => {
+    recordOwnerVerdictInTransaction(db, orderId, "approved", "plan approved", worker, at);
     appendOrderEventInTransaction(db, orderId, { kind: "plan_approved", worker, planId: plan.id }, at);
     setOrderHoldInTransaction(db, orderId, null, at);
+    appendOrderEventInTransaction(
+      db,
+      orderId,
+      { kind: "hold_released", worker, evidence: { hold: null } },
+      at,
+    );
   })();
 }
 
@@ -1591,6 +1790,7 @@ export function approveOrderBuild(
     );
   }
   db.transaction(() => {
+    recordOwnerVerdictInTransaction(db, orderId, "approved", reason, worker, at);
     appendOrderEventInTransaction(
       db,
       orderId,
@@ -1598,6 +1798,12 @@ export function approveOrderBuild(
       at,
     );
     setOrderHoldInTransaction(db, orderId, null, at);
+    appendOrderEventInTransaction(
+      db,
+      orderId,
+      { kind: "hold_released", worker, evidence: { hold: null } },
+      at,
+    );
   })();
 }
 
@@ -1649,8 +1855,15 @@ export function approveOrderReview(db: Database, orderId: string, worker: string
       `review ${review.id} for order ${orderId} is already approved`,
     );
   db.transaction(() => {
+    recordOwnerVerdictInTransaction(db, orderId, "approved", "review approved", worker, at);
     appendOrderEventInTransaction(db, orderId, { kind: "review_approved", worker, reviewId: review.id }, at);
     setOrderHoldInTransaction(db, orderId, null, at);
+    appendOrderEventInTransaction(
+      db,
+      orderId,
+      { kind: "hold_released", worker, evidence: { hold: null } },
+      at,
+    );
   })();
 }
 
@@ -1762,6 +1975,7 @@ export function shipOrder(
   orderId: string,
   worktree: string,
   env: Env = process.env,
+  worker?: string,
 ): ShipOutcome {
   assertOrderWorking(db, orderId);
   const shas = db
@@ -1775,5 +1989,53 @@ export function shipOrder(
         `record what it landed with \`dim order commit ${orderId} --sha <sha>\`.`,
     );
   }
-  return withLock(() => shipToTrunk(worktree, orderId, shas), env);
+  let outcome: ShipOutcome;
+  try {
+    outcome = withLock(() => shipToTrunk(worktree, orderId, shas), env);
+  } catch (error) {
+    if (worker) {
+      const at = now();
+      const reason = error instanceof Error ? error.message : String(error);
+      db.transaction(() => {
+        recordDeliveryInTransaction(
+          db,
+          orderId,
+          "delivery",
+          "failed",
+          orderId,
+          shas.at(-1) ?? null,
+          worker,
+          at,
+          reason,
+        );
+      })();
+    }
+    throw error;
+  }
+  if (worker) {
+    const at = now();
+    db.transaction(() => {
+      recordDeliveryInTransaction(
+        db,
+        orderId,
+        "integration",
+        "succeeded",
+        orderId,
+        shas.at(-1) ?? null,
+        worker,
+        at,
+      );
+      recordDeliveryInTransaction(
+        db,
+        orderId,
+        "delivery",
+        "succeeded",
+        orderId,
+        shas.at(-1) ?? null,
+        worker,
+        at,
+      );
+    })();
+  }
+  return outcome;
 }

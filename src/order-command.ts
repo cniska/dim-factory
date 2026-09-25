@@ -273,9 +273,16 @@ const SHIP_OUTCOME_TEXT: Record<string, string> = {
   merged: "merged onto the trunk",
 };
 
-function ship(db: Database, orderId: string, args: string[], worktree: string, env: Env): string {
+function ship(
+  db: Database,
+  orderId: string,
+  args: string[],
+  worktree: string,
+  env: Env,
+  worker: string,
+): string {
   flags(args, []);
-  const outcome = shipOrder(db, orderId, worktree, env);
+  const outcome = shipOrder(db, orderId, worktree, env, worker);
   return `${orderId} is ${SHIP_OUTCOME_TEXT[outcome.landed]}`;
 }
 
@@ -401,17 +408,17 @@ export function runOrderCommand(
     const [level] = rest;
     const chosen = priority(level);
     if (!chosen) throw fail("priority takes the level to set");
-    setOrderPriority(db, orderId, chosen);
+    setOrderPriority(db, orderId, chosen, worker);
     return `${orderId} is ${chosen}`;
   }
   if (command === "hold") {
     const reason = required(flags(rest, ["--reason"]), "--reason");
-    setOrderHold(db, orderId, reason);
+    setOrderHold(db, orderId, reason, worker);
     return `${orderId} is held: ${reason}`;
   }
   if (command === "release") {
     flags(rest, []);
-    setOrderHold(db, orderId, null);
+    setOrderHold(db, orderId, null, worker);
     return `${orderId} is released`;
   }
   if (command === "return") {
@@ -467,7 +474,7 @@ export function runOrderCommand(
     const evidence = EVIDENCE[command] as Evidence;
     return evidence.record(db, orderId, flags(rest, evidence.flags), worker);
   }
-  if (command === "ship") return ship(db, orderId, rest, cwd, env);
+  if (command === "ship") return ship(db, orderId, rest, cwd, env, worker);
   if (command === "stop") return stop(db, orderId, rest, cwd, worker);
   if (command === "amend") return amend(db, orderId, rest);
   if (command === "drop") return drop(db, orderId, rest, worker);

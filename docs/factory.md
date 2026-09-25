@@ -156,9 +156,14 @@ The delivered-product report is the same row and its evidence tables: commits, c
 The order record also keeps append-only domain history. `factory_order_event`
 holds attributed actions and evidence references; attempts, schedule invocations,
 verdicts, and integration or delivery outcomes use dedicated rows where their
-fields have their own lifecycle. Analytics read those first-party records at
-query time. `trace_event` remains best-effort diagnostics and is not an analytics
-source, so losing a trace row does not remove a domain fact.
+fields have their own lifecycle. Queue provenance, priority and hold changes,
+owner verdicts, station actions, and terminal attempt outcomes are attributed to
+the worker and session that recorded them; attempt rows also retain execution
+identity. Shipping records integration and delivery separately, including a
+failed delivery outcome when shipping cannot complete. Analytics read these
+first-party records at query time. `trace_event` remains best-effort diagnostics
+and is not an analytics source, so losing a trace row does not remove a domain
+fact.
 
 ## Scheduling
 

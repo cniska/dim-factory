@@ -184,7 +184,11 @@ export async function runOrderBuildLive(
   };
   try {
     const harness = options.harness ?? DEFAULT_HARNESS;
-    const onAssigned = (assigned: string, providerSessionId: string): void => {
+    const onAssigned = (
+      assigned: string,
+      providerSessionId: string,
+      attribution: { harness: string; model: string; tier: string },
+    ): void => {
       builder = assigned;
       if (currentSlice) {
         claimOrder(
@@ -193,8 +197,10 @@ export async function runOrderBuildLive(
           {
             runId,
             sessionId: providerSessionId,
+            providerSessionId,
             station: "dim-station-build",
             operatorWorker: operator,
+            ...attribution,
           },
           builder,
           undefined,

@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { appendOrderEvent, queueOrder } from "./factory-order";
+import { appendOrderEvent, dropOrder, queueOrder, setOrderHold, setOrderPriority } from "./factory-order";
 import { mintWorker } from "./factory-worker";
 import { SCHEMA_SQL } from "./schema";
 
@@ -59,6 +59,57 @@ describe("factory domain event boundary", () => {
     ).toEqual({
       kind: "queued",
       evidence: JSON.stringify({ source: "operator", request: 1 }),
+    });
+    db.close();
+  });
+
+  test("records attributed queue changes and owner decisions separately from the projection", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const worker = mintWorker(db, { role: "operator", sessionId: "queue-history" }).name;
+    queueOrder(
+      db,
+      {
+        id: "queue-history",
+        project: "example/project",
+        title: "Queue history",
+        provenance: { source: "operator", request: 7 },
+      },
+      worker,
+      "2026-09-25T09:00:00.000Z",
+    );
+    setOrderPriority(db, "queue-history", "urgent", worker, "2026-09-25T09:01:00.000Z");
+    setOrderHold(db, "queue-history", "owner", worker, "2026-09-25T09:02:00.000Z");
+    setOrderHold(db, "queue-history", null, worker, "2026-09-25T09:03:00.000Z");
+    dropOrder(db, "queue-history", "superseded", worker, "2026-09-25T09:04:00.000Z");
+
+    expect(
+      db
+        .query<{ kind: string }, [string]>(
+          "SELECT kind FROM factory_order_event WHERE order_id = ? ORDER BY id",
+        )
+        .all("queue-history")
+        .map((row) => row.kind),
+    ).toEqual([
+      "queued",
+      "priority_changed",
+      "hold_set",
+      "hold_released",
+      "owner_verdict_recorded",
+      "dropped",
+    ]);
+    expect(
+      db.query("SELECT priority, hold, status FROM factory_order WHERE id = ?").get("queue-history"),
+    ).toEqual({
+      priority: "urgent",
+      hold: null,
+      status: "dropped",
+    });
+    expect(
+      db.query("SELECT decision, grounds FROM factory_order_verdict WHERE order_id = ?").get("queue-history"),
+    ).toEqual({
+      decision: "dropped",
+      grounds: "superseded",
     });
     db.close();
   });

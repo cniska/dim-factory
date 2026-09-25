@@ -197,6 +197,14 @@ describe("order command", () => {
     expect(Bun.spawnSync(["git", "-C", trunk.dir, "merge-base", "--is-ancestor", sha, "HEAD"]).success).toBe(
       true,
     );
+    expect(
+      database
+        .query("SELECT kind, outcome FROM factory_order_delivery WHERE order_id = ? ORDER BY id")
+        .all("order-1"),
+    ).toEqual([
+      { kind: "integration", outcome: "succeeded" },
+      { kind: "delivery", outcome: "succeeded" },
+    ]);
     runOrderCommand(database, ["check", "order-1", "--command", "bun run verify", "--exit", "0"]);
     expect(runOrderCommand(database, ["stop", "order-1", "completed"], null, trunk.dir)).toBe(
       "order-1 is completed",

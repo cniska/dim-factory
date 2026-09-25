@@ -92,7 +92,10 @@ describe("plan approval integration", () => {
       { kind: "queued", worker: operator.name },
       { kind: "claimed", worker: operator.name },
       { kind: "plan_artifact_written", worker: outcome.planner },
+      { kind: "hold_set", worker: outcome.planner },
+      { kind: "owner_verdict_recorded", worker: operator.name },
       { kind: "plan_approved", worker: operator.name },
+      { kind: "hold_released", worker: operator.name },
     ]);
     db.close();
   });
@@ -145,7 +148,10 @@ describe("plan approval integration", () => {
       { kind: "queued", worker: operator.name },
       { kind: "claimed", worker: operator.name },
       { kind: "plan_artifact_written", worker: planner.name },
+      { kind: "hold_set", worker: planner.name },
+      { kind: "owner_verdict_recorded", worker: operator.name },
       { kind: "plan_approved", worker: operator.name },
+      { kind: "hold_released", worker: operator.name },
     ]);
     expect(db.query("SELECT plan_id FROM factory_order_event WHERE kind = 'plan_approved'").get()).toEqual({
       plan_id: planId,

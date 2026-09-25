@@ -172,14 +172,20 @@ describe("build approval integration", () => {
       { kind: "commit_created", worker: builder.name, commit_sha: repo.sha, reason: null },
       { kind: "check_finished", worker: builder.name, commit_sha: null, reason: null },
       { kind: "build_artifact_written", worker: builder.name, commit_sha: null, reason: null },
+      { kind: "hold_set", worker: builder.name, commit_sha: null, reason: null },
       {
         kind: "artifact_returned",
         worker: operator.name,
         commit_sha: repo.sha,
         reason: "Explain the verified result, not the command log.",
       },
+      { kind: "owner_verdict_recorded", worker: operator.name, commit_sha: null, reason: null },
+      { kind: "hold_released", worker: operator.name, commit_sha: null, reason: null },
       { kind: "build_artifact_written", worker: builder.name, commit_sha: null, reason: null },
+      { kind: "hold_set", worker: builder.name, commit_sha: null, reason: null },
+      { kind: "owner_verdict_recorded", worker: operator.name, commit_sha: null, reason: null },
       { kind: "build_approved", worker: operator.name, commit_sha: repo.sha, reason: "answers the request" },
+      { kind: "hold_released", worker: operator.name, commit_sha: null, reason: null },
       { kind: "moved", worker: operator.name, commit_sha: null, reason: null },
     ]);
     db.close();

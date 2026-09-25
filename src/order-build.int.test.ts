@@ -147,12 +147,16 @@ describe("builder station", () => {
       { kind: "queued", worker: operator.name, station: null },
       { kind: "claimed", worker: operator.name, station: "dim-station-plan" },
       { kind: "plan_artifact_written", worker: planner.name, station: null },
+      { kind: "hold_set", worker: planner.name, station: null },
+      { kind: "owner_verdict_recorded", worker: operator.name, station: null },
       { kind: "plan_approved", worker: operator.name, station: null },
+      { kind: "hold_released", worker: operator.name, station: null },
       { kind: "moved", worker: operator.name, station: "dim-station-build" },
       { kind: "claimed", worker: outcome.builder, station: "dim-station-build" },
       { kind: "commit_created", worker: outcome.builder, station: null },
       { kind: "check_finished", worker: outcome.builder, station: null },
       { kind: "build_artifact_written", worker: outcome.builder, station: null },
+      { kind: "hold_set", worker: outcome.builder, station: null },
     ]);
     expect(db.query("SELECT worker FROM factory_order_slice_completion").get()).toEqual({
       worker: outcome.builder,
@@ -198,7 +202,7 @@ describe("builder station", () => {
       db
         .query("SELECT kind FROM factory_order_event WHERE order_id = ? ORDER BY id DESC LIMIT 1")
         .get("builder-order"),
-    ).toEqual({ kind: "artifact_returned" });
+    ).toEqual({ kind: "hold_released" });
     db.close();
   });
 
@@ -374,6 +378,17 @@ describe("builder station", () => {
       { kind: "started", operator_worker: nextOperator.name },
       { kind: "started", operator_worker: laterOperator.name },
     ]);
+    expect(
+      db
+        .query(
+          `SELECT count(*) AS n FROM factory_order_attempt
+           WHERE kind = 'started' AND station = 'dim-station-build'
+             AND session_id IS NOT NULL AND provider_session_id IS NOT NULL
+             AND harness IS NOT NULL AND model IS NOT NULL AND tier IS NOT NULL
+             AND started_at IS NOT NULL`,
+        )
+        .get(),
+    ).toEqual({ n: 2 });
     expect(
       db
         .query(

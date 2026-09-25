@@ -35,6 +35,7 @@ export type OrderWorker = {
 };
 
 export type OrderStationName = "plan" | "build" | "review";
+export type ExecutionAttribution = { harness: HarnessCommandRequest["harness"]; model: string; tier: string };
 
 const STATION_ROLES = {
   plan: "planner",
@@ -106,7 +107,7 @@ export function runOrderStation<Station extends OrderStationName>(
 export async function runOrderStationLive<Station extends OrderStationName>(
   options: OrderStationOptions<Station> & {
     adapter?: HarnessAdapter;
-    onAssigned?: (worker: string, sessionId: string) => void;
+    onAssigned?: (worker: string, sessionId: string, attribution: ExecutionAttribution) => void;
   },
 ): Promise<OrderStationTurn<Station>> {
   const { orderWorker, returned, request } = prepareOrderStation(options);
@@ -127,7 +128,7 @@ export function runOrderWorkerHarnessLive(
   worker: OrderWorker,
   machine: Record<string, string | undefined> | undefined,
   adapter?: HarnessAdapter,
-  onAssigned?: (worker: string, sessionId: string) => void,
+  onAssigned?: (worker: string, sessionId: string, attribution: ExecutionAttribution) => void,
 ): Promise<Awaited<ReturnType<typeof runHarnessCommandLive>> & { worker?: string }> {
   const env = orderWorkerRequest(db, machine, worker);
   let name = worker.worker;
@@ -144,7 +145,8 @@ export function runOrderWorkerHarnessLive(
       bindOrderWorker(db, worker.orderId, worker.role, worker.assignment.id, minted);
       name = minted.name;
     }
-    onAssigned?.(name, sessionId);
+    const { tier, model } = route(worker.role, request.harness, machine);
+    onAssigned?.(name, sessionId, { harness: request.harness, model, tier });
   };
   const run = worker.providerSessionId
     ? runHarnessCommandResumeLive({ ...request, env }, worker.providerSessionId, onStarted, adapter)

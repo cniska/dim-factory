@@ -644,6 +644,7 @@ describe("factory wall item view", () => {
       "commit_created",
       "check_finished",
       "build_artifact_written",
+      "hold_set",
       "review_opened",
       "finding_raised",
       "finding_answered",

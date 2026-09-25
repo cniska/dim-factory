@@ -226,7 +226,12 @@ describe("factory order report records", () => {
     ).toEqual({ body: "## outcome\n\nMove the order before building.", worker });
     expect(
       database.query("SELECT kind FROM factory_order_event WHERE order_id = 'order-planned'").all(),
-    ).toEqual([{ kind: "queued" }, { kind: "claimed" }, { kind: "plan_artifact_written" }]);
+    ).toEqual([
+      { kind: "queued" },
+      { kind: "claimed" },
+      { kind: "plan_artifact_written" },
+      { kind: "hold_set" },
+    ]);
 
     moveOrder(database, "order-planned", "dim-station-build", worker);
     recordOrderCommit(database, "order-planned", trunk.sha, worker, "feat: planned order");

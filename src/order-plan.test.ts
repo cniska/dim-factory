@@ -117,6 +117,7 @@ describe("planner station", () => {
       { kind: "queued" },
       { kind: "claimed" },
       { kind: "plan_artifact_written" },
+      { kind: "hold_set" },
     ]);
     db.close();
     rmSync(repo.dir, { recursive: true, force: true });
