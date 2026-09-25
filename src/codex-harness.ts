@@ -1,4 +1,3 @@
-import { gitMetadataDirs } from "./git-metadata-dirs";
 import type { HarnessEvent, HarnessRequest } from "./harness";
 import type { HarnessLineParser, HarnessProcess, ProcessEnvironment } from "./harness-process";
 import { dataDir } from "./paths";
@@ -68,16 +67,14 @@ function codexEventParser(): HarnessLineParser {
   };
 }
 
+/**
+ * No git metadata is added: the station runner commits a builder's worktree, so a builder needs
+ * none, and `workspace-write` keeps `.git` inside the worktree read-only on its own — which keeps
+ * the pointer the runner's git follows out of a builder's reach.
+ */
 function codexSandboxArgs(request: HarnessRequest): string[] {
   const sandbox = request.capabilities.includes("edit-files") ? "workspace-write" : "read-only";
-  const gitDirs = gitMetadataDirs(request.cwd);
-  return [
-    "-s",
-    sandbox,
-    "--add-dir",
-    dataDir(request.env),
-    ...gitDirs.flatMap((gitDir) => ["--add-dir", gitDir]),
-  ];
+  return ["-s", sandbox, "--add-dir", dataDir(request.env)];
 }
 
 /** An API-key login stored with `codex login --with-api-key` survives any environment filter. */

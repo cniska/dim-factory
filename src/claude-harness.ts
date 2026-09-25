@@ -1,9 +1,8 @@
 import { readFileSync } from "node:fs";
-import { gitMetadataDirs, protectedGitPaths } from "./git-metadata-dirs";
+import { checkoutGitPath } from "./checkout-git";
 import type { HarnessEvent, HarnessRequest } from "./harness";
 import type { HarnessLineParser, HarnessProcess, ProcessEnvironment } from "./harness-process";
 import { dataDir } from "./paths";
-import { trunkRefPaths } from "./trunk";
 
 type ClaudeBlock = {
   type?: string;
@@ -95,10 +94,9 @@ function claudeEventParser(): HarnessLineParser {
  * stops a worker from running unconfined on a machine where the sandbox cannot start.
  * A worker without `edit-files` loses the editing tools and has the cwd denied to the
  * sandbox, leaving `dim`'s data directory, and the session's `$TMPDIR` that Claude always
- * grants, as the places it can write. A worker with it reaches the
- * git metadata so it can commit, with the paths there that decide what the operator's own git
- * runs and shows, and the refs that decide what the trunk holds, denied to its sandbox and to
- * its editing tools alike.
+ * grants, as the places it can write. A worker with it writes the checkout and nothing of its
+ * git metadata, since the station runner commits for it; the checkout's own `.git` is denied to
+ * its sandbox and its editing tools alike, because that is what the runner's git follows.
  */
 function claudeSettings(request: HarnessRequest, protectedGit: string[]): string {
   const edits = request.capabilities.includes("edit-files");
@@ -119,15 +117,14 @@ function claudeSettings(request: HarnessRequest, protectedGit: string[]): string
   });
 }
 
-function builderDenials(cwd: string, gitDirs: string[]): string[] {
-  const common = gitDirs.at(-1);
-  return [...protectedGitPaths(cwd), ...(common ? trunkRefPaths(cwd, common) : [])];
+function builderDenials(cwd: string): string[] {
+  const pointer = checkoutGitPath(cwd);
+  return pointer ? [pointer] : [];
 }
 
 function claudeFlags(request: HarnessRequest): string[] {
   const edits = request.capabilities.includes("edit-files");
-  const gitDirs = edits ? gitMetadataDirs(request.cwd) : [];
-  const dirs = [dataDir(request.env), ...gitDirs];
+  const dirs = [dataDir(request.env)];
   return [
     "-p",
     "--output-format",
@@ -136,7 +133,7 @@ function claudeFlags(request: HarnessRequest): string[] {
     "--permission-mode",
     edits ? "acceptEdits" : "default",
     "--settings",
-    claudeSettings(request, edits ? builderDenials(request.cwd, gitDirs) : []),
+    claudeSettings(request, edits ? builderDenials(request.cwd) : []),
     ...(request.outputSchema ? ["--json-schema", readFileSync(request.outputSchema, "utf8")] : []),
     ...dirs.flatMap((dir) => ["--add-dir", dir]),
     "--model",

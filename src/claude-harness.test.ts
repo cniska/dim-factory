@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { claudeArgs, claudeProcess } from "./claude-harness";
 import type { HarnessRequest } from "./harness";
 import { commandLine, resumeCommandLine } from "./harness-process";
@@ -160,61 +160,37 @@ describe("the Claude harness adapter", () => {
     expect(addDirs(argv)).toEqual(["/dim-home"]);
   });
 
-  test("lets a builder reach the record and the repository metadata", () => {
-    const cwd = process.cwd();
-    const gitDirs = Bun.spawnSync(["git", "-C", cwd, "rev-parse", "--git-dir", "--git-common-dir"])
-      .stdout.toString()
-      .trim()
-      .split("\n")
-      .map((dir) => resolve(cwd, dir));
+  test("gives a builder the record and none of the repository metadata", () => {
+    const argv = claudeArgs({ ...request, cwd: process.cwd(), capabilities: ["edit-files"] });
 
-    const argv = claudeArgs({ ...request, cwd, capabilities: ["edit-files"] });
-
-    expect(addDirs(argv)).toEqual(["/dim-home", ...new Set(gitDirs)]);
-    const denied = settings(argv) as {
-      permissions: { deny: string[] };
-      sandbox: { filesystem: { denyWrite: string[] } };
-    };
-    expect(denied.sandbox.filesystem.denyWrite.length).toBeGreaterThan(0);
-    expect(denied.permissions.deny).toEqual(
-      denied.sandbox.filesystem.denyWrite.flatMap((path) => [`Edit(/${path})`, `Edit(/${path}/**)`]),
-    );
+    expect(addDirs(argv)).toEqual(["/dim-home"]);
   });
 
-  test("denies a builder every git pointer that could send the operator's git to a config it wrote", () => {
+  test("denies a builder the .git the runner's git follows, as a worktree pointer or a checkout's own", () => {
     const repo = mkdtempSync(join(tmpdir(), "dim-git-pointers-"));
     const git = (cwd: string, ...args: string[]) =>
       Bun.spawnSync(["git", "-C", cwd, ...args], { stdout: "pipe", stderr: "pipe" });
     git(repo, "init", "-q", "-b", "main");
     git(repo, "-c", "user.email=t@e", "-c", "user.name=T", "commit", "-q", "--allow-empty", "-m", "init");
-    git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
     git(repo, "worktree", "add", "-q", join(repo, "order"), "-b", "order");
-    const common = realpathSync(join(repo, ".git"));
-    const cwd = realpathSync(join(repo, "order"));
-
-    const denied = (
+    const denied = (cwd: string) =>
       settings(claudeArgs({ ...request, cwd, capabilities: ["edit-files"] })) as {
+        permissions: { deny: string[] };
         sandbox: { filesystem: { denyWrite: string[] } };
-      }
-    ).sandbox.filesystem.denyWrite;
+      };
+    const worktree = realpathSync(join(repo, "order"));
+    const checkout = realpathSync(repo);
+
+    const inWorktree = denied(worktree);
+    const inCheckout = denied(checkout);
     rmSync(repo, { recursive: true, force: true });
 
-    expect(denied).toEqual([
-      join(common, "config"),
-      join(common, "config.worktree"),
-      join(common, "hooks"),
-      join(common, "info"),
-      join(common, "modules"),
-      join(common, "refs", "replace"),
-      join(common, "shallow"),
-      join(common, "worktrees", "*", "commondir"),
-      join(common, "worktrees", "*", "gitdir"),
-      join(common, "worktrees", "*", "config.worktree"),
-      join(cwd, ".git"),
-      join(common, "packed-refs"),
-      join(common, "refs", "remotes", "origin", "HEAD"),
-      join(common, "refs", "heads", "main"),
+    expect(inWorktree.sandbox.filesystem.denyWrite).toEqual([join(worktree, ".git")]);
+    expect(inWorktree.permissions.deny).toEqual([
+      `Edit(/${join(worktree, ".git")})`,
+      `Edit(/${join(worktree, ".git")}/**)`,
     ]);
+    expect(inCheckout.sandbox.filesystem.denyWrite).toEqual([join(checkout, ".git")]);
   });
 
   test("passes a station's response schema inline, as Claude reads it", () => {

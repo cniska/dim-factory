@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { isAbsolute, resolve } from "node:path";
 import { codexArgs, codexProcess } from "./codex-harness";
 import type { HarnessRequest } from "./harness";
 import { commandLine, resumeCommandLine } from "./harness-process";
@@ -93,26 +92,12 @@ describe("the Codex harness adapter", () => {
     expect(argv).toContain("/dim-home/plan.json");
   });
 
-  test("grants builders access to the repository metadata", () => {
+  test("gives a builder in a git worktree no writable repository metadata", () => {
     const argv = codexArgs({ ...request, cwd: process.cwd(), capabilities: ["edit-files"] });
-    const gitMetadata = Bun.spawnSync(
-      ["git", "-C", process.cwd(), "rev-parse", "--git-dir", "--git-common-dir"],
-      {
-        stdout: "pipe",
-        stderr: "ignore",
-      },
-    )
-      .stdout.toString()
-      .trim()
-      .split("\n");
-    const expectedMetadata = [...new Set(gitMetadata)]
-      .filter((gitDir) => gitDir.length > 0)
-      .map((gitDir) => (isAbsolute(gitDir) ? gitDir : resolve(process.cwd(), gitDir)));
     const addDirs = argv.flatMap((arg, index) => (arg === "--add-dir" ? [argv[index + 1]] : []));
 
     expect(argv).toContain("workspace-write");
-    expect(addDirs[0]).toBe("/dim-home");
-    expect(addDirs.slice(1)).toEqual(expectedMetadata);
+    expect(addDirs).toEqual(["/dim-home"]);
   });
 
   test("keeps every per-token API key out of a worker", () => {
@@ -145,22 +130,12 @@ describe("the Codex harness adapter", () => {
     ]);
   });
 
-  test("keeps builder metadata writable when a Codex session resumes", () => {
+  test("keeps a resumed builder's repository metadata read-only", () => {
     const argv = resumeCommandLine(codexProcess, "thread-1", {
       ...request,
       cwd: process.cwd(),
       capabilities: ["edit-files"],
     });
-    const gitMetadata = Bun.spawnSync(
-      ["git", "-C", process.cwd(), "rev-parse", "--git-dir", "--git-common-dir"],
-      { stdout: "pipe", stderr: "ignore" },
-    )
-      .stdout.toString()
-      .trim()
-      .split("\n");
-    const expectedMetadata = [...new Set(gitMetadata)]
-      .filter((gitDir) => gitDir.length > 0)
-      .map((gitDir) => (isAbsolute(gitDir) ? gitDir : resolve(process.cwd(), gitDir)));
     const addDirs = argv.flatMap((arg, index) => (arg === "--add-dir" ? [argv[index + 1]] : []));
 
     expect(argv.slice(0, 5)).toEqual([
@@ -170,6 +145,6 @@ describe("the Codex harness adapter", () => {
       "-s",
       "workspace-write",
     ]);
-    expect(addDirs).toEqual(["/dim-home", ...expectedMetadata]);
+    expect(addDirs).toEqual(["/dim-home"]);
   });
 });
