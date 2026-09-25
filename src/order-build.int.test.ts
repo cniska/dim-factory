@@ -340,6 +340,64 @@ describe("builder station", () => {
         revision: 2,
       },
     );
+    returnOrderArtifact(db, "returned-builder-order", operator.name, "Match the actual worktree HEAD.");
+    const laterCommit = Bun.spawnSync(
+      [
+        "git",
+        "-C",
+        outcome.worktree,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--allow-empty",
+        "-m",
+        "fix: unrecorded head",
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    expect(laterCommit.success).toBe(true);
+    expect(() =>
+      runOrderBuild(db, "returned-builder-order", operator.name, {
+        dir: repo.dir,
+        env: { DIM_HOME: home },
+        spawn: () => {
+          recordOrderBuild(
+            db,
+            "returned-builder-order",
+            "Revision still points to the old head.",
+            repo.sha,
+            outcome.builder,
+          );
+          return { exitCode: 0 };
+        },
+      }),
+    ).toThrow("builder did not record worktree HEAD");
+    returnOrderArtifact(db, "returned-builder-order", operator.name, "Record an immutable commit ID.");
+    recordOrderCommit(db, "returned-builder-order", "HEAD", outcome.builder, "fix: symbolic head");
+    recordOrderCheck(
+      db,
+      "returned-builder-order",
+      { command: "bun run verify", exitCode: 0, result: "green" },
+      outcome.builder,
+    );
+    expect(() =>
+      runOrderBuild(db, "returned-builder-order", operator.name, {
+        dir: repo.dir,
+        env: { DIM_HOME: home },
+        spawn: () => {
+          recordOrderBuild(
+            db,
+            "returned-builder-order",
+            "Revision names a moving ref.",
+            "HEAD",
+            outcome.builder,
+          );
+          return { exitCode: 0 };
+        },
+      }),
+    ).toThrow("builder did not record an immutable commit ID");
     db.close();
   });
 

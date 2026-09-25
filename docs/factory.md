@@ -210,7 +210,7 @@ That is an autonomous cell rather than a factory: a bounded unit that runs work 
 
 ### A gate earns its automation from a record
 
-The owner's station decisions are recorded as attributed events. Each artifact is stored with its station evidence; a return names the station artifact and carries the operator's reason, while each new revision remains a separate record. A revised Build artifact may follow a newer recorded commit only after a passing check for that commit; otherwise it stays on the returned artifact's commit.
+The owner's station decisions are recorded as attributed events. Each artifact is stored with its station evidence; a return names the station artifact and carries the operator's reason, while each new revision remains a separate record. A Build turn completes only when the latest recorded commit matches the worktree HEAD and has a passing check after it. A revised Build artifact may follow a newer recorded commit only after a passing check for that commit; otherwise it stays on the returned artifact's commit.
 
 The Plan, Build and Review artifacts are persisted against the order, alongside the evidence each station considered. The operator's approval or return is recorded separately from the worker's artifact, so the record distinguishes what the worker produced from what the owner decided.
 

@@ -87,7 +87,7 @@ export function builderBrief(
       : "The owner returned the Build artifact to you. The code work is complete; revise only the artifact.",
     currentSlice
       ? "Work in the current order worktree. Run the command supplied by the workspace profile, record every commit, changed file, check, document, and build finding with dim order, and run the build station loop including simplification."
-      : "Do not edit files, create commits, or run checks. Use the order record to correct the returned Build artifact.",
+      : "Do not edit files or create commits. Compare worktree HEAD with the latest recorded order commit. If HEAD is unrecorded, record that existing commit and a passing workspace check after it. Use the order record to correct the returned Build artifact.",
     "The factory has already accepted your assignment before this turn starts. Do not register or bootstrap another worker, inspect worker credential files, or stop because DIM_WORKER_NAME and DIM_WORKER_TOKEN are absent; order commands authenticate this assigned process through its DIM_WORKER_ASSIGNMENT variables.",
     "The order description and approved plan define the scope. When they explicitly exclude a workspace surface, do not edit or test that surface; record a passing check scoped to the requested result instead of treating excluded failures as blockers.",
     ...(currentSlice
@@ -106,7 +106,7 @@ export function builderBrief(
 
 export type BuildOutcome = { builder: string; runId: string; worktree: string; exitCode: number };
 
-function requireBuildEvidence(db: Database, orderId: string, finalSlice: boolean): void {
+function requireBuildEvidence(db: Database, orderId: string, finalSlice: boolean, worktree: string): void {
   const commit = db
     .query<{ sha: string; recorded_at: string }, [string]>(
       `SELECT c.sha, c.recorded_at
@@ -118,6 +118,17 @@ function requireBuildEvidence(db: Database, orderId: string, finalSlice: boolean
     )
     .get(orderId);
   if (!commit) throw new Error("builder did not record a commit");
+  if (!/^[0-9a-fA-F]{7,64}$/.test(commit.sha)) {
+    throw new Error(`builder did not record an immutable commit ID for ${orderId}`);
+  }
+  const head = Bun.spawnSync(["git", "-C", worktree, "rev-parse", "HEAD"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (!head.success) throw new Error(`cannot read worktree HEAD for ${orderId}`);
+  if (!head.stdout.toString().trim().startsWith(commit.sha.toLowerCase())) {
+    throw new Error(`builder did not record worktree HEAD for ${orderId}`);
+  }
   const check = db
     .query<{ exit_code: number }, [string]>(
       `SELECT c.exit_code FROM factory_order_check c
@@ -272,7 +283,7 @@ export async function runOrderBuildLive(
       throw new Error(`${builder} exited with code ${run.exitCode}`);
     }
     if (currentSlice) {
-      requireBuildEvidence(db, orderId, currentSlice.ordinal === slices.length);
+      requireBuildEvidence(db, orderId, currentSlice.ordinal === slices.length, worktree);
       completeOrderSlice(db, orderId, currentSlice.id, builder);
     } else {
       const revision = db
@@ -283,6 +294,7 @@ export async function runOrderBuildLive(
       if (!revision || revision.id === returned?.buildId || revision.worker !== builder) {
         throw new Error("builder did not record a new Build artifact revision");
       }
+      requireBuildEvidence(db, orderId, true, worktree);
     }
     return { builder, runId, worktree, exitCode: run.exitCode };
   } catch (error) {
@@ -401,7 +413,7 @@ export function runOrderBuild(
       throw new Error(`${builder} did not finish building`);
     }
     if (currentSlice) {
-      requireBuildEvidence(db, orderId, currentSlice.ordinal === slices.length);
+      requireBuildEvidence(db, orderId, currentSlice.ordinal === slices.length, worktree);
       completeOrderSlice(db, orderId, currentSlice.id, builder);
     } else {
       const revision = db
@@ -412,6 +424,7 @@ export function runOrderBuild(
       if (!revision || revision.id === returned?.buildId || revision.worker !== builder) {
         throw new Error("builder did not record a new Build artifact revision");
       }
+      requireBuildEvidence(db, orderId, true, worktree);
     }
     return { builder, runId, worktree, exitCode: run.exitCode };
   } catch (error) {
