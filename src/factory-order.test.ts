@@ -1272,6 +1272,42 @@ describe("factory order report records", () => {
     database.close();
   });
 
+  test("a file changed by two slices is one row carrying both slices' lines", () => {
+    const database = db();
+    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    claimOrder(database, "order-1", claim, worker, "2026-09-18T10:01:00.000Z");
+    recordOrderFile(
+      database,
+      "order-1",
+      { path: "src/factory-order.ts", added: 40, removed: 9 },
+      worker,
+      "2026-09-18T10:02:00.000Z",
+    );
+    recordOrderFile(
+      database,
+      "order-1",
+      { path: "src/factory-order.ts", added: 5, removed: 2 },
+      worker,
+      "2026-09-18T10:03:00.000Z",
+    );
+    recordOrderFile(database, "order-1", { path: "assets/logo.png" }, worker, "2026-09-18T10:02:00.000Z");
+    recordOrderFile(
+      database,
+      "order-1",
+      { path: "assets/logo.png", added: 3, removed: 1 },
+      worker,
+      "2026-09-18T10:03:00.000Z",
+    );
+
+    expect(
+      database.query("SELECT path, added, removed, recorded_at FROM factory_order_file ORDER BY path").all(),
+    ).toEqual([
+      { path: "assets/logo.png", added: null, removed: null, recorded_at: "2026-09-18T10:03:00.000Z" },
+      { path: "src/factory-order.ts", added: 45, removed: 11, recorded_at: "2026-09-18T10:03:00.000Z" },
+    ]);
+    database.close();
+  });
+
   test("stores normalized evidence and projects terminal status from events", () => {
     const database = db();
     queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");

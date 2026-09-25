@@ -1130,8 +1130,15 @@ export function recordOrderFile(
   at = now(),
 ): void {
   assertOrderBuilding(db, orderId);
+  // One row per file for the whole order, so a later slice adds its lines to the row an earlier
+  // one wrote; a slice git could not count leaves the total uncounted.
   db.run(
-    "INSERT INTO factory_order_file (order_id, worker, path, added, removed, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
+    `INSERT INTO factory_order_file (order_id, worker, path, added, removed, recorded_at) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (order_id, path) DO UPDATE SET
+       worker = excluded.worker,
+       added = added + excluded.added,
+       removed = removed + excluded.removed,
+       recorded_at = excluded.recorded_at`,
     [orderId, worker, file.path, file.added ?? null, file.removed ?? null, at],
   );
 }
