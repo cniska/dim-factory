@@ -67,13 +67,10 @@ export function builderBrief(
     "",
     ...(currentSlice
       ? ["# Current slice", `${currentSlice.ordinal}. ${currentSlice.title}: ${currentSlice.outcome}`]
-      : [
-          "# Returned Build artifact",
-          revision?.body ?? "",
-          "",
-          "# Owner feedback",
-          revision?.feedback ?? "",
-        ]),
+      : []),
+    ...(revision
+      ? ["# Returned Build artifact", revision.body, "", "# Owner feedback", revision.feedback]
+      : []),
     ...(currentSlice && previousFailure
       ? [
           "# Previous failed Build attempt",
@@ -249,7 +246,6 @@ export async function runOrderBuildLive(
       harness,
       env: options.env,
       adapter: options.adapter,
-      useReturnedArtifact: currentSlice === null,
       requireReturnedArtifact: currentSlice === null,
       onPrepared: (orderWorker) => {
         builder = orderWorker.worker;
@@ -376,7 +372,6 @@ export function runOrderBuild(
       parentWorker: operator,
       harness,
       env: options.env,
-      useReturnedArtifact: currentSlice === null,
       requireReturnedArtifact: currentSlice === null,
       spawn: options.spawn
         ? (argv, env) => {

@@ -4,6 +4,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  appendOrderEvent,
   approveOrderPlan,
   claimOrder,
   isActiveOrderRun,
@@ -203,6 +204,142 @@ describe("builder station", () => {
         .query("SELECT kind FROM factory_order_event WHERE order_id = ? ORDER BY id DESC LIMIT 1")
         .get("builder-order"),
     ).toEqual({ kind: "hold_released" });
+    db.close();
+  });
+
+  test("keeps an incomplete final slice while giving the builder returned artifact feedback", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const repo = integratedRepo();
+    repos.push(repo.dir);
+    const home = mkdtempSync(join(tmpdir(), "dim-builder-return-"));
+    homes.push(home);
+    writeFileSync(
+      join(home, "routing.json"),
+      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
+    );
+    const operator = mintWorker(db, { role: "operator", sessionId: "return-operator" });
+    queueOrder(
+      db,
+      { id: "returned-builder-order", project: "cniska/dim-factory", title: "Build this" },
+      operator.name,
+    );
+    claimOrder(
+      db,
+      "returned-builder-order",
+      { runId: "plan-run", station: "dim-station-plan", operatorWorker: operator.name },
+      operator.name,
+      undefined,
+      repo.dir,
+    );
+    const planner = mintWorker(db, {
+      role: "planner",
+      parentWorker: operator.name,
+      sessionId: "return-operator/planner",
+    });
+    recordOrderPlan(db, "returned-builder-order", "Build the requested result.", planner.name, [
+      { title: "Finish the result", outcome: "The result is verified." },
+    ]);
+    approveOrderPlan(db, "returned-builder-order", operator.name);
+    moveOrder(db, "returned-builder-order", "dim-station-build", operator.name);
+    const builder = mintWorker(db, {
+      role: "builder",
+      parentWorker: operator.name,
+      sessionId: "return-operator/builder",
+    });
+    claimOrder(
+      db,
+      "returned-builder-order",
+      { runId: "build-run", station: "dim-station-build", operatorWorker: operator.name },
+      builder.name,
+      undefined,
+      repo.dir,
+    );
+    recordOrderCommit(db, "returned-builder-order", repo.sha, builder.name, "feat: build it");
+    recordOrderCheck(
+      db,
+      "returned-builder-order",
+      { command: "bun run verify", exitCode: 0, result: "green" },
+      builder.name,
+    );
+    recordOrderBuild(db, "returned-builder-order", "The initial Build artifact.", repo.sha, builder.name);
+    appendOrderEvent(db, "returned-builder-order", {
+      kind: "failed",
+      worker: builder.name,
+      reason: "Artifact needs revision.",
+    });
+    returnOrderArtifact(
+      db,
+      "returned-builder-order",
+      operator.name,
+      "Explain the verification for the owner.",
+    );
+
+    let brief = "";
+    expect(() =>
+      runOrderBuild(db, "returned-builder-order", operator.name, {
+        dir: repo.dir,
+        env: { DIM_HOME: home },
+        spawn: (argv) => {
+          brief = argv.find((argument) => argument.includes("factory order ")) ?? "";
+          throw new Error("harness unavailable");
+        },
+      }),
+    ).toThrow("harness unavailable");
+    expect(brief).toContain("# Current slice");
+    expect(brief).toContain("Finish the result: The result is verified.");
+    expect(brief).toContain("# Returned Build artifact");
+    expect(brief).toContain("The initial Build artifact.");
+    expect(brief).toContain("# Owner feedback");
+    expect(brief).toContain("Explain the verification for the owner.");
+    expect(brief).not.toContain("The code work is complete; revise only the artifact.");
+    expect(db.query("SELECT count(*) AS n FROM factory_order_slice_completion").get()).toEqual({ n: 0 });
+
+    const outcome = runOrderBuild(db, "returned-builder-order", operator.name, {
+      dir: repo.dir,
+      env: { DIM_HOME: home },
+      spawn: (_argv, childEnv) => {
+        const resumedBuilder = bootstrapWorker(db, {
+          id: childEnv[ASSIGNMENT_ID_VAR] as string,
+          token: childEnv[ASSIGNMENT_TOKEN_VAR] as string,
+          sessionId: "returned-builder-session",
+        });
+        childEnv[WORKER_NAME_VAR] = resumedBuilder.name;
+        childEnv[WORKER_TOKEN_VAR] = resumedBuilder.token;
+        childEnv[WORKER_SESSION_VAR] = resumedBuilder.sessionId;
+        saveWorkerCredential(childEnv, resumedBuilder);
+        claimOrder(
+          db,
+          "returned-builder-order",
+          {
+            runId: "returned-build-run",
+            sessionId: resumedBuilder.sessionId,
+            station: "dim-station-build",
+            operatorWorker: operator.name,
+          },
+          resumedBuilder.name,
+          undefined,
+          repo.dir,
+        );
+        recordOrderBuild(
+          db,
+          "returned-builder-order",
+          "The revised Build artifact explains the verification.",
+          repo.sha,
+          resumedBuilder.name,
+        );
+        return { exitCode: 0 };
+      },
+    });
+    expect(db.query("SELECT count(*) AS n FROM factory_order_slice_completion").get()).toEqual({ n: 1 });
+    expect(db.query("SELECT worker FROM factory_order_slice_completion").get()).toEqual({
+      worker: outcome.builder,
+    });
+    expect(db.query("SELECT revision FROM factory_order_build ORDER BY revision DESC LIMIT 1").get()).toEqual(
+      {
+        revision: 2,
+      },
+    );
     db.close();
   });
 
