@@ -19,7 +19,7 @@ import { cn } from "./lib/utils";
 import { msUntilNextMinute } from "./minute-beat";
 import type { OrderLine } from "./order-line";
 import { ordersByStage, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
-import { ITEM_KIND_LABELS } from "./wall-item";
+import { itemKindLabel } from "./wall-item";
 import "./wall.css";
 
 const unavailableSnapshot: WallSnapshot = {
@@ -281,7 +281,7 @@ function ItemHistory({ entries, now }: { entries: WallItemEntry[]; now: Date }) 
                       <time dateTime={entry.at} className="text-quiet tabular-nums">
                         {timeLabel(entry.at)}
                       </time>
-                      <strong className="font-normal text-foreground">{ITEM_KIND_LABELS[entry.kind]}</strong>
+                      <strong className="font-normal text-foreground">{itemKindLabel(entry)}</strong>
                     </div>
                     <EntryWorker entry={entry} />
                   </div>

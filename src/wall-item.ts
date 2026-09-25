@@ -1,4 +1,4 @@
-import type { WallItemEntry, WallItemKind } from "./factory-wall";
+import type { WallItemEntry, WallItemKind, WallStation } from "./factory-wall";
 
 /** What each moment in an order's record is called on the item view. Human words lead; the ids
  *  they stand for are on the entry for an agent to join on. */
@@ -33,6 +33,19 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   failed: "Failed",
   recovered: "Recovered",
 };
+
+const RETURN_LABELS: Partial<Record<WallStation, string>> = {
+  plan: "Plan returned",
+  build: "Build returned",
+  review: "Review returned",
+};
+
+export function itemKindLabel(entry: Pick<WallItemEntry, "kind" | "station">): string {
+  if (entry.kind === "artifact_returned" && entry.station) {
+    return RETURN_LABELS[entry.station] ?? ITEM_KIND_LABELS[entry.kind];
+  }
+  return ITEM_KIND_LABELS[entry.kind];
+}
 
 /** As much of a sha as a person compares, with the whole of it still on the entry. */
 export function shortSha(sha: string): string {
