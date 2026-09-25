@@ -22,14 +22,18 @@ Turn the request into the one order the operator will run. This is intake, not p
 3. Choose `feat` for work that adds behavior or `fix` for work that repairs behavior.
 4. Keep the request's detail in `--description`; do not replace it with a plan or implementation outline.
 5. Use the repository's canonical project identity.
-5. Run:
+6. Run:
 
    ```text
    dim order add <order-id> --line <feat|fix> --title "<title>" --description "<request>" --project "<owner/repo>"
    ```
 
-6. Verify the command returned the same id and that `dim q order <order-id>` reads the queued record.
-7. Hand the id to the operator loop. Do not claim, plan, approve, build, review, ship, or drop it here.
+7. Verify the command returned the same id and that `dim q order <order-id>` reads the queued record.
+8. Hand the id to the operator loop. Do not claim, plan, approve, build, review, ship, or drop it here.
+
+## Description
+
+The wall prints the description as plain text, markup and all: a card shows its first three lines and the item view the whole of it with line breaks kept (`src/wall-client.tsx`). So open with what should become true, and write the rest to be read unrendered.
 
 ## Result
 
