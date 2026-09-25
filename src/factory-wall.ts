@@ -522,13 +522,15 @@ export function wallFont(): Uint8Array {
   return new Uint8Array(readFileSync(new URL("./fonts/jetbrains-mono-latin.woff2", import.meta.url)));
 }
 
-export async function serveWall(
-  options: { port?: number; databasePath?: string; hmr?: boolean } = {},
-): Promise<ReturnType<typeof Bun.serve>> {
+type WallSocket = Pick<Bun.ServerWebSocket<undefined>, "send">;
+
+/**
+ * Everything the wall answers, apart from the bundled page: held apart from `Bun.serve` so the
+ * suite reaches every route without a listening socket, which a station worker's sandbox refuses.
+ */
+export function wallHandler(path: string = dbPath()) {
   const font = wallFont();
-  const clients = new Set<Bun.ServerWebSocket<unknown>>();
-  const path = options.databasePath ?? dbPath();
-  let hash = "";
+  const clients = new Set<WallSocket>();
   const snapshot = (): WallSnapshot => {
     const db = openReadOnly(path);
     try {
@@ -545,14 +547,10 @@ export async function serveWall(
       db.close();
     }
   };
-  const server = Bun.serve({
-    hostname: "127.0.0.1",
-    port: options.port ?? 0,
-    // The page and every asset it pulls are bundled from this route, so the wall has one
-    // way of being served and `hmr` is the only thing an editing session changes.
-    routes: { "/": wallPage },
-    development: options.hmr ? { hmr: true } : false,
-    fetch(request, server) {
+  return {
+    clients,
+    snapshot,
+    fetch(request: Request, server: Pick<Bun.Server<undefined>, "upgrade">): Response | undefined {
       const url = new URL(request.url);
       if (url.pathname === "/wall.woff2")
         return new Response(font as unknown as BodyInit, {
@@ -587,16 +585,33 @@ export async function serveWall(
       return new Response("Not found", { status: 404 });
     },
     websocket: {
-      open(socket) {
+      open(socket: WallSocket) {
         clients.add(socket);
       },
-      close(socket) {
+      close(socket: WallSocket) {
         clients.delete(socket);
       },
-      message(socket) {
+      message(socket: WallSocket) {
         socket.send(JSON.stringify({ error: "read-only wall" }));
       },
     },
+  };
+}
+
+export async function serveWall(
+  options: { port?: number; databasePath?: string; hmr?: boolean } = {},
+): Promise<ReturnType<typeof Bun.serve>> {
+  const { clients, snapshot, fetch, websocket } = wallHandler(options.databasePath);
+  let hash = "";
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: options.port ?? 0,
+    // The page and every asset it pulls are bundled from this route, so the wall has one
+    // way of being served and `hmr` is the only thing an editing session changes.
+    routes: { "/": wallPage },
+    development: options.hmr ? { hmr: true } : false,
+    fetch,
+    websocket,
   });
   // Bun.serve already holds the event loop; an unref'd poller lets a stopped server's process exit.
   const poll = setInterval(() => {

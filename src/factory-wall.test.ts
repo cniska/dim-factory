@@ -2,6 +2,8 @@ import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { basename } from "node:path";
+import wallServeConfig from "../bunfig.toml";
 import {
   answerOrderFinding,
   appendOrderEvent,
@@ -22,7 +24,7 @@ import {
   recordOrderReviewArtifact,
   setOrderPriority,
 } from "./factory-order";
-import { assembleItemView, assembleWallSnapshot, serveWall } from "./factory-wall";
+import { assembleItemView, assembleWallSnapshot, wallHandler } from "./factory-wall";
 import { integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
 import { resolveHomeDir } from "./paths";
 import type { Role } from "./roles";
@@ -39,6 +41,15 @@ function floor(): Database {
   worker = workerIn(db);
   attemptOperator = workerIn(db, "operator");
   return db;
+}
+
+const ORIGIN = "http://127.0.0.1";
+const WALL_PAGE = new URL("./wall.html", import.meta.url).pathname;
+
+function answer(wall: ReturnType<typeof wallHandler>, path: string, init?: RequestInit): Response {
+  const response = wall.fetch(new Request(`${ORIGIN}${path}`, init), { upgrade: () => false });
+  if (!response) throw new Error(`${path} was answered with an upgrade rather than a response`);
+  return response;
 }
 
 const trunk = integratedRepo();
@@ -447,64 +458,46 @@ describe("factory wall snapshot", () => {
     const seed = new Database(file);
     seed.run(SCHEMA_SQL);
     seed.close();
-    const server = await serveWall({ port: 0, databasePath: file });
-    const origin = `http://127.0.0.1:${server.port}`;
+    const wall = wallHandler(file);
     try {
-      const snapshot = await fetch(`${origin}/api/snapshot`);
+      const snapshot = answer(wall, "/api/snapshot");
       expect(snapshot.status).toBe(200);
       expect((await snapshot.json()).source).toBe("database");
 
-      const control = await fetch(`${origin}/api/control`, { method: "POST", body: "{}" });
-      expect(control.status).toBe(404);
+      expect(answer(wall, "/api/control", { method: "POST", body: "{}" }).status).toBe(404);
 
-      const socket = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
-      const rejection = await Promise.race([
-        new Promise<string>((resolve, reject) => {
-          socket.onopen = () => socket.send(JSON.stringify({ command: "cancel" }));
-          socket.onmessage = (event) => resolve(String(event.data));
-          socket.onerror = () => reject(new Error("socket failed"));
-        }),
-        new Promise<string>((_, reject) =>
-          setTimeout(() => reject(new Error("client message was not answered")), 2000),
-        ),
-      ]);
-      socket.close();
-      expect(JSON.parse(rejection)).toEqual({ error: "read-only wall" });
+      const upgraded: Request[] = [];
+      const server = { upgrade: (request: Request) => upgraded.push(request) > 0 };
+      expect(wall.fetch(new Request(`${ORIGIN}/ws`), server)).toBeUndefined();
+      expect(upgraded).toHaveLength(1);
+      const sent: string[] = [];
+      wall.websocket.message({ send: (message: string) => sent.push(message) } as never);
+      expect(sent.map((message) => JSON.parse(message))).toEqual([{ error: "read-only wall" }]);
     } finally {
-      server.stop(true);
       rmSync(file, { force: true });
     }
   });
 
-  test("serves a page whose script and stylesheet load", async () => {
-    const server = await serveWall({ port: 0 });
-    const origin = `http://127.0.0.1:${server.port}`;
-    try {
-      const page = await fetch(origin);
-      expect(page.status).toBe(200);
-      const html = await page.text();
-      expect(html).toContain('id="root"');
+  test("bundles a page whose script and stylesheet load with the plugins the server uses", async () => {
+    const plugins = await Promise.all(
+      (wallServeConfig as { serve: { static: { plugins: string[] } } }).serve.static.plugins.map(
+        async (name) => (await import(name)).default as Bun.BunPlugin,
+      ),
+    );
+    const built = await Bun.build({ entrypoints: [WALL_PAGE], plugins });
+    expect(built.success).toBe(true);
+    const page = built.outputs.find((output) => output.path.endsWith(".html"));
+    const html = (await page?.text()) ?? "";
+    expect(html).toContain('id="root"');
+    const script = built.outputs.find((output) => output.path.endsWith(".js"));
+    const style = built.outputs.find((output) => output.path.endsWith(".css"));
+    expect(html).toContain(basename(script?.path ?? "missing.js"));
+    expect(html).toContain(basename(style?.path ?? "missing.css"));
+    expect((await script?.text())?.length).toBeGreaterThan(0);
+    // Tailwind ran: a utility the board uses is in the sheet the page links.
+    expect(await style?.text()).toContain("grid-cols-3");
 
-      const assets = [...html.matchAll(/(?:src|href)="(\/[^"]+)"/g)].map((match) => match[1] ?? "");
-      const script = assets.find((asset) => asset.endsWith(".js"));
-      const style = assets.find((asset) => asset.endsWith(".css"));
-      expect(script).toBeDefined();
-      expect(style).toBeDefined();
-
-      const bundled = await fetch(`${origin}${script}`);
-      expect(bundled.status).toBe(200);
-      expect((await bundled.text()).length).toBeGreaterThan(0);
-
-      const stylesheet = await fetch(`${origin}${style}`);
-      expect(stylesheet.status).toBe(200);
-      // Tailwind ran: a utility the board uses is in the sheet the page links.
-      expect(await stylesheet.text()).toContain("grid-cols-3");
-
-      const font = await fetch(`${origin}/wall.woff2`);
-      expect(font.status).toBe(200);
-    } finally {
-      server.stop(true);
-    }
+    expect(answer(wallHandler(), "/wall.woff2").status).toBe(200);
   });
 });
 
@@ -890,10 +883,9 @@ describe("factory wall item view", () => {
     attemptOperator = workerIn(seed, "operator");
     seedWorkedOrder(seed);
     seed.close();
-    const server = await serveWall({ port: 0, databasePath: file });
-    const origin = `http://127.0.0.1:${server.port}`;
+    const wall = wallHandler(file);
     try {
-      const found = await fetch(`${origin}/api/order/order-worked`);
+      const found = answer(wall, "/api/order/order-worked");
       expect(found.status).toBe(200);
       const view = await found.json();
       expect(view.order.title).toBe("Work an item through");
@@ -906,29 +898,24 @@ describe("factory wall item view", () => {
         reason: "verified",
       });
 
-      expect((await fetch(`${origin}/api/order/order-absent`)).status).toBe(404);
-      expect((await fetch(`${origin}/api/order/`)).status).toBe(404);
+      expect(answer(wall, "/api/order/order-absent").status).toBe(404);
+      expect(answer(wall, "/api/order/").status).toBe(404);
       // A percent sequence that is not valid UTF-8 is an id, not a crash.
-      expect((await fetch(`${origin}/api/order/%E0%A4%A`)).status).toBe(404);
+      expect(answer(wall, "/api/order/%E0%A4%A").status).toBe(404);
     } finally {
-      server.stop(true);
       rmSync(file, { force: true });
     }
   });
 
   test("says the database is unavailable rather than serving an empty record", async () => {
-    const server = await serveWall({ port: 0, databasePath: `${tmpdir()}/wall-absent-${Date.now()}.sqlite` });
-    const origin = `http://127.0.0.1:${server.port}`;
-    try {
-      const item = await fetch(`${origin}/api/order/order-worked`);
-      expect(item.status).toBe(503);
-      expect((await item.json()).error).toContain("no database at");
+    const wall = wallHandler(`${tmpdir()}/wall-absent-${Date.now()}.sqlite`);
 
-      const snapshot = await fetch(`${origin}/api/snapshot`);
-      expect(snapshot.status).toBe(503);
-      expect((await snapshot.json()).error).toContain("no database at");
-    } finally {
-      server.stop(true);
-    }
+    const item = answer(wall, "/api/order/order-worked");
+    expect(item.status).toBe(503);
+    expect((await item.json()).error).toContain("no database at");
+
+    const snapshot = answer(wall, "/api/snapshot");
+    expect(snapshot.status).toBe(503);
+    expect((await snapshot.json()).error).toContain("no database at");
   });
 });
