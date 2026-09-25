@@ -318,7 +318,11 @@ export async function runOrderBuildLive(
     builder = assigned;
     if (!builder) throw new Error("builder did not bootstrap its worker assignment");
     if (run.exitCode !== 0) {
-      throw new Error(`${builder} exited with code ${run.exitCode}`);
+      throw new Error(
+        run.harnessExitCode === undefined
+          ? `${builder} did not finish`
+          : `${builder} exited with code ${run.harnessExitCode}`,
+      );
     }
     if (currentSlice) {
       requireBuildEvidence(db, orderId, currentSlice.ordinal === slices.length, worktree);

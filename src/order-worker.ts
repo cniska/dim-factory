@@ -64,7 +64,7 @@ export type OrderStationTurn<Station extends OrderStationName> = {
   orderWorker: OrderWorker;
   returned: ReturnedFor<Station> | null;
   worker?: string;
-  run: Pick<HarnessCommandResult, "exitCode" | "output" | "failureReason">;
+  run: Pick<HarnessCommandResult, "exitCode" | "output" | "failureReason" | "harnessExitCode">;
 };
 
 function prepareOrderStation<Station extends OrderStationName>(options: OrderStationOptions<Station>) {

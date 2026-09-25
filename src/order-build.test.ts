@@ -107,7 +107,9 @@ describe("worker failure explanations", () => {
         "I stopped before committing because the check failed.",
         "Codex turn failed",
       ),
-    ).toBe("worker did not finish: Codex turn failed; I stopped before committing because the check failed.");
+    ).toBe(
+      "worker did not finish: Codex turn failed; its last message: I stopped before committing because the check failed.",
+    );
   });
 
   test("does not add empty explanations", () => {

@@ -31,7 +31,10 @@ export function workerFailureReason(
   output: string | undefined,
   harnessReason: string | undefined,
 ): string {
-  const details = [harnessReason, output?.trim()].filter((value): value is string => Boolean(value));
+  // Labelled so the worker's last word is not read as the cause: a run the runner stopped ends on
+  // whatever the worker happened to be saying.
+  const lastWord = output?.trim() ? `its last message: ${output.trim()}` : undefined;
+  const details = [harnessReason, lastWord].filter((value): value is string => Boolean(value));
   return details.length === 0 ? message : `${message}: ${details.join("; ")}`;
 }
 
@@ -154,8 +157,9 @@ async function runHarnessSessionLive(
   onStarted: HarnessStarted,
   options: WorkerRunOptions,
 ): Promise<HarnessCommandResult> {
+  const timeoutMs = options.timeoutMs ?? WORKER_RUN_TIMEOUT_MS;
   const result = await runHarness(run, {
-    timeoutMs: options.timeoutMs ?? WORKER_RUN_TIMEOUT_MS,
+    timeoutMs,
     onEvent: (event) => {
       if (event.type === "run.started" && event.providerSessionId) onStarted(event.providerSessionId);
     },
@@ -167,7 +171,7 @@ async function runHarnessSessionLive(
           .filter((detail): detail is string => Boolean(detail))
           .join("; ")
       : result.outcome === "timed_out"
-        ? result.reason
+        ? `harness went ${timeoutMs / 1000}s without an event and was stopped`
         : undefined;
   return {
     exitCode: result.outcome === "completed" ? 0 : 1,

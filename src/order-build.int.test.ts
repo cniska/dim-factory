@@ -817,6 +817,14 @@ describe("builder station", () => {
       }),
     ).rejects.toThrow("fake process crashed");
     expect(failures()).toEqual({ n: 1 });
+    // The fake reports no exit code, so the record must not claim one.
+    expect(
+      db
+        .query<{ reason: string }, [string]>(
+          "SELECT reason FROM factory_order_event WHERE order_id = ? AND kind = 'failed'",
+        )
+        .get("harness-order")?.reason,
+    ).toMatch(/ did not finish: fake process crashed/);
     claimOrder(
       db,
       "harness-order",

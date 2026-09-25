@@ -151,7 +151,7 @@ describe("selected harness commands", () => {
 
     expect(failed).toMatchObject({ exitCode: 1, output: "tests fail because the fixture is missing" });
     expect(workerFailureReason("builder did not finish", failed.output, failed.failureReason)).toBe(
-      "builder did not finish: turn failed; tests fail because the fixture is missing",
+      "builder did not finish: turn failed; its last message: tests fail because the fixture is missing",
     );
     expect(completed).toMatchObject({ exitCode: 0, output: "" });
   });
@@ -171,7 +171,11 @@ describe("selected harness commands", () => {
       { timeoutMs: 20 },
     );
 
-    expect(result).toMatchObject({ exitCode: 1, failureReason: "harness timed out" });
+    expect(result).toMatchObject({
+      exitCode: 1,
+      failureReason: "harness went 0.02s without an event and was stopped",
+    });
+    expect(result.harnessExitCode).toBeUndefined();
   });
 
   test("resumes a deterministic adapter through the live command boundary", async () => {
