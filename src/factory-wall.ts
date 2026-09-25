@@ -139,6 +139,7 @@ type OrderRow = {
   latest_station: string | null;
   holder_worker: string | null;
   holder_role: string | null;
+  has_started: number;
   failed_check_count: number;
 };
 
@@ -151,6 +152,8 @@ const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.line, o.description, o.station
                 WHERE e2.order_id = o.id AND e2.kind = 'claimed'
                 ORDER BY e2.ts DESC, e2.id DESC LIMIT 1) AS holder_worker,
               fw.role AS holder_role,
+              EXISTS (SELECT 1 FROM factory_order_event e2
+                WHERE e2.order_id = o.id AND e2.kind = 'claimed') AS has_started,
               (SELECT count(*) FROM factory_order_check c
                 WHERE c.order_id = o.id AND c.exit_code <> 0) AS failed_check_count
        FROM factory_order o
@@ -218,6 +221,7 @@ function mapOrder(row: OrderRow, now: Date): WallOrder | null {
   const worker = row.holder_worker;
   const workerRole = worker ? requiredRole(row.holder_role) : undefined;
   const orderStatus = status(row.status);
+  const baseStage = stageByStatus[orderStatus];
   const stationName = orderStatus === "completed" ? null : station(row.station ?? row.latest_station);
   // A claim writes its own event in the same transaction, so an order row always has one.
   const lastEventAt = row.last_event_at;
@@ -227,7 +231,7 @@ function mapOrder(row: OrderRow, now: Date): WallOrder | null {
     line: row.line as OrderLine,
     ...(row.description ? { description: row.description } : {}),
     station: stationName,
-    stage: stageByStatus[orderStatus],
+    stage: baseStage === "done" ? baseStage : row.has_started ? "active" : baseStage,
     ...(worker ? { agent: worker, worker } : {}),
     ...(workerRole ? { role: workerRole } : {}),
     status: orderStatus,

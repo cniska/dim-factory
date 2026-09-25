@@ -293,7 +293,7 @@ describe("order command", () => {
     ).toBe("order-1 is queued again");
   });
 
-  test("a failure puts the order back among the work nobody holds", () => {
+  test("a failed order stays active on the wall while it can be retried", () => {
     const database = db();
     const operator = operatorEnv(database);
     queued(database);
@@ -308,9 +308,8 @@ describe("order command", () => {
     );
 
     const snapshot = assembleWallSnapshot(database);
-    expect(snapshot.totals).toEqual({ todo: 1, active: 0, done: 0 });
+    expect(snapshot.totals).toEqual({ todo: 0, active: 1, done: 0 });
     expect(snapshot.orders[0]?.status).toBe("queued");
-    // Taking it again is the same act as taking one that never started.
     expect(runOrderCommand(database, claim)).toBe("order-1 is working");
   });
 

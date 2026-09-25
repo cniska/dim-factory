@@ -136,7 +136,7 @@ describe("factory wall snapshot", () => {
     expect(snapshot.source).toBe("database");
     expect(snapshot.orders.map((order) => [order.title, order.station, order.status, order.stage])).toEqual([
       ["Show the wall", "build", "working", "active"],
-      ["Unblock the queue", "review", "queued", "todo"],
+      ["Unblock the queue", "review", "queued", "active"],
       ["Ship the board", null, "completed", "done"],
     ]);
     expect(snapshot.orders[0]).toEqual({
@@ -196,7 +196,7 @@ describe("factory wall snapshot", () => {
     db.close();
   });
 
-  test("puts a handed-back order in the todo column with why it stopped", () => {
+  test("keeps a handed-back order active after its first claim", () => {
     const db = floor();
     queueOrder(
       db,
@@ -214,7 +214,7 @@ describe("factory wall snapshot", () => {
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z"));
 
-    expect(snapshot.orders.map((order) => [order.status, order.stage])).toEqual([["queued", "todo"]]);
+    expect(snapshot.orders.map((order) => [order.status, order.stage])).toEqual([["queued", "active"]]);
     db.close();
   });
 
@@ -436,9 +436,9 @@ describe("factory wall snapshot", () => {
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:10:00.000Z"));
 
-    expect(snapshot.orders.filter((order) => order.stage === "todo")).toHaveLength(12);
+    expect(snapshot.orders.filter((order) => order.stage === "active")).toHaveLength(12);
     expect(snapshot.orders.filter((order) => order.stage === "done")).toHaveLength(12);
-    expect(snapshot.totals).toEqual({ todo: 14, active: 0, done: 14 });
+    expect(snapshot.totals).toEqual({ todo: 0, active: 14, done: 14 });
     db.close();
   });
 
