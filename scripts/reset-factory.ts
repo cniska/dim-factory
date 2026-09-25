@@ -10,11 +10,13 @@ const tables = [
   "factory_order_environment",
   "factory_order_document",
   "factory_order_finding",
+  "factory_order_review_artifact",
   "factory_order_review",
-  "factory_order_build",
-  "factory_order_plan",
   "factory_order_slice_completion",
   "factory_order_slice",
+  "factory_order_event",
+  "factory_order_build",
+  "factory_order_plan",
   "factory_order_check",
   "factory_order_delivery",
   "factory_order_verdict",
@@ -22,7 +24,6 @@ const tables = [
   "factory_order_file",
   "factory_order_commit",
   "factory_order_attempt",
-  "factory_order_event",
   "factory_order_worker",
   "factory_order",
   "factory_stop",
@@ -47,15 +48,17 @@ try {
     .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'factory_%'")
     .all()
     .map((row) => row.name);
+  const existing = new Set(factoryTables);
   const unknown = factoryTables.filter((table) => !tables.includes(table) && !carried.has(table));
   if (unknown.length > 0) throw new Error(`refusing to reset unknown factory tables: ${unknown.join(", ")}`);
 
-  const counts = tables.map((table) => ({
+  const present = tables.filter((table) => existing.has(table));
+  const counts = present.map((table) => ({
     table,
     rows: db.query<{ count: number }, []>(`SELECT count(*) AS count FROM ${table}`).get()?.count ?? 0,
   }));
   db.transaction(() => {
-    for (const table of tables) db.run(`DELETE FROM ${table}`);
+    for (const table of present) db.run(`DELETE FROM ${table}`);
   })();
   rmSync(join(dataDir(), "worker-credentials"), { recursive: true, force: true });
 
