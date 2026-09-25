@@ -165,6 +165,14 @@ first-party records at query time. `trace_event` remains best-effort diagnostics
 and is not an analytics source, so losing a trace row does not remove a domain
 fact.
 
+`dim q factory-analytics [order-id]` derives retry counts and attempt outcomes,
+hold duration, provenance, lifecycle outcomes, delivery versus integration,
+execution attribution, owner verdicts, and schedule behavior from those records.
+Its denominator names the first-party tables read, and an empty history is
+reported as absence rather than a stored zero. `dim q schedule-history` reads
+each schedule invocation separately, including selected orders and dispatch
+outcome.
+
 ## Scheduling
 
 The planned scheduler makes recurring factory runs visible without choosing the host that wakes them.

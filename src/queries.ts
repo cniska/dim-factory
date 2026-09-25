@@ -1383,6 +1383,130 @@ const scheduleHistory: Query = {
   },
 };
 
+const factoryAnalytics: Query = {
+  name: "factory-analytics",
+  summary: "derive factory lifecycle metrics from first-party domain records",
+  usage: "dim q factory-analytics [order-id]",
+  spansHistory: true,
+  window: null,
+  run: (db, { arg }) => {
+    const orderFilter = arg ? " WHERE order_id LIKE ? || '%'" : "";
+    const params = arg ? [arg] : [];
+    const orderEvents = (kind?: string): string => {
+      const clauses = kind ? ["kind = ?"] : [];
+      if (arg) clauses.push("order_id LIKE ? || '%'");
+      return clauses.length === 0 ? "" : ` WHERE ${clauses.join(" AND ")}`;
+    };
+    const orderEventParams = (kind?: string): string[] => (kind ? [kind, ...(arg ? [arg] : [])] : params);
+    const metric = (name: string, value: number): Record<string, unknown> => ({ metric: name, value });
+    const rows: Record<string, unknown>[] = [];
+    const attempts = scalar(
+      db,
+      `SELECT count(*) AS n FROM factory_order_attempt${orderFilter ? " WHERE kind = 'started' AND order_id LIKE ? || '%'" : " WHERE kind = 'started'"}`,
+      ...params,
+    );
+    const ordersWithAttempts = scalar(
+      db,
+      `SELECT count(DISTINCT order_id) AS n FROM factory_order_attempt${orderFilter}`,
+      ...params,
+    );
+    rows.push(metric("attempts", attempts), metric("retries", Math.max(0, attempts - ordersWithAttempts)));
+    for (const row of table(
+      db,
+      `SELECT outcome, count(*) AS n FROM factory_order_attempt
+       WHERE kind = 'finished'${arg ? " AND order_id LIKE ? || '%'" : ""}
+       GROUP BY outcome ORDER BY outcome`,
+      params,
+    )) {
+      rows.push(metric(`attempt_outcome:${row.outcome}`, Number(row.n)));
+    }
+    const holdSeconds = scalar(
+      db,
+      `WITH holds AS (
+         SELECT order_id, ts, kind,
+                lead(ts) OVER (PARTITION BY order_id ORDER BY ts, id) AS next_ts,
+                lead(kind) OVER (PARTITION BY order_id ORDER BY ts, id) AS next_kind
+         FROM factory_order_event
+         WHERE kind IN ('hold_set', 'hold_released')${arg ? " AND order_id LIKE ? || '%'" : ""}
+       )
+       SELECT coalesce(round(sum((julianday(next_ts) - julianday(ts)) * 86400)), 0) AS n
+       FROM holds WHERE kind = 'hold_set' AND next_kind = 'hold_released'`,
+      params,
+    );
+    rows.push(metric("hold_seconds", holdSeconds));
+    rows.push(
+      metric(
+        "provenance_events",
+        scalar(
+          db,
+          `SELECT count(*) AS n FROM factory_order_event${orderEvents("queued")} AND json_extract(evidence, '$.provenance') IS NOT NULL`,
+          ...orderEventParams("queued"),
+        ),
+      ),
+    );
+    for (const row of table(
+      db,
+      `SELECT kind, count(*) AS n FROM factory_order_event
+       WHERE kind IN ('completed', 'dropped', 'failed', 'moved')${arg ? " AND order_id LIKE ? || '%'" : ""}
+       GROUP BY kind ORDER BY kind`,
+      params,
+    )) {
+      rows.push(metric(`order_event:${row.kind}`, Number(row.n)));
+    }
+    for (const row of table(
+      db,
+      `SELECT kind, outcome, count(*) AS n FROM factory_order_delivery${orderFilter}
+       GROUP BY kind, outcome ORDER BY kind, outcome`,
+      params,
+    )) {
+      rows.push(metric(`${row.kind}:${row.outcome}`, Number(row.n)));
+    }
+    for (const row of table(
+      db,
+      `SELECT decision, count(*) AS n FROM factory_order_verdict${orderFilter}
+       GROUP BY decision ORDER BY decision`,
+      params,
+    )) {
+      rows.push(metric(`verdict:${row.decision}`, Number(row.n)));
+    }
+    for (const row of table(
+      db,
+      `SELECT coalesce(harness, '(unknown)') || '/' || coalesce(model, '(unknown)') || '/' || coalesce(tier, '(unknown)') AS attribution,
+              count(*) AS n
+       FROM factory_order_attempt
+       WHERE kind = 'finished'${arg ? " AND order_id LIKE ? || '%'" : ""}
+       GROUP BY attribution ORDER BY attribution`,
+      params,
+    )) {
+      rows.push(metric(`worker_execution:${row.attribution}`, Number(row.n)));
+    }
+    rows.push(
+      metric("schedule_evaluations", scalar(db, "SELECT count(*) AS n FROM factory_schedule_invocation")),
+      metric(
+        "schedule_due",
+        scalar(db, "SELECT count(*) AS n FROM factory_schedule_invocation WHERE due = 1"),
+      ),
+      metric(
+        "schedule_dispatched",
+        scalar(db, "SELECT count(*) AS n FROM factory_schedule_invocation WHERE dispatched = 1"),
+      ),
+      metric(
+        "schedule_dispatch_failures",
+        scalar(db, "SELECT count(*) AS n FROM factory_schedule_invocation WHERE outcome = 'failed'"),
+      ),
+    );
+    return {
+      denominator:
+        `${ordersWithAttempts} order${ordersWithAttempts === 1 ? "" : "s"} with attempt history` +
+        (arg ? ` matching ${arg}` : "") +
+        "; metrics are derived from factory_order_event, factory_order_attempt, factory_order_delivery, factory_order_verdict, and factory_schedule_invocation",
+      columns: ["metric", "value"],
+      rows: toRows(rows, ["metric", "value"]),
+      note: rows.length === 0 ? "no first-party domain records are available for these metrics" : undefined,
+    };
+  },
+};
+
 /**
  * One skill, split at each edit to its body. A correction is tied to the version
  * that was loaded in its session at the time, not to the version loaded today,
@@ -2424,6 +2548,7 @@ export const QUERIES: Query[] = [
   factory,
   schedules,
   scheduleHistory,
+  factoryAnalytics,
   order,
   skill,
   resume,
