@@ -20,14 +20,14 @@ The passes adapt the dimensions in `dim-review` to code already on the default b
 |---|---|
 | Anti-patterns | Does the area contain any entry in [the anti-pattern reference](references/agent-anti-patterns.md)? Check every entry. Its dim-factory examples are candidates; apply project-specific rules only where the audited project has adopted them, and translate fix directions to that project's own files and commands. |
 | Correctness | Do its entry points, state changes and failure paths fulfill the documented behavior and caller contracts? |
-| Tests | Do tests fail on credible regressions in important behavior? Which tests duplicate stronger proof, assert implementation details or keep test-only production seams alive? Preserve independent contract guards before proposing deletion. |
+| Tests | Do tests fail on credible regressions in important behavior? Which tests duplicate stronger proof, assert implementation details or keep test-only production seams alive? A test that must change for a behavior-preserving refactor is suspect, but preserve independent guards for wire values, model-facing instructions, security, storage and other contracts. |
 | Architecture | Do responsibilities, dependencies and extension points follow the project's stated boundaries? Does an abstraction carry a policy or invariant? |
 | Maintainability | Do names, control flow and local patterns leave a concrete cost to understanding or change? Ground convention findings in the project's rules or neighboring code. |
 | Docs | Do the area's pages describe its current behavior, commands and vocabulary? Cite the implementation behind a claim of drift. |
 | Security | Can a concrete path cross a trust boundary, expose sensitive data or execute unsafe input? |
 | Performance | When the area's stated behavior or observed use identifies a sensitive path, does it repeat work, grow without a bound or misuse resources? |
 
-Each reader returns source-backed findings, areas checked and areas it could not judge. Recheck candidate findings at their source, resolve duplicates and contradictions, and keep responsibility for the final result in this session.
+Each reader returns source-backed findings, areas checked and areas it could not judge. For a proposed test deletion, name the failure the test can detect, its production owner, overlapping tests and the stronger proof that would remain. Recheck candidate findings at their source, resolve duplicates and contradictions, and keep responsibility for the final result in this session.
 
 ## Report
 
