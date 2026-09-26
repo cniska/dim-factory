@@ -153,8 +153,8 @@ export const turns: Query = {
                   FROM turn t JOIN session s ON s.id = t.session_id
                   WHERE t.duration_ms IS NOT NULL${window("t.ts_end", ctx).sql})
        SELECT tool, max(n) AS turns,
-              round(max(CASE WHEN rn = n / 2 THEN duration_ms END) / 1000.0, 1) AS median_s,
-              round(max(CASE WHEN rn = n * 9 / 10 THEN duration_ms END) / 1000.0, 1) AS p90_s,
+              round(avg(CASE WHEN rn IN ((n + 1) / 2, (n + 2) / 2) THEN duration_ms END) / 1000.0, 1) AS median_s,
+              round(max(CASE WHEN rn = (9 * n + 9) / 10 THEN duration_ms END) / 1000.0, 1) AS p90_s,
               sum(CASE WHEN status = 'interrupted' THEN 1 ELSE 0 END) AS interrupted,
               round(100.0 * sum(CASE WHEN status = 'interrupted' THEN 1 ELSE 0 END) / max(n), 1) AS interrupted_pct
        FROM t GROUP BY tool`,
