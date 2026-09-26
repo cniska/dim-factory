@@ -21,7 +21,7 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 2. **Ship and rebase records** — one table for ship outcomes and one for rebases, replacing the delivery rows and event JSON, shaped for pull-request shipping as well as trunk.
 3. **An attempt for every station run** — planner and reviewer runs claim the order too, and the order's worker folds into its assignment.
 4. **Order table cleanup** — a station constraint, per-kind event references, stale columns dropped, and events for amend, priority and hold.
-5. **Operator–worker communication** — one design for how the operator and workers talk.
+5. **Operator–worker communication** — one design for how the operator and workers talk, with the operator as the only hub. The operator briefs a reviewer but never forwards the builder's arguments to it, and every message the operator sends a worker is an event, so a relay would show in the record.
 6. **The factory picks its own work** — select ready orders and run a bounded count, with claims and integration serialized.
 7. **Retake a failed order once** — a second failure leaves it.
 8. **Fix orders triage first** — diagnose the cause, prove the test catches the bug, and review against the named cause.
