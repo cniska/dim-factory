@@ -263,6 +263,7 @@ export function rebuild(db: Database, env: Env = process.env): RebuildReport {
   let orphans: OrphanReport[] = [];
   let retired: string[] = [];
   db.transaction(() => {
+    retired = dropRetiredTables(db);
     const carried = carryThroughRebuild(db, FACTORY_ORDER_TABLES);
     orphans = carried.orphans;
     const restoreFactoryOrders = carried.restore;
@@ -297,7 +298,6 @@ export function rebuild(db: Database, env: Env = process.env): RebuildReport {
     db.run("DROP TABLE IF EXISTS handoff_link");
     db.run("DROP TABLE IF EXISTS factory_handoff");
     db.run(SCHEMA_SQL);
-    retired = dropRetiredTables(db);
     restoreFactoryOrders();
     const restore = db.prepare<void, [string, string, string | null, string | null, string]>(
       `INSERT INTO correction_label (message_id, label, skill_name, rule, labeled_at)
