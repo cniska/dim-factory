@@ -2,7 +2,14 @@
 
 The owner's survey of what else exists, run 2026-09-17–22 over public projects and writing, and what each source contributed to the factory's design: taken, shaped by, or refused with the reason, so a later survey does not raise it again. A web survey sees only what is published, so a team running the same idea on an internal corpus is invisible to it.
 
-What the survey found overall: the argument for a factory with human-held gates is widely made, and session collectors are a crowded field, but no project joins the two — a gate whose rule is decided by evidence read from a session record. That join is what this repo builds.
+What the survey found overall: the argument for a factory with human-held gates is widely made, and session collectors are a crowded field, but no coding-agent factory joins the two — a gate whose rule is decided by evidence read from a session record. That join is what this repo builds. A second pass on 2026-09-26 found the join nearby — earned autonomy in enterprise code review and in general agents — but not in a coding factory.
+
+## Earned autonomy
+
+- **[RADAR](https://arxiv.org/abs/2605.30208)** (Meta) auto-approves low-risk diffs by a learned risk score after automated review and deterministic validation, and relaxed its threshold as confidence grew. *Shapes:* a gate relaxed from a record, reversibly. *Refused:* a learned risk score; here a gate relaxes from recorded verdicts, and only on the owner's word.
+- **[Trust Graduation](https://github.com/gomission/trust-graduation)** is an open protocol for earning authority per action class from an evidence ledger of approvals, edits, rejections, executions and rollbacks. *To read:* as a shared format for the order record's verdicts.
+- **[Hermes Agent #11879](https://github.com/NousResearch/hermes-agent/pull/11879)**, closed unmerged, tracked accuracy per task type in SQLite and seeded autonomy levels from past sessions. *Shapes:* trust earned per kind of work, over a minimum sample.
+- **Gated orchestrators** — [Keel](https://github.com/AysajanE/keel) (local-first, Codex and Claude review, human-only gates) and [pm-go](https://github.com/alex-reysa/pm-go) (plan, worktree, review and audit over Postgres and Temporal) — gate plan, build and review in isolated worktrees, but every gate is fixed.
 
 ## The factory argument
 
@@ -23,6 +30,7 @@ What the survey found overall: the argument for a factory with human-held gates 
 ## Session records and gates
 
 - **Collectors** — [CASS](https://github.com/Dicklesworthstone/coding_agent_session_search), [agentsview](https://github.com/BUKOWSKIREAL/agentsview), [claudex](https://github.com/utensils/claudex), [flightlog](https://github.com/RobHudson72/flightlog), [code-session-memory](https://github.com/djannot/code-session-memory), [claude-code-analytics](https://github.com/spences10/claude-code-analytics) — read session files into a local index. None installs a rule that holds. *Contributed:* `PostToolUse` as an installed event (claude-code-analytics). *To take:* CASS's reciprocal-rank fusion over a word score and a meaning score ([`todo.md`](todo.md)). *Refused:* a watching daemon (flightlog; `dim sync` closes the lag on demand), parsers for many CLIs (claudex; two tools in depth is a goal), remote embeddings and vector databases (no network, no credential), dashboards and derived cost (agentsview), chunking below a section and a resumable indexer (neither pays at this corpus's size).
+- **[Entire CLI](https://entire.io/blog/the-entire-cli-how-it-works-and-where-its-headed)** records transcripts, prompts and attribution as checkpoints whose ids ride in a commit trailer, so a commit traces back to the session that made it through rebase and squash; intent review is on its roadmap. *To take:* linking an order's artifacts to its commits by trailer, so the link survives a rebase.
 - **Recall.** Every collector is pull-only: a CLI a person runs or a tool an agent must be taught to call. *Contributed:* `dim wake` on `SessionStart`, the channel that arrives without being asked ([`recall.md`](recall.md)).
 - **[claude-gates](https://github.com/DevRik99/claude-gates)** is the nearest gate: one of its gates blocks work until a registered defect class is closed. *Refused:* its reading of a log a person appends by hand, and deciding judgement calls by pattern; here a judgement goes to an agent with a fixed brief and a gate holds only shapes.
 - **[Ferment](https://docs.kimchi.dev/docs/coding-ferment)** grades each step A–F. *Refused:* a grade has no threshold a test can prove; a finding is present or absent.
