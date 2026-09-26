@@ -1,38 +1,26 @@
 # Using dim-factory
 
-This page covers the commands that install dim-factory, collect session records, query them and run work through its stations.
-
 ## Install
-
-The repository uses the toolchain pinned by `mise.toml`.
 
 ```sh
 mise install
 bun install
+bun link       # puts dim on PATH
 ```
-
-`bun link` puts `dim` on `PATH`, so another checkout can use the same installation.
 
 ## Collect and inspect
 
-The database lives at `~/.local/share/dim-factory/sessions.db`.
-
 ```sh
 dim sync       # read new Claude Code and Codex session data
-dim stats      # show stored row and usage counts
-dim doctor     # check installation and name repairs
-dim rebuild    # rebuild derived tables from their sources
-```
-
-Named questions are listed and run with:
-
-```sh
-dim q list
+dim stats      # stored row and usage counts
+dim doctor     # check the installation and name repairs
+dim rebuild    # rebuild tables from their sources
+dim q list     # the named queries
 dim q <name>
 dim sql "<read-only select>"
 ```
 
-Every command prints its result as one line of JSON, and `dim` with no command lists them all with their usage. Queries state the evidence base and report when no evidence is available. See [Session database](design.md) for sources, schema and read-path rules.
+`dim` with no command lists every command with its usage. [Session database](design.md) covers sources, schema and output.
 
 ## Install the shared controls
 
@@ -43,21 +31,38 @@ dim install-skill
 dim install-commit-gate --owner=<host>/<account>
 ```
 
-Commands that change a shared installation require `--write`. Each session hook command ends in a `# dim-hook:<version>` shell comment, bumped whenever an installed command's text changes, because the tool's own config is the only record of what a session will run; a hook carrying an older version is stale. `dim doctor` reports missing or stale hooks, missing trust, database drift, unloaded agents, a checkout the factory ships from that declares no usable ship method, a station harness that is installed but not routed, or routed but not installed, and whether the comment gate is on for the repository it runs in, together with the repair for each failure.
+- A command that changes a shared installation needs `--write`.
+- Each hook command ends in `# dim-hook:<version>`, bumped whenever its text changes; an older version is stale.
+- `dim doctor` reports missing or stale hooks, missing Codex trust, database drift, unloaded agents, a checkout with no usable ship method, a harness installed but not routed or routed but not installed, and whether the comment gate is on — each with its repair.
 
-The commit gate checks the repository's declared task before a commit, and first, in a repository that bans code comments, refuses a commit that adds one. `DIM_SKIP_CHECK=1` skips both for one commit.
+### Commit gate
 
-The comment gate is on where the [config](#configuration) resolves `comments` to `banned`, reading the project layer as `HEAD` commits it, so one commit cannot both lift the ban and add a comment. In a banned repository `dim comments check` parses each staged JS or TS file with `@babel/parser` and prints, as `path:line`, every comment on a line the commit adds or edits, exiting 3 when it names one — a code no other `dim` failure exits with, and the only one the hook refuses on. Only added lines count, so a repository with comments already in it can switch the ban on without a sweep. During a merge, octopus included, a line counts only where it is added against every parent, each compared with its own rename detection, so a resolution keeping another branch's comments passes even in a file one side renamed. A conflicted cherry-pick is judged like any other commit, since its lines are new to this branch. A file rewritten past git's rename detection (under half of it kept) is a new file, and its comments are judged. Not judged: tool contracts (`/// <reference …>`, a comment beginning `@ts-`, `eslint-`, `biome-ignore`, `prettier-ignore`, `#__PURE__` or `@__PURE__`, a `/*!` license header, and in a `.js`, `.mjs` or `.cjs` file JSDoc that opens with `@type` or `@typedef` or holds only `@param` lines), a `#!` line, a file git marks `linguist-generated` or `linguist-vendored`, a file that does not parse, which it names, and a file in any other language. A config that cannot be read lets the commit through and says why. A factory builder's commit skips the hook, and the runner judges it by the same rules, before its check, in the checkouts the hook would judge: the config bans comments, with the project layer read as the trunk commits it, the installed gate's owners cover its origin, and git runs its hooks from the gate's directory rather than the repository's own ([`factory.md`](factory.md)). Where the config or git's config for the checkout cannot be read, the runner fails the order's attempt. A file that does not parse is committed unjudged; once the commit is recorded, the runner writes one `order.file_unparsed` trace event per such file under the order, which `dim trace` shows, where the hook names it on stderr, and a refused turn writes none.
+Runs the repository's declared check before a commit. `DIM_SKIP_CHECK=1` skips it for one commit.
 
-`dim comments purge [<path>...]` clears the comments a repository already holds and keeps them out. It reads the tracked JS and TS files of the checkout it runs in, or those under the paths given, and reports each file with how many comments it would remove. `--write` removes them, sets `comments` to `banned` in the project config, and runs the repository's declared format command, failing where that fails; what is left is to run the check and commit the purge with `.dim/config.json`. It skips what the gate does not judge, and leaves a file untouched unless it parses without recovering from an error. A comment on a line of its own goes with its line, and a JSX comment with its braces. The gate and the purge read the same languages, each an adapter listed in [`src/comments-language.ts`](../src/comments-language.ts); JavaScript and TypeScript, parsed by `@babel/parser`, are the one there is.
+### Comment gate
 
-The push gate protects the remote default branch from rewrites and deletion, and refuses any push carrying a revert — git commits a revert without running the commit gate, so the push is where one is caught. A repository's own `core.hooksPath` or an existing managed global hooks path is left alone. The gate rules and ownership model are described in [The factory](factory.md).
+Part of the commit gate, on where the [config](#configuration) resolves `comments` to `banned`. The project layer is read as `HEAD` commits it, so one commit cannot both lift the ban and add a comment.
 
-A repository factory orders ship from declares how it ships in its own git config, `git config dim.ship trunk`; [The factory](factory.md#done) says what `dim order ship` does with each value.
+- `dim comments check` parses each staged JS or TS file with `@babel/parser` and prints `path:line` for every comment on an added or edited line, exiting 3 when it finds one.
+- Only added lines count, so a repo with existing comments can turn the ban on without a sweep. In a merge a line counts only where it is added against every parent.
+- A file rewritten past git's rename detection is a new file.
+- **Not judged:** tool contracts (`/// <reference …>`, `@ts-`, `eslint-`, `biome-ignore`, `prettier-ignore`, `#__PURE__`, `@__PURE__`, a `/*!` license header, and in plain JS a JSDoc of only `@type`, `@typedef` or `@param`), a `#!` line, files git marks `linguist-generated` or `linguist-vendored`, files that do not parse (named on stderr), and other languages.
+- A config that cannot be read lets the commit through and says why.
+- A factory builder's commit is judged by the runner instead, by the same rules ([`factory.md`](factory.md)).
+
+`dim comments purge [<path>...]` reports the comments tracked JS and TS files hold. `--write` removes them, sets `comments` to `banned` in the project config and runs the declared format command; then run the check and commit. Languages are adapters in [`src/comments-language.ts`](../src/comments-language.ts).
+
+### Push gate
+
+Refuses a rewrite or deletion of the remote default branch, and any push carrying a revert, since git commits a revert without running the commit gate. A repository's own `core.hooksPath` is left alone.
+
+### Ship method
+
+A repository the factory ships from declares it with `git config dim.ship trunk`; [`factory.md`](factory.md#done) says what `dim order ship` does with it.
 
 ## Configuration
 
-`dim` reads two layers of JSON: the user's `~/.config/dim/config.json` and the project's `.dim/config.json`, which is committed with the code it governs. The project layer overrides the user's setting by setting. Each setting takes one of a fixed set of values, [`src/config.ts`](../src/config.ts) holds the table of them, and a layer naming any other setting or value is refused, naming the file.
+Two layers of JSON: the user's `~/.config/dim/config.json` and the project's committed `.dim/config.json`, which overrides it setting by setting. [`src/config.ts`](../src/config.ts) holds the settings and their values; an unknown one is refused.
 
 ```sh
 dim config
@@ -65,15 +70,11 @@ dim config set comments banned --project
 dim config unset comments
 ```
 
-`dim config` prints one line of JSON: the user layer, the project layer both as the working tree holds it and as `HEAD` commits it, what the gate resolves from the user layer and the committed project layer, and every setting with the values it takes. `set` and `unset` change the user layer, or the project's with `--project`, keep the rest of the file as written, and print the same; a project setting takes effect once it is committed.
-
 | Setting | Values |
 |---|---|
-| `comments` | `banned` turns on the [comment gate](#install-the-shared-controls); `allowed` turns it off |
+| `comments` | `banned` turns on the comment gate; `allowed` turns it off |
 
 ## Worktrees and stations
-
-Create an isolated task checkout with:
 
 ```sh
 dim wt <branch>
@@ -81,33 +82,12 @@ dim wt ls
 dim wt path <branch>
 ```
 
-The worktree command creates `.claude/worktrees/<branch>` and runs the repository setup hook when one exists. See [Worktrees](worktrees.md) for lifecycle and write recovery.
-
-The line has two entry points:
-
-- **`dim-line-feat`** — start feature work, scope it against the record and cut it into verified slices.
-- **`dim-line-fix`** — start defect work, triage it and prove it with a failing test before fixing it.
-
-The stations are:
-
-- **`dim-station-plan`** — scope work against prior art and decisions when the cut is not clear.
-- **`dim-station-build`** — run the check, simplify the slice, obtain a read-only check, answer findings and commit.
-- **`dim-station-review`** — review a completed diff dimension by dimension without editing it.
-
-`dim-factory` is the operator above the line: it reads a queue, chooses an unblocked item and routes it to the right entry point.
-
-See [The factory](factory.md) for order ownership, reports, queue planning and the human gates.
+See [Worktrees](worktrees.md). The line's entry points are the `dim-line-feat` and `dim-line-fix` skills, its stations `dim-station-plan`, `dim-station-build` and `dim-station-review`, and `dim-factory` operates it ([`factory.md`](factory.md)).
 
 ## Session start
 
-`dim wake` prints the last handoff's `## Next` together with the repository's declared check and format commands. The installed `SessionStart` hook can provide that context automatically. [Reaching a session without being asked](recall.md) describes the handoff chain and the token budget for startup context.
+`dim wake` prints the last handoff's `## Next` and the repo's declared check and format commands; the `SessionStart` hook runs it ([Recall](recall.md)).
 
 ## Verification
 
-The repository check is:
-
-```sh
-bun run verify
-```
-
-It runs linting, typechecking, tests and worktree checks. `bun run format` formats source files.
+`bun run verify` runs lint, typecheck, tests and the worktree checks. `bun run format` formats.
