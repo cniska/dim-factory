@@ -2,7 +2,7 @@
 
 How a line gets cut from a skill and stays cut: where a candidate comes from, what is allowed to decide it, and what is measured afterward.
 
-> **Scope.** The join between two instruments that already exist. The corpus and its queries are this repo's ([`design.md`](design.md)); the ablation runner and the rule inventory belong to the skill set being measured ([`evals-and-hooks.md`](evals-and-hooks.md)). Neither changes here. What this adds is the direction evidence is allowed to flow between them, and one report.
+> **Scope.** The join between two instruments that already exist. The corpus and its queries are this repo's ([`design.md`](design.md)); the ablation runner and the rule inventory belong to the skill set being measured. Neither changes here. What this adds is the direction evidence is allowed to flow between them, and one report.
 
 ## Decisions in one screen
 
@@ -37,9 +37,9 @@ The loop to reach for is: cut a line, watch the next weeks of sessions, keep the
 
 ## 3. The one thing allowed to decide
 
-A cut is decided by reading, or by the ablation runner — the `full` and `trimmed` arms of `evals/run.sh`, gated at the verdict threshold in [`evals-and-hooks.md`](evals-and-hooks.md) §2.3.
+A cut is decided by reading, or by the skill set's ablation runner, which compares the skill with and without the line.
 
-Most cuts are decided by reading, and §2.5 there already says which kinds: a `## Red flags` line mirroring a body rule, a `## Rules` section restating the workflow, the same fact stated in several skills, explanatory prose after an instruction. The corpus can point at these faster than a human scan, but it adds nothing to the decision — the one-place rule already settles them.
+Most cuts are decided by reading: a `## Red flags` line mirroring a body rule, a `## Rules` section restating the workflow, the same fact stated in several skills, explanatory prose after an instruction. The corpus can point at these faster than a human scan, but it adds nothing to the decision — the one-place rule already settles them.
 
 The runner is for the contested residue, and the corpus earns its place there by ordering the queue. An eval run costs two arms and ten to twenty minutes; the rule inventory reports 715 rule-shaped lines across the skills. The instrument can never be pointed at all of them, so the question is only ever *which* to point it at, and that is a question about traffic and cost — exactly what the corpus holds.
 

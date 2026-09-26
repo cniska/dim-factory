@@ -31,4 +31,3 @@ Each page owns its subject. A fact lives on one of them and is linked to from th
 
 - [The loop](loop.md) — how a line gets cut from a skill and stays cut
 - [Generating the conventions](conventions.md) — a generated block naming the rules a gate holds
-- [An instrument that can justify a cut](evals-and-hooks.md) — the eval arms and the hooks layout

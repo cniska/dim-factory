@@ -31,7 +31,7 @@ The corpus-native half of the measurement is built: `dim bench` scores a hand-la
 ## Waiting on that measurement
 
 - **Reciprocal-rank fusion** (`rank-fusion`) ([`landscape.md`](landscape.md#session-records-and-gates)). It is not a drop-in: fusion ranks one candidate set twice, and `message_fts` and `embedding` hold different populations, so it needs a second FTS5 index over `embedding.text`.
-- **A ledger of which guidance cuts measurement confirmed or rejected** (`guidance-cut-ledger`)**.** Append-only, written when a cut is decided by the runner. Distinct from the rejected-changes ledger [`evals-and-hooks.md`](evals-and-hooks.md) declines: that one records proposals turned down and is a multi-contributor artifact `git log` already covers, while this records what a measurement settled, which `git log` does not hold. It waits on the first measured cut — a ledger with no rows is the empty table that argument rejected.
+- **A ledger of which guidance cuts measurement confirmed or rejected** (`guidance-cut-ledger`)**.** Append-only, written when a cut is decided by the runner. A ledger of proposals turned down is not this: `git log` already holds those, and does not hold what a measurement settled. It waits on the first measured cut — a ledger with no rows is the empty table that argument rejected.
 - **Whether raw conversation turns belong in the index** (`raw-turns-in-index`) ([`recall.md`](recall.md)). Measured worse as retrieval input, so this is a question for the benchmark and not a default.
 
 ## Waiting on a judgment only the owner can record
@@ -68,7 +68,7 @@ The corpus-native half of the measurement is built: `dim bench` scores a hand-la
 
 - **The working-directory check** (`working-directory-check`)**.** Git aimed outside the session's own directory fails three times as often ([`findings.md`](findings.md)). A commit hook knows the repo it runs in and not the one the session belongs to, so only a hook on the tool call can compare them. Prior art: branch `working-directory-check`, which denies a Bash git call aimed outside the session's checkout from a `PreToolUse` hook.
 
-- **The weakening guard** (`weakening-guard`) ([`evals-and-hooks.md`](evals-and-hooks.md)), which warns rather than blocks. Prior art: branch `weakening-guard`, which warns from a `PostToolUse` hook on `Edit` and `Write` when an edit adds a skip marker or drops assertions.
+- **The weakening guard** (`weakening-guard`), which warns rather than blocks, since a correct agent deletes a test whose behavior is gone. Prior art: branch `weakening-guard`, which warns from a `PostToolUse` hook on `Edit` and `Write` when an edit adds a skip marker or drops assertions.
 
 - **Undoing an agent's writes** (`undo-agent-writes`) ([`worktrees.md`](worktrees.md)), which records that something changed and commits on a later pass.
 
@@ -112,8 +112,7 @@ The corpus-native half of the measurement is built: `dim bench` scores a hand-la
 
 - **The generated conventions block** (`conventions-block`) ([`conventions.md`](conventions.md)), which that writer is the precondition for. Its first condition is now met — the gates exist and `doctor` reports a hook that is missing, stale or in a directory git does not read, and a checkout where the push gate cannot fire — and its second is not: `loop.md` requires each cut recorded as characters removed against the calls they would have stayed resident for, and the three rules cut from `~/.claude/CLAUDE.md` on 2026-09-17 were cut by hand and never measured. Do that measurement before generating anything.
 - **A gate for US spelling, and one for banner comments** (`spelling-banner-gates`)**.** The two rules left in the conventions file that a mechanism could hold; a banner added to a JS or TS file is already refused in a repo the comment gate bans comments in, and this one is for everywhere else. Everything else there needs judgement and stays written ([`conventions.md`](conventions.md)).
-- **Slice 1 of the eval runner** (`eval-runner-inventory`) ([`evals-and-hooks.md`](evals-and-hooks.md)): the trimmed arm and the rule inventory.
-- **A guidance-file arm for that runner** (`guidance-file-arm`)**.** [`loop.md`](loop.md) names the boundary: a rule inside `~/.claude/CLAUDE.md` has no seam the runner can deliver a trimmed version through, so a guidance cut is decided by reading. An arm built as a whole config directory is what closes it, and a trimmed surface has to be unlinked and written fresh inside the arm — writing through the symlink edits the real guidance, and only a test that reddens on that keeps it true.
+- **A guidance-file arm for the skill set's eval runner** (`guidance-file-arm`)**.** [`loop.md`](loop.md) names the boundary: a rule inside `~/.claude/CLAUDE.md` has no seam the runner can deliver a trimmed version through, so a guidance cut is decided by reading. An arm built as a whole config directory is what closes it, and a trimmed surface has to be unlinked and written fresh inside the arm — writing through the symlink edits the real guidance, and only a test that reddens on that keeps it true.
 - **An index over code by meaning** (`code-meaning-index`)**.** `prior-art` matches a path fragment, so a concept whose file is named for its domain is invisible to it — `lexer` returns nothing across 22 repos while `acolyte/src/log-parser.ts` is on disk ([`findings.md`](findings.md)). `q search` is semantic but covers only the text a person distilled. What is missing is the question "have we solved this shape before" where the shape is not in the filename. A ranking change can now be scored rather than preferred, so what this needs is questions of its own: `dim bench` grades what a query prints, and no query prints a file path as a ref today.
 - **Extracting the toolchain that repeats** (`toolchain-extraction`)**.** Three of the drifted scripts are orders this repo already does once, so that part is deleting forks ([`findings.md`](findings.md), [`README.md`](../README.md)). The `mise` and env handling across five checkouts is the part that has to be built.
 
@@ -151,7 +150,6 @@ The corpus-native half of the measurement is built: `dim bench` scores a hand-la
 ## Deliberately not next
 
 - **Generating the machine-held half of the conventions** (`conventions-generation`) ([`conventions.md`](conventions.md)). The work is building gates and earning one cut each; nothing generates a block until there are gates to hold the rules.
-- **The routing tier** (`routing-tier`) ([`evals-and-hooks.md`](evals-and-hooks.md)). Revisited only if telemetry shows misroutes that fixing by reading did not close.
 
 - **A markdown writer that replaces a heading's byte range** (`heading-range-writer`)**.** The property it exists for is real — a `##` inside a fenced code block is not a heading, and only an AST holds that. But its only caller is the generated conventions block, which waits on a measurement nobody has taken, so building it now produces a tested module with nothing to call it.
 
