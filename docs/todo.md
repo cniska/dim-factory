@@ -60,7 +60,6 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 - **An external retrieval benchmark** (LongMemEval).
 - **A wider benchmark corpus** drawn from handoffs and the sessions that acted on them.
 - **Find code by meaning**, not only by path.
-- **The repo's tooling in `wake`**, if it earns its tokens.
 - **Undo an agent's writes** ([`worktrees.md`](worktrees.md)).
 - **Messages between running sessions.**
 - **Gates for US spelling** and for banner comments outside JS and TS.

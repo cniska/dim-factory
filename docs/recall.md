@@ -1,13 +1,6 @@
 # Recall
 
-A query answers only when someone thinks to ask, and the sessions that most need a fact have no reason to suspect it exists. Recall here is a channel that arrives without being asked, plus retrieval for when someone does ask.
-
-## `dim wake`
-
-- A `SessionStart` hook's stdout becomes context in the session (Codex reads it as `hookSpecificOutput.additionalContext`). `dim wake` prints the `## Next` left by the last session that worked in this directory, and the check and format commands the repo declares.
-- Every line it prints is paid for in every session that starts, so a line goes in only where a cold start could not reach the fact for less. With nothing to say, it prints nothing.
-- The two halves fail apart: the Next needs the database, the declared commands do not.
-- On Codex a hook fires only while its position is trusted in `~/.codex/config.toml`, keyed by entry index, so another tool inserting a hook ahead of dim's moves dim's off its trusted key. `dim doctor` reports it.
+Agents recall earlier work by querying the local record when the task calls for it. `dim q resume <id>` retrieves a handoff's next move; `dim q search` finds earlier decisions by meaning.
 
 ## The handoff chain
 

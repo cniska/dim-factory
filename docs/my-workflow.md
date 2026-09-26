@@ -49,10 +49,10 @@ The finished work is reviewed one agent per dimension — correctness, tests, ar
 
 ### 6. Hand off
 
-When context runs long, the session writes a handoff and the next one starts clean from its `## Next`. It is the step I run most.
+When context runs long, the session writes a handoff. The next one uses `dim q resume <id>` to read its `## Next`.
 
 - **Check:** the next session starts from committed state and a stated next move.
-- **Factory:** the order record and resumed worker sessions replace the handoff; `dim wake` delivers the Next when I resume.
+- **Factory:** the order record and resumed worker sessions replace the handoff; `dim q resume <id>` retrieves a handoff when I need one.
 
 ### 7. Ship
 

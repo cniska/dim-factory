@@ -774,7 +774,7 @@ CREATE INDEX IF NOT EXISTS handoff_link_from ON handoff_link(from_session);
 CREATE INDEX IF NOT EXISTS handoff_link_to ON handoff_link(to_session);
 
 -- One row per handoff-shaped message, rebuilt from transcript text. The message
--- is the source identity; next is stored so wake and resume do not re-parse a
+-- is the source identity; next is stored so resume and search do not re-parse a
 -- transcript at read time.
 CREATE TABLE IF NOT EXISTS factory_handoff (
   message_id      TEXT PRIMARY KEY,

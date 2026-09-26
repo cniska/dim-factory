@@ -45,6 +45,13 @@ describe("what counts as a handoff", () => {
     expect(handoffNext(text)).toBe("current");
   });
 
+  test("bounds a stored Next", () => {
+    const text = handoff("current", "word ".repeat(400));
+    const next = handoffNext(text) as string;
+    expect(next.length).toBeLessThanOrEqual(701);
+    expect(next.endsWith("…")).toBe(true);
+  });
+
   test("backfills only strict heading and section pairs", () => {
     const db = seeded();
     try {

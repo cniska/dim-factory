@@ -88,7 +88,7 @@ See [Worktrees](worktrees.md). The line's entry points are the `dim-feat` and `d
 
 ## Session start
 
-`dim wake` prints the last handoff's `## Next` and the repo's declared check and format commands; the `SessionStart` hook runs it ([Recall](recall.md)).
+The `SessionStart` hook runs `dim wake` to print the repo's declared check and format commands and record which guidance files were in force. Handoffs remain available through `dim q resume` ([Recall](recall.md)).
 
 ## Verification
 

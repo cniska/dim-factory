@@ -2,12 +2,6 @@ import type { Database } from "bun:sqlite";
 
 const NEXT_MAX_CHARS = 700;
 
-export function nextSection(handoff: string): string | null {
-  const match = handoff.match(/^## Next[ \t]*$/m);
-  if (!match || match.index === undefined) return null;
-  return sectionAfter(handoff, match.index + match[0].length);
-}
-
 function sectionAfter(text: string, start: number): string | null {
   const body = text.slice(start);
   const end = body.search(/^## /m);

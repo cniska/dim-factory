@@ -13,7 +13,8 @@ Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` 
 | `guidance` | Which rules files were in force, and the walk that loaded them |
 | `query` | The named queries and how they window and cap their rows |
 | `search`, `bench` | Embeddings, distilled passages, and the retrieval benchmark |
-| `recall` | Handoffs and `dim wake` |
+| `recall` | Handoffs and explicit retrieval |
+| `session-start`, `wake` | Repo commands passed to a new session |
 | `order` | An order: its lifecycle, ledger, evidence, findings, ship and queue |
 | `station` | The plan, build and review stations: briefs, turns, artifacts and the build runner |
 | `worker` | Who a worker is: assignment, credential, roles, routing and capabilities |

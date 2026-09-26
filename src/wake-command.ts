@@ -1,9 +1,7 @@
 import type { Command } from "./cli-contract";
-import { openReadOnly } from "./db-read";
 import { resolveWalk, spoolWalk } from "./guidance-walk";
 import { readHookPayload } from "./hooks-payload";
-import { dbPath } from "./paths";
-import { readWake, renderWake, type Wake, wireFor } from "./recall-wake";
+import { projectLine, wireFor } from "./session-start-context";
 
 async function wake(args: string[]): Promise<void> {
   const tool = args.includes("--tool=codex") ? "codex" : "claude";
@@ -21,18 +19,8 @@ async function wake(args: string[]): Promise<void> {
     } catch {}
   }
 
-  let read: Wake | null = null;
   try {
-    const db = openReadOnly(dbPath());
-    try {
-      read = readWake(db, cwd);
-    } finally {
-      db.close();
-    }
-  } catch {}
-
-  try {
-    const wire = wireFor(tool, renderWake(read, cwd));
+    const wire = wireFor(tool, projectLine(cwd));
     if (wire) console.log(wire);
   } catch {}
 }
@@ -40,8 +28,7 @@ async function wake(args: string[]): Promise<void> {
 export const wakeCommand: Command = {
   name: "wake",
   usage: "usage: dim wake [--tool=codex]",
-  summary:
-    "print what the last session in this directory left as Next, in the SessionStart hook's wire format",
+  summary: "print the repo's declared commands in the SessionStart hook's wire format",
   raw: () => true,
   run: (args) => wake(args),
 };
