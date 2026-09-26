@@ -1,20 +1,126 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["body", "findings"],
+  "required": [
+    "verdict",
+    "findings",
+    "rulings",
+    "conformance",
+    "coverage",
+    "set_aside",
+    "unverified",
+    "observations"
+  ],
   "properties": {
-    "body": { "type": "string", "minLength": 1 },
+    "verdict": { "type": "string", "minLength": 1 },
     "findings": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["dimension", "summary"],
+        "required": ["dimension", "file", "line", "failure", "fix", "severity"],
         "properties": {
-          "dimension": { "type": "string", "minLength": 1 },
-          "summary": { "type": "string", "minLength": 1 }
+          "dimension": {
+            "type": "string",
+            "enum": [
+              "plan",
+              "correctness",
+              "tests",
+              "architecture",
+              "maintainability",
+              "docs",
+              "security",
+              "performance",
+              "style"
+            ]
+          },
+          "file": { "type": "string", "minLength": 1 },
+          "line": { "type": "integer" },
+          "failure": { "type": "string", "minLength": 1 },
+          "fix": { "type": "string", "minLength": 1 },
+          "severity": { "type": "string", "enum": ["critical", "high", "medium"] }
         }
       }
-    }
+    },
+    "rulings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["finding", "ruling", "reason"],
+        "properties": {
+          "finding": { "type": "integer" },
+          "ruling": {
+            "type": "string",
+            "enum": ["addressed", "not_addressed", "refusal_accepted", "refusal_contested"]
+          },
+          "reason": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "conformance": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "slice", "detail"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["missing", "extra", "misunderstood"] },
+          "slice": { "type": ["string", "null"] },
+          "detail": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "coverage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["dimension", "status", "reason"],
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "enum": [
+              "plan",
+              "correctness",
+              "tests",
+              "architecture",
+              "maintainability",
+              "docs",
+              "security",
+              "performance",
+              "style"
+            ]
+          },
+          "status": { "type": "string", "enum": ["clean", "findings", "not_applicable", "not_run"] },
+          "reason": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "set_aside": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["item", "why"],
+        "properties": {
+          "item": { "type": "string", "minLength": 1 },
+          "why": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "unverified": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["claim", "would_settle"],
+        "properties": {
+          "claim": { "type": "string", "minLength": 1 },
+          "would_settle": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "observations": { "type": "array", "items": { "type": "string", "minLength": 1 } }
   }
 }

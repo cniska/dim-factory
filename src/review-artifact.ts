@@ -1,42 +1,206 @@
+import { FINDING_RULINGS, type FindingRuling } from "./order-finding-state";
+
+/** The rows of the table under "The passes" in `skills/dim-station-review/SKILL.md`. */
+export const REVIEW_DIMENSIONS = [
+  "plan",
+  "correctness",
+  "tests",
+  "architecture",
+  "maintainability",
+  "docs",
+  "security",
+  "performance",
+  "style",
+] as const;
+export type ReviewDimension = (typeof REVIEW_DIMENSIONS)[number];
+
+export const SEVERITIES = ["critical", "high", "medium"] as const;
+export type Severity = (typeof SEVERITIES)[number];
+
+const CONFORMANCE_KINDS = ["missing", "extra", "misunderstood"] as const;
+const COVERAGE_STATUSES = ["clean", "findings", "not_applicable", "not_run"] as const;
+const MAX_OBSERVATIONS = 3;
+
 export type ReviewFinding = {
-  dimension: string;
-  summary: string;
+  dimension: ReviewDimension;
+  file: string;
+  line: number;
+  failure: string;
+  fix: string;
+  severity: Severity;
 };
 
-export type ReviewArtifact = {
-  body: string;
+export type ReviewRuling = { finding: number; ruling: FindingRuling; reason: string | null };
+
+export type ReviewReport = {
+  verdict: string;
   findings: ReviewFinding[];
+  rulings: ReviewRuling[];
+  conformance: { kind: (typeof CONFORMANCE_KINDS)[number]; slice: string | null; detail: string }[];
+  coverage: {
+    dimension: ReviewDimension;
+    status: (typeof COVERAGE_STATUSES)[number];
+    reason: string | null;
+  }[];
+  setAside: { item: string; why: string }[];
+  unverified: { claim: string; wouldSettle: string }[];
+  observations: string[];
 };
 
-export function parseReviewArtifact(raw: string): ReviewArtifact {
+type Fields = Record<string, unknown>;
+
+function object(value: unknown, what: string): Fields {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error(`${what} must be an object`);
+  return value as Fields;
+}
+
+function list(fields: Fields, key: string): unknown[] {
+  const value = fields[key];
+  if (!Array.isArray(value)) throw new Error(`reviewer output must contain a ${key} array`);
+  return value;
+}
+
+function text(fields: Fields, key: string, what: string): string {
+  const value = fields[key];
+  if (typeof value !== "string" || value.trim() === "")
+    throw new Error(`${what} must contain a non-empty ${key}`);
+  return value.trim();
+}
+
+function optionalText(fields: Fields, key: string, what: string): string | null {
+  const value = fields[key];
+  if (value === null) return null;
+  if (typeof value !== "string") throw new Error(`${what} must give ${key} as a string or null`);
+  return value.trim() === "" ? null : value.trim();
+}
+
+function oneOf<T extends string>(fields: Fields, key: string, values: readonly T[], what: string): T {
+  const value = fields[key];
+  if (typeof value !== "string" || !values.includes(value as T)) {
+    throw new Error(`${what} has ${key} ${JSON.stringify(value)}, which is not one of ${values.join(", ")}`);
+  }
+  return value as T;
+}
+
+function parseFinding(value: unknown, index: number): ReviewFinding {
+  const what = `reviewer finding ${index + 1}`;
+  const fields = object(value, what);
+  const severity = fields.severity;
+  if (typeof severity !== "string" || !SEVERITIES.includes(severity as Severity)) {
+    throw new Error(
+      `${what} has severity ${JSON.stringify(severity)}; every finding blocks at critical, high or medium, ` +
+        "and a point that does not block belongs in observations",
+    );
+  }
+  const line = fields.line;
+  if (typeof line !== "number" || !Number.isInteger(line) || line < 1) {
+    throw new Error(`${what} must give line as a whole number from 1`);
+  }
+  return {
+    dimension: oneOf(fields, "dimension", REVIEW_DIMENSIONS, what),
+    file: text(fields, "file", what),
+    line,
+    failure: text(fields, "failure", what),
+    fix: text(fields, "fix", what),
+    severity: severity as Severity,
+  };
+}
+
+function parseRuling(value: unknown, index: number): ReviewRuling {
+  const what = `reviewer ruling ${index + 1}`;
+  const fields = object(value, what);
+  const finding = fields.finding;
+  if (typeof finding !== "number" || !Number.isInteger(finding)) {
+    throw new Error(`${what} must name its finding by id`);
+  }
+  const ruling = oneOf(fields, "ruling", FINDING_RULINGS, what);
+  const reason = optionalText(fields, "reason", what);
+  if ((ruling === "not_addressed" || ruling === "refusal_contested") && reason === null) {
+    throw new Error(`${what} on finding ${finding} is ${ruling} and must give a reason`);
+  }
+  return { finding, ruling, reason };
+}
+
+/** Coverage restates the findings, so the two cannot disagree: a dimension is `findings` exactly
+ *  when a finding carries it. */
+function parseCoverage(values: unknown[], findingDimensions: Set<string>): ReviewReport["coverage"] {
+  const coverage = values.map((value, index) => {
+    const what = `reviewer coverage ${index + 1}`;
+    const fields = object(value, what);
+    const dimension = oneOf(fields, "dimension", REVIEW_DIMENSIONS, what);
+    const status = oneOf(fields, "status", COVERAGE_STATUSES, what);
+    const reason = optionalText(fields, "reason", what);
+    if ((status === "not_applicable" || status === "not_run") && reason === null) {
+      throw new Error(`reviewer coverage of ${dimension} is ${status} and must give a reason`);
+    }
+    if ((status === "findings") !== findingDimensions.has(dimension)) {
+      throw new Error(
+        findingDimensions.has(dimension)
+          ? `reviewer coverage of ${dimension} is ${status}, but a finding carries ${dimension}`
+          : `reviewer coverage of ${dimension} is findings, but no finding carries ${dimension}`,
+      );
+    }
+    return { dimension, status, reason };
+  });
+  for (const dimension of REVIEW_DIMENSIONS) {
+    const entries = coverage.filter((entry) => entry.dimension === dimension).length;
+    if (entries !== 1) {
+      throw new Error(`reviewer coverage must hold exactly one entry for ${dimension}, and holds ${entries}`);
+    }
+  }
+  return coverage;
+}
+
+export function parseReviewReport(raw: string): ReviewReport {
   let value: unknown;
   try {
     value = JSON.parse(raw);
   } catch {
     throw new Error("reviewer output must be valid JSON");
   }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("reviewer output must be a JSON object");
+  const fields = object(value, "reviewer output");
+  const verdict = text(fields, "verdict", "reviewer output");
+  const findings = list(fields, "findings").map(parseFinding);
+  const rulings = list(fields, "rulings").map(parseRuling);
+  const ruled = new Set<number>();
+  for (const ruling of rulings) {
+    if (ruled.has(ruling.finding)) throw new Error(`reviewer rulings name finding ${ruling.finding} twice`);
+    ruled.add(ruling.finding);
   }
-  const artifact = value as { body?: unknown; findings?: unknown };
-  if (typeof artifact.body !== "string" || artifact.body.trim() === "") {
-    throw new Error("reviewer output must contain a non-empty body");
-  }
-  if (!Array.isArray(artifact.findings)) {
-    throw new Error("reviewer output must contain a findings array");
-  }
-  const findings = artifact.findings.map((finding, index) => {
-    if (!finding || typeof finding !== "object" || Array.isArray(finding)) {
-      throw new Error(`reviewer finding ${index + 1} must be an object`);
-    }
-    const item = finding as { dimension?: unknown; summary?: unknown };
-    if (typeof item.dimension !== "string" || item.dimension.trim() === "") {
-      throw new Error(`reviewer finding ${index + 1} must contain a non-empty dimension`);
-    }
-    if (typeof item.summary !== "string" || item.summary.trim() === "") {
-      throw new Error(`reviewer finding ${index + 1} must contain a non-empty summary`);
-    }
-    return { dimension: item.dimension.trim(), summary: item.summary.trim() };
+  const conformance = list(fields, "conformance").map((entry, index) => {
+    const what = `reviewer conformance ${index + 1}`;
+    const item = object(entry, what);
+    return {
+      kind: oneOf(item, "kind", CONFORMANCE_KINDS, what),
+      slice: optionalText(item, "slice", what),
+      detail: text(item, "detail", what),
+    };
   });
-  return { body: artifact.body.trim(), findings };
+  const coverage = parseCoverage(
+    list(fields, "coverage"),
+    new Set(findings.map((finding) => finding.dimension)),
+  );
+  const setAside = list(fields, "set_aside").map((entry, index) => {
+    const what = `reviewer set_aside ${index + 1}`;
+    const item = object(entry, what);
+    return { item: text(item, "item", what), why: text(item, "why", what) };
+  });
+  const unverified = list(fields, "unverified").map((entry, index) => {
+    const what = `reviewer unverified ${index + 1}`;
+    const item = object(entry, what);
+    return { claim: text(item, "claim", what), wouldSettle: text(item, "would_settle", what) };
+  });
+  const observations = list(fields, "observations").map((entry, index) => {
+    if (typeof entry !== "string" || entry.trim() === "") {
+      throw new Error(`reviewer observation ${index + 1} must be a non-empty string`);
+    }
+    return entry.trim();
+  });
+  if (observations.length > MAX_OBSERVATIONS) {
+    throw new Error(
+      `reviewer output holds ${observations.length} observations, and at most ${MAX_OBSERVATIONS} are kept`,
+    );
+  }
+  return { verdict, findings, rulings, conformance, coverage, setAside, unverified, observations };
 }

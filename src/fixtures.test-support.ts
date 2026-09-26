@@ -6,6 +6,7 @@ import { openOrderReview } from "./factory-order";
 import { mintWorker, newWorkerSession, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { installHooks } from "./hooks";
 import type { Env } from "./paths";
+import { REVIEW_DIMENSIONS } from "./review-artifact";
 import type { Role } from "./roles";
 
 /**
@@ -32,6 +33,30 @@ export function reviewIn(
   const reviewer = mintWorker(db, { role: "reviewer", sessionId: newWorkerSession("test-reviewer") }).name;
   const opened = openOrderReview(db, orderId, { reviewer, baseSha: sha, headSha: sha }, by, at);
   return { review: opened.id, reviewer };
+}
+
+/**
+ * A reviewer's output in the wire shape, with coverage derived from the findings so a test sets
+ * only what it is about. Keys are the wire's own, so a test writing them pins the contract.
+ */
+export function reviewOutput(fields: Record<string, unknown> = {}): string {
+  const findings = (fields.findings ?? []) as { dimension: string }[];
+  const flagged = new Set(findings.map((finding) => finding.dimension));
+  return JSON.stringify({
+    verdict: "The change does what the plan asked.",
+    findings,
+    rulings: [],
+    conformance: [],
+    coverage: REVIEW_DIMENSIONS.map((dimension) => ({
+      dimension,
+      status: flagged.has(dimension) ? "findings" : "clean",
+      reason: null,
+    })),
+    set_aside: [],
+    unverified: [],
+    observations: [],
+    ...fields,
+  });
 }
 
 /** The environment the factory starts a worker in, which is where `dim order` reads it. */

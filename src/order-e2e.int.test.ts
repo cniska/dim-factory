@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { openDb } from "./db";
 import { claimOrder, queueOrder } from "./factory-order";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
-import { collectingMachine, declareCheck, integratedRepo } from "./fixtures.test-support";
+import { collectingMachine, declareCheck, integratedRepo, reviewOutput } from "./fixtures.test-support";
 import { runOrderCommand, runOrderCommandLive } from "./order-command";
 import { dbPath, type Env } from "./paths";
 
@@ -52,7 +52,7 @@ if (brief.includes("planner")) {
   const artifact = slice === "2" ? ${JSON.stringify("## Outcome\n\nThe requested queue flow is implemented across both slices.\n\n## Implementation\n\nThe factory now selects and reserves one ready order under its lock.\n\n## Why this shape\n\nReservation reuses the existing claim boundary, so selection and ownership cannot diverge.\n\n## Verification\n\nBoth slices recorded passing checks, and the final harness run completed successfully.\n\n## Owner attention\n\nThe wall remains outside this order.")} : "";
   emit({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify({ subject: "feat: real harness slice " + slice, artifact }) } });
 } else if (brief.includes("reviewer")) {
-  emit({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify({ body: "## Outcome\\n\\nNo findings; the change is ready to advance.", findings: [] }) } });
+  emit({ type: "item.completed", item: { type: "agent_message", text: ${JSON.stringify(reviewOutput({ verdict: "No findings; the change is ready to advance." }))} } });
 } else {
   process.exit(4);
 }
@@ -197,8 +197,16 @@ describe("headless factory loop", () => {
         .query("SELECT body FROM factory_order_review_artifact WHERE order_id = ? ORDER BY id")
         .all("headless-order"),
     ).toEqual([
-      { body: "## Outcome\n\nNo findings; the change is ready to advance." },
-      { body: "## Outcome\n\nNo findings; the change is ready to advance." },
+      {
+        body: expect.stringContaining(
+          "## Verdict\n\n**May advance.** No findings; the change is ready to advance.",
+        ),
+      },
+      {
+        body: expect.stringContaining(
+          "## Verdict\n\n**May advance.** No findings; the change is ready to advance.",
+        ),
+      },
     ]);
     expect(
       db

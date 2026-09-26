@@ -254,7 +254,7 @@ This is the first preference `dim` holds rather than a record of something that 
 
 ## A station asks for a capability, not a harness's flag
 
-A station also declares what its work needs, never what a harness calls the permission for it: `bootstrap-worker`, `read-files`, `edit-files`, `read-history`, `ask-dim`, and `run-check`, a closed vocabulary in [`src/capabilities.ts`](../src/capabilities.ts) that a station's capability set is checked against the same way a role is checked against [`src/roles.ts`](../src/roles.ts). The selected harness adapter receives that set with the tier's model and brief, and owns the harness-specific command, continuation and permission mapping. Reviewers return findings and their artifact as structured output; the factory records both under the reviewer identity.
+A station also declares what its work needs, never what a harness calls the permission for it: `bootstrap-worker`, `read-files`, `edit-files`, `read-history`, `ask-dim`, and `run-check`, a closed vocabulary in [`src/capabilities.ts`](../src/capabilities.ts) that a station's capability set is checked against the same way a role is checked against [`src/roles.ts`](../src/roles.ts). The selected harness adapter receives that set with the tier's model and brief, and owns the harness-specific command, continuation and permission mapping. Reviewers return a structured report; the factory records its findings and rulings under the reviewer identity and renders the Review artifact from it ([`src/review-report.ts`](../src/review-report.ts)).
 
 ## What the assembly line already settled
 

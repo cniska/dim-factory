@@ -14,7 +14,7 @@ import {
   recordOrderCommit,
 } from "./factory-order";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
-import { integratedRepo, orderWorktree } from "./fixtures.test-support";
+import { integratedRepo, orderWorktree, reviewOutput } from "./fixtures.test-support";
 import { runOrderReview } from "./order-review";
 import { SCHEMA_SQL } from "./schema";
 import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
@@ -94,9 +94,17 @@ describe("the operator loop", () => {
         }
         return {
           exitCode: 0,
-          output: JSON.stringify({
-            body: "## Outcome\n\nThe first behavior is incomplete.",
-            findings: [{ dimension: "correctness", summary: "the first behavior is incomplete" }],
+          output: reviewOutput({
+            findings: [
+              {
+                dimension: "correctness",
+                file: "first.txt",
+                line: 1,
+                failure: "the first behavior is incomplete",
+                fix: "complete the first behavior",
+                severity: "high",
+              },
+            ],
           }),
         };
       },
@@ -133,7 +141,10 @@ describe("the operator loop", () => {
       dir: worktree,
       env: workerEnv(operator),
       spawn: (_argv, _env) => {
-        return { exitCode: 0, output: JSON.stringify({ body: "## Outcome\n\nClean.", findings: [] }) };
+        return {
+          exitCode: 0,
+          output: reviewOutput({ rulings: [{ finding: finding.id, ruling: "addressed", reason: null }] }),
+        };
       },
     });
     expect(secondReview.findings).toBe(0);

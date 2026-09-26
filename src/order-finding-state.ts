@@ -1,6 +1,12 @@
 import type { Database } from "bun:sqlite";
 
-export type FindingRuling = "addressed" | "not_addressed" | "refusal_accepted" | "refusal_contested";
+export const FINDING_RULINGS = [
+  "addressed",
+  "not_addressed",
+  "refusal_accepted",
+  "refusal_contested",
+] as const;
+export type FindingRuling = (typeof FINDING_RULINGS)[number];
 
 export type RefusalDecision = "refusal_upheld" | "refusal_overturned";
 

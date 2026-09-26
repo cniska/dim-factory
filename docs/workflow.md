@@ -229,7 +229,7 @@ Long-running work may cross context windows. A context reset starts a fresh work
 
 ## Review
 
-**Live.** Review reads the diff against its intent and uses the record to aim its dimensions. Correctness, tests, architecture, maintainability, docs, security, and style are separate read-only passes; performance is added when the plan identifies a performance-sensitive path. Each finding is checked at its source and then fixed or refused with a reason.
+**Live.** Review reads the diff against the approved plan, which its brief carries, and uses the record to aim its dimensions. Plan conformance, correctness, tests, architecture, maintainability, docs, security, and style are separate read-only passes; performance is added when the plan identifies a performance-sensitive path. The reviewer returns a structured report rather than prose, and the factory refuses one whose finding lacks a file the diff changed, a line that file has at head, the failure, a fix direction or a blocking severity. From round two on, the brief lists each open earlier finding the builder has answered, with that answer, and the report rules on every one. The factory renders the owner's Review artifact from the report and the record ([`src/review-report.ts`](../src/review-report.ts)). Each finding is checked at its source and then fixed or refused with a reason.
 
 ### Review granularity
 

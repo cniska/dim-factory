@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { latestApprovedPlan } from "./approved-plan";
 import { BUILD_TURN_SCHEMA, parseBuildTurn } from "./build-turn";
 import { BuildTurnRefused, commitBuildTurn } from "./builder-commit";
 import type { Capability } from "./capabilities";
@@ -272,24 +273,11 @@ export async function runOrderBuildLive(
   if (state.run_id !== null) {
     throw new OrderNotDone("order_held_by_run", `order ${orderId} is already held by a run`);
   }
-  const plan = db
-    .query<{ id: number; body: string }, [string]>(
-      `SELECT p.id, p.body FROM factory_order_plan p
-       WHERE p.order_id = ? AND EXISTS (
-         SELECT 1 FROM factory_order_event e
-         WHERE e.order_id = p.order_id AND e.kind = 'plan_approved' AND e.plan_id = p.id
-       )
-       ORDER BY p.revision DESC, p.id DESC LIMIT 1`,
-    )
-    .get(orderId);
+  const plan = latestApprovedPlan(db, orderId);
   if (!plan) throw new PlanApprovalRefused("plan_missing", `order ${orderId} has no approved plan to build`);
   const harness = options.harness ?? DEFAULT_HARNESS;
   assertOrderWorkerHarness(db, orderId, "builder", harness);
-  const slices = db
-    .query<PlanSlice, [number]>(
-      "SELECT title, outcome FROM factory_order_slice WHERE plan_id = ? ORDER BY ordinal",
-    )
-    .all(plan.id);
+  const { slices } = plan;
   const currentSlice = nextOrderSlice(db, orderId);
   const conflict = currentSlice ? null : pendingRebaseConflict(db, orderId);
   const reviewFindings = currentSlice || conflict ? [] : reviewFindingsForBuild(db, orderId);
@@ -365,7 +353,7 @@ export async function runOrderBuildLive(
         cwd: worktree,
         brief: builderBrief(
           order,
-          { body: plan.body, slices },
+          plan,
           currentSlice,
           workspace,
           artifact ? { body: artifact.body, feedback: artifact.reason } : undefined,

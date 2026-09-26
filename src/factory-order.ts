@@ -1579,7 +1579,15 @@ function openReviewOf(db: Database, orderId: string): { id: number; reviewer: st
 export function raiseOrderFinding(
   db: Database,
   orderId: string,
-  finding: { dimension: string; summary: string },
+  finding: {
+    dimension: string;
+    summary: string;
+    file?: string;
+    line?: number;
+    failure?: string;
+    fix?: string;
+    severity?: string;
+  },
   worker: string,
   at = now(),
 ): number {
@@ -1600,9 +1608,21 @@ export function raiseOrderFinding(
   assertOrderWorking(db, orderId);
   return db.transaction(() => {
     const result = db.run(
-      `INSERT INTO factory_order_finding (order_id, review_id, dimension, summary, raised_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [orderId, row.id, finding.dimension, finding.summary, at],
+      `INSERT INTO factory_order_finding
+         (order_id, review_id, dimension, summary, file, line, failure, fix, severity, raised_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        orderId,
+        row.id,
+        finding.dimension,
+        finding.summary,
+        finding.file ?? null,
+        finding.line ?? null,
+        finding.failure ?? null,
+        finding.fix ?? null,
+        finding.severity ?? null,
+        at,
+      ],
     );
     const id = Number(result.lastInsertRowid);
     appendOrderEventInTransaction(db, orderId, { kind: "finding_raised", worker, findingId: id }, at);

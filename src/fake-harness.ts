@@ -1,4 +1,5 @@
 import type { HarnessAdapter, HarnessEvent, HarnessRun } from "./harness";
+import { REVIEW_DIMENSIONS } from "./review-artifact";
 
 export type FakeHarnessScenario =
   | "success"
@@ -52,8 +53,14 @@ function scenario(name: FakeHarnessScenario): Scenario {
   }
   if (name === "review") {
     const output = JSON.stringify({
-      body: "## Outcome\n\nThe change is sound.",
+      verdict: "The change is sound.",
       findings: [],
+      rulings: [],
+      conformance: [],
+      coverage: REVIEW_DIMENSIONS.map((dimension) => ({ dimension, status: "clean", reason: null })),
+      set_aside: [],
+      unverified: [],
+      observations: [],
     });
     return {
       events: [

@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { latestApprovedPlan } from "./approved-plan";
 import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
 import {
@@ -10,12 +11,16 @@ import {
   type ReturnedOrderArtifact,
   raiseOrderFinding,
   recordOrderReviewArtifact,
+  ruleOnOrderFinding,
 } from "./factory-order";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-command";
 import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
+import { orderFindingStandings } from "./order-finding-state";
 import { runOrderStation, runOrderStationLive } from "./order-worker";
-import { parseReviewArtifact } from "./review-artifact";
+import type { PlanSlice } from "./plan-artifact";
+import { parseReviewReport, type ReviewFinding, type ReviewRuling } from "./review-artifact";
+import { renderReviewReport } from "./review-report";
 import { stationDirectory } from "./station-directory";
 
 export class ReviewRefused extends Error {
@@ -43,9 +48,11 @@ export type ReviewerSpawn = (
   env: Record<string, string>,
 ) => { exitCode: number; output: string };
 
-function git(dir: string, args: string[]): { ok: boolean; out: string } {
+/** `raw` is stdout untouched, for reading a file's content; `out` is trimmed, for reading a sha. */
+function git(dir: string, args: string[]): { ok: boolean; out: string; raw: string } {
   const run = Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe", stderr: "ignore" });
-  return { ok: run.success, out: run.stdout.toString().trim() };
+  const raw = run.stdout.toString();
+  return { ok: run.success, out: raw.trim(), raw };
 }
 
 /**
@@ -105,22 +112,91 @@ export function reviewRange(db: Database, orderId: string, dir: string): { base:
   return { base: parent.ok ? parent.out : first.sha, head: head.out };
 }
 
-/** The order's own words and its plan, so the reviewer reads the diff against what it was
+/** An open finding from an earlier round, as the next reviewer rules on it. */
+export type EarlierFinding = {
+  id: number;
+  dimension: string;
+  summary: string;
+  file: string | null;
+  line: number | null;
+  failure: string | null;
+  fix: string | null;
+  answer: string | null;
+  resolution: string | null;
+  lastRuling: string | null;
+  lastReason: string | null;
+  ownerReason: string | null;
+};
+
+/** The open findings earlier rounds raised and the builder answered: exactly the set this round
+ *  must rule on. A ruling judges an answer, so an unanswered finding waits, still open, for one. */
+export function earlierOpenFindings(db: Database, orderId: string, reviewId: number): EarlierFinding[] {
+  const open = orderFindingStandings(db, orderId).filter(
+    (finding) => finding.state === "open" && finding.reviewId !== reviewId && finding.answer !== null,
+  );
+  const read = db.query<EarlierFinding, [number]>(
+    `SELECT f.id, f.dimension, f.summary, f.file, f.line, f.failure, f.fix, f.answer, f.resolution,
+            r.ruling AS lastRuling, r.reason AS lastReason,
+            (SELECT d.reason FROM factory_order_refusal_decision d WHERE d.finding_id = f.id) AS ownerReason
+     FROM factory_order_finding f
+     LEFT JOIN factory_order_finding_ruling r
+       ON r.id = (SELECT max(latest.id) FROM factory_order_finding_ruling latest WHERE latest.finding_id = f.id)
+     WHERE f.id = ?`,
+  );
+  return open.map((finding) => read.get(finding.id) as EarlierFinding);
+}
+
+function earlierFindingLines(finding: EarlierFinding): string[] {
+  const where =
+    finding.file === null
+      ? "no location recorded"
+      : finding.line === null
+        ? finding.file
+        : `${finding.file}:${finding.line}`;
+  return [
+    `- Finding ${finding.id} (${finding.dimension}, ${where}): ${finding.failure ?? finding.summary}`,
+    ...(finding.fix ? [`  - Fix asked for: ${finding.fix}`] : []),
+    `  - Builder's answer: ${finding.answer}${finding.resolution ? `: ${finding.resolution}` : ""}`,
+    ...(finding.lastRuling
+      ? [`  - Last ruled ${finding.lastRuling}${finding.lastReason ? `: ${finding.lastReason}` : ""}`]
+      : []),
+    ...(finding.ownerReason ? [`  - The owner overturned the refusal: ${finding.ownerReason}`] : []),
+  ];
+}
+
+const REPORT_CONTRACT = [
+  "Return exactly one JSON object matching the output schema, with no Markdown fence and no text outside it:",
+  '- "verdict": one sentence saying why the order may advance or must return.',
+  '- "findings": each {dimension, file, line, failure, fix, severity}. Every finding blocks: severity is critical, high or medium, file is the repo-relative path of a file the diff changed exactly as git prints it, and line exists in that file at the head commit. A point that would not block goes in "observations" instead.',
+  '- "rulings": each {finding, ruling, reason}, one for every finding listed under "Earlier findings to rule on" and none when that section is absent. ruling is addressed or not_addressed for a finding answered fixed or a refusal the owner overturned, and refusal_accepted or refusal_contested for a refusal that still stands; not_addressed and refusal_contested give a reason.',
+  '- "conformance": each {kind: missing|extra|misunderstood, slice, detail}, judged against the approved plan. A deviation that must be fixed is also a finding with dimension plan.',
+  '- "coverage": exactly one {dimension, status, reason} per dimension (plan, correctness, tests, architecture, maintainability, docs, security, performance, style). status is findings exactly when a finding carries that dimension, clean exactly when none does, or not_applicable or not_run with a reason.',
+  '- "set_aside": each {item, why} left out as outside the order.',
+  '- "unverified": each {claim, would_settle} you could not verify.',
+  '- "observations": at most three strings, none of which blocks.',
+  "Use null for a reason or slice that has nothing to say, and [] for an empty list.",
+];
+
+/** The order's own words and its approved plan, so the reviewer reads the diff against what it was
  *  for. Withheld: the builder's account of what it did, which is the conclusion a reviewer
  *  handed one tends to agree with. */
 export function reviewerBrief(
   order: { id: string; title: string; description: string | null },
   range: { base: string; head: string },
+  context: { plan: { body: string; slices: readonly PlanSlice[] } | null; earlier: EarlierFinding[] },
   revision?: { body: string; feedback: string },
 ): string {
+  const header = [
+    `You are the reviewer for factory order ${order.id} in this repository.`,
+    "",
+    `# ${order.title}`,
+    order.description ?? "",
+    "",
+  ];
   if (revision) {
     return [
-      `You are the reviewer for factory order ${order.id} in this repository.`,
-      "",
-      `# ${order.title}`,
-      order.description ?? "",
-      "",
-      "The owner returned this Review artifact for revision. Preserve the review's findings and evidence; address only the owner's feedback.",
+      ...header,
+      "The owner returned this Review artifact for revision. The factory renders the artifact from your report and from the findings and rulings this round already recorded, so those stay as they are; address only the owner's feedback.",
       "Use dim-artifact for the shared artifact-writing and sizing contract.",
       "",
       "# Previous Review artifact",
@@ -129,26 +205,88 @@ export function reviewerBrief(
       "# Owner feedback",
       revision.feedback,
       "",
-      "Return one JSON object with a revised Markdown body and an empty findings array.",
-      "Do not edit the repository or change the findings during an artifact revision.",
+      ...REPORT_CONTRACT,
+      'Return "findings" and "rulings" empty; only a round that raised nothing is returned for revision, so no coverage entry reports findings.',
+      "Do not edit the repository.",
     ].join("\n");
   }
   return [
-    `You are the reviewer for factory order ${order.id} in this repository.`,
+    ...header,
+    "# Approved plan",
+    // An order built by hand reaches review with no plan the factory approved; it is judged
+    // against its own words instead, which the plan dimension then says.
+    context.plan?.body ??
+      "No approved plan is recorded for this order. Judge the diff against the order's own words, and report the plan dimension as not_applicable with that reason.",
+    ...(context.plan && context.plan.slices.length > 0
+      ? [
+          "",
+          "# Plan slices",
+          ...context.plan.slices.map((slice, index) => `${index + 1}. ${slice.title}: ${slice.outcome}`),
+        ]
+      : []),
     "",
-    `# ${order.title}`,
-    order.description ?? "",
-    "",
+    ...(context.earlier.length > 0
+      ? [
+          "# Earlier findings to rule on",
+          "Rule on each of these against the new diff.",
+          ...context.earlier.flatMap(earlierFindingLines),
+          "",
+        ]
+      : []),
     `Read the diff \`git diff ${range.base}..${range.head}\` and nothing else about how it came to be.`,
+    "Judge it against the approved plan: name work that is missing, extra, or misunderstood.",
     "Check each claim at its source before raising it; a reading you did not verify is not a finding.",
     "",
-    "Use dim-artifact for the shared artifact-writing and sizing contract.",
-    "Write one Review artifact for the owner with the verdict, dimensions covered, evidence considered, and whether the order may advance or must return. Keep it proportional to the change.",
-    'Return exactly one JSON object with a non-empty Markdown "body" and a "findings" array. Each finding has non-empty "dimension" and "summary" strings. Use an empty array when there are no findings. Do not use a Markdown fence or add text outside the JSON object.',
+    "Use dim-station-review and dim-artifact.",
+    "",
+    ...REPORT_CONTRACT,
     "",
     "Raising nothing is the expected result and the right one when the diff is sound.",
     "Do not edit the repository.",
   ].join("\n");
+}
+
+type ReturnedReview = Extract<ReturnedOrderArtifact, { station: "review" }>;
+
+type ReviewedRound = { id: number; base: string; head: string; dir: string };
+
+/** A returned artifact revises the round it came from; otherwise a new round opens over the range. */
+function openRound(
+  db: Database,
+  orderId: string,
+  dir: string,
+  assignmentId: string,
+  worker: string,
+  returned: ReturnedReview | null,
+): ReviewedRound {
+  if (returned) return { id: returned.reviewId, base: returned.baseSha, head: returned.headSha, dir };
+  const range = reviewRange(db, orderId, dir);
+  const round = openAssignedOrderReview(
+    db,
+    orderId,
+    { assignmentId, baseSha: range.base, headSha: range.head },
+    worker,
+  );
+  return { id: round.id, ...range, dir };
+}
+
+function reviewerRequest(
+  db: Database,
+  order: { id: string; title: string; description: string | null },
+  round: ReviewedRound,
+  returned: ReturnedReview | null,
+) {
+  return {
+    cwd: round.dir,
+    brief: reviewerBrief(
+      order,
+      round,
+      { plan: latestApprovedPlan(db, order.id), earlier: earlierOpenFindings(db, order.id, round.id) },
+      returned ? { body: returned.body, feedback: returned.reason } : undefined,
+    ),
+    capabilities: REVIEWER_CAPABILITIES,
+    outputSchema: REVIEW_OUTPUT_SCHEMA,
+  };
 }
 
 export type ReviewOutcome = {
@@ -158,23 +296,81 @@ export type ReviewOutcome = {
   outcome: "closed" | "aborted";
 };
 
+/** A finding points at a line of the diff it read, so the file must be one the round changed and
+ *  the line one that file has at the head the round read. */
+function assertLocations(findings: ReviewFinding[], round: ReviewedRound): void {
+  if (findings.length === 0) return;
+  // -z keeps a path byte for byte, where the default quotes one holding anything but ASCII.
+  const diff = git(round.dir, ["diff", "--name-only", "-z", `${round.base}..${round.head}`]);
+  if (!diff.ok) throw new Error(`could not list the files ${round.base}..${round.head} changes`);
+  const changed = new Set(diff.raw.split("\0"));
+  findings.forEach((finding, index) => {
+    const what = `reviewer finding ${index + 1}`;
+    if (!changed.has(finding.file)) {
+      throw new Error(
+        `${what} names file ${finding.file}, which ${round.base}..${round.head} does not change`,
+      );
+    }
+    const shown = git(round.dir, ["show", `${round.head}:${finding.file}`]);
+    // A finding names a line the reader can open at head, so a file the diff deleted has none.
+    if (!shown.ok) {
+      throw new Error(`${what} names file ${finding.file}, which does not exist at ${round.head}`);
+    }
+    const text = shown.raw;
+    const lines = text.split("\n").length - (text === "" || text.endsWith("\n") ? 1 : 0);
+    if (finding.line > lines) {
+      throw new Error(
+        `${what} names line ${finding.line} of ${finding.file}, which has ${lines} lines at ${round.head}`,
+      );
+    }
+  });
+}
+
+function assertRulingSet(rulings: ReviewRuling[], earlier: EarlierFinding[]): void {
+  const expected = new Set(earlier.map((finding) => finding.id));
+  for (const ruling of rulings) {
+    if (!expected.has(ruling.finding)) {
+      throw new Error(
+        `reviewer ruling names finding ${ruling.finding}, which is not an open earlier finding`,
+      );
+    }
+  }
+  const ruled = new Set(rulings.map((ruling) => ruling.finding));
+  for (const id of expected) {
+    if (!ruled.has(id)) throw new Error(`reviewer rulings leave open earlier finding ${id} without a ruling`);
+  }
+}
+
 function recordReviewResult(
   db: Database,
   orderId: string,
   reviewer: string,
   raw: string,
+  round: ReviewedRound,
   returned: boolean,
 ): number {
-  const artifact = parseReviewArtifact(raw);
-  if (returned && artifact.findings.length > 0) {
-    throw new Error("a returned Review artifact cannot change its findings");
+  const report = parseReviewReport(raw);
+  if (returned && (report.findings.length > 0 || report.rulings.length > 0)) {
+    throw new Error("a returned Review artifact cannot change its findings or rulings");
+  }
+  if (!returned) {
+    assertLocations(report.findings, round);
+    assertRulingSet(report.rulings, earlierOpenFindings(db, orderId, round.id));
   }
   return db.transaction(() => {
-    for (const finding of artifact.findings) {
-      raiseOrderFinding(db, orderId, finding, reviewer);
+    for (const finding of report.findings) {
+      raiseOrderFinding(db, orderId, { ...finding, summary: finding.failure }, reviewer);
     }
-    recordOrderReviewArtifact(db, orderId, artifact.body, reviewer);
-    return artifact.findings.length;
+    for (const ruling of report.rulings) {
+      ruleOnOrderFinding(
+        db,
+        ruling.finding,
+        { ruling: ruling.ruling, reason: ruling.reason ?? undefined },
+        reviewer,
+      );
+    }
+    recordOrderReviewArtifact(db, orderId, renderReviewReport(db, round.id, report), reviewer);
+    return report.findings.length;
   })();
 }
 
@@ -199,8 +395,8 @@ export async function runOrderReviewLive(
   assertBuildReady(db, orderId);
   const dir = stationDirectory(options.dir, orderId);
   const harness = options.harness ?? DEFAULT_HARNESS;
-  let returned: Extract<ReturnedOrderArtifact, { station: "review" }> | null = null;
-  let opened: { id: number } | undefined;
+  let returned: ReturnedReview | null = null;
+  let opened: ReviewedRound | undefined;
   let turn: Awaited<ReturnType<typeof runOrderStationLive<"review">>>;
   try {
     turn = await runOrderStationLive({
@@ -215,27 +411,8 @@ export async function runOrderReviewLive(
         returned = artifact;
       },
       request: ({ orderWorker: assigned, returned: artifact }) => {
-        const range = artifact
-          ? { base: artifact.baseSha, head: artifact.headSha }
-          : reviewRange(db, orderId, dir);
-        opened = artifact
-          ? { id: artifact.reviewId }
-          : openAssignedOrderReview(
-              db,
-              orderId,
-              { assignmentId: assigned.assignment.id, baseSha: range.base, headSha: range.head },
-              worker,
-            );
-        return {
-          cwd: dir,
-          brief: reviewerBrief(
-            order,
-            range,
-            artifact ? { body: artifact.body, feedback: artifact.reason } : undefined,
-          ),
-          capabilities: REVIEWER_CAPABILITIES,
-          outputSchema: REVIEW_OUTPUT_SCHEMA,
-        };
+        opened = openRound(db, orderId, dir, assigned.assignment.id, worker, artifact);
+        return reviewerRequest(db, order, opened, artifact);
       },
     });
   } catch (error) {
@@ -273,7 +450,7 @@ export async function runOrderReviewLive(
   }
   let findings: number;
   try {
-    findings = recordReviewResult(db, orderId, reviewer, turn.run.output, Boolean(returned));
+    findings = recordReviewResult(db, orderId, reviewer, turn.run.output, opened, Boolean(returned));
   } catch (error) {
     const failure = error instanceof Error ? error.message : String(error);
     if (!returned) closeOrderReview(db, opened.id, "aborted", worker, undefined, failure);
@@ -310,7 +487,7 @@ export function runOrderReview(
   assertBuildReady(db, orderId);
   const dir = stationDirectory(options.dir, orderId);
   const harness = options.harness ?? DEFAULT_HARNESS;
-  let opened: { id: number } | undefined;
+  let opened: ReviewedRound | undefined;
   const {
     run,
     worker: reviewer,
@@ -324,27 +501,8 @@ export function runOrderReview(
     env: options.env,
     spawn: options.spawn,
     request: ({ orderWorker, returned: artifact }) => {
-      const range = artifact
-        ? { base: artifact.baseSha, head: artifact.headSha }
-        : reviewRange(db, orderId, dir);
-      opened = artifact
-        ? { id: artifact.reviewId }
-        : openAssignedOrderReview(
-            db,
-            orderId,
-            { assignmentId: orderWorker.assignment.id, baseSha: range.base, headSha: range.head },
-            worker,
-          );
-      return {
-        cwd: dir,
-        brief: reviewerBrief(
-          order,
-          range,
-          artifact ? { body: artifact.body, feedback: artifact.reason } : undefined,
-        ),
-        capabilities: REVIEWER_CAPABILITIES,
-        outputSchema: REVIEW_OUTPUT_SCHEMA,
-      };
+      opened = openRound(db, orderId, dir, orderWorker.assignment.id, worker, artifact);
+      return reviewerRequest(db, order, opened, artifact);
     },
   });
   if (!opened) throw new Error("review round was not opened");
@@ -361,7 +519,7 @@ export function runOrderReview(
   }
   let findings: number;
   try {
-    findings = recordReviewResult(db, orderId, reviewer, run.output, Boolean(returned));
+    findings = recordReviewResult(db, orderId, reviewer, run.output, opened, Boolean(returned));
   } catch (error) {
     const failure = error instanceof Error ? error.message : String(error);
     if (!returned) closeOrderReview(db, opened.id, "aborted", worker, undefined, failure);

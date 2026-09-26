@@ -4,8 +4,11 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  answerOrderFinding,
+  appendOrderEvent,
   approveOrderBuild,
   claimOrder,
+  decideOrderRefusal,
   moveOrder,
   queueOrder,
   raiseOrderFinding,
@@ -16,11 +19,12 @@ import {
 } from "./factory-order";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { fakeHarness } from "./fake-harness";
-import { integratedRepo, orderWorktree } from "./fixtures.test-support";
+import { integratedRepo, orderWorktree, reviewOutput } from "./fixtures.test-support";
 import { runOrderCommand } from "./order-command";
 import {
   type ReviewerSpawn,
   ReviewRefused,
+  reviewerBrief,
   reviewRange,
   runOrderReview,
   runOrderReviewLive,
@@ -54,11 +58,17 @@ function bootstrapReviewer(db: Database, env: Record<string, string>): string {
   return reviewer.name;
 }
 
-function reviewOutput(
-  body = "## Outcome\n\nThe change is sound.",
-  findings: { dimension: string; summary: string }[] = [],
-): string {
-  return JSON.stringify({ body, findings });
+/** A finding on the first line of a slice file, which every `slice` commit writes. */
+function findingOn(file: string, fields: Record<string, unknown> = {}) {
+  return {
+    dimension: "correctness",
+    file,
+    line: 1,
+    failure: "the guard is the wrong way round",
+    fix: "invert the guard",
+    severity: "high",
+    ...fields,
+  };
 }
 
 // Routing resolves the reviewer's tier to the model name supplied to the adapter.
@@ -108,9 +118,18 @@ function floor(): {
 }
 
 /** A commit in the order's own worktree, recorded the way a builder records one. */
-function slice(db: Database, dir: string, worker: string, name: string): string {
-  writeFileSync(join(dir, `${name}.txt`), name);
-  Bun.spawnSync(["git", "-C", dir, "add", "."]);
+function slice(
+  db: Database,
+  dir: string,
+  worker: string,
+  name: string,
+  files: Record<string, string | null> = { [`${name}.txt`]: name },
+): string {
+  for (const [path, content] of Object.entries(files)) {
+    if (content === null) rmSync(join(dir, path));
+    else writeFileSync(join(dir, path), content);
+  }
+  Bun.spawnSync(["git", "-C", dir, "add", "-A"]);
   Bun.spawnSync(["git", "-C", dir, "commit", "-q", "-m", `feat: ${name}`]);
   const sha = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"], { stdout: "pipe" })
     .stdout.toString()
@@ -162,7 +181,7 @@ describe("a review round", () => {
       station: "review",
       reason: "Explain which checks support the verdict.",
       reviewId: done.review,
-      body: "## Outcome\n\nThe change is sound.",
+      body: expect.stringContaining("## Verdict\n\n**May advance.** The change does what the plan asked."),
       baseSha: reviewRange?.base_sha,
       headSha: reviewRange?.head_sha,
     });
@@ -178,7 +197,7 @@ describe("a review round", () => {
     const revise: ReviewerSpawn = (argv, env) => {
       revisionArgv = argv;
       expect(bootstrapReviewer(db, env)).toBe(done.reviewer);
-      return { exitCode: 0, output: reviewOutput("## Outcome\n\nThe review evidence supports the verdict.") };
+      return { exitCode: 0, output: reviewOutput({ verdict: "The checks named in coverage support it." }) };
     };
     const revised = runOrderReview(db, "order-1", operator, { dir, spawn: revise, env: machine });
     expect(revised.review).toBe(done.review);
@@ -232,9 +251,7 @@ describe("a review round", () => {
       expect(reviewer).toBeTruthy();
       return {
         exitCode: 0,
-        output: reviewOutput("## Outcome\n\nThe guard is reversed.", [
-          { dimension: "correctness", summary: "the guard is the wrong way round" },
-        ]),
+        output: reviewOutput({ findings: [findingOn("a.txt")] }),
       };
     };
 
@@ -355,7 +372,7 @@ describe("a review round", () => {
 
     expect(outcome).toMatchObject({ findings: 0, outcome: "closed" });
     expect(db.query("SELECT body, worker FROM factory_order_review_artifact").get()).toEqual({
-      body: "## Outcome\n\nThe change is sound.",
+      body: expect.stringContaining("## Verdict\n\n**May advance.** The change is sound."),
       worker: outcome.reviewer,
     });
   });
@@ -496,6 +513,384 @@ describe("a review round", () => {
     };
 
     runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
+  });
+
+  test("refuses a finding on a file the round did not change", () => {
+    const { db, worker, operator, dir } = floor();
+    slice(db, dir, worker, "a");
+    const spawn: ReviewerSpawn = (_argv, env) => {
+      bootstrapReviewer(db, env);
+      return { exitCode: 0, output: reviewOutput({ findings: [findingOn("landed.txt")] }) };
+    };
+
+    expect(() => runOrderReview(db, "order-1", operator, { dir, spawn, env: machine })).toThrow(
+      /reviewer finding 1 names file landed\.txt, which [0-9a-f]+\.\.[0-9a-f]+ does not change/,
+    );
+    expect(db.query("SELECT count(*) AS n FROM factory_order_finding").get()).toEqual({ n: 0 });
+    expect(db.query("SELECT outcome FROM factory_order_review").get()).toEqual({ outcome: "aborted" });
+  });
+
+  test("refuses a finding on a line past the end of the file at head", () => {
+    const { db, worker, operator, dir } = floor();
+    slice(db, dir, worker, "a");
+    const spawn: ReviewerSpawn = (_argv, env) => {
+      bootstrapReviewer(db, env);
+      return { exitCode: 0, output: reviewOutput({ findings: [findingOn("a.txt", { line: 2 })] }) };
+    };
+
+    expect(() => runOrderReview(db, "order-1", operator, { dir, spawn, env: machine })).toThrow(
+      /reviewer finding 1 names line 2 of a\.txt, which has 1 lines at [0-9a-f]+/,
+    );
+    expect(db.query("SELECT count(*) AS n FROM factory_order_finding").get()).toEqual({ n: 0 });
+  });
+
+  test.each([
+    ["counts trailing blank lines", { "blank.txt": "a\n\n\n" }, "blank.txt", 3, null],
+    ["keeps a non-ASCII path as git holds it", { "café.txt": "a\n" }, "café.txt", 1, null],
+    [
+      "refuses a file the diff deleted",
+      { "landed.txt": null },
+      "landed.txt",
+      1,
+      /names file landed\.txt, which does not exist at [0-9a-f]+/,
+    ],
+  ])("the location check %s", (_name, files, file, line, refusal) => {
+    const { db, worker, operator, dir } = floor();
+    slice(db, dir, worker, "located", files);
+    const run = () =>
+      runOrderReview(db, "order-1", operator, {
+        dir,
+        env: machine,
+        spawn: (_argv, env) => {
+          bootstrapReviewer(db, env);
+          return { exitCode: 0, output: reviewOutput({ findings: [findingOn(file, { line })] }) };
+        },
+      });
+    if (refusal) expect(run).toThrow(refusal);
+    else expect(run()).toMatchObject({ findings: 1, outcome: "closed" });
+  });
+
+  test("briefs the reviewer with the order's approved plan", () => {
+    const { db, worker, operator, dir } = floor();
+    slice(db, dir, worker, "a");
+    const plan = Number(
+      db.run(
+        `INSERT INTO factory_order_plan (order_id, revision, worker, body, recorded_at)
+         VALUES ('order-1', 1, ?, '## Outcome\n\nRead the slice.', '2026-09-26T10:00:00.000Z')`,
+        [operator],
+      ).lastInsertRowid,
+    );
+    db.run(
+      `INSERT INTO factory_order_slice (plan_id, ordinal, title, outcome) VALUES (?, 1, 'Read', 'The slice is read.')`,
+      [plan],
+    );
+    appendOrderEvent(db, "order-1", { kind: "plan_approved", worker: operator, planId: plan });
+    let brief = "";
+    runOrderReview(db, "order-1", operator, {
+      dir,
+      env: machine,
+      spawn: (argv, env) => {
+        bootstrapReviewer(db, env);
+        brief = argv.join(" ");
+        return { exitCode: 0, output: reviewOutput() };
+      },
+    });
+    expect(brief).toContain("# Approved plan\n## Outcome\n\nRead the slice.");
+    expect(brief).toContain("# Plan slices\n1. Read: The slice is read.");
+  });
+
+  test("records a finding's location, failure, fix and severity and renders it as blocking", () => {
+    const { db, worker, operator, dir } = floor();
+    slice(db, dir, worker, "a");
+    const spawn: ReviewerSpawn = (_argv, env) => {
+      bootstrapReviewer(db, env);
+      return { exitCode: 0, output: reviewOutput({ findings: [findingOn("a.txt")] }) };
+    };
+
+    runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
+
+    expect(
+      db.query("SELECT dimension, file, line, failure, fix, severity FROM factory_order_finding").get(),
+    ).toEqual({
+      dimension: "correctness",
+      file: "a.txt",
+      line: 1,
+      failure: "the guard is the wrong way round",
+      fix: "invert the guard",
+      severity: "high",
+    });
+    const body = db.query<{ body: string }, []>("SELECT body FROM factory_order_review_artifact").get()?.body;
+    expect(body).toStartWith("## Verdict\n\n**Returns to the builder.**");
+    expect(body).toContain("## Earlier findings\n\nNone.");
+    expect(body).toMatch(
+      /## Blocking findings\n\n- \*\*high\*\* `a\.txt:1` \(correctness, finding \d+\): the guard is the wrong way round Fix: invert the guard/,
+    );
+  });
+
+  test("the brief carries the approved plan and loads the review station", () => {
+    const brief = reviewerBrief(
+      { id: "order-1", title: "Read a slice", description: null },
+      { base: "aaa", head: "bbb" },
+      {
+        plan: {
+          body: "## Outcome\n\nRefuse empty tokens.",
+          slices: [{ title: "Gate", outcome: "Empty refused." }],
+        },
+        earlier: [],
+      },
+    );
+    expect(brief).toContain("# Approved plan\n## Outcome\n\nRefuse empty tokens.");
+    expect(brief).toContain("# Plan slices\n1. Gate: Empty refused.");
+    expect(brief).toContain("Use dim-station-review and dim-artifact.");
+    expect(brief).toContain("`git diff aaa..bbb`");
+    expect(brief).not.toContain("# Earlier findings to rule on");
+  });
+
+  test("the brief names an overturned refusal's reason from the owner", () => {
+    const brief = reviewerBrief(
+      { id: "order-1", title: "Read a slice", description: null },
+      { base: "aaa", head: "bbb" },
+      {
+        plan: null,
+        earlier: [
+          {
+            id: 7,
+            dimension: "tests",
+            summary: "no test",
+            file: null,
+            line: null,
+            failure: null,
+            fix: null,
+            answer: "refused",
+            resolution: "later slice",
+            lastRuling: null,
+            lastReason: null,
+            ownerReason: "fix it here",
+          },
+        ],
+      },
+    );
+    expect(brief).toContain(
+      [
+        "- Finding 7 (tests, no location recorded): no test",
+        "  - Builder's answer: refused: later slice",
+        "  - The owner overturned the refusal: fix it here",
+      ].join("\n"),
+    );
+    expect(brief).toContain("No approved plan is recorded for this order.");
+  });
+
+  test("refuses a returned artifact that carries findings", () => {
+    const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
+    slice(db, dir, worker, "a");
+    const env = {
+      ...machine,
+      [WORKER_NAME_VAR]: operator,
+      [WORKER_TOKEN_VAR]: operatorToken,
+      [WORKER_SESSION_VAR]: operatorSession,
+    };
+    moveOrder(db, "order-1", "dim-station-review", operator);
+    runOrderReview(db, "order-1", operator, {
+      dir,
+      env: machine,
+      spawn: (_argv, spawned) => {
+        bootstrapReviewer(db, spawned);
+        return { exitCode: 0, output: reviewOutput() };
+      },
+    });
+    runOrderCommand(db, ["return", "order-1", "--reason", "Say more."], null, dir, env);
+    expect(() =>
+      runOrderReview(db, "order-1", operator, {
+        dir,
+        env: machine,
+        spawn: (_argv, spawned) => {
+          bootstrapReviewer(db, spawned);
+          return { exitCode: 0, output: reviewOutput({ findings: [findingOn("a.txt")] }) };
+        },
+      }),
+    ).toThrow("a returned Review artifact cannot change its findings or rulings");
+  });
+
+  test("refuses a ruling in the first round", () => {
+    const { db, worker, operator, dir } = floor();
+    slice(db, dir, worker, "a");
+    const spawn: ReviewerSpawn = (_argv, env) => {
+      bootstrapReviewer(db, env);
+      return {
+        exitCode: 0,
+        output: reviewOutput({ rulings: [{ finding: 1, ruling: "addressed", reason: null }] }),
+      };
+    };
+
+    expect(() => runOrderReview(db, "order-1", operator, { dir, spawn, env: machine })).toThrow(
+      "reviewer ruling names finding 1, which is not an open earlier finding",
+    );
+  });
+
+  describe("a later round", () => {
+    function raisedAndFixed() {
+      const f = floor();
+      slice(f.db, f.dir, f.worker, "a");
+      runOrderReview(f.db, "order-1", f.operator, {
+        dir: f.dir,
+        env: machine,
+        spawn: (_argv, env) => {
+          bootstrapReviewer(f.db, env);
+          return { exitCode: 0, output: reviewOutput({ findings: [findingOn("a.txt")] }) };
+        },
+      });
+      const finding = f.db.query<{ id: number }, []>("SELECT id FROM factory_order_finding").get()
+        ?.id as number;
+      answerOrderFinding(f.db, finding, { answer: "fixed", resolution: "inverted it" }, f.worker);
+      slice(f.db, f.dir, f.worker, "b");
+      return { ...f, finding };
+    }
+
+    test("is briefed with each open earlier finding and the builder's answer", () => {
+      const { db, operator, dir, finding } = raisedAndFixed();
+      let brief = "";
+      expect(() =>
+        runOrderReview(db, "order-1", operator, {
+          dir,
+          env: machine,
+          spawn: (argv, env) => {
+            bootstrapReviewer(db, env);
+            brief = argv.join(" ");
+            return { exitCode: 0, output: reviewOutput() };
+          },
+        }),
+      ).toThrow(`reviewer rulings leave open earlier finding ${finding} without a ruling`);
+      expect(brief).toContain(
+        `- Finding ${finding} (correctness, a.txt:1): the guard is the wrong way round`,
+      );
+      expect(brief).toContain("  - Fix asked for: invert the guard");
+      expect(brief).toContain("  - Builder's answer: fixed: inverted it");
+    });
+
+    test("records nothing of a round whose ruling the record refuses", () => {
+      const { db, operator, dir, finding } = raisedAndFixed();
+      expect(() =>
+        runOrderReview(db, "order-1", operator, {
+          dir,
+          env: machine,
+          spawn: (_argv, env) => {
+            bootstrapReviewer(db, env);
+            return {
+              exitCode: 0,
+              output: reviewOutput({
+                findings: [findingOn("b.txt")],
+                rulings: [{ finding, ruling: "refusal_accepted", reason: null }],
+              }),
+            };
+          },
+        }),
+      ).toThrow(`finding ${finding} is answered fixed, so it takes addressed or not_addressed`);
+      expect(db.query("SELECT count(*) AS n FROM factory_order_finding").get()).toEqual({ n: 1 });
+      expect(db.query("SELECT count(*) AS n FROM factory_order_review_artifact").get()).toEqual({ n: 1 });
+    });
+
+    test("leaves an unanswered earlier finding out of the rulings it owes", () => {
+      const f = floor();
+      slice(f.db, f.dir, f.worker, "a");
+      runOrderReview(f.db, "order-1", f.operator, {
+        dir: f.dir,
+        env: machine,
+        spawn: (_argv, env) => {
+          bootstrapReviewer(f.db, env);
+          return { exitCode: 0, output: reviewOutput({ findings: [findingOn("a.txt")] }) };
+        },
+      });
+      slice(f.db, f.dir, f.worker, "b");
+      const second = runOrderReview(f.db, "order-1", f.operator, {
+        dir: f.dir,
+        env: machine,
+        spawn: (_argv, env) => {
+          bootstrapReviewer(f.db, env);
+          return { exitCode: 0, output: reviewOutput() };
+        },
+      });
+      expect(second.outcome).toBe("closed");
+      const body = f.db
+        .query<{ body: string }, [number]>(
+          "SELECT body FROM factory_order_review_artifact WHERE review_id = ?",
+        )
+        .get(second.review)?.body;
+      expect(body).toStartWith("## Verdict\n\n**Returns to the builder.**");
+      expect(body).toMatch(
+        /## Earlier findings\n\n- Finding \d+, `a\.txt:1`: the guard is the wrong way round \*\*awaiting the builder's answer\*\*/,
+      );
+    });
+
+    test("briefs the round after an overturned refusal with the last ruling and the owner's reason", () => {
+      const f = floor();
+      const review = (output: string) => {
+        let brief = "";
+        runOrderReview(f.db, "order-1", f.operator, {
+          dir: f.dir,
+          env: machine,
+          spawn: (argv, env) => {
+            bootstrapReviewer(f.db, env);
+            brief = argv.join(" ");
+            return { exitCode: 0, output };
+          },
+        });
+        return brief;
+      };
+      slice(f.db, f.dir, f.worker, "a");
+      review(reviewOutput({ findings: [findingOn("a.txt")] }));
+      const finding = f.db.query<{ id: number }, []>("SELECT id FROM factory_order_finding").get()
+        ?.id as number;
+      answerOrderFinding(f.db, finding, { answer: "refused", resolution: "later slice" }, f.worker);
+      slice(f.db, f.dir, f.worker, "b");
+      review(
+        reviewOutput({ rulings: [{ finding, ruling: "refusal_contested", reason: "it is this slice" }] }),
+      );
+      decideOrderRefusal(
+        f.db,
+        finding,
+        { decision: "refusal_overturned", reason: "fix it here" },
+        f.operator,
+      );
+      slice(f.db, f.dir, f.worker, "c");
+      const brief = review(reviewOutput({ rulings: [{ finding, ruling: "addressed", reason: null }] }));
+      expect(brief).toContain(
+        [
+          "  - Builder's answer: refused: later slice",
+          "  - Last ruled refusal_contested: it is this slice",
+          "  - The owner overturned the refusal: fix it here",
+        ].join("\n"),
+      );
+      const body = f.db
+        .query<{ body: string }, []>("SELECT body FROM factory_order_review_artifact ORDER BY id DESC")
+        .get()?.body;
+      expect(body).toContain("## Owner decisions\n\nNone.");
+    });
+
+    test("records its rulings and renders them as earlier findings", () => {
+      const { db, operator, dir, finding } = raisedAndFixed();
+      runOrderReview(db, "order-1", operator, {
+        dir,
+        env: machine,
+        spawn: (_argv, env) => {
+          bootstrapReviewer(db, env);
+          return {
+            exitCode: 0,
+            output: reviewOutput({ rulings: [{ finding, ruling: "addressed", reason: null }] }),
+          };
+        },
+      });
+
+      expect(db.query("SELECT finding_id, ruling FROM factory_order_finding_ruling").all()).toEqual([
+        { finding_id: finding, ruling: "addressed" },
+      ]);
+      const body = db
+        .query<{ body: string }, []>("SELECT body FROM factory_order_review_artifact ORDER BY id DESC")
+        .get()?.body;
+      expect(body).toStartWith("## Verdict\n\n**May advance.**");
+      expect(body).toContain(
+        `## Earlier findings\n\n- Finding ${finding}, \`a.txt:1\`: the guard is the wrong way round **addressed**`,
+      );
+    });
   });
 
   test("reads a worktree without running a command a builder's nested repository configured", () => {
