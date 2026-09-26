@@ -145,7 +145,7 @@ export function rebaseConflictBrief(conflicts: readonly string[]): string[] {
     ...conflicts.map((path) => `- ${path}`),
     "Resolve each of these files so it carries both the order's change and the trunk's, and remove every conflict marker. This turn is the resolution, not a slice: change nothing else, and keep the order's change, since a commit left empty is refused.",
     "Leave the resolution unstaged. Do not run git add, git rebase --continue, git rebase --abort or git commit. When the turn ends, the runner stages your resolution and continues the rebase; a later commit that conflicts comes back to you in this turn. The finished rebase is re-checked in the sandbox, and the order returns to review, which reads it whole.",
-    'End the turn by returning JSON `{"subject": "", "artifact": ""}`: the rebase keeps each commit\'s own message, so neither is used.',
+    'End the turn by returning JSON `{"subject": "fix: resolve the rebase conflict", "artifact": ""}`. The subject must be one non-empty line, but the rebase keeps each commit\'s own message, so it is not used.',
   ];
 }
 

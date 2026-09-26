@@ -1,6 +1,19 @@
 import { describe, expect, test } from "bun:test";
+import schema from "./build-turn.schema.json";
 import { workerFailureReason } from "./harness-command";
-import { builderBrief } from "./order-build";
+import { builderBrief, rebaseConflictBrief } from "./order-build";
+
+describe("the rebase conflict brief", () => {
+  test("asks for the output the build turn's schema accepts", () => {
+    const ending = rebaseConflictBrief(["f.txt"]).find((line) => line.startsWith("End the turn")) ?? "";
+    const asked = JSON.parse(/`(\{.*?\})`/.exec(ending)?.[1] ?? "null") as Record<string, string>;
+
+    expect(Object.keys(asked).sort()).toEqual([...schema.required].sort());
+    expect(asked.subject?.length).toBeGreaterThanOrEqual(schema.properties.subject.minLength);
+    expect(asked.subject).toMatch(new RegExp(schema.properties.subject.pattern));
+    expect(typeof asked.artifact).toBe("string");
+  });
+});
 
 describe("worker failure explanations", () => {
   test("gives a returned Build artifact readable sections", () => {
