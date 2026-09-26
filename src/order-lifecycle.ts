@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { assertOperator } from "./factory-operator";
 import { FactoryStopError, liveStop } from "./factory-stop";
-import { appendOrderEventInTransaction, now } from "./order-ledger";
+import { appendOrderEvent, appendOrderEventInTransaction, now } from "./order-ledger";
 import { assertOrderQueued, type Order, type OrderPriority } from "./order-status";
 import { createWorktree } from "./wt-command";
 
@@ -81,9 +81,7 @@ export function setOrderPriority(
 
 export function dropOrder(db: Database, orderId: string, reason: string, worker: string, at = now()): number {
   if (reason.trim() === "") throw new Error("a drop reason must not be empty");
-  return db.transaction(() => {
-    return appendOrderEventInTransaction(db, orderId, { kind: "dropped", worker, reason }, at);
-  })();
+  return appendOrderEvent(db, orderId, { kind: "dropped", worker, reason }, at);
 }
 
 export function amendOrder(

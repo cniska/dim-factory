@@ -25,14 +25,6 @@ export function latestArtifact(db: Database, orderId: string, kind: Station): St
     .get(orderId, kind);
 }
 
-export function isArtifactApproved(db: Database, artifactId: number): boolean {
-  return (
-    db
-      .query("SELECT 1 FROM factory_order_event WHERE kind = 'artifact_approved' AND artifact_id = ?")
-      .get(artifactId) !== null
-  );
-}
-
 export function writeArtifactInTransaction(
   db: Database,
   orderId: string,

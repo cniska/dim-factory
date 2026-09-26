@@ -57,6 +57,7 @@ import { reviewRange } from "./station-review";
 import { endWorker, mintWorker, newWorkerSession } from "./worker";
 import { bootstrapWorker, createWorkerAssignment } from "./worker-assignment";
 import type { WorkerHookReport } from "./worker-environment";
+import { worktreePath } from "./wt-command";
 
 let worker = "";
 let attemptOperator = "";
@@ -1450,7 +1451,7 @@ describe("factory order report records", () => {
     database.close();
   });
 
-  test("drops a started order no attempt is running on", () => {
+  test("drops a started order with no running attempt and keeps its worktree", () => {
     const database = db();
     queueOrder(database, order, worker);
     start(database);
@@ -1459,6 +1460,7 @@ describe("factory order report records", () => {
     dropOrder(database, "order-1", "already on trunk", worker);
 
     expect(orderStatus(database, "order-1")).toBe("dropped");
+    expect(existsSync(worktreePath(trunk.dir, "order-1"))).toBe(true);
     database.close();
   });
 
