@@ -8,7 +8,7 @@ import { SCHEMA_SQL } from "./db-schema";
 import { attemptIn, integratedRepo, located, reviewIn, workerIn } from "./fixtures.test-support";
 import { approveOrder } from "./order-approval";
 import { completeOrderSlice, nextOrderSlice, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
-import { startAttempt } from "./order-attempt";
+import { finishAttempt, startAttempt } from "./order-attempt";
 import {
   recordOrderCheck,
   recordOrderCommit,
@@ -153,21 +153,15 @@ describe("factory wall snapshot", () => {
     );
     closeOrderReview(db, review.review, "closed", operator, "2026-09-18T08:01:37.000Z");
     approveOrder(db, "order-done", operator, undefined, "2026-09-18T08:01:38.000Z");
-    appendOrderEvent(
-      db,
-      "order-done",
-      { worker, kind: "completed", status: "completed", reason: "verified" },
-      "2026-09-18T08:02:00.000Z",
-      trunk.dir,
-    );
+    appendOrderEvent(db, "order-done", { worker: operator, kind: "shipped" }, "2026-09-18T08:02:00.000Z");
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:10:00.000Z"));
 
     expect(snapshot.source).toBe("database");
     expect(snapshot.orders.map((order) => [order.title, order.station, order.status, order.stage])).toEqual([
-      ["Show the wall", "build", "working", "active"],
-      ["Unblock the queue", "plan", "working", "active"],
-      ["Ship the board", null, "completed", "done"],
+      ["Show the wall", "build", "active", "active"],
+      ["Unblock the queue", "plan", "active", "active"],
+      ["Ship the board", null, "done", "done"],
     ]);
     expect(snapshot.orders[0]).toEqual({
       id: "order-running",
@@ -178,7 +172,7 @@ describe("factory wall snapshot", () => {
       agent: worker,
       worker,
       role: "builder",
-      status: "working",
+      status: "active",
       age: "8m",
       lastEventAt: "2026-09-18T10:02:00.000Z",
       failedChecks: 0,
@@ -231,13 +225,13 @@ describe("factory wall snapshot", () => {
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z"));
 
     expect(snapshot.orders.map((order) => [order.id, order.status, order.stage])).toEqual([
-      ["order-started", "working", "active"],
+      ["order-started", "active", "active"],
       ["order-waiting", "queued", "todo"],
     ]);
     db.close();
   });
 
-  test("keeps an order working and active after an attempt fails", () => {
+  test("keeps an order active after an attempt fails", () => {
     const db = floor();
     queueOrder(
       db,
@@ -256,7 +250,7 @@ describe("factory wall snapshot", () => {
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z"));
 
     expect(snapshot.orders.map((order) => [order.status, order.stage, order.station, order.next])).toEqual([
-      ["working", "active", "plan", "run"],
+      ["active", "active", "plan", "run"],
     ]);
     expect(snapshot.orders[0]).not.toHaveProperty("worker");
     db.close();
@@ -456,10 +450,10 @@ describe("factory wall snapshot", () => {
 
   test("bounds each stage column so finished work cannot crowd out current work", () => {
     const db = floor();
-    const seed = (id: string, kind: "failed" | "completed") => {
+    const seed = (id: string, kind: "failed" | "shipped") => {
       queueOrder(db, { id, project: "cniska/dim-factory", title: id }, worker, "2026-09-18T09:00:00.000Z");
       building(db, id, "2026-09-18T09:00:00.000Z");
-      if (kind === "completed") {
+      if (kind === "shipped") {
         recordOrderCommit(db, id, trunk.sha, worker, "feat: land it", "2026-09-18T09:00:40.000Z");
         recordOrderCheck(
           db,
@@ -477,21 +471,10 @@ describe("factory wall snapshot", () => {
           "2026-09-18T09:00:47.000Z",
         );
       }
-      appendOrderEvent(
-        db,
-        id,
-        {
-          worker,
-          kind,
-          ...(kind === "completed" ? { status: "completed" as const } : {}),
-          reason: `reason-${id}`,
-        },
-        "2026-09-18T09:01:00.000Z",
-        trunk.dir,
-      );
+      appendOrderEvent(db, id, { worker, kind, reason: `reason-${id}` }, "2026-09-18T09:01:00.000Z");
     };
     for (let index = 0; index < 14; index += 1) seed(`failed-${index}`, "failed");
-    for (let index = 0; index < 14; index += 1) seed(`done-${index}`, "completed");
+    for (let index = 0; index < 14; index += 1) seed(`done-${index}`, "shipped");
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:10:00.000Z"));
 
@@ -680,10 +663,10 @@ describe("factory wall item view", () => {
     appendOrderEvent(
       db,
       "order-worked",
-      { worker, kind: "completed", status: "completed", reason: "verified" },
+      { worker, kind: "shipped", reason: "verified" },
       "2026-09-18T10:10:00.000Z",
-      trunk.dir,
     );
+    finishAttempt(db, "order-worked", "succeeded", undefined, "2026-09-18T10:10:00.000Z");
     return reviewer;
   };
 
@@ -709,7 +692,7 @@ describe("factory wall item view", () => {
       "finding_raised",
       "finding_answered",
       "document_updated",
-      "completed",
+      "shipped",
     ]);
     db.close();
   });
@@ -722,7 +705,7 @@ describe("factory wall item view", () => {
 
     expect(view?.order.title).toBe("Work an item through");
     expect(view?.order.station).toBeNull();
-    expect(view?.order.status).toBe("completed");
+    expect(view?.order.status).toBe("done");
     expect(view?.order).not.toHaveProperty("worker");
     expect(view?.plan).toEqual({
       revision: 1,
@@ -981,7 +964,7 @@ describe("factory wall item view", () => {
       expect(view.order.title).toBe("Work an item through");
       expect(view.entries.at(-1)).toEqual({
         at: "2026-09-18T10:10:00.000Z",
-        kind: "completed",
+        kind: "shipped",
         agent: worker,
         role: "builder",
         worker,

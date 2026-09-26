@@ -205,7 +205,7 @@ describe("doctor", () => {
       [factoryWorktree, otherRepo],
     );
     db.run(
-      "INSERT INTO factory_order (id, project, title, status, created_at, updated_at) VALUES ('o1', 'cniska/shipped', 'Shipped', 'queued', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+      "INSERT INTO factory_order (id, project, title, created_at, updated_at) VALUES ('o1', 'cniska/shipped', 'Shipped', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
     );
     closeDb(db);
     const throughWorktree = check(env, "ship method");

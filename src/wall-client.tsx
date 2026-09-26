@@ -32,8 +32,8 @@ const unavailableSnapshot: WallSnapshot = {
 
 const statusLabels: Record<BoardStatus, string> = {
   queued: "Queued",
-  working: "Working",
-  completed: "Completed",
+  active: "Active",
+  done: "Done",
 };
 
 const OWNER_ACTS: Record<NextAct, string | null> = {
@@ -47,7 +47,7 @@ function isStopped(order: Pick<WallOrder, "next">): boolean {
 }
 
 function isWorking(order: Pick<WallOrder, "status" | "next">): boolean {
-  return order.status === "working" && !isStopped(order);
+  return order.status === "active" && !isStopped(order);
 }
 
 function stateLabel(order: WallOrder): string {
@@ -58,8 +58,8 @@ function stateLabel(order: WallOrder): string {
 
 const statusIcon: Record<BoardStatus, LucideIcon> = {
   queued: CircleDot,
-  working: CircleDot,
-  completed: CircleCheck,
+  active: CircleDot,
+  done: CircleCheck,
 };
 
 const roleTint: Record<WallRole, string | undefined> = {

@@ -6,7 +6,7 @@ import {
   owesAnswer,
 } from "./order-finding-state";
 import { describeState, orderState } from "./order-state";
-import { isTerminalOrderStatus, type OrderStatus } from "./order-status";
+import { isTerminalOrderStatus, type OrderStatus, orderStatusSql } from "./order-status";
 import { type Query, scalar, table, toRows, window, windowLine } from "./query";
 
 export const findings: Query = {
@@ -76,7 +76,11 @@ export const order: Query = {
     if (!arg) {
       return { denominator: "", columns: ["error"], rows: [["usage: dim q order <order-id>"]] };
     }
-    const found = table(db, "SELECT * FROM factory_order WHERE id LIKE ? || '%' LIMIT 2", [arg]);
+    const found = table(
+      db,
+      `SELECT o.*, ${orderStatusSql("o.id")} AS status FROM factory_order o WHERE o.id LIKE ? || '%' LIMIT 2`,
+      [arg],
+    );
     if (found.length === 0) {
       return { denominator: "", columns: ["id"], rows: [], note: `no order starts with ${arg}` };
     }
@@ -93,14 +97,12 @@ export const order: Query = {
       kind: "report",
       status: report.status,
       subject: `${report.project}/${report.id}`,
-      evidence: [report.priority, state && describeState(state), report.stop_reason]
-        .filter(Boolean)
-        .join(" | "),
+      evidence: [report.priority, state && describeState(state)].filter(Boolean).join(" | "),
     };
     const evidence: Record<string, unknown>[] = [
       ...table(
         db,
-        `SELECT 'event' AS section, e.ts AS "when", e.kind, coalesce(e.status, '') AS status,
+        `SELECT 'event' AS section, e.ts AS "when", e.kind, '' AS status,
                 coalesce(a.kind, e.station, '') AS subject,
                 coalesce(e.reason,
                          json_extract(e.evidence, '$.from') || ' -> ' || e.commit_sha,
@@ -212,7 +214,7 @@ export const factory: Query = {
     const filter = arg ? "WHERE o.id LIKE ? || '%'" : "";
     const orders = table(
       db,
-      `SELECT o.project AS project, o.id AS order_id, o.priority, o.status,
+      `SELECT o.project AS project, o.id AS order_id, o.priority, ${orderStatusSql("o.id")} AS status,
               (SELECT e.kind FROM factory_order_event e
                WHERE e.order_id = o.id ORDER BY e.ts DESC, e.id DESC LIMIT 1) AS latest_event,
               (SELECT e.ts FROM factory_order_event e
@@ -229,7 +231,7 @@ export const factory: Query = {
                         ORDER BY e.id DESC LIMIT 1), '(none recorded)') AS "check",
               coalesce((SELECT nullif(trim(coalesce(e.reason, '')), '')
                         FROM factory_order_event e WHERE e.order_id = o.id
-                          AND e.kind IN ('completed', 'failed')
+                          AND e.kind IN ('failed', 'ship_failed', 'dropped')
                         ORDER BY e.ts DESC, e.id DESC LIMIT 1), '(none)') AS stop
        FROM factory_order o ${filter}
        ORDER BY o.updated_at DESC, o.id`,
@@ -425,7 +427,7 @@ export const factoryAnalytics: Query = {
     for (const row of table(
       db,
       `SELECT kind, count(*) AS n FROM factory_order_event
-       WHERE kind IN ('started', 'completed', 'dropped', 'failed')${arg ? " AND order_id LIKE ? || '%'" : ""}
+       WHERE kind IN ('started', 'shipped', 'ship_failed', 'dropped', 'failed')${arg ? " AND order_id LIKE ? || '%'" : ""}
        GROUP BY kind ORDER BY kind`,
       params,
     )) {
@@ -433,19 +435,13 @@ export const factoryAnalytics: Query = {
     }
     for (const row of table(
       db,
-      `SELECT kind, outcome, count(*) AS n FROM factory_order_delivery${orderFilter}
-       GROUP BY kind, outcome ORDER BY kind, outcome`,
-      params,
-    )) {
-      rows.push(metric(`${row.kind}:${row.outcome}`, Number(row.n)));
-    }
-    for (const row of table(
-      db,
-      `SELECT CASE kind WHEN 'artifact_approved' THEN 'approved'
-                        WHEN 'artifact_returned' THEN 'returned' ELSE 'dropped' END AS decision,
+      `SELECT CASE e.kind WHEN 'artifact_approved' THEN 'approved'
+                          WHEN 'artifact_returned' THEN 'returned' ELSE 'dropped' END
+              || coalesce(':' || a.kind, '') AS decision,
               count(*) AS n
-       FROM factory_order_event
-       WHERE kind IN ('artifact_approved', 'artifact_returned', 'dropped')${arg ? " AND order_id LIKE ? || '%'" : ""}
+       FROM factory_order_event e
+       LEFT JOIN factory_order_artifact a ON a.id = e.artifact_id
+       WHERE e.kind IN ('artifact_approved', 'artifact_returned', 'dropped')${arg ? " AND e.order_id LIKE ? || '%'" : ""}
        GROUP BY decision ORDER BY decision`,
       params,
     )) {
@@ -496,7 +492,7 @@ export const factoryAnalytics: Query = {
       denominator:
         `${ordersWithAttempts} order${ordersWithAttempts === 1 ? "" : "s"} with attempt history` +
         (arg ? ` matching ${arg}` : "") +
-        "; metrics are derived from factory_order_event, factory_order_attempt, factory_order_delivery, and factory_schedule_invocation",
+        "; metrics are derived from factory_order_event, factory_order_artifact, factory_order_attempt, and factory_schedule_invocation",
       columns: ["metric", "value"],
       rows: toRows(rows, ["metric", "value"]),
       note: rows.length === 0 ? "no first-party domain records are available for these metrics" : undefined,

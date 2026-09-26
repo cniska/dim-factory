@@ -9,9 +9,9 @@ import { carriedThroughRewrites, currentOrderCommits } from "./order-commits";
 import { raiseOrderFinding } from "./order-finding";
 import { type FindingStanding, orderFindingStandings } from "./order-finding-state";
 import {
+  abortStrandedReview,
   closeOrderReview,
   openAssignedOrderReview,
-  openReviewOf,
   recordOrderReviewArtifact,
 } from "./order-review";
 import { assertNext } from "./order-state";
@@ -20,7 +20,6 @@ import type { PlanSlice } from "./station-plan-artifact";
 import { parseReviewReport, type ReviewFinding } from "./station-review-artifact";
 import { renderReviewReport } from "./station-review-report";
 import { runOrderStationLive } from "./station-worker";
-import { workerIsOver } from "./worker";
 import type { Capability } from "./worker-capabilities";
 
 export class ReviewRefused extends Error {
@@ -294,10 +293,7 @@ export async function runOrderReviewLive(
   if (!order) throw new Error(`order not found: ${orderId}`);
   assertOperator(db, worker, "delegate review");
   assertNext(db, orderId, "review");
-  const left = openReviewOf(db, orderId);
-  if (left && (!left.reviewer || workerIsOver(db, left.reviewer))) {
-    closeOrderReview(db, left.id, "aborted", worker, undefined, "its reviewer stopped without finishing");
-  }
+  abortStrandedReview(db, orderId, worker);
   const dir = stationDirectory(options.dir, orderId);
   const harness = options.harness;
   let returned: ReturnedReview | null = null;

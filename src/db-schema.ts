@@ -2,11 +2,10 @@ import { HARNESSES_SQL } from "./harness-name";
 import { TOOLS_SQL } from "./ingest-tools";
 import { ATTEMPT_OUTCOMES_SQL, ORDER_EVENT_KINDS_SQL } from "./order-events";
 import { ORDER_LINES_SQL } from "./order-line";
-import { ORDER_STATUSES_SQL } from "./order-status";
 import { STATIONS_SQL } from "./station";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 66;
+export const SCHEMA_VERSION = 67;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -244,15 +243,9 @@ CREATE TABLE IF NOT EXISTS factory_order (
   -- because a tracker feeding this queue has about that many to hand over.
   priority        TEXT NOT NULL DEFAULT 'unset'
                   CHECK (priority IN ('urgent', 'high', 'medium', 'low', 'unset')),
-  -- One status per column on the board, except dropped, which leaves the board rather
-  -- than taking a column: a decision not to work is none of todo, active or done. A
-  -- started order stays working through a failure, since its evidence still says where
-  -- it is; the station it is at is read from that evidence and never stored.
-  status          TEXT NOT NULL CHECK (status IN (${ORDER_STATUSES_SQL})),
+  -- The status and the station are read from the events and never stored.
   created_at      TEXT NOT NULL,
-  updated_at      TEXT NOT NULL,
-  completed_at    TEXT,
-  stop_reason     TEXT
+  updated_at      TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS factory_order_attempt (
@@ -275,7 +268,6 @@ CREATE TABLE IF NOT EXISTS factory_order_attempt (
   reason          TEXT
 );
 CREATE INDEX IF NOT EXISTS factory_order_attempt_order ON factory_order_attempt(order_id, recorded_at, id);
-CREATE INDEX IF NOT EXISTS factory_order_status ON factory_order(status, updated_at);
 
 -- Who did the work, issued by the factory before the work starts rather than read off
 -- the harness after it. A \`dim order\` process is told nothing about which agent it
@@ -371,7 +363,6 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   finding_id            INTEGER,
   answer_id             INTEGER REFERENCES factory_order_finding_answer(id) ON DELETE CASCADE,
   artifact_id           INTEGER REFERENCES factory_order_artifact(id) ON DELETE CASCADE,
-  status                TEXT,
   reason                TEXT,
   evidence              TEXT NOT NULL DEFAULT '{}'
 );
@@ -394,19 +385,6 @@ CREATE TABLE IF NOT EXISTS factory_schedule_invocation (
 );
 CREATE INDEX IF NOT EXISTS factory_schedule_invocation_schedule
   ON factory_schedule_invocation(schedule_id, evaluated_at, id);
-
-CREATE TABLE IF NOT EXISTS factory_order_delivery (
-  id                    INTEGER PRIMARY KEY,
-  order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
-  kind                  TEXT NOT NULL CHECK (kind IN ('integration', 'delivery')),
-  outcome               TEXT NOT NULL CHECK (outcome IN ('succeeded', 'failed')),
-  target                TEXT,
-  commit_sha            TEXT,
-  worker                TEXT REFERENCES factory_worker(name),
-  session_id            TEXT,
-  recorded_at           TEXT NOT NULL,
-  reason                TEXT
-);
 
 CREATE TABLE IF NOT EXISTS factory_order_commit (
   order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,

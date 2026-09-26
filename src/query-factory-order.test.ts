@@ -166,13 +166,7 @@ describe("factory order query", () => {
         "2026-09-18T10:04:00.000Z",
       );
     }
-    appendOrderEvent(
-      db,
-      "order-status",
-      { worker, kind: "completed", status: "completed", reason: "verified" },
-      "2026-09-18T10:05:00.000Z",
-      trunk.dir,
-    );
+    appendOrderEvent(db, "order-status", { worker, kind: "shipped" }, "2026-09-18T10:05:00.000Z");
 
     const before = [
       "factory_order",
@@ -204,14 +198,14 @@ describe("factory order query", () => {
         "cniska/dim-factory",
         "order-status",
         "unset",
-        "completed",
-        "completed",
+        "done",
+        "shipped",
         "2026-09-18T10:05:00.000Z",
         "(none)",
         "late-event feat: event order wins",
         "bun run focused (0, green)",
         "tests: fixed - holds; docs: fixed - updated",
-        "verified",
+        "(none)",
       ],
     ]);
     expect(result?.denominator).toContain("factory order");
@@ -245,7 +239,7 @@ describe("factory order query", () => {
 
     const result = findQuery("factory")?.run(db, { arg: "order-blocked" });
 
-    expect(result?.rows[0]?.[3]).toBe("working");
+    expect(result?.rows[0]?.[3]).toBe("active");
     expect(result?.rows[0]?.[4]).toBe("failed");
     expect(result?.rows[0]?.[6]).toBe("run at plan");
     expect(result?.rows[0]?.[10]).toBe("(none)");
@@ -371,7 +365,7 @@ describe("factory order query", () => {
       "src/factory-order.ts",
       "+12 -3",
     ]);
-    expect(result?.denominator).toContain("order order-123: working");
+    expect(result?.denominator).toContain("order order-123: active");
     db.close();
   });
 

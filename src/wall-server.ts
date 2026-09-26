@@ -5,7 +5,7 @@ import { runningAttempt } from "./order-attempt";
 import type { OrderEventKind } from "./order-events";
 import type { OrderLine } from "./order-line";
 import { type NextAct, orderState } from "./order-state";
-import type { OrderStatus } from "./order-status";
+import { type OrderStatus, orderStatusSql } from "./order-status";
 import { dbPath, tildePath } from "./paths";
 import { age } from "./query-age";
 import type { Station } from "./station";
@@ -107,7 +107,6 @@ type OrderRow = {
   line: OrderLine;
   description: string | null;
   status: OrderStatus;
-  stop_reason: string | null;
   project: string;
   priority: string;
   last_event_at: string;
@@ -115,8 +114,8 @@ type OrderRow = {
   failed_check_count: number;
 };
 
-const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.line, o.description, o.status,
-              o.stop_reason, o.project, o.priority,
+const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.line, o.description, ${orderStatusSql("o.id")} AS status,
+              o.project, o.priority,
               e.ts AS last_event_at, e.reason AS latest_reason,
               (SELECT count(*) FROM factory_order_check c
                 WHERE c.order_id = o.id AND c.exit_code <> 0) AS failed_check_count
@@ -128,14 +127,14 @@ type BoardRow = OrderRow & { status: BoardStatus };
 
 const stageByStatus: Record<BoardStatus, WallStage> = {
   queued: "todo",
-  working: "active",
-  completed: "done",
+  active: "active",
+  done: "done",
 };
 
 function mapOrder(db: Database, row: BoardRow, now: Date): WallOrder {
-  const working = row.status === "working";
-  const state = working ? orderState(db, row.id) : null;
-  const attempt = working ? runningAttempt(db, row.id) : null;
+  const active = row.status === "active";
+  const state = active ? orderState(db, row.id) : null;
+  const attempt = active ? runningAttempt(db, row.id) : null;
   const lastEventAt = row.last_event_at;
   return {
     id: row.id,
@@ -155,7 +154,9 @@ function mapOrder(db: Database, row: BoardRow, now: Date): WallOrder {
 
 export function assembleWallSnapshot(db: Database, now = new Date()): WallSnapshot {
   const rows = db
-    .query<BoardRow, []>(`${ORDER_ROW_SELECT} WHERE o.status <> 'dropped' ORDER BY e.ts DESC, o.id`)
+    .query<BoardRow, []>(
+      `${ORDER_ROW_SELECT} WHERE ${orderStatusSql("o.id")} <> 'dropped' ORDER BY e.ts DESC, o.id`,
+    )
     .all();
   const mapped = rows.map((row) => mapOrder(db, row, now));
   const totals: Record<WallStage, number> = { todo: 0, active: 0, done: 0 };

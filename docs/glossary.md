@@ -19,12 +19,12 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Station | One repeatable step of work on an order: `plan`, `build` or `review` ([`src/station.ts`](../src/station.ts)). Each has a skill named `dim-station-<station>` |
 | Order | One piece of work: an id, a line, a title, a description and a priority. It exists before it is started and is worked in one worktree |
 | Queue | The orders not yet started, most urgent first, then oldest |
-| Status | The state an order is in: `queued`, `working`, `completed` or `dropped` |
+| Status | The state an order is in, read from its events: `queued`, `active` once started, `done` once shipped, or `dropped` |
 | Stage | How far along an order is, as the wall shows it: `todo`, `active` or `done` |
 | Next act | What an order waits on, read from the record by [`src/order-state.ts`](../src/order-state.ts) and never stored: at a station, `run` or `approve`; once every station's artifact is approved, `ship`. Every act checks it on entry |
 | Slice | One increment inside an order that verifies and commits on its own |
-| Ship | Delivering an order's commits the way the repo declares in `dim.ship` — `dim order ship` |
-| Done | An order whose check passed on its final commit, whose findings are all answered, whose docs changed with the behavior, whose commits are on the trunk, and whose worktree is gone |
+| Ship | Landing an order's commits on the local trunk the way the repo declares in `dim.ship`, which ends the order. Approving the Review artifact ships; `dim order ship` retries a ship that failed |
+| Done | The status of a shipped order: its commits are on the trunk and its worktree is gone |
 | Command | One `dim` subcommand, in the `src/<name>-command.ts` named for it ([`src/cli-contract.ts`](../src/cli-contract.ts)) |
 | Command line | The text a shell runs, such as `bun run verify` |
 | Workspace task | What a repo declares in its manifest — a `package.json` script, a `mise` task, a `Makefile` target — read, never inferred ([`src/workspace-tasks.ts`](../src/workspace-tasks.ts)). The check is the task that says a change is sound |

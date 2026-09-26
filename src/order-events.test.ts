@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { SCHEMA_SQL } from "./db-schema";
 import { appendOrderEvent } from "./order-ledger";
 import { dropOrder, queueOrder, setOrderPriority } from "./order-lifecycle";
+import { orderStatus } from "./order-status";
 import { mintWorker } from "./worker";
 
 function columns(db: Database, table: string): string[] {
@@ -33,9 +34,8 @@ describe("factory domain event boundary", () => {
       "head_sha",
       "review_id",
     ]);
-    expect(columns(db, "factory_order_delivery")).toEqual(
-      expect.arrayContaining(["kind", "outcome", "target", "commit_sha", "recorded_at"]),
-    );
+    expect(columns(db, "factory_order")).not.toContain("status");
+    expect(columns(db, "factory_order_event")).not.toContain("status");
     db.close();
   });
 
@@ -96,10 +96,10 @@ describe("factory domain event boundary", () => {
         .all("queue-history")
         .map((row) => row.kind),
     ).toEqual(["queued", "priority_changed", "dropped"]);
-    expect(db.query("SELECT priority, status FROM factory_order WHERE id = ?").get("queue-history")).toEqual({
+    expect(db.query("SELECT priority FROM factory_order WHERE id = ?").get("queue-history")).toEqual({
       priority: "urgent",
-      status: "dropped",
     });
+    expect(orderStatus(db, "queue-history")).toBe("dropped");
     expect(
       db
         .query("SELECT worker, reason FROM factory_order_event WHERE order_id = ? AND kind = 'dropped'")

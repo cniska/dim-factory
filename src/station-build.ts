@@ -128,14 +128,11 @@ export function builderBrief(
     "The factory has already accepted your assignment before this turn starts. Do not register or bootstrap another worker, inspect worker credential files, or stop because DIM_WORKER_NAME and DIM_WORKER_TOKEN are absent; order commands authenticate this assigned process through its DIM_WORKER_ASSIGNMENT variables.",
     "The order description and approved plan define the scope. When they explicitly exclude a workspace surface, do not edit or test that surface.",
     ...(resolving
-      ? [
-          "Do not run dim order stop: the factory runner records this attempt and makes the order retryable when the turn fails.",
-        ]
+      ? []
       : needsCodeWork
         ? [
             "Leave every change uncommitted in the worktree. Do not run git commit, git stash, or any command that rewrites history. When the turn ends, the factory runner runs the declared check in a sandbox, commits the worktree with the repository's own git identity and signing config, and records the commit and its files under you and the check under the operator. Stay on the order's branch and do not create a git repository inside the worktree; the runner refuses both.",
             "You may run the declared check yourself as feedback. A red check is feedback, not completion: diagnose it, fix the cause, rerun the check, and continue until it passes. If the cause is genuinely blocked, report the blocker instead of claiming success.",
-            "Do not run dim order stop: the factory runner records this attempt and makes the order retryable when the turn fails.",
             'End the turn by returning JSON `{"subject": "...", "artifact": "...", "answers": [...]}`. `subject` is the commit subject, in the repo\'s own commit convention. `artifact` is the Build artifact for the whole order when this turn finishes the final slice or answers review findings, and an empty string otherwise. `answers` holds one `{"finding": <id>, "answer": "fixed"|"refused", "resolution": "..."|null}` per finding listed under Review findings, and is `[]` when none is. Use dim-station-build and dim-artifact for the artifact contract: separate Markdown headings, the result explained for the owner rather than the command transcript, and proportional to the change.',
           ]
         : [
@@ -292,7 +289,7 @@ export async function runOrderBuildLive(
   let failureRecorded = false;
   let claimed = false;
   const recordFailure = (reason: string): void => {
-    if (!needsCodeWork || failureRecorded || orderStatus(db, orderId) !== "working") return;
+    if (!needsCodeWork || failureRecorded || orderStatus(db, orderId) !== "active") return;
     if (claimed && openAttempt(db, orderId)?.runId !== runId) return;
     failureRecorded = true;
     appendOrderEvent(db, orderId, { kind: "failed", worker: builder, reason });

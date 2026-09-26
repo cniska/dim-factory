@@ -1,13 +1,12 @@
 import type { Database } from "bun:sqlite";
-import { reachesTrunk } from "./git-trunk";
 import { assertNoRunningAttempt, finishAttempt } from "./order-attempt";
-import { currentOrderCommits } from "./order-commits";
-import { isTerminalOrderStatus, type OrderEvent, OrderNotDone, type OrderStatus } from "./order-status";
+import type { OrderEventKind } from "./order-events";
+import { isTerminalOrderStatus, type OrderEvent, OrderNotDone, orderStatus } from "./order-status";
 import { writeTrace } from "./trace-store";
 
 export const now = (): string => new Date().toISOString();
 
-const VERB_FOR_KIND: Record<string, string> = { completed: "complete" };
+const BEFORE_START: readonly OrderEventKind[] = ["queued", "started", "priority_changed", "dropped"];
 
 function eventValues(orderId: string, event: OrderEvent, ts: string): (string | number | null)[] {
   return [
@@ -23,20 +22,22 @@ function eventValues(orderId: string, event: OrderEvent, ts: string): (string | 
     event.findingId ?? null,
     event.answerId ?? null,
     event.artifactId ?? null,
-    event.status ?? null,
     event.reason ?? null,
     JSON.stringify(event.evidence ?? {}),
   ];
 }
 
-export function appendOrderEvent(
-  db: Database,
-  orderId: string,
-  event: OrderEvent,
-  at = now(),
-  worktree = process.cwd(),
-): number {
-  return db.transaction(() => appendOrderEventInTransaction(db, orderId, event, at, worktree))();
+function artifactKind(db: Database, artifactId: number | undefined): string | null {
+  if (artifactId === undefined) return null;
+  return (
+    db
+      .query<{ kind: string }, [number]>("SELECT kind FROM factory_order_artifact WHERE id = ?")
+      .get(artifactId)?.kind ?? null
+  );
+}
+
+export function appendOrderEvent(db: Database, orderId: string, event: OrderEvent, at = now()): number {
+  return db.transaction(() => appendOrderEventInTransaction(db, orderId, event, at))();
 }
 
 export function appendOrderEventInTransaction(
@@ -44,63 +45,27 @@ export function appendOrderEventInTransaction(
   orderId: string,
   event: OrderEvent,
   at: string,
-  worktree = process.cwd(),
 ): number {
-  if (isTerminalOrderStatus(event.kind as OrderStatus) && event.status !== event.kind) {
-    throw new Error(`terminal event kind must match its status: ${event.kind}`);
-  }
-  if (event.status && isTerminalOrderStatus(event.status) && event.kind !== event.status) {
-    throw new Error(`terminal event status must match its kind: ${event.status}`);
-  }
-  const order = db.query("SELECT status FROM factory_order WHERE id = ?").get(orderId) as {
-    status: OrderStatus;
-  } | null;
-  if (!order) throw new Error(`order not found: ${orderId}`);
+  const status = orderStatus(db, orderId);
   if (!event.worker && event.kind !== "failed") {
     throw new Error(`order ${orderId} ${event.kind} requires a worker`);
   }
-  if (isTerminalOrderStatus(order.status)) {
-    throw new Error(`order ${orderId} is already ${order.status}`);
-  }
-  if (event.kind === "dropped") {
-    assertNoRunningAttempt(db, orderId, "be dropped");
-  } else if (
-    event.kind !== "queued" &&
-    event.kind !== "started" &&
-    event.kind !== "recovered" &&
-    event.kind !== "provenance_recorded" &&
-    event.kind !== "priority_changed"
-  ) {
-    if (order.status !== "working") {
-      const action = VERB_FOR_KIND[event.kind] ?? event.kind;
-      throw new Error(`order ${orderId} must be working before it can ${action}`);
-    }
-    if (event.kind === "completed") {
-      assertChecked(db, orderId);
-      assertIntegrated(db, orderId, worktree);
-    }
+  if (isTerminalOrderStatus(status)) throw new Error(`order ${orderId} is already ${status}`);
+  if (event.kind === "dropped") assertNoRunningAttempt(db, orderId, "be dropped");
+  if (!BEFORE_START.includes(event.kind) && status !== "active") {
+    throw new Error(`order ${orderId} is ${status}, so it cannot record ${event.kind}`);
   }
 
+  const ts = event.ts ?? at;
   const written = db.run(
     `INSERT INTO factory_order_event
        (order_id, ts, kind, worker, session_id, station, commit_sha, check_id, review_id, finding_id,
-        answer_id, artifact_id, status, reason, evidence)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    eventValues(orderId, event, event.ts ?? at),
+        answer_id, artifact_id, reason, evidence)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    eventValues(orderId, event, ts),
   );
-  const projected = event.status ?? null;
-  db.run(
-    `UPDATE factory_order SET status = coalesce(?, status), updated_at = ?,
-       completed_at = CASE WHEN ? = 'completed' THEN ? ELSE completed_at END,
-       stop_reason = coalesce(?, stop_reason)
-       WHERE id = ?`,
-    [projected, event.ts ?? at, projected, event.ts ?? at, event.reason ?? null, orderId],
-  );
-  if (event.kind === "failed") {
-    finishAttempt(db, orderId, "failed", event.reason, event.ts ?? at);
-  } else if (event.kind === "completed") {
-    finishAttempt(db, orderId, "succeeded", undefined, event.ts ?? at);
-  }
+  db.run("UPDATE factory_order SET updated_at = ? WHERE id = ?", [ts, orderId]);
+  if (event.kind === "failed") finishAttempt(db, orderId, "failed", event.reason, ts);
   writeTrace(
     db,
     {
@@ -111,11 +76,12 @@ export function appendOrderEventInTransaction(
       sessionId: event.sessionId,
       fields: {
         kind: event.kind,
-        status: event.status ?? projected,
+        status: orderStatus(db, orderId),
         reason: event.reason ?? null,
+        artifact: artifactKind(db, event.artifactId),
       },
     },
-    event.ts ?? at,
+    ts,
   );
   return Number(written.lastInsertRowid);
 }
@@ -137,43 +103,7 @@ export function assertChecked(db: Database, orderId: string): void {
   if (!passed) {
     throw new OrderNotDone(
       "order_not_checked",
-      `order ${orderId} cannot complete without a check that passed after its last commit: ` +
-        `record one with \`dim order check ${orderId} --command "..." --exit 0\`, ` +
-        "or stop it as failed.",
+      `order ${orderId} has no check that passed after its last commit`,
     );
   }
-}
-
-function assertIntegrated(db: Database, orderId: string, worktree: string): void {
-  const shas = currentOrderCommits(db, orderId).map((row) => row.sha);
-  if (shas.length === 0) {
-    throw new OrderNotDone(
-      "order_not_integrated",
-      `order ${orderId} recorded no commit, so nothing of it is on the trunk: ` +
-        `record what it landed with \`dim order commit ${orderId} --sha <sha>\`, ` +
-        "or stop it as failed.",
-    );
-  }
-  const reach = shas.map((sha) => reachesTrunk(worktree, sha));
-  if (reach.some((one) => one.reach === "reached")) return;
-  const unknown = reach.find((one) => one.reach === "unknown");
-  if (unknown && unknown.reach === "unknown") {
-    throw new OrderNotDone(
-      "order_trunk_unknown",
-      `order ${orderId} cannot be placed against a trunk, so nothing can say whether it is ` +
-        `integrated: ${unknown.why}.`,
-    );
-  }
-  if (reach.every((one) => one.reach === "absent")) {
-    throw new OrderNotDone(
-      "order_not_integrated",
-      `order ${orderId} recorded commits that ${worktree} does not have, so nothing there can place ` +
-        `them: check the shas recorded with \`dim q order ${orderId}\`.`,
-    );
-  }
-  throw new OrderNotDone(
-    "order_not_integrated",
-    `order ${orderId} has no recorded commit on the trunk: merge its branch before completing it, ` +
-      "or stop it as failed.",
-  );
 }

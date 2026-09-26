@@ -4,7 +4,6 @@ import type { WallItemEntry, WallItemKind } from "./wall-server";
 export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   queued: "Queued",
   started: "Started",
-  provenance_recorded: "Provenance",
   priority_changed: "Priority changed",
   artifact_written: "Artifact written",
   artifact_approved: "Artifact approved",
@@ -16,14 +15,12 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   review_closed: "Review closed",
   finding_raised: "Finding raised",
   finding_answered: "Finding answered",
-  integration_recorded: "Integration",
-  delivery_recorded: "Delivery",
+  ship_failed: "Ship failed",
+  shipped: "Shipped",
   document_updated: "Document",
   environment_reported: "Worker environment",
-  completed: "Completed",
   dropped: "Dropped",
   failed: "Failed",
-  recovered: "Recovered",
 };
 
 const ARTIFACT_VERBS: Partial<Record<WallItemKind, string>> = {

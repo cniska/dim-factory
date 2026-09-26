@@ -13,8 +13,8 @@ function record() {
   let tick = 0;
   const at = () => new Date(Date.UTC(2026, 0, 1, 0, 0, tick++)).toISOString();
   db.run(
-    `INSERT INTO factory_order (id, project, title, status, created_at, updated_at)
-     VALUES (?, 'cniska/dim-factory', 'Read the state', 'working', ?, ?)`,
+    `INSERT INTO factory_order (id, project, title, created_at, updated_at)
+     VALUES (?, 'cniska/dim-factory', 'Read the state', ?, ?)`,
     [ORDER, at(), at()],
   );
   const event = (kind: string, fields: Record<string, string | number> = {}): void => {
@@ -25,6 +25,7 @@ function record() {
       [ORDER, at(), kind, worker, ...Object.values(fields)],
     );
   };
+  event("started");
   const revision = (kind: string): number =>
     (db
       .query<{ n: number }, [string]>(
@@ -54,6 +55,7 @@ function record() {
   const r = {
     db,
     worker,
+    event,
     plan(slices = 1): { id: number; slices: number[] } {
       const id = artifact("plan", null, null);
       const ids = Array.from({ length: slices }, (_, index) =>
@@ -132,7 +134,7 @@ function record() {
       );
     },
     conflict(): void {
-      event("delivery_recorded", {
+      event("ship_failed", {
         evidence: JSON.stringify({
           code: "ship_rebase_conflict",
           oldBase: "base",
@@ -336,11 +338,11 @@ describe("an act's entry", () => {
     expect(admitted(shippable())).toEqual(["ship"]);
   });
 
-  test("admits nothing once the order is completed, and says so", () => {
+  test("admits nothing once the order shipped, and says so", () => {
     const r = shippable();
-    r.db.run("UPDATE factory_order SET status = 'completed' WHERE id = ?", [ORDER]);
+    r.event("shipped");
     expect(admitted(r)).toEqual([]);
-    expect(() => assertNext(r.db, ORDER, "ship")).toThrow("order order-1 is completed, so it cannot ship");
+    expect(() => assertNext(r.db, ORDER, "ship")).toThrow("order order-1 is done, so it cannot ship");
   });
 
   test("names the act the order waits on when it refuses another", () => {

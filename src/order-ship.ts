@@ -7,48 +7,27 @@ import { assertOperator } from "./factory-operator";
 import { currentOrderCommits, latestOrderCommit } from "./order-commits";
 import type { EvidenceReference } from "./order-events";
 import { type OrderCheck, recordOrderCheck, recordOrderRewrite } from "./order-evidence";
-import { appendOrderEventInTransaction, now } from "./order-ledger";
+import { appendOrderEvent } from "./order-ledger";
 import { assertNext } from "./order-state";
 import { dataDir, type Env } from "./paths";
 import { type RebaseVerdict, type ShipOutcome, shipBranch } from "./ship";
 import { RebaseConflict, type Rewrite } from "./ship-rebase";
 import { ShipRefusal } from "./ship-refusal";
 import { checkTask } from "./workspace-tasks";
+import { removeWorktree } from "./wt-command";
 
-function recordDeliveryInTransaction(
-  db: Database,
-  orderId: string,
-  kind: "integration" | "delivery",
-  outcome: "succeeded" | "failed",
-  target: string,
-  commitSha: string | null,
-  worker: string,
-  at: string,
-  reason?: string,
-  evidence: EvidenceReference = {},
-): number {
-  const sessionId = db
-    .query<{ session_id: string | null }, [string]>("SELECT session_id FROM factory_worker WHERE name = ?")
-    .get(worker)?.session_id;
-  const written = db.run(
-    `INSERT INTO factory_order_delivery
-       (order_id, kind, outcome, target, commit_sha, worker, session_id, recorded_at, reason)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [orderId, kind, outcome, target, commitSha, worker, sessionId ?? null, at, reason ?? null],
-  );
-  appendOrderEventInTransaction(
-    db,
-    orderId,
-    {
-      kind: kind === "integration" ? "integration_recorded" : "delivery_recorded",
-      worker,
-      commitSha: commitSha ?? undefined,
-      reason,
-      evidence: { ...evidence, deliveryId: Number(written.lastInsertRowid), outcome },
-    },
-    at,
-  );
-  return Number(written.lastInsertRowid);
+function refusalEvidence(error: unknown): EvidenceReference {
+  if (error instanceof RebaseConflict) {
+    return {
+      code: error.code,
+      paths: JSON.stringify(error.paths),
+      oldBase: error.replay.oldBase,
+      newBase: error.replay.newBase,
+      oldHead: error.replay.oldHead,
+      stoppedAt: error.stoppedAt,
+    };
+  }
+  return error instanceof ShipRefusal ? { code: error.code } : {};
 }
 
 export function recheck(worktree: string, env: Env, sandbox: string[]): OrderCheck {
@@ -78,7 +57,7 @@ export function recheck(worktree: string, env: Env, sandbox: string[]): OrderChe
 export function shipOrder(
   db: Database,
   orderId: string,
-  worktree: string,
+  cwd: string,
   worker: string,
   options: { env?: Env; checkSandbox?: string[] } = {},
 ): ShipOutcome {
@@ -106,40 +85,23 @@ export function shipOrder(
   };
   let outcome: ShipOutcome;
   try {
-    outcome = withLock(() => shipBranch(worktree, orderId, shas, onRebased), env);
+    outcome = withLock(() => shipBranch(cwd, orderId, shas, onRebased), env);
   } catch (error) {
-    const at = now();
-    const reason = error instanceof Error ? error.message : String(error);
-    db.transaction(() => {
-      recordDeliveryInTransaction(
-        db,
-        orderId,
-        "delivery",
-        "failed",
-        orderId,
-        latestOrderCommit(db, orderId)?.sha ?? null,
-        worker,
-        at,
-        reason,
-        error instanceof RebaseConflict
-          ? {
-              code: error.code,
-              paths: JSON.stringify(error.paths),
-              oldBase: error.replay.oldBase,
-              newBase: error.replay.newBase,
-              oldHead: error.replay.oldHead,
-              stoppedAt: error.stoppedAt,
-            }
-          : {},
-      );
-    })();
+    appendOrderEvent(db, orderId, {
+      kind: "ship_failed",
+      worker,
+      commitSha: latestOrderCommit(db, orderId)?.sha,
+      reason: error instanceof Error ? error.message : String(error),
+      evidence: refusalEvidence(error),
+    });
     throw error;
   }
-  const landed = latestOrderCommit(db, orderId)?.sha ?? null;
-  const at = now();
-  db.transaction(() => {
-    recordDeliveryInTransaction(db, orderId, "integration", "succeeded", orderId, landed, worker, at);
-    recordDeliveryInTransaction(db, orderId, "delivery", "succeeded", orderId, landed, worker, at);
-  })();
+  removeWorktree(orderId, { cwd });
+  appendOrderEvent(db, orderId, {
+    kind: "shipped",
+    worker,
+    commitSha: latestOrderCommit(db, orderId)?.sha,
+    evidence: { landed: outcome.landed },
+  });
   return outcome;
 }

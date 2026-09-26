@@ -5,6 +5,7 @@ import { openDb } from "./db";
 import { collectingMachine, declareCheck, integratedRepo, reviewOutput } from "./fixtures.test-support";
 import { runOrderCommand, runOrderCommandLive } from "./order-command";
 import { queueOrder } from "./order-lifecycle";
+import { orderStatus } from "./order-status";
 import { dbPath, type Env } from "./paths";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
 
@@ -116,16 +117,11 @@ describe("headless factory loop", () => {
       await runOrderCommandLive(db, ["review", "headless-order", "--harness", "codex"], null, repo.dir, env),
     ).toContain("0 findings");
     expect(runOrderCommand(db, ["approve", "headless-order"], null, repo.dir, env)).toContain(
-      "review approved",
-    );
-    expect(runOrderCommand(db, ["ship", "headless-order"], null, repo.dir, env)).toContain("fast-forwarded");
-    expect(runOrderCommand(db, ["stop", "headless-order", "completed"], null, repo.dir, env)).toContain(
-      "completed",
+      "review approved by",
     );
 
-    expect(db.query("SELECT status FROM factory_order WHERE id = ?").get("headless-order")).toEqual({
-      status: "completed",
-    });
+    expect(orderStatus(db, "headless-order")).toBe("done");
+    expect(existsSync(worktree)).toBe(false);
     expect(
       db
         .query<{ kind: string }, [string]>("SELECT kind FROM factory_order_event WHERE order_id = ?")
@@ -146,9 +142,7 @@ describe("headless factory loop", () => {
       "artifact_written",
       "review_closed",
       "artifact_approved",
-      "integration_recorded",
-      "delivery_recorded",
-      "completed",
+      "shipped",
     ]);
     expect(
       db

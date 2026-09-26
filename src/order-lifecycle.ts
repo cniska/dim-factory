@@ -1,19 +1,16 @@
 import type { Database } from "bun:sqlite";
 import { assertOperator } from "./factory-operator";
 import { FactoryStopError, liveStop } from "./factory-stop";
-import { openAttempt } from "./order-attempt";
 import { appendOrderEventInTransaction, now } from "./order-ledger";
-import { closeOrderReview, ReviewNotOpen } from "./order-review";
-import { assertOrderQueued, assertOrderWorking, type Order, type OrderPriority } from "./order-status";
-import { workerIsOver } from "./worker";
+import { assertOrderQueued, type Order, type OrderPriority } from "./order-status";
 import { createWorktree } from "./wt-command";
 
 export function queueOrder(db: Database, order: Order, worker: string, at = now()): number {
   return db.transaction(() => {
     db.run(
       `INSERT INTO factory_order
-       (id, project, title, line, description, priority, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)`,
+       (id, project, title, line, description, priority, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         order.id,
         order.project,
@@ -53,12 +50,7 @@ export function startOrder(
     assertOrderQueued(db, orderId, "started");
     assertOperator(db, operator, "start an order");
     createWorktree(orderId, cwd);
-    return appendOrderEventInTransaction(
-      db,
-      orderId,
-      { kind: "started", worker: operator, status: "working" },
-      at,
-    );
+    return appendOrderEventInTransaction(db, orderId, { kind: "started", worker: operator }, at);
   })();
 }
 
@@ -90,12 +82,7 @@ export function setOrderPriority(
 export function dropOrder(db: Database, orderId: string, reason: string, worker: string, at = now()): number {
   if (reason.trim() === "") throw new Error("a drop reason must not be empty");
   return db.transaction(() => {
-    return appendOrderEventInTransaction(
-      db,
-      orderId,
-      { kind: "dropped", worker, status: "dropped", reason },
-      at,
-    );
+    return appendOrderEventInTransaction(db, orderId, { kind: "dropped", worker, reason }, at);
   })();
 }
 
@@ -111,54 +98,4 @@ export function amendOrder(
        updated_at = ? WHERE id = ?`,
     [changes.title ?? null, changes.description ?? null, at, orderId],
   );
-}
-
-export function recoverOrderFailure(
-  db: Database,
-  orderId: string,
-  operator: string,
-  reason: string | undefined,
-  at = now(),
-  worktree = process.cwd(),
-): void {
-  db.transaction(() => {
-    assertOrderWorking(db, orderId);
-    const attempt = openAttempt(db, orderId);
-    const attemptWorker = attempt?.worker;
-    const station = attempt?.station;
-    const openReview = db
-      .query<{ id: number; reviewer: string | null }, [string]>(
-        `SELECT r.id, coalesce(r.reviewer, a.accepted_worker) AS reviewer
-         FROM factory_order_review r
-         LEFT JOIN factory_worker_assignment a ON a.id = r.assignment_id
-         WHERE r.order_id = ? AND r.closed_at IS NULL`,
-      )
-      .get(orderId);
-    if (openReview?.reviewer && !workerIsOver(db, openReview.reviewer)) {
-      throw new ReviewNotOpen(
-        "review_running",
-        `review ${openReview.id} is still being read by ${openReview.reviewer}, so recovery leaves it open`,
-      );
-    }
-    if (openReview) closeOrderReview(db, openReview.id, "aborted", operator, at, reason);
-    appendOrderEventInTransaction(
-      db,
-      orderId,
-      {
-        kind: "failed",
-        ...(attemptWorker ? { worker: attemptWorker } : {}),
-        station,
-        reason,
-      },
-      at,
-      worktree,
-    );
-    appendOrderEventInTransaction(
-      db,
-      orderId,
-      { kind: "recovered", worker: operator, station, reason },
-      at,
-      worktree,
-    );
-  })();
 }

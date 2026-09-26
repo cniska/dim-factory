@@ -134,7 +134,6 @@ const FACTORY_ORDER_TABLES = [
   "factory_order_worker",
   "factory_order_attempt",
   "factory_schedule_invocation",
-  "factory_order_delivery",
   "factory_order_commit",
   "factory_order_file",
   "factory_order_check",

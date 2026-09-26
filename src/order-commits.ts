@@ -25,7 +25,7 @@ export function pendingRebaseConflict(db: Database, orderId: string): RecordedCo
   const row = db
     .query<{ evidence: string }, [string]>(
       `SELECT e.evidence FROM factory_order_event e
-       WHERE e.order_id = ? AND e.kind = 'delivery_recorded'
+       WHERE e.order_id = ? AND e.kind = 'ship_failed'
          AND json_extract(e.evidence, '$.code') = 'ship_rebase_conflict'
          AND e.id > coalesce((
            SELECT max(rewritten.id) FROM factory_order_event rewritten

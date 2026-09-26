@@ -16,9 +16,9 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 
 ## Features
 
-- **Ship ends the order** — approving the Review artifact ships the order, ship writes the event that makes the order done and removes its worktree, `dim order stop` goes, and the status is read from the events rather than stored. A red re-check at ship keeps the rebase for the builder, as a conflict does.
+- **A red re-check at ship goes to the builder** — the rebase is kept, as a conflict's is, and the builder fixes the rebased head instead of the ship taking the rebase back.
 - **One path per act** — the runner is the only writer of commits, files, checks and artifacts, so `dim order commit`, `file`, `check`, `build-artifact` and `review-artifact` go.
-- **Ship and rebase records** — one table for ship outcomes and one for rebases, replacing the delivery rows and event JSON.
+- **Ship and rebase records** — one table for ship refusals and one for rebases, replacing the conflict held in the `ship_failed` event's JSON.
 - **Refuse a secret at ship** — an order's diff carrying a key shape is not shipped.
 - **Ship through a pull request** — `dim.ship = pull-request`, since most repos do not fast-forward their default branch. Built against one of the owner's repos that ships by PR, once the factory runs again.
 - **An attempt for every station run** — planner and reviewer runs claim the order too, and the order's worker folds into its assignment.

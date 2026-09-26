@@ -108,9 +108,9 @@ describe("a conflict at ship", () => {
     expect(git(repo.dir, ["rev-parse", "HEAD"])).toBe(trunkTip);
     expect(recorded).toMatchObject({ paths: ["f.txt"], newBase: trunkTip, oldHead: second });
     expect(rebaseState(wt)).toMatchObject({ origHead: second, onto: trunkTip });
-    expect(
-      db.query("SELECT kind, outcome, reason FROM factory_order_delivery WHERE order_id = 'order-1'").all(),
-    ).toEqual([{ kind: "delivery", outcome: "failed", reason: expect.stringContaining("f.txt") }]);
+    expect(db.query("SELECT kind, reason FROM factory_order_event WHERE kind = 'ship_failed'").all()).toEqual(
+      [{ kind: "ship_failed", reason: expect.stringContaining("f.txt") }],
+    );
     expect(orderState(db, "order-1")).toEqual({ station: "build", next: "run" });
   });
 

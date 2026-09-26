@@ -11,8 +11,10 @@ import { hookConfigPath } from "./hooks";
 import { TOOLS } from "./ingest-tools";
 import { completeOrderSlice, nextOrderSlice, recordOrderPlan } from "./order-artifacts";
 import { runOrderCommand as runCommand, runOrderCommandLive } from "./order-command";
+import { appendOrderEvent } from "./order-ledger";
 import { startOrder } from "./order-lifecycle";
 import { closeOrderReview, recordOrderReviewArtifact } from "./order-review";
+import { orderStatus } from "./order-status";
 import type { Env } from "./paths";
 import { approveFinalBuildAt, approvePlan, approveReviewAt } from "./station-approvals.test-support";
 import { assembleWallSnapshot } from "./wall-server";
@@ -218,7 +220,7 @@ describe("order command", () => {
 
     const snapshot = assembleWallSnapshot(database);
     expect(snapshot.totals).toEqual({ todo: 0, active: 1, done: 0 });
-    expect(snapshot.orders[0]?.status).toBe("working");
+    expect(snapshot.orders[0]?.status).toBe("active");
     expect(snapshot.orders[0]?.station).toBe("plan");
     expect(snapshot.orders[0]?.next).toBe("run");
   });
@@ -289,11 +291,13 @@ describe("order command", () => {
     const round = reviewIn(database, "order-1", operator, undefined, trunk.sha);
     recordOrderReviewArtifact(database, "order-1", "## Outcome\n\nClean.", round.reviewer);
     closeOrderReview(database, round.review, "closed", round.reviewer);
-    expect(runOrderCommand(database, ["approve", "order-1"])).toBe(`order-1 review approved by ${operator}`);
+    expect(runOrderCommand(database, ["approve", "order-1"])).toBe(
+      `order-1 review approved by ${operator}; order-1 is already on the trunk and done`,
+    );
     expect(() => runOrderCommand(database, ["approve", "order-1"])).toThrow(
       expect.objectContaining({
         code: "not_next",
-        message: "order order-1 waits on ship, so it cannot approve",
+        message: "order order-1 is done, so it cannot approve",
       }),
     );
   });
@@ -313,7 +317,7 @@ describe("order command", () => {
     approvedAt(database, sha);
 
     expect(runOrderCommand(database, ["ship", "order-1"], null, wt)).toBe(
-      "order-1 is fast-forwarded onto the trunk",
+      "order-1 is fast-forwarded onto the trunk and done",
     );
 
     expect(Bun.spawnSync(["git", "-C", trunk.dir, "merge-base", "--is-ancestor", sha, "HEAD"]).success).toBe(
@@ -321,16 +325,9 @@ describe("order command", () => {
     );
     expect(
       database
-        .query("SELECT kind, outcome FROM factory_order_delivery WHERE order_id = ? ORDER BY id")
-        .all("order-1"),
-    ).toEqual([
-      { kind: "integration", outcome: "succeeded" },
-      { kind: "delivery", outcome: "succeeded" },
-    ]);
-    runOrderCommand(database, ["check", "order-1", "--command", "bun run verify", "--exit", "0"]);
-    expect(runOrderCommand(database, ["stop", "order-1", "completed"], null, trunk.dir)).toBe(
-      "order-1 is completed",
-    );
+        .query("SELECT kind FROM factory_order_event WHERE order_id = ? ORDER BY id DESC")
+        .get("order-1"),
+    ).toEqual({ kind: "shipped" });
   });
 
   test("a ship run from the trunk checkout still lands the order's branch", () => {
@@ -348,7 +345,7 @@ describe("order command", () => {
     approvedAt(database, sha);
 
     expect(runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toBe(
-      "order-1 is fast-forwarded onto the trunk",
+      "order-1 is fast-forwarded onto the trunk and done",
     );
 
     expect(Bun.spawnSync(["git", "-C", trunk.dir, "merge-base", "--is-ancestor", sha, "HEAD"]).success).toBe(
@@ -356,7 +353,7 @@ describe("order command", () => {
     );
   });
 
-  test("a ship of a commit already on the trunk reports it as already landed", () => {
+  test("a ship of a commit already on the trunk reports it as already landed and moves the card to done", () => {
     const database = db();
     queued(database);
     atBuild(database);
@@ -364,8 +361,11 @@ describe("order command", () => {
     approvedAt(database, trunk.sha);
 
     expect(runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toBe(
-      "order-1 is already on the trunk",
+      "order-1 is already on the trunk and done",
     );
+    const snapshot = assembleWallSnapshot(database);
+    expect(snapshot.totals).toEqual({ todo: 0, active: 0, done: 1 });
+    expect(snapshot.orders[0]?.status).toBe("done");
   });
 
   test("a ship is refused before the order recorded any commit", () => {
@@ -443,61 +443,16 @@ describe("order command", () => {
     );
   });
 
-  test("a stop moves that card into the done column", () => {
+  test("a failed order stays active at the station its record puts it", () => {
     const database = db();
     queued(database);
     started(database);
-    landed(database, "order-1");
 
-    expect(runOrderCommand(database, ["stop", "order-1", "completed"], null, trunk.dir)).toBe(
-      "order-1 is completed",
-    );
-
-    const snapshot = assembleWallSnapshot(database);
-    expect(snapshot.totals).toEqual({ todo: 0, active: 0, done: 1 });
-    expect(snapshot.orders[0]?.status).toBe("completed");
-  });
-
-  test("a stop as completed is refused until a check has passed", () => {
-    const database = db();
-    const operator = operatorEnv(database);
-    queued(database);
-    started(database);
-    runOrderCommand(database, ["check", "order-1", "--command", "bun run verify", "--exit", "1"]);
-
-    expect(() => runOrderCommand(database, ["stop", "order-1", "completed"], null, trunk.dir)).toThrow(
-      expect.objectContaining({ code: "order_not_checked" }),
-    );
-
-    expect(assembleWallSnapshot(database).orders[0]?.status).toBe("working");
-    expect(
-      runOrderCommand(
-        database,
-        ["stop", "order-1", "failed", "--reason", "waits on the wall"],
-        null,
-        trunk.dir,
-        operator,
-      ),
-    ).toBe("order-1 failed its attempt and stays where its record puts it");
-  });
-
-  test("a failed order stays working and active at the station its record puts it", () => {
-    const database = db();
-    const operator = operatorEnv(database);
-    queued(database);
-    started(database);
-
-    runOrderCommand(
-      database,
-      ["stop", "order-1", "failed", "--reason", "the check never passed"],
-      null,
-      trunk.dir,
-      operator,
-    );
+    appendOrderEvent(database, "order-1", { kind: "failed", reason: "the check never passed" });
 
     const snapshot = assembleWallSnapshot(database);
     expect(snapshot.totals).toEqual({ todo: 0, active: 1, done: 0 });
-    expect(snapshot.orders[0]?.status).toBe("working");
+    expect(snapshot.orders[0]?.status).toBe("active");
     expect([snapshot.orders[0]?.station, snapshot.orders[0]?.next]).toEqual(["plan", "run"]);
   });
 
@@ -595,7 +550,7 @@ describe("order command", () => {
     });
   });
 
-  test("evidence is refused before the order is started and after it stopped", () => {
+  test("evidence is refused before the order is started and after it shipped", () => {
     const database = db();
     queued(database);
 
@@ -603,12 +558,13 @@ describe("order command", () => {
       "order order-1 is not started",
     );
 
-    started(database);
+    atBuild(database);
     landed(database, "order-1");
-    runOrderCommand(database, ["stop", "order-1", "completed"], null, trunk.dir);
+    approvedAt(database, trunk.sha);
+    runOrderCommand(database, ["ship", "order-1"], null, trunk.dir);
 
     expect(() => runOrderCommand(database, ["commit", "order-1", "--sha", "abc123"])).toThrow(
-      "order order-1 is already completed",
+      "order order-1 is already done",
     );
     expect(
       database.query("SELECT count(*) AS rows FROM factory_order_commit WHERE sha = 'abc123'").get(),
@@ -667,20 +623,6 @@ describe("order command", () => {
     ).toThrow("finding is not an order subcommand");
     expect(() => runOrderCommand(database, ["answer", "1", "--answer", "fixed"])).toThrow(
       "answer is not an order subcommand",
-    );
-  });
-
-  test("a way an order cannot stop is refused rather than written", () => {
-    const database = db();
-    queued(database);
-    started(database);
-
-    expect(() => runOrderCommand(database, ["stop", "order-1", "working"])).toThrow(UsageError);
-
-    expect(assembleWallSnapshot(database).orders[0]?.status).toBe("working");
-    landed(database, "order-1");
-    expect(runOrderCommand(database, ["stop", "order-1", "completed"], null, trunk.dir)).toBe(
-      "order-1 is completed",
     );
   });
 
@@ -747,7 +689,7 @@ describe("order command", () => {
       add,
       ["priority", "order-1", "urgent"],
       ["approve", "order-1"],
-      ["stop", "order-1", "failed"],
+      ["drop", "order-1", "--reason", "not needed"],
     ]) {
       expect(() => runCommand(database, args, null, undefined, {})).toThrow(
         expect.objectContaining({ code: "worker_missing" }),
@@ -763,6 +705,7 @@ describe("order command", () => {
     const database = db();
 
     expect(() => runOrderCommand(database, ["park", "order-1"])).toThrow(UsageError);
+    expect(() => runOrderCommand(database, ["stop", "order-1", "completed"])).toThrow(UsageError);
     expect(() => runOrderCommand(database, ["toString", "order-1"])).toThrow(UsageError);
     expect(() => runOrderCommand(database, [...add, "--colour", "red"])).toThrow(UsageError);
     expect(() => runOrderCommand(database, [...add, "--title", "second"])).toThrow(UsageError);
@@ -815,9 +758,7 @@ describe("order command", () => {
       ),
     ).toBe("order-1 is dropped: superseded elsewhere");
 
-    expect(database.query("SELECT status FROM factory_order WHERE id = 'order-1'").get()).toEqual({
-      status: "dropped",
-    });
+    expect(orderStatus(database, "order-1")).toBe("dropped");
     const snapshot = assembleWallSnapshot(database);
     expect(snapshot.totals).toEqual({ todo: 0, active: 0, done: 0 });
     expect(snapshot.orders).toEqual([]);
@@ -848,9 +789,7 @@ describe("order command", () => {
         [WORKER_TOKEN_VAR]: builder.token,
       }),
     ).toThrow(expect.objectContaining({ code: "worker_not_operator" }));
-    expect(database.query("SELECT status FROM factory_order WHERE id = 'order-1'").get()).toEqual({
-      status: "queued",
-    });
+    expect(orderStatus(database, "order-1")).toBe("queued");
   });
 
   test("a drop is refused while an attempt is running on the order", () => {

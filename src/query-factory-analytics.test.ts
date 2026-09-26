@@ -4,18 +4,19 @@ import { SCHEMA_SQL } from "./db-schema";
 import { findQuery } from "./query-registry";
 
 describe("factory analytics", () => {
-  test("derives retries, outcomes, delivery, verdict, attribution, and scheduling from domain rows", () => {
+  test("derives retries, outcomes, shipping, verdicts by artifact, attribution, and scheduling from domain rows", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     db.run(
-      `INSERT INTO factory_order (id, project, title, status, created_at, updated_at)
-       VALUES ('order-analytics', 'cniska/dim-factory', 'Analytics', 'completed', ?, ?)`,
+      `INSERT INTO factory_order (id, project, title, created_at, updated_at)
+       VALUES ('order-analytics', 'cniska/dim-factory', 'Analytics', ?, ?)`,
       ["2026-09-18T09:00:00.000Z", "2026-09-18T09:10:00.000Z"],
     );
     db.run(
-      `INSERT INTO factory_order_artifact (id, order_id, kind, revision, body)
-       VALUES (1, 'order-analytics', 'plan', 1, '## Outcome'),
-              (2, 'order-analytics', 'plan', 2, '## Outcome')`,
+      `INSERT INTO factory_order_artifact (id, order_id, kind, revision, body, head_sha)
+       VALUES (1, 'order-analytics', 'plan', 1, '## Outcome', NULL),
+              (2, 'order-analytics', 'plan', 2, '## Outcome', NULL),
+              (3, 'order-analytics', 'build', 1, '## Outcome', 'abc123')`,
     );
     db.run(
       `INSERT INTO factory_order_event (order_id, ts, kind, artifact_id, evidence)
@@ -26,7 +27,9 @@ describe("factory analytics", () => {
               ('order-analytics', ?, 'artifact_returned', 1, '{}'),
               ('order-analytics', ?, 'artifact_written', 2, '{}'),
               ('order-analytics', ?, 'artifact_approved', 2, '{}'),
-              ('order-analytics', ?, 'completed', NULL, '{}')`,
+              ('order-analytics', ?, 'artifact_approved', 3, '{}'),
+              ('order-analytics', ?, 'ship_failed', NULL, '{}'),
+              ('order-analytics', ?, 'shipped', NULL, '{}')`,
       [
         "2026-09-18T09:00:00.000Z",
         '{"source":"issue-123"}',
@@ -36,6 +39,8 @@ describe("factory analytics", () => {
         "2026-09-18T09:03:00.000Z",
         "2026-09-18T09:03:00.000Z",
         "2026-09-18T09:05:00.000Z",
+        "2026-09-18T09:08:00.000Z",
+        "2026-09-18T09:09:00.000Z",
         "2026-09-18T09:10:00.000Z",
       ],
     );
@@ -66,11 +71,6 @@ describe("factory analytics", () => {
       ],
     );
     db.run(
-      `INSERT INTO factory_order_delivery (order_id, kind, outcome, recorded_at)
-       VALUES ('order-analytics', 'integration', 'succeeded', '2026-09-18T09:10:00.000Z'),
-              ('order-analytics', 'delivery', 'succeeded', '2026-09-18T09:10:00.000Z')`,
-    );
-    db.run(
       `INSERT INTO factory_schedule (id, queue_id, interval_seconds, created_at, updated_at)
        VALUES ('schedule-analytics', 'queue', 60, '2026-09-18T09:00:00.000Z', '2026-09-18T09:00:00.000Z')`,
     );
@@ -92,12 +92,12 @@ describe("factory analytics", () => {
     expect(metrics.get("attempt_outcome:succeeded")).toBe(1);
     expect(metrics.get("approval_wait_seconds")).toBe(180);
     expect(metrics.get("order_event:started")).toBe(1);
-    expect(metrics.get("order_event:completed")).toBe(1);
+    expect(metrics.get("order_event:shipped")).toBe(1);
+    expect(metrics.get("order_event:ship_failed")).toBe(1);
     expect(metrics.get("provenance_events")).toBe(1);
-    expect(metrics.get("integration:succeeded")).toBe(1);
-    expect(metrics.get("delivery:succeeded")).toBe(1);
-    expect(metrics.get("verdict:approved")).toBe(1);
-    expect(metrics.get("verdict:returned")).toBe(1);
+    expect(metrics.get("verdict:approved:plan")).toBe(1);
+    expect(metrics.get("verdict:approved:build")).toBe(1);
+    expect(metrics.get("verdict:returned:plan")).toBe(1);
     expect(metrics.get("verdict:dropped")).toBe(undefined);
     expect(metrics.get("worker_execution:codex/gpt-test/standard")).toBe(2);
     expect(metrics.get("schedule_evaluations")).toBe(2);

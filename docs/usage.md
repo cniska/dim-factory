@@ -58,7 +58,7 @@ Refuses a rewrite or deletion of the remote default branch, and any push carryin
 
 ### Ship method
 
-A repository the factory ships from declares it with `git config dim.ship trunk`; [`factory.md`](factory.md#done) says what `dim order ship` does with it.
+A repository the factory ships from declares it with `git config dim.ship trunk`; [`factory.md`](factory.md#done) says how an order ships with it.
 
 ## Configuration
 

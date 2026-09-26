@@ -11,6 +11,7 @@ import { commandLine } from "./harness-process";
 import { scriptedHarness } from "./harness-scripted.test-support";
 import { returnOrderArtifact } from "./order-approval";
 import { dropOrder, queueOrder } from "./order-lifecycle";
+import { orderStatus } from "./order-status";
 import { plannerBrief, runOrderPlanLive } from "./station-plan";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
 import { ASSIGNMENT_ID_VAR } from "./worker-assignment";
@@ -118,9 +119,7 @@ describe("planner station", () => {
       { kind: "started" },
       { kind: "artifact_written" },
     ]);
-    expect(db.query("SELECT status FROM factory_order WHERE id = 'planner-order'").get()).toEqual({
-      status: "working",
-    });
+    expect(orderStatus(db, "planner-order")).toBe("active");
     db.close();
     rmSync(repo.dir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });

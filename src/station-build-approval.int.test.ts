@@ -15,6 +15,7 @@ import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
 import { appendOrderEvent } from "./order-ledger";
 import { queueOrder, startOrder } from "./order-lifecycle";
 import { orderState } from "./order-state";
+import { orderStatus } from "./order-status";
 import { approvePlan } from "./station-approvals.test-support";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
 
@@ -78,9 +79,7 @@ describe("build approval integration", () => {
       reason: "runner could not complete the attempt",
     });
 
-    expect(db.query("SELECT status FROM factory_order WHERE id = ?").get("failed-return-order")).toEqual({
-      status: "working",
-    });
+    expect(orderStatus(db, "failed-return-order")).toBe("active");
     expect(openAttempt(db, "failed-return-order")).toBeNull();
     expect(
       db

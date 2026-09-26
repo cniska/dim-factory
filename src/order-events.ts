@@ -1,7 +1,6 @@
 export const ORDER_EVENT_KINDS = [
   "queued",
   "started",
-  "provenance_recorded",
   "priority_changed",
   "artifact_written",
   "artifact_approved",
@@ -13,12 +12,10 @@ export const ORDER_EVENT_KINDS = [
   "review_closed",
   "finding_raised",
   "finding_answered",
-  "integration_recorded",
-  "delivery_recorded",
-  "completed",
+  "ship_failed",
+  "shipped",
   "dropped",
   "failed",
-  "recovered",
 ] as const;
 
 export type OrderEventKind = (typeof ORDER_EVENT_KINDS)[number];

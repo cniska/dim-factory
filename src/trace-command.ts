@@ -1,9 +1,8 @@
 import type { Database } from "bun:sqlite";
 import { type Command, UsageError } from "./cli-contract";
 import { openReadOnly } from "./db-read";
+import { isTerminalOrderStatus, type OrderStatus, orderStatus } from "./order-status";
 import { dbPath, type Env } from "./paths";
-
-const TERMINAL_STATUSES = new Set(["completed", "dropped"]);
 
 type TraceRow = {
   id: number;
@@ -48,11 +47,8 @@ function print(row: TraceRow, write: (line: string) => void): void {
   );
 }
 
-function status(db: Database, orderId: string): string | null {
-  return (
-    db.query<{ status: string }, [string]>("SELECT status FROM factory_order WHERE id = ?").get(orderId)
-      ?.status ?? null
-  );
+function status(db: Database, orderId: string): OrderStatus | null {
+  return db.query("SELECT 1 FROM factory_order WHERE id = ?").get(orderId) ? orderStatus(db, orderId) : null;
 }
 
 function read(db: Database, orderId: string, after: number): TraceRow[] {
@@ -79,7 +75,7 @@ export async function runTraceCommand(
         lastId = row.id;
         print(row, write);
       }
-      if (TERMINAL_STATUSES.has(currentStatus)) return;
+      if (isTerminalOrderStatus(currentStatus)) return;
     } finally {
       db.close();
     }

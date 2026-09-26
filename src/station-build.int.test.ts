@@ -33,6 +33,7 @@ import { queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview, openOrderReview } from "./order-review";
 import { shipOrder } from "./order-ship";
 import { orderState } from "./order-state";
+import { orderStatus } from "./order-status";
 import { approveReviewAt } from "./station-approvals.test-support";
 import { runOrderBuildLive } from "./station-build";
 import type { BuildTurn } from "./station-build-turn";
@@ -266,9 +267,7 @@ describe("builder station", () => {
         adapter: fakeHarness("crash"),
       }),
     ).rejects.toThrow("fake process crashed");
-    expect(db.query("SELECT status FROM factory_order WHERE id = ?").get("builder-order")).toEqual({
-      status: "working",
-    });
+    expect(orderStatus(db, "builder-order")).toBe("active");
     expect(orderState(db, "builder-order")).toEqual({ station: "build", next: "run" });
     expect(
       db
@@ -1043,9 +1042,7 @@ describe("builder station", () => {
         .query("SELECT kind, worker, reason FROM factory_order_event WHERE order_id = ?")
         .all("failed-builder-order"),
     ).toContainEqual({ kind: "failed", worker: null, reason: "harness unavailable" });
-    expect(db.query("SELECT status FROM factory_order WHERE id = ?").get("failed-builder-order")).toEqual({
-      status: "working",
-    });
+    expect(orderStatus(db, "failed-builder-order")).toBe("active");
     expect(openAttempt(db, "failed-builder-order")).toBeNull();
     expect(orderState(db, "failed-builder-order")).toEqual({ station: "build", next: "run" });
     db.close();
@@ -1190,12 +1187,10 @@ describe("builder station", () => {
         .get("harness-order")?.reason,
     ).toMatch(/ did not finish: fake process crashed/);
     const working = () => ({
-      status: db
-        .query<{ status: string }, [string]>("SELECT status FROM factory_order WHERE id = ?")
-        .get("harness-order")?.status,
+      status: orderStatus(db, "harness-order"),
       attempt: openAttempt(db, "harness-order"),
     });
-    expect(working()).toEqual({ status: "working", attempt: null });
+    expect(working()).toEqual({ status: "active", attempt: null });
 
     await expect(
       runOrderBuildLive(db, "harness-order", operator.name, { dir: repo.dir, env, harness: "codex" }),
@@ -1203,7 +1198,7 @@ describe("builder station", () => {
       "order harness-order builder runs under the claude harness; delegate it with --harness claude",
     );
     expect(failures()).toEqual({ n: 1 });
-    expect(working()).toEqual({ status: "working", attempt: null });
+    expect(working()).toEqual({ status: "active", attempt: null });
     db.close();
   });
 });

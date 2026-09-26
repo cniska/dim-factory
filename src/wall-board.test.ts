@@ -35,22 +35,22 @@ describe("factory wall board", () => {
   test("groups each snapshot order into its stage without dropping empty columns", () => {
     const columns = ordersByStage([
       order("planned-item", "todo", "plan", "queued"),
-      order("shipped-item", "done", null, "completed"),
-      order("busy-item", "active", "review", "working"),
+      order("shipped-item", "done", null, "done"),
+      order("busy-item", "active", "review", "active"),
     ]);
 
     expect(columns).toEqual({
       todo: [order("planned-item", "todo", "plan", "queued")],
-      active: [order("busy-item", "active", "review", "working")],
-      done: [order("shipped-item", "done", null, "completed")],
+      active: [order("busy-item", "active", "review", "active")],
+      done: [order("shipped-item", "done", null, "done")],
     });
   });
 
   test("keeps the order the snapshot ranked its orders in", () => {
-    const needsAnswer = { ...order("busy-item", "active", "build", "working"), attention: "scope unclear" };
+    const needsAnswer = { ...order("busy-item", "active", "build", "active"), attention: "scope unclear" };
     const columns = ordersByStage([
-      order("first-running", "active", "build", "working"),
-      order("second-running", "active", "build", "working"),
+      order("first-running", "active", "build", "active"),
+      order("second-running", "active", "build", "active"),
       needsAnswer,
     ]);
 
@@ -59,9 +59,9 @@ describe("factory wall board", () => {
 
   test("groups by stage rather than by the status the card displays", () => {
     const columns = ordersByStage([
-      order("running-item", "active", "build", "working"),
+      order("running-item", "active", "build", "active"),
       order("handed-back-item", "todo", "build", "queued"),
-      order("completed-item", "done", "build", "completed"),
+      order("completed-item", "done", "build", "done"),
     ]);
 
     expect(columns.active.map((entry) => entry.id)).toEqual(["running-item"]);
@@ -71,9 +71,9 @@ describe("factory wall board", () => {
 
   test("keeps orders from every station in the same stage column", () => {
     const columns = ordersByStage([
-      order("building", "active", "build", "working"),
-      order("reviewing", "active", "review", "working"),
-      order("planning", "active", "plan", "working"),
+      order("building", "active", "build", "active"),
+      order("reviewing", "active", "review", "active"),
+      order("planning", "active", "plan", "active"),
     ]);
 
     expect(columns.active.map((entry) => entry.station)).toEqual(["build", "review", "plan"]);

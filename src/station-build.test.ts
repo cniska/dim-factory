@@ -174,17 +174,6 @@ describe("worker failure explanations", () => {
     ).toContain("A red check is feedback, not completion");
     expect(
       builderBrief(
-        { id: "order-1", title: "Build it", description: null },
-        {
-          body: "## Outcome\n\nBuild it.",
-          slices: [{ title: "Build it", outcome: "The result is verified." }],
-        },
-        { id: 1, ordinal: 1, title: "Build it", outcome: "The result is verified." },
-        null,
-      ),
-    ).toContain("Do not run dim order stop");
-    expect(
-      builderBrief(
         { id: "order-1", title: "Build it", description: "The wall is out of scope." },
         {
           body: "## Outcome\n\nBuild it.",

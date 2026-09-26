@@ -1,18 +1,14 @@
 import type { Database } from "bun:sqlite";
 import { returnedOrderArtifact, writeArtifactInTransaction } from "./order-artifacts";
 import { appendOrderEventInTransaction, now } from "./order-ledger";
-import { assertOrderWorking } from "./order-status";
+import { assertOrderActive } from "./order-status";
+import { workerIsOver } from "./worker";
 
 export type ReviewRound = { id: number; round: number; reviewer: string | null };
 
 export class ReviewNotOpen extends Error {
   constructor(
-    readonly code:
-      | "review_open"
-      | "review_unknown"
-      | "review_closed"
-      | "review_not_its_reviewer"
-      | "review_running",
+    readonly code: "review_open" | "review_unknown" | "review_closed" | "review_not_its_reviewer",
     message: string,
   ) {
     super(message);
@@ -26,7 +22,7 @@ export function openOrderReview(
   worker: string,
   at = now(),
 ): ReviewRound {
-  assertOrderWorking(db, orderId);
+  assertOrderActive(db, orderId);
   return db.transaction(() => {
     const live = db
       .query<{ id: number }, [string]>(
@@ -60,7 +56,7 @@ export function openAssignedOrderReview(
   worker: string,
   at = now(),
 ): ReviewRound {
-  assertOrderWorking(db, orderId);
+  assertOrderActive(db, orderId);
   return db.transaction(() => {
     const live = db
       .query<{ id: number }, [string]>(
@@ -150,7 +146,7 @@ export function recordOrderReviewArtifact(
       `review ${review.id} belongs to ${review.reviewer}, not ${worker}`,
     );
   }
-  assertOrderWorking(db, orderId);
+  assertOrderActive(db, orderId);
   const returned = returnedOrderArtifact(db, orderId, "review");
   if (review.closed_at !== null && returned?.reviewId !== review.id) {
     throw new ReviewNotOpen("review_closed", `review ${review.id} is closed`);
@@ -192,4 +188,11 @@ export function openReviewOf(db: Database, orderId: string): { id: number; revie
        WHERE r.order_id = ? AND r.closed_at IS NULL`,
     )
     .get(orderId);
+}
+
+export function abortStrandedReview(db: Database, orderId: string, worker: string, at = now()): void {
+  const left = openReviewOf(db, orderId);
+  if (left && (!left.reviewer || workerIsOver(db, left.reviewer))) {
+    closeOrderReview(db, left.id, "aborted", worker, at, "its reviewer stopped without finishing");
+  }
 }

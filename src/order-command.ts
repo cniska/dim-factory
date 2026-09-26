@@ -11,15 +11,13 @@ import { recordedHarness } from "./harness-operator";
 import { requireCurrentHooks } from "./hooks";
 import { approveOrder, returnOrderArtifact } from "./order-approval";
 import { recordOrderBuild } from "./order-artifacts";
-import type { OrderEventKind } from "./order-events";
 import { recordOrderCheck, recordOrderCommit, recordOrderDocument, recordOrderFile } from "./order-evidence";
-import { appendOrderEvent } from "./order-ledger";
-import { amendOrder, dropOrder, queueOrder, recoverOrderFailure, setOrderPriority } from "./order-lifecycle";
+import { amendOrder, dropOrder, queueOrder, setOrderPriority } from "./order-lifecycle";
 import { isOrderLine, ORDER_LINES } from "./order-line";
 import { readyOrders } from "./order-ready";
 import { recordOrderReviewArtifact } from "./order-review";
 import { shipOrder } from "./order-ship";
-import { ORDER_PRIORITIES, type OrderPriority, type OrderStatus } from "./order-status";
+import { ORDER_PRIORITIES, type OrderPriority } from "./order-status";
 import { dbPath, type Env } from "./paths";
 import type { ShipOutcome } from "./ship";
 import { runOrderBuildLive } from "./station-build";
@@ -27,7 +25,6 @@ import { runOrderPlanLive } from "./station-plan";
 import { runOrderReviewLive } from "./station-review";
 import { resolveWorker } from "./worker";
 import { resolveAssignedWorker } from "./worker-assignment";
-import { removeWorktree, repoRoot } from "./wt-command";
 
 export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--line <${ORDER_LINES.join("|")}>] [--description "..."]
                      [--priority <${ORDER_PRIORITIES.join("|")}>] [--project <owner/repo>]
@@ -45,7 +42,6 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--lin
        dim order approve <order-id> [--reason "..."]
        dim order return <order-id> --reason "..."
        dim order ship <order-id>
-       dim order stop <order-id> <completed|failed> [--reason "..."]
        dim order amend <order-id> [--title "..."] [--description "..."]
        dim order drop <order-id> --reason "..."
 
@@ -202,47 +198,10 @@ const SHIP_OUTCOME_TEXT: Record<ShipOutcome["landed"], string> = {
   rebased: "rebased onto the trunk, re-checked and fast-forwarded",
 };
 
-function ship(
-  db: Database,
-  orderId: string,
-  args: string[],
-  worktree: string,
-  env: Env,
-  worker: string,
-): string {
+function ship(db: Database, orderId: string, args: string[], cwd: string, env: Env, worker: string): string {
   flags(args, []);
-  const outcome = shipOrder(db, orderId, worktree, worker, { env });
-  return `${orderId} is ${SHIP_OUTCOME_TEXT[outcome.landed]}`;
-}
-
-const STOP_KINDS = ["completed", "failed"] as const;
-
-function stop(db: Database, orderId: string, args: string[], cwd: string, worker: string): string {
-  const [kind, ...rest] = args;
-  if (!kind) throw new UsageError("stop needs how the order stopped");
-  if (!(STOP_KINDS as readonly string[]).includes(kind)) {
-    throw new UsageError(`${kind} is not a way an order can stop`);
-  }
-  const given = flags(rest, ["--reason"]);
-  if (kind === "failed") {
-    assertOperator(db, worker, "recover a failed order");
-    recoverOrderFailure(db, orderId, worker, given.get("--reason"), undefined, repoRoot(cwd));
-    return `${orderId} failed its attempt and stays where its record puts it`;
-  }
-  appendOrderEvent(
-    db,
-    orderId,
-    {
-      kind: kind as OrderEventKind,
-      worker,
-      ...(kind === "completed" ? { status: "completed" as OrderStatus } : {}),
-      reason: given.get("--reason"),
-    },
-    undefined,
-    repoRoot(cwd),
-  );
-  if (kind === "completed") removeWorktree(orderId, { cwd });
-  return `${orderId} is completed`;
+  const outcome = shipOrder(db, orderId, cwd, worker, { env });
+  return `${orderId} is ${SHIP_OUTCOME_TEXT[outcome.landed]} and done`;
 }
 
 const AMEND_FLAGS = ["--title", "--description"];
@@ -301,14 +260,15 @@ export function runOrderCommand(
   }
   if (command === "approve") {
     const station = approveOrder(db, orderId, worker, flags(rest, ["--reason"]).get("--reason"));
-    return `${orderId} ${station} approved by ${worker}`;
+    const approved = `${orderId} ${station} approved by ${worker}`;
+    if (station !== "review") return approved;
+    return `${approved}; ${ship(db, orderId, [], cwd, env, worker)}`;
   }
   if (Object.hasOwn(EVIDENCE, command)) {
     const evidence = EVIDENCE[command] as Evidence;
     return evidence.record(db, orderId, flags(rest, evidence.flags), worker);
   }
   if (command === "ship") return ship(db, orderId, rest, cwd, env, worker);
-  if (command === "stop") return stop(db, orderId, rest, cwd, worker);
   if (command === "amend") return amend(db, orderId, rest);
   if (command === "drop") return drop(db, orderId, rest, worker);
   throw new UsageError(`${command} is not an order subcommand`);
@@ -346,7 +306,7 @@ export async function runOrderCommandLive(
 export const orderCommand: Command = {
   name: "order",
   usage: ORDER_USAGE,
-  summary: "add, run, approve, ship and stop factory orders",
+  summary: "add, run, approve and ship factory orders",
   async run(args) {
     const root = checkoutRoot(process.cwd());
     const db = openDb(dbPath());

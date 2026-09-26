@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { installHooks } from "./hooks";
@@ -9,6 +9,7 @@ import type { Env } from "./paths";
 import { REVIEW_DIMENSIONS, type ReviewFinding } from "./station-review-artifact";
 import { mintWorker, newWorkerSession, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./worker";
 import type { Role } from "./worker-roles";
+import { worktreePath } from "./wt-command";
 
 export function attemptIn(
   db: Database,
@@ -131,9 +132,10 @@ export function commitOffTrunk(dir: string, branch: string): string {
 }
 
 export function orderWorktree(dir: string, branch: string): string {
-  const path = `${dir}-wt-${branch}`;
+  const path = worktreePath(dir, branch);
   const git = (args: string[]) =>
     Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe", stderr: "pipe" });
+  appendFileSync(join(dir, ".git", "info", "exclude"), "/.claude/\n");
   git(["worktree", "add", "-q", "-b", branch, path]);
   return path;
 }

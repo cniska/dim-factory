@@ -15,12 +15,19 @@ function scratch(): Env {
   return { DIM_HOME: root };
 }
 
-function order(env: Env, status: string): void {
+function shippedOrder(env: Env): void {
   const db = openDb(dbPath(env));
-  db.run(
-    "INSERT INTO factory_order (id, project, title, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-    ["order-1", "test/project", "Trace order", status, new Date().toISOString(), new Date().toISOString()],
-  );
+  const at = new Date().toISOString();
+  db.run("INSERT INTO factory_order (id, project, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)", [
+    "order-1",
+    "test/project",
+    "Trace order",
+    at,
+    at,
+  ]);
+  for (const kind of ["started", "shipped"]) {
+    db.run("INSERT INTO factory_order_event (order_id, ts, kind) VALUES (?, ?, ?)", ["order-1", at, kind]);
+  }
   closeDb(db);
 }
 
@@ -31,7 +38,7 @@ afterEach(() => {
 describe("the order trace command", () => {
   test("prints structured events as JSONL", async () => {
     const env = scratch();
-    order(env, "completed");
+    shippedOrder(env);
     trace({ event: "runner.started", orderId: "order-1", fields: { harness: "codex" } }, env);
     const lines: string[] = [];
 

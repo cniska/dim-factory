@@ -196,14 +196,7 @@ describe("a review round", () => {
     expect(revised.review).toBe(done.review);
     expect(revisionArgv.join(" ")).toContain("The owner returned this Review artifact for revision.");
     expect(revisionArgv.join(" ")).toContain("Explain which checks support the verdict.");
-    expect(
-      runOrderCommand(db, ["approve", "order-1"], null, dir, {
-        ...machine,
-        [WORKER_NAME_VAR]: operator,
-        [WORKER_TOKEN_VAR]: operatorToken,
-        [WORKER_SESSION_VAR]: operatorSession,
-      }),
-    ).toContain("review approved");
+    expect(approveOrder(db, "order-1", operator, undefined)).toBe("review");
     expect(
       db
         .query(

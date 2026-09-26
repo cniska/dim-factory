@@ -42,7 +42,7 @@ After plan approval:
 2. After the final slice, read the single Build artifact for the whole order. Approve it with `dim order approve <order-id> --reason "..."` or return it to the same builder with `dim order return <order-id> --reason "..."`.
 3. Run `dim order review <order-id>`. The review reads the whole order. The factory creates the reviewer identity and resumes its provider session on later rounds.
 4. Read the Review artifact; its verdict says which of these follows. When the round raised findings, run `dim order build <order-id>`; the builder answers each one in its turn, and the runner records the answers under it, so no finding is answered by you. The next review round reads those answers. If the Review artifact of a round that raised nothing needs revision, return it to the same reviewer with `dim order return <order-id> --reason "..."`.
-5. Approve the current Review artifact with `dim order approve <order-id>` as the operator.
+5. Approve the current Review artifact with `dim order approve <order-id>` as the operator. The approval ships the order.
 
 Every station has the same control boundary: read the worker's returned artifact, check it against persisted evidence, then approve it or return it to that worker with feedback. A return does not change the station identity or erase the earlier artifact revision. The artifact is the explanation; the evidence is the source of truth.
 
@@ -54,11 +54,11 @@ operator delegates → worker returns attributed artifact → operator checks ou
        └──────────── findings or failed outcome ────────────┘
 ```
 
-## Ship and stop
+## Ship
 
-- Run `dim order ship <order-id>` once `dim q order` says the order is ready to ship: every station's artifact is approved at the head.
-- Run `dim order stop <order-id> completed` only after the shipped commit and repository check satisfy the completion gate.
-- A station runner records a failed attempt itself. When a runner has stopped and left an attempt open, the operator records recovery with `dim order stop <order-id> failed --reason "..."`; this writes the worker's failed outcome and the operator's recovery separately.
+- Approving the Review artifact ships the order: its commits land on the local trunk, the order is done, and its worktree is removed. Nothing is pushed.
+- A ship that does not land says why in `dim q order`. A conflict goes back to build and a changed patch back to review, where the next act says so. When the next act is still ship, fix what the refusal names, such as a dirty trunk checkout, and run `dim order ship <order-id>`.
+- A station runner records a failed attempt itself, and the same station command runs it again.
 - Stop for an owner decision, an outward-facing action, a hard-to-reverse choice, or a machine-wide change.
 
 ## Audit rules
@@ -72,7 +72,7 @@ operator delegates → worker returns attributed artifact → operator checks ou
 
 ## Result
 
-Return the order id, its next act, latest outcome, outstanding findings, and the next operator action. If the order stopped, state the persisted reason and the worker identities that performed the last actions.
+Return the order id, its next act, latest outcome, outstanding findings, and the next operator action. If an attempt or a ship failed, or the order was dropped, state the persisted reason and the worker identities that performed the last actions.
 
 ## Red flags
 
@@ -80,7 +80,7 @@ Return the order id, its next act, latest outcome, outstanding findings, and the
 - letting a builder run planning or a reviewer delegate review
 - approving an artifact the operator did not read
 - running the next station before the current outcome is approved
-- treating a clean process exit as a completed order
+- treating a clean process exit as a shipped order
 - writing evidence after the fact from memory
 - editing the project from the operator's checkout
 - using the wall to control or infer order state

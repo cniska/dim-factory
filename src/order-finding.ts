@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { findingStanding, type OrderFindingAnswer, owesAnswer } from "./order-finding-state";
 import { appendOrderEventInTransaction } from "./order-ledger";
 import { openReviewOf, ReviewNotOpen } from "./order-review";
-import { assertOrderWorking } from "./order-status";
+import { assertOrderActive } from "./order-status";
 import type { ReviewFinding } from "./station-review-artifact";
 
 const now = (): string => new Date().toISOString();
@@ -53,7 +53,7 @@ export function raiseOrderFinding(
         `that read the diff is worth; ${worker} did not read it`,
     );
   }
-  assertOrderWorking(db, orderId);
+  assertOrderActive(db, orderId);
   return db.transaction(() => {
     const result = db.run(
       `INSERT INTO factory_order_finding
@@ -106,7 +106,7 @@ export function answerOrderFindings(
   if (role !== "builder") {
     throw new BuildTurnRefused("worker_not_builder", `worker ${worker} is not a builder`);
   }
-  assertOrderWorking(db, orderId);
+  assertOrderActive(db, orderId);
   db.transaction(() => {
     assertFindingAnswersOwed(db, orderId, answers);
     for (const given of answers) {

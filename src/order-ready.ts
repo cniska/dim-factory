@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { OrderLine } from "./order-line";
-import type { OrderPriority } from "./order-status";
+import { type OrderPriority, orderStatusSql } from "./order-status";
 
 export type ReadyOrder = {
   id: string;
@@ -41,8 +41,8 @@ export function readyOrders(db: Database, project: string, limit?: number): Read
   const rows = db
     .query<Row, [string]>(
       `SELECT id, project, title, line, description, priority, created_at
-       FROM factory_order
-       WHERE project = ? AND status = 'queued'
+       FROM factory_order o
+       WHERE project = ? AND ${orderStatusSql("o.id")} = 'queued'
        ORDER BY ${PRIORITY_RANK}, created_at, id`,
     )
     .all(project);
