@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { BuildTurn } from "./build-turn";
 import { hooksOutsideTree, nestedRepository } from "./builder-tree";
+import { stagedComments } from "./comments-staged";
 import { commentGateFor } from "./commit-gate";
 import {
   isActiveOrderRun,
@@ -16,7 +17,6 @@ import { answerOrderFindings, assertFindingAnswersOwed, BuildTurnRefused } from 
 import { dataDir, type Env } from "./paths";
 import { rebaseInProgress } from "./rebase-onto-trunk";
 import { CHECK_SANDBOX, runSandboxedCheck } from "./sandboxed-check";
-import { stagedComments } from "./staged-comments";
 import { writeTrace } from "./trace-store";
 import { trunkBranch } from "./trunk";
 import { checkCommand } from "./workspace-commands";

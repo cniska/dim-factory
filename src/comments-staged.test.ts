@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { stagedComments } from "./staged-comments";
+import { stagedComments } from "./comments-staged";
 
 const roots: string[] = [];
 

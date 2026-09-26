@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { commentsBanned } from "./comment-ban-setting";
+import { commentsBanned } from "./comments-ban-setting";
 import { checkoutSlug, labelFor } from "./git-remote";
 import { type Env, resolveHomeDir } from "./paths";
 import { prePushScript } from "./push-gate";
@@ -82,7 +82,7 @@ esac
 
 command -v dim >/dev/null 2>&1 || exit 0
 
-comments=$(dim check-comments)
+comments=$(dim comments check)
 status=$?
 if [ "$status" -eq ${COMMENTS_FOUND_EXIT} ]; then
   echo "pre-commit: this repo bans code comments, and these added lines carry one:" >&2

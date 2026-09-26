@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { commentsBanned } from "./comment-ban-setting";
+import { commentsBanned } from "./comments-ban-setting";
 
 const roots: string[] = [];
 

@@ -266,7 +266,7 @@ describe("the check gate", () => {
 describe("the comment step", () => {
   test("runs after the ownership check and before git's environment is cleared", () => {
     const script = preCommitScript(["cniska"]);
-    const step = script.indexOf("dim check-comments");
+    const step = script.indexOf("dim comments check");
     expect(step).toBeGreaterThan(script.indexOf('case " cniska " in'));
     expect(step).toBeGreaterThan(script.indexOf("command -v dim >/dev/null 2>&1 || exit 0"));
     expect(step).toBeLessThan(script.indexOf("unset GIT_DIR"));
@@ -384,7 +384,7 @@ describe("the comment gate", () => {
       commit({ "a.ts": "const a = 1;\n" });
       writeFileSync(join(work, "a.ts"), "const a = 1;\n// why\n");
       execFileSync("git", ["-C", work, "add", "-A"]);
-      const run = spawnSync(process.execPath, [join(import.meta.dir, "cli.ts"), "check-comments"], {
+      const run = spawnSync(process.execPath, [join(import.meta.dir, "cli.ts"), "comments", "check"], {
         cwd: work,
         encoding: "utf8",
         env: { ...process.env, DIM_HOME: join(dir, "machine") },
@@ -399,7 +399,7 @@ describe("the comment gate", () => {
   test("passes when dim fails with output on stdout, since only exit 3 is a refusal", () => {
     const { dir, commit } = repoWithCommentGate(
       null,
-      '[ "$1" = check-comments ] && { echo "a.ts:1"; exit 1; }; exit 0',
+      '[ "$1 $2" = "comments check" ] && { echo "a.ts:1"; exit 1; }; exit 0',
     );
     try {
       expect(commit({ "a.ts": "// why\n" }).ok).toBe(true);

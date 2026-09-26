@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { AGENT_LABEL, agentPlistPath } from "./agent";
 import { checkoutRoot } from "./checkout";
 import { codexConfigPath, planCodexTrust, type TrustState } from "./codex-trust";
-import { commentBanPath } from "./comment-ban-setting";
+import { commentBanPath } from "./comments-ban-setting";
 import {
   type CommentGate,
   commentGateFor,

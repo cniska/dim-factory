@@ -6,14 +6,7 @@ import { runBench } from "./bench";
 import { corpusPath, parseCorpus } from "./bench-corpus";
 import { checkRange } from "./check-commits";
 import { checkoutRoot } from "./checkout";
-import { commentsBanned } from "./comment-ban-setting";
-import {
-  COMMENTS_FOUND_EXIT,
-  checkoutDirs,
-  installCommitGate,
-  planCommitGate,
-  sharedHooksDir,
-} from "./commit-gate";
+import { checkoutDirs, installCommitGate, planCommitGate, sharedHooksDir } from "./commit-gate";
 import { closeDb, openDb } from "./db";
 import { diagnose } from "./doctor";
 import { downloadEmbedder, EMBED_DIMS, EMBED_MODEL, embedQuestion } from "./embed";
@@ -78,10 +71,13 @@ const USAGE = `usage: dim <command>
   check-command   print the check command this repo declares, and nothing if it
                   declares none or this is not a checkout (the pre-commit hook
                   reads this, and takes silence as no gate)
-  check-comments  print path:line for each comment on a staged added line of a
+  comments check  print path:line for each comment on a staged added line of a
                   JS or TS file that parses and exit 3, where comment-gate.json
                   beside the database bans comments in this repo; nothing and
                   exit 0 otherwise
+  comments purge [<path>...]
+                  list each tracked JS or TS file with comments and how many,
+                  tool contracts aside (--write removes them)
   route <harness> [<role>]
                   print the capability tier a factory role runs at and what this
                   harness's map calls it, or every role with no role argument
@@ -861,17 +857,8 @@ try {
         if (declared) console.log(declared.command);
       }
       break;
-    case "check-comments":
-      {
-        const root = checkoutRoot(process.cwd());
-        const label = root === null ? null : labelFor(root);
-        if (root === null || label === null || !commentsBanned(label)) break;
-        const { stagedComments } = await import("./staged-comments");
-        const { found, unparsed } = stagedComments(root);
-        for (const path of unparsed) warn(`dim: ${path} does not parse, so its comments are not judged`);
-        for (const { path, line } of found) console.log(`${path}:${line}`);
-        if (found.length > 0) process.exit(COMMENTS_FOUND_EXIT);
-      }
+    case "comments":
+      (await import("./comments-command")).runComments(process.argv.slice(3));
       break;
     case "route":
       writeFactorySuccess("route", routeReport(parseHarness(process.argv[3]), process.argv[4]));
