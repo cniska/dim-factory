@@ -85,7 +85,7 @@ Returning nothing is the expected result and not a sign the check was wasted: of
 
 ### Every finding gets an answer
 
-**Answer each finding before the commit: fix it, or refuse it and write down why**, so the diff goes out with nothing in it that was merely not mentioned. Check the claim at its source before either answer — a reviewer's reading is a claim like any other, and one taken on trust is how a wrong finding becomes the standard. Where a refusal turns on whether a finding is true rather than on whether it matters, the operator settles it: a refused finding holds the ship until it is acknowledged, which puts a hand that neither wrote the code nor raised the finding on the disagreement, and costs no model call.
+**Answer each finding before the commit: fix it, or refuse it and write down why**, so the diff goes out with nothing in it that was merely not mentioned. Check the claim at its source before either answer — a reviewer's reading is a claim like any other, and one taken on trust is how a wrong finding becomes the standard.
 
 **Run the repo's task over the answers, then hand the reviewer what it had the first time plus the diff that answers.** The same brief, the same conventions, the same four questions — a reviewer given only a patch has nothing to judge it against but its own taste. The answering diff is the one part of the slice nothing has read: it was written after the reviewer's pass, which is what the round is for.
 
