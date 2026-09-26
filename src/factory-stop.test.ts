@@ -1,7 +1,9 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { SCHEMA_SQL } from "./db-schema";
+import { runFactoryCommand } from "./factory-command";
 import { clearStop, FactoryStopError, liveStop, pullStop } from "./factory-stop";
+import { mintWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./worker";
 
 function floor(): Database {
   const db = new Database(":memory:");
@@ -59,10 +61,37 @@ describe("stopping the factory", () => {
 });
 
 describe("pulling and clearing a stop", () => {
+  test("a worker cannot clear a stop or claim another puller", () => {
+    const db = floor();
+    const operator = mintWorker(db, { role: "operator", sessionId: "operator-session" });
+    const builder = mintWorker(db, { role: "builder", sessionId: "builder-session" });
+    const operatorEnv = { [WORKER_NAME_VAR]: operator.name, [WORKER_TOKEN_VAR]: operator.token };
+    const builderEnv = { [WORKER_NAME_VAR]: builder.name, [WORKER_TOKEN_VAR]: builder.token };
+
+    expect(() => runFactoryCommand(db, ["stop", "--reason", "broken"], {})).toThrow(
+      expect.objectContaining({ code: "worker_missing" }),
+    );
+    expect(() =>
+      runFactoryCommand(db, ["stop", "--reason", "broken", "--by", operator.name], builderEnv),
+    ).toThrow();
+    expect(runFactoryCommand(db, ["stop", "--reason", "broken"], builderEnv)).toMatchObject({
+      by: builder.name,
+    });
+    expect(() => runFactoryCommand(db, ["clear"], builderEnv)).toThrow(
+      expect.objectContaining({ code: "worker_not_operator" }),
+    );
+    expect(liveStop(db)?.pulledBy).toBe(builder.name);
+    expect(runFactoryCommand(db, ["clear"], operatorEnv)).toMatchObject({ action: "cleared" });
+    db.close();
+  });
   test("a pulled stop is the live one, and names the order it came from", () => {
     const db = floor();
 
-    pullStop(db, { reason: "the wall serves code older than the database", orderId: "order-1" });
+    pullStop(db, {
+      reason: "the wall serves code older than the database",
+      by: "operator",
+      orderId: "order-1",
+    });
 
     expect(liveStop(db)).toMatchObject({
       reason: "the wall serves code older than the database",
@@ -82,9 +111,9 @@ describe("pulling and clearing a stop", () => {
 
   test("a second stop is refused while one is live", () => {
     const db = floor();
-    pullStop(db, { reason: "the wall serves code older than the database" });
+    pullStop(db, { reason: "the wall serves code older than the database", by: "operator" });
 
-    expect(() => pullStop(db, { reason: "and the gate records nothing" })).toThrow(
+    expect(() => pullStop(db, { reason: "and the gate records nothing", by: "operator" })).toThrow(
       expect.objectContaining({ code: "already_live" }),
     );
 
@@ -94,7 +123,7 @@ describe("pulling and clearing a stop", () => {
   test("a stop with no reason is refused before it reaches the table", () => {
     const db = floor();
 
-    expect(() => pullStop(db, { reason: "   " })).toThrow(
+    expect(() => pullStop(db, { reason: "   ", by: "operator" })).toThrow(
       expect.objectContaining({ code: "reason_missing" }),
     );
     expect(db.query("SELECT count(*) AS n FROM factory_stop").get()).toEqual({ n: 0 });
@@ -103,30 +132,31 @@ describe("pulling and clearing a stop", () => {
 
   test("clearing returns the defect the floor was held for, and frees the next stop", () => {
     const db = floor();
-    pullStop(db, { reason: "the wall serves code older than the database" });
+    pullStop(db, { reason: "the wall serves code older than the database", by: "operator" });
 
-    const cleared = clearStop(db, "owner");
+    const operator = mintWorker(db, { role: "operator", sessionId: "clear-session" });
+    const cleared = clearStop(db, operator.name);
 
     expect(cleared.reason).toBe("the wall serves code older than the database");
     expect(liveStop(db)).toBeUndefined();
-    expect(() => pullStop(db, { reason: "and the gate records nothing" })).not.toThrow();
+    expect(() => pullStop(db, { reason: "and the gate records nothing", by: "operator" })).not.toThrow();
     db.close();
   });
 
   test("clearing a floor that is running is refused", () => {
     const db = floor();
 
-    expect(() => clearStop(db)).toThrow(expect.objectContaining({ code: "none_live" }));
+    expect(() => clearStop(db, "operator")).toThrow(expect.objectContaining({ code: "none_live" }));
 
     db.close();
   });
 
   test("a refusal carries its code, not just its words", () => {
     const db = floor();
-    pullStop(db, { reason: "the wall serves code older than the database" });
+    pullStop(db, { reason: "the wall serves code older than the database", by: "operator" });
 
     try {
-      pullStop(db, { reason: "and the gate records nothing" });
+      pullStop(db, { reason: "and the gate records nothing", by: "operator" });
       throw new Error("expected a refusal");
     } catch (error) {
       expect(error).toBeInstanceOf(FactoryStopError);

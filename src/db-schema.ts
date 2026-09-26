@@ -182,11 +182,9 @@ CREATE INDEX IF NOT EXISTS factory_schedule_due ON factory_schedule(enabled, pau
 -- it was going to come from. Running orders are left alone, because killing a
 -- worker mid-write leaves a worktree nobody owns and a commit half made.
 --
--- A worker does not stop the factory. One that hits a defect fails its own attempt,
--- which is already how it says the owner has to look, and the operator stops the
--- floor having seen whether the defect is in the machinery or in the one piece of
--- work. Nothing in the database can tell who ran the command, so that is held by
--- dim factory stop and not by a constraint.
+-- An authenticated worker may stop the factory after finding a defect. The
+-- operator clears the stop after resolving it. The command authenticates both
+-- actions before writing this table.
 --
 -- A live stop is a row with no cleared_at rather than a flag, so there is no second
 -- copy of the state to go stale, and the index is what holds the floor to one stop

@@ -15,6 +15,26 @@ function floor(): Database {
   return db;
 }
 
+test("an accepted assignment cannot act after its worker ends", () => {
+  const db = floor();
+  const parent = mintWorker(db, { role: "operator", sessionId: "operator-session" });
+  const assignment = assignWorker(db, { role: "builder", parentWorker: parent.name });
+  const child = bootstrapWorker(db, {
+    id: assignment.id,
+    token: assignment.token,
+    sessionId: "builder-session",
+  });
+  endWorker(db, child.name);
+
+  expect(() =>
+    resolveAssignedWorker(db, {
+      DIM_WORKER_ASSIGNMENT_ID: assignment.id,
+      DIM_WORKER_ASSIGNMENT_TOKEN: assignment.token,
+    }),
+  ).toThrow(expect.objectContaining({ code: "worker_over" }));
+  db.close();
+});
+
 describe("worker assignments", () => {
   test("creates a child only when its harness session bootstraps", () => {
     const db = floor();

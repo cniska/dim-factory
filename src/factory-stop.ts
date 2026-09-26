@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { assertOperator } from "./factory-operator";
 
 export type FactoryStop = {
   id: number;
@@ -24,8 +25,6 @@ export class FactoryStopError extends Error {
     super(message);
   }
 }
-
-export const DEFAULT_PULLER = "operator";
 
 const now = (): string => new Date().toISOString();
 
@@ -58,13 +57,12 @@ export function liveStop(db: Database): FactoryStop | undefined {
 
 export function pullStop(
   db: Database,
-  stop: { reason: string; by?: string; orderId?: string },
+  stop: { reason: string; by: string; orderId?: string },
   at = now(),
 ): FactoryStop {
   if (stop.reason.trim() === "") {
     throw new FactoryStopError("reason_missing", "a stop says why, or the next operator clears it blind");
   }
-  const by = stop.by ?? DEFAULT_PULLER;
   return db.transaction(() => {
     const live = liveStop(db);
     if (live) {
@@ -75,22 +73,23 @@ export function pullStop(
     }
     const result = db.run(
       "INSERT INTO factory_stop (reason, pulled_by, pulled_at, order_id) VALUES (?, ?, ?, ?)",
-      [stop.reason, by, at, stop.orderId ?? null],
+      [stop.reason, stop.by, at, stop.orderId ?? null],
     );
     return {
       id: Number(result.lastInsertRowid),
       reason: stop.reason,
-      pulledBy: by,
+      pulledBy: stop.by,
       pulledAt: at,
       orderId: stop.orderId,
     };
   })();
 }
 
-export function clearStop(db: Database, by = DEFAULT_PULLER, at = now()): FactoryStop {
+export function clearStop(db: Database, by: string, at = now()): FactoryStop {
   return db.transaction(() => {
     const live = liveStop(db);
     if (!live) throw new FactoryStopError("none_live", "the factory is not stopped");
+    assertOperator(db, by, "clear the factory stop");
     db.run("UPDATE factory_stop SET cleared_at = ?, cleared_by = ? WHERE id = ?", [at, by, live.id]);
     return live;
   })();

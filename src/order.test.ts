@@ -1476,7 +1476,7 @@ describe("factory order report records", () => {
   test("refuses to start an order while the floor is stopped, leaving it queued", () => {
     const database = db();
     queueOrder(database, order, worker);
-    pullStop(database, { reason: "the commit gate records nothing" });
+    pullStop(database, { reason: "the commit gate records nothing", by: attemptOperator });
 
     expect(() => start(database)).toThrow(FactoryStopError);
     expect(orderStatus(database, "order-1")).toBe("queued");
@@ -1487,8 +1487,8 @@ describe("factory order report records", () => {
   test("starts an order once the stop is cleared", () => {
     const database = db();
     queueOrder(database, order, worker);
-    pullStop(database, { reason: "the commit gate records nothing" });
-    clearStop(database);
+    pullStop(database, { reason: "the commit gate records nothing", by: attemptOperator });
+    clearStop(database, attemptOperator);
 
     start(database);
 
@@ -1500,7 +1500,7 @@ describe("factory order report records", () => {
     const database = db();
     queueOrder(database, order, worker);
     start(database);
-    pullStop(database, { reason: "the commit gate records nothing" });
+    pullStop(database, { reason: "the commit gate records nothing", by: attemptOperator });
 
     landed(database, "order-1");
     appendOrderEvent(database, "order-1", { worker: attemptOperator, kind: "shipped" });

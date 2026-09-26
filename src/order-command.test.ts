@@ -557,7 +557,7 @@ describe("order command", () => {
   test("a plan onto a stopped floor is refused with the reason the floor was stopped for", async () => {
     const database = db();
     queued(database);
-    pullStop(database, { reason: "the commit gate records nothing" });
+    pullStop(database, { reason: "the commit gate records nothing", by: "operator" });
 
     await expect(
       runOrderCommandLive(database, ["plan", "order-1", "--harness", "claude"], null, trunk.dir, env),

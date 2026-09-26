@@ -90,14 +90,18 @@ export function mintWorker(
 
 type WorkerRow = { name: string; token_digest: string; pid: number | null; ended_at: string | null };
 
-export function resolveWorker(db: Database, env: Env = process.env): string {
-  const row = authenticateWorker(db, env);
+export function assertLiveWorker(row: Pick<WorkerRow, "name" | "pid" | "ended_at">): void {
   if (row.ended_at !== null) {
     throw new WorkerUnknown("worker_over", `worker ${row.name} ended at ${row.ended_at}`);
   }
   if (row.pid !== null && !pidIsAlive(row.pid)) {
     throw new WorkerUnknown("worker_over", `worker ${row.name} ran as pid ${row.pid}, which is gone`);
   }
+}
+
+export function resolveWorker(db: Database, env: Env = process.env): string {
+  const row = authenticateWorker(db, env);
+  assertLiveWorker(row);
   return row.name;
 }
 

@@ -2,11 +2,13 @@ import type { Database } from "bun:sqlite";
 import { createHash, randomBytes } from "node:crypto";
 import type { Env } from "./paths";
 import {
+  assertLiveWorker,
   type MintedWorker,
   mintWorkerForSession,
   WORKER_NAME_VAR,
   WORKER_SESSION_VAR,
   WORKER_TOKEN_VAR,
+  WorkerUnknown,
 } from "./worker";
 import type { Role } from "./worker-roles";
 
@@ -198,5 +200,13 @@ export function resolveAssignedWorker(db: Database, env: Record<string, string |
   if (!row) throw new WorkerAssignmentError("assignment_missing");
   if (row.token_digest !== digest(token)) throw new WorkerAssignmentError("assignment_token");
   if (!row.accepted_worker) throw new WorkerAssignmentError("assignment_used");
-  return row.accepted_worker;
+  const worker = db
+    .query<{ name: string; pid: number | null; ended_at: string | null }, [string]>(
+      "SELECT name, pid, ended_at FROM factory_worker WHERE name = ?",
+    )
+    .get(row.accepted_worker);
+  if (!worker)
+    throw new WorkerUnknown("worker_unissued", `this factory issued no worker ${row.accepted_worker}`);
+  assertLiveWorker(worker);
+  return worker.name;
 }
