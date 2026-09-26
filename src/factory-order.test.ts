@@ -25,6 +25,7 @@ import {
   openAssignedOrderReview,
   openOrderReview,
   queueOrder,
+  ReviewNotOpen,
   raiseOrderFinding,
   recordOrderBuild,
   recordOrderCheck,
@@ -58,7 +59,7 @@ import { dbPath } from "./paths";
 import { findQuery } from "./queries";
 import { SCHEMA_SQL } from "./schema";
 import { rebuild } from "./sync";
-import { createWorkerAssignment } from "./worker-assignment";
+import { bootstrapWorker, createWorkerAssignment } from "./worker-assignment";
 import type { WorkerHookReport } from "./worker-environment";
 
 // One hand per database, set where the database is made: every moment names a worker,
@@ -607,6 +608,111 @@ describe("factory order report records", () => {
         operator,
       ).round,
     ).toBe(2);
+    database.close();
+  });
+
+  function acceptedRound(
+    database: Database,
+    orderId: string,
+    runner: string,
+  ): { id: number; reviewer: string } {
+    queueOrder(database, { ...order, id: orderId }, runner);
+    claimOrder(database, orderId, { runId: `${orderId}-run`, station: "dim-station-review" }, runner);
+    const assignment = createWorkerAssignment(database, { parentWorker: runner, role: "reviewer" });
+    const round = openAssignedOrderReview(
+      database,
+      orderId,
+      { assignmentId: assignment.id, baseSha: "base0000", headSha: "base0000" },
+      runner,
+    );
+    const reviewer = bootstrapWorker(database, {
+      id: assignment.id,
+      token: assignment.token,
+      sessionId: newWorkerSession("accepted-reviewer"),
+      pid: process.pid,
+    }).name;
+    return { id: round.id, reviewer };
+  }
+
+  function namedRound(database: Database, orderId: string, runner: string): { id: number; reviewer: string } {
+    queueOrder(database, { ...order, id: orderId }, runner);
+    claimOrder(database, orderId, { runId: `${orderId}-run`, station: "dim-station-review" }, runner);
+    const reviewer = mintWorker(database, {
+      role: "reviewer",
+      pid: process.pid,
+      sessionId: newWorkerSession("named-reviewer"),
+    }).name;
+    const round = openOrderReview(
+      database,
+      orderId,
+      { reviewer, baseSha: "base0000", headSha: "base0000" },
+      runner,
+    );
+    return { id: round.id, reviewer };
+  }
+
+  test.each([
+    ["accepted its assignment", acceptedRound],
+    ["was named when the round opened", namedRound],
+  ])("recovery refuses while a reviewer that %s is still running, and changes nothing", (_, openRound) => {
+    const database = db();
+    const runner = workerIn(database, "operator");
+    const operator = workerIn(database, "operator");
+    const round = openRound(database, "reviewer-running", runner);
+    const events = () =>
+      database
+        .query<{ n: number }, [string]>("SELECT count(*) AS n FROM factory_order_event WHERE order_id = ?")
+        .get("reviewer-running")?.n;
+    const before = events();
+
+    let refused: unknown;
+    try {
+      recoverOrderFailure(database, "reviewer-running", operator, "runner died");
+    } catch (error) {
+      refused = error;
+    }
+
+    expect(refused).toBeInstanceOf(ReviewNotOpen);
+    expect((refused as ReviewNotOpen).code).toBe("review_running");
+    expect((refused as ReviewNotOpen).message).toContain(`review ${round.id}`);
+    expect((refused as ReviewNotOpen).message).toContain(round.reviewer);
+    expect(
+      database
+        .query<{ closed_at: string | null }, [number]>(
+          "SELECT closed_at FROM factory_order_review WHERE id = ?",
+        )
+        .get(round.id),
+    ).toEqual({ closed_at: null });
+    expect(
+      database
+        .query<{ status: string }, [string]>("SELECT status FROM factory_order WHERE id = ?")
+        .get("reviewer-running"),
+    ).toEqual({ status: "working" });
+    expect(events()).toBe(before);
+    database.close();
+  });
+
+  test("recovery aborts the round of a reviewer that has ended, under the operator", () => {
+    const database = db();
+    const runner = workerIn(database, "operator");
+    const operator = workerIn(database, "operator");
+    const round = acceptedRound(database, "reviewer-ended", runner);
+    endWorker(database, round.reviewer);
+
+    recoverOrderFailure(database, "reviewer-ended", operator, "reviewer ended");
+
+    expect(
+      database
+        .query<{ outcome: string | null }, [number]>("SELECT outcome FROM factory_order_review WHERE id = ?")
+        .get(round.id),
+    ).toEqual({ outcome: "aborted" });
+    expect(
+      database
+        .query<{ worker: string }, [number]>(
+          "SELECT worker FROM factory_order_event WHERE review_id = ? AND kind = 'review_closed'",
+        )
+        .get(round.id),
+    ).toEqual({ worker: operator });
     database.close();
   });
 

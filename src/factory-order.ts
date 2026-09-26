@@ -1027,10 +1027,19 @@ export function recoverOrderFailure(
       : undefined;
     // Closed first because a review_closed is refused once `failed` has queued the order.
     const openReview = db
-      .query<{ id: number }, [string]>(
-        "SELECT id FROM factory_order_review WHERE order_id = ? AND closed_at IS NULL",
+      .query<{ id: number; reviewer: string | null }, [string]>(
+        `SELECT r.id, coalesce(r.reviewer, a.accepted_worker) AS reviewer
+         FROM factory_order_review r
+         LEFT JOIN factory_worker_assignment a ON a.id = r.assignment_id
+         WHERE r.order_id = ? AND r.closed_at IS NULL`,
       )
       .get(orderId);
+    if (openReview?.reviewer && !workerIsOver(db, openReview.reviewer)) {
+      throw new ReviewNotOpen(
+        "review_running",
+        `review ${openReview.id} is still being read by ${openReview.reviewer}, so recovery leaves it open`,
+      );
+    }
     if (openReview) closeOrderReview(db, openReview.id, "aborted", operator, at, reason);
     appendOrderEventInTransaction(
       db,
@@ -1325,7 +1334,12 @@ export type ReviewRound = { id: number; round: number; reviewer: string | null }
 
 export class ReviewNotOpen extends Error {
   constructor(
-    readonly code: "review_open" | "review_unknown" | "review_closed" | "review_not_its_reviewer",
+    readonly code:
+      | "review_open"
+      | "review_unknown"
+      | "review_closed"
+      | "review_not_its_reviewer"
+      | "review_running",
     message: string,
   ) {
     super(message);
