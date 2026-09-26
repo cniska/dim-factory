@@ -34,6 +34,12 @@ How a line leaves a skill or a rules file:
 
 A rule leaves `~/.claude/CLAUDE.md` only once a gate holds it, since moving it into a skill cuts its reach to the sessions that load that skill.
 
+## Direction
+
+- **What every project repeats, the factory holds once.** Commit checks, pre-push, worktree setup, ship scripts and CI checks drift apart when each project keeps its own copy; each one pulled into `dim` is one less thing to maintain per project.
+- **The core is general; the owner's taste is policy.** The session record, orders, worktrees, attributed approvals, the wall and trust earned per kind of order hold for any repo. The comment ban, the subject limit, trunk-only shipping and the anti-pattern review are defaults a repo adopts.
+- **Harness-independent and local.** No vendor builds a ledger that compares its own agent against another's, so the record stays on the machine and works under any harness.
+
 ## Not goals
 
 - Judging whether a skill made the work better.

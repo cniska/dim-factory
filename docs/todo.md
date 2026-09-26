@@ -19,7 +19,7 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 
 - **Order lifecycle** — one state machine read from the record, checked by each of plan, build, review and ship on entry. No `dim order move`, no return to the queue, ship ends the order, and only statuses that cannot be derived are stored.
 - **Ship and rebase records** — one table for ship outcomes and one for rebases, replacing the delivery rows and event JSON.
-- **Ship through a pull request** — `dim.ship = pull-request`, since most repos do not fast-forward their default branch.
+- **Ship through a pull request** — `dim.ship = pull-request`, since most repos do not fast-forward their default branch. Built against one of the owner's repos that ships by PR, once the factory runs again.
 - **An attempt for every station run** — planner and reviewer runs claim the order too, and the order's worker folds into its assignment.
 - **Order table cleanup** — a station constraint, per-kind event references, stale columns dropped, and events for amend, priority and hold.
 - **Operator–worker communication** — one design for how the operator and workers talk, with the operator as the only hub. The operator briefs a reviewer but never forwards the builder's arguments to it, and every message the operator sends a worker is an event, so a relay would show in the record.
@@ -30,8 +30,10 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 - **A change summary before ship** — builder and reviewer each describe the change, read side by side.
 - **Gates earn trust per kind of order** — over a lookback window with a minimum sample, the record shows which kinds of order the owner has stopped needing to read, and the wall marks them. Trust is asymmetric: a return or a revert demotes at once, and promotion happens only on the owner's word, citing the evidence ([`landscape.md`](landscape.md#earned-autonomy)).
 - **Artifacts linked to commits by trailer** — so an order's plan, Build and Review artifacts stay attached to its commits through a rebase.
+- **Pull what every project repeats into `dim`** — commit checks, pre-push, worktree setup, ship scripts and CI checks each become one thing `dim` holds, and the per-project copy is deleted ([`findings.md`](findings.md), "The same script, five times, already drifted").
 - **The owner's rules as per-repo defaults** — the comment ban is already a setting; the subject limit, trunk-only shipping, a required `AGENTS.md` and the anti-pattern review become settings a repo adopts rather than conditions of using `dim`.
 - **Review against the anti-patterns** — a review dimension whose brief is [`agent-anti-patterns.md`](agent-anti-patterns.md), on the plan and on each diff.
+- **Single-word commands** — `format-edit`, `check-command`, `check-commits` and the `install-*` commands take one word each, or become subcommands (`dim install hooks`), with the hook commands and docs moved in the same change.
 - **Closed vocabularies are exhaustive at compile time.**
 - **One judge per gate** — hooks, the runner, CI and order completion call the same check.
 - **The check read through the workspace detectors.**
@@ -65,7 +67,6 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 - **Undo an agent's writes** ([`worktrees.md`](worktrees.md)).
 - **Messages between running sessions.**
 - **Gates for US spelling** and for banner comments outside JS and TS.
-- **Extract the repeated toolchain** setup across checkouts.
 
 ## Owner decides
 
