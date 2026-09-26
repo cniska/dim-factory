@@ -1025,6 +1025,13 @@ export function recoverOrderFailure(
           )
           .get(orderId, order.run_id)?.worker ?? undefined)
       : undefined;
+    // Closed first because a review_closed is refused once `failed` has queued the order.
+    const openReview = db
+      .query<{ id: number }, [string]>(
+        "SELECT id FROM factory_order_review WHERE order_id = ? AND closed_at IS NULL",
+      )
+      .get(orderId);
+    if (openReview) closeOrderReview(db, openReview.id, "aborted", operator, at, reason);
     appendOrderEventInTransaction(
       db,
       orderId,

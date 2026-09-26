@@ -22,6 +22,7 @@ import {
   moveOrder,
   nextOrderSlice,
   type OrderClaim,
+  openAssignedOrderReview,
   openOrderReview,
   queueOrder,
   raiseOrderFinding,
@@ -57,6 +58,7 @@ import { dbPath } from "./paths";
 import { findQuery } from "./queries";
 import { SCHEMA_SQL } from "./schema";
 import { rebuild } from "./sync";
+import { createWorkerAssignment } from "./worker-assignment";
 import type { WorkerHookReport } from "./worker-environment";
 
 // One hand per database, set where the database is made: every moment names a worker,
@@ -551,6 +553,60 @@ describe("factory order report records", () => {
         )
         .get("operator-recovery"),
     ).toEqual({ worker: builder, operator_worker: operator });
+    database.close();
+  });
+
+  test("recovery aborts a review round its runner left open, so the order can be reviewed again", () => {
+    const database = db();
+    const runner = workerIn(database, "operator");
+    const operator = workerIn(database, "operator");
+    const reviewClaim = { runId: "review-run", station: "dim-station-review" };
+    queueOrder(database, { ...order, id: "stranded-review" }, runner);
+    claimOrder(database, "stranded-review", reviewClaim, runner, "2026-09-22T12:00:00.000Z");
+    const unaccepted = createWorkerAssignment(database, { parentWorker: runner, role: "reviewer" });
+    const stranded = openAssignedOrderReview(
+      database,
+      "stranded-review",
+      { assignmentId: unaccepted.id, baseSha: "base0000", headSha: "base0000" },
+      runner,
+      "2026-09-22T12:01:00.000Z",
+    );
+
+    recoverOrderFailure(database, "stranded-review", operator, "runner died", "2026-09-22T12:02:00.000Z");
+
+    expect(
+      database
+        .query<{ outcome: string | null; closed_at: string | null }, [number]>(
+          "SELECT outcome, closed_at FROM factory_order_review WHERE id = ?",
+        )
+        .get(stranded.id),
+    ).toEqual({ outcome: "aborted", closed_at: "2026-09-22T12:02:00.000Z" });
+    expect(
+      database
+        .query<
+          { kind: string; worker: string | null; review_id: number | null; reason: string | null },
+          [string]
+        >(
+          "SELECT kind, worker, review_id, reason FROM factory_order_event WHERE order_id = ? ORDER BY id DESC LIMIT 3",
+        )
+        .all("stranded-review")
+        .reverse(),
+    ).toEqual([
+      { kind: "review_closed", worker: operator, review_id: stranded.id, reason: "runner died" },
+      { kind: "failed", worker: runner, review_id: null, reason: "runner died" },
+      { kind: "recovered", worker: operator, review_id: null, reason: "runner died" },
+    ]);
+
+    claimOrder(database, "stranded-review", { ...reviewClaim, runId: "review-run-2" }, operator);
+    const again = createWorkerAssignment(database, { parentWorker: operator, role: "reviewer" });
+    expect(
+      openAssignedOrderReview(
+        database,
+        "stranded-review",
+        { assignmentId: again.id, baseSha: "base0000", headSha: "base0000" },
+        operator,
+      ).round,
+    ).toBe(2);
     database.close();
   });
 
