@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { BUILD_TURN_SCHEMA, parseBuildTurn } from "./build-turn";
 import { BuildTurnRefused, commitBuildTurn } from "./builder-commit";
 import type { Capability } from "./capabilities";
+import { type CheckoutConvention, CONVENTION_FLOOR, checkoutConvention } from "./commit-convention";
 import { assertOperator } from "./factory-operator";
 import type { OrderSlice } from "./factory-order";
 import {
@@ -33,6 +34,17 @@ export const BUILDER_CAPABILITIES: Capability[] = [
   "run-check",
 ];
 
+function conventionContext({ repo, commits, observed }: CheckoutConvention): string {
+  if (!observed) {
+    return `The record holds ${commits} commits from ${repo}, fewer than the ${CONVENTION_FLOOR} it takes to read a convention from; take the subject's form from the repository's own git log.`;
+  }
+  const kinds = observed.topKinds.length > 0 ? `, most often ${observed.topKinds.join(", ")}` : "";
+  return [
+    `The record holds ${commits} commits from ${repo}. ${observed.conventionalPct}% of their subjects carry a Conventional Commits type${kinds}; subjects average ${observed.meanLength} characters and ${observed.over50Pct}% run over 50.`,
+    "This is what the log shows, not a limit: the repository's commit hooks decide what git accepts, and a commit git refuses comes back to you with its reason.",
+  ].join(" ");
+}
+
 export function builderBrief(
   order: { id: string; title: string; description: string | null },
   plan: { body: string; slices: readonly PlanSlice[] },
@@ -41,6 +53,7 @@ export function builderBrief(
   revision?: { body: string; feedback: string },
   previousFailure?: string,
   reviewFindings: readonly string[] = [],
+  convention?: CheckoutConvention,
 ): string {
   const needsCodeWork = currentSlice !== null || reviewFindings.length > 0;
   const workspaceContext = workspace
@@ -63,6 +76,7 @@ export function builderBrief(
     "# Workspace",
     ...workspaceContext,
     "",
+    ...(needsCodeWork && convention ? ["# Commit convention", conventionContext(convention), ""] : []),
     "The operator approved the following plan. Implement only this outcome:",
     "",
     plan.body,
@@ -269,8 +283,10 @@ export async function runOrderBuildLive(
     )
     .get(orderId);
   const runId = `build-${crypto.randomUUID()}`;
-  const worktree = worktreePath(repoRoot(options.dir), orderId);
+  const root = repoRoot(options.dir);
+  const worktree = worktreePath(root, orderId);
   const workspace = workspaceContract(worktree);
+  const convention = needsCodeWork ? checkoutConvention(db, root) : undefined;
   let builder: string | undefined;
   let harnessOutput = "";
   let harnessFailureReason: string | undefined;
@@ -335,6 +351,7 @@ export async function runOrderBuildLive(
           artifact ? { body: artifact.body, feedback: artifact.reason } : undefined,
           previousFailure?.reason ?? undefined,
           reviewFindings,
+          convention,
         ),
         capabilities: BUILDER_CAPABILITIES,
         ...(needsCodeWork ? { outputSchema: BUILD_TURN_SCHEMA } : {}),

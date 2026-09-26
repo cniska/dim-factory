@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { CONVENTION_FLOOR, conventionCommits, conventionRecords } from "./commit-convention";
 import { EMBED_MODEL, fromBlob, type Question, similarity } from "./embed";
 import { parsePassageRef } from "./passage-ref";
 import { isScratchRepo } from "./scratch";
@@ -2466,15 +2467,7 @@ const slices: Query = {
  * What a repo's own log says its commit convention is. The tool-agnostic advice
  * for this is to read `git log` and match it, which is inference over a sample;
  * the whole log is already a table here, so the answer is a row.
- *
- * Worktrees fold onto the checkout they are a copy of, by the same path rule
- * `prior-art` uses: a label folds them where a remote names one, and a repo with
- * no remote would otherwise be split from its own worktree and each half judged
- * against the floor alone.
  */
-/** Below this a repo's log is a handful of commits, which describes whoever wrote them rather than the repo. */
-const FLOOR = 20;
-
 const convention: Query = {
   name: "convention",
   summary: "the commit convention each repo's own log holds",
@@ -2503,44 +2496,15 @@ const convention: Query = {
       conds.push(w.sql.trim().replace(/^WHERE /, ""));
       filter.push(...w.params);
     }
-    // Every number in a row is measured over the same rows, `top_kinds` included:
-    // a subquery reading the base table instead would report types from outside
-    // the window the rest of the row is bounded by.
-    const scoped = `WITH c AS (
-         SELECT coalesce(label, replace(${withoutWorktree("repo")}, ? || '/', '')) AS repo_key,
-                subject, kind, ts
-         FROM repo_commit
-       ),
-       f AS (SELECT * FROM c ${conds.length ? `WHERE ${conds.join(" AND ")}` : ""})`;
-    const records = table(
-      db,
-      `${scoped}
-       SELECT repo_key AS repo,
-              count(*) AS commits,
-              round(100.0 * sum(kind IS NOT NULL) / count(*)) AS conventional_pct,
-              round(avg(length(subject))) AS mean_len,
-              round(100.0 * sum(length(subject) > 50) / count(*)) AS over_50_pct,
-              -- The suffix must close the subject and carry a number, or a
-              -- parenthesized tag and a bare issue reference both read as a
-              -- merge that never happened.
-              round(100.0 * sum(subject GLOB '*(#[0-9]*)') / count(*)) AS squashed_pct,
-              (SELECT group_concat(k, ' ') FROM
-                 (SELECT g.kind AS k FROM f g
-                  WHERE g.repo_key = f.repo_key AND g.kind IS NOT NULL
-                  GROUP BY g.kind ORDER BY count(*) DESC LIMIT 3)) AS top_kinds
-       FROM f
-       GROUP BY repo_key
-       HAVING commits >= ${FLOOR}
-       ORDER BY commits DESC LIMIT 30`,
-      [homeOf(ctx), ...filter],
-    );
-    const commits = scalar(db, `${scoped} SELECT count(*) AS n FROM f`, homeOf(ctx), ...filter);
+    const scope = { home: homeOf(ctx), conds, params: filter };
+    const records = conventionRecords(db, scope, 30);
+    const commits = conventionCommits(db, scope);
     return {
       denominator:
         commits === 0
           ? "no commits read, so no repo has a convention to report"
           : `${commits} commits read from the repos on disk (${windowLine(ctx)}); ` +
-            `${records.length} of them have the ${FLOOR} commits it takes to be reported, at most 30 shown`,
+            `${records.length} of them have the ${CONVENTION_FLOOR} commits it takes to be reported, at most 30 shown`,
       columns,
       rows: toRows(records, columns),
       note:

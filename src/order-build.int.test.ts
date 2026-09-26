@@ -44,6 +44,7 @@ import { confiningCheckSandbox, declareCheck, integratedRepo } from "./fixtures.
 import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
 import { runOrderBuildLive } from "./order-build";
 import { SCHEMA_SQL } from "./schema";
+import { repoRoot } from "./wt-command";
 
 const repos: string[] = [];
 const homes: string[] = [];
@@ -161,6 +162,9 @@ describe("builder station", () => {
     expect(request?.cwd).toBe(realpathSync(join(repo.dir, ".claude", "worktrees", "builder-order")));
     expect(request?.brief).toContain("The operator approved the following plan");
     expect(request?.brief).toContain("Build the requested result.");
+    expect(request?.brief).toContain(
+      `The record holds 0 commits from ${repoRoot(repo.dir)}, fewer than the 20 it takes to read a convention from`,
+    );
     expect(request?.outputSchema).toEndWith("build-turn.schema.json");
     expect(outcome.worktree).toBe(request?.cwd ?? "");
     expect(
@@ -244,6 +248,44 @@ describe("builder station", () => {
         .query("SELECT kind FROM factory_order_event WHERE order_id = ? ORDER BY id DESC LIMIT 1")
         .get("builder-order"),
     ).toEqual({ kind: "hold_released" });
+    db.close();
+  });
+
+  test("tells the builder the convention its repository's recorded log shows", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-convention-");
+    const { repo, operator } = orderAtBuild(db, "convention-order", [
+      { title: "Build the result", outcome: "The requested result is verified." },
+    ]);
+    const root = repoRoot(repo.dir);
+    for (let i = 0; i < 20; i++) {
+      db.run(
+        "INSERT INTO repo_commit (sha, repo, label, ts, author, subject, kind) VALUES (?, ?, NULL, '2026-01-01T00:00:00Z', 'a', ?, ?)",
+        [
+          `c${i}`,
+          `${root}/.claude/worktrees/earlier`,
+          i < 15 ? "fix: a short subject" : "a plain one",
+          i < 15 ? "fix" : null,
+        ],
+      );
+    }
+    let brief = "";
+
+    await runOrderBuildLive(db, "convention-order", operator.name, {
+      dir: repo.dir,
+      env: { DIM_HOME: dimHome },
+      checkSandbox: confiningCheckSandbox(),
+      adapter: builderTurn((request) => {
+        brief = request.brief;
+        writeFileSync(join(request.cwd, "built.txt"), "built\n");
+        return { subject: "feat: build it", artifact: "Built." };
+      }),
+    });
+
+    expect(brief).toContain("# Commit convention");
+    expect(brief).toContain(
+      `The record holds 20 commits from ${root}. 75% of their subjects carry a Conventional Commits type, most often fix; subjects average 18 characters and 0% run over 50.`,
+    );
     db.close();
   });
 
