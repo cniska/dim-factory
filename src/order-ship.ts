@@ -81,7 +81,7 @@ export function shipOrder(
       return {
         hold: new ShipRefusal(
           "ship_patch_changed",
-          `rebasing ${orderId} onto the trunk changed a patch, so its approved review no longer covers it; it is back at review`,
+          `rebasing ${orderId} onto the default branch changed a patch, so its approved review no longer covers it; it is back at review`,
         ),
       };
     };

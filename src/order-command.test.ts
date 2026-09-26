@@ -295,7 +295,7 @@ describe("order command", () => {
     recordOrderReviewArtifact(database, "order-1", "## Outcome\n\nClean.", round.reviewer);
     closeOrderReview(database, round.review, "closed", round.reviewer);
     expect(runOrderCommand(database, ["approve", "order-1"])).toBe(
-      `order-1 review approved by ${operator}; order-1 is already on the trunk and done`,
+      `order-1 review approved by ${operator}; order-1 is already on the default branch and done`,
     );
     expect(() => runOrderCommand(database, ["approve", "order-1"])).toThrow(
       expect.objectContaining({
@@ -365,7 +365,7 @@ describe("order command", () => {
     approvedAt(database, sha);
 
     expect(runOrderCommand(database, ["ship", "order-1"], null, wt)).toBe(
-      "order-1 is fast-forwarded onto the trunk and done",
+      "order-1 is fast-forwarded onto the default branch and done",
     );
 
     expect(Bun.spawnSync(["git", "-C", trunk.dir, "merge-base", "--is-ancestor", sha, "HEAD"]).success).toBe(
@@ -393,7 +393,7 @@ describe("order command", () => {
     approvedAt(database, sha);
 
     expect(runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toBe(
-      "order-1 is fast-forwarded onto the trunk and done",
+      "order-1 is fast-forwarded onto the default branch and done",
     );
 
     expect(Bun.spawnSync(["git", "-C", trunk.dir, "merge-base", "--is-ancestor", sha, "HEAD"]).success).toBe(
@@ -409,7 +409,7 @@ describe("order command", () => {
     approvedAt(database, trunk.sha);
 
     expect(runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toBe(
-      "order-1 is already on the trunk and done",
+      "order-1 is already on the default branch and done",
     );
     const snapshot = assembleWallSnapshot(database);
     expect(snapshot.totals).toEqual({ todo: 0, active: 0, done: 1 });

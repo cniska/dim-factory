@@ -16,10 +16,10 @@ export function trunkBranch(dir: string): { name: string } | { why: string } {
   const head = git(dir, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
   const name = head.success ? head.out.slice(head.out.indexOf("/") + 1) : "";
   if (!name) {
-    return { why: `${dir} does not name a trunk; set it with \`git remote set-head origin -a\`` };
+    return { why: `${dir} does not name a default branch; set it with \`git remote set-head origin -a\`` };
   }
   if (!git(dir, ["rev-parse", "--verify", "--quiet", `refs/heads/${name}`]).success) {
-    return { why: `${dir} names ${name} as its trunk but has no local branch by that name` };
+    return { why: `${dir} names ${name} as its default branch but has no local branch by that name` };
   }
   return { name };
 }

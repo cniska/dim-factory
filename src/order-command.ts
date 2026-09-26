@@ -96,9 +96,9 @@ function add(
 }
 
 const SHIP_OUTCOME_TEXT: Record<ShipOutcome["landed"], string> = {
-  already: "already on the trunk",
-  fast_forward: "fast-forwarded onto the trunk",
-  rebased: "rebased onto the trunk, re-checked and fast-forwarded",
+  already: "already on the default branch",
+  fast_forward: "fast-forwarded onto the default branch",
+  rebased: "rebased onto the default branch, re-checked and fast-forwarded",
 };
 
 function ship(db: Database, orderId: string, args: string[], cwd: string, env: Env, worker: string): string {
@@ -199,6 +199,7 @@ export async function runOrderCommandLive(
   const operator = resolveWorker(db, env);
   const harness = selectedHarness(db, given, operator);
   if (args[0] === "plan") {
+    assertOperator(db, operator, "delegate planning");
     requireCurrentHooks(env);
     const outcome = await runOrderPlanLive(db, orderId, { dir: cwd, env, harness });
     return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;

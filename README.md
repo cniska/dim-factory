@@ -5,7 +5,7 @@
 - **Record.** Sessions, tool calls, commits and usage in one local SQLite database. No network, no credential, no per-token cost.
 - **Recall.** Named queries and local semantic search over what was decided before; `dim wake` delivers the last handoff to a new session.
 - **Gates.** Hooks that hold mechanical rules — commit subjects, the repo's check, comments, pushes to the default branch — whether or not a skill loaded.
-- **Factory.** Orders run through plan, build and review stations as separate workers, each in its own worktree, with every act recorded and the owner approving each artifact.
+- **Factory.** Orders run through plan, build and review stations as separate workers in the order's worktree, with every act recorded and the owner approving each artifact.
 - **Wall.** A read-only board showing where every order is.
 
 ## Quick start

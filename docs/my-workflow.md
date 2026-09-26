@@ -58,7 +58,7 @@ When context runs long, the session writes a handoff and the next one starts cle
 
 Verified slices are committed locally; a shared branch is pushed only on my go.
 
-- **Check:** the work is on the trunk.
+- **Check:** the work is on the default branch.
 - **Factory:** `dim order ship`.
 
 ### 8. Close the gap

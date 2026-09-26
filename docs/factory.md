@@ -59,7 +59,7 @@ A command with no `--harness` runs the worker under the harness the operator's o
 A builder leaves its changes uncommitted and returns a build turn: a commit subject, an answer per finding, and the Build artifact on every turn but one that finishes an earlier slice. A returned Build artifact runs a build turn too, briefed with the owner's feedback, and it may change code. The runner then ([`src/station-build-commit.ts`](../src/station-build-commit.ts)):
 
 1. refuses a turn that leaves a handed finding unanswered or answers one it was not handed
-2. applies the comment gate over the staged tree, reading the ban from the trunk's config so a builder cannot lift it
+2. applies the comment gate over the staged tree, reading the ban from the local default branch's config so a builder cannot lift it
 3. runs the repo's check in the check sandbox, without the operator's identity
 4. commits with the repo's own identity and signing, and records the commit under the builder and the check under the operator
 
@@ -67,22 +67,22 @@ A refused commit or comment goes back to the same builder, at most twice per tur
 
 ## Done
 
-An order is done when it ships: its commits land on the local trunk, a `shipped` event records it, and its worktree is removed. Nothing is pushed. Ship waits on an approved Build artifact, which the runner writes only with a check that passed at the head, and on an approved Review artifact at the head; the docs changing with the behavior rest on the stations. A failed branch landing attempt writes a `ship_failed` event with its reason.
+An order is done when it ships: its commits land on the local default branch, a `shipped` event records it, and its worktree is removed. Nothing is pushed. Ship waits on an approved Build artifact, which the runner writes only with a check that passed at the head, and on an approved Review artifact at the head; the docs changing with the behavior rest on the stations. A failed branch landing attempt writes a `ship_failed` event with its reason.
 
 Ship lands the order the way the repo declares with `git config dim.ship`:
 
-- **`trunk`** fast-forwards the trunk to the order's branch. A branch the trunk has moved past is first rebased in the order's worktree and re-checked.
+- **`trunk`** fast-forwards the local default branch to the order's branch. If the default branch has moved ahead, the order's branch is first rebased in its worktree and re-checked.
 - **`pull-request`** is declared but not built, and refused.
 - A repo that declares nothing, or an unknown value, is refused, so no agent guesses how a repo ships.
 
 Around it:
 
-- The trunk is `refs/remotes/origin/HEAD`, never an assumed name.
+- `refs/remotes/origin/HEAD` identifies the default branch; ship lands on the local branch of that name.
 - Ship runs under the factory lock, since two ships would race on one checkout.
 - A build approval carries through every rebase, since the rebase replays approved commits and re-checks them; a review approval carries only through one whose patches are equal. So a rebase that changed a patch puts the order back at review, reading the whole order from the new base, and a conflict puts it back at build: the builder resolves the paths in place, and the runner continues the rebase instead of committing ([`src/station-build-rebase.ts`](../src/station-build-rebase.ts)).
 - A red re-check keeps the rebase and puts the order back at build, where a build turn briefed with the check's output fixes the rebased head ([`src/order-head-check.ts`](../src/order-head-check.ts)). Its commit takes a new Build approval and a new review round before the order ships.
 - A rebase is recorded as a rewrite: each retired sha stays in the record and never counts as landed, reviewed or current.
-- Refused before anything moves: a dirty or nested worktree, a dirty trunk, a branch tip that is none of the order's recorded commits, and an unsigned commit where the repo signs.
+- When commits remain to land, ship refuses a dirty default branch checkout, an unrecorded branch tip, or an unsigned commit where the repo signs. Before a rebase, it also refuses a dirty or nested order worktree.
 
 ## Workers
 

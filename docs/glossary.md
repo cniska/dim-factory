@@ -23,8 +23,8 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Stage | How far along an order is, as the wall shows it: `todo`, `active` or `done` |
 | Next act | What an order waits on, read from the record by [`src/order-state.ts`](../src/order-state.ts) and never stored: at a station, `run` or `approve`; once every station's artifact is approved, `ship`. Every act checks it on entry |
 | Slice | One increment inside an order that verifies and commits on its own |
-| Ship | Landing an order's commits on the local trunk the way the repo declares in `dim.ship`, which ends the order. Approving the Review artifact ships; `dim order ship` retries a ship that failed |
-| Done | The status of a shipped order: its commits are on the trunk and its worktree is gone |
+| Ship | Landing an order's commits on the local default branch the way the repo declares in `dim.ship`, which ends the order. Approving the Review artifact ships; `dim order ship` retries a ship that failed |
+| Done | The status of a shipped order: its commits are on the default branch and its worktree is gone |
 | Command | One `dim` subcommand, in the `src/<name>-command.ts` named for it ([`src/cli-contract.ts`](../src/cli-contract.ts)) |
 | Command line | The text a shell runs, such as `bun run verify` |
 | Workspace task | What a repo declares in its manifest — a `package.json` script, a `mise` task, a `Makefile` target — read, never inferred ([`src/workspace-tasks.ts`](../src/workspace-tasks.ts)). The check is the task that says a change is sound |
@@ -41,7 +41,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Artifact | A document a station worker writes for the owner — a plan, a Build artifact or a review — one row per revision in `factory_order_artifact`. It leads with the outcome and never lives in the worktree |
 | Build turn | What a builder returns after code work: the commit subject, an answer per finding it was handed, and on the last turn the Build artifact ([`src/station-build-turn.ts`](../src/station-build-turn.ts)). The runner commits; the builder does not |
 | Check sandbox | The confinement the runner runs a repo's check in: worktree writable, network and `dim`'s data refused ([`src/check-sandbox.ts`](../src/check-sandbox.ts)) |
-| Rewrite | One rebase of an order's branch onto a moved trunk, recorded with the sha each commit retires |
+| Rewrite | One rebase of an order's branch onto a moved default branch, recorded with the sha each commit retires |
 | Finding | A problem a reviewer raised, with a file and line, the failure, a fix direction and a severity ([`src/order-finding-state.ts`](../src/order-finding-state.ts)) |
 | Severity | How much a finding costs if it ships: `critical`, `high` or `medium` |
 | Observation | A point in a review that blocks nothing |

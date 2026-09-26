@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SCHEMA_SQL } from "./db-schema";
-import { integratedRepo } from "./fixtures.test-support";
+import { integratedRepo, scratchEnv } from "./fixtures.test-support";
 import { scriptedHarness } from "./harness-scripted.test-support";
 import { recordOrderPlan } from "./order-artifacts";
 import { runOrderCommand, runOrderCommandLive } from "./order-command";
@@ -225,6 +225,8 @@ describe("plan approval integration", () => {
     db.run(SCHEMA_SQL);
     const repo = integratedRepo();
     repos.push(repo.dir);
+    const home = mkdtempSync(join(tmpdir(), "dim-plan-delegation-"));
+    homes.push(home);
     const operator = mintWorker(db, { role: "operator", sessionId: "delegate-operator" });
     const builder = mintWorker(db, {
       role: "builder",
@@ -238,13 +240,10 @@ describe("plan approval integration", () => {
     );
 
     await expect(
-      runOrderCommandLive(
-        db,
-        ["plan", "delegation-order", "--harness", "codex"],
-        null,
-        repo.dir,
-        env(builder),
-      ),
+      runOrderCommandLive(db, ["plan", "delegation-order", "--harness", "codex"], null, repo.dir, {
+        ...env(builder),
+        ...scratchEnv(home),
+      }),
     ).rejects.toThrow(expect.objectContaining({ code: "worker_not_operator" }));
     expect(db.query("SELECT count(*) AS n FROM factory_order_artifact").get()).toEqual({ n: 0 });
     db.close();
