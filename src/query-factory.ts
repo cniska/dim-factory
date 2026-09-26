@@ -51,7 +51,7 @@ export const findings: Query = {
           (ctx.since ? ` ${windowLine(ctx)}` : ""),
         columns,
         rows: [],
-        note: "`dim-station-build` records one per finding as it is answered; nothing backfills a session that has ended.",
+        note: "`dim-build` records one per finding as it is answered; nothing backfills a session that has ended.",
       };
     }
     return {

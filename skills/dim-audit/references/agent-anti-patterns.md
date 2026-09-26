@@ -2,7 +2,7 @@
 
 Shapes coding agents keep writing, and the fix for each. An agent copies the code nearest its change, so one instance left standing becomes the next change's template. Code an agent writes is rid of every entry here before it lands, and an instance found in merged code is fixed rather than left as precedent.
 
-The entries are the owner's corrections to agents across their projects, quoted from the record; the examples are from this repository. Each names what holds it: a type or constraint where one can, otherwise review. A review dimension reading against this page is in [`todo.md`](todo.md).
+The entries are the owner's corrections to agents across their projects, quoted from the record; the examples are from dim-factory. Each names what holds it: a type or constraint where one can, otherwise review. A review dimension reading against this page is in [`todo.md`](../../../docs/todo.md).
 
 ## A workaround in place of the cause
 
@@ -26,17 +26,17 @@ The same thing done by two routes — a synchronous twin beside the live runner,
 
 A thing is made to fit an existing concept because the shape was already there: shipping, an act the operator runs once every station is done, stored as a fourth station an order is moved to. The borrowed concept's rules then apply to something they do not describe, and every reader special-cases it. The same shape is a state invented to paper over a gap — a "ready to resume" flag where the order's real status was missing.
 
-**Fix.** Give it its own concept, its own word in [`glossary.md`](glossary.md), and its own code. Shipping is `dim order ship`, gated on its own entry conditions; the stations are `plan`, `build` and `review`.
+**Fix.** Give it its own concept, its own word in [`glossary.md`](../../../docs/glossary.md), and its own code. Shipping is `dim order ship`, gated on its own entry conditions; the stations are `plan`, `build` and `review`.
 
-**Holds it.** The closed vocabulary of the concept it was borrowed from ([`src/station.ts`](../src/station.ts) and its `CHECK`), and review of any new member proposed for one.
+**Holds it.** The closed vocabulary of the concept it was borrowed from ([`src/station.ts`](../../../src/station.ts) and its `CHECK`), and review of any new member proposed for one.
 
 ## A code comment
 
 A comment is where an agent excuses what the code should have fixed. A comment explaining why an odd line is fine makes the odd line look settled, so nobody fixes its cause, and the next agent copies both the line and its excuse. A comment carrying a design's rationale is a second copy of what the owning doc says, and the two drift apart. The rest narrate what the line below already says, and an agent matches the comment density of the file it is editing, so they multiply.
 
-**Fix.** No comments, tool contracts aside. A why goes into a name, a test that holds the invariant, or the doc that owns the subject. A comment defending a workaround is not moved into a doc, which only relocates the excuse: the workaround is fixed, or filed in [`todo.md`](todo.md).
+**Fix.** No comments, tool contracts aside. A why goes into a name, a test that holds the invariant, or the doc that owns the subject. A comment defending a workaround is not moved into a doc, which only relocates the excuse: the workaround is fixed, or filed in [`todo.md`](../../../docs/todo.md).
 
-**Holds it.** The comment gate, in a repo that bans comments: the commit gate refuses a commit adding one to a JS or TS line ([`usage.md`](usage.md#install-the-shared-controls)), and the runner refuses a factory builder's turn that adds one ([`factory.md`](factory.md)).
+**Holds it.** The comment gate, in a repo that bans comments: the commit gate refuses a commit adding one to a JS or TS line ([`usage.md`](../../../docs/usage.md#install-the-shared-controls)), and the runner refuses a factory builder's turn that adds one ([`factory.md`](../../../docs/factory.md)).
 
 ## A gate on the step before the act
 
@@ -58,7 +58,7 @@ A check placed on the move that usually precedes an act rather than on the act: 
 
 `dim-station-plan` and `plan` both stored as the station; "workspace command" and "command" meaning different things. Every reader has to accept both, and a third spelling follows. "the same concept shouldnt carry two names".
 
-**Fix.** One word, the ecosystem's own where one exists, settled in [`glossary.md`](glossary.md), and a rename of every other use in the same change with no alias kept for the old one.
+**Fix.** One word, the ecosystem's own where one exists, settled in [`glossary.md`](../../../docs/glossary.md), and a rename of every other use in the same change with no alias kept for the old one.
 
 **Holds it.** The glossary, and a closed type where the concept has one.
 
@@ -76,13 +76,13 @@ An owner's approval kept as a verdict row, an event repeating its decision, and 
 
 **Fix.** One row per fact, and every other view of it read from that row.
 
-**Holds it.** Review, against the rule in [`design.md`](design.md) that each column has one canonical source.
+**Holds it.** Review, against the rule in [`design.md`](../../../docs/design.md) that each column has one canonical source.
 
 ## A heuristic where a record or the model should decide
 
 A regex, a word list or text parsing standing in for a field the record already holds, a structured output, or a judgement the model should make. "the model should make the decisions not heuristics".
 
-**Fix.** Read the recorded field, have the worker return structured JSON, or give the judgement to an agent with a fixed brief ([`AGENTS.md`](../AGENTS.md)).
+**Fix.** Read the recorded field, have the worker return structured JSON, or give the judgement to an agent with a fixed brief ([`AGENTS.md`](../../../AGENTS.md)).
 
 **Holds it.** Review.
 

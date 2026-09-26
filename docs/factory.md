@@ -12,7 +12,7 @@ A factory with no human reading the work ships whatever the checks miss, and the
 
 ## The line
 
-- **Skills are the stations.** `dim-line-feat` and `dim-line-fix` are the entry points; `dim-station-plan`, `dim-station-build` and `dim-station-review` are the stations.
+- **Skills are the stations.** `dim-feat` and `dim-fix` are the entry points; `dim-plan`, `dim-build` and `dim-review` are the stations.
 - **Coding agents are the floor.** Each station runs as a worker in Claude Code or Codex.
 - **`AGENTS.md` and `SPEC.md` are the tolerances.** A line cannot run unattended without them.
 - **Checks, review and gates are QC.**

@@ -1,6 +1,6 @@
 ---
-name: dim-station-plan
-description: Scope a change against what this machine already did — prior art on disk, decisions already taken, and whether an earlier conclusion still holds. Invoked by dim-line-feat where the cut is not obvious; use directly only to scope work that is not yet a feature or a fix.
+name: dim-plan
+description: Scope a change against what this machine already did — prior art on disk, decisions already taken, and whether an earlier conclusion still holds. Invoked by dim-feat where the cut is not obvious; use directly only to scope work that is not yet a feature or a fix.
 argument-hint: "<what you are about to build>"
 ---
 
@@ -24,15 +24,13 @@ Answer all four before proposing an approach.
 
 ## Design the change
 
-The four answers are evidence, not the design. Use `dim-design` with the task, the current project context and the record's returned facts. Let it define the outcome, boundary, invariants and independently verifiable slices. The design skill is reusable across projects; this station supplies the record evidence and keeps the result attributable to the planning hand.
-
-Pass the record's returned facts rather than your reading of them: hand over a conclusion and what comes back is agreement with that conclusion.
+The four answers are evidence, not the design. Read the project's rules, affected code and owning docs. Define the requested outcome, boundary, invariants and independently verifiable slices from that context and the record's returned facts. Prefer the project's names and existing contracts; give a new concept one owner and one word.
 
 Ask the owner only when the choice is genuinely theirs, which is narrower than it feels. It is theirs when the work is hard to reverse, when it is outward-facing, or when it spends something that lands on every session rather than this one. Everything else — which of two shapes, what to name it, what order to slice it in — is settled here and stated, not asked. A question that a query could have answered is a question that should have been a query.
 
 ## Check the plan before acting on it
 
-A plan is cheaper to fix than the code written from it, so it gets the same treatment a slice gets in `dim-station-build`: one agent at the tier `dim route <harness> reviewer` gives you for the harness you run in, working from a fixed brief, and not the agent that wrote the plan. Give it the plan and what the four queries returned — not the reasoning that got there, or what comes back is agreement.
+A plan is cheaper to fix than the code written from it, so it gets the same treatment a slice gets in `dim-build`: one agent at the tier `dim route <harness> reviewer` gives you for the harness you run in, working from a fixed brief, and not the agent that wrote the plan. Give it the plan and what the four queries returned — not the reasoning that got there, or what comes back is agreement.
 
 The brief is these questions:
 

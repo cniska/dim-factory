@@ -128,11 +128,8 @@ describe("the reviewer's report", () => {
 });
 
 describe("the review dimensions", () => {
-  test("are the rows of the dim-station-review passes table", () => {
-    const skill = readFileSync(
-      join(import.meta.dir, "..", "skills", "dim-station-review", "SKILL.md"),
-      "utf8",
-    );
+  test("are the rows of the dim-review passes table", () => {
+    const skill = readFileSync(join(import.meta.dir, "..", "skills", "dim-review", "SKILL.md"), "utf8");
     const passes = skill.split("## The passes")[1]?.split("\n## ")[0] ?? "";
     const rows = passes
       .split("\n")

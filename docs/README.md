@@ -19,7 +19,6 @@ Each fact lives on one page and is linked from the others.
 - [Recall](recall.md) — what reaches a session unasked, and retrieval
 - [Worktrees](worktrees.md) — task checkouts and their environments
 - [Glossary](glossary.md) — one word per thing
-- [Agent anti-patterns](agent-anti-patterns.md) — shapes agents keep writing, and the fix for each
 - [Source layout](../src/README.md) — where to start reading the code
 
 ## What is true now

@@ -12,7 +12,7 @@ A station worker writes an artifact as its explanation for the owner. It is not 
 
 1. Lead with the outcome and why it matters to the order.
 2. Keep the detail proportional to the change. A small change needs a short artifact; a broad or risky change needs the contracts, evidence and decisions an owner must check.
-3. Use Markdown that reads without the worker session. Give every included dimension its own `##` heading; do not compress the artifact into one paragraph. Keep commands, paths, identifiers and decisions exact where they let the operator verify a claim.
+3. Use Markdown that reads without the worker session. Give every included dimension its own `##` heading; do not compress the artifact into one paragraph. Use a table for comparable rows, such as plan slices or review dimensions, when it makes differences easier to scan. Write one point as a sentence and use bullets for multiple distinct points. Keep commands, paths, identifiers and decisions exact where they let the operator verify a claim.
 4. Separate facts from judgment. Name the evidence behind a conclusion and label unresolved risks, assumptions and deviations instead of smoothing them over.
 5. Attribute the artifact to the worker that wrote it. Attribute findings, approvals and other acts to the worker that performed them; never borrow the operator's identity for missing evidence.
 6. Do not invent evidence, claim a check passed from an exit message, or repeat the same fact in several sections.
@@ -44,6 +44,6 @@ A short artifact may have one or two sentences under a heading. It still uses he
 
 ## See also
 
-- `dim-station-plan`
-- `dim-station-build`
-- `dim-station-review`
+- `dim-plan`
+- `dim-build`
+- `dim-review`

@@ -13,7 +13,7 @@ What the survey found overall: the argument for a factory with human-held gates 
 
 ## The factory argument
 
-- **[Software Factories, Light and Dark](https://addyosmani.com/blog/software-factories/)** draws the distinction the factory draws: dark ships code no human read; light keeps human judgement and moves it upstream. *Contributed:* the position that each gate earns its automation on its own merit, stated in [`factory.md`](factory.md). Its [agent-skills](https://github.com/addyosmani/agent-skills) set drew the line between a portable skill and a station that reads the record, which is why the `dim-station-*` skills live here.
+- **[Software Factories, Light and Dark](https://addyosmani.com/blog/software-factories/)** draws the distinction the factory draws: dark ships code no human read; light keeps human judgement and moves it upstream. *Contributed:* the position that each gate earns its automation on its own merit, stated in [`factory.md`](factory.md). Its [agent-skills](https://github.com/addyosmani/agent-skills) set drew the line between a portable skill and a station that reads the record, which is why dim's station skills live here.
 - **[Harness engineering](https://martinfowler.com/articles/harness-engineering.html)** separates feed-forward guides from feedback sensors, and fast computational sensors from expensive inferential ones. *Contributed:* the split between the rules and plan a worker is given, the checks and gates that run on every change, and the review dimensions aimed where they add confidence.
 - **[OpenAI's harness engineering with Codex](https://openai.com/index/harness-engineering/)** treats the repository as the system of record, enforces architecture with structural tests, and has agents review agent work. *Contributed:* the quality floor, and the scheduled maintenance work in [`todo.md`](todo.md).
 - **[Anthropic's long-running harness](https://www.anthropic.com/engineering/harness-design-long-running-apps)** passes structured artifacts between sessions and separates the generator from the evaluator, whose criteria must be concrete. *Contributed:* the Plan, Build and Review artifacts, the independent reviewer, and review against a fixed brief.
@@ -43,4 +43,4 @@ What the survey found overall: the argument for a factory with human-held gates 
 
 ## Planning
 
-- **[Superpowers](https://github.com/obra/superpowers)**, read at v6.4.1, asks which inputs or failure modes a spec implies that no task's test exercises. *Contributed:* that question in the plan reviewer's brief in `dim-station-plan`.
+- **[Superpowers](https://github.com/obra/superpowers)**, read at v6.4.1, asks which inputs or failure modes a spec implies that no task's test exercises. *Contributed:* that question in the plan reviewer's brief in `dim-plan`.

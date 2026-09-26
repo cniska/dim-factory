@@ -179,7 +179,7 @@ export function reviewerBrief(
     "Judge it against the approved plan: name work that is missing, extra, or misunderstood.",
     "Check each claim at its source before raising it; a reading you did not verify is not a finding.",
     "",
-    "Use dim-station-review and dim-artifact.",
+    "Use dim-review and dim-artifact.",
     "",
     ...REPORT_CONTRACT,
     "",

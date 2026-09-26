@@ -82,7 +82,7 @@ dim wt ls
 dim wt path <branch>
 ```
 
-See [Worktrees](worktrees.md). The line's entry points are the `dim-line-feat` and `dim-line-fix` skills, its stations `dim-station-plan`, `dim-station-build` and `dim-station-review`, and `dim-factory` operates it ([`factory.md`](factory.md)).
+See [Worktrees](worktrees.md). The line's entry points are the `dim-feat` and `dim-fix` skills, its stations `dim-plan`, `dim-build` and `dim-review`, and `dim-factory` operates it ([`factory.md`](factory.md)). `dim-audit` reads existing code across quality dimensions without changing the project.
 
 ## Session start
 

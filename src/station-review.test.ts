@@ -696,7 +696,7 @@ describe("a review round", () => {
     );
     expect(brief).toContain("# Approved plan\n## Outcome\n\nRefuse empty tokens.");
     expect(brief).toContain("# Plan slices\n1. Gate: Empty refused.");
-    expect(brief).toContain("Use dim-station-review and dim-artifact.");
+    expect(brief).toContain("Use dim-review and dim-artifact.");
     expect(brief).toContain("`git diff aaa..bbb`");
     expect(brief).not.toContain("# Earlier findings");
   });

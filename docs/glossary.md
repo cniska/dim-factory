@@ -15,8 +15,8 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Tier | The capability a role needs — `light`, `standard` or `deep` — mapped to this machine's models in one file ([`src/worker-routing.ts`](../src/worker-routing.ts)) |
 | Capability | What a station's work needs, named for the work rather than a harness flag — `read-files`, `edit-files`, `run-check` and the rest ([`src/worker-capabilities.ts`](../src/worker-capabilities.ts)) |
 | Harness | The agent product that runs a worker session, such as Claude Code or Codex |
-| Line | The kind of work an order is: `feat` (shown as **feature**) or `fix`. `dim-line-feat` and `dim-line-fix` are its entry points |
-| Station | One repeatable step of work on an order: `plan`, `build` or `review` ([`src/station.ts`](../src/station.ts)). Each has a skill named `dim-station-<station>` |
+| Line | The kind of work an order is: `feat` (shown as **feature**) or `fix`. `dim-feat` and `dim-fix` are its entry points |
+| Station | One repeatable step of work on an order: `plan`, `build` or `review` ([`src/station.ts`](../src/station.ts)). Their skills are `dim-plan`, `dim-build` and `dim-review` |
 | Order | One piece of work: an id, a line, a title, a description and a priority. It exists before it is started and is worked in one worktree |
 | Queue | The orders not yet started, most urgent first, then oldest |
 | Status | The state an order is in, read from its events: `queued`, `active` once started, `done` once shipped, or `dropped` |

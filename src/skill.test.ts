@@ -27,16 +27,16 @@ describe("skill install", () => {
     expect(shipped()).toEqual([
       "dim-add",
       "dim-artifact",
-      "dim-design",
+      "dim-audit",
+      "dim-build",
       "dim-factory",
+      "dim-feat",
+      "dim-fix",
       "dim-git",
-      "dim-line-feat",
-      "dim-line-fix",
+      "dim-plan",
+      "dim-review",
       "dim-rules",
       "dim-simplify",
-      "dim-station-build",
-      "dim-station-plan",
-      "dim-station-review",
       "dim-tdd",
     ]);
   });

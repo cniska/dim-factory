@@ -31,7 +31,7 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 - **Artifacts linked to commits by trailer** — so an order's plan, Build and Review artifacts stay attached to its commits through a rebase.
 - **Pull what every project repeats into `dim`** — commit checks, pre-push, worktree setup, ship scripts and CI checks each become one thing `dim` holds, and the per-project copy is deleted ([`findings.md`](findings.md), "The same script, five times, already drifted").
 - **The owner's rules as per-repo defaults** — the comment ban is already a setting; the subject limit, shipping to the default branch, a required `AGENTS.md` and the anti-pattern review become settings a repo adopts rather than conditions of using `dim`.
-- **Review against the anti-patterns** — a review dimension whose brief is [`agent-anti-patterns.md`](agent-anti-patterns.md), on the plan and on each diff.
+- **Review against the anti-patterns** — a review dimension whose brief is [`agent-anti-patterns.md`](../skills/dim-audit/references/agent-anti-patterns.md), on the plan and on each diff.
 - **Single-word commands** — `format-edit`, `check-command`, `check-commits` and the `install-*` commands take one word each, or become subcommands (`dim install hooks`), with the hook commands and docs moved in the same change.
 - **Closed vocabularies are exhaustive at compile time.**
 - **One judge per gate** — hooks, the runner, CI and order completion call the same check.
