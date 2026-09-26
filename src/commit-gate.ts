@@ -1,6 +1,8 @@
-import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { execFileSync, spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { commentsBanned } from "./comment-ban-setting";
+import { checkoutSlug, labelFor } from "./git-remote";
 import { type Env, resolveHomeDir } from "./paths";
 import { prePushScript } from "./push-gate";
 import { foldAscii, SLUG_SED } from "./remote-slug";
@@ -158,6 +160,24 @@ function gitEnv(env: Env): NodeJS.ProcessEnv {
   return { ...process.env, ...env } as NodeJS.ProcessEnv;
 }
 
+const KEY_UNSET = 1;
+
+export class GitConfigUnreadable extends Error {
+  readonly code = "GIT_CONFIG_UNREADABLE";
+}
+
+function hooksPathOf(root: string, env: Env): string | null {
+  const args = ["config", "--type=path", "--get", "core.hooksPath"];
+  const read = spawnSync("git", args, { cwd: root, encoding: "utf8", env: gitEnv(env) });
+  if (read.status === KEY_UNSET) return null;
+  if (read.status !== 0) {
+    throw new GitConfigUnreadable(
+      `git ${args.join(" ")} failed in ${root}: ${read.stderr?.trim() || read.error?.message}`,
+    );
+  }
+  return read.stdout.trim() || null;
+}
+
 function gitGlobal(key: string, env: Env): string | null {
   try {
     return (
@@ -250,6 +270,28 @@ export function installedOwners(env: Env = process.env): string[] | null {
 
 export function ownersCover(owners: string[], slug: string | null): boolean {
   return slug !== null && owners.map(foldAscii).includes(slug);
+}
+
+export type CommentGate =
+  | { state: "unlabeled" }
+  | { state: "off" | "uncovered" | "armed"; label: string }
+  | { state: "hooks-elsewhere"; label: string; hooksPath: string | null };
+
+export function commentGateFor(root: string, env: Env = process.env): CommentGate {
+  const label = labelFor(root);
+  if (label === null) return { state: "unlabeled" };
+  if (!commentsBanned(label, env)) return { state: "off", label };
+  if (!ownersCover(installedOwners(env) ?? [], checkoutSlug(root))) return { state: "uncovered", label };
+  const hooksPath = hooksPathOf(root, env);
+  if (hooksPath === null || canonicalPath(root, hooksPath) !== canonicalPath(root, sharedHooksDir(env))) {
+    return { state: "hooks-elsewhere", label, hooksPath };
+  }
+  return { state: "armed", label };
+}
+
+function canonicalPath(root: string, path: string): string {
+  const absolute = resolve(root, path);
+  return existsSync(absolute) ? realpathSync(absolute) : absolute;
 }
 
 export type Checkout = { repo: string; owner: string };

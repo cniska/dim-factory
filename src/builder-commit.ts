@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { BuildTurn } from "./build-turn";
 import { hooksOutsideTree, nestedRepository } from "./builder-tree";
+import { commentGateFor } from "./commit-gate";
 import {
   isActiveOrderRun,
   latestOrderCommit,
@@ -15,6 +16,8 @@ import { answerOrderFindings, assertFindingAnswersOwed, BuildTurnRefused } from 
 import { dataDir, type Env } from "./paths";
 import { rebaseInProgress } from "./rebase-onto-trunk";
 import { CHECK_SANDBOX, runSandboxedCheck } from "./sandboxed-check";
+import { stagedComments } from "./staged-comments";
+import { writeTrace } from "./trace-store";
 import { trunkBranch } from "./trunk";
 import { checkCommand } from "./workspace-commands";
 
@@ -59,6 +62,20 @@ function refuseNested(worktree: string): void {
       `${nested} is a git repository inside the worktree, which the runner does not stage`,
     );
   }
+}
+
+function refuseAddedComments(worktree: string, label: string): { unparsed: string[] } {
+  const { found, unparsed } = stagedComments(worktree);
+  if (found.length === 0) return { unparsed };
+  git(worktree, ["reset", "-q"]);
+  throw new BuildTurnRefused(
+    "comment_added",
+    [
+      `the turn adds a code comment, which ${label} bans:`,
+      ...found.map(({ path, line }) => `  ${path}:${line}`),
+      "put the why in a name, a test, or the doc that owns the subject",
+    ].join("\n"),
+  );
 }
 
 function lineCount(value: string | undefined): number | undefined {
@@ -133,9 +150,12 @@ export function commitBuildTurn(options: {
   }
 
   refuseNested(worktree);
+  const commentGate = commentGateFor(worktree, env);
   // The check runs the builder's code with the worktree writable, so what it passed is the tree
   // staged before it ran, and a tree it changed is refused rather than committed unchecked.
   const checked = stagedTree(worktree);
+  const { unparsed } =
+    commentGate.state === "armed" ? refuseAddedComments(worktree, commentGate.label) : { unparsed: [] };
   const check = runSandboxedCheck({
     worktree,
     command: declared.command,
@@ -242,6 +262,7 @@ export function commitBuildTurn(options: {
       answerOrderFindings(db, orderId, options.runId, turn.answers, builder);
       if (options.finalSlice) recordOrderBuild(db, orderId, turn.artifact, sha, builder);
     })();
+    for (const path of unparsed) writeTrace(db, { event: "order.file_unparsed", orderId, path });
     return { sha };
   } catch (error) {
     // Unrecorded, the commit would read as the builder's own on the next turn; taking it back

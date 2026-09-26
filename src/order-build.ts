@@ -166,15 +166,16 @@ export function rebaseConflictBrief(conflicts: readonly string[]): string[] {
   ];
 }
 
-/** How many times one build turn's builder is resumed to answer a commit git refused. */
 const COMMIT_CORRECTIONS = 2;
 
-export function commitCorrectionBrief(subject: string, refusal: string): string {
+export function commitCorrectionBrief(subject: string, refusal: BuildTurnRefused): string {
   return [
     "# Commit refused",
-    `The runner's check passed, and its commit of your worktree with the subject \`${subject}\` was refused:`,
+    refusal.code === "comment_added"
+      ? `The runner refused to commit your worktree with the subject \`${subject}\` before running its check:`
+      : `The runner's check passed, and its commit of your worktree with the subject \`${subject}\` was refused:`,
     "",
-    refusal,
+    refusal.message,
     "",
     "This is feedback within the current Build attempt: the order is still claimed by this turn and your changes are still uncommitted in the worktree.",
     "Answer the refusal, leaving every change uncommitted. When the turn ends, the runner reruns the declared check and commits again.",
@@ -472,7 +473,7 @@ export async function runOrderBuildLive(
       } catch (error) {
         if (
           !(error instanceof BuildTurnRefused) ||
-          error.code !== "commit_refused" ||
+          (error.code !== "commit_refused" && error.code !== "comment_added") ||
           corrections === COMMIT_CORRECTIONS ||
           !isActiveOrderRun(db, orderId, runId)
         ) {
@@ -488,7 +489,7 @@ export async function runOrderBuildLive(
             adapter: options.adapter,
             request: {
               cwd: worktree,
-              brief: commitCorrectionBrief(turn.subject, error.message),
+              brief: commitCorrectionBrief(turn.subject, error),
               capabilities: BUILDER_CAPABILITIES,
               outputSchema: BUILD_TURN_SCHEMA,
             },

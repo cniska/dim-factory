@@ -456,6 +456,40 @@ describe("the comment gate for the current repo", () => {
     });
   });
 
+  test("warns where the setting bans comments but the repo runs its own hooks", () => {
+    const { env, cwd } = inRepo('{ "repos": ["cniska/thing"] }');
+    installCommitGate(["github.com/cniska"], [], env);
+    execFileSync("git", ["-C", cwd, "config", "core.hooksPath", ".githooks"]);
+    expect(commentGate(env, cwd)).toMatchObject({
+      state: "warn",
+      detail: expect.stringContaining("git runs its hooks from .githooks"),
+    });
+  });
+
+  test("fails the check, and still reports, where git cannot read its config", () => {
+    const { env, cwd } = inRepo('{ "repos": ["cniska/thing"] }');
+    installCommitGate(["github.com/cniska"], [], env);
+    writeFileSync(env.GIT_CONFIG_GLOBAL as string, "[core\n");
+    expect(commentGate(env, cwd)).toMatchObject({
+      state: "fail",
+      detail: expect.stringMatching(
+        /^git config --type=path --get core\.hooksPath failed in .*: .*bad config line 1/,
+      ),
+    });
+  });
+
+  test("reports the commit gate, not the repository's hooks, where git's global hooksPath is unset", () => {
+    const { env, cwd } = inRepo('{ "repos": ["cniska/thing"] }');
+    installCommitGate(["github.com/cniska"], [], env);
+    execFileSync("git", ["config", "--global", "--unset", "core.hooksPath"], {
+      env: { ...process.env, ...env },
+    });
+    expect(commentGate(env, cwd)).toMatchObject({
+      state: "warn",
+      detail: "banned for cniska/thing, not on until the commit gate is",
+    });
+  });
+
   test("warns where the setting bans comments but no hook covers the repo", () => {
     const { env, cwd } = inRepo('{ "repos": "all" }');
     installCommitGate(["github.com/someone-else"], [], env);

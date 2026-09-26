@@ -4,10 +4,16 @@ import { join } from "node:path";
 import { AGENT_LABEL, agentPlistPath } from "./agent";
 import { checkoutRoot } from "./checkout";
 import { codexConfigPath, planCodexTrust, type TrustState } from "./codex-trust";
-import { commentBanPath, commentsBanned } from "./comment-ban-setting";
-import { installedOwners, ownersCover, planCommitGate, sharedHooksDir } from "./commit-gate";
+import { commentBanPath } from "./comment-ban-setting";
+import {
+  type CommentGate,
+  commentGateFor,
+  GitConfigUnreadable,
+  installedOwners,
+  planCommitGate,
+  sharedHooksDir,
+} from "./commit-gate";
 import { ConfigError } from "./config-error";
-import { checkoutSlug, labelFor } from "./git-remote";
 import { harnessCommand } from "./harness-command";
 import { HARNESSES } from "./harness-name";
 import { type HookPlan, hookGaps } from "./hooks";
@@ -269,29 +275,30 @@ function harnesses(env: Env): Health {
 function commentGate(env: Env, cwd: string, commitGate: Health): Health {
   const name = "comment gate";
   const root = checkoutRoot(cwd);
-  const label = root === null ? null : labelFor(root);
-  if (root === null || label === null) {
+  let gate: CommentGate;
+  try {
+    gate = root === null ? { state: "unlabeled" } : commentGateFor(root, env);
+  } catch (error) {
+    if (error instanceof GitConfigUnreadable) return { name, state: "fail", detail: error.message };
+    if (!(error instanceof ConfigError)) throw error;
+    return unreadable(name, error);
+  }
+  if (gate.state === "unlabeled") {
     return {
       name,
       state: "ok",
       detail: `not judged: ${tildePath(cwd, env)} is not a checkout with a remote`,
     };
   }
-  let banned: boolean;
-  try {
-    banned = commentsBanned(label, env);
-  } catch (error) {
-    if (!(error instanceof ConfigError)) throw error;
-    return unreadable(name, error);
-  }
-  if (!banned) {
+  const { label } = gate;
+  if (gate.state === "off") {
     return {
       name,
       state: "ok",
       detail: `off for ${label}: ${tildePath(commentBanPath(env), env)} does not ban comments there`,
     };
   }
-  if (!ownersCover(installedOwners(env) ?? [], checkoutSlug(root))) {
+  if (gate.state === "uncovered") {
     return {
       name,
       state: "warn",
@@ -301,6 +308,13 @@ function commentGate(env: Env, cwd: string, commitGate: Health): Health {
   }
   if (commitGate.state !== "ok") {
     return { name, state: "warn", detail: `banned for ${label}, not on until the commit gate is` };
+  }
+  if (gate.state === "hooks-elsewhere") {
+    return {
+      name,
+      state: "warn",
+      detail: `comments are banned for ${label}, but git runs its hooks from ${gate.hooksPath === null ? "the repository's own hooks directory" : tildePath(gate.hooksPath, env)} rather than ${tildePath(sharedHooksDir(env), env)}, so nothing refuses them`,
+    };
   }
   return {
     name,

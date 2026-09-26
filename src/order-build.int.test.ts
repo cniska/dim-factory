@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BuildTurn } from "./build-turn";
+import { installCommitGate } from "./commit-gate";
 import {
   appendOrderEvent,
   approveOrderBuild,
@@ -1545,6 +1546,247 @@ describe("a commit git refuses", () => {
     expect(builder.calls.map((call) => call.kind)).toEqual(["start"]);
     expect(order.events("failed")).toEqual([]);
     db.close();
+  });
+});
+
+describe("a comment a builder adds", () => {
+  const commented = "// why it is built\nexport const built = 1;\n";
+  const plain = "export const built = 1;\n";
+  const turn = { subject: "feat: build it", artifact: "Built." };
+
+  function commentOrder(
+    orderId: string,
+    setting: string,
+    gate: { owner?: string | null; remote?: { name: string; url: string } | null } = {},
+  ) {
+    const db = database();
+    const dimHome = home(`dim-builder-${orderId}-`);
+    const checks = join(dimHome, "checks");
+    const { repo, operator } = orderAtBuild(
+      db,
+      orderId,
+      [{ title: "Build the result", outcome: "The requested result is verified." }],
+      `echo ran >> ${checks}`,
+    );
+    const remote =
+      gate.remote === undefined ? { name: "origin", url: "git@github.com:cniska/thing.git" } : gate.remote;
+    if (remote !== null) git(repo.dir, ["remote", "add", remote.name, remote.url]);
+    const env = {
+      DIM_HOME: dimHome,
+      HOME: join(dimHome, "home"),
+      GIT_CONFIG_GLOBAL: join(dimHome, "gitconfig"),
+    };
+    const owner = gate.owner === undefined ? "github.com/cniska" : gate.owner;
+    if (owner !== null) installCommitGate([owner], [], env);
+    writeFileSync(join(dimHome, "comment-gate.json"), setting);
+    return {
+      db,
+      repo,
+      operator,
+      worktree: realpathSync(join(repo.dir, ".claude", "worktrees", orderId)),
+      options: { dir: repo.dir, env, checkSandbox: confiningCheckSandbox() },
+      checksRun: () =>
+        existsSync(checks) ? readFileSync(checks, "utf8").split("\n").filter(Boolean).length : 0,
+      failures: () =>
+        db
+          .query<{ reason: string | null }, [string]>(
+            "SELECT reason FROM factory_order_event WHERE order_id = ? AND kind = 'failed'",
+          )
+          .all(orderId),
+    };
+  }
+
+  const write =
+    (content: string, others: Record<string, string> = {}) =>
+    (request: HarnessRequest) => {
+      writeFileSync(join(request.cwd, "built.ts"), content);
+      for (const [path, text] of Object.entries(others)) writeFileSync(join(request.cwd, path), text);
+      return turn;
+    };
+
+  test("refuses the turn before its check where the repo bans comments, naming each line, and leaves HEAD where it was", async () => {
+    const order = commentOrder("comment-order", '{ "repos": ["cniska/thing"] }');
+    const both = write(commented, { "a.ts": "const a = 1;\n// why\n", "c.ts": "const = ;\n" });
+    const builder = scriptedBuilder([both, both, both]);
+
+    const error = await runOrderBuildLive(order.db, "comment-order", order.operator.name, {
+      ...order.options,
+      adapter: builder.adapter,
+    }).catch((caught: unknown) => caught);
+
+    const refusal =
+      "the turn adds a code comment, which cniska/thing bans:\n  a.ts:2\n  built.ts:1\nput the why in a name, a test, or the doc that owns the subject";
+    const cause = (error as Error).cause;
+    expect(cause).toBeInstanceOf(BuildTurnRefused);
+    expect(cause).toMatchObject({ code: "comment_added", message: refusal });
+    expect(builder.calls.map((call) => call.kind)).toEqual(["start", "resume", "resume"]);
+    expect(builder.calls[1]?.brief).toContain(refusal);
+    expect(builder.calls[1]?.brief).toContain("before running its check");
+    expect(builder.calls[1]?.brief).not.toContain("check passed");
+    expect(order.checksRun()).toBe(0);
+    expect(git(order.worktree, ["rev-parse", "HEAD"])).toBe(order.repo.sha);
+    expect(git(order.worktree, ["status", "--porcelain"])).toBe("?? a.ts\n?? built.ts\n?? c.ts");
+    expect(order.db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 0 });
+    expect(
+      order.db.query("SELECT count(*) AS n FROM trace_event WHERE event = 'order.file_unparsed'").get(),
+    ).toEqual({ n: 0 });
+    expect(order.failures()).toHaveLength(1);
+    order.db.close();
+  });
+
+  test("fails the attempt where git's config cannot be read", async () => {
+    const order = commentOrder("comment-git-config-order", '{ "repos": "all" }');
+    writeFileSync(order.options.env.GIT_CONFIG_GLOBAL, "[core\n");
+    const builder = scriptedBuilder([write(commented)]);
+
+    await expect(
+      runOrderBuildLive(order.db, "comment-git-config-order", order.operator.name, {
+        ...order.options,
+        adapter: builder.adapter,
+      }),
+    ).rejects.toThrow("git config --type=path --get core.hooksPath failed");
+
+    expect(builder.calls.map((call) => call.kind)).toEqual(["start"]);
+    expect(order.checksRun()).toBe(0);
+    expect(git(order.worktree, ["rev-parse", "HEAD"])).toBe(order.repo.sha);
+    expect(order.failures()).toHaveLength(1);
+    order.db.close();
+  });
+
+  test("fails the attempt where the setting cannot be read", async () => {
+    const order = commentOrder("comment-malformed-order", '{ "repos": ');
+    const builder = scriptedBuilder([write(commented)]);
+
+    await expect(
+      runOrderBuildLive(order.db, "comment-malformed-order", order.operator.name, {
+        ...order.options,
+        adapter: builder.adapter,
+      }),
+    ).rejects.toThrow("comment-gate.json");
+
+    expect(builder.calls.map((call) => call.kind)).toEqual(["start"]);
+    expect(order.checksRun()).toBe(0);
+    expect(git(order.worktree, ["rev-parse", "HEAD"])).toBe(order.repo.sha);
+    expect(order.failures()).toHaveLength(1);
+    order.db.close();
+  });
+
+  test("commits a file it cannot parse and traces it under the order", async () => {
+    const order = commentOrder("comment-unparsed-order", '{ "repos": ["cniska/thing"] }');
+    const builder = scriptedBuilder([write(plain, { "a.ts": "const = ;\n// why\n" })]);
+
+    await runOrderBuildLive(order.db, "comment-unparsed-order", order.operator.name, {
+      ...order.options,
+      adapter: builder.adapter,
+    });
+
+    expect(git(order.worktree, ["show", "HEAD:a.ts"])).toBe("const = ;\n// why");
+    expect(
+      order.db.query("SELECT order_id, path FROM trace_event WHERE event = 'order.file_unparsed'").all(),
+    ).toEqual([{ order_id: "comment-unparsed-order", path: "a.ts" }]);
+    order.db.close();
+  });
+
+  test("commits the builder's correction in the same attempt", async () => {
+    const order = commentOrder("comment-corrected-order", '{ "repos": ["cniska/thing"] }');
+    const builder = scriptedBuilder([write(commented), write(plain)]);
+
+    await runOrderBuildLive(order.db, "comment-corrected-order", order.operator.name, {
+      ...order.options,
+      adapter: builder.adapter,
+    });
+
+    expect(builder.calls.map((call) => call.kind)).toEqual(["start", "resume"]);
+    expect(git(order.worktree, ["show", "HEAD:built.ts"])).toBe(plain.trim());
+    order.db.close();
+  });
+
+  test("commits the comment where the setting does not ban comments in the repo", async () => {
+    const order = commentOrder("comment-allowed-order", '{ "repos": ["cniska/other"] }');
+    const builder = scriptedBuilder([write(commented)]);
+
+    await runOrderBuildLive(order.db, "comment-allowed-order", order.operator.name, {
+      ...order.options,
+      adapter: builder.adapter,
+    });
+
+    expect(git(order.worktree, ["show", "HEAD:built.ts"])).toBe(commented.trim());
+    order.db.close();
+  });
+
+  for (const [what, orderId, prepare] of [
+    [
+      "the commit gate covers other owners",
+      "comment-uncovered-order",
+      () =>
+        commentOrder("comment-uncovered-order", '{ "repos": "all" }', { owner: "github.com/someone-else" }),
+    ],
+    [
+      "no commit gate is installed",
+      "comment-unhooked-order",
+      () => commentOrder("comment-unhooked-order", '{ "repos": "all" }', { owner: null }),
+    ],
+    [
+      "the checkout has no remote to label it by",
+      "comment-unlabeled-order",
+      () => commentOrder("comment-unlabeled-order", '{ "repos": "all" }', { remote: null }),
+    ],
+    [
+      "only an upstream remote names the repository, so no origin is covered",
+      "comment-upstream-order",
+      () =>
+        commentOrder("comment-upstream-order", '{ "repos": ["cniska/thing"] }', {
+          remote: { name: "upstream", url: "git@github.com:cniska/thing.git" },
+        }),
+    ],
+    [
+      "a covered origin is a path, which labels no repository",
+      "comment-path-origin-order",
+      () =>
+        commentOrder("comment-path-origin-order", '{ "repos": "all" }', {
+          owner: "/srv/cniska",
+          remote: { name: "origin", url: "/srv/cniska/thing" },
+        }),
+    ],
+    [
+      "the repository runs its own hooks",
+      "comment-own-hooks-order",
+      () => {
+        const order = commentOrder("comment-own-hooks-order", '{ "repos": "all" }');
+        git(order.repo.dir, ["config", "core.hooksPath", ".githooks"]);
+        return order;
+      },
+    ],
+  ] as const) {
+    test(`commits the comment where ${what}`, async () => {
+      const order = prepare();
+      const builder = scriptedBuilder([write(commented)]);
+
+      await runOrderBuildLive(order.db, orderId, order.operator.name, {
+        ...order.options,
+        adapter: builder.adapter,
+      });
+
+      expect(git(order.worktree, ["show", "HEAD:built.ts"])).toBe(commented.trim());
+      order.db.close();
+    });
+  }
+
+  test("commits a turn that leaves an existing comment untouched", async () => {
+    const order = commentOrder("comment-kept-order", '{ "repos": ["cniska/thing"] }');
+    writeFileSync(join(order.repo.dir, "built.ts"), commented);
+    git(order.repo.dir, ["add", "built.ts"]);
+    git(order.repo.dir, ["commit", "-q", "-m", "feat: add built.ts"]);
+    git(order.worktree, ["merge", "-q", "--ff-only", "main"]);
+    const builder = scriptedBuilder([write(`${commented}export const more = 2;\n`)]);
+
+    await runOrderBuildLive(order.db, "comment-kept-order", order.operator.name, {
+      ...order.options,
+      adapter: builder.adapter,
+    });
+
+    expect(git(order.worktree, ["log", "-1", "--format=%s"])).toBe("feat: build it");
+    order.db.close();
   });
 });
 

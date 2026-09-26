@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   checkSubject,
+  commentGateFor,
   hookScript,
   installCommitGate,
   preCommitScript,
@@ -437,6 +438,29 @@ describe("the comment gate", () => {
     const { dir, commit } = repoWithCommentGate('{ "repos": "all" }');
     try {
       expect(commit({ "a.ts": "// why\n" }, { DIM_SKIP_CHECK: "1" }).ok).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("whether a checkout's commit is judged for comments", () => {
+  test("arms under any spelling of the shared hooks directory", () => {
+    const dir = mkdtempSync(join(tmpdir(), "dim-comment-gate-for-"));
+    try {
+      const env = {
+        HOME: join(dir, "home"),
+        GIT_CONFIG_GLOBAL: join(dir, "gitconfig"),
+        DIM_HOME: join(dir, "machine"),
+      };
+      mkdirSync(env.DIM_HOME, { recursive: true });
+      writeFileSync(join(env.DIM_HOME, "comment-gate.json"), '{ "repos": "all" }');
+      installCommitGate(["github.com/cniska"], [], env);
+      const work = join(dir, "work");
+      execFileSync("git", ["init", "-q", work]);
+      execFileSync("git", ["-C", work, "remote", "add", "origin", "git@github.com:cniska/thing.git"]);
+      execFileSync("git", ["-C", work, "config", "core.hooksPath", `${sharedHooksDir(env)}/`]);
+      expect(commentGateFor(work, env)).toEqual({ state: "armed", label: "cniska/thing" });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
