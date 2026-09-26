@@ -72,12 +72,15 @@ const USAGE = `usage: dim <command>
                   declares none or this is not a checkout (the pre-commit hook
                   reads this, and takes silence as no gate)
   comments check  print path:line for each comment on a staged added line of a
-                  JS or TS file that parses and exit 3, where comment-gate.json
-                  beside the database bans comments in this repo; nothing and
-                  exit 0 otherwise
+                  file in a language dim reads and exit 3, where the config at
+                  HEAD bans comments; nothing and exit 0 otherwise
   comments purge [<path>...]
-                  list each tracked JS or TS file with comments and how many,
-                  tool contracts aside (--write removes them)
+                  report each tracked file with comments and how many, tool
+                  contracts aside (--write removes them, bans comments in the
+                  project config and runs the repo's formatter)
+  config [list]   print the user and project config, and what they resolve to
+  config set|unset <key> [<value>] [--project]
+                  change a setting in the user config, or the project's
   route <harness> [<role>]
                   print the capability tier a factory role runs at and what this
                   harness's map calls it, or every role with no role argument
@@ -859,6 +862,9 @@ try {
       break;
     case "comments":
       (await import("./comments-command")).runComments(process.argv.slice(3));
+      break;
+    case "config":
+      (await import("./config-command")).runConfig(process.argv.slice(3));
       break;
     case "route":
       writeFactorySuccess("route", routeReport(parseHarness(process.argv[3]), process.argv[4]));

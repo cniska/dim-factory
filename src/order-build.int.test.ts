@@ -1566,7 +1566,8 @@ describe("a comment a builder adds", () => {
     };
     const owner = gate.owner === undefined ? "github.com/cniska" : gate.owner;
     if (owner !== null) installCommitGate([owner], [], env);
-    writeFileSync(join(dimHome, "comment-gate.json"), setting);
+    mkdirSync(join(env.HOME, ".config", "dim"), { recursive: true });
+    writeFileSync(join(env.HOME, ".config", "dim", "config.json"), setting);
     return {
       db,
       repo,
@@ -1593,7 +1594,7 @@ describe("a comment a builder adds", () => {
     };
 
   test("refuses the turn before its check where the repo bans comments, naming each line, and leaves HEAD where it was", async () => {
-    const order = commentOrder("comment-order", '{ "repos": ["cniska/thing"] }');
+    const order = commentOrder("comment-order", '{ "comments": "banned" }');
     const both = write(commented, { "a.ts": "const a = 1;\n// why\n", "c.ts": "const = ;\n" });
     const builder = scriptedBuilder([both, both, both]);
 
@@ -1622,8 +1623,31 @@ describe("a comment a builder adds", () => {
     order.db.close();
   });
 
+  test("reads the ban the trunk commits, so a builder cannot lift it from its worktree", async () => {
+    const order = commentOrder("comment-trunk-ban-order", "{}");
+    mkdirSync(join(order.repo.dir, ".dim"), { recursive: true });
+    writeFileSync(join(order.repo.dir, ".dim", "config.json"), '{ "comments": "banned" }\n');
+    git(order.repo.dir, ["add", ".dim/config.json"]);
+    git(order.repo.dir, ["commit", "-q", "--no-verify", "-m", "chore: ban comments"]);
+    const lifted = (request: HarnessRequest) => {
+      mkdirSync(join(request.cwd, ".dim"), { recursive: true });
+      writeFileSync(join(request.cwd, ".dim", "config.json"), '{ "comments": "allowed" }\n');
+      return write(commented)(request);
+    };
+    const builder = scriptedBuilder([lifted, lifted, lifted]);
+
+    const error = await runOrderBuildLive(order.db, "comment-trunk-ban-order", order.operator.name, {
+      ...order.options,
+      adapter: builder.adapter,
+    }).catch((caught: unknown) => caught);
+
+    expect((error as Error).cause).toMatchObject({ code: "comment_added" });
+    expect(order.checksRun()).toBe(0);
+    order.db.close();
+  });
+
   test("fails the attempt where git's config cannot be read", async () => {
-    const order = commentOrder("comment-git-config-order", '{ "repos": "all" }');
+    const order = commentOrder("comment-git-config-order", '{ "comments": "banned" }');
     writeFileSync(order.options.env.GIT_CONFIG_GLOBAL, "[core\n");
     const builder = scriptedBuilder([write(commented)]);
 
@@ -1642,7 +1666,7 @@ describe("a comment a builder adds", () => {
   });
 
   test("fails the attempt where the setting cannot be read", async () => {
-    const order = commentOrder("comment-malformed-order", '{ "repos": ');
+    const order = commentOrder("comment-malformed-order", '{ "comments": ');
     const builder = scriptedBuilder([write(commented)]);
 
     await expect(
@@ -1650,7 +1674,7 @@ describe("a comment a builder adds", () => {
         ...order.options,
         adapter: builder.adapter,
       }),
-    ).rejects.toThrow("comment-gate.json");
+    ).rejects.toThrow("config.json");
 
     expect(builder.calls.map((call) => call.kind)).toEqual(["start"]);
     expect(order.checksRun()).toBe(0);
@@ -1660,7 +1684,7 @@ describe("a comment a builder adds", () => {
   });
 
   test("commits a file it cannot parse and traces it under the order", async () => {
-    const order = commentOrder("comment-unparsed-order", '{ "repos": ["cniska/thing"] }');
+    const order = commentOrder("comment-unparsed-order", '{ "comments": "banned" }');
     const builder = scriptedBuilder([write(plain, { "a.ts": "const = ;\n// why\n" })]);
 
     await runOrderBuildLive(order.db, "comment-unparsed-order", order.operator.name, {
@@ -1676,7 +1700,7 @@ describe("a comment a builder adds", () => {
   });
 
   test("commits the builder's correction in the same attempt", async () => {
-    const order = commentOrder("comment-corrected-order", '{ "repos": ["cniska/thing"] }');
+    const order = commentOrder("comment-corrected-order", '{ "comments": "banned" }');
     const builder = scriptedBuilder([write(commented), write(plain)]);
 
     await runOrderBuildLive(order.db, "comment-corrected-order", order.operator.name, {
@@ -1690,7 +1714,7 @@ describe("a comment a builder adds", () => {
   });
 
   test("commits the comment where the setting does not ban comments in the repo", async () => {
-    const order = commentOrder("comment-allowed-order", '{ "repos": ["cniska/other"] }');
+    const order = commentOrder("comment-allowed-order", '{ "comments": "allowed" }');
     const builder = scriptedBuilder([write(commented)]);
 
     await runOrderBuildLive(order.db, "comment-allowed-order", order.operator.name, {
@@ -1707,23 +1731,25 @@ describe("a comment a builder adds", () => {
       "the commit gate covers other owners",
       "comment-uncovered-order",
       () =>
-        commentOrder("comment-uncovered-order", '{ "repos": "all" }', { owner: "github.com/someone-else" }),
+        commentOrder("comment-uncovered-order", '{ "comments": "banned" }', {
+          owner: "github.com/someone-else",
+        }),
     ],
     [
       "no commit gate is installed",
       "comment-unhooked-order",
-      () => commentOrder("comment-unhooked-order", '{ "repos": "all" }', { owner: null }),
+      () => commentOrder("comment-unhooked-order", '{ "comments": "banned" }', { owner: null }),
     ],
     [
       "the checkout has no remote to label it by",
       "comment-unlabeled-order",
-      () => commentOrder("comment-unlabeled-order", '{ "repos": "all" }', { remote: null }),
+      () => commentOrder("comment-unlabeled-order", '{ "comments": "banned" }', { remote: null }),
     ],
     [
       "only an upstream remote names the repository, so no origin is covered",
       "comment-upstream-order",
       () =>
-        commentOrder("comment-upstream-order", '{ "repos": ["cniska/thing"] }', {
+        commentOrder("comment-upstream-order", '{ "comments": "banned" }', {
           remote: { name: "upstream", url: "git@github.com:cniska/thing.git" },
         }),
     ],
@@ -1731,7 +1757,7 @@ describe("a comment a builder adds", () => {
       "a covered origin is a path, which labels no repository",
       "comment-path-origin-order",
       () =>
-        commentOrder("comment-path-origin-order", '{ "repos": "all" }', {
+        commentOrder("comment-path-origin-order", '{ "comments": "banned" }', {
           owner: "/srv/cniska",
           remote: { name: "origin", url: "/srv/cniska/thing" },
         }),
@@ -1740,7 +1766,7 @@ describe("a comment a builder adds", () => {
       "the repository runs its own hooks",
       "comment-own-hooks-order",
       () => {
-        const order = commentOrder("comment-own-hooks-order", '{ "repos": "all" }');
+        const order = commentOrder("comment-own-hooks-order", '{ "comments": "banned" }');
         git(order.repo.dir, ["config", "core.hooksPath", ".githooks"]);
         return order;
       },
@@ -1761,7 +1787,7 @@ describe("a comment a builder adds", () => {
   }
 
   test("commits a turn that leaves an existing comment untouched", async () => {
-    const order = commentOrder("comment-kept-order", '{ "repos": ["cniska/thing"] }');
+    const order = commentOrder("comment-kept-order", '{ "comments": "banned" }');
     writeFileSync(join(order.repo.dir, "built.ts"), commented);
     git(order.repo.dir, ["add", "built.ts"]);
     git(order.repo.dir, ["commit", "-q", "-m", "feat: add built.ts"]);

@@ -279,20 +279,26 @@ describe("the comment step", () => {
   });
 });
 
+const BANNED = '{ "comments": "banned" }';
+
 function repoWithCommentGate(
-  setting: string | null,
+  layers: { project?: string; user?: string },
   dimShim = `exec "${process.execPath}" "${join(import.meta.dir, "cli.ts")}" "$@"`,
 ): {
   dir: string;
   work: string;
+  env: Record<string, string>;
   commit: (files: Record<string, string>, env?: Record<string, string>) => { ok: boolean; err: string };
 } {
   const dir = mkdtempSync(join(tmpdir(), "dim-comment-hook-"));
   const hooks = join(dir, "hooks");
   const bin = join(dir, "bin");
   const machine = join(dir, "machine");
+  const home = join(dir, "home");
   const work = join(dir, "work");
-  for (const d of [hooks, bin, machine, work]) mkdirSync(d, { recursive: true });
+  for (const d of [hooks, bin, machine, join(home, ".config", "dim"), join(work, ".dim")]) {
+    mkdirSync(d, { recursive: true });
+  }
 
   const shim = join(bin, "dim");
   writeFileSync(shim, `#!/usr/bin/env bash\n${dimShim}\n`);
@@ -300,7 +306,7 @@ function repoWithCommentGate(
   const hook = join(hooks, "pre-commit");
   writeFileSync(hook, preCommitScript(["github.com/cniska"]));
   execFileSync("chmod", ["755", hook]);
-  if (setting !== null) writeFileSync(join(machine, "comment-gate.json"), setting);
+  if (layers.user !== undefined) writeFileSync(join(home, ".config", "dim", "config.json"), layers.user);
 
   execFileSync("git", ["init", "-q", work]);
   execFileSync("git", ["-C", work, "config", "user.email", "t@example.com"]);
@@ -308,21 +314,26 @@ function repoWithCommentGate(
   execFileSync("git", ["-C", work, "config", "core.hooksPath", hooks]);
   execFileSync("git", ["-C", work, "remote", "add", "origin", "git@github.com:cniska/thing.git"]);
 
-  const commit = (files: Record<string, string>, env: Record<string, string> = {}) => {
+  const env = { PATH: `${bin}:${process.env.PATH}`, DIM_HOME: machine, HOME: home };
+  const commit = (files: Record<string, string>, extra: Record<string, string> = {}) => {
     for (const [path, text] of Object.entries(files)) writeFileSync(join(work, path), text);
     execFileSync("git", ["-C", work, "add", "-A"]);
     const run = spawnSync("git", ["-C", work, "commit", "-q", "-m", "feat: a conforming subject"], {
       encoding: "utf8",
-      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, DIM_HOME: machine, ...env },
+      env: { ...process.env, ...env, ...extra },
     });
     return { ok: run.status === 0, err: run.stderr };
   };
-  return { dir, work, commit };
+  if (layers.project !== undefined) {
+    const first = commit({ ".dim/config.json": layers.project }, { DIM_SKIP_CHECK: "1" });
+    if (!first.ok) throw new Error(`could not commit the project config: ${first.err}`);
+  }
+  return { dir, work, env, commit };
 }
 
 describe("the comment gate", () => {
-  test("refuses an added comment in a repo the setting names, naming each path and line", () => {
-    const { dir, commit } = repoWithCommentGate('{ "repos": ["cniska/thing"] }');
+  test("refuses an added comment in a repo whose committed config bans them, naming each path and line", () => {
+    const { dir, commit } = repoWithCommentGate({ project: BANNED });
     try {
       const refused = commit({ "a.ts": "const a = 1;\n// why\n", "b.ts": "/* why */\n" });
       expect(refused.ok).toBe(false);
@@ -335,7 +346,7 @@ describe("the comment gate", () => {
   });
 
   test("lets through a commit with no added comment, over one already there", () => {
-    const { dir, commit } = repoWithCommentGate('{ "repos": ["cniska/thing"] }');
+    const { dir, commit } = repoWithCommentGate({ project: BANNED });
     try {
       expect(commit({ "a.ts": "// kept\n" }, { DIM_SKIP_CHECK: "1" }).ok).toBe(true);
       expect(commit({ "a.ts": "// kept\nconst a = 1;\n" }).ok).toBe(true);
@@ -344,8 +355,8 @@ describe("the comment gate", () => {
     }
   });
 
-  test("refuses in every repo when the setting is all", () => {
-    const { dir, commit } = repoWithCommentGate('{ "repos": "all" }');
+  test("refuses where only the user config bans comments", () => {
+    const { dir, commit } = repoWithCommentGate({ user: BANNED });
     try {
       expect(commit({ "a.ts": "// why\n" }).ok).toBe(false);
     } finally {
@@ -353,12 +364,25 @@ describe("the comment gate", () => {
     }
   });
 
-  for (const [what, setting] of [
-    ["no setting", null],
-    ["a setting naming another repo", '{ "repos": ["cniska/other"] }'],
+  test("judges by the ban the last commit holds, so one commit cannot lift it and add a comment", () => {
+    const { dir, commit } = repoWithCommentGate({ project: BANNED });
+    try {
+      const refused = commit({ ".dim/config.json": '{ "comments": "allowed" }', "a.ts": "// why\n" });
+      expect(refused.ok).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  for (const [what, layers] of [
+    ["no config", {}],
+    [
+      "a committed config allowing comments over a user ban",
+      { project: '{ "comments": "allowed" }', user: BANNED },
+    ],
   ] as const) {
     test(`passes a repo with ${what}`, () => {
-      const { dir, commit } = repoWithCommentGate(setting);
+      const { dir, commit } = repoWithCommentGate(layers);
       try {
         expect(commit({ "a.ts": "// why\n" }).ok).toBe(true);
       } finally {
@@ -367,19 +391,19 @@ describe("the comment gate", () => {
     });
   }
 
-  test("passes on a setting it cannot read, and says why", () => {
-    const { dir, commit } = repoWithCommentGate('{ "repos": ');
+  test("passes on a config it cannot read, and says why", () => {
+    const { dir, commit } = repoWithCommentGate({ project: '{ "comments": ' });
     try {
       const passed = commit({ "a.ts": "// why\n" });
       expect(passed.ok).toBe(true);
-      expect(passed.err).toContain(join(dir, "machine", "comment-gate.json"));
+      expect(passed.err).toContain(".dim/config.json");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
   test("exits 3 from the command when it names an added comment", () => {
-    const { dir, work, commit } = repoWithCommentGate('{ "repos": "all" }');
+    const { dir, work, env, commit } = repoWithCommentGate({ project: BANNED });
     try {
       commit({ "a.ts": "const a = 1;\n" });
       writeFileSync(join(work, "a.ts"), "const a = 1;\n// why\n");
@@ -387,7 +411,7 @@ describe("the comment gate", () => {
       const run = spawnSync(process.execPath, [join(import.meta.dir, "cli.ts"), "comments", "check"], {
         cwd: work,
         encoding: "utf8",
-        env: { ...process.env, DIM_HOME: join(dir, "machine") },
+        env: { ...process.env, ...env },
       });
       expect(run.status).toBe(3);
       expect(run.stdout).toBe("a.ts:2\n");
@@ -398,7 +422,7 @@ describe("the comment gate", () => {
 
   test("passes when dim fails with output on stdout, since only exit 3 is a refusal", () => {
     const { dir, commit } = repoWithCommentGate(
-      null,
+      {},
       '[ "$1 $2" = "comments check" ] && { echo "a.ts:1"; exit 1; }; exit 0',
     );
     try {
@@ -409,7 +433,7 @@ describe("the comment gate", () => {
   });
 
   test("steps aside on the env escape", () => {
-    const { dir, commit } = repoWithCommentGate('{ "repos": "all" }');
+    const { dir, commit } = repoWithCommentGate({ project: BANNED });
     try {
       expect(commit({ "a.ts": "// why\n" }, { DIM_SKIP_CHECK: "1" }).ok).toBe(true);
     } finally {
@@ -428,13 +452,14 @@ describe("whether a checkout's commit is judged for comments", () => {
         DIM_HOME: join(dir, "machine"),
       };
       mkdirSync(env.DIM_HOME, { recursive: true });
-      writeFileSync(join(env.DIM_HOME, "comment-gate.json"), '{ "repos": "all" }');
+      mkdirSync(join(env.HOME, ".config", "dim"), { recursive: true });
+      writeFileSync(join(env.HOME, ".config", "dim", "config.json"), '{ "comments": "banned" }');
       installCommitGate(["github.com/cniska"], [], env);
       const work = join(dir, "work");
       execFileSync("git", ["init", "-q", work]);
       execFileSync("git", ["-C", work, "remote", "add", "origin", "git@github.com:cniska/thing.git"]);
       execFileSync("git", ["-C", work, "config", "core.hooksPath", `${sharedHooksDir(env)}/`]);
-      expect(commentGateFor(work, env)).toEqual({ state: "armed", label: "cniska/thing" });
+      expect(commentGateFor(work, "HEAD", env)).toEqual({ state: "armed", label: "cniska/thing" });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

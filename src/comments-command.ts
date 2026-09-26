@@ -1,49 +1,77 @@
 import { relative, resolve } from "node:path";
 import { checkoutRoot } from "./checkout";
-import { commentsBanned } from "./comments-ban-setting";
 import { purgeCheckout } from "./comments-purge";
 import { stagedComments } from "./comments-staged";
-import { COMMENTS_FOUND_EXIT } from "./commit-gate";
-import { labelFor } from "./git-remote";
+import { COMMENTS_FOUND_EXIT, commentsBanned } from "./commit-gate";
+import { PROJECT_CONFIG, projectConfigPath, readProjectConfig, writeConfigValue } from "./config";
 import { warn } from "./warn";
-import { formatCommand } from "./workspace-commands";
+import { checkCommand, formatCommand } from "./workspace-commands";
 
 const USAGE = "usage: dim comments check | dim comments purge [--write] [<path>...]";
 
 function check(cwd: string): void {
   const root = checkoutRoot(cwd);
-  const label = root === null ? null : labelFor(root);
-  if (root === null || label === null || !commentsBanned(label)) return;
+  if (root === null || !commentsBanned(root, "HEAD")) return;
   const { found, unparsed } = stagedComments(root);
   for (const path of unparsed) warn(`dim: ${path} does not parse, so its comments are not judged`);
   for (const { path, line } of found) console.log(`${path}:${line}`);
   if (found.length > 0) process.exit(COMMENTS_FOUND_EXIT);
 }
 
+type Formatted = { command: string; exitCode: number | null; signal: string | null; output: string };
+
+function formatted(root: string, command: string): Formatted {
+  const run = Bun.spawnSync(["sh", "-c", command], { cwd: root, stdout: "pipe", stderr: "pipe" });
+  const failed = run.exitCode !== 0;
+  return {
+    command,
+    exitCode: run.exitCode,
+    signal: run.signalCode ?? null,
+    output: failed ? `${run.stdout.toString()}${run.stderr.toString()}`.trim() : "",
+  };
+}
+
 function purge(cwd: string, args: string[]): void {
   const root = checkoutRoot(cwd);
   if (root === null) throw new Error(`${cwd} is not inside a git checkout`);
   const write = args.includes("--write");
-  const given = args.filter((arg) => arg !== "--write");
-  const paths = given.map((path) => relative(root, resolve(cwd, path)) || ".");
+  const paths = args
+    .filter((arg) => arg !== "--write")
+    .map((path) => relative(root, resolve(cwd, path)) || ".");
+  readProjectConfig(root);
+  if (write) writeConfigValue(projectConfigPath(root), "comments", "banned");
   const { files, unparsed } = purgeCheckout(root, { write, paths });
-  for (const { path, removed } of files) console.log(`${path}: ${removed}`);
-  for (const path of unparsed) warn(`dim: ${path} does not parse, so it is left as it is`);
-  const total = files.reduce((sum, file) => sum + file.removed, 0);
-  if (total === 0) {
-    console.log("no comments to purge in the tracked files of a language dim reads");
-    return;
-  }
-  const where = `${files.length} file${files.length === 1 ? "" : "s"}`;
+  const comments = files.reduce((sum, file) => sum + file.removed, 0);
+  const ban = PROJECT_CONFIG;
+  const format = formatCommand(root)?.command ?? null;
+  const check = checkCommand(root)?.command ?? null;
   if (!write) {
-    console.log(`${total} comments in ${where} would go. Re-run with --write to purge them.`);
+    const steps = [`removes them`, `bans comments in ${ban}`, format ? `runs ${format}` : null];
+    console.log(
+      JSON.stringify({
+        files,
+        unparsed,
+        comments,
+        next: `dim comments purge --write ${steps.filter(Boolean).join(", ")}`,
+      }),
+    );
     return;
   }
-  const format = formatCommand(root);
+  const ran = format ? formatted(root, format) : null;
   console.log(
-    `purged ${total} comments from ${where}; ` +
-      (format ? `run ${format.command} to tidy the lines they left` : "run this repo's formatter next"),
+    JSON.stringify({
+      files,
+      unparsed,
+      comments,
+      banned: ban,
+      format: ran,
+      next:
+        ran && ran.exitCode !== 0
+          ? `${ran.command} failed; fix it before committing`
+          : `${check ? `run ${check}, then ` : ""}commit the purge together with ${ban}`,
+    }),
   );
+  if (ran && ran.exitCode !== 0) process.exit(1);
 }
 
 export function runComments(args: string[], cwd = process.cwd()): void {

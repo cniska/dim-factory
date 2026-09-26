@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { AGENT_LABEL, agentPlistPath } from "./agent";
 import { checkoutRoot } from "./checkout";
 import { codexConfigPath, planCodexTrust, type TrustState } from "./codex-trust";
-import { commentBanPath } from "./comments-ban-setting";
 import {
   type CommentGate,
   commentGateFor,
@@ -13,6 +12,7 @@ import {
   planCommitGate,
   sharedHooksDir,
 } from "./commit-gate";
+import { PROJECT_CONFIG, projectConfigPath, userConfigPath } from "./config";
 import { ConfigError } from "./config-error";
 import { harnessCommand } from "./harness-command";
 import { HARNESSES } from "./harness-name";
@@ -245,10 +245,13 @@ function commentGate(env: Env, cwd: string, commitGate: Health): Health {
   const root = checkoutRoot(cwd);
   let gate: CommentGate;
   try {
-    gate = root === null ? { state: "unlabeled" } : commentGateFor(root, env);
+    gate = root === null ? { state: "unlabeled" } : commentGateFor(root, "HEAD", env);
   } catch (error) {
     if (error instanceof GitConfigUnreadable) return { name, state: "fail", detail: error.message };
     if (!(error instanceof ConfigError)) throw error;
+    if (root !== null && error.path.startsWith(projectConfigPath(root))) {
+      return { name, state: "fail", detail: error.message, fix: `repair ${PROJECT_CONFIG} and commit it` };
+    }
     return unreadable(name, error);
   }
   if (gate.state === "unlabeled") {
@@ -263,7 +266,7 @@ function commentGate(env: Env, cwd: string, commitGate: Health): Health {
     return {
       name,
       state: "ok",
-      detail: `off for ${label}: ${tildePath(commentBanPath(env), env)} does not ban comments there`,
+      detail: `off for ${label}: ${PROJECT_CONFIG} as HEAD commits it, over ${tildePath(userConfigPath(env), env)}, does not ban comments`,
     };
   }
   if (gate.state === "uncovered") {

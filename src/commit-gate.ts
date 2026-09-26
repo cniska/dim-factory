@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { commentsBanned } from "./comments-ban-setting";
+import { readConfig } from "./config";
 import { checkoutSlug, labelFor } from "./git-remote";
 import { type Env, resolveHomeDir } from "./paths";
 import { prePushScript } from "./push-gate";
@@ -233,10 +233,14 @@ export type CommentGate =
   | { state: "off" | "uncovered" | "armed"; label: string }
   | { state: "hooks-elsewhere"; label: string; hooksPath: string | null };
 
-export function commentGateFor(root: string, env: Env = process.env): CommentGate {
+export function commentsBanned(root: string, at: string, env: Env = process.env): boolean {
+  return readConfig({ env, root, at }).comments === "banned";
+}
+
+export function commentGateFor(root: string, at: string, env: Env = process.env): CommentGate {
   const label = labelFor(root);
   if (label === null) return { state: "unlabeled" };
-  if (!commentsBanned(label, env)) return { state: "off", label };
+  if (!commentsBanned(root, at, env)) return { state: "off", label };
   if (!ownersCover(installedOwners(env) ?? [], checkoutSlug(root))) return { state: "uncovered", label };
   const hooksPath = hooksPathOf(root, env);
   if (hooksPath === null || canonicalPath(root, hooksPath) !== canonicalPath(root, sharedHooksDir(env))) {

@@ -389,8 +389,8 @@ describe("the comment gate for the current repo", () => {
     const cwd = join(newRoot(), "work");
     execFileSync("git", ["init", "-q", cwd]);
     execFileSync("git", ["-C", cwd, "remote", "add", "origin", "git@github.com:cniska/thing.git"]);
-    mkdirSync(env.DIM_HOME as string, { recursive: true });
-    if (setting !== null) writeFileSync(join(env.DIM_HOME as string, "comment-gate.json"), setting);
+    mkdirSync(join(env.HOME as string, ".config", "dim"), { recursive: true });
+    if (setting !== null) writeFileSync(join(env.HOME as string, ".config", "dim", "config.json"), setting);
     return { env, cwd };
   }
 
@@ -416,7 +416,7 @@ describe("the comment gate for the current repo", () => {
   });
 
   test("reports it on where the setting names the repo and the commit gate covers it", () => {
-    const { env, cwd } = inRepo('{ "repos": ["cniska/thing"] }');
+    const { env, cwd } = inRepo('{ "comments": "banned" }');
     installCommitGate(["github.com/cniska"], [], env);
     expect(commentGate(env, cwd)).toMatchObject({
       state: "ok",
@@ -425,7 +425,7 @@ describe("the comment gate for the current repo", () => {
   });
 
   test("warns where the setting bans comments but the repo runs its own hooks", () => {
-    const { env, cwd } = inRepo('{ "repos": ["cniska/thing"] }');
+    const { env, cwd } = inRepo('{ "comments": "banned" }');
     installCommitGate(["github.com/cniska"], [], env);
     execFileSync("git", ["-C", cwd, "config", "core.hooksPath", ".githooks"]);
     expect(commentGate(env, cwd)).toMatchObject({
@@ -435,7 +435,7 @@ describe("the comment gate for the current repo", () => {
   });
 
   test("fails the check, and still reports, where git cannot read its config", () => {
-    const { env, cwd } = inRepo('{ "repos": ["cniska/thing"] }');
+    const { env, cwd } = inRepo('{ "comments": "banned" }');
     installCommitGate(["github.com/cniska"], [], env);
     writeFileSync(env.GIT_CONFIG_GLOBAL as string, "[core\n");
     expect(commentGate(env, cwd)).toMatchObject({
@@ -447,7 +447,7 @@ describe("the comment gate for the current repo", () => {
   });
 
   test("reports the commit gate, not the repository's hooks, where git's global hooksPath is unset", () => {
-    const { env, cwd } = inRepo('{ "repos": ["cniska/thing"] }');
+    const { env, cwd } = inRepo('{ "comments": "banned" }');
     installCommitGate(["github.com/cniska"], [], env);
     execFileSync("git", ["config", "--global", "--unset", "core.hooksPath"], {
       env: { ...process.env, ...env },
@@ -459,7 +459,7 @@ describe("the comment gate for the current repo", () => {
   });
 
   test("warns where the setting bans comments but no hook covers the repo", () => {
-    const { env, cwd } = inRepo('{ "repos": "all" }');
+    const { env, cwd } = inRepo('{ "comments": "banned" }');
     installCommitGate(["github.com/someone-else"], [], env);
     expect(commentGate(env, cwd)).toMatchObject({
       state: "warn",
@@ -468,7 +468,7 @@ describe("the comment gate for the current repo", () => {
   });
 
   test("warns where the installed pre-commit hook is not the one that carries the comment step", () => {
-    const { env, cwd } = inRepo('{ "repos": ["cniska/thing"] }');
+    const { env, cwd } = inRepo('{ "comments": "banned" }');
     installCommitGate(["github.com/cniska"], [], env);
     writeFileSync(
       join(env.HOME as string, ".config", "dim", "hooks", "pre-commit"),
@@ -487,14 +487,14 @@ describe("the comment gate for the current repo", () => {
   });
 
   for (const [what, setting] of [
-    ["holds a value it refuses", '{ "repos": 1 }'],
-    ["does not parse", '{ "repos": '],
+    ["holds a value it refuses", '{ "comments": 1 }'],
+    ["does not parse", '{ "comments": '],
   ]) {
-    test(`fails on a setting that ${what}, and names the file`, () => {
+    test(`fails on a config that ${what}, and names the file`, () => {
       const { env, cwd } = inRepo(setting as string);
       expect(commentGate(env, cwd)).toMatchObject({
         state: "fail",
-        fix: `repair ${join(env.DIM_HOME as string, "comment-gate.json")} by hand`,
+        fix: `repair ${join(env.HOME as string, ".config", "dim", "config.json")} by hand`,
       });
     });
   }

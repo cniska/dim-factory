@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { purgeCheckout, purgeText } from "./comments-purge";
@@ -85,6 +85,75 @@ function repo(files: Record<string, string>): string {
   execFileSync("git", ["-C", dir, "add", "-A"]);
   return dir;
 }
+
+function purgeCommand(
+  dir: string,
+  args: string[],
+): { status: number | null; report: Record<string, unknown> } {
+  const run = spawnSync(process.execPath, [join(import.meta.dir, "cli.ts"), "comments", "purge", ...args], {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, HOME: join(dir, ".home") },
+  });
+  return { status: run.status, report: JSON.parse(run.stdout) };
+}
+
+describe("the purge command", () => {
+  test("changes nothing without write, and says what write would do", () => {
+    const dir = repo({
+      "a.ts": "// why\nconst a = 1;\n",
+      "package.json": '{ "scripts": { "format": "true" } }',
+      "bun.lock": "",
+    });
+    const { report } = purgeCommand(dir, []);
+    expect(report).toMatchObject({ comments: 1, files: [{ path: "a.ts", removed: 1 }] });
+    expect(report.next).toContain(".dim/config.json");
+    expect(existsSync(join(dir, ".dim", "config.json"))).toBe(false);
+  });
+
+  test("with write, purges, bans comments in the project config and runs the formatter", () => {
+    const dir = repo({
+      "a.ts": "// why\nconst a = 1;\n",
+      "package.json": '{ "scripts": { "format": "touch formatted" } }',
+      "bun.lock": "",
+    });
+    const { status, report } = purgeCommand(dir, ["--write"]);
+    expect(status).toBe(0);
+    expect(readFileSync(join(dir, "a.ts"), "utf8")).toBe("const a = 1;\n");
+    expect(JSON.parse(readFileSync(join(dir, ".dim", "config.json"), "utf8"))).toEqual({
+      comments: "banned",
+    });
+    expect(existsSync(join(dir, "formatted"))).toBe(true);
+    expect(report).toMatchObject({ banned: ".dim/config.json", format: { exitCode: 0 } });
+  });
+
+  test("fails where the formatter fails, and carries what it printed", () => {
+    const dir = repo({
+      "a.ts": "// why\n",
+      "package.json": '{ "scripts": { "format": "echo broke && exit 2" } }',
+      "bun.lock": "",
+    });
+    const { status, report } = purgeCommand(dir, ["--write"]);
+    expect(status).toBe(1);
+    expect(report).toMatchObject({ format: { exitCode: expect.any(Number) } });
+    expect(JSON.stringify(report.format)).toContain("broke");
+  });
+
+  test("refuses a project config it cannot read before touching any file", () => {
+    const dir = repo({ "a.ts": "// why\n", ".dim/config.json": '{ "comments": ' });
+    const run = spawnSync(
+      process.execPath,
+      [join(import.meta.dir, "cli.ts"), "comments", "purge", "--write"],
+      {
+        cwd: dir,
+        encoding: "utf8",
+        env: { ...process.env, HOME: join(dir, ".home") },
+      },
+    );
+    expect(run.status).not.toBe(0);
+    expect(readFileSync(join(dir, "a.ts"), "utf8")).toBe("// why\n");
+  });
+});
 
 describe("purging a checkout", () => {
   test("names what it would remove and writes nothing without write", () => {

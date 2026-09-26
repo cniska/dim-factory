@@ -37,11 +37,16 @@ function head(worktree: string): string {
   return read.out;
 }
 
-function trunkForkPoint(worktree: string): string {
+function trunkRef(worktree: string): string {
   const trunk = trunkBranch(worktree);
   if ("why" in trunk) throw new Error(trunk.why);
-  const base = git(worktree, ["merge-base", "HEAD", `refs/heads/${trunk.name}`]);
-  if (!base.ok) throw new Error(`cannot place ${worktree} against ${trunk.name}: ${base.err}`);
+  return `refs/heads/${trunk.name}`;
+}
+
+function trunkForkPoint(worktree: string): string {
+  const trunk = trunkRef(worktree);
+  const base = git(worktree, ["merge-base", "HEAD", trunk]);
+  if (!base.ok) throw new Error(`cannot place ${worktree} against ${trunk}: ${base.err}`);
   return base.out;
 }
 
@@ -144,7 +149,7 @@ export function commitBuildTurn(options: {
   }
 
   refuseNested(worktree);
-  const commentGate = commentGateFor(worktree, env);
+  const commentGate = commentGateFor(worktree, trunkRef(worktree), env);
   const checked = stagedTree(worktree);
   const { unparsed } =
     commentGate.state === "armed" ? refuseAddedComments(worktree, commentGate.label) : { unparsed: [] };
