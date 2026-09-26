@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
@@ -608,6 +608,16 @@ describe("factory order report records", () => {
     const repo = integratedRepo();
     const home = mkdtempSync(join(tmpdir(), "dim-ship-"));
     const env = scratchEnv(home);
+    mkdirSync(join(repo.dir, "scripts"));
+    writeFileSync(
+      join(repo.dir, "scripts", "worktree-teardown.sh"),
+      `#!/bin/sh\ntest -d '${env.DIM_HOME}/lock'\n`,
+      {
+        mode: 0o755,
+      },
+    );
+    Bun.spawnSync(["git", "-C", repo.dir, "add", "scripts/worktree-teardown.sh"]);
+    Bun.spawnSync(["git", "-C", repo.dir, "commit", "-q", "-m", "test: require ship lock through teardown"]);
     const database = db();
     queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
     startPlannedBuild(database);
@@ -621,7 +631,6 @@ describe("factory order report records", () => {
     recordOrderCommit(database, "order-1", sha, worker, "feat: ship-slice");
     approveFinalBuildAt(database, "order-1", sha, worker, attemptOperator);
     approveReviewAt(database, "order-1", sha, attemptOperator);
-
     expect(shipOrder(database, "order-1", wt, attemptOperator, { env })).toEqual({ landed: "fast_forward" });
     expect(Bun.spawnSync(["git", "-C", repo.dir, "merge-base", "--is-ancestor", sha, "HEAD"]).success).toBe(
       true,

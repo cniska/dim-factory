@@ -62,47 +62,49 @@ export function shipOrder(
   options: { env?: Env; checkSandbox?: string[] } = {},
 ): ShipOutcome {
   const env = options.env ?? process.env;
-  assertOperator(db, worker, "ship an order");
-  assertNext(db, orderId, "ship");
-  const shas = currentOrderCommits(db, orderId).map((row) => row.sha);
-  const onRebased = (rewrite: Rewrite): RebaseVerdict => {
-    const check = recheck(rewrite.worktree, env, options.checkSandbox ?? CHECK_SANDBOX);
-    recordOrderRewrite(db, orderId, rewrite, check, worker);
-    if (check.exitCode !== 0) {
+  return withLock(() => {
+    assertOperator(db, worker, "ship an order");
+    assertNext(db, orderId, "ship");
+    const shas = currentOrderCommits(db, orderId).map((row) => row.sha);
+    const onRebased = (rewrite: Rewrite): RebaseVerdict => {
+      const check = recheck(rewrite.worktree, env, options.checkSandbox ?? CHECK_SANDBOX);
+      recordOrderRewrite(db, orderId, rewrite, check, worker);
+      if (check.exitCode !== 0) {
+        return {
+          hold: new ShipRefusal(
+            "ship_check_failed",
+            `${check.command} exited ${check.exitCode} at the rebased head ${rewrite.newHead}; the rebase is kept and the order is back at build:\n${check.result}`,
+          ),
+        };
+      }
+      if (rewrite.patchEqual) return { land: currentOrderCommits(db, orderId).map((row) => row.sha) };
       return {
         hold: new ShipRefusal(
-          "ship_check_failed",
-          `${check.command} exited ${check.exitCode} at the rebased head ${rewrite.newHead}; the rebase is kept and the order is back at build:\n${check.result}`,
+          "ship_patch_changed",
+          `rebasing ${orderId} onto the trunk changed a patch, so its approved review no longer covers it; it is back at review`,
         ),
       };
-    }
-    if (rewrite.patchEqual) return { land: currentOrderCommits(db, orderId).map((row) => row.sha) };
-    return {
-      hold: new ShipRefusal(
-        "ship_patch_changed",
-        `rebasing ${orderId} onto the trunk changed a patch, so its approved review no longer covers it; it is back at review`,
-      ),
     };
-  };
-  let outcome: ShipOutcome;
-  try {
-    outcome = withLock(() => shipBranch(cwd, orderId, shas, onRebased), env);
-  } catch (error) {
+    let outcome: ShipOutcome;
+    try {
+      outcome = shipBranch(cwd, orderId, shas, onRebased);
+    } catch (error) {
+      appendOrderEvent(db, orderId, {
+        kind: "ship_failed",
+        worker,
+        commitSha: latestOrderCommit(db, orderId)?.sha,
+        reason: error instanceof Error ? error.message : String(error),
+        evidence: refusalEvidence(error),
+      });
+      throw error;
+    }
+    removeWorktree(orderId, { cwd });
     appendOrderEvent(db, orderId, {
-      kind: "ship_failed",
+      kind: "shipped",
       worker,
       commitSha: latestOrderCommit(db, orderId)?.sha,
-      reason: error instanceof Error ? error.message : String(error),
-      evidence: refusalEvidence(error),
+      evidence: { landed: outcome.landed },
     });
-    throw error;
-  }
-  removeWorktree(orderId, { cwd });
-  appendOrderEvent(db, orderId, {
-    kind: "shipped",
-    worker,
-    commitSha: latestOrderCommit(db, orderId)?.sha,
-    evidence: { landed: outcome.landed },
-  });
-  return outcome;
+    return outcome;
+  }, env);
 }

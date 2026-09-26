@@ -64,7 +64,7 @@ A refused commit or comment goes back to the same builder, at most twice per tur
 
 ## Done
 
-An order is done when it ships: its commits land on the local trunk, a `shipped` event records it, and its worktree is removed. Nothing is pushed. Ship waits on an approved Build artifact, which the runner writes only with a check that passed at the head, and on an approved Review artifact at the head; the docs changing with the behavior rest on the stations. A ship that does not land writes a `ship_failed` event with its reason.
+An order is done when it ships: its commits land on the local trunk, a `shipped` event records it, and its worktree is removed. Nothing is pushed. Ship waits on an approved Build artifact, which the runner writes only with a check that passed at the head, and on an approved Review artifact at the head; the docs changing with the behavior rest on the stations. A failed branch landing attempt writes a `ship_failed` event with its reason.
 
 Ship lands the order the way the repo declares with `git config dim.ship`:
 
