@@ -341,13 +341,15 @@ CREATE TABLE IF NOT EXISTS factory_worker (
   -- credential: it is minted here, never leaves this machine, and stops working when
   -- the worker does.
   token_digest  TEXT NOT NULL,
-  -- The process the worker was issued for, so that it is over is a signal sent to a
-  -- pid rather than a heartbeat something has to keep writing. NULL for a worker
-  -- issued to a shell instead of to a process this spawned.
+  -- The process the worker runs as, so that it is over is a signal sent to a pid
+  -- rather than a heartbeat something has to keep writing. A station worker resumes
+  -- as a new process each run, and the runner writes that run's pid when it starts.
+  -- NULL for a worker issued to a shell instead of to a process this spawned.
   pid           INTEGER,
   started_at    TEXT NOT NULL,
-  -- SessionEnd writes this for a spawned worker. A stopped pid is over whether or
-  -- not this row was written, which keeps a killed worker from holding a live token.
+  -- The runner writes this when a station worker's run ends and clears it when the
+  -- next run starts. A stopped pid is over whether or not this row was written,
+  -- which keeps a killed worker from holding a live token.
   ended_at      TEXT
 );
 

@@ -97,7 +97,7 @@ Nothing is ever attributed afterwards. An audit entry completed later is a mutat
 
 What a harness calls its own session is joined on the same way the worker reaches the work: [`src/hooks.ts`](../src/hooks.ts) puts the worker's name in the spool filename the hook writes, in the environment the factory set, so `factory_worker_session` records which worker a session belonged to without anything being written onto a moment. A sighting that never arrives leaves nothing incomplete, since the log already names the worker.
 
-A worker is over when its process stops answering. `factory_worker.pid` holds the process it was issued for and liveness is a signal sent to it, so a killed worker's token stops working whether or not anything wrote that down — the same test [`src/lock.ts`](../src/lock.ts) uses for an abandoned lock, and the reason none of this needs something awake.
+A worker is over when its process stops answering. `factory_worker.pid` holds the process it runs as and liveness is a signal sent to it. A station worker runs as a new harness child each run, so the runner writes that child's pid and clears `ended_at` when the harness reports the run started, and sets `ended_at` once the run ends in any outcome, stopping the child first where the runner abandons it. Because liveness is a signal, a killed worker's token stops working whether or not anything wrote that down — the same test [`src/lock.ts`](../src/lock.ts) uses for an abandoned lock, and the reason none of this needs something awake.
 
 ## Operator presence
 

@@ -1,7 +1,13 @@
 import type { Database } from "bun:sqlite";
 import { assertOperator } from "./factory-operator";
 import { type ReturnedOrderArtifact, returnedOrderArtifact } from "./factory-order";
-import { type MintedWorker, resolveWorker, workerProcessEnv } from "./factory-worker";
+import {
+  authenticateWorker,
+  endWorker,
+  type MintedWorker,
+  startWorkerRun,
+  workerProcessEnv,
+} from "./factory-worker";
 import type { HarnessAdapter } from "./harness";
 import {
   type HarnessCommandRequest,
@@ -166,15 +172,20 @@ export function runOrderWorkerHarnessLive(
 ): Promise<Awaited<ReturnType<typeof runHarnessCommandLive>> & { worker?: string }> {
   const env = orderWorkerRequest(db, machine, worker);
   let name = worker.worker;
-  const onStarted: HarnessStarted = (sessionId) => {
+  let running: string | undefined;
+  const onStarted: HarnessStarted = (sessionId, pid) => {
     if (name) {
+      startWorkerRun(db, name, pid);
+      running = name;
       bindOrderWorkerSession(db, worker.orderId, worker.role, sessionId);
     } else {
       const minted = bootstrapWorker(db, {
         id: worker.assignment.id,
         token: worker.assignment.token,
         sessionId,
+        pid,
       });
+      running = minted.name;
       saveWorkerCredential(machine ?? process.env, minted);
       bindOrderWorker(db, worker.orderId, worker.role, worker.assignment.id, minted);
       name = minted.name;
@@ -185,10 +196,14 @@ export function runOrderWorkerHarnessLive(
   const run = worker.providerSessionId
     ? runHarnessCommandResumeLive({ ...request, env }, worker.providerSessionId, onStarted, adapter)
     : runHarnessCommandLive({ ...request, env }, onStarted, adapter);
-  return run.then((result) => ({
-    ...result,
-    worker: name ?? assignedWorker(db, worker.assignment.id) ?? undefined,
-  }));
+  return run
+    .then((result) => ({
+      ...result,
+      worker: name ?? assignedWorker(db, worker.assignment.id) ?? undefined,
+    }))
+    .finally(() => {
+      if (running) endWorker(db, running);
+    });
 }
 
 function readOrderWorker(db: Database, orderId: string, role: StationRole): OrderWorker | undefined {
@@ -356,7 +371,7 @@ export function orderWorkerRequest(
     throw new Error(`order ${orderWorker.orderId} ${orderWorker.role} worker credential is unavailable`);
   }
   const env = workerProcessEnv(machine, credential);
-  if (resolveWorker(db, env) !== orderWorker.worker) {
+  if (authenticateWorker(db, env).name !== orderWorker.worker) {
     throw new Error(`order ${orderWorker.orderId} ${orderWorker.role} worker credential changed identity`);
   }
   return env;

@@ -103,6 +103,10 @@ export async function runHarness(run: HarnessRun, options: HarnessRunnerOptions)
   let result: HarnessRunResult;
   try {
     result = await Promise.race([consume, timeout]);
+  } catch (error) {
+    // A run whose observer threw is abandoned, and nothing else would stop its process.
+    run.cancel();
+    throw error;
   } finally {
     if (timer) clearTimeout(timer);
   }

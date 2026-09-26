@@ -67,6 +67,7 @@ function builderTurn(
   const run = async (request: HarnessRequest): Promise<HarnessRun> => {
     let cancelled = false;
     return {
+      pid: process.pid,
       events: (async function* (): AsyncGenerator<HarnessEvent> {
         yield { type: "run.started", providerSessionId: "fake-session" };
         yield { type: "turn.started" };
@@ -187,7 +188,7 @@ describe("builder station", () => {
       db
         .query("SELECT role, parent_worker, ended_at FROM factory_worker WHERE name = ?")
         .get(outcome.builder),
-    ).toEqual({ role: "builder", parent_worker: operator.name, ended_at: null });
+    ).toEqual({ role: "builder", parent_worker: operator.name, ended_at: expect.any(String) });
     expect(
       db
         .query("SELECT kind, worker, station FROM factory_order_event WHERE order_id = ?")
@@ -1042,6 +1043,7 @@ function scriptedBuilder(answers: ((request: HarnessRequest) => BuildTurn | stri
     calls.push(call);
     const answer = answers[calls.length - 1]?.(request) ?? new Error("no turn scripted");
     return {
+      pid: process.pid,
       events: (async function* (): AsyncGenerator<HarnessEvent> {
         yield { type: "run.started", providerSessionId: "fake-session" };
         yield { type: "turn.started" };

@@ -28,6 +28,7 @@ export type HarnessEvent =
     };
 
 export type HarnessRun = {
+  pid: number;
   events: AsyncIterable<HarnessEvent>;
   cancel(): void;
 };

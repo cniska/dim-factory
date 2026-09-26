@@ -42,6 +42,17 @@ describe("the external process harness", () => {
     });
   });
 
+  test("reports the pid of the child it spawned", async () => {
+    const run = await command(
+      `console.log(JSON.stringify({type:"run.completed",output:String(process.pid)}));`,
+    ).start(request);
+
+    const result = await runHarness(run, { timeoutMs: 10_000 });
+
+    expect(result.events).toContainEqual({ type: "run.completed", output: String(run.pid) });
+    expect(run.pid).not.toBe(process.pid);
+  });
+
   test("delivers startup output while the process is still running", async () => {
     let resolveStarted!: () => void;
     let finished = false;

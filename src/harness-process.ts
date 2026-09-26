@@ -85,6 +85,7 @@ export function processHarness(
       rmSync(directory, { recursive: true, force: true });
     };
     return {
+      pid: child.pid,
       events: (async function* () {
         const stdoutDecoder = new TextDecoder();
         const stderrDecoder = new TextDecoder();

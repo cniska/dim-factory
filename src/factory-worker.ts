@@ -108,6 +108,21 @@ type WorkerRow = { name: string; token_digest: string; pid: number | null; ended
  * that down, which is what keeps a killed worker's token from outliving it.
  */
 export function resolveWorker(db: Database, env: Env = process.env): string {
+  const row = authenticateWorker(db, env);
+  if (row.ended_at !== null) {
+    throw new WorkerUnknown("worker_over", `worker ${row.name} ended at ${row.ended_at}`);
+  }
+  if (row.pid !== null && !pidIsAlive(row.pid)) {
+    throw new WorkerUnknown("worker_over", `worker ${row.name} ran as pid ${row.pid}, which is gone`);
+  }
+  return row.name;
+}
+
+/**
+ * The worker a credential names, whether or not it is running: the runner checks a
+ * station worker's saved credential before starting the run that makes it live again.
+ */
+export function authenticateWorker(db: Database, env: Env): WorkerRow {
   const name = env[WORKER_NAME_VAR];
   const token = env[WORKER_TOKEN_VAR];
   if (!name || !token) {
@@ -123,13 +138,7 @@ export function resolveWorker(db: Database, env: Env = process.env): string {
   if (!row || row.token_digest !== digest(token)) {
     throw new WorkerUnknown("worker_unissued", `this factory issued no worker ${name}`);
   }
-  if (row.ended_at !== null) {
-    throw new WorkerUnknown("worker_over", `worker ${name} ended at ${row.ended_at}`);
-  }
-  if (row.pid !== null && !pidIsAlive(row.pid)) {
-    throw new WorkerUnknown("worker_over", `worker ${name} ran as pid ${row.pid}, which is gone`);
-  }
-  return row.name;
+  return row;
 }
 
 export function mintWorkerForSession(
@@ -192,6 +201,12 @@ export function workerIsOver(db: Database, name: string): boolean {
     .get(name);
   if (!row) return true;
   return row.ended_at !== null || (row.pid !== null && !pidIsAlive(row.pid));
+}
+
+/** A resumed station worker runs as a new process, so its row describes that run from here. */
+export function startWorkerRun(db: Database, name: string, pid: number): void {
+  const done = db.run("UPDATE factory_worker SET pid = ?, ended_at = NULL WHERE name = ?", [pid, name]);
+  if (done.changes !== 1) throw new Error(`worker ${name} was not registered`);
 }
 
 /** Ending twice is not an error: a worker that already stopped keeps the time it stopped at. */

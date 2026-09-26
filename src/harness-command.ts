@@ -54,7 +54,7 @@ function workerOutput(events: HarnessEvent[]): string {
   );
 }
 
-export type HarnessStarted = (providerSessionId: string) => void;
+export type HarnessStarted = (providerSessionId: string, pid: number) => void;
 
 function workerEnvironment(spec: HarnessProcess, request: HarnessRequest): ProcessEnvironment {
   const inherited = stationEnvironment(request.env);
@@ -127,7 +127,8 @@ async function runHarnessSessionLive(
   const result = await runHarness(run, {
     timeoutMs,
     onEvent: (event) => {
-      if (event.type === "run.started" && event.providerSessionId) onStarted(event.providerSessionId);
+      if (event.type === "run.started" && event.providerSessionId)
+        onStarted(event.providerSessionId, run.pid);
     },
   });
   const output = workerOutput(result.events);

@@ -81,7 +81,10 @@ describe("the fake harness", () => {
       yield { type: "run.completed", output: "done" };
     }
 
-    const result = await runHarness({ events: working(), cancel: () => undefined }, { timeoutMs: 60 });
+    const result = await runHarness(
+      { pid: process.pid, events: working(), cancel: () => undefined },
+      { timeoutMs: 60 },
+    );
 
     expect(result).toMatchObject({ outcome: "completed" });
   });
@@ -139,6 +142,21 @@ describe("the fake harness", () => {
     expect(harness.cancels()).toBeGreaterThan(0);
   });
 
+  test("stops the worker when observing one of its events throws", async () => {
+    const harness = fakeHarness("hang");
+
+    await expect(
+      runHarness(await harness.start(REQUEST), {
+        timeoutMs: 60_000,
+        onEvent: () => {
+          throw new Error("could not record the start");
+        },
+      }),
+    ).rejects.toThrow("could not record the start");
+
+    expect(harness.cancels()).toBe(1);
+  });
+
   test("returns the answer, not a timeout, when a worker that answered goes silent without exiting", async () => {
     async function* answeredThenSilent(): AsyncIterable<HarnessEvent> {
       yield { type: "run.completed", output: "done" };
@@ -148,6 +166,7 @@ describe("the fake harness", () => {
 
     const result = await runHarness(
       {
+        pid: process.pid,
         events: answeredThenSilent(),
         cancel: () => {
           cancelled = true;

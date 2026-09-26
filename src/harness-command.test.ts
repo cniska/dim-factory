@@ -74,6 +74,7 @@ describe("selected harness commands", () => {
   test("carries process termination evidence into the worker failure", async () => {
     const adapter: HarnessAdapter = {
       start: async () => ({
+        pid: process.pid,
         events: (async function* () {
           yield {
             type: "run.failed",
@@ -115,6 +116,7 @@ describe("selected harness commands", () => {
   test("keeps the worker's last word on a failed run, and takes a completed run's answer only from its completion", async () => {
     const scripted = (events: HarnessEvent[]): HarnessAdapter => ({
       start: async () => ({
+        pid: process.pid,
         events: (async function* () {
           yield* events;
         })(),
@@ -199,6 +201,7 @@ describe("selected harness commands", () => {
   test("returns the answer a harness reports on completion over its last message", async () => {
     const adapter: HarnessAdapter = {
       start: async () => ({
+        pid: process.pid,
         events: (async function* () {
           yield { type: "run.started", providerSessionId: "session" } as const;
           yield { type: "message", role: "assistant", text: "ok" } as const;

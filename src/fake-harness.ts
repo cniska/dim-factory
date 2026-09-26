@@ -110,6 +110,7 @@ export function fakeHarness(scenarioName: FakeHarnessScenario): FakeHarness {
       release = resolve;
     });
     return {
+      pid: process.pid,
       events: (async function* () {
         for (const event of plan.events) {
           if (cancelled) return;

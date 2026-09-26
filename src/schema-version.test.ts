@@ -6,7 +6,7 @@ import { SCHEMA_SQL, SCHEMA_VERSION } from "./schema";
 // makes every schema edit touch that line, so a second branch changing the schema conflicts here.
 // After changing the schema, set the digest to the one this test prints, and bump the version when
 // the change is one `src/schema.ts` says needs it.
-const PINNED = "59 862fbf2ba1f0c2e5d14b364ab28b7a2018c2a0d0eef93112553e44674bba461e";
+const PINNED = "59 45ce0c5af7348b28cf6e051aaf92d48a4c65dc15a4a1883de6569212e16c22ad";
 
 test("the schema's version is pinned together with the schema it stands for", () => {
   const digest = new Bun.CryptoHasher("sha256").update(SCHEMA_SQL).digest("hex");

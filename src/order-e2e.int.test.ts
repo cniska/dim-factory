@@ -256,17 +256,17 @@ describe("headless factory loop", () => {
     ]);
     expect(
       db
-        .query<{ role: string; n: number; ended: number }, [string]>(
-          `SELECT w.role, count(*) AS n, count(w.ended_at) AS ended
+        .query<{ role: string; n: number; pids: number; ended: number }, [string]>(
+          `SELECT w.role, count(*) AS n, count(w.pid) AS pids, count(w.ended_at) AS ended
            FROM factory_order_worker ow
            JOIN factory_worker w ON w.name = ow.worker
            WHERE ow.order_id = ? GROUP BY w.role ORDER BY w.role`,
         )
         .all("headless-order"),
     ).toEqual([
-      { role: "builder", n: 1, ended: 0 },
-      { role: "planner", n: 1, ended: 0 },
-      { role: "reviewer", n: 1, ended: 0 },
+      { role: "builder", n: 1, pids: 1, ended: 1 },
+      { role: "planner", n: 1, pids: 1, ended: 1 },
+      { role: "reviewer", n: 1, pids: 1, ended: 1 },
     ]);
 
     const builder = db
