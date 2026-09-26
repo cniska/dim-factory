@@ -782,6 +782,84 @@ describe("builder station", () => {
     db.close();
   });
 
+  describe("a round whose finding the builder refused", () => {
+    async function refusedRound(orderId: string, answer: boolean) {
+      const db = database();
+      const dimHome = home(`dim-builder-${orderId}-`);
+      const { repo, operator } = orderAtBuild(db, orderId, [
+        { title: "Build the result", outcome: "The result is verified." },
+      ]);
+      const options = { dir: repo.dir, env: { DIM_HOME: dimHome }, checkSandbox: confiningCheckSandbox() };
+      const firstBuild = await runOrderBuildLive(db, orderId, operator.name, {
+        ...options,
+        adapter: builderTurn((request) => {
+          writeFileSync(join(request.cwd, "first.txt"), "first\n");
+          return { subject: "feat: build it", artifact: "Initial Build artifact." };
+        }),
+      });
+      approveOrderBuild(db, orderId, operator.name, "Build approved.");
+      moveOrder(db, orderId, "dim-station-review", operator.name);
+      const reviewer = mintWorker(db, {
+        role: "reviewer",
+        parentWorker: operator.name,
+        sessionId: `${orderId}-r`,
+      });
+      const review = openOrderReview(
+        db,
+        orderId,
+        {
+          reviewer: reviewer.name,
+          baseSha: repo.sha,
+          headSha: git(firstBuild.worktree, ["rev-parse", "HEAD"]),
+        },
+        reviewer.name,
+      );
+      const finding = raiseOrderFinding(
+        db,
+        orderId,
+        { dimension: "docs", summary: "Document the provenance count." },
+        reviewer.name,
+      );
+      closeOrderReview(db, review.id, "closed", reviewer.name);
+      if (answer)
+        answerOrderFinding(db, finding, { answer: "refused", resolution: "no doc names it" }, operator.name);
+      moveOrder(db, orderId, "dim-station-build", operator.name);
+      return { db, operator, options, firstBuild };
+    }
+
+    test("still gets the turn that answers the review, with the refusal marked as not work", async () => {
+      const { db, operator, options, firstBuild } = await refusedRound("refused-rework-order", true);
+      let brief = "";
+      const followup = await runOrderBuildLive(db, "refused-rework-order", operator.name, {
+        ...options,
+        adapter: builderTurn((request) => {
+          brief = request.brief;
+          writeFileSync(join(request.cwd, "answer.txt"), "answer\n");
+          return { subject: "docs: answer the review", artifact: "Build artifact answering the review." };
+        }),
+      });
+      expect(brief).toContain("# Refused findings");
+      expect(brief).toContain("Document the provenance count.\n  Your refusal: no doc names it");
+      expect(brief).not.toContain("# Review findings");
+      expect(followup.builder).toBe(firstBuild.builder);
+      expect(db.query("SELECT max(revision) AS revision FROM factory_order_build").get()).toEqual({
+        revision: 2,
+      });
+      db.close();
+    });
+
+    test("refuses to brief the builder while the finding is unanswered", async () => {
+      const { db, operator, options } = await refusedRound("unanswered-rework-order", false);
+      await expect(
+        runOrderBuildLive(db, "unanswered-rework-order", operator.name, {
+          ...options,
+          adapter: builderTurn(() => ({ subject: "fix: nothing", artifact: "" })),
+        }),
+      ).rejects.toThrow("order unanswered-rework-order has unanswered review findings");
+      db.close();
+    });
+  });
+
   test("claims once and commits the answer when the builder begins another turn after answering", async () => {
     const db = database();
     const dimHome = home("dim-builder-second-turn-");

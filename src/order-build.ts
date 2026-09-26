@@ -19,9 +19,11 @@ import {
   PlanApprovalRefused,
   pendingRebaseConflict,
 } from "./factory-order";
+import { findingLocation } from "./finding-location";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-command";
 import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
+import { orderFindingStandings } from "./order-finding-state";
 import { assertOrderWorkerHarness, resumeOrderStationLive, runOrderStationLive } from "./order-worker";
 import type { Env } from "./paths";
 import type { PlanSlice } from "./plan-artifact";
@@ -56,12 +58,12 @@ export function builderBrief(
   workspace: ReturnType<typeof workspaceContract>,
   revision?: { body: string; feedback: string },
   previousFailure?: string,
-  reviewFindings: readonly string[] = [],
+  reviewFindings: ReviewFindingsForBuild = NO_REVIEW_FINDINGS,
   convention?: CheckoutConvention,
   conflicts: readonly string[] | null = null,
 ): string {
   const resolving = conflicts !== null;
-  const needsCodeWork = currentSlice !== null || reviewFindings.length > 0 || resolving;
+  const needsCodeWork = currentSlice !== null || answersReview(reviewFindings) || resolving;
   const workspaceContext = workspace
     ? [
         `Workspace ecosystem: ${workspace.ecosystems.join(", ") || "unknown"}.`,
@@ -95,7 +97,16 @@ export function builderBrief(
     ...(revision
       ? ["# Returned Build artifact", revision.body, "", "# Owner feedback", revision.feedback]
       : []),
-    ...(reviewFindings.length > 0 ? ["# Review findings", ...reviewFindings.map((one) => `- ${one}`)] : []),
+    ...(reviewFindings.work.length > 0
+      ? ["# Review findings", ...reviewFindings.work.map((one) => `- ${one}`)]
+      : []),
+    ...(reviewFindings.refused.length > 0
+      ? [
+          "# Refused findings",
+          "These are refusals you gave that still stand. They are not work: change nothing for them. The reviewer rules on each one next round.",
+          ...reviewFindings.refused.map((one) => `- ${one}`),
+        ]
+      : []),
     ...(resolving ? rebaseConflictBrief(conflicts) : []),
     ...(needsCodeWork && previousFailure
       ? [
@@ -166,35 +177,102 @@ export function commitCorrectionBrief(subject: string, refusal: string): string 
   ].join("\n");
 }
 
-function reviewFindingsForBuild(db: Database, orderId: string): string[] {
+export type ReviewFindingsForBuild = { work: readonly string[]; refused: readonly string[] };
+
+const NO_REVIEW_FINDINGS: ReviewFindingsForBuild = { work: [], refused: [] };
+
+/** Standing refusals alone still start the turn that answers the review, which owes a Build
+ *  artifact like any other. */
+function answersReview(findings: ReviewFindingsForBuild): boolean {
+  return findings.work.length > 0 || findings.refused.length > 0;
+}
+
+export function reviewFindingsForBuild(db: Database, orderId: string): ReviewFindingsForBuild {
   const review = db
-    .query<{ id: number; event_id: number | null; outcome: string | null }, [string]>(
-      `SELECT r.id, r.outcome, e.id AS event_id
+    .query<{ event_id: number | null; outcome: string | null }, [string]>(
+      `SELECT r.outcome, e.id AS event_id
        FROM factory_order_review r
        LEFT JOIN factory_order_event e ON e.review_id = r.id AND e.kind = 'review_closed'
        WHERE r.order_id = ?
        ORDER BY r.round DESC LIMIT 1`,
     )
     .get(orderId);
-  if (review?.outcome !== "closed" || review.event_id === null) return [];
+  if (review?.outcome !== "closed" || review.event_id === null) return NO_REVIEW_FINDINGS;
+  // A Build artifact written since the review answered it, unless the owner overturned a refusal
+  // after that artifact: the overturn is work the artifact never saw.
+  const overturned =
+    db
+      .query<{ id: number | null }, [string]>(
+        `SELECT max(e.id) AS id FROM factory_order_event e
+         JOIN factory_order_refusal_decision d ON d.finding_id = e.finding_id
+         WHERE e.order_id = ? AND e.kind = 'refusal_decided' AND d.decision = 'refusal_overturned'`,
+      )
+      .get(orderId)?.id ?? 0;
   if (
     db
       .query(
         "SELECT 1 FROM factory_order_event WHERE order_id = ? AND kind = 'build_artifact_written' AND id > ?",
       )
-      .get(orderId, review.event_id)
+      .get(orderId, Math.max(review.event_id, overturned))
   ) {
-    return [];
+    return NO_REVIEW_FINDINGS;
   }
-  const findings = db
-    .query<{ summary: string; answer: string | null }, [number]>(
-      "SELECT summary, answer FROM factory_order_finding WHERE review_id = ? ORDER BY id",
-    )
-    .all(review.id);
-  if (findings.some((finding) => finding.answer === null)) {
+  const open = orderFindingStandings(db, orderId).filter((finding) => finding.state === "open");
+  if (open.some((finding) => finding.answer === null)) {
     throw new Error(`order ${orderId} has unanswered review findings`);
   }
-  return findings.map((finding) => finding.summary);
+  const read = db.query<BuildFinding, [number]>(
+    `SELECT f.id, f.dimension, f.summary, f.file, f.line, f.failure, f.fix, f.resolution,
+            r.ruling, r.reason,
+            (SELECT d.reason FROM factory_order_refusal_decision d WHERE d.finding_id = f.id) AS ownerReason
+     FROM factory_order_finding f
+     LEFT JOIN factory_order_finding_ruling r
+       ON r.id = (SELECT max(latest.id) FROM factory_order_finding_ruling latest WHERE latest.finding_id = f.id)
+     WHERE f.id = ?`,
+  );
+  // A refusal the owner has not overturned is the builder's own answer, standing until the next
+  // round rules on it; everything else open is work.
+  const work: string[] = [];
+  const refused: string[] = [];
+  for (const standing of open) {
+    const finding = read.get(standing.id) as BuildFinding;
+    if (standing.refusalStands) {
+      refused.push(`${describeFinding(finding)}\n  Your refusal: ${finding.resolution}`);
+      continue;
+    }
+    work.push(
+      [
+        describeFinding(finding),
+        ...(finding.fix ? [`  Fix: ${finding.fix}`] : []),
+        ...(finding.ownerReason !== null
+          ? [`  The owner overturned your refusal: ${finding.ownerReason}`]
+          : []),
+        ...(finding.ruling === "not_addressed"
+          ? [`  The reviewer found it not addressed: ${finding.reason}`]
+          : []),
+      ].join("\n"),
+    );
+  }
+  return { work, refused };
+}
+
+type BuildFinding = {
+  id: number;
+  dimension: string;
+  summary: string;
+  file: string | null;
+  line: number | null;
+  failure: string | null;
+  fix: string | null;
+  resolution: string | null;
+  ruling: string | null;
+  reason: string | null;
+  ownerReason: string | null;
+};
+
+function describeFinding(finding: BuildFinding): string {
+  const where = findingLocation(finding) ?? "no location recorded";
+  return `Finding ${finding.id} (${finding.dimension}, ${where}): ${finding.failure ?? finding.summary}`;
 }
 
 export type BuildOutcome = { builder: string; runId: string; worktree: string; exitCode: number };
@@ -280,8 +358,8 @@ export async function runOrderBuildLive(
   const { slices } = plan;
   const currentSlice = nextOrderSlice(db, orderId);
   const conflict = currentSlice ? null : pendingRebaseConflict(db, orderId);
-  const reviewFindings = currentSlice || conflict ? [] : reviewFindingsForBuild(db, orderId);
-  const needsCodeWork = currentSlice !== null || conflict !== null || reviewFindings.length > 0;
+  const reviewFindings = currentSlice || conflict ? NO_REVIEW_FINDINGS : reviewFindingsForBuild(db, orderId);
+  const needsCodeWork = currentSlice !== null || conflict !== null || answersReview(reviewFindings);
   const previousFailure = db
     .query<{ reason: string | null }, [string]>(
       `SELECT reason FROM factory_order_attempt
@@ -464,7 +542,7 @@ export async function runOrderBuildLive(
     if (currentSlice) {
       requireBuildEvidence(db, orderId, currentSlice.ordinal === slices.length, worktree);
       completeOrderSlice(db, orderId, currentSlice.id, builder);
-    } else if (reviewFindings.length > 0) {
+    } else if (answersReview(reviewFindings)) {
       requireBuildEvidence(db, orderId, true, worktree);
       completeOrderBuildFollowup(db, orderId, builder);
     } else if (!conflict) {

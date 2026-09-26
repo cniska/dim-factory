@@ -13,6 +13,7 @@ import {
   recordOrderReviewArtifact,
   ruleOnOrderFinding,
 } from "./factory-order";
+import { findingLocation } from "./finding-location";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-command";
 import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
@@ -147,12 +148,7 @@ export function earlierOpenFindings(db: Database, orderId: string, reviewId: num
 }
 
 function earlierFindingLines(finding: EarlierFinding): string[] {
-  const where =
-    finding.file === null
-      ? "no location recorded"
-      : finding.line === null
-        ? finding.file
-        : `${finding.file}:${finding.line}`;
+  const where = findingLocation(finding) ?? "no location recorded";
   return [
     `- Finding ${finding.id} (${finding.dimension}, ${where}): ${finding.failure ?? finding.summary}`,
     ...(finding.fix ? [`  - Fix asked for: ${finding.fix}`] : []),

@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { findingLocation } from "./finding-location";
 import { orderFindingStandings } from "./order-finding-state";
 import type { ReviewReport } from "./review-artifact";
 
@@ -20,8 +21,8 @@ const FINDING_COLUMNS =
   "f.id, f.dimension, f.summary, f.file, f.line, f.failure, f.fix, f.severity, f.resolution";
 
 function location(finding: StoredFinding): string {
-  if (finding.file === null) return "no location recorded";
-  return finding.line === null ? `\`${finding.file}\`` : `\`${finding.file}:${finding.line}\``;
+  const where = findingLocation(finding);
+  return where === null ? "no location recorded" : `\`${where}\``;
 }
 
 function section(heading: string, lines: string[]): string {

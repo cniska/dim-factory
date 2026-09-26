@@ -15,6 +15,7 @@ import {
 } from "./factory-order";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { integratedRepo, orderWorktree, reviewOutput } from "./fixtures.test-support";
+import { builderBrief, reviewFindingsForBuild } from "./order-build";
 import { runOrderCommand } from "./order-command";
 import { runOrderReview } from "./order-review";
 import { SCHEMA_SQL } from "./schema";
@@ -307,6 +308,24 @@ describe("the operator loop", () => {
         hold: null,
       });
       expect(() => rule("--uphold")).toThrow(expect.objectContaining({ code: "finding_not_awaiting_owner" }));
+      const brief = builderBrief(
+        { id: "overturn-order", title: "Contest", description: null },
+        { body: "## Outcome\n\nContest.", slices: [] },
+        null,
+        null,
+        undefined,
+        undefined,
+        reviewFindingsForBuild(db, "overturn-order"),
+      );
+      expect(brief).toContain(
+        [
+          "# Review findings",
+          `- Finding ${finding} (tests, overturn-order-first.txt:1): no test holds the first behavior`,
+          "  Fix: add a test that fails without it",
+          "  The owner overturned your refusal: the owner has read both",
+        ].join("\n"),
+      );
+      expect(brief).not.toContain("# Refused findings");
       db.close();
     });
   });
