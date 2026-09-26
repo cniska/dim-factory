@@ -14,13 +14,16 @@ const request: HarnessRequest = {
   env: { DIM_HOME: "/dim-home" },
 };
 
-const BLANKED = {
+const WORKER_ENV = {
   ANTHROPIC_API_KEY: "",
   ANTHROPIC_AUTH_TOKEN: "",
   CLAUDE_CODE_USE_BEDROCK: "",
   CLAUDE_CODE_USE_VERTEX: "",
   CLAUDE_CODE_USE_FOUNDRY: "",
+  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
 };
+
+const SCHEDULING_TOOLS = ["ScheduleWakeup", "CronCreate", "Monitor", "RemoteTrigger"];
 
 function settings(argv: string[]): unknown {
   return JSON.parse(argv[argv.indexOf("--settings") + 1] ?? "");
@@ -128,8 +131,8 @@ describe("the Claude harness adapter", () => {
       "acceptEdits",
     ]);
     expect(settings(argv)).toEqual({
-      env: BLANKED,
-      permissions: { deny: [] },
+      env: WORKER_ENV,
+      permissions: { deny: SCHEDULING_TOOLS },
       sandbox: {
         enabled: true,
         failIfUnavailable: true,
@@ -147,8 +150,8 @@ describe("the Claude harness adapter", () => {
 
     expect(argv[argv.indexOf("--permission-mode") + 1]).toBe("default");
     expect(settings(argv)).toEqual({
-      env: BLANKED,
-      permissions: { deny: ["Edit", "Write", "NotebookEdit"] },
+      env: WORKER_ENV,
+      permissions: { deny: ["Edit", "Write", "NotebookEdit", ...SCHEDULING_TOOLS] },
       sandbox: {
         enabled: true,
         failIfUnavailable: true,
@@ -189,6 +192,7 @@ describe("the Claude harness adapter", () => {
     expect(inWorktree.permissions.deny).toEqual([
       `Edit(/${join(worktree, ".git")})`,
       `Edit(/${join(worktree, ".git")}/**)`,
+      ...SCHEDULING_TOOLS,
     ]);
     expect(inCheckout.sandbox.filesystem.denyWrite).toEqual([join(checkout, ".git")]);
   });
@@ -217,7 +221,7 @@ describe("the Claude harness adapter", () => {
       "--permission-mode",
       "acceptEdits",
       "--settings",
-      '{"env":{"ANTHROPIC_API_KEY":"","ANTHROPIC_AUTH_TOKEN":"","CLAUDE_CODE_USE_BEDROCK":"","CLAUDE_CODE_USE_VERTEX":"","CLAUDE_CODE_USE_FOUNDRY":""},"permissions":{"deny":[]},"sandbox":{"enabled":true,"failIfUnavailable":true,"autoAllowBashIfSandboxed":true,"allowUnsandboxedCommands":false,"filesystem":{"denyWrite":[]}}}',
+      '{"env":{"ANTHROPIC_API_KEY":"","ANTHROPIC_AUTH_TOKEN":"","CLAUDE_CODE_USE_BEDROCK":"","CLAUDE_CODE_USE_VERTEX":"","CLAUDE_CODE_USE_FOUNDRY":"","CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1"},"permissions":{"deny":["ScheduleWakeup","CronCreate","Monitor","RemoteTrigger"]},"sandbox":{"enabled":true,"failIfUnavailable":true,"autoAllowBashIfSandboxed":true,"allowUnsandboxedCommands":false,"filesystem":{"denyWrite":[]}}}',
       "--add-dir",
       "/dim-home",
       "--model",
@@ -253,6 +257,18 @@ describe("the Claude harness adapter", () => {
         CLAUDE_CODE_USE_FOUNDRY: "",
       },
     });
+  });
+
+  test("gives no worker a way to leave work running past its answer", () => {
+    for (const capabilities of [["edit-files"], []] as const) {
+      const launched = settings(claudeArgs({ ...request, cwd: process.cwd(), capabilities })) as {
+        env: Record<string, string>;
+        permissions: { deny: string[] };
+      };
+
+      expect(launched.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS).toBe("1");
+      expect(launched.permissions.deny).toEqual(expect.arrayContaining(SCHEDULING_TOOLS));
+    }
   });
 
   test("refuses to run a worker Claude would bill per token", () => {

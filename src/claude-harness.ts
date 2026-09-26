@@ -89,6 +89,12 @@ function claudeEventParser(): HarnessLineParser {
 }
 
 /**
+ * A worker's run ends with its answer, so nothing it starts may outlive it. The background-tasks
+ * switch drops `run_in_background` from Bash and Agent; these tools start work outside it.
+ */
+const BACKGROUND_WORK_TOOLS = ["ScheduleWakeup", "CronCreate", "Monitor", "RemoteTrigger"];
+
+/**
  * Bash runs inside Claude Code's OS sandbox, which confines writes to the cwd and each
  * `--add-dir`, and is allowed without a prompt only because of it. `failIfUnavailable`
  * stops a worker from running unconfined on a machine where the sandbox cannot start.
@@ -101,11 +107,17 @@ function claudeEventParser(): HarnessLineParser {
 function claudeSettings(request: HarnessRequest, protectedGit: string[]): string {
   const edits = request.capabilities.includes("edit-files");
   return JSON.stringify({
-    env: Object.fromEntries(PER_TOKEN_VARS.map((name) => [name, ""])),
+    env: {
+      ...Object.fromEntries(PER_TOKEN_VARS.map((name) => [name, ""])),
+      CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
+    },
     permissions: {
-      deny: edits
-        ? protectedGit.flatMap((path) => [`Edit(/${path})`, `Edit(/${path}/**)`])
-        : ["Edit", "Write", "NotebookEdit"],
+      deny: [
+        ...(edits
+          ? protectedGit.flatMap((path) => [`Edit(/${path})`, `Edit(/${path}/**)`])
+          : ["Edit", "Write", "NotebookEdit"]),
+        ...BACKGROUND_WORK_TOOLS,
+      ],
     },
     sandbox: {
       enabled: true,

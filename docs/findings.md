@@ -565,3 +565,10 @@ Probed on 2026-09-25 against Claude Code 2.1.282, building the Claude harness. E
 - `--setting-sources project,local` kept the keychain login. Pointing `CLAUDE_CONFIG_DIR` at an empty directory lost it, and so did `--bare`, whose run reports `Not logged in` as a `result` with `subtype: "success"` and `is_error: true`.
 
 A full order — plan, build, review, ship — ran through real Claude against a scratch record nine times across the day's changes. One build stalled for six minutes after its commit and was stopped by the ten-minute turn limit; the other eight finished their builds in under forty seconds.
+
+## What a worker's launch settings take away from background work
+
+Probed on 2026-09-26 against Claude Code 2.1.282, building `worker-turn-ends-once`, by launching `claude` with `claudeArgs` for a builder. The probe ran inside a builder's own sandbox, which refuses `api.anthropic.com`, so Claude got as far as its `init` event and no model call was made.
+
+- The `init` event's tool list, which Claude writes before any request, held none of `ScheduleWakeup`, `CronCreate`, `Monitor` or `RemoteTrigger` under the worker settings. The same launch with the settings' `env` and `permissions.deny` emptied listed all four. `CronList` and `CronDelete` stayed in both lists.
+- `ANTHROPIC_LOG=debug` did not print the request body, so nothing here shows the Bash and Agent schemas losing `run_in_background` under `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, or the variable reaching a Bash command. That rests on the minified source of this version, where the switch gates `run_in_background` and synchronous subagents, until a probe with network access asks for a background command.
