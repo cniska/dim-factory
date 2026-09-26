@@ -61,11 +61,11 @@ export function builderBrief(
     ? [
         `Workspace ecosystem: ${workspace.ecosystems.join(", ") || "unknown"}.`,
         `Workspace package managers: ${workspace.packageManagers.join(", ") || "none declared"}.`,
-        `Declared check: ${workspace.checkCommand?.command ?? "none"}.`,
-        `Declared format: ${workspace.formatCommand?.command ?? "none"}.`,
-        `Workspace commands: ${workspace.commands.map((one) => `${one.name}=${one.command} (${one.source})`).join("; ") || "none"}.`,
-        "Replace $FILES in a workspace command with the changed paths when the command is scoped.",
-        "Use these workspace commands; do not infer a different project tool.",
+        `Declared check: ${workspace.checkTask?.commandLine ?? "none"}.`,
+        `Declared format: ${workspace.formatTask?.commandLine ?? "none"}.`,
+        `Workspace tasks: ${workspace.tasks.map((one) => `${one.name}=${one.commandLine} (${one.source})`).join("; ") || "none"}.`,
+        "Replace $FILES in a workspace task with the changed paths when the task is scoped.",
+        "Use these workspace tasks; do not infer a different project tool.",
       ]
     : ["The workspace profile could not be read; stop and report that before editing."];
   return [

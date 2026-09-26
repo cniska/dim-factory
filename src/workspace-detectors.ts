@@ -1,14 +1,14 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { readManifest, type WorkspaceCommand } from "./workspace-commands";
+import { readManifest, type WorkspaceTask } from "./workspace-tasks";
 
-type DetectedCommand = { readonly bin: string; readonly args: readonly string[] };
+type TaskArgv = { readonly bin: string; readonly args: readonly string[] };
 
 export type WorkspaceDetection = {
   readonly languages: readonly string[];
   readonly ecosystems: readonly string[];
   readonly packageManagers: readonly string[];
-  readonly commands: readonly WorkspaceCommand[];
+  readonly tasks: readonly WorkspaceTask[];
 };
 
 type DetectionContext = { workspace: string; packageManager: string | null };
@@ -16,10 +16,10 @@ type Detector = {
   id: string;
   match: (workspace: string) => boolean;
   packageManager?: (workspace: string) => string | null;
-  install?: (context: DetectionContext) => DetectedCommand | null;
-  lint?: (context: DetectionContext) => DetectedCommand | null;
-  format?: (context: DetectionContext) => DetectedCommand | null;
-  test?: (context: DetectionContext) => DetectedCommand | null;
+  install?: (context: DetectionContext) => TaskArgv | null;
+  lint?: (context: DetectionContext) => TaskArgv | null;
+  format?: (context: DetectionContext) => TaskArgv | null;
+  test?: (context: DetectionContext) => TaskArgv | null;
 };
 
 function exists(workspace: string, name: string): boolean {
@@ -30,7 +30,7 @@ function text(workspace: string, name: string): string | null {
   return readManifest(join(workspace, name));
 }
 
-function packageRunner(packageManager: string | null): DetectedCommand {
+function packageRunner(packageManager: string | null): TaskArgv {
   if (packageManager === "bun") return { bin: "bunx", args: [] };
   if (packageManager === "pnpm") return { bin: "pnpx", args: [] };
   if (packageManager === "yarn") return { bin: "yarn", args: ["dlx"] };
@@ -259,8 +259,8 @@ export function detectWorkspace(workspace: string): WorkspaceDetection | null {
   const languages = new Set<string>();
   const ecosystems = new Set<string>();
   const packageManagers = new Set<string>();
-  const commands: WorkspaceCommand[] = [];
-  const seenCommands = new Set<string>();
+  const tasks: WorkspaceTask[] = [];
+  const seen = new Set<string>();
 
   for (const detector of detectors) {
     const packageManager = detector.packageManager?.(workspace) ?? null;
@@ -274,20 +274,20 @@ export function detectWorkspace(workspace: string): WorkspaceDetection | null {
     languages.add(detector.id === "typescript" ? "javascript" : detector.id);
     ecosystems.add(ecosystem);
     if (packageManager !== null) packageManagers.add(packageManager);
-    for (const [name, command] of [
+    for (const [name, argv] of [
       ["install", detector.install?.(context) ?? null],
       ["analyze", detector.lint?.(context) ?? null],
       ["format", detector.format?.(context) ?? null],
       ["test", detector.test?.(context) ?? null],
     ] as const) {
-      if (command === null) continue;
-      const value = `${command.bin} ${command.args.join(" ")}`;
-      const key = `${name}:${value}`;
-      if (seenCommands.has(key)) continue;
-      seenCommands.add(key);
-      commands.push({
+      if (argv === null) continue;
+      const commandLine = `${argv.bin} ${argv.args.join(" ")}`;
+      const key = `${name}:${commandLine}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      tasks.push({
         name,
-        command: value,
+        commandLine,
         source: `detector:${detector.id}`,
       });
     }
@@ -297,6 +297,6 @@ export function detectWorkspace(workspace: string): WorkspaceDetection | null {
     languages: [...languages],
     ecosystems: [...ecosystems],
     packageManagers: [...packageManagers],
-    commands,
+    tasks,
   };
 }

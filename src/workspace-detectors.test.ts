@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 describe("workspace detectors", () => {
-  test("detects the package manager and Biome commands for TypeScript", () => {
+  test("detects the package manager and Biome tasks for TypeScript", () => {
     const profile = detectWorkspace(
       workspace({ "package.json": '{"packageManager":"pnpm@9.1.0"}', "biome.json": "{}" }),
     );
@@ -31,16 +31,16 @@ describe("workspace detectors", () => {
       languages: ["javascript"],
       ecosystems: ["node"],
       packageManagers: ["pnpm"],
-      commands: [
-        { name: "install", command: "pnpm install", source: "detector:typescript" },
+      tasks: [
+        { name: "install", commandLine: "pnpm install", source: "detector:typescript" },
         {
           name: "analyze",
-          command: "pnpx biome check $FILES",
+          commandLine: "pnpx biome check $FILES",
           source: "detector:typescript",
         },
         {
           name: "format",
-          command: "pnpx biome check --write $FILES",
+          commandLine: "pnpx biome check --write $FILES",
           source: "detector:typescript",
         },
       ],
@@ -52,25 +52,25 @@ describe("workspace detectors", () => {
 
     expect(profile?.ecosystems).toEqual(["python"]);
     expect(profile?.packageManagers).toEqual(["pip"]);
-    expect(profile?.commands).toEqual([
-      { name: "install", command: "pip install -e .", source: "detector:python" },
-      { name: "analyze", command: "ruff check $FILES", source: "detector:python" },
-      { name: "format", command: "ruff format $FILES", source: "detector:python" },
-      { name: "test", command: "pytest $FILES", source: "detector:python" },
+    expect(profile?.tasks).toEqual([
+      { name: "install", commandLine: "pip install -e .", source: "detector:python" },
+      { name: "analyze", commandLine: "ruff check $FILES", source: "detector:python" },
+      { name: "format", commandLine: "ruff format $FILES", source: "detector:python" },
+      { name: "test", commandLine: "pytest $FILES", source: "detector:python" },
     ]);
   });
 
-  test("detects Go and Rust lifecycle commands", () => {
+  test("detects Go and Rust lifecycle tasks", () => {
     const go = detectWorkspace(workspace({ "go.mod": "module example.test/app" }));
     const rust = detectWorkspace(workspace({ "Cargo.toml": '[package]\nname = "app"\n' }));
 
-    expect(go?.commands.map((one) => one.command)).toEqual([
+    expect(go?.tasks.map((one) => one.commandLine)).toEqual([
       "go mod download",
       "go vet $FILES",
       "gofmt -w $FILES",
       "go test $FILES",
     ]);
-    expect(rust?.commands.map((one) => one.command)).toEqual([
+    expect(rust?.tasks.map((one) => one.commandLine)).toEqual([
       "cargo fetch",
       "cargo clippy --all-targets -- -D warnings $FILES",
       "cargo fmt -- $FILES",
@@ -90,8 +90,8 @@ describe("workspace detectors", () => {
     expect(profile?.languages).toEqual(["javascript", "dart"]);
     expect(profile?.ecosystems).toEqual(["node", "dart"]);
     expect(profile?.packageManagers).toEqual(["pnpm", "dart"]);
-    expect(profile?.commands.map((one) => one.source)).toContain("detector:typescript");
-    expect(profile?.commands.map((one) => one.source)).toContain("detector:dart");
+    expect(profile?.tasks.map((one) => one.source)).toContain("detector:typescript");
+    expect(profile?.tasks.map((one) => one.source)).toContain("detector:dart");
   });
 
   test("returns no profile for an unknown workspace", () => {

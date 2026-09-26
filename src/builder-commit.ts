@@ -15,7 +15,7 @@ import { rebaseInProgress } from "./rebase-onto-trunk";
 import { CHECK_SANDBOX, runSandboxedCheck } from "./sandboxed-check";
 import { writeTrace } from "./trace-store";
 import { trunkBranch } from "./trunk";
-import { checkCommand } from "./workspace-commands";
+import { checkTask } from "./workspace-tasks";
 
 function git(worktree: string, args: string[], options: { env?: Env; stdin?: string } = {}) {
   const run = Bun.spawnSync(["git", "-C", worktree, ...args], {
@@ -115,7 +115,7 @@ export function commitBuildTurn(options: {
 }): { sha: string } {
   const { db, orderId, builder, operator, worktree, turn } = options;
   const env = options.env ?? process.env;
-  const declared = checkCommand(worktree);
+  const declared = checkTask(worktree);
   if (!declared) {
     throw new BuildTurnRefused(
       "no_declared_check",
@@ -151,7 +151,7 @@ export function commitBuildTurn(options: {
     commentGate.state === "armed" ? refuseAddedComments(worktree, commentGate.label) : { unparsed: [] };
   const check = runSandboxedCheck({
     worktree,
-    command: declared.command,
+    command: declared.commandLine,
     canary: join(dataDir(env), `check-canary-${randomUUID()}`),
     sandbox: options.checkSandbox ?? CHECK_SANDBOX,
     env: env.PATH === undefined ? {} : { PATH: env.PATH },

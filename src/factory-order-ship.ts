@@ -13,7 +13,7 @@ import { RebaseConflict, type Rewrite } from "./rebase-onto-trunk";
 import { CHECK_SANDBOX, runSandboxedCheck } from "./sandboxed-check";
 import { type RebaseVerdict, type ShipOutcome, shipBranch } from "./ship";
 import { ShipRefusal } from "./ship-refusal";
-import { checkCommand } from "./workspace-commands";
+import { checkTask } from "./workspace-tasks";
 
 function recordDeliveryInTransaction(
   db: Database,
@@ -52,7 +52,7 @@ function recordDeliveryInTransaction(
 }
 
 export function recheck(worktree: string, env: Env, sandbox: string[]): OrderCheck {
-  const declared = checkCommand(worktree);
+  const declared = checkTask(worktree);
   if (!declared) {
     throw new ShipRefusal(
       "ship_check_failed",
@@ -61,7 +61,7 @@ export function recheck(worktree: string, env: Env, sandbox: string[]): OrderChe
   }
   const check = runSandboxedCheck({
     worktree,
-    command: declared.command,
+    command: declared.commandLine,
     canary: join(dataDir(env), `check-canary-${randomUUID()}`),
     sandbox,
     env: env.PATH === undefined ? {} : { PATH: env.PATH },

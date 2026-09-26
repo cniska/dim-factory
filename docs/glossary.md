@@ -23,7 +23,9 @@ The words this repo uses for the factory and its record. One word per thing, def
 | Harness | The agent product or protocol that runs a worker session — such as Claude Code or Codex. It supplies the model-facing tools and emits a session stream; the factory adapter translates that stream without making the harness part of station logic |
 | Queue | The orders nobody holds, in the order they are taken: most urgent first, then oldest. Read and never inferred |
 | Hold | A boundary a run stops at rather than crossing alone: work that is hard to reverse, work that is outward-facing, or a change that spends something on every session. An order carries one as the reason the owner has to release it before anyone takes it |
-| Workspace command | A command a repo declares in its manifest — a `package.json` script, a `mise` task, a `Makefile` target — read and never inferred, carrying the name it answers to and the file it was read from ([`src/workspace-commands.ts`](../src/workspace-commands.ts)). The check is the one that stands for "this change is sound", and `dim check-command` prints it |
+| Command | One `dim` subcommand: a name, its usage, a summary and a handler, in the `<name>-command.ts` named for it ([`src/command.ts`](../src/command.ts)). Nothing else is called a command |
+| Command line | The text a shell runs, such as `bun run verify` |
+| Workspace task | What a repo declares in its manifest — a `package.json` script, a `mise` task, a `Makefile` target — read and never inferred, carrying the name it answers to, its command line and the file it was read from ([`src/workspace-tasks.ts`](../src/workspace-tasks.ts)). The check is the task that stands for "this change is sound", and `dim check-command` prints its command line |
 
 ## The record
 

@@ -20,7 +20,7 @@ export function readManifest(path: string): string | null {
   }
 }
 
-export type WorkspaceCommand = { name: string; command: string; source: string };
+export type WorkspaceTask = { name: string; commandLine: string; source: string };
 
 const LOCKS: [string, string][] = [
   ["bun.lock", "bun"],
@@ -35,7 +35,7 @@ export function packageManager(repo: string): string | null {
   return null;
 }
 
-function fromPackageJson(repo: string): WorkspaceCommand[] {
+function fromPackageJson(repo: string): WorkspaceTask[] {
   const text = readManifest(join(repo, "package.json"));
   if (text === null) return [];
   let scripts: Record<string, unknown>;
@@ -48,12 +48,12 @@ function fromPackageJson(repo: string): WorkspaceCommand[] {
   if (pm === null) return [];
   return Object.keys(scripts).map((name) => ({
     name,
-    command: `${pm} run ${name}`,
+    commandLine: `${pm} run ${name}`,
     source: "package.json",
   }));
 }
 
-function fromMise(repo: string): WorkspaceCommand[] {
+function fromMise(repo: string): WorkspaceTask[] {
   const text = readManifest(join(repo, "mise.toml"));
   if (text === null) return [];
   let parsed: { tasks?: Record<string, unknown> };
@@ -64,29 +64,29 @@ function fromMise(repo: string): WorkspaceCommand[] {
   }
   return Object.keys(parsed.tasks ?? {}).map((name) => ({
     name,
-    command: `mise run ${name}`,
+    commandLine: `mise run ${name}`,
     source: "mise.toml",
   }));
 }
 
 const MAKE_TARGET = /^([A-Za-z][\w-]*)\s*:(?!=)/;
 
-function fromMakefile(repo: string): WorkspaceCommand[] {
+function fromMakefile(repo: string): WorkspaceTask[] {
   const text = readManifest(join(repo, "Makefile"));
   if (text === null) return [];
-  const commands: WorkspaceCommand[] = [];
+  const tasks: WorkspaceTask[] = [];
   const seen = new Set<string>();
   for (const line of text.split("\n")) {
     const name = MAKE_TARGET.exec(line)?.[1];
     if (name && !seen.has(name)) {
       seen.add(name);
-      commands.push({ name, command: `make ${name}`, source: "Makefile" });
+      tasks.push({ name, commandLine: `make ${name}`, source: "Makefile" });
     }
   }
-  return commands;
+  return tasks;
 }
 
-export function declaredCommands(repo: string): WorkspaceCommand[] {
+export function declaredTasks(repo: string): WorkspaceTask[] {
   return [...fromPackageJson(repo), ...fromMise(repo), ...fromMakefile(repo)];
 }
 
@@ -94,19 +94,19 @@ const CHECK_ORDER = ["verify", "check", "ci", "validate", "test"];
 
 const FORMAT_ORDER = ["format", "fmt"];
 
-function firstDeclared(repo: string, order: string[]): WorkspaceCommand | null {
-  const commands = declaredCommands(repo);
+function firstDeclared(repo: string, order: string[]): WorkspaceTask | null {
+  const tasks = declaredTasks(repo);
   for (const name of order) {
-    const found = commands.find((one) => one.name === name);
+    const found = tasks.find((one) => one.name === name);
     if (found) return found;
   }
   return null;
 }
 
-export function checkCommand(repo: string): WorkspaceCommand | null {
+export function checkTask(repo: string): WorkspaceTask | null {
   return firstDeclared(repo, CHECK_ORDER);
 }
 
-export function formatCommand(repo: string): WorkspaceCommand | null {
+export function formatTask(repo: string): WorkspaceTask | null {
   return firstDeclared(repo, FORMAT_ORDER);
 }

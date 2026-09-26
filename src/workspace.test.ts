@@ -33,8 +33,8 @@ describe("workspace contract", () => {
 
     expect(contract.checkoutRoot).toBe(root);
     expect(contract.packageManagers).toEqual(["bun"]);
-    expect(contract.checkCommand).toBeNull();
-    expect(contract.formatCommand?.command).toBe("bun run format");
+    expect(contract.checkTask).toBeNull();
+    expect(contract.formatTask?.commandLine).toBe("bun run format");
     expect(contract.worktree.path).toBe(root);
     expect(contract.languages).toEqual(["javascript"]);
     expect(contract.ecosystems).toEqual(["node"]);
@@ -80,11 +80,11 @@ describe("workspace contract", () => {
     expect(contract.packageManagers).toEqual(["dart"]);
     expect(contract.bootstrap).toEqual({ value: ["dart", "pub", "get"], source: "pubspec.yaml" });
     expect(contract.capabilities).toEqual({ format: false, analyze: false, test: false });
-    expect(contract.commands.filter((one) => one.source === "detector:dart")).toEqual([
-      { name: "install", command: "dart pub get", source: "detector:dart" },
-      { name: "analyze", command: "dart analyze $FILES", source: "detector:dart" },
-      { name: "format", command: "dart format $FILES", source: "detector:dart" },
-      { name: "test", command: "dart test $FILES", source: "detector:dart" },
+    expect(contract.tasks.filter((one) => one.source === "detector:dart")).toEqual([
+      { name: "install", commandLine: "dart pub get", source: "detector:dart" },
+      { name: "analyze", commandLine: "dart analyze $FILES", source: "detector:dart" },
+      { name: "format", commandLine: "dart format $FILES", source: "detector:dart" },
+      { name: "test", commandLine: "dart test $FILES", source: "detector:dart" },
     ]);
   });
 
@@ -95,9 +95,9 @@ describe("workspace contract", () => {
     const contract = workspaceContract(root);
     if (contract === null) throw new Error("expected a workspace contract");
 
-    expect(contract.commands.find((one) => one.name === "test" && one.source === "detector:dart")).toEqual({
+    expect(contract.tasks.find((one) => one.name === "test" && one.source === "detector:dart")).toEqual({
       name: "test",
-      command: "flutter test $FILES",
+      commandLine: "flutter test $FILES",
       source: "detector:dart",
     });
   });

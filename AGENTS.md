@@ -8,7 +8,7 @@ Only what holds here and nowhere else is written below. General engineering conv
 
 - A check that needs judgement gets an agent with a fixed brief, never a regex or a word list ([`docs/findings.md`](docs/findings.md), "A word list cannot find a narrating comment").
 - Express as a gate whatever is genuinely mechanical — a subject's length, a schema version, an exit code, a shape rather than a meaning. The commit hooks are the model: git refuses, and compliance does not depend on anything having been read.
-- Do not reach for a heuristic where the record already answers. Which CLIs a repo is worked with and which files came back are rows to read; the workspace command a repo declares as its check is read from its manifest by [`src/workspace-commands.ts`](src/workspace-commands.ts), not inferred. [`docs/goals.md`](docs/goals.md) and [`docs/conventions.md`](docs/conventions.md) argue the general case.
+- Do not reach for a heuristic where the record already answers. Which CLIs a repo is worked with and which files came back are rows to read; the workspace task a repo declares as its check is read from its manifest by [`src/workspace-tasks.ts`](src/workspace-tasks.ts), not inferred. [`docs/goals.md`](docs/goals.md) and [`docs/conventions.md`](docs/conventions.md) argue the general case.
 
 ## Invariants
 

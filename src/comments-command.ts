@@ -6,7 +6,7 @@ import { stagedComments } from "./comments-staged";
 import { COMMENTS_FOUND_EXIT, commentsBanned } from "./commit-gate";
 import { PROJECT_CONFIG, projectConfigPath, readProjectConfig, writeConfigValue } from "./config";
 import { warn } from "./warn";
-import { checkCommand, formatCommand } from "./workspace-commands";
+import { checkTask, formatTask } from "./workspace-tasks";
 
 const USAGE = "usage: dim comments check | dim comments purge [--write] [<path>...]";
 
@@ -44,8 +44,8 @@ function purge(cwd: string, args: string[]): unknown {
   const { files, unparsed } = purgeCheckout(root, { write, paths });
   const comments = files.reduce((sum, file) => sum + file.removed, 0);
   const ban = PROJECT_CONFIG;
-  const format = formatCommand(root)?.command ?? null;
-  const check = checkCommand(root)?.command ?? null;
+  const format = formatTask(root)?.commandLine ?? null;
+  const check = checkTask(root)?.commandLine ?? null;
   if (!write) {
     const steps = [`removes them`, `bans comments in ${ban}`, format ? `runs ${format}` : null];
     return {

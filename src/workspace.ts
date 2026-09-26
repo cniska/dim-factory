@@ -1,14 +1,8 @@
 import { statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { checkoutRoot } from "./checkout";
-import {
-  checkCommand,
-  declaredCommands,
-  formatCommand,
-  readManifest,
-  type WorkspaceCommand,
-} from "./workspace-commands";
 import { detectWorkspace } from "./workspace-detectors";
+import { checkTask, declaredTasks, formatTask, readManifest, type WorkspaceTask } from "./workspace-tasks";
 import { worktreeOf } from "./worktree";
 
 export type WorkspaceMember = { path: string; source: string };
@@ -21,9 +15,9 @@ export type WorkspaceContract = {
   ecosystems: string[];
   packageManagers: string[];
   members: WorkspaceMember[];
-  commands: WorkspaceCommand[];
-  checkCommand: WorkspaceCommand | null;
-  formatCommand: WorkspaceCommand | null;
+  tasks: WorkspaceTask[];
+  checkTask: WorkspaceTask | null;
+  formatTask: WorkspaceTask | null;
   bootstrap: Declaration<string[]> | null;
   capabilities: { format: boolean; analyze: boolean; test: boolean };
   services: Declaration<string[]> | null;
@@ -110,8 +104,8 @@ function declaredEnvironment(root: string): Declaration<string[]> | null {
   return null;
 }
 
-function declaredCapability(commands: WorkspaceCommand[], names: string[]): boolean {
-  return commands.some((one) => names.includes(one.name));
+function declaredCapability(tasks: WorkspaceTask[], names: string[]): boolean {
+  return tasks.some((one) => names.includes(one.name));
 }
 
 function gitBranch(root: string): string | null {
@@ -137,9 +131,9 @@ function hook(root: string, name: string): WorkerHook | null {
 export function workspaceContract(dir: string): WorkspaceContract | null {
   const root = checkoutRoot(resolve(dir));
   if (root === null) return null;
-  const commands = declaredCommands(root);
+  const tasks = declaredTasks(root);
   const detected = detectWorkspace(root);
-  const detectedCommands = detected?.commands ?? [];
+  const detectedTasks = detected?.tasks ?? [];
   const pubspec = pubspecFacts(root);
   const packageManagers = detected?.packageManagers ?? [];
   const languages = [...(detected?.languages ?? [])];
@@ -152,14 +146,14 @@ export function workspaceContract(dir: string): WorkspaceContract | null {
     ecosystems,
     packageManagers: [...packageManagers],
     members: pubspec?.members ?? [],
-    commands: [...commands, ...detectedCommands],
-    checkCommand: checkCommand(root),
-    formatCommand: formatCommand(root),
+    tasks: [...tasks, ...detectedTasks],
+    checkTask: checkTask(root),
+    formatTask: formatTask(root),
     bootstrap,
     capabilities: {
-      format: declaredCapability(commands, ["format", "fmt"]),
-      analyze: declaredCapability(commands, ["analyze", "analyse"]),
-      test: declaredCapability(commands, ["test", "tests"]),
+      format: declaredCapability(tasks, ["format", "fmt"]),
+      analyze: declaredCapability(tasks, ["analyze", "analyse"]),
+      test: declaredCapability(tasks, ["test", "tests"]),
     },
     services: declaredServices(root),
     requiredEnvironment: declaredEnvironment(root),

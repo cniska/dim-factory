@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { checkoutRoot } from "./checkout";
 import type { Tool } from "./tools";
-import { checkCommand, formatCommand } from "./workspace-commands";
+import { checkTask, formatTask } from "./workspace-tasks";
 
 export type Wake = {
   sessionId: string;
@@ -40,10 +40,10 @@ export function projectLine(dir: string): string {
   const repo = checkoutRoot(dir);
   if (repo === null) return "";
   const declared: string[] = [];
-  const check = checkCommand(repo);
-  const format = formatCommand(repo);
-  if (check) declared.push(`check \`${check.command}\``);
-  if (format) declared.push(`format \`${format.command}\``);
+  const check = checkTask(repo);
+  const format = formatTask(repo);
+  if (check) declared.push(`check \`${check.commandLine}\``);
+  if (format) declared.push(`format \`${format.commandLine}\``);
   return declared.length === 0 ? "" : `This repo declares: ${declared.join(", ")}.`;
 }
 
