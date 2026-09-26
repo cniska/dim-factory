@@ -40,7 +40,7 @@ export type WallSnapshot = {
   totals: Record<WallStage, number>;
 };
 
-export type WallItemKind = OrderEventKind | "document_updated" | "environment_reported";
+export type WallItemKind = OrderEventKind | "environment_reported";
 
 export type WallItemEntry = {
   at: string;
@@ -53,7 +53,6 @@ export type WallItemEntry = {
   commit?: { sha: string; subject?: string };
   check?: { command: string; exitCode: number; result?: string };
   finding?: { dimension: string; answer: string; failure: string; resolution?: string };
-  path?: string;
   environment?: WorkerHookReport;
 };
 
@@ -185,8 +184,6 @@ type EventRow = {
   failure: string | null;
   resolution: string | null;
 };
-
-type PathRow = { recorded_at: string; worker_id: string; worker_role: Role | null; path: string };
 
 type FileRow = { path: string; added: number | null; removed: number | null };
 
@@ -322,14 +319,6 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
        WHERE order_id = ? ORDER BY recorded_at, path`,
     )
     .all(orderId) as FileRow[];
-  const documents = db
-    .query(
-      `SELECT d.recorded_at, d.worker AS worker_id, fw.role AS worker_role, d.path
-       FROM factory_order_document d
-       LEFT JOIN factory_worker fw ON fw.name = d.worker
-       WHERE d.order_id = ? ORDER BY d.recorded_at, d.path`,
-    )
-    .all(orderId) as PathRow[];
   const environments = db
     .query(
       `SELECT recorded_at, phase, argv, exit_code, signal, stdout, stderr, resources
@@ -340,17 +329,9 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
   const built = artifactPanel(db, orderId, "build");
   const build = built ? { ...built.panel, headSha: built.headSha as string } : undefined;
   const review = artifactPanel(db, orderId, "review")?.panel;
-  const entries: WallItemEntry[] = [
-    ...events.map(eventEntry),
-    ...documents.map((doc) => ({
-      at: doc.recorded_at,
-      kind: "document_updated" as const,
-      worker: doc.worker_id,
-      ...(doc.worker_role ? { role: doc.worker_role } : {}),
-      path: tildePath(doc.path),
-    })),
-    ...environments.map(environmentEntry),
-  ].sort((a, b) => a.at.localeCompare(b.at));
+  const entries: WallItemEntry[] = [...events.map(eventEntry), ...environments.map(environmentEntry)].sort(
+    (a, b) => a.at.localeCompare(b.at),
+  );
   return {
     order,
     ...(running ? { runId: running.runId } : {}),

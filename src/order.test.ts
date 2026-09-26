@@ -31,7 +31,6 @@ import { currentOrderCommits } from "./order-commits";
 import {
   recordOrderCheck,
   recordOrderCommit,
-  recordOrderDocument,
   recordOrderEnvironment,
   recordOrderFile,
   recordOrderRewrite,
@@ -1196,7 +1195,6 @@ describe("factory order report records", () => {
       worker,
       "2026-09-18T10:04:00.000Z",
     );
-    recordOrderDocument(database, "order-1", "docs/factory.md", worker, "2026-09-18T10:05:00.000Z");
     appendOrderEvent(
       database,
       "order-1",
@@ -1222,9 +1220,6 @@ describe("factory order report records", () => {
         )
         .get(),
     ).toEqual({ dimension: "tests", answer: "fixed" });
-    expect(database.query("SELECT path FROM factory_order_document").get()).toEqual({
-      path: "docs/factory.md",
-    });
     expect(
       database
         .query<{ event: string; fields: string }, []>(

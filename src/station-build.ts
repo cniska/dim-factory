@@ -6,7 +6,6 @@ import { workerFailureReason } from "./harness-launch";
 import type { HarnessName } from "./harness-name";
 import { latestApprovedPlan } from "./order-approved-plan";
 import {
-  artifactWriter,
   completeOrderBuildFollowup,
   completeOrderSlice,
   latestArtifact,
@@ -64,8 +63,6 @@ export function builderBrief(
   redCheck: FailedCheck | null = null,
 ): string {
   const resolving = conflicts !== null;
-  const needsCodeWork =
-    currentSlice !== null || answersReview(reviewFindings) || resolving || redCheck !== null;
   const workspaceContext = workspace
     ? [
         `Workspace ecosystem: ${workspace.ecosystems.join(", ") || "unknown"}.`,
@@ -86,9 +83,7 @@ export function builderBrief(
     "# Workspace",
     ...workspaceContext,
     "",
-    ...(needsCodeWork && !resolving && convention
-      ? ["# Commit convention", conventionContext(convention), ""]
-      : []),
+    ...(!resolving && convention ? ["# Commit convention", conventionContext(convention), ""] : []),
     "The operator approved the following plan. Implement only this outcome:",
     "",
     plan.body,
@@ -97,7 +92,14 @@ export function builderBrief(
       ? ["# Current slice", `${currentSlice.ordinal}. ${currentSlice.title}: ${currentSlice.outcome}`]
       : []),
     ...(revision
-      ? ["# Returned Build artifact", revision.body, "", "# Owner feedback", revision.feedback]
+      ? [
+          "# Returned Build artifact",
+          revision.body,
+          "",
+          "# Owner feedback",
+          revision.feedback,
+          "Answer this feedback: change the code where it asks for a change, and return a revised Build artifact. A turn that changes nothing makes no commit.",
+        ]
       : []),
     ...(reviewFindings.work.length > 0
       ? [
@@ -108,7 +110,7 @@ export function builderBrief(
       : []),
     ...(resolving ? rebaseConflictBrief(conflicts) : []),
     ...(redCheck ? redCheckBrief(redCheck) : []),
-    ...(needsCodeWork && previousFailure
+    ...(previousFailure
       ? [
           "# Previous failed Build attempt",
           previousFailure,
@@ -121,29 +123,20 @@ export function builderBrief(
     "# Ordered slices",
     ...plan.slices.map((slice, index) => `${index + 1}. ${slice.title}: ${slice.outcome}`),
     "",
-    needsCodeWork
-      ? "The factory runner has already claimed this order for this build turn under your worker identity."
-      : "The owner returned the Build artifact to you. The code work is complete; revise only the artifact.",
+    "The factory runner has already claimed this order for this build turn under your worker identity.",
     resolving
       ? "Work in the current order worktree, resolving only the conflict above; this turn does not run the build station loop."
-      : needsCodeWork
-        ? "Work in the current order worktree and run the build station loop including simplification. Record each document you update with `dim order document`; review findings are answered in the turn's `answers`, never through dim order."
-        : "Do not edit files or create commits. Use the order record to correct the returned Build artifact for the latest recorded order commit.",
+      : "Work in the current order worktree and run the build station loop including simplification. Review findings are answered in the turn's `answers`.",
     "The factory has already accepted your assignment before this turn starts. Do not register or bootstrap another worker, inspect worker credential files, or stop because DIM_WORKER_NAME and DIM_WORKER_TOKEN are absent; order commands authenticate this assigned process through its DIM_WORKER_ASSIGNMENT variables.",
     "The order description and approved plan define the scope. When they explicitly exclude a workspace surface, do not edit or test that surface.",
     ...(resolving
       ? []
-      : needsCodeWork
-        ? [
-            "Leave every change uncommitted in the worktree. Do not run git commit, git stash, or any command that rewrites history. When the turn ends, the factory runner runs the declared check in a sandbox, commits the worktree with the repository's own git identity and signing config, and records the commit and its files under you and the check under the operator. Stay on the order's branch and do not create a git repository inside the worktree; the runner refuses both.",
-            "You may run the declared check yourself as feedback. A red check is feedback, not completion: diagnose it, fix the cause, rerun the check, and continue until it passes. If the cause is genuinely blocked, report the blocker instead of claiming success.",
-            'End the turn by returning JSON `{"subject": "...", "artifact": "...", "answers": [...]}`. `subject` is the commit subject, in the repo\'s own commit convention. `artifact` is the Build artifact for the whole order when this turn finishes the final slice, answers review findings or fixes a red check at the rebased head, and an empty string otherwise. `answers` holds one `{"finding": <id>, "answer": "fixed"|"refused", "resolution": "..."|null}` per finding listed under Review findings, and is `[]` when none is. Use dim-station-build and dim-artifact for the artifact contract: separate Markdown headings, the result explained for the owner rather than the command transcript, and proportional to the change.',
-          ]
-        : [
-            "Structure the returned artifact with separate Markdown headings: Outcome, Implementation, Why this shape, Verification, and Owner attention. Keep each section concise and include only claims supported by the order record.",
-            `Record a new Build artifact revision with \`dim order build-artifact ${order.id} --body "..." --head <latest-commit-sha>\`.`,
-          ]),
-    `${needsCodeWork ? "" : "Return a concise outcome. "}Do not approve the plan or build, start review, ship, or edit outside the order worktree.`,
+      : [
+          "Leave every change uncommitted in the worktree. Do not run git commit, git stash, or any command that rewrites history. When the turn ends, the factory runner runs the declared check in a sandbox, commits the worktree with the repository's own git identity and signing config, and records the commit and its files under you and the check under the operator. Stay on the order's branch and do not create a git repository inside the worktree; the runner refuses both.",
+          "You may run the declared check yourself as feedback. A red check is feedback, not completion: diagnose it, fix the cause, rerun the check, and continue until it passes. If the cause is genuinely blocked, report the blocker instead of claiming success.",
+          'End the turn by returning JSON `{"subject": "...", "artifact": "...", "answers": [...]}`. `subject` is the commit subject, in the repo\'s own commit convention. `artifact` is the Build artifact for the whole order, and an empty string only when this turn finishes a slice before the last. `answers` holds one `{"finding": <id>, "answer": "fixed"|"refused", "resolution": "..."|null}` per finding listed under Review findings, and is `[]` when none is. Use dim-station-build and dim-artifact for the artifact contract: separate Markdown headings, the result explained for the owner rather than the command transcript, and proportional to the change.',
+        ]),
+    "Do not approve the plan or build, start review, ship, or edit outside the order worktree.",
   ].join("\n");
 }
 
@@ -286,8 +279,9 @@ export async function runOrderBuildLive(
   const reviewFindings = currentSlice || conflict ? NO_REVIEW_FINDINGS : reviewFindingsForBuild(db, orderId);
   const redCheck =
     currentSlice || conflict || answersReview(reviewFindings) ? null : failedHeadCheck(db, orderId);
-  const needsCodeWork =
-    currentSlice !== null || conflict !== null || answersReview(reviewFindings) || redCheck !== null;
+  const revising =
+    currentSlice === null && conflict === null && !answersReview(reviewFindings) && redCheck === null;
+  const priorBuild = latestArtifact(db, orderId, "build")?.id ?? 0;
   const previousFailure = db
     .query<{ reason: string | null }, [string]>(
       `SELECT reason FROM factory_order_attempt
@@ -299,14 +293,14 @@ export async function runOrderBuildLive(
   const root = repoRoot(options.dir);
   const worktree = worktreePath(root, orderId);
   const workspace = workspaceContract(worktree);
-  const convention = needsCodeWork && !conflict ? checkoutConvention(db, root) : undefined;
+  const convention = conflict ? undefined : checkoutConvention(db, root);
   let builder: string | undefined;
   let harnessOutput = "";
   let harnessFailureReason: string | undefined;
   let failureRecorded = false;
   let claimed = false;
   const recordFailure = (reason: string): void => {
-    if (!needsCodeWork || failureRecorded || orderStatus(db, orderId) !== "active") return;
+    if (failureRecorded || orderStatus(db, orderId) !== "active") return;
     if (claimed && openAttempt(db, orderId)?.runId !== runId) return;
     failureRecorded = true;
     appendOrderEvent(db, orderId, { kind: "failed", worker: builder, reason });
@@ -319,29 +313,23 @@ export async function runOrderBuildLive(
       attribution: { harness: string; model: string; tier: string },
     ): void => {
       builder = assigned;
-      if (needsCodeWork) {
-        startAttempt(
-          db,
-          orderId,
-          {
-            runId,
-            worker: assigned,
-            sessionId: providerSessionId,
-            providerSessionId,
-            station: "build",
-            operatorWorker: operator,
-            ...attribution,
-          },
-          new Date().toISOString(),
-        );
-        claimed = true;
-      }
+      startAttempt(
+        db,
+        orderId,
+        {
+          runId,
+          worker: assigned,
+          sessionId: providerSessionId,
+          providerSessionId,
+          station: "build",
+          operatorWorker: operator,
+          ...attribution,
+        },
+        new Date().toISOString(),
+      );
+      claimed = true;
     };
-    const {
-      run,
-      worker: assigned,
-      returned,
-    } = await runOrderStationLive({
+    const { run, worker: assigned } = await runOrderStationLive({
       db,
       orderId,
       station: "build",
@@ -349,7 +337,7 @@ export async function runOrderBuildLive(
       harness,
       env: options.env,
       adapter: options.adapter,
-      requireReturnedArtifact: !needsCodeWork,
+      requireReturnedArtifact: revising,
       onPrepared: (orderWorker) => {
         builder = orderWorker.worker;
       },
@@ -369,7 +357,7 @@ export async function runOrderBuildLive(
           redCheck,
         ),
         capabilities: BUILDER_CAPABILITIES,
-        ...(needsCodeWork ? { outputSchema: BUILD_TURN_SCHEMA } : {}),
+        outputSchema: BUILD_TURN_SCHEMA,
       }),
     });
     const finished = (turn: typeof run): string => {
@@ -417,7 +405,7 @@ export async function runOrderBuildLive(
         }),
       );
     }
-    for (let corrections = 0; needsCodeWork && !conflict; corrections++) {
+    for (let corrections = 0; !conflict; corrections++) {
       const turn = parseBuildTurn(output.trim());
       try {
         commitBuildTurn({
@@ -463,15 +451,9 @@ export async function runOrderBuildLive(
     if (currentSlice) {
       requireBuildEvidence(db, orderId, currentSlice.ordinal === slices.length, worktree);
       completeOrderSlice(db, orderId, currentSlice.id, builder);
-    } else if (answersReview(reviewFindings) || redCheck) {
-      requireBuildEvidence(db, orderId, true, worktree);
-      completeOrderBuildFollowup(db, orderId);
     } else if (!conflict) {
-      const revision = latestArtifact(db, orderId, "build");
-      if (!revision || revision.id === returned?.artifactId || artifactWriter(db, revision.id) !== builder) {
-        throw new Error("builder did not record a new Build artifact revision");
-      }
       requireBuildEvidence(db, orderId, true, worktree);
+      completeOrderBuildFollowup(db, orderId, priorBuild);
     }
     return { builder, runId, worktree, exitCode: run.exitCode };
   } catch (error) {

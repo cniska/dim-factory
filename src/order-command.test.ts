@@ -9,8 +9,9 @@ import { pullStop } from "./factory-stop";
 import { attemptIn, collectingMachine, integratedRepo, reviewIn, scratchEnv } from "./fixtures.test-support";
 import { hookConfigPath } from "./hooks";
 import { TOOLS } from "./ingest-tools";
-import { completeOrderSlice, nextOrderSlice, recordOrderPlan } from "./order-artifacts";
+import { completeOrderSlice, nextOrderSlice, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
 import { runOrderCommand as runCommand, runOrderCommandLive } from "./order-command";
+import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
 import { appendOrderEvent } from "./order-ledger";
 import { startOrder } from "./order-lifecycle";
 import { closeOrderReview, recordOrderReviewArtifact } from "./order-review";
@@ -53,8 +54,9 @@ afterAll(() => {
 });
 
 function landed(database: Database, orderId: string): void {
-  runOrderCommand(database, ["commit", orderId, "--sha", trunk.sha, "--subject", "feat: land it"]);
-  runOrderCommand(database, ["check", orderId, "--command", "bun run verify", "--exit", "0"]);
+  const operator = resolveWorker(database, env);
+  recordOrderCommit(database, orderId, trunk.sha, operator, "feat: land it");
+  recordOrderCheck(database, orderId, { command: "bun run verify", exitCode: 0 }, operator);
 }
 
 const add = [
@@ -152,7 +154,7 @@ describe("order command", () => {
       runOrderCommandLive(database, ["build", "order-1", "--harness", "claude"], null, trunk.dir, env),
     ).rejects.toThrow('{ "claude": {');
 
-    runOrderCommand(database, ["commit", "order-1", "--sha", "abc123", "--subject", "feat: land it"]);
+    recordOrderCommit(database, "order-1", "abc123", operator, "feat: land it");
     attemptIn(database, "order-1", operator, operator, "run-2");
     approveFinalBuildAt(database, "order-1", "abc123", operator, operator);
 
@@ -272,14 +274,7 @@ describe("order command", () => {
 
     attemptIn(database, "order-1", operator, operator);
     landed(database, "order-1");
-    runOrderCommand(database, [
-      "build-artifact",
-      "order-1",
-      "--body",
-      "## Result\\n\\nBuilt.",
-      "--head",
-      trunk.sha,
-    ]);
+    recordOrderBuild(database, "order-1", "## Result\n\nBuilt.", trunk.sha, operator);
     completeOrderSlice(database, "order-1", nextOrderSlice(database, "order-1")?.id as number, operator);
     expect(() => runOrderCommand(database, ["approve", "order-1"])).toThrow(
       "build approval reason must not be empty",
@@ -313,7 +308,7 @@ describe("order command", () => {
     const sha = Bun.spawnSync(["git", "-C", wt, "rev-parse", "HEAD"], { stdout: "pipe" })
       .stdout.toString()
       .trim();
-    runOrderCommand(database, ["commit", "order-1", "--sha", sha, "--subject", "feat: ship-a"]);
+    recordOrderCommit(database, "order-1", sha, resolveWorker(database, env), "feat: ship-a");
     approvedAt(database, sha);
 
     expect(runOrderCommand(database, ["ship", "order-1"], null, wt)).toBe(
@@ -341,7 +336,7 @@ describe("order command", () => {
     const sha = Bun.spawnSync(["git", "-C", wt, "rev-parse", "HEAD"], { stdout: "pipe" })
       .stdout.toString()
       .trim();
-    runOrderCommand(database, ["commit", "order-1", "--sha", sha, "--subject", "feat: ship-b"]);
+    recordOrderCommit(database, "order-1", sha, resolveWorker(database, env), "feat: ship-b");
     approvedAt(database, sha);
 
     expect(runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toBe(
@@ -472,145 +467,16 @@ describe("order command", () => {
     expect(read.map((one) => one.id)).toEqual(["order-2", "order-1"]);
   });
 
-  test("a running order records the evidence the work produced", () => {
+  test("commits, files, checks, documents and artifacts are not written from the command line", () => {
     const database = db();
     queued(database);
     building(database);
 
-    expect(
-      runOrderCommand(database, ["commit", "order-1", "--sha", "abc123", "--subject", "feat: land it"]),
-    ).toBe("order-1 recorded commit abc123");
-    expect(
-      runOrderCommand(database, [
-        "file",
-        "order-1",
-        "--path",
-        "src/order-command.ts",
-        "--added",
-        "31",
-        "--removed",
-        "4",
-      ]),
-    ).toBe("order-1 recorded src/order-command.ts (+31/-4)");
-    expect(
-      runOrderCommand(database, [
-        "check",
-        "order-1",
-        "--command",
-        "bun run verify",
-        "--exit",
-        "0",
-        "--result",
-        "green",
-      ]),
-    ).toMatch(/^order-1 recorded bun run verify \(0\)$/);
-    expect(
-      runOrderCommand(database, [
-        "build-artifact",
-        "order-1",
-        "--body",
-        "## Result\\n\\nThe slice is built and verified.",
-        "--head",
-        "abc123",
-      ]),
-    ).toBe("order-1 recorded Build artifact 1");
-    expect(runOrderCommand(database, ["document", "order-1", "--path", "docs/factory.md"])).toBe(
-      "order-1 recorded docs/factory.md",
-    );
-
-    expect(database.query("SELECT sha, subject FROM factory_order_commit").get()).toEqual({
-      sha: "abc123",
-      subject: "feat: land it",
-    });
-    expect(database.query("SELECT path, added, removed FROM factory_order_file").get()).toEqual({
-      path: "src/order-command.ts",
-      added: 31,
-      removed: 4,
-    });
-    expect(database.query("SELECT command, exit_code, result FROM factory_order_check").get()).toEqual({
-      command: "bun run verify",
-      exit_code: 0,
-      result: "green",
-    });
-    expect(
-      database
-        .query(
-          `SELECT a.body, a.head_sha, w.worker FROM factory_order_artifact a
-           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_written'
-           WHERE a.kind = 'build'`,
-        )
-        .get(),
-    ).toEqual({
-      body: "## Result\n\nThe slice is built and verified.",
-      head_sha: "abc123",
-      worker: env[WORKER_NAME_VAR],
-    });
-    expect(database.query("SELECT path FROM factory_order_document").get()).toEqual({
-      path: "docs/factory.md",
-    });
-  });
-
-  test("evidence is refused before the order is started and after it shipped", () => {
-    const database = db();
-    queued(database);
-
-    expect(() => runOrderCommand(database, ["commit", "order-1", "--sha", "abc123"])).toThrow(
-      "order order-1 is not started",
-    );
-
-    atBuild(database);
-    landed(database, "order-1");
-    approvedAt(database, trunk.sha);
-    runOrderCommand(database, ["ship", "order-1"], null, trunk.dir);
-
-    expect(() => runOrderCommand(database, ["commit", "order-1", "--sha", "abc123"])).toThrow(
-      "order order-1 is already done",
-    );
-    expect(
-      database.query("SELECT count(*) AS rows FROM factory_order_commit WHERE sha = 'abc123'").get(),
-    ).toEqual({ rows: 0 });
-  });
-
-  test("a line count that is not a number is refused, and git's binary dash is no count", () => {
-    const database = db();
-    queued(database);
-    started(database);
-
-    for (const spec of ["", " ", "1e3", "-4", "many"]) {
-      expect(() =>
-        runOrderCommand(database, ["file", "order-1", "--path", "src/a.ts", "--added", spec]),
-      ).toThrow(UsageError);
+    for (const command of ["commit", "file", "check", "document", "build-artifact", "review-artifact"]) {
+      expect(() => runOrderCommand(database, [command, "order-1"])).toThrow(
+        `${command} is not an order subcommand`,
+      );
     }
-    expect(
-      runOrderCommand(database, [
-        "file",
-        "order-1",
-        "--path",
-        "src/logo.png",
-        "--added",
-        "-",
-        "--removed",
-        "-",
-      ]),
-    ).toBe("order-1 recorded src/logo.png");
-    expect(database.query("SELECT added, removed FROM factory_order_file").get()).toEqual({
-      added: null,
-      removed: null,
-    });
-  });
-
-  test("a check with no exit status is refused", () => {
-    const database = db();
-    queued(database);
-    started(database);
-
-    for (const spec of ["green", "", " ", "1e3"]) {
-      expect(() =>
-        runOrderCommand(database, ["check", "order-1", "--command", "bun run verify", "--exit", spec]),
-      ).toThrow(UsageError);
-    }
-
-    expect(database.query("SELECT count(*) AS rows FROM factory_order_check").get()).toEqual({ rows: 0 });
   });
 
   test("raises and answers no finding from the command line", () => {

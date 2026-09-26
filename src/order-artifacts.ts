@@ -33,16 +33,6 @@ export function isArtifactApproved(db: Database, artifactId: number): boolean {
   );
 }
 
-export function artifactWriter(db: Database, artifactId: number): string {
-  const writer = db
-    .query<{ worker: string }, [number]>(
-      "SELECT worker FROM factory_order_event WHERE kind = 'artifact_written' AND artifact_id = ?",
-    )
-    .get(artifactId)?.worker;
-  if (!writer) throw new Error(`artifact ${artifactId} has no artifact_written event`);
-  return writer;
-}
-
 export function writeArtifactInTransaction(
   db: Database,
   orderId: string,
@@ -193,11 +183,10 @@ export function recordOrderBuild(
   at = now(),
 ): number {
   assertOrderActive(db, orderId);
-  const returned = returnedOrderArtifact(db, orderId, "build");
-  if (!openAttempt(db, orderId) && !returned) {
+  if (!openAttempt(db, orderId)) {
     throw new OrderNotDone(
       "build_artifact_before_final_slice",
-      `order ${orderId} has no active final build turn or returned Build artifact`,
+      `order ${orderId} has no active final build turn`,
     );
   }
   const next = nextOrderSlice(db, orderId);
@@ -219,16 +208,6 @@ export function recordOrderBuild(
   }
   if (body.trim() === "") throw new Error("build artifact body must not be empty");
   if (headSha.trim() === "") throw new Error("build artifact head must not be empty");
-  if (returned && headSha !== returned.headSha) {
-    const latestCommit = latestOrderCommit(db, orderId);
-    if (latestCommit?.sha !== headSha) {
-      throw new OrderNotDone(
-        "build_revision_head_mismatch",
-        `order ${orderId} must use the returned Build artifact's commit or its latest recorded commit`,
-      );
-    }
-    assertChecked(db, orderId);
-  }
   return db.transaction(() =>
     writeArtifactInTransaction(db, orderId, { kind: "build", body, headSha, reviewId: null }, worker, at),
   )();
@@ -280,7 +259,12 @@ export function completeOrderSlice(
   })();
 }
 
-export function completeOrderBuildFollowup(db: Database, orderId: string, at = now()): void {
+export function completeOrderBuildFollowup(
+  db: Database,
+  orderId: string,
+  priorArtifactId: number,
+  at = now(),
+): void {
   db.transaction(() => {
     assertOrderActive(db, orderId);
     if (nextOrderSlice(db, orderId) !== null) {
@@ -288,23 +272,14 @@ export function completeOrderBuildFollowup(db: Database, orderId: string, at = n
     }
     assertChecked(db, orderId);
     const commit = latestOrderCommit(db, orderId);
-    const review = db
-      .query<{ event_id: number }, [string]>(
-        `SELECT e.id AS event_id FROM factory_order_review r
-         JOIN factory_order_event e ON e.review_id = r.id AND e.kind = 'review_closed'
-         WHERE r.order_id = ? ORDER BY r.round DESC LIMIT 1`,
-      )
-      .get(orderId);
     const artifact = commit
       ? db
           .query(
-            `SELECT 1 FROM factory_order_artifact b
-             JOIN factory_order_event e ON e.artifact_id = b.id AND e.kind = 'artifact_written'
-             WHERE b.order_id = ? AND b.kind = 'build' AND b.head_sha = ? AND e.id > ?`,
+            "SELECT 1 FROM factory_order_artifact WHERE order_id = ? AND kind = 'build' AND head_sha = ? AND id > ?",
           )
-          .get(orderId, commit.sha, review?.event_id ?? Number.MAX_SAFE_INTEGER)
+          .get(orderId, commit.sha, priorArtifactId)
       : null;
-    if (!artifact) throw new Error(`order ${orderId} has no Build artifact after its latest Review`);
+    if (!artifact) throw new Error(`order ${orderId} has no Build artifact from this build turn`);
     finishAttempt(db, orderId, "succeeded", undefined, at);
   })();
 }

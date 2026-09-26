@@ -257,7 +257,7 @@ describe("builder station", () => {
         adapter: unavailable.adapter,
       }),
     ).rejects.toThrow("harness unavailable");
-    expect(unavailable.brief()).toContain("The owner returned the Build artifact to you.");
+    expect(unavailable.brief()).toContain("# Returned Build artifact");
     expect(unavailable.brief()).toContain("Explain what the build verified.");
     await expect(
       runOrderBuildLive(db, "builder-order", operator.name, {
@@ -273,7 +273,7 @@ describe("builder station", () => {
       db
         .query("SELECT kind FROM factory_order_event WHERE order_id = ? ORDER BY id DESC LIMIT 1")
         .get("builder-order"),
-    ).toEqual({ kind: "artifact_returned" });
+    ).toEqual({ kind: "failed" });
     db.close();
   });
 
@@ -672,77 +672,53 @@ describe("builder station", () => {
         .get(),
     ).toEqual({ revision: 2, head_sha: repo.sha });
 
-    returnOrderArtifact(db, "returned-builder-order", operator.name, "Match the actual worktree HEAD.");
-    const laterCommit = Bun.spawnSync(
-      ["git", "-C", outcome.worktree, "commit", "--allow-empty", "-m", "fix: unrecorded head"],
-      { stdout: "pipe", stderr: "pipe" },
-    );
-    expect(laterCommit.success).toBe(true);
-    const later = git(outcome.worktree, ["rev-parse", "HEAD"]);
+    const latestBuild = () =>
+      db
+        .query(
+          "SELECT revision, head_sha FROM factory_order_artifact WHERE kind = 'build' ORDER BY revision DESC LIMIT 1",
+        )
+        .get();
+
+    returnOrderArtifact(db, "returned-builder-order", operator.name, "Say what the check verified.");
     let returnedBrief = "";
-    await expect(
-      runOrderBuildLive(db, "returned-builder-order", operator.name, {
-        ...options,
-        adapter: builderTurn((request) => {
-          returnedBrief = request.brief;
-          recordOrderBuild(
-            db,
-            "returned-builder-order",
-            "Revision still points to the old head.",
-            repo.sha,
-            outcome.builder,
-          );
-          return "revised";
-        }),
+    await runOrderBuildLive(db, "returned-builder-order", operator.name, {
+      ...options,
+      adapter: builderTurn((request) => {
+        returnedBrief = request.brief;
+        return { subject: "docs: explain the check", artifact: "The check verified the result." };
       }),
-    ).rejects.toThrow("builder did not record worktree HEAD");
+    });
     expect(returnedBrief).toContain("# Returned Build artifact");
     expect(returnedBrief).toContain("The revised Build artifact explains the verification.");
     expect(returnedBrief).toContain("# Owner feedback");
-    expect(returnedBrief).toContain("Match the actual worktree HEAD.");
+    expect(returnedBrief).toContain("Say what the check verified.");
+    expect(db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 1 });
+    expect(latestBuild()).toEqual({ revision: 3, head_sha: repo.sha });
+    expect(openAttempt(db, "returned-builder-order")).toBeNull();
+    expect(orderState(db, "returned-builder-order")).toEqual({ station: "build", next: "approve" });
 
-    returnOrderArtifact(db, "returned-builder-order", operator.name, "Record the check after that head.");
+    returnOrderArtifact(db, "returned-builder-order", operator.name, "Rename the result file.");
+    await runOrderBuildLive(db, "returned-builder-order", operator.name, {
+      ...options,
+      adapter: builderTurn((request) => {
+        writeFileSync(join(request.cwd, "result.txt"), "result\n");
+        return { subject: "fix: name the result file", artifact: "The result file is named." };
+      }),
+    });
+    const fixed = git(outcome.worktree, ["rev-parse", "HEAD"]);
+    expect(fixed).not.toBe(repo.sha);
+    expect(latestBuild()).toEqual({ revision: 4, head_sha: fixed });
+    expect(orderState(db, "returned-builder-order")).toEqual({ station: "build", next: "approve" });
+
+    returnOrderArtifact(db, "returned-builder-order", operator.name, "Answer in the artifact.");
     await expect(
       runOrderBuildLive(db, "returned-builder-order", operator.name, {
         ...options,
-        adapter: builderTurn(() => {
-          recordOrderCommit(db, "returned-builder-order", later, outcome.builder, "fix: unrecorded head");
-          recordOrderCheck(
-            db,
-            "returned-builder-order",
-            { command: "bun run verify", exitCode: 0, result: "green" },
-            outcome.builder,
-          );
-          recordOrderBuild(
-            db,
-            "returned-builder-order",
-            "Revision on the later head.",
-            later,
-            outcome.builder,
-          );
-          return "revised";
-        }),
+        adapter: builderTurn(() => ({ subject: "docs: nothing", artifact: "" })),
       }),
-    ).rejects.toThrow("the runner did not record a passing check after the latest commit");
-
-    returnOrderArtifact(db, "returned-builder-order", operator.name, "Record an immutable commit ID.");
-    recordOrderCommit(db, "returned-builder-order", "HEAD", outcome.builder, "fix: symbolic head");
-    recordOrderCheck(db, "returned-builder-order", { command: "bun run verify", exitCode: 0 }, operator.name);
-    await expect(
-      runOrderBuildLive(db, "returned-builder-order", operator.name, {
-        ...options,
-        adapter: builderTurn(() => {
-          recordOrderBuild(
-            db,
-            "returned-builder-order",
-            "Revision names a moving ref.",
-            "HEAD",
-            outcome.builder,
-          );
-          return "revised";
-        }),
-      }),
-    ).rejects.toThrow("builder did not record an immutable commit ID");
+    ).rejects.toThrow("the final slice's turn returned an empty Build artifact");
+    expect(latestBuild()).toEqual({ revision: 4, head_sha: fixed });
+    expect(orderState(db, "returned-builder-order")).toEqual({ station: "build", next: "run" });
     db.close();
   });
 
@@ -806,8 +782,13 @@ describe("builder station", () => {
         adapter: builderTurn((request) => {
           brief = request.brief;
           writeFileSync(join(request.cwd, "fix.txt"), "fix\n");
-          expect(() => completeOrderBuildFollowup(db, "review-rework-order")).toThrow(
-            "no Build artifact after its latest Review",
+          const prior = db
+            .query<{ id: number }, []>(
+              "SELECT max(id) AS id FROM factory_order_artifact WHERE kind = 'build'",
+            )
+            .get()?.id as number;
+          expect(() => completeOrderBuildFollowup(db, "review-rework-order", prior)).toThrow(
+            "no Build artifact from this build turn",
           );
           return {
             subject: "fix: review finding",

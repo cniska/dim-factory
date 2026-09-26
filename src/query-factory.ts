@@ -180,13 +180,6 @@ export const order: Query = {
       })),
       ...table(
         db,
-        `SELECT 'document' AS section, recorded_at AS "when", 'document_updated' AS kind, '' AS status,
-                path AS subject, '' AS evidence
-         FROM factory_order_document WHERE order_id = ?`,
-        [id],
-      ),
-      ...table(
-        db,
         `SELECT 'environment' AS section, recorded_at AS "when", 'environment_reported' AS kind,
                 coalesce(cast(exit_code AS TEXT), signal, '') AS status, phase AS subject,
                 resources AS evidence

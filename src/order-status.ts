@@ -48,8 +48,7 @@ export type OrderNotDoneCode =
   | "order_not_checked"
   | "order_not_queued"
   | "order_held_by_run"
-  | "build_artifact_before_final_slice"
-  | "build_revision_head_mismatch";
+  | "build_artifact_before_final_slice";
 
 export class OrderNotDone extends Error {
   constructor(

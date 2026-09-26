@@ -143,7 +143,7 @@ describe("the rebase conflict brief", () => {
 });
 
 describe("worker failure explanations", () => {
-  test("gives a returned Build artifact readable sections", () => {
+  test("hands a returned Build artifact's feedback to a build turn that may change code", () => {
     const brief = builderBrief(
       { id: "order-1", title: "Build it", description: null },
       {
@@ -155,9 +155,12 @@ describe("worker failure explanations", () => {
       { body: "## Outcome\n\nThe artifact was a wall of text.", feedback: "Make it readable." },
     );
 
+    expect(brief).toContain("# Owner feedback\nMake it readable.");
     expect(brief).toContain(
-      "separate Markdown headings: Outcome, Implementation, Why this shape, Verification, and Owner attention",
+      "change the code where it asks for a change, and return a revised Build artifact",
     );
+    expect(brief).toContain('returning JSON `{"subject": "...", "artifact": "...", "answers": [...]}`');
+    expect(brief).not.toContain("dim order build-artifact");
   });
 
   test("tells the builder to fix a red check before finishing", () => {
@@ -209,8 +212,11 @@ describe("worker failure explanations", () => {
     expect(brief).toContain("commits the worktree with the repository's own git identity and signing config");
     expect(brief).toContain("Stay on the order's branch");
     expect(brief).toContain('returning JSON `{"subject": "...", "artifact": "...", "answers": [...]}`');
-    expect(brief).toContain("review findings are answered in the turn's `answers`, never through dim order");
-    expect(brief).toContain("the Build artifact for the whole order when this turn finishes the final slice");
+    expect(brief).toContain("Review findings are answered in the turn's `answers`.");
+    expect(brief).not.toContain("dim order document");
+    expect(brief).toContain(
+      "the Build artifact for the whole order, and an empty string only when this turn finishes a slice before the last",
+    );
     expect(brief).toContain("rather than the command transcript");
     expect(brief).not.toContain("dim order commit");
     expect(brief).not.toContain("dim order check");

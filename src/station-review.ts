@@ -62,7 +62,7 @@ export function reviewRange(db: Database, orderId: string, dir: string): { base:
   if (!current.some((row) => head.out.startsWith(row.sha))) {
     throw new ReviewRefused(
       "head_unrecorded",
-      `${head.out} is not a commit order ${orderId} recorded: record it with \`dim order commit\` first`,
+      `${head.out} is not a commit order ${orderId} recorded; only a build turn's commit can be reviewed`,
     );
   }
   const last = db

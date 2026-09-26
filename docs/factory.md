@@ -32,7 +32,7 @@ queued → plan → build → review → ship → done
 - **Build runs slice by slice**, and review reads the whole order after the last one. A round's findings send the order back to build, where the builder answers each one once, `fixed` or `refused` with a reason. The next round is briefed with those answers and raises a new finding for any that still holds; a round that raises nothing writes the Review artifact.
 - **Ship** follows the Review approval and ends the order (see [Done](#done)).
 - **A failed attempt** leaves the order where its evidence puts it, and the same command runs the station again. A build attempt running on an order refuses a second one. **A drop** is the owner deciding it will not be built.
-- **One act, one path.** Findings arrive only in the reviewer's report and answers only in the builder's build turn.
+- **One act, one path.** Findings arrive only in the reviewer's report and answers only in the builder's build turn. Commits, files, checks and Build artifacts are written by the build runner and by ship, and Review artifacts by the review station; no command writes them.
 
 ### Commands
 
@@ -53,7 +53,7 @@ A command with no `--harness` runs the worker under the harness the operator's o
 
 ## The build turn
 
-A builder leaves its changes uncommitted and returns a build turn: a commit subject, an answer per finding, and on the last turn the Build artifact. The runner then ([`src/station-build-commit.ts`](../src/station-build-commit.ts)):
+A builder leaves its changes uncommitted and returns a build turn: a commit subject, an answer per finding, and the Build artifact on every turn but one that finishes an earlier slice. A returned Build artifact runs a build turn too, briefed with the owner's feedback, and it may change code. The runner then ([`src/station-build-commit.ts`](../src/station-build-commit.ts)):
 
 1. refuses a turn that leaves a handed finding unanswered or answers one it was not handed
 2. applies the comment gate over the staged tree, reading the ban from the trunk's config so a builder cannot lift it
@@ -64,7 +64,7 @@ A refused commit or comment goes back to the same builder, at most twice per tur
 
 ## Done
 
-An order is done when it ships: its commits land on the local trunk, a `shipped` event records it, and its worktree is removed. Nothing is pushed. Ship waits on an approved Build artifact, which the record refuses without a check that passed after the last commit, and on an approved Review artifact at the head; the docs changing with the behavior rest on the stations. A ship that does not land writes a `ship_failed` event with its reason.
+An order is done when it ships: its commits land on the local trunk, a `shipped` event records it, and its worktree is removed. Nothing is pushed. Ship waits on an approved Build artifact, which the runner writes only with a check that passed at the head, and on an approved Review artifact at the head; the docs changing with the behavior rest on the stations. A ship that does not land writes a `ship_failed` event with its reason.
 
 Ship lands the order the way the repo declares with `git config dim.ship`:
 

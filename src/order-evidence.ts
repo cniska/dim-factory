@@ -161,19 +161,3 @@ export function recordOrderEnvironment(
     ],
   );
 }
-
-export function recordOrderDocument(
-  db: Database,
-  orderId: string,
-  path: string,
-  worker: string,
-  at = now(),
-): void {
-  assertOrderActive(db, orderId);
-  db.run("INSERT INTO factory_order_document (order_id, worker, path, recorded_at) VALUES (?, ?, ?, ?)", [
-    orderId,
-    worker,
-    path,
-    at,
-  ]);
-}

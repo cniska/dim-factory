@@ -7,7 +7,6 @@ import { recordOrderBuild } from "./order-artifacts";
 import {
   recordOrderCheck,
   recordOrderCommit,
-  recordOrderDocument,
   recordOrderEnvironment,
   recordOrderFile,
 } from "./order-evidence";
@@ -176,7 +175,6 @@ describe("factory order query", () => {
       "factory_order_check",
       "factory_order_finding",
       "factory_order_finding_answer",
-      "factory_order_document",
     ].map((table) => db.query(`SELECT * FROM ${table} ORDER BY 1`).all());
     const result = findQuery("factory")?.run(db, { arg: "order-st" });
 
@@ -217,7 +215,6 @@ describe("factory order query", () => {
       "factory_order_check",
       "factory_order_finding",
       "factory_order_finding_answer",
-      "factory_order_document",
     ].map((table) => db.query(`SELECT * FROM ${table} ORDER BY 1`).all());
     expect(after).toEqual(before);
     db.close();
@@ -315,7 +312,6 @@ describe("factory order query", () => {
       worker,
       "2026-09-18T10:03:00.000Z",
     );
-    recordOrderDocument(db, "order-123", "docs/factory.md", worker, "2026-09-18T10:04:00.000Z");
     recordOrderEnvironment(
       db,
       "order-123",
@@ -348,7 +344,6 @@ describe("factory order query", () => {
       "event",
       "event",
       "finding",
-      "document",
       "environment",
     ]);
     expect(result?.rows.at(-1)).toEqual([

@@ -194,14 +194,8 @@ describe("build approval integration", () => {
       headSha: repo.sha,
     });
     expect(() =>
-      recordOrderBuild(
-        db,
-        "build-approval-order",
-        "## Outcome\n\nThe wrong revision.",
-        "different-head",
-        builder.name,
-      ),
-    ).toThrow(expect.objectContaining({ code: "build_revision_head_mismatch" }));
+      recordOrderBuild(db, "build-approval-order", "## Outcome\n\nNo turn.", repo.sha, builder.name),
+    ).toThrow(expect.objectContaining({ code: "build_artifact_before_final_slice" }));
     expect(() =>
       runOrderCommand(
         db,
@@ -213,29 +207,13 @@ describe("build approval integration", () => {
     ).toThrow(
       expect.objectContaining({ code: "not_next", message: expect.stringContaining("run at build") }),
     );
-    recordOrderCommit(
-      db,
-      "build-approval-order",
-      "new-head",
-      builder.name,
-      "fix: repair the build",
-      "2026-09-25T10:02:00.000Z",
-    );
-    expect(() =>
-      recordOrderBuild(
-        db,
-        "build-approval-order",
-        "## Outcome\n\nThe check is missing.",
-        "new-head",
-        builder.name,
-      ),
-    ).toThrow(expect.objectContaining({ code: "order_not_checked" }));
+    attemptIn(db, "build-approval-order", builder.name, operator.name, "revision-run");
+    recordOrderCommit(db, "build-approval-order", "new-head", builder.name, "fix: repair the build");
     recordOrderCheck(
       db,
       "build-approval-order",
       { command: "bun run verify", exitCode: 0, result: "green" },
       builder.name,
-      "2026-09-25T10:01:00.000Z",
     );
     recordOrderBuild(
       db,

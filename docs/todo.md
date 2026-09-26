@@ -16,7 +16,6 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 
 ## Features
 
-- **One path per act** — the runner is the only writer of commits, files, checks and artifacts, so `dim order commit`, `file`, `check`, `build-artifact` and `review-artifact` go.
 - **Ship and rebase records** — one table for ship refusals and one for rebases, replacing the conflict held in the `ship_failed` event's JSON.
 - **Refuse a secret at ship** — an order's diff carrying a key shape is not shipped.
 - **Ship through a pull request** — `dim.ship = pull-request`, since most repos do not fast-forward their default branch. Built against one of the owner's repos that ships by PR, once the factory runs again.

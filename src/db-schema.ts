@@ -5,7 +5,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { STATIONS_SQL } from "./station";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 67;
+export const SCHEMA_VERSION = 68;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -516,14 +516,6 @@ CREATE TABLE IF NOT EXISTS factory_order_environment (
   stderr        TEXT NOT NULL,
   resources     TEXT NOT NULL,
   recorded_at   TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS factory_order_document (
-  order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
-  worker        TEXT REFERENCES factory_worker(name),
-  path          TEXT NOT NULL,
-  recorded_at   TEXT NOT NULL,
-  PRIMARY KEY (order_id, path)
 );
 
 CREATE TABLE IF NOT EXISTS factory_order_slice (

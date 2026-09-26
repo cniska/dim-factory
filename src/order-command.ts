@@ -1,5 +1,4 @@
 import type { Database } from "bun:sqlite";
-import { readFileSync } from "node:fs";
 import { type Command, UsageError } from "./cli-contract";
 import { readFlags, requiredFlag } from "./cli-flags";
 import { closeDb, openDb } from "./db";
@@ -10,12 +9,9 @@ import { HARNESSES, type HarnessName, parseHarness } from "./harness-name";
 import { recordedHarness } from "./harness-operator";
 import { requireCurrentHooks } from "./hooks";
 import { approveOrder, returnOrderArtifact } from "./order-approval";
-import { recordOrderBuild } from "./order-artifacts";
-import { recordOrderCheck, recordOrderCommit, recordOrderDocument, recordOrderFile } from "./order-evidence";
 import { amendOrder, dropOrder, queueOrder, setOrderPriority } from "./order-lifecycle";
 import { isOrderLine, ORDER_LINES } from "./order-line";
 import { readyOrders } from "./order-ready";
-import { recordOrderReviewArtifact } from "./order-review";
 import { shipOrder } from "./order-ship";
 import { ORDER_PRIORITIES, type OrderPriority } from "./order-status";
 import { dbPath, type Env } from "./paths";
@@ -30,13 +26,7 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--lin
                      [--priority <${ORDER_PRIORITIES.join("|")}>] [--project <owner/repo>]
        dim order ready [--limit <n>] [--project <owner/repo>]
        dim order priority <order-id> <${ORDER_PRIORITIES.join("|")}>
-       dim order commit <order-id> --sha <sha> [--subject "..."]
-       dim order file <order-id> --path <path> [--added <n>] [--removed <n>]
-       dim order check <order-id> --command "..." --exit <code> [--result "..."]
-       dim order build-artifact <order-id> --body-file <path> --head <sha>
-       dim order review-artifact <order-id> --body "..."
        dim order review <order-id> [--harness <${HARNESSES.join("|")}>]
-       dim order document <order-id> --path <path>
        dim order plan <order-id> [--harness <${HARNESSES.join("|")}>]
        dim order build <order-id> [--harness <${HARNESSES.join("|")}>]
        dim order approve <order-id> [--reason "..."]
@@ -68,10 +58,6 @@ function flags(args: string[], allowed: string[]): Map<string, string> {
 
 function required(given: Map<string, string>, flag: string): string {
   return requiredFlag(given, flag, fail);
-}
-
-function markdownBody(value: string): string {
-  return value.replaceAll("\\r\\n", "\n").replaceAll("\\n", "\n").replaceAll("\\r", "\r");
 }
 
 function priority(given: string | undefined): OrderPriority | undefined {
@@ -108,89 +94,6 @@ function add(
   );
   return `queued ${orderId} on ${project}`;
 }
-
-function exitCode(given: Map<string, string>): number {
-  const spec = required(given, "--exit");
-  if (!/^-?\d+$/.test(spec)) throw new UsageError(`--exit ${spec} is not an exit code`);
-  return Number(spec);
-}
-
-function lineCount(given: Map<string, string>, flag: string): number | undefined {
-  const spec = given.get(flag);
-  if (spec === undefined || spec === "-") return undefined;
-  if (!/^\d+$/.test(spec)) throw new UsageError(`${flag} ${spec} is not a line count`);
-  return Number(spec);
-}
-
-type Evidence = {
-  flags: string[];
-  record: (db: Database, id: string, given: Map<string, string>, worker: string) => string;
-};
-
-const EVIDENCE: Record<string, Evidence> = {
-  commit: {
-    flags: ["--sha", "--subject"],
-    record: (db, id, given, worker) => {
-      const sha = required(given, "--sha");
-      recordOrderCommit(db, id, sha, worker, given.get("--subject"));
-      return `${id} recorded commit ${sha}`;
-    },
-  },
-  file: {
-    flags: ["--path", "--added", "--removed"],
-    record: (db, id, given, worker) => {
-      const path = required(given, "--path");
-      const added = lineCount(given, "--added");
-      const removed = lineCount(given, "--removed");
-      recordOrderFile(db, id, { path, added, removed }, worker);
-      const counted =
-        added === undefined && removed === undefined ? "" : ` (+${added ?? 0}/-${removed ?? 0})`;
-      return `${id} recorded ${path}${counted}`;
-    },
-  },
-  check: {
-    flags: ["--command", "--exit", "--result"],
-    record: (db, id, given, worker) => {
-      const command = required(given, "--command");
-      const code = exitCode(given);
-      recordOrderCheck(db, id, { command, exitCode: code, result: given.get("--result") }, worker);
-      return `${id} recorded ${command} (${code})`;
-    },
-  },
-  "build-artifact": {
-    flags: ["--body", "--body-file", "--head"],
-    record: (db, id, given, worker) => {
-      const body = given.get("--body");
-      const bodyFile = given.get("--body-file");
-      if ((body === undefined) === (bodyFile === undefined)) {
-        throw new UsageError("provide exactly one of --body or --body-file");
-      }
-      const artifactId = recordOrderBuild(
-        db,
-        id,
-        body === undefined ? readFileSync(bodyFile as string, "utf8") : markdownBody(body),
-        required(given, "--head"),
-        worker,
-      );
-      return `${id} recorded Build artifact ${artifactId}`;
-    },
-  },
-  "review-artifact": {
-    flags: ["--body"],
-    record: (db, id, given, worker) => {
-      const artifactId = recordOrderReviewArtifact(db, id, markdownBody(required(given, "--body")), worker);
-      return `${id} recorded Review artifact ${artifactId}`;
-    },
-  },
-  document: {
-    flags: ["--path"],
-    record: (db, id, given, worker) => {
-      const path = required(given, "--path");
-      recordOrderDocument(db, id, path, worker);
-      return `${id} recorded ${path}`;
-    },
-  },
-};
 
 const SHIP_OUTCOME_TEXT: Record<ShipOutcome["landed"], string> = {
   already: "already on the trunk",
@@ -263,10 +166,6 @@ export function runOrderCommand(
     const approved = `${orderId} ${station} approved by ${worker}`;
     if (station !== "review") return approved;
     return `${approved}; ${ship(db, orderId, [], cwd, env, worker)}`;
-  }
-  if (Object.hasOwn(EVIDENCE, command)) {
-    const evidence = EVIDENCE[command] as Evidence;
-    return evidence.record(db, orderId, flags(rest, evidence.flags), worker);
   }
   if (command === "ship") return ship(db, orderId, rest, cwd, env, worker);
   if (command === "amend") return amend(db, orderId, rest);

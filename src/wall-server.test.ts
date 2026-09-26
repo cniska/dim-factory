@@ -12,7 +12,6 @@ import { finishAttempt, startAttempt } from "./order-attempt";
 import {
   recordOrderCheck,
   recordOrderCommit,
-  recordOrderDocument,
   recordOrderEnvironment,
   recordOrderFile,
 } from "./order-evidence";
@@ -650,7 +649,6 @@ describe("factory wall item view", () => {
       worker,
       "2026-09-18T10:08:00.000Z",
     );
-    recordOrderDocument(db, "order-worked", "docs/human-interface.md", worker, "2026-09-18T10:09:00.000Z");
     if (includeReviewArtifact) {
       recordOrderReviewArtifact(
         db,
@@ -691,7 +689,6 @@ describe("factory wall item view", () => {
       "finding_answered",
       "finding_raised",
       "finding_answered",
-      "document_updated",
       "shipped",
     ]);
     db.close();
@@ -744,7 +741,7 @@ describe("factory wall item view", () => {
     const view = assembleItemView(db, "order-worked", new Date("2026-09-18T10:20:00.000Z"));
 
     expect(view?.changes).toEqual([{ path: "src/wall-server.ts", added: 62, removed: 7 }]);
-    expect(view?.entries.some((entry) => entry.path === "src/wall-server.ts")).toBe(false);
+    expect(JSON.stringify(view?.entries)).not.toContain("src/wall-server.ts");
     db.close();
   });
 
@@ -815,11 +812,6 @@ describe("factory wall item view", () => {
         resolution: "the design doc rules a library out for this surface",
       },
     ]);
-    expect(entries.find((entry) => entry.kind === "document_updated")).toMatchObject({
-      path: "docs/human-interface.md",
-      worker,
-      role: "builder",
-    });
     expect(entries.find((entry) => entry.kind === "environment_reported")?.environment).toEqual({
       phase: "setup",
       argv: ["/tmp/worked/scripts/worktree-setup.sh"],
@@ -872,11 +864,17 @@ describe("factory wall item view", () => {
       "2026-09-18T10:00:00.000Z",
     );
     building(db, "order-reviewed", "2026-09-18T10:00:00.000Z");
-    recordOrderDocument(db, "order-reviewed", "docs/review.md", reviewer, "2026-09-18T10:02:00.000Z");
+    recordOrderCheck(
+      db,
+      "order-reviewed",
+      { command: "bun run verify", exitCode: 0 },
+      reviewer,
+      "2026-09-18T10:02:00.000Z",
+    );
 
     const view = assembleItemView(db, "order-reviewed", new Date("2026-09-18T10:20:00.000Z"));
 
-    expect(view?.entries.find((entry) => entry.kind === "document_updated")?.worker).toBe(reviewer);
+    expect(view?.entries.find((entry) => entry.kind === "check_finished")?.worker).toBe(reviewer);
     expect(view?.entries.find((entry) => entry.kind === "started")?.worker).toBe(attemptOperator);
     expect(view?.order.worker).toBe(worker);
     expect(view?.order.role).toBe("builder");
@@ -933,18 +931,13 @@ describe("factory wall item view", () => {
       "2026-09-18T10:03:00.000Z",
     );
     recordOrderFile(db, "order-other", { path: "src/other.ts" }, worker, "2026-09-18T10:05:00.000Z");
-    recordOrderDocument(db, "order-other", "docs/other.md", worker, "2026-09-18T10:09:00.000Z");
 
-    const entries = assembleItemView(db, "order-other", new Date("2026-09-18T10:20:00.000Z"))?.entries ?? [];
+    const view = assembleItemView(db, "order-other", new Date("2026-09-18T10:20:00.000Z"));
+    const entries = view?.entries ?? [];
 
-    expect(entries.map((entry) => entry.kind)).toEqual([
-      "queued",
-      "started",
-      "check_finished",
-      "document_updated",
-    ]);
+    expect(entries.map((entry) => entry.kind)).toEqual(["queued", "started", "check_finished"]);
     expect(entries.map((entry) => entry.check?.command).filter(Boolean)).toEqual(["bun run other"]);
-    expect(entries.map((entry) => entry.path).filter(Boolean)).toEqual(["docs/other.md"]);
+    expect(view?.changes).toEqual([{ path: "src/other.ts" }]);
     db.close();
   });
 

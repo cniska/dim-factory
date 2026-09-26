@@ -37,7 +37,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Attempt | One station hand's run on an order, from start to finish, with its outcome. A build attempt that has not finished and whose worker is not over refuses a second one ([`src/order-attempt.ts`](../src/order-attempt.ts)) |
 | Drop | The owner's decision not to build an order, with the reason |
 | Ledger | An order's events in `factory_order_event`, appended and never changed ([`src/order-ledger.ts`](../src/order-ledger.ts)) |
-| Evidence | What an order produced: commits, changed files, checks, findings and answers, documents |
+| Evidence | What an order produced: commits, changed files, checks, findings and answers |
 | Artifact | A document a station worker writes for the owner — a plan, a Build artifact or a review — one row per revision in `factory_order_artifact`. It leads with the outcome and never lives in the worktree |
 | Build turn | What a builder returns after code work: the commit subject, an answer per finding it was handed, and on the last turn the Build artifact ([`src/station-build-turn.ts`](../src/station-build-turn.ts)). The runner commits; the builder does not |
 | Check sandbox | The confinement the runner runs a repo's check in: worktree writable, network and `dim`'s data refused ([`src/check-sandbox.ts`](../src/check-sandbox.ts)) |
