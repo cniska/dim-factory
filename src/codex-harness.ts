@@ -38,7 +38,6 @@ function itemEvents(event: CodexEvent): HarnessEvent[] {
   ];
 }
 
-/** Stateful because Codex states no answer of its own: a run's answer is its last agent message. */
 function codexEventParser(): HarnessLineParser {
   let answer: string | undefined;
   return (line) => {
@@ -67,17 +66,11 @@ function codexEventParser(): HarnessLineParser {
   };
 }
 
-/**
- * No git metadata is added: the station runner commits a builder's worktree, so a builder needs
- * none, and `workspace-write` keeps `.git` inside the worktree read-only on its own — which keeps
- * the pointer the runner's git follows out of a builder's reach.
- */
 function codexSandboxArgs(request: HarnessRequest): string[] {
   const sandbox = request.capabilities.includes("edit-files") ? "workspace-write" : "read-only";
   return ["-s", sandbox, "--add-dir", dataDir(request.env)];
 }
 
-/** An API-key login stored with `codex login --with-api-key` survives any environment filter. */
 const SUBSCRIPTION_LOGIN = ["-c", 'forced_login_method="chatgpt"'];
 
 export function codexArgs(request: HarnessRequest): string[] {
@@ -110,7 +103,6 @@ export function codexResumeArgs(providerSessionId: string, request: HarnessReque
   ];
 }
 
-/** Codex bills an API key per token, where the worker should run on the operator's signed-in plan. */
 const PER_TOKEN_VARS = ["CODEX_API_KEY", "OPENAI_API_KEY"];
 
 function withoutPerTokenCredentials(inherited: ProcessEnvironment): ProcessEnvironment {

@@ -5,14 +5,11 @@ import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from ".
 
 export type ProcessEnvironment = Record<string, string | undefined>;
 
-/** Everything a harness's CLI needs to be run as a worker. */
 export type HarnessProcess = {
   command: string;
   args(request: HarnessRequest): string[];
   resumeArgs(providerSessionId: string, request: HarnessRequest): string[];
-  /** Called once per run, so a parser may carry state across that run's lines. */
   parser(): HarnessLineParser;
-  /** What this harness in particular must not inherit. */
   environment?(inherited: ProcessEnvironment): ProcessEnvironment;
 };
 
@@ -46,7 +43,6 @@ function terminal(event: HarnessEvent): boolean {
   return event.type === "run.completed" || event.type === "run.failed";
 }
 
-/** `environment` builds what the child is started with; the caller owns what a worker may inherit. */
 export function processHarness(
   spec: HarnessProcess,
   environment: (request: HarnessRequest) => ProcessEnvironment,

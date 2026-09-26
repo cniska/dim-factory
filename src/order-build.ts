@@ -248,8 +248,6 @@ function requireBuildEvidence(db: Database, orderId: string, finalSlice: boolean
   if (!head.stdout.toString().trim().startsWith(commit.sha.toLowerCase())) {
     throw new Error(`builder did not record worktree HEAD for ${orderId}`);
   }
-  // Only a check the runner ran counts: a builder reporting its own check is reporting on code
-  // it wrote, from inside the sandbox that code ran in.
   const check = db
     .query<{ exit_code: number }, [string]>(
       `SELECT c.exit_code FROM factory_order_check c

@@ -56,7 +56,6 @@ function bootstrapReviewer(db: Database, env: Record<string, string>): string {
   return reviewer.name;
 }
 
-/** A finding on the first line of a slice file, which every `slice` commit writes. */
 function findingOn(file: string, fields: Record<string, unknown> = {}) {
   return {
     dimension: "correctness",
@@ -69,7 +68,6 @@ function findingOn(file: string, fields: Record<string, unknown> = {}) {
   };
 }
 
-// Routing resolves the reviewer's tier to the model name supplied to the adapter.
 const machine = (() => {
   const home = orderWorktree(trunk.dir, "routing-home");
   worktrees.push(home);
@@ -115,7 +113,6 @@ function floor(): {
   };
 }
 
-/** A commit in the order's own worktree, recorded the way a builder records one. */
 function slice(
   db: Database,
   dir: string,
@@ -239,8 +236,6 @@ describe("a review round", () => {
     expect(db.query("SELECT count(*) AS n FROM factory_order_review").get()).toEqual({ n: 0 });
   });
 
-  // The whole of the fix: the hand that writes the finding is one the builder was handed
-  // no token for, and the record can tell them apart afterwards.
   test("the finding names the spawned reviewer and not the operator that delegated it", () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
@@ -430,8 +425,6 @@ describe("a review round", () => {
     expect(handed).toContain("--output-schema");
   });
 
-  // The token is the whole of the separation, so it must reach the child's environment and
-  // nothing the builder's process can read back off the command line.
   test("the reviewer's token rides in its environment and not its argv", () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");

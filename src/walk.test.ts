@@ -38,11 +38,9 @@ describe("the walk a session starts with", () => {
       [join(claude, "CLAUDE.md"), null],
       [join(claude, "RTK.md"), join(claude, "CLAUDE.md")],
     ]);
-    // The sha is what joins a surface to the version guidance_version holds.
     expect(walk[0]?.sha).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  // Matching `@` anywhere would claim an email address or a handle is a surface.
   test("takes only a line that is nothing but an import", () => {
     const root = newRoot();
     const env = home(root);
@@ -62,7 +60,6 @@ describe("the walk a session starts with", () => {
     expect(resolveWalk("claude", repo, env).map((s) => s.path)).toContain(join(repo, "AGENTS.md"));
   });
 
-  // A surface importing back would otherwise walk until the stack gave out.
   test("stops on a cycle", () => {
     const root = newRoot();
     const env = home(root);
@@ -108,7 +105,6 @@ describe("the walk spool", () => {
         { path: "/h/.claude/CLAUDE.md", imported_by: null },
         { path: "/h/.claude/RTK.md", imported_by: "/h/.claude/CLAUDE.md" },
       ]);
-      // Drained means gone: a second pass must not count the same start twice.
       expect(drainWalk(db, env)).toEqual({ sessions: 0, surfaces: 0 });
     } finally {
       db.close();

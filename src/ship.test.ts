@@ -160,8 +160,6 @@ describe("shipBranch", () => {
     cleanup.push(globalConfig);
     git(dir, ["config", "--file", globalConfig, "dim.ship", "trunk"]);
 
-    // A spawned git inherits the environment this process started with, not later
-    // assignments to process.env, so the global config is set on a child of its own.
     const read = Bun.spawnSync(
       [
         "bun",
@@ -544,8 +542,6 @@ describe("shipBranch", () => {
 });
 
 describe("patchesEqual", () => {
-  // Real `git range-diff --no-color` output (git 2.54) for a clean rebase in which the trunk
-  // edited a context line of the first commit's hunk and nothing the second commit touched.
   const changed = [
     "1:  1880911 ! 1:  049c477 feat: change d",
     "    @@ Commit message",

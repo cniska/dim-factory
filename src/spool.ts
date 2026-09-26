@@ -6,10 +6,6 @@ import { TOOLS, type Tool } from "./tools";
 
 export type DrainReport = { applied: number; duplicate: number; unreadable: number };
 
-// The hook writes "<nanoseconds>-<pid>-<worker>.json"; the timestamp is in the filename
-// because a hook payload is not documented to carry one, and the worker because the hook
-// runs in the environment the factory started it in. The worker is empty for a session
-// nothing spawned, and absent entirely on a file an older hook wrote.
 const SPOOL_NAME = /^(\d{10,})-(\d+)(?:-([A-Za-z0-9-]*))?\.json$/;
 
 export function spoolDir(env: Env = process.env): string {
@@ -20,11 +16,6 @@ export function toolSpoolDir(tool: Tool, env: Env = process.env): string {
   return join(spoolDir(env), tool);
 }
 
-/**
- * The guidance walk goes in its own directory, not beside the hook payloads:
- * `drainSpool` files anything without a hook event name under unreadable/, and
- * these records are written by `dim wake` rather than copied from a hook's stdin.
- */
 export function walkSpoolDir(env: Env = process.env): string {
   return join(spoolDir(env), "walk");
 }
@@ -53,11 +44,6 @@ function eventOf(name: string | undefined): "session_start" | "session_end" | "p
   return undefined;
 }
 
-/**
- * Move every spooled hook event into `hook_event` and delete the file. A file
- * this cannot place is kept under spool/unreadable/ rather than dropped: it is
- * the only copy, and what it holds cannot be produced again.
- */
 export function drainSpool(db: Database, env: Env = process.env): DrainReport {
   ensureSpoolDirs(env);
   const report: DrainReport = { applied: 0, duplicate: 0, unreadable: 0 };
@@ -67,9 +53,6 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
      VALUES ($tool, $sessionId, $event, $ts, $source, $reason, $model, $cwd, $payload)
      ON CONFLICT(session_id, event, ts) DO NOTHING`,
   );
-  // Only for a worker this database issued: the filename is written by the hook in the
-  // environment the factory set, and a name no worker row backs is a file from somewhere
-  // else rather than a sighting.
   const sighting = db.prepare(
     `INSERT INTO factory_worker_session (worker, session_id, seen_at)
      SELECT $worker, $sessionId, $seenAt FROM factory_worker WHERE name = $worker
@@ -97,9 +80,6 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
         report.unreadable += 1;
         continue;
       }
-      // `hook_event` identifies a row by its timestamp, so a second rounded off
-      // here makes two events that really happened one, and the file holding the
-      // second of them is the only copy there is.
       const ts = new Date(Number(match[1]) / 1e6).toISOString();
       const worker = match[3];
       if (worker) {
@@ -126,10 +106,6 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
   return report;
 }
 
-/**
- * `session.ended_at` and `end_reason` are derived from `hook_event` on every
- * sync rather than written once, so a rebuild restores them without the spool.
- */
 export function applyHookEvents(db: Database): void {
   db.run(`
     UPDATE session SET

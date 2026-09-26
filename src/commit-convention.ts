@@ -2,7 +2,6 @@ import type { Database } from "bun:sqlite";
 import { labelFor } from "./git-remote";
 import { withoutWorktree } from "./worktree";
 
-/** Below this a repo's log is a handful of commits, which describes whoever wrote them rather than the repo. */
 export const CONVENTION_FLOOR = 20;
 
 export type ConventionRecord = {
@@ -15,19 +14,9 @@ export type ConventionRecord = {
   top_kinds: string | null;
 };
 
-/** Which commits a reading covers: conditions over `repo_key`, `repo`, `label` and `ts`. */
 export type ConventionScope = { home: string; conds: string[]; params: unknown[] };
 
-/**
- * Worktrees fold onto the checkout they are a copy of, by the same path rule
- * `prior-art` uses: a label folds them where a remote names one, and a repo with
- * no remote would otherwise be split from its own worktree and each half judged
- * against the floor alone.
- */
 function scoped(scope: ConventionScope): { sql: string; params: unknown[] } {
-  // Every number in a row is measured over the same rows, `top_kinds` included:
-  // a subquery reading the base table instead would report types from outside
-  // the window the rest of the row is bounded by.
   return {
     sql: `WITH c AS (
          SELECT coalesce(label, replace(${withoutWorktree("repo")}, ? || '/', '')) AS repo_key,
@@ -39,7 +28,6 @@ function scoped(scope: ConventionScope): { sql: string; params: unknown[] } {
   };
 }
 
-/** One row per repo holding at least the floor's commits, most commits first. */
 export function conventionRecords(db: Database, scope: ConventionScope, limit: number): ConventionRecord[] {
   const { sql, params } = scoped(scope);
   return db
@@ -66,7 +54,6 @@ export function conventionRecords(db: Database, scope: ConventionScope, limit: n
     .all(...(params as [])) as ConventionRecord[];
 }
 
-/** Every commit the scope covers, whether or not its repo clears the floor. */
 export function conventionCommits(db: Database, scope: ConventionScope): number {
   const { sql, params } = scoped(scope);
   const row = db.prepare(`${sql} SELECT count(*) AS n FROM f`).get(...(params as [])) as { n: number };
@@ -75,7 +62,6 @@ export function conventionCommits(db: Database, scope: ConventionScope): number 
 
 export type CheckoutConvention = RepoConvention & { repo: string };
 
-/** The convention of the repository a checkout belongs to, named by its remote's label or its root. */
 export function checkoutConvention(db: Database, root: string): CheckoutConvention {
   const label = labelFor(root);
   return { repo: label ?? root, ...repoConvention(db, { label, root }) };
@@ -92,11 +78,6 @@ export type RepoConvention = {
   } | null;
 };
 
-/**
- * The convention one repository's recorded log shows, `observed` null when it holds fewer
- * commits than the floor. The repository is its remote's label, or its checkout root when it
- * has no remote, matched exactly so a repository whose name contains another's is not read.
- */
 export function repoConvention(db: Database, repo: { label: string | null; root: string }): RepoConvention {
   const scope: ConventionScope =
     repo.label === null

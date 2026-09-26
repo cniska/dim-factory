@@ -136,7 +136,6 @@ export async function runOrderStationLive<Station extends OrderStationName>(
   return { orderWorker, returned, worker: run.worker, run };
 }
 
-/** Resumes the station worker's bound provider session with a further brief, claiming nothing. */
 export async function resumeOrderStationLive(options: {
   db: Database;
   orderId: string;
@@ -246,7 +245,6 @@ function readOrderWorker(db: Database, orderId: string, role: StationRole): Orde
   };
 }
 
-/** A bound worker's provider session resumes only under the harness that started it. */
 function refuseHarnessSwitch(existing: OrderWorker | undefined, harness: HarnessName): void {
   if (existing?.worker && existing.harness !== harness) {
     throw new Error(

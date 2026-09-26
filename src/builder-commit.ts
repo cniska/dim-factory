@@ -37,7 +37,6 @@ function head(worktree: string): string {
   return read.out;
 }
 
-/** Where the worktree left the trunk, which is where HEAD stands before the order's first commit. */
 function trunkForkPoint(worktree: string): string {
   const trunk = trunkBranch(worktree);
   if ("why" in trunk) throw new Error(trunk.why);
@@ -100,11 +99,6 @@ function assertTurnAnswersBrief(turn: BuildTurn, owed: readonly number[]): void 
   }
 }
 
-/**
- * Turns what a builder left in its worktree into the order's record: runs the declared check in
- * the check sandbox, commits the worktree the way the repository's git config commits, and records
- * the commit and its files under the builder and the check under the operator. A red check is recorded and thrown, so the next turn's brief carries it.
- */
 export function commitBuildTurn(options: {
   db: Database;
   orderId: string;
@@ -151,8 +145,6 @@ export function commitBuildTurn(options: {
 
   refuseNested(worktree);
   const commentGate = commentGateFor(worktree, env);
-  // The check runs the builder's code with the worktree writable, so what it passed is the tree
-  // staged before it ran, and a tree it changed is refused rather than committed unchecked.
   const checked = stagedTree(worktree);
   const { unparsed } =
     commentGate.state === "armed" ? refuseAddedComments(worktree, commentGate.label) : { unparsed: [] };
@@ -161,8 +153,6 @@ export function commitBuildTurn(options: {
     command: declared.command,
     canary: join(dataDir(env), `check-canary-${randomUUID()}`),
     sandbox: options.checkSandbox ?? CHECK_SANDBOX,
-    // PATH alone: the caller's env carries the operator's factory identity, which the builder's
-    // code must not run with.
     env: env.PATH === undefined ? {} : { PATH: env.PATH },
   });
   const checkRow = {
@@ -200,8 +190,6 @@ export function commitBuildTurn(options: {
       `the turn answers finding ${fixed.join(", ")} fixed and left no change in the worktree; refuse a finding that needs no change, with the reason`,
     );
   }
-  // A long check leaves time for the order to be stopped, moved or taken by another run; committing
-  // now would leave a commit no record can take, or one recorded under the wrong run.
   if (!isActiveOrderRun(db, orderId, options.runId)) {
     git(worktree, ["reset", "-q"]);
     throw new BuildTurnRefused(
@@ -220,12 +208,8 @@ export function commitBuildTurn(options: {
   }
   const commit = git(
     worktree,
-    // Author, committer and whether to sign all come from the repository's own git config, so an
-    // order commit is made the way that user's other commits are.
     ["-c", `core.hooksPath=${hooksOutsideTree(worktree)}`, "commit", "-q", "-F", "-"],
     {
-      // The check the pre-commit hook would run is the one just run and recorded in the sandbox;
-      // the hook would run the builder's code again, unconfined, as the operator.
       env: { ...process.env, DIM_SKIP_CHECK: "1" },
       stdin: `${turn.subject}\n`,
     },
@@ -265,8 +249,6 @@ export function commitBuildTurn(options: {
     for (const path of unparsed) writeTrace(db, { event: "order.file_unparsed", orderId, path });
     return { sha };
   } catch (error) {
-    // Unrecorded, the commit would read as the builder's own on the next turn; taking it back
-    // leaves the change in the worktree for that turn to commit again.
     const undone = git(worktree, ["reset", "-q", "--soft", before]);
     if (!undone.ok) {
       throw new Error(`the commit was not recorded and could not be taken back: ${undone.err}`, {

@@ -69,8 +69,6 @@ describe("similarity", () => {
 });
 
 describe("reading a question", () => {
-  // Every caller of this treats retrieval as optional and falls back to keywords,
-  // so a throw from here takes down a command that had a working answer to give.
   test("a model that fails mid-inference comes back as unavailable, not as a throw", async () => {
     const breaks: Embedder = async () => {
       throw new Error("onnxruntime session ran out of memory");
@@ -87,8 +85,6 @@ describe("reading a question", () => {
 });
 
 describe("the no-network invariant", () => {
-  // `env.fetch` is reached only for an http URL — a local path is read through the
-  // filesystem — so a recorded call here is a download and nothing else.
   test("a cache miss fails rather than reaching the hub", async () => {
     const dir = mkdtempSync(join(tmpdir(), "dim-embed-"));
     const reached: string[] = [];
@@ -112,8 +108,6 @@ describe("the no-network invariant", () => {
 });
 
 describe("the local model", () => {
-  // `similarity` is a dot product, which is the cosine only because what comes
-  // out of here has unit length. Without this the ranking is silently wrong.
   test("returns unit vectors, which is what makes similarity a cosine", async () => {
     const embed = await openEmbedder();
     const [one, two] = await embed(["the worktree convention has one definition", "a parser bug"]);

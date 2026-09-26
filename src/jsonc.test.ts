@@ -89,7 +89,6 @@ describe("appending to an array in place", () => {
     expect(after).not.toEndWith("\n");
   });
 
-  // Overwriting it would silently delete whatever the user put there instead.
   test("refuses a path holding something that is not an array", () => {
     const text = '{"hooks":{"SessionEnd":"not-an-array"}}';
     try {
@@ -101,8 +100,6 @@ describe("appending to an array in place", () => {
     }
   });
 
-  // Reached through a parent of the wrong type, the library raises an error
-  // carrying nothing to branch on but its message.
   test("refuses a parent holding something that is not an object", () => {
     try {
       appendToJsoncArray('{"hooks":"x"}', ["hooks", "SessionEnd"], entry, "settings.json");

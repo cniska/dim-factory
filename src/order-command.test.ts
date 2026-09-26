@@ -20,16 +20,10 @@ import type { Env } from "./paths";
 import { SCHEMA_SQL } from "./schema";
 import { TOOLS } from "./tools";
 
-// Held so they close: an open handle is finalized by the runtime at exit instead, which is
-// where a suite that reported no failures panics anyway.
 const opened: Database[] = [];
 
-// The environment the factory starts a worker in, which is where the command reads who
-// it is. Set where the database is made, because the worker's row lives in that database.
 let env: Env = {};
 
-// A claim reads this machine's session hooks before it lets a run start, so every command
-// below runs on one whose hooks are installed at the current contract.
 const machine = collectingMachine();
 
 function db(): Database {
@@ -41,8 +35,6 @@ function db(): Database {
   return database;
 }
 
-// A claim now makes the worktree it names, so every call needs somewhere safe
-// to make one — `trunk.dir` rather than this machine's own checkout.
 function runOrderCommand(
   database: Database,
   args: string[],
@@ -60,7 +52,6 @@ afterAll(() => {
   rmSync(machine.dir, { recursive: true, force: true });
 });
 
-/** What the gate wants before an order may complete: a commit on the trunk, then a check that passed. */
 function landed(database: Database, orderId: string): void {
   runOrderCommand(database, ["commit", orderId, "--sha", trunk.sha, "--subject", "feat: land it"]);
   runOrderCommand(database, ["check", orderId, "--command", "bun run verify", "--exit", "0"]);
@@ -698,8 +689,6 @@ describe("order command", () => {
         expect.objectContaining({ code: "worker_unissued" }),
       );
     }
-    // Nothing was written by any of them, which is the point: a refused write is not a
-    // moment the log has to describe afterwards.
     expect(database.query("SELECT count(*) AS n FROM factory_order_event").get()).toEqual({ n: 1 });
   });
 
@@ -828,7 +817,6 @@ describe("order command", () => {
     expect(() => runOrderCommand(database, ["amend", "order-1", "--title", "too late"])).toThrow(
       expect.objectContaining({ code: "order_not_queued" }),
     );
-    // Dropped is terminal, so a second drop meets that refusal rather than order_not_queued.
     expect(() =>
       runOrderCommand(
         database,

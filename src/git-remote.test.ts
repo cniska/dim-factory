@@ -6,8 +6,6 @@ import { labelFor, repositoryLabel } from "./git-remote";
 describe("repositoryLabel", () => {
   test("names the same repository however it is addressed", () => {
     const expected = "cniska/acolyte";
-    // A repository keeps its identity across forges and address forms, which is
-    // the whole point: a worktree and its parent must land on one name.
     expect(repositoryLabel("git@github.com:cniska/acolyte.git")).toBe(expected);
     expect(repositoryLabel("https://github.com/cniska/acolyte.git")).toBe(expected);
     expect(repositoryLabel("https://github.com/cniska/acolyte")).toBe(expected);
@@ -24,8 +22,6 @@ describe("repositoryLabel", () => {
   });
 
   test("returns null for an address that names no shared repository", () => {
-    // A path is a directory on one machine; treating it as an identity would
-    // merge unrelated repositories that happen to sit at the same path.
     expect(repositoryLabel("/Users/x/code/acolyte")).toBeNull();
     expect(repositoryLabel("../sibling")).toBeNull();
     expect(repositoryLabel("C:/code/acolyte")).toBeNull();

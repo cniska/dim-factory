@@ -20,8 +20,6 @@ describe("the corpus a ranking is scored against", () => {
     expect(parseCorpus(`\n${LINE}\n\n`)).toHaveLength(1);
   });
 
-  // Every refusal names the line, because a corpus is edited by hand and a
-  // message with no line number sends the editor through the whole file.
   test("names the line it could not read", () => {
     expect(() => parseCorpus(`${LINE}\nnot json`)).toThrow("line 2");
   });
@@ -31,8 +29,6 @@ describe("the corpus a ranking is scored against", () => {
     expect(() => parseCorpus(bad)).toThrow("telepathy");
   });
 
-  // An unscorable question is a defect here rather than a zero later: zero is
-  // also what a total miss earns, and an aggregate cannot separate them.
   test("refuses a question nothing answers", () => {
     const none = JSON.stringify({ ...JSON.parse(LINE), relevant: [] });
     expect(() => parseCorpus(none)).toThrow("at least one relevant row");
@@ -50,8 +46,6 @@ describe("the corpus a ranking is scored against", () => {
     expect(() => parseCorpus(noRef)).toThrow("ref is not text");
   });
 
-  // A grade the editor did not write is a grade nobody chose, and a grade that
-  // is not a positive number puts nDCG outside the [0,1] it is defined on.
   test("refuses a grade that is missing, negative, or not a number", () => {
     const relevant = (grade: unknown) =>
       JSON.stringify({ ...JSON.parse(LINE), relevant: [{ ref: "r", grade }] });
@@ -71,8 +65,6 @@ describe("the corpus a ranking is scored against", () => {
     expect(() => parseCorpus(twice)).toThrow("graded twice");
   });
 
-  // A field of the wrong type used to throw before any refusal, so the message
-  // named no line — and an unquoted id is the mistake it most needs to name.
   test("names the line even where a field is the wrong type", () => {
     const numericId = JSON.stringify({ ...JSON.parse(LINE), id: 5 });
     expect(() => parseCorpus(`${LINE}\n${numericId}`)).toThrow("line 2");
@@ -90,8 +82,6 @@ describe("the corpus a ranking is scored against", () => {
 });
 
 describe("where the corpus lives", () => {
-  // Beside the database rather than in the repo: a real question names the
-  // owner's own work, and this repo is public.
   test("sits in the data directory, not the checkout", () => {
     expect(corpusPath({ DIM_HOME: "/scratch" })).toBe("/scratch/retrieval.jsonl");
   });

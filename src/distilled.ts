@@ -1,6 +1,5 @@
 import type { Database } from "bun:sqlite";
 
-/** The text in this corpus a person compressed by hand; see docs/recall.md for why only this. */
 export type DistilledKind = "next" | "subject" | "correction";
 
 export type Distilled = { kind: DistilledKind; ref: string; text: string };

@@ -18,7 +18,6 @@ type Scenario = {
 };
 
 export type FakeHarness = HarnessAdapter & {
-  /** How many times the runner has cancelled one of this adapter's runs. */
   cancels(): number;
 };
 

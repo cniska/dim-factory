@@ -1,8 +1,5 @@
 import type { SkillLoadRow } from "./skill-load";
 
-// What a parser produces from one source line. Both tools' parsers emit these,
-// and the ingester knows nothing else about either format.
-
 export type SessionFacts = {
   ts?: string;
   cwd?: string;
@@ -46,7 +43,6 @@ export type UsageRow = {
   outputTokens: number;
   reasoningTokens?: number;
   attributionSkill?: string;
-  /** Claude names one API response with the same id it gives the message. */
   messageId?: string;
   extra?: string;
 };
@@ -62,7 +58,6 @@ export type TurnRow = {
   timeToFirstTokenMs?: number;
 };
 
-/** Cost as the tool computed it. Nothing here derives a dollar figure. */
 export type CostRow = {
   reportedBy: string;
   totalCostUsd?: number;
@@ -71,10 +66,6 @@ export type CostRow = {
   ts?: string;
 };
 
-/**
- * Emitted twice for one call: once from the record that issued it and once from
- * the record that returned, which the ingester merges on `id`.
- */
 export type ToolCallRow = {
   id: string;
   messageId?: string;
@@ -91,7 +82,6 @@ export type ToolCallRow = {
   exitCode?: number;
   durationMs?: number;
   gitOperation?: string;
-  /** Size of what the tool returned. The content itself is never stored. */
   resultBytes?: number;
   srcLineCall?: number;
   srcLineResult?: number;
@@ -106,13 +96,7 @@ export type ParsedChunk = {
   costs: CostRow[];
   toolCalls: ToolCallRow[];
   skillLoads: SkillLoadRow[];
-  /**
-   * Source line numbers of complete lines that were not JSON. The cursor
-   * advances past them, so each is read once and lost, and a count nobody
-   * reports would make that loss invisible.
-   */
   dropped: number[];
-  /** Parser state to resume with when the next chunk of this file is read. */
   cursorState?: string;
 };
 

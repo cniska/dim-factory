@@ -30,8 +30,6 @@ function git(worktree: string, args: string[]) {
   return { ok: run.success, out: run.stdout.toString().trim(), err: run.stderr.toString().trim() };
 }
 
-/** The rebase in progress is the one the conflict recorded, or the builder's resolution would be
- *  continued into a rebase nothing recorded. */
 function assertRecordedRebase(worktree: string, orderId: string, conflict: RecordedConflict): void {
   const state = rebaseState(worktree);
   if (
@@ -46,13 +44,6 @@ function assertRecordedRebase(worktree: string, orderId: string, conflict: Recor
   }
 }
 
-/**
- * The rebase a conflict turn resolves: the one in progress, checked against the record, or, where
- * an earlier turn's red check took it back, the branch at the recorded head replayed again onto
- * the recorded base. Returns the paths the stop left unmerged; where they were staged since, the
- * recorded paths at the commit the ship stopped on, and every path a later stop may hold a
- * conflict in.
- */
 export function reopenRebase(worktree: string, orderId: string, conflict: RecordedConflict): string[] {
   if (rebaseState(worktree) !== null) {
     assertRecordedRebase(worktree, orderId, conflict);
@@ -83,17 +74,6 @@ export function reopenRebase(worktree: string, orderId: string, conflict: Record
   return step.conflicts;
 }
 
-/**
- * The runner's path for a build turn that resolved a rebase conflict, kept apart from
- * `commitBuildTurn` because it continues a rebase rather than making a commit. It refuses a
- * resolution that adds a conflict marker to one of `paths`, the ones the rebase stopped in, or
- * that leaves the replayed commit empty, before anything is staged, so a refused turn leaves the
- * stop as the next turn needs it; then it stages what the builder left and continues the rebase.
- * A later commit that conflicts comes back as its paths, for the builder to resolve next. A
- * finished rebase is re-checked in the check sandbox and recorded as a rewrite that kept no patch,
- * since the builder wrote part of it, and the order returns to review to read it whole. A red check
- * takes the rebase back, and the next turn reopens it.
- */
 export function continueRebaseTurn(options: {
   db: Database;
   orderId: string;
@@ -122,7 +102,6 @@ export function continueRebaseTurn(options: {
       `the resolution still carries conflict markers in ${unresolved.join(", ")}, so the rebase was not continued`,
     );
   }
-  // An empty commit has nothing to pair with the one it replaces, and git will not continue one.
   if (
     changedPaths(worktree).length === 0 &&
     git(worktree, ["ls-files", "-o", "--exclude-standard"]).out === ""
@@ -154,7 +133,6 @@ export function continueRebaseTurn(options: {
       `${check.command} exited ${check.exitCode} at the rebased head ${rewrite.newHead}; the rebase was taken back and is reopened next turn:\n${check.result}`,
     );
   }
-  // A long check leaves time for the order to be stopped, moved or taken by another run.
   if (!isActiveOrderRun(db, orderId, options.runId)) {
     restoreBranch(replay);
     throw new BuildTurnRefused(

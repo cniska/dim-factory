@@ -3,11 +3,8 @@ import { checkSubject, type Violation } from "./commit-gate";
 
 export type Offense = { sha: string; subject: string; violation: Violation };
 
-// %x00 and %x01 rather than newlines: a body spans lines, so only a byte that
-// cannot appear in a message separates the fields and the records.
 const FORMAT = "%H%x00%s%x00%b%x01";
 
-/** Merges carry a subject git wrote, not an author, so only authored commits are judged. */
 export function checkRange(range: string, cwd = process.cwd()): Offense[] {
   let log: string;
   try {

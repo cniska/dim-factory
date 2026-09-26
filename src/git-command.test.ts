@@ -7,8 +7,6 @@ describe("reading git out of a shell command", () => {
     expect(gitSubcommands("git log --oneline -3")).toEqual(["log"]);
   });
 
-  // One Bash call is one tool_call row and often several operations; counting it
-  // as one would hide every commit made in the same breath as an add.
   test("names every subcommand a chained call runs, in order", () => {
     expect(gitSubcommands('git add -A && git commit -m "feat: a thing"')).toEqual(["add", "commit"]);
     expect(gitSubcommands("git fetch; git rebase origin/main || git rebase --abort")).toEqual([
@@ -18,8 +16,6 @@ describe("reading git out of a shell command", () => {
     ]);
   });
 
-  // The conventions send an agent to /usr/bin/git inside a worktree, so the
-  // absolute path is the common spelling here, not an edge case.
   test("reads git through a path, an env assignment or sudo", () => {
     expect(gitSubcommands("/usr/bin/git rev-parse HEAD")).toEqual(["rev-parse"]);
     expect(gitSubcommands("GIT_EDITOR=true git rebase --continue")).toEqual(["rebase"]);
@@ -31,8 +27,6 @@ describe("reading git out of a shell command", () => {
     expect(gitSubcommands("git --no-pager diff")).toEqual(["diff"]);
   });
 
-  // `.git` appears in arguments far more often than git is run, so a match on
-  // the word anywhere would report more operations than actually happened.
   test("ignores git named as anything but the command", () => {
     expect(gitSubcommands("grep -r x --exclude-dir=.git .")).toEqual([]);
     expect(gitSubcommands("ls -la .git/hooks")).toEqual([]);

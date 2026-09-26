@@ -9,7 +9,6 @@ function git(worktree: string, args: string[]) {
 function containsGitDir(dir: string): string | null {
   for (const entry of readdirSync(dir)) {
     const path = join(dir, entry);
-    // Git takes `.GIT` for `.git` on a filesystem that ignores case, as macOS's does by default.
     if (entry.toLowerCase() === ".git") return path;
     const stat = lstatSync(path);
     if (stat.isDirectory() && !stat.isSymbolicLink()) {
@@ -20,14 +19,7 @@ function containsGitDir(dir: string): string | null {
   return null;
 }
 
-/**
- * A repository nested in the tree is one the runner would stage as a gitlink, and the operator's
- * next `git status` would then run inside it, obeying that repository's config — its fsmonitor,
- * its filters — outside any sandbox. Found without entering one: tracked gitlinks from the index, and every untracked
- * directory git lists whole, walked for a `.git` without following links.
- */
 export function nestedRepository(worktree: string): string | null {
-  // NUL-separated, so a path git would otherwise quote comes back as itself.
   const tracked = git(worktree, ["ls-files", "-s", "-z"]);
   if (!tracked.ok) throw new Error(`cannot read the index of ${worktree}: ${tracked.err}`);
   const gitlink = tracked.out.split("\0").find((line) => line.startsWith("160000 "));
@@ -41,11 +33,6 @@ export function nestedRepository(worktree: string): string | null {
   return null;
 }
 
-/**
- * The hooks git runs over a builder's worktree. Where the repository keeps them in its tree —
- * `.husky` and the like — the worktree's copy is one the builder wrote, so the primary checkout's
- * copy of the same path runs instead; hooks kept anywhere else are the ones the repository already runs.
- */
 export function hooksOutsideTree(worktree: string): string {
   const hooks = git(worktree, ["rev-parse", "--path-format=absolute", "--git-path", "hooks"]);
   const top = git(worktree, ["rev-parse", "--show-toplevel"]);

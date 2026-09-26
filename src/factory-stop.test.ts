@@ -34,8 +34,6 @@ describe("stopping the factory", () => {
     pull(db, "and the wall is stale too");
 
     expect(db.query("SELECT count(*) AS n FROM factory_stop").get()).toEqual({ n: 2 });
-    // Each pull is its own row, so what stopped the floor in March is still
-    // readable after it was cleared.
     expect(db.query("SELECT reason FROM factory_stop WHERE cleared_at IS NULL").all()).toEqual([
       { reason: "and the wall is stale too" },
     ]);
@@ -123,7 +121,6 @@ describe("pulling and clearing a stop", () => {
     db.close();
   });
 
-  // The code is what a caller branches on, so it has to survive being thrown and caught.
   test("a refusal carries its code, not just its words", () => {
     const db = floor();
     pullStop(db, { reason: "the wall serves code older than the database" });

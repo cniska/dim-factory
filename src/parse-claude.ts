@@ -86,11 +86,6 @@ type ClaudeLine = {
   };
 };
 
-/**
- * Assistant `text` blocks and plain user strings only. `tool_result` blocks
- * carry command output and file contents and `thinking` blocks carry reasoning;
- * the design keeps both out of the database.
- */
 function visibleText(content: string | ContentBlock[] | undefined): string | undefined {
   if (typeof content === "string") return content.length > 0 ? content : undefined;
   if (!Array.isArray(content)) return undefined;
@@ -104,7 +99,6 @@ function nonEmpty(value: string | null | undefined): string | undefined {
   return value != null && value !== "" ? value : undefined;
 }
 
-/** How much the tool returned, measured without keeping any of it. */
 function resultSize(content: unknown, result: ClaudeToolUseResult | undefined): number | undefined {
   const parts: string[] = [];
   if (typeof content === "string") parts.push(content);
@@ -142,11 +136,6 @@ export function parseClaudeChunk(
     try {
       line = JSON.parse(raw) as ClaudeLine;
     } catch {
-      // A half-written line at the end of a live file never reaches here:
-      // readChunk stops at the last newline. What does is a complete line that
-      // is not JSON, and the cursor advances past it, so it is read once and
-      // lost. Dropping it is the only option that does not stall collection,
-      // and reporting it is what keeps the loss from being silent.
       dropped.push(firstLineNumber + index);
       continue;
     }
@@ -159,7 +148,6 @@ export function parseClaudeChunk(
     }
 
     if (line.type === "system" && line.subtype === "turn_duration" && line.uuid && line.timestamp) {
-      // The line marks the end of the turn; the start is what it took to get there.
       const end = Date.parse(line.timestamp);
       turns.push({
         turnId: line.uuid,
@@ -277,11 +265,10 @@ export function parseClaudeChunk(
           const r = line.toolUseResult;
           toolCalls.push({
             id: block.tool_use_id,
-            toolName: "", // the call record names it; this row only completes one
+            toolName: "",
             tsResult: line.timestamp,
             isError: block.is_error === true,
             interrupted: r?.interrupted === true,
-            // Bash stdout and stderr are measured, never stored.
             resultBytes: resultSize(block.content, r),
             gitOperation: r?.gitOperation ? JSON.stringify(r.gitOperation) : undefined,
             srcLineResult: srcLine,
@@ -297,8 +284,6 @@ export function parseClaudeChunk(
         entrypoint: nonEmpty(line.entrypoint),
       });
       const named = text ? skillFromCommand(text) : undefined;
-      // Claude Code's built-in commands share the /name syntax; only a name that
-      // is an installed skill is a load.
       const typed = named && knownSkills.has(named) ? named : undefined;
       if (typed) {
         skillLoads.push({

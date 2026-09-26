@@ -3,7 +3,6 @@ import { checkCommand } from "./workspace-commands";
 
 export type RepoCheckReport = { repos: number };
 
-/** Re-read the check declaration for every repository named by a session. */
 export function recordRepoChecks(db: Database): RepoCheckReport {
   const repos = db
     .prepare<{ repo: string }, []>("SELECT DISTINCT project AS repo FROM session WHERE project IS NOT NULL")

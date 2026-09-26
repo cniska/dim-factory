@@ -31,7 +31,6 @@ describe("commit kind", () => {
   test("is null when there is no type to read, rather than guessing one", () => {
     expect(commitKind("stop the double count")).toBeNull();
     expect(commitKind("WIP")).toBeNull();
-    // A colon alone is not a type; treating it as one would label prose as `fix`.
     expect(commitKind("something: else")).toBe("something");
   });
 });

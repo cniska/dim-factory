@@ -61,8 +61,6 @@ import { rebuild } from "./sync";
 import { bootstrapWorker, createWorkerAssignment } from "./worker-assignment";
 import type { WorkerHookReport } from "./worker-environment";
 
-// One hand per database, set where the database is made: every moment names a worker,
-// and what these tests are about is the order rather than who touched it.
 let worker = "";
 let attemptOperator = "";
 
@@ -77,7 +75,6 @@ function db(): Database {
   return database;
 }
 
-/** A builder holding a claim, as the runner's is: its pid was recorded before it claimed. */
 function runningBuilder(database: Database): string {
   return mintWorker(database, {
     role: "builder",
@@ -101,8 +98,6 @@ function claimForAttempt(operatorWorker = attemptOperator): OrderClaim {
   return { ...claim, operatorWorker };
 }
 
-// A claim now makes the worktree it names, so every direct call needs somewhere
-// safe to make one — `trunk.dir` rather than this machine's own checkout.
 function claimOrder(
   database: Database,
   orderId: string,
@@ -114,7 +109,6 @@ function claimOrder(
   return claimOrderAt(database, orderId, { ...given, operatorWorker }, who, at, trunk.dir);
 }
 
-/** What the gate wants before an order may complete: a commit on the trunk, then a check that passed. */
 function landed(database: Database, orderId: string, at?: string): void {
   recordOrderCommit(database, orderId, trunk.sha, worker, "feat: land it", at);
   recordOrderCheck(
@@ -1073,8 +1067,6 @@ describe("factory order report records", () => {
       return git(dir, ["rev-parse", "HEAD"]);
     }
 
-    /** An order with two recorded commits, one editing the middle of a file the trunk also carries,
-     *  whose trunk then moves by `trunkMoves`. */
     function scene(
       trunkMoves: (dir: string) => void,
       { check = "true" as string | null, env = {} as Record<string, string>, unrecordedBetween = false } = {},
@@ -1106,7 +1098,6 @@ describe("factory order report records", () => {
     const unrelatedMove = (dir: string) => {
       commit(dir, "unrelated.txt", "u", "feat: add unrelated");
     };
-    // Rebases cleanly, yet the first commit's hunk now carries the trunk's line as context.
     const contextMove = (dir: string) => {
       commit(dir, "f.txt", "A\nb\nc\nd\ne\nf\ng\n", "feat: change a");
     };
@@ -1340,8 +1331,6 @@ describe("factory order report records", () => {
     queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
     claimOrder(database, "order-1", claim, worker, "2026-09-18T10:01:00.000Z");
     recordOrderCommit(database, "order-1", repo.sha, worker, "feat: land it", "2026-09-18T10:03:00.000Z");
-    // The order the station loop runs in: the check finishes, then the commit it
-    // vouches for is made, then both are recorded.
     recordOrderCheck(
       database,
       "order-1",
@@ -1690,7 +1679,6 @@ describe("factory order report records", () => {
         session_id: "session-1",
       },
     );
-    // The order states no holder of its own: who has it is the worker on its latest moment.
     expect(database.query("SELECT worker FROM factory_order_event ORDER BY id DESC").get()).toEqual({
       worker,
     });
@@ -2069,7 +2057,6 @@ describe("factory order report records", () => {
       database.query("SELECT status, stop_reason FROM factory_order WHERE id = 'order-1'").get(),
     ).toEqual({ status: "dropped", stop_reason: "superseded by other work" });
     expect(isTerminalOrderStatus("dropped")).toBe(true);
-    // Terminal, so nothing can be appended against it afterward.
     expect(() => appendOrderEvent(database, "order-1", { worker, kind: "moved", station: "review" })).toThrow(
       "order order-1 is already dropped",
     );
@@ -2087,8 +2074,6 @@ describe("factory order report records", () => {
     database.close();
   });
 
-  // An order can turn out to have been built already, and the owner's word for that is the
-  // same one a queued order gets: it is not going to be worked.
   test("drops an order nobody is holding though it was once claimed", () => {
     const database = db();
     queueOrder(database, order, worker);
@@ -2103,8 +2088,6 @@ describe("factory order report records", () => {
     database.close();
   });
 
-  // A hand can stop without letting go — killed, crashed, or a session closed — and the run
-  // it left on the order would otherwise hold the order for good.
   test("an order whose hand is over is taken again in place", () => {
     const database = db();
     const builder = workerIn(database, "builder");

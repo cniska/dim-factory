@@ -16,7 +16,6 @@ export type HarnessCommandRequest = HarnessRequest & { harness: HarnessName };
 
 export type HarnessCommandResult = {
   exitCode: number;
-  /** The run's answer when it completed, and otherwise the worker's last word, which explains the failure. */
   output: string;
   events: HarnessEvent[];
   failureReason?: string;
@@ -30,8 +29,6 @@ export function workerFailureReason(
   output: string | undefined,
   harnessReason: string | undefined,
 ): string {
-  // Labelled so the worker's last word is not read as the cause: a run the runner stopped ends on
-  // whatever the worker happened to be saying.
   const lastWord = output?.trim() ? `its last message: ${output.trim()}` : undefined;
   const details = [harnessReason, lastWord].filter((value): value is string => Boolean(value));
   return details.length === 0 ? message : `${message}: ${details.join("; ")}`;

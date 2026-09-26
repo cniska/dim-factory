@@ -1,10 +1,3 @@
-/**
- * Resolve `--since` to the ISO timestamp the queries compare against. The
- * default exists because guidance, projects and habits all changed across the
- * corpus, so a count over all of history describes a machine that no longer
- * runs. It is a spend control on evidence, not a correctness rule: the constant
- * is arbitrary and `--all` turns it off.
- */
 export const DEFAULT_WINDOW = "30d";
 
 export class BadWindowError extends Error {
@@ -28,10 +21,6 @@ export function resolveSince(spec: string, now: Date = new Date()): string {
   throw new BadWindowError(spec);
 }
 
-/**
- * `--all` beats `--since`, so asking for all of history is never silently
- * narrowed by a default the caller forgot was there.
- */
 export function windowFromArgs(
   args: string[],
   opts: { spansHistory?: boolean } = {},

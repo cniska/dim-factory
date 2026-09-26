@@ -1,27 +1,20 @@
 #!/usr/bin/env bash
-# Every case uses a throwaway repo.
 set -u
 
-# The reader's own git config would sign these commits, which fails inside a station worker's
-# sandbox; `.env.test` holds the same for `bun test`, which this script is not run under.
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 
-# The command under test, word-split so it can carry arguments. These cases pin
-# the messages and exit codes `dim wt` prints, so they are run against it rather
-# than against a copy of the logic.
 WT="${WT_CMD:-dim wt}"
 
 pass=0; fail=0
-assert(){ # desc, got, want
+assert(){
   if [ "$2" = "$3" ]; then pass=$((pass+1))
   else fail=$((fail+1)); printf 'FAIL %s\n  want: [%s]\n  got:  [%s]\n' "$1" "$3" "$2"; fi
 }
-contains(){ # desc, haystack, needle
+contains(){
   case "$2" in *"$3"*) pass=$((pass+1)) ;;
     *) fail=$((fail+1)); printf 'FAIL %s\n  expected to contain: [%s]\n  in: [%s]\n' "$1" "$3" "$2" ;; esac
 }
 
-# A failed mktemp would set TMP to the working directory, which the trap then deletes.
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/wt-test.XXXXXX")" || exit 1
 TMP="$(cd "$TMP" && pwd -P)" || exit 1
 REPO="$TMP/repo"
@@ -37,8 +30,7 @@ git init -q -b main "$REPO"
 
 run(){ ( cd "$REPO" && $WT "$@" ); }
 
-# Commit a hook so worktrees created after this point check it out.
-write_hook(){ # name, body
+write_hook(){
   mkdir -p "$REPO/scripts"
   printf '%s\n' '#!/usr/bin/env bash' "$2" > "$REPO/scripts/$1"
   chmod +x "$REPO/scripts/$1"
@@ -69,8 +61,6 @@ contains "rm reports removal" "$removed" "wt: removed worktree $REPO/.claude/wor
 assert "rm removes the worktree" "$([ -d "$REPO/.claude/worktrees/task-a" ] && echo yes || echo no)" no
 assert "rm keeps the branch" "$(git -C "$REPO" show-ref --verify --quiet refs/heads/task-a; echo $?)" 0
 
-# teardown: rm runs the hook while the worktree still exists. The bootstrap hook
-# goes quiet first — git refuses to remove a worktree holding untracked files.
 write_hook worktree-setup.sh 'exit 0'
 write_hook worktree-teardown.sh "printf ran > $TMP/teardown-ran"
 run task-b > /dev/null
@@ -79,7 +69,6 @@ contains "rm reports teardown" "$torn" "wt: tearing down worktree via scripts/wo
 assert "teardown runs before removal" "$(cat "$TMP/teardown-ran")" ran
 assert "a clean teardown removes the worktree" "$([ -d "$REPO/.claude/worktrees/task-b" ] && echo yes || echo no)" no
 
-# a failing teardown keeps the worktree, so nothing outside it is stranded unnamed.
 write_hook worktree-teardown.sh 'exit 3'
 run task-c > /dev/null
 set +e
@@ -92,8 +81,6 @@ forced=$(run rm --force task-c 2>&1)
 contains "--force removes past a failed teardown" "$forced" "wt: removed worktree $REPO/.claude/worktrees/task-c"
 assert "--force removes the worktree" "$([ -d "$REPO/.claude/worktrees/task-c" ] && echo yes || echo no)" no
 
-# a teardown killed by a signal reports no exit code, and reading that as success
-# removes the worktree the hook's resources are named by.
 write_hook worktree-teardown.sh 'kill -9 $$'
 run task-d > /dev/null
 set +e
@@ -104,9 +91,7 @@ contains "a signal-killed teardown says the worktree is kept" "$signalled" "work
 assert "a signal-killed teardown keeps the worktree" "$([ -d "$REPO/.claude/worktrees/task-d" ] && echo yes || echo no)" yes
 run rm --force task-d > /dev/null 2>&1
 
-# the worktree's own teardown is written by whoever worked in it, and removal
-# runs as the caller, so the trunk's copy is the one that runs — inside the worktree.
-commit_worker_hook(){ # branch, body
+commit_worker_hook(){
   local tree="$REPO/.claude/worktrees/$1"
   mkdir -p "$tree/scripts"
   printf '%s\n' '#!/usr/bin/env bash' "$2" > "$tree/scripts/worktree-teardown.sh"
@@ -132,8 +117,6 @@ assert "a worktree's hook does not run when the trunk has none" \
 assert "no trunk hook means no teardown" "$(grep -c "tearing down" <<< "$untorn")" 0
 write_hook worktree-teardown.sh 'exit 0'
 
-# a plain file where a worktree would go is not a worktree: reporting one ready
-# sends the caller to a path holding nothing.
 mkdir -p "$REPO/.claude/worktrees"
 printf notadir > "$REPO/.claude/worktrees/task-e"
 set +e
@@ -159,8 +142,6 @@ assert "an unknown rm option is named" "$bogus" "wt: unknown rm option: --bogus"
 assert "removing an absent worktree exits non-zero" "$absent_rc" 1
 contains "removing an absent worktree says where it looked" "$absent" "wt: no worktree at"
 
-# Forced here rather than inherited, so the case holds in the environment the
-# suite usually runs in.
 set +e
 forced=$(cd "$REPO" && FORCE_COLOR=3 $WT rm task-a task-b 2>&1)
 set -e

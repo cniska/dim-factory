@@ -5,7 +5,6 @@ import { pidIsAlive } from "./pid";
 import type { Role } from "./roles";
 import { randomWorkerName } from "./worker-name";
 
-/** What the factory hands a worker, and the only thing it reads back to know who wrote. */
 export const WORKER_NAME_VAR = "DIM_WORKER_NAME";
 export const WORKER_TOKEN_VAR = "DIM_WORKER_TOKEN";
 export const WORKER_SESSION_VAR = "DIM_SESSION_ID";
@@ -20,7 +19,6 @@ export class WorkerCredentialUnavailable extends Error {
   readonly code = "worker_credential_unavailable";
 }
 
-/** Carries a code because a caller deciding which condition failed must not match on prose. */
 export class WorkerUnknown extends Error {
   constructor(
     readonly code: WorkerUnknownCode,
@@ -30,7 +28,6 @@ export class WorkerUnknown extends Error {
   }
 }
 
-/** The name is public and names the worker everywhere; the token is what proves it is that one. */
 export type MintedWorker = { name: string; token: string; sessionId: string };
 
 export function workerProcessEnv(machine: Env | undefined, worker: MintedWorker): Record<string, string> {
@@ -51,11 +48,6 @@ function digest(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-/**
- * Issued in one transaction, because the name is drawn from the names already held: two
- * runs reading the same set would be handed the same name, and SQLite's write lock is what
- * makes the read and the insert one step.
- */
 export function mintWorker(
   db: Database,
   worker: { role: Role; parentWorker?: string; pid?: number; sessionId: string },
@@ -98,15 +90,6 @@ export function mintWorker(
 
 type WorkerRow = { name: string; token_digest: string; pid: number | null; ended_at: string | null };
 
-/**
- * The worker a command is running as, read from the environment the factory started it
- * in. A name alone would prove nothing — the issued set is readable through `dim sql`,
- * so any worker could name another — and the token is what makes the name a claim only
- * its holder can make.
- *
- * A worker whose process has stopped answering is over whether or not anything wrote
- * that down, which is what keeps a killed worker's token from outliving it.
- */
 export function resolveWorker(db: Database, env: Env = process.env): string {
   const row = authenticateWorker(db, env);
   if (row.ended_at !== null) {
@@ -118,10 +101,6 @@ export function resolveWorker(db: Database, env: Env = process.env): string {
   return row.name;
 }
 
-/**
- * The worker a credential names, whether or not it is running: the runner checks a
- * station worker's saved credential before starting the run that makes it live again.
- */
 export function authenticateWorker(db: Database, env: Env): WorkerRow {
   const name = env[WORKER_NAME_VAR];
   const token = env[WORKER_TOKEN_VAR];
@@ -188,15 +167,6 @@ export function mintWorkerForSession(
     .immediate();
 }
 
-/**
- * Whether a hand is still there to hold anything, which is what an order's holder and a
- * review round's reviewer are read through. A worker never issued is over by the same
- * answer: nothing is holding what nothing can write as.
- *
- * The runner records every station worker's pid when its run starts, so a station worker
- * with none predates that record and is over; an operator runs in a shell with no pid.
- * `resolveWorker` does not take the no-pid rule, so such a worker's token still resolves.
- */
 export function workerIsOver(db: Database, name: string): boolean {
   const row = db
     .query<{ role: Role; pid: number | null; ended_at: string | null }, [string]>(
@@ -209,13 +179,11 @@ export function workerIsOver(db: Database, name: string): boolean {
   return !pidIsAlive(row.pid);
 }
 
-/** A resumed station worker runs as a new process, so its row describes that run from here. */
 export function startWorkerRun(db: Database, name: string, pid: number): void {
   const done = db.run("UPDATE factory_worker SET pid = ?, ended_at = NULL WHERE name = ?", [pid, name]);
   if (done.changes !== 1) throw new Error(`worker ${name} was not registered`);
 }
 
-/** Ending twice is not an error: a worker that already stopped keeps the time it stopped at. */
 export function endWorker(db: Database, name: string, at = now()): boolean {
   const done = db.run("UPDATE factory_worker SET ended_at = ? WHERE name = ? AND ended_at IS NULL", [
     at,
@@ -224,7 +192,6 @@ export function endWorker(db: Database, name: string, at = now()): boolean {
   return done.changes === 1;
 }
 
-/** The two lines a shell evaluates to become the worker, which is how a person is one. */
 export function workerExports(minted: MintedWorker): string {
   return (
     `export ${WORKER_SESSION_VAR}=${minted.sessionId}\n` +

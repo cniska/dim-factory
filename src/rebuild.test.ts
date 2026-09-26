@@ -14,7 +14,6 @@ function scratch(): Scratch {
   return { db: openDb(join(home, "sessions.db")), env: { HOME: home, DIM_HOME: home } };
 }
 
-/** A row in every table that references another, so the drop order is under load. */
 function fill(db: Database): void {
   db.run("INSERT INTO session (id, tool) VALUES ('parent', 'claude')");
   db.run("INSERT INTO session (id, tool, parent_id) VALUES ('s1', 'claude', 'parent')");
@@ -142,7 +141,6 @@ describe("absorbing a schema change", () => {
 });
 
 describe("rebuilding a database an older schema wrote", () => {
-  /** What a fresh database puts in `sqlite_master`, which is what a rebuilt one must match. */
   function currentDefinitions(): Record<string, string> {
     const db = openDb(join(mkdtempSync(join(tmpdir(), "dim-rebuild-")), "sessions.db"));
     const rows = db
@@ -156,8 +154,6 @@ describe("rebuilding a database an older schema wrote", () => {
 
   test("a table whose definition went stale is brought up to the current schema", () => {
     const { db, env } = scratch();
-    // The shape `hook_event` had before post-tool events joined it. `CREATE TABLE IF NOT
-    // EXISTS` leaves this alone, so only a drop can widen the check again.
     db.run("DROP TABLE hook_event");
     db.run(
       `CREATE TABLE hook_event (
@@ -180,8 +176,6 @@ describe("rebuilding a database an older schema wrote", () => {
     expect(
       db.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'hook_event'").get(),
     ).toEqual({ sql: currentDefinitions().hook_event });
-    // The spool deletes each file once it is read, so these rows have no source to re-read
-    // and a rebuild that drops the table has to write them back.
     expect(db.query("SELECT session_id, event FROM hook_event").all()).toEqual([
       { session_id: "s1", event: "session_start" },
     ]);
@@ -342,8 +336,6 @@ describe("rebuilding a database an older schema wrote", () => {
 
   test("a stopped floor is still stopped after a rebuild", () => {
     const { db, env } = scratch();
-    // Nothing re-reads this row either, so only the drop and write-back can bring
-    // a table whose definition went stale up to the current one.
     db.run("ALTER TABLE factory_stop DROP COLUMN order_id");
     db.run(
       `INSERT INTO factory_stop (reason, pulled_by, pulled_at)
@@ -361,8 +353,6 @@ describe("rebuilding a database an older schema wrote", () => {
 
   test("evidence left behind by an order deleted outside the code goes with the order", () => {
     const { db, env } = scratch();
-    // What a hand-run `sqlite3` does: its foreign keys are off by default, so a
-    // deleted order leaves its children behind for the restore to be refused on.
     db.run("PRAGMA foreign_keys = OFF");
     db.run(
       `INSERT INTO factory_order (id, project, title, status, created_at, updated_at)
@@ -421,8 +411,6 @@ describe("rebuilding a database an older schema wrote", () => {
        VALUES ('order-old', 'cniska/dim-factory', 'working', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
 
-    // Named with the column and the ways out, because rebuild is the only route
-    // these rows have and what such a row should be called is the owner's to say.
     expect(() => rebuild(db, env)).toThrow(/factory_order\.title/);
     expect(() => rebuild(db, env)).toThrow(/sqlite3/);
 

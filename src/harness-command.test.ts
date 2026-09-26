@@ -246,7 +246,6 @@ describe("selected harness commands", () => {
 });
 
 describe("a harness run with no adapter given", () => {
-  // A stand-in for the claude CLI: it answers in Claude's stream-json, naming whether it was resumed.
   const bin = mkdtempSync(join(tmpdir(), "dim-claude-bin-"));
   writeFileSync(
     join(bin, "claude"),

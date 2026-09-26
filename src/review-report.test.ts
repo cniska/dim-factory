@@ -11,7 +11,6 @@ import { SCHEMA_SQL } from "./schema";
 const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
 
-/** Round one raises a finding the builder refuses; round two is open and contests the refusal. */
 function contested(): { db: Database; review: number; finding: number } {
   const db = new Database(":memory:");
   db.run(SCHEMA_SQL);

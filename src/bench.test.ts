@@ -8,7 +8,6 @@ import { SCHEMA_SQL } from "./schema";
 
 const embedNothing = async (): Promise<Question | undefined> => undefined;
 
-/** One dimension per word, so a cosine is word overlap and no weights are needed. */
 const byWords: Embedder = async (texts) =>
   texts.map((text) => {
     const v = new Float32Array(EMBED_DIMS);
@@ -36,10 +35,6 @@ const graded = (query: string, relevant: [string, number][]): BenchQuestion => (
   relevant: new Map(relevant),
 });
 
-/**
- * A stand-in query, registered the way every query is, so the runner is exercised
- * through the registry rather than around it.
- */
 function seeded(): Database {
   const db = new Database(":memory:");
   db.run(SCHEMA_SQL);
@@ -68,7 +63,6 @@ function seeded(): Database {
   return db;
 }
 
-/** Two distilled passages in one session, which is the pair a grader wants to tell apart. */
 function withTwoPassages(db: Database): { early: string; late: string } {
   const passages: [string, string, string][] = [
     ["m-early", "2026-09-01T10:40:00.000Z", "Undo what an agent wrote in the shadow checkout."],
@@ -90,8 +84,6 @@ function withTwoPassages(db: Database): { early: string; late: string } {
 }
 
 describe("scoring the corpus through the queries themselves", () => {
-  // `keywords` prints a session and a timestamp and no ref, so its ranking
-  // cannot be scored. Saying so beats scoring less than the corpus claims.
   test("reports a query whose rows name no ref, rather than skipping it", async () => {
     const db = seeded();
     const report = await runBench(db, [graded("keywords", [["m1", 3]])], 5, {}, embedNothing);
@@ -100,8 +92,6 @@ describe("scoring the corpus through the queries themselves", () => {
     db.close();
   });
 
-  // With nothing scored there is no mean, and a NaN printed as a score is worse
-  // than a refusal: it reads as a measurement.
   test("a corpus nothing could score reports no mean, not a NaN", async () => {
     const db = seeded();
     const report = await runBench(db, [graded("keywords", [["m1", 3]])], 5, {}, embedNothing);
@@ -110,8 +100,6 @@ describe("scoring the corpus through the queries themselves", () => {
     db.close();
   });
 
-  // A message is printed by its session, so grading it by its own message id
-  // would score zero for ever and read as a ranking failure.
   test("refuses a label that names neither a commit nor a session", async () => {
     const db = seeded();
     await buildIndex(db, byWords, "A Person");
@@ -138,8 +126,6 @@ describe("scoring the corpus through the queries themselves", () => {
     db.close();
   });
 
-  // Without the cutoff reaching the metrics, k is decoration and every score is
-  // measured over whatever the query happened to return.
   test("the cutoff reaches the score", async () => {
     const db = seeded();
     await buildIndex(db, byWords, "A Person");
@@ -159,8 +145,6 @@ describe("scoring the corpus through the queries themselves", () => {
     db.close();
   });
 
-  // The whole point of a passage ref: a decision is one passage, and grading by
-  // the session it sits in makes the wrong one look like the right one.
   test("tells two graded passages in one session apart", async () => {
     const db = seeded();
     const { early, late } = withTwoPassages(db);
@@ -178,8 +162,6 @@ describe("scoring the corpus through the queries themselves", () => {
     db.close();
   });
 
-  // A question can be about a session as a whole, and a label naming one grades
-  // every passage in it rather than scoring zero against all of them.
   test("a label naming only a session still grades a passage inside it", async () => {
     const db = seeded();
     withTwoPassages(db);
@@ -192,8 +174,6 @@ describe("scoring the corpus through the queries themselves", () => {
     db.close();
   });
 
-  // Most sessions distil nothing at all, so a session id is the easiest ref to
-  // reach for and the one most likely to name a row no query can return.
   test("refuses a session holding nothing anyone distilled", async () => {
     const db = seeded();
     await buildIndex(db, byWords, "A Person");
@@ -203,8 +183,6 @@ describe("scoring the corpus through the queries themselves", () => {
     db.close();
   });
 
-  // `keywords` and `thread` print a time for any turn, so copying one is the
-  // easiest label to write and no query ever returns it.
   test("refuses a passage ref naming a turn nobody distilled", async () => {
     const db = seeded();
     withTwoPassages(db);
@@ -215,8 +193,6 @@ describe("scoring the corpus through the queries themselves", () => {
     db.close();
   });
 
-  // A subagent's session id is `<agent>@<parent>`, so a passage in one carries
-  // two delimiters and splitting on the first reads the parent as a timestamp.
   test("grades a passage in a session whose own id holds an at-sign", async () => {
     const db = seeded();
     const id = "a0064e811b74a81cb@79e9c9bc-3a0b-46f6-b935-7a25be925124";
@@ -246,8 +222,6 @@ describe("scoring the corpus through the queries themselves", () => {
     db.close();
   });
 
-  // One printed id answers to both labels, so scoring either would credit a
-  // ranking that never distinguished them.
   test("refuses two labels one printed id would answer to", async () => {
     const db = seeded();
     withTwoPassages(db);
@@ -280,8 +254,6 @@ describe("scoring the corpus through the queries themselves", () => {
     db.close();
   });
 
-  // A ref ending in a bare delimiter must refuse rather than quietly widening
-  // into the whole session and grading every passage in it.
   test("refuses a ref whose timestamp is missing after the at-sign", async () => {
     const db = seeded();
     withTwoPassages(db);
@@ -292,8 +264,6 @@ describe("scoring the corpus through the queries themselves", () => {
     db.close();
   });
 
-  // A mistyped timestamp would otherwise score zero forever and read as a
-  // ranking failure, which is the mistake every other refusal here exists for.
   test("refuses a passage ref whose timestamp names no message", async () => {
     const db = seeded();
     withTwoPassages(db);
@@ -330,8 +300,6 @@ describe("scoring the corpus through the queries themselves", () => {
     db.close();
   });
 
-  // The corpus stores a full sha and a query prints a short one; scoring at the
-  // printed width is what makes a labeled row and a returned row the same row.
   test("matches a labeled ref against the shortened one a query prints", async () => {
     const db = seeded();
     await buildIndex(db, byWords, "A Person");

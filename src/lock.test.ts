@@ -42,8 +42,6 @@ describe("the write lock", () => {
     expect(existsSync(lock)).toBe(false);
   });
 
-  // Releasing when `fn` returns would hand the lock to a second run while the
-  // first is still writing, because an async `fn` has only started by then.
   test("stays held until asynchronous work finishes", async () => {
     const { env, lock } = newRoot();
     let heldMidway = false;
@@ -88,8 +86,6 @@ describe("the write lock", () => {
     expect(existsSync(lock)).toBe(false);
   });
 
-  // Reclaiming a lock whose directory holds no live pid is only safe because a
-  // run that does hold it is named there the moment the directory appears.
   test("the lock names its holder for as long as it is held", () => {
     const { env, lock } = newRoot();
     withLock(() => {
@@ -97,8 +93,6 @@ describe("the write lock", () => {
     }, env);
   });
 
-  // Signal 0 to pid 0 addresses the process group and answers, so an empty pid
-  // file read as a number would leave a lock nothing could ever take back.
   test("an empty pid file is not a holder", () => {
     const { env, lock } = newRoot();
     mkdirSync(lock, { recursive: true });

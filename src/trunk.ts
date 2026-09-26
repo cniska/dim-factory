@@ -1,17 +1,7 @@
-/**
- * Whether a commit has reached the repo's trunk, read from git rather than from
- * the record: nothing in the database knows what has been merged since.
- *
- * Every way the read can come back short is its own answer, because each one
- * sends the operator somewhere different and a git command that failed is not
- * evidence that the work is unmerged.
- */
 export type TrunkReach =
   | { reach: "reached" }
   | { reach: "unreached" }
-  /** The repo does not have that commit at all, so nothing here can place it. */
   | { reach: "absent" }
-  /** Nothing here can say what integration means; `why` is written for the operator. */
   | { reach: "unknown"; why: string };
 
 function git(dir: string, args: string[]): { success: boolean; out: string } {
@@ -19,12 +9,6 @@ function git(dir: string, args: string[]): { success: boolean; out: string } {
   return { success: run.success, out: run.stdout.toString().trim() };
 }
 
-/**
- * `refs/remotes/origin/HEAD` is what `git clone` writes and nothing else does, so
- * it is the one place a repo states its own trunk instead of an agent assuming a
- * name. A repo started with `git init` has no such ref, which `dim doctor`
- * already reports through `unarmedCheckouts`.
- */
 export function trunkBranch(dir: string): { name: string } | { why: string } {
   if (!git(dir, ["rev-parse", "--git-dir"]).success) {
     return { why: `${dir} is not a git repo that can be read` };
@@ -40,15 +24,9 @@ export function trunkBranch(dir: string): { name: string } | { why: string } {
   return { name };
 }
 
-/**
- * The local trunk rather than the remote's, because a commit is integrated when
- * it is on the branch the next worker will start from.
- */
 export function reachesTrunk(dir: string, sha: string): TrunkReach {
   const trunk = trunkBranch(dir);
   if ("why" in trunk) return { reach: "unknown", why: trunk.why };
-  // Asked before the ancestry, which exits non-zero for an unknown object too and
-  // would otherwise report a sha this repo never had as a branch left unmerged.
   if (!git(dir, ["cat-file", "-e", `${sha}^{commit}`]).success) return { reach: "absent" };
   return git(dir, ["merge-base", "--is-ancestor", sha, `refs/heads/${trunk.name}`]).success
     ? { reach: "reached" }

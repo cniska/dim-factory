@@ -190,7 +190,6 @@ describe("the operator loop", () => {
   });
 
   describe("a refusal the reviewer contests", () => {
-    /** Round one raises a finding, the builder refuses it, and round two contests the refusal. */
     function contested(orderId: string) {
       const db = new Database(":memory:");
       db.run(SCHEMA_SQL);

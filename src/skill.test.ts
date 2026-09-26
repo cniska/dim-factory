@@ -23,8 +23,6 @@ function newHome(): string {
 }
 
 describe("skill install", () => {
-  // Literals, not the constant: importing SKILL_NAMES would let a dropped skill
-  // ratify its own removal.
   test("ships the skills that need dim on PATH", () => {
     expect(shipped()).toEqual([
       "dim-add",
@@ -51,8 +49,6 @@ describe("skill install", () => {
     expect(shipped()).toEqual(dirs);
   });
 
-  // Retiring a station would otherwise leave a link resolving to nothing, which
-  // reads to the tool as a skill that will not load rather than one that is gone.
   test("unlinks a station that no longer ships, and leaves the owner's own alone", () => {
     const home = newHome();
     const env = { HOME: home };
@@ -97,8 +93,6 @@ describe("skill install", () => {
     try {
       expect(planSkill({ HOME: home }).every((p) => p.state === "missing")).toBe(true);
       installSkill({ HOME: home });
-      // Claude and Acolyte share `.agents/skills`; Codex reads its own directory,
-      // and a link in only one of them leaves the other tool unable to ask.
       for (const dir of skillLinkDirs({ HOME: home })) {
         for (const name of SKILL_NAMES) {
           const link = join(dir, name);
@@ -138,7 +132,6 @@ describe("skill install", () => {
 
       installSkill({ HOME: home });
       expect(lstatSync(link).isSymbolicLink()).toBe(true);
-      // The displaced skill may exist nowhere else, so it is kept, not deleted.
       expect(Bun.file(`${link}.dim-backup/SKILL.md`).size).toBeGreaterThan(0);
     } finally {
       rmSync(home, { recursive: true, force: true });

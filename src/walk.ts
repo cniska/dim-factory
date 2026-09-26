@@ -5,20 +5,13 @@ import { codexDir, type Env, resolveHomeDir } from "./paths";
 import { walkSpoolDir } from "./spool";
 import type { Tool } from "./tools";
 
-/** The rules file names a repo carries, as `guidance_version` already tracks them. */
 const NAMES = ["CLAUDE.md", "AGENTS.md"];
 
-/**
- * An import is a line that is nothing but `@<path>`, resolved against the
- * directory of the file that names it. Matching `@` anywhere in a line would
- * claim an email address or a handle is a surface.
- */
 const IMPORT_LINE = /^\s*@(\S+)\s*$/;
 
 export type Surface = {
   path: string;
   sha: string;
-  /** The file whose import pulled this one in; null for a surface read on its own. */
   importedBy: string | null;
 };
 
@@ -37,7 +30,6 @@ function gitToplevel(cwd: string): string | null {
   return out === "" ? null : out;
 }
 
-/** Every directory from the working directory up to the repo root, innermost first. */
 function repoDirs(cwd: string): string[] {
   const top = gitToplevel(cwd);
   if (!top) return [cwd];
@@ -55,15 +47,6 @@ function userSurface(tool: Tool, env: Env): string {
     : join(codexDir(env), "AGENTS.md");
 }
 
-/**
- * Which rules files were in force together at this session's start, and which
- * one imported which. `guidance_version` records what each file said; this
- * records that they were read as one set, which nothing else holds — the same
- * project file governs different work depending on what sat above it.
- *
- * Read at session start, so a rules file edited mid-session is missed. That is
- * the granularity the channel has, not a gap worth a per-turn capture.
- */
 export function resolveWalk(tool: Tool, cwd: string, env: Env = process.env): Surface[] {
   const roots = [userSurface(tool, env)];
   for (const dir of repoDirs(cwd)) for (const name of NAMES) roots.push(join(dir, name));
@@ -103,11 +86,6 @@ export type WalkRecord = {
   surfaces: Surface[];
 };
 
-/**
- * Written from the session-start hook rather than into the database, because a
- * hook that waits on the write lock delays every session that starts here.
- * `sync` drains it under the lock it already holds.
- */
 export function spoolWalk(record: WalkRecord, env: Env = process.env): void {
   if (record.surfaces.length === 0) return;
   const dir = walkSpoolDir(env);
@@ -117,7 +95,6 @@ export function spoolWalk(record: WalkRecord, env: Env = process.env): void {
 
 export type WalkReport = { sessions: number; surfaces: number };
 
-/** Each file is the only copy of what was in force at that moment, so one that cannot be placed stays. */
 export function drainWalk(db: Database, env: Env = process.env): WalkReport {
   const dir = walkSpoolDir(env);
   mkdirSync(dir, { recursive: true });

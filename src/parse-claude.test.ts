@@ -7,7 +7,6 @@ const parsed = parseClaudeChunk(lines, 1);
 
 describe("parseClaudeChunk", () => {
   test("writes one usage row per content-block line so the ingester can dedupe on message id", () => {
-    // Both lines of msg-1 repeat the same usage; only one row may survive.
     expect(parsed.usage.filter((u) => u.responseId === "msg-1")).toHaveLength(2);
     expect(new Set(parsed.usage.map((u) => u.responseId)).size).toBe(1);
   });
@@ -44,8 +43,6 @@ describe("parseClaudeChunk", () => {
   });
 
   test("reports each line's own usage, partial figures included", () => {
-    // Usage accumulates across a response's lines; the ingester keeps the
-    // largest, so the parser must not silently drop the earlier ones.
     expect(parsed.usage.map((u) => u.outputTokens)).toEqual([9, 50]);
   });
 
@@ -83,9 +80,6 @@ describe("parseClaudeChunk", () => {
     expect(parsed.session.some((s) => s.title === "Add the parser")).toBe(true);
   });
 
-  // The cursor advances past a line that is not JSON, so it is read once and
-  // lost. Reading on is the only option that does not stall collection on one
-  // corrupt record, which makes naming the line the whole of the report.
   test("names the line number of a complete line that is not JSON", () => {
     const corrupt = parseClaudeChunk([lines[0] as string, "{not json", lines[1] as string], 10);
     expect(corrupt.dropped).toEqual([11]);

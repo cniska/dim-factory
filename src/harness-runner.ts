@@ -13,8 +13,6 @@ export type HarnessRunResult =
   | { outcome: "timed_out"; events: HarnessEvent[]; reason: string };
 
 export type HarnessRunnerOptions = {
-  /** How long the adapter may go without reporting an event: a working run has no bound on its
-   *  length, and only silence says a worker is stuck. */
   timeoutMs: number;
   onEvent?: (event: HarnessEvent) => void;
 };
@@ -30,11 +28,6 @@ function beginsTurn(event: HarnessEvent): boolean {
   );
 }
 
-/**
- * Times one run, whether its adapter started it or resumed it. A run holds one turn: its first
- * answer is its result, and a completed run is returned only once its process has exited or, having
- * begun another turn or gone silent, been stopped.
- */
 export async function runHarness(run: HarnessRun, options: HarnessRunnerOptions): Promise<HarnessRunResult> {
   const events: HarnessEvent[] = [];
   let answer: HarnessRunResult | undefined;
@@ -104,14 +97,12 @@ export async function runHarness(run: HarnessRun, options: HarnessRunnerOptions)
   try {
     result = await Promise.race([consume, timeout]);
   } catch (error) {
-    // A run whose observer threw is abandoned, and nothing else would stop its process.
     run.cancel();
     throw error;
   } finally {
     if (timer) clearTimeout(timer);
   }
   if (timedOut) void consume.catch(() => undefined);
-  // A failed run may still be working, and a refused one still spending.
   if (result.outcome === "failed") run.cancel();
   return result;
 }

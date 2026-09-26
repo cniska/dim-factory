@@ -122,8 +122,6 @@ describe("reading which worker a command is", () => {
     db.close();
   });
 
-  // The issued set is readable through `dim sql`, so a name on its own is not a claim
-  // only its holder can make.
   test("refuses one worker writing under another's name", () => {
     const db = floor();
     const one = issue(db, { role: "builder" });
@@ -159,7 +157,6 @@ describe("reading which worker a command is", () => {
     db.close();
   });
 
-  // Nothing writes `ended_at` for a worker that was killed, so the pid is what says so.
   test("refuses a worker whose process is gone, though nothing wrote it down", () => {
     const db = floor();
     const minted = issue(db, { role: "builder", pid: 0x7fffffff });

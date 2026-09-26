@@ -7,12 +7,10 @@ import { parseClaudeChunk } from "./parse-claude";
 import { claudeProjectsDir, type Env } from "./paths";
 
 function parserFor(env: Env) {
-  // Read once per listing rather than per file.
   const known = listInstalledSkills(env);
   return (lines: string[], firstLineNumber: number) => parseClaudeChunk(lines, firstLineNumber, known);
 }
 
-/** ~/.claude/projects/<slug>/<session>.jsonl */
 export function listClaudeTranscripts(env: Env = process.env): FileSpec[] {
   const root = claudeProjectsDir(env);
   if (!existsSync(root)) return [];
@@ -41,18 +39,10 @@ function agentTypeOf(path: string): string | undefined {
   }
 }
 
-/**
- * An agent id repeats across parent sessions — six do in this corpus — so it is
- * the pair that names a run, and keying on the id alone makes two different
- * subagents one row and hands the second the first's read cursor. The agent id
- * leads so that a prefix search still finds it and the short form still reads
- * as the id a tool result names.
- */
 export function subagentId(agentId: string, parentId: string): string {
   return `${agentId}@${parentId}`;
 }
 
-/** ~/.claude/projects/<slug>/<session>/subagents/agent-<id>.jsonl */
 export function listClaudeSubagents(env: Env = process.env): FileSpec[] {
   const root = claudeProjectsDir(env);
   if (!existsSync(root)) return [];

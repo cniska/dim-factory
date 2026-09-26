@@ -38,7 +38,5 @@ export function writeTrace(db: Database, record: TraceEvent, at = new Date().toI
         JSON.stringify(record.fields ?? {}),
       ],
     );
-  } catch {
-    // Trace is diagnostic; a stale database must not block the audited action.
-  }
+  } catch {}
 }

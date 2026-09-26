@@ -18,12 +18,6 @@ export function codexHistoryPath(env: Env = process.env): string {
   return join(codexDir(env), "history.jsonl");
 }
 
-/**
- * Both files are a flat log of what was typed, with no cursor of their own: they
- * are small and fully re-read each sync, and the primary key makes that a no-op.
- * Only prompts whose session has no transcript are stored — a prompt that is
- * already a `message` row would be a second, worse copy of it.
- */
 export function ingestHistory(db: Database, env: Env = process.env): HistoryReport {
   const report: HistoryReport = { read: 0, orphans: 0 };
   const insert = db.prepare<void, [string, string, string, string | null, string]>(
@@ -67,7 +61,6 @@ export function ingestHistory(db: Database, env: Env = process.env): HistoryRepo
     const l = JSON.parse(raw) as ClaudeHistoryLine;
     return { sessionId: l.sessionId, ts: l.timestamp, text: l.display, project: l.project };
   });
-  // Codex records seconds where Claude records milliseconds.
   load(codexHistoryPath(env), "codex", (raw) => {
     const l = JSON.parse(raw) as CodexHistoryLine;
     return { sessionId: l.session_id, ts: l.ts == null ? undefined : l.ts * 1000, text: l.text };

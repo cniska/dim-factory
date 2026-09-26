@@ -36,8 +36,6 @@ export function assertOperator(db: Database, worker: string, action: string): vo
   }
 }
 
-/** How an order stopped: it landed, or it did not and goes back among the work
- *  nobody holds, carrying why. */
 export type FactoryOutcome = {
   status: "completed" | "failed";
   reason?: string;
@@ -63,8 +61,6 @@ export type FactoryContext = {
 
 export type FactoryBuilder = (context: FactoryContext) => FactoryOutcome | Promise<FactoryOutcome>;
 
-/** Only a completion projects a status; a failure hands the work back, which the
- *  event itself does. */
 function stopEvent(outcome: FactoryOutcome, worker: string): OrderEvent {
   return {
     kind: outcome.status,

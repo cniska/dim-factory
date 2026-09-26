@@ -1,13 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-/**
- * These paths are read by a `SessionStart` hook, so the file at one of them is
- * whatever the working directory happens to hold. A FIFO named `Makefile` blocks
- * the read forever and takes the session start with it; a directory throws. Only
- * a regular file is opened, and only its first bytes: a manifest is kilobytes,
- * and anything claiming to be one at this size is not being read either way.
- */
 const LONGEST_MANIFEST = 1024 * 1024;
 
 export function readManifest(path: string): string | null {
@@ -27,16 +20,8 @@ export function readManifest(path: string): string | null {
   }
 }
 
-/**
- * What a repo says to run, read rather than inferred. Running what the workspace
- * declares is what makes a local check the same check CI runs, so a detector that
- * reaches past the declared script to the tool underneath would name
- * `biome check` where the repo's script is `biome format`, and `bun test` where
- * the gate is `bun run verify`.
- */
 export type WorkspaceCommand = { name: string; command: string; source: string };
 
-/** The lock file names the package manager; the manifest alone does not. */
 const LOCKS: [string, string][] = [
   ["bun.lock", "bun"],
   ["bun.lockb", "bun"],
@@ -59,9 +44,6 @@ function fromPackageJson(repo: string): WorkspaceCommand[] {
   } catch {
     return [];
   }
-  // The script is only half of what the repo declares; without the lock file
-  // naming a runner there is no command to state, and stating one anyway is the
-  // inference this whole module exists to avoid.
   const pm = packageManager(repo);
   if (pm === null) return [];
   return Object.keys(scripts).map((name) => ({
@@ -87,7 +69,6 @@ function fromMise(repo: string): WorkspaceCommand[] {
   }));
 }
 
-/** A target is a line-initial name before a colon; `.PHONY` and pattern rules are not targets. */
 const MAKE_TARGET = /^([A-Za-z][\w-]*)\s*:(?!=)/;
 
 function fromMakefile(repo: string): WorkspaceCommand[] {
@@ -109,19 +90,8 @@ export function declaredCommands(repo: string): WorkspaceCommand[] {
   return [...fromPackageJson(repo), ...fromMise(repo), ...fromMakefile(repo)];
 }
 
-/**
- * The one command that stands for "this change is sound". Named in preference
- * order, because a repo that declares both `verify` and `test` means the wider
- * one — `bun run verify` here runs lint, types, tests and the shell suite, and
- * gating on `test` alone would pass a change that does not compile.
- */
 const CHECK_ORDER = ["verify", "check", "ci", "validate", "test"];
 
-/**
- * Narrower than the check on purpose. `lint` is not here: a repo that declares
- * both means a different thing by each, and a session told to run the linter
- * where it meant to reformat writes a diff the author did not ask for.
- */
 const FORMAT_ORDER = ["format", "fmt"];
 
 function firstDeclared(repo: string, order: string[]): WorkspaceCommand | null {

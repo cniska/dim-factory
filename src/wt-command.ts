@@ -3,13 +3,6 @@ import { dirname, join } from "node:path";
 import { warn } from "./warn";
 import { runWorkerHook, type WorkerEnvironmentPhase, type WorkerHookReport } from "./worker-environment";
 
-/**
- * One task, one worktree, at `<repo>/.claude/worktrees/<branch>` — the path
- * Claude Code's own worktree support uses and the one `src/worktree.ts` reads.
- * This makes the checkout and prints where it is; opening a terminal there and
- * starting an agent is the caller's job, which is why nothing here changes the
- * caller's directory and `wt path` exists for `cd "$(dim wt path x)"`.
- */
 const USAGE = `wt — parallel-task worktrees, one per agent.
 
 Usage:
@@ -25,15 +18,8 @@ repo's scripts/worktree-setup.sh if present (dependency install, etc.); on
 removal it runs the primary checkout's scripts/worktree-teardown.sh inside the
 worktree first, and keeps the worktree if that fails unless --force.`;
 
-/** Carries the message `wt` prints to stderr before exiting 1. */
 export class WtError extends Error {}
 
-/**
- * A hook's exit status. A process killed by a signal reports no exit code, and
- * reading that as 0 would let a teardown that was OOM-killed remove the worktree
- * its resources are named by. Bash reports 128 plus the signal; the number
- * matters less than it being non-zero.
- */
 function hookStatus(proc: { exitCode: number | null }): number {
   return proc.exitCode ?? 128;
 }
@@ -51,12 +37,6 @@ function git(args: string[], cwd?: string): { ok: boolean; out: string } {
   return { ok: proc.success, out: new TextDecoder().decode(proc.stdout).trim() };
 }
 
-/**
- * The main working tree even when this runs inside a worktree: --git-common-dir
- * resolves to the shared .git, whose parent is the primary checkout. `cwd` is
- * exposed so a caller that is not itself running from the repo — an order
- * claim, a test fixture — can still resolve the one shared root.
- */
 export function repoRoot(cwd: string = process.cwd()): string {
   const proc = Bun.spawnSync(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], {
     cwd,
@@ -77,10 +57,6 @@ function isExecutable(path: string): boolean {
   }
 }
 
-/**
- * Opt-in per repo and non-fatal: a failed install still leaves a worktree to
- * debug in, which is what keeps this generic across repos.
- */
 function reportHook(report: WorkerHookReport): void {
   if (report.stdout) process.stdout.write(report.stdout);
   if (report.stderr) process.stderr.write(report.stderr);
@@ -102,13 +78,6 @@ function bootstrap(path: string): void {
   else warn(`wt: bootstrap failed (exit ${rc}) — worktree created; fix and re-run the hook`);
 }
 
-/**
- * Fatal where the bootstrap hook is not. The hook's inputs live inside the
- * worktree, so anything it owns — containers, volumes, a reserved port block —
- * becomes unattributable the moment the directory goes. `--force` is the
- * deliberate override. The hook comes from the trunk: whoever worked in the
- * worktree wrote its copy, and removal runs as the caller.
- */
 function teardown(root: string, path: string, force: boolean): void {
   const hook = join(root, "scripts", "worktree-teardown.sh");
   if (!isExecutable(hook)) return;
@@ -131,11 +100,6 @@ export function worktreePath(root: string, branch: string): string {
   return join(worktreesDir(root), branch);
 }
 
-/**
- * Creates or reuses the one worktree a branch gets, and returns its path. Reuse
- * is what lets a claim on a failed order pick the same checkout back up rather
- * than losing whatever it already held.
- */
 export function createWorktree(branch: string, cwd: string = process.cwd()): string {
   if (!branch) die("branch name required");
   const root = repoRoot(cwd);
@@ -183,12 +147,6 @@ function list(): void {
   }
 }
 
-/**
- * Removes a branch's worktree. A teardown failure keeps the worktree rather
- * than losing whatever it holds — `--force` is the deliberate override, and
- * `dim order stop <id> completed` takes the same default rather than a second
- * position on what a failed removal should do.
- */
 export function removeWorktree(branch: string, options: { force?: boolean; cwd?: string } = {}): void {
   if (!branch) die("branch name required");
   const force = options.force ?? false;
@@ -246,8 +204,6 @@ export function runWt(args: string[]): void {
       remove(rest);
       return;
     case "prune":
-      // git reports a prune it could not finish on stderr and still exits 0, so
-      // there is no status here to branch on.
       git(["-C", repoRoot(), "worktree", "prune"]);
       console.log("wt: pruned stale worktree entries");
       return;

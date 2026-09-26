@@ -10,11 +10,6 @@ import wallPage from "./wall.html";
 import type { ResourceEvidence, WorkerEnvironmentPhase, WorkerHookReport } from "./worker-environment";
 
 export type WallStation = "plan" | "build" | "review" | "ship";
-/**
- * How far along the line an order is, which several statuses share: a card can
- * change status without changing column, and reading the stage off the status is
- * what keeps the two from being one list.
- */
 export type WallStage = "todo" | "active" | "done";
 export type WallRole = Role;
 
@@ -25,24 +20,13 @@ export type WallOrder = {
   description?: string;
   station: WallStation | null;
   stage: WallStage;
-  /** Absent until the order has a moment: the worker is read off the latest one. */
   agent?: string;
   worker?: string;
-  /** Absent with the worker and never apart from it: a hand is issued with a role, so an
-   *  order that names one names what it was called in as. */
   role?: WallRole;
-  /** Never `dropped`: a dropped order leaves the wall, so neither the board nor the item
-   *  view ever holds one. */
   status: BoardStatus;
   age: string;
-  /** When the order last recorded an event. An order's age on the board is its silence, so it counts
-   *  from the last thing that happened rather than from the claim. */
   lastEventAt: string;
-  /** How many of the order's checks ended non-zero. An order failing its check repeatedly is
-   *  struggling, which is the one piece of evidence a card has room to carry. */
   failedChecks: number;
-  /** The hold the order sits on, where it sits on one. An order on a hold is waiting for
-   *  something outside the floor, which is what a stopped card says. */
   hold?: string;
 };
 
@@ -53,9 +37,6 @@ export type WallSnapshot = {
   totals: Record<WallStage, number>;
 };
 
-/** Every kind an order event carries, plus the two kinds of evidence written without one,
- *  named as `dim q order` names them. A changed file is evidence of the same sort but is read
- *  as a set of changes rather than as a moment, so it stands beside the history. */
 export type WallItemKind = OrderEventKind | "document_updated" | "environment_reported";
 
 export type WallItemEntry = {
@@ -63,8 +44,6 @@ export type WallItemEntry = {
   kind: WallItemKind;
   agent?: string;
   worker?: string;
-  /** What the worker on this moment was called in as, so every hand in the history carries
-   *  its own role rather than the one the order currently sits under. */
   role?: WallRole;
   station?: WallStation;
   reason?: string;
@@ -76,8 +55,6 @@ export type WallItemEntry = {
   environment?: WorkerHookReport;
 };
 
-/** What the order changed in one file, as its recorder counted it. A count is absent where none
- *  was recorded, which a page states as unknown rather than as zero lines changed. */
 export type WallItemChange = {
   path: string;
   added?: number;
@@ -143,8 +120,6 @@ type OrderRow = {
   failed_check_count: number;
 };
 
-// Who holds an order is the worker on its latest claim. A move is an operator's audit
-// event, not a reassignment, so the latest event cannot stand in for the holder.
 const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.line, o.description, o.station, o.status,
               o.stop_reason, o.run_id, o.project, o.priority, o.hold,
               e.ts AS last_event_at, e.reason AS latest_reason, e.station AS latest_station,
@@ -162,9 +137,6 @@ const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.line, o.description, o.station
          WHERE e2.order_id = o.id AND e2.kind = 'claimed'
          ORDER BY e2.ts DESC, e2.id DESC LIMIT 1)`;
 
-/** A decision not to work is none of `todo`, `active` or `done`, so a dropped order
- *  never reaches `mapOrder`: the snapshot query excludes it and the item view answers
- *  not found, the way it does for an id nothing holds. */
 export type BoardStatus = Exclude<OrderStatus, "dropped">;
 const WALL_STATUSES = new Set<string>(ORDER_STATUSES.filter((status) => status !== "dropped"));
 
@@ -174,9 +146,6 @@ const stageByStatus: Record<BoardStatus, WallStage> = {
   completed: "done",
 };
 
-// An order is claimed with whatever word the caller passed, and a line or a typo is not a station.
-// Naming one of the four for a value that is none of them puts a card at a station nobody sent
-// it to, which is worse than the card saying it does not know.
 const stationByRecordedValue: Record<string, WallStation> = {
   plan: "plan",
   "dim-station-plan": "plan",
@@ -192,11 +161,6 @@ function station(value: string | null): WallStation | null {
   return value === null ? null : (stationByRecordedValue[value] ?? null);
 }
 
-/**
- * The worker's own, never worked out from the station: a worker is called in as one
- * thing and stays it, while the station says where the work is. A hand is issued with a
- * role, so a value this build cannot read is refused rather than drawn as a guess.
- */
 function role(value: string | null): WallRole | undefined {
   if (value === null) return undefined;
   if (!isRole(value)) throw new Error(`unknown factory worker role: ${value}`);
@@ -209,8 +173,6 @@ function requiredRole(value: string | null): WallRole {
   return workerRole;
 }
 
-/** The column is text, so a status this build does not know — dropped included, since it
- *  never reaches this function — is refused rather than drawn. */
 function status(value: string): BoardStatus {
   if (!WALL_STATUSES.has(value)) throw new Error(`unknown factory order status: ${value}`);
   return value as BoardStatus;
@@ -223,7 +185,6 @@ function mapOrder(row: OrderRow, now: Date): WallOrder | null {
   const orderStatus = status(row.status);
   const baseStage = stageByStatus[orderStatus];
   const stationName = orderStatus === "completed" ? null : station(row.station ?? row.latest_station);
-  // A claim writes its own event in the same transaction, so an order row always has one.
   const lastEventAt = row.last_event_at;
   return {
     id: row.id,
@@ -243,9 +204,6 @@ function mapOrder(row: OrderRow, now: Date): WallOrder | null {
 }
 
 export function assembleWallSnapshot(db: Database, now = new Date()): WallSnapshot {
-  // Ordered by the same clock the card shows, so a column's ages read down the page. An order that
-  // needs a person stops recording events, so it sinks under the moving work and would be the
-  // first card a bound dropped — it is ranked ahead of the bound rather than after it.
   const rows = db
     .query(`${ORDER_ROW_SELECT} WHERE o.status <> 'dropped' ORDER BY e.ts DESC, o.id`)
     .all() as OrderRow[];
@@ -293,9 +251,6 @@ type EnvironmentRow = {
   resources: string;
 };
 
-/** `argv` and `resources` are stored as the JSON the hook reported. A row whose JSON no longer
- *  parses is a row the wall cannot describe, so it stands as an empty list rather than
- *  stopping the view that holds it. */
 function storedList<T>(value: string): T[] {
   try {
     const parsed: unknown = JSON.parse(value);
@@ -357,14 +312,8 @@ function eventEntry(row: EventRow): WallItemEntry {
   };
 }
 
-/** One order's own record: the identity a card carries, and every lifecycle event and piece of
- *  evidence, ordered by the time each was recorded. Commits, checks and findings are written
- *  with the event that produced them, so they arrive attached rather than listed a second
- *  time. */
 export function assembleItemView(db: Database, orderId: string, now = new Date()): WallItemView | null {
   const row = db.query(`${ORDER_ROW_SELECT} WHERE o.id = ?`).get(orderId) as OrderRow | null;
-  // A dropped order left the wall entirely, so its item view answers not found the same
-  // way an id nothing holds does, rather than drawing a card for a stage it is none of.
   if (!row || row.status === "dropped") return null;
   const order = mapOrder(row, now);
   if (!order) return null;
@@ -487,9 +436,6 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
       path: tildePath(doc.path),
     })),
     ...environments.map(environmentEntry),
-    // Two rows recorded at the same instant carry nothing that says which was written first,
-    // so they hold the order `dim q order` puts them in — events, then documents and
-    // environment reports — rather than the two surfaces disagreeing on a tie.
   ].sort((a, b) => a.at.localeCompare(b.at));
   return {
     order,
@@ -507,8 +453,6 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
   };
 }
 
-/** The order id a request names, or nothing where the path holds a percent sequence that is not
- *  valid UTF-8: an id the page cannot spell is an id this server holds no order for. */
 function orderIdIn(pathname: string): string | null {
   const raw = pathname.slice("/api/order/".length);
   try {
@@ -518,17 +462,12 @@ function orderIdIn(pathname: string): string | null {
   }
 }
 
-/** The face the page asks for, read off disk so nothing on this wall reaches the network. */
 export function wallFont(): Uint8Array {
   return new Uint8Array(readFileSync(new URL("./fonts/jetbrains-mono-latin.woff2", import.meta.url)));
 }
 
 type WallSocket = Pick<Bun.ServerWebSocket<undefined>, "send">;
 
-/**
- * Everything the wall answers, apart from the bundled page: held apart from `Bun.serve` so the
- * suite reaches every route without a listening socket, which a station worker's sandbox refuses.
- */
 export function wallHandler(path: string = dbPath()) {
   const font = wallFont();
   const clients = new Set<WallSocket>();
@@ -607,14 +546,11 @@ export async function serveWall(
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: options.port ?? 0,
-    // The page and every asset it pulls are bundled from this route, so the wall has one
-    // way of being served and `hmr` is the only thing an editing session changes.
     routes: { "/": wallPage },
     development: options.hmr ? { hmr: true } : false,
     fetch,
     websocket,
   });
-  // Bun.serve already holds the event loop; an unref'd poller lets a stopped server's process exit.
   const poll = setInterval(() => {
     if (clients.size === 0) return;
     try {

@@ -30,8 +30,6 @@ describe("reading the rules files out of each repo", () => {
     writeFileSync(join(root, "AGENTS.md"), "# rules\n");
     const db = seeded([root, "/tmp/dim-removed-worktree-does-not-exist"]);
     try {
-      // Not a git checkout, so git reports nothing and only the hashed path is
-      // recorded — which is the branch a removed repo must not be able to stop.
       expect(ingestGuidance(db, { HOME: "/tmp" }).files).toBeGreaterThanOrEqual(0);
     } finally {
       db.close();

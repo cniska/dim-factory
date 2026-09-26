@@ -44,14 +44,6 @@ export class BuildTurnRefused extends Error {
   }
 }
 
-/**
- * The reviewer's own act, refused from any hand but the one this round was opened for.
- * What it raises carries no answer, because whether the finding is fixed or refused is the
- * builder's to say and a hand may only write what it did.
- *
- * Returns the finding rather than the event, since answering it is the next act and the
- * finding is what that act names.
- */
 export function raiseOrderFinding(
   db: Database,
   orderId: string,
@@ -184,11 +176,6 @@ export class FindingRulingRefused extends Error {
   }
 }
 
-/**
- * The open round's reviewer judging a finding an earlier round raised. Refused from any other
- * hand for the reason a finding is, and refused on a finding that is not open, since a settled
- * one has nothing left to judge and a contested one waits on the owner rather than the reviewer.
- */
 export function ruleOnOrderFinding(
   db: Database,
   findingId: number,

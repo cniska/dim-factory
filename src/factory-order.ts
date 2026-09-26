@@ -19,16 +19,11 @@ import type { WorkerHookReport } from "./worker-environment";
 import { checkCommand } from "./workspace-commands";
 import { createWorktree } from "./wt-command";
 
-/** What state the order is in. A claim takes it straight to `working`: an order
- *  already exists before a worker sees it, so taking one and starting it are one act.
- *  `dropped` is the owner's decision that the order will not be built, which is a
- *  different fact from an attempt that failed and goes back to `queued`. */
 export const ORDER_STATUSES = ["queued", "working", "completed", "dropped"] as const;
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export const APPROVAL_HOLD = "approval";
 
-/** Binds at creation only: a table already on disk keeps the CHECK it was born with. */
 export const ORDER_STATUSES_SQL = ORDER_STATUSES.map((status) => `'${status}'`).join(",");
 
 export type { AttemptOutcome, EvidenceReference, OrderEventKind } from "./factory-events";
@@ -37,8 +32,6 @@ export { ATTEMPT_OUTCOMES, ORDER_EVENT_KINDS } from "./factory-events";
 export const ORDER_PRIORITIES = ["urgent", "high", "medium", "low", "unset"] as const;
 export type OrderPriority = (typeof ORDER_PRIORITIES)[number];
 
-/** What is written down before anyone takes it. The branch and the worktree are
- *  derived from the id, so neither is stored. */
 export type Order = {
   id: string;
   project: string;
@@ -50,8 +43,6 @@ export type Order = {
   provenance?: EvidenceReference;
 };
 
-/** What the operator knows only once it has a worker to hand the order to. Who that
- *  worker is comes from the environment it was started in, never from the claim. */
 export type OrderClaim = {
   runId: string;
   sessionId?: string;
@@ -65,7 +56,6 @@ export type OrderClaim = {
 
 export type OrderEvent = {
   kind: OrderEventKind;
-  /** Absent only when the runner failed before a station worker bootstrapped. */
   worker?: string;
   sessionId?: string;
   station?: string;
@@ -99,7 +89,6 @@ export type OrderNotDoneCode =
   | "artifact_revision_required"
   | "review_not_approved";
 
-/** Carries a code because a caller deciding which condition failed must not match on prose. */
 export class OrderNotDone extends Error {
   constructor(
     readonly code: OrderNotDoneCode,
@@ -151,18 +140,11 @@ export class ReviewApprovalRefused extends Error {
 }
 
 const now = (): string => new Date().toISOString();
-/** `completed` and `dropped` end an order. Work that stopped without landing goes back to
- *  `queued`, because it is work nobody is holding; a drop is the owner deciding not to
- *  build it at all, which is not an attempt and does not go back. */
 export const TERMINAL_ORDER_STATUSES: readonly OrderStatus[] = ["completed", "dropped"];
 const terminalStatuses = new Set<OrderStatus>(TERMINAL_ORDER_STATUSES);
 
-/** A refusal is read by whoever typed the command, so it names the act and not the event kind. */
 const VERB_FOR_KIND: Record<string, string> = { completed: "complete", moved: "move" };
 
-/** A claim copies an order's description into the record, so amending or dropping the
- *  words after that would leave a worker building to one statement and the queue
- *  showing another. */
 function assertOrderQueued(db: Database, orderId: string, act: string): void {
   const order = db.query("SELECT status FROM factory_order WHERE id = ?").get(orderId) as {
     status: OrderStatus;
@@ -176,12 +158,6 @@ function assertOrderQueued(db: Database, orderId: string, act: string): void {
   }
 }
 
-/**
- * The hand on an order right now, or nothing. The order carries the run, and the worker that
- * claimed it says whether anyone is still behind that run: a hand can stop without letting
- * go — killed, crashed, a session closed — and an order held by a run nobody is running is
- * an order nobody can take and nobody can drop.
- */
 function liveHolder(db: Database, orderId: string): { worker: string; runId: string } | null {
   const order = db.query("SELECT run_id FROM factory_order WHERE id = ?").get(orderId) as {
     run_id: string | null;
@@ -197,12 +173,6 @@ function liveHolder(db: Database, orderId: string): { worker: string; runId: str
   return { worker: claimed.worker, runId: order.run_id };
 }
 
-/**
- * A drop says the order will not be built, which stays true of an order that was taken and
- * handed on: an order can turn out to have been built already, or to have been the wrong
- * thing to ask for, and the owner's word for that is the same one either way. The one thing
- * it cannot be said over is a hand still on the work, which the drop would take from it.
- */
 function assertDroppable(db: Database, orderId: string): void {
   const holder = liveHolder(db, orderId);
   if (holder) {
@@ -322,11 +292,6 @@ export function queueOrder(db: Database, order: Order, worker: string, at = now(
   })();
 }
 
-/**
- * A stopped floor finishes what it holds and takes nothing new: killing a worker
- * mid-write leaves a worktree nobody owns and a commit half made, so the refusal
- * sits here, where work enters the floor, and nowhere an order already running passes.
- */
 export function claimOrder(
   db: Database,
   orderId: string,
@@ -356,9 +321,6 @@ export function claimOrder(
         `order ${orderId} is held and the owner releases it: ${order.hold}`,
       );
     }
-    // A move hands the order to the next station rather than finishing it, and lets go of
-    // the run that held it, so the hand waiting there takes it while the order stays
-    // `working`. What refuses a second hand is a first one still there.
     const holder = liveHolder(db, orderId);
     if (holder) {
       throw new Error(`order ${orderId} is already working under ${holder.runId}, held by ${holder.worker}`);
@@ -370,9 +332,6 @@ export function claimOrder(
       .query<{ role: string }, [string]>("SELECT role FROM factory_worker WHERE name = ?")
       .get(claim.operatorWorker)?.role;
     if (operatorRole !== "operator") throw new Error(`worker ${claim.operatorWorker} is not an operator`);
-    // Made before the claim is written, and inside the same transaction, so a claim
-    // that cannot get a worktree writes no claim — reusing one already there is how
-    // a failed order is taken again in place.
     createWorktree(orderId, cwd);
     db.run(
       `UPDATE factory_order SET run_id = ?, session_id = ?, station = ?,
@@ -408,14 +367,6 @@ export function claimOrder(
   })();
 }
 
-/**
- * The projection follows the move because that column is what a card is read by
- * (`src/factory-wall.ts` prefers it over the latest event's station), and the
- * event ledger keeps every station the order passed through.
- *
- * The run goes with it: the hand that worked the order at the station it is leaving is
- * done with it, and an order carrying no run is one the next station's worker can claim.
- */
 export function moveOrder(
   db: Database,
   orderId: string,
@@ -456,11 +407,6 @@ export function moveOrder(
 
 export type OrderCommit = { sha: string; subject: string | null; recordedAt: string };
 
-/**
- * The order's commits as its branch now carries them, in the order they were recorded: every
- * sha recorded, less each one a rebase retired. A retired sha stays in the record as history
- * and never counts as landed, reviewed or current.
- */
 export function currentOrderCommits(db: Database, orderId: string): OrderCommit[] {
   return db
     .query<OrderCommit, [string]>(
@@ -479,8 +425,6 @@ export function currentOrderCommits(db: Database, orderId: string): OrderCommit[
 
 export type RecordedConflict = Omit<Replay, "worktree"> & { paths: string[]; stoppedAt: string };
 
-/** The conflict a ship stopped on that no rewrite has resolved since: the rebase it recorded, the
- *  commit it stopped on and the paths it stopped in. */
 export function pendingRebaseConflict(db: Database, orderId: string): RecordedConflict | null {
   const row = db
     .query<{ evidence: string }, [string]>(
@@ -515,11 +459,6 @@ export function latestOrderCommit(db: Database, orderId: string): OrderCommit | 
   return currentOrderCommits(db, orderId).at(-1) ?? null;
 }
 
-/**
- * Where `sha` stands now, followed through every rewrite that replaced it. Null when a rewrite
- * on the way changed a patch, since what was approved at `sha` is then not what the branch holds.
- * Each rewrite row exists only because its re-check passed.
- */
 export function carriedThroughRewrites(db: Database, orderId: string, sha: string): string | null {
   let current = sha;
   for (const rewrite of db
@@ -574,8 +513,6 @@ export function assertReviewApproved(db: Database, orderId: string): void {
   }
 }
 
-/** Current state rather than history: nothing has wanted to read back what an order
- *  used to be ranked at, and a row that wants one is its own change. */
 export function setOrderPriority(
   db: Database,
   orderId: string,
@@ -631,8 +568,6 @@ function setOrderHoldInTransaction(db: Database, orderId: string, hold: string |
   return db.run("UPDATE factory_order SET hold = ?, updated_at = ? WHERE id = ?", [hold, at, orderId]);
 }
 
-/** An overturned refusal is work for the builder, so the review's approval hold has nothing left
- *  to approve. A hold at another station waits on that station's artifact and stays. */
 export function releaseReviewApprovalInTransaction(
   db: Database,
   orderId: string,
@@ -832,11 +767,6 @@ export function returnOrderArtifact(
   })();
 }
 
-/**
- * The owner's decision that an order will not be built, kept as a status rather than a
- * delete: why an order was not built is worth finding later, and a deletion is the one write
- * this record cannot hold. What it is refused on is `assertDroppable`.
- */
 export function dropOrder(db: Database, orderId: string, reason: string, worker: string, at = now()): number {
   return db.transaction(() => {
     recordOwnerVerdictInTransaction(db, orderId, "dropped", reason, worker, at);
@@ -849,11 +779,6 @@ export function dropOrder(db: Database, orderId: string, reason: string, worker:
   })();
 }
 
-/**
- * Corrects a queued order's own words. Refused once anything has claimed it: a claim copies
- * the description into the record, so amending afterward would leave a worker building to
- * one statement while the queue shows another.
- */
 export function amendOrder(
   db: Database,
   orderId: string,
@@ -1013,8 +938,6 @@ function assertReturnedArtifactRevised(
   }
 }
 
-/** `worktree` is where the completion gate reads git: the checkout the work was done
- *  in, which the caller knows and a stored path is free to be wrong about. */
 export function appendOrderEvent(
   db: Database,
   orderId: string,
@@ -1025,7 +948,6 @@ export function appendOrderEvent(
   return db.transaction(() => appendOrderEventInTransaction(db, orderId, event, at, worktree))();
 }
 
-/** A failed attempt and the operator's act of making it retryable are separate moments. */
 export function recoverOrderFailure(
   db: Database,
   orderId: string,
@@ -1048,7 +970,6 @@ export function recoverOrderFailure(
           )
           .get(orderId, order.run_id)?.worker ?? undefined)
       : undefined;
-    // Closed first because a review_closed is refused once `failed` has queued the order.
     const openReview = db
       .query<{ id: number; reviewer: string | null }, [string]>(
         `SELECT r.id, coalesce(r.reviewer, a.accepted_worker) AS reviewer
@@ -1086,7 +1007,6 @@ export function recoverOrderFailure(
   })();
 }
 
-/** Returns the row it wrote, which is the id a command prints for the spool to attribute. */
 export function appendOrderEventInTransaction(
   db: Database,
   orderId: string,
@@ -1150,8 +1070,6 @@ export function appendOrderEventInTransaction(
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     eventValues(orderId, event, event.ts ?? at),
   );
-  // A failure hands the work back rather than ending it, so the row returns to the
-  // queue and the run it was claimed for is cleared with it.
   const projected = event.kind === "failed" ? "queued" : (event.status ?? null);
   db.run(
     `UPDATE factory_order SET status = coalesce(?, status), updated_at = ?,
@@ -1243,8 +1161,6 @@ export function recordOrderFile(
   at = now(),
 ): void {
   assertOrderBuilding(db, orderId);
-  // One row per file for the whole order, so a later slice adds its lines to the row an earlier
-  // one wrote; a slice git could not count leaves the total uncounted.
   db.run(
     `INSERT INTO factory_order_file (order_id, worker, path, added, removed, recorded_at) VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT (order_id, path) DO UPDATE SET
@@ -1300,12 +1216,6 @@ export function recordOrderCheck(
   return db.transaction(() => recordOrderCheckInTransaction(db, orderId, check, worker, at).eventId)();
 }
 
-/**
- * Records a rebase at ship together with the passing check it was re-run under: a commit row and
- * a `commit_rewritten` event for each recorded commit it replayed, naming the sha it retires, then
- * the check, then the rewrite itself. Commits the branch carried but the order never recorded are
- * replayed without becoming the order's.
- */
 export function recordOrderRewrite(
   db: Database,
   orderId: string,
@@ -1369,14 +1279,6 @@ export class ReviewNotOpen extends Error {
   }
 }
 
-/**
- * Opens a round over the commits between two shas. A round reads a sha rather than a tree
- * because a sha cannot move while it is being read, so what the reviewer saw and what
- * ships are the same thing without anything having to hold the worktree still.
- *
- * The reviewer is minted by the caller that spawns it and named here, which is what lets a
- * finding be refused unless it comes from the hand this round was opened for.
- */
 export function openOrderReview(
   db: Database,
   orderId: string,
@@ -1444,11 +1346,6 @@ export function openAssignedOrderReview(
   })();
 }
 
-/**
- * Written from the spawned reviewer's exit rather than from anything it said: a reviewer
- * that died and one that finished having found nothing are the same empty set of findings,
- * and only the exit code tells them apart.
- */
 export function closeOrderReview(
   db: Database,
   reviewId: number,
@@ -1478,8 +1375,6 @@ export function closeOrderReview(
       { kind: "review_closed", worker, reviewId, reason },
       at,
     );
-    // Any open finding returns the order to the builder, and approval would refuse it; a contested
-    // refusal still holds here, where the owner rules on it.
     const returnsWork = orderFindingStandings(db, row.order_id).some((finding) => finding.state === "open");
     if (outcome === "closed" && !returnsWork && nextOrderSlice(db, row.order_id) === null) {
       setOrderHoldInTransaction(db, row.order_id, APPROVAL_HOLD, at);
@@ -1625,7 +1520,6 @@ export function recordOrderDocument(
   ]);
 }
 
-/** Checked before a planner starts as well as when its plan arrives, so a plan that could not be recorded is never worked. */
 export function assertOrderPlanning(db: Database, orderId: string): void {
   assertOrderWorking(db, orderId);
   const order = db.query("SELECT station FROM factory_order WHERE id = ?").get(orderId) as {
@@ -2019,8 +1913,6 @@ export function approveOrderReview(db: Database, orderId: string, worker: string
       `review ${review.id} for order ${orderId} has no Review artifact`,
     );
   }
-  // A finding holds the order from the round that raised it until a later round settles it or
-  // the owner rules on its refusal.
   const standings = orderFindingStandings(db, orderId);
   const open = standings.filter((finding) => finding.state === "open").map((finding) => finding.id);
   if (open.length > 0) {
@@ -2062,7 +1954,6 @@ export function approveOrderReview(db: Database, orderId: string, worker: string
   })();
 }
 
-/** A check must follow the latest commit in the append-only event order. */
 function assertChecked(db: Database, orderId: string): void {
   const passed = db
     .query(
@@ -2087,13 +1978,6 @@ function assertChecked(db: Database, orderId: string): void {
   }
 }
 
-/**
- * A branch that is finished and unmerged is the state work rots in, so being on
- * the trunk is part of being done rather than a step after it. Where the repo
- * cannot place the commit at all, the refusal says which reading failed rather
- * than reporting the work as unmerged on the strength of a git command that did
- * not answer.
- */
 function assertIntegrated(db: Database, orderId: string, worktree: string): void {
   const shas = currentOrderCommits(db, orderId).map((row) => row.sha);
   if (shas.length === 0) {
@@ -2131,8 +2015,6 @@ function assertIntegrated(db: Database, orderId: string, worktree: string): void
 export function assertOrderWorking(db: Database, orderId: string): void {
   const status = orderStatus(db, orderId);
   if (status === "working") return;
-  // A queued order is short of the point that takes evidence rather than past it,
-  // and this refusal is read by whoever typed the command.
   throw new Error(
     status === "queued" ? `order ${orderId} is not claimed` : `order ${orderId} is already ${status}`,
   );
@@ -2150,10 +2032,6 @@ function assertOrderBuilding(db: Database, orderId: string): void {
   );
 }
 
-/**
- * The check a rebase at ship is held to: the repo's declared check, run in the check sandbox at
- * the rewritten head, since the code it runs is the builder's replayed onto a trunk it never saw.
- */
 export function recheck(worktree: string, env: Env, sandbox: string[]): OrderCheck {
   const declared = checkCommand(worktree);
   if (!declared) {
@@ -2167,8 +2045,6 @@ export function recheck(worktree: string, env: Env, sandbox: string[]): OrderChe
     command: declared.command,
     canary: join(dataDir(env), `check-canary-${randomUUID()}`),
     sandbox,
-    // PATH alone: the caller's env carries the operator's factory identity, which the builder's
-    // code must not run with.
     env: env.PATH === undefined ? {} : { PATH: env.PATH },
   });
   return {
@@ -2180,17 +2056,6 @@ export function recheck(worktree: string, env: Env, sandbox: string[]): OrderChe
   };
 }
 
-/**
- * Lands an order's own commits on the repo's trunk. Whether it shipped is the trunk fact
- * `assertIntegrated` already reads, not a bit this sets. Held under the factory lock because
- * two orders shipping at once is a race on the same git checkout, not on the database.
- *
- * Where the trunk has moved, the branch is rebased, re-checked and recorded as rewritten, all
- * under that lock. A red check takes the rebase back. A rebase that changed a patch keeps its
- * rewritten branch but lands nothing: the order returns to review, since what was approved is
- * not what the branch now holds. A conflict is recorded with the rebase it stopped, and the
- * order returns to build, where the builder resolves it in the worktree left mid-rebase.
- */
 export function shipOrder(
   db: Database,
   orderId: string,

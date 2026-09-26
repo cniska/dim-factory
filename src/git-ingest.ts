@@ -5,15 +5,8 @@ import { isScratchRepo } from "./scratch";
 
 export type GitReport = { repos: number; commits: number; files: number };
 
-/** Re-read this many days each sync, so a rebase that rewrote recent history lands. */
 const OVERLAP_DAYS = 7;
 
-/**
- * Commits for every working directory the corpus names that is still a git repo
- * and is not a scratch tree. The session rows are the only source of which repos
- * matter: this never scans the disk for repos the owner never worked in from an
- * agent session.
- */
 export function ingestCommits(db: Database): GitReport {
   const cwds = db
     .prepare<{ cwd: string }, []>("SELECT DISTINCT cwd FROM session WHERE cwd IS NOT NULL")

@@ -79,7 +79,6 @@ const ADD_FLAGS = ["--title", "--line", "--description", "--priority", "--hold",
 
 const fail = (message: string): Error => new OrderCommandError(message);
 
-/** A delegation that names no harness runs under the operator's own, never under a guessed one. */
 function selectedHarness(db: Database, given: Map<string, string>, operator: string): HarnessName {
   const named = given.get("--harness");
   if (named !== undefined) return parseHarness(named, fail);
@@ -138,12 +137,6 @@ function add(
   return `queued ${orderId} on ${project}`;
 }
 
-/**
- * Everything the order records after this is written by a session hook, so a run started
- * behind one that is missing or out of date leaves an order with no evidence under it and
- * nothing says so until the record is read. The claim is where a run begins and the one
- * place that can stop it, so the machine is read here rather than after work has started.
- */
 function claim(db: Database, orderId: string, args: string[], worker: string, env: Env, cwd: string): string {
   const given = flags(args, CLAIM_FLAGS);
   assertOperator(db, worker, "claim an order");
@@ -164,21 +157,12 @@ function claim(db: Database, orderId: string, args: string[], worker: string, en
   return `${orderId} is working`;
 }
 
-/**
- * Read as digits rather than through `Number`, which turns "" and " " into 0 and
- * "1e3" into 1000: a check that never ran would be recorded as one that passed.
- */
 function exitCode(given: Map<string, string>): number {
   const spec = required(given, "--exit");
   if (!/^-?\d+$/.test(spec)) throw new OrderCommandError(`--exit ${spec} is not an exit code`);
   return Number(spec);
 }
 
-/**
- * A count git reported, read as digits for the same reason an exit code is: a
- * line that says `-`, which is what numstat gives for a binary file, is not zero
- * lines changed and is recorded as no count at all.
- */
 function lineCount(given: Map<string, string>, flag: string): number | undefined {
   const spec = given.get(flag);
   if (spec === undefined || spec === "-") return undefined;
@@ -186,10 +170,6 @@ function lineCount(given: Map<string, string>, flag: string): number | undefined
   return Number(spec);
 }
 
-/**
- * Each of these records one row and returns what it wrote, because the caller is a
- * skill reading its own shell output back rather than a caller holding a value.
- */
 type Evidence = {
   flags: string[];
   record: (db: Database, id: string, given: Map<string, string>, worker: string) => string;
@@ -279,18 +259,8 @@ function ship(
   return `${orderId} is ${SHIP_OUTCOME_TEXT[outcome.landed]}`;
 }
 
-/** How an order can stop: it landed, or it did not and goes back among the work
- *  nobody holds, carrying why. */
 const STOP_KINDS = ["completed", "failed"] as const;
 
-/**
- * The completion gate is answered from the primary checkout rather than from the order's
- * own worktree: whether a commit reaches the trunk is a fact about the repository, and
- * `refs/remotes/origin/HEAD` and the trunk branch are shared by every worktree of it. A
- * worktree is one place that fact can be read from and the one place that can be missing —
- * an order worked in the primary checkout never had one, and a completed order's is removed
- * a line below — so reading it there would refuse an order that had plainly landed.
- */
 function stop(db: Database, orderId: string, args: string[], cwd: string, worker: string): string {
   const [kind, ...rest] = args;
   if (!kind) throw new OrderCommandError("stop needs how the order stopped");
@@ -315,8 +285,6 @@ function stop(db: Database, orderId: string, args: string[], cwd: string, worker
     undefined,
     repoRoot(cwd),
   );
-  // Completing an order lands everything it will, so its worktree is gone; failing
-  // one keeps it, because it may hold work no commit has and is claimed again in place.
   if (kind === "completed") removeWorktree(orderId, { cwd });
   return kind === "completed" ? `${orderId} is completed` : `${orderId} is queued again`;
 }
@@ -341,7 +309,6 @@ function drop(db: Database, orderId: string, args: string[], worker: string): st
   return `${orderId} is dropped: ${reason}`;
 }
 
-/** The owner's word on a contested refusal, typed by the operator the way an approval is. */
 function ruleOnRefusal(
   db: Database,
   findingSpec: string | undefined,
@@ -387,8 +354,6 @@ export function runOrderCommand(
     if (!project) throw fail("--project is required outside a checkout with a remote");
     const limit = given.get("--limit");
     if (limit !== undefined && !/^[1-9]\d*$/.test(limit)) throw fail("--limit takes a positive whole number");
-    // JSON because a station reads this rather than a person: an order's own words reach
-    // the worker unedited only if nothing in between reformats them.
     return JSON.stringify(
       {
         ready: readyOrders(db, project, limit === undefined ? undefined : Number(limit)),
@@ -399,8 +364,6 @@ export function runOrderCommand(
     );
   }
   if (!command || !orderId) throw new OrderCommandError("order takes a subcommand and an order id");
-  // Resolved once, before anything is written: every act below records who did it, and a
-  // caller that cannot say is refused here rather than writing a moment nobody did.
   const worker = env.DIM_WORKER_ASSIGNMENT_ID ? resolveAssignedWorker(db, env) : resolveWorker(db, env);
   if (command === "add") return add(db, orderId, rest, defaultProject, worker);
   if (command === "claim") return claim(db, orderId, rest, worker, env, cwd);
@@ -459,8 +422,6 @@ export function runOrderCommand(
     }
     throw new OrderCommandError(`${orderId} is not at an approvable station`);
   }
-  // Own property only: an object literal inherits `toString` and `constructor`, and
-  // `dim order toString` would reach one instead of the refusal every other name gets.
   if (Object.hasOwn(EVIDENCE, command)) {
     const evidence = EVIDENCE[command] as Evidence;
     return evidence.record(db, orderId, flags(rest, evidence.flags), worker);

@@ -182,8 +182,6 @@ function printReport(report: SyncReport | RebuildReport): void {
   if (report.orphanSubagents.length > 0) {
     console.log(`${report.orphanSubagents.length} subagents whose parent session is gone, recorded unlinked`);
   }
-  // The cursor has already advanced past these lines, so this is the only time
-  // they are ever named: nothing re-reads them short of `dim rebuild`.
   for (const drop of report.dropped) {
     warn(
       `dim: ${drop.path}: ${drop.lines.length} lines were not JSON and are lost ` +
@@ -336,10 +334,6 @@ function printSkillPlan(write: boolean): void {
   for (const link of retired) console.log(`removed ${link}`);
 }
 
-/**
- * The checkouts the corpus has seen commits from: where the rule is actually
- * broken is where it is worth gating, and a repo with a gate of its own keeps it.
- */
 function printCommitGatePlan(write: boolean): void {
   const owners = process.argv.filter((a) => a.startsWith("--owner=")).map((a) => a.slice("--owner=".length));
   const db = openReadOnly(dbPath());
@@ -399,16 +393,6 @@ function printCommitGatePlan(write: boolean): void {
   for (const copy of done.strandedCopies) console.log(`removed ${copy}`);
 }
 
-/**
- * Runs before every session once wired to the SessionStart hook, so it may never
- * fail and never print a diagnostic: anything unexpected is silence, and the
- * session starts as it would have without it.
- */
-/**
- * The hook's stdin, which carries the session id nothing else in this process
- * knows. A terminal is never read from: `dim wake` run by hand has no payload
- * and would wait for one that never comes.
- */
 async function hookPayload(): Promise<{ session_id?: string; cwd?: string }> {
   if (Bun.stdin.stream().locked || process.stdin.isTTY) return {};
   try {
@@ -424,8 +408,6 @@ async function runWake(args: string[]): Promise<void> {
   const payload = await hookPayload();
   const cwd = payload.cwd ?? process.cwd();
 
-  // Before the read, and in its own try: what was in force at this moment is
-  // knowable only now, while what wake prints can be worked out again later.
   if (payload.session_id) {
     try {
       spoolWalk({
@@ -434,14 +416,9 @@ async function runWake(args: string[]): Promise<void> {
         seen_at: new Date().toISOString(),
         surfaces: resolveWalk(tool, cwd),
       });
-    } catch {
-      // a hook that can fail is a hook that can stop a session from starting
-    }
+    } catch {}
   }
 
-  // The Next needs the database and what the repo declares does not, so they
-  // fail apart: before the first sync there is no database, and that is exactly
-  // the session most helped by being told the repo's own check.
   let wake: Wake | null = null;
   try {
     const db = openReadOnly(dbPath());
@@ -450,21 +427,16 @@ async function runWake(args: string[]): Promise<void> {
     } finally {
       db.close();
     }
-  } catch {
-    // no database, no Next to read
-  }
+  } catch {}
 
   try {
     const wire = wireFor(tool, renderWake(wake, cwd));
     if (wire) console.log(wire);
-  } catch {
-    // a hook that can fail is a hook that can stop a session from starting
-  }
+  } catch {}
 }
 
 const DEFAULT_CUTOFF = 10;
 
-/** A cutoff that is not a whole number above zero is refused, never rounded to a default. */
 function benchCutoff(args: string[]): number {
   const at = args.indexOf("--k");
   if (at === -1) return DEFAULT_CUTOFF;
@@ -480,10 +452,6 @@ function benchCutoff(args: string[]): number {
   return k;
 }
 
-/**
- * Prints the score per question as well as the mean, because a mean over a
- * corpus this small moves for one question and says nothing about which.
- */
 async function runBenchCommand(args: string[]): Promise<void> {
   const path = corpusPath();
   if (!existsSync(path)) {
@@ -503,8 +471,6 @@ async function runBenchCommand(args: string[]): Promise<void> {
             ? `nothing of the ${questions.length} questions in the corpus could be scored`
             : `${scored} of ${questions.length} questions scored at k=${k}: ` +
               `recall ${report.recall.toFixed(3)}, nDCG ${report.ndcg.toFixed(3)}.` +
-              // A query caps its own rows, so a k above that cap measures the
-              // cap and the figure would carry a cutoff nothing reached.
               (report.capped > 0
                 ? ` ${report.capped} of them returned fewer than ${k} rows, so their score is over what came back.`
                 : ""),
@@ -526,10 +492,6 @@ async function runBenchCommand(args: string[]): Promise<void> {
   }
 }
 
-/**
- * The backstop for the commit gate: a hook is skippable with `--no-verify` and
- * absent on a fresh clone, so CI reads what actually landed.
- */
 function runCheckCommits(range: string | undefined): void {
   if (!range) throw new Error("check-commits needs a revision range, e.g. main..HEAD");
   const offenses = checkRange(range);
@@ -540,10 +502,7 @@ function runCheckCommits(range: string | undefined): void {
   console.log(`every authored subject in ${range} holds`);
 }
 
-/** The one command here that loads a model; it reads distilled text, never a transcript. */
 async function runEmbed(): Promise<void> {
-  // Before the lock: fetching the weights the first time is the slowest thing
-  // here, and holding the write lock through it would block a scheduled sync.
   const embed = await downloadEmbedder();
   await withLock(async () => {
     const db = openDb(dbPath());
@@ -570,12 +529,6 @@ async function runEmbed(): Promise<void> {
   });
 }
 
-/**
- * The escape hatch the named questions are grown from: a question worth asking
- * twice becomes one of them, and until it is, asking it should not mean leaving
- * the tool. The connection is read-only, so a statement that writes is refused
- * by SQLite rather than by a rule here that could be wrong about what writes.
- */
 function statementIn(args: string[]): string | undefined {
   const rows = args.indexOf("--rows");
   const value = rows === -1 ? -1 : rows + 1;
@@ -608,10 +561,6 @@ function runSql(statement: string | undefined, json: boolean, maxRows: number): 
   }
 }
 
-/**
- * Read-only, so a broken collection path can be diagnosed without writing to a
- * database that may be the thing at fault.
- */
 function runDoctor(): void {
   const db = openReadOnly(dbPath());
   try {
@@ -633,10 +582,6 @@ function runDoctor(): void {
   }
 }
 
-/**
- * The one write a reader makes. Nothing derives a correction automatically —
- * whether a prompt told the agent it was wrong is the owner's call, not a rule's.
- */
 function runLabel(args: string[]): void {
   const [messageId, label] = args;
   const ruleAt = args.indexOf("--rule");
@@ -665,10 +610,6 @@ function runLabel(args: string[]): void {
   }
 }
 
-/**
- * The builder's own record of how it answered a reviewer, written where the slice
- * was built so the repo is read rather than passed in.
- */
 function runFinding(args: string[]): void {
   let finding: Finding;
   try {
@@ -773,9 +714,6 @@ async function runQuery(args: string[]): Promise<void> {
   }
   const arg = args.find((a) => !a.startsWith("--") && a !== name && !flagValues.has(a));
   const since = windowFromArgs(args, { spansHistory: query.spansHistory });
-  // Resolved here, like `since`, so ranking by meaning costs no query its
-  // synchronous shape: `digest` composes other queries and would otherwise have
-  // to await every one of them.
   const question = query.embedsArg && arg ? await embedQuestion(arg) : undefined;
   const db = openReadOnly(dbPath());
   const started = Date.now();
@@ -787,8 +725,6 @@ async function runQuery(args: string[]): Promise<void> {
         args.includes("--json") ? JSON.stringify(result, null, 2) : renderTable(result, rowsFromArgs(args)),
       );
     } finally {
-      // In the `finally`, so a query that threw still records which branch it
-      // was on — the case where that is least obvious from the output.
       trace({
         event: "query.completed",
         command: "q",
@@ -836,11 +772,6 @@ try {
     case "wall":
       {
         const dev = process.argv.includes("--dev");
-        // Bun's own hmr reloads the client bundle and nothing else, so a server
-        // module edited after boot keeps serving what it was loaded with: the board
-        // re-renders against stale logic and looks wrong rather than old. `--hot`
-        // reloads both halves, and re-running under it here is what makes --dev mean
-        // what it says. The variable is how the second run knows not to do it again.
         if (dev && process.env[WALL_HOT_ENV] !== "1") {
           const child = Bun.spawn(["bun", "--hot", import.meta.path, ...process.argv.slice(2)], {
             env: { ...process.env, [WALL_HOT_ENV]: "1" },
@@ -850,9 +781,6 @@ try {
         }
         const port = wallPort();
         const server = await serveWall({ port, hmr: dev }).catch((error: unknown) => {
-          // Which of the two is stale is not knowable from here — today's was the one
-          // already listening, eleven hours old — so this names both ways out rather
-          // than sending the reader to whichever happens to hold the port.
           if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
             throw new WallPortError(
               "in-use",
@@ -866,8 +794,6 @@ try {
       }
       break;
     case "sql":
-      // The first argument that is neither a flag nor a flag's value, so
-      // `sql --rows 80 "<select>"` reads the statement rather than the 80.
       runSql(
         statementIn(process.argv.slice(3)),
         process.argv.includes("--json"),
@@ -885,8 +811,6 @@ try {
         const root = checkoutRoot(process.cwd());
         const db = openDb(dbPath());
         try {
-          // The same owner/repo `repo_commit.label` and `dim finding` key on, so an order, a
-          // commit and a finding in one project all join on one identity.
           writeFactorySuccess(
             "order",
             await runOrderCommandLive(db, process.argv.slice(3), root ? labelFor(root) : null),
@@ -931,9 +855,6 @@ try {
       await runWake(process.argv.slice(3));
       break;
     case "check-command":
-      // The pre-commit hook asks this; silence means nothing declared and no gate.
-      // Git runs a hook at the toplevel, but a person types this wherever they
-      // are, and the answer is the repo's rather than the directory's.
       {
         const root = checkoutRoot(process.cwd());
         const declared = root === null ? null : checkCommand(root);
@@ -962,9 +883,6 @@ try {
       await runBenchCommand(process.argv.slice(3));
       break;
     default:
-      // To stderr, because a subcommand that does not exist must put nothing on
-      // stdout: the pre-commit hook evaluates what `dim check-command` prints,
-      // and a usage blob arriving there is a gate running the help text.
       warn(USAGE);
       process.exit(1);
   }
@@ -980,13 +898,10 @@ try {
     writeFactoryError(factoryCommand, error);
     process.exit(1);
   }
-  // wt speaks as wt: its messages are pinned by scripts/wt.test.sh.
   if (error instanceof WtError) {
     warn(`wt: ${error.message}`);
     process.exit(1);
   }
-  // A caller that got the line wrong is shown the line, which a database error
-  // reaching the same exit would only bury.
   if (error instanceof FactoryStopError) {
     warn(`dim: ${error.message}`);
     if (error.code === "usage") warn(FACTORY_USAGE);
@@ -1002,8 +917,6 @@ try {
     if (error.message !== OPERATOR_USAGE) warn(OPERATOR_USAGE);
     process.exit(1);
   }
-  // Every `dim order` write names the worker that made it, so a caller nothing issued
-  // is told how to become one rather than left with a constraint violation.
   if (error instanceof WorkerUnknown) {
     warn(`dim: ${error.message}`);
     process.exit(1);

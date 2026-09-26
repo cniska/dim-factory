@@ -13,8 +13,6 @@ export const STATION_LABELS: Record<WallStation, string> = {
   ship: "Ship",
 };
 
-/** The snapshot arrives ranked — what needs a person first, then the rest by how recently
- *  something happened — so a column keeps the order it was handed. */
 export function ordersByStage(orders: WallOrder[]): Record<WallStage, WallOrder[]> {
   return WALL_COLUMNS.reduce(
     (columns, column) => {

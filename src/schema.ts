@@ -1,24 +1,3 @@
-// Every table here is one-to-one with records in the source files and is rebuilt
-// by re-reading them, so a schema change is `dim rebuild`, not a migration. The
-// exceptions carry the reason at the table: guidance_walk, trace_event and
-// finding have no source to re-read, embedding holds vectors only a model can
-// produce again, and correction_label, hook_event and the factory order records
-// have no source either but are dropped and written back row for row.
-// SCHEMA_VERSION exists so sync can refuse to run against a database only a
-// re-read can correct: a changed column, or a changed rule for what identifies a
-// row, since rows already written keep the old identity. Adding a table is
-// neither, because every write opens the database through SCHEMA_SQL, which
-// creates it. That exemption covers the run that adds it and nothing after: from
-// the first write onward a database holds the table, CREATE TABLE IF NOT EXISTS
-// leaves it as it is, and changing one of its columns strands every database that
-// already ran the old statement. Whether a table is new is a fact about the
-// databases on disk rather than about the diff, and this one was materialized by
-// a wall reloading mid-edit before it was ever committed, so a column that
-// changes after the statement has run once changes with a bump.
-// src/schema-version.test.ts pins the version with a digest of SCHEMA_SQL, so
-// every edit here changes that one line and two branches editing the schema
-// conflict there rather than merging into one version number.
-
 import { ATTEMPT_OUTCOMES_SQL, ORDER_EVENT_KINDS_SQL } from "./factory-events";
 import { ORDER_STATUSES_SQL } from "./factory-order";
 import { HARNESSES_SQL } from "./harness-name";

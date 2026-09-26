@@ -1,11 +1,5 @@
 import { existsSync } from "node:fs";
 
-/**
- * Commits are read with `git log` against repos already on disk: no network, no
- * credentials, nothing this process could not do offline. A repo that has been
- * deleted or moved is skipped rather than erroring — the corpus names 174 working
- * directories and most of them are scratch trees that no longer exist.
- */
 export type Commit = {
   sha: string;
   repo: string;
@@ -19,7 +13,6 @@ export type Commit = {
 const FIELD = "";
 const RECORD = "";
 
-/** The Conventional Commits type, which is the whole point: `fix` is a verdict. */
 export function commitKind(subject: string): string | null {
   const match = /^([a-z]+)(\([^)]*\))?!?:/.exec(subject);
   return match ? (match[1] as string) : null;
@@ -30,17 +23,11 @@ function run(args: string[], cwd: string): string | null {
   return proc.success ? new TextDecoder().decode(proc.stdout) : null;
 }
 
-/** The work tree's own root, so a worktree and its primary checkout fold together. */
 export function repoRoot(dir: string): string | null {
   if (!existsSync(dir)) return null;
   return run(["rev-parse", "--show-toplevel"], dir)?.trim() || null;
 }
 
-/**
- * `--since` rather than a stored sha: a sha cursor breaks on the rebases this
- * history is full of, where the commit it names stops existing. Re-reading a few
- * days each sync costs little and the insert ignores what is already there.
- */
 export function readCommits(repo: string, since: string | null): Commit[] {
   const args = [
     "log",

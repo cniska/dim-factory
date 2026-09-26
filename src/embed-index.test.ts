@@ -16,7 +16,6 @@ Get the shared commit gate installed, then delete the rule it holds.
 - Something that must not reach the block.
 `;
 
-/** Deterministic and unit length, so the index can be tested without a model on disk. */
 const fake: Embedder = async (texts) =>
   texts.map((text) => {
     const v = new Float32Array(EMBED_DIMS);

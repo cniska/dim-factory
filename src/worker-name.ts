@@ -1,15 +1,3 @@
-/**
- * What a factory worker is called: `nut-73`, `capacitor-8`.
- *
- * A word and a number rather than a written-out list of names, because a pair drawn from a
- * list and a range is as many names as anyone will ever need, where a list of finished
- * names is as long as it is. The factory issues the name, so it is the identity every
- * moment holds rather than a label over one.
- *
- * The vocabulary is a factory's — materials, signals and parts — so a worker never reads as
- * a person and never borrows a name from somewhere a reader has to recognize.
- */
-
 import { randomInt } from "node:crypto";
 
 const WORDS = [
@@ -273,19 +261,10 @@ const WORDS = [
 
 const NUMBERS = 100;
 
-/** Every name the vocabulary can issue, which is what a draw picks from. */
 export const WORKER_NAMES: readonly string[] = WORDS.flatMap((word) =>
   Array.from({ length: NUMBERS }, (_, number) => `${word}-${number}`),
 );
 
-/**
- * A name drawn at random from the ones nothing holds. Chosen from the free names rather
- * than retried until a draw misses the held ones, so it neither collides nor slows as the
- * space fills, and a name says nothing about the order its holder was issued in.
- *
- * `pick` returns an index below the count it is given; a test passes its own to read the
- * draw off a known position.
- */
 export function randomWorkerName(taken: ReadonlySet<string>, pick = randomInt): string {
   const free = WORKER_NAMES.filter((name) => !taken.has(name));
   if (free.length === 0)

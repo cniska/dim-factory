@@ -6,22 +6,10 @@ import { type PassageRef, parsePassageRef } from "./passage-ref";
 import { findQuery, type QueryContext } from "./queries";
 import { ndcgAtK, recallAtK } from "./rank-metrics";
 
-/** Where a scored question's answer is read from the rows a query returned. */
 const REF_COLUMN = "ref";
 
-/** How much of an id a query prints, which is the width a label is matched at. */
 const PRINTED_REF = 8;
 
-/**
- * What a label may name and still be answerable. Read from the sources a passage
- * is distilled from rather than from the vectors built over them, so a label is
- * checked without the runner consulting the index it is scoring, and the rule
- * cannot drift from what `search` can print — `buildIndex` reads the same call.
- *
- * Commit subjects are left out, because they are distilled per author and the
- * runner is given none. So a sha is checked only for being a commit this record
- * holds, and one whose subject nobody distilled scores zero unexplained.
- */
 function distilled(db: Database): { messages: Set<string>; sessions: Set<string> } {
   const messages = new Set(readDistilled(db, null).map((item) => item.ref));
   const holder = db.prepare<{ session_id: string }, [string]>("SELECT session_id FROM message WHERE id = ?");
@@ -33,7 +21,6 @@ function distilled(db: Database): { messages: Set<string>; sessions: Set<string>
   return { messages, sessions };
 }
 
-/** Why a labeled ref cannot be scored, or undefined where the record holds it. */
 function refusal(db: Database, ref: string, known: ReturnType<typeof distilled>): string | undefined {
   const { id, at } = parsePassageRef(ref);
   const count = (sql: string, params: string[]): number =>
@@ -58,24 +45,15 @@ function refusal(db: Database, ref: string, known: ReturnType<typeof distilled>)
   if (named.length === 0) {
     return `${ref} names no message in that session; a passage carries the whole timestamp search prints`;
   }
-  // An ordinary turn is addressable and is never a hit, so grading one scores
-  // zero for ever — the same mistake as grading a message by its own id, and the
-  // easier one to make, since `keywords` and `thread` print a time for any turn.
   if (!named.some((messageId) => known.messages.has(messageId))) {
     return `${ref} names a turn nobody distilled, which no query returns`;
   }
   return undefined;
 }
 
-/**
- * Whether a labeled ref grades the row a query printed. An id is matched at the
- * printed width because a corpus stores the whole one, and a ref naming only a
- * session grades every passage in it — the question asked of a session as a whole.
- */
 const grades = (labeled: PassageRef, printed: PassageRef): boolean =>
   labeled.id.startsWith(printed.id) && (labeled.at === undefined || labeled.at === printed.at);
 
-/** Whether one printed row could answer to both labels, leaving them inseparable. */
 function inseparable(a: PassageRef, b: PassageRef): boolean {
   const [x, y] = [a.id.slice(0, PRINTED_REF), b.id.slice(0, PRINTED_REF)];
   return (x.startsWith(y) || y.startsWith(x)) && (a.at === undefined || b.at === undefined || a.at === b.at);
@@ -85,12 +63,6 @@ export type QuestionScore = {
   id: string;
   query: string;
   returned: number;
-  /**
-   * How many rows the question grades. Recall divides by all of them while
-   * nDCG compares against the best k, so the two disagree whenever a question
-   * grades more rows than the cutoff — without this the reader cannot tell
-   * that from a ranking that put one of them out of reach.
-   */
   graded: number;
   recall: number;
   ndcg: number;
@@ -101,25 +73,13 @@ export type BenchReport = {
   scores: QuestionScore[];
   recall: number;
   ndcg: number;
-  /** How many questions the query answered with fewer rows than the cutoff asked for. */
   capped: number;
-  /** A question the corpus holds and nothing could score, with the reason. */
   unscorable: { id: string; why: string }[];
 };
 
 const mean = (values: number[]): number =>
   values.length === 0 ? 0 : values.reduce((sum, v) => sum + v, 0) / values.length;
 
-/**
- * Scores the corpus against the queries as they are, by running them. Nothing
- * here reaches into the index: a ranking is only better if it is better through
- * the door an agent uses.
- *
- * A query whose rows carry no ref cannot be scored at all — `keywords` prints a
- * session and a timestamp, which name a message to a reader but identify none to
- * a program. Such a question is reported as unscorable rather than skipped, so a
- * corpus cannot quietly measure less than it claims.
- */
 export async function runBench(
   db: Database,
   questions: BenchQuestion[],
@@ -140,19 +100,12 @@ export async function runBench(
     const result = query.run(db, { ...ctx, arg: asked.question, question });
     const refColumn = result.columns.indexOf(REF_COLUMN);
     if (refColumn === -1) {
-      // A query that degraded prints the fallback's columns, so blaming its
-      // shape would send the reader to the wrong place entirely.
       const why = result.path
         ? `${asked.query} answered on its ${result.path} path, which prints no ${REF_COLUMN} column`
         : `${asked.query} prints no ${REF_COLUMN} column to score against`;
       unscorable.push({ id: asked.id, why });
       continue;
     }
-    // A query prints an id short enough to read, so a returned row names its
-    // answer by a prefix of the id the corpus stores. Which entity a ref names is
-    // the query's choice, not the corpus's: `search` prints the sha for a commit
-    // and `<session>@<timestamp>` for a message. A label naming anything else can
-    // never match, and would read as a ranking failure forever.
     const labeled = [...asked.relevant.keys()];
     const refused = labeled.map((ref) => refusal(db, ref, known)).filter((why) => why !== undefined);
     if (refused.length > 0) {

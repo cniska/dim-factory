@@ -15,8 +15,6 @@ function scratch(prefix: string): string {
   return dir;
 }
 
-// A stand-in for the real sandbox, which cannot run nested inside the one a worker's suite runs
-// in: it refuses any command naming the canary and runs everything else unconfined.
 function confiningSandbox(canary: string): string[] {
   const script = join(scratch("dim-fake-sandbox-"), "sandbox");
   writeFileSync(script, `#!/bin/sh\ncase "$*" in *"${canary}"*) exit 1 ;; esac\nexec "$@"\n`);

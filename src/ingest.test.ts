@@ -37,7 +37,6 @@ function run(env: Env): Database {
   return db;
 }
 
-/** Paths differ per scratch root, so compare them relative to that root. */
 function snapshot(db: Database, root: string) {
   const strip = (rows: Record<string, unknown>[]): Record<string, unknown>[] =>
     rows.map((r) => ({
@@ -87,8 +86,6 @@ describe("ingest", () => {
     writeClaudeTranscript(env, "-Users-x-code-demo", SESSION);
     const db = run(env);
     try {
-      // The fixture writes one API response as two assistant lines, each
-      // repeating the full usage. Summing per line overcounts.
       expect(db.prepare("SELECT count(*) AS n FROM usage").get()).toEqual({ n: 1 });
       expect(db.prepare("SELECT sum(output_tokens) AS n FROM usage").get()).toEqual({ n: 50 });
     } finally {
@@ -181,7 +178,6 @@ describe("ingest", () => {
       expect(
         db.prepare("SELECT session_id, reported_by, total_cost_usd FROM session_cost_reported").all(),
       ).toEqual([{ session_id: SESSION, reported_by: "claude-code cost-state", total_cost_usd: 9.611748 }]);
-      // Codex reports no cost anywhere, and nothing here invents one.
       expect(
         db.prepare("SELECT count(*) AS n FROM session_cost_reported WHERE session_id = ?").get(THREAD),
       ).toEqual({
@@ -224,7 +220,6 @@ describe("ingest", () => {
     const db = run(env);
     try {
       const dump = JSON.stringify(db.prepare("SELECT * FROM tool_call").all() as Record<string, unknown>[]);
-      // The size is kept; the bytes stay in the transcript, reachable by locator.
       expect(dump).not.toContain("SECRET FILE CONTENTS");
       expect(
         db.prepare("SELECT result_bytes, src_line_result FROM tool_call WHERE id = 'toolu-1'").get(),
@@ -268,7 +263,7 @@ describe("ingest", () => {
 
   test("reading a file in two chunks matches reading it once, even cut mid-line", () => {
     const lines = claudeTranscriptLines(SESSION);
-    const cut = bytesThroughLine(lines, 2) + 40; // lands inside line 3
+    const cut = bytesThroughLine(lines, 2) + 40;
 
     const oneRoot = newRoot();
     const oneEnv = scratchEnv(oneRoot);
@@ -293,7 +288,6 @@ describe("ingest", () => {
 
   test("a chunk boundary inside one response's content blocks matches reading it once", () => {
     const lines = claudeTranscriptLines(SESSION);
-    // Exactly between the two lines that share message id msg-1.
     const cut = bytesThroughLine(lines, 2);
 
     const oneRoot = newRoot();
@@ -360,8 +354,6 @@ describe("ingest", () => {
       expect(sync(db, env).failures).toEqual([]);
 
       const after = snapshot(db, root);
-      // Re-reading a moved file from byte zero would append its assistant text
-      // a second time and leave a stale locator behind.
       expect(after.messages.map((m) => m.text)).toEqual(before.messages.map((m) => m.text));
       expect(db.prepare("SELECT count(*) AS n FROM source_file").get()).toEqual({ n: 1 });
       const src = db.prepare<{ src_file: string }, []>("SELECT src_file FROM message LIMIT 1").get();
@@ -371,8 +363,6 @@ describe("ingest", () => {
     }
   });
 
-  // The file is read on past the bad line and the cursor advances over it, so
-  // the sync that read it is the only one that can ever name it.
   test("reads past a line that is not JSON and names it in the report", () => {
     const root = newRoot();
     const env = scratchEnv(root);
@@ -386,9 +376,7 @@ describe("ingest", () => {
       const report = sync(db, env);
       expect(report.dropped).toEqual([{ path, lines: [2] }]);
       expect(report.failures).toEqual([]);
-      // Everything either side of the bad line still landed.
       expect(db.prepare("SELECT count(*) AS n FROM message").get()).not.toEqual({ n: 0 });
-      // And a second sync re-reads nothing, so it reports the loss no further.
       expect(sync(db, env).dropped).toEqual([]);
     } finally {
       closeDb(db);
@@ -437,10 +425,6 @@ describe("ingest", () => {
     }
   });
 
-  // Claude Code reuses an agent id across parent sessions. Keyed on that id
-  // alone, the second file reads as the first having moved: one session row for
-  // two runs, and the second file read from the first's cursor, which lands
-  // mid-line and loses everything before it.
   test("keeps two subagents that share an agent id apart", () => {
     const root = newRoot();
     const env = scratchEnv(root);

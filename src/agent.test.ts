@@ -43,8 +43,6 @@ describe("launchd agent", () => {
   });
 
   test("picks a bun path that survives an upgrade", () => {
-    // /opt/homebrew/Cellar/bun/1.3.14/bin/bun stops existing at the next
-    // upgrade, and the agent would fail silently from then on.
     expect(bunPath()).not.toContain("/Cellar/");
   });
 
@@ -79,8 +77,6 @@ describe("lock", () => {
     const e = env(dir);
     const lock = join(dir, "data", "lock");
     mkdirSync(lock, { recursive: true });
-    // A pid that cannot be running: the scheduled agent would otherwise fail
-    // every fifteen minutes forever.
     writeFileSync(join(lock, "pid"), "2147483646");
     expect(withLock(() => "ran", e)).toBe("ran");
   });

@@ -1,4 +1,3 @@
-/** How long a card has stood where it is, in the shortest form that still reads across a room. */
 export function age(iso: string, now: Date): string {
   const minutes = Math.max(0, Math.floor((now.getTime() - new Date(iso).getTime()) / 60000));
   if (minutes < 1) return "just now";

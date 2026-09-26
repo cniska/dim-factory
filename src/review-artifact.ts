@@ -1,6 +1,5 @@
 import { REVIEWER_RULINGS, type ReviewerRuling } from "./order-finding-state";
 
-/** The rows of the table under "The passes" in `skills/dim-station-review/SKILL.md`. */
 export const REVIEW_DIMENSIONS = [
   "plan",
   "correctness",
@@ -122,8 +121,6 @@ function parseRuling(value: unknown, index: number): ReviewRuling {
   return { finding, ruling, reason };
 }
 
-/** Coverage restates the findings, so the two cannot disagree: a dimension is `findings` exactly
- *  when a finding carries it. */
 function parseCoverage(values: unknown[], findingDimensions: Set<string>): ReviewReport["coverage"] {
   const coverage = values.map((value, index) => {
     const what = `reviewer coverage ${index + 1}`;

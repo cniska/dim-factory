@@ -2,11 +2,6 @@ import { closeSync, openSync, readSync, statSync } from "node:fs";
 
 export type Chunk = { lines: string[]; bytes: number };
 
-/**
- * Read whole lines from `cursor` to end of file, and report how many bytes they
- * span. A live session can leave a half-written last line; advancing the cursor
- * past it would drop that line forever, so the partial tail is left unread.
- */
 export function readChunk(path: string, cursor: number): Chunk {
   const size = statSync(path).size;
   if (size <= cursor) return { lines: [], bytes: 0 };

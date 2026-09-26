@@ -14,7 +14,7 @@ Only what holds here and nowhere else is written below. General engineering conv
 
 - Nothing here reaches the network, holds a credential, or is billed per token, once the embedding model is on disk. Downloading it is the single exception and it happens once.
 - A hook exits 0 whatever happens. It runs before every session, commit and push on this machine, so it may only ever fail on something it has read and understood.
-- Every table is rebuilt by re-reading its sources, so a schema change is `dim rebuild`, not a migration, and it stops the floor: from the version bump until the rebuild runs, every `dim` write on this machine is refused, so an order changing the schema runs with no other order in flight. [`src/schema.ts`](src/schema.ts) states the rules and marks each exception.
+- Every table is rebuilt by re-reading its sources, so a schema change is `dim rebuild`, not a migration, and it stops the floor: from the version bump until the rebuild runs, every `dim` write on this machine is refused, so an order changing the schema runs with no other order in flight. [`docs/design.md`](docs/design.md#5-schema) states the rules, and each exception says so at its table.
 - Every query states the base its numbers came from, and one with nothing to report says so rather than printing a zero.
 
 ## Working

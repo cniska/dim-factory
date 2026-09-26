@@ -42,7 +42,6 @@ describe("read path", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
     try {
-      // hook_event is the one table a rebuild cannot restore.
       expect(() => db.run("DELETE FROM hook_event")).toThrow();
       expect(() => db.run("DELETE FROM usage")).toThrow();
       expect(() => db.run("UPDATE session SET title = 'x'")).toThrow();
@@ -60,7 +59,7 @@ describe("read path", () => {
     const db = openReadOnly(dbPath(env));
     try {
       for (const q of QUERIES) {
-        if (q.usage) continue; // takes an argument; those are covered below
+        if (q.usage) continue;
         const result = q.run(db, {});
         expect(result.denominator.length, `${q.name} has no denominator`).toBeGreaterThan(0);
       }
@@ -87,8 +86,6 @@ describe("read path", () => {
       const cost = findQuery("cost")?.run(db, {});
       expect(cost?.rows).toEqual([]);
       expect(cost?.note).toBe("no session reported a cost");
-      // Rendering an empty result must show the note, not an empty table that
-      // reads as a measured zero.
       expect(renderTable(cost as never)).toContain("no session reported a cost");
 
       const sessions = findQuery("sessions")?.run(db, {});
@@ -103,8 +100,6 @@ describe("read path", () => {
     const db = openReadOnly(dbPath(env));
     try {
       const result = findQuery("turns")?.run(db, {});
-      // Codex rollouts of one era carry no duration; the percentiles cover a
-      // subset and the denominator has to say which.
       expect(result?.denominator).toMatch(/\d+ of \d+ turns carry a duration/);
       expect(result?.note).toContain("not measured, not zero");
     } finally {
@@ -133,13 +128,8 @@ describe("read path", () => {
         (db.query(`SELECT ${expr} AS out FROM (SELECT ? AS p)`).get(p) as { out: string }).out;
 
       expect(one("/h/code/one/.claude/worktrees/side/docs/x.md")).toBe("/h/code/one/docs/x.md");
-      // A path with no worktree segment must come back untouched, or every file
-      // in the corpus would be rewritten by this.
       expect(one("/h/code/one/docs/x.md")).toBe("/h/code/one/docs/x.md");
       expect(one("/h/code/one/.claude/settings.json")).toBe("/h/code/one/.claude/settings.json");
-      // A worktree root has no tail to splice back on. Folding it to the repo
-      // root is the whole point: `convention` keys on this, so a repo with no
-      // remote would otherwise be judged twice, once under a key naming no repo.
       expect(one("/h/code/one/.claude/worktrees/side")).toBe("/h/code/one");
     } finally {
       db.close();
@@ -163,7 +153,6 @@ describe("read path", () => {
 
       addFile("one", ".github/workflows/ci.yml");
       addCommit("s1", "one", ".github/workflows/ci.yml", "2026-09-10T00:00:00Z");
-      // The same file reached through a worktree: one file, so one row.
       addFile("one", ".claude/worktrees/wt/.github/workflows/ci.yml");
       addCommit("s2", "one", ".claude/worktrees/wt/.github/workflows/ci.yml", "2026-09-11T00:00:00Z");
 
@@ -177,7 +166,6 @@ describe("read path", () => {
       expect(files?.[0]).toBe("code/one/.github/workflows/ci.yml");
       expect(files?.filter((f) => String(f).includes("/two/"))).toHaveLength(3);
       expect(files?.some((f) => String(f).includes("worktrees"))).toBe(false);
-      // Both checkouts' commits count toward the one file they are.
       expect(result?.rows[0]?.[2]).toBe(2);
       expect(result?.denominator).toContain("6 tracked files");
     } finally {
@@ -195,22 +183,14 @@ describe("read path", () => {
           [sha, repo, label, subject, kind],
         );
 
-      // Ten in the checkout and ten through its worktree: one repo, twenty
-      // commits, or the floor below would drop it. Half of each half breaks a
-      // different rule, so no column can be right by being constant.
       for (let i = 0; i < 10; i++) {
         const long = i < 5 ? "feat: a conforming subject" : `feat: ${"a".repeat(60)}`;
         add("/h/code/one", "owner/one", `a${i}`, long, "feat");
-        // A tag in parentheses and a bare issue number are not squash suffixes.
         const merged = i < 5 ? `fix: landed through a branch (#${i})` : "fix: closes #12 and uses (#tag)";
         add("/h/code/one/.claude/worktrees/wt", "owner/one", `w${i}`, merged, i < 8 ? "fix" : null);
       }
-      // Under the floor, so it must not be reported at all.
       add("/h/code/two", "owner/two", "b1", "no convention here", null);
 
-      // A repo with no remote has no label, so its key is the folded path — the
-      // only rows where the fold decides anything. Ten each side of the fold,
-      // so the repo clears the floor only if its worktree folds onto it.
       for (let i = 0; i < 10; i++) {
         add("/h/code/three", null, `c${i}`, "feat: a conforming subject", "feat");
         add("/h/code/three/.claude/worktrees/wt", null, `d${i}`, "feat: a conforming subject", "feat");
@@ -224,14 +204,11 @@ describe("read path", () => {
       const [repo, commits, conventional, meanLen, over50, squashed, kinds] = labeled ?? [];
       expect(repo).toBe("owner/one");
       expect(commits).toBe(20);
-      // Two of the twenty carry no conventional type.
       expect(conventional).toBe(90);
       expect(over50).toBe(25);
       expect(meanLen).toBe(39);
-      // Only the five `(#N)` suffixes count.
       expect(squashed).toBe(25);
       expect(kinds).toBe("feat fix");
-      // The base is every commit read, the below-floor repo's included.
       expect(result?.denominator).toContain("41 commits read");
     } finally {
       db.close();
@@ -251,7 +228,6 @@ describe("read path", () => {
       link("aaa", "bbb", "2026-09-01T10:00:00Z", "# Handoff — first name");
       link("bbb", "ccc", "2026-09-01T12:00:00Z", "# Handoff — renamed midway");
       link("ccc", "ddd", "2026-09-01T14:00:00Z", "# Handoff — renamed midway");
-      // A separate chain, which must not be swept in by the title it shares.
       link("xxx", "yyy", "2026-09-02T10:00:00Z", "# Handoff — renamed midway");
 
       const result = findQuery("chain")?.run(db, { arg: "ccc" });
@@ -281,8 +257,6 @@ describe("read path", () => {
     const env = seeded();
     const write = openDb(dbPath(env));
     try {
-      // One second either side of a block edge: a day-based split would put both
-      // in the same row and the boundary would stop being tested.
       for (const [id, ts] of [
         ["r-before", "2026-09-16T16:59:59.000Z"],
         ["r-after", "2026-09-16T17:00:00.000Z"],
@@ -317,8 +291,6 @@ describe("read path", () => {
       expect(inside?.rows.length).toBeGreaterThan(0);
       expect(inside?.denominator).toContain("since 2026-09-01");
 
-      // The fixtures are stamped 2026-09-16, so a window opening the day after
-      // must find nothing rather than fall back to counting all of history.
       const after = findQuery("tools")?.run(db, { since: "2026-09-17T00:00:00.000Z" });
       expect(after?.rows).toEqual([]);
       expect(after?.denominator).toContain("0 tool calls");
@@ -352,8 +324,6 @@ describe("read path", () => {
     const db = openReadOnly(dbPath(env));
     try {
       const empty = findQuery("corrections")?.run(db, { since: "2026-09-17T00:00:00.000Z" });
-      // A denominator left unwindowed would divide this window's rows by all of
-      // history and read as a rate that was never measured.
       expect(empty?.denominator).toContain("0 turns the user physically stopped");
       expect(findQuery("skills")?.run(db, { since: "2026-09-17T00:00:00.000Z" })?.denominator).toContain(
         "0 loads",
@@ -366,8 +336,6 @@ describe("read path", () => {
   test("search finds a message by its words and keeps the index level with the table", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
-    // A corpus with nothing embedded is the keyword path, which is what has to
-    // still reach every message once ranking by meaning is the first choice.
     const unranked = { unavailable: "nothing embedded in this corpus" };
     try {
       const hit = findQuery("search")?.run(db, { arg: "parser", question: unranked });
@@ -389,8 +357,6 @@ describe("read path", () => {
       const whole = findQuery("thread")?.run(db, { arg: SESSION.slice(0, 8) });
       expect(whole?.rows.length).toBeGreaterThan(0);
       const texts = whole?.rows.map((r) => String(r[3])) ?? [];
-      // A tool call carries no text and a skill body was said by no one; both
-      // would otherwise be the largest thing in the exchange.
       expect(texts.every((t) => t.length > 0)).toBe(true);
 
       const centered = findQuery("thread")?.run(db, { arg: `${SESSION.slice(0, 8)}@2026-09-16T10:04` });
@@ -412,8 +378,6 @@ describe("read path", () => {
       const name = String(loaded?.rows[0]?.[0]);
       const one = findQuery("skill")?.run(db, { arg: name });
       expect(one?.rows.length).toBeGreaterThan(0);
-      // A version loaded in one session is an arm of one; a reader who meets the
-      // table first will compare columns the sample cannot carry.
       expect(one?.denominator).toMatch(/\d+ of them were loaded in a single session/);
 
       const never = findQuery("skill")?.run(db, { arg: "no-such-skill" });
@@ -431,8 +395,6 @@ describe("read path", () => {
     try {
       const d = findQuery("delegation")?.run(db, {});
       expect(d?.denominator).toMatch(/\d+ agents spawned and \d+ messages sent to a peer/);
-      // A skill's children are every child of a session it delegated in, so the
-      // figure must not read as the work these calls returned.
       if ((d?.rows.length ?? 0) > 0) expect(d?.note).toContain("rather than a per-call figure");
     } finally {
       db.close();
@@ -443,8 +405,6 @@ describe("read path", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
     try {
-      // The fixtures are older than any live window, so this must read as
-      // nothing running rather than as nothing to see.
       const quiet = findQuery("running")?.run(db, { arg: "1" });
       expect(quiet?.rows).toEqual([]);
       expect(quiet?.note).toContain("dim sync");
@@ -459,8 +419,6 @@ describe("read path", () => {
     const db = openReadOnly(dbPath(env));
     try {
       const f = findQuery("fixes")?.run(db, {});
-      // The fixtures have no repo on disk, so this must say the commits are
-      // missing rather than report a clean zero-defect rate.
       expect(f?.rows).toEqual([]);
       expect(f?.note).toContain("no commits read");
       expect(f?.denominator).toContain("fix commits");
@@ -475,8 +433,6 @@ describe("read path", () => {
     try {
       const r = findQuery("repeats")?.run(db, {});
       expect(r?.denominator).toContain("phrases of 4 words");
-      // A corpus this small has nothing recurring across three sessions, and that
-      // has to read as no evidence rather than as an empty finding.
       expect(r?.rows).toEqual([]);
       expect(r?.note).toContain("nothing recurs");
     } finally {
@@ -489,8 +445,6 @@ describe("read path", () => {
     const db = openReadOnly(dbPath(env));
     try {
       const r = findQuery("stale")?.run(db, {});
-      // The fixtures have no repo on disk, so every session would otherwise
-      // score as untouched — which reads as durable rather than as unmeasured.
       expect(r?.rows).toEqual([]);
       expect(r?.denominator).toContain("no commits read");
       expect(r?.note).toContain("no measure of movement");
@@ -542,8 +496,6 @@ describe("read path", () => {
 });
 
 describe("who stopped the agent", () => {
-  // Two stops in one session: the owner refusing a call, and the harness
-  // refusing its own. Only the first is a person pushing back.
   function stopped(): Database {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
@@ -568,8 +520,6 @@ describe("who stopped the agent", () => {
          VALUES (?, 's1', ?, 'user', ?, ?, ?, '/f.jsonl', 2)`,
         [id, ts, kind, text, text.length],
       );
-    // The harness block sits inside every edit span; the owner's refusal lands
-    // after the last edit, so a rate over the spans separates the two.
     stop("m-blocked", "2026-09-01T10:15:00Z", "automode-blocked", "auto mode cannot run this");
     stop("m-refused", "2026-09-01T11:30:00Z", "user-rejected", "no, not like that");
 
@@ -604,8 +554,6 @@ describe("who stopped the agent", () => {
 
       expect(findQuery("repeats")?.run(db, {})?.denominator).toContain("1 prompts");
 
-      // The block is the only stop inside the spans, so a rate counting it
-      // reports every file as revisited under pushback.
       const rework = findQuery("rework")?.run(db, {});
       expect(rework?.rows[0]?.[3]).toBe(0);
     } finally {
@@ -624,7 +572,6 @@ describe("who stopped the agent", () => {
         ?.rows.map((r) => r[3]);
       expect(kinds).toEqual(["rejected"]);
 
-      // One number covering both reads as the owner having refused twice.
       const facts = new Map(
         findQuery("session")
           ?.run(db, { arg: "s1" })
@@ -722,7 +669,6 @@ describe("a thin sample is a row with its base, not a row withheld", () => {
       const r = findQuery("rework")?.run(db, { arg: "no-such-skill" });
       expect(r?.rows).toEqual([]);
       expect(r?.note).toContain("no file edit in this window is attributed to no-such-skill");
-      // A corpus-wide total beside "rows cover it alone" is a base the rows cannot account for.
       expect(r?.denominator).toContain("0 file edits under no-such-skill; rows cover it alone");
     } finally {
       db.close();
@@ -736,8 +682,6 @@ describe("a thin sample is a row with its base, not a row withheld", () => {
         `INSERT INTO tool_call (id, session_id, tool_name, attribution_skill, file_path, src_file)
          VALUES ('c', 's1', 'Edit', 'dim-station-build', '/w/three.ts', '/f.jsonl')`,
       );
-      // An edit seen only as a result has no ts_call, so no span can be built from
-      // it; counting it in the base would print a total the rows cannot account for.
       const r = findQuery("rework")?.run(db, {});
       expect(r?.denominator).toContain("2 file edits");
     } finally {
@@ -893,9 +837,6 @@ describe("what a query counts of each tool", () => {
     }
   });
 
-  // A fixture repo the OS will delete is not work anyone did, and its commits
-  // run no check because there is no check to run. Counted, they read as
-  // discipline nobody kept.
   test("a commit in a scratch tree is not counted as an unchecked slice", () => {
     const db = new Database(":memory:");
     try {
@@ -924,16 +865,12 @@ describe("what a query counts of each tool", () => {
       expect(result?.rows).toHaveLength(1);
       expect(result?.rows[0]?.[0]).toBe("s-real");
       expect(result?.denominator).toContain("1 commits");
-      // Dropping rows silently is the failure this query's base rule exists for.
       expect(result?.denominator).toContain("1 in scratch trees not counted");
     } finally {
       db.close();
     }
   });
 
-  // An empty path resolves to the process cwd, so a session with no project
-  // reads as scratch exactly when dim is run from a temp directory — which is
-  // why this runs somewhere it would, rather than wherever the suite happens to.
   test("a commit from a session with no project counts as work", () => {
     const dir = mkdtempSync(join(tmpdir(), "dim-slices-"));
     const script = `
@@ -962,8 +899,6 @@ describe("the sql escape hatch", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
     try {
-      // The guarantee is SQLite's, not a rule here about what a statement looks
-      // like: a rule would have to be right about every spelling of a write.
       expect(() => db.prepare("DELETE FROM session").all()).toThrow();
       expect(() => db.prepare("UPDATE session SET cwd = 'x'").all()).toThrow();
       expect(() => db.prepare("DROP TABLE message").all()).toThrow();

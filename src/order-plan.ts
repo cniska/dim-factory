@@ -11,7 +11,6 @@ import { stationDirectory } from "./station-directory";
 
 const PLAN_OUTPUT_SCHEMA = `${import.meta.dir}/plan-artifact.schema.json`;
 
-/** Reads and searches the repository, its history and the record — never edits, never raises a finding. */
 export const PLANNER_CAPABILITIES: Capability[] = [
   "bootstrap-worker",
   "read-files",

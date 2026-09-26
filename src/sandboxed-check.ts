@@ -2,14 +2,8 @@ import { existsSync, rmSync } from "node:fs";
 import type { ProcessEnvironment } from "./harness-process";
 import { stationEnvironment } from "./station-environment";
 
-/**
- * The check executes code the builder wrote, so it runs under the same confinement the builder
- * had: the worktree writable, the network and the operator's data refused. `codex sandbox` is
- * that confinement without a model turn.
- */
 export const CHECK_SANDBOX = ["codex", "sandbox", "-c", 'sandbox_mode="workspace-write"', "--"];
 
-// The record keeps the end of the output, where a failing check reports why.
 const OUTPUT_TAIL_LINES = 200;
 
 export type SandboxedCheck = {
@@ -24,12 +18,6 @@ export class SandboxNotHolding extends Error {
   readonly code = "sandbox_not_holding";
 }
 
-/**
- * Runs `command` in `worktree` under `sandbox`, after proving the sandbox refuses a write to
- * `canary` — a path outside the worktree the check must not reach. A sandbox that lets the canary
- * through is refused before the check runs, since a weakened or missing sandbox otherwise runs the
- * builder's code as the operator without any error.
- */
 export function runSandboxedCheck(options: {
   worktree: string;
   command: string;

@@ -17,11 +17,9 @@ type ClaudeEvent = {
   type?: string;
   subtype?: string;
   session_id?: string;
-  /** Which API key the run uses, if any; `none` means no key and no apiKeyHelper. */
   apiKeySource?: string;
   is_error?: boolean;
   result?: string;
-  /** The answer validated against `--json-schema`, which `result` carries only as text. */
   structured_output?: unknown;
   message?: { content?: ClaudeBlock[] };
 };
@@ -34,7 +32,6 @@ function resultText(content: ClaudeBlock["content"]): string {
     .join("\n");
 }
 
-/** Stateful because a `tool_result` names only the id of the `tool_use` it answers. */
 function claudeEventParser(): HarnessLineParser {
   const toolNames = new Map<string, string>();
   return (line) => {
@@ -45,8 +42,6 @@ function claudeEventParser(): HarnessLineParser {
       return { type: "diagnostic", level: "error", message: "Claude emitted invalid JSON" };
     }
     if (event.type === "system" && event.subtype === "init") {
-      // An apiKeyHelper survives both the environment filter and the blanked settings, and
-      // the init event is where Claude says it chose one.
       if (event.apiKeySource !== undefined && event.apiKeySource !== "none") {
         return {
           type: "run.failed",
@@ -88,22 +83,8 @@ function claudeEventParser(): HarnessLineParser {
   };
 }
 
-/**
- * A worker's run ends with its answer, so nothing it starts may outlive it. The background-tasks
- * switch drops `run_in_background` from Bash and Agent; these tools start work outside it.
- */
 const BACKGROUND_WORK_TOOLS = ["ScheduleWakeup", "CronCreate", "Monitor", "RemoteTrigger"];
 
-/**
- * Bash runs inside Claude Code's OS sandbox, which confines writes to the cwd and each
- * `--add-dir`, and is allowed without a prompt only because of it. `failIfUnavailable`
- * stops a worker from running unconfined on a machine where the sandbox cannot start.
- * A worker without `edit-files` loses the editing tools and has the cwd denied to the
- * sandbox, leaving `dim`'s data directory, and the session's `$TMPDIR` that Claude always
- * grants, as the places it can write. A worker with it writes the checkout and nothing of its
- * git metadata, since the station runner commits for it; the checkout's own `.git` is denied to
- * its sandbox and its editing tools alike, because that is what the runner's git follows.
- */
 function claudeSettings(request: HarnessRequest, protectedGit: string[]): string {
   const edits = request.capabilities.includes("edit-files");
   return JSON.stringify({
@@ -161,11 +142,6 @@ export function claudeResumeArgs(providerSessionId: string, request: HarnessRequ
   return ["--resume", providerSessionId, ...claudeArgs(request)];
 }
 
-/**
- * Credentials and providers that bill a worker per token instead of the subscription the
- * operator is signed in with. The shell's copies are left out of the child's environment, and
- * the launch settings blank them, since they outrank a user's own settings `env`.
- */
 const PER_TOKEN_VARS = [
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_AUTH_TOKEN",

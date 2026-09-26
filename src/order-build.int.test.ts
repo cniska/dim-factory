@@ -60,11 +60,6 @@ afterAll(() => {
   for (const home of homes) rmSync(home, { recursive: true, force: true });
 });
 
-/**
- * A builder that acts on the worktree in-process and ends its turn with `act`'s answer — a
- * BuildTurn as JSON on a code turn, or free text on an artifact revision turn — then emits
- * `afterAnswer` until the runner cancels it.
- */
 function builderTurn(
   act: (request: HarnessRequest) => (Omit<BuildTurn, "answers"> & Partial<BuildTurn>) | string,
   afterAnswer: HarnessEvent[] = [],
@@ -96,7 +91,6 @@ function builderTurn(
   return { start: run, resume: (_sessionId, request) => run(request), cancels: () => cancels };
 }
 
-/** An adapter whose harness never starts, and the brief it was handed. */
 function unavailableHarness(): { adapter: HarnessAdapter; brief: () => string } {
   let brief = "";
   const refuse = async (request: HarnessRequest): Promise<HarnessRun> => {
@@ -122,7 +116,6 @@ function home(prefix: string): string {
   return dir;
 }
 
-/** A trunk declaring a check, and an order on it with an approved plan, moved to build. */
 function orderAtBuild(
   db: Database,
   orderId: string,
@@ -640,8 +633,6 @@ describe("builder station", () => {
     expect(brief).not.toContain("The code work is complete; revise only the artifact.");
     expect(db.query("SELECT count(*) AS n FROM factory_order_slice_completion").get()).toEqual({ n: 0 });
 
-    // A turn that changes nothing on top of the recorded commit is committed as nothing, and its
-    // check and artifact are recorded against that same commit.
     const outcome = await runOrderBuildLive(db, "returned-builder-order", operator.name, {
       ...options,
       adapter: builderTurn(() => ({
@@ -1188,7 +1179,6 @@ describe("builder station", () => {
       }),
     ).rejects.toThrow("fake process crashed");
     expect(failures()).toEqual({ n: 1 });
-    // The fake reports no exit code, so the record must not claim one.
     expect(
       db
         .query<{ reason: string }, [string]>(
@@ -1222,7 +1212,6 @@ describe("builder station", () => {
 
 type BuilderCall = { kind: "start" | "resume"; sessionId?: string; brief: string };
 
-/** A builder answering its turns in order, where an Error is a run that fails, and the turns it was given. */
 function scriptedBuilder(
   answers: ((
     request: HarnessRequest,
@@ -1259,7 +1248,6 @@ function scriptedBuilder(
   };
 }
 
-/** A `commit-msg` hook in the repository's own hooks directory refusing a subject over `limit` characters. */
 function refuseLongSubjects(dir: string, limit: number): void {
   const hooks = git(dir, ["rev-parse", "--path-format=absolute", "--git-path", "hooks"]);
   mkdirSync(hooks, { recursive: true });

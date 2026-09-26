@@ -53,22 +53,15 @@ describe("the wake block", () => {
       expect(wake?.sessionId).toBe("newest");
       expect(wake?.endReason).toBe("prompt_input_exit");
       expect(wake?.next).toContain("commit gate installed");
-      // The section after Next is the handoff's own detail; a cold start reads it from the file.
       expect(wake?.next).not.toContain("must not reach the block");
     } finally {
       db.close();
     }
   });
 
-  // The block is added to every session that starts here, so it has to cost
-  // nothing when it has nothing: silence, not a header saying there is no news.
-  // Most sessions that talk about handoffs never print one, and the heading
-  // alone would hand the next session whatever the last one merely discussed.
   test("ignores a message that names a handoff but leaves no Next", () => {
     const db = seeded();
     try {
-      // Later than the real handoff, in the same directory, and carrying both
-      // strings the SQL prefilter looks for — so only the parse tells them apart.
       db.run(
         `INSERT INTO message (id, session_id, role, ts, text, src_file, src_line)
          VALUES ('m4', 'older', 'assistant', '2026-09-09T00:00:00Z',
@@ -92,8 +85,6 @@ describe("the wake block", () => {
     }
   });
 
-  // The declared check is the half of the project tier a manifest already holds,
-  // and reaching it costs a cold start a tool call and its output.
   test("carries what the repo declares, with or without a Next to carry", () => {
     const repo = mkdtempSync(join(tmpdir(), "dim-wake-"));
     try {
@@ -107,19 +98,14 @@ describe("the wake block", () => {
       const line = projectLine(repo);
       expect(line).toContain("check `bun run verify`");
       expect(line).toContain("format `bun run format`");
-      // `lint` is not the format command, and a repo declaring both means two things.
       expect(line).not.toContain("lint");
 
-      // It reaches a session that has no handoff to read, which is the start
-      // that needs it most.
       expect(renderWake(null, repo)).toBe(line);
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }
   });
 
-  // The line speaks for the repo, so it reads the repo's own manifest. A
-  // subdirectory that happens to hold one is not the repo declaring anything.
   test("reads the checkout root's manifest, not the nearest one", () => {
     const repo = mkdtempSync(join(tmpdir(), "dim-wake-"));
     try {
@@ -136,9 +122,6 @@ describe("the wake block", () => {
     }
   });
 
-  // Outside a checkout there is no repo to speak for. The manifest sits in the
-  // directory asked about as well as above it, so reading either one is a
-  // failure this catches — the home directory is full of both.
   test("says nothing when the session is not inside a checkout", () => {
     const root = mkdtempSync(join(tmpdir(), "dim-wake-"));
     try {

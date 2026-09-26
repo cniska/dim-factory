@@ -19,8 +19,6 @@ import { answerOrderFindings, raiseOrderFinding, ruleOnOrderFinding } from "./or
 import { findQuery } from "./queries";
 import { SCHEMA_SQL } from "./schema";
 
-// One hand per database, set where the database is made: every moment names a worker,
-// and what these tests are about is what the query reports rather than who touched it.
 let worker = "";
 let attemptOperator = "";
 
@@ -35,8 +33,6 @@ function floor(): Database {
 const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
 
-// A claim now makes the worktree it names, so every direct call needs somewhere
-// safe to make one — `trunk.dir` rather than this machine's own checkout.
 function claimOrder(
   db: Database,
   orderId: string,
@@ -132,8 +128,6 @@ describe("factory order query", () => {
     );
     claimOrder(db, "order-status", claim, worker, "2026-09-18T10:01:00.000Z");
     recordOrderCommit(db, "order-status", trunk.sha, worker, "feat: status", "2026-09-18T10:02:00.000Z");
-    // Two commits recorded at one instant, the later one sorting below the earlier as a
-    // string: the row reported is the one recorded last, never whichever sha reads highest.
     recordOrderCommit(db, "order-status", "fff111", worker, "feat: middle", "2026-09-18T10:02:00.000Z");
     recordOrderCommit(db, "order-status", "aaa222", worker, "feat: later", "2026-09-18T10:02:00.000Z");
     recordOrderCheck(

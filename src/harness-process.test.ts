@@ -85,8 +85,6 @@ describe("the external process harness", () => {
   test("delivers terminal output written before an immediate process exit", async () => {
     for (let attempt = 0; attempt < 50; attempt += 1) {
       const script = `require("node:fs").writeSync(1,JSON.stringify({type:"run.completed",output:"done"})+"\\n"); process.exit(0);`;
-      // The timeout only bounds a hang: under a loaded suite a cold process start alone can
-      // outlast a short one, which would fail the run before it wrote anything.
       const result = await runStarted(command(script), request, { timeoutMs: 10_000 });
       expect(result).toMatchObject({
         outcome: "completed",

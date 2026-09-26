@@ -11,8 +11,6 @@ const result = {
 };
 
 describe("the table an agent reads", () => {
-  // Padding buys a reader columns that line up and costs the agent that reads
-  // this a run of spaces on every row of every result.
   test("separates cells without padding them out to the column width", () => {
     const lines = renderTable(result).split("\n");
     expect(lines).toContain("a-very-long-session-id  1");
@@ -47,8 +45,6 @@ describe("--rows", () => {
     expect(rowsFromArgs(["q", "sessions", "--rows", "200"])).toBe(200);
   });
 
-  // A bad count silently falling back to the default would print a short table
-  // that reads as the whole answer.
   test("refuses a count that is not one", () => {
     expect(() => rowsFromArgs(["--rows", "many"])).toThrow("not a count");
     expect(() => rowsFromArgs(["--rows", "0"])).toThrow("not a count");

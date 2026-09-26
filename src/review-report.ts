@@ -12,8 +12,6 @@ function section(heading: string, lines: string[]): string {
   return [`## ${heading}`, "", ...(lines.length > 0 ? lines : ["None."])].join("\n");
 }
 
-/** Read off the whole order rather than this round, since an earlier finding still open or a
- *  refusal still contested holds the order however clean this round's reading was. */
 function verdict(standings: readonly FindingStanding[]): string {
   const states = standings.map((finding) => finding.state);
   if (states.includes("open")) return "Returns to the builder.";
@@ -21,10 +19,6 @@ function verdict(standings: readonly FindingStanding[]): string {
   return "May advance.";
 }
 
-/**
- * The owner's Review artifact, rendered from the round's recorded findings and rulings and the
- * reviewer's report. The order of sections is the order the owner decides in.
- */
 export function renderReviewReport(db: Database, reviewId: number, report: ReviewReport): string {
   const orderId = db
     .query<{ order_id: string }, [number]>("SELECT order_id FROM factory_order_review WHERE id = ?")
@@ -39,11 +33,7 @@ export function renderReviewReport(db: Database, reviewId: number, report: Revie
     )
     .all(reviewId)
     .map((ruling) => ({ ...ruling, finding: byId.get(ruling.finding_id) as FindingStanding }));
-  // Every contested refusal still holding the order, whichever round contested it: a later round
-  // does not rule on it again, and the owner decides from this artifact.
   const contested = standings.filter((finding) => finding.state === "awaiting_owner");
-  // An earlier finding the builder has not answered since its last ruling holds the order as
-  // open, and no ruling can name it, since a ruling judges an answer.
   const ruledHere = new Set(rulings.map((ruling) => ruling.finding_id));
   const unanswered = standings.filter(
     (finding) => owesAnswer(finding) && finding.reviewId !== reviewId && !ruledHere.has(finding.id),

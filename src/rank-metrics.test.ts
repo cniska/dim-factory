@@ -11,8 +11,6 @@ describe("recall@k", () => {
     expect(recallAtK(["x", "a"], new Set(["a"]), 2)).toBe(1);
   });
 
-  // Zero is what a total miss earns, so scoring an unanswerable question zero
-  // makes a corpus defect indistinguishable from a retrieval failure.
   test("a question with no relevant row is refused, not scored", () => {
     expect(() => recallAtK(["a"], new Set(), 5)).toThrow("at least one relevant row");
   });
@@ -21,8 +19,6 @@ describe("recall@k", () => {
     expect(recallAtK(["a", "a"], new Set(["a", "b"]), 2)).toBe(0.5);
   });
 
-  // A repeat still spends its position. Dropping it first would pull a row from
-  // below the cutoff into the window and score a miss as a hit.
   test("a repeat does not make room for the row beneath the cutoff", () => {
     expect(recallAtK(["x", "x", "a"], new Set(["a"]), 2)).toBe(0);
     expect(recallAtK(["x", "x", "a"], new Set(["a"]), 3)).toBe(1);
@@ -38,8 +34,6 @@ describe("nDCG@k", () => {
     expect(ndcgAtK(["a", "b"], grades, 2)).toBe(1);
   });
 
-  // The whole point of grading over counting: the same rows in a worse order
-  // must score lower, or ranking changes are invisible to the measure.
   test("falls when the same rows come back in a worse order", () => {
     const grades = new Map([
       ["a", 2],
@@ -67,8 +61,6 @@ describe("nDCG@k", () => {
     expect(ndcgAtK(["b", "a"], new Map([["a", 3]]), 2)).toBeGreaterThan(0);
   });
 
-  // Without the cutoff on the ideal order, grading more rows than k depresses
-  // every score — and a corpus grades more than k as a matter of course.
   test("compares against the best possible k rows, not against every graded row", () => {
     const grades = new Map([
       ["a", 3],
@@ -78,8 +70,6 @@ describe("nDCG@k", () => {
     expect(ndcgAtK(["a"], grades, 1)).toBe(1);
   });
 
-  // nDCG is bounded to [0,1] by construction, so a ranker that emits the same
-  // row twice must not score better than one that returns it once.
   test("cannot exceed one when a row comes back more than once", () => {
     expect(ndcgAtK(["a", "a"], new Map([["a", 3]]), 2)).toBe(1);
     expect(ndcgAtK(["a", "a", "a", "a", "a"], new Map([["a", 3]]), 5)).toBe(1);

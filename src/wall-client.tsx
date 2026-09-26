@@ -35,8 +35,6 @@ const statusLabels: Record<BoardStatus, string> = {
   completed: "Completed",
 };
 
-/** An order waiting on something off the floor, which is the one thing a card's own ground
- *  says. The status cannot carry it: a held order is still queued or working. */
 function isStopped(order: { hold?: string }): boolean {
   return order.hold !== undefined;
 }
@@ -51,9 +49,6 @@ const statusIcon: Record<BoardStatus, LucideIcon> = {
   completed: CircleCheck,
 };
 
-// Color carries the agent's role and nothing else; the station stays text, so the two
-// never compete for the same signal. A tint that can be wrong about the one thing it carries
-// is worse than a mark with none, so an unknown role takes no color.
 const roleTint: Record<WallRole, string | undefined> = {
   operator: "text-role-operator",
   planner: "text-role-planner",
@@ -86,25 +81,18 @@ function LineMarker({ line, size = "card" }: { line: OrderLine; size?: "card" | 
   );
 }
 
-// `hourCycle` rather than `hour12: false`, which reads midnight as 24 in some locales. The
-// wall hangs on a screen in a room and shows one clock whoever is looking at it.
 const clock = new Intl.DateTimeFormat([], {
   hour: "numeric",
   minute: "2-digit",
   hourCycle: "h23",
 });
 
-// Assembled from the parts rather than taking the locale's own separator, which differs
-// across ICU builds, so the figure on the wall is ours and not the viewer's.
 function timeLabel(updatedAt: string): string {
   const parts = clock.formatToParts(new Date(updatedAt));
   const part = (type: "hour" | "minute") => parts.find((p) => p.type === type)?.value ?? "00";
   return `${Number(part("hour"))}:${part("minute")}`;
 }
 
-/** The box every row of a card stands in, whatever it holds. One figure rather than a gap
- *  between rows sized off each one's type: a stack set that way steps unevenly down the card,
- *  and the rows stop sharing a rhythm the eye can follow across three columns. */
 const ROW = "flex h-[18px] shrink-0 items-center gap-[var(--space-xs)] leading-none";
 
 function OrderCard({
@@ -122,23 +110,16 @@ function OrderCard({
 
   return (
     <Card
-      // The card is what a reader points at, so the whole of it opens the view. It stays an
-      // article rather than becoming a button, because a button's children are read as its label
-      // and the state, age, worker and station on the card would stop being read at all.
       onClick={() => onOpen(order)}
       stopped={isStopped(order)}
       className={cn(
         "h-[164px] justify-between p-[var(--space-md)] text-left text-[11px]",
         "cursor-pointer hover:border-accent focus-visible:border-accent focus-visible:outline-none",
-        // Lit until the bump expires, so a glance a moment after a card moved still shows
-        // which one did.
         bumped && "border-accent",
       )}
     >
       <CardHeader className={cn(ROW, "justify-between text-quiet")}>
         <span className={cn("flex items-center gap-[var(--space-sm)] lowercase", statusTint(order))}>
-          {/* Where the column carries the state, the mark is what states it, so the mark is
-              what has to name it to a reader who is not looking at the column. */}
           <StatusIcon
             size={12}
             strokeWidth={1.8}
@@ -149,15 +130,11 @@ function OrderCard({
             {isStopped(order) ? "Awaiting approval" : statusLabels[order.status]}
           </span>
         </span>
-        {/* Re-derived from the timestamp every second rather than read off the snapshot, so
-            the board keeps moving between pushes instead of standing still. */}
         <span className="tabular-nums">
           <Digits value={age(order.lastEventAt, now)} />
         </span>
       </CardHeader>
 
-      {/* The title keeps one row, so a long order cannot change the card's height or push its
-          description and footer out of alignment with the cards beside it. */}
       <div className="flex min-w-0 items-center gap-[var(--space-sm)]">
         <LineMarker line={order.line} />
         <h3 className="min-w-0 truncate font-medium text-foreground leading-[18px]">{order.title}</h3>
@@ -166,8 +143,6 @@ function OrderCard({
       <p className="line-clamp-3 min-h-[54px] shrink-0 text-quiet leading-[18px]">{order.description}</p>
 
       <CardFooter className={cn(ROW, "justify-between gap-[var(--space-sm)] text-quiet")}>
-        {/* What opens the view from the keyboard, and what a screen reader is offered: the card
-            around it stays readable as the article it is. */}
         <button
           type="button"
           onClick={(event) => {
@@ -178,7 +153,6 @@ function OrderCard({
         >
           Open {order.title}
         </button>
-        {/* The worker slot keeps its shape when no hand has taken the order. */}
         <span className="flex min-w-0 items-center gap-[var(--space-xs)]">
           {order.worker && order.role ? (
             <WorkerLabel worker={order.worker} role={order.role} className="truncate" />
@@ -212,9 +186,6 @@ function NoWorkerLabel() {
   );
 }
 
-/** A worker as a moment names it, tinted for the role that worker holds rather than the one
- *  the order currently sits under: a history is a sequence of hands, and a reviewer's moment
- *  wearing the builder's color says the wrong thing about who wrote it. */
 function EntryWorker({ entry }: { entry: WallItemEntry }) {
   if (!entry.worker || !entry.role) return <NoWorkerLabel />;
 
@@ -229,10 +200,6 @@ function MarkdownLink({ children }: { children?: ReactNode }) {
   return <code>{children}</code>;
 }
 
-/** An order's record as a table, because that is what it is: four columns whose widths are
- *  shared down the page, which a list of rows cannot do without pinning one to a fixed width.
- *  The time leads because it orders the page; who did it sits at the right edge, where a column
- *  of workers reads down on its own. */
 const dayKey = new Intl.DateTimeFormat("en-CA");
 const dayInYear = new Intl.DateTimeFormat([], { month: "short", day: "numeric" });
 const dayWithYear = new Intl.DateTimeFormat([], { month: "short", day: "numeric", year: "numeric" });
@@ -295,19 +262,7 @@ function ItemHistory({ entries, now }: { entries: WallItemEntry[]; now: Date }) 
   );
 }
 
-/** One order's own record, over the board. On the platform's `<dialog>`, which carries modality,
- *  focus and dismissal already — a component library would cost more than this surface. */
-function ItemDialog({
-  card,
-  movedAt,
-  onClose,
-}: {
-  /** The order as the board holds it, so the identity is on screen from the first frame rather
-   *  than after the record arrives. */
-  card: WallOrder;
-  movedAt: string;
-  onClose: () => void;
-}) {
+function ItemDialog({ card, movedAt, onClose }: { card: WallOrder; movedAt: string; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const read = useItemView(card.id, movedAt);
 
@@ -324,13 +279,9 @@ function ItemDialog({
     <dialog
       ref={dialog}
       onClose={onClose}
-      // A click on the backdrop lands on the dialog itself, which is how one is told from a
-      // click on anything inside it.
       onClick={(event) => {
         if (event.target === dialog.current) dialog.current?.close();
       }}
-      // The element takes focus when it opens, and the platform's focus ring on a whole dialog
-      // is a blue frame around the surface rather than a mark on anything a reader can act on.
       className="m-auto max-h-[85vh] w-[min(64rem,92vw)] rounded-lg border bg-card p-0 text-[12px] text-muted-foreground outline-none backdrop:bg-black/70"
     >
       <div className="flex max-h-[85vh] flex-col">
@@ -342,8 +293,6 @@ function ItemDialog({
                 {order.title}
               </h2>
             </div>
-            {/* Escape and a backdrop click already close the dialog; neither is visible, so this
-                is the one way out a reader does not have to already know. */}
             <button
               type="button"
               onClick={() => dialog.current?.close()}
@@ -404,9 +353,6 @@ function ItemDialog({
           </dl>
         </header>
 
-        {/* The dialog holds its size and its content scrolls, so the identity above stays with
-            whatever is being read. The description scrolls too: pinned, a long one leaves
-            little room for the rest. */}
         <div className="flex min-h-0 flex-col overflow-y-auto">
           {order.description ? (
             <p className="whitespace-pre-wrap px-[var(--space-lg)] pt-[var(--space-lg)] text-quiet leading-5">
@@ -593,7 +539,6 @@ function BoardColumn({
           <Digits value={String(total)} />
         </span>
       </header>
-      {/* An empty column says so by being empty; the count in its heading already reads 0. */}
       <div className="grid gap-[var(--space-xs)]">
         {orders.map((order) => (
           <OrderCard order={order} key={order.id} now={now} bumped={bumped.has(order.id)} onOpen={onOpen} />
@@ -629,7 +574,6 @@ function feedStateOf(unavailable: boolean, stale: boolean): FeedState {
   return "live";
 }
 
-/** What a card would show, so a snapshot that changed nothing lights nothing. */
 function cardState(order: WallOrder): string {
   return `${order.status}|${order.lastEventAt}|${order.worker ?? ""}`;
 }
@@ -650,8 +594,6 @@ function useSnapshot() {
     let clearBump: ReturnType<typeof setTimeout> | undefined;
 
     const accept = (data: WallSnapshot) => {
-      // Marked on the beat a push changes something, then expired: the timer is cleared on
-      // the way in, so a later push finding nothing new cannot leave the last one lit.
       const changed = new Set(
         data.orders
           .filter((order) => seen.current.get(order.id) !== cardState(order))
@@ -660,7 +602,6 @@ function useSnapshot() {
       const first = seen.current.size === 0;
       seen.current = new Map(data.orders.map((order) => [order.id, cardState(order)]));
       clearTimeout(clearBump);
-      // Everything is new on the first snapshot, and lighting the whole board says nothing.
       setBumped(first ? new Set() : changed);
       if (changed.size > 0 && !first) clearBump = setTimeout(() => setBumped(new Set()), BUMP_MS);
 
@@ -712,8 +653,6 @@ const ITEM_READ_MESSAGE: Record<ItemRead["state"], string> = {
   unavailable: "This order's record could not be read.",
 };
 
-/** The open order's own record, read from the same tables `dim q order` reads. It is re-read on
- *  every beat the board reports for that order, so the view is as live as the board behind it. */
 function useItemView(orderId: string, movedAt: string): ItemRead {
   const [read, setRead] = useState<ItemRead>({ state: "reading", view: null });
 
@@ -726,8 +665,6 @@ function useItemView(orderId: string, movedAt: string): ItemRead {
         if (current) setRead({ state: "read", view: data });
       })
       .catch(() => {
-        // A re-read that fails leaves the record already on screen where it is: the reader is
-        // looking at it, and the last thing the server answered is still the last thing it said.
         if (current) setRead((last) => ({ state: "unavailable", view: last.view }));
       });
     return () => {
@@ -738,13 +675,6 @@ function useItemView(orderId: string, movedAt: string): ItemRead {
   return read;
 }
 
-/**
- * A clock the board reads, so every age advances on the same beat.
- *
- * `freshAt` is the last answer the feed gave: a board left on a screen is a tab nobody has
- * touched, whose timers the browser throttles or stops outright, so a snapshot arriving after
- * that would otherwise be drawn against a clock as stale as the data it replaced.
- */
 function useNow(freshAt: number | null): Date {
   const [now, setNow] = useState(() => new Date());
   const [read, setRead] = useState(freshAt);
@@ -767,13 +697,6 @@ function useNow(freshAt: number | null): Date {
   return now;
 }
 
-/**
- * A beat of its own, on the second, for the clock's separator alone.
- *
- * The clock reads this machine's time, so it goes on ticking whether or not anything is behind
- * it; the separator stopping is the wall's only sign that the feed did. It is kept off the
- * board's own beat, which counts in minutes and would redraw every card to blink one character.
- */
 function useBlink(live: boolean): boolean {
   const [on, setOn] = useState(true);
 
@@ -786,9 +709,7 @@ function useBlink(live: boolean): boolean {
   return live ? on : true;
 }
 
-/** The clock, its separator blinking while the feed is landing. */
 function Clock({ at, beat }: { at: string; beat: boolean }) {
-  // Read out of the string rather than assumed, so a clock with no separator is shown whole.
   const parts = /^(\d+)(\D)(\d+)$/.exec(at);
   if (!parts) return <span className="tabular-nums">{at}</span>;
   const [, hours = "", separator = "", minutes = ""] = parts;
@@ -812,17 +733,12 @@ function App() {
   const feed = feedStateOf(unavailable, stale);
   const FeedIcon = FEED_ICON[feed];
   const columns = ordersByStage(snapshot.orders);
-  // The board bounds what it draws, so the order a reader opened can leave the snapshot while the
-  // view is open. Its own card is what the view keeps showing, and the snapshot's beat is what
-  // goes on prompting a re-read.
   const onBoard = snapshot.orders.find((order) => order.id === opened?.id);
   const openCard = onBoard ?? opened;
 
   return (
     <main className="wall-shell mx-auto flex min-h-screen w-full max-w-[90rem] flex-col p-[clamp(1rem,2.6vw,2.4rem)]">
       <header className="flex items-center justify-between gap-[var(--space-xl)] pb-[var(--space-lg)]">
-        {/* The board is what the page is for, so its name sits at the weight of the feed
-            state beside it rather than above the work as a title. */}
         <h1 className="flex h-9 items-center gap-[var(--space-sm)] text-[clamp(1.25rem,2vw,1.75rem)] tracking-tight whitespace-nowrap">
           <span className="text-quiet">dim-factory</span>
           <span className="text-border" aria-hidden="true">
@@ -834,8 +750,6 @@ function App() {
           className={cn(
             "flex items-center gap-[var(--space-sm)] rounded-wall border px-[var(--space-md)] py-[var(--space-sm)] text-[11px] whitespace-nowrap",
             FEED_TINT[feed],
-            // The box is held rather than the element dropped, so the header does not step
-            // sideways when the first answer arrives.
             !answered && "invisible",
           )}
         >
@@ -867,8 +781,6 @@ function App() {
 
       {openCard ? (
         <ItemDialog
-          // Keyed by order, so opening another card reads that record from nothing rather than
-          // showing the last one until its read lands.
           key={openCard.id}
           card={openCard}
           movedAt={onBoard?.lastEventAt ?? snapshot.generatedAt}

@@ -12,56 +12,33 @@ import { isScratchRepo } from "./scratch";
 import { withoutWorktree } from "./worktree";
 
 export type QueryResult = {
-  /** Printed above the rows, so a number is never read without its base. */
   denominator: string;
   columns: string[];
   rows: (string | number | null)[][];
-  /** Shown instead of an empty table, so no evidence never reads as a zero. */
   note?: string;
-  /** Which branch answered, where a query has more than one and the rows do not show which. */
   path?: string;
 };
 
-/**
- * `since` is an ISO timestamp the caller already resolved from `--since`. Old
- * sessions ran under guidance that has since been rewritten, so counting them
- * beside this week's describes a machine that no longer exists.
- */
 export type QueryContext = {
   arg?: string;
   since?: string;
   home?: string;
-  /** Resolved by the caller, as `since` is, so no query has to be async to rank by meaning. */
   question?: Question;
-  /** Set by the query registry; null means this query intentionally ignores time windows. */
   windowColumn?: string | string[] | null;
 };
 
-/**
- * Paths print relative to the reader's home, so the project column stays short
- * on any machine. Bound rather than written into the SQL: another person's
- * corpus sits under a different home, and a literal there is a fact about mine.
- */
 const homeOf = (ctx: QueryContext): string => ctx.home ?? "";
 
 export type Query = {
   name: string;
   summary: string;
   usage?: string;
-  /** The timestamp expression every windowed statement in this query must use. */
   window: string | string[] | null;
-  /**
-   * No window is applied unless asked. Set where one would hide the answer: a
-   * time series, a query aimed at something the caller named, and `running`,
-   * whose own argument is the span it covers.
-   */
   spansHistory?: boolean;
-  /** Its argument is a question to rank by meaning, which the caller resolves into `ctx.question`. */
   embedsArg?: boolean;
   run: (db: Database, ctx: QueryContext) => QueryResult;
 };
 
-/** The window as a bound fragment, empty when the caller asked for all of history. */
 function window(
   col: string,
   ctx: QueryContext,
@@ -131,8 +108,6 @@ const tokens: Query = {
       denominator: `${corpusLine(db, ctx)}. One row per API response, deduplicated on the response id.`,
       columns,
       rows: toRows(records, columns),
-      // The two tools count the same word differently; a combined total would be a
-      // number with no meaning.
       note:
         records.length === 0
           ? "no usage rows"
@@ -141,15 +116,6 @@ const tokens: Query = {
   },
 };
 
-/**
- * Goal 2 is that work does not stop, and a usage limit is measured over a
- * rolling window rather than a day. This reports the rate in that shape: what
- * each tool spent per five-hour block, against what it changed in the same
- * block. No limit, quota or refusal is recorded anywhere in the corpus, so the
- * question it answers is not how close a block came to stopping but how much
- * spend a block turned into edits — which is comparable between blocks without
- * knowing any cap.
- */
 const burn: Query = {
   name: "burn",
   summary: "spend against edits per rolling five-hour block — how much a block turned into changes",
@@ -214,8 +180,6 @@ const models: Query = {
       denominator: corpusLine(db, ctx),
       columns,
       rows: toRows(records, columns),
-      // Across these months the projects, the guidance and the habits all changed,
-      // so a difference between two rows is not an effect of the model.
       note: "Descriptive. Nothing here compares models; the corpus has no arm held fixed.",
     };
   },
@@ -281,9 +245,6 @@ const turns: Query = {
       ...w.params,
     );
     return {
-      // The percentiles are computed only over turns that carry a duration, and
-      // which turns those are is not random, so the gap is stated rather than
-      // left for a reader to infer from a total that does not add up.
       denominator: `${timed} of ${all} turns carry a duration; the percentiles cover only those (${windowLine(ctx)})`,
       columns,
       rows: toRows(records, columns),
@@ -458,8 +419,6 @@ const tools: Query = {
       denominator: `${calls} tool calls; ${noResult} have no result record (${windowLine(ctx)})`,
       columns,
       rows: toRows(records, columns),
-      // Claude records no exit code, so a Claude failure is only what the
-      // transcript marked is_error, not every command that returned non-zero.
       note: "Claude records no exit code; its failure count is what the transcript marked, not every non-zero exit.",
     };
   },
@@ -483,9 +442,6 @@ const skills: Query = {
     ];
     const records = table(
       db,
-      // Every API response after a load re-reads that body from cache, so the
-      // count of responses following a load is the honest unit of what an
-      // instruction costs — counted per load, then summed.
       `WITH after AS (
          SELECT l.skill_name, count(*) AS calls_after
          FROM skill_load l JOIN usage u ON u.session_id = l.session_id AND u.ts > l.ts
@@ -535,12 +491,6 @@ const skills: Query = {
   },
 };
 
-/**
- * A base narrower than the corpus that goes unsaid reads as a measured zero for
- * the tool it left out, so every query keying on one tool's vocabulary says
- * which. Widening the edit match waits on the parser: a Codex FileChange writes
- * all of its paths into one `file_path`, which joins no committed path.
- */
 const CLAUDE_EDITS =
   "an edit is matched by the `Edit` and `Write` tool names, and Codex writes a `FileChange`";
 const CLAUDE_STOPS =
@@ -549,21 +499,10 @@ const CLAUDE_STOPS =
 const claudeOnly = (...bases: string[]): string =>
   `These counts are Claude's alone: ${bases.join("; ")}. A Codex session is absent from them rather than idle.`;
 
-/**
- * The owner refusing a call. `user-rejected` is the only denial kind a person
- * caused: the rest are auto mode blocked or unavailable, which is the harness
- * refusing its own call and no pushback at all.
- */
 const stoppedByOwner = (prefix = "m."): string =>
   `(${prefix}denial_kind = 'user-rejected' OR ${prefix}interrupted_message_id IS NOT NULL ` +
   `OR ${prefix}user_feedback IS NOT NULL)`;
 
-/**
- * A correction is credited to the attribution_skill of the assistant message
- * immediately before it, and an unattributed message clears the credit. Carrying
- * the last-seen skill forward blames whichever skill ran most recently for
- * everything that follows and inflates the rate of rarely used ones.
- */
 const attributed = (ctx: QueryContext): string => `
   SELECT m.id, m.session_id, m.ts, m.model, m.text, m.denial_kind, m.user_feedback,
          m.interrupted_message_id,
@@ -574,10 +513,6 @@ const attributed = (ctx: QueryContext): string => `
   WHERE m.role = 'user'
     AND ${stoppedByOwner()}${window("m.ts", ctx).sql}`;
 
-/**
- * Spans history because the table starts empty and fills a slice at a time, so
- * the default window would hide the corpus rather than bound it.
- */
 const findings: Query = {
   name: "findings",
   summary: "what a checking agent raised on a slice, and how each was answered",
@@ -678,11 +613,6 @@ const corrections: Query = {
   },
 };
 
-/**
- * The candidates themselves, so a judgement can be made by reading rather than
- * from a count. Labeled rows are left out: the list is work remaining, and one
- * already judged is not work.
- */
 const candidates: Query = {
   name: "candidates",
   summary: "unlabeled turns the user stopped, with enough text to judge them",
@@ -725,12 +655,6 @@ const candidates: Query = {
   },
 };
 
-/**
- * A file edited repeatedly is not evidence of anything on its own — writing a
- * file in pieces looks identical to fixing it three times. What separates them
- * is whether the user pushed back between the edits, which the transcript
- * records as an act rather than a judgement.
- */
 const rework: Query = {
   name: "rework",
   summary: "files the agent had to revisit after you pushed back, by skill",
@@ -796,20 +720,8 @@ const rework: Query = {
   },
 };
 
-/**
- * A term like "the" touches most of the corpus, and an argument arrives from a
- * file or a transcript as readily as from a person, so terms past the cap are
- * dropped and the caller is told, rather than the query running until someone
- * kills it.
- */
 const MAX_TERMS = 16;
 
-/**
- * Every term is quoted before it reaches FTS5, which otherwise reads `-` as NOT
- * and `:` as a column filter — so a branch name or a flag searches as the word
- * it is. `raw` is what the caller typed, for the words a term-by-term check
- * can name; `quoted` is what FTS5 matches on.
- */
 const quotedTerms = (terms: string): { raw: string[]; quoted: string[]; dropped: number } => {
   const words = terms.split(/\s+/).filter(Boolean);
   const kept = words.slice(0, MAX_TERMS);
@@ -820,21 +732,8 @@ const quotedTerms = (terms: string): { raw: string[]; quoted: string[]; dropped:
   };
 };
 
-/**
- * Meta the harness injected is left out, because the same reminder arrives in
- * session after session and a term inside one matches once per session that got
- * it. What `origin.kind` marks as a coordinator's or a peer's message stays: an
- * agent wrote that, and relaying it through the harness does not make it
- * injected. Skill bodies need no condition of their own — the parser drops their
- * text, and each is meta too.
- */
 const SAID = "(m.is_meta = 0 OR m.origin_kind IN ('coordinator', 'peer'))";
 
-/**
- * What answers when the distilled index cannot: every message anyone said, but
- * only the words actually typed. The caller states why its reader is here, since
- * this is a front door for one and a degradation for another.
- */
 function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryResult {
   const columns = ["session", "when", "role", "project", "terms", "text"];
   const { raw, quoted, dropped } = quotedTerms(terms);
@@ -843,9 +742,6 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryRes
   }
   const matchAny = quoted.join(" OR ");
   const w = window("m.ts", ctx);
-  // A term with no match among the rows the search can actually rank is the
-  // one thing a caller cannot see from the ranked rows, so it is checked
-  // against the same population — SAID and the window — and named on its own.
   const byWord = new Map(raw.map((word, i) => [word, quoted[i] as string]));
   const missing = [...byWord]
     .filter(
@@ -878,8 +774,6 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryRes
      ORDER BY c.matched DESC, bm25(message_fts) ASC, m.ts DESC LIMIT 40`,
     [...quoted, homeOf(ctx), String(quoted.length), matchAny, ...w.params],
   );
-  // Both counts carry the window the rows were drawn under, or the base
-  // describes a corpus the search never looked at.
   const searchable = window("m.ts", ctx);
   const every = window("ts", ctx, "WHERE");
   const said = scalar(
@@ -906,7 +800,6 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryRes
   };
 }
 
-/** The keyword index standing in for the meaning path, which the reader is owed. */
 const degradedToKeywords = (db: Database, ctx: QueryContext, terms: string, why: string): QueryResult => {
   const result = keywordSearch(db, ctx, terms);
   return { ...result, path: "keyword", denominator: `${result.denominator} Meaning was not ranked: ${why}` };
@@ -921,26 +814,14 @@ const snippet = (text: string): string => {
   return line.length > SNIPPET_CHARS ? `${line.slice(0, SNIPPET_CHARS - 1)}…` : line;
 };
 
-/**
- * A commit from a scratch tree has no remote to name it, so its place is an
- * absolute path that is mostly temp directory. Kept from the right, where the
- * part that identifies it is, because every row pads to the widest cell.
- */
 const place = (value: string | null): string | null => {
   if (value === null || value.length <= PLACE_CHARS) return value;
   return `…${value.slice(value.length - (PLACE_CHARS - 1))}`;
 };
 
-// Asked of sqlite_master rather than found by catching an error: a reader opens
-// read-only, so a database older than the table cannot be given one.
 const hasEmbeddings = (db: Database): boolean =>
   scalar(db, "SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'embedding'") > 0;
 
-/**
- * A question and the passage answering it routinely share no words, which is the
- * one thing keywords cannot be made to do. Falls back rather than failing, in
- * the three ways this can break: nothing embedded, no model, no table.
- */
 const search: Query = {
   name: "search",
   summary: "find a distilled passage by meaning, falling back to keywords",
@@ -968,8 +849,6 @@ const search: Query = {
          LEFT JOIN repo_commit c ON e.kind = 'subject' AND c.sha = e.ref${w.sql}`,
       )
       .all(...w.params);
-    // A cosine between two models' vectors is a number on no scale, and a
-    // rebuild stopped midway through a model change leaves both in the table.
     const rows = inWindow.filter((row) => row.model === EMBED_MODEL);
     const otherScale = inWindow.length - rows.length;
     if (rows.length === 0) {
@@ -992,10 +871,6 @@ const search: Query = {
       .sort((a, b) => b.score - a.score)
       .slice(0, SEMANTIC_HITS);
 
-    // A session holds several distilled passages, so naming only the session
-    // leaves two of them the same row. The passage form is the argument `thread`
-    // takes, so one string is both the address a reader follows and the one a
-    // corpus grades.
     const detail = db.prepare<
       { text: string; when: string | null; ref: string | null; place: string | null },
       [string, string, string, string]
@@ -1050,12 +925,6 @@ const search: Query = {
   },
 };
 
-/**
- * The door onto the message index. `search` ranks the passages a person
- * distilled — a handoff's Next, a commit subject — so a question whose answer
- * was settled in conversation and never written down ranks against subjects it
- * has nothing to do with. Words find it where meaning cannot reach it.
- */
 const keywords: Query = {
   name: "keywords",
   summary: "find a message by the words in it, across every session",
@@ -1077,11 +946,6 @@ const keywords: Query = {
   },
 };
 
-/**
- * The sentence that settled a question is rarely the one that matched, so a hit
- * is only useful with its neighbours. Skill bodies and injected meta are left
- * out: they are the largest text in a session and none of it was said by anyone.
- */
 const thread: Query = {
   name: "thread",
   summary: "read one session's exchange, or the messages around a timestamp",
@@ -1561,12 +1425,6 @@ const factoryAnalytics: Query = {
   },
 };
 
-/**
- * One skill, split at each edit to its body. A correction is tied to the version
- * that was loaded in its session at the time, not to the version loaded today,
- * so rewriting a skill does not retroactively take credit for what the old text
- * did. Versions are ordered oldest first: the question is what changed.
- */
 const skill: Query = {
   name: "skill",
   summary: "one skill, version by version: loads, size, and what got stopped under each",
@@ -1610,9 +1468,6 @@ const skill: Query = {
       [arg, ...w.params, arg],
     );
     const known = scalar(db, "SELECT count(*) AS n FROM skill_load WHERE skill_name = ?", arg);
-    // A version edited between two sessions is its own arm of one, and a column of
-    // ones invites a comparison the sample cannot carry. The count leads so the
-    // reader meets it before the table.
     const singles = records.filter((r) => Number(r.sessions) === 1).length;
     const unmeasured = records.some((r) => r.version === "(unmeasured)");
     return {
@@ -1636,12 +1491,6 @@ const skill: Query = {
   },
 };
 
-/**
- * The facts a cold start needs, so a handoff spends its lines on the next move
- * instead of reconstructing the last one. Everything here is read from the
- * database rather than recalled: the session writing a handoff is usually the
- * one whose context is nearly full, which is exactly when recall is worst.
- */
 const resume: Query = {
   name: "resume",
   summary: "the factual half of a handoff: branch, files in play, last pushback, last exchange",
@@ -1680,8 +1529,6 @@ const resume: Query = {
     )[0];
     if (handoff) rows.push(["next", handoff.next as string]);
 
-    // Ordered by the last touch, not the count: the file being worked on when the
-    // session stopped is the one the next move starts from.
     for (const f of table(
       db,
       `SELECT file_path, count(*) AS edits, max(ts_call) AS last_edit
@@ -1739,12 +1586,6 @@ const resume: Query = {
   },
 };
 
-/**
- * Who hands work off, and how much the delegate actually did. A spawn is cheap
- * to count and tells you nothing on its own: the question is whether the work
- * came back, which is the delegate's own output, and whether the parent was
- * stopped after it landed.
- */
 const delegation: Query = {
   name: "delegation",
   summary: "work handed to a subagent or a peer, by the skill that handed it over",
@@ -1806,12 +1647,6 @@ const delegation: Query = {
   },
 };
 
-/**
- * What is happening right now, including inside a subagent. Fanning work out
- * costs the visibility of watching it, and a transcript is written as it goes:
- * the delegate's own lines are on disk before it reports back. Minutes, not the
- * day-granular window, because the question is what is running.
- */
 const running: Query = {
   name: "running",
   summary: "sessions and subagents active in the last few minutes, and what each is doing",
@@ -1858,20 +1693,6 @@ const running: Query = {
   },
 };
 
-/**
- * The repo's own verdict on work a session did. Every other number here is
- * process — what was said, loaded, called, stopped — and process cannot say
- * whether the code was right. A later `fix:` commit touching a file an agent
- * edited is somebody having to come back to it, which is an outcome and is
- * written down whether or not anyone noticed at the time.
- */
-/**
- * Goal 3, read out of the same join as `fixes` and in the other direction: files
- * an agent wrote, that shipped, and that no later fix commit returned to. It
- * starts from what an agent edited rather than from every committed file, so a
- * generated changelog with a thousand commits cannot outrank written code.
- * A nomination, never a verdict — the label has to come from a reader.
- */
 const exemplars: Query = {
   name: "exemplars",
   summary: "code an agent wrote that shipped and no fix came back to — candidates, not verdicts",
@@ -1996,14 +1817,8 @@ const STOPWORDS = new Set(
   ),
 );
 
-/**
- * Anything longer is a document, not a sentence: a pasted handoff, a log, a spec.
- * Without this the count is dominated by templates the owner pasted rather than
- * wrote — the handoff format alone appears in 207 sessions.
- */
 const SAID_MAX_CHARS = 400;
 
-/** Boilerplate the tool writes into a user turn, which is not something anyone said. */
 const BOILERPLATE = /\[request interrupted|tool use was rejected|the user (wants|doesn)/i;
 
 function phrases(text: string, size: number): string[] {
@@ -2016,19 +1831,12 @@ function phrases(text: string, size: number): string[] {
   const out: string[] = [];
   for (let i = 0; i + size <= words.length; i += 1) {
     const slice = words.slice(i, i + size);
-    // A phrase that is only filler recurs everywhere and means nothing.
     if (slice.every((w) => STOPWORDS.has(w))) continue;
     out.push(slice.join(" "));
   }
   return out;
 }
 
-/**
- * What the owner says over and over. A rule stated three times in three sessions
- * is a rule that belongs in the guidance every session loads, not a fact to be
- * retrieved later — which is the whole difference between a memory that fires
- * and one that sits there. Counting, not judging: nothing here is a model call.
- */
 const repeats: Query = {
   name: "repeats",
   summary: "phrases you have used in several sessions when stopping or correcting the agent",
@@ -2058,9 +1866,6 @@ const repeats: Query = {
       }
     }
 
-    // Sliding an n-gram window over one sentence yields several phrases that are
-    // mostly the same words, and they would otherwise fill the list three deep
-    // with one habit. The strongest wins and its near-duplicates drop.
     const kept: { phrase: string; words: Set<string>; sessions: number; uses: number }[] = [];
     for (const [phrase, v] of [...seen.entries()]
       .filter(([, x]) => x.sessions.size >= 3)
@@ -2092,13 +1897,6 @@ const repeats: Query = {
   },
 };
 
-/**
- * One call for a scheduled reader, so the measure step of the loop is a job
- * rather than a sitting. It reports over whatever window it is given and names
- * it: `--since 7d` for a weekly cadence. Every figure here is also reachable on
- * its own, and this adds no measurement of its own — a digest that computed
- * something no other query could would be a number with nowhere to check it.
- */
 const digest: Query = {
   name: "digest",
   summary: "the whole week in one call: friction, where work happened, what you repeated",
@@ -2151,8 +1949,6 @@ const digest: Query = {
     );
     add("work handed to a subagent or peer", handoffs);
 
-    // Guidance that changed inside the window is the other half of any change in
-    // the numbers above, and reading them apart invites crediting the wrong one.
     const skillVersions = scalar(
       db,
       `SELECT count(DISTINCT body_sha256) AS n FROM skill_load
@@ -2185,15 +1981,6 @@ const digest: Query = {
   },
 };
 
-/**
- * How far the code a session touched has moved since it ran. This is the gate
- * `acolyte import` settled on, measured per file rather than per repo: a session
- * whose files have been rewritten describes code that no longer exists, so its
- * conclusions are worth less than their confidence suggests.
- *
- * It scores the area, not the work. A file everyone edits moves whatever was
- * done to it, and a file nobody touches sits still even if it is wrong.
- */
 const stale: Query = {
   name: "stale",
   summary: "how much the code a session touched has changed since it ran",
@@ -2229,8 +2016,6 @@ const stale: Query = {
        FROM scored
        GROUP BY id HAVING files >= 3
        ORDER BY moved_pct DESC, commits_since DESC LIMIT 30`,
-      // The filter and window sit in the CTE, which precedes the SELECT this
-      // binds in, and SQLite binds by position in the text.
       [...(arg ? [arg] : []), ...w.params, homeOf(ctx)],
     );
     const commits = scalar(db, "SELECT count(*) AS n FROM repo_commit");
@@ -2254,13 +2039,6 @@ const stale: Query = {
   },
 };
 
-/**
- * How the same problem was solved in the repos already on disk. It reads
- * `repo_file`, so every path it prints opens, and dates each one from the
- * commits that touched it, so a settled file can be told from an abandoned one.
- * The alternative is a survey of every checkout, which is what this replaces.
- */
-/** A repo with fifty workflow files would otherwise be the whole answer, and one example from it is enough. */
 const PER_REPO = 3;
 
 const priorArt: Query = {
@@ -2335,11 +2113,6 @@ const priorArt: Query = {
   },
 };
 
-/**
- * The work a task spans, rather than the session it happened to be in. Every
- * other per-session measure here counts a link as a whole piece of work; this
- * is the column that says how many links were behind it.
- */
 const chain: Query = {
   name: "chain",
   summary: "sessions that continued one another through a handoff, longest chain first",
@@ -2350,7 +2123,6 @@ const chain: Query = {
     const { arg } = ctx;
     if (arg) {
       const columns = ["step", "session", "ran", "gap_min", "title"];
-      // Both directions from the named session, following the edge each way.
       const records = table(
         db,
         `WITH RECURSIVE back(from_session, to_session, to_ts, from_ts, title) AS (
@@ -2469,10 +2241,6 @@ const slices: Query = {
        FROM commits ORDER BY ts DESC`,
       [...(arg ? [arg] : []), ...w.params],
     );
-    // A fixture repo the OS will delete declares no check, so its commits read as
-    // discipline nobody owed. `isScratchRepo` holds the roots, and asking it is
-    // what keeps this from becoming a second list; an empty path resolves to the
-    // cwd there, so a session with no project counts as work rather than scratch.
     const records = all.filter((r) => !(r.project && isScratchRepo(String(r.project))));
     const unchecked = records.filter((r) => r.checked === "no").length;
     return {
@@ -2492,11 +2260,6 @@ const slices: Query = {
   },
 };
 
-/**
- * What a repo's own log says its commit convention is. The tool-agnostic advice
- * for this is to read `git log` and match it, which is inference over a sample;
- * the whole log is already a table here, so the answer is a row.
- */
 const convention: Query = {
   name: "convention",
   summary: "the commit convention each repo's own log holds",

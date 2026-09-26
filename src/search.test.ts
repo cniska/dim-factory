@@ -17,10 +17,6 @@ const SUBJECT = "feat: shadow git keeps the users index clean";
 
 const search = findQuery("search") as NonNullable<ReturnType<typeof findQuery>>;
 
-/**
- * One dimension per word, so a passage's vector is the set of words in it and a
- * cosine is their overlap. Deterministic, and no weights have to be on disk.
- */
 const byWords: Embedder = async (texts) =>
   texts.map((text) => {
     const v = new Float32Array(EMBED_DIMS);
@@ -102,8 +98,6 @@ describe("search degrades instead of failing", () => {
     db.close();
   });
 
-  // The denominator says which index answered in prose; `path` is the value the
-  // trace records, and only it can tell a fallback from a cosine run afterwards.
   test("names the branch that answered as a value, not only in prose", async () => {
     const cold = seeded();
     expect(run(cold, { arg: "shadow", question: await asked("shadow") }).path).toBe("keyword");
@@ -170,8 +164,6 @@ describe("keywords, asked directly", () => {
   const keywords = findQuery("keywords") as NonNullable<ReturnType<typeof findQuery>>;
   const ask = (db: Database, ctx: QueryContext): QueryResult => keywords.run(db, { home: "/home", ...ctx });
 
-  // The whole point of the door: it answers on a database where `search` ranks
-  // by meaning, rather than only where the meaning path has broken.
   test("reaches a conversation on a database where search still ranks by meaning", async () => {
     const db = await indexed();
     expect(ask(db, { arg: "checkout" }).rows.map((r) => String(r[0]))).toEqual(["s1"]);
@@ -179,9 +171,6 @@ describe("keywords, asked directly", () => {
     db.close();
   });
 
-  // `path` names the branch that answered where a query has more than one. This
-  // one has a single branch, and `trace_event` keeps the column: a value here
-  // would read in the trace as `search` having degraded.
   test("claims no branch, so a trace cannot read it as a fallback", async () => {
     const db = await indexed();
     expect(ask(db, { arg: "checkout" }).path).toBeUndefined();
@@ -197,8 +186,6 @@ describe("keywords, asked directly", () => {
     db.close();
   });
 
-  // Without this the door windows to 30 days, and a decision settled months ago
-  // is unreachable — which is the whole thing it was built to reach.
   test("spans history, so an old decision is still reachable", async () => {
     const db = seeded();
     db.run(
@@ -212,8 +199,6 @@ describe("keywords, asked directly", () => {
     db.close();
   });
 
-  // Relayed through the harness, so flagged meta, but an agent wrote it — and a
-  // question about what was decided wants exactly these.
   test("finds what another agent said, which the harness only carried", async () => {
     const db = seeded();
     db.run(
@@ -225,8 +210,6 @@ describe("keywords, asked directly", () => {
     db.close();
   });
 
-  // An argument can arrive from a file or a transcript, and the cost of ANDing
-  // phrases is superlinear, so an uncapped one runs until someone kills it.
   test("searches a bounded number of words, and says what it dropped", async () => {
     const db = await indexed();
     const result = ask(db, { arg: `checkout ${"word ".repeat(40)}` });
@@ -241,8 +224,6 @@ describe("keywords, asked directly", () => {
     db.close();
   });
 
-  // Words are the whole answer here, so embedding the argument would load a
-  // model to rank nothing — the one cost this door has that `search` does not.
   test("does not ask the caller to embed the words", () => {
     expect(keywords.embedsArg).toBeFalsy();
   });
@@ -262,8 +243,6 @@ describe("keywords, asked directly", () => {
     db.close();
   });
 
-  // A row matching only some of the terms still appears — ranked behind one
-  // that matches more — rather than being excluded for missing any.
   test("a message carrying more of the terms outranks one carrying fewer, and returns rows rather than nothing", async () => {
     const db = seeded();
     db.run(
@@ -299,9 +278,6 @@ describe("keywords, asked directly", () => {
     db.close();
   });
 
-  // Two rows matching the same count of terms are not a tie: a shorter message
-  // that says little else scores more relevant than a long one repeating filler
-  // around the same words, and relevance outranks the long one's later timestamp.
   test("relevance breaks a tie in matched-term count before recency does", async () => {
     const db = seeded();
     db.run(
@@ -373,9 +349,6 @@ describe("search over the distilled index", () => {
     db.close();
   });
 
-  // A session holds several distilled passages, so a ref naming only the session
-  // cannot say which one ranked. The ref is `thread`'s own argument, which is
-  // what keeps one string good for reading the exchange and for grading it.
   test("a next names the passage, and the ref is what thread reads", async () => {
     const db = await indexed();
     const result = run(db, { arg: "touching the checkout", question: await asked("touching the checkout") });
@@ -391,8 +364,6 @@ describe("search over the distilled index", () => {
     db.close();
   });
 
-  // A subagent's session id is `<agent>@<parent>`, so splitting on the first
-  // delimiter reads the parent uuid as a timestamp and centers on nothing.
   test("thread reads a session whose own id holds an at-sign", async () => {
     const db = seeded();
     const id = "a0064e811b74a81cb@79e9c9bc-3a0b-46f6-b935-7a25be925124";
@@ -454,8 +425,6 @@ describe("search over the distilled index", () => {
     db.close();
   });
 
-  // A cosine between two models' vectors is a number with no scale behind it,
-  // and a rebuild interrupted midway leaves both in the table.
   test("a vector another model built is not scored beside this one's", async () => {
     const db = await indexed();
     expect(

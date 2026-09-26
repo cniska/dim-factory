@@ -1,7 +1,5 @@
 import type { OrderFindingAnswer } from "./order-finding-state";
 
-/** What a builder hands back at the end of a code turn: the runner commits the worktree under
- *  `subject`, and `artifact` is the Build artifact when the turn finished the last slice. */
 export type BuildTurn = { subject: string; artifact: string; answers: OrderFindingAnswer[] };
 
 export const BUILD_TURN_SCHEMA = `${import.meta.dir}/build-turn.schema.json`;
@@ -41,8 +39,6 @@ export function parseBuildTurn(raw: string): BuildTurn {
   if (typeof turn.subject !== "string" || turn.subject.trim() === "") {
     throw new Error("builder output must contain a non-empty commit subject");
   }
-  // A second line would become the commit's body, where a trailer such as Co-authored-by lands
-  // under the operator's signature.
   if (/[\r\n]/.test(turn.subject.trim())) {
     throw new Error("builder output's commit subject must be one line");
   }

@@ -28,9 +28,6 @@ afterEach(() => {
 
 function seeded(): Env {
   const root = newRoot();
-  // HOME too, not just the DIM_* roots: doctor reads the tools' own config, and
-  // a test that leaves it unset would diagnose the real machine.
-  // Git's global config too, or the gate checks would read the reader's own.
   const env = { ...scratchEnv(root), HOME: join(root, "home"), GIT_CONFIG_GLOBAL: join(root, "gitconfig") };
   writeClaudeTranscript(env, "-Users-x-code-demo", "11111111-2222-3333-4444-555555555555");
   const db = openDb(dbPath(env));
@@ -78,13 +75,9 @@ describe("doctor", () => {
     expect(unset?.state).toBe("fail");
     expect(unset?.detail).toContain("30 days");
 
-    // Removing the setting must flip the check, or it is not holding anything.
     writeFileSync(join(claudeDir, "settings.json"), JSON.stringify({ cleanupPeriodDays: 3650 }));
     expect(check(env, "retention")?.state).toBe("ok");
 
-    // install-hooks writes into this file and keeps whatever comments it holds,
-    // so a reader that cannot take one would turn the check that guards the
-    // sources silent on a config dim itself made ordinary.
     writeFileSync(join(claudeDir, "settings.json"), '{\n  // kept forever\n  "cleanupPeriodDays": 3650\n}\n');
     expect(check(env, "retention")?.state).toBe("ok");
   });
@@ -95,9 +88,6 @@ describe("doctor", () => {
     expect(missing?.state).toBe("warn");
     expect(missing?.fix).toContain("install-commit-gate");
 
-    // Writing the hooks must flip it, or the check is reporting a constant. A
-    // gate missing one hook is a rule back to being asked, so it still warns and
-    // names which one.
     const hooks = join(env.HOME as string, ".config", "dim", "hooks");
     mkdirSync(hooks, { recursive: true });
     pointGitAt(env, hooks);
@@ -113,8 +103,6 @@ describe("doctor", () => {
     expect(check(env, "commit gate")?.state).toBe("ok");
   });
 
-  // A hook written before the scripts changed runs the old rules, and existence
-  // alone cannot see that: the check read as every hook in place for every repo.
   test("names a hook whose body is not the one the gate now writes", () => {
     const env = seeded();
     const hooks = join(env.HOME as string, ".config", "dim", "hooks");
@@ -132,8 +120,6 @@ describe("doctor", () => {
     expect(stale?.fix).toContain("install-commit-gate");
   });
 
-  // Git reads one hooks directory, so a gate it is not pointed at is three
-  // correct files that run nowhere.
   test("names a gate git is not pointed at", () => {
     const env = seeded();
     const hooks = join(env.HOME as string, ".config", "dim", "hooks");
@@ -156,8 +142,6 @@ describe("doctor", () => {
     expect(check(env, "commit gate")?.state).toBe("ok");
   });
 
-  // An owner list from before the host match names an account alone, which now
-  // matches nothing: the gate reads as installed and arms in no repository.
   test("names an owner that would arm the gate nowhere", () => {
     const env = seeded();
     const hooks = join(env.HOME as string, ".config", "dim", "hooks");
@@ -174,8 +158,6 @@ describe("doctor", () => {
     expect(bare?.detail).toContain("an-account");
   });
 
-  // The gate exits silently where this ref is missing, so the whole point of
-  // reporting it is that nothing else can.
   test("names a checkout the push gate can never fire in", () => {
     const env = seeded();
     expect(check(env, "push gate")?.state).toBe("ok");
@@ -217,8 +199,6 @@ describe("doctor", () => {
     gitIn(factoryRepo, ["commit", "-q", "--allow-empty", "-m", "feat: x"]);
     const factoryWorktree = join(newRoot(), "shipped-wt");
     gitIn(factoryRepo, ["worktree", "add", "-q", "-b", "o1", factoryWorktree]);
-    // A commit both checkouts carry is credited to whichever one was ingested last, so one
-    // repo's rows can name its worktree, its primary checkout, or both.
     const db = openDb(dbPath(env));
     db.run(
       "INSERT INTO repo_commit (sha, repo, label, ts, author, subject) VALUES ('s1', ?, 'cniska/shipped', '2026-01-01T00:00:00Z', 'a', 'feat: x'), ('s2', ?, 'cniska/unrelated', '2026-01-01T00:00:00Z', 'a', 'feat: y')",
@@ -258,15 +238,10 @@ describe("doctor", () => {
 
   test("fails when hooks are installed but have never fired", () => {
     const env = seeded();
-    // No hooks in this scratch home, so the check must say it is not expected
-    // yet rather than reporting a failure the owner cannot act on.
     expect(check(env, "end reasons")?.state).toBe("warn");
     expect(check(env, "hooks")?.state).toBe("fail");
   });
 
-  // Codex writes the hook the moment install-hooks does and runs it only once
-  // config.toml trusts its position, so "installed" and "running" are different
-  // facts and only this check reads the second one.
   test("fails while a codex hook has no trust recorded for its position", () => {
     const env = seeded();
     const config = codexConfigPath(env);
@@ -281,8 +256,6 @@ describe("doctor", () => {
     writeFileSync(config, keys.map((k) => `[hooks.state."${k}"]\ntrusted_hash = "sha256:abc"\n`).join("\n"));
     expect(check(env, "codex trust")?.state).toBe("ok");
 
-    // An entry inserted ahead of dim's shifts every index after it, and the
-    // trust recorded against the old position no longer names dim's hook.
     const hooksPath = join(dirname(config), "hooks.json");
     const hooks = JSON.parse(readFileSync(hooksPath, "utf8")) as { hooks: Record<string, unknown[]> };
     hooks.hooks.SessionStart?.unshift({ hooks: [{ type: "command", command: "other-tool" }] });
@@ -302,8 +275,6 @@ describe("doctor", () => {
       const checks = diagnose(db, env);
       const by = (name: string) => checks.find((c) => c.name === name);
       expect(by("codex trust")?.state).toBe("fail");
-      // The same file feeds both, so a hooks check reading "ok" here would say
-      // collection is wired up while the file deciding that is unreadable.
       expect(by("hooks")?.state).toBe("fail");
       expect(by("end reasons")?.detail).toContain("not judged");
       expect(checks.map((c) => c.name)).toContain("schema");
@@ -312,8 +283,6 @@ describe("doctor", () => {
     }
   });
 
-  // An empty set of trusted keys reads as "approve your hooks in Codex", which
-  // is the wrong instruction when the file holding them is what is broken.
   test("reports an unparseable codex config.toml rather than reading it as no trust", () => {
     const env = seeded();
     const config = codexConfigPath(env);
@@ -335,7 +304,6 @@ describe("doctor", () => {
       expect(checks.length).toBeGreaterThan(5);
       for (const c of checks) {
         expect(c.detail.length, `${c.name} has no detail`).toBeGreaterThan(0);
-        // A failure a reader cannot act on is a complaint, not a diagnosis.
         if (c.state === "fail") expect(c.fix, `${c.name} fails with no fix`).toBeTruthy();
       }
     } finally {

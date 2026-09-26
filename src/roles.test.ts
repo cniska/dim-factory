@@ -2,9 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { isReadOnly, isRole, ROLES, ROLES_SQL } from "./roles";
 
 describe("roles", () => {
-  // Written out rather than read off READ_ONLY_ROLES: a test that asks the list whether it
-  // agrees with itself ratifies whatever the list is changed to, and which hands may touch
-  // the tree is the whole of what the mutation gate rests on.
   test("the planner and the reviewer may not touch the tree", () => {
     expect(isReadOnly("planner")).toBe(true);
     expect(isReadOnly("reviewer")).toBe(true);

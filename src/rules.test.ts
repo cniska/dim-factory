@@ -24,8 +24,6 @@ describe("flatten", () => {
     writeFileSync(join(root, ".claude", "RTK.md"), "claude flavour");
     writeFileSync(join(root, ".codex", "RTK.md"), "codex flavour");
 
-    // The two files differ on purpose, so picking the source tool's copy would
-    // silently ship Claude's wording to Codex.
     expect(flatten("@RTK.md", join(root, ".codex"))).toBe("codex flavour");
     expect(flatten("@RTK.md", join(root, ".claude"))).toBe("claude flavour");
   });
@@ -39,7 +37,6 @@ describe("flatten", () => {
 
   test("says so in the file when an import cannot be resolved", () => {
     const root = home();
-    // Dropping the line would leave a rules file that looks complete and is not.
     expect(flatten("@nope.md", join(root, ".codex"))).toContain("not found for this tool");
   });
 

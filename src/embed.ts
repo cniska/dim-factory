@@ -19,16 +19,12 @@ export class EmbedderUnavailableError extends Error {
   }
 }
 
-/** Unit vectors, one per text, in the order the texts were given. */
 export type Embedder = (texts: string[]) => Promise<Float32Array[]>;
 
-/** Beside the database, so reinstalling dependencies does not throw away the download. */
 export function modelCacheDir(e: Env = process.env): string {
   return join(dataDir(e), "models");
 }
 
-// `env` is the library's process-wide settings object, so both entry points
-// assign the flag rather than one of them leaving it where the other put it.
 async function load(e: Env, allowRemoteModels: boolean): Promise<Embedder> {
   env.cacheDir = modelCacheDir(e);
   env.allowRemoteModels = allowRemoteModels;
@@ -43,8 +39,6 @@ async function load(e: Env, allowRemoteModels: boolean): Promise<Embedder> {
     const vectors: Float32Array[] = [];
     for (let at = 0; at < texts.length; at += BATCH) {
       const batch = texts.slice(at, at + BATCH);
-      // Mean pooling and L2 normalization are how all-MiniLM-L6-v2 was trained
-      // to be read; normalizing here is also what makes `similarity` a cosine.
       const out = await extract(batch, { pooling: "mean", normalize: true });
       const flat = out.data as Float32Array;
       for (let i = 0; i < batch.length; i++) {
@@ -55,12 +49,10 @@ async function load(e: Env, allowRemoteModels: boolean): Promise<Embedder> {
   };
 }
 
-/** Reads the model off disk, and fails where it is missing rather than fetching it. */
 export function openEmbedder(e: Env = process.env): Promise<Embedder> {
   return load(e, false);
 }
 
-/** The one thing here that reaches the network: `dim embed` warming an empty cache. */
 export function downloadEmbedder(e: Env = process.env): Promise<Embedder> {
   return load(e, true);
 }
@@ -76,16 +68,9 @@ export function fromBlob(blob: Uint8Array): Float32Array {
   if (blob.byteLength !== BLOB_BYTES) {
     throw new Error(`a vector is ${BLOB_BYTES} bytes, this blob is ${blob.byteLength}`);
   }
-  // Copied: SQLite hands back a view at an offset with no four-byte alignment,
-  // and a Float32Array over an unaligned offset throws.
   return new Float32Array(blob.slice().buffer);
 }
 
-/**
- * A question resolved into something a query can rank with, or the reason it
- * could not be. Carried as a value rather than thrown, because a retrieval path
- * that can break is a path nobody relies on: the caller degrades to keywords.
- */
 export type Question = { vector: Float32Array } | { unavailable: string };
 
 export async function embedQuestion(
@@ -103,7 +88,6 @@ export async function embedQuestion(
   }
 }
 
-/** Both sides are unit vectors, so their dot product is the cosine between them. */
 export function similarity(a: Float32Array, b: Float32Array): number {
   let dot = 0;
   for (let i = 0; i < EMBED_DIMS; i++) dot += (a[i] as number) * (b[i] as number);

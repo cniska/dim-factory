@@ -7,11 +7,6 @@ import { prePushScript, URL_NORMALIZER, unarmedCheckouts } from "./push-gate";
 
 type Repo = { root: string; work: string };
 
-/**
- * The reader's own git config is the thing under test on this machine: a global
- * `core.hooksPath` points at the installed gate, so a scratch repo that sets no
- * local one runs the real hook instead of the one the test wrote.
- */
 const ISOLATED = {
   ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_"))),
   GIT_CONFIG_GLOBAL: devNull,
@@ -26,12 +21,6 @@ function git(dir: string, ...args: string[]): string {
   return execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: "pipe", env: ISOLATED });
 }
 
-/**
- * The owner the hook matches is the whole of the remote URL before the
- * repository, so for a file path it is the bare repo's own parent directory.
- * A bare account name would match any forge, which is what armed the gate on
- * repositories the owner had only cloned.
- */
 function clonedRepo(owner: string): Repo {
   const root = mkdtempSync(join(tmpdir(), "dim-push-"));
   const bare = join(root, owner, "thing.git");
@@ -98,8 +87,6 @@ describe("the push gate", () => {
     }
   });
 
-  // Git's sequencer commits a revert without running commit-msg, so the subject
-  // gate never sees one and this is the first gate that can refuse it.
   test("refuses a push carrying a revert", () => {
     const { root, work } = clonedRepo("gated-owner");
     try {
@@ -115,7 +102,6 @@ describe("the push gate", () => {
     }
   });
 
-  // The refusal follows the commit, not the branch it sits on.
   test("refuses a revert pushed on a branch of its own", () => {
     const { root, work } = clonedRepo("gated-owner");
     try {
@@ -140,9 +126,6 @@ describe("the push gate", () => {
     }
   });
 
-  // Git names the remote by its name when the push named one and by its URL
-  // when it did not, and only a name has a refs/remotes/<name>/HEAD to read the
-  // shared branch from. Every spelling here reaches the same configured remote.
   for (const [label, spell] of [
     ["its path", (root: string) => join(root, "gated-owner", "thing.git")],
     ["a trailing slash", (root: string) => `${join(root, "gated-owner", "thing.git")}/`],
@@ -166,8 +149,6 @@ describe("the push gate", () => {
     });
   }
 
-  // Nothing configured carries it, so this checkout tracks no branch there and
-  // the gate has nothing to judge against.
   test("passes a push to a URL no configured remote carries", () => {
     const { root, work } = clonedRepo("gated-owner");
     const elsewhere = join(root, "elsewhere.git");
@@ -179,8 +160,6 @@ describe("the push gate", () => {
     }
   });
 
-  // A topic branch is rewritten on purpose, and gating that would refuse the
-  // rebase-then-force the branch workflow is built on.
   test("leaves a branch that is not the remote's HEAD alone", () => {
     const { root, work } = clonedRepo("gated-owner");
     try {
@@ -196,8 +175,6 @@ describe("the push gate", () => {
     }
   });
 
-  // The hook meets every clone on the machine, so someone else's project keeps
-  // whatever workflow it has.
   test("passes through a repo owned by someone else", () => {
     const { root, work } = clonedRepo("someone-else");
     try {
@@ -212,9 +189,6 @@ describe("the push gate", () => {
     }
   });
 
-  // The remote tip is missing locally exactly when it is a commit this checkout
-  // has never seen, which is the push that loses someone else's work rather than
-  // the one that cannot be judged.
   test("refuses a push over a remote tip this checkout has never fetched", () => {
     const { root, work } = clonedRepo("gated-owner");
     const other = join(root, "other");
@@ -234,9 +208,6 @@ describe("the push gate", () => {
     }
   });
 
-  // The ref is set by `git clone` and by nothing else, so a repo the owner
-  // started rather than cloned carries the gate and is never armed by it. That
-  // is silent from inside the repo, which is what makes it worth reporting.
   test("names the checkouts whose remote has no HEAD, and leaves the armed ones out", () => {
     const { root, work } = clonedRepo("gated-owner");
     const started = join(root, "started");
@@ -250,8 +221,6 @@ describe("the push gate", () => {
       commit(started, "first");
       git(started, "push", "-q", "-u", "origin", "main");
 
-      // No remote at all: the whole gate is off there by design, so reporting it
-      // would be noise rather than a gap.
       const local = join(root, "local");
       bareGit("init", "-q", "-b", "main", local);
 
@@ -261,8 +230,6 @@ describe("the push gate", () => {
     }
   });
 
-  // A remote assembled with `git remote add` never gets a HEAD, and the gate has
-  // no way to know which branch is shared without one.
   test("lets everything through where the remote names no HEAD", () => {
     const { root, work } = clonedRepo("gated-owner");
     try {
@@ -286,8 +253,6 @@ describe("dim_url", () => {
     });
   }
 
-  // A remote URL is not a directory, so the cd never runs and these are the only
-  // thing reducing the two spellings to one.
   test("drops a trailing slash from a remote URL", () => {
     expect(norm("https://github.com/an-owner/thing.git/")).toBe("https://github.com/an-owner/thing.git");
   });

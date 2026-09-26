@@ -33,7 +33,6 @@ type CodexLine = {
     id?: string | null;
     role?: string;
     content?: CodexContent[];
-    // session_meta
     timestamp?: string;
     cwd?: string;
     originator?: string;
@@ -43,19 +42,15 @@ type CodexLine = {
     model_provider?: string;
     history_mode?: string;
     git?: { branch?: string };
-    // turn_context
     turn_id?: string;
     model?: string;
-    // token_usage_record
     response_id?: string;
     usage?: CodexUsage;
-    // event_msg task_complete / turn_aborted
     started_at?: number;
     completed_at?: number;
     duration_ms?: number;
     time_to_first_token_ms?: number;
     reason?: string;
-    // event_msg item_completed
     started_at_ms?: number;
     completed_at_ms?: number;
     item?: {
@@ -74,7 +69,6 @@ type CodexLine = {
   };
 };
 
-/** Codex reports a command duration as a {secs, nanos} struct. */
 function durationMs(d: { secs?: number; nanos?: number } | undefined): number | undefined {
   if (!d) return undefined;
   return Math.round((d.secs ?? 0) * 1000 + (d.nanos ?? 0) / 1e6);
@@ -84,12 +78,10 @@ function msSince(value: number | undefined): string | undefined {
   return value == null ? undefined : new Date(value).toISOString();
 }
 
-/** A command arrives as an argv array; join it so a rule can match the text. */
 function commandText(value: unknown): string | undefined {
   return Array.isArray(value) ? value.map(String).join(" ") : undefined;
 }
 
-/** Codex reports turn boundaries in epoch seconds. */
 function epochSeconds(value: number | undefined): string | undefined {
   return value == null ? undefined : new Date(value * 1000).toISOString();
 }
@@ -104,10 +96,6 @@ function visibleText(content: CodexContent[] | undefined): string | undefined {
   return parts.length > 0 ? parts.join("\n") : undefined;
 }
 
-/**
- * Codex names no model on a message or a usage record, only on the turn they
- * belong to, so `state` carries the turn in effect across chunk boundaries.
- */
 export function parseCodexChunk(
   lines: string[],
   firstLineNumber: number,
@@ -130,7 +118,6 @@ export function parseCodexChunk(
     try {
       line = JSON.parse(raw) as CodexLine;
     } catch {
-      // Dropped and counted, for the reason parse-claude gives at its own catch.
       dropped.push(firstLineNumber + index);
       continue;
     }
@@ -167,9 +154,6 @@ export function parseCodexChunk(
         project: projectOf(p.cwd),
         model: current.model,
       });
-      // Open the turn here so its model comes from its own context. Taking the
-      // model in effect when task_complete arrives attributes the turn to
-      // whichever turn started next.
       if (current.turnId) {
         turns.push({
           turnId: current.turnId,
@@ -186,16 +170,10 @@ export function parseCodexChunk(
       p.type === "message" &&
       (p.role === "user" || p.role === "assistant")
     ) {
-      // Codex marks no prompt source, so a typed prompt and an injected block
-      // arrive as the same record. A tool result is a `function_call_output`,
-      // never a message, so what is left to separate is what the harness wrote
-      // into a user turn: the project rules, and its own tagged envelopes.
       const text = visibleText(p.content);
       const injected = /^\s*(#\s*AGENTS\.md instructions|<[a-z_]+>|\[\s*\{)/.test(text ?? "");
       const promptSource = p.role === "user" ? (injected ? "system" : "typed") : undefined;
 
-      // Rollouts written before roughly August 2026 leave `id` null, so the
-      // record is addressed the way the design addresses every Codex line.
       const id = nonEmpty(p.id) ?? `${threadId}:${ordinal}`;
       messages.push({
         id,
@@ -213,8 +191,6 @@ export function parseCodexChunk(
       continue;
     }
 
-    // task_complete also carries last_agent_message, the whole assistant reply.
-    // It is already a message row, and turn rows hold no text.
     if (line.type === "event_msg" && (p.type === "task_complete" || p.type === "turn_aborted") && p.turn_id) {
       turns.push({
         turnId: p.turn_id,
@@ -223,7 +199,6 @@ export function parseCodexChunk(
         durationMs: p.duration_ms,
         messageCount: undefined,
         status: p.type === "task_complete" ? "completed" : (nonEmpty(p.reason) ?? "aborted"),
-        // Left unset so the model recorded by this turn's own turn_context stands.
         model: undefined,
         timeToFirstTokenMs: p.time_to_first_token_ms,
       });
@@ -233,12 +208,8 @@ export function parseCodexChunk(
     if (line.type === "event_msg" && p.type === "item_completed" && p.item?.id) {
       const item = p.item;
       const kind = item.type ?? "";
-      // Only the kinds that are a tool doing something; AgentMessage, Reasoning
-      // and UserMessage are already message rows.
       if (kind === "CommandExecution" || kind === "FileChange" || kind === "McpToolCall") {
         const cmd = typeof item.command === "string" ? item.command : commandText(item.command);
-        // Codex's usual path is the model opening the file itself, which is a
-        // load with no invocation record anywhere.
         const readSkill = cmd ? skillFromFileRead(cmd) : undefined;
         if (readSkill) {
           skillLoads.push({
@@ -260,7 +231,6 @@ export function parseCodexChunk(
           isError: item.status != null ? item.status !== "completed" : undefined,
           exitCode: item.exit_code,
           durationMs: durationMs(item.duration),
-          // stdout and stderr are measured here and stored nowhere.
           resultBytes: (item.stdout?.length ?? 0) + (item.stderr?.length ?? 0) || undefined,
           srcLineCall: ordinal,
           srcLineResult: ordinal,

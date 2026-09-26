@@ -7,11 +7,6 @@ import { type Env, resolveHomeDir } from "./paths";
 import { prePushScript } from "./push-gate";
 import { foldAscii, SLUG_SED } from "./remote-slug";
 
-/**
- * The rule is taken from the one repo here whose subjects never break it: a
- * mechanical gate holds it at zero while the same rule written down drifts.
- * Inclusive at 50 because that is what the conforming history holds.
- */
 export const SUBJECT_LIMIT = 50;
 
 const TYPES = ["feat", "fix", "refactor", "docs", "test", "chore", "style", "perf", "build", "ci"];
@@ -27,23 +22,10 @@ export function checkSubject(subject: string, body = ""): Violation | null {
   return null;
 }
 
-/**
- * One directory for every repo rather than a copy per checkout. Git resolves
- * `core.hooksPath` locally before globally, so a repo carrying its own hooks
- * keeps them and everything else picks this up — including a repo cloned after
- * this was installed, which is what a per-checkout copy could never cover.
- */
 export function sharedHooksDir(env: Env = process.env): string {
   return join(resolveHomeDir(env), ".config", "dim", "hooks");
 }
 
-/**
- * Ownership is checked when the hook runs, not when it is installed: a clone of
- * someone else's project has its own conventions, and one set globally would
- * otherwise refuse contributions that are correct there. Anything unexpected —
- * no remote, no git, an unreadable message — exits 0. This runs before every
- * commit on the machine, so it may only ever fail on a subject it has read.
- */
 export function hookScript(owners: string[]): string {
   return `#!/usr/bin/env bash
 # Installed by \`dim install-commit-gate\`. One copy for every repo; see dim-factory.
@@ -79,21 +61,10 @@ exit 0
 `;
 }
 
-/** `--no-verify` is git's only escape and it takes the subject gate with it; this skips one hook. */
 export const SKIP_CHECK_ENV = "DIM_SKIP_CHECK";
 
 export const COMMENTS_FOUND_EXIT = 3;
 
-/**
- * Refuses a commit whose repo declares a check that fails. Anything it cannot
- * establish exits 0, as the commit-msg hook does.
- *
- * The ownership check guards an `eval` of the repo's own manifest, so it is the
- * only thing between a clone and code execution, and it matches the host as
- * well as the account for that reason. What it cannot guard is a branch inside
- * a repository that is the owner's: checking out a fork's pull request puts a
- * contributor's `package.json` in the tree, and the next commit runs it.
- */
 export function preCommitScript(owners: string[]): string {
   return `#!/usr/bin/env bash
 # Installed by \`dim install-commit-gate\`. One copy for every repo; see dim-factory.
@@ -138,7 +109,6 @@ exit 0
 `;
 }
 
-/** The whole gate: the installer, the plan and `dim doctor` each read this list rather than naming a hook. */
 export function gateHooks(owners: string[]): { name: string; body: string }[] {
   return [
     { name: "commit-msg", body: hookScript(owners) },
@@ -155,7 +125,6 @@ export type GatePlan = {
   strandedCopies: string[];
 };
 
-/** Env is threaded in so a test can point GIT_CONFIG_GLOBAL at a scratch file rather than the reader's own. */
 function gitEnv(env: Env): NodeJS.ProcessEnv {
   return { ...process.env, ...env } as NodeJS.ProcessEnv;
 }
@@ -227,13 +196,6 @@ export class HooksPathTakenError extends Error {
   }
 }
 
-/**
- * Writes the one hook, points git at it, and clears the per-checkout copies it replaces.
- *
- * The refusal comes before every write: a machine that already routes its hooks
- * somewhere loses them the moment this sets the one setting git reads, and the
- * per-repo copies deleted on the way would leave it gated by nothing at all.
- */
 export function installCommitGate(
   owners: string[],
   strandedIn: string[] = [],
@@ -255,12 +217,6 @@ export function installCommitGate(
   return { ...plan, globalHooksPath: dir };
 }
 
-/**
- * The owners an installed hook was written for, read back out of the script it
- * was written into. An owner list predating the host match names an account
- * alone, which now matches nothing — so the gate is installed, reads as
- * installed, and arms in no repository at all.
- */
 export function installedOwners(env: Env = process.env): string[] | null {
   const path = join(sharedHooksDir(env), "commit-msg");
   if (!existsSync(path)) return null;
@@ -296,7 +252,6 @@ function canonicalPath(root: string, path: string): string {
 
 export type Checkout = { repo: string; owner: string };
 
-/** Checkouts that carry a per-repo copy this replaces. */
 export function checkoutDirs(checkouts: Checkout[], env: Env = process.env): string[] {
   const home = resolveHomeDir(env);
   return checkouts

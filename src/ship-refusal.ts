@@ -19,7 +19,6 @@ export type ShipRefusalCode =
   | "ship_unsigned"
   | "ship_not_landed";
 
-/** Carries a code because a caller deciding which condition failed must not match on prose. */
 export class ShipRefusal extends Error {
   constructor(
     readonly code: ShipRefusalCode,

@@ -1,26 +1,5 @@
 import { foldAscii, SLUG_SED } from "./remote-slug";
 
-/**
- * A git rule the record says is stated and not held: the corpus holds 72 force
- * pushes, and separately the skill forbidding them was loaded in 114 of the 333
- * sessions that committed (`docs/findings.md`). What a hook can read is the
- * shape rather than the flag — a push whose remote tip is not an ancestor of
- * what is being pushed rewrites history that is already out, whether it got
- * there by `--force`, `--force-with-lease` or a refspec.
- *
- * Only the branch the remote's own HEAD names is protected. A topic branch is
- * rewritten on purpose all day, and `--no-verify` is the way past this one
- * without taking any other gate with it.
- */
-/**
- * Checkouts carrying the gate that it can never fire in. The hook learns which
- * branch is shared from `refs/remotes/origin/HEAD`, which `git clone` writes and
- * nothing else does, so a repo the owner started with `git init` and a
- * `remote add` is gated by a hook that exits before it reads anything.
- *
- * A repo with no remote is not reported: the whole gate is off there by design,
- * because ownership is what decides whether these rules apply at all.
- */
 export function unarmedCheckouts(dirs: string[]): string[] {
   return dirs.filter((dir) => {
     const has = (args: string[]) =>
@@ -32,16 +11,6 @@ export function unarmedCheckouts(dirs: string[]): string[] {
   });
 }
 
-/**
- * One spelling for a remote URL, as bash. The hook compares the URL git hands it
- * against the URLs the checkout has configured, and the same remote is written
- * many ways. Exported so a test can run it on its own: for a path that is a
- * directory the cd normalizes on its own, so the other branches are reachable
- * only here.
- *
- * Logical pwd rather than `pwd -P`, because resolving symlinks would rewrite the
- * very path an owner list was written against.
- */
 export const URL_NORMALIZER = `dim_url() {
   u=\${1#file://}
   u=\${u%/}

@@ -29,7 +29,6 @@ describe("declared workspace commands", () => {
     ]);
   });
 
-  // The lock file is what names the manager; a manifest alone cannot.
   test("reads the package manager from the lock file", () => {
     expect(packageManager(repo({ "pnpm-lock.yaml": "" }))).toBe("pnpm");
     expect(packageManager(repo({ "yarn.lock": "" }))).toBe("yarn");
@@ -44,7 +43,6 @@ describe("declared workspace commands", () => {
     const names = declaredCommands(root).map((t) => [t.name, t.command]);
     expect(names).toContainEqual(["lint", "mise run lint"]);
     expect(names).toContainEqual(["build", "make build"]);
-    // `VAR := x` is an assignment, not a target.
     expect(names.map((n) => n[0])).not.toContain("VAR");
   });
 
@@ -59,8 +57,6 @@ describe("declared workspace commands", () => {
 });
 
 describe("the check task", () => {
-  // A repo declaring both means the wider one: gating on `test` alone passes a
-  // change that does not compile.
   test("prefers the widest declared check over a narrower one", () => {
     const root = repo({
       "package.json": JSON.stringify({ scripts: { test: "bun test", verify: "bun run lint && bun test" } }),
@@ -79,11 +75,6 @@ describe("the check task", () => {
   });
 });
 
-/**
- * These paths are opened by a `SessionStart` hook, so what sits at one of them is
- * whatever the working directory happens to hold rather than something a person
- * chose. A hook that does not return is a session that does not start.
- */
 describe("a manifest that is not a manifest", () => {
   test("reads nothing from a path that is a directory", () => {
     const root = mkdtempSync(join(tmpdir(), "dim-tasks-"));
@@ -114,9 +105,6 @@ describe("a manifest that is not a manifest", () => {
   }, 10_000);
 });
 
-// Every JS repo on this machine commits a lock file, so a manifest without one
-// is a repo whose runner nothing here knows — and a guessed runner printed as a
-// declaration is worse than no line at all.
 describe("the package manager", () => {
   test("names no command where no lock file names a manager", () => {
     const root = repo({ "package.json": JSON.stringify({ scripts: { verify: "vitest" } }) });

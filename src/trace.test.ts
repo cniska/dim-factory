@@ -83,15 +83,10 @@ describe("the diagnostic trace", () => {
     ]);
   });
 
-  // A bare connection does not run SCHEMA_SQL, so on any database written before
-  // this table existed every insert would be `no such table` and the catch would
-  // hide it. Verified by writing into a database created without the table.
   test("writes into a database that predates the table", () => {
     const env = scratch();
     const db = new Database(dbPath(env), { create: true });
     db.run("CREATE TABLE schema_version (version INTEGER NOT NULL)");
-    // The version this build expects, so the database is current in every way
-    // except the missing table, which is the thing under test.
     db.run("INSERT INTO schema_version (version) VALUES (?)", [SCHEMA_VERSION]);
     db.close();
 
@@ -99,8 +94,6 @@ describe("the diagnostic trace", () => {
     expect(rows(env)).toHaveLength(1);
   });
 
-  // A read-only sandbox leaves the database readable and nothing writable, and a write that has
-  // not been checkpointed yet leaves frames in the WAL for a close to fold back in.
   test("closes without failing the command when the database cannot be written", () => {
     const env = scratch();
     const path = dbPath(env);

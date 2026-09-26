@@ -9,8 +9,6 @@ import { dbPath } from "./paths";
 import { trace } from "./trace";
 
 const WRITER = join(import.meta.dir, "db-writer.test-support.ts");
-// Long enough for a writer that fails at once to have exited before the lock is released, and
-// well inside the wait `openDb` sets, so neither outcome turns on how fast a process starts.
 const HOLD_MS = 500;
 
 const roots: string[] = [];

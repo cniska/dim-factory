@@ -41,7 +41,6 @@ afterEach(() => {
   while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
 });
 
-/** Mimic the hook: one JSON file named with nanoseconds, a pid and the worker it ran as. */
 function spool(env: Env, tool: Tool, nanos: string, payload: unknown, worker = ""): string {
   ensureSpoolDirs(env);
   const path = join(toolSpoolDir(tool, env), `${nanos}-4242-${worker}.json`);
@@ -49,7 +48,6 @@ function spool(env: Env, tool: Tool, nanos: string, payload: unknown, worker = "
   return path;
 }
 
-/** What an older hook wrote, which a database drains long after the bump. */
 function spoolWithoutWorker(env: Env, tool: Tool, nanos: string, payload: unknown): string {
   ensureSpoolDirs(env);
   const path = join(toolSpoolDir(tool, env), `${nanos}-4242.json`);
@@ -160,8 +158,6 @@ describe("spool", () => {
     }
   });
 
-  // Two starts a fraction of a second apart are two things that happened, and
-  // the spooled file is the only copy of each.
   test("keeps both events when one second holds two of them", () => {
     const root = newRoot();
     const env = scratchEnv(root);
@@ -182,13 +178,12 @@ describe("spool", () => {
   test("sets aside a file it cannot place rather than dropping it", () => {
     const root = newRoot();
     const env = scratchEnv(root);
-    const path = spool(env, "claude", "1789000000000000000", { hook_event_name: "SessionEnd" }); // no session_id
+    const path = spool(env, "claude", "1789000000000000000", { hook_event_name: "SessionEnd" });
     writeFileSync(join(toolSpoolDir("codex", env), "1789000000000000001-1.json"), "{not json");
     const db = openDb(dbPath(env));
     try {
       expect(drainSpool(db, env)).toMatchObject({ applied: 0, unreadable: 2 });
       expect(existsSync(path)).toBe(false);
-      // The only copy of what the hook saw; losing it loses it for good.
       expect(readdirSync(join(root, "home", "spool", "unreadable")).length).toBe(2);
     } finally {
       closeDb(db);
@@ -271,7 +266,6 @@ describe("installHooks", () => {
     expect(after.hooks.SessionEnd).toHaveLength(2);
     expect(after.hooks.SessionEnd[0].hooks[0].command).toBe("existing-notifier");
     expect(after.hooks.SessionEnd[1].hooks[0].command).toBe(hookCommand("claude", env));
-    // Two at SessionStart: one writes the event to the spool, one answers with context.
     expect(after.hooks.SessionStart).toHaveLength(2);
     expect(after.hooks.SessionStart[0].hooks[0].command).toBe(hookCommand("claude", env));
     expect(after.hooks.SessionStart[1].hooks[0].command).toBe(wakeCommand("claude"));
@@ -280,8 +274,6 @@ describe("installHooks", () => {
     expect(readFileSync(`${paths.claude}.dim-backup`, "utf8")).toContain("existing-notifier");
   });
 
-  // The file deciding whether sessions start is one a person hand-edits, so it
-  // carries comments and a shape of their own that reserializing would discard.
   test("installs into a config carrying comments, keeping them", () => {
     const dir = newRoot();
     const env = hookEnv(dir);
@@ -306,9 +298,6 @@ describe("installHooks", () => {
     expect(planHooks(env).every((p) => p.state === "installed")).toBe(true);
   });
 
-  // A key written twice is edited at its first copy and read at its last, so a
-  // write that looks fine lands where nothing reads. Left alone it appends again
-  // on every run and each run's backup overwrites the last good one.
   test("refuses to write when the hook would not land where a reader looks", () => {
     const dir = newRoot();
     const env = hookEnv(dir);
@@ -322,8 +311,6 @@ describe("installHooks", () => {
     expect(existsSync(`${paths.claude}.dim-backup`)).toBe(false);
   });
 
-  // A refusal on the second config after the first was already written would
-  // leave a report nobody sees and a message that says nothing was written.
   test("writes no config when another one would be refused", () => {
     const dir = newRoot();
     const env = hookEnv(dir);
@@ -345,8 +332,6 @@ describe("installHooks", () => {
     expect(planHooks(env).every((p) => p.state === "installed")).toBe(true);
   });
 
-  // It runs before every session starts, so a missing database, an unreadable
-  // one, or no `dim` at all has to end as silence rather than a failed start.
   test("the wake hook cannot fail a session either", () => {
     const command = wakeCommand("claude");
     expect(command).toMatch(/2>\/dev\/null \|\| true( # dim-hook:\d+)?$/);
@@ -355,7 +340,6 @@ describe("installHooks", () => {
 
   test("the hook itself cannot fail a session", () => {
     const env = hookEnv(newRoot());
-    // No jq, no sqlite, no network, and it always exits 0.
     const command = hookCommand("claude", env);
     expect(command).toStartWith("cat > ");
     expect(command).toMatch(/; exit 0( # dim-hook:\d+)?$/);
@@ -369,9 +353,6 @@ describe("installHooks", () => {
     }
   });
 
-  // A hook from an older contract runs on every session and records what that
-  // contract recorded, so a config holding one reads as installed and collects
-  // the wrong thing. Told apart from missing, it is something the plan can fix.
   test("a command from an older contract reads as stale, not as missing", () => {
     const dir = newRoot();
     const env = hookEnv(dir);
@@ -404,8 +385,6 @@ describe("installHooks", () => {
     expect(plan).toMatchObject({ state: "stale", installedVersion: null });
   });
 
-  // Both would fire. The older one would go on writing whatever the bump was
-  // made to stop, and nothing in the config would say which of the two did it.
   test("a stale command is written over rather than added beside", () => {
     const dir = newRoot();
     const env = hookEnv(dir);
@@ -464,7 +443,6 @@ describe("joining a worker to the session it ran in", () => {
       drainSpool(db, env);
 
       expect(db.prepare("SELECT count(*) AS n FROM factory_worker_session").get()).toEqual({ n: 0 });
-      // All three are still hook events: a sighting is a bonus, never a condition.
       expect(db.prepare("SELECT count(*) AS n FROM hook_event").get()).toEqual({ n: 3 });
     } finally {
       closeDb(db);

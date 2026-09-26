@@ -12,12 +12,9 @@ export type ReadyOrder = {
   priority: OrderPriority;
   createdAt: string;
   hold?: string;
-  /** Why the last attempt handed it back, where one did. */
   stoppedBecause?: string;
 };
 
-/** Urgent first and unset last, which is the order work is taken in rather than the
- *  order the words happen to sort in. */
 const PRIORITY_RANK =
   "CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END";
 
@@ -53,7 +50,6 @@ const SELECT = `SELECT id, project, title, line, description, status, priority, 
                   FROM factory_order
                  WHERE project = ? AND status = 'queued'`;
 
-/** Orders nobody holds, in the order to take them. */
 export function readyOrders(db: Database, project: string, limit?: number): ReadyOrder[] {
   const rows = db
     .query<Row, [string]>(`${SELECT} AND hold IS NULL ORDER BY ${PRIORITY_RANK}, created_at, id`)
@@ -61,7 +57,6 @@ export function readyOrders(db: Database, project: string, limit?: number): Read
   return (limit === undefined ? rows : rows.slice(0, limit)).map(orderFrom);
 }
 
-/** Reported beside the ready ones so a hold is visible rather than a silent absence. */
 export function heldOrders(db: Database, project: string): ReadyOrder[] {
   return db
     .query<Row, [string]>(`${SELECT} AND hold IS NOT NULL ORDER BY ${PRIORITY_RANK}, created_at, id`)

@@ -21,11 +21,6 @@ function readState(raw: string | null): CodexState {
   }
 }
 
-/**
- * Rollouts live under sessions/ until Codex archives them, which moves the file
- * but not its thread id — the id in the filename is what keeps the two the same
- * source across the move.
- */
 export function listCodexRollouts(env: Env = process.env): FileSpec[] {
   const root = codexDir(env);
   const specs: FileSpec[] = [];
@@ -46,7 +41,6 @@ export function listCodexRollouts(env: Env = process.env): FileSpec[] {
   return specs.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-/** The thread title is the one field the rollout does not carry. */
 export function readCodexTitles(env: Env = process.env): Map<string, string> {
   const statePath = join(codexDir(env), "state_5.sqlite");
   const titles = new Map<string, string>();
@@ -59,7 +53,6 @@ export function readCodexTitles(env: Env = process.env): Map<string, string> {
       if (row.title) titles.set(row.id, row.title);
     }
   } catch {
-    // an older state file without a threads table leaves every title unset
   } finally {
     db.close();
   }

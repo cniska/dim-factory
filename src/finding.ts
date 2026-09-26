@@ -19,11 +19,6 @@ export class FindingError extends Error {}
 const FLAGS = ["--slice", "--dimension", "--answer", "--summary", "--file", "--why"] as const;
 type Flag = (typeof FLAGS)[number];
 
-/**
- * A flag given twice is refused rather than resolved to either value: the caller
- * is an agent assembling a command from a reviewer's output, and a summary that
- * silently lost half of itself reads as a reviewer that said less than it did.
- */
 export function parseFinding(args: string[]): Map<Flag, string> {
   const given = new Map<Flag, string>();
   for (let at = 0; at < args.length; at += 1) {
@@ -39,12 +34,6 @@ export function parseFinding(args: string[]): Map<Flag, string> {
   return given;
 }
 
-/**
- * Where the finding is recorded is the checkout the builder is standing in, and a
- * directory that is no checkout, or a checkout with no remote, is refused: the
- * row's whole use is joining to commit_file by repo and path, and a row labeled
- * with a guess joins to the wrong history or to none.
- */
 function repoAt(dir: string): string {
   const root = checkoutRoot(dir);
   if (!root) throw new FindingError(`dim finding: ${dir} is not inside a checkout`);
@@ -63,8 +52,6 @@ export function findingFrom(args: string[], dir: string): Finding {
     throw new FindingError(`dim finding: --answer is fixed or refused, not ${answer}`);
   }
   const reason = given.get("--why") ?? null;
-  // The same rule the table holds, said where the caller can read it: a
-  // constraint violation names a column and not what the loop wanted.
   if (answer === "refused" && (reason === null || reason.trim() === "")) {
     throw new FindingError("dim finding: a refused finding needs --why, which is what ends it");
   }

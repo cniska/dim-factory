@@ -8,12 +8,6 @@ export type Tier = "light" | "standard" | "deep";
 
 export const TIERS: Tier[] = ["light", "standard", "deep"];
 
-/**
- * A tier for every role, rather than anywhere a caller could infer one: `light` reads one
- * thing against a fixed brief, `standard` makes the mechanical edit, `deep` cuts the work
- * and decides where the line stops. Keyed by `Role`, so a role added to the vocabulary
- * does not compile until it is given a tier here.
- */
 export const ROLE_TIERS = {
   operator: "deep",
   planner: "deep",
@@ -25,7 +19,6 @@ export type HarnessMap = Record<Tier, string>;
 export type RoutingMap = Record<HarnessName, HarnessMap>;
 export type RouteRecord = { harness: HarnessName; role: Role; tier: Tier; model: string };
 
-/** `path` is the harness map, and is unset where the role rather than the file is wrong. */
 export class RoutingError extends Error {
   constructor(
     readonly kind: "unknown-role" | "no-map" | "malformed",
@@ -37,11 +30,6 @@ export class RoutingError extends Error {
   }
 }
 
-/**
- * One map per machine, beside the database rather than in any checkout: the same
- * stations driven from a different harness resolve to different models, and a
- * repo does not know which harness is driving it.
- */
 export function harnessMapPath(env: Env = process.env): string {
   return join(dataDir(env), "routing.json");
 }

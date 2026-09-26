@@ -23,13 +23,10 @@ describe("subject rules", () => {
     expect(checkSubject("")).toBe("empty");
     expect(checkSubject("feat: a thing", "and why it happened")).toBe("body");
     expect(checkSubject("added a thing")).toBe("not-conventional");
-    // Nothing here is ever reverted, so there is no type to write one under.
     expect(checkSubject("revert: the wall feed time")).toBe("not-conventional");
     expect(checkSubject("feat: résumé the session")).toBe("not-ascii");
   });
 
-  // 50 exactly is the limit the conforming history sits on, so the boundary is
-  // the rule: one character either side has to fall on opposite sides of it.
   test("holds the length limit at exactly fifty", () => {
     const at50 = `feat: ${"a".repeat(44)}`;
     expect(at50).toHaveLength(50);
@@ -86,9 +83,6 @@ describe("the shared hook", () => {
     }
   });
 
-  // A forge answers to either spelling of the same clone, and the owner list
-  // holds one of them, so case is the difference that must not decide whether
-  // anything is gated at all.
   test("enforces them however the remote spells the owner", () => {
     const { dir } = repoWithHook("git@GitHub.com:CNiska/thing.git");
     try {
@@ -111,9 +105,6 @@ describe("the shared hook", () => {
     }
   });
 
-  // The hook is installed globally, so it meets every clone on the machine.
-  // Someone else's project keeps its own conventions or this refuses work that
-  // is correct there.
   test("passes through a repo owned by someone else", () => {
     const { dir } = repoWithHook("https://github.com/mastra-ai/mastra.git");
     try {
@@ -132,8 +123,6 @@ describe("the shared hook", () => {
     }
   });
 
-  // Git generates a merge subject; there is no author to hold it to the
-  // Conventional Commit shape, so MERGE_HEAD being present is what exempts it.
   test("passes a merge commit through unjudged", () => {
     const { dir } = repoWithHook("git@github.com:cniska/thing.git");
     try {
@@ -154,8 +143,6 @@ describe("the shared hook", () => {
     }
   });
 
-  // The exemption is MERGE_HEAD alone; an ordinary commit still holds to the
-  // rule, so it cannot widen into "anything goes".
   test("still refuses an ordinary bad subject outside a merge", () => {
     const { dir } = repoWithHook("git@github.com:cniska/thing.git");
     try {
@@ -176,9 +163,6 @@ describe("the shared hook", () => {
     }
   });
 
-  // Git reads one hooks directory and merges nothing, so installing over a path
-  // someone else set disables it. The refusal has to come before the per-repo
-  // copies are cleared, or a refused install leaves the machine gated by nothing.
   test("refuses a global hooks path it does not own, without touching anything", () => {
     const home = mkdtempSync(join(tmpdir(), "dim-home-"));
     const theirs = mkdtempSync(join(tmpdir(), "dim-theirs-"));
@@ -202,7 +186,6 @@ describe("the shared hook", () => {
       expect((thrown as { code?: string })?.code).toBe("HOOKS_PATH_TAKEN");
       expect((thrown as Error).message).toContain(theirs);
 
-      // Nothing written, nothing deleted, and their setting still stands.
       expect(existsSync(join(sharedHooksDir(env), "commit-msg"))).toBe(false);
       expect(existsSync(perRepo)).toBe(true);
       expect(
@@ -216,9 +199,6 @@ describe("the shared hook", () => {
     }
   });
 
-  // What the gate is made of is the part a reader cannot see from any one hook's
-  // own tests: each is written and tested in its own file, and nothing else says
-  // the installer actually puts all of them on disk.
   test("writes every hook the gate owns, and reports each one", () => {
     const home = mkdtempSync(join(tmpdir(), "dim-home-"));
     try {
@@ -241,8 +221,6 @@ describe("the shared hook", () => {
 });
 
 describe("the check gate", () => {
-  // `--no-verify` is git's only escape and it takes the subject gate with it,
-  // so a slow check without this would make the working gate the casualty.
   test("skips itself on the env escape, before anything else", () => {
     const script = preCommitScript(["cniska"]);
     const skip = script.indexOf(SKIP_CHECK_ENV);
@@ -256,16 +234,12 @@ describe("the check gate", () => {
     expect(script.indexOf('case " cniska " in')).toBeLessThan(script.indexOf("dim check-command"));
   });
 
-  // It runs before every commit on the machine, so anything it cannot establish
-  // has to let the commit through.
   test("exits 0 where dim or the declared check is missing", () => {
     const script = preCommitScript(["cniska"]);
     expect(script).toContain("command -v dim >/dev/null 2>&1 || exit 0");
     expect(script).toContain('[ -n "$check" ] || exit 0');
   });
 
-  // Git exports these to a hook, so a check that runs git itself would inherit
-  // the committing repo's index; the worktree suite failed exactly this way.
   test("clears git's own environment before running the check", () => {
     const script = preCommitScript(["cniska"]);
     for (const v of [
@@ -467,12 +441,6 @@ describe("whether a checkout's commit is judged for comments", () => {
   });
 });
 
-/**
- * The pre-commit gate runs `eval "$check"` over whatever the repo's own manifest
- * declares, so arming it in a repo the owner does not own is arbitrary code
- * execution on the first commit in a clone. A `dim` shim stands in for
- * `check-command` so the arming is what is under test and not the lookup.
- */
 function repoRunningItsOwnCheck(origin: string, owners: string[]): { dir: string; marker: string } {
   const dir = mkdtempSync(join(tmpdir(), "dim-arm-"));
   const hooks = join(dir, "hooks");
@@ -505,7 +473,6 @@ function repoRunningItsOwnCheck(origin: string, owners: string[]): { dir: string
 }
 
 describe("arming the check the gate runs", () => {
-  // Proves the arming works at all, so the refusals below mean something.
   test("runs the declared check in a repo the owner owns", () => {
     const { dir, marker } = repoRunningItsOwnCheck("git@github.com:cniska/thing.git", ["github.com/cniska"]);
     try {
@@ -515,8 +482,6 @@ describe("arming the check the gate runs", () => {
     }
   });
 
-  // An account name is not an identity: anyone may register `cniska` on another
-  // forge, or name a directory that way, and the gate reads the whole URL.
   for (const origin of [
     "https://gitlab.com/cniska/evil.git",
     "git@evil.example.com:cniska/evil.git",

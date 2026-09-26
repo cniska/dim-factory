@@ -16,8 +16,6 @@ describe("parseCodexChunk", () => {
 
   test("addresses a message with no id by thread and ordinal", () => {
     const parsed = parseCodexChunk(legacy, 1, THREAD, {});
-    // Pre-August rollouts leave every id null; keying on it collapses the thread
-    // into a single row.
     expect(parsed.messages).toHaveLength(3);
     expect(new Set(parsed.messages.map((m) => m.id)).size).toBe(3);
     expect(parsed.messages[0]?.id).toBe(`${THREAD}:2`);
@@ -64,9 +62,6 @@ describe("parseCodexChunk", () => {
   test("marks a typed prompt apart from what the harness injected", () => {
     const parsed = parseCodexChunk(modern, 1, THREAD, {});
     const typed = parsed.messages.find((m) => m.text === "add the parser");
-    // Codex records no prompt source of its own, so every user turn arrives
-    // looking the same; without this the corpus cannot tell a prompt from an
-    // injected rules block, and both tools' prompt counts stop comparing.
     expect(typed?.promptSource).toBe("typed");
 
     const withInjected = parseCodexChunk(

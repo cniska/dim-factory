@@ -32,7 +32,6 @@ export class ReviewRefused extends Error {
   }
 }
 
-/** Reviewers inspect commits and return structured evidence for the factory to record. */
 export const REVIEWER_CAPABILITIES: Capability[] = [
   "bootstrap-worker",
   "read-files",
@@ -42,36 +41,20 @@ export const REVIEWER_CAPABILITIES: Capability[] = [
 
 const REVIEW_OUTPUT_SCHEMA = `${import.meta.dir}/review-artifact.schema.json`;
 
-/** Replaced in tests, which have no model to call and need the exit code to be theirs. */
 export type ReviewerSpawn = (
   argv: string[],
   env: Record<string, string>,
 ) => { exitCode: number; output: string };
 
-/** `raw` is stdout untouched, for reading a file's content; `out` is trimmed, for reading a sha. */
 function git(dir: string, args: string[]): { ok: boolean; out: string; raw: string } {
   const run = Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe", stderr: "ignore" });
   const raw = run.stdout.toString();
   return { ok: run.success, out: raw.trim(), raw };
 }
 
-/**
- * The diff a round reads is `base..head`, both recorded when it opens. A sha cannot move
- * while it is being read and a worktree can, so binding the round to shas is what makes
- * "what the reviewer saw" and "what ships" the same thing without freezing anything.
- *
- * Round one starts at the parent of the order's first commit, which is where the order's
- * own work begins. A later round starts at the previous round's head, carried through any
- * rebase that kept every patch, so it reads the answers rather than the whole order again.
- * Where a rebase retired that head otherwise, the round reads the whole order from the
- * newest rebase's base.
- */
 export function reviewRange(db: Database, orderId: string, dir: string): { base: string; head: string } {
   const head = git(dir, ["rev-parse", "HEAD"]);
   if (!head.ok) throw new ReviewRefused("not_a_repo", `${dir} is not a git repo that can be read`);
-  // The builder writes this worktree, so a repository nested in it can carry a config its own
-  // status would obey. `dirty` still reports a submodule whose commit moved, but compares
-  // that commit without running a status inside the submodule.
   if (git(dir, ["status", "--porcelain", "--ignore-submodules=dirty"]).out !== "") {
     throw new ReviewRefused(
       "worktree_dirty",
@@ -112,8 +95,6 @@ export function reviewRange(db: Database, orderId: string, dir: string): { base:
   return { base: parent.ok ? parent.out : first.sha, head: head.out };
 }
 
-/** A ruling judges an answer, so a finding with none since its last ruling waits, still open,
- *  for one. */
 export function earlierOpenFindings(db: Database, orderId: string, reviewId: number): FindingStanding[] {
   return orderFindingStandings(db, orderId).filter(
     (finding) => finding.state === "open" && finding.reviewId !== reviewId && finding.answered,
@@ -148,9 +129,6 @@ const REPORT_CONTRACT = [
   "Use null for a reason or slice that has nothing to say, and [] for an empty list.",
 ];
 
-/** The order's own words and its approved plan, so the reviewer reads the diff against what it was
- *  for. Withheld: the builder's account of what it did, which is the conclusion a reviewer
- *  handed one tends to agree with. */
 export function reviewerBrief(
   order: { id: string; title: string; description: string | null },
   range: { base: string; head: string },
@@ -184,8 +162,6 @@ export function reviewerBrief(
   return [
     ...header,
     "# Approved plan",
-    // An order built by hand reaches review with no plan the factory approved; it is judged
-    // against its own words instead, which the plan dimension then says.
     context.plan?.body ??
       "No approved plan is recorded for this order. Judge the diff against the order's own words, and report the plan dimension as not_applicable with that reason.",
     ...(context.plan && context.plan.slices.length > 0
@@ -221,7 +197,6 @@ type ReturnedReview = Extract<ReturnedOrderArtifact, { station: "review" }>;
 
 type ReviewedRound = { id: number; base: string; head: string; dir: string };
 
-/** A returned artifact revises the round it came from; otherwise a new round opens over the range. */
 function openRound(
   db: Database,
   orderId: string,
@@ -267,11 +242,8 @@ export type ReviewOutcome = {
   outcome: "closed" | "aborted";
 };
 
-/** A finding points at a line of the diff it read, so the file must be one the round changed and
- *  the line one that file has at the head the round read. */
 function assertLocations(findings: ReviewFinding[], round: ReviewedRound): void {
   if (findings.length === 0) return;
-  // -z keeps a path byte for byte, where the default quotes one holding anything but ASCII.
   const diff = git(round.dir, ["diff", "--name-only", "-z", `${round.base}..${round.head}`]);
   if (!diff.ok) throw new Error(`could not list the files ${round.base}..${round.head} changes`);
   const changed = new Set(diff.raw.split("\0"));
@@ -283,7 +255,6 @@ function assertLocations(findings: ReviewFinding[], round: ReviewedRound): void 
       );
     }
     const shown = git(round.dir, ["show", `${round.head}:${finding.file}`]);
-    // A finding names a line the reader can open at head, so a file the diff deleted has none.
     if (!shown.ok) {
       throw new Error(`${what} names file ${finding.file}, which does not exist at ${round.head}`);
     }
@@ -431,11 +402,6 @@ export async function runOrderReviewLive(
   return { review: opened.id, reviewer, findings, outcome };
 }
 
-/**
- * Assigns the reviewer, spawns it and closes the round from its exit code. The operator that
- * invokes this never holds the reviewer's token and never writes its brief, which is what
- * makes the finding evidence rather than the builder's own account of itself.
- */
 export function runOrderReview(
   db: Database,
   orderId: string,

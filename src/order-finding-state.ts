@@ -35,7 +35,6 @@ export type FindingStanding = {
   ownerRuling: OwnerRuling | null;
   ownerReason: string | null;
   state: FindingState;
-  /** A refusal the owner has not overturned, which only a `refusal_*` ruling may judge. */
   refusalStands: boolean;
 };
 
@@ -130,8 +129,6 @@ export function owesAnswer(finding: FindingStanding): boolean {
   return finding.state === "open" && !finding.answered;
 }
 
-/** A standing refusal is judged as a refusal; any other answered finding is judged on whether
- *  the new diff fixed it. */
 export function rulingApplies(finding: FindingStanding, ruling: ReviewerRuling): boolean {
   const onRefusal = ruling === "refusal_accepted" || ruling === "refusal_contested";
   return onRefusal === finding.refusalStands;

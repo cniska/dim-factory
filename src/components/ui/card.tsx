@@ -4,8 +4,6 @@ import { cn } from "../../lib/utils";
 
 const card = cva("relative flex min-w-0 flex-col overflow-hidden rounded-wall border p-[var(--space-md)]", {
   variants: {
-    // The only card that looks different is one that stopped, so a column reads as moving
-    // or not before any of its text resolves.
     stopped: {
       true: "border-alert-border bg-card-stopped",
       false: "bg-card",

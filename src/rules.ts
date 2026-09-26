@@ -2,12 +2,6 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { dirname, isAbsolute, join } from "node:path";
 import { type Env, resolveHomeDir } from "./paths";
 
-/**
- * Claude Code expands `@path` imports in its rules file; Codex does not — a
- * sentinel placed behind an import reached Claude and never reached Codex, so
- * `~/.codex/AGENTS.md` has been delivering its import line as literal text. The
- * conventions therefore have to arrive already flattened.
- */
 export const CANONICAL = [".claude", "CLAUDE.md"];
 export const GENERATED = [".codex", "AGENTS.md"];
 
@@ -22,12 +16,6 @@ export function generatedPath(env: Env = process.env): string {
   return join(resolveHomeDir(env), ...GENERATED);
 }
 
-/**
- * A relative import resolves against the *target* tool's directory, so `@RTK.md`
- * in the canonical file picks up `~/.codex/RTK.md` when generating for Codex.
- * The two RTK files differ on purpose — Codex's carries a rule about prefixing
- * shell commands — and flattening the wrong one would quietly swap that out.
- */
 export function flatten(text: string, targetDir: string, depth = 0): string {
   if (depth >= MAX_DEPTH) return text;
   return text
@@ -71,8 +59,6 @@ export function installRules(env: Env = process.env): RulesPlan {
   const plan = planRules(env);
   if (plan.state === "unchanged" || plan.state === "missing-source") return plan;
   mkdirSync(dirname(plan.path), { recursive: true });
-  // The file being replaced may be the only copy of a rule the owner wrote by
-  // hand, and this command overwrites it wholesale.
   if (existsSync(plan.path)) copyFileSync(plan.path, `${plan.path}.dim-backup`);
   writeFileSync(plan.path, plan.contents);
   return plan;

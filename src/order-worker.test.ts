@@ -89,7 +89,6 @@ describe("a station worker's run", () => {
     for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
   });
 
-  /** Runs that report the given pids in turn, and what the builder's row held as each began its first turn. */
   function builder(runs: { pid: number; end: RunEnd }[]) {
     const { db, operator } = floor();
     const home = mkdtempSync(join(tmpdir(), "dim-order-worker-"));

@@ -19,8 +19,6 @@ describe("finding the checkout a directory belongs to", () => {
     }
   });
 
-  // `dim wt` makes worktrees, where `.git` is a file holding a gitdir line
-  // rather than a directory, so a session starting in one is routine here.
   test("reads a worktree, where .git is a file", () => {
     const wt = scratch();
     try {
@@ -32,8 +30,6 @@ describe("finding the checkout a directory belongs to", () => {
     }
   });
 
-  // Answering with the directory it was asked about would be worse than
-  // answering nothing: the caller reads a manifest there and calls it the repo's.
   test("answers nothing outside a checkout, not the directory it was asked about", () => {
     const bare = scratch();
     try {

@@ -16,7 +16,6 @@ export type FactoryStopCode =
   | "floor_stopped"
   | "order_held";
 
-/** Carries a code because a caller deciding which condition failed must not match on prose. */
 export class FactoryStopError extends Error {
   constructor(
     readonly code: FactoryStopCode,
@@ -26,7 +25,6 @@ export class FactoryStopError extends Error {
   }
 }
 
-/** Nothing in the database can tell who ran the command, so an unnamed hand is the operator's. */
 export const DEFAULT_PULLER = "operator";
 
 const now = (): string => new Date().toISOString();
@@ -89,7 +87,6 @@ export function pullStop(
   })();
 }
 
-/** Returns the stop that was cleared, which is what names the defect the floor was held for. */
 export function clearStop(db: Database, by = DEFAULT_PULLER, at = now()): FactoryStop {
   return db.transaction(() => {
     const live = liveStop(db);

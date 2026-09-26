@@ -1,7 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { type HarnessName, isHarness } from "./harness-name";
 
-/** The harness a worker's own session runs in, as that session's hooks recorded it. */
 export function recordedHarness(db: Database, worker: string): HarnessName | null {
   const tool = db
     .query<{ tool: string }, [string]>(

@@ -9,20 +9,10 @@ import type { Env } from "./paths";
 import { REVIEW_DIMENSIONS } from "./review-artifact";
 import type { Role } from "./roles";
 
-/**
- * A worker to record against, because every moment names one. Built rather than
- * stubbed for the same reason the trunk fixture is: the write path reads the row back,
- * and a name no row backs is exactly what it refuses.
- */
 export function workerIn(db: Database, role: Role = "builder"): string {
   return mintWorker(db, { role, sessionId: newWorkerSession("test-worker") }).name;
 }
 
-/**
- * A round open over one sha, with the reviewer it was opened for. Minted here rather than
- * through `dim operator`, which resolves only the owner-facing hand: a reviewer exists only because
- * the station that briefs it made one, and this stands in for that station.
- */
 export function reviewIn(
   db: Database,
   orderId: string,
@@ -35,10 +25,6 @@ export function reviewIn(
   return { review: opened.id, reviewer };
 }
 
-/**
- * A reviewer's output in the wire shape, with coverage derived from the findings so a test sets
- * only what it is about. Keys are the wire's own, so a test writing them pins the contract.
- */
 export function reviewOutput(fields: Record<string, unknown> = {}): string {
   const findings = (fields.findings ?? []) as { dimension: string }[];
   const flagged = new Set(findings.map((finding) => finding.dimension));
@@ -59,7 +45,6 @@ export function reviewOutput(fields: Record<string, unknown> = {}): string {
   });
 }
 
-/** The environment the factory starts a worker in, which is where `dim order` reads it. */
 export function workerEnv(db: Database, role: Role = "builder"): Env {
   const minted = mintWorker(db, { role, sessionId: newWorkerSession("test-worker") });
   return { [WORKER_NAME_VAR]: minted.name, [WORKER_TOKEN_VAR]: minted.token };
@@ -67,11 +52,6 @@ export function workerEnv(db: Database, role: Role = "builder"): Env {
 
 let signingKey: { key: string; allowedSigners: string } | undefined;
 
-/**
- * Ship refuses a commit that does not verify, so a trunk fixture signs every commit, with a key
- * made for this test process rather than the reader's own: no agent, no passphrase, and nothing a
- * station worker's sandbox cannot reach.
- */
 export function signCommitsIn(dir: string): void {
   if (!signingKey) {
     const keys = mkdtempSync(join(tmpdir(), "dim-signing-"));
@@ -88,11 +68,6 @@ export function signCommitsIn(dir: string): void {
   git(["config", "commit.gpgsign", "true"]);
 }
 
-/**
- * A repo whose one commit is on a trunk the repo names itself, which is what the
- * completion gate reads. Built rather than stubbed: the gate asks git, and a
- * fixture that answered for it would pass whatever the gate got wrong.
- */
 export function integratedRepo(): { dir: string; sha: string } {
   const dir = mkdtempSync(join(tmpdir(), "dim-trunk-"));
   const git = (args: string[]) => Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe" });
@@ -102,22 +77,16 @@ export function integratedRepo(): { dir: string; sha: string } {
   signCommitsIn(dir);
   git(["config", "dim.ship", "trunk"]);
   writeFileSync(join(dir, "landed.txt"), "landed");
-  // Every repo `dim` claims an order in is expected to ignore `.claude/`, which is
-  // where its own worktree lives — without it, a claim's worktree reads as an
-  // untracked change and a ship off this trunk refuses it as dirty.
   writeFileSync(join(dir, ".gitignore"), ".claude/\n");
   git(["add", "."]);
   git(["commit", "-q", "-m", "feat: land it"]);
-  // The gate reads the trunk off this ref and nothing else writes it outside a clone.
   git(["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"]);
   return { dir, sha: git(["rev-parse", "HEAD"]).stdout.toString().trim() };
 }
 
-/** Commits a `package.json` declaring `verify` as the repo's check, and returns the new trunk sha. */
 export function declareCheck(dir: string, script = "true"): string {
   const git = (args: string[]) => Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe" });
   writeFileSync(join(dir, "package.json"), JSON.stringify({ scripts: { verify: script } }));
-  // The lock file is what names bun as the runner; without one the script declares no command.
   writeFileSync(join(dir, "bun.lock"), "");
   git(["add", "package.json", "bun.lock"]);
   git(["commit", "-q", "-m", "chore: declare the check"]);
@@ -126,10 +95,6 @@ export function declareCheck(dir: string, script = "true"): string {
 
 let checkSandboxScript: string | undefined;
 
-/**
- * A stand-in for the check sandbox, which cannot run nested inside the one a worker's suite runs
- * in: it refuses any command naming a check canary and runs everything else unconfined.
- */
 export function confiningCheckSandbox(): string[] {
   if (!checkSandboxScript) {
     checkSandboxScript = join(mkdtempSync(join(tmpdir(), "dim-check-sandbox-")), "sandbox");
@@ -139,7 +104,6 @@ export function confiningCheckSandbox(): string[] {
   return [checkSandboxScript];
 }
 
-/** A commit on a branch of that repo, real but never merged into its trunk. */
 export function commitOffTrunk(dir: string, branch: string): string {
   const git = (args: string[]) => Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe" });
   git(["checkout", "-q", "-b", branch]);
@@ -151,13 +115,7 @@ export function commitOffTrunk(dir: string, branch: string): string {
   return sha;
 }
 
-/**
- * A second working tree of `dir`, checked out on a fresh branch off its trunk — an
- * order's own checkout, distinct from the primary one a ship has to merge into.
- */
 export function orderWorktree(dir: string, branch: string): string {
-  // Alongside `dir` rather than inside it: a worktree nested under the primary
-  // checkout's own tree shows up in its `git status` as an untracked directory.
   const path = `${dir}-wt-${branch}`;
   const git = (args: string[]) =>
     Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe", stderr: "pipe" });
@@ -165,7 +123,6 @@ export function orderWorktree(dir: string, branch: string): string {
   return path;
 }
 
-/** A repo that never names a trunk, as `git init` leaves one. */
 export function repoWithoutTrunk(): { dir: string; sha: string } {
   const dir = mkdtempSync(join(tmpdir(), "dim-no-trunk-"));
   const git = (args: string[]) => Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe" });
@@ -178,12 +135,6 @@ export function repoWithoutTrunk(): { dir: string; sha: string } {
   return { dir, sha: git(["rev-parse", "HEAD"]).stdout.toString().trim() };
 }
 
-/**
- * A machine whose session hooks are installed at the current contract, which is what a
- * claim reads before it lets a run start. Installed rather than stubbed: the gate reads
- * the config off disk, and a fixture that answered for it would agree with whatever the
- * planner got wrong. The caller removes the directory.
- */
 export function collectingMachine(): { dir: string; env: Env } {
   const dir = mkdtempSync(join(tmpdir(), "dim-hooks-"));
   const env = scratchEnv(dir);
@@ -206,14 +157,12 @@ function writeLines(path: string, lines: unknown[]): string {
   return body;
 }
 
-/** Write only the first `bytes` of what the full file would hold. */
 export function writePrefix(path: string, lines: unknown[], bytes: number): void {
   mkdirSync(dirname(path), { recursive: true });
   const body = `${lines.map((l) => JSON.stringify(l)).join("\n")}\n`;
   writeFileSync(path, Buffer.from(body, "utf8").subarray(0, bytes));
 }
 
-/** Byte length of the file up to and including line `index`. */
 export function bytesThroughLine(lines: unknown[], index: number): number {
   return Buffer.byteLength(
     `${lines
@@ -230,11 +179,6 @@ export function fullBytes(lines: unknown[]): number {
 
 const TS = (n: number) => `2026-09-16T10:${String(n).padStart(2, "0")}:00.000Z`;
 
-/**
- * A transcript with the shapes the parser has to get right: one API response
- * split across two content-block lines, a tool_result-only user line, a
- * thinking-only assistant line, and a skill body.
- */
 export function claudeTranscriptLines(sessionId: string): unknown[] {
   const base = {
     sessionId,
@@ -267,8 +211,6 @@ export function claudeTranscriptLines(sessionId: string): unknown[] {
       message: {
         id: "msg-1",
         model: "claude-opus-5",
-        // Mid-stream: usage accumulates across a response's content-block
-        // lines, and only the line carrying a stop_reason holds the total.
         stop_reason: null,
         content: [
           { type: "thinking", thinking: "SECRET REASONING" },
@@ -375,10 +317,6 @@ export function writeClaudeTranscript(env: Env, slug: string, sessionId: string)
   return path;
 }
 
-/**
- * A rollout in both dialects: the modern one names an id on each message, the
- * pre-August one leaves it null and is addressed by (thread id, ordinal).
- */
 export function codexRolloutLines(threadId: string, opts: { withIds: boolean }): unknown[] {
   const id = (n: number) => (opts.withIds ? `msg-${threadId}-${n}` : null);
   return [
@@ -468,7 +406,6 @@ export function codexRolloutLines(threadId: string, opts: { withIds: boolean }):
       payload: {
         type: "task_complete",
         turn_id: "turn-1",
-        // The whole assistant reply rides along here; it must not reach the database.
         last_agent_message: "SECRET AGENT MESSAGE",
         started_at: 1789496759,
         completed_at: 1789496911,

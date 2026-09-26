@@ -13,7 +13,6 @@ function repo(): string {
   return dir;
 }
 
-// The hook is what normally refuses these, so every commit here is made without it.
 function commit(dir: string, message: string): void {
   writeFileSync(join(dir, `f${Math.random()}`), "x");
   execFileSync("git", ["-C", dir, "add", "-A"]);
@@ -52,7 +51,6 @@ describe("checking a pushed range", () => {
     }
   });
 
-  // A range git cannot resolve must fail, never report a clean run over nothing.
   test("refuses a range it cannot enumerate", () => {
     const dir = repo();
     try {

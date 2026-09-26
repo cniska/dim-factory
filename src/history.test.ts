@@ -44,8 +44,6 @@ describe("history", () => {
     const db = openDb(dbPath(env));
     try {
       sync(db, env);
-      // The live session's prompt is already a message row; a second copy here
-      // would be a worse one.
       expect(db.prepare("SELECT tool, session_id, text FROM orphan_prompt ORDER BY tool").all()).toEqual([
         { tool: "claude", session_id: GONE, text: "only in history" },
         { tool: "codex", session_id: GONE, text: "codex prompt" },
@@ -62,8 +60,6 @@ describe("history", () => {
     const db = openDb(dbPath(env));
     try {
       sync(db, env);
-      // Claude writes milliseconds, Codex seconds; reading either wrong lands
-      // the prompt in 1970 or 58000.
       expect(db.prepare("SELECT ts FROM orphan_prompt WHERE tool = 'claude'").get()).toEqual({
         ts: "2026-03-04T00:19:50.088Z",
       });
@@ -104,8 +100,6 @@ describe("history", () => {
 
       writeClaudeTranscript(env, "-Users-x-code-demo", GONE);
       sync(db, env);
-      // Already-written rows stay; what matters is that no new ones are added
-      // for a session that now has a transcript.
       expect(db.prepare("SELECT count(*) AS n FROM orphan_prompt WHERE tool = 'claude'").get()).toEqual({
         n: 1,
       });

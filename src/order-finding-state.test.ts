@@ -53,7 +53,6 @@ function answer(f: Floor, finding: number, given: "fixed" | "refused", run = "bu
   );
 }
 
-/** Round one raises a finding the builder answers, and round two is open to rule on it. */
 function answered(f: Floor, given: "fixed" | "refused"): { finding: number; reviewer: string } {
   const first = reviewIn(f.db, "order-1", f.operator);
   const finding = raiseOrderFinding(
@@ -73,7 +72,6 @@ function openRound(f: Floor): number {
     ?.id as number;
 }
 
-/** Closes the open round and opens the next, returning its reviewer. */
 function nextRound(f: Floor, reviewer: string): string {
   closeOrderReview(f.db, openRound(f), "closed", reviewer);
   return reviewIn(f.db, "order-1", f.operator).reviewer;

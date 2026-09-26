@@ -45,16 +45,9 @@ function commit(dir: string, file: string, contents: string, subject: string): s
   return git(dir, ["rev-parse", "HEAD"]);
 }
 
-// Headings underlined with seven `=` are lines of conflict-marker shape carried as content: one
-// both sides share, and one only the order's commit adds.
 const f = (d: string, notes = false) =>
   `Install\n=======\na\nb\nc\n${d}\ne\nf\ng\n${notes ? "h\nNotes\n=======\n" : ""}`;
 
-/**
- * An order whose two recorded commits both collide with what the trunk did after the order
- * started, shipped once so the conflict is recorded and the order is back at build, then claimed
- * by the build turn that resolves it.
- */
 function conflicted(check = "true", markerSize?: number) {
   const repo = integratedRepo();
   const claims = integratedRepo();

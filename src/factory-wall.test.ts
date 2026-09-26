@@ -29,8 +29,6 @@ import { resolveHomeDir } from "./paths";
 import type { Role } from "./roles";
 import { SCHEMA_SQL } from "./schema";
 
-// One hand per database, set where the database is made: every moment names a worker,
-// and what these tests are about is what the wall draws rather than who touched it.
 let worker = "";
 let attemptOperator = "";
 
@@ -54,8 +52,6 @@ function answer(wall: ReturnType<typeof wallHandler>, path: string, init?: Reque
 const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
 
-// A claim now makes the worktree it names, so every direct call needs somewhere
-// safe to make one — `trunk.dir` rather than this machine's own checkout.
 function claimOrder(
   db: Database,
   orderId: string,
@@ -237,8 +233,6 @@ describe("factory wall snapshot", () => {
       "2026-09-18T09:00:00.000Z",
     );
     claimOrder(db, "order-quiet", { runId: "run", station: "build" }, worker, "2026-09-18T09:05:00.000Z");
-    // Writes the order row without recording an event, which is how an order's row can be newer
-    // than anything that happened to it.
     setOrderPriority(db, "order-quiet", "high");
     db.run("UPDATE factory_order SET updated_at = ? WHERE id = ?", [
       "2026-09-18T10:04:00.000Z",
@@ -337,8 +331,6 @@ describe("factory wall snapshot", () => {
     );
     expect(card).toBeDefined();
     expect(card).not.toHaveProperty("worker");
-    // What `openDb` runs on every connection; a name no worker row backs is refused only
-    // while it is on, which is why it is turned on there rather than left to the caller.
     db.run("PRAGMA foreign_keys = ON");
     expect(() =>
       db.run(
@@ -356,7 +348,6 @@ describe("factory wall snapshot", () => {
       queueOrder(db, { id, project: "cniska/dim-factory", title: id }, hand, "2026-09-18T10:00:00.000Z");
       claimOrder(db, id, { runId: "run", station: stationValue }, hand, "2026-09-18T10:00:00.000Z");
     };
-    // A builder sitting at the review station is still a builder.
     take("planning", "planner", "dim-station-build");
     take("building", "builder", "dim-station-review");
     take("reviewing", "reviewer", "dim-station-plan");
@@ -493,7 +484,6 @@ describe("factory wall snapshot", () => {
     expect(html).toContain(basename(script?.path ?? "missing.js"));
     expect(html).toContain(basename(style?.path ?? "missing.css"));
     expect((await script?.text())?.length).toBeGreaterThan(0);
-    // Tailwind ran: a utility the board uses is in the sheet the page links.
     expect(await style?.text()).toContain("grid-cols-3");
 
     expect(answer(wallHandler(), "/wall.woff2").status).toBe(200);
@@ -557,8 +547,6 @@ describe("factory wall item view", () => {
       "feat: read one order's record",
       "2026-09-18T10:06:00.000Z",
     );
-    // The check that lets this order complete: recorded after the commit it covers,
-    // which is the order the gate reads and the loop already works in.
     recordOrderCheck(
       db,
       "order-worked",
@@ -859,8 +847,6 @@ describe("factory wall item view", () => {
 
     expect(view?.entries.find((entry) => entry.kind === "moved")?.worker).toBe(reviewer);
     expect(view?.entries.find((entry) => entry.kind === "claimed")?.worker).toBe(worker);
-    // A reviewer writing a moment does not take the order, so the card keeps naming the
-    // worker whose claim holds it, and the role comes off that claim.
     expect(view?.order.worker).toBe(worker);
     expect(view?.order.role).toBe("builder");
     db.close();
@@ -954,7 +940,6 @@ describe("factory wall item view", () => {
 
       expect(answer(wall, "/api/order/order-absent").status).toBe(404);
       expect(answer(wall, "/api/order/").status).toBe(404);
-      // A percent sequence that is not valid UTF-8 is an id, not a crash.
       expect(answer(wall, "/api/order/%E0%A4%A").status).toBe(404);
     } finally {
       rmSync(file, { force: true });

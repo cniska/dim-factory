@@ -53,8 +53,6 @@ describe("indexing what a repo tracks", () => {
     }
   });
 
-  // The whole reason this table exists beside commit_file: a path that no longer
-  // opens is worse than no answer, because a reader goes looking for it.
   test("drops a file the repo no longer tracks", () => {
     const repo = repoWith(["keep.ts", "gone.ts"]);
     try {

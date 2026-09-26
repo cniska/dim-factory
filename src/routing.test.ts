@@ -16,9 +16,6 @@ function machine(map?: string): { DIM_HOME: string } {
 const COMPLETE = '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }';
 
 describe("resolving a role", () => {
-  // Written out rather than read off ROLE_TIERS: a test that asks the table
-  // whether it agrees with itself ratifies whatever the table is changed to,
-  // and these assignments are what docs/factory.md argues.
   test("every role runs at the tier the factory declares for it", () => {
     const env = machine(COMPLETE);
 
@@ -96,8 +93,6 @@ describe("a map that cannot be trusted", () => {
     ).toThrow(/the light tier names no model/);
   });
 
-  // Every tier is named here, so the only thing wrong with this map is the stray
-  // key; a fixture that also left a tier unnamed would redden on that instead.
   test("refuses a key that is no tier, which is how a typo is caught", () => {
     const env = machine('{ "codex": { "light": "s", "standard": "m", "deep": "l", "lite": "x" } }');
 
@@ -164,10 +159,6 @@ describe("what dim route reports for a map it refuses", () => {
   }
 });
 
-// The point of the map is that only it knows a model, so a name reaching the
-// code or a skill would route by itself and the map would stop being read.
-// Tests and transcript fixtures are excluded: a parsed transcript carries the
-// model a session ran on, which is a recorded fact rather than a routing choice.
 test("no model name reaches dim's source or a skill", () => {
   const root = join(import.meta.dir, "..");
   const suspect = /haiku|sonnet|opus|gpt-|gemini/i;
@@ -181,9 +172,6 @@ test("no model name reaches dim's source or a skill", () => {
   expect(offenders).toEqual([]);
 });
 
-// A skill names a role in prose, where a typo reads as fine and resolves to
-// nothing until the station runs; this is the mechanical half of "a skill cites
-// only queries that answer".
 test("every role a skill cites is one that routes", () => {
   const root = join(import.meta.dir, "..");
   const cited: string[] = [];

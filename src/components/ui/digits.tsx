@@ -1,11 +1,3 @@
-/**
- * A figure whose changed characters roll up into place. Keyed by position *and* character so
- * only the characters that moved remount and animate — a key of the whole value would roll
- * every column on every tick.
- *
- * It clips itself rather than trusting a caller to: the roll starts a full line below its own
- * box, so an unclipped figure is read sliding up over whatever sits under it.
- */
 export function Digits({ value }: { value: string }) {
   return (
     <span className="inline-flex overflow-hidden">

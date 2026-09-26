@@ -29,12 +29,6 @@ import { shipMethod } from "./ship-method";
 import { planSkill, retiredLinks } from "./skill";
 import { TOOLS } from "./tools";
 
-/**
- * `warn` is for a gap that costs evidence and `fail` for one that loses it:
- * retention going unset deletes the sources, and hooks that never fire leave a
- * hole no rebuild can fill. Everything a check reports is read from disk, so
- * running this costs nothing and can be wrong about nothing it did not look at.
- */
 export type Health = { name: string; state: "ok" | "warn" | "fail"; detail: string; fix?: string };
 
 const HOUR_MS = 3_600_000;
@@ -47,11 +41,6 @@ function text(db: Database, sql: string): string | null {
   return (db.prepare(sql).get() as { v: string | null } | null)?.v ?? null;
 }
 
-/**
- * Every config read here is one a person hand-edits, so any of them can be
- * unparseable on any run. That is reported as the check failing rather than
- * thrown, because a throw costs the reader every other check in the report.
- */
 function unreadable(name: string, error: ConfigError): Health {
   return { name, state: "fail", detail: error.message, fix: `repair ${error.path} by hand` };
 }
@@ -67,11 +56,6 @@ function readHooks(env: Env): HookRead {
   }
 }
 
-/**
- * Stale fails alongside missing: a hook written against an older contract runs on
- * every session and records whatever that contract recorded, so the config reads
- * as installed while the evidence arrives in a shape nothing downstream expects.
- */
 function sessionHooks(hooks: HookRead): Health {
   if (!hooks.read) return unreadable("hooks", hooks.error);
   if (hooks.missing.length === 0 && hooks.stale.length === 0) {
@@ -91,12 +75,6 @@ function sessionHooks(hooks: HookRead): Health {
   };
 }
 
-/**
- * Installed is not running: Codex writes a hook into hooks.json the moment
- * install-hooks does, and runs it only once config.toml records a trust for its
- * position. Nothing else reports the difference, so collection and `wake` stop
- * on the Codex side with the config still reading as correct.
- */
 function codexTrust(env: Env): Health {
   let untrusted: TrustState[];
   try {
@@ -122,7 +100,6 @@ function codexTrust(env: Env): Health {
   };
 }
 
-/** The failure this command exists for: the config looks right and every session still ends indistinguishably. */
 function endReasons(hooks: HookRead, since: string | null, judgeable: number, ended: number): Health {
   const name = "end reasons";
   const RUNS = "check the hook command runs: it must write to the spool and exit 0";
@@ -184,8 +161,6 @@ function retention(env: Env): Health {
     return {
       name: "retention",
       state: "fail",
-      // The sources are deleted on a timer, and a transcript removed before it
-      // was read is gone: this is the only check here that loses history.
       detail: "cleanupPeriodDays is unset, so Claude Code deletes transcripts after 30 days",
       fix: `set "cleanupPeriodDays" in ${path}`,
     };
@@ -193,8 +168,6 @@ function retention(env: Env): Health {
   return { name: "retention", state: days >= 365 ? "ok" : "warn", detail: `transcripts kept ${days} days` };
 }
 
-/** Absent or malformed stops the planner and reviewer stations cold, so it is checked here
- *  rather than left for the first station that tries to spawn to discover it. */
 function spool(env: Env): Health {
   const root = join(dataDir(env), "spool");
   let waiting = 0;
@@ -211,11 +184,6 @@ function spool(env: Env): Health {
   };
 }
 
-/**
- * A harness that is neither installed nor routed is one this machine does not use, and a
- * station names its harness or inherits the operator's, so it is never started by surprise:
- * the warnings are for one set up by half, and for a machine where no harness is set up.
- */
 function harnesses(env: Env): Health {
   const ready: string[] = [];
   const gaps: string[] = [];
@@ -332,8 +300,6 @@ export function diagnose(db: Database, env: Env = process.env, cwd: string = pro
       : {
           name: "path",
           state: "fail",
-          // A query an agent cannot run from the repo it is working in is a
-          // query that never gets run.
           detail: "dim is not on PATH, so no agent can reach it from another repo",
           fix: "bun link, from this repo",
         },
@@ -351,9 +317,6 @@ export function diagnose(db: Database, env: Env = process.env, cwd: string = pro
         },
   );
 
-  // `ingested_at`, never `origin_mtime`: transcript mtimes get restamped in bulk
-  // by things that touch no conversation, so a file's mtime says when something
-  // wrote to it and not when anyone last worked.
   const last = text(db, "SELECT max(ingested_at) AS v FROM source_file");
   const age = last ? Date.now() - Date.parse(last) : Number.POSITIVE_INFINITY;
   checks.push(
@@ -372,8 +335,6 @@ export function diagnose(db: Database, env: Env = process.env, cwd: string = pro
   const hooks = readHooks(env);
   checks.push(sessionHooks(hooks), codexTrust(env));
 
-  // The denominator is sessions that began after the first hook fired: anything
-  // earlier could not have been recorded and would make this pass on nothing.
   const since = text(db, "SELECT min(ts) AS v FROM hook_event");
   const judgeable = since
     ? scalar(
@@ -411,14 +372,8 @@ export function diagnose(db: Database, env: Env = process.env, cwd: string = pro
         },
   );
 
-  // The gate holds a rule the conventions would otherwise only ask for, so its
-  // absence is a rule silently back to being asked rather than held. A body
-  // predating a script change runs the old rules, so it is compared rather than
-  // only looked for, against the owners the installed hook itself names.
   const plan = planCommitGate(installedOwners(env) ?? [], [], env);
   const dir = sharedHooksDir(env);
-  // Git reads one hooks directory and merges nothing, so three perfect hooks it
-  // is not pointed at run in no repo at all.
   const gaps = plan.hooks
     .filter((h) => h.state !== "installed")
     .map((h) => `${h.name} is ${h.state}`)
@@ -438,9 +393,6 @@ export function diagnose(db: Database, env: Env = process.env, cwd: string = pro
         };
   checks.push(commitGate);
 
-  // An owner naming an account without a host matched any forge, so the gate
-  // armed on repositories the owner had only cloned. Such a list now matches
-  // nothing, which leaves the gate installed and firing nowhere.
   const owners = installedOwners(env);
   const bareOwners = (owners ?? []).filter((o) => !isHostQualified(o));
   if (owners !== null) {
@@ -462,9 +414,6 @@ export function diagnose(db: Database, env: Env = process.env, cwd: string = pro
 
   checks.push(commentGate(env, cwd, commitGate));
 
-  // A hook that exits before it reads anything is the failure the rest of this
-  // file exists to catch: from inside the repo it is indistinguishable from a
-  // gate that approved the push.
   const unarmed = unarmedCheckouts(
     (db.query("SELECT DISTINCT repo FROM repo_commit ORDER BY repo").all() as { repo: string }[])
       .map((r) => r.repo)
@@ -483,9 +432,6 @@ export function diagnose(db: Database, env: Env = process.env, cwd: string = pro
         },
   );
 
-  // Only checkouts a factory order belongs to, since `dim order ship` is the one reader
-  // of the declaration. A row names whichever checkout last carried the commit, often a
-  // worktree, so each is resolved to the primary checkout the declaration is read from.
   const shippedFrom = new Set(
     (
       db
@@ -530,16 +476,11 @@ export function diagnose(db: Database, env: Env = process.env, cwd: string = pro
         : {
             name: "agent",
             state: "warn",
-            // Written and never loaded looks identical to working, and nothing
-            // syncs until someone runs it by hand.
             detail: "launchd agent is written but not loaded",
             fix: `launchctl bootstrap gui/$(id -u) ${plist}`,
           },
   );
 
-  // Codex expands no imports, so its rules file is a flattened copy and a copy
-  // goes stale in silence: the conventions look present in one tool and are
-  // absent in the other, which is how a rule gets restated by hand for months.
   const rules = planRules(env);
   checks.push(
     rules.state === "missing-source"

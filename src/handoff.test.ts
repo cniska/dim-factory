@@ -31,8 +31,6 @@ describe("what counts as a handoff", () => {
     expect(handoffTitle(handoff("earn the first cut"))).toBe("# Handoff — earn the first cut");
   });
 
-  // The heading alone matches every session that merely discussed a handoff,
-  // which is most of the sessions that mention one.
   test("rejects a message naming the heading with no Next under it", () => {
     expect(handoffTitle("We should revisit the `# Handoff` heading. ## Next steps are unclear.")).toBeNull();
   });
@@ -93,8 +91,6 @@ describe("the handoff chain", () => {
     }
   });
 
-  // A session quoting its own handoff back is not an edge, and neither is a
-  // printer that came after the paste.
   test("links to neither the pasting session itself nor a later printer", () => {
     const db = seeded();
     try {
@@ -117,7 +113,6 @@ describe("the handoff chain", () => {
     }
   });
 
-  // Derived, so a link only holds while both messages are present.
   test("is replaced whole, dropping a link whose messages have gone", () => {
     const db = seeded();
     try {

@@ -44,7 +44,7 @@ dim install-skill
 dim install-commit-gate --owner=<host>/<account>
 ```
 
-Commands that change a shared installation require `--write`. `dim doctor` reports missing or stale hooks, missing trust, database drift, unloaded agents, a checkout the factory ships from that declares no usable ship method, a station harness that is installed but not routed, or routed but not installed, and whether the comment gate is on for the repository it runs in, together with the repair for each failure.
+Commands that change a shared installation require `--write`. Each session hook command ends in a `# dim-hook:<version>` shell comment, bumped whenever an installed command's text changes, because the tool's own config is the only record of what a session will run; a hook carrying an older version is stale. `dim doctor` reports missing or stale hooks, missing trust, database drift, unloaded agents, a checkout the factory ships from that declares no usable ship method, a station harness that is installed but not routed, or routed but not installed, and whether the comment gate is on for the repository it runs in, together with the repair for each failure.
 
 The commit gate checks the repository's declared task before a commit, and first, in a repository that bans code comments, refuses a commit that adds one. `DIM_SKIP_CHECK=1` skips both for one commit.
 

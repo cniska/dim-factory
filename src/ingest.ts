@@ -14,7 +14,6 @@ export type FileSpec = {
   sessionId: string;
   parentId?: string;
   agentType?: string;
-  /** `state` is whatever this file's previous chunk left in cursor_state. */
   parse: (lines: string[], firstLineNumber: number, state: string | null) => ParsedChunk;
 };
 
@@ -23,11 +22,9 @@ export type FileResult = {
   bytes: number;
   lines: number;
   reset: boolean;
-  /** Source line numbers the parser could not read; see ParsedChunk.dropped. */
   dropped: number[];
 };
 
-// Repeated verbatim in text_chars so the stored length always matches the text.
 const MERGED_TEXT = `CASE
   WHEN excluded.text IS NULL THEN message.text
   WHEN message.text IS NULL THEN excluded.text
@@ -76,8 +73,6 @@ export function createIngester(db: Database) {
   const selectCursor = db.prepare<CursorRow, [string, string]>(
     "SELECT path, bytes_ingested, lines_ingested, cursor_state FROM source_file WHERE session_id = ? AND kind = ?",
   );
-  // ON UPDATE CASCADE carries message.src_file along, so locators stay valid
-  // when Codex moves a rollout into archived_sessions/.
   const movePath = db.prepare<void, [string, string, string]>(
     "UPDATE source_file SET path = ? WHERE session_id = ? AND kind = ?",
   );
@@ -372,9 +367,6 @@ export function createIngester(db: Database) {
         $extra: t.extra ?? null,
       });
 
-      // Derived from the command rather than collected, so it is rewritten from
-      // scratch each time the row is seen: a call and its result arrive as two
-      // records and only one of them carries the command.
       if (t.command) {
         clearGitCommands.run(t.id);
         let position = 0;

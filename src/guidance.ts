@@ -3,7 +3,6 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { type Env, resolveHomeDir } from "./paths";
 
-/** The rules files an agent reads. Skills are versioned already, by `skill_load`. */
 const NAMES = ["AGENTS.md", "CLAUDE.md"];
 
 const FIELD = "";
@@ -16,11 +15,6 @@ function git(args: string[], cwd: string): string | null {
   return proc.success ? new TextDecoder().decode(proc.stdout) : null;
 }
 
-/**
- * Each commit that touched the file, with the blob it left behind. `--raw` names
- * the new blob on the change line, so the whole history costs one `git log`
- * rather than a `rev-parse` per commit.
- */
 export function versionsFromGit(repo: string, name: string): { sha: string; ts: string }[] {
   const out = git(["log", `--format=${RECORD}%H${FIELD}%aI`, "--raw", "--no-renames", "--", name], repo);
   if (!out) return [];
@@ -31,7 +25,6 @@ export function versionsFromGit(repo: string, name: string): { sha: string; ts: 
     const ts = header.split(FIELD)[1];
     if (!ts) continue;
     for (const line of rest) {
-      // :<oldmode> <newmode> <oldblob> <newblob> <status>\t<path>
       const m = /^:\d+ \d+ [0-9a-f]+ ([0-9a-f]+) /.exec(line);
       if (m?.[1] && !/^0+$/.test(m[1])) {
         versions.push({ sha: m[1], ts: new Date(ts).toISOString() });
@@ -42,14 +35,7 @@ export function versionsFromGit(repo: string, name: string): { sha: string; ts: 
   return versions;
 }
 
-/**
- * Records every version it can see: git history for a file inside a repo, and a
- * content hash for one outside — `~/.claude/CLAUDE.md` is not version-controlled,
- * so each sync is the only chance to record what it said at that moment.
- */
 export function ingestGuidance(db: Database, env: Env = process.env): GuidanceReport {
-  // A removed worktree leaves its commits behind, and spawning git against a
-  // missing cwd throws rather than failing, which aborts the whole sync.
   const repos = db
     .prepare<{ repo: string }, []>("SELECT DISTINCT repo FROM repo_commit")
     .all()
@@ -81,7 +67,6 @@ export function ingestGuidance(db: Database, env: Env = process.env): GuidanceRe
       }
     }
 
-    // Outside any repo, so git holds no history and only this moment is knowable.
     for (const path of [join(resolveHomeDir(env), ".claude", "CLAUDE.md")]) {
       if (!existsSync(path)) continue;
       const body = readFileSync(path);
