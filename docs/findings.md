@@ -582,3 +582,18 @@ Probed on 2026-09-26 under Bun 1.4.2, for `dart-comments`, loading `tree-sitter-
 - 0.25.10 parses a sample with no error node and reports exactly its four comments: `// ignore_for_file: lint` and a trailing `//` as `comment`, `///` as `documentation_comment`, and `/* block /* nested */ still */` as one `comment`. Markers inside a plain, a raw, a triple-quoted and an interpolated string were not reported.
 
 So the prebuilt grammar holds on 0.25 only, until a grammar built with a current `tree-sitter-cli` replaces it. The sample was one file written for the probe, so it says nothing of how the grammar handles the Dart in a real repository.
+
+## The owner refuses the same patterns everywhere
+
+Asked on 2026-09-26, after the owner named four words they have pushed back on across every project here: fallback, workaround, band-aid, hack. Counting `user` messages whose text contains each, over all history:
+
+| word | messages | sessions | projects |
+|---|---|---|---|
+| fallback | 656 | 464 | 22 |
+| workaround | 255 | 202 | 16 |
+| band-aid | 221 | 208 | 12 |
+| hack | 387 | 206 | 15 |
+
+These are ceilings, not counts of refusals. A `user` message holds whatever was sent as a prompt, so a pasted brief or a rules file that itself says "no band-aid, workaround or hack" matches as readily as a pushback typed in the moment, and `hack` also matches words that contain it. Read in their threads, the `fallback` hits `dim q keywords` returns first are refusals typed by hand in three projects from February on — "fallback sounds like a hack", "why do we need the fallback?", "i dont want a fallback".
+
+What this carries is that the refusal recurs across projects and months, which is the case for holding it somewhere other than the session it was typed in. Which hits are refusals, and which patterns are the same one under a different word, is a reading of each thread rather than a count, so the numbers here do not size the catalog `pattern-catalog` in [`build-order.md`](build-order.md) would hold.
