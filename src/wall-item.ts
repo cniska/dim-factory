@@ -16,8 +16,6 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   review_closed: "Review closed",
   finding_raised: "Finding raised",
   finding_answered: "Finding answered",
-  finding_ruled: "Finding ruled",
-  refusal_decided: "Owner ruling",
   integration_recorded: "Integration",
   delivery_recorded: "Delivery",
   document_updated: "Document",

@@ -11,12 +11,9 @@ import { orderFindingStandings, owesAnswer } from "./order-finding-state";
 import { isTerminalOrderStatus, orderStatus } from "./order-status";
 import type { Station } from "./station";
 
-export type NextAct = "run" | "approve" | "rule" | "ship";
+export type NextAct = "run" | "approve" | "ship";
 
-export type OrderState =
-  | { station: Station; next: "run" | "approve" }
-  | { station: "review"; next: "rule" }
-  | { station: null; next: "ship" };
+export type OrderState = { station: Station; next: "run" | "approve" } | { station: null; next: "ship" };
 
 type Artifact = Pick<StoredArtifact, "id" | "headSha" | "reviewId">;
 
@@ -70,8 +67,6 @@ export function orderState(db: Database, orderId: string): OrderState {
     return { station: "build", next: ready ? "approve" : "run" };
   }
   if (!approvedArtifacts(db, orderId, "review").some((one) => reviewCovers(db, orderId, one, head))) {
-    if (findings.some((finding) => finding.state === "awaiting_owner"))
-      return { station: "review", next: "rule" };
     const review = latestArtifact(db, orderId, "review");
     const ready = review !== null && reviewCovers(db, orderId, review, head) && !wasReturned(db, review);
     return { station: "review", next: ready ? "approve" : "run" };
@@ -83,7 +78,7 @@ export function describeState(state: OrderState): string {
   return state.station === null ? state.next : `${state.next} at ${state.station}`;
 }
 
-export type OrderAct = "plan" | "build" | "review" | "approve" | "return" | "rule" | "ship";
+export type OrderAct = "plan" | "build" | "review" | "approve" | "return" | "ship";
 
 export class OrderActRefused extends Error {
   readonly code = "not_next";
@@ -95,7 +90,6 @@ const ENTERS: Record<OrderAct, (state: OrderState) => boolean> = {
   review: (state) => state.station === "review" && state.next === "run",
   approve: (state) => state.next === "approve",
   return: (state) => state.next === "approve",
-  rule: (state) => state.next === "rule",
   ship: (state) => state.next === "ship",
 };
 

@@ -13,8 +13,6 @@ export const ORDER_EVENT_KINDS = [
   "review_closed",
   "finding_raised",
   "finding_answered",
-  "finding_ruled",
-  "refusal_decided",
   "integration_recorded",
   "delivery_recorded",
   "completed",

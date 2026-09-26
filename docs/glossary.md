@@ -6,7 +6,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 
 | Term | Definition |
 |---|---|
-| Owner | The person the factory runs for. They approve artifacts, rule on contested refusals and read the wall |
+| Owner | The person the factory runs for. They approve artifacts and read the wall |
 | Operator | The hand that runs the line: reads the queue, delegates each station and checks what comes back. It decides which work starts and when to stop, never how the work is done |
 | Worker | A hand the factory issues before any work starts, named like `nut-7` and carrying one role. Every act on an order names its worker when it is written |
 | Role | What a worker is called in as: `operator`, `planner`, `builder` or `reviewer` ([`src/worker-roles.ts`](../src/worker-roles.ts)) |
@@ -21,7 +21,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Queue | The orders not yet started, most urgent first, then oldest |
 | Status | The state an order is in: `queued`, `working`, `completed` or `dropped` |
 | Stage | How far along an order is, as the wall shows it: `todo`, `active` or `done` |
-| Next act | What an order waits on, read from the record by [`src/order-state.ts`](../src/order-state.ts) and never stored: at a station, `run`, `approve` or `rule`; once every station's artifact is approved, `ship`. Every act checks it on entry |
+| Next act | What an order waits on, read from the record by [`src/order-state.ts`](../src/order-state.ts) and never stored: at a station, `run` or `approve`; once every station's artifact is approved, `ship`. Every act checks it on entry |
 | Slice | One increment inside an order that verifies and commits on its own |
 | Ship | Delivering an order's commits the way the repo declares in `dim.ship` — `dim order ship` |
 | Done | An order whose check passed on its final commit, whose findings are all answered, whose docs changed with the behavior, whose commits are on the trunk, and whose worktree is gone |
@@ -45,9 +45,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Finding | A problem a reviewer raised, with a file and line, the failure, a fix direction and a severity ([`src/order-finding-state.ts`](../src/order-finding-state.ts)) |
 | Severity | How much a finding costs if it ships: `critical`, `high` or `medium` |
 | Observation | A point in a review that blocks nothing |
-| Answer | The builder's reply to a finding: `fixed`, or `refused` with a resolution |
-| Ruling | A later reviewer judging an answer: `addressed`, `not_addressed`, `refusal_accepted` or `refusal_contested` |
-| Owner ruling | The owner settling a contested refusal: `refusal_upheld` or `refusal_overturned` |
+| Answer | The builder's one reply to a finding: `fixed`, or `refused` with a resolution. A later round that still finds the problem raises a new finding |
 | Gate | A rule git or `dim` refuses to let pass, whether or not anything was read |
 | Comment gate | The part of the commit gate that refuses a new comment in a JS or TS file, in a repo that bans them ([`usage.md`](usage.md#comment-gate)) |
 | Config | `dim`'s settings, from the user's and the project's JSON layers ([`usage.md`](usage.md#configuration)) |

@@ -22,7 +22,6 @@ describe("the reviewer's report", () => {
     const report = parseReviewReport(
       reviewOutput({
         findings: [finding],
-        rulings: [{ finding: 3, ruling: "refusal_contested", reason: "the gate is this slice" }],
         conformance: [{ kind: "missing", slice: "The gate", detail: "No refusal for ruling_pending." }],
         set_aside: [{ item: "the wall", why: "the plan keeps it read-only" }],
         unverified: [{ claim: "Codex accepts the schema", would_settle: "a Codex review run" }],
@@ -32,7 +31,6 @@ describe("the reviewer's report", () => {
     expect(report).toMatchObject({
       verdict: "The change does what the plan asked.",
       findings: [finding],
-      rulings: [{ finding: 3, ruling: "refusal_contested", reason: "the gate is this slice" }],
       conformance: [{ kind: "missing", slice: "The gate", detail: "No refusal for ruling_pending." }],
       setAside: [{ item: "the wall", why: "the plan keeps it read-only" }],
       unverified: [{ claim: "Codex accepts the schema", wouldSettle: "a Codex review run" }],
@@ -44,7 +42,11 @@ describe("the reviewer's report", () => {
   test.each([
     ["invalid JSON", "not json", "reviewer output must be valid JSON"],
     ["an absent verdict", reviewOutput({ verdict: " " }), "reviewer output must contain a non-empty verdict"],
-    ["absent rulings", reviewOutput({ rulings: undefined }), "reviewer output must contain a rulings array"],
+    [
+      "absent findings",
+      reviewOutput({ findings: undefined }),
+      "reviewer output must contain a findings array",
+    ],
     [
       "a finding with no file",
       reviewOutput({ findings: [{ ...finding, file: "" }] }),
@@ -79,31 +81,6 @@ describe("the reviewer's report", () => {
       "a finding outside the dimensions",
       reviewOutput({ findings: [{ ...finding, dimension: "vibes" }] }),
       'reviewer finding 1 has dimension "vibes", which is not one of plan, correctness, tests, architecture, maintainability, docs, security, performance, style',
-    ],
-    [
-      "a ruling outside the four",
-      reviewOutput({ rulings: [{ finding: 3, ruling: "partly", reason: null }] }),
-      'reviewer ruling 1 has ruling "partly", which is not one of addressed, not_addressed, refusal_accepted, refusal_contested',
-    ],
-    [
-      "not_addressed without a reason",
-      reviewOutput({ rulings: [{ finding: 3, ruling: "not_addressed", reason: null }] }),
-      "reviewer ruling 1 on finding 3 is not_addressed and must give a reason",
-    ],
-    [
-      "refusal_contested without a reason",
-      reviewOutput({ rulings: [{ finding: 3, ruling: "refusal_contested", reason: "" }] }),
-      "reviewer ruling 1 on finding 3 is refusal_contested and must give a reason",
-    ],
-    [
-      "one finding ruled twice",
-      reviewOutput({
-        rulings: [
-          { finding: 3, ruling: "addressed", reason: null },
-          { finding: 3, ruling: "addressed", reason: null },
-        ],
-      }),
-      "reviewer rulings name finding 3 twice",
     ],
     [
       "four observations",

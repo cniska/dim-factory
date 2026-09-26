@@ -670,26 +670,6 @@ describe("order command", () => {
     );
   });
 
-  test("a ruling names one finding, exactly one of uphold or overturn, and a reason", () => {
-    const database = db();
-    queued(database);
-    started(database);
-
-    expect(() => runOrderCommand(database, ["rule", "nope", "--uphold", "--reason", "r"])).toThrow(
-      "rule names the finding it settles: `dim order rule <finding-id> --uphold|--overturn --reason ...`",
-    );
-    expect(() => runOrderCommand(database, ["rule", "1", "--reason", "r"])).toThrow(
-      "rule takes exactly one of --uphold or --overturn",
-    );
-    expect(() => runOrderCommand(database, ["rule", "1", "--uphold", "--overturn", "--reason", "r"])).toThrow(
-      "rule takes exactly one of --uphold or --overturn",
-    );
-    expect(() => runOrderCommand(database, ["rule", "1", "--uphold"])).toThrow(UsageError);
-    expect(() => runOrderCommand(database, ["rule", "1", "--uphold", "--reason", "r"])).toThrow(
-      expect.objectContaining({ code: "finding_unknown" }),
-    );
-  });
-
   test("a way an order cannot stop is refused rather than written", () => {
     const database = db();
     queued(database);

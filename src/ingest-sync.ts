@@ -144,7 +144,6 @@ const FACTORY_ORDER_TABLES = [
   "factory_order_finding",
   "factory_order_finding_answer",
   "factory_order_event",
-  "factory_order_finding_ruling",
   "factory_order_document",
   "factory_order_environment",
   "factory_order_slice",

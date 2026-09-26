@@ -6,7 +6,7 @@ import { ORDER_STATUSES_SQL } from "./order-status";
 import { STATIONS_SQL } from "./station";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 65;
+export const SCHEMA_VERSION = 66;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -516,35 +516,13 @@ CREATE TABLE IF NOT EXISTS factory_order_finding (
 
 CREATE TABLE IF NOT EXISTS factory_order_finding_answer (
   id            INTEGER PRIMARY KEY,
-  finding_id    INTEGER NOT NULL REFERENCES factory_order_finding(id) ON DELETE CASCADE,
+  finding_id    INTEGER NOT NULL UNIQUE REFERENCES factory_order_finding(id) ON DELETE CASCADE,
   run_id        TEXT NOT NULL,
   answer        TEXT NOT NULL CHECK (answer IN ('fixed', 'refused')),
   resolution    TEXT,
   recorded_at   TEXT NOT NULL,
-  CHECK (answer <> 'refused' OR (resolution IS NOT NULL AND trim(resolution) <> '')),
-  UNIQUE (finding_id, run_id)
+  CHECK (answer <> 'refused' OR (resolution IS NOT NULL AND trim(resolution) <> ''))
 );
-
--- A judgement on the builder's answer. A later round's reviewer rules once per round, since
--- each round reads a different head; the owner rules at most once, on a refusal a reviewer
--- contested, and that ruling names no round.
-CREATE TABLE IF NOT EXISTS factory_order_finding_ruling (
-  id            INTEGER PRIMARY KEY,
-  finding_id    INTEGER NOT NULL REFERENCES factory_order_finding(id) ON DELETE CASCADE,
-  review_id     INTEGER REFERENCES factory_order_review(id) ON DELETE CASCADE,
-  ruling        TEXT NOT NULL CHECK (ruling IN (
-                  'addressed', 'not_addressed', 'refusal_accepted', 'refusal_contested',
-                  'refusal_upheld', 'refusal_overturned')),
-  reason        TEXT,
-  worker        TEXT NOT NULL REFERENCES factory_worker(name),
-  ruled_at      TEXT NOT NULL,
-  CHECK (ruling IN ('addressed', 'refusal_accepted') OR (reason IS NOT NULL AND trim(reason) <> '')),
-  CHECK ((review_id IS NULL) = (ruling IN ('refusal_upheld', 'refusal_overturned')))
-);
-CREATE UNIQUE INDEX IF NOT EXISTS factory_order_finding_ruling_round
-  ON factory_order_finding_ruling(finding_id, review_id) WHERE review_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS factory_order_finding_ruling_owner
-  ON factory_order_finding_ruling(finding_id) WHERE review_id IS NULL;
 
 -- What a worktree's setup and teardown hooks reported. resources holds the
 -- identifiers the hook named — containers, volumes, ports — which is all that is

@@ -103,13 +103,6 @@ export function builderBrief(
           "Answer every finding listed here in the turn's `answers`, by its id: `fixed` when this turn's change fixes it, or `refused` with a `resolution` saying why it should not be fixed. A turn that changes nothing makes no commit, and the runner refuses a `fixed` answer from it.",
         ]
       : []),
-    ...(reviewFindings.refused.length > 0
-      ? [
-          "# Refused findings",
-          "These are refusals you gave that still stand. They are not work: change nothing for them and leave them out of `answers`. The reviewer rules on each one next round.",
-          ...reviewFindings.refused.map((one) => `- ${one}`),
-        ]
-      : []),
     ...(resolving ? rebaseConflictBrief(conflicts) : []),
     ...(needsCodeWork && previousFailure
       ? [
@@ -181,12 +174,9 @@ export function commitCorrectionBrief(subject: string, refusal: BuildTurnRefused
   ].join("\n");
 }
 
-export type ReviewFindingsForBuild = {
-  work: readonly { finding: number; brief: string }[];
-  refused: readonly string[];
-};
+export type ReviewFindingsForBuild = { work: readonly { finding: number; brief: string }[] };
 
-const NO_REVIEW_FINDINGS: ReviewFindingsForBuild = { work: [], refused: [] };
+const NO_REVIEW_FINDINGS: ReviewFindingsForBuild = { work: [] };
 
 function answersReview(findings: ReviewFindingsForBuild): boolean {
   return findings.work.length > 0;
@@ -199,30 +189,14 @@ export function reviewFindingsForBuild(db: Database, orderId: string): ReviewFin
     )
     .get(orderId);
   if (review?.outcome !== "closed") return NO_REVIEW_FINDINGS;
-  const work: { finding: number; brief: string }[] = [];
-  const refused: string[] = [];
-  for (const finding of orderFindingStandings(db, orderId)) {
-    if (finding.state !== "open") continue;
-    if (finding.answered && finding.refusalStands) {
-      refused.push(`${describeFinding(finding)}\n  Your refusal: ${finding.resolution}`);
-      continue;
-    }
-    if (!owesAnswer(finding)) continue;
-    work.push({
-      finding: finding.id,
-      brief: [
-        describeFinding(finding),
-        `  Fix: ${finding.fix}`,
-        ...(finding.ownerRuling === "refusal_overturned"
-          ? [`  The owner overturned your refusal, so answer it fixed: ${finding.ownerReason}`]
-          : []),
-        ...(finding.ruling === "not_addressed"
-          ? [`  The reviewer found it not addressed: ${finding.rulingReason}`]
-          : []),
-      ].join("\n"),
-    });
-  }
-  return { work, refused };
+  return {
+    work: orderFindingStandings(db, orderId)
+      .filter(owesAnswer)
+      .map((finding) => ({
+        finding: finding.id,
+        brief: `${describeFinding(finding)}\n  Fix: ${finding.fix}`,
+      })),
+  };
 }
 
 function describeFinding(finding: FindingStanding): string {

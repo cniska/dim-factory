@@ -19,7 +19,7 @@ Run the order named by the caller. The operator owns the request and the route; 
 
 ## Start or resume the order
 
-1. Read the next act from `dim q order <order-id>`: the station and whether it waits on a run, an approval or the owner's ruling, or that the order is ready to ship. The record sets it; no command moves an order.
+1. Read the next act from `dim q order <order-id>`: the station and whether it waits on a run or an approval, or that the order is ready to ship. The record sets it; no command moves an order.
 2. Run the command for that act. Each checks on entry that it is the act the record waits on and refuses with `not_next` otherwise, naming the act that is. `dim order plan` on a queued order starts it and makes its worktree.
 3. A failed run leaves the order where it was: read the failure in `dim q order` and run the same command again. A build refuses while another build attempt on the order is still running.
 
@@ -41,7 +41,7 @@ After plan approval:
 1. Run `dim order build <order-id>` once per slice, reading `dim q order <order-id>` after each. The factory assigns one builder identity for the order, starts the selected harness in the order's worktree, and records documents and findings under that builder as they occur. After each turn that does code work, the runner runs the declared check in the check sandbox, commits the worktree the way your git config commits, records the commit and its files under the builder and the check under you, and fails the attempt with the check's output when it is red.
 2. After the final slice, read the single Build artifact for the whole order. Approve it with `dim order approve <order-id> --reason "..."` or return it to the same builder with `dim order return <order-id> --reason "..."`.
 3. Run `dim order review <order-id>`. The review reads the whole order. The factory creates the reviewer identity and resumes its provider session on later rounds.
-4. Read the Review artifact; its verdict says which of these follows. When it returns to the builder — a new finding, an earlier one ruled `not_addressed`, or an overturned refusal — run `dim order build <order-id>`; the builder answers each such finding in its turn, and the runner records the answers under it, so no finding is answered by you. When it waits on an owner ruling, show the owner both positions on each contested refusal and record their word with `dim order rule <finding-id> --uphold|--overturn --reason "..."`. If the Review artifact of a round that raised nothing needs revision, return it to the same reviewer with `dim order return <order-id> --reason "..."`.
+4. Read the Review artifact; its verdict says which of these follows. When the round raised findings, run `dim order build <order-id>`; the builder answers each one in its turn, and the runner records the answers under it, so no finding is answered by you. The next review round reads those answers. If the Review artifact of a round that raised nothing needs revision, return it to the same reviewer with `dim order return <order-id> --reason "..."`.
 5. Approve the current Review artifact with `dim order approve <order-id>` as the operator.
 
 Every station has the same control boundary: read the worker's returned artifact, check it against persisted evidence, then approve it or return it to that worker with feedback. A return does not change the station identity or erase the earlier artifact revision. The artifact is the explanation; the evidence is the source of truth.

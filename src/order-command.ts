@@ -13,7 +13,6 @@ import { approveOrder, returnOrderArtifact } from "./order-approval";
 import { recordOrderBuild } from "./order-artifacts";
 import type { OrderEventKind } from "./order-events";
 import { recordOrderCheck, recordOrderCommit, recordOrderDocument, recordOrderFile } from "./order-evidence";
-import { recordOwnerRuling } from "./order-finding";
 import { appendOrderEvent } from "./order-ledger";
 import { amendOrder, dropOrder, queueOrder, recoverOrderFailure, setOrderPriority } from "./order-lifecycle";
 import { isOrderLine, ORDER_LINES } from "./order-line";
@@ -40,7 +39,6 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--lin
        dim order build-artifact <order-id> --body-file <path> --head <sha>
        dim order review-artifact <order-id> --body "..."
        dim order review <order-id> [--harness <${HARNESSES.join("|")}>]
-       dim order rule <finding-id> --uphold|--overturn --reason "..."
        dim order document <order-id> --path <path>
        dim order plan <order-id> [--harness <${HARNESSES.join("|")}>]
        dim order build <order-id> [--harness <${HARNESSES.join("|")}>]
@@ -267,34 +265,6 @@ function drop(db: Database, orderId: string, args: string[], worker: string): st
   return `${orderId} is dropped: ${reason}`;
 }
 
-function ruleOnRefusal(
-  db: Database,
-  findingSpec: string | undefined,
-  args: string[],
-  worker: string,
-): string {
-  if (findingSpec === undefined || !/^[1-9]\d*$/.test(findingSpec)) {
-    throw fail(
-      "rule names the finding it settles: `dim order rule <finding-id> --uphold|--overturn --reason ...`",
-    );
-  }
-  const upheld = args.includes("--uphold");
-  const overturned = args.includes("--overturn");
-  if (upheld === overturned) throw fail("rule takes exactly one of --uphold or --overturn");
-  const reason = required(
-    flags(
-      args.filter((arg) => arg !== "--uphold" && arg !== "--overturn"),
-      ["--reason"],
-    ),
-    "--reason",
-  );
-  const ruling = upheld ? "refusal_upheld" : "refusal_overturned";
-  recordOwnerRuling(db, Number(findingSpec), { ruling, reason }, worker);
-  return upheld
-    ? `finding ${findingSpec}: refusal upheld`
-    : `finding ${findingSpec}: refusal overturned, back to the builder`;
-}
-
 export function runOrderCommand(
   db: Database,
   args: string[],
@@ -341,7 +311,6 @@ export function runOrderCommand(
   if (command === "stop") return stop(db, orderId, rest, cwd, worker);
   if (command === "amend") return amend(db, orderId, rest);
   if (command === "drop") return drop(db, orderId, rest, worker);
-  if (command === "rule") return ruleOnRefusal(db, orderId, rest, worker);
   throw new UsageError(`${command} is not an order subcommand`);
 }
 

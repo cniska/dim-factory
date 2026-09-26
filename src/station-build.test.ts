@@ -5,12 +5,7 @@ import { SCHEMA_SQL } from "./db-schema";
 import { attemptIn, integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
 import { workerFailureReason } from "./harness-launch";
 import { recordOrderCommit } from "./order-evidence";
-import {
-  answerOrderFindings,
-  raiseOrderFinding,
-  recordOwnerRuling,
-  ruleOnOrderFinding,
-} from "./order-finding";
+import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview } from "./order-review";
 import { approveFinalBuildAt, approvePlan } from "./station-approvals.test-support";
@@ -76,111 +71,27 @@ describe("the review findings a builder is handed", () => {
       reviewFindingsForBuild(db, "order-1"),
     );
 
-  test("hands over an unanswered finding as work by id and a standing refusal apart from it", () => {
+  test("hands over each unanswered finding as work by id, and none the builder answered", () => {
     const { db, findings } = reviewed([null, "refused"]);
     const [open, refused] = findings as [number, number];
     expect(reviewFindingsForBuild(db, "order-1")).toEqual({
       work: [{ finding: open, brief: `Finding ${open} (tests, src/gate.ts:1): gap 0\n  Fix: close gap 0` }],
-      refused: [`Finding ${refused} (tests, src/gate.ts:2): gap 1\n  Your refusal: out of scope`],
     });
     const text = brief(db);
-    const work = text.split("# Refused findings")[0] ?? "";
-    expect(work).toContain(`# Review findings\n- Finding ${open} `);
-    expect(work).toContain("Answer every finding listed here in the turn's `answers`, by its id");
-    expect(work).not.toContain(`Finding ${refused} `);
-    expect(text).toContain(
-      "# Refused findings\nThese are refusals you gave that still stand. They are not work: change nothing for them and leave them out of `answers`. The reviewer rules on each one next round.",
-    );
+    expect(text).toContain(`# Review findings\n- Finding ${open} `);
+    expect(text).toContain("Answer every finding listed here in the turn's `answers`, by its id");
+    expect(text).not.toContain(`Finding ${refused} `);
   });
 
   test("hands over no work once the builder answered every finding", () => {
     const { db } = reviewed(["fixed"]);
-    expect(reviewFindingsForBuild(db, "order-1")).toEqual({ work: [], refused: [] });
+    expect(reviewFindingsForBuild(db, "order-1")).toEqual({ work: [] });
   });
 
   test("hands over no work while the latest round is still open", () => {
     const { db, operator } = reviewed([null]);
     reviewIn(db, "order-1", operator);
-    expect(reviewFindingsForBuild(db, "order-1")).toEqual({ work: [], refused: [] });
-  });
-
-  test("hands over a fix the next round found not addressed as work again, with the reviewer's reason", () => {
-    const { db, operator, findings } = reviewed(["fixed"]);
-    const second = reviewIn(db, "order-1", operator);
-    ruleOnOrderFinding(
-      db,
-      findings[0] as number,
-      { ruling: "not_addressed", reason: "still no test" },
-      second.reviewer,
-    );
-    closeOrderReview(db, second.review, "closed", second.reviewer);
-    expect(reviewFindingsForBuild(db, "order-1").work).toEqual([
-      {
-        finding: findings[0] as number,
-        brief: `Finding ${findings[0]} (tests, src/gate.ts:1): gap 0\n  Fix: close gap 0\n  The reviewer found it not addressed: still no test`,
-      },
-    ]);
-  });
-
-  function contested() {
-    const reviewedOrder = reviewed(["refused"]);
-    const { db, operator, findings } = reviewedOrder;
-    const second = reviewIn(db, "order-1", operator);
-    ruleOnOrderFinding(
-      db,
-      findings[0] as number,
-      { ruling: "refusal_contested", reason: "in scope" },
-      second.reviewer,
-    );
-    closeOrderReview(db, second.review, "closed", second.reviewer);
-    return reviewedOrder;
-  }
-
-  test("hands over a contested refusal only once the owner overturns it", () => {
-    const { db, operator, findings } = contested();
-    expect(reviewFindingsForBuild(db, "order-1")).toEqual({ work: [], refused: [] });
-    recordOwnerRuling(
-      db,
-      findings[0] as number,
-      { ruling: "refusal_overturned", reason: "fix it" },
-      operator,
-    );
-    expect(reviewFindingsForBuild(db, "order-1").work).toEqual([
-      {
-        finding: findings[0] as number,
-        brief: [
-          `Finding ${findings[0]} (tests, src/gate.ts:1): gap 0`,
-          "  Fix: close gap 0",
-          "  The owner overturned your refusal, so answer it fixed: fix it",
-        ].join("\n"),
-      },
-    ]);
-  });
-
-  test("gives an overturned refusal a later round found not addressed both reasons", () => {
-    const { db, builder, operator, findings } = contested();
-    const finding = findings[0] as number;
-    recordOwnerRuling(db, finding, { ruling: "refusal_overturned", reason: "fix it" }, operator);
-    answerOrderFindings(db, "order-1", "build-2", [{ finding, answer: "fixed", resolution: null }], builder);
-    const third = reviewIn(db, "order-1", operator);
-    ruleOnOrderFinding(db, finding, { ruling: "not_addressed", reason: "still open" }, third.reviewer);
-    closeOrderReview(db, third.review, "closed", third.reviewer);
-    expect(reviewFindingsForBuild(db, "order-1").work.map((one) => one.brief)).toEqual([
-      [
-        `Finding ${finding} (tests, src/gate.ts:1): gap 0`,
-        "  Fix: close gap 0",
-        "  The owner overturned your refusal, so answer it fixed: fix it",
-        "  The reviewer found it not addressed: still open",
-      ].join("\n"),
-    ]);
-  });
-
-  test("leaves out a finding a later round settled", () => {
-    const { db, operator, findings } = reviewed(["fixed"]);
-    const second = reviewIn(db, "order-1", operator);
-    ruleOnOrderFinding(db, findings[0] as number, { ruling: "addressed" }, second.reviewer);
-    closeOrderReview(db, second.review, "closed", second.reviewer);
-    expect(reviewFindingsForBuild(db, "order-1")).toEqual({ work: [], refused: [] });
+    expect(reviewFindingsForBuild(db, "order-1")).toEqual({ work: [] });
   });
 });
 

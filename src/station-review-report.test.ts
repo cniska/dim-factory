@@ -3,7 +3,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { SCHEMA_SQL } from "./db-schema";
 import { integratedRepo, reviewIn, reviewOutput, workerIn } from "./fixtures.test-support";
-import { answerOrderFindings, raiseOrderFinding, ruleOnOrderFinding } from "./order-finding";
+import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview } from "./order-review";
 import { parseReviewReport } from "./station-review-artifact";
@@ -12,7 +12,16 @@ import { renderReviewReport } from "./station-review-report";
 const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
 
-function contested(): { db: Database; review: number; finding: number } {
+const GATE = {
+  dimension: "tests",
+  file: "src/gate.ts",
+  line: 4,
+  failure: "no test holds the gate",
+  fix: "add a test that fails without it",
+  severity: "medium",
+} as const;
+
+function refused(): { db: Database; review: number; finding: number } {
   const db = new Database(":memory:");
   db.run(SCHEMA_SQL);
   const builder = workerIn(db);
@@ -20,19 +29,7 @@ function contested(): { db: Database; review: number; finding: number } {
   queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Render" }, operator);
   startOrder(db, "order-1", operator, undefined, trunk.dir);
   const first = reviewIn(db, "order-1", operator);
-  const finding = raiseOrderFinding(
-    db,
-    "order-1",
-    {
-      dimension: "tests",
-      file: "src/gate.ts",
-      line: 4,
-      failure: "no test holds the gate",
-      fix: "add a test that fails without it",
-      severity: "medium",
-    },
-    first.reviewer,
-  );
+  const finding = raiseOrderFinding(db, "order-1", GATE, first.reviewer);
   closeOrderReview(db, first.review, "closed", first.reviewer);
   answerOrderFindings(
     db,
@@ -42,24 +39,17 @@ function contested(): { db: Database; review: number; finding: number } {
     builder,
   );
   const second = reviewIn(db, "order-1", operator);
-  ruleOnOrderFinding(
-    db,
-    finding,
-    { ruling: "refusal_contested", reason: "the gate is this slice" },
-    second.reviewer,
-  );
   return { db, review: second.review, finding };
 }
 
 describe("the rendered Review artifact", () => {
   test("puts the sections in the order the owner decides in", () => {
-    const { db, review } = contested();
+    const { db, review } = refused();
     const body = renderReviewReport(db, review, parseReviewReport(reviewOutput()));
     const headings = [...body.matchAll(/^## (.+)$/gm)].map((match) => match[1]);
     expect(headings).toEqual([
       "Verdict",
       "Blocking findings",
-      "Owner rulings",
       "Earlier findings",
       "Plan conformance",
       "Coverage",
@@ -68,42 +58,30 @@ describe("the rendered Review artifact", () => {
     ]);
   });
 
-  test("holds for an owner ruling and shows both positions on a contested refusal", () => {
-    const { db, review, finding } = contested();
+  test("may advance after a round that raised nothing, showing how earlier findings were answered", () => {
+    const { db, review, finding } = refused();
     const body = renderReviewReport(db, review, parseReviewReport(reviewOutput()));
-    expect(body).toStartWith(
-      "## Verdict\n\n**Held for an owner ruling.** The change does what the plan asked.",
-    );
+    expect(body).toStartWith("## Verdict\n\n**May advance.** The change does what the plan asked.");
     expect(body).toContain(
-      [
-        `- Finding ${finding}, \`src/gate.ts:4\`: no test holds the gate`,
-        "  - Builder's refusal: the gate is a later slice",
-        "  - Reviewer's reason: the gate is this slice",
-      ].join("\n"),
-    );
-    expect(body).toContain(
-      `- Finding ${finding}, \`src/gate.ts:4\`: no test holds the gate **refusal_contested**: the gate is this slice`,
+      `## Earlier findings\n\n- Finding ${finding}, \`src/gate.ts:4\`: no test holds the gate **refused**: the gate is a later slice`,
     );
   });
 
-  test("keeps showing a contested refusal in a later round that does not rule on it", () => {
-    const { db, review, finding } = contested();
+  test("returns to the builder when the round raised a finding", () => {
+    const { db, review } = refused();
     const reviewer = db
       .query<{ reviewer: string }, [number]>("SELECT reviewer FROM factory_order_review WHERE id = ?")
       .get(review)?.reviewer as string;
-    closeOrderReview(db, review, "closed", reviewer);
-    const operator = db
-      .query<{ name: string }, []>("SELECT name FROM factory_worker WHERE role = 'operator'")
-      .get()?.name as string;
-    const third = reviewIn(db, "order-1", operator);
-    const body = renderReviewReport(db, third.review, parseReviewReport(reviewOutput()));
-    expect(body).toStartWith("## Verdict\n\n**Held for an owner ruling.**");
-    expect(body).toContain(`## Owner rulings\n\n- Finding ${finding}, \`src/gate.ts:4\``);
-    expect(body).toContain("## Earlier findings\n\nNone.");
+    const raised = raiseOrderFinding(db, "order-1", GATE, reviewer);
+    const body = renderReviewReport(db, review, parseReviewReport(reviewOutput({ findings: [GATE] })));
+    expect(body).toStartWith("## Verdict\n\n**Returns to the builder.**");
+    expect(body).toContain(
+      `## Blocking findings\n\n- **medium** \`src/gate.ts:4\` (tests, finding ${raised}): no test holds the gate Fix: add a test that fails without it`,
+    );
   });
 
   test("renders the reviewer's conformance, coverage and what it did not judge", () => {
-    const { db, review } = contested();
+    const { db, review } = refused();
     const body = renderReviewReport(
       db,
       review,
@@ -130,7 +108,7 @@ describe("the rendered Review artifact", () => {
   });
 
   test("says None under a section with nothing in it", () => {
-    const { db, review } = contested();
+    const { db, review } = refused();
     const body = renderReviewReport(db, review, parseReviewReport(reviewOutput()));
     expect(body).toContain("## Blocking findings\n\nNone.");
     expect(body).toContain("## Observations\n\nNone.");

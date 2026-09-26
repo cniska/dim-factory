@@ -20,7 +20,7 @@ import {
 import { finishAttempt } from "./order-attempt";
 import { runOrderCommand } from "./order-command";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
-import { answerOrderFindings, raiseOrderFinding, recordOwnerRuling } from "./order-finding";
+import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { queueOrder, startOrder } from "./order-lifecycle";
 import { approvePlan } from "./station-approvals.test-support";
 import { ReviewRefused, reviewerBrief, reviewRange, runOrderReviewLive } from "./station-review";
@@ -592,10 +592,10 @@ describe("a review round", () => {
     expect(brief).toContain("# Plan slices\n1. Gate: Empty refused.");
     expect(brief).toContain("Use dim-station-review and dim-artifact.");
     expect(brief).toContain("`git diff aaa..bbb`");
-    expect(brief).not.toContain("# Earlier findings to rule on");
+    expect(brief).not.toContain("# Earlier findings");
   });
 
-  test("the brief names an overturned refusal's reason from the owner", () => {
+  test("the brief lists each earlier finding with the builder's answer", () => {
     const brief = reviewerBrief(
       { id: "order-1", title: "Read a slice", description: null },
       { base: "aaa", head: "bbb" },
@@ -615,23 +615,17 @@ describe("a review round", () => {
             raisedAt: "2026-09-26T10:00:00.000Z",
             answer: "refused",
             resolution: "later slice",
-            answered: true,
-            ruling: null,
-            rulingReason: null,
-            ownerRuling: "refusal_overturned",
-            ownerReason: "fix it here",
-            state: "open",
-            refusalStands: false,
           },
         ],
       },
     );
     expect(brief).toContain(
       [
+        "# Earlier findings",
+        "Earlier rounds raised these, and the builder answered each. Raise a new finding for any that still holds at this head.",
         "- Finding 7 (tests, src/example.ts:1): no test",
         "  - Fix asked for: add the test",
         "  - Builder's answer: refused: later slice",
-        "  - The owner overturned the refusal: fix it here",
       ].join("\n"),
     );
     expect(brief).toContain("No approved plan is recorded for this order.");
@@ -650,21 +644,7 @@ describe("a review round", () => {
     runOrderCommand(db, ["return", "order-1", "--reason", "Say more."], null, dir, env);
     await expect(
       review(db, operator, dir, answering(reviewOutput({ findings: [findingOn("a.txt")] }))),
-    ).rejects.toThrow("a returned Review artifact cannot change its findings or rulings");
-  });
-
-  test("refuses a ruling in the first round", async () => {
-    const { db, worker, operator, dir } = floor();
-    slice(db, dir, worker, "a");
-
-    await expect(
-      review(
-        db,
-        operator,
-        dir,
-        answering(reviewOutput({ rulings: [{ finding: 1, ruling: "addressed", reason: null }] })),
-      ),
-    ).rejects.toThrow("reviewer ruling names finding 1, which is not an open earlier finding");
+    ).rejects.toThrow("a returned Review artifact cannot change its findings");
   });
 
   describe("a later round", () => {
@@ -685,41 +665,18 @@ describe("a review round", () => {
       return { ...f, finding };
     }
 
-    test("is briefed with each open earlier finding and the builder's answer", async () => {
+    test("is briefed with each earlier finding and the builder's answer", async () => {
       const { db, operator, dir, finding } = await raisedAndFixed();
       let brief = "";
-      await expect(
-        review(db, operator, dir, (request) => {
-          brief = argvOf(request).join(" ");
-          return { output: reviewOutput() };
-        }),
-      ).rejects.toThrow(`reviewer rulings leave open earlier finding ${finding} without a ruling`);
+      await review(db, operator, dir, (request) => {
+        brief = argvOf(request).join(" ");
+        return { output: reviewOutput() };
+      });
       expect(brief).toContain(
         `- Finding ${finding} (correctness, a.txt:1): the guard is the wrong way round`,
       );
       expect(brief).toContain("  - Fix asked for: invert the guard");
       expect(brief).toContain("  - Builder's answer: fixed: inverted it");
-    });
-
-    test("records nothing of a round whose ruling the record refuses", async () => {
-      const { db, operator, dir, finding } = await raisedAndFixed();
-      await expect(
-        review(
-          db,
-          operator,
-          dir,
-          answering(
-            reviewOutput({
-              findings: [findingOn("b.txt")],
-              rulings: [{ finding, ruling: "refusal_accepted", reason: null }],
-            }),
-          ),
-        ),
-      ).rejects.toThrow(`finding ${finding} is answered fixed, so it takes addressed or not_addressed`);
-      expect(db.query("SELECT count(*) AS n FROM factory_order_finding").get()).toEqual({ n: 1 });
-      expect(
-        db.query("SELECT count(*) AS n FROM factory_order_artifact WHERE kind = 'review'").get(),
-      ).toEqual({ n: 1 });
     });
 
     test("is refused while an earlier finding awaits the builder's answer", async () => {
@@ -732,70 +689,10 @@ describe("a review round", () => {
       expect(f.db.query("SELECT count(*) AS n FROM factory_order_review").get()).toEqual({ n: 1 });
     });
 
-    test("briefs the round after an overturned refusal with the last ruling and the owner's reason", async () => {
-      const f = floor();
-      const briefed = async (output: string) => {
-        let brief = "";
-        await review(f.db, f.operator, f.dir, (request) => {
-          brief = argvOf(request).join(" ");
-          return { output };
-        });
-        return brief;
-      };
-      slice(f.db, f.dir, f.worker, "a");
-      await briefed(reviewOutput({ findings: [findingOn("a.txt")] }));
-      const finding = f.db.query<{ id: number }, []>("SELECT id FROM factory_order_finding").get()
-        ?.id as number;
-      answerOrderFindings(
-        f.db,
-        "order-1",
-        "build-1",
-        [{ finding, answer: "refused", resolution: "later slice" }],
-        f.worker,
-      );
-      slice(f.db, f.dir, f.worker, "b");
-      await briefed(
-        reviewOutput({ rulings: [{ finding, ruling: "refusal_contested", reason: "it is this slice" }] }),
-      );
-      recordOwnerRuling(f.db, finding, { ruling: "refusal_overturned", reason: "fix it here" }, f.operator);
-      answerOrderFindings(
-        f.db,
-        "order-1",
-        "build-2",
-        [{ finding, answer: "fixed", resolution: "moved the gate here" }],
-        f.worker,
-      );
-      slice(f.db, f.dir, f.worker, "c");
-      const brief = await briefed(
-        reviewOutput({ rulings: [{ finding, ruling: "addressed", reason: null }] }),
-      );
-      expect(brief).toContain(
-        [
-          "  - Builder's answer: fixed: moved the gate here",
-          "  - Last ruled refusal_contested: it is this slice",
-          "  - The owner overturned the refusal: fix it here",
-        ].join("\n"),
-      );
-      const body = f.db
-        .query<{ body: string }, []>(
-          "SELECT body FROM factory_order_artifact WHERE kind = 'review' ORDER BY id DESC",
-        )
-        .get()?.body;
-      expect(body).toContain("## Owner rulings\n\nNone.");
-    });
-
-    test("records its rulings and renders them as earlier findings", async () => {
+    test("renders a clean round's earlier findings with the builder's answers", async () => {
       const { db, operator, dir, finding } = await raisedAndFixed();
-      await review(
-        db,
-        operator,
-        dir,
-        answering(reviewOutput({ rulings: [{ finding, ruling: "addressed", reason: null }] })),
-      );
+      await review(db, operator, dir, answering(reviewOutput()));
 
-      expect(db.query("SELECT finding_id, ruling FROM factory_order_finding_ruling").all()).toEqual([
-        { finding_id: finding, ruling: "addressed" },
-      ]);
       const body = db
         .query<{ body: string }, []>(
           "SELECT body FROM factory_order_artifact WHERE kind = 'review' ORDER BY id DESC",
@@ -803,7 +700,7 @@ describe("a review round", () => {
         .get()?.body;
       expect(body).toStartWith("## Verdict\n\n**May advance.**");
       expect(body).toContain(
-        `## Earlier findings\n\n- Finding ${finding}, \`a.txt:1\`: the guard is the wrong way round **addressed**`,
+        `## Earlier findings\n\n- Finding ${finding}, \`a.txt:1\`: the guard is the wrong way round **fixed**: inverted it`,
       );
     });
   });

@@ -8,7 +8,6 @@ import { scriptedHarness } from "./harness-scripted.test-support";
 import { approveOrder } from "./order-approval";
 import { completeOrderSlice, nextOrderSlice, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
 import { finishAttempt } from "./order-attempt";
-import { runOrderCommand } from "./order-command";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
 import { answerOrderFindings } from "./order-finding";
 import { queueOrder, startOrder } from "./order-lifecycle";
@@ -122,7 +121,7 @@ describe("the operator loop", () => {
       env: workerEnv(operator),
       harness: "codex",
       adapter: scriptedHarness(() => ({
-        output: reviewOutput({ rulings: [{ finding: finding.id, ruling: "addressed", reason: null }] }),
+        output: reviewOutput(),
       })),
     });
     expect(secondReview.findings).toBe(0);
@@ -166,8 +165,8 @@ describe("the operator loop", () => {
     db.close();
   });
 
-  describe("a refusal the reviewer contests", () => {
-    async function contested(orderId: string) {
+  describe("a refused finding", () => {
+    async function refused(orderId: string) {
       const db = new Database(":memory:");
       db.run(SCHEMA_SQL);
       const operator = mintWorker(db, { role: "operator", sessionId: `${orderId}-operator` });
@@ -177,7 +176,7 @@ describe("the operator loop", () => {
         sessionId: `${orderId}-operator/builder`,
       });
       const worktree = join(repo.dir, ".claude", "worktrees", orderId);
-      queueOrder(db, { id: orderId, project: "cniska/dim-factory", title: "Contest" }, operator.name);
+      queueOrder(db, { id: orderId, project: "cniska/dim-factory", title: "Refuse" }, operator.name);
       startOrder(db, orderId, operator.name, undefined, repo.dir);
       approvePlan(db, orderId, operator.name);
       const build = (run: string, name: string) => {
@@ -198,21 +197,16 @@ describe("the operator loop", () => {
           harness: "codex",
           adapter: scriptedHarness(() => ({ output })),
         });
+      const gap = (file: string) => ({
+        dimension: "tests",
+        file,
+        line: 1,
+        failure: "no test holds the first behavior",
+        fix: "add a test that fails without it",
+        severity: "medium",
+      });
       build("build-1", `${orderId}-first`);
-      await review(
-        reviewOutput({
-          findings: [
-            {
-              dimension: "tests",
-              file: `${orderId}-first.txt`,
-              line: 1,
-              failure: "no test holds the first behavior",
-              fix: "add a test that fails without it",
-              severity: "medium",
-            },
-          ],
-        }),
-      );
+      await review(reviewOutput({ findings: [gap(`${orderId}-first.txt`)] }));
       const finding = db.query<{ id: number }, []>("SELECT id FROM factory_order_finding").get()
         ?.id as number;
       answerOrderFindings(
@@ -223,69 +217,39 @@ describe("the operator loop", () => {
         builder.name,
       );
       build("build-2", `${orderId}-second`);
-      await review(
-        reviewOutput({
-          rulings: [{ finding, ruling: "refusal_contested", reason: "the plan puts the test in this slice" }],
-        }),
-      );
-      const rule = (flag: string) =>
-        runOrderCommand(
-          db,
-          ["rule", String(finding), flag, "--reason", "the owner has read both"],
-          null,
-          worktree,
-          workerEnv(operator),
-        );
-      return { db, operator, builder, finding, rule };
+      return { db, operator, review, gap };
     }
 
-    test("refuses approval until the owner upholds the refusal", async () => {
-      const { db, operator, builder, finding, rule } = await contested("uphold-order");
-      expect(() => approveOrder(db, "uphold-order", operator.name, undefined)).toThrow(
-        expect.objectContaining({ code: "not_next", message: expect.stringContaining("rule at review") }),
-      );
-      expect(() =>
-        runOrderCommand(
-          db,
-          ["rule", String(finding), "--uphold", "--reason", "mine"],
-          null,
-          repo.dir,
-          workerEnv(builder),
-        ),
-      ).toThrow(expect.objectContaining({ code: "worker_not_operator" }));
-      expect(rule("--uphold")).toBe(`finding ${finding}: refusal upheld`);
-      expect(approveOrder(db, "uphold-order", operator.name, undefined)).toBe("review");
-      expect(orderState(db, "uphold-order")).toEqual({ station: null, next: "ship" });
+    test("waits on review approval once a later round raises nothing", async () => {
+      const { db, review } = await refused("accepted-order");
+      await review(reviewOutput());
+      expect(orderState(db, "accepted-order")).toEqual({ station: "review", next: "approve" });
       db.close();
     });
 
-    test("sends an overturned refusal back to the builder as open work", async () => {
-      const { db, operator, finding, rule } = await contested("overturn-order");
-      expect(orderState(db, "overturn-order")).toEqual({ station: "review", next: "rule" });
-      expect(rule("--overturn")).toBe(`finding ${finding}: refusal overturned, back to the builder`);
-      expect(() => approveOrder(db, "overturn-order", operator.name, undefined)).toThrow(
+    test("goes back to the builder as a new finding when a later round raises it again", async () => {
+      const { db, operator, review, gap } = await refused("raised-again-order");
+      await review(reviewOutput({ findings: [gap("raised-again-order-second.txt")] }));
+      expect(() => approveOrder(db, "raised-again-order", operator.name, undefined)).toThrow(
         expect.objectContaining({ code: "not_next", message: expect.stringContaining("run at build") }),
       );
-      expect(orderState(db, "overturn-order")).toEqual({ station: "build", next: "run" });
-      expect(() => rule("--uphold")).toThrow(expect.objectContaining({ code: "finding_not_awaiting_owner" }));
       const brief = builderBrief(
-        { id: "overturn-order", title: "Contest", description: null },
-        { body: "## Outcome\n\nContest.", slices: [] },
+        { id: "raised-again-order", title: "Refuse", description: null },
+        { body: "## Outcome\n\nRefuse.", slices: [] },
         null,
         null,
         undefined,
         undefined,
-        reviewFindingsForBuild(db, "overturn-order"),
+        reviewFindingsForBuild(db, "raised-again-order"),
       );
       expect(brief).toContain(
         [
           "# Review findings",
-          `- Finding ${finding} (tests, overturn-order-first.txt:1): no test holds the first behavior`,
+          `- Finding 2 (tests, raised-again-order-second.txt:1): no test holds the first behavior`,
           "  Fix: add a test that fails without it",
-          "  The owner overturned your refusal, so answer it fixed: the owner has read both",
         ].join("\n"),
       );
-      expect(brief).not.toContain("# Refused findings");
+      expect(brief).not.toContain("Finding 1 ");
       db.close();
     });
   });

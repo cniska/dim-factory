@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { type FindingStanding, orderFindingStandings, owesAnswer } from "./order-finding-state";
+import { displayedAnswer, type FindingStanding, orderFindingStandings } from "./order-finding-state";
 import type { ReviewReport } from "./station-review-artifact";
 
 function location(finding: FindingStanding): string {
@@ -10,34 +10,18 @@ function section(heading: string, lines: string[]): string {
   return [`## ${heading}`, "", ...(lines.length > 0 ? lines : ["None."])].join("\n");
 }
 
-function verdict(standings: readonly FindingStanding[]): string {
-  const states = standings.map((finding) => finding.state);
-  if (states.includes("open")) return "Returns to the builder.";
-  if (states.includes("awaiting_owner")) return "Held for an owner ruling.";
-  return "May advance.";
-}
-
 export function renderReviewReport(db: Database, reviewId: number, report: ReviewReport): string {
   const orderId = db
     .query<{ order_id: string }, [number]>("SELECT order_id FROM factory_order_review WHERE id = ?")
     .get(reviewId)?.order_id;
   if (!orderId) throw new Error(`no review ${reviewId}`);
   const standings = orderFindingStandings(db, orderId);
-  const byId = new Map(standings.map((finding) => [finding.id, finding]));
   const findings = standings.filter((finding) => finding.reviewId === reviewId);
-  const rulings = db
-    .query<{ finding_id: number; ruling: string; reason: string | null }, [number]>(
-      "SELECT finding_id, ruling, reason FROM factory_order_finding_ruling WHERE review_id = ? ORDER BY finding_id",
-    )
-    .all(reviewId)
-    .map((ruling) => ({ ...ruling, finding: byId.get(ruling.finding_id) as FindingStanding }));
-  const contested = standings.filter((finding) => finding.state === "awaiting_owner");
-  const ruledHere = new Set(rulings.map((ruling) => ruling.finding_id));
-  const unanswered = standings.filter(
-    (finding) => owesAnswer(finding) && finding.reviewId !== reviewId && !ruledHere.has(finding.id),
-  );
+  const earlier = standings.filter((finding) => finding.reviewId !== reviewId);
   return [
-    section("Verdict", [`**${verdict(standings)}** ${report.verdict}`]),
+    section("Verdict", [
+      `**${findings.length > 0 ? "Returns to the builder." : "May advance."}** ${report.verdict}`,
+    ]),
     section(
       "Blocking findings",
       findings.map(
@@ -47,24 +31,13 @@ export function renderReviewReport(db: Database, reviewId: number, report: Revie
       ),
     ),
     section(
-      "Owner rulings",
-      contested.flatMap((finding) => [
-        `- Finding ${finding.id}, ${location(finding)}: ${finding.failure}`,
-        `  - Builder's refusal: ${finding.resolution}`,
-        `  - Reviewer's reason: ${finding.rulingReason}`,
-      ]),
-    ),
-    section("Earlier findings", [
-      ...rulings.map(
-        ({ finding, ruling, reason }) =>
-          `- Finding ${finding.id}, ${location(finding)}: ${finding.failure} **${ruling}**` +
-          `${reason ? `: ${reason}` : ""}`,
-      ),
-      ...unanswered.map(
+      "Earlier findings",
+      earlier.map(
         (finding) =>
-          `- Finding ${finding.id}, ${location(finding)}: ${finding.failure} **awaiting the builder's answer**`,
+          `- Finding ${finding.id}, ${location(finding)}: ${finding.failure} **${displayedAnswer(finding)}**` +
+          `${finding.resolution ? `: ${finding.resolution}` : ""}`,
       ),
-    ]),
+    ),
     section(
       "Plan conformance",
       report.conformance.map(

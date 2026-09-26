@@ -27,13 +27,7 @@ import { approveOrder, returnOrderArtifact } from "./order-approval";
 import { completeOrderBuildFollowup, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
 import { openAttempt } from "./order-attempt";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
-import {
-  answerOrderFindings,
-  BuildTurnRefused,
-  raiseOrderFinding,
-  recordOwnerRuling,
-  ruleOnOrderFinding,
-} from "./order-finding";
+import { BuildTurnRefused, raiseOrderFinding } from "./order-finding";
 import { appendOrderEvent } from "./order-ledger";
 import { queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview, openOrderReview } from "./order-review";
@@ -921,51 +915,6 @@ describe("builder station", () => {
           ),
       });
       expect(failure?.message).toContain("answer refused");
-    });
-
-    test("refuses a second refusal of a finding whose refusal the owner overturned", async () => {
-      const orderId = "overturned-rework-order";
-      const { db, operator, options, firstBuild, first, finding } = await reviewedAtBuild(orderId);
-      answerOrderFindings(
-        db,
-        orderId,
-        "build-2",
-        [{ finding, answer: "refused", resolution: "out of scope" }],
-        firstBuild.builder,
-      );
-      const reviewer = mintWorker(db, {
-        role: "reviewer",
-        parentWorker: operator.name,
-        sessionId: `${orderId}-r2`,
-      });
-      const second = openOrderReview(
-        db,
-        orderId,
-        { reviewer: reviewer.name, baseSha: first, headSha: first },
-        reviewer.name,
-      );
-      ruleOnOrderFinding(db, finding, { ruling: "refusal_contested", reason: "in scope" }, reviewer.name);
-      closeOrderReview(db, second.id, "closed", reviewer.name);
-      recordOwnerRuling(db, finding, { ruling: "refusal_overturned", reason: "fix it" }, operator.name);
-      const failure = await runOrderBuildLive(db, orderId, operator.name, {
-        ...options,
-        adapter: builderTurn((request) => {
-          writeFileSync(join(request.cwd, "fix.txt"), "fix\n");
-          return {
-            subject: "fix: review finding",
-            artifact: "Revised Build artifact.",
-            answers: [{ finding, answer: "refused", resolution: "still out of scope" }],
-          };
-        }),
-      }).then(
-        () => undefined,
-        (error: Error) => error,
-      );
-      expect(failure?.cause).toBeInstanceOf(BuildTurnRefused);
-      expect(failure?.cause).toMatchObject({ code: "refusal_overturned" });
-      expect(git(join(options.dir, ".claude", "worktrees", orderId), ["rev-parse", "HEAD"])).toBe(first);
-      expect(answers(db)).toHaveLength(1);
-      db.close();
     });
 
     test("refuses a turn that answers one finding twice before committing", async () => {

@@ -16,7 +16,7 @@ import {
   recordOrderEnvironment,
   recordOrderFile,
 } from "./order-evidence";
-import { answerOrderFindings, raiseOrderFinding, ruleOnOrderFinding } from "./order-finding";
+import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { appendOrderEvent } from "./order-ledger";
 import { queueOrder, setOrderPriority, startOrder } from "./order-lifecycle";
 import { closeOrderReview, recordOrderReviewArtifact } from "./order-review";
@@ -849,42 +849,31 @@ describe("factory wall item view", () => {
     db.close();
   });
 
-  test("attaches to each finding_answered entry the answer that attempt gave", () => {
+  test("attaches to a finding_answered entry the answer the builder gave", () => {
     const db = floor();
-    queueOrder(db, { id: "order-reanswered", project: "cniska/dim-factory", title: "Answer twice" }, worker);
-    started(db, "order-reanswered");
-    const first = reviewIn(db, "order-reanswered", worker);
+    queueOrder(db, { id: "order-answered", project: "cniska/dim-factory", title: "Answer" }, worker);
+    started(db, "order-answered");
+    const first = reviewIn(db, "order-answered", worker);
     const finding = raiseOrderFinding(
       db,
-      "order-reanswered",
+      "order-answered",
       located({ dimension: "tests", failure: "no test holds it" }),
       first.reviewer,
     );
     closeOrderReview(db, first.review, "closed", first.reviewer);
     answerOrderFindings(
       db,
-      "order-reanswered",
+      "order-answered",
       "run-1",
-      [{ finding, answer: "fixed", resolution: null }],
-      worker,
-    );
-    const second = reviewIn(db, "order-reanswered", worker);
-    ruleOnOrderFinding(db, finding, { ruling: "not_addressed", reason: "still none" }, second.reviewer);
-    closeOrderReview(db, second.review, "closed", second.reviewer);
-    answerOrderFindings(
-      db,
-      "order-reanswered",
-      "run-2",
       [{ finding, answer: "refused", resolution: "out of scope" }],
       worker,
     );
 
-    const entries = assembleItemView(db, "order-reanswered")?.entries ?? [];
+    const entries = assembleItemView(db, "order-answered")?.entries ?? [];
 
     expect(
       entries.filter((entry) => entry.kind === "finding_answered").map((entry) => entry.finding),
     ).toEqual([
-      { dimension: "tests", answer: "fixed", failure: "no test holds it" },
       { dimension: "tests", answer: "refused", failure: "no test holds it", resolution: "out of scope" },
     ]);
     db.close();

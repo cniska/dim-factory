@@ -117,12 +117,6 @@ function record() {
         [findingId, `build-${tick}`, answer, answer === "refused" ? "out of scope" : null, at()],
       );
     },
-    rule(findingId: number, roundId: number | null, ruling: string): void {
-      db.run(
-        "INSERT INTO factory_order_finding_ruling (finding_id, review_id, ruling, reason, worker, ruled_at) VALUES (?, ?, ?, 'because', ?, ?)",
-        [findingId, roundId, ruling, worker, at()],
-      );
-    },
     rewrite(oldHead: string, newHead: string, patchEqual: boolean): void {
       db.run("INSERT INTO factory_order_commit (order_id, sha, recorded_at) VALUES (?, ?, ?)", [
         ORDER,
@@ -258,24 +252,13 @@ describe("the review station", () => {
     expect(orderState(buildApproved().db, ORDER)).toEqual({ station: "review", next: "run" });
   });
 
-  test("runs the reviewer to rule on an answered finding", () => {
+  test("runs the reviewer again once the builder answered every finding", () => {
     const r = buildApproved();
     const round = r.round("c1");
     const finding = r.finding(round);
     r.review(round);
     r.answer(finding, "refused");
     expect(orderState(r.db, ORDER)).toEqual({ station: "review", next: "run" });
-  });
-
-  test("waits on the owner's ruling on a contested refusal", () => {
-    const r = buildApproved();
-    const first = r.round("c1");
-    const finding = r.finding(first);
-    r.answer(finding, "refused");
-    const second = r.round("c1");
-    r.rule(finding, second, "refusal_contested");
-    r.review(second);
-    expect(orderState(r.db, ORDER)).toEqual({ station: "review", next: "rule" });
   });
 
   test("waits on approval of a clean round's Review artifact", () => {
@@ -306,20 +289,15 @@ describe("after the stations", () => {
     expect(orderState(r.db, ORDER)).toEqual({ station: null, next: "ship" });
   });
 
-  test("ships after the owner upholds a contested refusal and a clean round is approved", () => {
+  test("ships after a refused finding once a later clean round is approved", () => {
     const r = buildApproved();
-    const first = r.round("c1");
-    const finding = r.finding(first);
-    r.answer(finding, "refused");
-    const second = r.round("c1");
-    r.rule(finding, second, "refusal_contested");
-    r.rule(finding, null, "refusal_upheld");
+    r.answer(r.finding(r.round("c1")), "refused");
     r.approve(r.review(r.round("c1")));
     expect(orderState(r.db, ORDER)).toEqual({ station: null, next: "ship" });
   });
 });
 
-const ACTS: OrderAct[] = ["plan", "build", "review", "approve", "return", "rule", "ship"];
+const ACTS: OrderAct[] = ["plan", "build", "review", "approve", "return", "ship"];
 
 function admitted(r: { db: Database }): OrderAct[] {
   return ACTS.filter((act) => {
@@ -352,15 +330,6 @@ describe("an act's entry", () => {
 
   test("admits only reviewing once the build is approved", () => {
     expect(admitted(buildApproved())).toEqual(["review"]);
-  });
-
-  test("admits only the owner's ruling on a contested refusal", () => {
-    const r = buildApproved();
-    const first = r.round("c1");
-    const finding = r.finding(first);
-    r.answer(finding, "refused");
-    r.rule(finding, r.round("c1"), "refusal_contested");
-    expect(admitted(r)).toEqual(["rule"]);
   });
 
   test("admits only shipping once every station's artifact is approved", () => {

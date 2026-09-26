@@ -14,7 +14,7 @@ It always serves on the same port, so a link survives restarts; `DIM_WALL_PORT` 
 Three columns — **Todo**, **Active**, **Done** — answer where each order is.
 
 - **Todo** holds orders never started, **Active** every started order that has not landed, **Done** the landed ones. A dropped order leaves the board.
-- **A card** shows the title, the station, the worker and its role, and time since the last event. It names a state only where the column cannot — an order waiting on the owner names the artifact, as "Plan awaiting approval" or "Review awaiting a ruling" — and marks each failed check.
+- **A card** shows the title, the station, the worker and its role, and time since the last event. It names a state only where the column cannot — an order waiting on the owner names the artifact, as "Plan awaiting approval" — and marks each failed check.
 - **Bounded columns.** Each draws its most recent cards up to a fixed number, and its header carries the whole count.
 - **The header** says whether the feed is live, stale or unavailable.
 

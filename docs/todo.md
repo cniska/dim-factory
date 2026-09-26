@@ -16,8 +16,7 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 
 ## Features
 
-- **Ship ends the order** — ship writes the event that makes the order done and removes its worktree, `dim order stop` goes, and the status is read from the events rather than stored. A red re-check at ship keeps the rebase for the builder, as a conflict does.
-- **Approval is the only human gate** — a contested refusal goes back to the builder as work, and `dim order rule` goes.
+- **Ship ends the order** — approving the Review artifact ships the order, ship writes the event that makes the order done and removes its worktree, `dim order stop` goes, and the status is read from the events rather than stored. A red re-check at ship keeps the rebase for the builder, as a conflict does.
 - **One path per act** — the runner is the only writer of commits, files, checks and artifacts, so `dim order commit`, `file`, `check`, `build-artifact` and `review-artifact` go.
 - **Ship and rebase records** — one table for ship outcomes and one for rebases, replacing the delivery rows and event JSON.
 - **Refuse a secret at ship** — an order's diff carrying a key shape is not shipped.
@@ -44,7 +43,6 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 - **`dim adopt`** — bring an existing repo under `dim` in one command, including one with a weak or missing check: purge and ban comments, declare check and format, install the commit gate, and name what needs judgement.
 - **`/dim-setup`** — set up from a fresh clone, ending on `dim doctor` passing.
 - **Catch a stuck slice** retried across sessions.
-- **Hold on a checker's refusal** the way review refusals are held.
 - **Wall gaps** — a silence threshold, station moves, durable worker names, the project on the card, and operator presence.
 - **Wall notifications** — held and failed orders reach the owner off the page.
 - **A check shows as passed or failed**, not as its command.

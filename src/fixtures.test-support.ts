@@ -47,7 +47,6 @@ export function reviewOutput(fields: Record<string, unknown> = {}): string {
   return JSON.stringify({
     verdict: "The change does what the plan asked.",
     findings,
-    rulings: [],
     conformance: [],
     coverage: REVIEW_DIMENSIONS.map((dimension) => ({
       dimension,

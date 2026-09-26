@@ -4,7 +4,6 @@
   "required": [
     "verdict",
     "findings",
-    "rulings",
     "conformance",
     "coverage",
     "set_aside",
@@ -39,22 +38,6 @@
           "failure": { "type": "string", "minLength": 1 },
           "fix": { "type": "string", "minLength": 1 },
           "severity": { "type": "string", "enum": ["critical", "high", "medium"] }
-        }
-      }
-    },
-    "rulings": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["finding", "ruling", "reason"],
-        "properties": {
-          "finding": { "type": "integer" },
-          "ruling": {
-            "type": "string",
-            "enum": ["addressed", "not_addressed", "refusal_accepted", "refusal_contested"]
-          },
-          "reason": { "type": ["string", "null"] }
         }
       }
     },

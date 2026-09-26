@@ -1,5 +1,3 @@
-import { REVIEWER_RULINGS, type ReviewerRuling } from "./order-finding-state";
-
 export const REVIEW_DIMENSIONS = [
   "plan",
   "correctness",
@@ -29,12 +27,9 @@ export type ReviewFinding = {
   severity: Severity;
 };
 
-export type ReviewRuling = { finding: number; ruling: ReviewerRuling; reason: string | null };
-
 export type ReviewReport = {
   verdict: string;
   findings: ReviewFinding[];
-  rulings: ReviewRuling[];
   conformance: { kind: (typeof CONFORMANCE_KINDS)[number]; slice: string | null; detail: string }[];
   coverage: {
     dimension: ReviewDimension;
@@ -106,21 +101,6 @@ function parseFinding(value: unknown, index: number): ReviewFinding {
   };
 }
 
-function parseRuling(value: unknown, index: number): ReviewRuling {
-  const what = `reviewer ruling ${index + 1}`;
-  const fields = object(value, what);
-  const finding = fields.finding;
-  if (typeof finding !== "number" || !Number.isInteger(finding)) {
-    throw new Error(`${what} must name its finding by id`);
-  }
-  const ruling = oneOf(fields, "ruling", REVIEWER_RULINGS, what);
-  const reason = optionalText(fields, "reason", what);
-  if ((ruling === "not_addressed" || ruling === "refusal_contested") && reason === null) {
-    throw new Error(`${what} on finding ${finding} is ${ruling} and must give a reason`);
-  }
-  return { finding, ruling, reason };
-}
-
 function parseCoverage(values: unknown[], findingDimensions: Set<string>): ReviewReport["coverage"] {
   const coverage = values.map((value, index) => {
     const what = `reviewer coverage ${index + 1}`;
@@ -159,12 +139,6 @@ export function parseReviewReport(raw: string): ReviewReport {
   const fields = object(value, "reviewer output");
   const verdict = text(fields, "verdict", "reviewer output");
   const findings = list(fields, "findings").map(parseFinding);
-  const rulings = list(fields, "rulings").map(parseRuling);
-  const ruled = new Set<number>();
-  for (const ruling of rulings) {
-    if (ruled.has(ruling.finding)) throw new Error(`reviewer rulings name finding ${ruling.finding} twice`);
-    ruled.add(ruling.finding);
-  }
   const conformance = list(fields, "conformance").map((entry, index) => {
     const what = `reviewer conformance ${index + 1}`;
     const item = object(entry, what);
@@ -199,5 +173,5 @@ export function parseReviewReport(raw: string): ReviewReport {
       `reviewer output holds ${observations.length} observations, and at most ${MAX_OBSERVATIONS} are kept`,
     );
   }
-  return { verdict, findings, rulings, conformance, coverage, setAside, unverified, observations };
+  return { verdict, findings, conformance, coverage, setAside, unverified, observations };
 }

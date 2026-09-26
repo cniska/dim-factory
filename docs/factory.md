@@ -25,11 +25,11 @@ One piece of work, written down before anyone takes it ([`glossary.md`](glossary
 queued → plan → build → review → ship → completed
 ```
 
-- **Where an order is, is read from the record** ([`src/order-state.ts`](../src/order-state.ts)): its station and the act that station waits on — run the station, approve its artifact, or the owner's ruling. Once review's artifact is approved no station is left, and the next act is ship. Nothing stores it and no command sets it.
+- **Where an order is, is read from the record** ([`src/order-state.ts`](../src/order-state.ts)): its station and the act that station waits on — run the station, or approve its artifact. Once review's artifact is approved no station is left, and the next act is ship. Nothing stores it and no command sets it.
 - **Every act checks on entry** that it is the act the record waits on, and a refusal names the one that is. `dim order plan` on a queued order starts it and makes its worktree.
 - **The operator** delegates each station to a worker, checks each artifact against the record, and approves it or returns it. It never does the work.
-- **Each station returns an artifact** — plan, Build artifact, Review artifact — that the operator approves (`dim order approve`) or sends back with a reason (`dim order return`). Only an artifact awaiting approval, or a contested refusal awaiting the owner's ruling, holds an order.
-- **Build runs slice by slice**, and review reads the whole order after the last one. Findings send the order back to build; the builder answers each finding `fixed` or `refused`, and the next round rules on the answers. The owner settles a contested refusal with `dim order rule`.
+- **Each station returns an artifact** — plan, Build artifact, Review artifact — that the operator approves (`dim order approve`) or sends back with a reason (`dim order return`). Only an artifact awaiting approval holds an order.
+- **Build runs slice by slice**, and review reads the whole order after the last one. A round's findings send the order back to build, where the builder answers each one once, `fixed` or `refused` with a reason. The next round is briefed with those answers and raises a new finding for any that still holds; a round that raises nothing writes the Review artifact.
 - **Ship** delivers it (see [Done](#done)).
 - **A failed attempt** leaves the order where its evidence puts it, and the same command runs the station again. A build attempt running on an order refuses a second one. **A drop** is the owner deciding it will not be built.
 - **One act, one path.** Findings arrive only in the reviewer's report and answers only in the builder's build turn.
@@ -43,7 +43,6 @@ dim order priority|amend|drop <id> ...
 dim order plan|build|review <id> [--harness codex|claude]
 dim order approve <id> [--reason "..."]  # a Build artifact's approval gives its reason
 dim order return <id> --reason "..."
-dim order rule <finding-id> --uphold|--overturn --reason "..."
 dim order ship <id>
 dim q order <id>                         # one order's full record and its next act
 dim q factory                            # every order's current state
@@ -56,7 +55,7 @@ A command with no `--harness` runs the worker under the harness the operator's o
 
 A builder leaves its changes uncommitted and returns a build turn: a commit subject, an answer per finding, and on the last turn the Build artifact. The runner then ([`src/station-build-commit.ts`](../src/station-build-commit.ts)):
 
-1. refuses a turn that leaves a handed finding unanswered, answers one it was not handed, or refuses a refusal the owner overturned
+1. refuses a turn that leaves a handed finding unanswered or answers one it was not handed
 2. applies the comment gate over the staged tree, reading the ban from the trunk's config so a builder cannot lift it
 3. runs the repo's check in the check sandbox, without the operator's identity
 4. commits with the repo's own identity and signing, and records the commit under the builder and the check under the operator

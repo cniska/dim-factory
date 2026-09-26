@@ -39,7 +39,6 @@ const statusLabels: Record<BoardStatus, string> = {
 const OWNER_ACTS: Record<NextAct, string | null> = {
   run: null,
   approve: "approval",
-  rule: "a ruling",
   ship: null,
 };
 

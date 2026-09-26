@@ -54,7 +54,6 @@ function scenario(name: FakeHarnessScenario): Scenario {
     const output = JSON.stringify({
       verdict: "The change is sound.",
       findings: [],
-      rulings: [],
       conformance: [],
       coverage: REVIEW_DIMENSIONS.map((dimension) => ({ dimension, status: "clean", reason: null })),
       set_aside: [],

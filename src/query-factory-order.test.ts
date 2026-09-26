@@ -11,7 +11,7 @@ import {
   recordOrderEnvironment,
   recordOrderFile,
 } from "./order-evidence";
-import { answerOrderFindings, raiseOrderFinding, ruleOnOrderFinding } from "./order-finding";
+import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { appendOrderEvent } from "./order-ledger";
 import { queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview } from "./order-review";
@@ -37,7 +37,7 @@ function building(db: Database, orderId: string, at?: string): void {
 }
 
 describe("factory order query", () => {
-  test("reports a finding a later round found not addressed as unanswered until it is answered again", () => {
+  test("reports a finding unanswered until the builder answers it", () => {
     const db = floor();
     queueOrder(db, { id: "order-reopened", project: "cniska/dim-factory", title: "Reopen" }, worker);
     building(db, "order-reopened");
@@ -64,16 +64,11 @@ describe("factory order query", () => {
         .map((row) => [row[2], row[3]]),
       factory: findQuery("factory")?.run(db, { arg: "order-reopened" }).rows[0]?.[9],
     });
-    answer("run-1");
-    expect(reported()).toEqual({ order: [["finding_answered", "fixed"]], factory: "tests: fixed - no test" });
-    const second = reviewIn(db, "order-reopened", worker);
-    ruleOnOrderFinding(db, finding, { ruling: "not_addressed", reason: "still none" }, second.reviewer);
-    closeOrderReview(db, second.review, "closed", second.reviewer);
     expect(reported()).toEqual({
       order: [["finding_raised", "unanswered"]],
       factory: "tests: unanswered - no test",
     });
-    answer("run-2");
+    answer("run-1");
     expect(reported()).toEqual({ order: [["finding_answered", "fixed"]], factory: "tests: fixed - no test" });
     db.close();
   });

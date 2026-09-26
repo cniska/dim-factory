@@ -14,22 +14,21 @@ Use `dim-git` for the read-only diff boundary and handoff evidence. Review does 
 
 This station carries its review briefs directly. Each dimension supplies findings; this station supplies the factory grounding, read-only boundary and finding convergence.
 
-The reviewer returns a structured report, and the factory records its findings and rulings under the reviewer identity and renders the owner's Review artifact from it ([`src/station-review-report.ts`](../../src/station-review-report.ts)): the verdict, blocking findings, owner rulings, earlier findings, plan conformance, coverage, what was not judged, and observations. The report carries no praise, no walkthrough of the diff and no account of how the review ran.
+The reviewer returns a structured report, and the factory records its findings under the reviewer identity and renders the owner's Review artifact from it ([`src/station-review-report.ts`](../../src/station-review-report.ts)): the verdict, blocking findings, earlier findings with the builder's answers, plan conformance, coverage, what was not judged, and observations. The report carries no praise, no walkthrough of the diff and no account of how the review ran.
 
 Use `dim-artifact` for the shared artifact-writing contract. This station supplies the verdict sentence and every section the factory renders.
 
 The report is one JSON object, defined in [`src/station-review-artifact.schema.json`](../../src/station-review-artifact.schema.json) and parsed in [`src/station-review-artifact.ts`](../../src/station-review-artifact.ts):
 
 - `verdict` — one sentence saying why the order may advance or must return.
-- `findings` — each `{dimension, file, line, failure, fix, severity}`. Every finding blocks, at `critical`, `high` or `medium`; a point that would not block goes in `observations`.
-- `rulings` — from round two on, one `{finding, ruling, reason}` for every open earlier finding the brief lists and none otherwise. A finding answered `fixed`, or a refusal the owner overturned, takes `addressed` or `not_addressed`; a refusal that still stands takes `refusal_accepted` or `refusal_contested`. `not_addressed` and `refusal_contested` give the reason.
+- `findings` — each `{dimension, file, line, failure, fix, severity}`. Every finding blocks, at `critical`, `high` or `medium`; a point that would not block goes in `observations`. From round two on the brief lists earlier findings with the builder's answers; one that still holds at this head is raised again as a new finding.
 - `conformance` — each `{kind, slice, detail}`, where `kind` is `missing`, `extra` or `misunderstood`, judged against the approved plan. A deviation that must be fixed is also a finding in the `plan` dimension.
 - `coverage` — exactly one `{dimension, status, reason}` per dimension below: `findings` exactly when a finding carries that dimension, `clean` exactly when none does, or `not_applicable` or `not_run` with the reason.
 - `set_aside` — each `{item, why}` left out as outside the order.
 - `unverified` — each `{claim, would_settle}` that could not be checked.
 - `observations` — at most three strings, none of which blocks.
 
-Every property is present, and one with nothing to say is `null` or `[]`. Stop for the operator's gate after returning the report. If the owner returns the artifact, return the same structure with empty `findings` and `rulings`, addressing only the feedback; the factory renders it again from what the round recorded. A closed review is not accepted until the operator approves it with `dim order approve <order-id>`.
+Every property is present, and one with nothing to say is `null` or `[]`. Stop for the operator's gate after returning the report. If the owner returns the artifact, return the same structure with empty `findings`, addressing only the feedback; the factory renders it again from what the round recorded. A closed review is not accepted until the operator approves it with `dim order approve <order-id>`.
 
 ## Entry contract
 
@@ -64,7 +63,7 @@ The review is done when:
 
 - every dimension has one coverage entry, including the ones that found nothing, and a dimension whose agent failed to return is `not_run` with that reason rather than quietly dropped
 - each finding names a file the diff changed and a line that file has at the head commit, what fails, the fix direction and a blocking severity — a finding with no failure case is an opinion, and the factory refuses the report
-- every open earlier finding the brief lists has exactly one ruling, and a contested refusal says why the refusal does not hold
+- every earlier finding the brief lists was read against this head, and one that still holds is raised again with why its answer does not settle it
 - no more than three observations, none of which blocks
 - findings that contradict each other are resolved here, not passed on as a list
 - every finding a dimension raised was checked at its source before it was passed on, cited to `file:line`
