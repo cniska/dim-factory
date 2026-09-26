@@ -1,4 +1,6 @@
-# Using dim-factory
+# Agent command reference
+
+These commands are for coding agents setting up dim, inspecting its local record and operating its controls. [The factory](factory.md) describes orders and artifact decisions.
 
 ## Install
 

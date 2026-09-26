@@ -14,7 +14,7 @@ Each fact lives on one page and is linked from the others.
 
 - [The factory](factory.md) — orders, stations, workers, ship and done
 - [The wall](wall.md) — the read-only board the owner watches
-- [Using dim-factory](usage.md) — install, collect, query, gates and config
+- [Agent command reference](usage.md) — install, collect, query, gates and config
 - [Session database](design.md) — sources, schema, ingestion, hooks and read path
 - [Recall](recall.md) — what reaches a session unasked, and retrieval
 - [Worktrees](worktrees.md) — task checkouts and their environments
