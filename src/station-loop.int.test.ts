@@ -3,7 +3,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SCHEMA_SQL } from "./db-schema";
-import { attemptIn, integratedRepo, orderWorktree, reviewOutput } from "./fixtures.test-support";
+import { attemptIn, integratedRepo, orderWorktree, ranCheck, reviewOutput } from "./fixtures.test-support";
 import { scriptedHarness } from "./harness-scripted.test-support";
 import { approveOrder } from "./order-approval";
 import { completeOrderSlice, nextOrderSlice, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
@@ -71,7 +71,7 @@ describe("the operator loop", () => {
 
     const first = commit(worktree, "first");
     recordOrderCommit(db, "loop-order", first, builder.name, "feat: first");
-    recordOrderCheck(db, "loop-order", { command: "bun run verify", exitCode: 0 }, builder.name);
+    recordOrderCheck(db, "loop-order", ranCheck({ command: "bun run verify", exitCode: 0 }), builder.name);
     recordOrderBuild(db, "loop-order", "The first slice is built and verified.", first, builder.name);
     completeOrderSlice(db, "loop-order", nextOrderSlice(db, "loop-order")?.id as number, builder.name);
     approveOrder(db, "loop-order", operator.name, "the requested behavior is present");
@@ -112,7 +112,7 @@ describe("the operator loop", () => {
     attemptIn(db, "loop-order", builder.name, operator.name, "build-2");
     const second = commit(worktree, "fixed");
     recordOrderCommit(db, "loop-order", second, builder.name, "fix: complete behavior");
-    recordOrderCheck(db, "loop-order", { command: "bun run verify", exitCode: 0 }, builder.name);
+    recordOrderCheck(db, "loop-order", ranCheck({ command: "bun run verify", exitCode: 0 }), builder.name);
     recordOrderBuild(db, "loop-order", "The finding is fixed and verified.", second, builder.name);
     finishAttempt(db, "loop-order", "succeeded", undefined, new Date().toISOString());
     approveOrder(db, "loop-order", operator.name, "the finding is answered");
@@ -155,7 +155,7 @@ describe("the operator loop", () => {
     expect(orderState(db, "loop-order")).toEqual({ station: null, next: "ship" });
     attemptIn(db, "loop-order", builder.name, operator.name, "build-3");
     recordOrderCommit(db, "loop-order", "later-commit", builder.name, "fix: another change");
-    recordOrderCheck(db, "loop-order", { command: "bun run verify", exitCode: 0 }, builder.name);
+    recordOrderCheck(db, "loop-order", ranCheck({ command: "bun run verify", exitCode: 0 }), builder.name);
     recordOrderBuild(db, "loop-order", "Another change is built and verified.", "later-commit", builder.name);
     finishAttempt(db, "loop-order", "succeeded", undefined, new Date().toISOString());
     approveOrder(db, "loop-order", operator.name, "the change is present");
@@ -183,7 +183,7 @@ describe("the operator loop", () => {
         attemptIn(db, orderId, builder.name, operator.name, run);
         const sha = commit(worktree, name);
         recordOrderCommit(db, orderId, sha, builder.name, `feat: ${name}`);
-        recordOrderCheck(db, orderId, { command: "bun run verify", exitCode: 0 }, builder.name);
+        recordOrderCheck(db, orderId, ranCheck({ command: "bun run verify", exitCode: 0 }), builder.name);
         recordOrderBuild(db, orderId, `The ${name} slice is built.`, sha, builder.name);
         const left = nextOrderSlice(db, orderId);
         if (left) completeOrderSlice(db, orderId, left.id, builder.name);

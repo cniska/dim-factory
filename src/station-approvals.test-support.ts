@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { reviewIn } from "./fixtures.test-support";
+import { ranCheck, reviewIn } from "./fixtures.test-support";
 import { approveOrder } from "./order-approval";
 import { completeOrderSlice, nextOrderSlice, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
 import { recordOrderCheck } from "./order-evidence";
@@ -19,7 +19,12 @@ export function approveFinalBuildAt(
   builder: string,
   operator: string,
 ): void {
-  recordOrderCheck(db, orderId, { command: "bun run verify", exitCode: 0, result: "green" }, builder);
+  recordOrderCheck(
+    db,
+    orderId,
+    ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
+    builder,
+  );
   recordOrderBuild(db, orderId, "## Outcome\n\nThe requested result is built.", head, builder);
   completeOrderSlice(db, orderId, nextOrderSlice(db, orderId)?.id as number, builder);
   approveOrder(db, orderId, operator, "the requested result is present");

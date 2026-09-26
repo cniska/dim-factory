@@ -4,7 +4,14 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SCHEMA_SQL } from "./db-schema";
-import { attemptIn, integratedRepo, located, orderWorktree, reviewOutput } from "./fixtures.test-support";
+import {
+  attemptIn,
+  integratedRepo,
+  located,
+  orderWorktree,
+  ranCheck,
+  reviewOutput,
+} from "./fixtures.test-support";
 import type { HarnessRequest } from "./harness";
 import { codexProcess } from "./harness-codex";
 import { fakeHarness } from "./harness-fake";
@@ -133,7 +140,7 @@ function slice(
     .stdout.toString()
     .trim();
   recordOrderCommit(db, "order-1", sha, worker, `feat: ${name}`);
-  recordOrderCheck(db, "order-1", { command: "bun run verify", exitCode: 0 }, worker);
+  recordOrderCheck(db, "order-1", ranCheck({ command: "bun run verify", exitCode: 0 }), worker);
   recordOrderBuild(db, "order-1", `The ${name} slice is built and verified.`, sha, worker);
   const left = nextOrderSlice(db, "order-1");
   if (left) completeOrderSlice(db, "order-1", left.id, worker);

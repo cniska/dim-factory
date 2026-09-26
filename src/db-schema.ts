@@ -5,7 +5,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { STATIONS_SQL } from "./station";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 68;
+export const SCHEMA_VERSION = 69;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -389,7 +389,7 @@ CREATE INDEX IF NOT EXISTS factory_schedule_invocation_schedule
 CREATE TABLE IF NOT EXISTS factory_order_commit (
   order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   sha           TEXT NOT NULL,
-  subject       TEXT,
+  subject       TEXT NOT NULL,
   recorded_at   TEXT NOT NULL,
   PRIMARY KEY (order_id, sha)
 );
@@ -431,9 +431,9 @@ CREATE TABLE IF NOT EXISTS factory_order_check (
   order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   command       TEXT NOT NULL,
   exit_code     INTEGER NOT NULL,
-  started_at    TEXT,
+  started_at    TEXT NOT NULL,
   finished_at   TEXT NOT NULL,
-  result        TEXT,
+  result        TEXT NOT NULL,
   recorded_at   TEXT NOT NULL
 );
 

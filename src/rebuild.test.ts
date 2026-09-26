@@ -197,7 +197,7 @@ describe("rebuilding a database an older schema wrote", () => {
        VALUES ('order-1', '2026-01-01T00:00:00Z', 'started', 'copper-1')`,
     );
     db.run(
-      "INSERT INTO factory_order_commit (order_id, sha, recorded_at) VALUES ('order-1', 'abc', '2026-01-01T00:00:00Z')",
+      "INSERT INTO factory_order_commit (order_id, sha, subject, recorded_at) VALUES ('order-1', 'abc', 'feat: abc', '2026-01-01T00:00:00Z')",
     );
 
     rebuild(db, env);
@@ -373,8 +373,8 @@ describe("rebuilding a database an older schema wrote", () => {
               ('order-gone', '2026-01-01T00:00:00Z', 'started', 'copper-1')`,
     );
     db.run(
-      `INSERT INTO factory_order_commit (order_id, sha, recorded_at)
-       VALUES ('order-gone', 'abc', '2026-01-01T00:00:00Z')`,
+      `INSERT INTO factory_order_commit (order_id, sha, subject, recorded_at)
+       VALUES ('order-gone', 'abc', 'feat: abc', '2026-01-01T00:00:00Z')`,
     );
     db.run("PRAGMA foreign_keys = ON");
 

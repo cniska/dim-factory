@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { basename } from "node:path";
 import wallServeConfig from "../bunfig.toml";
 import { SCHEMA_SQL } from "./db-schema";
-import { attemptIn, integratedRepo, located, reviewIn, workerIn } from "./fixtures.test-support";
+import { attemptIn, integratedRepo, located, ranCheck, reviewIn, workerIn } from "./fixtures.test-support";
 import { approveOrder } from "./order-approval";
 import { completeOrderSlice, nextOrderSlice, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
 import { finishAttempt, startAttempt } from "./order-attempt";
@@ -91,7 +91,7 @@ describe("factory wall snapshot", () => {
     recordOrderCheck(
       db,
       "order-running",
-      { command: "bun run verify", exitCode: 0, result: "green" },
+      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
       worker,
       "2026-09-18T10:02:00.000Z",
     );
@@ -121,7 +121,7 @@ describe("factory wall snapshot", () => {
     recordOrderCheck(
       db,
       "order-done",
-      { command: "bun run verify", exitCode: 0, result: "green" },
+      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
       worker,
       "2026-09-18T08:01:30.000Z",
     );
@@ -290,21 +290,21 @@ describe("factory wall snapshot", () => {
     recordOrderCheck(
       db,
       "order-struggling",
-      { command: "bun run verify", exitCode: 1, result: "lint failed" },
+      ranCheck({ command: "bun run verify", exitCode: 1, result: "lint failed" }),
       worker,
       "2026-09-18T10:02:00.000Z",
     );
     recordOrderCheck(
       db,
       "order-struggling",
-      { command: "bun run verify", exitCode: 2, result: "typecheck failed" },
+      ranCheck({ command: "bun run verify", exitCode: 2, result: "typecheck failed" }),
       worker,
       "2026-09-18T10:03:00.000Z",
     );
     recordOrderCheck(
       db,
       "order-struggling",
-      { command: "bun run verify", exitCode: 0, result: "green" },
+      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
       worker,
       "2026-09-18T10:04:00.000Z",
     );
@@ -319,7 +319,7 @@ describe("factory wall snapshot", () => {
     recordOrderCheck(
       db,
       "order-clean",
-      { command: "bun run verify", exitCode: 0, result: "green" },
+      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
       worker,
       "2026-09-18T10:02:00.000Z",
     );
@@ -457,7 +457,7 @@ describe("factory wall snapshot", () => {
         recordOrderCheck(
           db,
           id,
-          { command: "bun run verify", exitCode: 0, result: "green" },
+          ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
           worker,
           "2026-09-18T09:00:45.000Z",
         );
@@ -567,14 +567,14 @@ describe("factory wall item view", () => {
     recordOrderCheck(
       db,
       "order-worked",
-      { command: "bun run verify", exitCode: 1, result: "typecheck failed" },
+      ranCheck({ command: "bun run verify", exitCode: 1, result: "typecheck failed" }),
       worker,
       "2026-09-18T10:03:00.000Z",
     );
     recordOrderCheck(
       db,
       "order-worked",
-      { command: "bun run verify", exitCode: 0, result: "green" },
+      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
       worker,
       "2026-09-18T10:04:00.000Z",
     );
@@ -596,7 +596,7 @@ describe("factory wall item view", () => {
     recordOrderCheck(
       db,
       "order-worked",
-      { command: "bun run verify", exitCode: 0, result: "green" },
+      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
       worker,
       "2026-09-18T10:06:30.000Z",
     );
@@ -757,7 +757,7 @@ describe("factory wall item view", () => {
       worker,
     );
     started(db, "order-uncounted");
-    recordOrderFile(db, "order-uncounted", { path: "src/binary.png" }, worker);
+    recordOrderFile(db, "order-uncounted", { path: "src/binary.png", added: null, removed: null }, worker);
 
     const view = assembleItemView(db, "order-uncounted", new Date("2026-09-18T10:20:00.000Z"));
 
@@ -778,7 +778,12 @@ describe("factory wall item view", () => {
       worker,
     );
     started(db, "order-at-home");
-    recordOrderFile(db, "order-at-home", { path: `${home}/code/dim-factory/src/paths.ts` }, worker);
+    recordOrderFile(
+      db,
+      "order-at-home",
+      { path: `${home}/code/dim-factory/src/paths.ts`, added: null, removed: null },
+      worker,
+    );
 
     const view = assembleItemView(db, "order-at-home", new Date("2026-09-18T10:20:00.000Z"));
 
@@ -867,7 +872,7 @@ describe("factory wall item view", () => {
     recordOrderCheck(
       db,
       "order-reviewed",
-      { command: "bun run verify", exitCode: 0 },
+      ranCheck({ command: "bun run verify", exitCode: 0 }),
       reviewer,
       "2026-09-18T10:02:00.000Z",
     );
@@ -926,11 +931,17 @@ describe("factory wall item view", () => {
     recordOrderCheck(
       db,
       "order-other",
-      { command: "bun run other", exitCode: 0, result: "green" },
+      ranCheck({ command: "bun run other", exitCode: 0, result: "green" }),
       worker,
       "2026-09-18T10:03:00.000Z",
     );
-    recordOrderFile(db, "order-other", { path: "src/other.ts" }, worker, "2026-09-18T10:05:00.000Z");
+    recordOrderFile(
+      db,
+      "order-other",
+      { path: "src/other.ts", added: null, removed: null },
+      worker,
+      "2026-09-18T10:05:00.000Z",
+    );
 
     const view = assembleItemView(db, "order-other", new Date("2026-09-18T10:20:00.000Z"));
     const entries = view?.entries ?? [];

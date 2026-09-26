@@ -10,7 +10,7 @@ export function recordOrderCommit(
   orderId: string,
   sha: string,
   worker: string,
-  subject?: string,
+  subject: string,
   at = now(),
 ): number {
   assertOrderActive(db, orderId);
@@ -18,14 +18,14 @@ export function recordOrderCommit(
     db.run("INSERT INTO factory_order_commit (order_id, sha, subject, recorded_at) VALUES (?, ?, ?, ?)", [
       orderId,
       sha,
-      subject ?? null,
+      subject,
       at,
     ]);
     return appendOrderEventInTransaction(db, orderId, { kind: "commit_created", worker, commitSha: sha }, at);
   })();
 }
 
-export type OrderFile = { path: string; added?: number; removed?: number };
+export type OrderFile = { path: string; added: number | null; removed: number | null };
 
 export function recordOrderFile(
   db: Database,
@@ -42,16 +42,16 @@ export function recordOrderFile(
        added = added + excluded.added,
        removed = removed + excluded.removed,
        recorded_at = excluded.recorded_at`,
-    [orderId, worker, file.path, file.added ?? null, file.removed ?? null, at],
+    [orderId, worker, file.path, file.added, file.removed, at],
   );
 }
 
 export type OrderCheck = {
   command: string;
   exitCode: number;
-  startedAt?: string;
-  finishedAt?: string;
-  result?: string;
+  startedAt: string;
+  finishedAt: string;
+  result: string;
 };
 
 function recordOrderCheckInTransaction(
@@ -64,15 +64,7 @@ function recordOrderCheckInTransaction(
   const result = db.run(
     `INSERT INTO factory_order_check (order_id, command, exit_code, started_at, finished_at, result, recorded_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [
-      orderId,
-      check.command,
-      check.exitCode,
-      check.startedAt ?? null,
-      check.finishedAt ?? at,
-      check.result ?? null,
-      at,
-    ],
+    [orderId, check.command, check.exitCode, check.startedAt, check.finishedAt, check.result, at],
   );
   const checkId = Number(result.lastInsertRowid);
   const eventId = appendOrderEventInTransaction(db, orderId, { kind: "check_finished", worker, checkId }, at);

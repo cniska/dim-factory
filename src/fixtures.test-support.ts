@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { installHooks } from "./hooks";
 import { startAttempt } from "./order-attempt";
+import type { OrderCheck } from "./order-evidence";
 import { openOrderReview } from "./order-review";
 import type { Env } from "./paths";
 import { REVIEW_DIMENSIONS, type ReviewFinding } from "./station-review-artifact";
@@ -40,6 +41,13 @@ export function reviewIn(
 
 export function located(finding: Pick<ReviewFinding, "dimension" | "failure">): ReviewFinding {
   return { file: "src/example.ts", line: 1, fix: "make it hold", severity: "medium", ...finding };
+}
+
+export function ranCheck(
+  check: Pick<OrderCheck, "command" | "exitCode"> & Partial<OrderCheck>,
+  at = new Date().toISOString(),
+): OrderCheck {
+  return { startedAt: at, finishedAt: at, result: "", ...check };
 }
 
 export function reviewOutput(fields: Record<string, unknown> = {}): string {

@@ -156,7 +156,9 @@ export function redCheckBrief(check: FailedCheck): string[] {
     "# Red check at the rebased head",
     "Shipping rebased this order onto the moved trunk, and the declared check failed at the rebased head, so nothing landed. The worktree is on the order's branch at that head.",
     `\`${check.command}\` exited ${check.exitCode}:`,
-    ...(check.result === null ? [] : ["```", check.result, "```"]),
+    "```",
+    check.result,
+    "```",
     "Fix the cause so the declared check passes on the rebased head. The fix is a new commit, which takes a new Build approval and a new review.",
   ];
 }

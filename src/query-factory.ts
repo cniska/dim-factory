@@ -138,7 +138,7 @@ export const order: Query = {
       ...table(
         db,
         `SELECT 'commit' AS section, c.recorded_at AS "when", e.kind, '' AS status,
-                c.sha AS subject, coalesce(c.subject, '') AS evidence
+                c.sha AS subject, c.subject AS evidence
          FROM factory_order_commit c
          JOIN factory_order_event e
            ON e.order_id = c.order_id AND e.commit_sha = c.sha
@@ -158,7 +158,7 @@ export const order: Query = {
       ...table(
         db,
         `SELECT 'check' AS section, finished_at AS "when", 'check_finished' AS kind,
-                cast(exit_code AS TEXT) AS status, command AS subject, coalesce(result, '') AS evidence
+                cast(exit_code AS TEXT) AS status, command AS subject, result AS evidence
          FROM factory_order_check WHERE order_id = ?`,
         [id],
       ),

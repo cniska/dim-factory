@@ -28,7 +28,7 @@ function floor(db = new Database(":memory:"), schema = true): Floor {
   queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Answer findings" }, operator);
   startOrder(db, "order-1", operator, undefined, trunk.dir);
   approvePlan(db, "order-1", operator);
-  recordOrderCommit(db, "order-1", "base0000", builder);
+  recordOrderCommit(db, "order-1", "base0000", builder, "feat: base");
   attemptIn(db, "order-1", builder, operator);
   approveFinalBuildAt(db, "order-1", "base0000", builder, operator);
   return { db, builder, operator };

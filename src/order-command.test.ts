@@ -6,7 +6,14 @@ import { join } from "node:path";
 import { UsageError } from "./cli-contract";
 import { SCHEMA_SQL } from "./db-schema";
 import { pullStop } from "./factory-stop";
-import { attemptIn, collectingMachine, integratedRepo, reviewIn, scratchEnv } from "./fixtures.test-support";
+import {
+  attemptIn,
+  collectingMachine,
+  integratedRepo,
+  ranCheck,
+  reviewIn,
+  scratchEnv,
+} from "./fixtures.test-support";
 import { hookConfigPath } from "./hooks";
 import { TOOLS } from "./ingest-tools";
 import { completeOrderSlice, nextOrderSlice, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
@@ -56,7 +63,7 @@ afterAll(() => {
 function landed(database: Database, orderId: string): void {
   const operator = resolveWorker(database, env);
   recordOrderCommit(database, orderId, trunk.sha, operator, "feat: land it");
-  recordOrderCheck(database, orderId, { command: "bun run verify", exitCode: 0 }, operator);
+  recordOrderCheck(database, orderId, ranCheck({ command: "bun run verify", exitCode: 0 }), operator);
 }
 
 const add = [

@@ -13,6 +13,7 @@ import {
   integratedRepo,
   located,
   orderWorktree,
+  ranCheck,
   reviewIn,
   scratchEnv,
   workerIn,
@@ -103,7 +104,7 @@ function landed(database: Database, orderId: string, at?: string): void {
   recordOrderCheck(
     database,
     orderId,
-    { command: "bun run verify", exitCode: 0, result: "green" },
+    ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
     worker,
     at,
   );
@@ -183,7 +184,7 @@ describe("factory order report records", () => {
     recordOrderCheck(
       database,
       "order-build-artifact",
-      { command: "bun run verify", exitCode: 0 },
+      ranCheck({ command: "bun run verify", exitCode: 0 }),
       builder.name,
     );
     recordOrderBuild(
@@ -203,7 +204,7 @@ describe("factory order report records", () => {
     recordOrderCheck(
       database,
       "order-build-artifact",
-      { command: "bun run verify", exitCode: 0 },
+      ranCheck({ command: "bun run verify", exitCode: 0 }),
       builder.name,
     );
 
@@ -795,7 +796,7 @@ describe("factory order report records", () => {
       const { database, ship } = scene(unrelatedMove, { check: "exit 3" });
       expect(ship).toThrow(expect.objectContaining({ code: "ship_check_failed" }));
 
-      recordOrderCheck(database, "order-1", { command: "true", exitCode: 0 }, attemptOperator);
+      recordOrderCheck(database, "order-1", ranCheck({ command: "true", exitCode: 0 }), attemptOperator);
 
       expect(failedHeadCheck(database, "order-1")).toBeNull();
       expect(orderState(database, "order-1")).toEqual({ station: null, next: "ship" });
@@ -837,7 +838,7 @@ describe("factory order report records", () => {
           ],
           patchEqual: true,
         },
-        { command: "bun run verify", exitCode: 0 },
+        ranCheck({ command: "bun run verify", exitCode: 0 }),
         attemptOperator,
       );
 
@@ -866,7 +867,7 @@ describe("factory order report records", () => {
           ],
           patchEqual: true,
         },
-        { command: "bun run verify", exitCode: 0 },
+        ranCheck({ command: "bun run verify", exitCode: 0 }),
         attemptOperator,
       );
 
@@ -956,7 +957,7 @@ describe("factory order report records", () => {
       recordOrderCommit(database, "order-1", "a0", worker, "feat: a");
       approveFinalBuildAt(database, "order-1", "a0", worker, attemptOperator);
       approveReviewAt(database, "order-1", "a0", attemptOperator);
-      const check = { command: "bun run verify", exitCode: 0 };
+      const check = ranCheck({ command: "bun run verify", exitCode: 0 });
       const rewrite = (from: string, to: string, patchEqual: boolean) =>
         recordOrderRewrite(
           database,
@@ -997,6 +998,7 @@ describe("factory order report records", () => {
         command: "bun run verify",
         exitCode: 0,
         result: "green",
+        startedAt: "2026-09-18T10:01:30.000Z",
         finishedAt: "2026-09-18T10:02:00.000Z",
       },
       worker,
@@ -1015,7 +1017,7 @@ describe("factory order report records", () => {
     recordOrderCheck(
       database,
       "order-1",
-      { command: "bun run verify", exitCode: 1, result: "2 failed" },
+      ranCheck({ command: "bun run verify", exitCode: 1, result: "2 failed" }),
       worker,
       "2026-09-18T10:02:00.000Z",
     );
@@ -1028,7 +1030,7 @@ describe("factory order report records", () => {
     recordOrderCheck(
       database,
       "order-1",
-      { command: "bun run verify", exitCode: 0, result: "green" },
+      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
       worker,
       "2026-09-18T10:03:00.000Z",
     );
@@ -1043,7 +1045,7 @@ describe("factory order report records", () => {
     recordOrderCheck(
       database,
       "order-1",
-      { command: "bun run verify", exitCode: 0, result: "green" },
+      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
       worker,
       "2026-09-18T10:02:00.000Z",
     );
@@ -1056,7 +1058,7 @@ describe("factory order report records", () => {
     recordOrderCheck(
       database,
       "order-1",
-      { command: "bun run verify", exitCode: 0, result: "green" },
+      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
       worker,
       "2026-09-18T10:04:00.000Z",
     );
@@ -1090,9 +1092,9 @@ describe("factory order report records", () => {
   test("refuses evidence for an order that has not started", () => {
     const database = db();
     queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
-    expect(() => recordOrderFile(database, "order-1", { path: "src/after-stop.ts" }, worker)).toThrow(
-      "order order-1 is not started",
-    );
+    expect(() =>
+      recordOrderFile(database, "order-1", { path: "src/after-stop.ts", added: null, removed: null }, worker),
+    ).toThrow("order order-1 is not started");
     expect(() => recordOrderEnvironment(database, "order-1", teardownReport)).toThrow(
       "order order-1 is not started",
     );
@@ -1160,7 +1162,13 @@ describe("factory order report records", () => {
       worker,
       "2026-09-18T10:03:00.000Z",
     );
-    recordOrderFile(database, "order-1", { path: "assets/logo.png" }, worker, "2026-09-18T10:02:00.000Z");
+    recordOrderFile(
+      database,
+      "order-1",
+      { path: "assets/logo.png", added: null, removed: null },
+      worker,
+      "2026-09-18T10:02:00.000Z",
+    );
     recordOrderFile(
       database,
       "order-1",
@@ -1193,7 +1201,7 @@ describe("factory order report records", () => {
     const check = recordOrderCheck(
       database,
       "order-1",
-      { command: "bun run verify", exitCode: 0, result: "426 tests" },
+      ranCheck({ command: "bun run verify", exitCode: 0, result: "426 tests" }),
       worker,
       "2026-09-18T10:03:00.000Z",
     );

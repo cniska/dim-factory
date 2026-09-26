@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { SCHEMA_SQL } from "./db-schema";
-import { attemptIn, integratedRepo } from "./fixtures.test-support";
+import { attemptIn, integratedRepo, ranCheck } from "./fixtures.test-support";
 import {
   completeOrderSlice,
   nextOrderSlice,
@@ -56,7 +56,7 @@ describe("build approval integration", () => {
     recordOrderCheck(
       db,
       "failed-return-order",
-      { command: "bun run verify", exitCode: 0, result: "green" },
+      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
       builder.name,
     );
     const build = recordOrderBuild(
@@ -159,7 +159,7 @@ describe("build approval integration", () => {
     recordOrderCheck(
       db,
       "build-approval-order",
-      { command: "bun run verify", exitCode: 0, result: "green" },
+      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
       builder.name,
     );
     const build = recordOrderBuild(
@@ -208,7 +208,7 @@ describe("build approval integration", () => {
     recordOrderCheck(
       db,
       "build-approval-order",
-      { command: "bun run verify", exitCode: 0, result: "green" },
+      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
       builder.name,
     );
     recordOrderBuild(

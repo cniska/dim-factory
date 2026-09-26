@@ -48,8 +48,8 @@ function record() {
   const check = (): number =>
     Number(
       db.run(
-        "INSERT INTO factory_order_check (order_id, command, exit_code, finished_at, recorded_at) VALUES (?, 'bun run verify', 0, ?, ?)",
-        [ORDER, at(), at()],
+        "INSERT INTO factory_order_check (order_id, command, exit_code, started_at, finished_at, result, recorded_at) VALUES (?, 'bun run verify', 0, ?, ?, 'green', ?)",
+        [ORDER, at(), at(), at()],
       ).lastInsertRowid,
     );
   const r = {
@@ -78,9 +78,10 @@ function record() {
       ]);
     },
     commit(sha: string): void {
-      db.run("INSERT INTO factory_order_commit (order_id, sha, recorded_at) VALUES (?, ?, ?)", [
+      db.run("INSERT INTO factory_order_commit (order_id, sha, subject, recorded_at) VALUES (?, ?, ?, ?)", [
         ORDER,
         sha,
+        `feat: ${sha}`,
         at(),
       ]);
       event("commit_created", { commit_sha: sha });
@@ -120,9 +121,10 @@ function record() {
       );
     },
     rewrite(oldHead: string, newHead: string, patchEqual: boolean): void {
-      db.run("INSERT INTO factory_order_commit (order_id, sha, recorded_at) VALUES (?, ?, ?)", [
+      db.run("INSERT INTO factory_order_commit (order_id, sha, subject, recorded_at) VALUES (?, ?, ?, ?)", [
         ORDER,
         newHead,
+        `feat: ${newHead}`,
         at(),
       ]);
       event("commit_rewritten", { commit_sha: newHead, evidence: JSON.stringify({ from: oldHead }) });

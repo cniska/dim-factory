@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { SCHEMA_SQL } from "./db-schema";
-import { attemptIn, integratedRepo, located, reviewIn, workerIn } from "./fixtures.test-support";
+import { attemptIn, integratedRepo, located, ranCheck, reviewIn, workerIn } from "./fixtures.test-support";
 import { recordOrderBuild } from "./order-artifacts";
 import {
   recordOrderCheck,
@@ -118,14 +118,14 @@ describe("factory order query", () => {
     recordOrderCheck(
       db,
       "order-status",
-      { command: "bun run verify", exitCode: 0, result: "green" },
+      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }, "2026-09-18T10:03:00.000Z"),
       worker,
       "2026-09-18T10:03:00.000Z",
     );
     recordOrderCheck(
       db,
       "order-status",
-      { command: "bun run test", exitCode: 0, result: "green" },
+      ranCheck({ command: "bun run test", exitCode: 0, result: "green" }, "2026-09-18T10:03:00.000Z"),
       worker,
       "2026-09-18T10:03:00.000Z",
     );
@@ -140,7 +140,7 @@ describe("factory order query", () => {
     recordOrderCheck(
       db,
       "order-status",
-      { command: "bun run focused", exitCode: 0, result: "green" },
+      ranCheck({ command: "bun run focused", exitCode: 0, result: "green" }, "2026-09-18T09:58:00.000Z"),
       worker,
       "2026-09-18T09:58:00.000Z",
     );
@@ -285,7 +285,7 @@ describe("factory order query", () => {
     recordOrderCheck(
       db,
       "order-123",
-      { command: "bun run verify", exitCode: 0, result: "green" },
+      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }, "2026-09-18T10:02:00.000Z"),
       worker,
       "2026-09-18T10:02:00.000Z",
     );

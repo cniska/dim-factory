@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { Replay } from "./ship-rebase";
 
-export type OrderCommit = { sha: string; subject: string | null; recordedAt: string };
+export type OrderCommit = { sha: string; subject: string; recordedAt: string };
 
 export function currentOrderCommits(db: Database, orderId: string): OrderCommit[] {
   return db

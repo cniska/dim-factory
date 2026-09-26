@@ -77,8 +77,8 @@ function refuseAddedComments(worktree: string, label: string): { unparsed: strin
   );
 }
 
-function lineCount(value: string | undefined): number | undefined {
-  return value === undefined || value === "-" ? undefined : Number(value);
+function lineCount(value: string | undefined): number | null {
+  return value === undefined || value === "-" ? null : Number(value);
 }
 
 function assertTurnAnswersBrief(turn: BuildTurn, owed: readonly number[]): void {

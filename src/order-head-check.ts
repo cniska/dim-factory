@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 
-export type FailedCheck = { command: string; exitCode: number; result: string | null };
+export type FailedCheck = { command: string; exitCode: number; result: string };
 
 export function failedHeadCheck(db: Database, orderId: string): FailedCheck | null {
   const check = db

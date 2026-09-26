@@ -19,6 +19,7 @@ import {
   declareCheck,
   integratedRepo,
   located,
+  ranCheck,
 } from "./fixtures.test-support";
 import { installCommitGate } from "./gate-commit";
 import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
@@ -618,7 +619,7 @@ describe("builder station", () => {
     recordOrderCheck(
       db,
       "returned-builder-order",
-      { command: "bun run verify", exitCode: 0, result: "green" },
+      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
       operator.name,
     );
     recordOrderBuild(db, "returned-builder-order", "The initial Build artifact.", repo.sha, builder.name);
