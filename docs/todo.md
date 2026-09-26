@@ -6,9 +6,8 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 
 - A database transaction that reads before it writes fails at once when another writer holds the lock, instead of waiting.
 - A worker can read the operator's credential and the model routing in `dim`'s data directory.
-- A worker that dies without recording a finish leaves its attempt open. Nothing is refused by it, since an attempt whose worker is over does not count as running, but no finish is recorded.
+- A worker that dies without recording a finish leaves its attempt open until another attempt starts.
 - `dim rebuild` silently drops a renamed column of a factory table, or fails partway; it should list what it cannot carry before dropping anything.
-- A slice can reach review without a Build artifact of its own.
 - A moved checkout reads as a second repo.
 - `q keywords` prints no ref, so benchmark questions asked of it cannot be scored.
 - Two label counts can include labels whose message is gone.
@@ -19,8 +18,8 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 - **Ship and rebase records** — one table for ship refusals and one for rebases, replacing the conflict held in the `ship_failed` event's JSON.
 - **Refuse a secret at ship** — an order's diff carrying a key shape is not shipped.
 - **Ship through a pull request** — `dim.ship = pull-request`, since most repos do not fast-forward their default branch. Built against one of the owner's repos that ships by PR, once the factory runs again.
-- **An attempt for every station run** — planner and reviewer runs claim the order too, and the order's worker folds into its assignment.
 - **Order table cleanup** — per-kind event references, stale columns dropped, and events for amend and priority.
+- **Order worker assignment cleanup** — the order's worker identity and provider session live in its assignment rather than in a second binding row.
 - **Operator–worker communication** — one design for how the operator and workers talk, with the operator as the only hub. The operator briefs a reviewer but never forwards the builder's arguments to it, and every message the operator sends a worker is an event, so a relay would show in the record.
 - **The factory picks its own work** — select ready orders and run a bounded count, with claims and integration serialized.
 - **Retake a failed order once** — a second failure leaves it.

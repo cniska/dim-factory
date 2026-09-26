@@ -10,6 +10,7 @@ import {
 } from "./harness-launch";
 import type { HarnessName } from "./harness-name";
 import { type ReturnedOrderArtifact, returnedOrderArtifact } from "./order-artifacts";
+import { finishStoppedAttempt } from "./order-attempt";
 import { authenticateWorker, endWorker, type MintedWorker, startWorkerRun, workerProcessEnv } from "./worker";
 import {
   assignedWorker,
@@ -140,6 +141,7 @@ export function runOrderWorkerHarnessLive(
   let running: string | undefined;
   const onStarted: HarnessStarted = (sessionId, pid) => {
     if (name) {
+      if (onAssigned) finishStoppedAttempt(db, worker.orderId, new Date().toISOString());
       startWorkerRun(db, name, pid);
       running = name;
       bindOrderWorkerSession(db, worker.orderId, worker.role, sessionId);

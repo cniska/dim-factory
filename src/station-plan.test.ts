@@ -10,6 +10,7 @@ import { fakeHarness } from "./harness-fake";
 import { commandLine } from "./harness-process";
 import { scriptedHarness } from "./harness-scripted.test-support";
 import { returnOrderArtifact } from "./order-approval";
+import { startAttempt } from "./order-attempt";
 import { dropOrder, queueOrder } from "./order-lifecycle";
 import { orderStatus } from "./order-status";
 import { plannerBrief, runOrderPlanLive } from "./station-plan";
@@ -114,6 +115,12 @@ describe("planner station", () => {
     expect(db.query("SELECT ordinal, title, outcome FROM factory_order_slice").all()).toEqual([
       { ordinal: 1, title: "Build the smallest path", outcome: "The requested result is verified." },
     ]);
+    expect(
+      db.query("SELECT station, kind, outcome, worker FROM factory_order_attempt ORDER BY id").all(),
+    ).toEqual([
+      { station: "plan", kind: "started", outcome: "running", worker: outcome.planner },
+      { station: "plan", kind: "finished", outcome: "succeeded", worker: outcome.planner },
+    ]);
     expect(db.query("SELECT kind FROM factory_order_event WHERE order_id = 'planner-order'").all()).toEqual([
       { kind: "queued" },
       { kind: "started" },
@@ -163,6 +170,17 @@ describe("planner station", () => {
     if (!failure) throw new Error("planner failure event was not recorded");
     expect(failure.reason).toContain("fake process crashed");
     expect(
+      db.query("SELECT station, kind, outcome, reason FROM factory_order_attempt ORDER BY id").all(),
+    ).toEqual([
+      { station: "plan", kind: "started", outcome: "running", reason: null },
+      {
+        station: "plan",
+        kind: "finished",
+        outcome: "failed",
+        reason: expect.stringContaining("fake process crashed"),
+      },
+    ]);
+    expect(
       db
         .query<{ role: string }, [string]>("SELECT role FROM factory_worker WHERE name = ?")
         .get(failure.worker),
@@ -170,6 +188,62 @@ describe("planner station", () => {
       role: "planner",
     });
 
+    db.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  test("records a harness failure before a planner is assigned", async () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const home = mkdtempSync(join(tmpdir(), "dim-planner-unavailable-"));
+    writeFileSync(
+      join(home, "routing.json"),
+      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
+    );
+    const repo = integratedRepo();
+    const operator = mintWorker(db, { role: "operator", sessionId: "planner-unavailable-operator" });
+    queueOrder(
+      db,
+      { id: "planner-unavailable", project: "cniska/dim-factory", title: "Plan this" },
+      operator.name,
+    );
+    const adapter = {
+      ...fakeHarness("plan"),
+      start: async () => {
+        throw new Error("harness unavailable");
+      },
+    };
+
+    await expect(
+      runOrderPlanLive(db, "planner-unavailable", {
+        dir: repo.dir,
+        harness: "codex",
+        adapter,
+        env: {
+          DIM_HOME: home,
+          [WORKER_NAME_VAR]: operator.name,
+          [WORKER_TOKEN_VAR]: operator.token,
+          [WORKER_SESSION_VAR]: operator.sessionId,
+        },
+      }),
+    ).rejects.toThrow("harness unavailable");
+    expect(
+      db.query("SELECT worker, station, reason FROM factory_order_event WHERE kind = 'failed'").get(),
+    ).toEqual({ worker: null, station: "plan", reason: "harness unavailable" });
+    expect(db.query("SELECT count(*) AS n FROM factory_order_attempt").get()).toEqual({ n: 0 });
+    const recovered = await runOrderPlanLive(db, "planner-unavailable", {
+      dir: repo.dir,
+      harness: "codex",
+      adapter: fakeHarness("plan"),
+      env: {
+        DIM_HOME: home,
+        [WORKER_NAME_VAR]: operator.name,
+        [WORKER_TOKEN_VAR]: operator.token,
+        [WORKER_SESSION_VAR]: operator.sessionId,
+      },
+    });
+    expect(recovered.slices).toHaveLength(1);
     db.close();
     rmSync(repo.dir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
@@ -219,6 +293,17 @@ describe("planner station", () => {
       harness: "codex",
     });
     returnOrderArtifact(db, "planner-resume-order", operator.name, "cut the plan smaller");
+    startAttempt(
+      db,
+      "planner-resume-order",
+      {
+        runId: "stranded-plan-run",
+        worker: first.planner,
+        operatorWorker: operator.name,
+        station: "plan",
+      },
+      new Date().toISOString(),
+    );
     const second = await runOrderPlanLive(db, "planner-resume-order", {
       adapter,
       env,
@@ -233,6 +318,13 @@ describe("planner station", () => {
       n: 1,
     });
     expect(db.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 1 });
+    expect(
+      db
+        .query(
+          "SELECT outcome, reason FROM factory_order_attempt WHERE run_id = 'stranded-plan-run' AND kind = 'finished'",
+        )
+        .get(),
+    ).toEqual({ outcome: "failed", reason: "worker stopped without finishing" });
     expect(
       db
         .query("SELECT worker, provider_session_id FROM factory_order_worker WHERE order_id = ?")

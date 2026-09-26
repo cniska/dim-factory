@@ -86,6 +86,7 @@ Around it:
 - **Every act names its worker** when it is written, and nothing is attributed afterwards. A runner failure before a worker exists names no worker rather than blaming the operator.
 - **The operator** is resolved by `dim operator` from the active session in this checkout's `owner/repo`, and keeps one credential for its session.
 - **Station workers** are issued through assignments. One worker per station per order keeps its provider session, so later turns resume it with its context. A worker bound to one harness is refused under another.
+- **Station attempts** start when a planner, builder, or reviewer run receives its worker identity. The runner records the outcome; if a worker stops without one, the next run records that attempt as failed before starting. A failure before assignment records the station and reason with no worker.
 - **A worker is over when its process stops answering** a signal ([`src/worker.ts`](../src/worker.ts)); nothing needs to be awake to notice.
 - **A worker is started without the operator's identity** or session, and without an API key, so it is never billed per token. A Claude worker cannot start background work.
 - **Sandboxes.** No worker gets the checkout's git metadata. Codex builders run `workspace-write`, everything else read-only; Claude workers run in its Bash sandbox with `.git` denied.

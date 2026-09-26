@@ -1611,6 +1611,14 @@ describe("a comment a builder adds", () => {
 
     expect(builder.calls.map((call) => call.kind)).toEqual(["start", "resume"]);
     expect(git(order.worktree, ["show", "HEAD:built.ts"])).toBe(plain.trim());
+    expect(
+      order.db
+        .query("SELECT kind, outcome FROM factory_order_attempt WHERE order_id = ? ORDER BY id")
+        .all("comment-corrected-order"),
+    ).toEqual([
+      { kind: "started", outcome: "running" },
+      { kind: "finished", outcome: "succeeded" },
+    ]);
     order.db.close();
   });
 

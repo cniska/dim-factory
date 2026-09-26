@@ -5,9 +5,11 @@ import { workerFailureReason } from "./harness-launch";
 import type { HarnessName } from "./harness-name";
 import { latestApprovedPlan } from "./order-approved-plan";
 import type { ReturnedOrderArtifact } from "./order-artifacts";
+import { finishAttempt, startAttempt } from "./order-attempt";
 import { carriedThroughRewrites, currentOrderCommits } from "./order-commits";
 import { raiseOrderFinding } from "./order-finding";
 import { type FindingStanding, orderFindingStandings } from "./order-finding-state";
+import { appendOrderEvent } from "./order-ledger";
 import {
   abortStrandedReview,
   closeOrderReview,
@@ -286,7 +288,9 @@ export async function runOrderReviewLive(
   abortStrandedReview(db, orderId, worker);
   const dir = stationDirectory(options.dir, orderId);
   const harness = options.harness;
+  const runId = `review-${crypto.randomUUID()}`;
   let opened: ReviewedRound | undefined;
+  let claimed = false;
   let turn: OrderStationTurn;
   try {
     turn = await runOrderStationLive({
@@ -297,32 +301,57 @@ export async function runOrderReviewLive(
       harness,
       env: options.env,
       adapter: options.adapter,
+      onAssigned: (assigned, providerSessionId, attribution) => {
+        startAttempt(
+          db,
+          orderId,
+          {
+            runId,
+            worker: assigned,
+            operatorWorker: worker,
+            station: "review",
+            sessionId: providerSessionId,
+            providerSessionId,
+            ...attribution,
+          },
+          new Date().toISOString(),
+        );
+        claimed = true;
+      },
       request: ({ orderWorker: assigned, returned }) => {
         opened = openRound(db, orderId, dir, assigned.assignment.id, worker);
         return reviewerRequest(db, order, opened, returned);
       },
     });
   } catch (error) {
+    const failure = error instanceof Error ? error.message : String(error);
     if (opened) {
-      const reason = workerFailureReason(
-        "reviewer did not finish reviewing",
-        error instanceof Error ? error.message : String(error),
-        undefined,
-      );
+      const reason = workerFailureReason("reviewer did not finish reviewing", failure, undefined);
       try {
         closeOrderReview(db, opened.id, "aborted", worker, undefined, reason);
+        if (claimed) finishAttempt(db, orderId, "failed", reason, new Date().toISOString());
       } catch {
         throw error;
       }
     }
+    if (!claimed) {
+      appendOrderEvent(db, orderId, { kind: "failed", station: "review", reason: failure });
+    }
     throw error;
   }
   if (!opened) throw new Error("review round was not opened");
-  const reviewer = turn.worker;
-  if (!reviewer) {
-    closeOrderReview(db, opened.id, "aborted", worker);
-    throw new Error("reviewer did not bootstrap its worker assignment");
+  if (!claimed || !turn.worker) {
+    const failure = workerFailureReason(
+      "reviewer did not bootstrap its worker assignment",
+      turn.run.output,
+      turn.run.failureReason,
+    );
+    closeOrderReview(db, opened.id, "aborted", worker, undefined, failure);
+    if (claimed) finishAttempt(db, orderId, "failed", failure, new Date().toISOString());
+    else appendOrderEvent(db, orderId, { kind: "failed", station: "review", reason: failure });
+    throw new Error(failure);
   }
+  const reviewer = turn.worker;
   db.run("UPDATE factory_order_review SET reviewer = ? WHERE id = ?", [reviewer, opened.id]);
   const outcome = turn.run.exitCode === 0 ? "closed" : "aborted";
   const reason =
@@ -331,6 +360,7 @@ export async function runOrderReviewLive(
       : undefined;
   if (outcome === "aborted") {
     closeOrderReview(db, opened.id, outcome, worker, undefined, reason);
+    finishAttempt(db, orderId, "failed", reason, new Date().toISOString());
     return { review: opened.id, reviewer, findings: 0, outcome };
   }
   let findings: number;
@@ -339,8 +369,10 @@ export async function runOrderReviewLive(
   } catch (error) {
     const failure = error instanceof Error ? error.message : String(error);
     closeOrderReview(db, opened.id, "aborted", worker, undefined, failure);
+    finishAttempt(db, orderId, "failed", failure, new Date().toISOString());
     throw error;
   }
   closeOrderReview(db, opened.id, outcome, worker, undefined, reason);
+  finishAttempt(db, orderId, "succeeded", undefined, new Date().toISOString());
   return { review: opened.id, reviewer, findings, outcome };
 }

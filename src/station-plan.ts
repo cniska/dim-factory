@@ -4,6 +4,7 @@ import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-launch";
 import type { HarnessName } from "./harness-name";
 import { recordOrderPlan } from "./order-artifacts";
+import { assertNoRunningAttempt, finishAttempt, startAttempt } from "./order-attempt";
 import { appendOrderEvent } from "./order-ledger";
 import { startOrder } from "./order-lifecycle";
 import { assertNext } from "./order-state";
@@ -76,9 +77,12 @@ export async function runOrderPlanLive(
   const parentWorker = resolveWorker(db, options.env);
   assertOperator(db, parentWorker, "delegate planning");
   assertNext(db, orderId, "plan");
+  assertNoRunningAttempt(db, orderId, "start a planner");
   if (orderStatus(db, orderId) === "queued") startOrder(db, orderId, parentWorker, undefined, options.dir);
   const harness = options.harness;
+  const runId = `plan-${crypto.randomUUID()}`;
   let planner: string | undefined;
+  let claimed = false;
   try {
     const { run, worker } = await runOrderStationLive({
       db,
@@ -90,6 +94,24 @@ export async function runOrderPlanLive(
       adapter: options.adapter,
       onPrepared: (orderWorker) => {
         planner = orderWorker.worker;
+      },
+      onAssigned: (assigned, providerSessionId, attribution) => {
+        planner = assigned;
+        startAttempt(
+          db,
+          orderId,
+          {
+            runId,
+            worker: assigned,
+            operatorWorker: parentWorker,
+            station: "plan",
+            sessionId: providerSessionId,
+            providerSessionId,
+            ...attribution,
+          },
+          new Date().toISOString(),
+        );
+        claimed = true;
       },
       request: ({ returned }) => ({
         cwd: stationDirectory(options.dir, orderId),
@@ -105,10 +127,16 @@ export async function runOrderPlanLive(
     if (!planner) throw new Error("planner did not bootstrap its worker assignment");
     const artifact = parsePlanArtifact(run.output.trim());
     recordOrderPlan(db, orderId, artifact.body, planner, artifact.slices);
+    finishAttempt(db, orderId, "succeeded", undefined, new Date().toISOString());
     return { planner, ...artifact };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    if (planner) appendOrderEvent(db, orderId, { kind: "failed", worker: planner, reason });
+    appendOrderEvent(db, orderId, {
+      kind: "failed",
+      station: "plan",
+      worker: claimed ? planner : undefined,
+      reason,
+    });
     throw error;
   }
 }

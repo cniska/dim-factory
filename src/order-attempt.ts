@@ -49,9 +49,17 @@ export function assertNoRunningAttempt(db: Database, orderId: string, act: strin
   }
 }
 
+export function finishStoppedAttempt(db: Database, orderId: string, at: string): void {
+  const previous = openAttempt(db, orderId);
+  if (previous && workerIsOver(db, previous.worker)) {
+    finishAttempt(db, orderId, "failed", "worker stopped without finishing", at);
+  }
+}
+
 export function startAttempt(db: Database, orderId: string, attempt: Attempt, at: string): void {
   db.transaction(() => {
     assertOrderActive(db, orderId);
+    finishStoppedAttempt(db, orderId, at);
     assertNoRunningAttempt(db, orderId, "start another attempt");
     assertOperator(db, attempt.operatorWorker, "delegate an attempt");
     db.run(

@@ -303,7 +303,12 @@ export async function runOrderBuildLive(
     if (failureRecorded || orderStatus(db, orderId) !== "active") return;
     if (claimed && openAttempt(db, orderId)?.runId !== runId) return;
     failureRecorded = true;
-    appendOrderEvent(db, orderId, { kind: "failed", worker: builder, reason });
+    appendOrderEvent(db, orderId, {
+      kind: "failed",
+      station: "build",
+      worker: claimed ? builder : undefined,
+      reason,
+    });
   };
   try {
     const conflicts = conflict ? reopenRebase(worktree, orderId, conflict) : null;

@@ -419,6 +419,27 @@ describe("factory order report records", () => {
     database.close();
   });
 
+  test("a failure before assignment does not finish an earlier worker's attempt", () => {
+    const database = db();
+    const operator = workerIn(database, "operator");
+    const builder = workerIn(database, "builder");
+    queueOrder(database, { ...order, id: "early-failure" }, operator);
+    start(database, "early-failure", operator, "2026-09-22T10:00:00.000Z");
+    attemptIn(database, "early-failure", builder, operator, "previous-run");
+
+    appendOrderEvent(database, "early-failure", {
+      kind: "failed",
+      station: "build",
+      reason: "harness unavailable",
+    });
+
+    expect(openAttempt(database, "early-failure")?.runId).toBe("previous-run");
+    expect(
+      database.query("SELECT count(*) AS n FROM factory_order_attempt WHERE kind = 'finished'").get(),
+    ).toEqual({ n: 0 });
+    database.close();
+  });
+
   test("a review aborts a round its runner left open, so the order can be reviewed again", () => {
     const database = db();
     const runner = workerIn(database, "operator");

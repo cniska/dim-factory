@@ -295,6 +295,21 @@ describe("a review round", () => {
     expect(db.query("SELECT outcome FROM factory_order_review WHERE id = ?").get(done.review)).toEqual({
       outcome: "aborted",
     });
+    expect(
+      db
+        .query(
+          "SELECT station, kind, outcome, reason FROM factory_order_attempt WHERE station = 'review' ORDER BY id",
+        )
+        .all(),
+    ).toEqual([
+      { station: "review", kind: "started", outcome: "running", reason: null },
+      {
+        station: "review",
+        kind: "finished",
+        outcome: "failed",
+        reason: expect.stringContaining("the reviewer exited 3"),
+      },
+    ]);
   });
 
   test("records a crashed reviewer with the harness explanation", async () => {
@@ -334,6 +349,80 @@ describe("a review round", () => {
     });
   });
 
+  test("records a harness failure after opening a round but before reviewer assignment", async () => {
+    const { db, worker, operator, dir } = floor();
+    slice(db, dir, worker, "unavailable-review");
+    const adapter = {
+      ...fakeHarness("review"),
+      start: async () => {
+        throw new Error("harness unavailable");
+      },
+    };
+
+    await expect(
+      runOrderReviewLive(db, "order-1", operator, { dir, harness: "codex", adapter, env: machine }),
+    ).rejects.toThrow("harness unavailable");
+    expect(db.query("SELECT outcome FROM factory_order_review").get()).toEqual({ outcome: "aborted" });
+    expect(
+      db.query("SELECT worker, station, reason FROM factory_order_event WHERE kind = 'failed'").get(),
+    ).toEqual({ worker: null, station: "review", reason: "harness unavailable" });
+    expect(
+      db.query("SELECT count(*) AS n FROM factory_order_attempt WHERE station = 'review'").get(),
+    ).toEqual({
+      n: 0,
+    });
+    expect((await review(db, operator, dir, answering(reviewOutput()))).outcome).toBe("closed");
+  });
+
+  test("a reviewer run that ends before assignment leaves review retryable", async () => {
+    const { db, worker, operator, dir } = floor();
+    slice(db, dir, worker, "bootstrap-review");
+
+    await expect(
+      runOrderReviewLive(db, "order-1", operator, {
+        dir,
+        harness: "codex",
+        adapter: fakeHarness("bootstrap-failure"),
+        env: machine,
+      }),
+    ).rejects.toThrow("worker bootstrap failed");
+    expect(
+      db.query("SELECT worker, station, reason FROM factory_order_event WHERE kind = 'failed'").get(),
+    ).toEqual({
+      worker: null,
+      station: "review",
+      reason: expect.stringContaining("worker bootstrap failed"),
+    });
+    expect(db.query("SELECT outcome FROM factory_order_review").get()).toEqual({ outcome: "aborted" });
+    expect((await review(db, operator, dir, answering(reviewOutput()))).outcome).toBe("closed");
+  });
+
+  test("a resumed reviewer that ends before assignment leaves review retryable", async () => {
+    const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
+    slice(db, dir, worker, "bootstrap-resume-review");
+    await review(db, operator, dir, answering(reviewOutput()));
+    runOrderCommand(db, ["return", "order-1", "--reason", "review again"], null, dir, {
+      ...machine,
+      [WORKER_NAME_VAR]: operator,
+      [WORKER_TOKEN_VAR]: operatorToken,
+      [WORKER_SESSION_VAR]: operatorSession,
+    });
+
+    await expect(
+      runOrderReviewLive(db, "order-1", operator, {
+        dir,
+        harness: "codex",
+        adapter: fakeHarness("bootstrap-failure"),
+        env: machine,
+      }),
+    ).rejects.toThrow("worker bootstrap failed");
+    expect(db.query("SELECT worker, station FROM factory_order_event WHERE kind = 'failed'").get()).toEqual({
+      worker: null,
+      station: "review",
+    });
+    expect((await review(db, operator, dir, answering(reviewOutput()))).outcome).toBe("closed");
+  });
+
   test("records the reviewer's structured result through the factory", async () => {
     const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
     slice(db, dir, worker, "review-result");
@@ -350,6 +439,16 @@ describe("a review round", () => {
     });
 
     expect(outcome).toMatchObject({ findings: 0, outcome: "closed" });
+    expect(
+      db
+        .query(
+          "SELECT station, kind, outcome, worker FROM factory_order_attempt WHERE station = 'review' ORDER BY id",
+        )
+        .all(),
+    ).toEqual([
+      { station: "review", kind: "started", outcome: "running", worker: outcome.reviewer },
+      { station: "review", kind: "finished", outcome: "succeeded", worker: outcome.reviewer },
+    ]);
     expect(
       db
         .query(
@@ -466,6 +565,13 @@ describe("a review round", () => {
 
     await expect(review(db, operator, dir, answering(reviewOutput()))).rejects.toThrow(ReviewRefused);
     expect(db.query("SELECT count(*) AS n FROM factory_order_review").get()).toEqual({ n: 0 });
+    expect(
+      db.query("SELECT worker, station, reason FROM factory_order_event WHERE kind = 'failed'").get(),
+    ).toEqual({
+      worker: null,
+      station: "review",
+      reason: expect.stringContaining("uncommitted changes"),
+    });
   });
 
   test("a round is refused over a head the order never recorded", async () => {

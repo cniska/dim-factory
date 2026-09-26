@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { assertNoRunningAttempt, finishAttempt } from "./order-attempt";
+import { assertNoRunningAttempt, finishAttempt, openAttempt } from "./order-attempt";
 import type { OrderEventKind } from "./order-events";
 import { isTerminalOrderStatus, type OrderEvent, OrderNotDone, orderStatus } from "./order-status";
 import { writeTrace } from "./trace-store";
@@ -65,7 +65,9 @@ export function appendOrderEventInTransaction(
     eventValues(orderId, event, ts),
   );
   db.run("UPDATE factory_order SET updated_at = ? WHERE id = ?", [ts, orderId]);
-  if (event.kind === "failed") finishAttempt(db, orderId, "failed", event.reason, ts);
+  if (event.kind === "failed" && event.worker && openAttempt(db, orderId)?.worker === event.worker) {
+    finishAttempt(db, orderId, "failed", event.reason, ts);
+  }
   writeTrace(
     db,
     {
