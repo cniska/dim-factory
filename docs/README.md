@@ -26,8 +26,3 @@ Each page owns its subject. A fact lives on one of them and is linked to from th
 - [Factory workflow](workflow.md) — research, contract review, planning, program design, build, review and ship
 - [Glossary](glossary.md) — the words this repo uses, one per thing
 - [Agent anti-patterns](agent-anti-patterns.md) — shapes agents keep writing here, and the fix for each
-
-## Designs not yet built
-
-- [The loop](loop.md) — how a line gets cut from a skill and stays cut
-- [Generating the conventions](conventions.md) — a generated block naming the rules a gate holds

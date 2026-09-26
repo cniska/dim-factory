@@ -73,7 +73,7 @@ A commit git refuses (`commit_refused`) or the comment step refuses (`comment_ad
 
 The turn fails, with the reason carried into the next turn's brief, when the tree cannot be committed as the builder left it — among them a red check, a check that changed the tree, a repository nested in the worktree (which git would stage as a gitlink, and inside which the operator's next `git status` would run under that repository's config, outside any sandbox), HEAD moved off the order's branch or past its recorded commit, a comment the comment step refused on every correction, and a commit git refused on every correction. Only a check an `operator` recorded counts as build evidence, and it is always the whole declared check, whatever the order's non-goals.
 
-Factory commands answer in the CLI's one output shape ([`design.md`](design.md#10-read-path)), and diagnostic output never shares the harness protocol stream.
+Factory commands answer in the CLI's one output shape ([`design.md`](design.md#read-path)), and diagnostic output never shares the harness protocol stream.
 
 ## Who did it
 
@@ -250,8 +250,8 @@ Borrowed, and each kept only where a mechanism here carries it. The names are wo
 - **Go and see** (*genchi genbutsu*). Verify a claim at its source rather than from a plausible reading of it. A number quoted without being measured is what this is against, and [`findings.md`](findings.md) holds a case of it.
 - **The operator does not work the line.** Whoever runs the queue hands each item to a builder and watches what the line does — what is stuck, what fails twice, whether the gates still hold. Hands in one diff is attention off every other station.
 
-What does not transfer is takt time. Pacing output to demand assumes interchangeable units, and a slice is not one; a cadence would manufacture work to fill it, which [`loop.md`](loop.md) rejects for the same reason it rejects a scheduled sweep.
+What does not transfer is takt time. Pacing output to demand assumes interchangeable units, and a slice is not one; a cadence would manufacture work to fill it.
 
 ## What follows from it
 
-Merit means evidence, which is why this repo collects any. [`goals.md`](goals.md) states what the factory is measured against and in what order. [`findings.md`](findings.md) is what the corpus said when it was first asked. [`loop.md`](loop.md) is how a rule that stopped earning its place gets cut.
+Merit means evidence, which is why this repo collects any. [`goals.md`](goals.md) states what the factory is measured against and in what order. [`findings.md`](findings.md) is what the corpus said when it was first asked.
