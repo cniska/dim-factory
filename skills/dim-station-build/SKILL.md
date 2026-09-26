@@ -32,6 +32,8 @@ Use `dim-git` at the commit boundary. It owns the repository status, worktree ow
 
 Use `dim-tdd` for behavior-changing slices and `dim-simplify` for the simplification pass. Their methods remain shared; this station supplies the slice boundary, repository evidence and finding loop.
 
+Where the comment gate is on — `dim doctor` says so for the repo it runs in — write no comments at all. A why goes into a name, a test that holds the invariant, or the doc that owns the subject; those are the places the gate leaves for it.
+
 Where a slice turns out to be blocked, finish every other slice in full and say plainly what was left and why. Scaling the work down is the owner's call.
 
 ## Produce the Build artifact
@@ -71,7 +73,7 @@ Between the simplification pass and the commit, hand the slice's diff to one age
 Bounded means a fixed brief, not "review this". It also means the reviewer is told what to look for: hand it the conventions actually in force — the `CLAUDE.md` and `AGENTS.md` on the walk into this session, imports included — because the rules it is checking against are written down and a reviewer left to invent them checks its own taste. Give it the diff of this slice alone, what the slice claims to do, and these four questions:
 
 - does every invariant the diff claims have a test that fails without it
-- does any comment narrate the change — what the code used to do, what was renamed, what is now different — rather than state the constraint that forced this approach
+- in anything the comment gate does not judge — every file where it is off, and where it is on, files other than JS and TS and the prose after a tool directive — does any comment narrate the change — what the code used to do, what was renamed, what is now different — rather than state the constraint that forced this approach
 - did a doc describing this behavior change in the same diff
 - is there a fallback, default or catch-and-continue standing in for a decision that was never made
 

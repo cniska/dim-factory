@@ -111,6 +111,59 @@ describe("a map that cannot be trusted", () => {
   });
 });
 
+describe("what dim route reports for a map it refuses", () => {
+  for (const [what, map, name, message] of [
+    [
+      "no map",
+      undefined,
+      "RoutingError",
+      ': no harness map, so no role resolves to a model; write { "codex": { "light": "<model>", "standard": "<model>", "deep": "<model>" } } naming what this harness calls each tier',
+    ],
+    ["a map that does not parse", '{ "codex": ', "ConfigError", ": ValueExpected at offset 11"],
+    [
+      "a harness named twice",
+      '{ "codex": {}, "codex": {} }',
+      "RoutingError",
+      ": names codex twice, so one model silently replaced another",
+    ],
+    [
+      "an unknown harness",
+      '{ "gemini": {} }',
+      "RoutingError",
+      ": names gemini, which is no supported harness",
+    ],
+    [
+      "a map that is not an object",
+      '["codex"]',
+      "RoutingError",
+      ': the harness map is not an object of { "codex": { "light": "<model>", "standard": "<model>", "deep": "<model>" } }',
+    ],
+  ] as const) {
+    test(`names the error ${name} for ${what}`, () => {
+      const env = machine(map);
+      const run = Bun.spawnSync(
+        [process.execPath, join(import.meta.dir, "cli.ts"), "route", "codex", "reviewer"],
+        {
+          env: { ...process.env, ...env },
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+      expect(run.exitCode).toBe(1);
+      expect(JSON.parse(new TextDecoder().decode(run.stderr))).toEqual({
+        type: "factory",
+        command: "route",
+        ok: false,
+        error: {
+          name,
+          code: "command_failed",
+          message: `${join(env.DIM_HOME, "routing.json")}${message}`,
+        },
+      });
+    });
+  }
+});
+
 // The point of the map is that only it knows a model, so a name reaching the
 // code or a skill would route by itself and the map would stop being read.
 // Tests and transcript fixtures are excluded: a parsed transcript carries the

@@ -43,7 +43,6 @@ export function remoteSlug(url: string): string | null {
   const cut = slug.lastIndexOf("/");
   return cut > 0 ? slug.slice(0, cut) : null;
 }
-
 /**
  * Whether an owner names a host as well as an account. A bare `cniska` matched
  * any forge and any directory that happened to end in it, so the gate armed on

@@ -1,10 +1,8 @@
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { type HarnessName, isHarness } from "./harness-name";
-import { duplicateKeys, parseJsonc } from "./jsonc";
-import { readJsoncText } from "./jsonc-file";
 import { dataDir, type Env } from "./paths";
 import { ROLES, type Role } from "./roles";
+import { readSettingFile } from "./setting-file";
 
 export type Tier = "light" | "standard" | "deep";
 
@@ -51,32 +49,23 @@ export function harnessMapPath(env: Env = process.env): string {
 export function readHarnessMap(harness: HarnessName, env: Env = process.env): HarnessMap {
   const template = `{ "${harness}": { "light": "<model>", "standard": "<model>", "deep": "<model>" } }`;
   const path = harnessMapPath(env);
-  if (!existsSync(path)) {
+  const maps = readSettingFile(path, {
+    isKey: isHarness,
+    refuse: (defect) =>
+      new RoutingError(
+        "malformed",
+        defect.kind === "duplicate-key"
+          ? `${path}: names ${defect.keys.join(", ")} twice, so one model silently replaced another`
+          : defect.kind === "not-object"
+            ? `${path}: the harness map is not an object of ${template}`
+            : `${path}: names ${defect.keys.join(", ")}, which is no supported harness`,
+        path,
+      ),
+  });
+  if (maps === null) {
     throw new RoutingError(
       "no-map",
       `${path}: no harness map, so no role resolves to a model; write ${template} naming what this harness calls each tier`,
-      path,
-    );
-  }
-  const text = readJsoncText(path);
-  const repeated = duplicateKeys(text, { deep: true });
-  if (repeated.length > 0) {
-    throw new RoutingError(
-      "malformed",
-      `${path}: names ${repeated.join(", ")} twice, so one model silently replaced another`,
-      path,
-    );
-  }
-  const raw = parseJsonc<unknown>(text, path);
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new RoutingError("malformed", `${path}: the harness map is not an object of ${template}`, path);
-  }
-  const maps = raw as Record<string, unknown>;
-  const unknownHarnesses = Object.keys(maps).filter((key) => !isHarness(key));
-  if (unknownHarnesses.length > 0) {
-    throw new RoutingError(
-      "malformed",
-      `${path}: names ${unknownHarnesses.join(", ")}, which is no supported harness`,
       path,
     );
   }

@@ -2,14 +2,17 @@ import type { Database } from "bun:sqlite";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { AGENT_LABEL, agentPlistPath } from "./agent";
+import { checkoutRoot } from "./checkout";
 import { codexConfigPath, planCodexTrust, type TrustState } from "./codex-trust";
-import { installedOwners, planCommitGate, sharedHooksDir } from "./commit-gate";
+import { commentBanPath, commentsBanned } from "./comment-ban-setting";
+import { installedOwners, ownersCover, planCommitGate, sharedHooksDir } from "./commit-gate";
 import { ConfigError } from "./config-error";
+import { checkoutSlug, labelFor } from "./git-remote";
 import { harnessCommand } from "./harness-command";
 import { HARNESSES } from "./harness-name";
 import { type HookPlan, hookGaps } from "./hooks";
 import { readJsonc } from "./jsonc-file";
-import { dataDir, type Env, resolveHomeDir } from "./paths";
+import { dataDir, type Env, resolveHomeDir, tildePath } from "./paths";
 import { primaryCheckout } from "./primary-checkout";
 import { unarmedCheckouts } from "./push-gate";
 import { isHostQualified } from "./remote-slug";
@@ -263,7 +266,50 @@ function harnesses(env: Env): Health {
   };
 }
 
-export function diagnose(db: Database, env: Env = process.env): Health[] {
+function commentGate(env: Env, cwd: string, commitGate: Health): Health {
+  const name = "comment gate";
+  const root = checkoutRoot(cwd);
+  const label = root === null ? null : labelFor(root);
+  if (root === null || label === null) {
+    return {
+      name,
+      state: "ok",
+      detail: `not judged: ${tildePath(cwd, env)} is not a checkout with a remote`,
+    };
+  }
+  let banned: boolean;
+  try {
+    banned = commentsBanned(label, env);
+  } catch (error) {
+    if (!(error instanceof ConfigError)) throw error;
+    return unreadable(name, error);
+  }
+  if (!banned) {
+    return {
+      name,
+      state: "ok",
+      detail: `off for ${label}: ${tildePath(commentBanPath(env), env)} does not ban comments there`,
+    };
+  }
+  if (!ownersCover(installedOwners(env) ?? [], checkoutSlug(root))) {
+    return {
+      name,
+      state: "warn",
+      detail: `comments are banned for ${label}, but no installed pre-commit hook covers its origin, so nothing refuses them`,
+      fix: "dim install-commit-gate --owner=<host>/<account> --write",
+    };
+  }
+  if (commitGate.state !== "ok") {
+    return { name, state: "warn", detail: `banned for ${label}, not on until the commit gate is` };
+  }
+  return {
+    name,
+    state: "ok",
+    detail: `on for ${label}: a comment added to a JS or TS file is refused at commit`,
+  };
+}
+
+export function diagnose(db: Database, env: Env = process.env, cwd: string = process.cwd()): Health[] {
   const checks: Health[] = [];
 
   checks.push(
@@ -367,7 +413,7 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
         ? []
         : [`git's global core.hooksPath is ${plan.globalHooksPath ?? "unset"} rather than ${dir}`],
     );
-  checks.push(
+  const commitGate: Health =
     gaps.length === 0
       ? { name: "commit gate", state: "ok", detail: "every hook in place, for every repo" }
       : {
@@ -375,8 +421,8 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
           state: "warn",
           detail: `${gaps.join(", ")}; those rules are held only where a repo gates its own`,
           fix: "dim install-commit-gate --owner=<owner> --write",
-        },
-  );
+        };
+  checks.push(commitGate);
 
   // An owner naming an account without a host matched any forge, so the gate
   // armed on repositories the owner had only cloned. Such a list now matches
@@ -399,6 +445,8 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
           },
     );
   }
+
+  checks.push(commentGate(env, cwd, commitGate));
 
   // A hook that exits before it reads anything is the failure the rest of this
   // file exists to catch: from inside the repo it is indistinguishable from a

@@ -6,7 +6,14 @@ import { runBench } from "./bench";
 import { corpusPath, parseCorpus } from "./bench-corpus";
 import { checkRange } from "./check-commits";
 import { checkoutRoot } from "./checkout";
-import { checkoutDirs, installCommitGate, planCommitGate, sharedHooksDir } from "./commit-gate";
+import { commentsBanned } from "./comment-ban-setting";
+import {
+  COMMENTS_FOUND_EXIT,
+  checkoutDirs,
+  installCommitGate,
+  planCommitGate,
+  sharedHooksDir,
+} from "./commit-gate";
 import { closeDb, openDb } from "./db";
 import { diagnose } from "./doctor";
 import { downloadEmbedder, EMBED_DIMS, EMBED_MODEL, embedQuestion } from "./embed";
@@ -19,7 +26,7 @@ import { WorkerUnknown } from "./factory-worker";
 import { type Finding, FindingError, findingFrom, recordFinding } from "./finding";
 import { readFlags, requiredFlag } from "./flags";
 import { committerName } from "./git-identity";
-import { labelFor } from "./git-remote";
+import { checkoutSlug, labelFor } from "./git-remote";
 import { parseHarness } from "./harness-name";
 import { installHooks, planHooks } from "./hooks";
 import { withLock } from "./lock";
@@ -28,7 +35,7 @@ import { ORDER_USAGE, OrderCommandError, runOrderCommandLive } from "./order-com
 import { dbPath, resolveHomeDir } from "./paths";
 import { findQuery, QUERIES, type QueryResult } from "./queries";
 import { openReadOnly } from "./read-db";
-import { isHostQualified, remoteSlug } from "./remote-slug";
+import { isHostQualified } from "./remote-slug";
 import { DEFAULT_MAX_ROWS, renderTable, rowsFromArgs } from "./render";
 import { routeReport } from "./routing";
 import { installRules, planRules } from "./rules";
@@ -71,6 +78,10 @@ const USAGE = `usage: dim <command>
   check-command   print the check command this repo declares, and nothing if it
                   declares none or this is not a checkout (the pre-commit hook
                   reads this, and takes silence as no gate)
+  check-comments  print path:line for each comment on a staged added line of a
+                  JS or TS file that parses and exit 3, where comment-gate.json
+                  beside the database bans comments in this repo; nothing and
+                  exit 0 otherwise
   route <harness> [<role>]
                   print the capability tier a factory role runs at and what this
                   harness's map calls it, or every role with no role argument
@@ -326,20 +337,6 @@ function printSkillPlan(write: boolean): void {
 }
 
 /**
- * The gate matches the whole remote URL before the repository, so a suggestion
- * has to be read off the checkout rather than off `label`, which drops the host
- * on purpose so a repository keeps its name across forges.
- */
-function slugOf(repo: string): string | null {
-  const proc = Bun.spawnSync(["git", "-C", repo, "config", "--get", "remote.origin.url"], {
-    stdout: "pipe",
-    stderr: "ignore",
-  });
-  if (!proc.success) return null;
-  return remoteSlug(new TextDecoder().decode(proc.stdout).trim());
-}
-
-/**
  * The checkouts the corpus has seen commits from: where the rule is actually
  * broken is where it is worth gating, and a repo with a gate of its own keeps it.
  */
@@ -353,7 +350,7 @@ function printCommitGatePlan(write: boolean): void {
       .all()
       .map((r) => {
         const row = r as { repo: string };
-        return { repo: row.repo, owner: slugOf(row.repo) ?? "" };
+        return { repo: row.repo, owner: checkoutSlug(row.repo) ?? "" };
       });
   } finally {
     db.close();
@@ -941,6 +938,18 @@ try {
         const root = checkoutRoot(process.cwd());
         const declared = root === null ? null : checkCommand(root);
         if (declared) console.log(declared.command);
+      }
+      break;
+    case "check-comments":
+      {
+        const root = checkoutRoot(process.cwd());
+        const label = root === null ? null : labelFor(root);
+        if (root === null || label === null || !commentsBanned(label)) break;
+        const { stagedComments } = await import("./staged-comments");
+        const { found, unparsed } = stagedComments(root);
+        for (const path of unparsed) warn(`dim: ${path} does not parse, so its comments are not judged`);
+        for (const { path, line } of found) console.log(`${path}:${line}`);
+        if (found.length > 0) process.exit(COMMENTS_FOUND_EXIT);
       }
       break;
     case "route":

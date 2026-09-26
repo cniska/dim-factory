@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -285,6 +285,161 @@ describe("the check gate", () => {
     const script = preCommitScript(["cniska"]);
     expect(script).toContain("exit 1");
     expect(script).toContain(`${SKIP_CHECK_ENV}=1 git commit`);
+  });
+});
+
+describe("the comment step", () => {
+  test("runs after the ownership check and before git's environment is cleared", () => {
+    const script = preCommitScript(["cniska"]);
+    const step = script.indexOf("dim check-comments");
+    expect(step).toBeGreaterThan(script.indexOf('case " cniska " in'));
+    expect(step).toBeGreaterThan(script.indexOf("command -v dim >/dev/null 2>&1 || exit 0"));
+    expect(step).toBeLessThan(script.indexOf("unset GIT_DIR"));
+    expect(step).toBeLessThan(script.indexOf("dim check-command"));
+  });
+
+  test("refuses only on the exit code that means comments were found", () => {
+    const script = preCommitScript(["cniska"]);
+    expect(script).toContain('if [ "$status" -eq 3 ]; then');
+  });
+});
+
+function repoWithCommentGate(
+  setting: string | null,
+  dimShim = `exec "${process.execPath}" "${join(import.meta.dir, "cli.ts")}" "$@"`,
+): {
+  dir: string;
+  work: string;
+  commit: (files: Record<string, string>, env?: Record<string, string>) => { ok: boolean; err: string };
+} {
+  const dir = mkdtempSync(join(tmpdir(), "dim-comment-hook-"));
+  const hooks = join(dir, "hooks");
+  const bin = join(dir, "bin");
+  const machine = join(dir, "machine");
+  const work = join(dir, "work");
+  for (const d of [hooks, bin, machine, work]) mkdirSync(d, { recursive: true });
+
+  const shim = join(bin, "dim");
+  writeFileSync(shim, `#!/usr/bin/env bash\n${dimShim}\n`);
+  execFileSync("chmod", ["755", shim]);
+  const hook = join(hooks, "pre-commit");
+  writeFileSync(hook, preCommitScript(["github.com/cniska"]));
+  execFileSync("chmod", ["755", hook]);
+  if (setting !== null) writeFileSync(join(machine, "comment-gate.json"), setting);
+
+  execFileSync("git", ["init", "-q", work]);
+  execFileSync("git", ["-C", work, "config", "user.email", "t@example.com"]);
+  execFileSync("git", ["-C", work, "config", "user.name", "T"]);
+  execFileSync("git", ["-C", work, "config", "core.hooksPath", hooks]);
+  execFileSync("git", ["-C", work, "remote", "add", "origin", "git@github.com:cniska/thing.git"]);
+
+  const commit = (files: Record<string, string>, env: Record<string, string> = {}) => {
+    for (const [path, text] of Object.entries(files)) writeFileSync(join(work, path), text);
+    execFileSync("git", ["-C", work, "add", "-A"]);
+    const run = spawnSync("git", ["-C", work, "commit", "-q", "-m", "feat: a conforming subject"], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, DIM_HOME: machine, ...env },
+    });
+    return { ok: run.status === 0, err: run.stderr };
+  };
+  return { dir, work, commit };
+}
+
+describe("the comment gate", () => {
+  test("refuses an added comment in a repo the setting names, naming each path and line", () => {
+    const { dir, commit } = repoWithCommentGate('{ "repos": ["cniska/thing"] }');
+    try {
+      const refused = commit({ "a.ts": "const a = 1;\n// why\n", "b.ts": "/* why */\n" });
+      expect(refused.ok).toBe(false);
+      expect(refused.err).toContain("\n  a.ts:2\n  b.ts:1\n");
+      expect(refused.err).toContain("a name, a test, or the doc that owns the subject");
+      expect(refused.err).toContain("DIM_SKIP_CHECK=1 git commit");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("lets through a commit with no added comment, over one already there", () => {
+    const { dir, commit } = repoWithCommentGate('{ "repos": ["cniska/thing"] }');
+    try {
+      expect(commit({ "a.ts": "// kept\n" }, { DIM_SKIP_CHECK: "1" }).ok).toBe(true);
+      expect(commit({ "a.ts": "// kept\nconst a = 1;\n" }).ok).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("refuses in every repo when the setting is all", () => {
+    const { dir, commit } = repoWithCommentGate('{ "repos": "all" }');
+    try {
+      expect(commit({ "a.ts": "// why\n" }).ok).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  for (const [what, setting] of [
+    ["no setting", null],
+    ["a setting naming another repo", '{ "repos": ["cniska/other"] }'],
+  ] as const) {
+    test(`passes a repo with ${what}`, () => {
+      const { dir, commit } = repoWithCommentGate(setting);
+      try {
+        expect(commit({ "a.ts": "// why\n" }).ok).toBe(true);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+
+  test("passes on a setting it cannot read, and says why", () => {
+    const { dir, commit } = repoWithCommentGate('{ "repos": ');
+    try {
+      const passed = commit({ "a.ts": "// why\n" });
+      expect(passed.ok).toBe(true);
+      expect(passed.err).toContain(join(dir, "machine", "comment-gate.json"));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("exits 3 from the command when it names an added comment", () => {
+    const { dir, work, commit } = repoWithCommentGate('{ "repos": "all" }');
+    try {
+      commit({ "a.ts": "const a = 1;\n" });
+      writeFileSync(join(work, "a.ts"), "const a = 1;\n// why\n");
+      execFileSync("git", ["-C", work, "add", "-A"]);
+      const run = spawnSync(process.execPath, [join(import.meta.dir, "cli.ts"), "check-comments"], {
+        cwd: work,
+        encoding: "utf8",
+        env: { ...process.env, DIM_HOME: join(dir, "machine") },
+      });
+      expect(run.status).toBe(3);
+      expect(run.stdout).toBe("a.ts:2\n");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("passes when dim fails with output on stdout, since only exit 3 is a refusal", () => {
+    const { dir, commit } = repoWithCommentGate(
+      null,
+      '[ "$1" = check-comments ] && { echo "a.ts:1"; exit 1; }; exit 0',
+    );
+    try {
+      expect(commit({ "a.ts": "// why\n" }).ok).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("steps aside on the env escape", () => {
+    const { dir, commit } = repoWithCommentGate('{ "repos": "all" }');
+    try {
+      expect(commit({ "a.ts": "// why\n" }, { DIM_SKIP_CHECK: "1" }).ok).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

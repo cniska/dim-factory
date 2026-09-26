@@ -36,4 +36,4 @@ That inverts today's `install-rules`, which reads the canonical file and flatten
 
 ## Not built
 
-Nothing generates a block today. Three rules now have a gate to be held by — the commit subject, the repo's own declared check, and a rewrite of the branch the remote's HEAD names — so what is left is the measurement each cut has to be recorded as, not the gates.
+Nothing generates a block today. The rules with a gate to be held by are the commit subject, the repo's own declared check, a rewrite of the branch the remote's HEAD names, and, in a repo that opts into the [comment gate](usage.md#install-the-shared-controls), a comment added to a JS or TS file — so what is left is the measurement each cut has to be recorded as, not the gates.

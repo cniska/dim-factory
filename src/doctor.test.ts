@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { devNull, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { codexConfigPath, planCodexTrust } from "./codex-trust";
-import { gateHooks } from "./commit-gate";
+import { gateHooks, installCommitGate } from "./commit-gate";
 import { closeDb, openDb } from "./db";
 import { diagnose } from "./doctor";
 import { scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
@@ -411,6 +411,97 @@ describe("harness readiness", () => {
     expect(check(env, "harnesses")).toMatchObject({
       state: "ok",
       detail: expect.stringContaining("codex ready"),
+    });
+  });
+});
+
+describe("the comment gate for the current repo", () => {
+  function inRepo(setting: string | null): { env: Env; cwd: string } {
+    const env = seeded();
+    const cwd = join(newRoot(), "work");
+    execFileSync("git", ["init", "-q", cwd]);
+    execFileSync("git", ["-C", cwd, "remote", "add", "origin", "git@github.com:cniska/thing.git"]);
+    mkdirSync(env.DIM_HOME as string, { recursive: true });
+    if (setting !== null) writeFileSync(join(env.DIM_HOME as string, "comment-gate.json"), setting);
+    return { env, cwd };
+  }
+
+  function diagnoseIn(env: Env, cwd: string) {
+    const db = openReadOnly(dbPath(env));
+    try {
+      return diagnose(db, env, cwd);
+    } finally {
+      db.close();
+    }
+  }
+
+  function commentGate(env: Env, cwd: string) {
+    return diagnoseIn(env, cwd).find((c) => c.name === "comment gate");
+  }
+
+  test("reports it off where the setting does not name the repo", () => {
+    const { env, cwd } = inRepo(null);
+    expect(commentGate(env, cwd)).toMatchObject({
+      state: "ok",
+      detail: expect.stringContaining("off for cniska/thing"),
+    });
+  });
+
+  test("reports it on where the setting names the repo and the commit gate covers it", () => {
+    const { env, cwd } = inRepo('{ "repos": ["cniska/thing"] }');
+    installCommitGate(["github.com/cniska"], [], env);
+    expect(commentGate(env, cwd)).toMatchObject({
+      state: "ok",
+      detail: expect.stringContaining("on for cniska/thing"),
+    });
+  });
+
+  test("warns where the setting bans comments but no hook covers the repo", () => {
+    const { env, cwd } = inRepo('{ "repos": "all" }');
+    installCommitGate(["github.com/someone-else"], [], env);
+    expect(commentGate(env, cwd)).toMatchObject({
+      state: "warn",
+      fix: expect.stringContaining("install-commit-gate"),
+    });
+  });
+
+  test("warns where the installed pre-commit hook is not the one that carries the comment step", () => {
+    const { env, cwd } = inRepo('{ "repos": ["cniska/thing"] }');
+    installCommitGate(["github.com/cniska"], [], env);
+    writeFileSync(
+      join(env.HOME as string, ".config", "dim", "hooks", "pre-commit"),
+      "#!/usr/bin/env bash\nexit 0\n",
+    );
+    const checks = diagnoseIn(env, cwd);
+    expect(checks.find((c) => c.name === "commit gate")).toMatchObject({
+      state: "warn",
+      detail: expect.stringContaining("pre-commit is stale"),
+    });
+    expect(checks.find((c) => c.name === "comment gate")).toEqual({
+      name: "comment gate",
+      state: "warn",
+      detail: "banned for cniska/thing, not on until the commit gate is",
+    });
+  });
+
+  for (const [what, setting] of [
+    ["holds a value it refuses", '{ "repos": 1 }'],
+    ["does not parse", '{ "repos": '],
+  ]) {
+    test(`fails on a setting that ${what}, and names the file`, () => {
+      const { env, cwd } = inRepo(setting as string);
+      expect(commentGate(env, cwd)).toMatchObject({
+        state: "fail",
+        fix: `repair ${join(env.DIM_HOME as string, "comment-gate.json")} by hand`,
+      });
+    });
+  }
+
+  test("judges nothing outside a checkout", () => {
+    const env = seeded();
+    expect(commentGate(env, newRoot())).toMatchObject({
+      state: "ok",
+      detail: expect.stringContaining("not judged"),
     });
   });
 });

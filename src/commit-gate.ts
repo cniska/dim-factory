@@ -80,6 +80,8 @@ exit 0
 /** `--no-verify` is git's only escape and it takes the subject gate with it; this skips one hook. */
 export const SKIP_CHECK_ENV = "DIM_SKIP_CHECK";
 
+export const COMMENTS_FOUND_EXIT = 3;
+
 /**
  * Refuses a commit whose repo declares a check that fails. Anything it cannot
  * establish exits 0, as the commit-msg hook does.
@@ -106,6 +108,17 @@ case " ${owners.map(foldAscii).join(" ")} " in
 esac
 
 command -v dim >/dev/null 2>&1 || exit 0
+
+comments=$(dim check-comments)
+status=$?
+if [ "$status" -eq ${COMMENTS_FOUND_EXIT} ]; then
+  echo "pre-commit: this repo bans code comments, and these added lines carry one:" >&2
+  printf '%s\\n' "$comments" | sed 's/^/  /' >&2
+  echo "  put the why in a name, a test, or the doc that owns the subject." >&2
+  echo "  or ${SKIP_CHECK_ENV}=1 git commit to commit without this hook." >&2
+  exit 1
+fi
+
 check=$(dim check-command 2>/dev/null || true)
 [ -n "$check" ] || exit 0
 
@@ -233,6 +246,10 @@ export function installedOwners(env: Env = process.env): string[] | null {
   if (!existsSync(path)) return null;
   const line = /^case " (.*) " in$/m.exec(readFileSync(path, "utf8"));
   return line?.[1] === undefined ? [] : line[1].split(" ").filter(Boolean);
+}
+
+export function ownersCover(owners: string[], slug: string | null): boolean {
+  return slug !== null && owners.map(foldAscii).includes(slug);
 }
 
 export type Checkout = { repo: string; owner: string };
