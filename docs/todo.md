@@ -56,15 +56,14 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 37. **A self-maintaining loop** — in a repo that ships apps, fix the top crash on a schedule.
 38. **Dart for the comment gate.**
 39. **Worktrees under `.agents/worktrees/`.**
-40. **Format after an edit** with the repo's declared format task.
-41. **An external retrieval benchmark** (LongMemEval).
-42. **A wider benchmark corpus** drawn from handoffs and the sessions that acted on them.
-43. **Find code by meaning**, not only by path.
-44. **The repo's tooling in `wake`**, if it earns its tokens.
-45. **Undo an agent's writes** ([`worktrees.md`](worktrees.md)).
-46. **Messages between running sessions.**
-47. **Gates for US spelling** and for banner comments outside JS and TS.
-48. **Extract the repeated toolchain** setup across checkouts.
+40. **An external retrieval benchmark** (LongMemEval).
+41. **A wider benchmark corpus** drawn from handoffs and the sessions that acted on them.
+42. **Find code by meaning**, not only by path.
+43. **The repo's tooling in `wake`**, if it earns its tokens.
+44. **Undo an agent's writes** ([`worktrees.md`](worktrees.md)).
+45. **Messages between running sessions.**
+46. **Gates for US spelling** and for banner comments outside JS and TS.
+47. **Extract the repeated toolchain** setup across checkouts.
 
 ## Owner decides
 

@@ -45,7 +45,13 @@ describe("reading the codex hooks a trust key points at", () => {
       .map((p) => `${p.event} ${p.command}`);
     const trust = planCodexTrust(env);
     expect(trust.map((t) => `${t.event} ${t.command}`)).toEqual(planned);
-    expect(trust.map((t) => t.event)).toEqual(["SessionStart", "SessionStart", "SessionEnd", "PostToolUse"]);
+    expect(trust.map((t) => t.event)).toEqual([
+      "SessionStart",
+      "SessionStart",
+      "SessionEnd",
+      "PostToolUse",
+      "PostToolUse",
+    ]);
   });
 
   test("raises the parse failure rather than reporting every hook untrusted", () => {

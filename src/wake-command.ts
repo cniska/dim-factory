@@ -1,25 +1,16 @@
 import type { Command } from "./cli-contract";
 import { openReadOnly } from "./db-read";
 import { resolveWalk, spoolWalk } from "./guidance-walk";
+import { readHookPayload } from "./hooks-payload";
 import { dbPath } from "./paths";
 import { readWake, renderWake, type Wake, wireFor } from "./recall-wake";
 
-async function hookPayload(): Promise<{ session_id?: string; cwd?: string }> {
-  if (Bun.stdin.stream().locked || process.stdin.isTTY) return {};
-  try {
-    const raw = await Bun.stdin.text();
-    return raw.trim() === "" ? {} : (JSON.parse(raw) as { session_id?: string; cwd?: string });
-  } catch {
-    return {};
-  }
-}
-
 async function wake(args: string[]): Promise<void> {
   const tool = args.includes("--tool=codex") ? "codex" : "claude";
-  const payload = await hookPayload();
-  const cwd = payload.cwd ?? process.cwd();
+  const payload = await readHookPayload();
+  const cwd = typeof payload.cwd === "string" ? payload.cwd : process.cwd();
 
-  if (payload.session_id) {
+  if (typeof payload.session_id === "string") {
     try {
       spoolWalk({
         session_id: payload.session_id,

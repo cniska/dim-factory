@@ -10,7 +10,7 @@
     "dim": "bun run src/cli.ts",
     "fetch-model": "bun run scripts/fetch-model.ts",
     "factory:reset": "bun run scripts/reset-factory.ts",
-    "format": "bunx biome format --write src",
+    "format": "bunx biome check --write src",
     "lint": "bunx biome check --error-on-warnings src",
     "typecheck": "bunx tsc --noEmit",
     "test": "bun test",

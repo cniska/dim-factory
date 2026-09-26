@@ -14,6 +14,7 @@ import { ConfigError } from "./config-error";
 import { closeDb, openDb } from "./db";
 import { scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
 import {
+  formatEditCommand,
   HOOK_CONTRACT_VERSION,
   hookCommand,
   hookContractVersion,
@@ -269,8 +270,9 @@ describe("installHooks", () => {
     expect(after.hooks.SessionStart).toHaveLength(2);
     expect(after.hooks.SessionStart[0].hooks[0].command).toBe(hookCommand("claude", env));
     expect(after.hooks.SessionStart[1].hooks[0].command).toBe(wakeCommand("claude"));
-    expect(after.hooks.PostToolUse).toHaveLength(1);
+    expect(after.hooks.PostToolUse).toHaveLength(2);
     expect(after.hooks.PostToolUse[0].hooks[0].command).toBe(hookCommand("claude", env));
+    expect(after.hooks.PostToolUse[1].hooks[0].command).toBe(formatEditCommand());
     expect(readFileSync(`${paths.claude}.dim-backup`, "utf8")).toContain("existing-notifier");
   });
 
@@ -327,7 +329,7 @@ describe("installHooks", () => {
     const env = hookEnv(dir);
     installHooks(env);
     const first = readFileSync(configs(env).claude, "utf8");
-    expect(installHooks(env)).toMatchObject({ written: [], alreadyPresent: 8 });
+    expect(installHooks(env)).toMatchObject({ written: [], alreadyPresent: 10 });
     expect(readFileSync(configs(env).claude, "utf8")).toBe(first);
     expect(planHooks(env).every((p) => p.state === "installed")).toBe(true);
   });
@@ -336,6 +338,11 @@ describe("installHooks", () => {
     const command = wakeCommand("claude");
     expect(command).toMatch(/2>\/dev\/null \|\| true( # dim-hook:\d+)?$/);
     expect(command).toContain("wake --tool=claude");
+  });
+
+  test("the format hook cannot fail a session either", () => {
+    const command = formatEditCommand();
+    expect(command).toMatch(/ format-edit 2>\/dev\/null \|\| true( # dim-hook:\d+)?$/);
   });
 
   test("the hook itself cannot fail a session", () => {

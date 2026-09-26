@@ -50,11 +50,11 @@ dim sync: drain the spool → read changed files → derive session ends
 
 `dim install-hooks` installs these for both tools ([`src/hooks.ts`](../src/hooks.ts)):
 
-| Event | What it records |
+| Event | What it does |
 |---|---|
-| `SessionStart` | the start source and model, spooled; and `dim wake`, which delivers recall and records the guidance in force |
-| `SessionEnd` | the end time and reason, which a transcript lacks |
-| `PostToolUse` | that a tool call happened, with its payload |
+| `SessionStart` | spools the start source and model; `dim wake` delivers recall and records the guidance in force |
+| `SessionEnd` | spools the end time and reason, which a transcript lacks |
+| `PostToolUse` | spools the tool call with its payload; `dim format-edit` runs the repo's declared format task in the checkout an edit touched ([`src/format-edit.ts`](../src/format-edit.ts)), bounded and failing open |
 
 - **The spool hook never opens the database.** It writes one file per event and exits 0, so a session never waits on `sessions.db`; `sync` drains the spool into `hook_event`.
 - **`hook_event` is never re-derived**, because a hook fires once. It has no foreign key to `session`, so an event that arrives before its transcript waits for it. A spool file that cannot be placed moves to `spool/unreadable/`, since it is the only copy.

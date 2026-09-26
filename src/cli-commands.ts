@@ -8,6 +8,7 @@ import { doctorCommand } from "./doctor-command";
 import { embedCommand } from "./embed-command";
 import { factoryCommand } from "./factory-command";
 import { findingCommand } from "./finding-command";
+import { formatEditCommand } from "./format-edit-command";
 import { initCommand } from "./init-command";
 import { installAgentCommand } from "./install-agent-command";
 import { installCommitGateCommand } from "./install-commit-gate-command";
@@ -48,6 +49,7 @@ export const COMMANDS: readonly Command[] = [
   installSkillCommand,
   installCommitGateCommand,
   wakeCommand,
+  formatEditCommand,
   wtCommand,
   orderCommand,
   operatorCommand,

@@ -20,11 +20,12 @@ export function hookContractVersion(command: string): number | null {
   return found ? Number(found[1]) : null;
 }
 
-export type HookKind = "spool" | "wake";
+export type HookKind = "spool" | "wake" | "format";
 
 function hookKind(command: string, tool: Tool, env: Env): HookKind | null {
   if (command.includes(toolSpoolDir(tool, env))) return "spool";
   if (command.includes(`wake --tool=${tool}`)) return "wake";
+  if (command.includes("format-edit")) return "format";
   return null;
 }
 
@@ -49,6 +50,10 @@ export function wakeCommand(tool: Tool): string {
   return marked(`${dimPath()} wake --tool=${tool} 2>/dev/null || true`);
 }
 
+export function formatEditCommand(): string {
+  return marked(`${dimPath()} format-edit 2>/dev/null || true`);
+}
+
 export function dimPath(): string {
   return Bun.which("dim") ?? "dim";
 }
@@ -70,6 +75,7 @@ export function wantedHooks(tool: Tool, env: Env = process.env): WantedHook[] {
     { event: "SessionStart", kind: "wake", command: wakeCommand(tool) },
     { event: "SessionEnd", kind: "spool", command: hookCommand(tool, env) },
     { event: "PostToolUse", kind: "spool", command: hookCommand(tool, env) },
+    { event: "PostToolUse", kind: "format", command: formatEditCommand() },
   ];
 }
 
