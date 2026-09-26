@@ -4,8 +4,8 @@ import { lstatSync, readdirSync } from "node:fs";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import type { BuildTurn } from "./build-turn";
 import {
+  isActiveOrderRun,
   latestOrderCommit,
-  orderStatus,
   recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
@@ -124,6 +124,7 @@ function lineCount(value: string | undefined): number | undefined {
 export function commitBuildTurn(options: {
   db: Database;
   orderId: string;
+  runId: string;
   builder: string;
   operator: string;
   worktree: string;
@@ -196,11 +197,14 @@ export function commitBuildTurn(options: {
   if (!changed && !recorded) {
     throw new BuildTurnRefused("no_change", "the turn left no change in the worktree to commit");
   }
-  // A long check leaves time for the order to be stopped or moved; committing now would leave a
-  // commit no record can take.
-  if (orderStatus(db, orderId) !== "working") {
+  // A long check leaves time for the order to be stopped, moved or taken by another run; committing
+  // now would leave a commit no record can take, or one recorded under the wrong run.
+  if (!isActiveOrderRun(db, orderId, options.runId)) {
     git(worktree, ["reset", "-q"]);
-    throw new BuildTurnRefused("order_not_building", `order ${orderId} stopped building while its check ran`);
+    throw new BuildTurnRefused(
+      "order_not_building",
+      `order ${orderId} is no longer held by run ${options.runId} after its check ran`,
+    );
   }
 
   if (!changed) {

@@ -911,3 +911,327 @@ describe("builder station", () => {
     db.close();
   });
 });
+
+type BuilderCall = { kind: "start" | "resume"; sessionId?: string; brief: string };
+
+/** A builder answering its turns in order, where an Error is a run that fails, and the turns it was given. */
+function scriptedBuilder(answers: ((request: HarnessRequest) => BuildTurn | string | Error)[]): {
+  adapter: HarnessAdapter;
+  calls: BuilderCall[];
+} {
+  const calls: BuilderCall[] = [];
+  const run = async (request: HarnessRequest, call: BuilderCall): Promise<HarnessRun> => {
+    calls.push(call);
+    const answer = answers[calls.length - 1]?.(request) ?? new Error("no turn scripted");
+    return {
+      events: (async function* (): AsyncGenerator<HarnessEvent> {
+        yield { type: "run.started", providerSessionId: "fake-session" };
+        yield { type: "turn.started" };
+        if (answer instanceof Error) yield { type: "run.failed", reason: answer.message };
+        else
+          yield {
+            type: "run.completed",
+            output: typeof answer === "string" ? answer : JSON.stringify(answer),
+          };
+      })(),
+      cancel() {},
+    };
+  };
+  return {
+    adapter: {
+      start: (request) => run(request, { kind: "start", brief: request.brief }),
+      resume: (sessionId, request) => run(request, { kind: "resume", sessionId, brief: request.brief }),
+    },
+    calls,
+  };
+}
+
+/** A `commit-msg` hook in the repository's own hooks directory refusing a subject over `limit` characters. */
+function refuseLongSubjects(dir: string, limit: number): void {
+  const hooks = git(dir, ["rev-parse", "--path-format=absolute", "--git-path", "hooks"]);
+  mkdirSync(hooks, { recursive: true });
+  writeFileSync(
+    join(hooks, "commit-msg"),
+    [
+      "#!/bin/sh",
+      'subject=$(head -n 1 "$1")',
+      `if [ \${#subject} -gt ${limit} ]; then`,
+      `  echo "subject is \${#subject} characters, over the ${limit} allowed" >&2`,
+      "  exit 1",
+      "fi",
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+}
+
+describe("a commit git refuses", () => {
+  const tooLong = { subject: "feat: build the whole requested result", artifact: "Built." };
+  const corrected = { subject: "feat: build it", artifact: "Built." };
+
+  function refusingOrder(
+    orderId: string,
+    db = database(),
+    check = (checks: string) => `echo ran >> ${checks}`,
+  ) {
+    const dimHome = home(`dim-builder-${orderId}-`);
+    const checks = join(dimHome, "checks");
+    const { repo, operator } = orderAtBuild(
+      db,
+      orderId,
+      [{ title: "Build the result", outcome: "The requested result is verified." }],
+      check(checks),
+    );
+    refuseLongSubjects(repo.dir, 20);
+    const worktree = realpathSync(join(repo.dir, ".claude", "worktrees", orderId));
+    return {
+      db,
+      dimHome,
+      repo,
+      operator,
+      worktree,
+      options: { dir: repo.dir, env: { DIM_HOME: dimHome }, checkSandbox: confiningCheckSandbox() },
+      checksRun: () =>
+        existsSync(checks) ? readFileSync(checks, "utf8").split("\n").filter(Boolean).length : 0,
+      events: (kind: string) =>
+        db
+          .query<{ worker: string | null; reason: string | null }, [string, string]>(
+            "SELECT worker, reason FROM factory_order_event WHERE order_id = ? AND kind = ?",
+          )
+          .all(orderId, kind),
+    };
+  }
+
+  const build = (request: HarnessRequest) => writeFileSync(join(request.cwd, "built.txt"), "built\n");
+
+  test("resumes the same builder with git's refusal and commits its corrected subject in the same attempt", async () => {
+    const order = refusingOrder("refused-order");
+    const builder = scriptedBuilder([
+      (request) => {
+        build(request);
+        return tooLong;
+      },
+      () => corrected,
+    ]);
+
+    const outcome = await runOrderBuildLive(order.db, "refused-order", order.operator.name, {
+      ...order.options,
+      adapter: builder.adapter,
+    });
+
+    expect(builder.calls.map((call) => [call.kind, call.sessionId])).toEqual([
+      ["start", undefined],
+      ["resume", "fake-session"],
+    ]);
+    const correction = builder.calls[1]?.brief ?? "";
+    expect(correction).toContain(tooLong.subject);
+    expect(correction).toContain("subject is 38 characters, over the 20 allowed");
+    expect(correction).toContain("within the current Build attempt");
+    expect(correction).toContain('{"subject": "...", "artifact": "..."}');
+    expect(order.checksRun()).toBe(2);
+    expect(git(order.worktree, ["rev-list", "--count", `${order.repo.sha}..HEAD`])).toBe("1");
+    expect(git(order.worktree, ["log", "-1", "--format=%s"])).toBe("feat: build it");
+    expect(order.db.query("SELECT subject FROM factory_order_commit").all()).toEqual([
+      { subject: "feat: build it" },
+    ]);
+    expect(order.events("claimed")).toEqual([
+      { worker: order.operator.name, reason: null },
+      { worker: outcome.builder, reason: null },
+    ]);
+    expect(order.events("failed")).toEqual([]);
+    expect(order.db.query("SELECT worker FROM factory_order_slice_completion").all()).toEqual([
+      { worker: outcome.builder },
+    ]);
+    order.db.close();
+  });
+
+  test("fails the attempt with the latest refusal after two corrections are refused, keeping the work", async () => {
+    const order = refusingOrder("still-refused-order");
+    const builder = scriptedBuilder([
+      (request) => {
+        build(request);
+        return tooLong;
+      },
+      () => ({ ...tooLong, subject: "feat: build the requested result again" }),
+      () => ({ ...tooLong, subject: "feat: build the requested result at last" }),
+      () => corrected,
+    ]);
+
+    await expect(
+      runOrderBuildLive(order.db, "still-refused-order", order.operator.name, {
+        ...order.options,
+        adapter: builder.adapter,
+      }),
+    ).rejects.toThrow("subject is 40 characters, over the 20 allowed");
+
+    expect(builder.calls.map((call) => call.kind)).toEqual(["start", "resume", "resume"]);
+    expect(order.checksRun()).toBe(3);
+    expect(git(order.worktree, ["rev-parse", "HEAD"])).toBe(order.repo.sha);
+    expect(git(order.worktree, ["status", "--porcelain"])).toBe("?? built.txt");
+    expect(order.db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 0 });
+    expect(order.db.query("SELECT count(*) AS n FROM factory_order_slice_completion").get()).toEqual({
+      n: 0,
+    });
+    const failed = order.events("failed");
+    expect(failed).toHaveLength(1);
+    expect(failed[0]?.reason).toContain("subject is 40 characters, over the 20 allowed");
+    order.db.close();
+  });
+
+  test("fails without another correction when the builder's correction is not a build turn", async () => {
+    const order = refusingOrder("malformed-order");
+    const builder = scriptedBuilder([
+      (request) => {
+        build(request);
+        return tooLong;
+      },
+      () => "the subject is fixed now",
+      () => corrected,
+    ]);
+
+    await expect(
+      runOrderBuildLive(order.db, "malformed-order", order.operator.name, {
+        ...order.options,
+        adapter: builder.adapter,
+      }),
+    ).rejects.toThrow("builder output must be valid JSON");
+
+    expect(builder.calls.map((call) => call.kind)).toEqual(["start", "resume"]);
+    expect(order.events("failed")).toHaveLength(1);
+    expect(git(order.worktree, ["status", "--porcelain"])).toBe("?? built.txt");
+    order.db.close();
+  });
+
+  test("fails without another correction when the correction's run fails", async () => {
+    const order = refusingOrder("correction-crash-order");
+    const builder = scriptedBuilder([
+      (request) => {
+        build(request);
+        return tooLong;
+      },
+      () => new Error("correction crashed"),
+      () => corrected,
+    ]);
+
+    await expect(
+      runOrderBuildLive(order.db, "correction-crash-order", order.operator.name, {
+        ...order.options,
+        adapter: builder.adapter,
+      }),
+    ).rejects.toThrow("correction crashed");
+
+    expect(builder.calls.map((call) => call.kind)).toEqual(["start", "resume"]);
+    expect(order.events("failed")).toHaveLength(1);
+    expect(order.db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 0 });
+    order.db.close();
+  });
+
+  test("fails without another correction when the correction is refused for another reason", async () => {
+    const order = refusingOrder("correction-red-order");
+    const builder = scriptedBuilder([
+      (request) => {
+        build(request);
+        return tooLong;
+      },
+      (request) => {
+        mkdirSync(join(request.cwd, "vendor", "planted"), { recursive: true });
+        git(join(request.cwd, "vendor", "planted"), ["init", "-q"]);
+        return corrected;
+      },
+      () => corrected,
+    ]);
+
+    await expect(
+      runOrderBuildLive(order.db, "correction-red-order", order.operator.name, {
+        ...order.options,
+        adapter: builder.adapter,
+      }),
+    ).rejects.toThrow("vendor/planted");
+
+    expect(builder.calls.map((call) => call.kind)).toEqual(["start", "resume"]);
+    expect(order.events("failed")).toHaveLength(1);
+    order.db.close();
+  });
+
+  test("commits nothing and records no failure once another run holds the order during the correction's check", async () => {
+    const scratch = home("dim-builder-replaced-db-");
+    const file = join(scratch, "dim.db");
+    const db = new Database(file);
+    db.run(SCHEMA_SQL);
+    const replace = join(scratch, "replace.ts");
+    const order = refusingOrder("replaced-order", db, (checks) => {
+      writeFileSync(
+        replace,
+        [
+          'import { Database } from "bun:sqlite";',
+          'import { appendFileSync, readFileSync } from "node:fs";',
+          `appendFileSync(${JSON.stringify(checks)}, "ran\\n");`,
+          `if (readFileSync(${JSON.stringify(checks)}, "utf8").trim().split("\\n").length === 2) {`,
+          `  new Database(${JSON.stringify(file)}).run("UPDATE factory_order SET run_id = 'build-replacement' WHERE id = 'replaced-order'");`,
+          "}",
+          "",
+        ].join("\n"),
+      );
+      return `${process.execPath} ${replace}`;
+    });
+    const builder = scriptedBuilder([
+      (request) => {
+        build(request);
+        return tooLong;
+      },
+      () => corrected,
+      () => corrected,
+    ]);
+
+    await expect(
+      runOrderBuildLive(db, "replaced-order", order.operator.name, {
+        ...order.options,
+        adapter: builder.adapter,
+      }),
+    ).rejects.toThrow("replaced-order");
+
+    expect(builder.calls.map((call) => call.kind)).toEqual(["start", "resume"]);
+    expect(order.checksRun()).toBe(2);
+    expect(git(order.worktree, ["rev-parse", "HEAD"])).toBe(order.repo.sha);
+    expect(db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 0 });
+    expect(order.events("failed")).toEqual([]);
+    db.close();
+  });
+
+  test("does not resume the builder once another run took the order while git refused the commit", async () => {
+    const scratch = home("dim-builder-taken-db-");
+    const file = join(scratch, "dim.db");
+    const db = new Database(file);
+    db.run(SCHEMA_SQL);
+    const order = refusingOrder("taken-order", db);
+    const take = join(scratch, "take.ts");
+    writeFileSync(
+      take,
+      `import { Database } from "bun:sqlite";\nnew Database(${JSON.stringify(file)}).run("UPDATE factory_order SET run_id = 'build-replacement' WHERE id = 'taken-order'");\n`,
+    );
+    const hooks = git(order.repo.dir, ["rev-parse", "--path-format=absolute", "--git-path", "hooks"]);
+    writeFileSync(
+      join(hooks, "commit-msg"),
+      `#!/bin/sh\n${process.execPath} ${take}\necho "refused after the order was taken" >&2\nexit 1\n`,
+      { mode: 0o755 },
+    );
+    const builder = scriptedBuilder([
+      (request) => {
+        build(request);
+        return corrected;
+      },
+      () => corrected,
+    ]);
+
+    await expect(
+      runOrderBuildLive(db, "taken-order", order.operator.name, {
+        ...order.options,
+        adapter: builder.adapter,
+      }),
+    ).rejects.toThrow("refused after the order was taken");
+
+    expect(builder.calls.map((call) => call.kind)).toEqual(["start"]);
+    expect(order.events("failed")).toEqual([]);
+    db.close();
+  });
+});

@@ -130,6 +130,32 @@ export async function runOrderStationLive<Station extends OrderStationName>(
   return { orderWorker, returned, worker: run.worker, run };
 }
 
+/** Resumes the station worker's bound provider session with a further brief, claiming nothing. */
+export async function resumeOrderStationLive(options: {
+  db: Database;
+  orderId: string;
+  station: OrderStationName;
+  harness: HarnessName;
+  env?: Record<string, string | undefined>;
+  adapter?: HarnessAdapter;
+  request: StationRequest;
+}): Promise<OrderStationTurn<OrderStationName>["run"]> {
+  const role = STATION_ROLES[options.station];
+  const orderWorker = readOrderWorker(options.db, options.orderId, role);
+  refuseHarnessSwitch(orderWorker, options.harness);
+  if (!orderWorker?.worker || !orderWorker.providerSessionId) {
+    throw new Error(`order ${options.orderId} ${role} has no bound session to resume`);
+  }
+  const { model } = route(role, options.harness, options.env);
+  return runOrderWorkerHarnessLive(
+    options.db,
+    { ...options.request, harness: options.harness, model, env: {} },
+    orderWorker,
+    options.env,
+    options.adapter,
+  );
+}
+
 export function runOrderWorkerHarnessLive(
   db: Database,
   request: HarnessCommandRequest,

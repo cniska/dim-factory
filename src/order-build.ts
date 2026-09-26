@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { BUILD_TURN_SCHEMA, parseBuildTurn } from "./build-turn";
-import { commitBuildTurn } from "./builder-commit";
+import { BuildTurnRefused, commitBuildTurn } from "./builder-commit";
 import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
 import type { OrderSlice } from "./factory-order";
@@ -18,7 +18,7 @@ import {
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-command";
 import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
-import { assertOrderWorkerHarness, runOrderStationLive } from "./order-worker";
+import { assertOrderWorkerHarness, resumeOrderStationLive, runOrderStationLive } from "./order-worker";
 import type { Env } from "./paths";
 import type { PlanSlice } from "./plan-artifact";
 import { workspaceContract } from "./workspace";
@@ -105,6 +105,22 @@ export function builderBrief(
           `Record a new Build artifact revision with \`dim order build-artifact ${order.id} --body "..." --head <latest-commit-sha>\`.`,
         ]),
     `${needsCodeWork ? "" : "Return a concise outcome. "}Do not approve the plan or build, start review, ship, or edit outside the order worktree.`,
+  ].join("\n");
+}
+
+/** How many times one build turn's builder is resumed to answer a commit git refused. */
+const COMMIT_CORRECTIONS = 2;
+
+export function commitCorrectionBrief(subject: string, refusal: string): string {
+  return [
+    "# Commit refused",
+    `The runner's check passed, and its commit of your worktree with the subject \`${subject}\` was refused:`,
+    "",
+    refusal,
+    "",
+    "This is feedback within the current Build attempt: the order is still claimed by this turn and your changes are still uncommitted in the worktree.",
+    "Answer the refusal, leaving every change uncommitted. When the turn ends, the runner reruns the declared check and commits again.",
+    'Return the complete JSON `{"subject": "...", "artifact": "..."}` again, carrying the same artifact the turn owes.',
   ].join("\n");
 }
 
@@ -324,29 +340,63 @@ export async function runOrderBuildLive(
         ...(needsCodeWork ? { outputSchema: BUILD_TURN_SCHEMA } : {}),
       }),
     });
+    const finished = (turn: typeof run): string => {
+      harnessOutput = turn.output;
+      harnessFailureReason = turn.failureReason;
+      if (turn.exitCode === 0) return turn.output;
+      throw new Error(
+        turn.harnessExitCode === undefined
+          ? `${builder} did not finish`
+          : `${builder} exited with code ${turn.harnessExitCode}`,
+      );
+    };
     harnessOutput = run.output;
     harnessFailureReason = run.failureReason;
     builder = assigned;
     if (!builder) throw new Error("builder did not bootstrap its worker assignment");
-    if (run.exitCode !== 0) {
-      throw new Error(
-        run.harnessExitCode === undefined
-          ? `${builder} did not finish`
-          : `${builder} exited with code ${run.harnessExitCode}`,
-      );
-    }
-    if (needsCodeWork) {
-      commitBuildTurn({
-        db,
-        orderId,
-        builder,
-        operator,
-        worktree,
-        turn: parseBuildTurn(run.output.trim()),
-        finalSlice: currentSlice === null || currentSlice.ordinal === slices.length,
-        env: options.env,
-        checkSandbox: options.checkSandbox,
-      });
+    let output = finished(run);
+    for (let corrections = 0; needsCodeWork; corrections++) {
+      const turn = parseBuildTurn(output.trim());
+      try {
+        commitBuildTurn({
+          db,
+          orderId,
+          runId,
+          builder,
+          operator,
+          worktree,
+          turn,
+          finalSlice: currentSlice === null || currentSlice.ordinal === slices.length,
+          env: options.env,
+          checkSandbox: options.checkSandbox,
+        });
+        break;
+      } catch (error) {
+        if (
+          !(error instanceof BuildTurnRefused) ||
+          error.code !== "commit_refused" ||
+          corrections === COMMIT_CORRECTIONS ||
+          !isActiveOrderRun(db, orderId, runId)
+        ) {
+          throw error;
+        }
+        output = finished(
+          await resumeOrderStationLive({
+            db,
+            orderId,
+            station: "build",
+            harness,
+            env: options.env,
+            adapter: options.adapter,
+            request: {
+              cwd: worktree,
+              brief: commitCorrectionBrief(turn.subject, error.message),
+              capabilities: BUILDER_CAPABILITIES,
+              outputSchema: BUILD_TURN_SCHEMA,
+            },
+          }),
+        );
+      }
     }
     if (currentSlice) {
       requireBuildEvidence(db, orderId, currentSlice.ordinal === slices.length, worktree);
