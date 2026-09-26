@@ -240,16 +240,17 @@ describe("factory order report records", () => {
       { title: "Move the order", outcome: "The order reaches build." },
     ]);
     expect(
-      database.query("SELECT body, worker FROM factory_order_plan WHERE order_id = 'order-planned'").get(),
-    ).toEqual({ body: "## outcome\n\nMove the order before building.", worker });
+      database
+        .query(
+          `SELECT a.kind, a.body, w.worker FROM factory_order_artifact a
+           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_written'
+           WHERE a.order_id = 'order-planned'`,
+        )
+        .get(),
+    ).toEqual({ kind: "plan", body: "## outcome\n\nMove the order before building.", worker });
     expect(
       database.query("SELECT kind FROM factory_order_event WHERE order_id = 'order-planned'").all(),
-    ).toEqual([
-      { kind: "queued" },
-      { kind: "claimed" },
-      { kind: "plan_artifact_written" },
-      { kind: "hold_set" },
-    ]);
+    ).toEqual([{ kind: "queued" }, { kind: "claimed" }, { kind: "artifact_written" }, { kind: "hold_set" }]);
 
     moveOrder(database, "order-planned", "dim-station-build", worker);
     recordOrderCommit(database, "order-planned", trunk.sha, worker, "feat: planned order");
@@ -273,7 +274,7 @@ describe("factory order report records", () => {
     expect(returnedOrderArtifact(database, "returned-plan", "plan")).toEqual({
       station: "plan",
       reason: "Include the evidence behind the outcome.",
-      planId: 1,
+      artifactId: 1,
       body: "## Outcome\n\nKeep the artifact concise.",
     });
     database.close();
@@ -337,7 +338,9 @@ describe("factory order report records", () => {
       session_id: null,
     });
     expect(
-      database.query("SELECT id FROM factory_order_plan WHERE order_id = ?").get("order-slices"),
+      database
+        .query("SELECT id FROM factory_order_artifact WHERE order_id = ? AND kind = 'plan'")
+        .get("order-slices"),
     ).toEqual({
       id: planId,
     });

@@ -47,8 +47,7 @@ export type OrderEvent = {
   reviewId?: number;
   findingId?: number;
   answerId?: number;
-  planId?: number;
-  buildId?: number;
+  artifactId?: number;
   holdType?: string;
   status?: OrderStatus;
   reason?: string;

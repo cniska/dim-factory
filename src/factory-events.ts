@@ -6,25 +6,20 @@ export const ORDER_EVENT_KINDS = [
   "priority_changed",
   "hold_set",
   "hold_released",
-  "plan_artifact_written",
-  "plan_approved",
+  "artifact_written",
+  "artifact_approved",
   "artifact_returned",
-  "build_approved",
-  "build_artifact_written",
   "commit_created",
   "commit_rewritten",
   "check_finished",
   "review_opened",
   "review_closed",
-  "review_artifact_written",
-  "review_approved",
   "finding_raised",
   "finding_answered",
   "finding_ruled",
   "refusal_decided",
   "integration_recorded",
   "delivery_recorded",
-  "owner_verdict_recorded",
   "completed",
   "dropped",
   "failed",
@@ -48,23 +43,6 @@ export const ATTEMPT_OUTCOMES_SQL = ATTEMPT_OUTCOMES.map((outcome) => `'${outcom
 
 export type EvidenceReference = Record<string, string | number | boolean | null>;
 
-export type OrderAttempt = {
-  orderId: string;
-  runId: string;
-  worker?: string;
-  operatorWorker?: string;
-  sessionId?: string;
-  providerSessionId?: string;
-  station?: string;
-  harness?: string;
-  model?: string;
-  tier?: string;
-  startedAt: string;
-  endedAt?: string;
-  outcome: AttemptOutcome;
-  reason?: string;
-};
-
 export type ScheduleInvocation = {
   scheduleId: string;
   evaluatedAt: string;
@@ -77,26 +55,5 @@ export type ScheduleInvocation = {
   model?: string;
   tier?: string;
   outcome: "not_due" | "dispatched" | "failed";
-  reason?: string;
-};
-
-export type OrderVerdict = {
-  orderId: string;
-  decision: "approved" | "returned" | "held" | "dropped";
-  grounds: string;
-  worker: string;
-  sessionId?: string;
-  recordedAt: string;
-};
-
-export type OrderDelivery = {
-  orderId: string;
-  kind: "integration" | "delivery";
-  outcome: "succeeded" | "failed";
-  target?: string;
-  commitSha?: string;
-  worker?: string;
-  sessionId?: string;
-  recordedAt: string;
   reason?: string;
 };

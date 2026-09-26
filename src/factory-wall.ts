@@ -313,6 +313,41 @@ function eventEntry(row: EventRow): WallItemEntry {
   };
 }
 
+function artifactPanel(db: Database, orderId: string, kind: "plan" | "build" | "review") {
+  const row = db
+    .query<
+      {
+        revision: number;
+        body: string;
+        head_sha: string | null;
+        worker: string;
+        worker_role: string | null;
+        approved: number;
+      },
+      [string, string]
+    >(
+      `SELECT a.revision, a.body, a.head_sha, w.worker, fw.role AS worker_role,
+              EXISTS (SELECT 1 FROM factory_order_event e
+                WHERE e.kind = 'artifact_approved' AND e.artifact_id = a.id) AS approved
+       FROM factory_order_artifact a
+       JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_written'
+       JOIN factory_worker fw ON fw.name = w.worker
+       WHERE a.order_id = ? AND a.kind = ? ORDER BY a.revision DESC LIMIT 1`,
+    )
+    .get(orderId, kind);
+  if (!row) return undefined;
+  return {
+    headSha: row.head_sha,
+    panel: {
+      revision: row.revision,
+      body: row.body,
+      worker: row.worker,
+      role: requiredRole(row.worker_role),
+      approved: row.approved === 1,
+    },
+  };
+}
+
 export function assembleItemView(db: Database, orderId: string, now = new Date()): WallItemView | null {
   const row = db.query(`${ORDER_ROW_SELECT} WHERE o.id = ?`).get(orderId) as OrderRow | null;
   if (!row || row.status === "dropped") return null;
@@ -320,12 +355,14 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
   if (!order) return null;
   const events = db
     .query(
-      `SELECT e.ts, e.kind, e.worker AS worker_id, fw.role AS worker_role, e.station, e.hold_type, e.reason,
-              coalesce(c.sha, e.commit_sha) AS commit_sha, c.subject AS commit_subject,
+      `SELECT e.ts, e.kind, e.worker AS worker_id, fw.role AS worker_role,
+              coalesce(art.kind, e.station) AS station, e.hold_type, e.reason,
+              coalesce(c.sha, e.commit_sha, art.head_sha) AS commit_sha, c.subject AS commit_subject,
               ch.command, ch.exit_code, ch.result,
               f.dimension, a.answer, f.failure, a.resolution
        FROM factory_order_event e
        LEFT JOIN factory_worker fw ON fw.name = e.worker
+       LEFT JOIN factory_order_artifact art ON art.id = e.artifact_id
        LEFT JOIN factory_order_commit c ON c.order_id = e.order_id AND c.sha = e.commit_sha
        LEFT JOIN factory_order_check ch ON ch.id = e.check_id AND ch.order_id = e.order_id
        LEFT JOIN factory_order_finding f ON f.id = e.finding_id
@@ -353,80 +390,10 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
        FROM factory_order_environment WHERE order_id = ? ORDER BY recorded_at, id`,
     )
     .all(orderId) as EnvironmentRow[];
-  const planRow = db
-    .query<
-      { revision: number; body: string; worker: string; worker_role: string | null; approved: number },
-      [string]
-    >(
-      `SELECT p.revision, p.body, p.worker, fw.role AS worker_role,
-              EXISTS (SELECT 1 FROM factory_order_event e
-                WHERE e.order_id = p.order_id AND e.kind = 'plan_approved' AND e.plan_id = p.id) AS approved
-       FROM factory_order_plan p
-       JOIN factory_worker fw ON fw.name = p.worker
-       WHERE p.order_id = ? ORDER BY p.revision DESC, p.id DESC LIMIT 1`,
-    )
-    .get(orderId);
-  const plan = planRow
-    ? {
-        revision: planRow.revision,
-        body: planRow.body,
-        worker: planRow.worker,
-        role: requiredRole(planRow.worker_role),
-        approved: planRow.approved === 1,
-      }
-    : undefined;
-  const buildRow = db
-    .query<
-      {
-        revision: number;
-        body: string;
-        head_sha: string;
-        worker: string;
-        worker_role: string | null;
-        approved: number;
-      },
-      [string]
-    >(
-      `SELECT b.revision, b.body, b.head_sha, b.worker, fw.role AS worker_role,
-              EXISTS (SELECT 1 FROM factory_order_event e
-                WHERE e.order_id = b.order_id AND e.kind = 'build_approved' AND e.commit_sha = b.head_sha) AS approved
-       FROM factory_order_build b
-       JOIN factory_worker fw ON fw.name = b.worker
-       WHERE b.order_id = ? ORDER BY b.revision DESC, b.id DESC LIMIT 1`,
-    )
-    .get(orderId);
-  const build = buildRow
-    ? {
-        revision: buildRow.revision,
-        body: buildRow.body,
-        headSha: buildRow.head_sha,
-        worker: buildRow.worker,
-        role: requiredRole(buildRow.worker_role),
-        approved: buildRow.approved === 1,
-      }
-    : undefined;
-  const reviewRow = db
-    .query<
-      { revision: number; body: string; worker: string; worker_role: string | null; approved: number },
-      [string]
-    >(
-      `SELECT a.revision, a.body, a.worker, fw.role AS worker_role,
-              EXISTS (SELECT 1 FROM factory_order_event e
-                WHERE e.order_id = a.order_id AND e.kind = 'review_approved' AND e.review_id = a.review_id) AS approved
-       FROM factory_order_review_artifact a
-       JOIN factory_worker fw ON fw.name = a.worker
-       WHERE a.order_id = ? ORDER BY a.id DESC LIMIT 1`,
-    )
-    .get(orderId);
-  const review = reviewRow
-    ? {
-        revision: reviewRow.revision,
-        body: reviewRow.body,
-        worker: reviewRow.worker,
-        role: requiredRole(reviewRow.worker_role),
-        approved: reviewRow.approved === 1,
-      }
-    : undefined;
+  const plan = artifactPanel(db, orderId, "plan")?.panel;
+  const built = artifactPanel(db, orderId, "build");
+  const build = built ? { ...built.panel, headSha: built.headSha as string } : undefined;
+  const review = artifactPanel(db, orderId, "review")?.panel;
   const entries: WallItemEntry[] = [
     ...events.map(eventEntry),
     ...documents.map((doc) => ({

@@ -1,16 +1,14 @@
 import type { Database } from "bun:sqlite";
 import {
+  approveArtifactInTransaction,
   assertReturnedArtifactRevised,
+  holdForApprovalInTransaction,
   nextOrderSlice,
   returnedOrderArtifact,
+  writeArtifactInTransaction,
 } from "./factory-order-artifacts";
 import { carriedThroughRewrites, latestOrderCommit } from "./factory-order-commits";
-import {
-  appendOrderEventInTransaction,
-  now,
-  recordOwnerVerdictInTransaction,
-  setOrderHoldInTransaction,
-} from "./factory-order-ledger";
+import { appendOrderEventInTransaction, now, setOrderHoldInTransaction } from "./factory-order-ledger";
 import {
   APPROVAL_HOLD,
   assertOrderWorking,
@@ -30,6 +28,18 @@ function latestReview(
     .get(orderId);
 }
 
+function reviewApproved(db: Database, reviewId: number): boolean {
+  return (
+    db
+      .query(
+        `SELECT 1 FROM factory_order_event e
+         JOIN factory_order_artifact a ON a.id = e.artifact_id
+         WHERE e.kind = 'artifact_approved' AND a.review_id = ?`,
+      )
+      .get(reviewId) !== null
+  );
+}
+
 export function assertReviewApproved(db: Database, orderId: string): void {
   const review = latestReview(db, orderId);
   if (!review) throw new OrderNotDone("review_not_approved", `order ${orderId} has no review to approve`);
@@ -40,12 +50,7 @@ export function assertReviewApproved(db: Database, orderId: string): void {
       `order ${orderId} has a commit its approved review did not read, or a rebase since changed a patch`,
     );
   }
-  const approved = db
-    .query(
-      "SELECT 1 FROM factory_order_event WHERE order_id = ? AND kind = 'review_approved' AND review_id = ?",
-    )
-    .get(orderId, review.id);
-  if (!approved) {
+  if (!reviewApproved(db, review.id)) {
     throw new OrderNotDone(
       "review_not_approved",
       `review ${review.id} for order ${orderId} is not approved by the operator`,
@@ -184,13 +189,7 @@ export function closeOrderReview(
     );
     const returnsWork = orderFindingStandings(db, row.order_id).some((finding) => finding.state === "open");
     if (outcome === "closed" && !returnsWork && nextOrderSlice(db, row.order_id) === null) {
-      setOrderHoldInTransaction(db, row.order_id, APPROVAL_HOLD, at);
-      appendOrderEventInTransaction(
-        db,
-        row.order_id,
-        { kind: "hold_set", worker, holdType: APPROVAL_HOLD, evidence: { hold: APPROVAL_HOLD } },
-        at,
-      );
+      holdForApprovalInTransaction(db, row.order_id, worker, at);
     }
     return event;
   })();
@@ -206,10 +205,16 @@ export function recordOrderReviewArtifact(
   if (body.trim() === "") throw new Error("Review artifact body must not be empty");
   const review = db
     .query<
-      { id: number; reviewer: string | null; assignment_id: string | null; closed_at: string | null },
+      {
+        id: number;
+        reviewer: string | null;
+        assignment_id: string | null;
+        closed_at: string | null;
+        head_sha: string;
+      },
       [string]
     >(
-      `SELECT r.id, coalesce(r.reviewer, a.accepted_worker) AS reviewer, r.assignment_id, r.closed_at
+      `SELECT r.id, coalesce(r.reviewer, a.accepted_worker) AS reviewer, r.assignment_id, r.closed_at, r.head_sha
        FROM factory_order_review r
        LEFT JOIN factory_worker_assignment a ON a.id = r.assignment_id
        WHERE r.order_id = ? ORDER BY r.round DESC LIMIT 1`,
@@ -245,32 +250,14 @@ export function recordOrderReviewArtifact(
     }
   }
   return db.transaction(() => {
-    const revision = (db
-      .query<{ revision: number }, [number]>(
-        "SELECT coalesce(max(revision), 0) + 1 AS revision FROM factory_order_review_artifact WHERE review_id = ?",
-      )
-      .get(review.id)?.revision ?? 1) as number;
-    const written = db.run(
-      `INSERT INTO factory_order_review_artifact (order_id, review_id, revision, worker, body, recorded_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [orderId, review.id, revision, worker, body, at],
-    );
-    const artifactId = Number(written.lastInsertRowid);
-    appendOrderEventInTransaction(
+    const artifactId = writeArtifactInTransaction(
       db,
       orderId,
-      { kind: "review_artifact_written", worker, reviewId: review.id },
+      { kind: "review", body, headSha: review.head_sha, reviewId: review.id },
+      worker,
       at,
     );
-    if (review.closed_at !== null) {
-      setOrderHoldInTransaction(db, orderId, APPROVAL_HOLD, at);
-      appendOrderEventInTransaction(
-        db,
-        orderId,
-        { kind: "hold_set", worker, holdType: APPROVAL_HOLD, evidence: { hold: APPROVAL_HOLD } },
-        at,
-      );
-    }
+    if (review.closed_at !== null) holdForApprovalInTransaction(db, orderId, worker, at);
     return artifactId;
   })();
 }
@@ -305,7 +292,7 @@ export function approveOrderReview(db: Database, orderId: string, worker: string
     throw new ReviewApprovalRefused("review_aborted", `review ${review.id} for order ${orderId} was aborted`);
   const artifact = db
     .query<{ id: number }, [number]>(
-      "SELECT id FROM factory_order_review_artifact WHERE review_id = ? ORDER BY revision DESC LIMIT 1",
+      "SELECT id FROM factory_order_artifact WHERE review_id = ? ORDER BY revision DESC LIMIT 1",
     )
     .get(review.id);
   if (!artifact) {
@@ -332,25 +319,10 @@ export function approveOrderReview(db: Database, orderId: string, worker: string
         `${awaiting.join(", ")} for the owner: \`dim order rule <finding-id> --uphold|--overturn --reason "..."\``,
     );
   }
-  const approved = db
-    .query(
-      "SELECT 1 FROM factory_order_event WHERE order_id = ? AND kind = 'review_approved' AND review_id = ?",
-    )
-    .get(orderId, review.id);
-  if (approved)
+  if (reviewApproved(db, review.id))
     throw new ReviewApprovalRefused(
       "review_already_approved",
       `review ${review.id} for order ${orderId} is already approved`,
     );
-  db.transaction(() => {
-    recordOwnerVerdictInTransaction(db, orderId, "approved", "review approved", worker, at);
-    appendOrderEventInTransaction(db, orderId, { kind: "review_approved", worker, reviewId: review.id }, at);
-    setOrderHoldInTransaction(db, orderId, null, at);
-    appendOrderEventInTransaction(
-      db,
-      orderId,
-      { kind: "hold_released", worker, evidence: { hold: null } },
-      at,
-    );
-  })();
+  db.transaction(() => approveArtifactInTransaction(db, orderId, artifact.id, worker, undefined, at))();
 }

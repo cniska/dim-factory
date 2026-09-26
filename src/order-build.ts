@@ -5,8 +5,14 @@ import { commitBuildTurn } from "./builder-commit";
 import type { Capability } from "./capabilities";
 import { type CheckoutConvention, CONVENTION_FLOOR, checkoutConvention } from "./commit-convention";
 import { assertOperator } from "./factory-operator";
-import type { OrderSlice } from "./factory-order-artifacts";
-import { completeOrderBuildFollowup, completeOrderSlice, nextOrderSlice } from "./factory-order-artifacts";
+import {
+  artifactWriter,
+  completeOrderBuildFollowup,
+  completeOrderSlice,
+  latestArtifact,
+  nextOrderSlice,
+  type OrderSlice,
+} from "./factory-order-artifacts";
 import { latestOrderCommit, pendingRebaseConflict } from "./factory-order-commits";
 import { appendOrderEvent } from "./factory-order-ledger";
 import { claimOrder } from "./factory-order-lifecycle";
@@ -256,7 +262,7 @@ function requireBuildEvidence(db: Database, orderId: string, finalSlice: boolean
   if (finalSlice) {
     const build = db
       .query<{ id: number }, [string, string]>(
-        "SELECT id FROM factory_order_build WHERE order_id = ? AND head_sha = ? ORDER BY revision DESC LIMIT 1",
+        "SELECT id FROM factory_order_artifact WHERE order_id = ? AND kind = 'build' AND head_sha = ? ORDER BY revision DESC LIMIT 1",
       )
       .get(orderId, commit.sha);
     if (!build) throw new Error("builder did not record a Build artifact for the completed order");
@@ -492,12 +498,8 @@ export async function runOrderBuildLive(
       requireBuildEvidence(db, orderId, true, worktree);
       completeOrderBuildFollowup(db, orderId, builder);
     } else if (!conflict) {
-      const revision = db
-        .query<{ id: number; worker: string }, [string]>(
-          "SELECT id, worker FROM factory_order_build WHERE order_id = ? ORDER BY revision DESC LIMIT 1",
-        )
-        .get(orderId);
-      if (!revision || revision.id === returned?.buildId || revision.worker !== builder) {
+      const revision = latestArtifact(db, orderId, "build");
+      if (!revision || revision.id === returned?.artifactId || artifactWriter(db, revision.id) !== builder) {
         throw new Error("builder did not record a new Build artifact revision");
       }
       requireBuildEvidence(db, orderId, true, worktree);

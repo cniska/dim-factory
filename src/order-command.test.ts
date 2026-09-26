@@ -493,7 +493,7 @@ describe("order command", () => {
         "--head",
         "abc123",
       ]),
-    ).toBe("order-1 recorded build artifact 1");
+    ).toBe("order-1 recorded Build artifact 1");
     expect(runOrderCommand(database, ["document", "order-1", "--path", "docs/factory.md"])).toBe(
       "order-1 recorded docs/factory.md",
     );
@@ -512,7 +512,15 @@ describe("order command", () => {
       exit_code: 0,
       result: "green",
     });
-    expect(database.query("SELECT body, head_sha, worker FROM factory_order_build").get()).toEqual({
+    expect(
+      database
+        .query(
+          `SELECT a.body, a.head_sha, w.worker FROM factory_order_artifact a
+           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_written'
+           WHERE a.kind = 'build'`,
+        )
+        .get(),
+    ).toEqual({
       body: "## Result\n\nThe slice is built and verified.",
       head_sha: "abc123",
       worker: env[WORKER_NAME_VAR],

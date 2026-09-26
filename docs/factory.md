@@ -57,7 +57,7 @@ A branch that is finished and unmerged is where work rots, which is why reaching
 
 A rebase that stops on a conflict leaves the order's worktree mid-rebase and the trunk and branch where they were. The failed delivery records the conflicting paths with the rebase it stopped — the old base, the new base, the head it replayed and the commit it stopped on — and the order returns to build; shipping it again is refused (`ship_rebase_conflict`) until build has resolved it. The next build turn briefs the builder with the paths still to resolve, and the builder resolves them in place, leaving the resolution uncommitted. The runner then takes the turn down a path of its own, `continueRebaseTurn` in [`src/rebase-turn.ts`](../src/rebase-turn.ts), rather than committing it: it refuses a rebase in progress that is not the one recorded (`rebase_mismatch`), and a resolution that leaves a path the rebase stopped in with more conflict-marker-shaped lines than a three-way merge of the two sides could keep, or that leaves the replayed commit empty (`conflict_unresolved`), both before anything is staged, so the next turn finds the stop as it was; then it stages the worktree and continues the rebase, handing each later conflicting commit back to the builder within the same turn. Rerere stays off throughout, so no earlier resolution is replayed unseen. The finished rebase is re-checked in the check sandbox and recorded as a rewrite that kept no patch, since the builder wrote part of it, so the order returns to review and that round reads the whole order. A refusal while the rebase is still stopped — an unresolved conflict, or the order taken by another run between conflicts — leaves it where it stopped, and the next build turn picks it up there. A continue git refuses for a reason other than a conflict (`ship_rebase_failed`), and any refusal once the replay has finished — commits that cannot be paired (`ship_rebase_unpaired`), a missing or red check — takes the rebase back, discarding the resolution, and the next build turn reopens it onto the recorded base from the recorded head. `commitBuildTurn` refuses a turn while any rebase is in progress (`rebase_in_progress`).
 
-While the factory is being brought up, `bun run factory:reset -- --confirm-factory-reset` clears its orders, workers, attempts, schedule invocations, verdicts, delivery records and evidence in an explicitly named `DIM_HOME`. It refuses the default data directory and preserves handoffs; the dependency order removes child records before their workers, orders and schedule definitions.
+While the factory is being brought up, `bun run factory:reset -- --confirm-factory-reset` clears its orders, workers, attempts, schedule invocations, delivery records and evidence in an explicitly named `DIM_HOME`. It refuses the default data directory and preserves handoffs; the dependency order removes child records before their workers, orders and schedule definitions.
 
 Where the gate sits has consequences. A shell caller that is refused keeps the order working, so recording what is missing and stopping again is the way through; a builder under the operator that returns `completed` unready is recorded as `failed` and its exception is returned to the caller, because the gate fires inside the operator's own error path and a terminal status takes no further event. And the gate has no skip: `DIM_SKIP_CHECK` exists for the pre-commit hook, where git's own `--no-verify` would otherwise take the subject gate with it, and the argument for this gate is that on 2026-09-18 a line used that variable to bypass a check with nothing refusing it, and only `dim q slices` said so afterward. A operator supplying its own timestamps can still place a check where it likes, so the gate holds against forgetting rather than against a caller that means to get around it.
 
@@ -165,27 +165,9 @@ Every piece of work is an order, waiting or worked, and `factory_order` is the o
 
 The delivered-product report is the same row and its evidence tables: commits, changed files, checks, findings, documents, and the reason an order stopped.
 
-The order record also keeps append-only domain history. `factory_order_event`
-holds attributed actions and evidence references; attempts, schedule invocations,
-verdicts, and integration or delivery outcomes use dedicated rows where their
-fields have their own lifecycle. Queue provenance, priority and hold changes,
-owner verdicts, station actions, and terminal attempt outcomes are attributed to
-the worker and session that recorded them; attempt rows also retain execution
-identity. Shipping records integration and delivery separately, including a
-failed delivery outcome when shipping cannot complete. Analytics read these
-first-party records at query time. `trace_event` remains best-effort diagnostics
-and is not an analytics source, so losing a trace row does not remove a domain
-fact.
+The order record also keeps append-only domain history. `factory_order_event` holds attributed actions and evidence references; artifacts, attempts, schedule invocations, and integration or delivery outcomes use dedicated rows where their fields have their own lifecycle. An owner's decision on an artifact is the `artifact_approved` or `artifact_returned` event naming it, and a drop is the `dropped` event, so a verdict is read off the ledger rather than kept beside it. Queue provenance, priority and hold changes, owner decisions, station actions, and terminal attempt outcomes are attributed to the worker and session that recorded them; attempt rows also retain execution identity. Shipping records integration and delivery separately, including a failed delivery outcome when shipping cannot complete. Analytics read these first-party records at query time. `trace_event` remains best-effort diagnostics and is not an analytics source, so losing a trace row does not remove a domain fact.
 
-`dim q factory-analytics [order-id]` derives retry counts and attempt outcomes,
-hold duration, provenance, lifecycle outcomes, delivery versus integration,
-execution attribution, owner verdicts, and schedule behavior from those records.
-With an order ID, schedule counts include invocations that selected a matching
-order; provenance counts queued events carrying a provenance object.
-Its denominator names the first-party tables read, and an empty history is
-reported as absence rather than a stored zero. `dim q schedule-history` reads
-each schedule invocation separately, including selected orders and dispatch
-outcome.
+`dim q factory-analytics [order-id]` derives retry counts and attempt outcomes, hold duration, provenance, lifecycle outcomes, delivery versus integration, execution attribution, owner verdicts, and schedule behavior from those records. With an order ID, schedule counts include invocations that selected a matching order; provenance counts queued events carrying a provenance object. Its denominator names the first-party tables read, and an empty history is reported as absence rather than a stored zero. `dim q schedule-history` reads each schedule invocation separately, including selected orders and dispatch outcome.
 
 ## Scheduling
 

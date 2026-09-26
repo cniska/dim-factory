@@ -200,7 +200,13 @@ describe("a review round", () => {
       }),
     ).toContain("review approved");
     expect(
-      db.query("SELECT revision, worker FROM factory_order_review_artifact ORDER BY revision").all(),
+      db
+        .query(
+          `SELECT a.revision, w.worker FROM factory_order_artifact a
+           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_written'
+           WHERE a.kind = 'review' ORDER BY a.revision`,
+        )
+        .all(),
     ).toEqual([
       { revision: 1, worker: done.reviewer },
       { revision: 2, worker: done.reviewer },
@@ -208,14 +214,16 @@ describe("a review round", () => {
     expect(
       db
         .query(
-          "SELECT kind, worker FROM factory_order_event WHERE kind IN ('artifact_returned', 'review_artifact_written', 'review_approved') ORDER BY id",
+          `SELECT e.kind, e.worker, a.revision FROM factory_order_event e
+           JOIN factory_order_artifact a ON a.id = e.artifact_id
+           WHERE a.kind = 'review' ORDER BY e.id`,
         )
         .all(),
     ).toEqual([
-      { kind: "review_artifact_written", worker: done.reviewer },
-      { kind: "artifact_returned", worker: operator },
-      { kind: "review_artifact_written", worker: done.reviewer },
-      { kind: "review_approved", worker: operator },
+      { kind: "artifact_written", worker: done.reviewer, revision: 1 },
+      { kind: "artifact_returned", worker: operator, revision: 1 },
+      { kind: "artifact_written", worker: done.reviewer, revision: 2 },
+      { kind: "artifact_approved", worker: operator, revision: 2 },
     ]);
   });
 
@@ -357,7 +365,15 @@ describe("a review round", () => {
     });
 
     expect(outcome).toMatchObject({ findings: 0, outcome: "closed" });
-    expect(db.query("SELECT body, worker FROM factory_order_review_artifact").get()).toEqual({
+    expect(
+      db
+        .query(
+          `SELECT a.body, w.worker FROM factory_order_artifact a
+           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_written'
+           WHERE a.kind = 'review'`,
+        )
+        .get(),
+    ).toEqual({
       body: expect.stringContaining("## Verdict\n\n**May advance.** The change is sound."),
       worker: outcome.reviewer,
     });
@@ -559,16 +575,16 @@ describe("a review round", () => {
     slice(db, dir, worker, "a");
     const plan = Number(
       db.run(
-        `INSERT INTO factory_order_plan (order_id, revision, worker, body, recorded_at)
-         VALUES ('order-1', 1, ?, '## Outcome\n\nRead the slice.', '2026-09-26T10:00:00.000Z')`,
-        [operator],
+        `INSERT INTO factory_order_artifact (order_id, kind, revision, body)
+         VALUES ('order-1', 'plan', 1, '## Outcome\n\nRead the slice.')`,
       ).lastInsertRowid,
     );
     db.run(
-      `INSERT INTO factory_order_slice (plan_id, ordinal, title, outcome) VALUES (?, 1, 'Read', 'The slice is read.')`,
+      `INSERT INTO factory_order_slice (artifact_id, ordinal, title, outcome) VALUES (?, 1, 'Read', 'The slice is read.')`,
       [plan],
     );
-    appendOrderEvent(db, "order-1", { kind: "plan_approved", worker: operator, planId: plan });
+    appendOrderEvent(db, "order-1", { kind: "artifact_written", worker: operator, artifactId: plan });
+    appendOrderEvent(db, "order-1", { kind: "artifact_approved", worker: operator, artifactId: plan });
     let brief = "";
     runOrderReview(db, "order-1", operator, {
       dir,
@@ -603,7 +619,9 @@ describe("a review round", () => {
       fix: "invert the guard",
       severity: "high",
     });
-    const body = db.query<{ body: string }, []>("SELECT body FROM factory_order_review_artifact").get()?.body;
+    const body = db
+      .query<{ body: string }, []>("SELECT body FROM factory_order_artifact WHERE kind = 'review'")
+      .get()?.body;
     expect(body).toStartWith("## Verdict\n\n**Returns to the builder.**");
     expect(body).toContain("## Earlier findings\n\nNone.");
     expect(body).toMatch(
@@ -784,7 +802,9 @@ describe("a review round", () => {
         }),
       ).toThrow(`finding ${finding} is answered fixed, so it takes addressed or not_addressed`);
       expect(db.query("SELECT count(*) AS n FROM factory_order_finding").get()).toEqual({ n: 1 });
-      expect(db.query("SELECT count(*) AS n FROM factory_order_review_artifact").get()).toEqual({ n: 1 });
+      expect(
+        db.query("SELECT count(*) AS n FROM factory_order_artifact WHERE kind = 'review'").get(),
+      ).toEqual({ n: 1 });
     });
 
     test("leaves an unanswered earlier finding out of the rulings it owes", () => {
@@ -810,7 +830,7 @@ describe("a review round", () => {
       expect(second.outcome).toBe("closed");
       const body = f.db
         .query<{ body: string }, [number]>(
-          "SELECT body FROM factory_order_review_artifact WHERE review_id = ?",
+          "SELECT body FROM factory_order_artifact WHERE kind = 'review' AND review_id = ?",
         )
         .get(second.review)?.body;
       expect(body).toStartWith("## Verdict\n\n**Returns to the builder.**");
@@ -867,7 +887,9 @@ describe("a review round", () => {
         ].join("\n"),
       );
       const body = f.db
-        .query<{ body: string }, []>("SELECT body FROM factory_order_review_artifact ORDER BY id DESC")
+        .query<{ body: string }, []>(
+          "SELECT body FROM factory_order_artifact WHERE kind = 'review' ORDER BY id DESC",
+        )
         .get()?.body;
       expect(body).toContain("## Owner rulings\n\nNone.");
     });
@@ -890,7 +912,9 @@ describe("a review round", () => {
         { finding_id: finding, ruling: "addressed" },
       ]);
       const body = db
-        .query<{ body: string }, []>("SELECT body FROM factory_order_review_artifact ORDER BY id DESC")
+        .query<{ body: string }, []>(
+          "SELECT body FROM factory_order_artifact WHERE kind = 'review' ORDER BY id DESC",
+        )
         .get()?.body;
       expect(body).toStartWith("## Verdict\n\n**May advance.**");
       expect(body).toContain(

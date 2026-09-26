@@ -29,8 +29,7 @@ function eventValues(orderId: string, event: OrderEvent, ts: string): (string | 
     event.reviewId ?? null,
     event.findingId ?? null,
     event.answerId ?? null,
-    event.planId ?? null,
-    event.buildId ?? null,
+    event.artifactId ?? null,
     event.holdType ?? null,
     event.status ?? null,
     event.reason ?? null,
@@ -97,34 +96,6 @@ export function setOrderHoldInTransaction(db: Database, orderId: string, hold: s
   return db.run("UPDATE factory_order SET hold = ?, updated_at = ? WHERE id = ?", [hold, at, orderId]);
 }
 
-export function recordOwnerVerdictInTransaction(
-  db: Database,
-  orderId: string,
-  decision: "approved" | "returned" | "held" | "dropped",
-  grounds: string,
-  worker: string,
-  at: string,
-): number {
-  if (grounds.trim() === "") throw new Error("owner verdict grounds must not be empty");
-  const sessionId = db
-    .query<{ session_id: string | null }, [string]>("SELECT session_id FROM factory_worker WHERE name = ?")
-    .get(worker)?.session_id;
-  const written = db.run(
-    `INSERT INTO factory_order_verdict
-       (order_id, decision, grounds, worker, session_id, recorded_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [orderId, decision, grounds, worker, sessionId ?? null, at],
-  );
-  const id = Number(written.lastInsertRowid);
-  appendOrderEventInTransaction(
-    db,
-    orderId,
-    { kind: "owner_verdict_recorded", worker, evidence: { decision, verdictId: id, grounds } },
-    at,
-  );
-  return id;
-}
-
 export function appendOrderEvent(
   db: Database,
   orderId: string,
@@ -178,8 +149,7 @@ export function appendOrderEventInTransaction(
     event.kind !== "provenance_recorded" &&
     event.kind !== "priority_changed" &&
     event.kind !== "hold_set" &&
-    event.kind !== "hold_released" &&
-    event.kind !== "owner_verdict_recorded"
+    event.kind !== "hold_released"
   ) {
     if (order.status !== "working" && !returningHeldArtifact) {
       const action = VERB_FOR_KIND[event.kind] ?? event.kind;
@@ -194,8 +164,8 @@ export function appendOrderEventInTransaction(
   const written = db.run(
     `INSERT INTO factory_order_event
        (order_id, ts, kind, worker, session_id, station, commit_sha, check_id, review_id, finding_id,
-        answer_id, plan_id, build_id, hold_type, status, reason, evidence)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        answer_id, artifact_id, hold_type, status, reason, evidence)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     eventValues(orderId, event, event.ts ?? at),
   );
   const projected = event.kind === "failed" ? "queued" : (event.status ?? null);

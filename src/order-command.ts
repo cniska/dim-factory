@@ -216,14 +216,14 @@ const EVIDENCE: Record<string, Evidence> = {
       if ((body === undefined) === (bodyFile === undefined)) {
         throw new UsageError("provide exactly one of --body or --body-file");
       }
-      const buildId = recordOrderBuild(
+      const artifactId = recordOrderBuild(
         db,
         id,
         body === undefined ? readFileSync(bodyFile as string, "utf8") : markdownBody(body),
         required(given, "--head"),
         worker,
       );
-      return `${id} recorded build artifact ${buildId}`;
+      return `${id} recorded Build artifact ${artifactId}`;
     },
   },
   "review-artifact": {

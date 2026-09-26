@@ -5,7 +5,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 62;
+export const SCHEMA_VERSION = 63;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -366,17 +366,6 @@ CREATE TABLE IF NOT EXISTS factory_order_worker (
 );
 CREATE INDEX IF NOT EXISTS factory_order_worker_order ON factory_order_worker(order_id);
 
-CREATE TABLE IF NOT EXISTS factory_order_build (
-  id            INTEGER PRIMARY KEY,
-  order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
-  revision      INTEGER NOT NULL DEFAULT 1,
-  worker        TEXT NOT NULL REFERENCES factory_worker(name),
-  body          TEXT NOT NULL CHECK (trim(body) <> ''),
-  head_sha      TEXT NOT NULL,
-  recorded_at   TEXT NOT NULL,
-  UNIQUE (order_id, revision)
-);
-
 CREATE TABLE IF NOT EXISTS factory_order_event (
   id                    INTEGER PRIMARY KEY,
   order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
@@ -393,8 +382,7 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   review_id             INTEGER,
   finding_id            INTEGER,
   answer_id             INTEGER REFERENCES factory_order_finding_answer(id) ON DELETE CASCADE,
-  plan_id               INTEGER,
-  build_id              INTEGER REFERENCES factory_order_build(id),
+  artifact_id           INTEGER REFERENCES factory_order_artifact(id) ON DELETE CASCADE,
   hold_type             TEXT,
   status                TEXT,
   reason                TEXT,
@@ -419,16 +407,6 @@ CREATE TABLE IF NOT EXISTS factory_schedule_invocation (
 );
 CREATE INDEX IF NOT EXISTS factory_schedule_invocation_schedule
   ON factory_schedule_invocation(schedule_id, evaluated_at, id);
-
-CREATE TABLE IF NOT EXISTS factory_order_verdict (
-  id                    INTEGER PRIMARY KEY,
-  order_id              TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
-  decision              TEXT NOT NULL CHECK (decision IN ('approved', 'returned', 'held', 'dropped')),
-  grounds               TEXT NOT NULL,
-  worker                TEXT NOT NULL REFERENCES factory_worker(name),
-  session_id            TEXT,
-  recorded_at           TEXT NOT NULL
-);
 
 CREATE TABLE IF NOT EXISTS factory_order_delivery (
   id                    INTEGER PRIMARY KEY,
@@ -518,15 +496,21 @@ CREATE TABLE IF NOT EXISTS factory_order_review (
   UNIQUE (order_id, round)
 );
 
-CREATE TABLE IF NOT EXISTS factory_order_review_artifact (
+-- What a station handed back, one row per revision. Who wrote it and when is its
+-- artifact_written event, and an approval or a return is an event naming it, so the row
+-- holds only what was written. A Build artifact names the commit it describes and a
+-- Review artifact the round it reports, which also gives it the head that round read.
+CREATE TABLE IF NOT EXISTS factory_order_artifact (
   id            INTEGER PRIMARY KEY,
   order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
-  review_id     INTEGER NOT NULL REFERENCES factory_order_review(id) ON DELETE CASCADE,
+  kind          TEXT NOT NULL CHECK (kind IN ('plan', 'build', 'review')),
   revision      INTEGER NOT NULL CHECK (revision > 0),
-  worker        TEXT NOT NULL REFERENCES factory_worker(name),
   body          TEXT NOT NULL CHECK (trim(body) <> ''),
-  recorded_at   TEXT NOT NULL,
-  UNIQUE (review_id, revision)
+  head_sha      TEXT,
+  review_id     INTEGER REFERENCES factory_order_review(id) ON DELETE CASCADE,
+  CHECK ((kind = 'plan') = (head_sha IS NULL)),
+  CHECK ((kind = 'review') = (review_id IS NOT NULL)),
+  UNIQUE (order_id, kind, revision)
 );
 
 CREATE TABLE IF NOT EXISTS factory_order_finding (
@@ -599,23 +583,13 @@ CREATE TABLE IF NOT EXISTS factory_order_document (
   PRIMARY KEY (order_id, path)
 );
 
-CREATE TABLE IF NOT EXISTS factory_order_plan (
-  id            INTEGER PRIMARY KEY,
-  order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
-  revision      INTEGER NOT NULL DEFAULT 1,
-  worker        TEXT NOT NULL REFERENCES factory_worker(name),
-  body          TEXT NOT NULL CHECK (trim(body) <> ''),
-  recorded_at   TEXT NOT NULL,
-  UNIQUE (order_id, revision)
-);
-
 CREATE TABLE IF NOT EXISTS factory_order_slice (
   id            INTEGER PRIMARY KEY,
-  plan_id       INTEGER NOT NULL REFERENCES factory_order_plan(id) ON DELETE CASCADE,
+  artifact_id   INTEGER NOT NULL REFERENCES factory_order_artifact(id) ON DELETE CASCADE,
   ordinal       INTEGER NOT NULL CHECK (ordinal > 0),
   title         TEXT NOT NULL CHECK (trim(title) <> ''),
   outcome       TEXT NOT NULL CHECK (trim(outcome) <> ''),
-  UNIQUE (plan_id, ordinal)
+  UNIQUE (artifact_id, ordinal)
 );
 
 CREATE TABLE IF NOT EXISTS factory_order_slice_completion (

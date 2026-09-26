@@ -155,9 +155,15 @@ describe("the operator loop", () => {
         "SELECT kind, worker, review_id FROM factory_order_event WHERE order_id = ? ORDER BY id",
       )
       .all("loop-order");
-    expect(events.filter((event) => event.kind === "review_approved")).toEqual([
-      { kind: "review_approved", worker: operator.name, review_id: secondReview.review },
-    ]);
+    expect(
+      db
+        .query(
+          `SELECT e.worker, a.review_id FROM factory_order_event e
+           JOIN factory_order_artifact a ON a.id = e.artifact_id
+           WHERE e.order_id = ? AND e.kind = 'artifact_approved' AND a.kind = 'review'`,
+        )
+        .all("loop-order"),
+    ).toEqual([{ worker: operator.name, review_id: secondReview.review }]);
     expect(
       db
         .query<{ role: string }, []>(

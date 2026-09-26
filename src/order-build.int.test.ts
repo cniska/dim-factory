@@ -194,16 +194,15 @@ describe("builder station", () => {
     ).toEqual([
       { kind: "queued", worker: operator.name, station: null },
       { kind: "claimed", worker: operator.name, station: "dim-station-plan" },
-      { kind: "plan_artifact_written", worker: planner, station: null },
+      { kind: "artifact_written", worker: planner, station: null },
       { kind: "hold_set", worker: planner, station: null },
-      { kind: "owner_verdict_recorded", worker: operator.name, station: null },
-      { kind: "plan_approved", worker: operator.name, station: null },
+      { kind: "artifact_approved", worker: operator.name, station: null },
       { kind: "hold_released", worker: operator.name, station: null },
       { kind: "moved", worker: operator.name, station: "dim-station-build" },
       { kind: "claimed", worker: outcome.builder, station: "dim-station-build" },
       { kind: "commit_created", worker: outcome.builder, station: null },
       { kind: "check_finished", worker: operator.name, station: null },
-      { kind: "build_artifact_written", worker: outcome.builder, station: null },
+      { kind: "artifact_written", worker: outcome.builder, station: null },
       { kind: "hold_set", worker: outcome.builder, station: null },
     ]);
 
@@ -228,7 +227,15 @@ describe("builder station", () => {
     expect(db.query("SELECT command, exit_code FROM factory_order_check").all()).toEqual([
       { command: "bun run verify", exit_code: 0 },
     ]);
-    expect(db.query("SELECT body, head_sha, worker FROM factory_order_build").all()).toEqual([
+    expect(
+      db
+        .query(
+          `SELECT a.body, a.head_sha, w.worker FROM factory_order_artifact a
+           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_written'
+           WHERE a.kind = 'build'`,
+        )
+        .all(),
+    ).toEqual([
       { body: "The requested result is built and verified.", head_sha: head, worker: outcome.builder },
     ]);
     expect(db.query("SELECT worker FROM factory_order_slice_completion").get()).toEqual({
@@ -642,7 +649,11 @@ describe("builder station", () => {
       worker: outcome.builder,
     });
     expect(
-      db.query("SELECT revision, head_sha FROM factory_order_build ORDER BY revision DESC LIMIT 1").get(),
+      db
+        .query(
+          "SELECT revision, head_sha FROM factory_order_artifact WHERE kind = 'build' ORDER BY revision DESC LIMIT 1",
+        )
+        .get(),
     ).toEqual({ revision: 2, head_sha: repo.sha });
 
     returnOrderArtifact(db, "returned-builder-order", operator.name, "Match the actual worktree HEAD.");
@@ -796,7 +807,11 @@ describe("builder station", () => {
         run_id: null,
       });
       expect(
-        db.query("SELECT revision, head_sha FROM factory_order_build ORDER BY revision DESC LIMIT 1").get(),
+        db
+          .query(
+            "SELECT revision, head_sha FROM factory_order_artifact WHERE kind = 'build' ORDER BY revision DESC LIMIT 1",
+          )
+          .get(),
       ).toEqual({ revision: 2, head_sha: head });
       db.close();
     });
@@ -818,7 +833,11 @@ describe("builder station", () => {
         { finding_id: finding, run_id: followup.runId, answer: "refused", resolution: "no doc names it" },
       ]);
       expect(
-        db.query("SELECT revision, head_sha FROM factory_order_build ORDER BY revision DESC LIMIT 1").get(),
+        db
+          .query(
+            "SELECT revision, head_sha FROM factory_order_artifact WHERE kind = 'build' ORDER BY revision DESC LIMIT 1",
+          )
+          .get(),
       ).toEqual({ revision: 2, head_sha: first });
       expect(db.query("SELECT run_id FROM factory_order WHERE id = ?").get("refused-rework-order")).toEqual({
         run_id: null,

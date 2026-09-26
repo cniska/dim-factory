@@ -73,8 +73,7 @@ describe("build approval integration", () => {
         kind: "artifact_returned",
         worker: operator.name,
         station: "dim-station-build",
-        buildId: 1,
-        commitSha: repo.sha,
+        artifactId: 1,
         reason: "direct event writes cannot return the artifact",
       }),
     ).toThrow("order queued-return-order must be working before it can artifact_returned");
@@ -96,7 +95,7 @@ describe("build approval integration", () => {
     expect(returnedOrderArtifact(db, "queued-return-order", "build")).toEqual({
       station: "build",
       reason: "Explain the verified result for review.",
-      buildId: 1,
+      artifactId: 1,
       body: "## Outcome\n\nBuild it.",
       headSha: repo.sha,
     });
@@ -180,7 +179,7 @@ describe("build approval integration", () => {
     expect(returnedOrderArtifact(db, "build-approval-order", "build")).toEqual({
       station: "build",
       reason: "Explain the verified result, not the command log.",
-      buildId: 1,
+      artifactId: 1,
       body: "The build is complete and verified.",
       headSha: repo.sha,
     });
@@ -264,37 +263,64 @@ describe("build approval integration", () => {
     expect(
       db
         .query(
-          "SELECT kind, worker, commit_sha, reason FROM factory_order_event WHERE order_id = ? ORDER BY id",
+          `SELECT e.kind, e.worker, e.commit_sha, a.head_sha AS artifact_head, e.reason
+           FROM factory_order_event e
+           LEFT JOIN factory_order_artifact a ON a.id = e.artifact_id
+           WHERE e.order_id = ? ORDER BY e.id`,
         )
         .all("build-approval-order"),
     ).toEqual([
-      { kind: "queued", worker: operator.name, commit_sha: null, reason: null },
-      { kind: "claimed", worker: builder.name, commit_sha: null, reason: null },
-      { kind: "commit_created", worker: builder.name, commit_sha: repo.sha, reason: null },
-      { kind: "check_finished", worker: builder.name, commit_sha: null, reason: null },
-      { kind: "build_artifact_written", worker: builder.name, commit_sha: null, reason: null },
-      { kind: "hold_set", worker: builder.name, commit_sha: null, reason: null },
+      { kind: "queued", worker: operator.name, commit_sha: null, artifact_head: null, reason: null },
+      { kind: "claimed", worker: builder.name, commit_sha: null, artifact_head: null, reason: null },
+      {
+        kind: "commit_created",
+        worker: builder.name,
+        commit_sha: repo.sha,
+        artifact_head: null,
+        reason: null,
+      },
+      { kind: "check_finished", worker: builder.name, commit_sha: null, artifact_head: null, reason: null },
+      {
+        kind: "artifact_written",
+        worker: builder.name,
+        commit_sha: null,
+        artifact_head: repo.sha,
+        reason: null,
+      },
+      { kind: "hold_set", worker: builder.name, commit_sha: null, artifact_head: null, reason: null },
       {
         kind: "artifact_returned",
         worker: operator.name,
-        commit_sha: repo.sha,
+        commit_sha: null,
+        artifact_head: repo.sha,
         reason: "Explain the verified result, not the command log.",
       },
-      { kind: "owner_verdict_recorded", worker: operator.name, commit_sha: null, reason: null },
-      { kind: "hold_released", worker: operator.name, commit_sha: null, reason: null },
-      { kind: "commit_created", worker: builder.name, commit_sha: "new-head", reason: null },
-      { kind: "check_finished", worker: builder.name, commit_sha: null, reason: null },
-      { kind: "build_artifact_written", worker: builder.name, commit_sha: null, reason: null },
-      { kind: "hold_set", worker: builder.name, commit_sha: null, reason: null },
-      { kind: "owner_verdict_recorded", worker: operator.name, commit_sha: null, reason: null },
+      { kind: "hold_released", worker: operator.name, commit_sha: null, artifact_head: null, reason: null },
       {
-        kind: "build_approved",
-        worker: operator.name,
+        kind: "commit_created",
+        worker: builder.name,
         commit_sha: "new-head",
+        artifact_head: null,
+        reason: null,
+      },
+      { kind: "check_finished", worker: builder.name, commit_sha: null, artifact_head: null, reason: null },
+      {
+        kind: "artifact_written",
+        worker: builder.name,
+        commit_sha: null,
+        artifact_head: "new-head",
+        reason: null,
+      },
+      { kind: "hold_set", worker: builder.name, commit_sha: null, artifact_head: null, reason: null },
+      {
+        kind: "artifact_approved",
+        worker: operator.name,
+        commit_sha: null,
+        artifact_head: "new-head",
         reason: "answers the request",
       },
-      { kind: "hold_released", worker: operator.name, commit_sha: null, reason: null },
-      { kind: "moved", worker: operator.name, commit_sha: null, reason: null },
+      { kind: "hold_released", worker: operator.name, commit_sha: null, artifact_head: null, reason: null },
+      { kind: "moved", worker: operator.name, commit_sha: null, artifact_head: null, reason: null },
     ]);
     db.close();
   });

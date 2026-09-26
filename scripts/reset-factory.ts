@@ -13,16 +13,13 @@ const tables = [
   "factory_order_finding_ruling",
   "factory_order_finding_answer",
   "factory_order_finding",
-  "factory_order_review_artifact",
-  "factory_order_review",
   "factory_order_slice_completion",
   "factory_order_slice",
-  "factory_order_build",
-  "factory_order_plan",
+  "factory_order_artifact",
+  "factory_order_review",
   "factory_order_rewrite",
   "factory_order_check",
   "factory_order_delivery",
-  "factory_order_verdict",
   "factory_schedule_invocation",
   "factory_order_file",
   "factory_order_commit",
@@ -34,7 +31,6 @@ const tables = [
   "factory_worker_assignment",
   "factory_worker_session",
   "factory_worker",
-  "factory_order_account",
 ];
 
 if (!process.argv.includes(required)) {

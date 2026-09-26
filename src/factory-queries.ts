@@ -98,13 +98,15 @@ export const order: Query = {
       ...table(
         db,
         `SELECT 'event' AS section, e.ts AS "when", e.kind, coalesce(e.status, '') AS status,
-                coalesce(e.station, '') AS subject,
+                coalesce(a.kind, e.station, '') AS subject,
                 coalesce(e.reason, e.hold_type,
                          json_extract(e.evidence, '$.from') || ' -> ' || e.commit_sha,
                          e.commit_sha, cast(e.check_id AS TEXT),
-                         cast(e.finding_id AS TEXT), cast(e.plan_id AS TEXT),
-                         cast(e.build_id AS TEXT), cast(e.review_id AS TEXT), '') AS evidence
-         FROM factory_order_event e WHERE e.order_id = ?`,
+                         cast(e.finding_id AS TEXT), cast(e.artifact_id AS TEXT),
+                         cast(e.review_id AS TEXT), '') AS evidence
+         FROM factory_order_event e
+         LEFT JOIN factory_order_artifact a ON a.id = e.artifact_id
+         WHERE e.order_id = ?`,
         [id],
       ),
       ...table(
@@ -120,10 +122,12 @@ export const order: Query = {
       ),
       ...table(
         db,
-        `SELECT 'artifact' AS section, recorded_at AS "when", 'build_artifact_written' AS kind,
-                cast(revision AS TEXT) AS status,
-                worker || ' @ ' || head_sha AS subject, body AS evidence
-         FROM factory_order_build WHERE order_id = ? ORDER BY revision`,
+        `SELECT 'artifact' AS section, w.ts AS "when", a.kind,
+                cast(a.revision AS TEXT) AS status,
+                w.worker || coalesce(' @ ' || a.head_sha, '') AS subject, a.body AS evidence
+         FROM factory_order_artifact a
+         JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_written'
+         WHERE a.order_id = ? ORDER BY a.kind, a.revision`,
         [id],
       ),
       ...table(
@@ -435,7 +439,11 @@ export const factoryAnalytics: Query = {
     }
     for (const row of table(
       db,
-      `SELECT decision, count(*) AS n FROM factory_order_verdict${orderFilter}
+      `SELECT CASE kind WHEN 'artifact_approved' THEN 'approved'
+                        WHEN 'artifact_returned' THEN 'returned' ELSE 'dropped' END AS decision,
+              count(*) AS n
+       FROM factory_order_event
+       WHERE kind IN ('artifact_approved', 'artifact_returned', 'dropped')${arg ? " AND order_id LIKE ? || '%'" : ""}
        GROUP BY decision ORDER BY decision`,
       params,
     )) {
@@ -486,7 +494,7 @@ export const factoryAnalytics: Query = {
       denominator:
         `${ordersWithAttempts} order${ordersWithAttempts === 1 ? "" : "s"} with attempt history` +
         (arg ? ` matching ${arg}` : "") +
-        "; metrics are derived from factory_order_event, factory_order_attempt, factory_order_delivery, factory_order_verdict, and factory_schedule_invocation",
+        "; metrics are derived from factory_order_event, factory_order_attempt, factory_order_delivery, and factory_schedule_invocation",
       columns: ["metric", "value"],
       rows: toRows(rows, ["metric", "value"]),
       note: rows.length === 0 ? "no first-party domain records are available for these metrics" : undefined,

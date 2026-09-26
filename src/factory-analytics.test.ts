@@ -17,6 +17,8 @@ describe("factory analytics", () => {
        VALUES ('order-analytics', ?, 'queued', ?),
               ('order-analytics', ?, 'queued', '{}'),
               ('order-analytics', ?, 'hold_set', '{"hold":"approval"}'),
+              ('order-analytics', ?, 'artifact_returned', '{}'),
+              ('order-analytics', ?, 'artifact_approved', '{}'),
               ('order-analytics', ?, 'hold_released', '{"hold":null}'),
               ('order-analytics', ?, 'completed', '{}')`,
       [
@@ -24,6 +26,8 @@ describe("factory analytics", () => {
         '{"source":"issue-123"}',
         "2026-09-18T09:01:00.000Z",
         "2026-09-18T09:02:00.000Z",
+        "2026-09-18T09:03:00.000Z",
+        "2026-09-18T09:04:00.000Z",
         "2026-09-18T09:05:00.000Z",
         "2026-09-18T09:10:00.000Z",
       ],
@@ -79,6 +83,9 @@ describe("factory analytics", () => {
     expect(metrics.get("provenance_events")).toBe(1);
     expect(metrics.get("integration:succeeded")).toBe(1);
     expect(metrics.get("delivery:succeeded")).toBe(1);
+    expect(metrics.get("verdict:approved")).toBe(1);
+    expect(metrics.get("verdict:returned")).toBe(1);
+    expect(metrics.get("verdict:dropped")).toBe(undefined);
     expect(metrics.get("worker_execution:codex/gpt-test/standard")).toBe(2);
     expect(metrics.get("schedule_evaluations")).toBe(2);
     expect(metrics.get("schedule_due")).toBe(2);

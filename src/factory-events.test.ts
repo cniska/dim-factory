@@ -17,16 +17,22 @@ describe("factory domain event boundary", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
 
-    expect(columns(db, "factory_order_event")).toContain("evidence");
+    expect(columns(db, "factory_order_event")).toEqual(expect.arrayContaining(["evidence", "artifact_id"]));
     expect(columns(db, "factory_order_attempt")).toEqual(
       expect.arrayContaining(["session_id", "provider_session_id", "harness", "model", "tier"]),
     );
     expect(columns(db, "factory_schedule_invocation")).toEqual(
       expect.arrayContaining(["evaluated_at", "due", "dispatched", "selected_order_ids", "outcome"]),
     );
-    expect(columns(db, "factory_order_verdict")).toEqual(
-      expect.arrayContaining(["decision", "grounds", "worker", "recorded_at"]),
-    );
+    expect(columns(db, "factory_order_artifact")).toEqual([
+      "id",
+      "order_id",
+      "kind",
+      "revision",
+      "body",
+      "head_sha",
+      "review_id",
+    ]);
     expect(columns(db, "factory_order_delivery")).toEqual(
       expect.arrayContaining(["kind", "outcome", "target", "commit_sha", "recorded_at"]),
     );
@@ -91,14 +97,7 @@ describe("factory domain event boundary", () => {
         )
         .all("queue-history")
         .map((row) => row.kind),
-    ).toEqual([
-      "queued",
-      "priority_changed",
-      "hold_set",
-      "hold_released",
-      "owner_verdict_recorded",
-      "dropped",
-    ]);
+    ).toEqual(["queued", "priority_changed", "hold_set", "hold_released", "dropped"]);
     expect(
       db.query("SELECT priority, hold, status FROM factory_order WHERE id = ?").get("queue-history"),
     ).toEqual({
@@ -107,10 +106,12 @@ describe("factory domain event boundary", () => {
       status: "dropped",
     });
     expect(
-      db.query("SELECT decision, grounds FROM factory_order_verdict WHERE order_id = ?").get("queue-history"),
+      db
+        .query("SELECT worker, reason FROM factory_order_event WHERE order_id = ? AND kind = 'dropped'")
+        .get("queue-history"),
     ).toEqual({
-      decision: "dropped",
-      grounds: "superseded",
+      worker,
+      reason: "superseded",
     });
     db.close();
   });

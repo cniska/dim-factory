@@ -108,7 +108,15 @@ describe("planner station", () => {
     expect(db.query("SELECT parent_worker FROM factory_worker WHERE name = ?").get(outcome.planner)).toEqual({
       parent_worker: operator.name,
     });
-    expect(db.query("SELECT body, worker FROM factory_order_plan").get()).toEqual({
+    expect(
+      db
+        .query(
+          `SELECT a.kind, a.body, w.worker FROM factory_order_artifact a
+           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_written'`,
+        )
+        .get(),
+    ).toEqual({
+      kind: "plan",
       body: outcome.body,
       worker: outcome.planner,
     });
@@ -118,7 +126,7 @@ describe("planner station", () => {
     expect(db.query("SELECT kind FROM factory_order_event WHERE order_id = 'planner-order'").all()).toEqual([
       { kind: "queued" },
       { kind: "claimed" },
-      { kind: "plan_artifact_written" },
+      { kind: "artifact_written" },
       { kind: "hold_set" },
     ]);
     db.close();

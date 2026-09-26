@@ -497,11 +497,17 @@ describe("factory wall item view", () => {
       worker,
       "2026-09-18T10:00:00.000Z",
     );
-    db.run(
-      "INSERT INTO factory_order_plan (order_id, revision, worker, body, recorded_at) VALUES (?, ?, ?, ?, ?)",
-      ["order-worked", 1, worker, "## Outcome\n\nRead the order record.", "2026-09-18T10:00:30.000Z"],
-    );
     claimOrder(db, "order-worked", { runId: "run", station: "build" }, worker, "2026-09-18T10:00:00.000Z");
+    const plan = db.run(
+      "INSERT INTO factory_order_artifact (order_id, kind, revision, body) VALUES (?, 'plan', 1, ?)",
+      ["order-worked", "## Outcome\n\nRead the order record."],
+    );
+    appendOrderEvent(
+      db,
+      "order-worked",
+      { kind: "artifact_written", worker, artifactId: Number(plan.lastInsertRowid) },
+      "2026-09-18T10:00:30.000Z",
+    );
 
     recordOrderEnvironment(
       db,
@@ -631,12 +637,13 @@ describe("factory wall item view", () => {
     expect(view?.entries.map((entry) => entry.kind)).toEqual([
       "queued",
       "claimed",
+      "artifact_written",
       "environment_reported",
       "check_finished",
       "check_finished",
       "commit_created",
       "check_finished",
-      "build_artifact_written",
+      "artifact_written",
       "hold_set",
       "review_opened",
       "finding_raised",

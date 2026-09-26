@@ -93,10 +93,9 @@ describe("plan approval integration", () => {
     ).toEqual([
       { kind: "queued", worker: operator.name },
       { kind: "claimed", worker: operator.name },
-      { kind: "plan_artifact_written", worker: outcome.planner },
+      { kind: "artifact_written", worker: outcome.planner },
       { kind: "hold_set", worker: outcome.planner },
-      { kind: "owner_verdict_recorded", worker: operator.name },
-      { kind: "plan_approved", worker: operator.name },
+      { kind: "artifact_approved", worker: operator.name },
       { kind: "hold_released", worker: operator.name },
     ]);
     db.close();
@@ -149,14 +148,15 @@ describe("plan approval integration", () => {
     ).toEqual([
       { kind: "queued", worker: operator.name },
       { kind: "claimed", worker: operator.name },
-      { kind: "plan_artifact_written", worker: planner.name },
+      { kind: "artifact_written", worker: planner.name },
       { kind: "hold_set", worker: planner.name },
-      { kind: "owner_verdict_recorded", worker: operator.name },
-      { kind: "plan_approved", worker: operator.name },
+      { kind: "artifact_approved", worker: operator.name },
       { kind: "hold_released", worker: operator.name },
     ]);
-    expect(db.query("SELECT plan_id FROM factory_order_event WHERE kind = 'plan_approved'").get()).toEqual({
-      plan_id: planId,
+    expect(
+      db.query("SELECT artifact_id FROM factory_order_event WHERE kind = 'artifact_approved'").get(),
+    ).toEqual({
+      artifact_id: planId,
     });
     expect(() => runOrderCommand(db, ["approve", "approval-order"], null, repo.dir, env(operator))).toThrow(
       expect.objectContaining({ code: "plan_already_approved" }),
@@ -206,18 +206,22 @@ describe("plan approval integration", () => {
     expect(runOrderCommand(db, ["approve", "approval-order-3"], null, repo.dir, env(operator))).toContain(
       "plan approved",
     );
-    expect(db.query("SELECT revision, body FROM factory_order_plan ORDER BY revision").all()).toEqual([
-      { revision: 1, body: "## Build\n\nFirst path." },
-      { revision: 2, body: "## Build\n\nRevised path." },
+    expect(
+      db.query("SELECT kind, revision, body FROM factory_order_artifact ORDER BY revision").all(),
+    ).toEqual([
+      { kind: "plan", revision: 1, body: "## Build\n\nFirst path." },
+      { kind: "plan", revision: 2, body: "## Build\n\nRevised path." },
     ]);
     expect(
-      db.query("SELECT plan_id FROM factory_order_event WHERE kind = 'plan_approved' ORDER BY id").all(),
-    ).toEqual([{ plan_id: second }]);
+      db
+        .query("SELECT artifact_id FROM factory_order_event WHERE kind = 'artifact_approved' ORDER BY id")
+        .all(),
+    ).toEqual([{ artifact_id: second }]);
     expect(
       db
-        .query("SELECT plan_id FROM factory_order_event WHERE kind = 'plan_artifact_written' ORDER BY id")
+        .query("SELECT artifact_id FROM factory_order_event WHERE kind = 'artifact_written' ORDER BY id")
         .all(),
-    ).toEqual([{ plan_id: first }, { plan_id: second }]);
+    ).toEqual([{ artifact_id: first }, { artifact_id: second }]);
     db.close();
   });
 
@@ -251,7 +255,7 @@ describe("plan approval integration", () => {
       expect.objectContaining({ code: "worker_not_operator" }),
     );
     expect(
-      db.query("SELECT count(*) AS n FROM factory_order_event WHERE kind = 'plan_approved'").get(),
+      db.query("SELECT count(*) AS n FROM factory_order_event WHERE kind = 'artifact_approved'").get(),
     ).toEqual({
       n: 0,
     });
@@ -278,7 +282,7 @@ describe("plan approval integration", () => {
     expect(() =>
       runOrderCommand(db, ["plan", "delegation-order", "--harness", "codex"], null, repo.dir, env(builder)),
     ).toThrow(expect.objectContaining({ code: "worker_not_operator" }));
-    expect(db.query("SELECT count(*) AS n FROM factory_order_plan").get()).toEqual({ n: 0 });
+    expect(db.query("SELECT count(*) AS n FROM factory_order_artifact").get()).toEqual({ n: 0 });
     db.close();
   });
 });

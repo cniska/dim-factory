@@ -3,7 +3,6 @@ import {
   appendOrderEventInTransaction,
   now,
   recordAttemptFinish,
-  recordOwnerVerdictInTransaction,
   setOrderHoldInTransaction,
 } from "./factory-order-ledger";
 import { assertReviewApproved, closeOrderReview, ReviewNotOpen } from "./factory-order-review";
@@ -212,8 +211,8 @@ export function setOrderHold(
 }
 
 export function dropOrder(db: Database, orderId: string, reason: string, worker: string, at = now()): number {
+  if (reason.trim() === "") throw new Error("a drop reason must not be empty");
   return db.transaction(() => {
-    recordOwnerVerdictInTransaction(db, orderId, "dropped", reason, worker, at);
     return appendOrderEventInTransaction(
       db,
       orderId,

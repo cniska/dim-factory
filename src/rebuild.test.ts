@@ -245,10 +245,6 @@ describe("rebuilding a database an older schema wrote", () => {
        VALUES ('schedule-history', '2026-01-01T00:01:00Z', 1, 1, '["order-history"]', 'copper-1', 'session-1', 'codex', 'gpt-test', 'standard', 'dispatched')`,
     );
     db.run(
-      `INSERT INTO factory_order_verdict (order_id, decision, grounds, worker, session_id, recorded_at)
-       VALUES ('order-history', 'approved', 'ready', 'copper-1', 'session-1', '2026-01-01T00:02:00Z')`,
-    );
-    db.run(
       `INSERT INTO factory_order_delivery (order_id, kind, outcome, worker, session_id, recorded_at)
        VALUES ('order-history', 'delivery', 'succeeded', 'copper-1', 'session-1', '2026-01-01T00:03:00Z')`,
     );
@@ -262,7 +258,6 @@ describe("rebuilding a database an older schema wrote", () => {
     expect(db.query("SELECT count(*) AS n FROM factory_order_event").get()).toEqual({ n: 1 });
     expect(db.query("SELECT count(*) AS n FROM factory_order_attempt").get()).toEqual({ n: 1 });
     expect(db.query("SELECT count(*) AS n FROM factory_schedule_invocation").get()).toEqual({ n: 1 });
-    expect(db.query("SELECT count(*) AS n FROM factory_order_verdict").get()).toEqual({ n: 1 });
     expect(db.query("SELECT count(*) AS n FROM factory_order_delivery").get()).toEqual({ n: 1 });
     expect(db.query("SELECT event FROM trace_event").all()).toEqual([{ event: "delivery.debug" }]);
     db.close();
@@ -322,14 +317,30 @@ describe("rebuilding a database an older schema wrote", () => {
       "INSERT INTO factory_worker (name, role, token_digest, started_at) VALUES ('copper-1', 'planner', 'x', '2026-01-01T00:00:00Z')",
     );
     db.run(
-      `INSERT INTO factory_order_plan (order_id, worker, body, recorded_at)
-       VALUES ('order-1', 'copper-1', '## outcome\n\nMove the order before building.', '2026-01-01T00:00:00Z')`,
+      `INSERT INTO factory_order_artifact (order_id, kind, revision, body)
+       VALUES ('order-1', 'plan', 1, '## outcome\n\nMove the order before building.')`,
+    );
+    db.run(
+      `INSERT INTO factory_order_event (order_id, ts, kind, worker, artifact_id)
+       VALUES ('order-1', '2026-01-01T00:00:00Z', 'artifact_written', 'copper-1', 1)`,
     );
 
     rebuild(db, env);
 
-    expect(db.query("SELECT order_id, body FROM factory_order_plan").all()).toEqual([
-      { order_id: "order-1", body: "## outcome\n\nMove the order before building." },
+    expect(
+      db
+        .query(
+          `SELECT a.order_id, a.kind, a.body, w.worker FROM factory_order_artifact a
+           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_written'`,
+        )
+        .all(),
+    ).toEqual([
+      {
+        order_id: "order-1",
+        kind: "plan",
+        body: "## outcome\n\nMove the order before building.",
+        worker: "copper-1",
+      },
     ]);
     db.close();
   });

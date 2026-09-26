@@ -158,10 +158,9 @@ describe("headless factory loop", () => {
     ).toEqual([
       "queued",
       "claimed",
-      "plan_artifact_written",
+      "artifact_written",
       "hold_set",
-      "owner_verdict_recorded",
-      "plan_approved",
+      "artifact_approved",
       "hold_released",
       "moved",
       "claimed",
@@ -169,24 +168,22 @@ describe("headless factory loop", () => {
       "check_finished",
       "moved",
       "review_opened",
-      "review_artifact_written",
+      "artifact_written",
       "review_closed",
       "moved",
       "claimed",
       "commit_created",
       "check_finished",
-      "build_artifact_written",
+      "artifact_written",
       "hold_set",
-      "owner_verdict_recorded",
-      "build_approved",
+      "artifact_approved",
       "hold_released",
       "moved",
       "review_opened",
-      "review_artifact_written",
+      "artifact_written",
       "review_closed",
       "hold_set",
-      "owner_verdict_recorded",
-      "review_approved",
+      "artifact_approved",
       "hold_released",
       "integration_recorded",
       "delivery_recorded",
@@ -194,7 +191,7 @@ describe("headless factory loop", () => {
     ]);
     expect(
       db
-        .query("SELECT body FROM factory_order_review_artifact WHERE order_id = ? ORDER BY id")
+        .query("SELECT body FROM factory_order_artifact WHERE order_id = ? AND kind = 'review' ORDER BY id")
         .all("headless-order"),
     ).toEqual([
       {
@@ -221,7 +218,7 @@ describe("headless factory loop", () => {
     expect(
       db
         .query<{ body: string; head_sha: string }, [string]>(
-          "SELECT body, head_sha FROM factory_order_build WHERE order_id = ?",
+          "SELECT body, head_sha FROM factory_order_artifact WHERE order_id = ? AND kind = 'build'",
         )
         .all("headless-order"),
     ).toEqual([
@@ -236,7 +233,7 @@ describe("headless factory loop", () => {
           `SELECT s.ordinal, c.worker
            FROM factory_order_slice_completion c
            JOIN factory_order_slice s ON s.id = c.slice_id
-           JOIN factory_order_plan p ON p.id = s.plan_id
+           JOIN factory_order_artifact p ON p.id = s.artifact_id
            WHERE p.order_id = ? ORDER BY s.ordinal`,
         )
         .all("headless-order"),

@@ -32,6 +32,8 @@ Use `dim-git` at the commit boundary. It owns the repository status, worktree ow
 
 Use `dim-tdd` for behavior-changing slices and `dim-simplify` for the simplification pass. Their methods remain shared; this station supplies the slice boundary, repository evidence and finding loop.
 
+An edit repeated across many sites — a rename, a changed signature, one pattern removed everywhere — is a codemod over the parsed code rather than a sweep by hand, the way `dim comments purge` rewrites through `@babel/parser`: a transform that refuses what it cannot parse reaches every site or says which it could not, while a hand sweep misses a site silently ([`findings.md`](../../docs/findings.md), "A proof by removal can pass without proving anything"). Run it, read its diff, then edit by hand only the sites that need judgement.
+
 Where the comment gate is on — `dim doctor` says so for the repo it runs in — write no comments at all. A why goes into a name, a test that holds the invariant, or the doc that owns the subject; those are the places the gate leaves for it.
 
 Where a slice turns out to be blocked, finish every other slice in full and say plainly what was left and why. Scaling the work down is the owner's call.
