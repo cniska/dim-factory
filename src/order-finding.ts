@@ -10,6 +10,7 @@ import {
   type ReviewerRuling,
   rulingApplies,
 } from "./order-finding-state";
+import type { ReviewFinding } from "./review-artifact";
 
 const now = (): string => new Date().toISOString();
 
@@ -43,14 +44,7 @@ export class BuildTurnRefused extends Error {
 export function raiseOrderFinding(
   db: Database,
   orderId: string,
-  finding: {
-    dimension: string;
-    failure: string;
-    file?: string;
-    line?: number;
-    fix?: string;
-    severity?: string;
-  },
+  finding: ReviewFinding,
   worker: string,
   at = now(),
 ): number {
@@ -72,17 +66,16 @@ export function raiseOrderFinding(
   return db.transaction(() => {
     const result = db.run(
       `INSERT INTO factory_order_finding
-         (order_id, review_id, dimension, file, line, failure, fix, severity, raised_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (review_id, dimension, file, line, failure, fix, severity, raised_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        orderId,
         row.id,
         finding.dimension,
-        finding.file ?? null,
-        finding.line ?? null,
+        finding.file,
+        finding.line,
         finding.failure,
-        finding.fix ?? null,
-        finding.severity ?? null,
+        finding.fix,
+        finding.severity,
         at,
       ],
     );

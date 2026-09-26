@@ -5,7 +5,6 @@ import { assertOperator } from "./factory-operator";
 import { assertBuildReady, type ReturnedOrderArtifact } from "./factory-order-artifacts";
 import { carriedThroughRewrites, currentOrderCommits } from "./factory-order-commits";
 import { closeOrderReview, openAssignedOrderReview, recordOrderReviewArtifact } from "./factory-order-review";
-import { findingLocation } from "./finding-location";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-launch";
 import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
@@ -96,10 +95,9 @@ export function earlierOpenFindings(db: Database, orderId: string, reviewId: num
 }
 
 function earlierFindingLines(finding: FindingStanding): string[] {
-  const where = findingLocation(finding) ?? "no location recorded";
   return [
-    `- Finding ${finding.id} (${finding.dimension}, ${where}): ${finding.failure}`,
-    ...(finding.fix ? [`  - Fix asked for: ${finding.fix}`] : []),
+    `- Finding ${finding.id} (${finding.dimension}, ${finding.file}:${finding.line}): ${finding.failure}`,
+    `  - Fix asked for: ${finding.fix}`,
     `  - Builder's answer: ${finding.answer}${finding.resolution ? `: ${finding.resolution}` : ""}`,
     ...(finding.ruling
       ? [`  - Last ruled ${finding.ruling}${finding.rulingReason ? `: ${finding.rulingReason}` : ""}`]

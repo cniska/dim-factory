@@ -6,7 +6,7 @@ import { openOrderReview } from "./factory-order-review";
 import { mintWorker, newWorkerSession, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { installHooks } from "./hooks";
 import type { Env } from "./paths";
-import { REVIEW_DIMENSIONS } from "./review-artifact";
+import { REVIEW_DIMENSIONS, type ReviewFinding } from "./review-artifact";
 import type { Role } from "./roles";
 
 export function workerIn(db: Database, role: Role = "builder"): string {
@@ -23,6 +23,10 @@ export function reviewIn(
   const reviewer = mintWorker(db, { role: "reviewer", sessionId: newWorkerSession("test-reviewer") }).name;
   const opened = openOrderReview(db, orderId, { reviewer, baseSha: sha, headSha: sha }, by, at);
   return { review: opened.id, reviewer };
+}
+
+export function located(finding: Pick<ReviewFinding, "dimension" | "failure">): ReviewFinding {
+  return { file: "src/example.ts", line: 1, fix: "make it hold", severity: "medium", ...finding };
 }
 
 export function reviewOutput(fields: Record<string, unknown> = {}): string {

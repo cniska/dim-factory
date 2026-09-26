@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { closeDb, openDb } from "./db";
 import { claimOrder, moveOrder, queueOrder, setOrderHold } from "./factory-order-lifecycle";
 import { closeOrderReview } from "./factory-order-review";
-import { integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
+import { integratedRepo, located, reviewIn, workerIn } from "./fixtures.test-support";
 import {
   answerOrderFindings,
   raiseOrderFinding,
@@ -59,7 +59,7 @@ function answered(f: Floor, given: "fixed" | "refused"): { finding: number; revi
   const finding = raiseOrderFinding(
     f.db,
     "order-1",
-    { dimension: "tests", failure: "no test holds the gate" },
+    located({ dimension: "tests", failure: "no test holds the gate" }),
     first.reviewer,
   );
   closeOrderReview(f.db, first.review, "closed", first.reviewer);
@@ -104,7 +104,7 @@ describe("finding state", () => {
     const finding = raiseOrderFinding(
       f.db,
       "order-1",
-      { dimension: "docs", failure: "stale" },
+      located({ dimension: "docs", failure: "stale" }),
       round.reviewer,
     );
     expect(findingStanding(f.db, finding)).toMatchObject({ state: "open", answer: null, answered: false });
@@ -225,7 +225,7 @@ describe("recording an answer", () => {
     const finding = raiseOrderFinding(
       f.db,
       "order-1",
-      { dimension: "docs", failure: "stale" },
+      located({ dimension: "docs", failure: "stale" }),
       round.reviewer,
     );
     closeOrderReview(f.db, round.review, "closed", round.reviewer);
@@ -331,7 +331,7 @@ describe("recording a ruling", () => {
     const finding = raiseOrderFinding(
       f.db,
       "order-1",
-      { dimension: "docs", failure: "stale" },
+      located({ dimension: "docs", failure: "stale" }),
       round.reviewer,
     );
     expect(() => ruleOnOrderFinding(f.db, finding, { ruling: "addressed" }, round.reviewer)).toThrow(
@@ -388,7 +388,7 @@ describe("recording a ruling", () => {
     const finding = raiseOrderFinding(
       f.db,
       "order-1",
-      { dimension: "docs", failure: "stale" },
+      located({ dimension: "docs", failure: "stale" }),
       first.reviewer,
     );
     const second = nextRound(f, first.reviewer);
@@ -487,7 +487,7 @@ describe("closing a round", () => {
   test("returns to the builder without a hold while an earlier finding is unanswered", () => {
     const f = floor();
     const first = reviewIn(f.db, "order-1", f.operator);
-    raiseOrderFinding(f.db, "order-1", { dimension: "docs", failure: "stale" }, first.reviewer);
+    raiseOrderFinding(f.db, "order-1", located({ dimension: "docs", failure: "stale" }), first.reviewer);
     const second = nextRound(f, first.reviewer);
     closeOrderReview(f.db, openRound(f), "closed", second);
     expect(hold(f)).toBeNull();
@@ -615,7 +615,7 @@ describe("the finding tables", () => {
     const finding = raiseOrderFinding(
       f.db,
       "order-1",
-      { dimension: "docs", failure: "stale" },
+      located({ dimension: "docs", failure: "stale" }),
       round.reviewer,
     );
     f.db.run("UPDATE factory_order_finding SET severity = 'high' WHERE id = ?", [finding]);

@@ -21,11 +21,11 @@ export type FindingStanding = {
   orderId: string;
   reviewId: number;
   dimension: string;
-  file: string | null;
-  line: number | null;
+  file: string;
+  line: number;
   failure: string;
-  fix: string | null;
-  severity: string | null;
+  fix: string;
+  severity: string;
   raisedAt: string;
   answer: FindingAnswer | null;
   resolution: string | null;
@@ -43,11 +43,11 @@ type Row = {
   order_id: string;
   review_id: number;
   dimension: string;
-  file: string | null;
-  line: number | null;
+  file: string;
+  line: number;
   failure: string;
-  fix: string | null;
-  severity: string | null;
+  fix: string;
+  severity: string;
   raised_at: string;
   answer: FindingAnswer | null;
   resolution: string | null;
@@ -92,7 +92,7 @@ function standing(row: Row): FindingStanding {
 }
 
 const STANDING_SQL = `
-  SELECT f.id, f.order_id, f.review_id, f.dimension, f.file, f.line, f.failure, f.fix, f.severity,
+  SELECT f.id, rv.order_id, f.review_id, f.dimension, f.file, f.line, f.failure, f.fix, f.severity,
          f.raised_at, a.answer, a.resolution,
          (SELECT count(*) FROM factory_order_finding_answer n WHERE n.finding_id = f.id) AS answers,
          (SELECT count(*) FROM factory_order_finding_ruling n
@@ -100,6 +100,7 @@ const STANDING_SQL = `
          r.ruling, r.reason AS ruling_reason, o.ruling AS owner_ruling, o.reason AS owner_reason,
          CASE WHEN o.id > coalesce(r.id, 0) THEN o.ruling ELSE r.ruling END AS latest
   FROM factory_order_finding f
+  JOIN factory_order_review rv ON rv.id = f.review_id
   LEFT JOIN factory_order_finding_answer a
     ON a.id = (SELECT max(n.id) FROM factory_order_finding_answer n WHERE n.finding_id = f.id)
   LEFT JOIN factory_order_finding_ruling r
@@ -110,7 +111,7 @@ const STANDING_SQL = `
 export function findingStandingsOf(db: Database, orderIds: readonly string[]): FindingStanding[] {
   return db
     .query<Row, [string]>(
-      `${STANDING_SQL} WHERE f.order_id IN (SELECT value FROM json_each(?)) ORDER BY f.id`,
+      `${STANDING_SQL} WHERE rv.order_id IN (SELECT value FROM json_each(?)) ORDER BY f.id`,
     )
     .all(JSON.stringify(orderIds))
     .map(standing);

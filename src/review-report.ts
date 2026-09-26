@@ -1,11 +1,9 @@
 import type { Database } from "bun:sqlite";
-import { findingLocation } from "./finding-location";
 import { type FindingStanding, orderFindingStandings, owesAnswer } from "./order-finding-state";
 import type { ReviewReport } from "./review-artifact";
 
 function location(finding: FindingStanding): string {
-  const where = findingLocation(finding);
-  return where === null ? "no location recorded" : `\`${where}\``;
+  return `\`${finding.file}:${finding.line}\``;
 }
 
 function section(heading: string, lines: string[]): string {
@@ -44,8 +42,8 @@ export function renderReviewReport(db: Database, reviewId: number, report: Revie
       "Blocking findings",
       findings.map(
         (finding) =>
-          `- **${finding.severity ?? "no severity recorded"}** ${location(finding)} (${finding.dimension}, finding ${finding.id}): ` +
-          `${finding.failure}${finding.fix ? ` Fix: ${finding.fix}` : ""}`,
+          `- **${finding.severity}** ${location(finding)} (${finding.dimension}, finding ${finding.id}): ` +
+          `${finding.failure} Fix: ${finding.fix}`,
       ),
     ),
     section(

@@ -328,7 +328,7 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
        LEFT JOIN factory_worker fw ON fw.name = e.worker
        LEFT JOIN factory_order_commit c ON c.order_id = e.order_id AND c.sha = e.commit_sha
        LEFT JOIN factory_order_check ch ON ch.id = e.check_id AND ch.order_id = e.order_id
-       LEFT JOIN factory_order_finding f ON f.id = e.finding_id AND f.order_id = e.order_id
+       LEFT JOIN factory_order_finding f ON f.id = e.finding_id
        LEFT JOIN factory_order_finding_answer a ON a.id = e.answer_id
        WHERE e.order_id = ? ORDER BY e.ts, e.id`,
     )

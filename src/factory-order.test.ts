@@ -51,6 +51,7 @@ import {
   confiningCheckSandbox,
   declareCheck,
   integratedRepo,
+  located,
   orderWorktree,
   repoWithoutTrunk,
   reviewIn,
@@ -774,7 +775,12 @@ describe("factory order report records", () => {
         context.recordFile({ path: "src/factory-operator.ts", added: 18, removed: 2 });
         context.recordCheck({ command: "bun run verify", exitCode: 0, result: "green" });
         const round = reviewIn(database, "order-2", worker);
-        raiseOrderFinding(database, "order-2", { dimension: "tests", failure: "holds" }, round.reviewer);
+        raiseOrderFinding(
+          database,
+          "order-2",
+          located({ dimension: "tests", failure: "holds" }),
+          round.reviewer,
+        );
         context.recordDocument("docs/factory.md");
         context.recordEnvironment(setupReport);
         context.stop({ status: "completed", reason: "verified" });
@@ -812,7 +818,11 @@ describe("factory order report records", () => {
       command: "bun run verify",
     });
     expect(
-      database.query("SELECT dimension FROM factory_order_finding WHERE order_id = 'order-2'").get(),
+      database
+        .query(
+          "SELECT f.dimension FROM factory_order_finding f JOIN factory_order_review r ON r.id = f.review_id WHERE r.order_id = 'order-2'",
+        )
+        .get(),
     ).toEqual({
       dimension: "tests",
     });
@@ -1793,7 +1803,7 @@ describe("factory order report records", () => {
     const finding = raiseOrderFinding(
       database,
       "order-1",
-      { dimension: "tests", failure: "coverage is present" },
+      located({ dimension: "tests", failure: "coverage is present" }),
       reviewIn(database, "order-1", worker).reviewer,
       "2026-09-18T10:04:00.000Z",
     );

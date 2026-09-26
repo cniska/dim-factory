@@ -36,7 +36,7 @@ import {
   WORKER_TOKEN_VAR,
 } from "./factory-worker";
 import { fakeHarness } from "./fake-harness";
-import { confiningCheckSandbox, declareCheck, integratedRepo } from "./fixtures.test-support";
+import { confiningCheckSandbox, declareCheck, integratedRepo, located } from "./fixtures.test-support";
 import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
 import { runOrderBuildLive } from "./order-build";
 import {
@@ -748,7 +748,7 @@ describe("builder station", () => {
       const finding = raiseOrderFinding(
         db,
         orderId,
-        { dimension: "correctness", failure: "Count the actual order provenance." },
+        located({ dimension: "correctness", failure: "Count the actual order provenance." }),
         reviewer.name,
       );
       closeOrderReview(db, review.id, "closed", reviewer.name);
@@ -783,7 +783,7 @@ describe("builder station", () => {
       const head = git(followup.worktree, ["rev-parse", "HEAD"]);
       expect(head).not.toBe(first);
       expect(brief).toContain(
-        `# Review findings\n- Finding ${finding} (correctness, no location recorded): Count the actual order provenance.`,
+        `# Review findings\n- Finding ${finding} (correctness, src/example.ts:1): Count the actual order provenance.`,
       );
       expect(followup.builder).toBe(firstBuild.builder);
       expect(answers(db)).toEqual([

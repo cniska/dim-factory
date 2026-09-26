@@ -9,7 +9,7 @@ import { appendOrderEvent } from "./factory-order-ledger";
 import { claimOrder, moveOrder, queueOrder } from "./factory-order-lifecycle";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { fakeHarness } from "./fake-harness";
-import { integratedRepo, orderWorktree, reviewOutput } from "./fixtures.test-support";
+import { integratedRepo, located, orderWorktree, reviewOutput } from "./fixtures.test-support";
 import { runOrderCommand } from "./order-command";
 import { answerOrderFindings, raiseOrderFinding, recordOwnerRuling } from "./order-finding";
 import {
@@ -285,9 +285,9 @@ describe("a review round", () => {
     };
     runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
 
-    expect(() => raiseOrderFinding(db, "order-1", { dimension: "tests", failure: "mine" }, worker)).toThrow(
-      /no review open/,
-    );
+    expect(() =>
+      raiseOrderFinding(db, "order-1", located({ dimension: "tests", failure: "mine" }), worker),
+    ).toThrow(/no review open/);
   });
 
   test("a reviewer that did not finish leaves an aborted round, not a clean one", () => {
@@ -642,11 +642,11 @@ describe("a review round", () => {
             orderId: "order-1",
             reviewId: 1,
             dimension: "tests",
-            file: null,
-            line: null,
+            file: "src/example.ts",
+            line: 1,
             failure: "no test",
-            fix: null,
-            severity: null,
+            fix: "add the test",
+            severity: "medium",
             raisedAt: "2026-09-26T10:00:00.000Z",
             answer: "refused",
             resolution: "later slice",
@@ -663,7 +663,8 @@ describe("a review round", () => {
     );
     expect(brief).toContain(
       [
-        "- Finding 7 (tests, no location recorded): no test",
+        "- Finding 7 (tests, src/example.ts:1): no test",
+        "  - Fix asked for: add the test",
         "  - Builder's answer: refused: later slice",
         "  - The owner overturned the refusal: fix it here",
       ].join("\n"),

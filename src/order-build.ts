@@ -11,7 +11,6 @@ import { latestOrderCommit, pendingRebaseConflict } from "./factory-order-commit
 import { appendOrderEvent } from "./factory-order-ledger";
 import { claimOrder } from "./factory-order-lifecycle";
 import { isActiveOrderRun, OrderNotDone, orderStatus, PlanApprovalRefused } from "./factory-order-status";
-import { findingLocation } from "./finding-location";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-launch";
 import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
@@ -206,7 +205,7 @@ export function reviewFindingsForBuild(db: Database, orderId: string): ReviewFin
       finding: finding.id,
       brief: [
         describeFinding(finding),
-        ...(finding.fix ? [`  Fix: ${finding.fix}`] : []),
+        `  Fix: ${finding.fix}`,
         ...(finding.ownerRuling === "refusal_overturned"
           ? [`  The owner overturned your refusal, so answer it fixed: ${finding.ownerReason}`]
           : []),
@@ -220,8 +219,7 @@ export function reviewFindingsForBuild(db: Database, orderId: string): ReviewFin
 }
 
 function describeFinding(finding: FindingStanding): string {
-  const where = findingLocation(finding) ?? "no location recorded";
-  return `Finding ${finding.id} (${finding.dimension}, ${where}): ${finding.failure}`;
+  return `Finding ${finding.id} (${finding.dimension}, ${finding.file}:${finding.line}): ${finding.failure}`;
 }
 
 export type BuildOutcome = { builder: string; runId: string; worktree: string; exitCode: number };

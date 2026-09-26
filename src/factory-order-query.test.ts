@@ -13,7 +13,7 @@ import { appendOrderEvent } from "./factory-order-ledger";
 import { claimOrder as claimOrderAt, queueOrder } from "./factory-order-lifecycle";
 import { closeOrderReview } from "./factory-order-review";
 import type { OrderClaim } from "./factory-order-status";
-import { integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
+import { integratedRepo, located, reviewIn, workerIn } from "./fixtures.test-support";
 import { answerOrderFindings, raiseOrderFinding, ruleOnOrderFinding } from "./order-finding";
 import { findQuery } from "./queries";
 import { SCHEMA_SQL } from "./schema";
@@ -53,7 +53,7 @@ describe("factory order query", () => {
     const finding = raiseOrderFinding(
       db,
       "order-reopened",
-      { dimension: "tests", failure: "no test" },
+      located({ dimension: "tests", failure: "no test" }),
       first.reviewer,
     );
     closeOrderReview(db, first.review, "closed", first.reviewer);
@@ -95,7 +95,7 @@ describe("factory order query", () => {
       queueOrder(db, { id, project: "cniska/dim-factory", title: id }, worker);
       claimOrder(db, id, { ...claim, runId: `run-${id}` }, worker);
       const round = reviewIn(db, id, worker);
-      const finding = raiseOrderFinding(db, id, { dimension, failure: `${id} gap` }, round.reviewer);
+      const finding = raiseOrderFinding(db, id, located({ dimension, failure: `${id} gap` }), round.reviewer);
       closeOrderReview(db, round.review, "closed", round.reviewer);
       if (answered) {
         answerOrderFindings(db, id, `build-${id}`, [{ finding, answer: "fixed", resolution: null }], worker);
@@ -166,7 +166,7 @@ describe("factory order query", () => {
       const raised = raiseOrderFinding(
         db,
         "order-status",
-        { dimension, failure },
+        located({ dimension, failure }),
         reviewer,
         "2026-09-18T10:04:00.000Z",
       );
@@ -324,7 +324,7 @@ describe("factory order query", () => {
     const raised = raiseOrderFinding(
       db,
       "order-123",
-      { dimension: "tests", failure: "holds" },
+      located({ dimension: "tests", failure: "holds" }),
       reviewIn(db, "order-123", worker, "2026-09-18T10:02:30.000Z").reviewer,
       "2026-09-18T10:03:00.000Z",
     );

@@ -22,7 +22,7 @@ import {
 import { approveOrderReview, closeOrderReview, recordOrderReviewArtifact } from "./factory-order-review";
 import type { OrderClaim } from "./factory-order-status";
 import { assembleItemView, assembleWallSnapshot, wallHandler } from "./factory-wall";
-import { integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
+import { integratedRepo, located, reviewIn, workerIn } from "./fixtures.test-support";
 import { answerOrderFindings, raiseOrderFinding, ruleOnOrderFinding } from "./order-finding";
 import { resolveHomeDir } from "./paths";
 import type { Role } from "./roles";
@@ -566,7 +566,7 @@ describe("factory wall item view", () => {
     const onTests = raiseOrderFinding(
       db,
       "order-worked",
-      { dimension: "tests", failure: "the rail has no test" },
+      located({ dimension: "tests", failure: "the rail has no test" }),
       reviewer,
       "2026-09-18T10:07:00.000Z",
     );
@@ -581,10 +581,10 @@ describe("factory wall item view", () => {
     const onStyle = raiseOrderFinding(
       db,
       "order-worked",
-      {
+      located({
         dimension: "style",
         failure: "the dialog should use a component library",
-      },
+      }),
       reviewer,
       "2026-09-18T10:08:00.000Z",
     );
@@ -792,7 +792,7 @@ describe("factory wall item view", () => {
     const finding = raiseOrderFinding(
       db,
       "order-reanswered",
-      { dimension: "tests", failure: "no test holds it" },
+      located({ dimension: "tests", failure: "no test holds it" }),
       first.reviewer,
     );
     closeOrderReview(db, first.review, "closed", first.reviewer);

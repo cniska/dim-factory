@@ -5,7 +5,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 61;
+export const SCHEMA_VERSION = 62;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -531,18 +531,15 @@ CREATE TABLE IF NOT EXISTS factory_order_review_artifact (
 
 CREATE TABLE IF NOT EXISTS factory_order_finding (
   id            INTEGER PRIMARY KEY,
-  order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
-  -- The round that raised it, so a finding names the diff it was read against and the
-  -- reviewer it came from is the one the factory spawned for that round.
+  -- The round that raised it, so a finding names the diff it was read against, the order
+  -- that diff belongs to, and the reviewer the factory spawned for that round.
   review_id     INTEGER NOT NULL REFERENCES factory_order_review(id) ON DELETE CASCADE,
   dimension     TEXT NOT NULL,
-  -- Nullable because rebuild writes every finding back as it was, and one recorded without a
-  -- location keeps none.
-  file          TEXT,
-  line          INTEGER,
+  file          TEXT NOT NULL CHECK (trim(file) <> ''),
+  line          INTEGER NOT NULL CHECK (line > 0),
   failure       TEXT NOT NULL CHECK (trim(failure) <> ''),
-  fix           TEXT,
-  severity      TEXT CHECK (severity IN ('critical', 'high', 'medium')),
+  fix           TEXT NOT NULL CHECK (trim(fix) <> ''),
+  severity      TEXT NOT NULL CHECK (severity IN ('critical', 'high', 'medium')),
   raised_at     TEXT NOT NULL
 );
 
