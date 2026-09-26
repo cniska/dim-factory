@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { returnedOrderArtifact, writeArtifactInTransaction } from "./order-artifacts";
+import { writeArtifactInTransaction } from "./order-artifacts";
 import { appendOrderEventInTransaction, now } from "./order-ledger";
 import { assertOrderActive } from "./order-status";
 import { workerIsOver } from "./worker";
@@ -147,26 +147,8 @@ export function recordOrderReviewArtifact(
     );
   }
   assertOrderActive(db, orderId);
-  const returned = returnedOrderArtifact(db, orderId, "review");
-  if (review.closed_at !== null && returned?.reviewId !== review.id) {
-    throw new ReviewNotOpen("review_closed", `review ${review.id} is closed`);
-  }
-  if (review.closed_at === null && returned) {
-    throw new ReviewNotOpen(
-      "review_open",
-      `review ${review.id} already has a returned artifact revision in progress`,
-    );
-  }
   if (review.closed_at !== null) {
-    const findings = db
-      .query<{ n: number }, [number]>("SELECT count(*) AS n FROM factory_order_finding WHERE review_id = ?")
-      .get(review.id)?.n;
-    const outcome = db
-      .query<{ outcome: string | null }, [number]>("SELECT outcome FROM factory_order_review WHERE id = ?")
-      .get(review.id)?.outcome;
-    if (outcome !== "closed" || findings) {
-      throw new ReviewNotOpen("review_closed", `review ${review.id} is not a clean review`);
-    }
+    throw new ReviewNotOpen("review_closed", `review ${review.id} is closed`);
   }
   return db.transaction(() =>
     writeArtifactInTransaction(

@@ -253,7 +253,6 @@ describe("factory order report records", () => {
     returnOrderArtifact(database, "returned-plan", operator, "Include the evidence behind the outcome.");
 
     expect(returnedOrderArtifact(database, "returned-plan", "plan")).toEqual({
-      station: "plan",
       reason: "Include the evidence behind the outcome.",
       artifactId: 1,
       body: "## Outcome\n\nKeep the artifact concise.",
@@ -874,9 +873,27 @@ describe("factory order report records", () => {
       expect(reviewRange(database, "order-1", wt)).toEqual({ base: trunkTip, head });
     });
 
+    test("an aborted round read nothing, so the next round reads the whole order", () => {
+      const { wt, database, first, second } = scene(unrelatedMove, { reviewed: false });
+      const read = reviewIn(database, "order-1", attemptOperator, undefined, second);
+      closeOrderReview(database, read.review, "aborted", read.reviewer);
+
+      expect(reviewRange(database, "order-1", wt)).toEqual({
+        base: git(wt, ["rev-parse", `${first}^`]),
+        head: second,
+      });
+    });
+
     test("a review whose last head the order no longer carries, with no rebase to explain it, is refused", () => {
       const { wt, database } = scene(unrelatedMove);
-      reviewIn(database, "order-1", attemptOperator, undefined, "0000000000000000000000000000000000000000");
+      const read = reviewIn(
+        database,
+        "order-1",
+        attemptOperator,
+        undefined,
+        "0000000000000000000000000000000000000000",
+      );
+      closeOrderReview(database, read.review, "closed", read.reviewer);
 
       expect(() => reviewRange(database, "order-1", wt)).toThrow(/no longer carries/);
     });

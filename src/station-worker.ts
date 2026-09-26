@@ -42,37 +42,31 @@ const STATION_ROLES = {
   build: "builder",
   review: "reviewer",
 } as const satisfies Record<OrderStationName, StationRole>;
-type ReturnedFor<Station extends OrderStationName> = Extract<ReturnedOrderArtifact, { station: Station }>;
 type StationRequest = Omit<HarnessLaunch, "harness" | "model" | "env">;
 
-type OrderStationOptions<Station extends OrderStationName> = {
+type OrderStationOptions = {
   db: Database;
   orderId: string;
-  station: Station;
+  station: OrderStationName;
   parentWorker: string;
   harness: HarnessLaunch["harness"];
   env?: Record<string, string | undefined>;
-  useReturnedArtifact?: boolean;
   requireReturnedArtifact?: boolean;
-  request(context: { returned: ReturnedFor<Station> | null; orderWorker: OrderWorker }): StationRequest;
-  onPrepared?(orderWorker: OrderWorker, returned: ReturnedFor<Station> | null): void;
+  request(context: { returned: ReturnedOrderArtifact | null; orderWorker: OrderWorker }): StationRequest;
+  onPrepared?(orderWorker: OrderWorker): void;
 };
 
-export type OrderStationTurn<Station extends OrderStationName> = {
+export type OrderStationTurn = {
   orderWorker: OrderWorker;
-  returned: ReturnedFor<Station> | null;
+  returned: ReturnedOrderArtifact | null;
   worker?: string;
   run: Pick<HarnessLaunchResult, "exitCode" | "output" | "failureReason" | "harnessExitCode">;
 };
 
-function prepareOrderStation<Station extends OrderStationName>(options: OrderStationOptions<Station>) {
+function prepareOrderStation(options: OrderStationOptions) {
   const role = STATION_ROLES[options.station];
   assertOperator(options.db, options.parentWorker, `delegate ${role}`);
-  const returned = (
-    options.useReturnedArtifact === false
-      ? null
-      : returnedOrderArtifact(options.db, options.orderId, options.station)
-  ) as ReturnedFor<Station> | null;
+  const returned = returnedOrderArtifact(options.db, options.orderId, options.station);
   if (options.requireReturnedArtifact && !returned) {
     throw new Error(`order ${options.orderId} has no returned ${options.station} artifact to revise`);
   }
@@ -83,7 +77,7 @@ function prepareOrderStation<Station extends OrderStationName>(options: OrderSta
     options.parentWorker,
     options.harness,
   );
-  options.onPrepared?.(orderWorker, returned);
+  options.onPrepared?.(orderWorker);
   const { model } = route(role, options.harness, options.env);
   const request = {
     ...options.request({ returned, orderWorker }),
@@ -94,12 +88,12 @@ function prepareOrderStation<Station extends OrderStationName>(options: OrderSta
   return { orderWorker, returned, request };
 }
 
-export async function runOrderStationLive<Station extends OrderStationName>(
-  options: OrderStationOptions<Station> & {
+export async function runOrderStationLive(
+  options: OrderStationOptions & {
     adapter?: HarnessAdapter;
     onAssigned?: (worker: string, sessionId: string, attribution: ExecutionAttribution) => void;
   },
-): Promise<OrderStationTurn<Station>> {
+): Promise<OrderStationTurn> {
   const { orderWorker, returned, request } = prepareOrderStation(options);
   const run = await runOrderWorkerHarnessLive(
     options.db,
@@ -120,7 +114,7 @@ export async function resumeOrderStationLive(options: {
   env?: Record<string, string | undefined>;
   adapter?: HarnessAdapter;
   request: StationRequest;
-}): Promise<OrderStationTurn<OrderStationName>["run"]> {
+}): Promise<OrderStationTurn["run"]> {
   const role = STATION_ROLES[options.station];
   const orderWorker = readOrderWorker(options.db, options.orderId, role);
   refuseHarnessSwitch(orderWorker, options.harness);

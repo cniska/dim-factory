@@ -22,6 +22,7 @@ import { runOrderCommand } from "./order-command";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
 import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { queueOrder, startOrder } from "./order-lifecycle";
+import { orderState } from "./order-state";
 import { approvePlan } from "./station-approvals.test-support";
 import { ReviewRefused, reviewerBrief, reviewRange, runOrderReviewLive } from "./station-review";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
@@ -142,7 +143,7 @@ function slice(
 }
 
 describe("a review round", () => {
-  test("returns a Review artifact to the same reviewer and approves its revision", async () => {
+  test("reads the same diff again in a new round when its Review artifact is returned", async () => {
     const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
     slice(db, dir, worker, "review-artifact");
     const done = await review(db, operator, dir, answering(reviewOutput()));
@@ -162,20 +163,16 @@ describe("a review round", () => {
         },
       ),
     ).toContain("returned");
-    const returnedReview = returnedOrderArtifact(db, "order-1", "review");
-    const reviewRange = db
-      .query<{ base_sha: string; head_sha: string }, [number]>(
-        "SELECT base_sha, head_sha FROM factory_order_review WHERE id = ?",
-      )
-      .get(done.review);
-    expect(returnedReview).toMatchObject({
-      station: "review",
+    expect(returnedOrderArtifact(db, "order-1", "review")).toMatchObject({
       reason: "Explain which checks support the verdict.",
-      reviewId: done.review,
       body: expect.stringContaining("## Verdict\n\n**May advance.** The change does what the plan asked."),
-      baseSha: reviewRange?.base_sha,
-      headSha: reviewRange?.head_sha,
     });
+    const roundRange = (id: number) =>
+      db
+        .query<{ base_sha: string; head_sha: string }, [number]>(
+          "SELECT base_sha, head_sha FROM factory_order_review WHERE id = ?",
+        )
+        .get(id);
     expect(() =>
       runOrderCommand(db, ["approve", "order-1"], null, dir, {
         ...machine,
@@ -193,8 +190,11 @@ describe("a review round", () => {
       return { output: reviewOutput({ verdict: "The checks named in coverage support it." }) };
     });
     expect(revised.reviewer).toBe(done.reviewer);
-    expect(revised.review).toBe(done.review);
-    expect(revisionArgv.join(" ")).toContain("The owner returned this Review artifact for revision.");
+    expect(revised.review).not.toBe(done.review);
+    expect(roundRange(revised.review)).toEqual(
+      roundRange(done.review) as { base_sha: string; head_sha: string },
+    );
+    expect(revisionArgv.join(" ")).toContain("# Returned Review artifact");
     expect(revisionArgv.join(" ")).toContain("Explain which checks support the verdict.");
     expect(approveOrder(db, "order-1", operator, undefined)).toBe("review");
     expect(
@@ -624,7 +624,7 @@ describe("a review round", () => {
     expect(brief).toContain("No approved plan is recorded for this order.");
   });
 
-  test("refuses a returned artifact that carries findings", async () => {
+  test("sends the order to build when the round after a return raises a finding", async () => {
     const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
     slice(db, dir, worker, "a");
     const env = {
@@ -635,9 +635,15 @@ describe("a review round", () => {
     };
     await review(db, operator, dir, answering(reviewOutput()));
     runOrderCommand(db, ["return", "order-1", "--reason", "Say more."], null, dir, env);
-    await expect(
-      review(db, operator, dir, answering(reviewOutput({ findings: [findingOn("a.txt")] }))),
-    ).rejects.toThrow("a returned Review artifact cannot change its findings");
+    const again = await review(
+      db,
+      operator,
+      dir,
+      answering(reviewOutput({ findings: [findingOn("a.txt")] })),
+    );
+
+    expect(again.findings).toBe(1);
+    expect(orderState(db, "order-1")).toEqual({ station: "build", next: "run" });
   });
 
   describe("a later round", () => {

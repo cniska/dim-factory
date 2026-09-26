@@ -55,65 +55,18 @@ export function writeArtifactInTransaction(
   return artifactId;
 }
 
-export type ReturnedOrderArtifact =
-  | { station: "plan"; reason: string; artifactId: number; body: string }
-  | { station: "build"; reason: string; artifactId: number; body: string; headSha: string }
-  | {
-      station: "review";
-      reason: string;
-      artifactId: number;
-      reviewId: number;
-      body: string;
-      baseSha: string;
-      headSha: string;
-    };
-
-export function returnedOrderArtifact(
-  db: Database,
-  orderId: string,
-  station: "plan",
-): Extract<ReturnedOrderArtifact, { station: "plan" }> | null;
-
-export function returnedOrderArtifact(
-  db: Database,
-  orderId: string,
-  station: "build",
-): Extract<ReturnedOrderArtifact, { station: "build" }> | null;
-
-export function returnedOrderArtifact(
-  db: Database,
-  orderId: string,
-  station: "review",
-): Extract<ReturnedOrderArtifact, { station: "review" }> | null;
-
-export function returnedOrderArtifact(
-  db: Database,
-  orderId: string,
-  station: Station,
-): ReturnedOrderArtifact | null;
+export type ReturnedOrderArtifact = { reason: string; artifactId: number; body: string };
 
 export function returnedOrderArtifact(
   db: Database,
   orderId: string,
   station: Station,
 ): ReturnedOrderArtifact | null {
-  const returned = db
-    .query<
-      {
-        reason: string;
-        artifactId: number;
-        body: string;
-        headSha: string | null;
-        reviewId: number | null;
-        baseSha: string | null;
-      },
-      [string, Station]
-    >(
-      `SELECT e.reason, a.id AS artifactId, a.body, a.head_sha AS headSha, a.review_id AS reviewId,
-              r.base_sha AS baseSha
+  return db
+    .query<ReturnedOrderArtifact, [string, Station]>(
+      `SELECT e.reason, a.id AS artifactId, a.body
        FROM factory_order_event e
        JOIN factory_order_artifact a ON a.id = e.artifact_id
-       LEFT JOIN factory_order_review r ON r.id = a.review_id
        WHERE e.order_id = ? AND e.kind = 'artifact_returned' AND a.kind = ?
          AND NOT EXISTS (
            SELECT 1 FROM factory_order_event w
@@ -124,19 +77,6 @@ export function returnedOrderArtifact(
        ORDER BY e.id DESC LIMIT 1`,
     )
     .get(orderId, station);
-  if (!returned) return null;
-  const { reason, artifactId, body } = returned;
-  if (station === "plan") return { station, reason, artifactId, body };
-  if (station === "build") return { station, reason, artifactId, body, headSha: returned.headSha as string };
-  return {
-    station,
-    reason,
-    artifactId,
-    body,
-    reviewId: returned.reviewId as number,
-    baseSha: returned.baseSha as string,
-    headSha: returned.headSha as string,
-  };
 }
 
 export function recordOrderPlan(

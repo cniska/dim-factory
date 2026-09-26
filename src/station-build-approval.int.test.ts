@@ -100,11 +100,9 @@ describe("build approval integration", () => {
     ).toContain("returned");
     expect(orderState(db, "failed-return-order")).toEqual({ station: "build", next: "run" });
     expect(returnedOrderArtifact(db, "failed-return-order", "build")).toEqual({
-      station: "build",
       reason: "Explain the verified result for review.",
       artifactId: build,
       body: "## Outcome\n\nBuild it.",
-      headSha: repo.sha,
     });
     db.close();
   });
@@ -187,11 +185,9 @@ describe("build approval integration", () => {
       ),
     ).toContain("returned");
     expect(returnedOrderArtifact(db, "build-approval-order", "build")).toEqual({
-      station: "build",
       reason: "Explain the verified result, not the command log.",
       artifactId: build,
       body: "The build is complete and verified.",
-      headSha: repo.sha,
     });
     expect(() =>
       recordOrderBuild(db, "build-approval-order", "## Outcome\n\nNo turn.", repo.sha, builder.name),

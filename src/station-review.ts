@@ -19,7 +19,7 @@ import { stationDirectory } from "./station-directory";
 import type { PlanSlice } from "./station-plan-artifact";
 import { parseReviewReport, type ReviewFinding } from "./station-review-artifact";
 import { renderReviewReport } from "./station-review-report";
-import { runOrderStationLive } from "./station-worker";
+import { type OrderStationTurn, runOrderStationLive } from "./station-worker";
 import type { Capability } from "./worker-capabilities";
 
 export class ReviewRefused extends Error {
@@ -67,7 +67,13 @@ export function reviewRange(db: Database, orderId: string, dir: string): { base:
   }
   const last = db
     .query<{ head_sha: string }, [string]>(
-      "SELECT head_sha FROM factory_order_review WHERE order_id = ? ORDER BY round DESC LIMIT 1",
+      `SELECT r.head_sha FROM factory_order_review r
+       WHERE r.order_id = ? AND r.outcome = 'closed' AND NOT EXISTS (
+         SELECT 1 FROM factory_order_artifact a
+         JOIN factory_order_event e ON e.artifact_id = a.id AND e.kind = 'artifact_returned'
+         WHERE a.review_id = r.id
+       )
+       ORDER BY r.round DESC LIMIT 1`,
     )
     .get(orderId);
   if (last) {
@@ -117,34 +123,14 @@ export function reviewerBrief(
   order: { id: string; title: string; description: string | null },
   range: { base: string; head: string },
   context: { plan: { body: string; slices: readonly PlanSlice[] } | null; earlier: FindingStanding[] },
-  revision?: { body: string; feedback: string },
+  returned: { body: string; feedback: string } | null = null,
 ): string {
-  const header = [
+  return [
     `You are the reviewer for factory order ${order.id} in this repository.`,
     "",
     `# ${order.title}`,
     order.description ?? "",
     "",
-  ];
-  if (revision) {
-    return [
-      ...header,
-      "The owner returned this Review artifact for revision. The factory renders the artifact from your report and from the findings this round already recorded, so those stay as they are; address only the owner's feedback.",
-      "Use dim-artifact for the shared artifact-writing and sizing contract.",
-      "",
-      "# Previous Review artifact",
-      revision.body,
-      "",
-      "# Owner feedback",
-      revision.feedback,
-      "",
-      ...REPORT_CONTRACT,
-      'Return "findings" empty; only a round that raised nothing is returned for revision, so no coverage entry reports findings.',
-      "Do not edit the repository.",
-    ].join("\n");
-  }
-  return [
-    ...header,
     "# Approved plan",
     context.plan?.body ??
       "No approved plan is recorded for this order. Judge the diff against the order's own words, and report the plan dimension as not_applicable with that reason.",
@@ -164,6 +150,18 @@ export function reviewerBrief(
           "",
         ]
       : []),
+    ...(returned
+      ? [
+          "# Returned Review artifact",
+          "The owner returned the last round's Review artifact, which read this same diff. Review it again with the owner's feedback in mind.",
+          "",
+          returned.body,
+          "",
+          "# Owner feedback",
+          returned.feedback,
+          "",
+        ]
+      : []),
     `Read the diff \`git diff ${range.base}..${range.head}\` and nothing else about how it came to be.`,
     "Judge it against the approved plan: name work that is missing, extra, or misunderstood.",
     "Check each claim at its source before raising it; a reading you did not verify is not a finding.",
@@ -177,8 +175,6 @@ export function reviewerBrief(
   ].join("\n");
 }
 
-type ReturnedReview = Extract<ReturnedOrderArtifact, { station: "review" }>;
-
 type ReviewedRound = { id: number; base: string; head: string; dir: string };
 
 function openRound(
@@ -187,9 +183,7 @@ function openRound(
   dir: string,
   assignmentId: string,
   worker: string,
-  returned: ReturnedReview | null,
 ): ReviewedRound {
-  if (returned) return { id: returned.reviewId, base: returned.baseSha, head: returned.headSha, dir };
   const range = reviewRange(db, orderId, dir);
   const round = openAssignedOrderReview(
     db,
@@ -204,7 +198,7 @@ function reviewerRequest(
   db: Database,
   order: { id: string; title: string; description: string | null },
   round: ReviewedRound,
-  returned: ReturnedReview | null,
+  returned: ReturnedOrderArtifact | null,
 ) {
   return {
     cwd: round.dir,
@@ -212,7 +206,7 @@ function reviewerRequest(
       order,
       round,
       { plan: latestApprovedPlan(db, order.id), earlier: earlierFindings(db, order.id, round.id) },
-      returned ? { body: returned.body, feedback: returned.reason } : undefined,
+      returned ? { body: returned.body, feedback: returned.reason } : null,
     ),
     capabilities: REVIEWER_CAPABILITIES,
     outputSchema: REVIEW_OUTPUT_SCHEMA,
@@ -258,13 +252,9 @@ function recordReviewResult(
   reviewer: string,
   raw: string,
   round: ReviewedRound,
-  returned: boolean,
 ): number {
   const report = parseReviewReport(raw);
-  if (returned && report.findings.length > 0) {
-    throw new Error("a returned Review artifact cannot change its findings");
-  }
-  if (!returned) assertLocations(report.findings, round);
+  assertLocations(report.findings, round);
   return db.transaction(() => {
     for (const finding of report.findings) {
       raiseOrderFinding(db, orderId, finding, reviewer);
@@ -296,9 +286,8 @@ export async function runOrderReviewLive(
   abortStrandedReview(db, orderId, worker);
   const dir = stationDirectory(options.dir, orderId);
   const harness = options.harness;
-  let returned: ReturnedReview | null = null;
   let opened: ReviewedRound | undefined;
-  let turn: Awaited<ReturnType<typeof runOrderStationLive<"review">>>;
+  let turn: OrderStationTurn;
   try {
     turn = await runOrderStationLive({
       db,
@@ -308,16 +297,13 @@ export async function runOrderReviewLive(
       harness,
       env: options.env,
       adapter: options.adapter,
-      onPrepared: (_assigned, artifact) => {
-        returned = artifact;
-      },
-      request: ({ orderWorker: assigned, returned: artifact }) => {
-        opened = openRound(db, orderId, dir, assigned.assignment.id, worker, artifact);
-        return reviewerRequest(db, order, opened, artifact);
+      request: ({ orderWorker: assigned, returned }) => {
+        opened = openRound(db, orderId, dir, assigned.assignment.id, worker);
+        return reviewerRequest(db, order, opened, returned);
       },
     });
   } catch (error) {
-    if (!returned && opened) {
+    if (opened) {
       const reason = workerFailureReason(
         "reviewer did not finish reviewing",
         error instanceof Error ? error.message : String(error),
@@ -331,11 +317,10 @@ export async function runOrderReviewLive(
     }
     throw error;
   }
-  returned = turn.returned;
   if (!opened) throw new Error("review round was not opened");
   const reviewer = turn.worker;
   if (!reviewer) {
-    if (!returned) closeOrderReview(db, opened.id, "aborted", worker);
+    closeOrderReview(db, opened.id, "aborted", worker);
     throw new Error("reviewer did not bootstrap its worker assignment");
   }
   db.run("UPDATE factory_order_review SET reviewer = ? WHERE id = ?", [reviewer, opened.id]);
@@ -345,18 +330,17 @@ export async function runOrderReviewLive(
       ? workerFailureReason("reviewer did not finish reviewing", turn.run.output, turn.run.failureReason)
       : undefined;
   if (outcome === "aborted") {
-    if (returned) throw new Error(reason);
     closeOrderReview(db, opened.id, outcome, worker, undefined, reason);
     return { review: opened.id, reviewer, findings: 0, outcome };
   }
   let findings: number;
   try {
-    findings = recordReviewResult(db, orderId, reviewer, turn.run.output, opened, Boolean(returned));
+    findings = recordReviewResult(db, orderId, reviewer, turn.run.output, opened);
   } catch (error) {
     const failure = error instanceof Error ? error.message : String(error);
-    if (!returned) closeOrderReview(db, opened.id, "aborted", worker, undefined, failure);
+    closeOrderReview(db, opened.id, "aborted", worker, undefined, failure);
     throw error;
   }
-  if (!returned) closeOrderReview(db, opened.id, outcome, worker, undefined, reason);
+  closeOrderReview(db, opened.id, outcome, worker, undefined, reason);
   return { review: opened.id, reviewer, findings, outcome };
 }

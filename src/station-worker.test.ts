@@ -131,7 +131,6 @@ describe("a station worker's run", () => {
           parentWorker: operator,
           harness: "codex",
           env,
-          useReturnedArtifact: false,
           request: () => request,
           adapter,
         }),

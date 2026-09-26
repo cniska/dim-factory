@@ -28,7 +28,7 @@ The report is one JSON object, defined in [`src/station-review-artifact.schema.j
 - `unverified` — each `{claim, would_settle}` that could not be checked.
 - `observations` — at most three strings, none of which blocks.
 
-Every property is present, and one with nothing to say is `null` or `[]`. Stop for the operator's gate after returning the report. If the owner returns the artifact, return the same structure with empty `findings`, addressing only the feedback; the factory renders it again from what the round recorded. A closed review is not accepted until the operator approves it with `dim order approve <order-id>`.
+Every property is present, and one with nothing to say is `null` or `[]`. Stop for the operator's gate after returning the report. If the owner returns the artifact, the next round reads the same diff again, briefed with the returned artifact and the owner's feedback, and may raise findings like any round. A closed review is not accepted until the operator approves it with `dim order approve <order-id>`.
 
 ## Entry contract
 
