@@ -20,7 +20,7 @@ import {
   workerIn,
 } from "./fixtures.test-support";
 import { rebuild } from "./ingest-sync";
-import { approveOrder, returnOrderArtifact } from "./order-approval";
+import { approveOrder, returnApprovedPlan, returnOrderArtifact } from "./order-approval";
 import {
   completeOrderSlice,
   nextOrderSlice,
@@ -259,6 +259,46 @@ describe("factory order report records", () => {
       artifactId: 1,
       body: "## Outcome\n\nKeep the artifact concise.",
     });
+    database.close();
+  });
+
+  test("returns an approved plan to the same planner with the operator's reason", () => {
+    const database = db();
+    const operator = attemptOperator;
+    const planner = workerIn(database, "planner");
+    queueOrder(database, { ...order, id: "replanned" }, operator);
+    start(database, "replanned", operator);
+    const planId = recordOrderPlan(database, "replanned", "Build the first approach.", planner, [
+      { title: "First approach", outcome: "It works." },
+    ]);
+    approveOrder(database, "replanned", operator, undefined);
+
+    returnApprovedPlan(database, "replanned", operator, "The approved approach cannot satisfy the request.");
+
+    expect(orderState(database, "replanned")).toEqual({ station: "plan", next: "run" });
+    expect(returnedOrderArtifact(database, "replanned", "plan")).toEqual({
+      reason: "The approved approach cannot satisfy the request.",
+      artifactId: planId,
+      body: "Build the first approach.",
+    });
+    expect(() => returnApprovedPlan(database, "replanned", operator, "again")).toThrow(
+      expect.objectContaining({ code: "not_next" }),
+    );
+    database.close();
+  });
+
+  test("refuses a return to planning while a build attempt is running", () => {
+    const database = db();
+    const operator = attemptOperator;
+    queueOrder(database, { ...order, id: "busy-replan" }, operator);
+    start(database, "busy-replan", operator);
+    approvePlan(database, "busy-replan", operator);
+    attemptIn(database, "busy-replan", runningBuilder(database), operator);
+
+    expect(() => returnApprovedPlan(database, "busy-replan", operator, "revise the plan")).toThrow(
+      expect.objectContaining({ code: "order_held_by_run" }),
+    );
+    expect(orderState(database, "busy-replan")).toEqual({ station: "build", next: "run" });
     database.close();
   });
 
@@ -874,6 +914,32 @@ describe("factory order report records", () => {
       );
 
       expect(reviewRange(database, "order-1", wt)).toEqual({ base: head, head });
+    });
+
+    test("a review after plan revision reads the whole order again", () => {
+      const { wt, database, first, second } = scene(unrelatedMove, { reviewed: false });
+      const read = reviewIn(database, "order-1", attemptOperator, undefined, second);
+      closeOrderReview(database, read.review, "closed", read.reviewer);
+      const oldPlan = database
+        .query<{ id: number }, []>("SELECT id FROM factory_order_artifact WHERE kind = 'plan'")
+        .get();
+      if (!oldPlan) throw new Error("the order has no plan");
+      appendOrderEvent(database, "order-1", {
+        kind: "artifact_returned",
+        worker: attemptOperator,
+        station: "plan",
+        artifactId: oldPlan.id,
+        reason: "The plan missed the requested behavior.",
+      });
+      recordOrderPlan(database, "order-1", "Build the requested behavior.", worker, [
+        { title: "Correct the behavior", outcome: "The request is met." },
+      ]);
+      approveOrder(database, "order-1", attemptOperator, undefined);
+
+      expect(reviewRange(database, "order-1", wt)).toEqual({
+        base: git(wt, ["rev-parse", `${first}^`]),
+        head: second,
+      });
     });
 
     test("a review after a rebase that replayed commits past the head it last read reads the whole order", () => {

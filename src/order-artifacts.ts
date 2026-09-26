@@ -60,12 +60,23 @@ export function returnedOrderArtifact(
        FROM factory_order_event e
        JOIN factory_order_artifact a ON a.id = e.artifact_id
        WHERE e.order_id = ? AND e.kind = 'artifact_returned' AND a.kind = ?
+         AND (a.kind = 'plan' OR e.id > (
+           SELECT coalesce(max(approved.id), 0) FROM factory_order_event approved
+           JOIN factory_order_artifact plan ON plan.id = approved.artifact_id
+           WHERE approved.order_id = e.order_id AND approved.kind = 'artifact_approved' AND plan.kind = 'plan'
+         ))
          AND NOT EXISTS (
            SELECT 1 FROM factory_order_event w
            JOIN factory_order_artifact wa ON wa.id = w.artifact_id
            WHERE w.order_id = e.order_id AND w.kind = 'artifact_written' AND wa.kind = a.kind
              AND w.id > e.id
          )
+         AND (a.kind <> 'review' OR NOT EXISTS (
+           SELECT 1 FROM factory_order_event w
+           JOIN factory_order_artifact wa ON wa.id = w.artifact_id
+           WHERE w.order_id = e.order_id AND w.kind = 'artifact_written' AND wa.kind = 'build'
+             AND w.id > e.id
+         ))
        ORDER BY e.id DESC LIMIT 1`,
     )
     .get(orderId, station);
@@ -104,6 +115,12 @@ export function recordOrderPlan(
 
 const APPROVED_PLAN = `EXISTS (
   SELECT 1 FROM factory_order_event e WHERE e.kind = 'artifact_approved' AND e.artifact_id = p.id
+) AND NOT EXISTS (
+  SELECT 1 FROM factory_order_event e WHERE e.kind = 'artifact_returned' AND e.artifact_id = p.id
+) AND p.id = (
+  SELECT latest.id FROM factory_order_artifact latest
+  WHERE latest.order_id = p.order_id AND latest.kind = 'plan'
+  ORDER BY latest.revision DESC LIMIT 1
 )`;
 
 export function recordOrderBuild(

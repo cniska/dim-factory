@@ -8,7 +8,7 @@ import { labelFor } from "./git-remote";
 import { HARNESSES, type HarnessName, parseHarness } from "./harness-name";
 import { recordedHarness } from "./harness-operator";
 import { requireCurrentHooks } from "./hooks";
-import { approveOrder, returnOrderArtifact } from "./order-approval";
+import { approveOrder, returnApprovedPlan, returnOrderArtifact, returnReviewToBuild } from "./order-approval";
 import { amendOrder, dropOrder, queueOrder, setOrderPriority } from "./order-lifecycle";
 import { isOrderLine, ORDER_LINES } from "./order-line";
 import { readyOrders } from "./order-ready";
@@ -30,7 +30,7 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--lin
        dim order plan <order-id> [--harness <${HARNESSES.join("|")}>]
        dim order build <order-id> [--harness <${HARNESSES.join("|")}>]
        dim order approve <order-id> [--reason "..."]
-       dim order return <order-id> --reason "..."
+       dim order return <order-id> --reason "..." [--to plan|build]
        dim order ship <order-id>
        dim order amend <order-id> [--title "..."] [--description "..."]
        dim order drop <order-id> --reason "..."
@@ -157,7 +157,18 @@ export function runOrderCommand(
     return `${orderId} is ${chosen}`;
   }
   if (command === "return") {
-    const reason = required(flags(rest, ["--reason"]), "--reason");
+    const given = flags(rest, ["--reason", "--to"]);
+    const reason = required(given, "--reason");
+    const destination = given.get("--to");
+    if (destination === "plan") {
+      returnApprovedPlan(db, orderId, worker, reason);
+      return `${orderId} approved plan returned to its planner`;
+    }
+    if (destination === "build") {
+      returnReviewToBuild(db, orderId, worker, reason);
+      return `${orderId} review returned to its builder`;
+    }
+    if (destination !== undefined) throw fail("--to must name plan or build");
     const station = returnOrderArtifact(db, orderId, worker, reason);
     return `${orderId} ${station} artifact returned to its worker`;
   }

@@ -398,6 +398,9 @@ export const factoryAnalytics: Query = {
        FROM factory_order_event written
        JOIN factory_order_event decided
          ON decided.artifact_id = written.artifact_id AND decided.kind IN ('artifact_approved', 'artifact_returned')
+        AND decided.id = (SELECT min(first.id) FROM factory_order_event first
+                          WHERE first.artifact_id = written.artifact_id
+                            AND first.kind IN ('artifact_approved', 'artifact_returned'))
        WHERE written.kind = 'artifact_written'${arg ? " AND written.order_id LIKE ? || '%'" : ""}`,
       ...params,
     );

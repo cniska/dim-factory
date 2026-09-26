@@ -8,10 +8,11 @@ export function latestApprovedPlan(
   const plan = db
     .query<{ id: number; body: string }, [string]>(
       `SELECT p.id, p.body FROM factory_order_artifact p
-       WHERE p.order_id = ? AND p.kind = 'plan' AND EXISTS (
-         SELECT 1 FROM factory_order_event e WHERE e.kind = 'artifact_approved' AND e.artifact_id = p.id
-       )
-       ORDER BY p.revision DESC LIMIT 1`,
+       WHERE p.order_id = ? AND p.kind = 'plan'
+         AND p.revision = (SELECT max(revision) FROM factory_order_artifact WHERE order_id = p.order_id AND kind = 'plan')
+         AND EXISTS (SELECT 1 FROM factory_order_event e WHERE e.kind = 'artifact_approved' AND e.artifact_id = p.id)
+         AND NOT EXISTS (SELECT 1 FROM factory_order_event e WHERE e.kind = 'artifact_returned' AND e.artifact_id = p.id)
+       LIMIT 1`,
     )
     .get(orderId);
   if (!plan) return null;

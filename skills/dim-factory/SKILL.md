@@ -39,12 +39,13 @@ Approval is the operator's check that the returned artifact answers the request.
 After plan approval:
 
 1. Run `dim order build <order-id>` once per slice, reading `dim q order <order-id>` after each. The factory assigns one builder identity for the order, and starts the selected harness in the order's worktree. After each turn, the runner runs the declared check in the check sandbox, commits the worktree the way your git config commits, records the commit and its files under the builder and the check under you, and fails the attempt with the check's output when it is red.
+   When the approved plan itself cannot satisfy the order, run `dim order return <order-id> --to plan --reason "..."` while build is next. Read `dim q order`, then delegate the same planner to revise it and approve that revision before building again. Keep implementation mistakes in build.
 2. After the final slice, read the single Build artifact for the whole order. Approve it with `dim order approve <order-id> --reason "..."` or return it to the same builder with `dim order return <order-id> --reason "..."`.
 3. Run `dim order review <order-id>`. The review reads the whole order. The factory creates the reviewer identity and resumes its provider session on later rounds.
-4. Read the Review artifact; its verdict says which of these follows. When the round raised findings, run `dim order build <order-id>`; the builder answers each one in its turn, and the runner records the answers under it, so no finding is answered by you. The next review round reads those answers. If the Review artifact of a round that raised nothing misses something, return it with `dim order return <order-id> --reason "..."`; `dim order review <order-id>` then runs a new round over the same diff with that feedback.
+4. Read the Review artifact; its verdict says which of these follows. When the round raised findings, run `dim order build <order-id>`; the builder answers each one in its turn, and the runner records the answers under it, so no finding is answered by you. The next review round reads those answers. If the Review artifact misses a code defect, run `dim order return <order-id> --to build --reason "..."`. If the Review artifact itself needs revision, return it with no `--to`; the reviewer runs a new round over the same diff with that feedback.
 5. Approve the current Review artifact with `dim order approve <order-id>` as the operator. The approval ships the order.
 
-Every station has the same control boundary: read the worker's returned artifact, check it against persisted evidence, then approve it or return it to that worker with feedback. A return does not change the station identity or erase the earlier artifact revision. The artifact is the explanation; the evidence is the source of truth.
+Every station has the same control boundary: read the worker's returned artifact, check it against persisted evidence, then approve it or return it with feedback. Each station keeps its worker identity across returns, and earlier artifact revisions stay in the record. The artifact is the explanation; the evidence is the source of truth.
 
 The loop is:
 
@@ -78,6 +79,7 @@ Return the order id, its next act, latest outcome, outstanding findings, and the
 
 - selecting an order from a queue when the caller supplied an explicit id
 - letting a builder run planning or a reviewer delegate review
+- continuing build against an approved plan the evidence shows is wrong
 - approving an artifact the operator did not read
 - running the next station before the current outcome is approved
 - treating a clean process exit as a shipped order

@@ -22,6 +22,7 @@ import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
 import { appendOrderEvent } from "./order-ledger";
 import { startOrder } from "./order-lifecycle";
 import { closeOrderReview, recordOrderReviewArtifact } from "./order-review";
+import { orderState } from "./order-state";
 import { orderStatus } from "./order-status";
 import type { Env } from "./paths";
 import { approveFinalBuildAt, approvePlan, approveReviewAt } from "./station-approvals.test-support";
@@ -302,6 +303,51 @@ describe("order command", () => {
         message: "order order-1 is done, so it cannot approve",
       }),
     );
+  });
+
+  test("an operator can return an approved plan while the order waits on build", () => {
+    const database = db();
+    queued(database);
+    started(database);
+    approvePlan(database, "order-1", resolveWorker(database, env));
+
+    expect(
+      runOrderCommand(database, ["return", "order-1", "--to", "plan", "--reason", "revise the slices"]),
+    ).toBe("order-1 approved plan returned to its planner");
+    expect(orderState(database, "order-1")).toEqual({ station: "plan", next: "run" });
+  });
+
+  test("an operator can return review to build for a code correction", () => {
+    const database = db();
+    queued(database);
+    started(database);
+    const operator = resolveWorker(database, env);
+    approvePlan(database, "order-1", operator);
+    attemptIn(database, "order-1", operator, operator);
+    landed(database, "order-1");
+    recordOrderBuild(database, "order-1", "Built the approved plan.", trunk.sha, operator);
+    const slice = nextOrderSlice(database, "order-1");
+    if (!slice) throw new Error("the order has no slice");
+    completeOrderSlice(database, "order-1", slice.id, operator);
+    runOrderCommand(database, ["approve", "order-1", "--reason", "the check passed"]);
+    const round = reviewIn(database, "order-1", operator, undefined, trunk.sha);
+    recordOrderReviewArtifact(database, "order-1", "The review found no defect.", round.reviewer);
+    closeOrderReview(database, round.review, "closed", round.reviewer);
+
+    expect(
+      runOrderCommand(database, ["return", "order-1", "--to", "build", "--reason", "fix the code"]),
+    ).toBe("order-1 review returned to its builder");
+    expect(orderState(database, "order-1")).toEqual({ station: "build", next: "run" });
+    expect(
+      database
+        .query<{ kind: string; station: string }, []>(
+          "SELECT kind, station FROM factory_order_event WHERE kind = 'artifact_returned' ORDER BY id",
+        )
+        .all(),
+    ).toEqual([
+      { kind: "artifact_returned", station: "review" },
+      { kind: "artifact_returned", station: "build" },
+    ]);
   });
 
   test("a ship lands the order's own commits on the trunk", () => {

@@ -4,6 +4,32 @@ import { SCHEMA_SQL } from "./db-schema";
 import { findQuery } from "./query-registry";
 
 describe("factory analytics", () => {
+  test("counts approval wait once when an approved plan later returns to planning", () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    db.run(
+      `INSERT INTO factory_order (id, project, title, created_at, updated_at)
+       VALUES ('replanned', 'cniska/dim-factory', 'Replan', '2026-09-18T09:00:00.000Z', '2026-09-18T09:05:00.000Z')`,
+    );
+    db.run(
+      `INSERT INTO factory_order_artifact (id, order_id, kind, revision, body)
+       VALUES (1, 'replanned', 'plan', 1, 'First plan')`,
+    );
+    db.run(
+      `INSERT INTO factory_order_event (order_id, ts, kind, artifact_id)
+       VALUES ('replanned', '2026-09-18T09:00:00.000Z', 'artifact_written', 1),
+              ('replanned', '2026-09-18T09:02:00.000Z', 'artifact_approved', 1),
+              ('replanned', '2026-09-18T09:05:00.000Z', 'artifact_returned', 1)`,
+    );
+
+    const result = findQuery("factory-analytics")?.run(db, { arg: "replanned" });
+    const metrics = new Map(result?.rows.map(([name, value]) => [name, value]));
+    expect(metrics.get("approval_wait_seconds")).toBe(120);
+    expect(metrics.get("verdict:approved:plan")).toBe(1);
+    expect(metrics.get("verdict:returned:plan")).toBe(1);
+    db.close();
+  });
+
   test("derives retries, outcomes, shipping, verdicts by artifact, attribution, and scheduling from domain rows", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);

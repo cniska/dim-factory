@@ -30,6 +30,7 @@ queued → plan → build → review → ship → done
 - **The operator** delegates each station to a worker, checks each artifact against the record, and approves it or returns it. It never does the work.
 - **Each station returns an artifact** — plan, Build artifact, Review artifact — that the operator approves (`dim order approve`) or sends back with a reason (`dim order return`). Only an artifact awaiting approval holds an order.
 - **Build runs slice by slice**, and review reads the whole order after the last one. A round's findings send the order back to build, where the builder answers each one once, `fixed` or `refused` with a reason. The next round is briefed with those answers and raises a new finding for any that still holds; a round that raises nothing writes the Review artifact.
+- **An order returns to the station that can correct it.** During build, the operator uses `dim order return <id> --to plan --reason "..."` when the approved plan needs revision. During review approval, `--to build` sends a code correction to the builder. A return without `--to` sends the current artifact to its worker for revision. The revised plan needs approval before build resumes from its slices. A plan revision needs fresh Build and Review approvals, and Review reads the whole order again.
 - **Ship** follows the Review approval and ends the order (see [Done](#done)).
 - **A failed attempt** leaves the order where its evidence puts it, and the same command runs the station again. A build attempt running on an order refuses a second one. **A drop** is the owner deciding it will not be built. A started order's worktree stays available for inspection; `dim wt rm <id>` removes it after its work is saved.
 - **One act, one path.** Findings arrive only in the reviewer's report and answers only in the builder's build turn. Commits, files, checks and Build artifacts are written by the build runner and by ship, and Review artifacts by the review station; no command writes them.
@@ -42,7 +43,7 @@ dim order ready                          # the queue
 dim order priority|amend|drop <id> ...
 dim order plan|build|review <id> [--harness codex|claude]
 dim order approve <id> [--reason "..."]  # a Build artifact's approval gives its reason; a Review artifact's ships
-dim order return <id> --reason "..."
+dim order return <id> --reason "..." [--to plan|build]
 dim order ship <id>                      # retries a ship that failed with no station's work to do
 dim q order <id>                         # one order's full record and its next act
 dim q factory                            # every order's current state

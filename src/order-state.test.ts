@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { SCHEMA_SQL } from "./db-schema";
 import { workerIn } from "./fixtures.test-support";
+import { nextOrderSlice, returnedOrderArtifact } from "./order-artifacts";
 import { assertNext, type OrderAct, type OrderActRefused, orderState } from "./order-state";
 
 const ORDER = "order-1";
@@ -194,9 +195,86 @@ describe("the plan station", () => {
     r.giveBack(r.plan().id);
     expect(orderState(r.db, ORDER)).toEqual({ station: "plan", next: "run" });
   });
+
+  test("returns to planning when an approved plan is returned during build", () => {
+    const r = record();
+    const first = r.plan(2);
+    r.approve(first.id);
+    r.complete(first.slices[0] as number);
+    r.giveBack(first.id);
+    expect(orderState(r.db, ORDER)).toEqual({ station: "plan", next: "run" });
+    expect(nextOrderSlice(r.db, ORDER)).toBeNull();
+
+    const revised = r.plan();
+    expect(orderState(r.db, ORDER)).toEqual({ station: "plan", next: "approve" });
+    expect(nextOrderSlice(r.db, ORDER)).toBeNull();
+    r.approve(revised.id);
+    expect(orderState(r.db, ORDER)).toEqual({ station: "build", next: "run" });
+    expect(nextOrderSlice(r.db, ORDER)?.id).toBe(revised.slices[0]);
+  });
+
+  test("an unapproved plan revision cannot reuse an older plan approval", () => {
+    const r = record();
+    r.approve(r.plan().id);
+    const revised = r.plan();
+
+    expect(orderState(r.db, ORDER)).toEqual({ station: "plan", next: "approve" });
+    expect(nextOrderSlice(r.db, ORDER)).toBeNull();
+    r.approve(revised.id);
+    expect(orderState(r.db, ORDER)).toEqual({ station: "build", next: "run" });
+    expect(nextOrderSlice(r.db, ORDER)?.id).toBe(revised.slices[0]);
+  });
 });
 
 describe("the build station", () => {
+  test("requires approval of the latest Build artifact for the same head", () => {
+    const r = buildApproved();
+    r.build("c1");
+    expect(orderState(r.db, ORDER)).toEqual({ station: "build", next: "approve" });
+  });
+
+  test("a returned approved Build artifact sends review back to build", () => {
+    const r = reviewed();
+    const build = r.db
+      .query<{ id: number }, []>("SELECT id FROM factory_order_artifact WHERE kind = 'build'")
+      .get();
+    if (!build) throw new Error("the order has no Build artifact");
+    r.giveBack(r.artifact);
+    r.giveBack(build.id);
+    expect(orderState(r.db, ORDER)).toEqual({ station: "build", next: "run" });
+    expect(returnedOrderArtifact(r.db, ORDER, "review")).not.toBeNull();
+    r.approve(r.build("c1"));
+    expect(orderState(r.db, ORDER)).toEqual({ station: "review", next: "run" });
+    expect(returnedOrderArtifact(r.db, ORDER, "review")).toBeNull();
+  });
+
+  test("does not brief the builder with a returned Build artifact from an earlier plan", () => {
+    const r = built();
+    r.giveBack(r.build("c1"));
+    expect(returnedOrderArtifact(r.db, ORDER, "build")).not.toBeNull();
+    const oldPlan = r.db
+      .query<{ id: number }, []>("SELECT id FROM factory_order_artifact WHERE kind = 'plan'")
+      .get();
+    if (!oldPlan) throw new Error("the order has no plan");
+    r.giveBack(oldPlan.id);
+    r.approve(r.plan().id);
+
+    expect(returnedOrderArtifact(r.db, ORDER, "build")).toBeNull();
+  });
+  test("requires a new Build approval after a revised plan", () => {
+    const r = buildApproved();
+    const oldPlan = r.db
+      .query<{ id: number }, []>("SELECT id FROM factory_order_artifact WHERE kind = 'plan'")
+      .get();
+    if (!oldPlan) throw new Error("the order has no plan");
+    r.giveBack(oldPlan.id);
+    const revised = r.plan();
+    r.approve(revised.id);
+    r.complete(revised.slices[0] as number);
+    expect(orderState(r.db, ORDER)).toEqual({ station: "build", next: "run" });
+    r.build("c1");
+    expect(orderState(r.db, ORDER)).toEqual({ station: "build", next: "approve" });
+  });
   test("runs the builder while a slice of the approved plan is left", () => {
     const r = record();
     const plan = r.plan(2);
@@ -252,6 +330,25 @@ describe("the build station", () => {
 });
 
 describe("the review station", () => {
+  test("requires approval of the latest Review artifact for the same head", () => {
+    const r = buildApproved();
+    r.approve(r.review(r.round("c1")));
+    r.review(r.round("c1"));
+    expect(orderState(r.db, ORDER)).toEqual({ station: "review", next: "approve" });
+  });
+  test("requires a new Review approval after a revised plan", () => {
+    const r = shippable();
+    const oldPlan = r.db
+      .query<{ id: number }, []>("SELECT id FROM factory_order_artifact WHERE kind = 'plan'")
+      .get();
+    if (!oldPlan) throw new Error("the order has no plan");
+    r.giveBack(oldPlan.id);
+    const revised = r.plan();
+    r.approve(revised.id);
+    r.complete(revised.slices[0] as number);
+    r.approve(r.build("c1"));
+    expect(orderState(r.db, ORDER)).toEqual({ station: "review", next: "run" });
+  });
   test("runs the reviewer once the build is approved", () => {
     expect(orderState(buildApproved().db, ORDER)).toEqual({ station: "review", next: "run" });
   });
@@ -330,10 +427,22 @@ describe("an act's entry", () => {
     const r = record();
     r.approve(r.plan().id);
     expect(admitted(r)).toEqual(["build"]);
+    expect(() => assertNext(r.db, ORDER, "return", "plan")).not.toThrow();
+    expect(() => assertNext(r.db, ORDER, "return", "build")).toThrow(
+      expect.objectContaining({ code: "not_next" }),
+    );
   });
 
   test("admits only reviewing once the build is approved", () => {
     expect(admitted(buildApproved())).toEqual(["review"]);
+  });
+
+  test("admits a return to build while a Review artifact awaits approval", () => {
+    const r = reviewed();
+    expect(() => assertNext(r.db, ORDER, "return", "build")).not.toThrow();
+    expect(() => assertNext(r.db, ORDER, "return", "plan")).toThrow(
+      expect.objectContaining({ code: "not_next" }),
+    );
   });
 
   test("admits only shipping once every station's artifact is approved", () => {

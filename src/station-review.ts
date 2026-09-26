@@ -67,17 +67,28 @@ export function reviewRange(db: Database, orderId: string, dir: string): { base:
       `${head.out} is not a commit order ${orderId} recorded; only a build turn's commit can be reviewed`,
     );
   }
+  const planApproval =
+    db
+      .query<{ id: number }, [string]>(
+        `SELECT coalesce(max(e.id), 0) AS id FROM factory_order_event e
+       JOIN factory_order_artifact a ON a.id = e.artifact_id
+       WHERE e.order_id = ? AND e.kind = 'artifact_approved' AND a.kind = 'plan'`,
+      )
+      .get(orderId)?.id ?? 0;
   const last = db
-    .query<{ head_sha: string }, [string]>(
+    .query<{ head_sha: string }, [string, number]>(
       `SELECT r.head_sha FROM factory_order_review r
        WHERE r.order_id = ? AND r.outcome = 'closed' AND NOT EXISTS (
          SELECT 1 FROM factory_order_artifact a
          JOIN factory_order_event e ON e.artifact_id = a.id AND e.kind = 'artifact_returned'
          WHERE a.review_id = r.id
+       ) AND EXISTS (
+         SELECT 1 FROM factory_order_event opened
+         WHERE opened.kind = 'review_opened' AND opened.review_id = r.id AND opened.id > ?
        )
        ORDER BY r.round DESC LIMIT 1`,
     )
-    .get(orderId);
+    .get(orderId, planApproval);
   if (last) {
     const carried = carriedThroughRewrites(db, orderId, last.head_sha);
     if (carried && current.some((row) => carried.startsWith(row.sha)))

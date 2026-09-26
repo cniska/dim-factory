@@ -26,15 +26,25 @@ function wasReturned(db: Database, artifact: Artifact): boolean {
   );
 }
 
-function approvedArtifacts(db: Database, orderId: string, kind: "build" | "review"): Artifact[] {
+function approvedArtifact(
+  db: Database,
+  orderId: string,
+  kind: "build" | "review",
+  planId: number,
+): Artifact | null {
   return db
-    .query<Artifact, [string, string]>(
+    .query<Artifact, [string, string, number]>(
       `SELECT a.id, a.head_sha AS headSha, a.review_id AS reviewId FROM factory_order_artifact a
-       WHERE a.order_id = ? AND a.kind = ? AND EXISTS (
+       WHERE a.order_id = ? AND a.kind = ? AND a.id > ? AND EXISTS (
          SELECT 1 FROM factory_order_event e WHERE e.kind = 'artifact_approved' AND e.artifact_id = a.id
+       ) AND NOT EXISTS (
+         SELECT 1 FROM factory_order_event e WHERE e.kind = 'artifact_returned' AND e.artifact_id = a.id
+       ) AND a.revision = (
+         SELECT max(latest.revision) FROM factory_order_artifact latest
+         WHERE latest.order_id = a.order_id AND latest.kind = a.kind
        )`,
     )
-    .all(orderId, kind);
+    .get(orderId, kind, planId);
 }
 
 function buildCovers(db: Database, orderId: string, artifact: Artifact, head: string | null): boolean {
@@ -53,7 +63,8 @@ function reviewCovers(db: Database, orderId: string, artifact: Artifact, head: s
 }
 
 export function orderState(db: Database, orderId: string): OrderState {
-  if (!latestApprovedPlan(db, orderId)) {
+  const plan = latestApprovedPlan(db, orderId);
+  if (!plan) {
     const plan = latestArtifact(db, orderId, "plan");
     return { station: "plan", next: plan && !wasReturned(db, plan) ? "approve" : "run" };
   }
@@ -67,14 +78,24 @@ export function orderState(db: Database, orderId: string): OrderState {
   ) {
     return { station: "build", next: "run" };
   }
-  if (!approvedArtifacts(db, orderId, "build").some((one) => buildCovers(db, orderId, one, head))) {
+  const approvedBuild = approvedArtifact(db, orderId, "build", plan.id);
+  if (!approvedBuild || !buildCovers(db, orderId, approvedBuild, head)) {
     const build = latestArtifact(db, orderId, "build");
-    const ready = build !== null && buildCovers(db, orderId, build, head) && !wasReturned(db, build);
+    const ready =
+      build !== null &&
+      build.id > plan.id &&
+      buildCovers(db, orderId, build, head) &&
+      !wasReturned(db, build);
     return { station: "build", next: ready ? "approve" : "run" };
   }
-  if (!approvedArtifacts(db, orderId, "review").some((one) => reviewCovers(db, orderId, one, head))) {
+  const approvedReview = approvedArtifact(db, orderId, "review", plan.id);
+  if (!approvedReview || !reviewCovers(db, orderId, approvedReview, head)) {
     const review = latestArtifact(db, orderId, "review");
-    const ready = review !== null && reviewCovers(db, orderId, review, head) && !wasReturned(db, review);
+    const ready =
+      review !== null &&
+      review.id > plan.id &&
+      reviewCovers(db, orderId, review, head) &&
+      !wasReturned(db, review);
     return { station: "review", next: ready ? "approve" : "run" };
   }
   return { station: null, next: "ship" };
@@ -104,14 +125,17 @@ export function assertNext(
   orderId: string,
   act: "approve" | "return",
 ): Extract<OrderState, { next: "approve" }>;
-export function assertNext(db: Database, orderId: string, act: OrderAct): OrderState;
-export function assertNext(db: Database, orderId: string, act: OrderAct): OrderState {
+export function assertNext(db: Database, orderId: string, act: OrderAct, to?: "plan" | "build"): OrderState;
+export function assertNext(db: Database, orderId: string, act: OrderAct, to?: "plan" | "build"): OrderState {
   const status = orderStatus(db, orderId);
   if (isTerminalOrderStatus(status)) {
     throw new OrderActRefused(`order ${orderId} is ${status}, so it cannot ${act}`);
   }
   const state = orderState(db, orderId);
-  if (!ENTERS[act](state)) {
+  let admitted = ENTERS[act](state);
+  if (act === "return" && to === "plan") admitted = state.station === "build";
+  if (act === "return" && to === "build") admitted = state.station === "review" && state.next === "approve";
+  if (!admitted) {
     throw new OrderActRefused(`order ${orderId} waits on ${describeState(state)}, so it cannot ${act}`);
   }
   return state;
