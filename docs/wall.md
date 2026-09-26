@@ -14,7 +14,7 @@ It always serves on the same port, so a link survives restarts; `DIM_WALL_PORT` 
 Three columns — **Todo**, **Active**, **Done** — answer where each order is.
 
 - **Todo** holds orders never started, **Active** every started order that has not landed, **Done** the landed ones. A dropped order leaves the board.
-- **A card** shows the title, the station, the worker and its role, and time since the last event. It names a state only where the column cannot — an order waiting on the owner names the artifact, as "Plan awaiting approval" — and marks each failed check.
+- **A card** shows the title, the station, the worker and its role, and time since the last event. It names a state only where the column cannot — an order waiting on the owner names the artifact, as "Plan awaiting approval".
 - **Bounded columns.** Each draws its most recent cards up to a fixed number, and its header carries the whole count.
 - **The header** says whether the feed is live, stale or unavailable.
 
@@ -24,10 +24,9 @@ Opening a card shows that order alone, as a dialog over the board:
 
 - the order's identity and facts, on screen before the record loads
 - the **Plan**, **Build** and **Review** artifacts, each a document the owner can read in place of the transcript and diff
-- the history in order, with a timeline beside it naming the worker and time of each event
-- the files changed, with lines added and removed
+- the history in order, naming the worker and time of each event
 
-It renders what `dim q order` reads, so the two never tell different stories.
+It reads the same record as `dim q order`, which carries the commits, checks, findings and files behind each event.
 
 ## Rules
 

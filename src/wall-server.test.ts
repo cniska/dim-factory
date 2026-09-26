@@ -19,7 +19,6 @@ import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { appendOrderEvent } from "./order-ledger";
 import { queueOrder, setOrderPriority, startOrder } from "./order-lifecycle";
 import { closeOrderReview, recordOrderReviewArtifact } from "./order-review";
-import { resolveHomeDir } from "./paths";
 import type { Station } from "./station";
 import { approveFinalBuildAt, approvePlan, approveReviewAt } from "./station-approvals.test-support";
 import { assembleItemView, assembleWallSnapshot, wallHandler } from "./wall-server";
@@ -156,7 +155,6 @@ describe("factory wall snapshot", () => {
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:10:00.000Z"));
 
-    expect(snapshot.source).toBe("database");
     expect(snapshot.orders.map((order) => [order.title, order.station, order.status, order.stage])).toEqual([
       ["Show the wall", "build", "active", "active"],
       ["Unblock the queue", "plan", "active", "active"],
@@ -166,15 +164,12 @@ describe("factory wall snapshot", () => {
       id: "order-running",
       title: "Show the wall",
       line: "feat",
+      description: null,
       station: "build",
       stage: "active",
-      agent: worker,
-      worker,
-      role: "builder",
+      worker: { name: worker, role: "builder" },
       status: "active",
-      age: "8m",
       lastEventAt: "2026-09-18T10:02:00.000Z",
-      failedChecks: 0,
       next: "run",
     });
     expect(snapshot.orders[2]).toHaveProperty("next", null);
@@ -251,7 +246,7 @@ describe("factory wall snapshot", () => {
     expect(snapshot.orders.map((order) => [order.status, order.stage, order.station, order.next])).toEqual([
       ["active", "active", "plan", "run"],
     ]);
-    expect(snapshot.orders[0]).not.toHaveProperty("worker");
+    expect(snapshot.orders[0]?.worker).toBeNull();
     db.close();
   });
 
@@ -273,66 +268,6 @@ describe("factory wall snapshot", () => {
     const order = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).orders[0];
 
     expect(order?.lastEventAt).toBe("2026-09-18T09:05:00.000Z");
-    expect(order?.age).toBe("1h 0m");
-    db.close();
-  });
-
-  test("counts the checks a running order failed and leaves a passing one silent", () => {
-    const db = floor();
-    queueOrder(
-      db,
-      { id: "order-struggling", project: "cniska/dim-factory", title: "Fail the check twice" },
-      worker,
-      "2026-09-18T10:00:00.000Z",
-    );
-    started(db, "order-struggling", "2026-09-18T10:00:00.000Z");
-
-    recordOrderCheck(
-      db,
-      "order-struggling",
-      ranCheck({ command: "bun run verify", exitCode: 1, result: "lint failed" }),
-      worker,
-      "2026-09-18T10:02:00.000Z",
-    );
-    recordOrderCheck(
-      db,
-      "order-struggling",
-      ranCheck({ command: "bun run verify", exitCode: 2, result: "typecheck failed" }),
-      worker,
-      "2026-09-18T10:03:00.000Z",
-    );
-    recordOrderCheck(
-      db,
-      "order-struggling",
-      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
-      worker,
-      "2026-09-18T10:04:00.000Z",
-    );
-
-    queueOrder(
-      db,
-      { id: "order-clean", project: "cniska/dim-factory", title: "Pass the check first time" },
-      worker,
-      "2026-09-18T10:00:00.000Z",
-    );
-    started(db, "order-clean", "2026-09-18T10:00:00.000Z");
-    recordOrderCheck(
-      db,
-      "order-clean",
-      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
-      worker,
-      "2026-09-18T10:02:00.000Z",
-    );
-
-    const failures = new Map(
-      assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).orders.map((order) => [
-        order.id,
-        order.failedChecks,
-      ]),
-    );
-
-    expect(failures.get("order-struggling")).toBe(2);
-    expect(failures.get("order-clean")).toBe(0);
     db.close();
   });
 
@@ -354,8 +289,7 @@ describe("factory wall snapshot", () => {
     const card = assembleWallSnapshot(db, new Date("2026-09-18T10:02:00.000Z")).orders.find(
       (order) => order.id === "order-named",
     );
-    expect(card).toBeDefined();
-    expect(card).not.toHaveProperty("worker");
+    expect(card?.worker).toBeNull();
     db.run("PRAGMA foreign_keys = ON");
     expect(() =>
       db.run(
@@ -385,12 +319,7 @@ describe("factory wall snapshot", () => {
     take("reviewing", "reviewer", "plan");
     take("operating", "operator", "build");
 
-    const roles = new Map(
-      assembleWallSnapshot(db, new Date("2026-09-18T10:20:00.000Z")).orders.map((order) => [
-        order.id,
-        order.role,
-      ]),
-    );
+    const roles = new Map(assembleWallSnapshot(db).orders.map((order) => [order.id, order.worker?.role]));
 
     expect(roles.get("planning")).toBe("planner");
     expect(roles.get("building")).toBe("builder");
@@ -492,7 +421,7 @@ describe("factory wall snapshot", () => {
     try {
       const snapshot = answer(wall, "/api/snapshot");
       expect(snapshot.status).toBe(200);
-      expect((await snapshot.json()).source).toBe("database");
+      expect((await snapshot.json()).orders).toBeArray();
 
       expect(answer(wall, "/api/control", { method: "POST", body: "{}" }).status).toBe(404);
 
@@ -672,7 +601,7 @@ describe("factory wall item view", () => {
     const db = floor();
     seedWorkedOrder(db);
 
-    const view = assembleItemView(db, "order-worked", new Date("2026-09-18T10:20:00.000Z"));
+    const view = assembleItemView(db, "order-worked");
 
     expect(view?.entries.map((entry) => entry.kind)).toEqual([
       "queued",
@@ -698,164 +627,31 @@ describe("factory wall item view", () => {
     const db = floor();
     const reviewer = seedWorkedOrder(db, true);
 
-    const view = assembleItemView(db, "order-worked", new Date("2026-09-18T10:20:00.000Z"));
+    const view = assembleItemView(db, "order-worked");
 
     expect(view?.order.title).toBe("Work an item through");
     expect(view?.order.station).toBeNull();
     expect(view?.order.status).toBe("done");
-    expect(view?.order).not.toHaveProperty("worker");
+    expect(view?.order.worker).toBeNull();
     expect(view?.plan).toEqual({
       revision: 1,
       body: "## Outcome\n\nRead the order record.",
-      worker,
-      role: "builder",
+      worker: { name: worker, role: "builder" },
       approved: false,
     });
     expect(view?.build).toEqual({
       revision: 1,
       body: "## Summary\n\nThe order record is visible.",
-      headSha: trunk.sha,
-      worker,
-      role: "builder",
+      worker: { name: worker, role: "builder" },
       approved: false,
     });
     expect(view?.review).toEqual({
       revision: 1,
       body: "## Outcome\n\nThe reviewed change is ready.",
-      worker: reviewer,
-      role: "reviewer",
+      worker: { name: reviewer, role: "reviewer" },
       approved: false,
     });
-    expect([view?.runId, view?.project, view?.order.id]).toEqual([
-      undefined,
-      "cniska/dim-factory",
-      "order-worked",
-    ]);
-    db.close();
-  });
-
-  test("reads the changes beside the history rather than as moments in it", () => {
-    const db = floor();
-    seedWorkedOrder(db);
-
-    const view = assembleItemView(db, "order-worked", new Date("2026-09-18T10:20:00.000Z"));
-
-    expect(view?.changes).toEqual([{ path: "src/wall-server.ts", added: 62, removed: 7 }]);
-    expect(JSON.stringify(view?.entries)).not.toContain("src/wall-server.ts");
-    db.close();
-  });
-
-  test("leaves an uncounted change without a count rather than calling it zero", () => {
-    const db = floor();
-    queueOrder(
-      db,
-      {
-        id: "order-uncounted",
-        project: "cniska/dim-factory",
-        title: "Record a path and no counts",
-      },
-      worker,
-    );
-    started(db, "order-uncounted");
-    recordOrderFile(db, "order-uncounted", { path: "src/binary.png", added: null, removed: null }, worker);
-
-    const view = assembleItemView(db, "order-uncounted", new Date("2026-09-18T10:20:00.000Z"));
-
-    expect(view?.changes).toEqual([{ path: "src/binary.png" }]);
-    db.close();
-  });
-
-  test("writes a path under the home directory the way a person does", () => {
-    const db = floor();
-    const home = resolveHomeDir();
-    queueOrder(
-      db,
-      {
-        id: "order-at-home",
-        project: "cniska/dim-factory",
-        title: "Read a path as a person writes it",
-      },
-      worker,
-    );
-    started(db, "order-at-home");
-    recordOrderFile(
-      db,
-      "order-at-home",
-      { path: `${home}/code/dim-factory/src/paths.ts`, added: null, removed: null },
-      worker,
-    );
-
-    const view = assembleItemView(db, "order-at-home", new Date("2026-09-18T10:20:00.000Z"));
-
-    expect(view?.changes).toEqual([{ path: "~/code/dim-factory/src/paths.ts" }]);
-    db.close();
-  });
-
-  test("attaches each commit, check and finding to the event that produced it", () => {
-    const db = floor();
-    seedWorkedOrder(db);
-
-    const entries = assembleItemView(db, "order-worked", new Date("2026-09-18T10:20:00.000Z"))?.entries ?? [];
-
-    expect(entries.find((entry) => entry.kind === "commit_created")?.commit).toEqual({
-      sha: trunk.sha,
-      subject: "feat: read one order's record",
-    });
-    expect(entries.filter((entry) => entry.kind === "check_finished").map((entry) => entry.check)).toEqual([
-      { command: "bun run verify", exitCode: 1, result: "typecheck failed" },
-      { command: "bun run verify", exitCode: 0, result: "green" },
-      { command: "bun run verify", exitCode: 0, result: "green" },
-    ]);
-    expect(
-      entries.filter((entry) => entry.kind === "finding_answered").map((entry) => entry.finding),
-    ).toEqual([
-      { dimension: "tests", answer: "fixed", failure: "the rail has no test" },
-      {
-        dimension: "style",
-        answer: "refused",
-        failure: "the dialog should use a component library",
-        resolution: "the design doc rules a library out for this surface",
-      },
-    ]);
-    expect(entries.find((entry) => entry.kind === "environment_reported")?.environment).toEqual({
-      phase: "setup",
-      argv: ["/tmp/worked/scripts/worktree-setup.sh"],
-      exitCode: 0,
-      signal: null,
-      stdout: "",
-      stderr: "the port was already held",
-      resources: [{ port: 5433 }],
-    });
-    db.close();
-  });
-
-  test("attaches to a finding_answered entry the answer the builder gave", () => {
-    const db = floor();
-    queueOrder(db, { id: "order-answered", project: "cniska/dim-factory", title: "Answer" }, worker);
-    started(db, "order-answered");
-    const first = reviewIn(db, "order-answered", worker);
-    const finding = raiseOrderFinding(
-      db,
-      "order-answered",
-      located({ dimension: "tests", failure: "no test holds it" }),
-      first.reviewer,
-    );
-    closeOrderReview(db, first.review, "closed", first.reviewer);
-    answerOrderFindings(
-      db,
-      "order-answered",
-      "run-1",
-      [{ finding, answer: "refused", resolution: "out of scope" }],
-      worker,
-    );
-
-    const entries = assembleItemView(db, "order-answered")?.entries ?? [];
-
-    expect(
-      entries.filter((entry) => entry.kind === "finding_answered").map((entry) => entry.finding),
-    ).toEqual([
-      { dimension: "tests", answer: "refused", failure: "no test holds it", resolution: "out of scope" },
-    ]);
+    expect([view?.project, view?.order.id]).toEqual(["cniska/dim-factory", "order-worked"]);
     db.close();
   });
 
@@ -877,44 +673,21 @@ describe("factory wall item view", () => {
       "2026-09-18T10:02:00.000Z",
     );
 
-    const view = assembleItemView(db, "order-reviewed", new Date("2026-09-18T10:20:00.000Z"));
+    const view = assembleItemView(db, "order-reviewed");
 
-    expect(view?.entries.find((entry) => entry.kind === "check_finished")?.worker).toBe(reviewer);
-    expect(view?.entries.find((entry) => entry.kind === "started")?.worker).toBe(attemptOperator);
-    expect(view?.order.worker).toBe(worker);
-    expect(view?.order.role).toBe("builder");
-    expect(view?.runId).toBe("run");
-    db.close();
-  });
-
-  test("keeps the reason an attempt failed on", () => {
-    const db = floor();
-    queueOrder(
-      db,
-      { id: "order-failed", project: "cniska/dim-factory", title: "Fail an attempt" },
-      worker,
-      "2026-09-18T10:00:00.000Z",
-    );
-    building(db, "order-failed", "2026-09-18T10:00:00.000Z");
-    appendOrderEvent(
-      db,
-      "order-failed",
-      { worker, kind: "failed", reason: "scope unclear" },
-      "2026-09-18T10:01:00.000Z",
-    );
-
-    const view = assembleItemView(db, "order-failed", new Date("2026-09-18T10:20:00.000Z"));
-    const failed = view?.entries.find((entry) => entry.kind === "failed");
-
-    expect(failed?.reason).toBe("scope unclear");
-    expect(view?.runId).toBeUndefined();
+    expect(view?.entries.find((entry) => entry.kind === "check_finished")?.worker).toEqual({
+      name: reviewer,
+      role: "reviewer",
+    });
+    expect(view?.entries.find((entry) => entry.kind === "started")?.worker?.name).toBe(attemptOperator);
+    expect(view?.order.worker).toEqual({ name: worker, role: "builder" });
     db.close();
   });
 
   test("has nothing to show for an order it holds no record of", () => {
     const db = floor();
 
-    expect(assembleItemView(db, "order-absent", new Date("2026-09-18T10:20:00.000Z"))).toBeNull();
+    expect(assembleItemView(db, "order-absent")).toBeNull();
     db.close();
   });
 
@@ -935,20 +708,10 @@ describe("factory wall item view", () => {
       worker,
       "2026-09-18T10:03:00.000Z",
     );
-    recordOrderFile(
-      db,
-      "order-other",
-      { path: "src/other.ts", added: null, removed: null },
-      worker,
-      "2026-09-18T10:05:00.000Z",
-    );
 
-    const view = assembleItemView(db, "order-other", new Date("2026-09-18T10:20:00.000Z"));
-    const entries = view?.entries ?? [];
+    const entries = assembleItemView(db, "order-other")?.entries ?? [];
 
     expect(entries.map((entry) => entry.kind)).toEqual(["queued", "started", "check_finished"]);
-    expect(entries.map((entry) => entry.check?.command).filter(Boolean)).toEqual(["bun run other"]);
-    expect(view?.changes).toEqual([{ path: "src/other.ts" }]);
     db.close();
   });
 
@@ -969,10 +732,8 @@ describe("factory wall item view", () => {
       expect(view.entries.at(-1)).toEqual({
         at: "2026-09-18T10:10:00.000Z",
         kind: "shipped",
-        agent: worker,
-        role: "builder",
-        worker,
-        reason: "verified",
+        station: null,
+        worker: { name: worker, role: "builder" },
       });
 
       expect(answer(wall, "/api/order/order-absent").status).toBe(404);

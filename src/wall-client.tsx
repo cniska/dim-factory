@@ -18,14 +18,14 @@ import type {
   WallItemEntry,
   WallItemView,
   WallOrder,
-  WallRole,
   WallSnapshot,
+  WallWorker,
 } from "./wall-server";
+import type { Role } from "./worker-roles";
 import "./wall.css";
 
 const unavailableSnapshot: WallSnapshot = {
   generatedAt: "",
-  source: "unavailable",
   orders: [],
   totals: { todo: 0, active: 0, done: 0 },
 };
@@ -62,7 +62,7 @@ const statusIcon: Record<BoardStatus, LucideIcon> = {
   done: CircleCheck,
 };
 
-const roleTint: Record<WallRole, string | undefined> = {
+const roleTint: Record<Role, string | undefined> = {
   operator: "text-role-operator",
   planner: "text-role-planner",
   builder: "text-role-builder",
@@ -165,11 +165,7 @@ function OrderCard({
           Open {order.title}
         </button>
         <span className="flex min-w-0 items-center gap-[var(--space-xs)]">
-          {order.worker && order.role ? (
-            <WorkerLabel worker={order.worker} role={order.role} className="truncate" />
-          ) : (
-            <NoWorkerLabel />
-          )}
+          {order.worker ? <WorkerLabel worker={order.worker} className="truncate" /> : <NoWorkerLabel />}
         </span>
         {order.station === null ? null : (
           <Badge className="shrink-0 lowercase">{STATION_LABELS[order.station]}</Badge>
@@ -179,11 +175,11 @@ function OrderCard({
   );
 }
 
-function WorkerLabel({ worker, role, className }: { worker: string; role: WallRole; className?: string }) {
+function WorkerLabel({ worker, className }: { worker: WallWorker; className?: string }) {
   return (
     <span className={cn("flex min-w-0 items-center gap-[var(--space-sm)] text-muted-foreground", className)}>
-      <Robot label={`${worker}, ${role}`} className={roleTint[role]} />
-      <span className="truncate">{worker}</span>
+      <Robot label={`${worker.name}, ${worker.role}`} className={roleTint[worker.role]} />
+      <span className="truncate">{worker.name}</span>
     </span>
   );
 }
@@ -198,9 +194,9 @@ function NoWorkerLabel() {
 }
 
 function EntryWorker({ entry }: { entry: WallItemEntry }) {
-  if (!entry.worker || !entry.role) return <NoWorkerLabel />;
+  if (!entry.worker) return <NoWorkerLabel />;
 
-  return <WorkerLabel worker={entry.worker} role={entry.role} className="justify-end" />;
+  return <WorkerLabel worker={entry.worker} className="justify-end" />;
 }
 
 function MarkdownLink({ children }: { children?: ReactNode }) {
@@ -335,11 +331,7 @@ function ItemDialog({ card, movedAt, onClose }: { card: WallOrder; movedAt: stri
             <div className="flex items-center gap-[var(--space-sm)]">
               <dt>assignee</dt>
               <dd className="flex items-center gap-[var(--space-xs)] text-muted-foreground">
-                {order.worker && order.role ? (
-                  <WorkerLabel worker={order.worker} role={order.role} />
-                ) : (
-                  <NoWorkerLabel />
-                )}
+                {order.worker ? <WorkerLabel worker={order.worker} /> : <NoWorkerLabel />}
               </dd>
             </div>
             <div className="flex items-center gap-[var(--space-sm)]">
@@ -378,7 +370,7 @@ function ItemDialog({ card, movedAt, onClose }: { card: WallOrder; movedAt: stri
               </h3>
               {read.view?.plan ? (
                 <div className="flex flex-wrap items-center gap-x-[var(--space-sm)] gap-y-[var(--space-xs)] text-muted-foreground leading-5">
-                  <WorkerLabel worker={read.view.plan.worker} role={read.view.plan.role} />
+                  <WorkerLabel worker={read.view.plan.worker} />
                   <span className="text-quiet" aria-hidden="true">
                     ·
                   </span>
@@ -422,7 +414,7 @@ function ItemDialog({ card, movedAt, onClose }: { card: WallOrder; movedAt: stri
               </h3>
               {read.view?.build ? (
                 <div className="flex flex-wrap items-center gap-x-[var(--space-sm)] gap-y-[var(--space-xs)] text-muted-foreground leading-5">
-                  <WorkerLabel worker={read.view.build.worker} role={read.view.build.role} />
+                  <WorkerLabel worker={read.view.build.worker} />
                   <span className="text-quiet" aria-hidden="true">
                     ·
                   </span>
@@ -466,7 +458,7 @@ function ItemDialog({ card, movedAt, onClose }: { card: WallOrder; movedAt: stri
               </h3>
               {read.view?.review ? (
                 <div className="flex flex-wrap items-center gap-x-[var(--space-sm)] gap-y-[var(--space-xs)] text-muted-foreground leading-5">
-                  <WorkerLabel worker={read.view.review.worker} role={read.view.review.role} />
+                  <WorkerLabel worker={read.view.review.worker} />
                   <span className="text-quiet" aria-hidden="true">
                     ·
                   </span>

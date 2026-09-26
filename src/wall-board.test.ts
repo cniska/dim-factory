@@ -11,15 +11,12 @@ const order = (
   id,
   title: `Work on ${id}`,
   line: "feat",
-  worker: "copper-1",
+  description: null,
+  worker: { name: "copper-1", role: "builder" },
   station,
   stage,
-  agent: "agent",
-  role: "builder",
   status,
-  age: "2m",
   lastEventAt: "2026-09-18T10:00:00.000Z",
-  failedChecks: 0,
   next: null,
 });
 

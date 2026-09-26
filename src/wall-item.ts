@@ -34,12 +34,3 @@ export function itemKindLabel(entry: Pick<WallItemEntry, "kind" | "station">): s
   if (!entry.station) throw new Error(`${entry.kind} names no artifact station`);
   return `${STATION_LABELS[entry.station]} ${verb}`;
 }
-
-export function shortSha(sha: string): string {
-  return sha.slice(0, 7);
-}
-
-export function findingKey(entry: Pick<WallItemEntry, "finding">): string | null {
-  if (!entry.finding) return null;
-  return `${entry.finding.dimension}\u0000${entry.finding.failure}`;
-}
