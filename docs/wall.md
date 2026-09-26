@@ -27,6 +27,7 @@ Opening a card shows that order alone, as a dialog over the board:
 - the history in order, naming the worker and time of each event
 
 It reads the same record as `dim q order`, which carries the commits, checks, findings and files behind each event.
+Artifact Markdown renders tables with equal-width columns and alternating row shading in a horizontally scrollable container. Inline code stays on one line; fenced code keeps its indentation and scrolls horizontally.
 
 ## Rules
 

@@ -1,7 +1,6 @@
 import { CircleAlert, CircleCheck, CircleDot, CircleX, type LucideIcon, Radio, X } from "lucide-react";
-import { Children, isValidElement, type ReactNode, StrictMode, useEffect, useRef, useState } from "react";
+import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import Markdown from "react-markdown";
 import { Badge } from "./components/ui/badge";
 import { Card, CardFooter, CardHeader } from "./components/ui/card";
 import { Digits } from "./components/ui/digits";
@@ -12,6 +11,7 @@ import type { NextAct } from "./order-state";
 import { age } from "./query-age";
 import { ordersByStage, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
 import { itemKindLabel } from "./wall-item";
+import { WallMarkdown } from "./wall-markdown";
 import { msUntilNextMinute } from "./wall-minute-beat";
 import type {
   BoardStatus,
@@ -197,14 +197,6 @@ function EntryWorker({ entry }: { entry: WallItemEntry }) {
   if (!entry.worker) return <NoWorkerLabel />;
 
   return <WorkerLabel worker={entry.worker} className="justify-end" />;
-}
-
-function MarkdownLink({ children }: { children?: ReactNode }) {
-  const parts = Children.toArray(children);
-  const first = parts[0];
-
-  if (parts.length === 1 && isValidElement(first) && first.type === "code") return first;
-  return <code>{children}</code>;
 }
 
 const dayKey = new Intl.DateTimeFormat("en-CA");
@@ -397,7 +389,7 @@ function ItemDialog({ card, movedAt, onClose }: { card: WallOrder; movedAt: stri
                   "[&_code]:font-mono [&_li+li]:mt-[var(--space-xs)] [&_li]:leading-[18px] [&_ol]:my-0 [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-[var(--space-lg)] [&_p]:leading-[18px] [&_ul]:my-0 [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-[var(--space-lg)]",
                 )}
               >
-                <Markdown components={{ a: MarkdownLink }}>{read.view.plan.body}</Markdown>
+                <WallMarkdown>{read.view.plan.body}</WallMarkdown>
               </div>
             ) : read.view ? (
               <p className="text-quiet">The order has not been planned.</p>
@@ -441,7 +433,7 @@ function ItemDialog({ card, movedAt, onClose }: { card: WallOrder; movedAt: stri
                   "[&_code]:font-mono [&_li+li]:mt-[var(--space-xs)] [&_li]:leading-[18px] [&_ol]:my-0 [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-[var(--space-lg)] [&_p]:leading-[18px] [&_ul]:my-0 [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-[var(--space-lg)]",
                 )}
               >
-                <Markdown components={{ a: MarkdownLink }}>{read.view.build.body}</Markdown>
+                <WallMarkdown>{read.view.build.body}</WallMarkdown>
               </div>
             ) : read.view ? (
               <p className="text-quiet">The order has not been built.</p>
@@ -485,7 +477,7 @@ function ItemDialog({ card, movedAt, onClose }: { card: WallOrder; movedAt: stri
                   "[&_code]:font-mono [&_li+li]:mt-[var(--space-xs)] [&_li]:leading-[18px] [&_ol]:my-0 [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:marker:font-normal [&_ol]:marker:text-[12px] [&_ol]:marker:text-quiet [&_ol]:pl-[var(--space-lg)] [&_p]:leading-[18px] [&_ul]:my-0 [&_ul]:list-[square] [&_ul]:list-outside [&_ul]:marker:font-normal [&_ul]:marker:text-[12px] [&_ul]:marker:text-quiet [&_ul]:pl-[var(--space-lg)]",
                 )}
               >
-                <Markdown components={{ a: MarkdownLink }}>{read.view.review.body}</Markdown>
+                <WallMarkdown>{read.view.review.body}</WallMarkdown>
               </div>
             ) : read.view ? (
               <p className="text-quiet">The order has not been reviewed.</p>
