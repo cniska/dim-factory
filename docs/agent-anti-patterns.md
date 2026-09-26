@@ -1,6 +1,8 @@
 # Agent anti-patterns
 
-Shapes that coding agents keep writing into every codebase they work in, and the fix for each. They behave like a virus: an agent reads the code nearest the change and copies its shape, so one instance left standing becomes the template for the next change, and within a few changes it is the convention every new one follows. A clean codebase is what stops the spread, which is why code an agent writes, in any repository the factory works in, is rid of every entry here before it lands, and an instance found in code already merged is fixed rather than left as precedent. Each entry names what holds it: a type or a schema constraint where the pattern is a missing constraint, and otherwise review, which reads a change against this page. The entries come from the owner's corrections to agents across all their projects, read in their threads in `dim`'s record and quoted in the owner's words; the examples are from this repository. The catalog this becomes, and how review is pointed at it, is `pattern-catalog` in [`build-order.md`](build-order.md).
+Shapes coding agents keep writing, and the fix for each. An agent copies the code nearest its change, so one instance left standing becomes the next change's template. Code an agent writes is rid of every entry here before it lands, and an instance found in merged code is fixed rather than left as precedent.
+
+The entries are the owner's corrections to agents across their projects, quoted from the record; the examples are from this repository. Each names what holds it: a type or constraint where one can, otherwise review. A review dimension reading against this page is in [`todo.md`](todo.md).
 
 ## A workaround in place of the cause
 
@@ -32,7 +34,7 @@ A thing is made to fit an existing concept because the shape was already there: 
 
 A comment is where an agent excuses what the code should have fixed. A comment explaining why an odd line is fine makes the odd line look settled, so nobody fixes its cause, and the next agent copies both the line and its excuse. A comment carrying a design's rationale is a second copy of what the owning doc says, and the two drift apart. The rest narrate what the line below already says, and an agent matches the comment density of the file it is editing, so they multiply.
 
-**Fix.** No comments, tool contracts aside. A why goes into a name, a test that holds the invariant, or the doc that owns the subject. A comment defending a workaround is not moved into a doc, which only relocates the excuse: the workaround is fixed, or filed in [`build-order.md`](build-order.md) as unbuilt work.
+**Fix.** No comments, tool contracts aside. A why goes into a name, a test that holds the invariant, or the doc that owns the subject. A comment defending a workaround is not moved into a doc, which only relocates the excuse: the workaround is fixed, or filed in [`todo.md`](todo.md).
 
 **Holds it.** The comment gate, in a repo that bans comments: the commit gate refuses a commit adding one to a JS or TS line ([`usage.md`](usage.md#install-the-shared-controls)), and the runner refuses a factory builder's turn that adds one ([`factory.md`](factory.md)).
 

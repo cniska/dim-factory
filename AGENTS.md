@@ -1,6 +1,6 @@
 # dim-factory
 
-A local record of what every Claude Code and Codex session did, the questions asked of that record, and the gates that hold a rule whether or not a skill loaded. [`README.md`](README.md) is the tour, [`docs/build-order.md`](docs/build-order.md) says what is unbuilt and what blocks it, and each design doc under `docs/` owns its own subject. A fact lives in one of those places and is linked to from here, never copied — two authorities drift, and the one nobody remembers to update wins.
+A local record of what every Claude Code and Codex session did, the questions asked of that record, and the gates that hold a rule whether or not a skill loaded. [`README.md`](README.md) is the tour, [`docs/todo.md`](docs/todo.md) says what is unbuilt, and each design doc under `docs/` owns its own subject. A fact lives in one of those places and is linked to from here, never copied — two authorities drift, and the one nobody remembers to update wins.
 
 Only what holds here and nowhere else is written below. General engineering conventions belong to whoever is working, machine-wide and once; restating one here would cost the same tokens twice and create a second place for it to drift.
 

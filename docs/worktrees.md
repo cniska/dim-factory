@@ -15,7 +15,7 @@
 
 ## Undoing an agent's writes
 
-Not built (`undo-agent-writes` in [`build-order.md`](build-order.md)).
+Not built ([`todo.md`](todo.md)).
 
 - **Constraint.** An agent never changes the user's repository as a side effect of running: no refs, no index, no hooks in the user's `.git`.
 - **Shape.** A shadow git directory under `dim`'s data directory, with the checkout as its work tree, snapshotting touched files after each write. Each snapshot carries its tool call id, so recovery is a query: the tree as of the edit a later fix came back to.

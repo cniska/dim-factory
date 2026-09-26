@@ -22,4 +22,4 @@ A query answers only when someone thinks to ask, and the sessions that most need
 - **Degrade, don't fail.** `q search` falls back to the keyword index when nothing is embedded or the model will not load.
 - [`design.md`](design.md#search) has the mechanics and the benchmark format.
 
-Unbuilt work is `external-benchmark`, `wake-tooling-chain` and `format-after-edit` in [`build-order.md`](build-order.md).
+What is not built is in [`todo.md`](todo.md).
