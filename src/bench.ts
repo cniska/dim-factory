@@ -3,7 +3,8 @@ import type { BenchQuestion } from "./bench-corpus";
 import { readDistilled } from "./distilled";
 import type { Question } from "./embed";
 import { type PassageRef, parsePassageRef } from "./passage-ref";
-import { findQuery, type QueryContext } from "./queries";
+import { findQuery } from "./queries";
+import type { QueryContext } from "./query";
 import { ndcgAtK, recallAtK } from "./rank-metrics";
 
 const REF_COLUMN = "ref";

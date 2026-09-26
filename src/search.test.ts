@@ -2,7 +2,8 @@ import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { EMBED_DIMS, type Embedder, type Question } from "./embed";
 import { buildIndex } from "./embed-index";
-import { findQuery, type QueryContext, type QueryResult } from "./queries";
+import { findQuery } from "./queries";
+import type { QueryContext, QueryResult } from "./query";
 import { SCHEMA_SQL } from "./schema";
 
 const AUTHOR = "Distilling Person";

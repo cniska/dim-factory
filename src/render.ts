@@ -1,4 +1,4 @@
-import type { QueryResult } from "./queries";
+import type { QueryResult } from "./query";
 
 export const DEFAULT_MAX_ROWS = 40;
 

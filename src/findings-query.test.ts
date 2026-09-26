@@ -1,7 +1,8 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { type Finding, recordFinding } from "./finding";
-import { findQuery, type QueryContext } from "./queries";
+import { findQuery } from "./queries";
+import type { QueryContext } from "./query";
 import { SCHEMA_SQL } from "./schema";
 
 const ctx: QueryContext = { home: "/h" };
