@@ -7,11 +7,18 @@ export type FakeHarnessScenario =
   | "findings"
   | "crash"
   | "hang"
-  | "bootstrap-failure";
+  | "bootstrap-failure"
+  | "turn-after-answer"
+  | "second-start";
 
 type Scenario = {
   events: HarnessEvent[];
   completes: boolean;
+};
+
+export type FakeHarness = HarnessAdapter & {
+  /** How many times the runner has cancelled one of this adapter's runs. */
+  cancels(): number;
 };
 
 function scenario(name: FakeHarnessScenario): Scenario {
@@ -76,10 +83,25 @@ function scenario(name: FakeHarnessScenario): Scenario {
       completes: true,
     };
   }
+  if (name === "turn-after-answer") {
+    return {
+      events: [
+        ...started,
+        { type: "run.completed", output: "completed" },
+        ...started,
+        { type: "message", role: "assistant", text: "a background check reported" },
+      ],
+      completes: false,
+    };
+  }
+  if (name === "second-start") {
+    return { events: [...started, ...started], completes: false };
+  }
   return { events: started, completes: false };
 }
 
-export function fakeHarness(scenarioName: FakeHarnessScenario): HarnessAdapter {
+export function fakeHarness(scenarioName: FakeHarnessScenario): FakeHarness {
+  let cancels = 0;
   const run = async (): Promise<HarnessRun> => {
     const plan = scenario(scenarioName);
     let cancelled = false;
@@ -96,6 +118,7 @@ export function fakeHarness(scenarioName: FakeHarnessScenario): HarnessAdapter {
         if (!plan.completes) await cancellation;
       })(),
       cancel() {
+        cancels += 1;
         cancelled = true;
         release?.();
       },
@@ -104,5 +127,6 @@ export function fakeHarness(scenarioName: FakeHarnessScenario): HarnessAdapter {
   return {
     start: run,
     resume: run,
+    cancels: () => cancels,
   };
 }

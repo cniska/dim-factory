@@ -99,4 +99,74 @@ describe("the fake harness", () => {
     });
     expect(seen).toEqual(["run.started", "turn.started", "message", "run.completed"]);
   });
+
+  test("keeps the first answer and stops a worker that begins another turn after it", async () => {
+    const harness = fakeHarness("turn-after-answer");
+    const seen: string[] = [];
+    const result = await runHarness(await harness.start(REQUEST), {
+      timeoutMs: 60_000,
+      onEvent: (event) => seen.push(event.type),
+    });
+
+    expect(result).toMatchObject({
+      outcome: "completed",
+      events: expect.arrayContaining([
+        { type: "run.completed", output: "completed" },
+        {
+          type: "diagnostic",
+          level: "warning",
+          message: "stopped the worker after its answer: it began another turn (run.started)",
+        },
+      ]),
+    });
+    expect(seen).toEqual(["run.started", "turn.started", "run.completed"]);
+    expect(harness.cancels()).toBe(1);
+  });
+
+  test("fails a run that starts twice before answering as a harness fault", async () => {
+    const harness = fakeHarness("second-start");
+    const seen: string[] = [];
+    const result = await runHarness(await harness.start(REQUEST), {
+      timeoutMs: 60_000,
+      onEvent: (event) => seen.push(event.type),
+    });
+
+    expect(result).toMatchObject({
+      outcome: "failed",
+      reason: "harness fault: the worker started a second run before answering",
+    });
+    expect(seen).toEqual(["run.started", "turn.started"]);
+    expect(harness.cancels()).toBeGreaterThan(0);
+  });
+
+  test("returns the answer, not a timeout, when a worker that answered goes silent without exiting", async () => {
+    async function* answeredThenSilent(): AsyncIterable<HarnessEvent> {
+      yield { type: "run.completed", output: "done" };
+      await new Promise(() => undefined);
+    }
+    let cancelled = false;
+
+    const result = await runHarness(
+      {
+        events: answeredThenSilent(),
+        cancel: () => {
+          cancelled = true;
+        },
+      },
+      { timeoutMs: 10 },
+    );
+
+    expect(result).toMatchObject({
+      outcome: "completed",
+      events: [
+        { type: "run.completed", output: "done" },
+        {
+          type: "diagnostic",
+          level: "warning",
+          message: "stopped the worker after its answer: it went 0.01s without an event and did not exit",
+        },
+      ],
+    });
+    expect(cancelled).toBe(true);
+  });
 });

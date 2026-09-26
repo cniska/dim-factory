@@ -55,19 +55,34 @@ afterAll(() => {
 
 /**
  * A builder that acts on the worktree in-process and ends its turn with `act`'s answer — a
- * BuildTurn as JSON on a code turn, or free text on an artifact revision turn.
+ * BuildTurn as JSON on a code turn, or free text on an artifact revision turn — then emits
+ * `afterAnswer` until the runner cancels it.
  */
-function builderTurn(act: (request: HarnessRequest) => BuildTurn | string): HarnessAdapter {
-  const run = async (request: HarnessRequest): Promise<HarnessRun> => ({
-    events: (async function* (): AsyncGenerator<HarnessEvent> {
-      yield { type: "run.started", providerSessionId: "fake-session" };
-      yield { type: "turn.started" };
-      const answer = act(request);
-      yield { type: "run.completed", output: typeof answer === "string" ? answer : JSON.stringify(answer) };
-    })(),
-    cancel() {},
-  });
-  return { start: run, resume: (_sessionId, request) => run(request) };
+function builderTurn(
+  act: (request: HarnessRequest) => BuildTurn | string,
+  afterAnswer: HarnessEvent[] = [],
+): HarnessAdapter & { cancels(): number } {
+  let cancels = 0;
+  const run = async (request: HarnessRequest): Promise<HarnessRun> => {
+    let cancelled = false;
+    return {
+      events: (async function* (): AsyncGenerator<HarnessEvent> {
+        yield { type: "run.started", providerSessionId: "fake-session" };
+        yield { type: "turn.started" };
+        const answer = act(request);
+        yield { type: "run.completed", output: typeof answer === "string" ? answer : JSON.stringify(answer) };
+        for (const event of afterAnswer) {
+          if (cancelled) return;
+          yield event;
+        }
+      })(),
+      cancel() {
+        cancels += 1;
+        cancelled = true;
+      },
+    };
+  };
+  return { start: run, resume: (_sessionId, request) => run(request), cancels: () => cancels };
 }
 
 /** An adapter whose harness never starts, and the brief it was handed. */
@@ -762,6 +777,66 @@ describe("builder station", () => {
     expect(
       db.query("SELECT revision, head_sha FROM factory_order_build ORDER BY revision DESC LIMIT 1").get(),
     ).toEqual({ revision: 2, head_sha: head });
+    db.close();
+  });
+
+  test("claims once and commits the answer when the builder begins another turn after answering", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-second-turn-");
+    const { repo, operator } = orderAtBuild(db, "second-turn-order", [
+      { title: "Build the result", outcome: "The requested result is verified." },
+    ]);
+    const adapter = builderTurn(
+      (request) => {
+        writeFileSync(join(request.cwd, "built.txt"), "built\n");
+        return { subject: "feat: build it", artifact: "Built." };
+      },
+      [{ type: "run.started", providerSessionId: "fake-session" }, { type: "turn.started" }],
+    );
+
+    const outcome = await runOrderBuildLive(db, "second-turn-order", operator.name, {
+      dir: repo.dir,
+      env: { DIM_HOME: dimHome },
+      checkSandbox: confiningCheckSandbox(),
+      adapter,
+    });
+
+    const events = db
+      .query<{ kind: string; worker: string | null }, [string]>(
+        "SELECT kind, worker FROM factory_order_event WHERE order_id = ? AND kind IN ('claimed', 'failed')",
+      )
+      .all("second-turn-order");
+    expect(events).toEqual([
+      { kind: "claimed", worker: operator.name },
+      { kind: "claimed", worker: outcome.builder },
+    ]);
+    expect(adapter.cancels()).toBe(1);
+    expect(db.query("SELECT subject FROM factory_order_commit").all()).toEqual([
+      { subject: "feat: build it" },
+    ]);
+    db.close();
+  });
+
+  test("fails a builder run that starts twice as a harness fault, not a second claim", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-second-start-");
+    const { repo, operator } = orderAtBuild(db, "second-start-order", [
+      { title: "Build the result", outcome: "The requested result is verified." },
+    ]);
+
+    await expect(
+      runOrderBuildLive(db, "second-start-order", operator.name, {
+        dir: repo.dir,
+        env: { DIM_HOME: dimHome },
+        adapter: fakeHarness("second-start"),
+      }),
+    ).rejects.toThrow("harness fault: the worker started a second run before answering");
+
+    expect(
+      db
+        .query("SELECT kind FROM factory_order_event WHERE order_id = ? AND kind = 'claimed'")
+        .all("second-start-order"),
+    ).toHaveLength(2);
     db.close();
   });
 

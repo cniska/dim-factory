@@ -19,9 +19,35 @@ export type HarnessRunnerOptions = {
   onEvent?: (event: HarnessEvent) => void;
 };
 
-/** Times one run, whether its adapter started it or resumed it. */
+const SECOND_START = "harness fault: the worker started a second run before answering";
+
+function beginsTurn(event: HarnessEvent): boolean {
+  return (
+    event.type === "run.started" ||
+    event.type === "turn.started" ||
+    event.type === "message" ||
+    event.type.startsWith("tool.")
+  );
+}
+
+/**
+ * Times one run, whether its adapter started it or resumed it. A run holds one turn: its first
+ * answer is its result, and a completed run is returned only once its process has exited or, having
+ * begun another turn or gone silent, been stopped.
+ */
 export async function runHarness(run: HarnessRun, options: HarnessRunnerOptions): Promise<HarnessRunResult> {
   const events: HarnessEvent[] = [];
+  let answer: HarnessRunResult | undefined;
+  let stopped = false;
+  const stopAfterAnswer = (why: string): void => {
+    stopped = true;
+    run.cancel();
+    events.push({
+      type: "diagnostic",
+      level: "warning",
+      message: `stopped the worker after its answer: ${why}`,
+    });
+  };
   let timer: ReturnType<typeof setTimeout> | undefined;
   let timedOut = false;
   let expire: () => void = () => undefined;
@@ -31,11 +57,23 @@ export async function runHarness(run: HarnessRun, options: HarnessRunnerOptions)
     timer = setTimeout(expire, options.timeoutMs);
   };
   const consume = (async (): Promise<HarnessRunResult> => {
+    let started = false;
     for await (const event of run.events) {
       arm();
+      if (answer) {
+        if (!stopped && beginsTurn(event)) stopAfterAnswer(`it began another turn (${event.type})`);
+        continue;
+      }
+      if (event.type === "run.started") {
+        if (started) return { outcome: "failed", events, reason: SECOND_START };
+        started = true;
+      }
       events.push(event);
       options.onEvent?.(event);
-      if (event.type === "run.completed") return { outcome: "completed", events };
+      if (event.type === "run.completed") {
+        answer = { outcome: "completed", events };
+        continue;
+      }
       if (event.type === "run.failed") {
         return {
           outcome: "failed",
@@ -47,11 +85,16 @@ export async function runHarness(run: HarnessRun, options: HarnessRunnerOptions)
         };
       }
     }
-    return { outcome: "failed", events, reason: "harness stream ended without a terminal event" };
+    return answer ?? { outcome: "failed", events, reason: "harness stream ended without a terminal event" };
   })();
   const timeout = new Promise<HarnessRunResult>((resolve) => {
     expire = () => {
       timedOut = true;
+      if (answer) {
+        stopAfterAnswer(`it went ${options.timeoutMs / 1000}s without an event and did not exit`);
+        resolve(answer);
+        return;
+      }
       run.cancel();
       resolve({ outcome: "timed_out", events, reason: "harness timed out" });
     };
@@ -64,8 +107,7 @@ export async function runHarness(run: HarnessRun, options: HarnessRunnerOptions)
     if (timer) clearTimeout(timer);
   }
   if (timedOut) void consume.catch(() => undefined);
-  // A failed run may still be working, and a refused one still spending; a completed run is
-  // left to exit on its own, since the harness records its session after the answer.
+  // A failed run may still be working, and a refused one still spending.
   if (result.outcome === "failed") run.cancel();
   return result;
 }
