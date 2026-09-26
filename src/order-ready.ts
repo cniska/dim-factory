@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
-import type { OrderPriority, OrderStatus } from "./factory-order-status";
 import type { OrderLine } from "./order-line";
+import type { OrderPriority, OrderStatus } from "./order-status";
 
 export type ReadyOrder = {
   id: string;

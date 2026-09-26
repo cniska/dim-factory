@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
-import { UsageError } from "./command";
-import { listing, writeError, writeResult } from "./command-output";
-import { COMMANDS, findCommand } from "./commands";
+import { COMMANDS, findCommand } from "./cli-commands";
+import { UsageError } from "./cli-contract";
+import { listing, writeError, writeResult } from "./cli-output";
 
 const [name, ...args] = process.argv.slice(2);
 const command = findCommand(name);

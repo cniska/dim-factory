@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { MintedWorker } from "./factory-worker";
 import { dataDir, type Env } from "./paths";
+import type { MintedWorker } from "./worker";
 
 function credentialPath(env: Env, sessionId: string): string {
   const key = createHash("sha256").update(sessionId).digest("hex");

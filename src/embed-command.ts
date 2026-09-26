@@ -1,10 +1,10 @@
-import type { Command } from "./command";
+import type { Command } from "./cli-contract";
 import { closeDb, openDb } from "./db";
-import { downloadEmbedder, EMBED_DIMS, EMBED_MODEL } from "./embed";
-import { buildIndex } from "./embed-index";
+import { withLock } from "./db-lock";
 import { committerName } from "./git-identity";
-import { withLock } from "./lock";
 import { dbPath } from "./paths";
+import { downloadEmbedder, EMBED_DIMS, EMBED_MODEL } from "./search-embed";
+import { buildIndex } from "./search-embed-index";
 
 export const embedCommand: Command = {
   name: "embed",

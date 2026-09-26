@@ -14,8 +14,8 @@ import {
   writeCodexRollout,
   writePrefix,
 } from "./fixtures.test-support";
+import { sync } from "./ingest-sync";
 import { dbPath, type Env } from "./paths";
-import { sync } from "./sync";
 
 const SESSION = "11111111-2222-3333-4444-555555555555";
 const THREAD = "01a0a651-086e-7150-8650-cef0f4025a58";

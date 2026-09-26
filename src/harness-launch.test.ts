@@ -2,8 +2,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fakeHarness } from "./fake-harness";
 import type { HarnessAdapter, HarnessEvent } from "./harness";
+import { fakeHarness } from "./harness-fake";
 import { launchHarnessLive, resumeHarnessLive, workerFailureReason } from "./harness-launch";
 
 describe("selected harness commands", () => {

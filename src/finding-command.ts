@@ -1,4 +1,4 @@
-import type { Command } from "./command";
+import type { Command } from "./cli-contract";
 import { withDb } from "./db";
 import { findingFrom, recordFinding } from "./finding";
 import { dbPath } from "./paths";

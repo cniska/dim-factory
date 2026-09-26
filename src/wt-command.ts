@@ -1,7 +1,7 @@
 import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { Command } from "./command";
-import { warn } from "./warn";
+import type { Command } from "./cli-contract";
+import { warn } from "./cli-warn";
 import { runWorkerHook, type WorkerEnvironmentPhase, type WorkerHookReport } from "./worker-environment";
 
 const USAGE = `wt — parallel-task worktrees, one per agent.

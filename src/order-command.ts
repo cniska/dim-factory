@@ -1,23 +1,24 @@
 import type { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
-import { checkoutRoot } from "./checkout";
-import { type Command, UsageError } from "./command";
+import { type Command, UsageError } from "./cli-contract";
+import { readFlags, requiredFlag } from "./cli-flags";
 import { closeDb, openDb } from "./db";
-import type { OrderEventKind } from "./factory-events";
 import { assertOperator } from "./factory-operator";
+import { checkoutRoot } from "./git-checkout";
+import { labelFor } from "./git-remote";
+import { HARNESSES, type HarnessName, parseHarness } from "./harness-name";
+import { recordedHarness } from "./harness-operator";
+import { requireCurrentHooks } from "./hooks";
 import {
   approveOrderBuild,
   approveOrderPlan,
   recordOrderBuild,
   returnOrderArtifact,
-} from "./factory-order-artifacts";
-import {
-  recordOrderCheck,
-  recordOrderCommit,
-  recordOrderDocument,
-  recordOrderFile,
-} from "./factory-order-evidence";
-import { appendOrderEvent } from "./factory-order-ledger";
+} from "./order-artifacts";
+import type { OrderEventKind } from "./order-events";
+import { recordOrderCheck, recordOrderCommit, recordOrderDocument, recordOrderFile } from "./order-evidence";
+import { recordOwnerRuling } from "./order-finding";
+import { appendOrderEvent } from "./order-ledger";
 import {
   amendOrder,
   claimOrder,
@@ -27,25 +28,19 @@ import {
   recoverOrderFailure,
   setOrderHold,
   setOrderPriority,
-} from "./factory-order-lifecycle";
-import { approveOrderReview, recordOrderReviewArtifact } from "./factory-order-review";
-import { shipOrder } from "./factory-order-ship";
-import { ORDER_PRIORITIES, type OrderPriority, type OrderStatus } from "./factory-order-status";
-import { resolveWorker } from "./factory-worker";
-import { readFlags, requiredFlag } from "./flags";
-import { labelFor } from "./git-remote";
-import { HARNESSES, type HarnessName, parseHarness } from "./harness-name";
-import { requireCurrentHooks } from "./hooks";
-import { recordedHarness } from "./operator-harness";
-import { runOrderBuildLive } from "./order-build";
-import { recordOwnerRuling } from "./order-finding";
+} from "./order-lifecycle";
 import { isOrderLine, ORDER_LINES } from "./order-line";
-import { runOrderPlanLive } from "./order-plan";
 import { heldOrders, readyOrders } from "./order-ready";
-import { runOrderReviewLive } from "./order-review";
+import { approveOrderReview, recordOrderReviewArtifact } from "./order-review";
+import { shipOrder } from "./order-ship";
+import { ORDER_PRIORITIES, type OrderPriority, type OrderStatus } from "./order-status";
 import { dbPath, type Env } from "./paths";
 import type { ShipOutcome } from "./ship";
 import { parseStation, type Station } from "./station";
+import { runOrderBuildLive } from "./station-build";
+import { runOrderPlanLive } from "./station-plan";
+import { runOrderReviewLive } from "./station-review";
+import { resolveWorker } from "./worker";
 import { resolveAssignedWorker } from "./worker-assignment";
 import { removeWorktree, repoRoot } from "./wt-command";
 

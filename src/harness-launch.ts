@@ -1,6 +1,6 @@
-import { claudeProcess } from "./claude-harness";
-import { codexProcess } from "./codex-harness";
 import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
+import { claudeProcess } from "./harness-claude";
+import { codexProcess } from "./harness-codex";
 import type { HarnessName } from "./harness-name";
 import { type HarnessProcess, type ProcessEnvironment, processHarness } from "./harness-process";
 import { runHarness } from "./harness-runner";

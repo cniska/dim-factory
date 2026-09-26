@@ -2,10 +2,10 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { runBench } from "./bench";
 import { corpusPath, parseCorpus } from "./bench-corpus";
-import { type Command, UsageError } from "./command";
-import { embedQuestion } from "./embed";
+import { type Command, UsageError } from "./cli-contract";
+import { openReadOnly } from "./db-read";
 import { dbPath, resolveHomeDir } from "./paths";
-import { openReadOnly } from "./read-db";
+import { embedQuestion } from "./search-embed";
 
 const DEFAULT_CUTOFF = 10;
 

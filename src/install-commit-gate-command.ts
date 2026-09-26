@@ -1,10 +1,10 @@
-import { type Command, Ran, UsageError } from "./command";
-import { checkoutDirs, installCommitGate, planCommitGate, sharedHooksDir } from "./commit-gate";
+import { type Command, Ran, UsageError } from "./cli-contract";
+import { openReadOnly } from "./db-read";
+import { checkoutDirs, installCommitGate, planCommitGate, sharedHooksDir } from "./gate-commit";
 import { checkoutSlug } from "./git-remote";
+import { isHostQualified } from "./git-remote-slug";
 import { WRITE_NEXT } from "./install-write";
 import { dbPath } from "./paths";
-import { openReadOnly } from "./read-db";
-import { isHostQualified } from "./remote-slug";
 
 function checkouts(): { repo: string; owner: string }[] {
   const db = openReadOnly(dbPath());

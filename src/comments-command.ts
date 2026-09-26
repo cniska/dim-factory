@@ -1,11 +1,11 @@
 import { relative, resolve } from "node:path";
-import { checkoutRoot } from "./checkout";
-import { type Command, Ran, UsageError } from "./command";
+import { type Command, Ran, UsageError } from "./cli-contract";
+import { warn } from "./cli-warn";
 import { purgeCheckout } from "./comments-purge";
 import { stagedComments } from "./comments-staged";
-import { COMMENTS_FOUND_EXIT, commentsBanned } from "./commit-gate";
 import { PROJECT_CONFIG, projectConfigPath, readProjectConfig, writeConfigValue } from "./config";
-import { warn } from "./warn";
+import { COMMENTS_FOUND_EXIT, commentsBanned } from "./gate-commit";
+import { checkoutRoot } from "./git-checkout";
 import { checkTask, formatTask } from "./workspace-tasks";
 
 const USAGE = "usage: dim comments check | dim comments purge [--write] [<path>...]";

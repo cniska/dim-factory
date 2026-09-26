@@ -1,6 +1,6 @@
-import { type Command, UsageError } from "./command";
+import { type Command, UsageError } from "./cli-contract";
 import { parseHarness } from "./harness-name";
-import { routeReport } from "./routing";
+import { routeReport } from "./worker-routing";
 
 export const routeCommand: Command = {
   name: "route",

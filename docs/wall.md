@@ -42,4 +42,4 @@ Dark, calm and monospace (JetBrains Mono, no web font fetched). Grayscale surfac
 
 ## Code
 
-`src/factory-wall.ts` (server and snapshot), `src/wall-board.ts`, `src/wall-item.ts`, `src/wall-client.tsx`, `src/wall.html`, `src/wall.css`.
+`src/wall-server.ts` (server and snapshot), `src/wall-board.ts`, `src/wall-item.ts`, `src/wall-client.tsx`, `src/wall.html`, `src/wall.css`.

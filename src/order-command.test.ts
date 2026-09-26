@@ -3,34 +3,23 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { UsageError } from "./command";
-import {
-  approveOrderPlan,
-  completeOrderSlice,
-  nextOrderSlice,
-  recordOrderPlan,
-} from "./factory-order-artifacts";
-import { moveOrder } from "./factory-order-lifecycle";
+import { UsageError } from "./cli-contract";
+import { SCHEMA_SQL } from "./db-schema";
 import { pullStop } from "./factory-stop";
-import { assembleWallSnapshot } from "./factory-wall";
-import {
-  mintWorker,
-  newWorkerSession,
-  resolveWorker,
-  WORKER_NAME_VAR,
-  WORKER_TOKEN_VAR,
-} from "./factory-worker";
 import { collectingMachine, integratedRepo, scratchEnv } from "./fixtures.test-support";
 import { hookConfigPath } from "./hooks";
+import { TOOLS } from "./ingest-tools";
+import { approveOrderPlan, completeOrderSlice, nextOrderSlice, recordOrderPlan } from "./order-artifacts";
+import { runOrderCommand as runCommand, runOrderCommandLive } from "./order-command";
+import { moveOrder } from "./order-lifecycle";
+import type { Env } from "./paths";
 import {
   approveFinalBuildAt,
   approvePlanAndMoveToBuild,
   approveReviewAt,
-} from "./order-approvals.test-support";
-import { runOrderCommand as runCommand, runOrderCommandLive } from "./order-command";
-import type { Env } from "./paths";
-import { SCHEMA_SQL } from "./schema";
-import { TOOLS } from "./tools";
+} from "./station-approvals.test-support";
+import { assembleWallSnapshot } from "./wall-server";
+import { mintWorker, newWorkerSession, resolveWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./worker";
 
 const opened: Database[] = [];
 

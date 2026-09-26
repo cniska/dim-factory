@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { COMMANDS } from "./commands";
+import { COMMANDS } from "./cli-commands";
 
 const SRC = import.meta.dir;
 const RAW_OUTPUT = [
@@ -24,14 +24,14 @@ describe("the command contract", () => {
     const imports = [...readFileSync(join(SRC, "cli.ts"), "utf8").matchAll(/from "([^"]+)"/g)].map(
       (m) => m[1],
     );
-    expect(imports.sort()).toEqual(["./command", "./command-output", "./commands"]);
+    expect(imports.sort()).toEqual(["./cli-commands", "./cli-contract", "./cli-output"]);
   });
 
   test("only the writer and the raw commands write to stdout", () => {
     const writers = sources().filter((path) =>
       /console\.log|process\.stdout\.write/.test(readFileSync(join(SRC, path), "utf8")),
     );
-    expect(writers.sort()).toEqual(["command-output.ts", ...RAW_OUTPUT].sort());
+    expect(writers.sort()).toEqual(["cli-output.ts", ...RAW_OUTPUT].sort());
   });
 
   test("every command declared is on the list, once", () => {

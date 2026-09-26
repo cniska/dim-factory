@@ -12,8 +12,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { integratedRepo, orderWorktree, repoWithoutTrunk } from "./fixtures.test-support";
-import { patchesEqual, RebaseConflict, type Rewrite, rebaseState } from "./rebase-onto-trunk";
 import { type RebaseVerdict, shipBranch } from "./ship";
+import { patchesEqual, RebaseConflict, type Rewrite, rebaseState } from "./ship-rebase";
 import { ShipRefusal } from "./ship-refusal";
 
 const landRebased = (rewrite: Rewrite): RebaseVerdict => ({ land: rewrite.commits.map((c) => c.to) });

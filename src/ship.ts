@@ -1,8 +1,8 @@
-import { primaryCheckout } from "./primary-checkout";
-import { type Rewrite, rebaseOntoTrunk, restoreBranch } from "./rebase-onto-trunk";
+import { primaryCheckout } from "./git-primary-checkout";
+import { reachesTrunk, trunkBranch } from "./git-trunk";
 import { shipMethod } from "./ship-method";
+import { type Rewrite, rebaseOntoTrunk, restoreBranch } from "./ship-rebase";
 import { ShipRefusal } from "./ship-refusal";
-import { reachesTrunk, trunkBranch } from "./trunk";
 
 export type ShipOutcome = { landed: "already" | "fast_forward" | "rebased" };
 

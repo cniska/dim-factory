@@ -1,7 +1,7 @@
-import { type Command, UsageError } from "./command";
+import { type Command, UsageError } from "./cli-contract";
+import { readFlags, requiredFlag } from "./cli-flags";
 import { withDb } from "./db";
 import { clearStop, pullStop } from "./factory-stop";
-import { readFlags, requiredFlag } from "./flags";
 import { dbPath } from "./paths";
 
 const usage = (message: string): Error => new UsageError(message);

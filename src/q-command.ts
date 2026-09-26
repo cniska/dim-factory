@@ -1,11 +1,11 @@
-import { type Command, UsageError } from "./command";
-import { embedQuestion } from "./embed";
+import { type Command, UsageError } from "./cli-contract";
+import { openReadOnly } from "./db-read";
 import { dbPath, resolveHomeDir } from "./paths";
-import { findQuery, QUERIES } from "./queries";
 import type { QueryResult } from "./query";
-import { openReadOnly } from "./read-db";
-import { capRows, DEFAULT_MAX_ROWS, rowsFromArgs } from "./row-cap";
-import { DEFAULT_WINDOW, windowFromArgs } from "./since";
+import { findQuery, QUERIES } from "./query-registry";
+import { capRows, DEFAULT_MAX_ROWS, rowsFromArgs } from "./query-row-cap";
+import { DEFAULT_WINDOW, windowFromArgs } from "./query-since";
+import { embedQuestion } from "./search-embed";
 import { trace } from "./trace";
 
 export const qCommand: Command = {

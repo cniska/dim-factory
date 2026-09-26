@@ -3,16 +3,16 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { devNull, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { codexConfigPath, planCodexTrust } from "./codex-trust";
-import { gateHooks, installCommitGate } from "./commit-gate";
 import { closeDb, openDb } from "./db";
+import { openReadOnly } from "./db-read";
 import { diagnose } from "./doctor";
 import { scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
+import { gateHooks, installCommitGate } from "./gate-commit";
 import { installHooks } from "./hooks";
+import { codexConfigPath, planCodexTrust } from "./hooks-codex-trust";
+import { sync } from "./ingest-sync";
 import { dbPath, type Env } from "./paths";
-import { openReadOnly } from "./read-db";
 import { installSkill } from "./skill";
-import { sync } from "./sync";
 
 const roots: string[] = [];
 

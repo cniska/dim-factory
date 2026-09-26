@@ -4,8 +4,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb } from "./db";
-import { SCHEMA_VERSION } from "./schema";
-import { rebuild } from "./sync";
+import { SCHEMA_VERSION } from "./db-schema";
+import { rebuild } from "./ingest-sync";
 
 type Scratch = { db: Database; env: { HOME: string; DIM_HOME: string } };
 

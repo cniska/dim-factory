@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { fakeHarness } from "./fake-harness";
 import type { HarnessEvent } from "./harness";
+import { fakeHarness } from "./harness-fake";
 import { runHarness } from "./harness-runner";
 
 const REQUEST = {

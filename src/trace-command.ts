@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
-import { type Command, UsageError } from "./command";
+import { type Command, UsageError } from "./cli-contract";
+import { openReadOnly } from "./db-read";
 import { dbPath, type Env } from "./paths";
-import { openReadOnly } from "./read-db";
 
 const TERMINAL_STATUSES = new Set(["completed", "dropped"]);
 

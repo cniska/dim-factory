@@ -1,14 +1,14 @@
 import type { Database } from "bun:sqlite";
 import { createHash, randomBytes } from "node:crypto";
+import type { Env } from "./paths";
 import {
   type MintedWorker,
   mintWorkerForSession,
   WORKER_NAME_VAR,
   WORKER_SESSION_VAR,
   WORKER_TOKEN_VAR,
-} from "./factory-worker";
-import type { Env } from "./paths";
-import type { Role } from "./roles";
+} from "./worker";
+import type { Role } from "./worker-roles";
 
 export const ASSIGNMENT_ID_VAR = "DIM_WORKER_ASSIGNMENT_ID";
 export const ASSIGNMENT_TOKEN_VAR = "DIM_WORKER_ASSIGNMENT_TOKEN";

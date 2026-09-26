@@ -1,8 +1,8 @@
-import type { Command } from "./command";
+import type { Command } from "./cli-contract";
 import { withDb } from "./db";
-import { withLock } from "./lock";
+import { withLock } from "./db-lock";
+import { sync } from "./ingest-sync";
 import { dbPath } from "./paths";
-import { sync } from "./sync";
 
 export const syncCommand: Command = {
   name: "sync",

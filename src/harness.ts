@@ -1,4 +1,4 @@
-import type { Capability } from "./capabilities";
+import type { Capability } from "./worker-capabilities";
 
 export type HarnessRequest = {
   cwd: string;

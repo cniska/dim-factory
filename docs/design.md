@@ -20,14 +20,14 @@ Claude Code deletes transcripts after 30 days unless `cleanupPeriodDays` is rais
 
 ## Schema
 
-[`src/schema.ts`](../src/schema.ts) is the schema, and each table carries the reason for its own shape beside it.
+[`src/db-schema.ts`](../src/db-schema.ts) is the schema, and each table carries the reason for its own shape beside it.
 
 - **Both tools land in the same tables.** A session records its `tool`, `claude` or `codex`, and tool-specific detail goes in an `extra` JSON column, so a question about both needs no `UNION`. Times are ISO-8601 UTC text.
 - **Tables are rebuilt by re-reading their sources**, so a schema change is `dim rebuild`, not a migration. `rebuild` drops the derived tables it names and recreates them from `SCHEMA_SQL`, since `CREATE TABLE IF NOT EXISTS` would leave an old shape in place.
-- **Tables with no source to re-read survive it.** `correction_label`, `hook_event` and the factory tables ([`src/sync.ts`](../src/sync.ts)) are dropped and written back row for row, so they can still take a schema change. A table `rebuild` does not name, such as `guidance_walk`, `trace_event`, `finding` or `embedding`, is left as it is.
+- **Tables with no source to re-read survive it.** `correction_label`, `hook_event` and the factory tables ([`src/ingest-sync.ts`](../src/ingest-sync.ts)) are dropped and written back row for row, so they can still take a schema change. A table `rebuild` does not name, such as `guidance_walk`, `trace_event`, `finding` or `embedding`, is left as it is.
 - **`SCHEMA_VERSION` is bumped for a change only a re-read can correct** — a changed column, or a changed rule for what identifies a row. Until `rebuild` has finished and stamped the new version, `sync` and every other write refuse the database.
 - **A new table needs no bump**, because every write opens the database through `SCHEMA_SQL`, which creates it. That holds only until some database has run the statement; after that, changing its columns takes a bump ([`findings.md`](findings.md) has the case).
-- [`src/schema-version.test.ts`](../src/schema-version.test.ts) pins the version beside a digest of `SCHEMA_SQL`, so every schema edit changes that line and two branches editing the schema conflict there.
+- [`src/db-schema-version.test.ts`](../src/db-schema-version.test.ts) pins the version beside a digest of `SCHEMA_SQL`, so every schema edit changes that line and two branches editing the schema conflict there.
 - **Model identity is a column**, on `session`, `message`, `usage`, `tool_call`, `turn` and `skill_load`, kept verbatim as each surface reported it.
 - **A finding is keyed on the repo and the file**, not the session, because the question it answers is whether a later fix came back to flagged code. It is never a score on the builder.
 
@@ -38,7 +38,7 @@ dim sync: drain the spool → read changed files → derive session ends
 ```
 
 - **No network, credential or per-token cost, and no model reads a transcript.** Nothing is filtered or scored at ingest; deciding at read time is the only policy that is reversible.
-- **Per-tool parsers** ([`src/parse-claude.ts`](../src/parse-claude.ts), [`src/parse-codex.ts`](../src/parse-codex.ts)) turn lines into rows and know nothing of the database; [`src/ingest.ts`](../src/ingest.ts) writes their rows and knows nothing of either format.
+- **Per-tool parsers** ([`src/ingest-parse-claude.ts`](../src/ingest-parse-claude.ts), [`src/ingest-parse-codex.ts`](../src/ingest-parse-codex.ts)) turn lines into rows and know nothing of the database; [`src/ingest.ts`](../src/ingest.ts) writes their rows and knows nothing of either format.
 - **Incremental.** `source_file.bytes_ingested` is each file's cursor, and a changed file is read from it. A file shorter than its cursor is re-ingested from zero.
 - **The cursor follows the session, not the path.** Codex archives a rollout by moving it, so the cursor is keyed by `(session_id, kind)` and `message.src_file` follows the new path through `ON UPDATE CASCADE`.
 - **Idempotent.** Natural keys make a re-run a no-op: Claude `message.id` and `uuid`, tool-use ids, `response_id`, Codex item ids and `(thread_id, turn_id)`.
@@ -69,21 +69,21 @@ dim sync: drain the spool → read changed files → derive session ends
 
 ## Read path
 
-- **`dim q <name>`** runs a named query; `dim q list` names them. Each is a `Query` in one of the modules [`src/queries.ts`](../src/queries.ts) imports.
-- **One output shape.** Every command prints one line of JSON: `{command, ok, result}` on stdout, or `{command, ok: false, error}` on stderr with a `code` that tells errors apart ([`src/command-output.ts`](../src/command-output.ts)). A `raw` command prints the format its consumer parses instead: `wake`, `check-command`, `trace`, `wt`, `operator` and `comments check`.
+- **`dim q <name>`** runs a named query; `dim q list` names them. Each is a `Query` in one of the modules [`src/query-registry.ts`](../src/query-registry.ts) imports.
+- **One output shape.** Every command prints one line of JSON: `{command, ok, result}` on stdout, or `{command, ok: false, error}` on stderr with a `code` that tells errors apart ([`src/cli-output.ts`](../src/cli-output.ts)). A `raw` command prints the format its consumer parses instead: `wake`, `check-command`, `trace`, `wt`, `operator` and `comments check`.
 - **A result states its base.** It carries `denominator`, `columns`, `rows` and `note`; an empty result says why, and a figure covering a subset names the subset.
 - **Capped rows.** A result longer than 40 rows says how many were cut and names `--rows`.
 - **A 30-day window** by default, moved with `--since` and removed with `--all`, and stated in the denominator. Time series and queries about a named thing are unwindowed.
 - **Read-only.** A query opens the database through `openReadOnly`, so a wrong query cannot touch `hook_event`, which has no source to restore it from. Its trace row goes through a separate connection.
 - **A repository is named by its remote** — `owner/repo`, lowercased, host dropped — so worktrees and checkouts of one project share a label.
-- **A scratch tree is not work.** [`src/scratch.ts`](../src/scratch.ts) excludes commits made under temp directories wherever session directories become repos.
+- **A scratch tree is not work.** [`src/ingest-scratch.ts`](../src/ingest-scratch.ts) excludes commits made under temp directories wherever session directories become repos.
 
 ## Search
 
 - **Keywords.** `message_fts` is an FTS5 index over `message.text` with external content, kept level by triggers. `keywords` unions one match per term and ranks by terms matched, then relevance, then recency. Terms are quoted before they reach FTS5.
 - **Meaning.** `embedding` holds one 384-float unit vector per distilled passage — a handoff's `## Next`, a commit subject, a labeled correction — with its text beside it. `q search` scores every vector with a dot product; there is no vector store. Where nothing is embedded, it answers from `message_fts` and says so.
 - **Re-embedding** is keyed on `text_sha` and `model`, so only changed passages are embedded again.
-- **Benchmark.** `dim bench` reads `retrieval.jsonl` from the data directory, runs each question through the query it names, and reports recall@k and nDCG@k ([`src/rank-metrics.ts`](../src/rank-metrics.ts)). A line is `{"id", "query", "question", "relevant": [{"ref", "grade"}]}`, where a ref is a commit sha, a session id, or `<session id>@<timestamp>`. The corpus stays out of this repo because its questions name the owner's work.
+- **Benchmark.** `dim bench` reads `retrieval.jsonl` from the data directory, runs each question through the query it names, and reports recall@k and nDCG@k ([`src/bench-rank-metrics.ts`](../src/bench-rank-metrics.ts)). A line is `{"id", "query", "question", "relevant": [{"ref", "grade"}]}`, where a ref is a commit sha, a session id, or `<session id>@<timestamp>`. The corpus stays out of this repo because its questions name the owner's work.
 
 ## What the record cannot say
 
@@ -94,10 +94,10 @@ dim sync: drain the spool → read changed files → derive session ends
 
 ## Key files
 
-- `src/schema.ts` — tables, and the reason for each shape
-- `src/sync.ts` — sync, rebuild and the tables carried through it
-- `src/db.ts`, `src/read-db.ts`, `src/lock.ts` — opening the database, and the lock
-- `src/ingest.ts`, `src/parse-claude.ts`, `src/parse-codex.ts` — ingestion
-- `src/spool.ts`, `src/hooks.ts` — hook spool and install
-- `src/queries.ts`, `src/*-queries.ts` — named queries
-- `src/embed.ts`, `src/bench.ts` — embeddings and the retrieval benchmark
+- `src/db-schema.ts` — tables, and the reason for each shape
+- `src/ingest-sync.ts` — sync, rebuild and the tables carried through it
+- `src/db.ts`, `src/db-read.ts`, `src/db-lock.ts` — opening the database, and the lock
+- `src/ingest.ts`, `src/ingest-parse-claude.ts`, `src/ingest-parse-codex.ts` — ingestion
+- `src/ingest-spool.ts`, `src/hooks.ts` — hook spool and install
+- `src/query-registry.ts`, `src/*-queries.ts` — named queries
+- `src/search-embed.ts`, `src/bench.ts` — embeddings and the retrieval benchmark

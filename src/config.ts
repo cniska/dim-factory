@@ -3,9 +3,9 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { applyEdits, modify } from "jsonc-parser";
 import { ConfigError } from "./config-error";
-import { readJsoncText } from "./jsonc-file";
+import { readJsoncText } from "./config-jsonc-file";
+import { parseSetting, type SettingDefect } from "./config-setting-file";
 import { type Env, resolveHomeDir } from "./paths";
-import { parseSetting, type SettingDefect } from "./setting-file";
 
 export const SETTINGS = {
   comments: ["banned", "allowed"],

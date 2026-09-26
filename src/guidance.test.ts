@@ -3,8 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { SCHEMA_SQL } from "./db-schema";
 import { ingestGuidance } from "./guidance";
-import { SCHEMA_SQL } from "./schema";
 
 function seeded(repos: string[]): Database {
   const db = new Database(":memory:");

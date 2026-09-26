@@ -1,4 +1,4 @@
-import type { Command } from "./command";
+import type { Command } from "./cli-contract";
 import { closeDb, openDb } from "./db";
 import { dbPath } from "./paths";
 

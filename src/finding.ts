@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
-import { checkoutRoot } from "./checkout";
-import { UsageError } from "./command";
+import { UsageError } from "./cli-contract";
+import { checkoutRoot } from "./git-checkout";
 import { labelFor } from "./git-remote";
 
 export type Answer = "fixed" | "refused";

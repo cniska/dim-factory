@@ -1,5 +1,5 @@
-import type { WallItemEntry, WallItemKind } from "./factory-wall";
 import { STATION_LABELS } from "./wall-board";
+import type { WallItemEntry, WallItemKind } from "./wall-server";
 
 export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   queued: "Queued",

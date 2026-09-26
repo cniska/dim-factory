@@ -3,16 +3,16 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { UsageError } from "./command";
+import { UsageError } from "./cli-contract";
+import { SCHEMA_SQL } from "./db-schema";
 import { type Finding, findingFrom, parseFinding, recordFinding } from "./finding";
-import { SCHEMA_SQL } from "./schema";
-import { rebuild } from "./sync";
+import { rebuild } from "./ingest-sync";
 
 const answered: Finding = {
   repo: "cniska/dim-factory",
   slice: "the finding table",
   dimension: "comment narrates the change",
-  file: "src/schema.ts",
+  file: "src/db-schema.ts",
   summary: "the header comment says what the table used to hold",
   answer: "fixed",
   reason: null,
@@ -125,7 +125,7 @@ describe("the row a finding becomes", () => {
       repo: "cniska/dim-factory",
       slice: "the finding table",
       dimension: "comment narrates the change",
-      file: "src/schema.ts",
+      file: "src/db-schema.ts",
     });
     db.close();
   });

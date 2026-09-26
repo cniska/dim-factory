@@ -1,9 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { statSync } from "node:fs";
-import { readChunk } from "./chunk";
 import { gitSubcommands } from "./git-operations";
-import type { ParsedChunk, SessionFacts } from "./session-records";
-import type { Tool } from "./tools";
+import { readChunk } from "./ingest-chunk";
+import type { ParsedChunk, SessionFacts } from "./ingest-session-records";
+import type { Tool } from "./ingest-tools";
 import { worktreeOf } from "./worktree";
 export type Kind = "transcript" | "subagent" | "rollout";
 

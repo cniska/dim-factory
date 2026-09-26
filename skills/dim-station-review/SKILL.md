@@ -14,11 +14,11 @@ Use `dim-git` for the read-only diff boundary and handoff evidence. Review does 
 
 This station carries its review briefs directly. Each dimension supplies findings; this station supplies the factory grounding, read-only boundary and finding convergence.
 
-The reviewer returns a structured report, and the factory records its findings and rulings under the reviewer identity and renders the owner's Review artifact from it ([`src/review-report.ts`](../../src/review-report.ts)): the verdict, blocking findings, owner rulings, earlier findings, plan conformance, coverage, what was not judged, and observations. The report carries no praise, no walkthrough of the diff and no account of how the review ran.
+The reviewer returns a structured report, and the factory records its findings and rulings under the reviewer identity and renders the owner's Review artifact from it ([`src/station-review-report.ts`](../../src/station-review-report.ts)): the verdict, blocking findings, owner rulings, earlier findings, plan conformance, coverage, what was not judged, and observations. The report carries no praise, no walkthrough of the diff and no account of how the review ran.
 
 Use `dim-artifact` for the shared artifact-writing contract. This station supplies the verdict sentence and every section the factory renders.
 
-The report is one JSON object, defined in [`src/review-artifact.schema.json`](../../src/review-artifact.schema.json) and parsed in [`src/review-artifact.ts`](../../src/review-artifact.ts):
+The report is one JSON object, defined in [`src/station-review-artifact.schema.json`](../../src/station-review-artifact.schema.json) and parsed in [`src/station-review-artifact.ts`](../../src/station-review-artifact.ts):
 
 - `verdict` — one sentence saying why the order may advance or must return.
 - `findings` — each `{dimension, file, line, failure, fix, severity}`. Every finding blocks, at `critical`, `high` or `medium`; a point that would not block goes in `observations`.

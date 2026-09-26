@@ -1,9 +1,10 @@
 import type { Database } from "bun:sqlite";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { AGENT_LABEL, agentPlistPath } from "./agent";
-import { checkoutRoot } from "./checkout";
-import { codexConfigPath, planCodexTrust, type TrustState } from "./codex-trust";
+import { PROJECT_CONFIG, projectConfigPath, userConfigPath } from "./config";
+import { ConfigError } from "./config-error";
+import { readJsonc } from "./config-jsonc-file";
+import { SCHEMA_VERSION } from "./db-schema";
 import {
   type CommentGate,
   commentGateFor,
@@ -11,23 +12,22 @@ import {
   installedOwners,
   planCommitGate,
   sharedHooksDir,
-} from "./commit-gate";
-import { PROJECT_CONFIG, projectConfigPath, userConfigPath } from "./config";
-import { ConfigError } from "./config-error";
+} from "./gate-commit";
+import { unarmedCheckouts } from "./gate-push";
+import { checkoutRoot } from "./git-checkout";
+import { primaryCheckout } from "./git-primary-checkout";
+import { isHostQualified } from "./git-remote-slug";
 import { harnessExecutable } from "./harness-launch";
 import { HARNESSES } from "./harness-name";
 import { type HookPlan, hookGaps } from "./hooks";
-import { readJsonc } from "./jsonc-file";
+import { codexConfigPath, planCodexTrust, type TrustState } from "./hooks-codex-trust";
+import { AGENT_LABEL, agentPlistPath } from "./ingest-launchd";
+import { TOOLS } from "./ingest-tools";
 import { dataDir, type Env, resolveHomeDir, tildePath } from "./paths";
-import { primaryCheckout } from "./primary-checkout";
-import { unarmedCheckouts } from "./push-gate";
-import { isHostQualified } from "./remote-slug";
-import { RoutingError, readHarnessMap } from "./routing";
 import { planRules } from "./rules";
-import { SCHEMA_VERSION } from "./schema";
 import { shipMethod } from "./ship-method";
 import { planSkill, retiredLinks } from "./skill";
-import { TOOLS } from "./tools";
+import { RoutingError, readHarnessMap } from "./worker-routing";
 
 export type Health = { name: string; state: "ok" | "warn" | "fail"; detail: string; fix?: string };
 

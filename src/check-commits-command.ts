@@ -1,5 +1,5 @@
-import { checkRange } from "./check-commits";
-import { type Command, Ran, UsageError } from "./command";
+import { type Command, Ran, UsageError } from "./cli-contract";
+import { checkRange } from "./gate-check-commits";
 
 export const checkCommitsCommand: Command = {
   name: "check-commits",

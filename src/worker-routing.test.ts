@@ -1,0 +1,193 @@
+import { describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Glob } from "bun";
+import { HARNESSES } from "./harness-name";
+import { ROLES } from "./worker-roles";
+import { harnessMapPath, ROLE_TIERS, RoutingError, route, routeReport } from "./worker-routing";
+
+function machine(map?: string): { DIM_HOME: string } {
+  const home = mkdtempSync(join(tmpdir(), "dim-routing-"));
+  if (map !== undefined) writeFileSync(join(home, "routing.json"), map);
+  return { DIM_HOME: home };
+}
+
+const COMPLETE = '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }';
+
+describe("resolving a role", () => {
+  test("every role runs at the tier the factory declares for it", () => {
+    const env = machine(COMPLETE);
+
+    expect(route("operator", "codex", env)).toEqual({ tier: "deep", model: "large" });
+    expect(route("planner", "codex", env)).toEqual({ tier: "deep", model: "large" });
+    expect(route("builder", "codex", env)).toEqual({ tier: "standard", model: "middling" });
+    expect(route("reviewer", "codex", env)).toEqual({ tier: "deep", model: "large" });
+  });
+
+  test("declares no role the report cannot print", () => {
+    expect(ROLES).toEqual(["operator", "planner", "builder", "reviewer"]);
+  });
+
+  test("refuses a role no station names", () => {
+    const env = machine(COMPLETE);
+
+    expect(() => route("inspector", "codex", env)).toThrow(/no such factory role/);
+    try {
+      route("inspector", "codex", env);
+    } catch (e) {
+      expect(e).toBeInstanceOf(RoutingError);
+      expect((e as RoutingError).kind).toBe("unknown-role");
+    }
+  });
+
+  test("the listing names every role and the map it read", () => {
+    const env = machine(COMPLETE);
+    const report = routeReport("codex", undefined, env);
+
+    expect(report).toEqual(
+      ROLES.map((role) => ({
+        harness: "codex",
+        role,
+        tier: ROLE_TIERS[role],
+        model: role === "builder" ? "middling" : "large",
+      })),
+    );
+    expect(harnessMapPath(env)).toContain(env.DIM_HOME);
+  });
+
+  test("prints the tier and the model on one line", () => {
+    expect(routeReport("codex", "reviewer", machine(COMPLETE))).toEqual([
+      { harness: "codex", role: "reviewer", tier: "deep", model: "large" },
+    ]);
+  });
+});
+
+describe("a map that cannot be trusted", () => {
+  test("refuses to route where no map was written", () => {
+    const env = machine();
+
+    try {
+      route("reviewer", "codex", env);
+      throw new Error("expected a throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(RoutingError);
+      expect((e as RoutingError).kind).toBe("no-map");
+      expect((e as RoutingError).path).toBe(harnessMapPath(env));
+      expect((e as Error).message).toContain('"standard"');
+    }
+  });
+
+  test("refuses a map that is not an object of tiers", () => {
+    expect(() => route("reviewer", "codex", machine('{ "codex": ["small", "large"] }'))).toThrow(
+      /not an object/,
+    );
+  });
+
+  test("refuses a tier the map leaves unnamed", () => {
+    expect(() =>
+      route("reviewer", "codex", machine('{ "codex": { "light": "small", "standard": "middling" } }')),
+    ).toThrow(/the deep tier names no model/);
+    expect(() =>
+      route("reviewer", "codex", machine('{ "codex": { "light": " ", "standard": "m", "deep": "l" } }')),
+    ).toThrow(/the light tier names no model/);
+  });
+
+  test("refuses a key that is no tier, which is how a typo is caught", () => {
+    const env = machine('{ "codex": { "light": "s", "standard": "m", "deep": "l", "lite": "x" } }');
+
+    expect(() => route("reviewer", "codex", env)).toThrow(/lite, which is no tier/);
+  });
+
+  test("refuses a tier named twice, which JSON would silently resolve", () => {
+    const env = machine('{ "codex": { "light": "first", "light": "second", "standard": "m", "deep": "l" } }');
+
+    expect(() => route("reviewer", "codex", env)).toThrow(/names codex\.light twice/);
+  });
+});
+
+describe("what dim route reports for a map it refuses", () => {
+  for (const [what, map, name, message] of [
+    [
+      "no map",
+      undefined,
+      "RoutingError",
+      ': no harness map, so no role resolves to a model; write { "codex": { "light": "<model>", "standard": "<model>", "deep": "<model>" } } naming what this harness calls each tier',
+    ],
+    ["a map that does not parse", '{ "codex": ', "ConfigError", ": ValueExpected at offset 11"],
+    [
+      "a harness named twice",
+      '{ "codex": {}, "codex": {} }',
+      "RoutingError",
+      ": names codex twice, so one model silently replaced another",
+    ],
+    [
+      "an unknown harness",
+      '{ "gemini": {} }',
+      "RoutingError",
+      ": names gemini, which is no supported harness",
+    ],
+    [
+      "a map that is not an object",
+      '["codex"]',
+      "RoutingError",
+      ': the harness map is not an object of { "codex": { "light": "<model>", "standard": "<model>", "deep": "<model>" } }',
+    ],
+  ] as const) {
+    test(`names the error ${name} for ${what}`, () => {
+      const env = machine(map);
+      const run = Bun.spawnSync(
+        [process.execPath, join(import.meta.dir, "cli.ts"), "route", "codex", "reviewer"],
+        {
+          env: { ...process.env, ...env },
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+      expect(run.exitCode).toBe(1);
+      expect(JSON.parse(new TextDecoder().decode(run.stderr))).toEqual({
+        command: "route",
+        ok: false,
+        error: {
+          name,
+          code: "command_failed",
+          message: `${join(env.DIM_HOME, "routing.json")}${message}`,
+        },
+      });
+    });
+  }
+});
+
+test("no model name reaches dim's source or a skill", () => {
+  const root = join(import.meta.dir, "..");
+  const suspect = /haiku|sonnet|opus|gpt-|gemini/i;
+  const offenders: string[] = [];
+  for (const pattern of ["src/**/*.ts", "src/**/*.tsx", "skills/**/*.md"]) {
+    for (const file of new Glob(pattern).scanSync(root)) {
+      if (file.includes(".test.") || file.includes(".test-support.")) continue;
+      if (suspect.test(readFileSync(join(root, file), "utf8"))) offenders.push(file);
+    }
+  }
+  expect(offenders).toEqual([]);
+});
+
+test("every role a skill cites is one that routes", () => {
+  const root = join(import.meta.dir, "..");
+  const cited: string[] = [];
+  const unroutable: string[] = [];
+  for (const file of new Glob("skills/**/*.md").scanSync(root)) {
+    for (const [, harness, role] of readFileSync(join(root, file), "utf8").matchAll(
+      /dim route (<harness>|\w+) (\w+)/g,
+    )) {
+      cited.push(`${harness}:${role}`);
+      const harnessRoutes =
+        harness === "<harness>" || (HARNESSES as readonly string[]).includes(harness as string);
+      if (!harnessRoutes || !((role as string) in ROLE_TIERS)) {
+        unroutable.push(`${file}: ${harness} ${role}`);
+      }
+    }
+  }
+
+  expect(unroutable).toEqual([]);
+  expect(cited.length).toBeGreaterThan(0);
+});

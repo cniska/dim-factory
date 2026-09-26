@@ -45,7 +45,7 @@ Dated measurements from this machine's record, each with what it can and cannot 
 - **Codex edits are invisible to edit counts** (2026-09-18). Codex writes `FileChange` where Claude writes `Edit` and `Write`, and records stops on `turn.status`, which the correction queries do not read.
 - **Claude Code headless** (2026-09-25, 2.1.282). `acceptEdits` works in `-p`. An empty `ANTHROPIC_API_KEY` in `--settings` overrides a project key. Sandboxed Bash can write the whole session `$TMPDIR`, and a linked worktree's common git dir, so what a builder must not write there has to be denied. `--resume` works from another directory. `--bare` and an empty `CLAUDE_CONFIG_DIR` lose the login.
 - **Worker launch settings remove background tools** (2026-09-26, 2.1.282). `ScheduleWakeup`, `CronCreate`, `Monitor` and `RemoteTrigger` leave the tool list; `CronList` and `CronDelete` stay.
-- **Bun paints stderr** (2026-09-18, 1.3.14). `console.error` adds color escapes under `FORCE_COLOR` even into a pipe, breaking exact-output tests, so diagnostics go through [`src/warn.ts`](../src/warn.ts) and `noConsole` is on.
+- **Bun paints stderr** (2026-09-18, 1.3.14). `console.error` adds color escapes under `FORCE_COLOR` even into a pipe, breaking exact-output tests, so diagnostics go through [`src/cli-warn.ts`](../src/cli-warn.ts) and `noConsole` is on.
 
 ## Hazards met in practice
 

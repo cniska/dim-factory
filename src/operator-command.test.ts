@@ -4,17 +4,11 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { UsageError } from "./command";
-import {
-  mintWorker,
-  newWorkerSession,
-  resolveWorker,
-  WORKER_NAME_VAR,
-  WORKER_SESSION_VAR,
-} from "./factory-worker";
+import { UsageError } from "./cli-contract";
+import { SCHEMA_SQL } from "./db-schema";
+import { ensureSpoolDirs, toolSpoolDir } from "./ingest-spool";
 import { runOperatorCommand } from "./operator-command";
-import { SCHEMA_SQL } from "./schema";
-import { ensureSpoolDirs, toolSpoolDir } from "./spool";
+import { mintWorker, newWorkerSession, resolveWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR } from "./worker";
 
 function floor(): Database {
   const db = new Database(":memory:");

@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { ScheduleInvocation } from "./factory-events";
+import type { ScheduleInvocation } from "./order-events";
 
 export type Schedule = {
   id: string;

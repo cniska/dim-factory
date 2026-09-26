@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
+import { SCHEMA_SQL } from "./db-schema";
 import {
   createSchedule,
   listDueSchedules,
@@ -7,8 +8,7 @@ import {
   recordScheduleInvocation,
   setSchedulePaused,
 } from "./factory-schedule";
-import { findQuery } from "./queries";
-import { SCHEMA_SQL } from "./schema";
+import { findQuery } from "./query-registry";
 
 describe("factory schedules", () => {
   test("selects an unevaluated schedule and respects its interval", () => {

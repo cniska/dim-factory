@@ -4,8 +4,8 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { SCHEMA_SQL } from "./db-schema";
 import { indexRepoFiles, trackedFiles } from "./repo-files";
-import { SCHEMA_SQL } from "./schema";
 
 function repoWith(files: string[]): string {
   const dir = mkdtempSync(join(tmpdir(), "dim-files-"));

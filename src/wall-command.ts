@@ -1,6 +1,6 @@
-import type { Command } from "./command";
-import { serveWall } from "./factory-wall";
+import type { Command } from "./cli-contract";
 import { DEFAULT_WALL_PORT, WALL_HOT_ENV, WALL_PORT_ENV, WallPortError, wallPort } from "./wall-port";
+import { serveWall } from "./wall-server";
 
 export const wallCommand: Command = {
   name: "wall",

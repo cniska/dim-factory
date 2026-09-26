@@ -1,5 +1,5 @@
-import type { WallOrder, WallStage } from "./factory-wall";
 import type { Station } from "./station";
+import type { WallOrder, WallStage } from "./wall-server";
 
 export const WALL_COLUMNS: ReadonlyArray<{ stage: WallStage; label: string }> = [
   { stage: "todo", label: "Todo" },

@@ -1,5 +1,4 @@
-import { checkoutRoot } from "./checkout";
-import { type Command, UsageError } from "./command";
+import { type Command, UsageError } from "./cli-contract";
 import {
   isSetting,
   projectConfigPath,
@@ -9,6 +8,7 @@ import {
   userConfigPath,
   writeConfigValue,
 } from "./config";
+import { checkoutRoot } from "./git-checkout";
 import type { Env } from "./paths";
 
 const USAGE =

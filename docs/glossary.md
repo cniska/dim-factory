@@ -9,11 +9,11 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Owner | The person the factory runs for. They release holds, approve artifacts and read the wall |
 | Operator | The hand that runs the line: reads the queue, delegates each station and checks what comes back. It decides which work starts and when to stop, never how the work is done |
 | Worker | A hand the factory issues before any work starts, named like `nut-7` and carrying one role. Every act on an order names its worker when it is written |
-| Role | What a worker is called in as: `operator`, `planner`, `builder` or `reviewer` ([`src/roles.ts`](../src/roles.ts)) |
+| Role | What a worker is called in as: `operator`, `planner`, `builder` or `reviewer` ([`src/worker-roles.ts`](../src/worker-roles.ts)) |
 | Read-only role | `planner` and `reviewer`, which may not change the tree they read |
 | Worker tree | The record of who delegated to whom: the operator, its station workers, and their children |
-| Tier | The capability a role needs — `light`, `standard` or `deep` — mapped to this machine's models in one file ([`src/routing.ts`](../src/routing.ts)) |
-| Capability | What a station's work needs, named for the work rather than a harness flag — `read-files`, `edit-files`, `run-check` and the rest ([`src/capabilities.ts`](../src/capabilities.ts)) |
+| Tier | The capability a role needs — `light`, `standard` or `deep` — mapped to this machine's models in one file ([`src/worker-routing.ts`](../src/worker-routing.ts)) |
+| Capability | What a station's work needs, named for the work rather than a harness flag — `read-files`, `edit-files`, `run-check` and the rest ([`src/worker-capabilities.ts`](../src/worker-capabilities.ts)) |
 | Harness | The agent product that runs a worker session, such as Claude Code or Codex |
 | Line | The kind of work an order is: `feat` (shown as **feature**) or `fix`. `dim-line-feat` and `dim-line-fix` are its entry points |
 | Station | One repeatable step of work on an order: `plan`, `build` or `review` ([`src/station.ts`](../src/station.ts)). Each has a skill named `dim-station-<station>` |
@@ -25,7 +25,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Slice | One increment inside an order that verifies and commits on its own |
 | Ship | Delivering an order's commits the way the repo declares in `dim.ship` — `dim order ship` |
 | Done | An order whose check passed on its final commit, whose findings are all answered, whose docs changed with the behavior, whose commits are on the trunk, and whose worktree is gone |
-| Command | One `dim` subcommand, in the `src/<name>-command.ts` named for it ([`src/command.ts`](../src/command.ts)) |
+| Command | One `dim` subcommand, in the `src/<name>-command.ts` named for it ([`src/cli-contract.ts`](../src/cli-contract.ts)) |
 | Command line | The text a shell runs, such as `bun run verify` |
 | Workspace task | What a repo declares in its manifest — a `package.json` script, a `mise` task, a `Makefile` target — read, never inferred ([`src/workspace-tasks.ts`](../src/workspace-tasks.ts)). The check is the task that says a change is sound |
 
@@ -36,11 +36,11 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Claim | A worker taking an order, which also makes its worktree |
 | Attempt | One station hand's run on an order, from start to finish, with its outcome |
 | Drop | The owner's decision not to build an order, with the reason |
-| Ledger | An order's events in `factory_order_event`, appended and never changed ([`src/factory-order-ledger.ts`](../src/factory-order-ledger.ts)) |
+| Ledger | An order's events in `factory_order_event`, appended and never changed ([`src/order-ledger.ts`](../src/order-ledger.ts)) |
 | Evidence | What an order produced: commits, changed files, checks, findings and answers, documents |
 | Artifact | A document a station worker writes for the owner — a plan, a Build artifact or a review — one row per revision in `factory_order_artifact`. It leads with the outcome and never lives in the worktree |
-| Build turn | What a builder returns after code work: the commit subject, an answer per finding it was handed, and on the last turn the Build artifact ([`src/build-turn.ts`](../src/build-turn.ts)). The runner commits; the builder does not |
-| Check sandbox | The confinement the runner runs a repo's check in: worktree writable, network and `dim`'s data refused ([`src/sandboxed-check.ts`](../src/sandboxed-check.ts)) |
+| Build turn | What a builder returns after code work: the commit subject, an answer per finding it was handed, and on the last turn the Build artifact ([`src/station-build-turn.ts`](../src/station-build-turn.ts)). The runner commits; the builder does not |
+| Check sandbox | The confinement the runner runs a repo's check in: worktree writable, network and `dim`'s data refused ([`src/check-sandbox.ts`](../src/check-sandbox.ts)) |
 | Rewrite | One rebase of an order's branch onto a moved trunk, recorded with the sha each commit retires |
 | Finding | A problem a reviewer raised, with a file and line, the failure, a fix direction and a severity ([`src/order-finding-state.ts`](../src/order-finding-state.ts)) |
 | Severity | How much a finding costs if it ships: `critical`, `high` or `medium` |

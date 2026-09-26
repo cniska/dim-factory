@@ -1,5 +1,5 @@
 import { existsSync, statSync } from "node:fs";
-import { remoteSlug } from "./remote-slug";
+import { remoteSlug } from "./git-remote-slug";
 
 export function repositoryLabel(url: string): string | null {
   const trimmed = url.trim();

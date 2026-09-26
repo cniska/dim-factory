@@ -2,11 +2,16 @@ import { CircleAlert, CircleCheck, CircleDot, CircleX, type LucideIcon, Radio, X
 import { Children, isValidElement, type ReactNode, StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import Markdown from "react-markdown";
-import { age } from "./age";
 import { Badge } from "./components/ui/badge";
 import { Card, CardFooter, CardHeader } from "./components/ui/card";
 import { Digits } from "./components/ui/digits";
 import { Robot } from "./components/ui/robot";
+import { cn } from "./lib/utils";
+import type { OrderLine } from "./order-line";
+import { age } from "./query-age";
+import { ordersByStage, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
+import { itemKindLabel } from "./wall-item";
+import { msUntilNextMinute } from "./wall-minute-beat";
 import type {
   BoardStatus,
   WallItemEntry,
@@ -14,12 +19,7 @@ import type {
   WallOrder,
   WallRole,
   WallSnapshot,
-} from "./factory-wall";
-import { cn } from "./lib/utils";
-import { msUntilNextMinute } from "./minute-beat";
-import type { OrderLine } from "./order-line";
-import { ordersByStage, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
-import { itemKindLabel } from "./wall-item";
+} from "./wall-server";
 import "./wall.css";
 
 const unavailableSnapshot: WallSnapshot = {

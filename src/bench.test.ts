@@ -2,9 +2,9 @@ import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { runBench } from "./bench";
 import type { BenchQuestion } from "./bench-corpus";
-import { EMBED_DIMS, type Embedder, type Question } from "./embed";
-import { buildIndex } from "./embed-index";
-import { SCHEMA_SQL } from "./schema";
+import { SCHEMA_SQL } from "./db-schema";
+import { EMBED_DIMS, type Embedder, type Question } from "./search-embed";
+import { buildIndex } from "./search-embed-index";
 
 const embedNothing = async (): Promise<Question | undefined> => undefined;
 

@@ -1,4 +1,4 @@
-import { type Command, UsageError } from "./command";
+import { type Command, UsageError } from "./cli-contract";
 import { withDb } from "./db";
 import { dbPath } from "./paths";
 

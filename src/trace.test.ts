@@ -4,8 +4,8 @@ import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
+import { SCHEMA_VERSION } from "./db-schema";
 import { dbPath, type Env } from "./paths";
-import { SCHEMA_VERSION } from "./schema";
 import { trace } from "./trace";
 
 const roots: string[] = [];

@@ -2,12 +2,12 @@ import type { Database } from "bun:sqlite";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { openOrderReview } from "./factory-order-review";
-import { mintWorker, newWorkerSession, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { installHooks } from "./hooks";
+import { openOrderReview } from "./order-review";
 import type { Env } from "./paths";
-import { REVIEW_DIMENSIONS, type ReviewFinding } from "./review-artifact";
-import type { Role } from "./roles";
+import { REVIEW_DIMENSIONS, type ReviewFinding } from "./station-review-artifact";
+import { mintWorker, newWorkerSession, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./worker";
+import type { Role } from "./worker-roles";
 
 export function workerIn(db: Database, role: Role = "builder"): string {
   return mintWorker(db, { role, sessionId: newWorkerSession("test-worker") }).name;

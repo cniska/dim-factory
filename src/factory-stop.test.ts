@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
+import { SCHEMA_SQL } from "./db-schema";
 import { clearStop, FactoryStopError, liveStop, pullStop } from "./factory-stop";
-import { SCHEMA_SQL } from "./schema";
 
 function floor(): Database {
   const db = new Database(":memory:");

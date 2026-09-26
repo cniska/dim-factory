@@ -1,11 +1,11 @@
 import { dirname, join } from "node:path";
 import type { JSONPath } from "jsonc-parser";
 import { ConfigError } from "./config-error";
-import { appendToJsoncArray, parseJsonc, setJsoncValue } from "./jsonc";
-import { readJsonc, readJsoncText, writeJsoncFile } from "./jsonc-file";
+import { appendToJsoncArray, parseJsonc, setJsoncValue } from "./config-jsonc";
+import { readJsonc, readJsoncText, writeJsoncFile } from "./config-jsonc-file";
+import { toolSpoolDir } from "./ingest-spool";
+import { TOOLS, type Tool } from "./ingest-tools";
 import { claudeProjectsDir, codexDir, type Env } from "./paths";
-import { toolSpoolDir } from "./spool";
-import { TOOLS, type Tool } from "./tools";
 
 export const HOOK_CONTRACT_VERSION = 2;
 

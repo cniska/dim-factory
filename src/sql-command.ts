@@ -1,7 +1,7 @@
-import { type Command, UsageError } from "./command";
+import { type Command, UsageError } from "./cli-contract";
+import { openReadOnly } from "./db-read";
 import { dbPath } from "./paths";
-import { openReadOnly } from "./read-db";
-import { capRows, rowsFromArgs } from "./row-cap";
+import { capRows, rowsFromArgs } from "./query-row-cap";
 
 function statementIn(args: string[]): string | undefined {
   const rows = args.indexOf("--rows");

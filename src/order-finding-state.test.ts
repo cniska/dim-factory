@@ -4,9 +4,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
-import { claimOrder, moveOrder, queueOrder, setOrderHold } from "./factory-order-lifecycle";
-import { closeOrderReview } from "./factory-order-review";
+import { SCHEMA_SQL } from "./db-schema";
 import { integratedRepo, located, reviewIn, workerIn } from "./fixtures.test-support";
+import { rebuild } from "./ingest-sync";
 import {
   answerOrderFindings,
   raiseOrderFinding,
@@ -19,9 +19,9 @@ import {
   findingStanding,
   orderFindingStandings,
 } from "./order-finding-state";
+import { claimOrder, moveOrder, queueOrder, setOrderHold } from "./order-lifecycle";
+import { closeOrderReview } from "./order-review";
 import { dbPath } from "./paths";
-import { SCHEMA_SQL } from "./schema";
-import { rebuild } from "./sync";
 
 const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));

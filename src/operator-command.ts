@@ -1,6 +1,10 @@
 import type { Database } from "bun:sqlite";
-import { type Command, UsageError } from "./command";
+import { type Command, UsageError } from "./cli-contract";
+import { readFlags } from "./cli-flags";
 import { closeDb, openDb } from "./db";
+import { labelFor } from "./git-remote";
+import { drainSpool } from "./ingest-spool";
+import { dbPath } from "./paths";
 import {
   type MintedWorker,
   mintWorkerForSession,
@@ -8,13 +12,9 @@ import {
   WORKER_SESSION_VAR,
   WORKER_TOKEN_VAR,
   workerExports,
-} from "./factory-worker";
-import { readFlags } from "./flags";
-import { labelFor } from "./git-remote";
-import { dbPath } from "./paths";
-import type { Role } from "./roles";
-import { drainSpool } from "./spool";
+} from "./worker";
 import { readWorkerCredential, saveWorkerCredential } from "./worker-credential";
+import type { Role } from "./worker-roles";
 
 const OPERATOR_ROLE = "operator" as const;
 

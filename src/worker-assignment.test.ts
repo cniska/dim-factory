@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { endWorker, mintWorker, WorkerCredentialUnavailable } from "./factory-worker";
-import { SCHEMA_SQL } from "./schema";
+import { SCHEMA_SQL } from "./db-schema";
+import { endWorker, mintWorker, WorkerCredentialUnavailable } from "./worker";
 import {
   assignWorker,
   bootstrapWorker,

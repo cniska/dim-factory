@@ -1,7 +1,7 @@
-import type { Command } from "./command";
+import type { Command } from "./cli-contract";
 import { installHooks, planHooks } from "./hooks";
+import { ensureSpoolDirs } from "./ingest-spool";
 import { WRITE_NEXT } from "./install-write";
-import { ensureSpoolDirs } from "./spool";
 
 export const installHooksCommand: Command = {
   name: "install-hooks",

@@ -1,7 +1,7 @@
-import { type Command, Ran } from "./command";
+import { type Command, Ran } from "./cli-contract";
+import { openReadOnly } from "./db-read";
 import { diagnose } from "./doctor";
 import { dbPath } from "./paths";
-import { openReadOnly } from "./read-db";
 
 export const doctorCommand: Command = {
   name: "doctor",

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { dataDir, type Env } from "./paths";
-import { findQuery } from "./queries";
+import { findQuery } from "./query-registry";
 
 export type BenchQuestion = {
   id: string;

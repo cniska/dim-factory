@@ -1,4 +1,4 @@
-import { javascriptComments } from "./javascript-comments";
+import { javascriptComments } from "./comments-javascript";
 
 export type CommentSpan = { start: number; end: number };
 

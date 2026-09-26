@@ -3,8 +3,8 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SCHEMA_SQL } from "./schema";
-import { sync } from "./sync";
+import { SCHEMA_SQL } from "./db-schema";
+import { sync } from "./ingest-sync";
 
 const roots: string[] = [];
 

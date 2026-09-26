@@ -1,7 +1,4 @@
 import type { Database } from "bun:sqlite";
-import { appendOrderEventInTransaction } from "./factory-order-ledger";
-import { openReviewOf, ReviewNotOpen, releaseReviewApprovalInTransaction } from "./factory-order-review";
-import { assertOrderWorking } from "./factory-order-status";
 import {
   findingStanding,
   type OrderFindingAnswer,
@@ -10,7 +7,10 @@ import {
   type ReviewerRuling,
   rulingApplies,
 } from "./order-finding-state";
-import type { ReviewFinding } from "./review-artifact";
+import { appendOrderEventInTransaction } from "./order-ledger";
+import { openReviewOf, ReviewNotOpen, releaseReviewApprovalInTransaction } from "./order-review";
+import { assertOrderWorking } from "./order-status";
+import type { ReviewFinding } from "./station-review-artifact";
 
 const now = (): string => new Date().toISOString();
 

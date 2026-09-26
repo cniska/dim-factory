@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { SCHEMA_SQL, SCHEMA_VERSION } from "./schema";
+import { SCHEMA_SQL, SCHEMA_VERSION } from "./db-schema";
 
 export class SchemaTooOldError extends Error {
   readonly code = "SCHEMA_TOO_OLD";

@@ -1,4 +1,4 @@
-import type { Command } from "./command";
+import type { Command } from "./cli-contract";
 import { WRITE_NEXT } from "./install-write";
 import { installSkill, planSkill, retiredLinks, SKILL_NAMES } from "./skill";
 

@@ -1,6 +1,6 @@
 import { statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { checkoutRoot } from "./checkout";
+import { checkoutRoot } from "./git-checkout";
 import { detectWorkspace } from "./workspace-detectors";
 import { checkTask, declaredTasks, formatTask, readManifest, type WorkspaceTask } from "./workspace-tasks";
 import { worktreeOf } from "./worktree";

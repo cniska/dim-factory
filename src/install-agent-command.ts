@@ -1,5 +1,5 @@
-import { AGENT_LABEL, installAgent, planAgent } from "./agent";
-import type { Command } from "./command";
+import type { Command } from "./cli-contract";
+import { AGENT_LABEL, installAgent, planAgent } from "./ingest-launchd";
 import { WRITE_NEXT } from "./install-write";
 
 export const installAgentCommand: Command = {

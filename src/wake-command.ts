@@ -1,8 +1,8 @@
-import type { Command } from "./command";
+import type { Command } from "./cli-contract";
+import { openReadOnly } from "./db-read";
+import { resolveWalk, spoolWalk } from "./guidance-walk";
 import { dbPath } from "./paths";
-import { openReadOnly } from "./read-db";
-import { readWake, renderWake, type Wake, wireFor } from "./wake";
-import { resolveWalk, spoolWalk } from "./walk";
+import { readWake, renderWake, type Wake, wireFor } from "./recall-wake";
 
 async function hookPayload(): Promise<{ session_id?: string; cwd?: string }> {
   if (Bun.stdin.stream().locked || process.stdin.isTTY) return {};

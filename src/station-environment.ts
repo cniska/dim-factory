@@ -1,5 +1,5 @@
-import { WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import type { ProcessEnvironment } from "./harness-process";
+import { WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
 import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR } from "./worker-assignment";
 
 const FACTORY_IDENTITY_VARS = [

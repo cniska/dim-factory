@@ -1,11 +1,11 @@
 import type { Database } from "bun:sqlite";
 import type { BenchQuestion } from "./bench-corpus";
-import { readDistilled } from "./distilled";
-import type { Question } from "./embed";
-import { type PassageRef, parsePassageRef } from "./passage-ref";
-import { findQuery } from "./queries";
+import { ndcgAtK, recallAtK } from "./bench-rank-metrics";
 import type { QueryContext } from "./query";
-import { ndcgAtK, recallAtK } from "./rank-metrics";
+import { findQuery } from "./query-registry";
+import { readDistilled } from "./search-distilled";
+import type { Question } from "./search-embed";
+import { type PassageRef, parsePassageRef } from "./search-passage-ref";
 
 const REF_COLUMN = "ref";
 

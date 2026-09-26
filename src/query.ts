@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { Question } from "./embed";
+import type { Question } from "./search-embed";
 
 export type QueryResult = {
   denominator: string;
