@@ -200,6 +200,62 @@ describe("doctor", () => {
     expect(warned?.fix).toContain("set-head");
   });
 
+  test("names a checkout the factory ships from that declares no ship method", () => {
+    const env = seeded();
+    expect(check(env, "ship method")?.state).toBe("ok");
+
+    const isolated = { ...process.env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_SYSTEM: devNull };
+    const factoryRepo = join(newRoot(), "shipped");
+    const otherRepo = join(newRoot(), "unrelated");
+    for (const repo of [factoryRepo, otherRepo]) {
+      execFileSync("git", ["init", "-q", "-b", "main", repo], { env: isolated });
+    }
+    const gitIn = (dir: string, args: string[]) =>
+      execFileSync("git", ["-C", dir, "-c", "user.name=T", "-c", "user.email=t@example.com", ...args], {
+        env: isolated,
+      });
+    gitIn(factoryRepo, ["commit", "-q", "--allow-empty", "-m", "feat: x"]);
+    const factoryWorktree = join(newRoot(), "shipped-wt");
+    gitIn(factoryRepo, ["worktree", "add", "-q", "-b", "o1", factoryWorktree]);
+    // A commit both checkouts carry is credited to whichever one was ingested last, so one
+    // repo's rows can name its worktree, its primary checkout, or both.
+    const db = openDb(dbPath(env));
+    db.run(
+      "INSERT INTO repo_commit (sha, repo, label, ts, author, subject) VALUES ('s1', ?, 'cniska/shipped', '2026-01-01T00:00:00Z', 'a', 'feat: x'), ('s2', ?, 'cniska/unrelated', '2026-01-01T00:00:00Z', 'a', 'feat: y')",
+      [factoryWorktree, otherRepo],
+    );
+    db.run(
+      "INSERT INTO factory_order (id, project, title, status, created_at, updated_at) VALUES ('o1', 'cniska/shipped', 'Shipped', 'queued', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+    );
+    closeDb(db);
+    const throughWorktree = check(env, "ship method");
+    expect(throughWorktree?.state).toBe("warn");
+    expect(throughWorktree?.detail).toEndWith(factoryRepo.replace(`${env.HOME}/`, ""));
+
+    const both = openDb(dbPath(env));
+    both.run(
+      "INSERT INTO repo_commit (sha, repo, label, ts, author, subject) VALUES ('s3', ?, 'cniska/shipped', '2026-01-01T00:00:00Z', 'a', 'feat: z')",
+      [factoryRepo],
+    );
+    closeDb(both);
+
+    const warned = check(env, "ship method");
+    expect(warned?.state).toBe("warn");
+    expect(warned?.detail).toStartWith("1 checkouts");
+    expect(warned?.detail).toEndWith(factoryRepo.replace(`${env.HOME}/`, ""));
+    expect(warned?.detail).not.toContain("unrelated");
+    expect(warned?.fix).toBe("git config dim.ship trunk, in each");
+
+    execFileSync("git", ["-C", factoryRepo, "config", "dim.ship", "main"], { env: isolated });
+    expect(check(env, "ship method")?.state).toBe("warn");
+
+    execFileSync("git", ["-C", factoryRepo, "config", "dim.ship", "pull-request"], { env: isolated });
+    expect(check(env, "ship method")?.state).toBe("warn");
+
+    execFileSync("git", ["-C", factoryRepo, "config", "dim.ship", "trunk"], { env: isolated });
+    expect(check(env, "ship method")?.state).toBe("ok");
+  });
+
   test("fails when hooks are installed but have never fired", () => {
     const env = seeded();
     // No hooks in this scratch home, so the check must say it is not expected

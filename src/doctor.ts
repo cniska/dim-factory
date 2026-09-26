@@ -10,11 +10,13 @@ import { HARNESSES } from "./harness-name";
 import { type HookPlan, hookGaps } from "./hooks";
 import { readJsonc } from "./jsonc-file";
 import { dataDir, type Env, resolveHomeDir } from "./paths";
+import { primaryCheckout } from "./primary-checkout";
 import { unarmedCheckouts } from "./push-gate";
 import { isHostQualified } from "./remote-slug";
 import { RoutingError, readHarnessMap } from "./routing";
 import { planRules } from "./rules";
 import { SCHEMA_VERSION } from "./schema";
+import { shipMethod } from "./ship-method";
 import { planSkill, retiredLinks } from "./skill";
 import { TOOLS } from "./tools";
 
@@ -416,6 +418,39 @@ export function diagnose(db: Database, env: Env = process.env): Health[] {
             .map((d) => d.replace(`${resolveHomeDir(env)}/`, ""))
             .join(", ")}`,
           fix: "git remote set-head origin -a, in each",
+        },
+  );
+
+  // Only checkouts a factory order belongs to, since `dim order ship` is the one reader
+  // of the declaration. A row names whichever checkout last carried the commit, often a
+  // worktree, so each is resolved to the primary checkout the declaration is read from.
+  const shippedFrom = new Set(
+    (
+      db
+        .query("SELECT DISTINCT repo FROM repo_commit WHERE label IN (SELECT project FROM factory_order)")
+        .all() as { repo: string }[]
+    )
+      .map((r) => primaryCheckout(r.repo))
+      .filter((root) => root !== null),
+  );
+  const unusable = [...shippedFrom].sort().filter((root) => {
+    const declared = shipMethod(root);
+    return !("method" in declared) || declared.method !== "trunk";
+  });
+  checks.push(
+    unusable.length === 0
+      ? {
+          name: "ship method",
+          state: "ok",
+          detail: "every checkout the factory ships from declares dim.ship = trunk",
+        }
+      : {
+          name: "ship method",
+          state: "warn",
+          detail: `${unusable.length} checkouts the factory ships from declare no dim.ship that \`dim order ship\` can land, so it refuses there: ${unusable
+            .map((d) => d.replace(`${resolveHomeDir(env)}/`, ""))
+            .join(", ")}`,
+          fix: "git config dim.ship trunk, in each",
         },
   );
 

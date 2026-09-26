@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { integratedRepo, orderWorktree, repoWithoutTrunk } from "./fixtures.test-support";
-import { type ShipRefusal, shipToTrunk } from "./ship";
+import { type ShipRefusal, shipBranch } from "./ship";
 
 function git(dir: string, args: string[]): { success: boolean; out: string } {
   const run = Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe", stderr: "pipe" });
@@ -33,22 +33,119 @@ function worktree(dir: string, branch: string): string {
   return path;
 }
 
-describe("shipToTrunk", () => {
+describe("shipBranch", () => {
   test("shipping from the primary checkout still lands the order's own branch", () => {
     const { dir } = repo();
     const wt = worktree(dir, "feat-a");
     const sha = commitFile(wt, "feat-a.txt", "a");
 
-    shipToTrunk(dir, "feat-a", [sha]);
+    shipBranch(dir, "feat-a", [sha]);
 
     expect(reachesNow(dir, sha)).toBe(true);
+  });
+
+  test("a repo that declares no ship method is refused from either checkout, leaving the trunk as it was", () => {
+    const { dir } = repo();
+    git(dir, ["config", "--unset", "dim.ship"]);
+    const wt = worktree(dir, "feat-undeclared");
+    const sha = commitFile(wt, "feat-undeclared.txt", "u");
+    const trunkBefore = git(dir, ["rev-parse", "HEAD"]).out;
+
+    for (const from of [dir, wt]) {
+      expect(() => shipBranch(from, "feat-undeclared", [sha])).toThrow(
+        expect.objectContaining({ code: "ship_no_method" } satisfies Partial<ShipRefusal>),
+      );
+    }
+    expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkBefore);
+  });
+
+  test("a repo that ships by pull request is refused as unbuilt from either checkout", () => {
+    const { dir } = repo();
+    git(dir, ["config", "dim.ship", "pull-request"]);
+    const wt = worktree(dir, "feat-pr");
+    const sha = commitFile(wt, "feat-pr.txt", "pr");
+    const trunkBefore = git(dir, ["rev-parse", "HEAD"]).out;
+
+    for (const from of [dir, wt]) {
+      expect(() => shipBranch(from, "feat-pr", [sha])).toThrow(
+        expect.objectContaining({ code: "ship_pull_request_unbuilt" } satisfies Partial<ShipRefusal>),
+      );
+    }
+    expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkBefore);
+  });
+
+  test("a commit already on the trunk is still refused where the repo declares no ship method", () => {
+    const { dir } = repo();
+    git(dir, ["config", "--unset", "dim.ship"]);
+    const sha = git(dir, ["rev-parse", "HEAD"]).out;
+
+    expect(() => shipBranch(dir, "main", [sha])).toThrow(
+      expect.objectContaining({ code: "ship_no_method" } satisfies Partial<ShipRefusal>),
+    );
+  });
+
+  test("a repo that declares no ship method is refused for that before its trunk is looked for", () => {
+    const { dir, sha } = repoWithoutTrunk();
+    cleanup.push(dir);
+
+    expect(() => shipBranch(dir, "main", [sha])).toThrow(
+      expect.objectContaining({ code: "ship_no_method" } satisfies Partial<ShipRefusal>),
+    );
+  });
+
+  test("a ship method outside the vocabulary is refused rather than read as trunk", () => {
+    const { dir } = repo();
+    git(dir, ["config", "dim.ship", "Trunk"]);
+    const wt = worktree(dir, "feat-typo");
+    const sha = commitFile(wt, "feat-typo.txt", "typo");
+
+    for (const from of [dir, wt]) {
+      expect(() => shipBranch(from, "feat-typo", [sha])).toThrow(
+        expect.objectContaining({ code: "ship_invalid_method" } satisfies Partial<ShipRefusal>),
+      );
+    }
+    expect(reachesNow(dir, sha)).toBe(false);
+  });
+
+  test("the method is read from the primary checkout, not a value only the worktree holds", () => {
+    const { dir } = repo();
+    git(dir, ["config", "--unset", "dim.ship"]);
+    git(dir, ["config", "extensions.worktreeConfig", "true"]);
+    const wt = worktree(dir, "feat-local");
+    git(wt, ["config", "--worktree", "dim.ship", "trunk"]);
+    const sha = commitFile(wt, "feat-local.txt", "local");
+
+    expect(() => shipBranch(wt, "feat-local", [sha])).toThrow(
+      expect.objectContaining({ code: "ship_no_method" } satisfies Partial<ShipRefusal>),
+    );
+  });
+
+  test("a ship method set only in the global config is not the repo's declaration", () => {
+    const { dir } = repo();
+    git(dir, ["config", "--unset", "dim.ship"]);
+    const globalConfig = join(dir, "..", `global-${Date.now()}.gitconfig`);
+    cleanup.push(globalConfig);
+    git(dir, ["config", "--file", globalConfig, "dim.ship", "trunk"]);
+
+    // A spawned git inherits the environment this process started with, not later
+    // assignments to process.env, so the global config is set on a child of its own.
+    const read = Bun.spawnSync(
+      [
+        "bun",
+        "-e",
+        `import { shipMethod } from ${JSON.stringify(join(import.meta.dir, "ship-method.ts"))}; console.log(JSON.stringify(shipMethod(${JSON.stringify(dir)})))`,
+      ],
+      { env: { ...process.env, GIT_CONFIG_GLOBAL: globalConfig }, stdout: "pipe", stderr: "pipe" },
+    );
+
+    expect(Object.keys(JSON.parse(read.stdout.toString()))).toEqual(["missing"]);
   });
 
   test("a commit already on the trunk ships as already landed", () => {
     const { dir } = repo();
     const sha = git(dir, ["rev-parse", "HEAD"]).out;
 
-    expect(shipToTrunk(dir, "main", [sha])).toEqual({ landed: "already" });
+    expect(shipBranch(dir, "main", [sha])).toEqual({ landed: "already" });
   });
 
   test("a worktree ahead of the trunk with no divergence fast-forwards", () => {
@@ -56,7 +153,7 @@ describe("shipToTrunk", () => {
     const wt = worktree(dir, "feat-a");
     const sha = commitFile(wt, "feat-a.txt", "a");
 
-    expect(shipToTrunk(wt, "feat-a", [sha])).toEqual({ landed: "fast_forward" });
+    expect(shipBranch(wt, "feat-a", [sha])).toEqual({ landed: "fast_forward" });
     expect(reachesNow(dir, sha)).toBe(true);
   });
 
@@ -66,7 +163,7 @@ describe("shipToTrunk", () => {
     const sha = commitFile(wt, "feat-b.txt", "b");
     const trunkAhead = commitFile(dir, "trunk-moved.txt", "moved");
 
-    expect(() => shipToTrunk(wt, "feat-b", [sha])).toThrow(
+    expect(() => shipBranch(wt, "feat-b", [sha])).toThrow(
       expect.objectContaining({ code: "ship_not_fast_forward" } satisfies Partial<ShipRefusal>),
     );
     expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkAhead);
@@ -81,7 +178,7 @@ describe("shipToTrunk", () => {
     const planted = commitFile(other, "planted.txt", "planted");
     git(dir, ["tag", "feat-tagged", planted]);
 
-    expect(shipToTrunk(wt, "feat-tagged", [sha])).toEqual({ landed: "fast_forward" });
+    expect(shipBranch(wt, "feat-tagged", [sha])).toEqual({ landed: "fast_forward" });
     expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(sha);
   });
 
@@ -91,15 +188,16 @@ describe("shipToTrunk", () => {
     const wt = worktree(dir, "feat-plain");
     const sha = commitFile(wt, "feat-plain.txt", "plain");
 
-    expect(shipToTrunk(wt, "feat-plain", [sha])).toEqual({ landed: "fast_forward" });
+    expect(shipBranch(wt, "feat-plain", [sha])).toEqual({ landed: "fast_forward" });
     expect(git(dir, ["verify-commit", sha]).success).toBe(false);
   });
 
   test("a repo that names no trunk is refused", () => {
     const { dir, sha } = repoWithoutTrunk();
     cleanup.push(dir);
+    git(dir, ["config", "dim.ship", "trunk"]);
 
-    expect(() => shipToTrunk(dir, "main", [sha])).toThrow(
+    expect(() => shipBranch(dir, "main", [sha])).toThrow(
       expect.objectContaining({ code: "ship_no_trunk" } satisfies Partial<ShipRefusal>),
     );
   });
@@ -110,7 +208,7 @@ describe("shipToTrunk", () => {
     const sha = commitFile(wt, "feat-d.txt", "d");
     writeFileSync(join(dir, "dirty.txt"), "uncommitted");
 
-    expect(() => shipToTrunk(wt, "feat-d", [sha])).toThrow(
+    expect(() => shipBranch(wt, "feat-d", [sha])).toThrow(
       expect.objectContaining({ code: "ship_dirty_trunk" } satisfies Partial<ShipRefusal>),
     );
   });
@@ -121,7 +219,7 @@ describe("shipToTrunk", () => {
     const sha = commitFile(wt, "feat-f.txt", "f");
     git(dir, ["checkout", "-q", "-b", "not-trunk"]);
 
-    expect(() => shipToTrunk(wt, "feat-f", [sha])).toThrow(
+    expect(() => shipBranch(wt, "feat-f", [sha])).toThrow(
       expect.objectContaining({ code: "ship_wrong_head" } satisfies Partial<ShipRefusal>),
     );
   });
@@ -131,7 +229,7 @@ describe("shipToTrunk", () => {
     const wt = worktree(dir, "feat-e");
     const sha = commitFile(wt, "feat-e.txt", "e");
 
-    expect(() => shipToTrunk(wt, "no-such-branch", [sha])).toThrow(
+    expect(() => shipBranch(wt, "no-such-branch", [sha])).toThrow(
       expect.objectContaining({ code: "ship_no_branch" } satisfies Partial<ShipRefusal>),
     );
   });
@@ -143,7 +241,7 @@ describe("shipToTrunk", () => {
     const strayWt = worktree(dir, "stray");
     const strayShaOffBranch = commitFile(strayWt, "stray.txt", "stray");
 
-    expect(() => shipToTrunk(wt, "feat-g", [landedSha, strayShaOffBranch])).toThrow(
+    expect(() => shipBranch(wt, "feat-g", [landedSha, strayShaOffBranch])).toThrow(
       expect.objectContaining({ code: "ship_not_landed" } satisfies Partial<ShipRefusal>),
     );
     expect(reachesNow(dir, landedSha)).toBe(true);
@@ -159,7 +257,7 @@ describe("shipToTrunk", () => {
     const unsigned = git(wt, ["rev-parse", "HEAD"]).out;
     const trunkBefore = git(dir, ["rev-parse", "HEAD"]).out;
 
-    expect(() => shipToTrunk(wt, "feat-unsigned", [signed, unsigned])).toThrow(
+    expect(() => shipBranch(wt, "feat-unsigned", [signed, unsigned])).toThrow(
       expect.objectContaining({ code: "ship_unsigned" } satisfies Partial<ShipRefusal>),
     );
     expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkBefore);
@@ -172,7 +270,7 @@ describe("shipToTrunk", () => {
     const strayWt = worktree(dir, "stray-2");
     const strayShaOffBranch = commitFile(strayWt, "stray-2.txt", "stray");
 
-    expect(() => shipToTrunk(wt, "feat-h", [alreadyLandedSha, strayShaOffBranch])).toThrow(
+    expect(() => shipBranch(wt, "feat-h", [alreadyLandedSha, strayShaOffBranch])).toThrow(
       expect.objectContaining({ code: "ship_not_landed" } satisfies Partial<ShipRefusal>),
     );
   });

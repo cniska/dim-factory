@@ -1,4 +1,5 @@
-import { dirname } from "node:path";
+import { primaryCheckout } from "./primary-checkout";
+import { shipMethod } from "./ship-method";
 import { reachesTrunk, trunkBranch } from "./trunk";
 
 /** How the commits ended up on the trunk. Not a state anything is gated on — the trunk
@@ -6,6 +7,9 @@ import { reachesTrunk, trunkBranch } from "./trunk";
 export type ShipOutcome = { landed: "already" | "fast_forward" };
 
 export type ShipRefusalCode =
+  | "ship_no_method"
+  | "ship_invalid_method"
+  | "ship_pull_request_unbuilt"
   | "ship_no_trunk"
   | "ship_wrong_head"
   | "ship_dirty_trunk"
@@ -30,21 +34,9 @@ function git(dir: string, args: string[]): { success: boolean; out: string } {
 }
 
 /**
- * The main working tree even from a task worktree: `--git-common-dir` resolves to the
- * shared `.git`, whose parent is the checkout the trunk branch is worked from — merging
- * has to happen there, because moving a branch ref without updating the tree that has it
- * checked out leaves that checkout's files disagreeing with its own HEAD.
- */
-function primaryCheckout(dir: string): string {
-  const common = git(dir, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-  if (!common.success) throw new ShipRefusal("ship_no_trunk", `${dir} is not a git repo that can be read`);
-  return dirname(common.out);
-}
-
-/**
- * Lands `branch`'s commits on the repo's trunk by fast-forward only, so the trunk's history stays
- * linear and every commit lands with the sha the order recorded; a branch the trunk has moved past
- * is refused, to be rebased first.
+ * Lands `branch`'s commits the way the repo declares in `dim.ship`. Only `trunk` is built:
+ * it fast-forwards the trunk, so its history stays linear and every commit lands with the
+ * sha the order recorded; a branch the trunk has moved past is refused, to be rebased first.
  *
  * `branch` is always the branch to land — never read off any HEAD, so calling this from
  * the trunk checkout itself cannot be mistaken for shipping the trunk into itself.
@@ -53,12 +45,22 @@ function primaryCheckout(dir: string): string {
  * A returned outcome means every sha in `shas` reaches the trunk, checked back against
  * git rather than assumed from the merge's own exit code: a recorded sha the branch never
  * carried would otherwise ship silently, reported the same as one that actually landed.
- *
- * Only the local flow a repo with no remote can be tested against: opening a pull request
- * instead is a second flow this leaves reachable rather than one it builds ahead of a
- * caller that needs it.
  */
-export function shipToTrunk(cwd: string, branch: string, shas: string[]): ShipOutcome {
+export function shipBranch(cwd: string, branch: string, shas: string[]): ShipOutcome {
+  // Merging happens in the primary checkout, because moving a branch ref without updating
+  // the tree that has it checked out leaves that checkout's files disagreeing with its HEAD.
+  const root = primaryCheckout(cwd);
+  if (!root) throw new ShipRefusal("ship_no_trunk", `${cwd} is not a git repo that can be read`);
+  const declared = shipMethod(root);
+  if ("missing" in declared) throw new ShipRefusal("ship_no_method", declared.missing);
+  if ("invalid" in declared) throw new ShipRefusal("ship_invalid_method", declared.invalid);
+  if (declared.method === "pull-request") {
+    throw new ShipRefusal(
+      "ship_pull_request_unbuilt",
+      `${root} declares dim.ship = pull-request, and shipping by pull request is not built`,
+    );
+  }
+
   const trunk = trunkBranch(cwd);
   if ("why" in trunk) throw new ShipRefusal("ship_no_trunk", trunk.why);
 
@@ -66,7 +68,6 @@ export function shipToTrunk(cwd: string, branch: string, shas: string[]): ShipOu
     return { landed: "already" };
   }
 
-  const root = primaryCheckout(cwd);
   const head = git(root, ["symbolic-ref", "--short", "HEAD"]);
   if (!head.success || head.out !== trunk.name) {
     throw new ShipRefusal(

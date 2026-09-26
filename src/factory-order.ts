@@ -6,7 +6,7 @@ import { withLock } from "./lock";
 import type { OrderLine } from "./order-line";
 import type { Env } from "./paths";
 import type { PlanSlice } from "./plan-artifact";
-import { type ShipOutcome, shipToTrunk } from "./ship";
+import { type ShipOutcome, shipBranch } from "./ship";
 import { writeTrace } from "./trace-store";
 import { reachesTrunk } from "./trunk";
 import type { WorkerHookReport } from "./worker-environment";
@@ -2065,7 +2065,7 @@ export function shipOrder(
   }
   let outcome: ShipOutcome;
   try {
-    outcome = withLock(() => shipToTrunk(worktree, orderId, shas), env);
+    outcome = withLock(() => shipBranch(worktree, orderId, shas), env);
   } catch (error) {
     if (worker) {
       const at = now();
