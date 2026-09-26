@@ -90,14 +90,15 @@ export const order: Query = {
     const report = found[0] as Record<string, unknown>;
     const id = report.id as string;
     const state = isTerminalOrderStatus(report.status as OrderStatus) ? null : orderState(db, id);
-    const columns = ["section", "when", "kind", "status", "subject", "evidence"];
+    const columns = ["section", "when", "kind", "status", "next", "subject", "evidence"];
     const aggregate: Record<string, unknown> = {
       section: "order",
       when: report.updated_at,
       kind: "report",
       status: report.status,
+      next: state ? describeState(state) : "(none)",
       subject: `${report.project}/${report.id}`,
-      evidence: [report.priority, state && describeState(state)].filter(Boolean).join(" | "),
+      evidence: report.priority,
     };
     const evidence: Record<string, unknown>[] = [
       ...table(

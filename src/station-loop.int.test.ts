@@ -125,7 +125,7 @@ describe("the operator loop", () => {
       })),
     });
     expect(secondReview.findings).toBe(0);
-    expect(() => shipOrder(db, "loop-order", worktree, operator.name)).toThrow(
+    expect(() => shipOrder(db, "loop-order", worktree, operator.name, { env: machine })).toThrow(
       expect.objectContaining({ code: "not_next", message: expect.stringContaining("approve at review") }),
     );
     approveOrder(db, "loop-order", operator.name, undefined);
@@ -159,7 +159,7 @@ describe("the operator loop", () => {
     recordOrderBuild(db, "loop-order", "Another change is built and verified.", "later-commit", builder.name);
     finishAttempt(db, "loop-order", "succeeded", undefined, new Date().toISOString());
     approveOrder(db, "loop-order", operator.name, "the change is present");
-    expect(() => shipOrder(db, "loop-order", worktree, operator.name)).toThrow(
+    expect(() => shipOrder(db, "loop-order", worktree, operator.name, { env: machine })).toThrow(
       expect.objectContaining({ code: "not_next", message: expect.stringContaining("run at review") }),
     );
     db.close();

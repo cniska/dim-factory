@@ -3,7 +3,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { SCHEMA_SQL } from "./db-schema";
 import { attemptIn, integratedRepo, located, ranCheck, reviewIn, workerIn } from "./fixtures.test-support";
-import { recordOrderBuild } from "./order-artifacts";
+import { approveOrder } from "./order-approval";
+import { recordOrderBuild, recordOrderPlan } from "./order-artifacts";
 import {
   recordOrderCheck,
   recordOrderCommit,
@@ -12,9 +13,10 @@ import {
 } from "./order-evidence";
 import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { appendOrderEvent } from "./order-ledger";
-import { queueOrder, startOrder } from "./order-lifecycle";
+import { dropOrder, queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview } from "./order-review";
 import { findQuery } from "./query-registry";
+import { approveFinalBuildAt, approveReviewAt } from "./station-approvals.test-support";
 
 let worker = "";
 let attemptOperator = "";
@@ -36,6 +38,39 @@ function building(db: Database, orderId: string, at?: string): void {
 }
 
 describe("factory order query", () => {
+  test("shows the current next act for queued, active, and terminal orders", () => {
+    const db = floor();
+    queueOrder(db, { id: "queued", project: "cniska/dim-factory", title: "Queued" }, worker);
+    const row = (id: string) => findQuery("order")?.run(db, { arg: id }).rows[0]?.slice(3);
+    expect(row("queued")).toEqual(["queued", "run at plan", "cniska/dim-factory/queued", "unset"]);
+
+    building(db, "queued");
+    recordOrderPlan(db, "queued", "Build the result.", worker, [
+      { title: "Build", outcome: "The result is built." },
+    ]);
+    expect(row("queued")).toEqual(["active", "approve at plan", "cniska/dim-factory/queued", "unset"]);
+    approveOrder(db, "queued", attemptOperator, undefined);
+    expect(row("queued")).toEqual(["active", "run at build", "cniska/dim-factory/queued", "unset"]);
+
+    recordOrderCommit(db, "queued", trunk.sha, worker, "feat: result");
+    approveFinalBuildAt(db, "queued", trunk.sha, worker, attemptOperator);
+    approveReviewAt(db, "queued", trunk.sha, attemptOperator);
+    expect(row("queued")).toEqual(["active", "ship", "cniska/dim-factory/queued", "unset"]);
+    appendOrderEvent(db, "queued", { worker, kind: "shipped" });
+    expect(row("queued")).toEqual(["done", "(none)", "cniska/dim-factory/queued", "unset"]);
+
+    queueOrder(db, { id: "dropped", project: "cniska/dim-factory", title: "Dropped" }, worker);
+    dropOrder(db, "dropped", "superseded", worker);
+    expect(row("dropped")).toEqual(["dropped", "(none)", "cniska/dim-factory/dropped", "unset"]);
+    expect(
+      findQuery("order")
+        ?.run(db, { arg: "dropped" })
+        .rows.find((item) => item[2] === "dropped")
+        ?.slice(3),
+    ).toEqual(["", null, "", "superseded"]);
+    db.close();
+  });
+
   test("reports a finding unanswered until the builder answers it", () => {
     const db = floor();
     queueOrder(db, { id: "order-reopened", project: "cniska/dim-factory", title: "Reopen" }, worker);
@@ -259,7 +294,7 @@ describe("factory order query", () => {
     expect(
       findQuery("order")
         ?.run(db, { arg: "order-reasoned" })
-        .rows.find((row) => row[2] === "failed")?.[5],
+        .rows.find((row) => row[2] === "failed")?.[6],
     ).toBe("ambiguous scope");
     db.close();
   });
@@ -330,7 +365,7 @@ describe("factory order query", () => {
       "2026-09-18T10:05:00.000Z",
     );
     const result = findQuery("order")?.run(db, { arg: "order-12" });
-    expect(result?.columns).toEqual(["section", "when", "kind", "status", "subject", "evidence"]);
+    expect(result?.columns).toEqual(["section", "when", "kind", "status", "next", "subject", "evidence"]);
     expect(result?.rows.map((row) => row[0])).toEqual([
       "order",
       "event",
@@ -354,12 +389,31 @@ describe("factory order query", () => {
       "2026-09-18T10:05:00.000Z",
       "environment_reported",
       "0",
+      null,
       "setup",
       '[{"port":5433}]',
     ]);
-    expect(result?.rows[0]?.[4]).toBe("cniska/dim-factory/order-123");
-    expect(result?.rows[0]?.[5]).toBe("unset | run at plan");
-    expect(result?.rows.find((row) => row[0] === "file")?.slice(4)).toEqual([
+    expect(result?.rows[0]?.slice(3)).toEqual([
+      "active",
+      "run at plan",
+      "cniska/dim-factory/order-123",
+      "unset",
+    ]);
+    expect(result?.rows?.every((row) => row.length === result.columns.length)).toBe(true);
+    expect(result?.rows?.slice(1).every((row) => row[4] === null)).toBe(true);
+    expect(result?.rows.find((row) => row[0] === "artifact")?.slice(3)).toEqual([
+      "1",
+      null,
+      `${worker} @ abc`,
+      "The report is built and verified.",
+    ]);
+    expect(result?.rows.find((row) => row[0] === "finding")?.slice(3)).toEqual([
+      "fixed",
+      null,
+      "tests",
+      "holds",
+    ]);
+    expect(result?.rows.find((row) => row[0] === "file")?.slice(5)).toEqual([
       "src/factory-order.ts",
       "+12 -3",
     ]);
@@ -402,6 +456,7 @@ describe("factory order query", () => {
       "2026-09-18T10:05:00.000Z",
       "environment_reported",
       "SIGKILL",
+      null,
       "teardown",
       "[]",
     ]);
@@ -413,6 +468,24 @@ describe("factory order query", () => {
     const result = findQuery("order")?.run(db, { arg: "missing" });
     expect(result?.rows).toEqual([]);
     expect(result?.note).toBe("no order starts with missing");
+    db.close();
+  });
+
+  test("preserves missing-argument and ambiguous-prefix responses", () => {
+    const db = floor();
+    queueOrder(db, { id: "overlap-one", project: "cniska/dim-factory", title: "One" }, worker);
+    queueOrder(db, { id: "overlap-two", project: "cniska/dim-factory", title: "Two" }, worker);
+    expect(findQuery("order")?.run(db, {})).toEqual({
+      denominator: "",
+      columns: ["error"],
+      rows: [["usage: dim q order <order-id>"]],
+    });
+    expect(findQuery("order")?.run(db, { arg: "overlap" })).toEqual({
+      denominator: "",
+      columns: ["id"],
+      rows: [],
+      note: "overlap matches more than one order",
+    });
     db.close();
   });
 

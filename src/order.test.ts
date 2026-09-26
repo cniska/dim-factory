@@ -805,7 +805,7 @@ describe("factory order report records", () => {
       }
       const rows = findQuery("order")?.run(database, { arg: "order-1" }).rows ?? [];
       const rewritten = rows.filter((row) => row[0] === "event" && row[2] === "commit_rewritten");
-      expect(rewritten.map((row) => row[5])).toEqual([
+      expect(rewritten.map((row) => row[6])).toEqual([
         `${first} -> ${current[0]}`,
         `${second} -> ${current[1]}`,
       ]);

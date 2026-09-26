@@ -97,7 +97,7 @@ function conflicted(check = "true", markerSize?: number) {
       env,
       checkSandbox: sandbox,
     });
-  return { repo, wt, db, builder, operator, first, second, trunkTip, refused, recorded, turn };
+  return { repo, wt, db, builder, operator, first, second, trunkTip, refused, recorded, turn, env };
 }
 
 describe("a conflict at ship", () => {
@@ -115,9 +115,9 @@ describe("a conflict at ship", () => {
   });
 
   test("cannot be shipped past before the builder resolves it", () => {
-    const { wt, db, operator, second, recorded } = conflicted();
+    const { wt, db, operator, second, recorded, env } = conflicted();
 
-    expect(() => shipOrder(db, "order-1", wt, operator)).toThrow(
+    expect(() => shipOrder(db, "order-1", wt, operator, { env })).toThrow(
       expect.objectContaining({ code: "not_next", message: expect.stringContaining("run at build") }),
     );
     expect(pendingRebaseConflict(db, "order-1")).toEqual(recorded);

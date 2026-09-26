@@ -43,7 +43,6 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 - **Wall gaps** — a silence threshold, station moves, durable worker names, the project on the card, and operator presence.
 - **Wall notifications** — held and failed orders reach the owner off the page.
 - **A check shows as passed or failed**, not as its command.
-- **`dim q order` in columns** rather than one packed cell.
 - **Refuse blind staging** — `git add -A`, `.` and `--all`.
 - **Record a commit's files** from the commit itself.
 - **Record the check the commit gate runs.**
