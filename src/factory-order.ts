@@ -5,6 +5,12 @@ import type { AttemptOutcome, EvidenceReference, OrderEventKind } from "./factor
 import { FactoryStopError, liveStop } from "./factory-stop";
 import { workerIsOver } from "./factory-worker";
 import { withLock } from "./lock";
+import {
+  type FindingRuling,
+  findingStanding,
+  type RefusalDecision,
+  rulingApplies,
+} from "./order-finding-state";
 import type { OrderLine } from "./order-line";
 import { dataDir, type Env } from "./paths";
 import type { PlanSlice } from "./plan-artifact";
@@ -1551,6 +1557,17 @@ export function recordOrderReviewArtifact(
   })();
 }
 
+function openReviewOf(db: Database, orderId: string): { id: number; reviewer: string | null } | null {
+  return db
+    .query<{ id: number; reviewer: string | null }, [string]>(
+      `SELECT r.id, coalesce(r.reviewer, a.accepted_worker) AS reviewer
+       FROM factory_order_review r
+       LEFT JOIN factory_worker_assignment a ON a.id = r.assignment_id
+       WHERE r.order_id = ? AND r.closed_at IS NULL`,
+    )
+    .get(orderId);
+}
+
 /**
  * The reviewer's own act, refused from any hand but the one this round was opened for.
  * What it raises carries no answer, because whether the finding is fixed or refused is the
@@ -1566,14 +1583,7 @@ export function raiseOrderFinding(
   worker: string,
   at = now(),
 ): number {
-  const row = db
-    .query<{ id: number; reviewer: string | null }, [string]>(
-      `SELECT r.id, coalesce(r.reviewer, a.accepted_worker) AS reviewer
-       FROM factory_order_review r
-       LEFT JOIN factory_worker_assignment a ON a.id = r.assignment_id
-       WHERE r.order_id = ? AND r.closed_at IS NULL`,
-    )
-    .get(orderId);
+  const row = openReviewOf(db, orderId);
   if (!row) {
     throw new ReviewNotOpen(
       "review_unknown",
@@ -1639,6 +1649,156 @@ export function answerOrderFinding(
       db,
       row.order_id,
       { kind: "finding_answered", worker, findingId },
+      at,
+    );
+  })();
+}
+
+export class FindingRulingRefused extends Error {
+  constructor(
+    readonly code:
+      | "finding_unknown"
+      | "finding_same_round"
+      | "finding_not_open"
+      | "ruling_repeated"
+      | "ruling_not_applicable"
+      | "reason_missing",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * The open round's reviewer judging a finding an earlier round raised. Refused from any other
+ * hand for the reason a finding is, and refused on a finding that is not open, since a settled
+ * one has nothing left to judge and a contested one waits on the owner rather than the reviewer.
+ */
+export function ruleOnOrderFinding(
+  db: Database,
+  findingId: number,
+  ruling: { ruling: FindingRuling; reason?: string },
+  worker: string,
+  at = now(),
+): number {
+  const finding = findingStanding(db, findingId);
+  if (!finding) throw new FindingRulingRefused("finding_unknown", `no finding ${findingId}`);
+  const { orderId } = finding;
+  const review = openReviewOf(db, orderId);
+  if (!review) {
+    throw new ReviewNotOpen("review_unknown", `order ${orderId} has no review open to rule in`);
+  }
+  if (review.reviewer !== worker) {
+    throw new ReviewNotOpen(
+      "review_not_its_reviewer",
+      `review ${review.id} was opened for ${review.reviewer}, not ${worker}`,
+    );
+  }
+  if (finding.reviewId === review.id) {
+    throw new FindingRulingRefused(
+      "finding_same_round",
+      `finding ${findingId} was raised in review ${review.id}; a round rules only on earlier findings`,
+    );
+  }
+  if (finding.state !== "open") {
+    throw new FindingRulingRefused("finding_not_open", `finding ${findingId} is ${finding.state}`);
+  }
+  const ruled = db
+    .query("SELECT 1 FROM factory_order_finding_ruling WHERE finding_id = ? AND review_id = ?")
+    .get(findingId, review.id);
+  if (ruled) {
+    throw new FindingRulingRefused(
+      "ruling_repeated",
+      `finding ${findingId} already has a ruling from review ${review.id}`,
+    );
+  }
+  if (finding.answer === null) {
+    throw new FindingRulingRefused(
+      "ruling_not_applicable",
+      `finding ${findingId} is unanswered, and a ruling judges the builder's answer`,
+    );
+  }
+  if (!rulingApplies(finding, ruling.ruling)) {
+    throw new FindingRulingRefused(
+      "ruling_not_applicable",
+      finding.refusalStands
+        ? `finding ${findingId} is a standing refusal, so it takes refusal_accepted or refusal_contested`
+        : `finding ${findingId} is answered ${finding.answer}, so it takes addressed or not_addressed`,
+    );
+  }
+  const needsReason = ruling.ruling === "not_addressed" || ruling.ruling === "refusal_contested";
+  if (needsReason && !ruling.reason?.trim()) {
+    throw new FindingRulingRefused(
+      "reason_missing",
+      `ruling ${ruling.ruling} on finding ${findingId} needs a reason`,
+    );
+  }
+  assertOrderWorking(db, orderId);
+  return db.transaction(() => {
+    db.run(
+      `INSERT INTO factory_order_finding_ruling (finding_id, review_id, ruling, reason, worker, ruled_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [findingId, review.id, ruling.ruling, ruling.reason ?? null, worker, at],
+    );
+    return appendOrderEventInTransaction(
+      db,
+      orderId,
+      { kind: "finding_ruled", worker, findingId, reviewId: review.id, evidence: { ruling: ruling.ruling } },
+      at,
+    );
+  })();
+}
+
+export class RefusalDecisionRefused extends Error {
+  constructor(
+    readonly code:
+      | "worker_not_operator"
+      | "finding_unknown"
+      | "finding_not_awaiting_owner"
+      | "reason_missing",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/** The owner's word on a contested refusal, recorded under the operator the way an approval is. */
+export function decideOrderRefusal(
+  db: Database,
+  findingId: number,
+  decision: { decision: RefusalDecision; reason: string },
+  worker: string,
+  at = now(),
+): number {
+  const role = db
+    .query<{ role: string }, [string]>("SELECT role FROM factory_worker WHERE name = ?")
+    .get(worker)?.role;
+  if (role !== "operator") {
+    throw new RefusalDecisionRefused("worker_not_operator", `worker ${worker} is not an operator`);
+  }
+  const finding = findingStanding(db, findingId);
+  if (!finding) throw new RefusalDecisionRefused("finding_unknown", `no finding ${findingId}`);
+  if (finding.state !== "awaiting_owner") {
+    throw new RefusalDecisionRefused(
+      "finding_not_awaiting_owner",
+      `finding ${findingId} is ${finding.state}, and only a contested refusal waits on the owner`,
+    );
+  }
+  if (!decision.reason.trim()) {
+    throw new RefusalDecisionRefused("reason_missing", `a decision on finding ${findingId} needs a reason`);
+  }
+  const { orderId } = finding;
+  assertOrderWorking(db, orderId);
+  return db.transaction(() => {
+    db.run(
+      `INSERT INTO factory_order_refusal_decision (finding_id, decision, reason, worker, decided_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [findingId, decision.decision, decision.reason, worker, at],
+    );
+    return appendOrderEventInTransaction(
+      db,
+      orderId,
+      { kind: "refusal_decided", worker, findingId, evidence: { decision: decision.decision } },
       at,
     );
   })();

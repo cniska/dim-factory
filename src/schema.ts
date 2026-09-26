@@ -26,7 +26,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 59;
+export const SCHEMA_VERSION = 60;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -561,12 +561,45 @@ CREATE TABLE IF NOT EXISTS factory_order_finding (
   review_id     INTEGER NOT NULL REFERENCES factory_order_review(id) ON DELETE CASCADE,
   dimension     TEXT NOT NULL,
   summary       TEXT NOT NULL,
+  -- Nullable because rebuild writes every finding back as it was, and one recorded without a
+  -- location keeps none.
+  file          TEXT,
+  line          INTEGER,
+  failure       TEXT,
+  fix           TEXT,
+  severity      TEXT CHECK (severity IN ('critical', 'high', 'medium')),
   answer        TEXT CHECK (answer IN ('fixed', 'refused')),
   resolution    TEXT,
   raised_at     TEXT NOT NULL,
   answered_at   TEXT,
   CHECK (answer <> 'refused' OR (resolution IS NOT NULL AND trim(resolution) <> '')),
   CHECK ((answer IS NULL) = (answered_at IS NULL))
+);
+
+-- A later round's reviewer judging an earlier finding against the new diff. One per round,
+-- since each round reads a different head.
+CREATE TABLE IF NOT EXISTS factory_order_finding_ruling (
+  id            INTEGER PRIMARY KEY,
+  finding_id    INTEGER NOT NULL REFERENCES factory_order_finding(id) ON DELETE CASCADE,
+  review_id     INTEGER NOT NULL REFERENCES factory_order_review(id) ON DELETE CASCADE,
+  ruling        TEXT NOT NULL
+                CHECK (ruling IN ('addressed', 'not_addressed', 'refusal_accepted', 'refusal_contested')),
+  reason        TEXT,
+  worker        TEXT NOT NULL REFERENCES factory_worker(name),
+  ruled_at      TEXT NOT NULL,
+  CHECK (ruling NOT IN ('not_addressed', 'refusal_contested') OR (reason IS NOT NULL AND trim(reason) <> '')),
+  UNIQUE (finding_id, review_id)
+);
+
+-- The owner settling a refusal the builder and reviewer disagree on. At most one per finding:
+-- an upheld refusal is settled, and an overturned one no longer stands to be contested again.
+CREATE TABLE IF NOT EXISTS factory_order_refusal_decision (
+  id            INTEGER PRIMARY KEY,
+  finding_id    INTEGER NOT NULL UNIQUE REFERENCES factory_order_finding(id) ON DELETE CASCADE,
+  decision      TEXT NOT NULL CHECK (decision IN ('refusal_upheld', 'refusal_overturned')),
+  reason        TEXT NOT NULL CHECK (trim(reason) <> ''),
+  worker        TEXT NOT NULL REFERENCES factory_worker(name),
+  decided_at    TEXT NOT NULL
 );
 
 -- What a worktree's setup and teardown hooks reported. resources holds the

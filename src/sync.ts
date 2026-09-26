@@ -165,6 +165,8 @@ const FACTORY_ORDER_TABLES = [
   "factory_order_review",
   "factory_order_review_artifact",
   "factory_order_finding",
+  "factory_order_finding_ruling",
+  "factory_order_refusal_decision",
   "factory_order_document",
   "factory_order_environment",
   "factory_order_plan",
