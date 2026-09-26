@@ -12,6 +12,7 @@ export const ORDER_EVENT_KINDS = [
   "build_approved",
   "build_artifact_written",
   "commit_created",
+  "commit_rewritten",
   "check_finished",
   "review_opened",
   "review_closed",

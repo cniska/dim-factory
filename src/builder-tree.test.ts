@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { nestedRepository } from "./builder-commit";
+import { nestedRepository } from "./builder-tree";
 
 const dirs: string[] = [];
 afterAll(() => {

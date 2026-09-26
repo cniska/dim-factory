@@ -1,15 +1,21 @@
 import type { Database } from "bun:sqlite";
+import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import type { AttemptOutcome, EvidenceReference, OrderEventKind } from "./factory-events";
 import { FactoryStopError, liveStop } from "./factory-stop";
 import { workerIsOver } from "./factory-worker";
 import { withLock } from "./lock";
 import type { OrderLine } from "./order-line";
-import type { Env } from "./paths";
+import { dataDir, type Env } from "./paths";
 import type { PlanSlice } from "./plan-artifact";
-import { type ShipOutcome, shipBranch } from "./ship";
+import type { Rewrite } from "./rebase-onto-trunk";
+import { CHECK_SANDBOX, runSandboxedCheck } from "./sandboxed-check";
+import { type RebaseVerdict, type ShipOutcome, shipBranch } from "./ship";
+import { ShipRefusal } from "./ship-refusal";
 import { writeTrace } from "./trace-store";
 import { reachesTrunk } from "./trunk";
 import type { WorkerHookReport } from "./worker-environment";
+import { checkCommand } from "./workspace-commands";
 import { createWorktree } from "./wt-command";
 
 /** What state the order is in. A claim takes it straight to `working`: an order
@@ -444,17 +450,50 @@ export function moveOrder(
   })();
 }
 
-export function latestOrderCommit(db: Database, orderId: string): { sha: string; recordedAt: string } | null {
+export type OrderCommit = { sha: string; subject: string | null; recordedAt: string };
+
+/**
+ * The order's commits as its branch now carries them, in the order they were recorded: every
+ * sha recorded, less each one a rebase retired. A retired sha stays in the record as history
+ * and never counts as landed, reviewed or current.
+ */
+export function currentOrderCommits(db: Database, orderId: string): OrderCommit[] {
   return db
-    .query<{ sha: string; recordedAt: string }, [string]>(
-      `SELECT c.sha, c.recorded_at AS recordedAt
+    .query<OrderCommit, [string]>(
+      `SELECT c.sha, c.subject, c.recorded_at AS recordedAt
        FROM factory_order_commit c
        JOIN factory_order_event e
-         ON e.order_id = c.order_id AND e.kind = 'commit_created' AND e.commit_sha = c.sha
-       WHERE c.order_id = ?
-       ORDER BY e.id DESC LIMIT 1`,
+         ON e.order_id = c.order_id AND e.kind IN ('commit_created', 'commit_rewritten') AND e.commit_sha = c.sha
+       WHERE c.order_id = ? AND c.sha NOT IN (
+         SELECT json_extract(retired.evidence, '$.from') FROM factory_order_event retired
+         WHERE retired.order_id = c.order_id AND retired.kind = 'commit_rewritten'
+       )
+       ORDER BY e.id`,
     )
-    .get(orderId);
+    .all(orderId);
+}
+
+export function latestOrderCommit(db: Database, orderId: string): OrderCommit | null {
+  return currentOrderCommits(db, orderId).at(-1) ?? null;
+}
+
+/**
+ * Where `sha` stands now, followed through every rewrite that replaced it. Null when a rewrite
+ * on the way changed a patch, since what was approved at `sha` is then not what the branch holds.
+ * Each rewrite row exists only because its re-check passed.
+ */
+export function carriedThroughRewrites(db: Database, orderId: string, sha: string): string | null {
+  let current = sha;
+  for (const rewrite of db
+    .query<{ old_head: string; new_head: string; patch_equal: number }, [string]>(
+      "SELECT old_head, new_head, patch_equal FROM factory_order_rewrite WHERE order_id = ? ORDER BY id",
+    )
+    .all(orderId)) {
+    if (rewrite.old_head !== current) continue;
+    if (rewrite.patch_equal !== 1) return null;
+    current = rewrite.new_head;
+  }
+  return current;
 }
 
 export function assertBuildReady(db: Database, orderId: string): { sha: string } {
@@ -478,10 +517,10 @@ export function assertReviewApproved(db: Database, orderId: string): void {
   const review = latestReview(db, orderId);
   if (!review) throw new OrderNotDone("review_not_approved", `order ${orderId} has no review to approve`);
   const commit = latestOrderCommit(db, orderId);
-  if (!commit || commit.sha !== review.headSha) {
+  if (!commit || commit.sha !== carriedThroughRewrites(db, orderId, review.headSha)) {
     throw new OrderNotDone(
       "review_not_approved",
-      `order ${orderId} has a commit newer than its approved review`,
+      `order ${orderId} has a commit its approved review did not read, or a rebase since changed a patch`,
     );
   }
   const approved = db
@@ -1143,30 +1182,100 @@ export function recordOrderFile(
   );
 }
 
+export type OrderCheck = {
+  command: string;
+  exitCode: number;
+  startedAt?: string;
+  finishedAt?: string;
+  result?: string;
+};
+
+function recordOrderCheckInTransaction(
+  db: Database,
+  orderId: string,
+  check: OrderCheck,
+  worker: string,
+  at: string,
+): { checkId: number; eventId: number } {
+  const result = db.run(
+    `INSERT INTO factory_order_check (order_id, command, exit_code, started_at, finished_at, result, recorded_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      orderId,
+      check.command,
+      check.exitCode,
+      check.startedAt ?? null,
+      check.finishedAt ?? at,
+      check.result ?? null,
+      at,
+    ],
+  );
+  const checkId = Number(result.lastInsertRowid);
+  const eventId = appendOrderEventInTransaction(db, orderId, { kind: "check_finished", worker, checkId }, at);
+  return { checkId, eventId };
+}
+
 export function recordOrderCheck(
   db: Database,
   orderId: string,
-  check: { command: string; exitCode: number; startedAt?: string; finishedAt?: string; result?: string },
+  check: OrderCheck,
   worker: string,
   at = now(),
 ): number {
   assertOrderWorking(db, orderId);
-  return db.transaction(() => {
-    const result = db.run(
-      `INSERT INTO factory_order_check (order_id, command, exit_code, started_at, finished_at, result, recorded_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  return db.transaction(() => recordOrderCheckInTransaction(db, orderId, check, worker, at).eventId)();
+}
+
+/**
+ * Records a rebase at ship together with the passing check it was re-run under: a commit row and
+ * a `commit_rewritten` event for each recorded commit it replayed, naming the sha it retires, then
+ * the check, then the rewrite itself. Commits the branch carried but the order never recorded are
+ * replayed without becoming the order's.
+ */
+export function recordOrderRewrite(
+  db: Database,
+  orderId: string,
+  rewrite: Rewrite,
+  check: OrderCheck,
+  worker: string,
+  at = now(),
+): void {
+  assertOrderWorking(db, orderId);
+  db.transaction(() => {
+    const current = currentOrderCommits(db, orderId);
+    for (const { from, to } of rewrite.commits) {
+      const recorded = current.find((row) => from.startsWith(row.sha.toLowerCase()));
+      if (!recorded) continue;
+      db.run("INSERT INTO factory_order_commit (order_id, sha, subject, recorded_at) VALUES (?, ?, ?, ?)", [
+        orderId,
+        to,
+        recorded.subject,
+        at,
+      ]);
+      appendOrderEventInTransaction(
+        db,
+        orderId,
+        { kind: "commit_rewritten", worker, commitSha: to, evidence: { from: recorded.sha } },
+        at,
+      );
+    }
+    const { checkId } = recordOrderCheckInTransaction(db, orderId, check, worker, at);
+    db.run(
+      `INSERT INTO factory_order_rewrite
+         (order_id, old_base, new_base, old_head, new_head, patch_equal, check_id, worker, recorded_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         orderId,
-        check.command,
-        check.exitCode,
-        check.startedAt ?? null,
-        check.finishedAt ?? at,
-        check.result ?? null,
+        rewrite.oldBase,
+        rewrite.newBase,
+        rewrite.oldHead,
+        rewrite.newHead,
+        rewrite.patchEqual ? 1 : 0,
+        checkId,
+        worker,
         at,
       ],
     );
-    const id = Number(result.lastInsertRowid);
-    return appendOrderEventInTransaction(db, orderId, { kind: "check_finished", worker, checkId: id }, at);
   })();
 }
 
@@ -1979,10 +2088,7 @@ function assertChecked(db: Database, orderId: string): void {
  * not answer.
  */
 function assertIntegrated(db: Database, orderId: string, worktree: string): void {
-  const shas = db
-    .query<{ sha: string }, [string]>("SELECT sha FROM factory_order_commit WHERE order_id = ?")
-    .all(orderId)
-    .map((row) => row.sha);
+  const shas = currentOrderCommits(db, orderId).map((row) => row.sha);
   if (shas.length === 0) {
     throw new OrderNotDone(
       "order_not_integrated",
@@ -2038,24 +2144,55 @@ function assertOrderBuilding(db: Database, orderId: string): void {
 }
 
 /**
- * Lands an order's own commits on the repo's trunk. Nothing here is written back to the
- * order: whether it shipped is the trunk fact `assertIntegrated` already reads, not a bit
- * this sets, which is what lets a repo that opens a pull request instead arrive later
- * without this gate having to change. Held under the factory lock because two orders
- * shipping at once is a race on the same git checkout, not on the database.
+ * The check a rebase at ship is held to: the repo's declared check, run in the check sandbox at
+ * the rewritten head, since the code it runs is the builder's replayed onto a trunk it never saw.
+ */
+function recheck(rewrite: Rewrite, env: Env, sandbox: string[]): OrderCheck {
+  const declared = checkCommand(rewrite.worktree);
+  if (!declared) {
+    throw new ShipRefusal(
+      "ship_check_failed",
+      `${rewrite.worktree} declares no check, so the rebased branch cannot be verified`,
+    );
+  }
+  const check = runSandboxedCheck({
+    worktree: rewrite.worktree,
+    command: declared.command,
+    canary: join(dataDir(env), `check-canary-${randomUUID()}`),
+    sandbox,
+    // PATH alone: the caller's env carries the operator's factory identity, which the builder's
+    // code must not run with.
+    env: env.PATH === undefined ? {} : { PATH: env.PATH },
+  });
+  return {
+    command: check.command,
+    exitCode: check.exitCode,
+    startedAt: check.startedAt,
+    finishedAt: check.finishedAt,
+    result: check.output,
+  };
+}
+
+/**
+ * Lands an order's own commits on the repo's trunk. Whether it shipped is the trunk fact
+ * `assertIntegrated` already reads, not a bit this sets. Held under the factory lock because
+ * two orders shipping at once is a race on the same git checkout, not on the database.
+ *
+ * Where the trunk has moved, the branch is rebased, re-checked and recorded as rewritten, all
+ * under that lock. A red check takes the rebase back. A rebase that changed a patch keeps its
+ * rewritten branch but lands nothing: the order returns to review, since what was approved is
+ * not what the branch now holds.
  */
 export function shipOrder(
   db: Database,
   orderId: string,
   worktree: string,
-  env: Env = process.env,
-  worker?: string,
+  worker: string,
+  options: { env?: Env; checkSandbox?: string[] } = {},
 ): ShipOutcome {
+  const env = options.env ?? process.env;
   assertOrderWorking(db, orderId);
-  const shas = db
-    .query<{ sha: string }, [string]>("SELECT sha FROM factory_order_commit WHERE order_id = ?")
-    .all(orderId)
-    .map((row) => row.sha);
+  const shas = currentOrderCommits(db, orderId).map((row) => row.sha);
   if (shas.length === 0) {
     throw new OrderNotDone(
       "order_not_integrated",
@@ -2063,53 +2200,53 @@ export function shipOrder(
         `record what it landed with \`dim order commit ${orderId} --sha <sha>\`.`,
     );
   }
+  const onRebased = (rewrite: Rewrite): RebaseVerdict => {
+    const check = recheck(rewrite, env, options.checkSandbox ?? CHECK_SANDBOX);
+    if (check.exitCode !== 0) {
+      recordOrderCheck(db, orderId, check, worker);
+      throw new ShipRefusal(
+        "ship_check_failed",
+        `${check.command} exited ${check.exitCode} at the rebased head ${rewrite.newHead}; the rebase was taken back:\n${check.result}`,
+      );
+    }
+    db.transaction(() => {
+      recordOrderRewrite(db, orderId, rewrite, check, worker);
+      if (!rewrite.patchEqual) moveOrder(db, orderId, "dim-station-review", worker);
+    })();
+    if (rewrite.patchEqual) return { land: currentOrderCommits(db, orderId).map((row) => row.sha) };
+    return {
+      hold: new ShipRefusal(
+        "ship_patch_changed",
+        `rebasing ${orderId} onto the trunk changed a patch, so its approved review no longer covers it; it is back at review`,
+      ),
+    };
+  };
   let outcome: ShipOutcome;
   try {
-    outcome = withLock(() => shipBranch(worktree, orderId, shas), env);
+    outcome = withLock(() => shipBranch(worktree, orderId, shas, onRebased), env);
   } catch (error) {
-    if (worker) {
-      const at = now();
-      const reason = error instanceof Error ? error.message : String(error);
-      db.transaction(() => {
-        recordDeliveryInTransaction(
-          db,
-          orderId,
-          "delivery",
-          "failed",
-          orderId,
-          shas.at(-1) ?? null,
-          worker,
-          at,
-          reason,
-        );
-      })();
-    }
-    throw error;
-  }
-  if (worker) {
     const at = now();
+    const reason = error instanceof Error ? error.message : String(error);
     db.transaction(() => {
       recordDeliveryInTransaction(
         db,
         orderId,
-        "integration",
-        "succeeded",
-        orderId,
-        shas.at(-1) ?? null,
-        worker,
-        at,
-      );
-      recordDeliveryInTransaction(
-        db,
-        orderId,
         "delivery",
-        "succeeded",
+        "failed",
         orderId,
-        shas.at(-1) ?? null,
+        latestOrderCommit(db, orderId)?.sha ?? null,
         worker,
         at,
+        reason,
       );
     })();
+    throw error;
   }
+  const landed = latestOrderCommit(db, orderId)?.sha ?? null;
+  const at = now();
+  db.transaction(() => {
+    recordDeliveryInTransaction(db, orderId, "integration", "succeeded", orderId, landed, worker, at);
+    recordDeliveryInTransaction(db, orderId, "delivery", "succeeded", orderId, landed, worker, at);
+  })();
   return outcome;
 }

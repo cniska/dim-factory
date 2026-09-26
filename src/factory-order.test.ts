@@ -12,9 +12,11 @@ import {
   approveOrderBuild,
   approveOrderPlan,
   approveOrderReview,
+  assertReviewApproved,
   claimOrder as claimOrderAt,
   closeOrderReview,
   completeOrderSlice,
+  currentOrderCommits,
   dropOrder,
   isTerminalOrderStatus,
   moveOrder,
@@ -31,6 +33,7 @@ import {
   recordOrderFile,
   recordOrderPlan,
   recordOrderReviewArtifact,
+  recordOrderRewrite,
   recoverOrderFailure,
   returnedOrderArtifact,
   returnOrderArtifact,
@@ -40,6 +43,8 @@ import { clearStop, FactoryStopError, pullStop } from "./factory-stop";
 import { endWorker, mintWorker, newWorkerSession } from "./factory-worker";
 import {
   commitOffTrunk,
+  confiningCheckSandbox,
+  declareCheck,
   integratedRepo,
   orderWorktree,
   repoWithoutTrunk,
@@ -47,7 +52,9 @@ import {
   scratchEnv,
   workerIn,
 } from "./fixtures.test-support";
+import { reviewRange } from "./order-review";
 import { dbPath } from "./paths";
+import { findQuery } from "./queries";
 import { SCHEMA_SQL } from "./schema";
 import { rebuild } from "./sync";
 import type { WorkerHookReport } from "./worker-environment";
@@ -836,7 +843,7 @@ describe("factory order report records", () => {
       .trim();
     recordOrderCommit(database, "order-1", sha, worker, "feat: ship-slice");
 
-    expect(shipOrder(database, "order-1", wt, env)).toEqual({ landed: "fast_forward" });
+    expect(shipOrder(database, "order-1", wt, attemptOperator, { env })).toEqual({ landed: "fast_forward" });
     expect(Bun.spawnSync(["git", "-C", repo.dir, "merge-base", "--is-ancestor", sha, "HEAD"]).success).toBe(
       true,
     );
@@ -855,13 +862,293 @@ describe("factory order report records", () => {
     queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
     claimOrder(database, "order-1", claim, worker, "2026-09-18T10:01:00.000Z");
 
-    expect(() => shipOrder(database, "order-1", repo.dir, env)).toThrow(
+    expect(() => shipOrder(database, "order-1", repo.dir, attemptOperator, { env })).toThrow(
       expect.objectContaining({ code: "order_not_integrated" }),
     );
 
     database.close();
     rmSync(repo.dir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
+  });
+
+  describe("shipping onto a trunk that moved", () => {
+    const scenes: string[] = [];
+    afterAll(() => {
+      for (const dir of scenes) rmSync(dir, { recursive: true, force: true });
+    });
+
+    function git(dir: string, args: string[]): string {
+      return Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe" })
+        .stdout.toString()
+        .trim();
+    }
+
+    function commit(dir: string, file: string, contents: string, subject: string): string {
+      writeFileSync(join(dir, file), contents);
+      git(dir, ["add", "."]);
+      git(dir, ["commit", "-q", "-m", subject]);
+      return git(dir, ["rev-parse", "HEAD"]);
+    }
+
+    /** An order with two recorded commits, one editing the middle of a file the trunk also carries,
+     *  whose trunk then moves by `trunkMoves`. */
+    function scene(
+      trunkMoves: (dir: string) => void,
+      { check = "true" as string | null, env = {} as Record<string, string>, unrecordedBetween = false } = {},
+    ) {
+      const repo = integratedRepo();
+      const home = mkdtempSync(join(tmpdir(), "dim-rebase-ship-"));
+      scenes.push(repo.dir, home);
+      if (check !== null) declareCheck(repo.dir, check);
+      commit(repo.dir, "f.txt", "a\nb\nc\nd\ne\nf\ng\n", "feat: add f");
+      const database = db();
+      queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+      claimOrder(database, "order-1", claim, worker, "2026-09-18T10:01:00.000Z");
+      const wt = orderWorktree(repo.dir, "order-1");
+      scenes.push(wt);
+      const first = commit(wt, "f.txt", "a\nb\nc\nD\ne\nf\ng\n", "feat: change d");
+      if (unrecordedBetween) commit(wt, "h.txt", "h", "feat: add h outside the runner");
+      const second = commit(wt, "g.txt", "g", "feat: add g");
+      recordOrderCommit(database, "order-1", first, worker, "feat: change d");
+      recordOrderCommit(database, "order-1", second, worker, "feat: add g");
+      trunkMoves(repo.dir);
+      const ship = () =>
+        shipOrder(database, "order-1", wt, attemptOperator, {
+          env: { ...scratchEnv(home), ...env },
+          checkSandbox: confiningCheckSandbox(),
+        });
+      return { repo, wt, database, first, second, trunkTip: git(repo.dir, ["rev-parse", "HEAD"]), ship };
+    }
+
+    const unrelatedMove = (dir: string) => {
+      commit(dir, "unrelated.txt", "u", "feat: add unrelated");
+    };
+    // Rebases cleanly, yet the first commit's hunk now carries the trunk's line as context.
+    const contextMove = (dir: string) => {
+      commit(dir, "f.txt", "A\nb\nc\nd\ne\nf\ng\n", "feat: change a");
+    };
+
+    function approveReviewAt(database: Database, headSha: string): void {
+      const opened = reviewIn(database, "order-1", attemptOperator, undefined, headSha);
+      recordOrderReviewArtifact(database, "order-1", "## Outcome\n\nClean.", opened.reviewer);
+      closeOrderReview(database, opened.review, "closed", opened.reviewer);
+      approveOrderReview(database, "order-1", attemptOperator);
+    }
+
+    test("a clean rebase lands one commit per recorded commit, each recorded as rewritten from its old sha", () => {
+      const { repo, database, first, second, ship } = scene(unrelatedMove);
+
+      expect(ship()).toEqual({ landed: "rebased" });
+
+      const current = currentOrderCommits(database, "order-1").map((c) => c.sha);
+      expect(current).toHaveLength(2);
+      expect(current).not.toContain(first);
+      expect(current).not.toContain(second);
+      for (const sha of current) {
+        expect(
+          Bun.spawnSync(["git", "-C", repo.dir, "merge-base", "--is-ancestor", sha, "HEAD"]).success,
+        ).toBe(true);
+      }
+      const rows = findQuery("order")?.run(database, { arg: "order-1" }).rows ?? [];
+      const rewritten = rows.filter((row) => row[0] === "event" && row[2] === "commit_rewritten");
+      expect(rewritten.map((row) => row[5])).toEqual([
+        `${first} -> ${current[0]}`,
+        `${second} -> ${current[1]}`,
+      ]);
+      expect(rows.filter((row) => row[0] === "rewrite").map((row) => row[3])).toEqual(["patch_equal"]);
+      expect(
+        database
+          .query(
+            "SELECT kind, outcome, commit_sha FROM factory_order_delivery WHERE order_id = 'order-1' ORDER BY id",
+          )
+          .all(),
+      ).toEqual([
+        { kind: "integration", outcome: "succeeded", commit_sha: current[1] },
+        { kind: "delivery", outcome: "succeeded", commit_sha: current[1] },
+      ]);
+    });
+
+    test("a ship after a rebase counts only the commits the branch now carries", () => {
+      const { ship } = scene(unrelatedMove);
+      ship();
+
+      expect(ship()).toEqual({ landed: "already" });
+    });
+
+    test("a rebase that changed no patch keeps the approved review", () => {
+      const { database, second, ship } = scene(unrelatedMove);
+      approveReviewAt(database, second);
+
+      ship();
+
+      expect(() => assertReviewApproved(database, "order-1")).not.toThrow();
+    });
+
+    test("a rebase that changed a patch lands nothing and returns the order to review for the whole order", () => {
+      const { repo, wt, database, second, trunkTip, ship } = scene(contextMove);
+      approveReviewAt(database, second);
+
+      expect(ship).toThrow(expect.objectContaining({ code: "ship_patch_changed" }));
+
+      expect(git(repo.dir, ["rev-parse", "HEAD"])).toBe(trunkTip);
+      const current = currentOrderCommits(database, "order-1").map((c) => c.sha);
+      expect(git(wt, ["rev-parse", "HEAD"])).toBe(current.at(-1) as string);
+      expect(database.query("SELECT station FROM factory_order WHERE id = 'order-1'").get()).toEqual({
+        station: "dim-station-review",
+      });
+      expect(database.query("SELECT patch_equal FROM factory_order_rewrite").all()).toEqual([
+        { patch_equal: 0 },
+      ]);
+      expect(() => assertReviewApproved(database, "order-1")).toThrow(
+        expect.objectContaining({ code: "review_not_approved" }),
+      );
+      expect(reviewRange(database, "order-1", wt)).toEqual({
+        base: trunkTip,
+        head: current.at(-1) as string,
+      });
+    });
+
+    test("a red check at the rebased head leaves the trunk and the branch where they were", () => {
+      const { repo, wt, database, first, second, trunkTip, ship } = scene(unrelatedMove, { check: "exit 3" });
+
+      expect(ship).toThrow(expect.objectContaining({ code: "ship_check_failed" }));
+
+      expect(git(repo.dir, ["rev-parse", "HEAD"])).toBe(trunkTip);
+      expect(git(wt, ["rev-parse", "HEAD"])).toBe(second);
+      expect(currentOrderCommits(database, "order-1").map((c) => c.sha)).toEqual([first, second]);
+      expect(database.query("SELECT count(*) AS n FROM factory_order_rewrite").get()).toEqual({ n: 0 });
+      expect(
+        database.query("SELECT exit_code FROM factory_order_check WHERE order_id = 'order-1'").all(),
+      ).toEqual([{ exit_code: 3 }]);
+    });
+
+    test("a commit the branch carried but the order never recorded is replayed without becoming the order's", () => {
+      const { repo, database, ship } = scene(unrelatedMove, { unrecordedBetween: true });
+
+      expect(ship()).toEqual({ landed: "rebased" });
+
+      const current = currentOrderCommits(database, "order-1");
+      expect(current.map((c) => c.subject)).toEqual(["feat: change d", "feat: add g"]);
+      expect(git(repo.dir, ["log", "--format=%s", "-3"]).split("\n")).toEqual([
+        "feat: add g",
+        "feat: add h outside the runner",
+        "feat: change d",
+      ]);
+    });
+
+    test("a review after a rebase that kept every patch reads on from the head it last read", () => {
+      const { wt, database, second, ship } = scene(unrelatedMove);
+      approveReviewAt(database, second);
+      ship();
+      const head = currentOrderCommits(database, "order-1").at(-1)?.sha as string;
+
+      expect(reviewRange(database, "order-1", wt)).toEqual({ base: head, head });
+    });
+
+    test("a review after a rebase that replayed commits past the head it last read reads the whole order", () => {
+      const { wt, database, first, trunkTip, ship } = scene(unrelatedMove);
+      approveReviewAt(database, first);
+      ship();
+      const head = currentOrderCommits(database, "order-1").at(-1)?.sha as string;
+
+      expect(reviewRange(database, "order-1", wt)).toEqual({ base: trunkTip, head });
+    });
+
+    test("a review whose last head the order no longer carries, with no rebase to explain it, is refused", () => {
+      const { wt, database } = scene(unrelatedMove);
+      reviewIn(database, "order-1", attemptOperator, undefined, "0000000000000000000000000000000000000000");
+
+      expect(() => reviewRange(database, "order-1", wt)).toThrow(/no longer carries/);
+    });
+
+    test("a repository that declares no check cannot have its rebased branch landed", () => {
+      const { repo, wt, second, trunkTip, ship } = scene(unrelatedMove, { check: null });
+
+      expect(ship).toThrow(expect.objectContaining({ code: "ship_check_failed" }));
+
+      expect(git(repo.dir, ["rev-parse", "HEAD"])).toBe(trunkTip);
+      expect(git(wt, ["rev-parse", "HEAD"])).toBe(second);
+    });
+
+    test("the re-check runs without the operator's factory identity", () => {
+      const { ship } = scene(unrelatedMove, {
+        check: 'test -z "$DIM_WORKER_NAME"',
+        env: { DIM_WORKER_NAME: "the-operator" },
+      });
+
+      expect(ship()).toEqual({ landed: "rebased" });
+    });
+
+    test("the re-check and the rewrite are recorded under the operator, and the order then completes", () => {
+      const { repo, database, ship } = scene(unrelatedMove);
+
+      ship();
+
+      const current = currentOrderCommits(database, "order-1").map((c) => c.sha);
+      expect(database.query("SELECT worker FROM factory_order_rewrite").all()).toEqual([
+        { worker: attemptOperator },
+      ]);
+      expect(
+        database
+          .query(
+            "SELECT worker FROM factory_order_event WHERE kind IN ('check_finished', 'commit_rewritten')",
+          )
+          .all(),
+      ).toEqual([{ worker: attemptOperator }, { worker: attemptOperator }, { worker: attemptOperator }]);
+      const rows = findQuery("order")?.run(database, { arg: "order-1" }).rows ?? [];
+      expect(rows.filter((row) => row[0] === "commit").map((row) => row[2])).toEqual([
+        "commit_created",
+        "commit_created",
+        "commit_rewritten",
+        "commit_rewritten",
+      ]);
+      const board = findQuery("factory")?.run(database, { arg: "order-1" });
+      const column = board?.columns.indexOf("commit") ?? -1;
+      expect(String(board?.rows[0]?.[column])).toStartWith(current[1] as string);
+      appendOrderEvent(
+        database,
+        "order-1",
+        { worker, kind: "completed", status: "completed" },
+        undefined,
+        repo.dir,
+      );
+      expect(database.query("SELECT status FROM factory_order").get()).toEqual({ status: "completed" });
+    });
+
+    test("an approved review follows a chain of rewrites only while every one kept its patches", () => {
+      const database = db();
+      queueOrder(database, order, worker);
+      claimOrder(database, "order-1", claim, worker);
+      recordOrderCommit(database, "order-1", "a0", worker, "feat: a");
+      approveReviewAt(database, "a0");
+      const check = { command: "bun run verify", exitCode: 0 };
+      const rewrite = (from: string, to: string, patchEqual: boolean) =>
+        recordOrderRewrite(
+          database,
+          "order-1",
+          {
+            worktree: trunk.dir,
+            oldBase: `base-${from}`,
+            newBase: `base-${to}`,
+            oldHead: from,
+            newHead: to,
+            commits: [{ from, to }],
+            patchEqual,
+          },
+          check,
+          attemptOperator,
+        );
+
+      rewrite("a0", "a1", true);
+      rewrite("a1", "a2", true);
+      expect(() => assertReviewApproved(database, "order-1")).not.toThrow();
+
+      rewrite("a2", "a3", false);
+      rewrite("a3", "a4", true);
+      expect(() => assertReviewApproved(database, "order-1")).toThrow(
+        expect.objectContaining({ code: "review_not_approved" }),
+      );
+    });
   });
 
   test("counts a check by when it was recorded, not by when it says it ran", () => {

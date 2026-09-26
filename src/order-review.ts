@@ -3,7 +3,9 @@ import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
 import {
   assertBuildReady,
+  carriedThroughRewrites,
   closeOrderReview,
+  currentOrderCommits,
   openAssignedOrderReview,
   type ReturnedOrderArtifact,
   raiseOrderFinding,
@@ -52,8 +54,10 @@ function git(dir: string, args: string[]): { ok: boolean; out: string } {
  * "what the reviewer saw" and "what ships" the same thing without freezing anything.
  *
  * Round one starts at the parent of the order's first commit, which is where the order's
- * own work begins. A later round starts at the previous round's head, so it reads the
- * answers rather than the whole order again.
+ * own work begins. A later round starts at the previous round's head, carried through any
+ * rebase that kept every patch, so it reads the answers rather than the whole order again.
+ * Where a rebase retired that head otherwise, the round reads the whole order from the
+ * newest rebase's base.
  */
 export function reviewRange(db: Database, orderId: string, dir: string): { base: string; head: string } {
   const head = git(dir, ["rev-parse", "HEAD"]);
@@ -67,23 +71,11 @@ export function reviewRange(db: Database, orderId: string, dir: string): { base:
       `${dir} has uncommitted changes, and a round reads a commit: commit them or put them aside`,
     );
   }
-  const recorded = db
-    .query<{ sha: string }, [string, string]>(
-      "SELECT sha FROM factory_order_commit WHERE order_id = ? AND sha = ?",
-    )
-    .get(orderId, head.out);
-  const short = db
-    .query<{ sha: string }, [string]>(
-      `SELECT c.sha FROM factory_order_commit c
-       JOIN factory_order_event e
-         ON e.order_id = c.order_id AND e.kind = 'commit_created' AND e.commit_sha = c.sha
-       WHERE c.order_id = ? ORDER BY e.id`,
-    )
-    .all(orderId);
-  if (short.length === 0) {
+  const current = currentOrderCommits(db, orderId);
+  if (current.length === 0) {
     throw new ReviewRefused("no_commit", `order ${orderId} recorded no commit, so there is no slice to read`);
   }
-  if (!recorded && !short.some((row) => head.out.startsWith(row.sha))) {
+  if (!current.some((row) => head.out.startsWith(row.sha))) {
     throw new ReviewRefused(
       "head_unrecorded",
       `${head.out} is not a commit order ${orderId} recorded: record it with \`dim order commit\` first`,
@@ -94,8 +86,21 @@ export function reviewRange(db: Database, orderId: string, dir: string): { base:
       "SELECT head_sha FROM factory_order_review WHERE order_id = ? ORDER BY round DESC LIMIT 1",
     )
     .get(orderId);
-  if (last) return { base: last.head_sha, head: head.out };
-  const first = short[0] as { sha: string };
+  if (last) {
+    const carried = carriedThroughRewrites(db, orderId, last.head_sha);
+    if (carried && current.some((row) => carried.startsWith(row.sha)))
+      return { base: carried, head: head.out };
+    const rewrite = db
+      .query<{ new_base: string }, [string]>(
+        "SELECT new_base FROM factory_order_rewrite WHERE order_id = ? ORDER BY id DESC LIMIT 1",
+      )
+      .get(orderId);
+    if (!rewrite) {
+      throw new Error(`order ${orderId}'s last review read ${last.head_sha}, which it no longer carries`);
+    }
+    return { base: rewrite.new_base, head: head.out };
+  }
+  const first = current[0] as { sha: string };
   const parent = git(dir, ["rev-parse", `${first.sha}^`]);
   return { base: parent.ok ? parent.out : first.sha, head: head.out };
 }

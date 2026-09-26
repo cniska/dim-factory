@@ -16,6 +16,7 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   build_approved: "Build approved",
   build_artifact_written: "Build written",
   commit_created: "Commit",
+  commit_rewritten: "Commit rebased",
   check_finished: "Check",
   review_opened: "Review opened",
   review_closed: "Review closed",

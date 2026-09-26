@@ -1160,7 +1160,9 @@ const order: Query = {
         db,
         `SELECT 'event' AS section, e.ts AS "when", e.kind, coalesce(e.status, '') AS status,
                 coalesce(e.station, '') AS subject,
-                coalesce(e.reason, e.hold_type, e.commit_sha, cast(e.check_id AS TEXT),
+                coalesce(e.reason, e.hold_type,
+                         json_extract(e.evidence, '$.from') || ' -> ' || e.commit_sha,
+                         e.commit_sha, cast(e.check_id AS TEXT),
                          cast(e.finding_id AS TEXT), cast(e.plan_id AS TEXT),
                          cast(e.build_id AS TEXT), cast(e.review_id AS TEXT), '') AS evidence
          FROM factory_order_event e WHERE e.order_id = ?`,
@@ -1187,9 +1189,22 @@ const order: Query = {
       ),
       ...table(
         db,
-        `SELECT 'commit' AS section, recorded_at AS "when", 'commit_created' AS kind, '' AS status,
-                sha AS subject, coalesce(subject, '') AS evidence
-         FROM factory_order_commit WHERE order_id = ?`,
+        `SELECT 'commit' AS section, c.recorded_at AS "when", e.kind, '' AS status,
+                c.sha AS subject, coalesce(c.subject, '') AS evidence
+         FROM factory_order_commit c
+         JOIN factory_order_event e
+           ON e.order_id = c.order_id AND e.commit_sha = c.sha
+          AND e.kind IN ('commit_created', 'commit_rewritten')
+         WHERE c.order_id = ?`,
+        [id],
+      ),
+      ...table(
+        db,
+        `SELECT 'rewrite' AS section, recorded_at AS "when", 'rebased_at_ship' AS kind,
+                CASE patch_equal WHEN 1 THEN 'patch_equal' ELSE 'patch_changed' END AS status,
+                old_base || '..' || old_head || ' -> ' || new_base || '..' || new_head AS subject,
+                'check ' || check_id || ' | ' || worker AS evidence
+         FROM factory_order_rewrite WHERE order_id = ?`,
         [id],
       ),
       ...table(
@@ -1261,7 +1276,7 @@ const factory: Query = {
               coalesce((SELECT c.sha || coalesce(' ' || c.subject, '')
                         FROM factory_order_event e
                         JOIN factory_order_commit c ON c.order_id = e.order_id AND c.sha = e.commit_sha
-                        WHERE e.order_id = o.id AND e.kind = 'commit_created'
+                        WHERE e.order_id = o.id AND e.kind IN ('commit_created', 'commit_rewritten')
                         ORDER BY e.id DESC LIMIT 1), '(none recorded)') AS "commit",
               coalesce((SELECT c.command || ' (' || c.exit_code || ', ' || coalesce(c.result, 'no result') || ')'
                         FROM factory_order_event e

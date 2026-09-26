@@ -11,6 +11,7 @@ import {
   completeOrderBuildFollowup,
   completeOrderSlice,
   isActiveOrderRun,
+  latestOrderCommit,
   nextOrderSlice,
   OrderNotDone,
   orderStatus,
@@ -172,16 +173,7 @@ function reviewFindingsForBuild(db: Database, orderId: string): string[] {
 export type BuildOutcome = { builder: string; runId: string; worktree: string; exitCode: number };
 
 function requireBuildEvidence(db: Database, orderId: string, finalSlice: boolean, worktree: string): void {
-  const commit = db
-    .query<{ sha: string; recorded_at: string }, [string]>(
-      `SELECT c.sha, c.recorded_at
-       FROM factory_order_commit c
-       JOIN factory_order_event e
-         ON e.order_id = c.order_id AND e.kind = 'commit_created' AND e.commit_sha = c.sha
-       WHERE c.order_id = ?
-       ORDER BY e.id DESC LIMIT 1`,
-    )
-    .get(orderId);
+  const commit = latestOrderCommit(db, orderId);
   if (!commit) throw new Error("builder did not record a commit");
   if (!/^[0-9a-fA-F]{7,64}$/.test(commit.sha)) {
     throw new Error(`builder did not record an immutable commit ID for ${orderId}`);

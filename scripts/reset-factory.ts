@@ -17,6 +17,7 @@ const tables = [
   "factory_order_event",
   "factory_order_build",
   "factory_order_plan",
+  "factory_order_rewrite",
   "factory_order_check",
   "factory_order_delivery",
   "factory_order_verdict",

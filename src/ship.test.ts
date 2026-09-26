@@ -1,8 +1,17 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { integratedRepo, orderWorktree, repoWithoutTrunk } from "./fixtures.test-support";
-import { type ShipRefusal, shipBranch } from "./ship";
+import { patchesEqual, type Rewrite } from "./rebase-onto-trunk";
+import { type RebaseVerdict, shipBranch } from "./ship";
+import { ShipRefusal } from "./ship-refusal";
+
+const landRebased = (rewrite: Rewrite): RebaseVerdict => ({ land: rewrite.commits.map((c) => c.to) });
+
+function ship(cwd: string, branch: string, shas: string[], onRebased = landRebased) {
+  return shipBranch(cwd, branch, shas, onRebased);
+}
 
 function git(dir: string, args: string[]): { success: boolean; out: string } {
   const run = Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe", stderr: "pipe" });
@@ -39,7 +48,7 @@ describe("shipBranch", () => {
     const wt = worktree(dir, "feat-a");
     const sha = commitFile(wt, "feat-a.txt", "a");
 
-    shipBranch(dir, "feat-a", [sha]);
+    ship(dir, "feat-a", [sha]);
 
     expect(reachesNow(dir, sha)).toBe(true);
   });
@@ -52,7 +61,7 @@ describe("shipBranch", () => {
     const trunkBefore = git(dir, ["rev-parse", "HEAD"]).out;
 
     for (const from of [dir, wt]) {
-      expect(() => shipBranch(from, "feat-undeclared", [sha])).toThrow(
+      expect(() => ship(from, "feat-undeclared", [sha])).toThrow(
         expect.objectContaining({ code: "ship_no_method" } satisfies Partial<ShipRefusal>),
       );
     }
@@ -67,7 +76,7 @@ describe("shipBranch", () => {
     const trunkBefore = git(dir, ["rev-parse", "HEAD"]).out;
 
     for (const from of [dir, wt]) {
-      expect(() => shipBranch(from, "feat-pr", [sha])).toThrow(
+      expect(() => ship(from, "feat-pr", [sha])).toThrow(
         expect.objectContaining({ code: "ship_pull_request_unbuilt" } satisfies Partial<ShipRefusal>),
       );
     }
@@ -79,7 +88,7 @@ describe("shipBranch", () => {
     git(dir, ["config", "--unset", "dim.ship"]);
     const sha = git(dir, ["rev-parse", "HEAD"]).out;
 
-    expect(() => shipBranch(dir, "main", [sha])).toThrow(
+    expect(() => ship(dir, "main", [sha])).toThrow(
       expect.objectContaining({ code: "ship_no_method" } satisfies Partial<ShipRefusal>),
     );
   });
@@ -88,7 +97,7 @@ describe("shipBranch", () => {
     const { dir, sha } = repoWithoutTrunk();
     cleanup.push(dir);
 
-    expect(() => shipBranch(dir, "main", [sha])).toThrow(
+    expect(() => ship(dir, "main", [sha])).toThrow(
       expect.objectContaining({ code: "ship_no_method" } satisfies Partial<ShipRefusal>),
     );
   });
@@ -100,7 +109,7 @@ describe("shipBranch", () => {
     const sha = commitFile(wt, "feat-typo.txt", "typo");
 
     for (const from of [dir, wt]) {
-      expect(() => shipBranch(from, "feat-typo", [sha])).toThrow(
+      expect(() => ship(from, "feat-typo", [sha])).toThrow(
         expect.objectContaining({ code: "ship_invalid_method" } satisfies Partial<ShipRefusal>),
       );
     }
@@ -115,7 +124,7 @@ describe("shipBranch", () => {
     git(wt, ["config", "--worktree", "dim.ship", "trunk"]);
     const sha = commitFile(wt, "feat-local.txt", "local");
 
-    expect(() => shipBranch(wt, "feat-local", [sha])).toThrow(
+    expect(() => ship(wt, "feat-local", [sha])).toThrow(
       expect.objectContaining({ code: "ship_no_method" } satisfies Partial<ShipRefusal>),
     );
   });
@@ -145,7 +154,7 @@ describe("shipBranch", () => {
     const { dir } = repo();
     const sha = git(dir, ["rev-parse", "HEAD"]).out;
 
-    expect(shipBranch(dir, "main", [sha])).toEqual({ landed: "already" });
+    expect(ship(dir, "main", [sha])).toEqual({ landed: "already" });
   });
 
   test("a worktree ahead of the trunk with no divergence fast-forwards", () => {
@@ -153,21 +162,208 @@ describe("shipBranch", () => {
     const wt = worktree(dir, "feat-a");
     const sha = commitFile(wt, "feat-a.txt", "a");
 
-    expect(shipBranch(wt, "feat-a", [sha])).toEqual({ landed: "fast_forward" });
+    expect(ship(wt, "feat-a", [sha])).toEqual({ landed: "fast_forward" });
     expect(reachesNow(dir, sha)).toBe(true);
   });
 
-  test("a branch the trunk has moved past is refused rather than merged, leaving the trunk as it was", () => {
+  test("a branch the trunk has moved past is rebased onto it, one replayed commit per commit it carried", () => {
     const { dir } = repo();
     const wt = worktree(dir, "feat-b");
-    const sha = commitFile(wt, "feat-b.txt", "b");
+    const first = commitFile(wt, "feat-b.txt", "b");
+    const second = commitFile(wt, "feat-b2.txt", "b2");
+    const trunkAhead = commitFile(dir, "trunk-moved.txt", "moved");
+    let seen: Rewrite | undefined;
+
+    const outcome = ship(wt, "feat-b", [first, second], (rewrite) => {
+      seen = rewrite;
+      return landRebased(rewrite);
+    });
+
+    expect(outcome).toEqual({ landed: "rebased" });
+    expect(seen?.commits.map((c) => c.from)).toEqual([first, second]);
+    expect(seen?.newBase).toBe(trunkAhead);
+    expect(seen?.patchEqual).toBe(true);
+    expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(seen?.newHead as string);
+    expect(git(dir, ["rev-list", "--merges", "--count", "HEAD"]).out).toBe("0");
+    for (const { from, to } of seen?.commits ?? []) {
+      expect(reachesNow(dir, to)).toBe(true);
+      expect(reachesNow(dir, from)).toBe(false);
+      expect(git(dir, ["verify-commit", to]).success).toBe(true);
+    }
+  });
+
+  test("a rebase the caller refuses is taken back, leaving the trunk and the branch where they were", () => {
+    const { dir } = repo();
+    const wt = worktree(dir, "feat-refused");
+    const sha = commitFile(wt, "feat-refused.txt", "r");
     const trunkAhead = commitFile(dir, "trunk-moved.txt", "moved");
 
-    expect(() => shipBranch(wt, "feat-b", [sha])).toThrow(
-      expect.objectContaining({ code: "ship_not_fast_forward" } satisfies Partial<ShipRefusal>),
+    expect(() =>
+      ship(wt, "feat-refused", [sha], () => {
+        throw new ShipRefusal("ship_check_failed", "red");
+      }),
+    ).toThrow(expect.objectContaining({ code: "ship_check_failed" } satisfies Partial<ShipRefusal>));
+    expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkAhead);
+    expect(git(dir, ["rev-parse", "refs/heads/feat-refused"]).out).toBe(sha);
+    expect(git(wt, ["status", "--porcelain"]).out).toBe("");
+  });
+
+  test("a rebase the caller holds keeps the rewritten branch and lands nothing", () => {
+    const { dir } = repo();
+    const wt = worktree(dir, "feat-held");
+    const sha = commitFile(wt, "feat-held.txt", "h");
+    const trunkAhead = commitFile(dir, "trunk-moved.txt", "moved");
+    let seen: Rewrite | undefined;
+
+    expect(() =>
+      ship(wt, "feat-held", [sha], (rewrite) => {
+        seen = rewrite;
+        return { hold: new ShipRefusal("ship_patch_changed", "changed") };
+      }),
+    ).toThrow(expect.objectContaining({ code: "ship_patch_changed" } satisfies Partial<ShipRefusal>));
+    expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkAhead);
+    expect(git(dir, ["rev-parse", "refs/heads/feat-held"]).out).toBe(seen?.newHead as string);
+  });
+
+  test("a conflict aborts the rebase and is refused with the paths, leaving the branch at its old head", () => {
+    const { dir } = repo();
+    const wt = worktree(dir, "feat-clash");
+    const sha = commitFile(wt, "clash.txt", "branch side");
+    const trunkAhead = commitFile(dir, "clash.txt", "trunk side");
+
+    expect(() => ship(wt, "feat-clash", [sha])).toThrow(
+      expect.objectContaining({
+        code: "ship_rebase_conflict",
+        message: expect.stringContaining("clash.txt"),
+      }),
     );
     expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkAhead);
-    expect(git(dir, ["rev-list", "--merges", "--count", "HEAD"]).out).toBe("0");
+    expect(git(dir, ["rev-parse", "refs/heads/feat-clash"]).out).toBe(sha);
+    expect(
+      existsSync(git(wt, ["rev-parse", "--path-format=absolute", "--git-path", "rebase-merge"]).out),
+    ).toBe(false);
+  });
+
+  test("a hook the builder committed into the tree does not run when its branch is rebased", () => {
+    const { dir } = repo();
+    git(dir, ["config", "core.hooksPath", ".githooks"]);
+    const wt = worktree(dir, "feat-hooked");
+    const marker = join(mkdtempSync(join(tmpdir(), "dim-hook-marker-")), "ran");
+    cleanup.push(marker);
+    mkdirSync(join(wt, ".githooks"));
+    for (const hook of ["pre-rebase", "post-rewrite", "post-checkout"]) {
+      writeFileSync(join(wt, ".githooks", hook), `#!/bin/sh\necho ${hook} >> "${marker}"\n`);
+      chmodSync(join(wt, ".githooks", hook), 0o755);
+    }
+    git(wt, ["add", "."]);
+    git(wt, ["-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", "feat: add hooks"]);
+    const sha = git(wt, ["rev-parse", "HEAD"]).out;
+    commitFile(dir, "trunk-moved.txt", "moved");
+
+    expect(ship(wt, "feat-hooked", [sha])).toEqual({ landed: "rebased" });
+    expect(existsSync(marker) ? readFileSync(marker, "utf8") : "").toBe("");
+  });
+
+  test("in a repository that signs, a rebase whose commits do not verify is refused and taken back", () => {
+    const { dir } = repo();
+    const wt = worktree(dir, "feat-resigned");
+    const sha = commitFile(wt, "feat-resigned.txt", "s");
+    const trunkAhead = commitFile(dir, "trunk-moved.txt", "moved");
+    const stranger = join(mkdtempSync(join(tmpdir(), "dim-stranger-key-")), "id_ed25519");
+    cleanup.push(stranger);
+    Bun.spawnSync(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "s@example.com", "-f", stranger]);
+    git(dir, ["config", "user.signingkey", stranger]);
+
+    expect(() => ship(wt, "feat-resigned", [sha])).toThrow(
+      expect.objectContaining({ code: "ship_unsigned" } satisfies Partial<ShipRefusal>),
+    );
+    expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkAhead);
+    expect(git(dir, ["rev-parse", "refs/heads/feat-resigned"]).out).toBe(sha);
+  });
+
+  test("a branch whose rebase would drop a commit is refused rather than paired by guess", () => {
+    const { dir } = repo();
+    const wt = worktree(dir, "feat-merged");
+    const side = worktree(dir, "feat-side");
+    commitFile(side, "side.txt", "side");
+    const own = commitFile(wt, "own.txt", "own");
+    git(wt, ["merge", "-q", "--no-edit", "feat-side"]);
+    const tip = git(wt, ["rev-parse", "HEAD"]).out;
+    commitFile(dir, "trunk-moved.txt", "moved");
+
+    expect(() => ship(wt, "feat-merged", [own, tip])).toThrow(
+      expect.objectContaining({ code: "ship_rebase_unpaired" } satisfies Partial<ShipRefusal>),
+    );
+    expect(git(dir, ["rev-parse", "refs/heads/feat-merged"]).out).toBe(tip);
+  });
+
+  test("a branch whose tip the order never recorded is refused before the trunk moves", () => {
+    const { dir } = repo();
+    const wt = worktree(dir, "feat-extra");
+    const recorded = commitFile(wt, "feat-extra.txt", "x");
+    commitFile(wt, "unchecked.txt", "never recorded");
+    const trunkBefore = git(dir, ["rev-parse", "HEAD"]).out;
+
+    expect(() => ship(wt, "feat-extra", [recorded])).toThrow(
+      expect.objectContaining({ code: "ship_unrecorded_head" } satisfies Partial<ShipRefusal>),
+    );
+    expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkBefore);
+  });
+
+  test("a rebase git refuses without a conflict is refused as failed, leaving the branch where it was", () => {
+    const { dir } = repo();
+    const hooks = mkdtempSync(join(tmpdir(), "dim-outside-hooks-"));
+    cleanup.push(hooks);
+    writeFileSync(join(hooks, "pre-rebase"), "#!/bin/sh\nexit 1\n");
+    chmodSync(join(hooks, "pre-rebase"), 0o755);
+    git(dir, ["config", "core.hooksPath", hooks]);
+    const wt = worktree(dir, "feat-vetoed");
+    const sha = commitFile(wt, "feat-vetoed.txt", "v");
+    commitFile(dir, "trunk-moved.txt", "moved");
+
+    expect(() => ship(wt, "feat-vetoed", [sha])).toThrow(
+      expect.objectContaining({ code: "ship_rebase_failed" } satisfies Partial<ShipRefusal>),
+    );
+    expect(git(dir, ["rev-parse", "refs/heads/feat-vetoed"]).out).toBe(sha);
+  });
+
+  test("a worktree with uncommitted changes is refused before its branch is rebased", () => {
+    const { dir } = repo();
+    const wt = worktree(dir, "feat-unsaved");
+    const sha = commitFile(wt, "feat-unsaved.txt", "u");
+    commitFile(dir, "trunk-moved.txt", "moved");
+    writeFileSync(join(wt, "unsaved.txt"), "unsaved");
+
+    expect(() => ship(wt, "feat-unsaved", [sha])).toThrow(
+      expect.objectContaining({ code: "ship_dirty_worktree" } satisfies Partial<ShipRefusal>),
+    );
+    expect(git(dir, ["rev-parse", "refs/heads/feat-unsaved"]).out).toBe(sha);
+  });
+
+  test("a worktree carrying a nested repository is refused before git runs in it", () => {
+    const { dir } = repo();
+    const wt = worktree(dir, "feat-nested");
+    const trunkSha = git(dir, ["rev-parse", "HEAD"]).out;
+    git(wt, ["update-index", "--add", "--cacheinfo", `160000,${trunkSha},vendored`]);
+    git(wt, ["commit", "-q", "-m", "feat: vendor a repository"]);
+    const sha = git(wt, ["rev-parse", "HEAD"]).out;
+    commitFile(dir, "trunk-moved.txt", "moved");
+
+    expect(() => ship(wt, "feat-nested", [sha])).toThrow(
+      expect.objectContaining({ code: "ship_nested_repository" } satisfies Partial<ShipRefusal>),
+    );
+  });
+
+  test("a branch checked out in no worktree is refused, since there is nowhere to rebase it", () => {
+    const { dir } = repo();
+    const wt = worktree(dir, "feat-loose");
+    const sha = commitFile(wt, "feat-loose.txt", "l");
+    git(dir, ["worktree", "remove", "--force", wt]);
+    commitFile(dir, "trunk-moved.txt", "moved");
+
+    expect(() => ship(dir, "feat-loose", [sha])).toThrow(
+      expect.objectContaining({ code: "ship_no_worktree" } satisfies Partial<ShipRefusal>),
+    );
   });
 
   test("a tag named like the branch cannot stand in for it", () => {
@@ -178,7 +374,7 @@ describe("shipBranch", () => {
     const planted = commitFile(other, "planted.txt", "planted");
     git(dir, ["tag", "feat-tagged", planted]);
 
-    expect(shipBranch(wt, "feat-tagged", [sha])).toEqual({ landed: "fast_forward" });
+    expect(ship(wt, "feat-tagged", [sha])).toEqual({ landed: "fast_forward" });
     expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(sha);
   });
 
@@ -188,7 +384,7 @@ describe("shipBranch", () => {
     const wt = worktree(dir, "feat-plain");
     const sha = commitFile(wt, "feat-plain.txt", "plain");
 
-    expect(shipBranch(wt, "feat-plain", [sha])).toEqual({ landed: "fast_forward" });
+    expect(ship(wt, "feat-plain", [sha])).toEqual({ landed: "fast_forward" });
     expect(git(dir, ["verify-commit", sha]).success).toBe(false);
   });
 
@@ -197,9 +393,22 @@ describe("shipBranch", () => {
     cleanup.push(dir);
     git(dir, ["config", "dim.ship", "trunk"]);
 
-    expect(() => shipBranch(dir, "main", [sha])).toThrow(
+    expect(() => ship(dir, "main", [sha])).toThrow(
       expect.objectContaining({ code: "ship_no_trunk" } satisfies Partial<ShipRefusal>),
     );
+  });
+
+  test("a branch the moved trunk already carries is refused for a recorded sha it never carried, with nothing rebased", () => {
+    const { dir } = repo();
+    const behind = git(dir, ["rev-parse", "HEAD"]).out;
+    const wt = worktree(dir, "feat-behind");
+    const stray = commitFile(worktree(dir, "stray-3"), "stray-3.txt", "stray");
+    commitFile(dir, "trunk-moved.txt", "moved");
+
+    expect(() => ship(wt, "feat-behind", [behind, stray])).toThrow(
+      expect.objectContaining({ code: "ship_not_landed" } satisfies Partial<ShipRefusal>),
+    );
+    expect(git(dir, ["rev-parse", "refs/heads/feat-behind"]).out).toBe(behind);
   });
 
   test("a trunk checkout with its own uncommitted changes is refused", () => {
@@ -208,7 +417,7 @@ describe("shipBranch", () => {
     const sha = commitFile(wt, "feat-d.txt", "d");
     writeFileSync(join(dir, "dirty.txt"), "uncommitted");
 
-    expect(() => shipBranch(wt, "feat-d", [sha])).toThrow(
+    expect(() => ship(wt, "feat-d", [sha])).toThrow(
       expect.objectContaining({ code: "ship_dirty_trunk" } satisfies Partial<ShipRefusal>),
     );
   });
@@ -219,7 +428,7 @@ describe("shipBranch", () => {
     const sha = commitFile(wt, "feat-f.txt", "f");
     git(dir, ["checkout", "-q", "-b", "not-trunk"]);
 
-    expect(() => shipBranch(wt, "feat-f", [sha])).toThrow(
+    expect(() => ship(wt, "feat-f", [sha])).toThrow(
       expect.objectContaining({ code: "ship_wrong_head" } satisfies Partial<ShipRefusal>),
     );
   });
@@ -229,7 +438,7 @@ describe("shipBranch", () => {
     const wt = worktree(dir, "feat-e");
     const sha = commitFile(wt, "feat-e.txt", "e");
 
-    expect(() => shipBranch(wt, "no-such-branch", [sha])).toThrow(
+    expect(() => ship(wt, "no-such-branch", [sha])).toThrow(
       expect.objectContaining({ code: "ship_no_branch" } satisfies Partial<ShipRefusal>),
     );
   });
@@ -241,7 +450,7 @@ describe("shipBranch", () => {
     const strayWt = worktree(dir, "stray");
     const strayShaOffBranch = commitFile(strayWt, "stray.txt", "stray");
 
-    expect(() => shipBranch(wt, "feat-g", [landedSha, strayShaOffBranch])).toThrow(
+    expect(() => ship(wt, "feat-g", [landedSha, strayShaOffBranch])).toThrow(
       expect.objectContaining({ code: "ship_not_landed" } satisfies Partial<ShipRefusal>),
     );
     expect(reachesNow(dir, landedSha)).toBe(true);
@@ -257,7 +466,7 @@ describe("shipBranch", () => {
     const unsigned = git(wt, ["rev-parse", "HEAD"]).out;
     const trunkBefore = git(dir, ["rev-parse", "HEAD"]).out;
 
-    expect(() => shipBranch(wt, "feat-unsigned", [signed, unsigned])).toThrow(
+    expect(() => ship(wt, "feat-unsigned", [signed, unsigned])).toThrow(
       expect.objectContaining({ code: "ship_unsigned" } satisfies Partial<ShipRefusal>),
     );
     expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkBefore);
@@ -270,9 +479,46 @@ describe("shipBranch", () => {
     const strayWt = worktree(dir, "stray-2");
     const strayShaOffBranch = commitFile(strayWt, "stray-2.txt", "stray");
 
-    expect(() => shipBranch(wt, "feat-h", [alreadyLandedSha, strayShaOffBranch])).toThrow(
+    expect(() => ship(wt, "feat-h", [alreadyLandedSha, strayShaOffBranch])).toThrow(
       expect.objectContaining({ code: "ship_not_landed" } satisfies Partial<ShipRefusal>),
     );
+  });
+});
+
+describe("patchesEqual", () => {
+  // Real `git range-diff --no-color` output (git 2.54) for a clean rebase in which the trunk
+  // edited a context line of the first commit's hunk and nothing the second commit touched.
+  const changed = [
+    "1:  1880911 ! 1:  049c477 feat: change d",
+    "    @@ Commit message",
+    "     ",
+    "      ## f.txt ##",
+    "     @@",
+    "    - a",
+    "    + A",
+    "      b",
+    "      c",
+    "     -d",
+    "2:  1af8184 = 2:  10fe0c1 feat: add g",
+  ].join("\n");
+
+  test("a pair whose patch changed makes the rewrite unequal", () => {
+    expect(patchesEqual(changed)).toBe(false);
+  });
+
+  test("every pair carrying its patch makes the rewrite equal", () => {
+    expect(
+      patchesEqual("1:  1880911 = 1:  049c477 feat: change d\n2:  1af8184 = 2:  10fe0c1 feat: add g"),
+    ).toBe(true);
+  });
+
+  test("a commit dropped or added on one side makes the rewrite unequal", () => {
+    expect(patchesEqual("1:  1880911 < -:  ------- feat: change d")).toBe(false);
+    expect(patchesEqual("-:  ------- > 1:  049c477 feat: change d")).toBe(false);
+  });
+
+  test("output with no pair at all is not read as equal", () => {
+    expect(patchesEqual("")).toBe(false);
   });
 });
 

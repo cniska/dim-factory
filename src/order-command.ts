@@ -282,6 +282,7 @@ const EVIDENCE: Record<string, Evidence> = {
 const SHIP_OUTCOME_TEXT: Record<ShipOutcome["landed"], string> = {
   already: "already on the trunk",
   fast_forward: "fast-forwarded onto the trunk",
+  rebased: "rebased onto the trunk, re-checked and fast-forwarded",
 };
 
 function ship(
@@ -293,7 +294,7 @@ function ship(
   worker: string,
 ): string {
   flags(args, []);
-  const outcome = shipOrder(db, orderId, worktree, env, worker);
+  const outcome = shipOrder(db, orderId, worktree, worker, { env });
   return `${orderId} is ${SHIP_OUTCOME_TEXT[outcome.landed]}`;
 }
 

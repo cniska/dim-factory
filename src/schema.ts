@@ -26,7 +26,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 58;
+export const SCHEMA_VERSION = 59;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -467,6 +467,24 @@ CREATE TABLE IF NOT EXISTS factory_order_commit (
   subject       TEXT,
   recorded_at   TEXT NOT NULL,
   PRIMARY KEY (order_id, sha)
+);
+
+-- One rebase of an order's branch at ship. Append-only like the commits it rewrote: the
+-- new commits get rows of their own, and each \`commit_rewritten\` event names the sha it
+-- retires, so no recorded sha is ever changed in place. Written only once the re-check
+-- at the new head passed, which is the check it names.
+CREATE TABLE IF NOT EXISTS factory_order_rewrite (
+  id            INTEGER PRIMARY KEY,
+  order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  old_base      TEXT NOT NULL,
+  new_base      TEXT NOT NULL,
+  old_head      TEXT NOT NULL,
+  new_head      TEXT NOT NULL,
+  -- From \`git range-diff\`: 1 when every replayed commit carries the patch it had.
+  patch_equal   INTEGER NOT NULL CHECK (patch_equal IN (0, 1)),
+  check_id      INTEGER NOT NULL REFERENCES factory_order_check(id),
+  worker        TEXT NOT NULL REFERENCES factory_worker(name),
+  recorded_at   TEXT NOT NULL
 );
 
 -- How much of each file the order changed, as the recorder counted it. Both
