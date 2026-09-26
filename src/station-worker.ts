@@ -51,7 +51,6 @@ type OrderStationOptions = {
   parentWorker: string;
   harness: HarnessLaunch["harness"];
   env?: Record<string, string | undefined>;
-  requireReturnedArtifact?: boolean;
   request(context: { returned: ReturnedOrderArtifact | null; orderWorker: OrderWorker }): StationRequest;
   onPrepared?(orderWorker: OrderWorker): void;
 };
@@ -67,9 +66,6 @@ function prepareOrderStation(options: OrderStationOptions) {
   const role = STATION_ROLES[options.station];
   assertOperator(options.db, options.parentWorker, `delegate ${role}`);
   const returned = returnedOrderArtifact(options.db, options.orderId, options.station);
-  if (options.requireReturnedArtifact && !returned) {
-    throw new Error(`order ${options.orderId} has no returned ${options.station} artifact to revise`);
-  }
   const orderWorker = ensureOrderWorker(
     options.db,
     options.orderId,

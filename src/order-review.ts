@@ -4,8 +4,6 @@ import { appendOrderEventInTransaction, now } from "./order-ledger";
 import { assertOrderActive } from "./order-status";
 import { workerIsOver } from "./worker";
 
-export type ReviewRound = { id: number; round: number; reviewer: string | null };
-
 export class ReviewNotOpen extends Error {
   constructor(
     readonly code: "review_open" | "review_unknown" | "review_closed" | "review_not_its_reviewer",
@@ -18,44 +16,10 @@ export class ReviewNotOpen extends Error {
 export function openOrderReview(
   db: Database,
   orderId: string,
-  round: { reviewer: string; baseSha: string; headSha: string },
-  worker: string,
-  at = now(),
-): ReviewRound {
-  assertOrderActive(db, orderId);
-  return db.transaction(() => {
-    const live = db
-      .query<{ id: number }, [string]>(
-        "SELECT id FROM factory_order_review WHERE order_id = ? AND closed_at IS NULL",
-      )
-      .get(orderId);
-    if (live) {
-      throw new ReviewNotOpen("review_open", `order ${orderId} already has review ${live.id} open`);
-    }
-    const last = (db
-      .query<{ n: number }, [string]>(
-        "SELECT coalesce(max(round), 0) AS n FROM factory_order_review WHERE order_id = ?",
-      )
-      .get(orderId)?.n ?? 0) as number;
-    const next = last + 1;
-    const written = db.run(
-      `INSERT INTO factory_order_review (order_id, round, reviewer, base_sha, head_sha, opened_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [orderId, next, round.reviewer, round.baseSha, round.headSha, at],
-    );
-    const id = Number(written.lastInsertRowid);
-    appendOrderEventInTransaction(db, orderId, { kind: "review_opened", worker, reviewId: id }, at);
-    return { id, round: next, reviewer: round.reviewer };
-  })();
-}
-
-export function openAssignedOrderReview(
-  db: Database,
-  orderId: string,
   round: { assignmentId: string; baseSha: string; headSha: string },
   worker: string,
   at = now(),
-): ReviewRound {
+): { id: number; round: number } {
   assertOrderActive(db, orderId);
   return db.transaction(() => {
     const live = db
@@ -65,11 +29,11 @@ export function openAssignedOrderReview(
       .get(orderId);
     if (live) throw new ReviewNotOpen("review_open", `order ${orderId} already has review ${live.id} open`);
     const next =
-      ((db
+      (db
         .query<{ n: number }, [string]>(
           "SELECT coalesce(max(round), 0) AS n FROM factory_order_review WHERE order_id = ?",
         )
-        .get(orderId)?.n ?? 0) as number) + 1;
+        .get(orderId)?.n as number) + 1;
     const written = db.run(
       `INSERT INTO factory_order_review
        (order_id, round, reviewer, assignment_id, base_sha, head_sha, opened_at)
@@ -78,7 +42,7 @@ export function openAssignedOrderReview(
     );
     const id = Number(written.lastInsertRowid);
     appendOrderEventInTransaction(db, orderId, { kind: "review_opened", worker, reviewId: id }, at);
-    return { id, round: next, reviewer: null };
+    return { id, round: next };
   })();
 }
 

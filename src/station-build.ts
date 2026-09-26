@@ -281,8 +281,6 @@ export async function runOrderBuildLive(
   const reviewFindings = currentSlice || conflict ? NO_REVIEW_FINDINGS : reviewFindingsForBuild(db, orderId);
   const redCheck =
     currentSlice || conflict || answersReview(reviewFindings) ? null : failedHeadCheck(db, orderId);
-  const revising =
-    currentSlice === null && conflict === null && !answersReview(reviewFindings) && redCheck === null;
   const priorBuild = latestArtifact(db, orderId, "build")?.id ?? 0;
   const previousFailure = db
     .query<{ reason: string | null }, [string]>(
@@ -339,7 +337,6 @@ export async function runOrderBuildLive(
       harness,
       env: options.env,
       adapter: options.adapter,
-      requireReturnedArtifact: revising,
       onPrepared: (orderWorker) => {
         builder = orderWorker.worker;
       },

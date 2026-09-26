@@ -19,6 +19,7 @@ import {
   declareCheck,
   integratedRepo,
   located,
+  openReviewBy,
   ranCheck,
 } from "./fixtures.test-support";
 import { installCommitGate } from "./gate-commit";
@@ -31,7 +32,7 @@ import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
 import { BuildTurnRefused, raiseOrderFinding } from "./order-finding";
 import { appendOrderEvent } from "./order-ledger";
 import { queueOrder, startOrder } from "./order-lifecycle";
-import { closeOrderReview, openOrderReview } from "./order-review";
+import { closeOrderReview } from "./order-review";
 import { shipOrder } from "./order-ship";
 import { orderState } from "./order-state";
 import { orderStatus } from "./order-status";
@@ -753,7 +754,7 @@ describe("builder station", () => {
         parentWorker: operator.name,
         sessionId: `${orderId}-r`,
       });
-      const review = openOrderReview(
+      const review = openReviewBy(
         db,
         orderId,
         { reviewer: reviewer.name, baseSha: repo.sha, headSha: first },

@@ -12,6 +12,7 @@ import {
   declareCheck,
   integratedRepo,
   located,
+  openReviewBy,
   orderWorktree,
   ranCheck,
   reviewIn,
@@ -43,7 +44,6 @@ import { amendOrder, dropOrder, queueOrder, startOrder } from "./order-lifecycle
 import {
   abortStrandedReview,
   closeOrderReview,
-  openAssignedOrderReview,
   openOrderReview,
   recordOrderReviewArtifact,
 } from "./order-review";
@@ -146,7 +146,7 @@ describe("factory order report records", () => {
       startPlannedBuild(database, id, operator.name);
       recordOrderCommit(database, id, "head", worker, "feat: built");
       approveFinalBuildAt(database, id, "head", worker, operator.name);
-      return openOrderReview(
+      return openReviewBy(
         database,
         id,
         { reviewer: reviewer.name, baseSha: "head", headSha: "head" },
@@ -425,7 +425,7 @@ describe("factory order report records", () => {
     queueOrder(database, { ...order, id: "stranded-review" }, runner);
     start(database, "stranded-review", runner, "2026-09-22T12:00:00.000Z");
     const unaccepted = createWorkerAssignment(database, { parentWorker: runner, role: "reviewer" });
-    const stranded = openAssignedOrderReview(
+    const stranded = openOrderReview(
       database,
       "stranded-review",
       { assignmentId: unaccepted.id, baseSha: "base0000", headSha: "base0000" },
@@ -460,7 +460,7 @@ describe("factory order report records", () => {
 
     const again = createWorkerAssignment(database, { parentWorker: operator, role: "reviewer" });
     expect(
-      openAssignedOrderReview(
+      openOrderReview(
         database,
         "stranded-review",
         { assignmentId: again.id, baseSha: "base0000", headSha: "base0000" },
@@ -479,7 +479,7 @@ describe("factory order report records", () => {
     queueOrder(database, { ...order, id: orderId }, runner);
     start(database, orderId, runner);
     const assignment = createWorkerAssignment(database, { parentWorker: runner, role: "reviewer" });
-    const round = openAssignedOrderReview(
+    const round = openOrderReview(
       database,
       orderId,
       { assignmentId: assignment.id, baseSha: "base0000", headSha: "base0000" },
@@ -502,7 +502,7 @@ describe("factory order report records", () => {
       pid: process.pid,
       sessionId: newWorkerSession("named-reviewer"),
     }).name;
-    const round = openOrderReview(
+    const round = openReviewBy(
       database,
       orderId,
       { reviewer, baseSha: "base0000", headSha: "base0000" },

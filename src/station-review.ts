@@ -11,7 +11,7 @@ import { type FindingStanding, orderFindingStandings } from "./order-finding-sta
 import {
   abortStrandedReview,
   closeOrderReview,
-  openAssignedOrderReview,
+  openOrderReview,
   recordOrderReviewArtifact,
 } from "./order-review";
 import { assertNext } from "./order-state";
@@ -185,7 +185,7 @@ function openRound(
   worker: string,
 ): ReviewedRound {
   const range = reviewRange(db, orderId, dir);
-  const round = openAssignedOrderReview(
+  const round = openOrderReview(
     db,
     orderId,
     { assignmentId, baseSha: range.base, headSha: range.head },
