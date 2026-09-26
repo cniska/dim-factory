@@ -22,8 +22,8 @@ Usage:
 
 Worktrees live at <repo>/.claude/worktrees/<branch>. On creation, wt runs the
 repo's scripts/worktree-setup.sh if present (dependency install, etc.); on
-removal it runs scripts/worktree-teardown.sh first, and keeps the worktree if
-that fails unless --force.`;
+removal it runs the primary checkout's scripts/worktree-teardown.sh inside the
+worktree first, and keeps the worktree if that fails unless --force.`;
 
 /** Carries the message `wt` prints to stderr before exiting 1. */
 export class WtError extends Error {}
@@ -87,10 +87,8 @@ function reportHook(report: WorkerHookReport): void {
   console.log(`wt: ${report.phase} report ${JSON.stringify(report)}`);
 }
 
-function runHook(path: string, phase: WorkerEnvironmentPhase): WorkerHookReport | null {
-  const hook = join(path, "scripts", phase === "setup" ? "worktree-setup.sh" : "worktree-teardown.sh");
-  if (!isExecutable(hook)) return null;
-  const report = runWorkerHook(phase, hook, path);
+function runHook(hook: string, phase: WorkerEnvironmentPhase, cwd: string): WorkerHookReport {
+  const report = runWorkerHook(phase, hook, cwd);
   reportHook(report);
   return report;
 }
@@ -99,8 +97,7 @@ function bootstrap(path: string): void {
   const hook = join(path, "scripts", "worktree-setup.sh");
   if (!isExecutable(hook)) return;
   console.log("wt: bootstrapping worktree via scripts/worktree-setup.sh");
-  const report = runHook(path, "setup");
-  const rc = report === null ? 0 : hookStatus(report);
+  const rc = hookStatus(runHook(hook, "setup", path));
   if (rc === 0) console.log("wt: bootstrap complete");
   else warn(`wt: bootstrap failed (exit ${rc}) — worktree created; fix and re-run the hook`);
 }
@@ -109,14 +106,14 @@ function bootstrap(path: string): void {
  * Fatal where the bootstrap hook is not. The hook's inputs live inside the
  * worktree, so anything it owns — containers, volumes, a reserved port block —
  * becomes unattributable the moment the directory goes. `--force` is the
- * deliberate override.
+ * deliberate override. The hook comes from the trunk: whoever worked in the
+ * worktree wrote its copy, and removal runs as the caller.
  */
-function teardown(path: string, force: boolean): void {
-  const hook = join(path, "scripts", "worktree-teardown.sh");
+function teardown(root: string, path: string, force: boolean): void {
+  const hook = join(root, "scripts", "worktree-teardown.sh");
   if (!isExecutable(hook)) return;
   console.log("wt: tearing down worktree via scripts/worktree-teardown.sh");
-  const report = runHook(path, "teardown");
-  const rc = report === null ? 0 : hookStatus(report);
+  const rc = hookStatus(runHook(hook, "teardown", path));
   if (rc === 0) return;
   if (!force) die(`teardown failed (exit ${rc}) — worktree kept; fix it, or re-run with --force`);
   warn(`wt: teardown failed (exit ${rc}) — removing anyway (--force)`);
@@ -199,7 +196,7 @@ export function removeWorktree(branch: string, options: { force?: boolean; cwd?:
   const path = worktreePath(root, branch);
   if (!isDirectory(path)) die(`no worktree at ${path}`);
 
-  teardown(path, force);
+  teardown(root, path, force);
   const args2 = force
     ? ["-C", root, "worktree", "remove", "--force", path]
     : ["-C", root, "worktree", "remove", path];

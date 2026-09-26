@@ -21,7 +21,10 @@ contains(){ # desc, haystack, needle
     *) fail=$((fail+1)); printf 'FAIL %s\n  expected to contain: [%s]\n  in: [%s]\n' "$1" "$3" "$2" ;; esac
 }
 
-TMP="$(cd "$(mktemp -d)" && pwd -P)"; REPO="$TMP/repo"
+# A failed mktemp would set TMP to the working directory, which the trap then deletes.
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/wt-test.XXXXXX")" || exit 1
+TMP="$(cd "$TMP" && pwd -P)" || exit 1
+REPO="$TMP/repo"
 trap 'rm -rf "$TMP"' EXIT
 
 git init -q -b main "$REPO"
@@ -100,6 +103,33 @@ assert "a signal-killed teardown exits non-zero" "$signalled_rc" 1
 contains "a signal-killed teardown says the worktree is kept" "$signalled" "worktree kept"
 assert "a signal-killed teardown keeps the worktree" "$([ -d "$REPO/.claude/worktrees/task-d" ] && echo yes || echo no)" yes
 run rm --force task-d > /dev/null 2>&1
+
+# the worktree's own teardown is written by whoever worked in it, and removal
+# runs as the caller, so the trunk's copy is the one that runs — inside the worktree.
+commit_worker_hook(){ # branch, body
+  local tree="$REPO/.claude/worktrees/$1"
+  mkdir -p "$tree/scripts"
+  printf '%s\n' '#!/usr/bin/env bash' "$2" > "$tree/scripts/worktree-teardown.sh"
+  chmod +x "$tree/scripts/worktree-teardown.sh"
+  ( cd "$tree" && git add scripts/worktree-teardown.sh && git commit -qm worker-hook )
+}
+write_hook worktree-teardown.sh "pwd -P > $TMP/trunk-teardown-cwd"
+run task-f > /dev/null
+commit_worker_hook task-f "printf ran > $TMP/worker-teardown-ran"
+trunk_torn=$(run rm task-f 2>&1)
+assert "teardown runs the trunk's hook inside the worktree" \
+  "$(cat "$TMP/trunk-teardown-cwd" 2>/dev/null)" "$REPO/.claude/worktrees/task-f"
+assert "teardown ignores the worktree's hook" "$([ -e "$TMP/worker-teardown-ran" ] && echo yes || echo no)" no
+contains "the teardown report names the trunk's hook" "$trunk_torn" "\"argv\":[\"$REPO/scripts/worktree-teardown.sh\"]"
+
+rm -f "$TMP/worker-teardown-ran"
+( cd "$REPO" && git rm -q scripts/worktree-teardown.sh && git commit -qm "no teardown" )
+run task-g > /dev/null
+commit_worker_hook task-g "printf ran > $TMP/worker-teardown-ran"
+untorn=$(run rm task-g 2>&1)
+assert "a worktree's hook does not run when the trunk has none" \
+  "$([ -e "$TMP/worker-teardown-ran" ] && echo yes || echo no)" no
+assert "no trunk hook means no teardown" "$(grep -c "tearing down" <<< "$untorn")" 0
 write_hook worktree-teardown.sh 'exit 0'
 
 # a plain file where a worktree would go is not a worktree: reporting one ready
