@@ -91,7 +91,7 @@ describe("headless factory loop", () => {
       "headless-order",
       {
         runId: "plan-run",
-        station: "dim-station-plan",
+        station: "plan",
         sessionId: operator.sessionId,
         operatorWorker: operator.name,
       },
@@ -107,7 +107,7 @@ describe("headless factory loop", () => {
       "plan approved",
     );
     expect(
-      runOrderCommand(db, ["move", "headless-order", "--station", "dim-station-build"], null, repo.dir, env),
+      runOrderCommand(db, ["move", "headless-order", "--station", "build"], null, repo.dir, env),
     ).toContain("moved");
     expect(
       await runOrderCommandLive(db, ["build", "headless-order", "--harness", "codex"], null, repo.dir, env),
@@ -115,12 +115,12 @@ describe("headless factory loop", () => {
 
     const worktree = join(repo.dir, ".claude", "worktrees", "headless-order");
     expect(existsSync(join(worktree, "built-by-real-harness-1.txt"))).toBe(true);
-    runOrderCommand(db, ["move", "headless-order", "--station", "dim-station-review"], null, repo.dir, env);
+    runOrderCommand(db, ["move", "headless-order", "--station", "review"], null, repo.dir, env);
     expect(
       await runOrderCommandLive(db, ["review", "headless-order", "--harness", "codex"], null, repo.dir, env),
     ).toContain("0 findings");
     expect(
-      runOrderCommand(db, ["move", "headless-order", "--station", "dim-station-build"], null, repo.dir, env),
+      runOrderCommand(db, ["move", "headless-order", "--station", "build"], null, repo.dir, env),
     ).toContain("moved");
     expect(
       await runOrderCommandLive(db, ["build", "headless-order", "--harness", "codex"], null, repo.dir, env),
@@ -135,7 +135,7 @@ describe("headless factory loop", () => {
         env,
       ),
     ).toContain("build approved");
-    runOrderCommand(db, ["move", "headless-order", "--station", "dim-station-review"], null, repo.dir, env);
+    runOrderCommand(db, ["move", "headless-order", "--station", "review"], null, repo.dir, env);
     expect(
       await runOrderCommandLive(db, ["review", "headless-order", "--harness", "codex"], null, repo.dir, env),
     ).toContain("0 findings");

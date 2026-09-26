@@ -5,7 +5,7 @@ import {
   recordAttemptFinish,
   setOrderHoldInTransaction,
 } from "./factory-order-ledger";
-import { assertReviewApproved, closeOrderReview, ReviewNotOpen } from "./factory-order-review";
+import { closeOrderReview, ReviewNotOpen } from "./factory-order-review";
 import {
   assertOrderQueued,
   liveHolder,
@@ -13,10 +13,10 @@ import {
   type OrderClaim,
   type OrderPriority,
   type OrderStatus,
-  ReviewApprovalRefused,
 } from "./factory-order-status";
 import { FactoryStopError, liveStop } from "./factory-stop";
 import { workerIsOver } from "./factory-worker";
+import type { Station } from "./station";
 import { createWorktree } from "./wt-command";
 
 export function queueOrder(db: Database, order: Order, worker: string, at = now()): number {
@@ -124,18 +124,10 @@ export function claimOrder(
 export function moveOrder(
   db: Database,
   orderId: string,
-  station: string,
+  station: Station,
   worker: string,
   at = now(),
 ): number {
-  if (station === "ship" || station === "dim-station-ship") {
-    const role = db
-      .query<{ role: string }, [string]>("SELECT role FROM factory_worker WHERE name = ?")
-      .get(worker)?.role;
-    if (role !== "operator")
-      throw new ReviewApprovalRefused("worker_not_operator", `${worker} cannot move an order to ship`);
-    assertReviewApproved(db, orderId);
-  }
   return db.transaction(() => {
     const current = db
       .query<{ run_id: string | null }, [string]>("SELECT run_id FROM factory_order WHERE id = ?")
@@ -246,7 +238,7 @@ export function recoverOrderFailure(
 ): void {
   db.transaction(() => {
     const order = db
-      .query<{ run_id: string | null; station: string | null }, [string]>(
+      .query<{ run_id: string | null; station: Station | null }, [string]>(
         "SELECT run_id, station FROM factory_order WHERE id = ? AND status = 'working'",
       )
       .get(orderId);

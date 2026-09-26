@@ -21,7 +21,7 @@ function contested(): { db: Database; review: number; finding: number } {
   claimOrder(
     db,
     "order-1",
-    { runId: "run-1", station: "dim-station-review", operatorWorker: operator },
+    { runId: "run-1", station: "review", operatorWorker: operator },
     operator,
     undefined,
     trunk.dir,

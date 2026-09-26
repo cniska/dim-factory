@@ -1,11 +1,20 @@
 import type { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
+import { latestApprovedPlan } from "./approved-plan";
 import type { EvidenceReference } from "./factory-events";
-import { currentOrderCommits, latestOrderCommit, pendingRebaseConflict } from "./factory-order-commits";
+import { assertOperator } from "./factory-operator";
+import { isArtifactApproved, latestArtifact, nextOrderSlice } from "./factory-order-artifacts";
+import {
+  carriedThroughRewrites,
+  currentOrderCommits,
+  latestOrderCommit,
+  pendingRebaseConflict,
+} from "./factory-order-commits";
 import { type OrderCheck, recordOrderCheck, recordOrderRewrite } from "./factory-order-evidence";
 import { appendOrderEventInTransaction, now } from "./factory-order-ledger";
 import { moveOrder } from "./factory-order-lifecycle";
+import { assertReviewApproved } from "./factory-order-review";
 import { assertOrderWorking, OrderNotDone } from "./factory-order-status";
 import { withLock } from "./lock";
 import { dataDir, type Env } from "./paths";
@@ -75,6 +84,31 @@ export function recheck(worktree: string, env: Env, sandbox: string[]): OrderChe
   };
 }
 
+function assertShippable(db: Database, orderId: string): void {
+  if (!latestApprovedPlan(db, orderId)) {
+    throw new OrderNotDone(
+      "plan_not_approved",
+      `order ${orderId} has no approved plan, so nothing of it can ship`,
+    );
+  }
+  if (nextOrderSlice(db, orderId)) {
+    throw new OrderNotDone("build_not_final", `order ${orderId} has slices its builder has not finished`);
+  }
+  const build = latestArtifact(db, orderId, "build");
+  const head = latestOrderCommit(db, orderId)?.sha;
+  if (
+    !build ||
+    !isArtifactApproved(db, build.id) ||
+    carriedThroughRewrites(db, orderId, build.headSha as string) !== head
+  ) {
+    throw new OrderNotDone(
+      "build_not_approved",
+      `order ${orderId} has no approved Build artifact for the commit it would ship`,
+    );
+  }
+  assertReviewApproved(db, orderId);
+}
+
 export function shipOrder(
   db: Database,
   orderId: string,
@@ -83,7 +117,9 @@ export function shipOrder(
   options: { env?: Env; checkSandbox?: string[] } = {},
 ): ShipOutcome {
   const env = options.env ?? process.env;
+  assertOperator(db, worker, "ship an order");
   assertOrderWorking(db, orderId);
+  assertShippable(db, orderId);
   const conflict = pendingRebaseConflict(db, orderId);
   if (conflict) {
     throw new ShipRefusal(
@@ -92,13 +128,6 @@ export function shipOrder(
     );
   }
   const shas = currentOrderCommits(db, orderId).map((row) => row.sha);
-  if (shas.length === 0) {
-    throw new OrderNotDone(
-      "order_not_integrated",
-      `order ${orderId} recorded no commit, so nothing of it can ship: ` +
-        `record what it landed with \`dim order commit ${orderId} --sha <sha>\`.`,
-    );
-  }
   const onRebased = (rewrite: Rewrite): RebaseVerdict => {
     const check = recheck(rewrite.worktree, env, options.checkSandbox ?? CHECK_SANDBOX);
     if (check.exitCode !== 0) {
@@ -110,7 +139,7 @@ export function shipOrder(
     }
     db.transaction(() => {
       recordOrderRewrite(db, orderId, rewrite, check, worker);
-      if (!rewrite.patchEqual) moveOrder(db, orderId, "dim-station-review", worker);
+      if (!rewrite.patchEqual) moveOrder(db, orderId, "review", worker);
     })();
     if (rewrite.patchEqual) return { land: currentOrderCommits(db, orderId).map((row) => row.sha) };
     return {
@@ -148,7 +177,7 @@ export function shipOrder(
             }
           : {},
       );
-      if (error instanceof RebaseConflict) moveOrder(db, orderId, "dim-station-build", worker, at);
+      if (error instanceof RebaseConflict) moveOrder(db, orderId, "build", worker, at);
     })();
     throw error;
   }

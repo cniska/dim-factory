@@ -29,7 +29,7 @@ describe("the review findings a builder is handed", () => {
     claimOrder(
       db,
       "order-1",
-      { runId: "run-1", station: "dim-station-review", operatorWorker: operator },
+      { runId: "run-1", station: "review", operatorWorker: operator },
       operator,
       undefined,
       trunk.dir,

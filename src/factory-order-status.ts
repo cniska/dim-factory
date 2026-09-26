@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import type { EvidenceReference, OrderEventKind } from "./factory-events";
 import { workerIsOver } from "./factory-worker";
 import type { OrderLine } from "./order-line";
+import type { Station } from "./station";
 
 export const ORDER_STATUSES = ["queued", "working", "completed", "dropped"] as const;
 
@@ -29,7 +30,7 @@ export type Order = {
 export type OrderClaim = {
   runId: string;
   sessionId?: string;
-  station?: string;
+  station?: Station;
   operatorWorker: string;
   providerSessionId?: string;
   harness?: string;
@@ -41,7 +42,7 @@ export type OrderEvent = {
   kind: OrderEventKind;
   worker?: string;
   sessionId?: string;
-  station?: string;
+  station?: Station;
   commitSha?: string;
   checkId?: number;
   reviewId?: number;
@@ -63,6 +64,8 @@ export type OrderNotDoneCode =
   | "order_held_by_run"
   | "order_not_building"
   | "order_not_planning"
+  | "order_not_reviewing"
+  | "plan_not_approved"
   | "build_not_approved"
   | "build_not_final"
   | "build_artifact_before_final_slice"
@@ -204,14 +207,19 @@ export function assertOrderWorking(db: Database, orderId: string): void {
   );
 }
 
-export function assertOrderBuilding(db: Database, orderId: string): void {
-  assertOrderWorking(db, orderId);
-  const order = db.query("SELECT station FROM factory_order WHERE id = ?").get(orderId) as {
-    station: string | null;
-  } | null;
-  if (order?.station === "build" || order?.station === "dim-station-build") return;
+const NOT_AT_STATION = {
+  plan: "order_not_planning",
+  build: "order_not_building",
+  review: "order_not_reviewing",
+} as const satisfies Record<Station, OrderNotDoneCode>;
+
+export function assertOrderAtStation(db: Database, orderId: string, station: Station, act: string): void {
+  const at = db
+    .query<{ station: Station | null }, [string]>("SELECT station FROM factory_order WHERE id = ?")
+    .get(orderId)?.station;
+  if (at === station) return;
   throw new OrderNotDone(
-    "order_not_building",
-    `order ${orderId} is at ${order?.station ?? "no station"} and must move to build before implementation evidence can be recorded`,
+    NOT_AT_STATION[station],
+    `order ${orderId} is at ${at ?? "no station"} and must move to ${station} before it can ${act}`,
   );
 }

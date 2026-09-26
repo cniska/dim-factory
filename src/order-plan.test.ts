@@ -46,7 +46,7 @@ describe("planner station", () => {
     claimOrder(
       db,
       "planner-order",
-      { runId: "run", station: "dim-station-plan", operatorWorker: operator.name },
+      { runId: "run", station: "plan", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,
@@ -149,7 +149,7 @@ describe("planner station", () => {
     claimOrder(
       db,
       "planner-crash-order",
-      { runId: "run", station: "dim-station-plan", operatorWorker: operator.name },
+      { runId: "run", station: "plan", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,
@@ -207,7 +207,7 @@ describe("planner station", () => {
     claimOrder(
       db,
       "planner-resume-order",
-      { runId: "run", station: "dim-station-plan", operatorWorker: operator.name },
+      { runId: "run", station: "plan", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,
@@ -308,7 +308,7 @@ describe("planner station", () => {
     claimOrder(
       db,
       "planner-cwd-order",
-      { runId: "run", station: "dim-station-plan", operatorWorker: operator.name },
+      { runId: "run", station: "plan", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,

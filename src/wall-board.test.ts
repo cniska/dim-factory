@@ -34,14 +34,14 @@ describe("factory wall board", () => {
   test("groups each snapshot order into its stage without dropping empty columns", () => {
     const columns = ordersByStage([
       order("planned-item", "todo", "plan", "queued"),
-      order("shipped-item", "done", "ship", "completed"),
+      order("shipped-item", "done", null, "completed"),
       order("busy-item", "active", "review", "working"),
     ]);
 
     expect(columns).toEqual({
       todo: [order("planned-item", "todo", "plan", "queued")],
       active: [order("busy-item", "active", "review", "working")],
-      done: [order("shipped-item", "done", "ship", "completed")],
+      done: [order("shipped-item", "done", null, "completed")],
     });
   });
 
@@ -73,9 +73,8 @@ describe("factory wall board", () => {
       order("building", "active", "build", "working"),
       order("reviewing", "active", "review", "working"),
       order("planning", "active", "plan", "working"),
-      order("shipping", "active", "ship", "working"),
     ]);
 
-    expect(columns.active.map((entry) => entry.station)).toEqual(["build", "review", "plan", "ship"]);
+    expect(columns.active.map((entry) => entry.station)).toEqual(["build", "review", "plan"]);
   });
 });

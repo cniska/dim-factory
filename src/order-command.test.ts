@@ -4,7 +4,12 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { UsageError } from "./command";
-import { approveOrderPlan, recordOrderPlan } from "./factory-order-artifacts";
+import {
+  approveOrderPlan,
+  completeOrderSlice,
+  nextOrderSlice,
+  recordOrderPlan,
+} from "./factory-order-artifacts";
 import { moveOrder } from "./factory-order-lifecycle";
 import { pullStop } from "./factory-stop";
 import { assembleWallSnapshot } from "./factory-wall";
@@ -17,6 +22,11 @@ import {
 } from "./factory-worker";
 import { collectingMachine, integratedRepo, scratchEnv } from "./fixtures.test-support";
 import { hookConfigPath } from "./hooks";
+import {
+  approveFinalBuildAt,
+  approvePlanAndMoveToBuild,
+  approveReviewAt,
+} from "./order-approvals.test-support";
 import { runOrderCommand as runCommand, runOrderCommandLive } from "./order-command";
 import type { Env } from "./paths";
 import { SCHEMA_SQL } from "./schema";
@@ -72,11 +82,23 @@ const add = [
   "cniska/dim-factory",
 ];
 
-const claim = ["claim", "order-1", "--run", "run-1", "--station", "dim-station-build"];
-const planClaim = ["claim", "order-1", "--run", "run-1", "--station", "dim-station-plan"];
+const claim = ["claim", "order-1", "--run", "run-1", "--station", "build"];
+const planClaim = ["claim", "order-1", "--run", "run-1", "--station", "plan"];
 
 function queued(database: Database): void {
   runOrderCommand(database, add);
+}
+
+function claimedAtBuild(database: Database): void {
+  runOrderCommand(database, planClaim);
+  approvePlanAndMoveToBuild(database, "order-1", resolveWorker(database, env));
+  runOrderCommand(database, ["claim", "order-1", "--run", "run-2", "--station", "build"]);
+}
+
+function approvedAt(database: Database, sha: string): void {
+  const operator = resolveWorker(database, env);
+  approveFinalBuildAt(database, "order-1", sha, operator, operator);
+  approveReviewAt(database, "order-1", sha, operator);
 }
 
 function operatorEnv(database: Database): Env {
@@ -135,7 +157,7 @@ describe("order command", () => {
     ).rejects.toThrow(noClaudeMap);
 
     const operator = resolveWorker(database, env);
-    moveOrder(database, "order-1", "dim-station-plan", operator);
+    moveOrder(database, "order-1", "plan", operator);
     const planner = mintWorker(database, {
       role: "planner",
       parentWorker: operator,
@@ -145,7 +167,7 @@ describe("order command", () => {
       { title: "Build it", outcome: "It is verified." },
     ]);
     approveOrderPlan(database, "order-1", operator);
-    moveOrder(database, "order-1", "dim-station-build", operator);
+    moveOrder(database, "order-1", "build", operator);
 
     await expect(
       runOrderCommandLive(database, ["build", "order-1", "--harness", "claude"], null, trunk.dir, env),
@@ -243,8 +265,8 @@ describe("order command", () => {
     queued(database);
     runOrderCommand(database, claim);
 
-    expect(runOrderCommand(database, ["move", "order-1", "--station", "dim-station-review"])).toBe(
-      "order-1 moved to dim-station-review",
+    expect(runOrderCommand(database, ["move", "order-1", "--station", "review"])).toBe(
+      "order-1 moved to review",
     );
 
     expect(assembleWallSnapshot(database).orders[0]?.station).toBe("review");
@@ -263,7 +285,7 @@ describe("order command", () => {
   test("a ship lands the order's own commits on the trunk", () => {
     const database = db();
     queued(database);
-    runOrderCommand(database, claim);
+    claimedAtBuild(database);
     const wt = join(trunk.dir, ".claude", "worktrees", "order-1");
     writeFileSync(join(wt, "ship-a.txt"), "a");
     Bun.spawnSync(["git", "-C", wt, "add", "."]);
@@ -272,6 +294,7 @@ describe("order command", () => {
       .stdout.toString()
       .trim();
     runOrderCommand(database, ["commit", "order-1", "--sha", sha, "--subject", "feat: ship-a"]);
+    approvedAt(database, sha);
 
     expect(runOrderCommand(database, ["ship", "order-1"], null, wt)).toBe(
       "order-1 is fast-forwarded onto the trunk",
@@ -297,7 +320,7 @@ describe("order command", () => {
   test("a ship run from the trunk checkout still lands the order's branch", () => {
     const database = db();
     queued(database);
-    runOrderCommand(database, claim);
+    claimedAtBuild(database);
     const wt = join(trunk.dir, ".claude", "worktrees", "order-1");
     writeFileSync(join(wt, "ship-b.txt"), "b");
     Bun.spawnSync(["git", "-C", wt, "add", "."]);
@@ -306,6 +329,7 @@ describe("order command", () => {
       .stdout.toString()
       .trim();
     runOrderCommand(database, ["commit", "order-1", "--sha", sha, "--subject", "feat: ship-b"]);
+    approvedAt(database, sha);
 
     expect(runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toBe(
       "order-1 is fast-forwarded onto the trunk",
@@ -319,8 +343,9 @@ describe("order command", () => {
   test("a ship of a commit already on the trunk reports it as already landed", () => {
     const database = db();
     queued(database);
-    runOrderCommand(database, claim);
+    claimedAtBuild(database);
     landed(database, "order-1");
+    approvedAt(database, trunk.sha);
 
     expect(runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toBe(
       "order-1 is already on the trunk",
@@ -330,11 +355,58 @@ describe("order command", () => {
   test("a ship is refused before the order recorded any commit", () => {
     const database = db();
     queued(database);
-    runOrderCommand(database, claim);
+    claimedAtBuild(database);
+    const operator = resolveWorker(database, env);
+    completeOrderSlice(database, "order-1", nextOrderSlice(database, "order-1")?.id as number, operator);
 
     expect(() => runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toThrow(
-      expect.objectContaining({ code: "order_not_integrated" }),
+      expect.objectContaining({ code: "build_not_approved" }),
     );
+  });
+
+  test("a ship is refused before the plan is approved", () => {
+    const database = db();
+    queued(database);
+    runOrderCommand(database, claim);
+    landed(database, "order-1");
+
+    expect(() => runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toThrow(
+      expect.objectContaining({ code: "plan_not_approved" }),
+    );
+  });
+
+  test("a ship is refused before the review is approved", () => {
+    const database = db();
+    queued(database);
+    claimedAtBuild(database);
+    landed(database, "order-1");
+    const operator = resolveWorker(database, env);
+    approveFinalBuildAt(database, "order-1", trunk.sha, operator, operator);
+
+    expect(() => runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toThrow(
+      expect.objectContaining({ code: "review_not_approved" }),
+    );
+  });
+
+  test("a station worker cannot ship an order", () => {
+    const database = db();
+    queued(database);
+    claimedAtBuild(database);
+    landed(database, "order-1");
+    approvedAt(database, trunk.sha);
+    const builder = mintWorker(database, {
+      role: "builder",
+      parentWorker: env[WORKER_NAME_VAR] as string,
+      sessionId: newWorkerSession("ship-builder"),
+    });
+
+    expect(() =>
+      runOrderCommand(database, ["ship", "order-1"], null, trunk.dir, {
+        ...machine.env,
+        [WORKER_NAME_VAR]: builder.name,
+        [WORKER_TOKEN_VAR]: builder.token,
+      }),
+    ).toThrow(expect.objectContaining({ code: "worker_not_operator" }));
   });
 
   test("a ship is refused before the order is claimed", () => {

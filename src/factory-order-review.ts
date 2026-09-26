@@ -69,8 +69,7 @@ export function releaseReviewApprovalInTransaction(
       "SELECT hold, station FROM factory_order WHERE id = ?",
     )
     .get(orderId);
-  const atReview = held?.station === "review" || held?.station === "dim-station-review";
-  if (held?.hold !== APPROVAL_HOLD || !atReview) return;
+  if (held?.hold !== APPROVAL_HOLD || held.station !== "review") return;
   setOrderHoldInTransaction(db, orderId, null, at);
   appendOrderEventInTransaction(db, orderId, { kind: "hold_released", worker, evidence: { hold: null } }, at);
 }

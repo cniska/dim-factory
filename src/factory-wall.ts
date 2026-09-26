@@ -7,10 +7,10 @@ import type { OrderLine } from "./order-line";
 import { dbPath, tildePath } from "./paths";
 import { openReadOnly } from "./read-db";
 import { isRole, type Role } from "./roles";
+import type { Station } from "./station";
 import wallPage from "./wall.html";
 import type { ResourceEvidence, WorkerEnvironmentPhase, WorkerHookReport } from "./worker-environment";
 
-export type WallStation = "plan" | "build" | "review" | "ship";
 export type WallStage = "todo" | "active" | "done";
 export type WallRole = Role;
 
@@ -19,7 +19,7 @@ export type WallOrder = {
   title: string;
   line: OrderLine;
   description?: string;
-  station: WallStation | null;
+  station: Station | null;
   stage: WallStage;
   agent?: string;
   worker?: string;
@@ -46,7 +46,7 @@ export type WallItemEntry = {
   agent?: string;
   worker?: string;
   role?: WallRole;
-  station?: WallStation;
+  station?: Station;
   reason?: string;
   hold?: string;
   commit?: { sha: string; subject?: string };
@@ -105,7 +105,7 @@ type OrderRow = {
   title: string;
   line: string;
   description: string | null;
-  station: string | null;
+  station: Station | null;
   status: string;
   stop_reason: string | null;
   run_id: string | null;
@@ -114,7 +114,6 @@ type OrderRow = {
   hold: string | null;
   last_event_at: string;
   latest_reason: string | null;
-  latest_station: string | null;
   holder_worker: string | null;
   holder_role: string | null;
   has_started: number;
@@ -123,7 +122,7 @@ type OrderRow = {
 
 const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.line, o.description, o.station, o.status,
               o.stop_reason, o.run_id, o.project, o.priority, o.hold,
-              e.ts AS last_event_at, e.reason AS latest_reason, e.station AS latest_station,
+              e.ts AS last_event_at, e.reason AS latest_reason,
               (SELECT e2.worker FROM factory_order_event e2
                 WHERE e2.order_id = o.id AND e2.kind = 'claimed'
                 ORDER BY e2.ts DESC, e2.id DESC LIMIT 1) AS holder_worker,
@@ -146,21 +145,6 @@ const stageByStatus: Record<BoardStatus, WallStage> = {
   working: "active",
   completed: "done",
 };
-
-const stationByRecordedValue: Record<string, WallStation> = {
-  plan: "plan",
-  "dim-station-plan": "plan",
-  build: "build",
-  "dim-station-build": "build",
-  review: "review",
-  "dim-station-review": "review",
-  ship: "ship",
-  "dim-station-ship": "ship",
-};
-
-function station(value: string | null): WallStation | null {
-  return value === null ? null : (stationByRecordedValue[value] ?? null);
-}
 
 function role(value: string | null): WallRole | undefined {
   if (value === null) return undefined;
@@ -185,14 +169,13 @@ function mapOrder(row: OrderRow, now: Date): WallOrder | null {
   const workerRole = worker ? requiredRole(row.holder_role) : undefined;
   const orderStatus = status(row.status);
   const baseStage = stageByStatus[orderStatus];
-  const stationName = orderStatus === "completed" ? null : station(row.station ?? row.latest_station);
   const lastEventAt = row.last_event_at;
   return {
     id: row.id,
     title: row.title,
     line: row.line as OrderLine,
     ...(row.description ? { description: row.description } : {}),
-    station: stationName,
+    station: orderStatus === "completed" ? null : row.station,
     stage: baseStage === "done" ? baseStage : row.has_started ? "active" : baseStage,
     ...(worker ? { agent: worker, worker } : {}),
     ...(workerRole ? { role: workerRole } : {}),
@@ -223,7 +206,7 @@ type EventRow = {
   kind: WallItemKind;
   worker_id: string | null;
   worker_role: string | null;
-  station: string | null;
+  station: Station | null;
   hold_type: string | null;
   reason: string | null;
   commit_sha: string | null;
@@ -278,14 +261,12 @@ function environmentEntry(row: EnvironmentRow): WallItemEntry {
 }
 
 function eventEntry(row: EventRow): WallItemEntry {
-  const eventStation = row.station ? station(row.station) : null;
-
   return {
     at: row.ts,
     kind: row.kind,
     ...(row.worker_id ? { agent: row.worker_id, worker: row.worker_id } : {}),
     ...(role(row.worker_role) ? { role: role(row.worker_role) } : {}),
-    ...(eventStation ? { station: eventStation } : {}),
+    ...(row.station ? { station: row.station } : {}),
     ...(row.reason ? { reason: row.reason } : {}),
     ...(row.hold_type ? { hold: row.hold_type } : {}),
     ...(row.commit_sha

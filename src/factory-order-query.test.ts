@@ -42,7 +42,7 @@ function claimOrder(
   return claimOrderAt(db, orderId, { ...given, operatorWorker: attemptOperator }, who, at, trunk.dir);
 }
 
-const claim = { runId: "run-1", station: "dim-station-build" };
+const claim: Omit<OrderClaim, "operatorWorker"> = { runId: "run-1", station: "build" };
 
 describe("factory order query", () => {
   test("reports a finding a later round found not addressed as unanswered until it is answered again", () => {
@@ -222,7 +222,7 @@ describe("factory order query", () => {
         "completed",
         "2026-09-18T10:05:00.000Z",
         "(none)",
-        "dim-station-build",
+        "build",
         "late-event feat: event order wins",
         "bun run focused (0, green)",
         "tests: fixed - holds; docs: fixed - updated",

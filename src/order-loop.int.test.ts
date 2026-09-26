@@ -2,10 +2,18 @@ import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { approveOrderBuild, recordOrderBuild } from "./factory-order-artifacts";
+import {
+  approveOrderBuild,
+  approveOrderPlan,
+  completeOrderSlice,
+  nextOrderSlice,
+  recordOrderBuild,
+  recordOrderPlan,
+} from "./factory-order-artifacts";
 import { recordOrderCheck, recordOrderCommit } from "./factory-order-evidence";
 import { claimOrder, moveOrder, queueOrder } from "./factory-order-lifecycle";
-import { approveOrderReview } from "./factory-order-review";
+import { approveOrderReview, assertReviewApproved } from "./factory-order-review";
+import { shipOrder } from "./factory-order-ship";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { integratedRepo, orderWorktree, reviewOutput } from "./fixtures.test-support";
 import { builderBrief, reviewFindingsForBuild } from "./order-build";
@@ -62,7 +70,20 @@ describe("the operator loop", () => {
     claimOrder(
       db,
       "loop-order",
-      { runId: "build-1", station: "dim-station-build", operatorWorker: operator.name },
+      { runId: "plan-1", station: "plan", operatorWorker: operator.name },
+      operator.name,
+      undefined,
+      repo.dir,
+    );
+    recordOrderPlan(db, "loop-order", "## Outcome\n\nRun the loop.", operator.name, [
+      { title: "Run the loop", outcome: "the loop runs" },
+    ]);
+    approveOrderPlan(db, "loop-order", operator.name);
+    moveOrder(db, "loop-order", "build", operator.name);
+    claimOrder(
+      db,
+      "loop-order",
+      { runId: "build-1", station: "build", operatorWorker: operator.name },
       builder.name,
       undefined,
       repo.dir,
@@ -72,8 +93,9 @@ describe("the operator loop", () => {
     recordOrderCommit(db, "loop-order", first, builder.name, "feat: first");
     recordOrderCheck(db, "loop-order", { command: "bun run verify", exitCode: 0 }, builder.name);
     recordOrderBuild(db, "loop-order", "The first slice is built and verified.", first, builder.name);
+    completeOrderSlice(db, "loop-order", nextOrderSlice(db, "loop-order")?.id as number, builder.name);
     approveOrderBuild(db, "loop-order", operator.name, "the requested behavior is present");
-    moveOrder(db, "loop-order", "dim-station-review", operator.name);
+    moveOrder(db, "loop-order", "review", operator.name);
 
     const firstReview = await runOrderReviewLive(db, "loop-order", operator.name, {
       dir: worktree,
@@ -108,11 +130,11 @@ describe("the operator loop", () => {
       builder.name,
     );
 
-    moveOrder(db, "loop-order", "dim-station-build", operator.name);
+    moveOrder(db, "loop-order", "build", operator.name);
     claimOrder(
       db,
       "loop-order",
-      { runId: "build-2", station: "dim-station-build", operatorWorker: operator.name },
+      { runId: "build-2", station: "build", operatorWorker: operator.name },
       builder.name,
       undefined,
       repo.dir,
@@ -122,7 +144,7 @@ describe("the operator loop", () => {
     recordOrderCheck(db, "loop-order", { command: "bun run verify", exitCode: 0 }, builder.name);
     recordOrderBuild(db, "loop-order", "The finding is fixed and verified.", second, builder.name);
     approveOrderBuild(db, "loop-order", operator.name, "the finding is answered");
-    moveOrder(db, "loop-order", "dim-station-review", operator.name);
+    moveOrder(db, "loop-order", "review", operator.name);
     const secondReview = await runOrderReviewLive(db, "loop-order", operator.name, {
       dir: worktree,
       env: workerEnv(operator),
@@ -132,7 +154,7 @@ describe("the operator loop", () => {
       })),
     });
     expect(secondReview.findings).toBe(0);
-    expect(() => moveOrder(db, "loop-order", "ship", operator.name)).toThrow(
+    expect(() => shipOrder(db, "loop-order", worktree, operator.name)).toThrow(
       expect.objectContaining({ code: "review_not_approved" }),
     );
     approveOrderReview(db, "loop-order", operator.name);
@@ -159,18 +181,21 @@ describe("the operator loop", () => {
         .get(),
     ).toEqual({ role: "reviewer" });
     expect(events.filter((event) => event.kind === "finding_answered")[0]?.worker).toBe(builder.name);
-    expect(() => moveOrder(db, "loop-order", "ship", operator.name)).not.toThrow();
-    moveOrder(db, "loop-order", "dim-station-build", operator.name);
+    expect(() => assertReviewApproved(db, "loop-order")).not.toThrow();
+    moveOrder(db, "loop-order", "build", operator.name);
     claimOrder(
       db,
       "loop-order",
-      { runId: "build-3", station: "dim-station-build", operatorWorker: operator.name },
+      { runId: "build-3", station: "build", operatorWorker: operator.name },
       builder.name,
       undefined,
       repo.dir,
     );
     recordOrderCommit(db, "loop-order", "later-commit", builder.name, "fix: another change");
-    expect(() => moveOrder(db, "loop-order", "ship", operator.name)).toThrow(
+    recordOrderCheck(db, "loop-order", { command: "bun run verify", exitCode: 0 }, builder.name);
+    recordOrderBuild(db, "loop-order", "Another change is built and verified.", "later-commit", builder.name);
+    approveOrderBuild(db, "loop-order", operator.name, "the change is present");
+    expect(() => shipOrder(db, "loop-order", worktree, operator.name)).toThrow(
       expect.objectContaining({ code: "review_not_approved" }),
     );
     db.close();
@@ -192,7 +217,7 @@ describe("the operator loop", () => {
         claimOrder(
           db,
           orderId,
-          { runId: run, station: "dim-station-build", operatorWorker: operator.name },
+          { runId: run, station: "build", operatorWorker: operator.name },
           builder.name,
           undefined,
           repo.dir,
@@ -202,7 +227,7 @@ describe("the operator loop", () => {
         recordOrderCheck(db, orderId, { command: "bun run verify", exitCode: 0 }, builder.name);
         recordOrderBuild(db, orderId, `The ${name} slice is built.`, sha, builder.name);
         approveOrderBuild(db, orderId, operator.name, "built");
-        moveOrder(db, orderId, "dim-station-review", operator.name);
+        moveOrder(db, orderId, "review", operator.name);
       };
       const review = (output: string) =>
         runOrderReviewLive(db, orderId, operator.name, {
@@ -235,7 +260,7 @@ describe("the operator loop", () => {
         [{ finding, answer: "refused", resolution: "the test is the next slice" }],
         builder.name,
       );
-      moveOrder(db, orderId, "dim-station-build", operator.name);
+      moveOrder(db, orderId, "build", operator.name);
       build("build-2", `${orderId}-second`);
       await review(
         reviewOutput({

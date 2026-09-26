@@ -1,8 +1,9 @@
 import type { Database } from "bun:sqlite";
 import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
-import { assertOrderPlanning, recordOrderPlan } from "./factory-order-artifacts";
+import { recordOrderPlan } from "./factory-order-artifacts";
 import { appendOrderEvent } from "./factory-order-ledger";
+import { assertOrderAtStation, assertOrderWorking } from "./factory-order-status";
 import { resolveWorker } from "./factory-worker";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-launch";
@@ -72,7 +73,8 @@ export async function runOrderPlanLive(
   if (!order) throw new Error(`order not found: ${orderId}`);
   const parentWorker = resolveWorker(db, options.env);
   assertOperator(db, parentWorker, "delegate planning");
-  assertOrderPlanning(db, orderId);
+  assertOrderWorking(db, orderId);
+  assertOrderAtStation(db, orderId, "plan", "start a planner");
   const harness = options.harness;
   let planner: string | undefined;
   try {

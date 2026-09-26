@@ -3,9 +3,10 @@ import { ORDER_STATUSES_SQL } from "./factory-order-status";
 import { HARNESSES_SQL } from "./harness-name";
 import { ORDER_LINES_SQL } from "./order-line";
 import { ROLES_SQL } from "./roles";
+import { STATIONS_SQL } from "./station";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 63;
+export const SCHEMA_VERSION = 64;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -253,7 +254,7 @@ CREATE TABLE IF NOT EXISTS factory_order (
   -- off that worker's own row, so neither is stated here. A holder a claim asserts
   -- is testimony, and it disagreed with the record the moment work was delegated.
   session_id      TEXT,
-  station         TEXT,
+  station         TEXT CHECK (station IN (${STATIONS_SQL})),
   -- One status per column on the board, except dropped, which leaves the board rather
   -- than taking a column: a decision not to work is none of todo, active or done. Work
   -- that stopped without landing goes back to queued, because it is work nobody is
@@ -275,7 +276,7 @@ CREATE TABLE IF NOT EXISTS factory_order_attempt (
   operator_worker TEXT REFERENCES factory_worker(name),
   session_id      TEXT,
   provider_session_id TEXT,
-  station         TEXT,
+  station         TEXT CHECK (station IN (${STATIONS_SQL})),
   harness         TEXT,
   model           TEXT,
   tier            TEXT,
@@ -376,7 +377,7 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   -- borrowing the operator's identity.
   worker                TEXT REFERENCES factory_worker(name),
   session_id            TEXT,
-  station               TEXT,
+  station               TEXT CHECK (station IN (${STATIONS_SQL})),
   commit_sha            TEXT,
   check_id              INTEGER,
   review_id             INTEGER,

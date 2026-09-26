@@ -9,7 +9,7 @@ import {
 } from "./factory-order-ledger";
 import {
   APPROVAL_HOLD,
-  assertOrderBuilding,
+  assertOrderAtStation,
   assertOrderWorking,
   BuildApprovalRefused,
   OrderNotDone,
@@ -17,8 +17,7 @@ import {
   PlanApprovalRefused,
 } from "./factory-order-status";
 import type { PlanSlice } from "./plan-artifact";
-
-export type ArtifactKind = "plan" | "build" | "review";
+import type { Station } from "./station";
 
 export type StoredArtifact = {
   id: number;
@@ -30,9 +29,9 @@ export type StoredArtifact = {
 
 const ARTIFACT_COLUMNS = "id, revision, body, head_sha AS headSha, review_id AS reviewId";
 
-export function latestArtifact(db: Database, orderId: string, kind: ArtifactKind): StoredArtifact | null {
+export function latestArtifact(db: Database, orderId: string, kind: Station): StoredArtifact | null {
   return db
-    .query<StoredArtifact, [string, ArtifactKind]>(
+    .query<StoredArtifact, [string, Station]>(
       `SELECT ${ARTIFACT_COLUMNS} FROM factory_order_artifact
        WHERE order_id = ? AND kind = ? ORDER BY revision DESC LIMIT 1`,
     )
@@ -60,12 +59,12 @@ export function artifactWriter(db: Database, artifactId: number): string {
 export function writeArtifactInTransaction(
   db: Database,
   orderId: string,
-  artifact: { kind: ArtifactKind; body: string; headSha: string | null; reviewId: number | null },
+  artifact: { kind: Station; body: string; headSha: string | null; reviewId: number | null },
   worker: string,
   at: string,
 ): number {
   const revision = (db
-    .query<{ revision: number }, [string, ArtifactKind]>(
+    .query<{ revision: number }, [string, Station]>(
       "SELECT coalesce(max(revision), 0) + 1 AS revision FROM factory_order_artifact WHERE order_id = ? AND kind = ?",
     )
     .get(orderId, artifact.kind)?.revision ?? 1) as number;
@@ -113,7 +112,7 @@ export function assertBuildReady(db: Database, orderId: string): { sha: string }
   return { sha: commit.sha };
 }
 
-function returnable(db: Database, orderId: string, station: ArtifactKind): StoredArtifact {
+function returnable(db: Database, orderId: string, station: Station): StoredArtifact {
   const artifact = latestArtifact(db, orderId, station);
   if (!artifact) throw new Error(`order ${orderId} has no ${station} artifact to return`);
   if (isArtifactApproved(db, artifact.id))
@@ -146,17 +145,16 @@ export function returnOrderArtifact(
   if (reason.trim() === "") throw new Error("artifact return reason must not be empty");
   db.transaction(() => {
     const order = db
-      .query<{ status: OrderStatus; station: string | null; hold: string | null }, [string]>(
+      .query<{ status: OrderStatus; station: Station | null; hold: string | null }, [string]>(
         "SELECT status, station, hold FROM factory_order WHERE id = ?",
       )
       .get(orderId);
     if ((order?.status !== "working" && order?.status !== "queued") || order.hold !== APPROVAL_HOLD) {
       throw new Error(`order ${orderId} has no station artifact awaiting owner approval`);
     }
-    const station = order.station?.replace("dim-station-", "");
-    if (station !== "plan" && station !== "build" && station !== "review") {
-      throw new Error(`order ${orderId} is at ${order.station ?? "no station"}, which has no artifact gate`);
-    }
+    const { station } = order;
+    if (station === null)
+      throw new Error(`order ${orderId} is at no station, so it has no artifact to return`);
     const artifact = returnable(db, orderId, station);
     appendOrderEventInTransaction(
       db,
@@ -164,7 +162,7 @@ export function returnOrderArtifact(
       {
         kind: "artifact_returned",
         worker: operator,
-        station: order.station ?? undefined,
+        station,
         status: order.status === "queued" ? "working" : undefined,
         artifactId: artifact.id,
         reason,
@@ -217,13 +215,13 @@ export function returnedOrderArtifact(
 export function returnedOrderArtifact(
   db: Database,
   orderId: string,
-  station: ArtifactKind,
+  station: Station,
 ): ReturnedOrderArtifact | null;
 
 export function returnedOrderArtifact(
   db: Database,
   orderId: string,
-  station: ArtifactKind,
+  station: Station,
 ): ReturnedOrderArtifact | null {
   const returned = db
     .query<
@@ -235,7 +233,7 @@ export function returnedOrderArtifact(
         reviewId: number | null;
         baseSha: string | null;
       },
-      [string, ArtifactKind]
+      [string, Station]
     >(
       `SELECT e.reason, a.id AS artifactId, a.body, a.head_sha AS headSha, a.review_id AS reviewId,
               r.base_sha AS baseSha
@@ -267,24 +265,11 @@ export function returnedOrderArtifact(
   };
 }
 
-export function assertReturnedArtifactRevised(db: Database, orderId: string, station: ArtifactKind): void {
+export function assertReturnedArtifactRevised(db: Database, orderId: string, station: Station): void {
   if (returnedOrderArtifact(db, orderId, station)) {
     throw new OrderNotDone(
       "artifact_revision_required",
       `order ${orderId} must receive a new ${station} artifact after its return before approval`,
-    );
-  }
-}
-
-export function assertOrderPlanning(db: Database, orderId: string): void {
-  assertOrderWorking(db, orderId);
-  const order = db.query("SELECT station FROM factory_order WHERE id = ?").get(orderId) as {
-    station: string | null;
-  } | null;
-  if (order?.station !== "plan" && order?.station !== "dim-station-plan") {
-    throw new OrderNotDone(
-      "order_not_planning",
-      `order ${orderId} must be at plan before a plan can be submitted`,
     );
   }
 }
@@ -297,7 +282,8 @@ export function recordOrderPlan(
   slices: readonly PlanSlice[],
   at = now(),
 ): number {
-  assertOrderPlanning(db, orderId);
+  assertOrderWorking(db, orderId);
+  assertOrderAtStation(db, orderId, "plan", "submit a plan");
   if (body.trim() === "") throw new Error("plan body must not be empty");
   if (slices.length === 0) throw new Error("plan must contain at least one slice");
   return db.transaction(() => {
@@ -334,19 +320,12 @@ export function recordOrderBuild(
   at = now(),
 ): number {
   assertOrderWorking(db, orderId);
-  const order = db
-    .query<{ station: string | null; run_id: string | null }, [string]>(
-      "SELECT station, run_id FROM factory_order WHERE id = ?",
-    )
-    .get(orderId);
-  if (order?.station !== "build" && order?.station !== "dim-station-build") {
-    throw new OrderNotDone(
-      "order_not_building",
-      `order ${orderId} must be at build before a build artifact can be submitted`,
-    );
-  }
+  assertOrderAtStation(db, orderId, "build", "submit a Build artifact");
+  const runId = db
+    .query<{ run_id: string | null }, [string]>("SELECT run_id FROM factory_order WHERE id = ?")
+    .get(orderId)?.run_id;
   const returned = returnedOrderArtifact(db, orderId, "build");
-  if ((order?.run_id === null || order?.run_id === undefined) && !returned) {
+  if (!runId && !returned) {
     throw new OrderNotDone(
       "build_artifact_before_final_slice",
       `order ${orderId} has no active final build turn or returned Build artifact`,
@@ -460,7 +439,8 @@ export function completeOrderSlice(
 
 export function completeOrderBuildFollowup(db: Database, orderId: string, worker: string, at = now()): void {
   db.transaction(() => {
-    assertOrderBuilding(db, orderId);
+    assertOrderWorking(db, orderId);
+    assertOrderAtStation(db, orderId, "build", "finish a build follow-up");
     if (nextOrderSlice(db, orderId) !== null) {
       throw new Error(`order ${orderId} still has an incomplete build slice`);
     }

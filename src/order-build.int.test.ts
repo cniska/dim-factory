@@ -38,6 +38,7 @@ import {
 import { fakeHarness } from "./fake-harness";
 import { confiningCheckSandbox, declareCheck, integratedRepo, located } from "./fixtures.test-support";
 import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
+import { approveReviewAt } from "./order-approvals.test-support";
 import { runOrderBuildLive } from "./order-build";
 import {
   answerOrderFindings,
@@ -126,7 +127,7 @@ function orderAtBuild(
   claimOrder(
     db,
     orderId,
-    { runId: "plan-run", station: "dim-station-plan", operatorWorker: operator.name },
+    { runId: "plan-run", station: "plan", operatorWorker: operator.name },
     operator.name,
     undefined,
     repo.dir,
@@ -138,7 +139,7 @@ function orderAtBuild(
   });
   recordOrderPlan(db, orderId, "## Outcome\n\nBuild the requested result.", planner.name, slices);
   approveOrderPlan(db, orderId, operator.name);
-  moveOrder(db, orderId, "dim-station-build", operator.name);
+  moveOrder(db, orderId, "build", operator.name);
   return { repo, operator, planner: planner.name };
 }
 
@@ -194,13 +195,13 @@ describe("builder station", () => {
         .all("builder-order"),
     ).toEqual([
       { kind: "queued", worker: operator.name, station: null },
-      { kind: "claimed", worker: operator.name, station: "dim-station-plan" },
+      { kind: "claimed", worker: operator.name, station: "plan" },
       { kind: "artifact_written", worker: planner, station: null },
       { kind: "hold_set", worker: planner, station: null },
       { kind: "artifact_approved", worker: operator.name, station: null },
       { kind: "hold_released", worker: operator.name, station: null },
-      { kind: "moved", worker: operator.name, station: "dim-station-build" },
-      { kind: "claimed", worker: outcome.builder, station: "dim-station-build" },
+      { kind: "moved", worker: operator.name, station: "build" },
+      { kind: "claimed", worker: outcome.builder, station: "build" },
       { kind: "commit_created", worker: outcome.builder, station: null },
       { kind: "check_finished", worker: operator.name, station: null },
       { kind: "artifact_written", worker: outcome.builder, station: null },
@@ -615,7 +616,7 @@ describe("builder station", () => {
     claimOrder(
       db,
       "returned-builder-order",
-      { runId: "build-run", station: "dim-station-build", operatorWorker: operator.name },
+      { runId: "build-run", station: "build", operatorWorker: operator.name },
       builder.name,
       undefined,
       repo.dir,
@@ -770,7 +771,7 @@ describe("builder station", () => {
       });
       const first = git(firstBuild.worktree, ["rev-parse", "HEAD"]);
       approveOrderBuild(db, orderId, operator.name, "Build approved.");
-      moveOrder(db, orderId, "dim-station-review", operator.name);
+      moveOrder(db, orderId, "review", operator.name);
       const reviewer = mintWorker(db, {
         role: "reviewer",
         parentWorker: operator.name,
@@ -789,7 +790,7 @@ describe("builder station", () => {
         reviewer.name,
       );
       closeOrderReview(db, review.id, "closed", reviewer.name);
-      moveOrder(db, orderId, "dim-station-build", operator.name);
+      moveOrder(db, orderId, "build", operator.name);
       return { db, operator, options, firstBuild, first, finding };
     }
 
@@ -930,7 +931,7 @@ describe("builder station", () => {
         [{ finding, answer: "refused", resolution: "out of scope" }],
         firstBuild.builder,
       );
-      moveOrder(db, orderId, "dim-station-review", operator.name);
+      moveOrder(db, orderId, "review", operator.name);
       const reviewer = mintWorker(db, {
         role: "reviewer",
         parentWorker: operator.name,
@@ -945,7 +946,7 @@ describe("builder station", () => {
       ruleOnOrderFinding(db, finding, { ruling: "refusal_contested", reason: "in scope" }, reviewer.name);
       closeOrderReview(db, second.id, "closed", reviewer.name);
       recordOwnerRuling(db, finding, { ruling: "refusal_overturned", reason: "fix it" }, operator.name);
-      moveOrder(db, orderId, "dim-station-build", operator.name);
+      moveOrder(db, orderId, "build", operator.name);
       const failure = await runOrderBuildLive(db, orderId, operator.name, {
         ...options,
         adapter: builderTurn((request) => {
@@ -1166,7 +1167,7 @@ describe("builder station", () => {
     expect(
       db
         .query(
-          "SELECT kind, operator_worker FROM factory_order_attempt WHERE kind = 'started' AND station = 'dim-station-build' ORDER BY rowid",
+          "SELECT kind, operator_worker FROM factory_order_attempt WHERE kind = 'started' AND station = 'build' ORDER BY rowid",
         )
         .all(),
     ).toEqual([
@@ -1177,7 +1178,7 @@ describe("builder station", () => {
       db
         .query(
           `SELECT count(*) AS n FROM factory_order_attempt
-           WHERE kind = 'started' AND station = 'dim-station-build'
+           WHERE kind = 'started' AND station = 'build'
              AND session_id IS NOT NULL AND provider_session_id IS NOT NULL
              AND harness IS NOT NULL AND model IS NOT NULL AND tier IS NOT NULL
              AND started_at IS NOT NULL`,
@@ -1236,12 +1237,12 @@ describe("builder station", () => {
     claimOrder(
       db,
       "harness-order",
-      { runId: "retake-run", station: "dim-station-build", operatorWorker: operator.name },
+      { runId: "retake-run", station: "build", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,
     );
-    moveOrder(db, "harness-order", "dim-station-build", operator.name);
+    moveOrder(db, "harness-order", "build", operator.name);
     const working = () =>
       db.query("SELECT status, run_id FROM factory_order WHERE id = ?").get("harness-order");
     expect(working()).toEqual({ status: "working", run_id: null });
@@ -1886,6 +1887,7 @@ describe("a conflict at ship", () => {
       });
     }
     approveOrderBuild(db, "conflict-order", operator.name, "built as planned");
+    approveReviewAt(db, "conflict-order", git(worktree, ["rev-parse", "HEAD"]), operator.name);
     writeFileSync(join(repo.dir, "built.txt"), "trunk\n");
     writeFileSync(join(repo.dir, "other.txt"), "trunk\n");
     git(repo.dir, ["add", "built.txt", "other.txt"]);
@@ -1916,7 +1918,7 @@ describe("a conflict at ship", () => {
     expect(git(worktree, ["rev-parse", "HEAD~2"])).toBe(trunkTip);
     expect(db.query("SELECT patch_equal FROM factory_order_rewrite").all()).toEqual([{ patch_equal: 0 }]);
     expect(db.query("SELECT station FROM factory_order WHERE id = 'conflict-order'").get()).toEqual({
-      station: "dim-station-review",
+      station: "review",
     });
     db.close();
   });

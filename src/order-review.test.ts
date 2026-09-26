@@ -92,7 +92,7 @@ function floor(): {
   claimOrder(
     db,
     "order-1",
-    { runId: "run-1", station: "dim-station-build", operatorWorker: operator.name },
+    { runId: "run-1", station: "build", operatorWorker: operator.name },
     builder.name,
     undefined,
     trunk.dir,
@@ -140,7 +140,7 @@ describe("a review round", () => {
   test("returns a Review artifact to the same reviewer and approves its revision", async () => {
     const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
     slice(db, dir, worker, "review-artifact");
-    moveOrder(db, "order-1", "dim-station-review", operator);
+    moveOrder(db, "order-1", "review", operator);
     const done = await review(db, operator, dir, answering(reviewOutput()));
     expect(done.reviewer).toBeTruthy();
 
@@ -652,7 +652,7 @@ describe("a review round", () => {
       [WORKER_TOKEN_VAR]: operatorToken,
       [WORKER_SESSION_VAR]: operatorSession,
     };
-    moveOrder(db, "order-1", "dim-station-review", operator);
+    moveOrder(db, "order-1", "review", operator);
     await review(db, operator, dir, answering(reviewOutput()));
     runOrderCommand(db, ["return", "order-1", "--reason", "Say more."], null, dir, env);
     await expect(

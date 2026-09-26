@@ -1,4 +1,5 @@
-import type { WallOrder, WallStage, WallStation } from "./factory-wall";
+import type { WallOrder, WallStage } from "./factory-wall";
+import type { Station } from "./station";
 
 export const WALL_COLUMNS: ReadonlyArray<{ stage: WallStage; label: string }> = [
   { stage: "todo", label: "Todo" },
@@ -6,11 +7,10 @@ export const WALL_COLUMNS: ReadonlyArray<{ stage: WallStage; label: string }> = 
   { stage: "done", label: "Done" },
 ];
 
-export const STATION_LABELS: Record<WallStation, string> = {
+export const STATION_LABELS: Record<Station, string> = {
   plan: "Plan",
   build: "Build",
   review: "Review",
-  ship: "Ship",
 };
 
 export function ordersByStage(orders: WallOrder[]): Record<WallStage, WallOrder[]> {

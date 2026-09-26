@@ -45,6 +45,7 @@ import { heldOrders, readyOrders } from "./order-ready";
 import { runOrderReviewLive } from "./order-review";
 import { dbPath, type Env } from "./paths";
 import type { ShipOutcome } from "./ship";
+import { parseStation, type Station } from "./station";
 import { resolveAssignedWorker } from "./worker-assignment";
 import { removeWorktree, repoRoot } from "./wt-command";
 
@@ -140,6 +141,10 @@ function add(
   return `queued ${orderId} on ${project}`;
 }
 
+function stationFlag(value: string | undefined): Station | undefined {
+  return value === undefined ? undefined : parseStation(value, (message) => new UsageError(message));
+}
+
 function claim(db: Database, orderId: string, args: string[], worker: string, env: Env, cwd: string): string {
   const given = flags(args, CLAIM_FLAGS);
   assertOperator(db, worker, "claim an order");
@@ -150,7 +155,7 @@ function claim(db: Database, orderId: string, args: string[], worker: string, en
     {
       runId: required(given, "--run"),
       sessionId: given.get("--session"),
-      station: given.get("--station"),
+      station: stationFlag(given.get("--station")),
       operatorWorker: worker,
     },
     worker,
@@ -389,15 +394,17 @@ export function runOrderCommand(
     return `${orderId} artifact returned to its station`;
   }
   if (command === "move") {
-    const station = required(flags(rest, ["--station"]), "--station");
+    const station = parseStation(
+      required(flags(rest, ["--station"]), "--station"),
+      (message) => new UsageError(message),
+    );
     moveOrder(db, orderId, station, worker);
     return `${orderId} moved to ${station}`;
   }
   if (command === "approve") {
     const station = db
-      .query<{ station: string | null }, [string]>("SELECT station FROM factory_order WHERE id = ?")
-      .get(orderId)
-      ?.station?.replace("dim-station-", "");
+      .query<{ station: Station | null }, [string]>("SELECT station FROM factory_order WHERE id = ?")
+      .get(orderId)?.station;
     if (station === "plan") {
       flags(rest, []);
       approveOrderPlan(db, orderId, worker);

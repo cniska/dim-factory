@@ -53,7 +53,7 @@ describe("plan approval integration", () => {
     claimOrder(
       db,
       "operator-plan-order",
-      { runId: "operator-run", station: "dim-station-plan", operatorWorker: operator.name },
+      { runId: "operator-run", station: "plan", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,
@@ -114,7 +114,7 @@ describe("plan approval integration", () => {
     claimOrder(
       db,
       "approval-order",
-      { runId: "run-1", station: "dim-station-plan", operatorWorker: operator.name },
+      { runId: "run-1", station: "plan", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,
@@ -177,7 +177,7 @@ describe("plan approval integration", () => {
     claimOrder(
       db,
       "approval-order-3",
-      { runId: "run-3", station: "dim-station-plan", operatorWorker: operator.name },
+      { runId: "run-3", station: "plan", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,
@@ -238,7 +238,7 @@ describe("plan approval integration", () => {
     claimOrder(
       db,
       "approval-order-2",
-      { runId: "run-2", station: "dim-station-plan", operatorWorker: operator.name },
+      { runId: "run-2", station: "plan", operatorWorker: operator.name },
       operator.name,
       undefined,
       repo.dir,

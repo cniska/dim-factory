@@ -36,7 +36,7 @@ function floor(db = new Database(":memory:"), schema = true): Floor {
   claimOrder(
     db,
     "order-1",
-    { runId: "run-1", sessionId: "session-1", station: "dim-station-review", operatorWorker: operator },
+    { runId: "run-1", sessionId: "session-1", station: "review", operatorWorker: operator },
     operator,
     undefined,
     trunk.dir,
@@ -518,7 +518,7 @@ describe("closing a round", () => {
     );
     expect(hold(owner)).toBe("the owner wants to read it first");
     const elsewhere = contestedAndClosed();
-    moveOrder(elsewhere.db, "order-1", "dim-station-build", elsewhere.operator);
+    moveOrder(elsewhere.db, "order-1", "build", elsewhere.operator);
     recordOwnerRuling(
       elsewhere.db,
       elsewhere.finding,

@@ -139,7 +139,7 @@ export function continueRebaseTurn(options: {
   }
   db.transaction(() => {
     recordOrderRewrite(db, orderId, rewrite, check, operator);
-    moveOrder(db, orderId, "dim-station-review", operator);
+    moveOrder(db, orderId, "review", operator);
   })();
   return { sha: rewrite.newHead };
 }

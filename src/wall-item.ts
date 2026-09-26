@@ -1,4 +1,5 @@
-import type { WallItemEntry, WallItemKind, WallStation } from "./factory-wall";
+import type { WallItemEntry, WallItemKind } from "./factory-wall";
+import { STATION_LABELS } from "./wall-board";
 
 export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   queued: "Queued",
@@ -30,12 +31,6 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   recovered: "Recovered",
 };
 
-const ARTIFACT_NAMES: Partial<Record<WallStation, string>> = {
-  plan: "Plan",
-  build: "Build",
-  review: "Review",
-};
-
 const ARTIFACT_VERBS: Partial<Record<WallItemKind, string>> = {
   artifact_written: "written",
   artifact_approved: "approved",
@@ -45,9 +40,8 @@ const ARTIFACT_VERBS: Partial<Record<WallItemKind, string>> = {
 export function itemKindLabel(entry: Pick<WallItemEntry, "kind" | "station">): string {
   const verb = ARTIFACT_VERBS[entry.kind];
   if (verb === undefined) return ITEM_KIND_LABELS[entry.kind];
-  const name = entry.station && ARTIFACT_NAMES[entry.station];
-  if (!name) throw new Error(`${entry.kind} names no artifact station`);
-  return `${name} ${verb}`;
+  if (!entry.station) throw new Error(`${entry.kind} names no artifact station`);
+  return `${STATION_LABELS[entry.station]} ${verb}`;
 }
 
 export function shortSha(sha: string): string {

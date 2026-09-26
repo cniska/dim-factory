@@ -58,6 +58,11 @@ import {
   scratchEnv,
   workerIn,
 } from "./fixtures.test-support";
+import {
+  approveFinalBuildAt,
+  approvePlanAndMoveToBuild,
+  approveReviewAt,
+} from "./order-approvals.test-support";
 import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { reviewRange } from "./order-review";
 import { dbPath } from "./paths";
@@ -98,7 +103,11 @@ const order = {
   title: "Record a factory order",
 };
 
-const claim = { runId: "run-1", sessionId: "session-1", station: "dim-station-build" };
+const claim: Omit<OrderClaim, "operatorWorker"> = {
+  runId: "run-1",
+  sessionId: "session-1",
+  station: "build",
+};
 
 function claimForAttempt(operatorWorker = attemptOperator): OrderClaim {
   return { ...claim, operatorWorker };
@@ -113,6 +122,12 @@ function claimOrder(
   operatorWorker = attemptOperator,
 ): number {
   return claimOrderAt(database, orderId, { ...given, operatorWorker }, who, at, trunk.dir);
+}
+
+function claimPlannedBuild(database: Database): void {
+  claimOrder(database, "order-1", { ...claim, runId: "plan-run", station: "plan" }, worker);
+  approvePlanAndMoveToBuild(database, "order-1", attemptOperator);
+  claimOrder(database, "order-1", claim, worker);
 }
 
 function landed(database: Database, orderId: string, at?: string): void {
@@ -159,7 +174,7 @@ describe("factory order report records", () => {
     });
     const open = (id: string) => {
       queueOrder(database, { ...order, id }, operator.name);
-      claimOrder(database, id, { ...claim, station: "dim-station-review" }, operator.name);
+      claimOrder(database, id, { ...claim, station: "review" }, operator.name);
       return openOrderReview(
         database,
         id,
@@ -191,7 +206,7 @@ describe("factory order report records", () => {
       sessionId: newWorkerSession("build-gate-builder"),
     });
     queueOrder(database, { ...order, id: "order-build-artifact" }, operator.name);
-    claimOrder(database, "order-build-artifact", { ...claim, station: "dim-station-build" }, builder.name);
+    claimOrder(database, "order-build-artifact", { ...claim, station: "build" }, builder.name);
     recordOrderCommit(database, "order-build-artifact", "old-head", builder.name, "feat: first");
     recordOrderCheck(
       database,
@@ -223,7 +238,7 @@ describe("factory order report records", () => {
   test("refuses implementation evidence while an order is still in plan", () => {
     const database = db();
     queueOrder(database, { ...order, id: "order-plan" }, worker);
-    claimOrder(database, "order-plan", { ...claim, station: "dim-station-plan" }, worker);
+    claimOrder(database, "order-plan", { ...claim, station: "plan" }, worker);
 
     expect(() =>
       recordOrderCommit(database, "order-plan", trunk.sha, worker, "docs: record the plan"),
@@ -234,7 +249,7 @@ describe("factory order report records", () => {
   test("records a plan only at the plan station and permits implementation after moving to build", () => {
     const database = db();
     queueOrder(database, { ...order, id: "order-planned" }, worker);
-    claimOrder(database, "order-planned", { ...claim, station: "dim-station-plan" }, worker);
+    claimOrder(database, "order-planned", { ...claim, station: "plan" }, worker);
 
     recordOrderPlan(database, "order-planned", "## outcome\n\nMove the order before building.", worker, [
       { title: "Move the order", outcome: "The order reaches build." },
@@ -252,7 +267,7 @@ describe("factory order report records", () => {
       database.query("SELECT kind FROM factory_order_event WHERE order_id = 'order-planned'").all(),
     ).toEqual([{ kind: "queued" }, { kind: "claimed" }, { kind: "artifact_written" }, { kind: "hold_set" }]);
 
-    moveOrder(database, "order-planned", "dim-station-build", worker);
+    moveOrder(database, "order-planned", "build", worker);
     recordOrderCommit(database, "order-planned", trunk.sha, worker, "feat: planned order");
     database.close();
   });
@@ -264,7 +279,7 @@ describe("factory order report records", () => {
       sessionId: newWorkerSession("returned-plan-operator"),
     }).name;
     queueOrder(database, { ...order, id: "returned-plan" }, operator);
-    claimOrder(database, "returned-plan", { ...claim, station: "dim-station-plan" }, operator);
+    claimOrder(database, "returned-plan", { ...claim, station: "plan" }, operator);
     recordOrderPlan(database, "returned-plan", "## Outcome\n\nKeep the artifact concise.", worker, [
       { title: "Keep it concise", outcome: "The owner can review the result." },
     ]);
@@ -297,17 +312,17 @@ describe("factory order report records", () => {
       sessionId: newWorkerSession("slice-builder"),
     }).name;
     queueOrder(database, { ...order, id: "order-slices" }, operator);
-    claimOrder(database, "order-slices", { ...claim, station: "dim-station-plan" }, operator);
+    claimOrder(database, "order-slices", { ...claim, station: "plan" }, operator);
     const planId = recordOrderPlan(database, "order-slices", "## Outcome\n\nBuild both slices.", planner, [
       { title: "First slice", outcome: "The first slice is verified." },
       { title: "Second slice", outcome: "The second slice is verified." },
     ]);
     approveOrderPlan(database, "order-slices", operator);
-    moveOrder(database, "order-slices", "dim-station-build", operator);
+    moveOrder(database, "order-slices", "build", operator);
     claimOrderAt(
       database,
       "order-slices",
-      { ...claim, runId: "slice-build-run", station: "dim-station-build", operatorWorker: operator },
+      { ...claim, runId: "slice-build-run", station: "build", operatorWorker: operator },
       builder,
     );
 
@@ -330,7 +345,7 @@ describe("factory order report records", () => {
           "SELECT outcome, worker, station FROM factory_order_attempt WHERE order_id = ? ORDER BY id DESC LIMIT 1",
         )
         .get("order-slices"),
-    ).toEqual({ outcome: "succeeded", worker: builder, station: "dim-station-build" });
+    ).toEqual({ outcome: "succeeded", worker: builder, station: "build" });
     expect(
       database.query("SELECT run_id, session_id FROM factory_order WHERE id = ?").get("order-slices"),
     ).toEqual({
@@ -364,17 +379,17 @@ describe("factory order report records", () => {
       sessionId: newWorkerSession("artifact-builder"),
     }).name;
     queueOrder(database, { ...order, id: "order-early-artifact" }, operator);
-    claimOrder(database, "order-early-artifact", { ...claim, station: "dim-station-plan" }, operator);
+    claimOrder(database, "order-early-artifact", { ...claim, station: "plan" }, operator);
     recordOrderPlan(database, "order-early-artifact", "## Outcome\n\nBuild both slices.", planner, [
       { title: "First slice", outcome: "The first slice is verified." },
       { title: "Second slice", outcome: "The second slice is verified." },
     ]);
     approveOrderPlan(database, "order-early-artifact", operator);
-    moveOrder(database, "order-early-artifact", "dim-station-build", operator);
+    moveOrder(database, "order-early-artifact", "build", operator);
     claimOrderAt(
       database,
       "order-early-artifact",
-      { ...claim, runId: "early-artifact-run", station: "dim-station-build", operatorWorker: operator },
+      { ...claim, runId: "early-artifact-run", station: "build", operatorWorker: operator },
       builder,
     );
 
@@ -392,14 +407,14 @@ describe("factory order report records", () => {
       sessionId: newWorkerSession("test-builder"),
     }).name;
     queueOrder(database, { ...order, id: "order-handed" }, worker);
-    claimOrder(database, "order-handed", { ...claim, station: "dim-station-plan" }, worker);
-    moveOrder(database, "order-handed", "dim-station-build", worker);
+    claimOrder(database, "order-handed", { ...claim, station: "plan" }, worker);
+    moveOrder(database, "order-handed", "build", worker);
 
-    claimOrder(database, "order-handed", { ...claim, runId: "run-2", station: "dim-station-build" }, builder);
+    claimOrder(database, "order-handed", { ...claim, runId: "run-2", station: "build" }, builder);
 
     expect(
       database.query("SELECT status, station, run_id FROM factory_order WHERE id = 'order-handed'").get(),
-    ).toEqual({ status: "working", station: "dim-station-build", run_id: "run-2" });
+    ).toEqual({ status: "working", station: "build", run_id: "run-2" });
     expect(
       database
         .query(
@@ -407,8 +422,8 @@ describe("factory order report records", () => {
         )
         .all(),
     ).toEqual([
-      { worker, station: "dim-station-plan" },
-      { worker: builder, station: "dim-station-build" },
+      { worker, station: "plan" },
+      { worker: builder, station: "build" },
     ]);
     database.close();
   });
@@ -433,16 +448,16 @@ describe("factory order report records", () => {
     claimOrder(
       database,
       "order-attempts",
-      { ...claim, runId: "plan-run", station: "dim-station-plan" },
+      { ...claim, runId: "plan-run", station: "plan" },
       operator,
       "2026-09-22T10:00:00.000Z",
       operator,
     );
-    moveOrder(database, "order-attempts", "dim-station-build", operator, "2026-09-22T10:01:00.000Z");
+    moveOrder(database, "order-attempts", "build", operator, "2026-09-22T10:01:00.000Z");
     claimOrder(
       database,
       "order-attempts",
-      { ...claim, runId: "build-run", station: "dim-station-build" },
+      { ...claim, runId: "build-run", station: "build" },
       builder,
       "2026-09-22T10:02:00.000Z",
       operator,
@@ -456,7 +471,7 @@ describe("factory order report records", () => {
     claimOrder(
       database,
       "order-attempts",
-      { ...claim, runId: "build-retry", station: "dim-station-build" },
+      { ...claim, runId: "build-retry", station: "build" },
       builder,
       "2026-09-22T10:04:00.000Z",
       operator,
@@ -474,7 +489,7 @@ describe("factory order report records", () => {
         run_id: "plan-run",
         worker: operator,
         operator_worker: operator,
-        station: "dim-station-plan",
+        station: "plan",
         recorded_at: "2026-09-22T10:00:00.000Z",
         kind: "started",
         outcome: "running",
@@ -484,17 +499,17 @@ describe("factory order report records", () => {
         run_id: "plan-run",
         worker: operator,
         operator_worker: operator,
-        station: "dim-station-build",
+        station: "build",
         recorded_at: "2026-09-22T10:01:00.000Z",
         kind: "finished",
         outcome: "succeeded",
-        reason: "handed to dim-station-build",
+        reason: "handed to build",
       },
       {
         run_id: "build-run",
         worker: builder,
         operator_worker: operator,
-        station: "dim-station-build",
+        station: "build",
         recorded_at: "2026-09-22T10:02:00.000Z",
         kind: "started",
         outcome: "running",
@@ -504,7 +519,7 @@ describe("factory order report records", () => {
         run_id: "build-run",
         worker: builder,
         operator_worker: operator,
-        station: "dim-station-build",
+        station: "build",
         recorded_at: "2026-09-22T10:03:00.000Z",
         kind: "finished",
         outcome: "failed",
@@ -514,7 +529,7 @@ describe("factory order report records", () => {
         run_id: "build-retry",
         worker: builder,
         operator_worker: operator,
-        station: "dim-station-build",
+        station: "build",
         recorded_at: "2026-09-22T10:04:00.000Z",
         kind: "started",
         outcome: "running",
@@ -539,7 +554,7 @@ describe("factory order report records", () => {
     claimOrder(
       database,
       "operator-recovery",
-      { runId: "recovery-run", station: "dim-station-build" },
+      { runId: "recovery-run", station: "build" },
       builder,
       "2026-09-22T11:00:00.000Z",
       operator,
@@ -572,7 +587,7 @@ describe("factory order report records", () => {
     const database = db();
     const runner = workerIn(database, "operator");
     const operator = workerIn(database, "operator");
-    const reviewClaim = { runId: "review-run", station: "dim-station-review" };
+    const reviewClaim: Omit<OrderClaim, "operatorWorker"> = { runId: "review-run", station: "review" };
     queueOrder(database, { ...order, id: "stranded-review" }, runner);
     claimOrder(database, "stranded-review", reviewClaim, runner, "2026-09-22T12:00:00.000Z");
     const unaccepted = createWorkerAssignment(database, { parentWorker: runner, role: "reviewer" });
@@ -629,7 +644,7 @@ describe("factory order report records", () => {
     pid: number | null = process.pid,
   ): { id: number; reviewer: string } {
     queueOrder(database, { ...order, id: orderId }, runner);
-    claimOrder(database, orderId, { runId: `${orderId}-run`, station: "dim-station-review" }, runner);
+    claimOrder(database, orderId, { runId: `${orderId}-run`, station: "review" }, runner);
     const assignment = createWorkerAssignment(database, { parentWorker: runner, role: "reviewer" });
     const round = openAssignedOrderReview(
       database,
@@ -648,7 +663,7 @@ describe("factory order report records", () => {
 
   function namedRound(database: Database, orderId: string, runner: string): { id: number; reviewer: string } {
     queueOrder(database, { ...order, id: orderId }, runner);
-    claimOrder(database, orderId, { runId: `${orderId}-run`, station: "dim-station-review" }, runner);
+    claimOrder(database, orderId, { runId: `${orderId}-run`, station: "review" }, runner);
     const reviewer = mintWorker(database, {
       role: "reviewer",
       pid: process.pid,
@@ -751,15 +766,10 @@ describe("factory order report records", () => {
     const database = db();
     const builder = workerIn(database, "builder");
     queueOrder(database, { ...order, id: "order-taken" }, worker);
-    claimOrder(database, "order-taken", { ...claim, station: "dim-station-build" }, runningBuilder(database));
+    claimOrder(database, "order-taken", { ...claim, station: "build" }, runningBuilder(database));
 
     expect(() =>
-      claimOrder(
-        database,
-        "order-taken",
-        { ...claim, runId: "run-2", station: "dim-station-build" },
-        builder,
-      ),
+      claimOrder(database, "order-taken", { ...claim, runId: "run-2", station: "build" }, builder),
     ).toThrow(/already working under run-1/);
     database.close();
   });
@@ -1028,7 +1038,7 @@ describe("factory order report records", () => {
     const env = scratchEnv(home);
     const database = db();
     queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
-    claimOrder(database, "order-1", claim, worker, "2026-09-18T10:01:00.000Z");
+    claimPlannedBuild(database);
     const wt = orderWorktree(repo.dir, "order-1");
     writeFileSync(join(wt, "ship-slice.txt"), "slice");
     Bun.spawnSync(["git", "-C", wt, "add", "."]);
@@ -1037,6 +1047,8 @@ describe("factory order report records", () => {
       .stdout.toString()
       .trim();
     recordOrderCommit(database, "order-1", sha, worker, "feat: ship-slice");
+    approveFinalBuildAt(database, "order-1", sha, worker, attemptOperator);
+    approveReviewAt(database, "order-1", sha, attemptOperator);
 
     expect(shipOrder(database, "order-1", wt, attemptOperator, { env })).toEqual({ landed: "fast_forward" });
     expect(Bun.spawnSync(["git", "-C", repo.dir, "merge-base", "--is-ancestor", sha, "HEAD"]).success).toBe(
@@ -1055,10 +1067,11 @@ describe("factory order report records", () => {
     const env = scratchEnv(home);
     const database = db();
     queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
-    claimOrder(database, "order-1", claim, worker, "2026-09-18T10:01:00.000Z");
+    claimPlannedBuild(database);
+    completeOrderSlice(database, "order-1", nextOrderSlice(database, "order-1")?.id as number, worker);
 
     expect(() => shipOrder(database, "order-1", repo.dir, attemptOperator, { env })).toThrow(
-      expect.objectContaining({ code: "order_not_integrated" }),
+      expect.objectContaining({ code: "build_not_approved" }),
     );
 
     database.close();
@@ -1087,7 +1100,12 @@ describe("factory order report records", () => {
 
     function scene(
       trunkMoves: (dir: string) => void,
-      { check = "true" as string | null, env = {} as Record<string, string>, unrecordedBetween = false } = {},
+      {
+        check = "true" as string | null,
+        env = {} as Record<string, string>,
+        unrecordedBetween = false,
+        reviewed = true,
+      } = {},
     ) {
       const repo = integratedRepo();
       const home = mkdtempSync(join(tmpdir(), "dim-rebase-ship-"));
@@ -1096,7 +1114,7 @@ describe("factory order report records", () => {
       commit(repo.dir, "f.txt", "a\nb\nc\nd\ne\nf\ng\n", "feat: add f");
       const database = db();
       queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
-      claimOrder(database, "order-1", claim, worker, "2026-09-18T10:01:00.000Z");
+      claimPlannedBuild(database);
       const wt = orderWorktree(repo.dir, "order-1");
       scenes.push(wt);
       const first = commit(wt, "f.txt", "a\nb\nc\nD\ne\nf\ng\n", "feat: change d");
@@ -1104,6 +1122,8 @@ describe("factory order report records", () => {
       const second = commit(wt, "g.txt", "g", "feat: add g");
       recordOrderCommit(database, "order-1", first, worker, "feat: change d");
       recordOrderCommit(database, "order-1", second, worker, "feat: add g");
+      approveFinalBuildAt(database, "order-1", second, worker, attemptOperator);
+      if (reviewed) approveReviewAt(database, "order-1", second, attemptOperator);
       trunkMoves(repo.dir);
       const ship = () =>
         shipOrder(database, "order-1", wt, attemptOperator, {
@@ -1119,13 +1139,6 @@ describe("factory order report records", () => {
     const contextMove = (dir: string) => {
       commit(dir, "f.txt", "A\nb\nc\nd\ne\nf\ng\n", "feat: change a");
     };
-
-    function approveReviewAt(database: Database, headSha: string): void {
-      const opened = reviewIn(database, "order-1", attemptOperator, undefined, headSha);
-      recordOrderReviewArtifact(database, "order-1", "## Outcome\n\nClean.", opened.reviewer);
-      closeOrderReview(database, opened.review, "closed", opened.reviewer);
-      approveOrderReview(database, "order-1", attemptOperator);
-    }
 
     test("a clean rebase lands one commit per recorded commit, each recorded as rewritten from its old sha", () => {
       const { repo, database, first, second, ship } = scene(unrelatedMove);
@@ -1168,8 +1181,7 @@ describe("factory order report records", () => {
     });
 
     test("a rebase that changed no patch keeps the approved review", () => {
-      const { database, second, ship } = scene(unrelatedMove);
-      approveReviewAt(database, second);
+      const { database, ship } = scene(unrelatedMove);
 
       ship();
 
@@ -1177,8 +1189,7 @@ describe("factory order report records", () => {
     });
 
     test("a rebase that changed a patch lands nothing and returns the order to review for the whole order", () => {
-      const { repo, wt, database, second, trunkTip, ship } = scene(contextMove);
-      approveReviewAt(database, second);
+      const { repo, wt, database, trunkTip, ship } = scene(contextMove);
 
       expect(ship).toThrow(expect.objectContaining({ code: "ship_patch_changed" }));
 
@@ -1186,7 +1197,7 @@ describe("factory order report records", () => {
       const current = currentOrderCommits(database, "order-1").map((c) => c.sha);
       expect(git(wt, ["rev-parse", "HEAD"])).toBe(current.at(-1) as string);
       expect(database.query("SELECT station FROM factory_order WHERE id = 'order-1'").get()).toEqual({
-        station: "dim-station-review",
+        station: "review",
       });
       expect(database.query("SELECT patch_equal FROM factory_order_rewrite").all()).toEqual([
         { patch_equal: 0 },
@@ -1210,8 +1221,10 @@ describe("factory order report records", () => {
       expect(currentOrderCommits(database, "order-1").map((c) => c.sha)).toEqual([first, second]);
       expect(database.query("SELECT count(*) AS n FROM factory_order_rewrite").get()).toEqual({ n: 0 });
       expect(
-        database.query("SELECT exit_code FROM factory_order_check WHERE order_id = 'order-1'").all(),
-      ).toEqual([{ exit_code: 3 }]);
+        database
+          .query("SELECT exit_code FROM factory_order_check WHERE order_id = 'order-1' ORDER BY id")
+          .all(),
+      ).toEqual([{ exit_code: 0 }, { exit_code: 3 }]);
     });
 
     test("a commit the branch carried but the order never recorded is replayed without becoming the order's", () => {
@@ -1229,8 +1242,7 @@ describe("factory order report records", () => {
     });
 
     test("a review after a rebase that kept every patch reads on from the head it last read", () => {
-      const { wt, database, second, ship } = scene(unrelatedMove);
-      approveReviewAt(database, second);
+      const { wt, database, ship } = scene(unrelatedMove);
       ship();
       const head = currentOrderCommits(database, "order-1").at(-1)?.sha as string;
 
@@ -1238,10 +1250,29 @@ describe("factory order report records", () => {
     });
 
     test("a review after a rebase that replayed commits past the head it last read reads the whole order", () => {
-      const { wt, database, first, trunkTip, ship } = scene(unrelatedMove);
-      approveReviewAt(database, first);
-      ship();
-      const head = currentOrderCommits(database, "order-1").at(-1)?.sha as string;
+      const { wt, database, first, second, trunkTip } = scene(unrelatedMove, { reviewed: false });
+      approveReviewAt(database, "order-1", first, attemptOperator);
+      const oldBase = git(wt, ["merge-base", "HEAD", "main"]);
+      git(wt, ["rebase", "-q", "main"]);
+      const head = git(wt, ["rev-parse", "HEAD"]);
+      recordOrderRewrite(
+        database,
+        "order-1",
+        {
+          worktree: wt,
+          oldBase,
+          newBase: trunkTip,
+          oldHead: second,
+          newHead: head,
+          commits: [
+            { from: first, to: git(wt, ["rev-parse", "HEAD~1"]) },
+            { from: second, to: head },
+          ],
+          patchEqual: true,
+        },
+        { command: "bun run verify", exitCode: 0 },
+        attemptOperator,
+      );
 
       expect(reviewRange(database, "order-1", wt)).toEqual({ base: trunkTip, head });
     });
@@ -1283,10 +1314,15 @@ describe("factory order report records", () => {
       expect(
         database
           .query(
-            "SELECT worker FROM factory_order_event WHERE kind IN ('check_finished', 'commit_rewritten')",
+            "SELECT worker FROM factory_order_event WHERE kind IN ('check_finished', 'commit_rewritten') ORDER BY id",
           )
           .all(),
-      ).toEqual([{ worker: attemptOperator }, { worker: attemptOperator }, { worker: attemptOperator }]);
+      ).toEqual([
+        { worker },
+        { worker: attemptOperator },
+        { worker: attemptOperator },
+        { worker: attemptOperator },
+      ]);
       const rows = findQuery("order")?.run(database, { arg: "order-1" }).rows ?? [];
       expect(rows.filter((row) => row[0] === "commit").map((row) => row[2])).toEqual([
         "commit_created",
@@ -1312,7 +1348,7 @@ describe("factory order report records", () => {
       queueOrder(database, order, worker);
       claimOrder(database, "order-1", claim, worker);
       recordOrderCommit(database, "order-1", "a0", worker, "feat: a");
-      approveReviewAt(database, "a0");
+      approveReviewAt(database, "order-1", "a0", attemptOperator);
       const check = { command: "bun run verify", exitCode: 0 };
       const rewrite = (from: string, to: string, patchEqual: boolean) =>
         recordOrderRewrite(
@@ -1683,7 +1719,7 @@ describe("factory order report records", () => {
     claimOrder(database, "order-1", claim, worker, "2026-09-18T10:01:00.000Z");
     expect(database.query("SELECT run_id, station, status FROM factory_order").get()).toEqual({
       run_id: "run-1",
-      station: "dim-station-build",
+      station: "build",
       status: "working",
     });
     expect(
@@ -1708,16 +1744,16 @@ describe("factory order report records", () => {
     queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
     claimOrder(database, "order-1", claim, worker, "2026-09-18T10:01:00.000Z");
 
-    moveOrder(database, "order-1", "dim-station-review", worker, "2026-09-18T10:02:00.000Z");
+    moveOrder(database, "order-1", "review", worker, "2026-09-18T10:02:00.000Z");
 
     expect(database.query("SELECT station, updated_at FROM factory_order").get()).toEqual({
-      station: "dim-station-review",
+      station: "review",
       updated_at: "2026-09-18T10:02:00.000Z",
     });
     expect(database.query("SELECT kind, station FROM factory_order_event ORDER BY id").all()).toEqual([
       { kind: "queued", station: null },
-      { kind: "claimed", station: "dim-station-build" },
-      { kind: "moved", station: "dim-station-review" },
+      { kind: "claimed", station: "build" },
+      { kind: "moved", station: "review" },
     ]);
     database.close();
   });
@@ -1726,7 +1762,7 @@ describe("factory order report records", () => {
     const database = db();
     queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
 
-    expect(() => moveOrder(database, "order-1", "dim-station-review", worker)).toThrow(
+    expect(() => moveOrder(database, "order-1", "review", worker)).toThrow(
       "order order-1 must be working before it can move",
     );
     expect(database.query("SELECT station FROM factory_order").get()).toEqual({ station: null });
@@ -1741,9 +1777,9 @@ describe("factory order report records", () => {
       trunk.dir,
     );
 
-    expect(() => moveOrder(database, "order-1", "dim-station-review", worker)).toThrow(/already completed/);
+    expect(() => moveOrder(database, "order-1", "review", worker)).toThrow(/already completed/);
     expect(database.query("SELECT station FROM factory_order").get()).toEqual({
-      station: "dim-station-build",
+      station: "build",
     });
     database.close();
   });
@@ -2095,8 +2131,8 @@ describe("factory order report records", () => {
   test("drops an order nobody is holding though it was once claimed", () => {
     const database = db();
     queueOrder(database, order, worker);
-    claimOrder(database, "order-1", { ...claim, station: "dim-station-plan" }, worker);
-    moveOrder(database, "order-1", "dim-station-build", worker);
+    claimOrder(database, "order-1", { ...claim, station: "plan" }, worker);
+    moveOrder(database, "order-1", "build", worker);
 
     dropOrder(database, "order-1", "already on trunk", worker);
 

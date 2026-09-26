@@ -43,7 +43,7 @@ describe("build approval integration", () => {
     claimOrder(
       db,
       "queued-return-order",
-      { runId: "queued-return-run", station: "dim-station-build", operatorWorker: operator.name },
+      { runId: "queued-return-run", station: "build", operatorWorker: operator.name },
       builder.name,
       undefined,
       repo.dir,
@@ -72,7 +72,7 @@ describe("build approval integration", () => {
       appendOrderEvent(db, "queued-return-order", {
         kind: "artifact_returned",
         worker: operator.name,
-        station: "dim-station-build",
+        station: "build",
         artifactId: 1,
         reason: "direct event writes cannot return the artifact",
       }),
@@ -121,7 +121,7 @@ describe("build approval integration", () => {
     claimOrder(
       db,
       "build-approval-order",
-      { runId: "build-run", station: "dim-station-build", operatorWorker: operator.name },
+      { runId: "build-run", station: "build", operatorWorker: operator.name },
       builder.name,
       undefined,
       repo.dir,
@@ -254,7 +254,7 @@ describe("build approval integration", () => {
     expect(
       runOrderCommand(
         db,
-        ["move", "build-approval-order", "--station", "dim-station-review"],
+        ["move", "build-approval-order", "--station", "review"],
         null,
         repo.dir,
         env(operator),

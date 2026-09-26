@@ -13,12 +13,7 @@ import {
   recordOrderFile,
 } from "./factory-order-evidence";
 import { appendOrderEvent } from "./factory-order-ledger";
-import {
-  claimOrder as claimOrderAt,
-  moveOrder,
-  queueOrder,
-  setOrderPriority,
-} from "./factory-order-lifecycle";
+import { claimOrder as claimOrderAt, queueOrder, setOrderPriority } from "./factory-order-lifecycle";
 import { approveOrderReview, closeOrderReview, recordOrderReviewArtifact } from "./factory-order-review";
 import type { OrderClaim } from "./factory-order-status";
 import { assembleItemView, assembleWallSnapshot, wallHandler } from "./factory-wall";
@@ -27,6 +22,7 @@ import { answerOrderFindings, raiseOrderFinding, ruleOnOrderFinding } from "./or
 import { resolveHomeDir } from "./paths";
 import type { Role } from "./roles";
 import { SCHEMA_SQL } from "./schema";
+import type { Station } from "./station";
 
 let worker = "";
 let attemptOperator = "";
@@ -127,7 +123,6 @@ describe("factory wall snapshot", () => {
     );
     closeOrderReview(db, review.review, "closed", operator, "2026-09-18T08:01:37.000Z");
     approveOrderReview(db, "order-done", operator, "2026-09-18T08:01:38.000Z");
-    moveOrder(db, "order-done", "ship", operator, "2026-09-18T08:01:45.000Z");
     appendOrderEvent(
       db,
       "order-done",
@@ -342,15 +337,15 @@ describe("factory wall snapshot", () => {
 
   test("reads a role off the worker, never off the station it is sitting at", () => {
     const db = floor();
-    const take = (id: string, called: Role, stationValue: string) => {
+    const take = (id: string, called: Role, station: Station) => {
       const hand = workerIn(db, called);
       queueOrder(db, { id, project: "cniska/dim-factory", title: id }, hand, "2026-09-18T10:00:00.000Z");
-      claimOrder(db, id, { runId: "run", station: stationValue }, hand, "2026-09-18T10:00:00.000Z");
+      claimOrder(db, id, { runId: "run", station }, hand, "2026-09-18T10:00:00.000Z");
     };
-    take("planning", "planner", "dim-station-build");
-    take("building", "builder", "dim-station-review");
-    take("reviewing", "reviewer", "dim-station-plan");
-    take("operating", "operator", "dim-station-build");
+    take("planning", "planner", "build");
+    take("building", "builder", "review");
+    take("reviewing", "reviewer", "plan");
+    take("operating", "operator", "build");
 
     const roles = new Map(
       assembleWallSnapshot(db, new Date("2026-09-18T10:20:00.000Z")).orders.map((order) => [
@@ -366,21 +361,8 @@ describe("factory wall snapshot", () => {
     db.close();
   });
 
-  test("omits a station it does not know rather than calling it build", () => {
+  test("shows no station for an order claimed without one rather than calling it build", () => {
     const db = floor();
-    queueOrder(
-      db,
-      { id: "order-line", project: "cniska/dim-factory", title: "Claimed with a line, not a station" },
-      worker,
-      "2026-09-18T10:00:00.000Z",
-    );
-    claimOrder(
-      db,
-      "order-line",
-      { runId: "run", station: "dim-line-feat" },
-      worker,
-      "2026-09-18T10:00:00.000Z",
-    );
     queueOrder(
       db,
       { id: "order-stationless", project: "cniska/dim-factory", title: "Claimed with no station at all" },
@@ -391,7 +373,7 @@ describe("factory wall snapshot", () => {
 
     const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z"));
 
-    expect(snapshot.orders.map((order) => order.station)).toEqual([null, null]);
+    expect(snapshot.orders.map((order) => order.station)).toEqual([null]);
     db.close();
   });
 

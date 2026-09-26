@@ -16,7 +16,13 @@ import {
 import { latestOrderCommit, pendingRebaseConflict } from "./factory-order-commits";
 import { appendOrderEvent } from "./factory-order-ledger";
 import { claimOrder } from "./factory-order-lifecycle";
-import { isActiveOrderRun, OrderNotDone, orderStatus, PlanApprovalRefused } from "./factory-order-status";
+import {
+  assertOrderAtStation,
+  isActiveOrderRun,
+  OrderNotDone,
+  orderStatus,
+  PlanApprovalRefused,
+} from "./factory-order-status";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-launch";
 import type { HarnessName } from "./harness-name";
@@ -288,18 +294,11 @@ export async function runOrderBuildLive(
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
   assertOperator(db, operator, "delegate build");
-  const state = db
-    .query<{ station: string | null; run_id: string | null }, [string]>(
-      "SELECT station, run_id FROM factory_order WHERE id = ?",
-    )
-    .get(orderId);
-  if (state?.station !== "build" && state?.station !== "dim-station-build") {
-    throw new OrderNotDone(
-      "order_not_building",
-      `order ${orderId} must be at build before a builder can start`,
-    );
-  }
-  if (state.run_id !== null) {
+  assertOrderAtStation(db, orderId, "build", "start a builder");
+  const runIdHeld = db
+    .query<{ run_id: string | null }, [string]>("SELECT run_id FROM factory_order WHERE id = ?")
+    .get(orderId)?.run_id;
+  if (runIdHeld) {
     throw new OrderNotDone("order_held_by_run", `order ${orderId} is already held by a run`);
   }
   const plan = latestApprovedPlan(db, orderId);
@@ -314,7 +313,7 @@ export async function runOrderBuildLive(
   const previousFailure = db
     .query<{ reason: string | null }, [string]>(
       `SELECT reason FROM factory_order_attempt
-       WHERE order_id = ? AND station = 'dim-station-build' AND kind = 'finished'
+       WHERE order_id = ? AND station = 'build' AND kind = 'finished'
        ORDER BY id DESC LIMIT 1`,
     )
     .get(orderId);
@@ -350,7 +349,7 @@ export async function runOrderBuildLive(
             runId,
             sessionId: providerSessionId,
             providerSessionId,
-            station: "dim-station-build",
+            station: "build",
             operatorWorker: operator,
             ...attribution,
           },

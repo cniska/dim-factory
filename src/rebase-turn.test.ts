@@ -17,10 +17,16 @@ import {
   scratchEnv,
   workerIn,
 } from "./fixtures.test-support";
+import {
+  approveFinalBuildAt,
+  approvePlanAndMoveToBuild,
+  approveReviewAt,
+} from "./order-approvals.test-support";
 import { reviewRange } from "./order-review";
 import { rebaseState } from "./rebase-onto-trunk";
 import { continueRebaseTurn, reopenRebase } from "./rebase-turn";
 import { SCHEMA_SQL } from "./schema";
+import type { Station } from "./station";
 
 const cleanup: string[] = [];
 afterAll(() => {
@@ -57,16 +63,18 @@ function conflicted(check = "true", markerSize?: number) {
   db.run(SCHEMA_SQL);
   const builder = workerIn(db);
   const operator = mintWorker(db, { role: "operator", sessionId: newWorkerSession("test-operator") }).name;
-  const claim = (runId: string) =>
+  const claim = (runId: string, station: Station = "build") =>
     claimOrder(
       db,
       "order-1",
-      { runId, sessionId: runId, station: "dim-station-build", operatorWorker: operator },
+      { runId, sessionId: runId, station, operatorWorker: operator },
       builder,
       undefined,
       claims.dir,
     );
   queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Collide" }, builder);
+  claim("plan-run", "plan");
+  approvePlanAndMoveToBuild(db, "order-1", operator);
   claim("run-1");
   const wt = orderWorktree(repo.dir, "order-1");
   cleanup.push(wt);
@@ -74,6 +82,8 @@ function conflicted(check = "true", markerSize?: number) {
   const second = commit(wt, "g.txt", "order g\n", "feat: add g");
   recordOrderCommit(db, "order-1", first, builder, "feat: change d");
   recordOrderCommit(db, "order-1", second, builder, "feat: add g");
+  approveFinalBuildAt(db, "order-1", second, builder, operator);
+  approveReviewAt(db, "order-1", second, operator);
   commit(repo.dir, "f.txt", f("X"), "feat: change d on the trunk");
   const trunkTip = commit(repo.dir, "g.txt", "trunk g\n", "feat: add g on the trunk");
   const env = scratchEnv(home);
@@ -113,7 +123,7 @@ describe("a conflict at ship", () => {
       db.query("SELECT kind, outcome, reason FROM factory_order_delivery WHERE order_id = 'order-1'").all(),
     ).toEqual([{ kind: "delivery", outcome: "failed", reason: expect.stringContaining("f.txt") }]);
     expect(db.query("SELECT station FROM factory_order WHERE id = 'order-1'").get()).toEqual({
-      station: "dim-station-build",
+      station: "build",
     });
   });
 
@@ -167,7 +177,7 @@ describe("continueRebaseTurn", () => {
     expect(git(repo.dir, ["rev-parse", "HEAD"])).toBe(trunkTip);
     expect(db.query("SELECT patch_equal FROM factory_order_rewrite").all()).toEqual([{ patch_equal: 0 }]);
     expect(db.query("SELECT station, run_id FROM factory_order WHERE id = 'order-1'").get()).toEqual({
-      station: "dim-station-review",
+      station: "review",
       run_id: null,
     });
     expect(pendingRebaseConflict(db, "order-1")).toBeNull();
@@ -278,7 +288,10 @@ describe("continueRebaseTurn", () => {
     expect(rebaseState(wt)).toBeNull();
     expect(git(wt, ["rev-parse", "HEAD"])).toBe(second);
     expect(db.query("SELECT count(*) AS n FROM factory_order_rewrite").get()).toEqual({ n: 0 });
-    expect(db.query("SELECT exit_code FROM factory_order_check").all()).toEqual([{ exit_code: 5 }]);
+    expect(db.query("SELECT exit_code FROM factory_order_check ORDER BY id").all()).toEqual([
+      { exit_code: 0 },
+      { exit_code: 5 },
+    ]);
     expect(pendingRebaseConflict(db, "order-1")).toEqual(recorded);
 
     expect(reopenRebase(wt, "order-1", recorded)).toEqual(["f.txt"]);
