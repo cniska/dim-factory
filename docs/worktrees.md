@@ -3,7 +3,7 @@
 ## `dim wt`
 
 - Task worktrees live at `<repo>/.claude/worktrees/<branch>`. Queries fold a worktree onto the checkout it copies, and a session row names the worktree it ran in; [`src/worktree.ts`](../src/worktree.ts) is the one definition.
-- `dim wt` ([`src/wt-command.ts`](../src/wt-command.ts)) creates or reuses a worktree, runs the repo's `scripts/worktree-setup.sh` after creating it and `scripts/worktree-teardown.sh` before removing it, and keeps the branch.
+- `dim wt` ([`src/wt-command.ts`](../src/wt-command.ts)) creates or reuses a registered worktree for one branch segment, runs the repo's `scripts/worktree-setup.sh` after creating it and `scripts/worktree-teardown.sh` before removing it, and keeps the branch. A failed setup removes the incomplete worktree. It removes a new branch if setup left its tip intact, and preserves a branch whose tip changed.
 - Its tests are [`scripts/wt.test.sh`](../scripts/wt.test.sh), in bash because they pin the messages and exit codes a caller reads; `bun run verify` runs them against `dim wt`.
 
 ## Worker environments

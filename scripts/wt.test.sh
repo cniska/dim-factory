@@ -54,6 +54,26 @@ reused=$(run task-a)
 contains "existing worktree is reused" "$reused" "wt: reusing existing worktree"
 assert "reuse skips bootstrap" "$([ -e "$REPO/.claude/worktrees/task-a/.wt-bootstrap-ran" ] && echo yes || echo no)" no
 
+write_hook worktree-setup.sh 'exit 7'
+set +e
+failed_setup=$(run task-setup-fails 2>&1); failed_setup_rc=$?
+set -e
+assert "a failed setup exits non-zero" "$failed_setup_rc" 1
+contains "a failed setup names its exit" "$failed_setup" "bootstrap failed (exit 7)"
+assert "a failed setup leaves no reusable worktree" "$([ -d "$REPO/.claude/worktrees/task-setup-fails" ] && echo yes || echo no)" no
+write_hook worktree-setup.sh 'printf retained > setup-result; git add setup-result; git commit -qm setup-result; exit 7'
+set +e
+committed_setup=$(run task-setup-commits 2>&1); committed_setup_rc=$?
+set -e
+assert "a setup that commits and fails exits non-zero" "$committed_setup_rc" 1
+contains "a setup commit is reported as kept" "$committed_setup" "branch task-setup-commits kept"
+assert "a setup commit remains on its branch" "$(git -C "$REPO" show task-setup-commits:setup-result)" retained
+assert "a failed setup commit leaves no reusable worktree" "$([ -d "$REPO/.claude/worktrees/task-setup-commits" ] && echo yes || echo no)" no
+write_hook worktree-setup.sh 'exit 0'
+run task-setup-fails > /dev/null
+assert "setup can retry after a failure" "$([ -d "$REPO/.claude/worktrees/task-setup-fails" ] && echo yes || echo no)" yes
+run rm task-setup-fails > /dev/null
+
 contains "ls includes the managed branch" "$(run ls)" "task-a"
 contains "ls includes the managed path" "$(run ls)" "$REPO/.claude/worktrees/task-a"
 removed=$(run rm task-a)
@@ -61,7 +81,6 @@ contains "rm reports removal" "$removed" "wt: removed worktree $REPO/.claude/wor
 assert "rm removes the worktree" "$([ -d "$REPO/.claude/worktrees/task-a" ] && echo yes || echo no)" no
 assert "rm keeps the branch" "$(git -C "$REPO" show-ref --verify --quiet refs/heads/task-a; echo $?)" 0
 
-write_hook worktree-setup.sh 'exit 0'
 write_hook worktree-teardown.sh "printf ran > $TMP/teardown-ran"
 run task-b > /dev/null
 torn=$(run rm task-b)
@@ -126,6 +145,16 @@ assert "a file where the worktree goes exits non-zero" "$notdir_rc" 1
 assert "a file where the worktree goes creates no worktree" \
   "$([ -d "$REPO/.claude/worktrees/task-e" ] && echo yes || echo no)" no
 rm "$REPO/.claude/worktrees/task-e"
+
+mkdir "$REPO/.claude/worktrees/task-plain"
+set +e
+plain=$(run task-plain 2>&1); plain_rc=$?
+escape=$(run .. 2>&1); escape_rc=$?
+set -e
+assert "an unrelated directory is not reused" "$plain_rc" 1
+contains "reuse explains the unrelated directory" "$plain" "not a registered worktree"
+assert "a parent segment cannot name a worktree" "$escape_rc" 1
+contains "a parent segment is rejected" "$escape" "invalid branch name"
 
 contains "prune reports what it did" "$(run prune)" "wt: pruned stale worktree entries"
 contains "no arguments prints usage" "$(run)" "parallel-task worktrees, one per agent"

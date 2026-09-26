@@ -554,6 +554,25 @@ describe("order command", () => {
     expect(assembleWallSnapshot(database).orders).toEqual([]);
   });
 
+  test("an order id cannot leave the task worktree directory", () => {
+    const database = db();
+
+    expect(() =>
+      runOrderCommand(database, [
+        "add",
+        "../outside",
+        "--title",
+        "Unsafe",
+        "--project",
+        "cniska/dim-factory",
+      ]),
+    ).toThrow(/invalid branch name/);
+    expect(assembleWallSnapshot(database).orders).toEqual([]);
+    expect(() =>
+      runOrderCommand(database, ["add", "@{-1}", "--title", "Unsafe", "--project", "cniska/dim-factory"]),
+    ).toThrow(/invalid branch name/);
+  });
+
   test("a plan onto a stopped floor is refused with the reason the floor was stopped for", async () => {
     const database = db();
     queued(database);

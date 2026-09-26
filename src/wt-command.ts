@@ -16,7 +16,9 @@ Usage:
 
 Worktrees live at <repo>/.claude/worktrees/<branch>. On creation, wt runs the
 repo's scripts/worktree-setup.sh if present (dependency install, etc.); on
-removal it runs the primary checkout's scripts/worktree-teardown.sh inside the
+setup failure, it removes the incomplete worktree and a new branch unless setup
+changed its tip. On removal it runs the primary checkout's
+scripts/worktree-teardown.sh inside the
 worktree first, and keeps the worktree if that fails unless --force.`;
 
 export class WtError extends Error {}
@@ -75,8 +77,8 @@ function bootstrap(path: string): void {
   if (!isExecutable(hook)) return;
   console.log("wt: bootstrapping worktree via scripts/worktree-setup.sh");
   const rc = hookStatus(runHook(hook, "setup", path));
-  if (rc === 0) console.log("wt: bootstrap complete");
-  else warn(`wt: bootstrap failed (exit ${rc}) — worktree created; fix and re-run the hook`);
+  if (rc !== 0) die(`bootstrap failed (exit ${rc})`);
+  console.log("wt: bootstrap complete");
 }
 
 function teardown(root: string, path: string, force: boolean): void {
@@ -97,8 +99,33 @@ function worktreesDir(root: string): string {
   return join(root, ".claude", "worktrees");
 }
 
+export function validateWorktreeBranch(branch: string): void {
+  const checked = Bun.spawnSync(["git", "check-ref-format", "--branch", branch], {
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+  const valid =
+    branch !== "" &&
+    !branch.includes("/") &&
+    !branch.includes("@{") &&
+    !branch.startsWith("-") &&
+    checked.success &&
+    new TextDecoder().decode(checked.stdout).trim() === branch;
+  if (!valid) die(`invalid branch name: ${branch}`);
+}
+
 export function worktreePath(root: string, branch: string): string {
+  validateWorktreeBranch(branch);
   return join(worktreesDir(root), branch);
+}
+
+function registeredWorktree(root: string, path: string, branch: string): boolean {
+  const listed = git(["-C", root, "worktree", "list", "--porcelain"]);
+  if (!listed.ok) die("could not list worktrees");
+  return listed.out.split("\n\n").some((entry) => {
+    const lines = entry.split("\n");
+    return lines.includes(`worktree ${path}`) && lines.includes(`branch refs/heads/${branch}`);
+  });
 }
 
 export function createWorktree(branch: string, cwd: string = process.cwd()): string {
@@ -107,7 +134,9 @@ export function createWorktree(branch: string, cwd: string = process.cwd()): str
   const path = worktreePath(root, branch);
 
   let created = false;
+  let createdBranch = false;
   if (isDirectory(path)) {
+    if (!registeredWorktree(root, path, branch)) die(`${path} is not a registered worktree for ${branch}`);
     console.log(`wt: reusing existing worktree ${path}`);
   } else {
     const known = git(["-C", root, "show-ref", "--verify", "--quiet", `refs/heads/${branch}`]).ok;
@@ -116,9 +145,25 @@ export function createWorktree(branch: string, cwd: string = process.cwd()): str
       : ["-C", root, "worktree", "add", path, "-b", branch];
     if (!git(add).ok) die(`could not create a worktree at ${path}`);
     created = true;
+    createdBranch = !known;
   }
 
-  if (created) bootstrap(path);
+  if (created) {
+    const initialTip = git(["-C", root, "rev-parse", `refs/heads/${branch}`]).out;
+    try {
+      bootstrap(path);
+    } catch (error) {
+      const changedTip = git(["-C", root, "rev-parse", `refs/heads/${branch}`]).out !== initialTip;
+      if (!git(["-C", root, "worktree", "remove", "--force", path]).ok) {
+        die(`bootstrap failed and could not remove the incomplete worktree at ${path}`);
+      }
+      if (createdBranch && !changedTip && !git(["-C", root, "branch", "-D", branch]).ok) {
+        die(`bootstrap failed and could not remove the incomplete branch ${branch}`);
+      }
+      if (changedTip) die(`bootstrap failed; branch ${branch} kept because setup changed it`);
+      throw error;
+    }
+  }
   return path;
 }
 
@@ -154,6 +199,7 @@ export function removeWorktree(branch: string, options: { force?: boolean; cwd?:
   const root = repoRoot(options.cwd);
   const path = worktreePath(root, branch);
   if (!isDirectory(path)) die(`no worktree at ${path}`);
+  if (!registeredWorktree(root, path, branch)) die(`${path} is not a registered worktree for ${branch}`);
 
   teardown(root, path, force);
   const args2 = force
@@ -215,7 +261,7 @@ export function runWt(args: string[]): void {
     case "path": {
       const branch = rest[0] ?? "";
       if (!branch) die("branch name required");
-      console.log(join(worktreesDir(repoRoot()), branch));
+      console.log(worktreePath(repoRoot(), branch));
       return;
     }
     case "rm":

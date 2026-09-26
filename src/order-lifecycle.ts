@@ -3,9 +3,10 @@ import { assertOperator } from "./factory-operator";
 import { FactoryStopError, liveStop } from "./factory-stop";
 import { appendOrderEvent, appendOrderEventInTransaction, now } from "./order-ledger";
 import { assertOrderQueued, type Order, type OrderPriority } from "./order-status";
-import { createWorktree } from "./wt-command";
+import { createWorktree, validateWorktreeBranch } from "./wt-command";
 
 export function queueOrder(db: Database, order: Order, worker: string, at = now()): number {
+  validateWorktreeBranch(order.id);
   return db.transaction(() => {
     db.run(
       `INSERT INTO factory_order
