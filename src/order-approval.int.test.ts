@@ -7,11 +7,12 @@ import { recordOrderPlan } from "./factory-order-artifacts";
 import { claimOrder, queueOrder } from "./factory-order-lifecycle";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { integratedRepo } from "./fixtures.test-support";
-import { runOrderCommand } from "./order-command";
-import { runOrderPlan } from "./order-plan";
+import { runOrderCommand, runOrderCommandLive } from "./order-command";
+import { runOrderPlanLive } from "./order-plan";
 import type { PlanSlice } from "./plan-artifact";
 import { SCHEMA_SQL } from "./schema";
-import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
+import { scriptedHarness } from "./scripted-harness.test-support";
+import { ASSIGNMENT_ID_VAR, assignedWorker } from "./worker-assignment";
 
 const repos: string[] = [];
 const homes: string[] = [];
@@ -32,7 +33,7 @@ function env(worker: { name: string; token: string; sessionId: string }): Record
 }
 
 describe("plan approval integration", () => {
-  test("the operator delegates planning and approves the attributed plan", () => {
+  test("the operator delegates planning and approves the attributed plan", async () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     const repo = integratedRepo();
@@ -58,23 +59,16 @@ describe("plan approval integration", () => {
       repo.dir,
     );
 
-    const outcome = runOrderPlan(db, "operator-plan-order", {
+    const outcome = await runOrderPlanLive(db, "operator-plan-order", {
       dir: repo.dir,
       env: { ...env(operator), DIM_HOME: home },
-      spawn: (_argv, worker) => ({
-        exitCode: 0,
-        stdout: (() => {
-          const child = bootstrapWorker(db, {
-            id: worker[ASSIGNMENT_ID_VAR] as string,
-            token: worker[ASSIGNMENT_TOKEN_VAR] as string,
-            sessionId: "planner-approval-session",
-          });
-          return JSON.stringify({
-            body: `## Outcome\n\nPlan for ${child.name}.`,
-            slices: [{ title: "Complete the request", outcome: "The requested result is verified." }],
-          });
-        })(),
-      }),
+      harness: "codex",
+      adapter: scriptedHarness((request) => ({
+        output: JSON.stringify({
+          body: `## Outcome\n\nPlan for ${assignedWorker(db, request.env[ASSIGNMENT_ID_VAR] as string)}.`,
+          slices: [{ title: "Complete the request", outcome: "The requested result is verified." }],
+        }),
+      })),
     });
     runOrderCommand(db, ["approve", "operator-plan-order"], null, repo.dir, env(operator));
 
@@ -262,7 +256,7 @@ describe("plan approval integration", () => {
     db.close();
   });
 
-  test("refuses planning delegation from a non-operator worker", () => {
+  test("refuses planning delegation from a non-operator worker", async () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     const repo = integratedRepo();
@@ -279,9 +273,15 @@ describe("plan approval integration", () => {
       operator.name,
     );
 
-    expect(() =>
-      runOrderCommand(db, ["plan", "delegation-order", "--harness", "codex"], null, repo.dir, env(builder)),
-    ).toThrow(expect.objectContaining({ code: "worker_not_operator" }));
+    await expect(
+      runOrderCommandLive(
+        db,
+        ["plan", "delegation-order", "--harness", "codex"],
+        null,
+        repo.dir,
+        env(builder),
+      ),
+    ).rejects.toThrow(expect.objectContaining({ code: "worker_not_operator" }));
     expect(db.query("SELECT count(*) AS n FROM factory_order_artifact").get()).toEqual({ n: 0 });
     db.close();
   });

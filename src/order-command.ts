@@ -40,9 +40,9 @@ import { recordedHarness } from "./operator-harness";
 import { runOrderBuildLive } from "./order-build";
 import { recordOwnerRuling } from "./order-finding";
 import { isOrderLine, ORDER_LINES } from "./order-line";
-import { runOrderPlan, runOrderPlanLive } from "./order-plan";
+import { runOrderPlanLive } from "./order-plan";
 import { heldOrders, readyOrders } from "./order-ready";
-import { runOrderReview, runOrderReviewLive } from "./order-review";
+import { runOrderReviewLive } from "./order-review";
 import { dbPath, type Env } from "./paths";
 import type { ShipOutcome } from "./ship";
 import { resolveAssignedWorker } from "./worker-assignment";
@@ -393,12 +393,6 @@ export function runOrderCommand(
     moveOrder(db, orderId, station, worker);
     return `${orderId} moved to ${station}`;
   }
-  if (command === "plan") {
-    const harness = selectedHarness(db, flags(rest, ["--harness"]), worker);
-    assertOperator(db, worker, "delegate planning");
-    const outcome = runOrderPlan(db, orderId, { dir: cwd, env, harness });
-    return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;
-  }
   if (command === "approve") {
     const station = db
       .query<{ station: string | null }, [string]>("SELECT station FROM factory_order WHERE id = ?")
@@ -430,14 +424,6 @@ export function runOrderCommand(
   if (command === "amend") return amend(db, orderId, rest);
   if (command === "drop") return drop(db, orderId, rest, worker);
   if (command === "rule") return ruleOnRefusal(db, orderId, rest, worker);
-  if (command === "review") {
-    const harness = selectedHarness(db, flags(rest, ["--harness"]), worker);
-    assertOperator(db, worker, "delegate review");
-    const done = runOrderReview(db, orderId, worker, { dir: cwd, env, harness });
-    return done.outcome === "aborted"
-      ? `review ${done.review} aborted: ${done.reviewer} did not finish, so nothing it left is a clean reading`
-      : `review ${done.review} closed with ${done.findings} finding${done.findings === 1 ? "" : "s"}`;
-  }
   throw new UsageError(`${command} is not an order subcommand`);
 }
 
@@ -459,7 +445,6 @@ export async function runOrderCommandLive(
     const outcome = await runOrderPlanLive(db, orderId, { dir: cwd, env, harness });
     return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;
   }
-  assertOperator(db, operator, `delegate ${args[0]}`);
   if (args[0] === "build") {
     const outcome = await runOrderBuildLive(db, orderId, operator, { dir: cwd, env, harness });
     return `build completed by ${outcome.builder}`;

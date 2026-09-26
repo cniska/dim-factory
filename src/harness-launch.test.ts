@@ -4,56 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeHarness } from "./fake-harness";
 import type { HarnessAdapter, HarnessEvent } from "./harness";
-import {
-  harnessArgv,
-  launchHarness,
-  launchHarnessLive,
-  resumeHarnessLive,
-  workerFailureReason,
-} from "./harness-launch";
+import { launchHarnessLive, resumeHarnessLive, workerFailureReason } from "./harness-launch";
 
 describe("selected harness commands", () => {
-  test("gives a read-only planning request to Codex", () => {
-    expect(
-      harnessArgv({
-        harness: "codex",
-        cwd: "/worktree",
-        brief: "plan the order",
-        model: "deep-model",
-        capabilities: ["read-files"],
-        env: { DIM_HOME: "/dim-home" },
-      }),
-    ).toEqual([
-      "codex",
-      "-c",
-      'forced_login_method="chatgpt"',
-      "exec",
-      "--json",
-      "-s",
-      "read-only",
-      "--add-dir",
-      "/dim-home",
-      "-C",
-      "/worktree",
-      "-m",
-      "deep-model",
-      "plan the order",
-    ]);
-  });
-
-  test("gives an editing request workspace write access", () => {
-    expect(
-      harnessArgv({
-        harness: "codex",
-        cwd: "/worktree",
-        brief: "build the order",
-        model: "standard-model",
-        capabilities: ["edit-files"],
-        env: {},
-      }),
-    ).toContain("workspace-write");
-  });
-
   test("runs a deterministic adapter through the live command boundary", async () => {
     const result = await launchHarnessLive(
       {
@@ -229,20 +182,6 @@ describe("selected harness commands", () => {
 
     expect(result.output).toBe('{"body":"done"}');
   });
-
-  test("gives a Claude request to the claude command", () => {
-    const argv = harnessArgv({
-      harness: "claude",
-      cwd: "/worktree",
-      brief: "build the order",
-      model: "standard-model",
-      capabilities: ["edit-files"],
-      env: { DIM_HOME: "/dim-home" },
-    });
-
-    expect(argv.slice(0, 2)).toEqual(["claude", "-p"]);
-    expect(argv.slice(-2)).toEqual(["--", "build the order"]);
-  });
 });
 
 describe("a harness run with no adapter given", () => {
@@ -281,7 +220,7 @@ printf '%s\\n' "{\\"type\\":\\"result\\",\\"subtype\\":\\"success\\",\\"is_error
     expect(result).toMatchObject({ exitCode: 0, output: '{"body":"resumed"}' });
   });
 
-  test("starts a worker of either harness with only the identity its request gives it, on both paths", async () => {
+  test("starts a worker of either harness with only the identity its request gives it", async () => {
     const reporting = mkdtempSync(join(tmpdir(), "dim-harness-bin-"));
     const seen = [
       "DIM_WORKER_NAME",
@@ -348,7 +287,6 @@ echo '{"type":"turn.completed"}'
         const expected = `|||assignment-1|assignment-token|||||||subscription|${harness === "codex" ? "sk-ant" : ""}`;
 
         expect((await launchHarnessLive(assigned, () => undefined)).output).toBe(expected);
-        expect(launchHarness(assigned).output).toBe(expected);
       }
     } finally {
       for (const [name, value] of Object.entries(saved)) {
@@ -359,7 +297,7 @@ echo '{"type":"turn.completed"}'
     }
   });
 
-  test("fails a synchronous run whose stream reports a failure, whatever the process exits with", () => {
+  test("fails a run whose stream reports a failure, whatever the process exits with", async () => {
     const failing = mkdtempSync(join(tmpdir(), "dim-claude-bin-"));
     writeFileSync(
       join(failing, "claude"),
@@ -371,19 +309,15 @@ exit 0
     );
     chmodSync(join(failing, "claude"), 0o755);
 
-    const result = launchHarness({
-      ...request,
-      env: { ...request.env, PATH: `${failing}:${process.env.PATH ?? ""}` },
-    });
+    const result = await launchHarnessLive(
+      {
+        ...request,
+        env: { ...request.env, PATH: `${failing}:${process.env.PATH ?? ""}` },
+      },
+      () => undefined,
+    );
     rmSync(failing, { recursive: true, force: true });
 
     expect(result).toMatchObject({ exitCode: 1, failureReason: "Not logged in" });
-  });
-
-  test("reads the named harness's stream on the synchronous path", () => {
-    const result = launchHarness(request);
-
-    expect(result.output).toBe('{"body":"started"}');
-    expect(result.events).toContainEqual({ type: "run.started", providerSessionId: "s1" });
   });
 });

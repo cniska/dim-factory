@@ -19,7 +19,7 @@ import { claimOrder } from "./factory-order-lifecycle";
 import { isActiveOrderRun, OrderNotDone, orderStatus, PlanApprovalRefused } from "./factory-order-status";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-launch";
-import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
+import type { HarnessName } from "./harness-name";
 import { BuildTurnRefused } from "./order-finding";
 import { type FindingStanding, orderFindingStandings, owesAnswer } from "./order-finding-state";
 import { assertOrderWorkerHarness, resumeOrderStationLive, runOrderStationLive } from "./order-worker";
@@ -276,7 +276,7 @@ export async function runOrderBuildLive(
   options: {
     dir: string;
     env?: Env;
-    harness?: HarnessName;
+    harness: HarnessName;
     adapter?: HarnessAdapter;
     checkSandbox?: string[];
   },
@@ -304,7 +304,7 @@ export async function runOrderBuildLive(
   }
   const plan = latestApprovedPlan(db, orderId);
   if (!plan) throw new PlanApprovalRefused("plan_missing", `order ${orderId} has no approved plan to build`);
-  const harness = options.harness ?? DEFAULT_HARNESS;
+  const { harness } = options;
   assertOrderWorkerHarness(db, orderId, "builder", harness);
   const { slices } = plan;
   const currentSlice = nextOrderSlice(db, orderId);

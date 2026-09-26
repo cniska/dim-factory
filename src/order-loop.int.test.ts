@@ -11,10 +11,9 @@ import { integratedRepo, orderWorktree, reviewOutput } from "./fixtures.test-sup
 import { builderBrief, reviewFindingsForBuild } from "./order-build";
 import { runOrderCommand } from "./order-command";
 import { answerOrderFindings } from "./order-finding";
-import { runOrderReview } from "./order-review";
+import { runOrderReviewLive } from "./order-review";
 import { SCHEMA_SQL } from "./schema";
-import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
-import { saveWorkerCredential } from "./worker-credential";
+import { scriptedHarness } from "./scripted-harness.test-support";
 
 const repo = integratedRepo();
 const worktrees: string[] = [];
@@ -49,7 +48,7 @@ function commit(worktree: string, name: string): string {
 }
 
 describe("the operator loop", () => {
-  test("returns findings to the builder before approving and shipping the clean outcome", () => {
+  test("returns findings to the builder before approving and shipping the clean outcome", async () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     const operator = mintWorker(db, { role: "operator", sessionId: "loop-operator" });
@@ -76,34 +75,24 @@ describe("the operator loop", () => {
     approveOrderBuild(db, "loop-order", operator.name, "the requested behavior is present");
     moveOrder(db, "loop-order", "dim-station-review", operator.name);
 
-    const firstReview = runOrderReview(db, "loop-order", operator.name, {
+    const firstReview = await runOrderReviewLive(db, "loop-order", operator.name, {
       dir: worktree,
       env: workerEnv(operator),
-      spawn: (_argv, env) => {
-        if (!env[WORKER_NAME_VAR]) {
-          const reviewer = bootstrapWorker(db, {
-            id: env[ASSIGNMENT_ID_VAR] as string,
-            token: env[ASSIGNMENT_TOKEN_VAR] as string,
-            sessionId: `reviewer-${crypto.randomUUID()}`,
-          });
-          saveWorkerCredential(env, reviewer);
-        }
-        return {
-          exitCode: 0,
-          output: reviewOutput({
-            findings: [
-              {
-                dimension: "correctness",
-                file: "first.txt",
-                line: 1,
-                failure: "the first behavior is incomplete",
-                fix: "complete the first behavior",
-                severity: "high",
-              },
-            ],
-          }),
-        };
-      },
+      harness: "codex",
+      adapter: scriptedHarness(() => ({
+        output: reviewOutput({
+          findings: [
+            {
+              dimension: "correctness",
+              file: "first.txt",
+              line: 1,
+              failure: "the first behavior is incomplete",
+              fix: "complete the first behavior",
+              severity: "high",
+            },
+          ],
+        }),
+      })),
     });
     expect(firstReview.findings).toBe(1);
     expect(() => approveOrderReview(db, "loop-order", operator.name)).toThrow(
@@ -134,15 +123,13 @@ describe("the operator loop", () => {
     recordOrderBuild(db, "loop-order", "The finding is fixed and verified.", second, builder.name);
     approveOrderBuild(db, "loop-order", operator.name, "the finding is answered");
     moveOrder(db, "loop-order", "dim-station-review", operator.name);
-    const secondReview = runOrderReview(db, "loop-order", operator.name, {
+    const secondReview = await runOrderReviewLive(db, "loop-order", operator.name, {
       dir: worktree,
       env: workerEnv(operator),
-      spawn: (_argv, _env) => {
-        return {
-          exitCode: 0,
-          output: reviewOutput({ rulings: [{ finding: finding.id, ruling: "addressed", reason: null }] }),
-        };
-      },
+      harness: "codex",
+      adapter: scriptedHarness(() => ({
+        output: reviewOutput({ rulings: [{ finding: finding.id, ruling: "addressed", reason: null }] }),
+      })),
     });
     expect(secondReview.findings).toBe(0);
     expect(() => moveOrder(db, "loop-order", "ship", operator.name)).toThrow(
@@ -190,7 +177,7 @@ describe("the operator loop", () => {
   });
 
   describe("a refusal the reviewer contests", () => {
-    function contested(orderId: string) {
+    async function contested(orderId: string) {
       const db = new Database(":memory:");
       db.run(SCHEMA_SQL);
       const operator = mintWorker(db, { role: "operator", sessionId: `${orderId}-operator` });
@@ -218,25 +205,14 @@ describe("the operator loop", () => {
         moveOrder(db, orderId, "dim-station-review", operator.name);
       };
       const review = (output: string) =>
-        runOrderReview(db, orderId, operator.name, {
+        runOrderReviewLive(db, orderId, operator.name, {
           dir: worktree,
           env: workerEnv(operator),
-          spawn: (_argv, env) => {
-            if (!env[WORKER_NAME_VAR]) {
-              saveWorkerCredential(
-                env,
-                bootstrapWorker(db, {
-                  id: env[ASSIGNMENT_ID_VAR] as string,
-                  token: env[ASSIGNMENT_TOKEN_VAR] as string,
-                  sessionId: `reviewer-${crypto.randomUUID()}`,
-                }),
-              );
-            }
-            return { exitCode: 0, output };
-          },
+          harness: "codex",
+          adapter: scriptedHarness(() => ({ output })),
         });
       build("build-1", `${orderId}-first`);
-      review(
+      await review(
         reviewOutput({
           findings: [
             {
@@ -261,7 +237,7 @@ describe("the operator loop", () => {
       );
       moveOrder(db, orderId, "dim-station-build", operator.name);
       build("build-2", `${orderId}-second`);
-      review(
+      await review(
         reviewOutput({
           rulings: [{ finding, ruling: "refusal_contested", reason: "the plan puts the test in this slice" }],
         }),
@@ -277,8 +253,8 @@ describe("the operator loop", () => {
       return { db, operator, builder, finding, rule };
     }
 
-    test("holds approval until the owner upholds the refusal", () => {
-      const { db, operator, builder, finding, rule } = contested("uphold-order");
+    test("holds approval until the owner upholds the refusal", async () => {
+      const { db, operator, builder, finding, rule } = await contested("uphold-order");
       expect(() => approveOrderReview(db, "uphold-order", operator.name)).toThrow(
         expect.objectContaining({ code: "ruling_pending" }),
       );
@@ -296,8 +272,8 @@ describe("the operator loop", () => {
       db.close();
     });
 
-    test("sends an overturned refusal back to the builder as open work", () => {
-      const { db, operator, finding, rule } = contested("overturn-order");
+    test("sends an overturned refusal back to the builder as open work", async () => {
+      const { db, operator, finding, rule } = await contested("overturn-order");
       expect(db.query("SELECT hold FROM factory_order WHERE id = 'overturn-order'").get()).toEqual({
         hold: "approval",
       });

@@ -7,10 +7,10 @@ import { carriedThroughRewrites, currentOrderCommits } from "./factory-order-com
 import { closeOrderReview, openAssignedOrderReview, recordOrderReviewArtifact } from "./factory-order-review";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-launch";
-import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
+import type { HarnessName } from "./harness-name";
 import { raiseOrderFinding, ruleOnOrderFinding } from "./order-finding";
 import { type FindingStanding, orderFindingStandings } from "./order-finding-state";
-import { runOrderStation, runOrderStationLive } from "./order-worker";
+import { runOrderStationLive } from "./order-worker";
 import type { PlanSlice } from "./plan-artifact";
 import { parseReviewReport, type ReviewFinding, type ReviewRuling } from "./review-artifact";
 import { renderReviewReport } from "./review-report";
@@ -33,11 +33,6 @@ export const REVIEWER_CAPABILITIES: Capability[] = [
 ];
 
 const REVIEW_OUTPUT_SCHEMA = `${import.meta.dir}/review-artifact.schema.json`;
-
-export type ReviewerSpawn = (
-  argv: string[],
-  env: Record<string, string>,
-) => { exitCode: number; output: string };
 
 function git(dir: string, args: string[]): { ok: boolean; out: string; raw: string } {
   const run = Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe", stderr: "ignore" });
@@ -315,7 +310,7 @@ export async function runOrderReviewLive(
   options: {
     dir: string;
     env?: Record<string, string | undefined>;
-    harness?: HarnessName;
+    harness: HarnessName;
     adapter?: HarnessAdapter;
   },
 ): Promise<ReviewOutcome> {
@@ -328,7 +323,7 @@ export async function runOrderReviewLive(
   assertOperator(db, worker, "delegate review");
   assertBuildReady(db, orderId);
   const dir = stationDirectory(options.dir, orderId);
-  const harness = options.harness ?? DEFAULT_HARNESS;
+  const harness = options.harness;
   let returned: ReturnedReview | null = null;
   let opened: ReviewedRound | undefined;
   let turn: Awaited<ReturnType<typeof runOrderStationLive<"review">>>;
@@ -391,69 +386,5 @@ export async function runOrderReviewLive(
     throw error;
   }
   if (!returned) closeOrderReview(db, opened.id, outcome, worker, undefined, reason);
-  return { review: opened.id, reviewer, findings, outcome };
-}
-
-export function runOrderReview(
-  db: Database,
-  orderId: string,
-  worker: string,
-  options: {
-    dir: string;
-    spawn?: ReviewerSpawn;
-    env?: Record<string, string | undefined>;
-    harness?: HarnessName;
-  } = {
-    dir: process.cwd(),
-  },
-): ReviewOutcome {
-  const order = db
-    .query<{ id: string; title: string; description: string | null }, [string]>(
-      "SELECT id, title, description FROM factory_order WHERE id = ?",
-    )
-    .get(orderId);
-  if (!order) throw new Error(`order not found: ${orderId}`);
-  assertBuildReady(db, orderId);
-  const dir = stationDirectory(options.dir, orderId);
-  const harness = options.harness ?? DEFAULT_HARNESS;
-  let opened: ReviewedRound | undefined;
-  const {
-    run,
-    worker: reviewer,
-    returned,
-  } = runOrderStation({
-    db,
-    orderId,
-    station: "review",
-    parentWorker: worker,
-    harness,
-    env: options.env,
-    spawn: options.spawn,
-    request: ({ orderWorker, returned: artifact }) => {
-      opened = openRound(db, orderId, dir, orderWorker.assignment.id, worker, artifact);
-      return reviewerRequest(db, order, opened, artifact);
-    },
-  });
-  if (!opened) throw new Error("review round was not opened");
-  if (!reviewer) {
-    if (!returned) closeOrderReview(db, opened.id, "aborted", worker);
-    throw new Error("reviewer did not bootstrap its worker assignment");
-  }
-  db.run("UPDATE factory_order_review SET reviewer = ? WHERE id = ?", [reviewer, opened.id]);
-  const outcome = run.exitCode === 0 ? "closed" : "aborted";
-  if (outcome === "aborted") {
-    if (returned) throw new Error(`${reviewer} did not finish reviewing`);
-    closeOrderReview(db, opened.id, outcome, worker);
-    return { review: opened.id, reviewer, findings: 0, outcome };
-  }
-  let findings: number;
-  try {
-    findings = recordReviewResult(db, orderId, reviewer, run.output, opened, Boolean(returned));
-  } catch (error) {
-    const failure = error instanceof Error ? error.message : String(error);
-    if (!returned) closeOrderReview(db, opened.id, "aborted", worker, undefined, failure);
-    throw error;
-  }
-  if (!returned) closeOrderReview(db, opened.id, outcome, worker);
   return { review: opened.id, reviewer, findings, outcome };
 }

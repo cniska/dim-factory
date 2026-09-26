@@ -7,7 +7,7 @@ import { appendOrderEvent } from "./factory-order-ledger";
 import { claimOrder, queueOrder } from "./factory-order-lifecycle";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { integratedRepo } from "./fixtures.test-support";
-import { runOrderCommand } from "./order-command";
+import { runOrderCommand, runOrderCommandLive } from "./order-command";
 import { SCHEMA_SQL } from "./schema";
 
 const repos: string[] = [];
@@ -102,7 +102,7 @@ describe("build approval integration", () => {
     db.close();
   });
 
-  test("requires the operator to approve the checked final build", () => {
+  test("requires the operator to approve the checked final build", async () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     const repo = integratedRepo();
@@ -133,25 +133,25 @@ describe("build approval integration", () => {
       parent_worker: operator.name,
     });
 
-    expect(() =>
-      runOrderCommand(
+    await expect(
+      runOrderCommandLive(
         db,
         ["review", "build-approval-order", "--harness", "codex"],
         null,
         repo.dir,
         env(operator),
       ),
-    ).toThrow(expect.objectContaining({ code: "build_not_approved" }));
+    ).rejects.toThrow(expect.objectContaining({ code: "build_not_approved" }));
 
-    expect(() =>
-      runOrderCommand(
+    await expect(
+      runOrderCommandLive(
         db,
         ["review", "build-approval-order", "--harness", "codex"],
         null,
         repo.dir,
         env(builder),
       ),
-    ).toThrow(expect.objectContaining({ code: "worker_not_operator" }));
+    ).rejects.toThrow(expect.objectContaining({ code: "worker_not_operator" }));
 
     recordOrderCommit(db, "build-approval-order", repo.sha, builder.name, "feat: build it");
     recordOrderCheck(

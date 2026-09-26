@@ -1,12 +1,13 @@
 import type { Database } from "bun:sqlite";
 import type { Capability } from "./capabilities";
+import { assertOperator } from "./factory-operator";
 import { assertOrderPlanning, recordOrderPlan } from "./factory-order-artifacts";
 import { appendOrderEvent } from "./factory-order-ledger";
 import { resolveWorker } from "./factory-worker";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-launch";
-import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
-import { runOrderStation, runOrderStationLive } from "./order-worker";
+import type { HarnessName } from "./harness-name";
+import { runOrderStationLive } from "./order-worker";
 import { type PlanSlice, parsePlanArtifact } from "./plan-artifact";
 import { stationDirectory } from "./station-directory";
 
@@ -18,14 +19,6 @@ export const PLANNER_CAPABILITIES: Capability[] = [
   "read-history",
   "ask-dim",
 ];
-
-export type PlannerSpawn = (
-  argv: string[],
-  env: Record<string, string>,
-) => {
-  exitCode: number;
-  stdout: string;
-};
 
 export function plannerBrief(
   order: { id: string; title: string; description: string | null },
@@ -61,61 +54,13 @@ export function plannerBrief(
 
 export type PlanOutcome = { planner: string; body: string; slices: readonly PlanSlice[] };
 
-export function runOrderPlan(
-  db: Database,
-  orderId: string,
-  options: {
-    dir: string;
-    env?: Record<string, string | undefined>;
-    spawn?: PlannerSpawn;
-    harness?: HarnessName;
-  },
-): PlanOutcome {
-  const order = db
-    .query<{ id: string; title: string; description: string | null }, [string]>(
-      "SELECT id, title, description FROM factory_order WHERE id = ?",
-    )
-    .get(orderId);
-  if (!order) throw new Error(`order not found: ${orderId}`);
-  const parentWorker = resolveWorker(db, options.env);
-  assertOrderPlanning(db, orderId);
-  const harness = options.harness ?? DEFAULT_HARNESS;
-  const { run, worker } = runOrderStation({
-    db,
-    orderId,
-    station: "plan",
-    parentWorker,
-    harness,
-    env: options.env,
-    spawn: options.spawn
-      ? (argv, env) => {
-          const result = options.spawn?.(argv, env);
-          if (!result) throw new Error("planner spawn was not provided");
-          return { exitCode: result.exitCode, output: result.stdout };
-        }
-      : undefined,
-    request: ({ returned }) => ({
-      cwd: stationDirectory(options.dir, orderId),
-      brief: plannerBrief(order, returned ? { body: returned.body, feedback: returned.reason } : undefined),
-      capabilities: PLANNER_CAPABILITIES,
-      outputSchema: PLAN_OUTPUT_SCHEMA,
-    }),
-  });
-  if (run.exitCode !== 0) throw new Error("planner did not finish planning");
-  const artifact = parsePlanArtifact(run.output.trim());
-  const planner = worker;
-  if (!planner) throw new Error("planner did not bootstrap its worker assignment");
-  recordOrderPlan(db, orderId, artifact.body, planner, artifact.slices);
-  return { planner, ...artifact };
-}
-
 export async function runOrderPlanLive(
   db: Database,
   orderId: string,
   options: {
     dir: string;
     env?: Record<string, string | undefined>;
-    harness?: HarnessName;
+    harness: HarnessName;
     adapter?: HarnessAdapter;
   },
 ): Promise<PlanOutcome> {
@@ -126,8 +71,9 @@ export async function runOrderPlanLive(
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
   const parentWorker = resolveWorker(db, options.env);
+  assertOperator(db, parentWorker, "delegate planning");
   assertOrderPlanning(db, orderId);
-  const harness = options.harness ?? DEFAULT_HARNESS;
+  const harness = options.harness;
   let planner: string | undefined;
   try {
     const { run, worker } = await runOrderStationLive({

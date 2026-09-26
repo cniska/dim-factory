@@ -165,6 +165,7 @@ describe("builder station", () => {
     let request: HarnessRequest | undefined;
     const outcome = await runOrderBuildLive(db, "builder-order", operator.name, {
       dir: repo.dir,
+      harness: "codex",
       env,
       checkSandbox: confiningCheckSandbox(),
       adapter: builderTurn((given) => {
@@ -249,6 +250,7 @@ describe("builder station", () => {
       runOrderBuildLive(db, "builder-order", operator.name, {
         dir: repo.dir,
         env,
+        harness: "codex",
         adapter: unavailable.adapter,
       }),
     ).rejects.toThrow("harness unavailable");
@@ -258,6 +260,7 @@ describe("builder station", () => {
       runOrderBuildLive(db, "builder-order", operator.name, {
         dir: repo.dir,
         env,
+        harness: "codex",
         adapter: fakeHarness("crash"),
       }),
     ).rejects.toThrow("fake process crashed");
@@ -295,6 +298,7 @@ describe("builder station", () => {
 
     await runOrderBuildLive(db, "convention-order", operator.name, {
       dir: repo.dir,
+      harness: "codex",
       env: { DIM_HOME: dimHome },
       checkSandbox: confiningCheckSandbox(),
       adapter: builderTurn((request) => {
@@ -323,7 +327,12 @@ describe("builder station", () => {
       ],
       'test -f ok.txt || { echo "ok.txt is missing"; exit 1; }',
     );
-    const options = { dir: repo.dir, env: { DIM_HOME: dimHome }, checkSandbox: confiningCheckSandbox() };
+    const options = {
+      dir: repo.dir,
+      env: { DIM_HOME: dimHome },
+      harness: "codex" as const,
+      checkSandbox: confiningCheckSandbox(),
+    };
 
     await expect(
       runOrderBuildLive(db, "red-order", operator.name, {
@@ -395,6 +404,7 @@ describe("builder station", () => {
     await expect(
       runOrderBuildLive(db, "drift-order", operator.name, {
         dir: repo.dir,
+        harness: "codex",
         env: { DIM_HOME: dimHome },
         checkSandbox: confiningCheckSandbox(),
         adapter: builderTurn((request) => {
@@ -420,6 +430,7 @@ describe("builder station", () => {
     await expect(
       runOrderBuildLive(db, "nested-order", operator.name, {
         dir: repo.dir,
+        harness: "codex",
         env: { DIM_HOME: dimHome },
         checkSandbox: confiningCheckSandbox(),
         adapter: builderTurn((request) => {
@@ -457,6 +468,7 @@ describe("builder station", () => {
     await expect(
       runOrderBuildLive(db, "detached-order", operator.name, {
         dir: repo.dir,
+        harness: "codex",
         env: { DIM_HOME: dimHome },
         checkSandbox: confiningCheckSandbox(),
         adapter: builderTurn((request) => {
@@ -488,6 +500,7 @@ describe("builder station", () => {
 
     await runOrderBuildLive(db, "hooks-order", operator.name, {
       dir: repo.dir,
+      harness: "codex",
       env: { DIM_HOME: dimHome },
       checkSandbox: confiningCheckSandbox(),
       adapter: builderTurn((request) => {
@@ -516,6 +529,7 @@ describe("builder station", () => {
 
     await runOrderBuildLive(db, "rename-order", operator.name, {
       dir: repo.dir,
+      harness: "codex",
       env: { DIM_HOME: dimHome },
       checkSandbox: confiningCheckSandbox(),
       adapter: builderTurn((request) => {
@@ -543,6 +557,7 @@ describe("builder station", () => {
     await expect(
       runOrderBuildLive(db, "subject-order", operator.name, {
         dir: repo.dir,
+        harness: "codex",
         env: { DIM_HOME: dimHome },
         checkSandbox: confiningCheckSandbox(),
         adapter: builderTurn((request) => {
@@ -565,6 +580,7 @@ describe("builder station", () => {
     await expect(
       runOrderBuildLive(db, "first-order", operator.name, {
         dir: repo.dir,
+        harness: "codex",
         env: { DIM_HOME: dimHome },
         checkSandbox: confiningCheckSandbox(),
         adapter: builderTurn((request) => {
@@ -585,7 +601,12 @@ describe("builder station", () => {
     const { repo, operator } = orderAtBuild(db, "returned-builder-order", [
       { title: "Finish the result", outcome: "The result is verified." },
     ]);
-    const options = { dir: repo.dir, env: { DIM_HOME: dimHome }, checkSandbox: confiningCheckSandbox() };
+    const options = {
+      dir: repo.dir,
+      env: { DIM_HOME: dimHome },
+      harness: "codex" as const,
+      checkSandbox: confiningCheckSandbox(),
+    };
     const builder = mintWorker(db, {
       role: "builder",
       parentWorker: operator.name,
@@ -734,7 +755,12 @@ describe("builder station", () => {
         [{ title: "Build the result", outcome: "The result is verified." }],
         check,
       );
-      const options = { dir: repo.dir, env: { DIM_HOME: dimHome }, checkSandbox: confiningCheckSandbox() };
+      const options = {
+        dir: repo.dir,
+        env: { DIM_HOME: dimHome },
+        harness: "codex" as const,
+        checkSandbox: confiningCheckSandbox(),
+      };
       const firstBuild = await runOrderBuildLive(db, orderId, operator.name, {
         ...options,
         adapter: builderTurn((request) => {
@@ -993,6 +1019,7 @@ describe("builder station", () => {
 
     const outcome = await runOrderBuildLive(db, "second-turn-order", operator.name, {
       dir: repo.dir,
+      harness: "codex",
       env: { DIM_HOME: dimHome },
       checkSandbox: confiningCheckSandbox(),
       adapter,
@@ -1024,6 +1051,7 @@ describe("builder station", () => {
     await expect(
       runOrderBuildLive(db, "second-start-order", operator.name, {
         dir: repo.dir,
+        harness: "codex",
         env: { DIM_HOME: dimHome },
         adapter: fakeHarness("second-start"),
       }),
@@ -1047,6 +1075,7 @@ describe("builder station", () => {
     await expect(
       runOrderBuildLive(db, "failed-builder-order", operator.name, {
         dir: repo.dir,
+        harness: "codex",
         env: { DIM_HOME: dimHome },
         adapter: unavailableHarness().adapter,
       }),
@@ -1102,6 +1131,7 @@ describe("builder station", () => {
     await expect(
       runOrderBuildLive(db, "builder-resume-order", operator.name, {
         dir: repo.dir,
+        harness: "codex",
         env: env(operator),
         adapter: fakeHarness("bootstrap-failure"),
       }),
@@ -1113,6 +1143,7 @@ describe("builder station", () => {
     await expect(
       runOrderBuildLive(db, "builder-resume-order", nextOperator.name, {
         dir: repo.dir,
+        harness: "codex",
         env: env(nextOperator),
         adapter,
       }),
@@ -1120,6 +1151,7 @@ describe("builder station", () => {
     await expect(
       runOrderBuildLive(db, "builder-resume-order", laterOperator.name, {
         dir: repo.dir,
+        harness: "codex",
         env: env(laterOperator),
         adapter,
       }),
@@ -1306,7 +1338,12 @@ describe("a commit git refuses", () => {
       repo,
       operator,
       worktree,
-      options: { dir: repo.dir, env: { DIM_HOME: dimHome }, checkSandbox: confiningCheckSandbox() },
+      options: {
+        dir: repo.dir,
+        env: { DIM_HOME: dimHome },
+        harness: "codex" as const,
+        checkSandbox: confiningCheckSandbox(),
+      },
       checksRun: () =>
         existsSync(checks) ? readFileSync(checks, "utf8").split("\n").filter(Boolean).length : 0,
       events: (kind: string) =>
@@ -1588,7 +1625,7 @@ describe("a comment a builder adds", () => {
       repo,
       operator,
       worktree: realpathSync(join(repo.dir, ".claude", "worktrees", orderId)),
-      options: { dir: repo.dir, env, checkSandbox: confiningCheckSandbox() },
+      options: { dir: repo.dir, env, harness: "codex" as const, checkSandbox: confiningCheckSandbox() },
       checksRun: () =>
         existsSync(checks) ? readFileSync(checks, "utf8").split("\n").filter(Boolean).length : 0,
       failures: () =>
@@ -1827,7 +1864,12 @@ describe("a conflict at ship", () => {
       { title: "Build one half", outcome: "One half is verified." },
       { title: "Build the other", outcome: "The other half is verified." },
     ]);
-    const options = { dir: repo.dir, env: { DIM_HOME: dimHome }, checkSandbox: confiningCheckSandbox() };
+    const options = {
+      dir: repo.dir,
+      env: { DIM_HOME: dimHome },
+      harness: "codex" as const,
+      checkSandbox: confiningCheckSandbox(),
+    };
     const worktree = realpathSync(join(repo.dir, ".claude", "worktrees", "conflict-order"));
     for (const [file, artifact] of [
       ["built.txt", ""],

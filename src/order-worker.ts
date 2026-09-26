@@ -13,8 +13,6 @@ import {
   type HarnessLaunch,
   type HarnessLaunchResult,
   type HarnessStarted,
-  harnessArgv,
-  launchHarness,
   launchHarnessLive,
   resumeHarnessLive,
 } from "./harness-launch";
@@ -100,22 +98,6 @@ function prepareOrderStation<Station extends OrderStationName>(options: OrderSta
     env: {},
   };
   return { orderWorker, returned, request };
-}
-
-export function runOrderStation<Station extends OrderStationName>(
-  options: OrderStationOptions<Station> & {
-    spawn?: (argv: string[], env: Record<string, string>) => { exitCode: number; output: string };
-  },
-): OrderStationTurn<Station> {
-  const { orderWorker, returned, request } = prepareOrderStation(options);
-  const env = orderWorkerRequest(options.db, options.env, orderWorker);
-  const run = options.spawn
-    ? options.spawn(harnessArgv({ ...request, env }), env)
-    : launchHarness({ ...request, env });
-  const worker = assignedWorker(options.db, orderWorker.assignment.id) ?? undefined;
-  if (worker)
-    bindOrderWorkerName(options.db, options.orderId, orderWorker.role, orderWorker.assignment.id, worker);
-  return { orderWorker, returned, worker, run };
 }
 
 export async function runOrderStationLive<Station extends OrderStationName>(

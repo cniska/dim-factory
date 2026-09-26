@@ -2,13 +2,7 @@ import { claudeProcess } from "./claude-harness";
 import { codexProcess } from "./codex-harness";
 import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
 import type { HarnessName } from "./harness-name";
-import {
-  commandLine,
-  type HarnessProcess,
-  type ProcessEnvironment,
-  parseLines,
-  processHarness,
-} from "./harness-process";
+import { type HarnessProcess, type ProcessEnvironment, processHarness } from "./harness-process";
 import { runHarness } from "./harness-runner";
 import { stationEnvironment } from "./station-environment";
 
@@ -65,31 +59,6 @@ function harnessAdapter(harness: HarnessName): HarnessAdapter {
 
 export function harnessExecutable(harness: HarnessName): string {
   return HARNESS_PROCESSES[harness].command;
-}
-
-export function harnessArgv(request: HarnessLaunch): string[] {
-  return commandLine(HARNESS_PROCESSES[request.harness], request);
-}
-
-export function launchHarness(request: HarnessLaunch): HarnessLaunchResult {
-  const spec = HARNESS_PROCESSES[request.harness];
-  const child = Bun.spawnSync(commandLine(spec, request), {
-    cwd: request.cwd,
-    env: workerEnvironment(spec, request),
-    stdin: "ignore",
-    stdout: "pipe",
-    stderr: "inherit",
-  });
-  const events = parseLines(spec.parser(), child.stdout.toString().split("\n"));
-  const failed = events.find(
-    (event): event is Extract<HarnessEvent, { type: "run.failed" }> => event.type === "run.failed",
-  );
-  return {
-    exitCode: failed ? 1 : (child.exitCode ?? 1),
-    output: workerOutput(events),
-    events,
-    ...(failed ? { failureReason: failed.reason } : {}),
-  };
 }
 
 const WORKER_RUN_TIMEOUT_MS = 10 * 60 * 1000;

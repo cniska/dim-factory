@@ -105,12 +105,14 @@ describe("order command", () => {
     ).toThrow("unknown is not a line; one of feat, fix");
   });
 
-  test("a delegation resolves its model through the harness it names", () => {
+  test("a delegation resolves its model through the harness it names", async () => {
     const database = db();
     runOrderCommand(database, add);
     runOrderCommand(database, planClaim);
 
-    expect(() => runOrderCommand(database, ["plan", "order-1", "--harness", "claude"])).toThrow(
+    await expect(
+      runOrderCommandLive(database, ["plan", "order-1", "--harness", "claude"], null, trunk.dir, env),
+    ).rejects.toThrow(
       expect.objectContaining({ kind: "no-map", message: expect.stringContaining('{ "claude": {') }),
     );
     expect(database.query("SELECT role, harness FROM factory_order_worker").all()).toEqual([
@@ -118,7 +120,7 @@ describe("order command", () => {
     ]);
   });
 
-  test("a build and a review resolve their models through the harness they name, live or not", async () => {
+  test("a build and a review resolve their models through the harness they name", async () => {
     const noClaudeMap = expect.objectContaining({
       kind: "no-map",
       message: expect.stringContaining('{ "claude": {'),
@@ -128,9 +130,6 @@ describe("order command", () => {
     runOrderCommand(database, claim);
     runOrderCommand(database, ["commit", "order-1", "--sha", "abc123", "--subject", "feat: land it"]);
 
-    expect(() => runOrderCommand(database, ["review", "order-1", "--harness", "claude"])).toThrow(
-      noClaudeMap,
-    );
     await expect(
       runOrderCommandLive(database, ["review", "order-1", "--harness", "claude"], null, trunk.dir, env),
     ).rejects.toThrow(noClaudeMap);
@@ -172,14 +171,9 @@ describe("order command", () => {
     database.run(recorded, ["codex", session ?? "", "post_tool_use", "2025-12-31T00:00:00Z"]);
     database.run(recorded, ["claude", session ?? "", "session_start", "2026-01-01T00:00:00Z"]);
 
-    for (const run of [
-      () => Promise.resolve().then(() => runOrderCommand(database, ["plan", "order-1"])),
-      () => runOrderCommandLive(database, ["plan", "order-1"], null, trunk.dir, env),
-    ]) {
-      await expect(run()).rejects.toThrow(
-        expect.objectContaining({ kind: "no-map", message: expect.stringContaining('{ "claude": {') }),
-      );
-    }
+    await expect(runOrderCommandLive(database, ["plan", "order-1"], null, trunk.dir, env)).rejects.toThrow(
+      expect.objectContaining({ kind: "no-map", message: expect.stringContaining('{ "claude": {') }),
+    );
     expect(database.query("SELECT role, harness FROM factory_order_worker").all()).toEqual([
       { role: "planner", harness: "claude" },
     ]);
@@ -192,7 +186,6 @@ describe("order command", () => {
 
     const refusal = `${operator} runs in no recorded harness session; delegate with --harness <codex|claude>`;
     for (const station of ["plan", "build", "review"]) {
-      if (station !== "build") expect(() => runOrderCommand(database, [station, "order-1"])).toThrow(refusal);
       await expect(runOrderCommandLive(database, [station, "order-1"], null, trunk.dir, env)).rejects.toThrow(
         refusal,
       );
@@ -200,16 +193,11 @@ describe("order command", () => {
     expect(database.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 0 });
   });
 
-  test("a delegation to a harness with no adapter is refused, live or not", async () => {
+  test("a delegation to a harness with no adapter is refused", async () => {
     const database = db();
     runOrderCommand(database, add);
 
     for (const station of ["plan", "build", "review"]) {
-      if (station !== "build") {
-        expect(() => runOrderCommand(database, [station, "order-1", "--harness", "gemini"])).toThrow(
-          "gemini: unsupported harness; supported harnesses: codex, claude",
-        );
-      }
       await expect(
         runOrderCommandLive(database, [station, "order-1", "--harness", "gemini"], null, trunk.dir, env),
       ).rejects.toThrow("gemini: unsupported harness; supported harnesses: codex, claude");

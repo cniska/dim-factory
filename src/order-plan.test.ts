@@ -3,14 +3,16 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { codexProcess } from "./codex-harness";
 import { claimOrder, queueOrder } from "./factory-order-lifecycle";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { fakeHarness } from "./fake-harness";
 import { integratedRepo } from "./fixtures.test-support";
-import { plannerBrief, runOrderPlan, runOrderPlanLive } from "./order-plan";
+import { commandLine } from "./harness-process";
+import { plannerBrief, runOrderPlanLive } from "./order-plan";
 import { SCHEMA_SQL } from "./schema";
-import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
-import { saveWorkerCredential } from "./worker-credential";
+import { scriptedHarness } from "./scripted-harness.test-support";
+import { ASSIGNMENT_ID_VAR } from "./worker-assignment";
 
 describe("planner station", () => {
   test("uses the shared artifact contract and names the plan dimensions", () => {
@@ -29,7 +31,7 @@ describe("planner station", () => {
     );
   });
 
-  test("spawns a read-only planner and records its Markdown report", () => {
+  test("spawns a read-only planner and records its Markdown report", async () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     const home = mkdtempSync(join(tmpdir(), "dim-planner-"));
@@ -50,9 +52,10 @@ describe("planner station", () => {
       repo.dir,
     );
 
-    expect(() =>
-      runOrderPlan(db, "planner-order", {
+    await expect(
+      runOrderPlanLive(db, "planner-order", {
         dir: repo.dir,
+        harness: "codex",
         env: {
           DIM_HOME: home,
           [WORKER_NAME_VAR]: builder.name,
@@ -60,36 +63,30 @@ describe("planner station", () => {
           [WORKER_SESSION_VAR]: builder.sessionId,
         },
       }),
-    ).toThrow(expect.objectContaining({ code: "worker_not_operator" }));
+    ).rejects.toThrow(expect.objectContaining({ code: "worker_not_operator" }));
 
     let argv: string[] = [];
-    const outcome = runOrderPlan(db, "planner-order", {
+    const outcome = await runOrderPlanLive(db, "planner-order", {
       dir: repo.dir,
+      harness: "codex",
       env: {
         DIM_HOME: home,
         [WORKER_NAME_VAR]: operator.name,
         [WORKER_TOKEN_VAR]: operator.token,
         [WORKER_SESSION_VAR]: operator.sessionId,
       },
-      spawn: (given, env) => {
-        argv = given;
-        expect(env.DIM_WORKER_NAME).toBeUndefined();
-        expect(env.DIM_WORKER_TOKEN).toBeUndefined();
-        expect(env[ASSIGNMENT_ID_VAR]).toBeString();
-        const planner = bootstrapWorker(db, {
-          id: env[ASSIGNMENT_ID_VAR] as string,
-          token: env[ASSIGNMENT_TOKEN_VAR] as string,
-          sessionId: "planner-harness-session",
-        });
-        saveWorkerCredential(env, planner);
+      adapter: scriptedHarness((request) => {
+        argv = commandLine(codexProcess, request);
+        expect(request.env.DIM_WORKER_NAME).toBeUndefined();
+        expect(request.env.DIM_WORKER_TOKEN).toBeUndefined();
+        expect(request.env[ASSIGNMENT_ID_VAR]).toBeString();
         return {
-          exitCode: 0,
-          stdout: JSON.stringify({
+          output: JSON.stringify({
             body: "## outcome\n\nBuild the smallest path.",
             slices: [{ title: "Build the smallest path", outcome: "The requested result is verified." }],
           }),
         };
-      },
+      }),
     });
 
     expect(outcome.body).toBe("## outcome\n\nBuild the smallest path.");
@@ -161,6 +158,7 @@ describe("planner station", () => {
     await expect(
       runOrderPlanLive(db, "planner-crash-order", {
         dir: repo.dir,
+        harness: "codex",
         adapter: fakeHarness("crash"),
         env: {
           DIM_HOME: home,
@@ -236,8 +234,18 @@ describe("planner station", () => {
       [WORKER_SESSION_VAR]: operator.sessionId,
     };
 
-    const first = await runOrderPlanLive(db, "planner-resume-order", { adapter, env, dir: repo.dir });
-    const second = await runOrderPlanLive(db, "planner-resume-order", { adapter, env, dir: repo.dir });
+    const first = await runOrderPlanLive(db, "planner-resume-order", {
+      adapter,
+      env,
+      dir: repo.dir,
+      harness: "codex",
+    });
+    const second = await runOrderPlanLive(db, "planner-resume-order", {
+      adapter,
+      env,
+      dir: repo.dir,
+      harness: "codex",
+    });
 
     expect(second.planner).toBe(first.planner);
     expect(starts).toBe(1);
@@ -270,7 +278,12 @@ describe("planner station", () => {
     };
 
     await expect(
-      runOrderPlanLive(db, "unclaimed-order", { adapter: fakeHarness("plan"), env, dir: repo.dir }),
+      runOrderPlanLive(db, "unclaimed-order", {
+        adapter: fakeHarness("plan"),
+        env,
+        dir: repo.dir,
+        harness: "codex",
+      }),
     ).rejects.toThrow("order unclaimed-order is not claimed");
     expect(db.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 0 });
     db.close();
@@ -316,7 +329,7 @@ describe("planner station", () => {
       [WORKER_SESSION_VAR]: operator.sessionId,
     };
 
-    await runOrderPlanLive(db, "planner-cwd-order", { adapter, env, dir: repo.dir });
+    await runOrderPlanLive(db, "planner-cwd-order", { adapter, env, dir: repo.dir, harness: "codex" });
 
     expect(plannedIn).toBe(join(realpathSync(repo.dir), ".claude", "worktrees", "planner-cwd-order"));
     db.close();

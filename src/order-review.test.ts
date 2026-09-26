@@ -3,6 +3,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { codexProcess } from "./codex-harness";
 import { approveOrderBuild, recordOrderBuild, returnedOrderArtifact } from "./factory-order-artifacts";
 import { recordOrderCheck, recordOrderCommit } from "./factory-order-evidence";
 import { appendOrderEvent } from "./factory-order-ledger";
@@ -10,19 +11,14 @@ import { claimOrder, moveOrder, queueOrder } from "./factory-order-lifecycle";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { fakeHarness } from "./fake-harness";
 import { integratedRepo, located, orderWorktree, reviewOutput } from "./fixtures.test-support";
+import type { HarnessRequest } from "./harness";
+import { commandLine } from "./harness-process";
 import { runOrderCommand } from "./order-command";
 import { answerOrderFindings, raiseOrderFinding, recordOwnerRuling } from "./order-finding";
-import {
-  type ReviewerSpawn,
-  ReviewRefused,
-  reviewerBrief,
-  reviewRange,
-  runOrderReview,
-  runOrderReviewLive,
-} from "./order-review";
+import { ReviewRefused, reviewerBrief, reviewRange, runOrderReviewLive } from "./order-review";
 import { SCHEMA_SQL } from "./schema";
-import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
-import { saveWorkerCredential } from "./worker-credential";
+import { type ScriptedAnswer, scriptedHarness } from "./scripted-harness.test-support";
+import { ASSIGNMENT_TOKEN_VAR } from "./worker-assignment";
 
 const trunk = integratedRepo();
 const worktrees: string[] = [];
@@ -33,20 +29,12 @@ afterAll(() => {
   rmSync(trunk.dir, { recursive: true, force: true });
 });
 
-function bootstrapReviewer(db: Database, env: Record<string, string>): string {
-  if (env[WORKER_NAME_VAR] && env[WORKER_TOKEN_VAR] && env[WORKER_SESSION_VAR]) {
-    return env[WORKER_NAME_VAR];
-  }
-  const reviewer = bootstrapWorker(db, {
-    id: env[ASSIGNMENT_ID_VAR] as string,
-    token: env[ASSIGNMENT_TOKEN_VAR] as string,
-    sessionId: `reviewer-${crypto.randomUUID()}`,
-  });
-  saveWorkerCredential(env, reviewer);
-  env[WORKER_NAME_VAR] = reviewer.name;
-  env[WORKER_TOKEN_VAR] = reviewer.token;
-  env[WORKER_SESSION_VAR] = reviewer.sessionId;
-  return reviewer.name;
+function argvOf(request: HarnessRequest): string[] {
+  return commandLine(codexProcess, request);
+}
+
+function answering(output: string): () => ScriptedAnswer {
+  return () => ({ output });
 }
 
 function findingOn(file: string, fields: Record<string, unknown> = {}) {
@@ -67,6 +55,21 @@ const machine = (() => {
   writeFileSync(join(home, "routing.json"), '{ "codex": { "light": "s", "standard": "m", "deep": "l" } }');
   return { DIM_HOME: home };
 })();
+
+function review(
+  db: Database,
+  operator: string,
+  dir: string,
+  answer: (request: HarnessRequest) => ScriptedAnswer,
+  env: Record<string, string> = machine,
+) {
+  return runOrderReviewLive(db, "order-1", operator, {
+    dir,
+    env,
+    harness: "codex",
+    adapter: scriptedHarness(answer),
+  });
+}
 
 function floor(): {
   db: Database;
@@ -134,16 +137,12 @@ function slice(
 }
 
 describe("a review round", () => {
-  test("returns a Review artifact to the same reviewer and approves its revision", () => {
+  test("returns a Review artifact to the same reviewer and approves its revision", async () => {
     const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
     slice(db, dir, worker, "review-artifact");
     moveOrder(db, "order-1", "dim-station-review", operator);
-    const spawn: ReviewerSpawn = (_argv, env) => {
-      const reviewer = bootstrapReviewer(db, env);
-      expect(reviewer).toBeTruthy();
-      return { exitCode: 0, output: reviewOutput() };
-    };
-    const done = runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
+    const done = await review(db, operator, dir, answering(reviewOutput()));
+    expect(done.reviewer).toBeTruthy();
 
     expect(
       runOrderCommand(
@@ -182,12 +181,12 @@ describe("a review round", () => {
       }),
     ).toThrow(expect.objectContaining({ code: "artifact_revision_required" }));
     let revisionArgv: string[] = [];
-    const revise: ReviewerSpawn = (argv, env) => {
-      revisionArgv = argv;
-      expect(bootstrapReviewer(db, env)).toBe(done.reviewer);
-      return { exitCode: 0, output: reviewOutput({ verdict: "The checks named in coverage support it." }) };
-    };
-    const revised = runOrderReview(db, "order-1", operator, { dir, spawn: revise, env: machine });
+    const revised = await review(db, operator, dir, (request) => {
+      revisionArgv = argvOf(request);
+      expect(request.env[WORKER_NAME_VAR]).toBe(done.reviewer);
+      return { output: reviewOutput({ verdict: "The checks named in coverage support it." }) };
+    });
+    expect(revised.reviewer).toBe(done.reviewer);
     expect(revised.review).toBe(done.review);
     expect(revisionArgv.join(" ")).toContain("The owner returned this Review artifact for revision.");
     expect(revisionArgv.join(" ")).toContain("Explain which checks support the verdict.");
@@ -227,31 +226,24 @@ describe("a review round", () => {
     ]);
   });
 
-  test("refuses review delegation from a non-operator worker before opening a round", () => {
+  test("refuses review delegation from a non-operator worker before opening a round", async () => {
     const { db, worker, dir } = floor();
     slice(db, dir, worker, "a");
 
-    expect(() => runOrderReview(db, "order-1", worker, { dir, env: machine })).toThrow(
+    await expect(review(db, worker, dir, answering(reviewOutput()))).rejects.toThrow(
       expect.objectContaining({ code: "worker_not_operator" }),
     );
     expect(db.query("SELECT count(*) AS n FROM factory_order_review").get()).toEqual({ n: 0 });
   });
 
-  test("the finding names the spawned reviewer and not the operator that delegated it", () => {
+  test("the finding names the spawned reviewer and not the operator that delegated it", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
-    const spawn: ReviewerSpawn = (_argv, env) => {
-      const reviewer = bootstrapReviewer(db, env);
-      expect(reviewer).toBeTruthy();
-      return {
-        exitCode: 0,
-        output: reviewOutput({ findings: [findingOn("a.txt")] }),
-      };
-    };
 
-    const done = runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
+    const done = await review(db, operator, dir, answering(reviewOutput({ findings: [findingOn("a.txt")] })));
 
     expect(done).toMatchObject({ findings: 1, outcome: "closed" });
+    expect(done.reviewer).toBeTruthy();
     expect(done.reviewer).not.toBe(worker);
     const row = db
       .query(
@@ -261,22 +253,15 @@ describe("a review round", () => {
     expect(row).toEqual({ worker: done.reviewer, role: "reviewer" });
   });
 
-  test("records the operator as the reviewer's parent", () => {
+  test("records the operator as the reviewer's parent", async () => {
     const { db, worker, operator, builderToken, builderSession, dir } = floor();
     slice(db, dir, worker, "parent");
 
-    const done = runOrderReview(db, "order-1", operator, {
-      dir,
-      spawn: (_argv, env) => {
-        bootstrapReviewer(db, env);
-        return { exitCode: 0, output: reviewOutput() };
-      },
-      env: {
-        ...machine,
-        [WORKER_NAME_VAR]: worker,
-        [WORKER_TOKEN_VAR]: builderToken,
-        [WORKER_SESSION_VAR]: builderSession,
-      },
+    const done = await review(db, operator, dir, answering(reviewOutput()), {
+      ...machine,
+      [WORKER_NAME_VAR]: worker,
+      [WORKER_TOKEN_VAR]: builderToken,
+      [WORKER_SESSION_VAR]: builderSession,
     });
 
     expect(db.query("SELECT parent_worker FROM factory_worker WHERE name = ?").get(done.reviewer)).toEqual({
@@ -284,29 +269,21 @@ describe("a review round", () => {
     });
   });
 
-  test("the builder cannot raise one under its own name", () => {
+  test("the builder cannot raise one under its own name", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
-    const spawn: ReviewerSpawn = (_argv, env) => {
-      bootstrapReviewer(db, env);
-      return { exitCode: 0, output: reviewOutput() };
-    };
-    runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
+    await review(db, operator, dir, answering(reviewOutput()));
 
     expect(() =>
       raiseOrderFinding(db, "order-1", located({ dimension: "tests", failure: "mine" }), worker),
     ).toThrow(/no review open/);
   });
 
-  test("a reviewer that did not finish leaves an aborted round, not a clean one", () => {
+  test("a reviewer that did not finish leaves an aborted round, not a clean one", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
-    const spawn: ReviewerSpawn = (_argv, env) => {
-      bootstrapReviewer(db, env);
-      return { exitCode: 3, output: "" };
-    };
 
-    const done = runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
+    const done = await review(db, operator, dir, () => ({ failure: "the reviewer exited 3" }));
 
     expect(done).toMatchObject({ findings: 0, outcome: "aborted" });
     expect(db.query("SELECT outcome FROM factory_order_review WHERE id = ?").get(done.review)).toEqual({
@@ -320,6 +297,7 @@ describe("a review round", () => {
 
     const outcome = await runOrderReviewLive(db, "order-1", operator, {
       dir,
+      harness: "codex",
       adapter: fakeHarness("crash"),
       env: {
         ...machine,
@@ -355,6 +333,7 @@ describe("a review round", () => {
     slice(db, dir, worker, "review-result");
     const outcome = await runOrderReviewLive(db, "order-1", operator, {
       dir,
+      harness: "codex",
       adapter: fakeHarness("review"),
       env: {
         ...machine,
@@ -404,9 +383,9 @@ describe("a review round", () => {
       [WORKER_SESSION_VAR]: operatorSession,
     };
 
-    const first = await runOrderReviewLive(db, "order-1", operator, { dir, adapter, env });
+    const first = await runOrderReviewLive(db, "order-1", operator, { dir, adapter, env, harness: "codex" });
     slice(db, dir, worker, "review-second");
-    const second = await runOrderReviewLive(db, "order-1", operator, { dir, adapter, env });
+    const second = await runOrderReviewLive(db, "order-1", operator, { dir, adapter, env, harness: "codex" });
 
     expect(first.reviewer).toBe(second.reviewer);
     expect(starts).toBe(1);
@@ -417,61 +396,55 @@ describe("a review round", () => {
     expect(db.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 1 });
   });
 
-  test("the reviewer is handed no tool that could edit", () => {
+  test("the reviewer is handed no tool that could edit", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     let handed: string[] = [];
-    const spawn: ReviewerSpawn = (argv, env) => {
-      bootstrapReviewer(db, env);
-      handed = argv;
-      return { exitCode: 0, output: reviewOutput() };
-    };
 
-    runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
+    await review(db, operator, dir, (request) => {
+      handed = argvOf(request);
+      return { output: reviewOutput() };
+    });
 
     expect(handed).toContain("-s");
     expect(handed[handed.indexOf("-s") + 1]).toBe("read-only");
     expect(handed).toContain("--output-schema");
   });
 
-  test("the reviewer's token rides in its environment and not its argv", () => {
+  test("the reviewer's credential rides in its environment and not its argv", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     let argv: string[] = [];
-    let env: Record<string, string> = {};
-    const spawn: ReviewerSpawn = (given, environment) => {
-      bootstrapReviewer(db, environment);
-      argv = given;
-      env = environment;
-      return { exitCode: 0, output: reviewOutput() };
+    let env: Readonly<Record<string, string>> = {};
+    const seen = (request: HarnessRequest): ScriptedAnswer => {
+      argv = argvOf(request);
+      env = request.env;
+      return { output: reviewOutput() };
     };
 
-    const done = runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
+    await review(db, operator, dir, seen);
+
+    expect(env[ASSIGNMENT_TOKEN_VAR]).toBeString();
+    expect(argv.join(" ")).not.toContain(env[ASSIGNMENT_TOKEN_VAR] as string);
+
+    slice(db, dir, worker, "b");
+    const done = await review(db, operator, dir, seen);
 
     expect(env[WORKER_NAME_VAR]).toBe(done.reviewer);
     expect(env[WORKER_TOKEN_VAR]).toMatch(/^[0-9a-f]{32}$/);
     expect(argv.join(" ")).not.toContain(env[WORKER_TOKEN_VAR] as string);
   });
 
-  test("a second round reads only what the first one did not", () => {
+  test("a second round reads only what the first one did not", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
-    const quiet: ReviewerSpawn = (_argv, env) => {
-      bootstrapReviewer(db, env);
-      return { exitCode: 0, output: reviewOutput() };
-    };
-    const first = runOrderReview(db, "order-1", operator, { dir, spawn: quiet, env: machine });
+    const first = await review(db, operator, dir, answering(reviewOutput()));
     const fixed = slice(db, dir, worker, "b");
 
     let read = "";
-    runOrderReview(db, "order-1", operator, {
-      dir,
-      env: machine,
-      spawn: (argv, env) => {
-        bootstrapReviewer(db, env);
-        read = argv.find((argument) => argument.includes("git diff ")) ?? "";
-        return { exitCode: 0, output: reviewOutput() };
-      },
+    await review(db, operator, dir, (request) => {
+      read = argvOf(request).find((argument) => argument.includes("git diff ")) ?? "";
+      return { output: reviewOutput() };
     });
 
     const firstHead = db
@@ -480,67 +453,63 @@ describe("a review round", () => {
     expect(read).toContain(`${firstHead?.head_sha}..${fixed}`);
   });
 
-  test("a round is refused over a tree that can still move", () => {
+  test("a round is refused over a tree that can still move", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     writeFileSync(join(dir, "uncommitted.txt"), "still moving");
 
-    expect(() => runOrderReview(db, "order-1", operator, { dir, env: machine })).toThrow(ReviewRefused);
+    await expect(review(db, operator, dir, answering(reviewOutput()))).rejects.toThrow(ReviewRefused);
     expect(db.query("SELECT count(*) AS n FROM factory_order_review").get()).toEqual({ n: 0 });
   });
 
-  test("a round is refused over a head the order never recorded", () => {
+  test("a round is refused over a head the order never recorded", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     writeFileSync(join(dir, "unrecorded.txt"), "b");
     Bun.spawnSync(["git", "-C", dir, "add", "."]);
     Bun.spawnSync(["git", "-C", dir, "commit", "-q", "-m", "feat: unrecorded"]);
 
-    expect(() => runOrderReview(db, "order-1", operator, { dir, env: machine })).toThrow(
+    await expect(review(db, operator, dir, answering(reviewOutput()))).rejects.toThrow(
       /is not a commit order order-1 recorded/,
     );
   });
 
-  test("two rounds cannot be open over one order", () => {
+  test("two rounds cannot be open over one order", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
-    const spawn: ReviewerSpawn = (_argv, env) => {
-      bootstrapReviewer(db, env);
-      expect(() => runOrderReview(db, "order-1", operator, { dir, env: machine })).toThrow(
-        /already has review/,
-      );
-      return { exitCode: 0, output: reviewOutput() };
-    };
+    let refusal: Promise<unknown> | undefined;
 
-    runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
+    await review(db, operator, dir, () => {
+      refusal = review(db, operator, dir, answering(reviewOutput())).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      return { output: reviewOutput() };
+    });
+
+    expect(await refusal).toMatchObject({ message: expect.stringMatching(/already has review/) });
   });
 
-  test("refuses a finding on a file the round did not change", () => {
+  test("refuses a finding on a file the round did not change", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
-    const spawn: ReviewerSpawn = (_argv, env) => {
-      bootstrapReviewer(db, env);
-      return { exitCode: 0, output: reviewOutput({ findings: [findingOn("landed.txt")] }) };
-    };
 
-    expect(() => runOrderReview(db, "order-1", operator, { dir, spawn, env: machine })).toThrow(
+    await expect(
+      review(db, operator, dir, answering(reviewOutput({ findings: [findingOn("landed.txt")] }))),
+    ).rejects.toThrow(
       /reviewer finding 1 names file landed\.txt, which [0-9a-f]+\.\.[0-9a-f]+ does not change/,
     );
     expect(db.query("SELECT count(*) AS n FROM factory_order_finding").get()).toEqual({ n: 0 });
     expect(db.query("SELECT outcome FROM factory_order_review").get()).toEqual({ outcome: "aborted" });
   });
 
-  test("refuses a finding on a line past the end of the file at head", () => {
+  test("refuses a finding on a line past the end of the file at head", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
-    const spawn: ReviewerSpawn = (_argv, env) => {
-      bootstrapReviewer(db, env);
-      return { exitCode: 0, output: reviewOutput({ findings: [findingOn("a.txt", { line: 2 })] }) };
-    };
 
-    expect(() => runOrderReview(db, "order-1", operator, { dir, spawn, env: machine })).toThrow(
-      /reviewer finding 1 names line 2 of a\.txt, which has 1 lines at [0-9a-f]+/,
-    );
+    await expect(
+      review(db, operator, dir, answering(reviewOutput({ findings: [findingOn("a.txt", { line: 2 })] }))),
+    ).rejects.toThrow(/reviewer finding 1 names line 2 of a\.txt, which has 1 lines at [0-9a-f]+/);
     expect(db.query("SELECT count(*) AS n FROM factory_order_finding").get()).toEqual({ n: 0 });
   });
 
@@ -554,23 +523,16 @@ describe("a review round", () => {
       1,
       /names file landed\.txt, which does not exist at [0-9a-f]+/,
     ],
-  ])("the location check %s", (_name, files, file, line, refusal) => {
+  ])("the location check %s", async (_name, files, file, line, refusal) => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "located", files);
     const run = () =>
-      runOrderReview(db, "order-1", operator, {
-        dir,
-        env: machine,
-        spawn: (_argv, env) => {
-          bootstrapReviewer(db, env);
-          return { exitCode: 0, output: reviewOutput({ findings: [findingOn(file, { line })] }) };
-        },
-      });
-    if (refusal) expect(run).toThrow(refusal);
-    else expect(run()).toMatchObject({ findings: 1, outcome: "closed" });
+      review(db, operator, dir, answering(reviewOutput({ findings: [findingOn(file, { line })] })));
+    if (refusal) await expect(run()).rejects.toThrow(refusal);
+    else expect(await run()).toMatchObject({ findings: 1, outcome: "closed" });
   });
 
-  test("briefs the reviewer with the order's approved plan", () => {
+  test("briefs the reviewer with the order's approved plan", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     const plan = Number(
@@ -586,28 +548,19 @@ describe("a review round", () => {
     appendOrderEvent(db, "order-1", { kind: "artifact_written", worker: operator, artifactId: plan });
     appendOrderEvent(db, "order-1", { kind: "artifact_approved", worker: operator, artifactId: plan });
     let brief = "";
-    runOrderReview(db, "order-1", operator, {
-      dir,
-      env: machine,
-      spawn: (argv, env) => {
-        bootstrapReviewer(db, env);
-        brief = argv.join(" ");
-        return { exitCode: 0, output: reviewOutput() };
-      },
+    await review(db, operator, dir, (request) => {
+      brief = argvOf(request).join(" ");
+      return { output: reviewOutput() };
     });
     expect(brief).toContain("# Approved plan\n## Outcome\n\nRead the slice.");
     expect(brief).toContain("# Plan slices\n1. Read: The slice is read.");
   });
 
-  test("records a finding's location, failure, fix and severity and renders it as blocking", () => {
+  test("records a finding's location, failure, fix and severity and renders it as blocking", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
-    const spawn: ReviewerSpawn = (_argv, env) => {
-      bootstrapReviewer(db, env);
-      return { exitCode: 0, output: reviewOutput({ findings: [findingOn("a.txt")] }) };
-    };
 
-    runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
+    await review(db, operator, dir, answering(reviewOutput({ findings: [findingOn("a.txt")] })));
 
     expect(
       db.query("SELECT dimension, file, line, failure, fix, severity FROM factory_order_finding").get(),
@@ -690,7 +643,7 @@ describe("a review round", () => {
     expect(brief).toContain("No approved plan is recorded for this order.");
   });
 
-  test("refuses a returned artifact that carries findings", () => {
+  test("refuses a returned artifact that carries findings", async () => {
     const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
     slice(db, dir, worker, "a");
     const env = {
@@ -700,55 +653,32 @@ describe("a review round", () => {
       [WORKER_SESSION_VAR]: operatorSession,
     };
     moveOrder(db, "order-1", "dim-station-review", operator);
-    runOrderReview(db, "order-1", operator, {
-      dir,
-      env: machine,
-      spawn: (_argv, spawned) => {
-        bootstrapReviewer(db, spawned);
-        return { exitCode: 0, output: reviewOutput() };
-      },
-    });
+    await review(db, operator, dir, answering(reviewOutput()));
     runOrderCommand(db, ["return", "order-1", "--reason", "Say more."], null, dir, env);
-    expect(() =>
-      runOrderReview(db, "order-1", operator, {
-        dir,
-        env: machine,
-        spawn: (_argv, spawned) => {
-          bootstrapReviewer(db, spawned);
-          return { exitCode: 0, output: reviewOutput({ findings: [findingOn("a.txt")] }) };
-        },
-      }),
-    ).toThrow("a returned Review artifact cannot change its findings or rulings");
+    await expect(
+      review(db, operator, dir, answering(reviewOutput({ findings: [findingOn("a.txt")] }))),
+    ).rejects.toThrow("a returned Review artifact cannot change its findings or rulings");
   });
 
-  test("refuses a ruling in the first round", () => {
+  test("refuses a ruling in the first round", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
-    const spawn: ReviewerSpawn = (_argv, env) => {
-      bootstrapReviewer(db, env);
-      return {
-        exitCode: 0,
-        output: reviewOutput({ rulings: [{ finding: 1, ruling: "addressed", reason: null }] }),
-      };
-    };
 
-    expect(() => runOrderReview(db, "order-1", operator, { dir, spawn, env: machine })).toThrow(
-      "reviewer ruling names finding 1, which is not an open earlier finding",
-    );
+    await expect(
+      review(
+        db,
+        operator,
+        dir,
+        answering(reviewOutput({ rulings: [{ finding: 1, ruling: "addressed", reason: null }] })),
+      ),
+    ).rejects.toThrow("reviewer ruling names finding 1, which is not an open earlier finding");
   });
 
   describe("a later round", () => {
-    function raisedAndFixed() {
+    async function raisedAndFixed() {
       const f = floor();
       slice(f.db, f.dir, f.worker, "a");
-      runOrderReview(f.db, "order-1", f.operator, {
-        dir: f.dir,
-        env: machine,
-        spawn: (_argv, env) => {
-          bootstrapReviewer(f.db, env);
-          return { exitCode: 0, output: reviewOutput({ findings: [findingOn("a.txt")] }) };
-        },
-      });
+      await review(f.db, f.operator, f.dir, answering(reviewOutput({ findings: [findingOn("a.txt")] })));
       const finding = f.db.query<{ id: number }, []>("SELECT id FROM factory_order_finding").get()
         ?.id as number;
       answerOrderFindings(
@@ -762,20 +692,15 @@ describe("a review round", () => {
       return { ...f, finding };
     }
 
-    test("is briefed with each open earlier finding and the builder's answer", () => {
-      const { db, operator, dir, finding } = raisedAndFixed();
+    test("is briefed with each open earlier finding and the builder's answer", async () => {
+      const { db, operator, dir, finding } = await raisedAndFixed();
       let brief = "";
-      expect(() =>
-        runOrderReview(db, "order-1", operator, {
-          dir,
-          env: machine,
-          spawn: (argv, env) => {
-            bootstrapReviewer(db, env);
-            brief = argv.join(" ");
-            return { exitCode: 0, output: reviewOutput() };
-          },
+      await expect(
+        review(db, operator, dir, (request) => {
+          brief = argvOf(request).join(" ");
+          return { output: reviewOutput() };
         }),
-      ).toThrow(`reviewer rulings leave open earlier finding ${finding} without a ruling`);
+      ).rejects.toThrow(`reviewer rulings leave open earlier finding ${finding} without a ruling`);
       expect(brief).toContain(
         `- Finding ${finding} (correctness, a.txt:1): the guard is the wrong way round`,
       );
@@ -783,50 +708,33 @@ describe("a review round", () => {
       expect(brief).toContain("  - Builder's answer: fixed: inverted it");
     });
 
-    test("records nothing of a round whose ruling the record refuses", () => {
-      const { db, operator, dir, finding } = raisedAndFixed();
-      expect(() =>
-        runOrderReview(db, "order-1", operator, {
+    test("records nothing of a round whose ruling the record refuses", async () => {
+      const { db, operator, dir, finding } = await raisedAndFixed();
+      await expect(
+        review(
+          db,
+          operator,
           dir,
-          env: machine,
-          spawn: (_argv, env) => {
-            bootstrapReviewer(db, env);
-            return {
-              exitCode: 0,
-              output: reviewOutput({
-                findings: [findingOn("b.txt")],
-                rulings: [{ finding, ruling: "refusal_accepted", reason: null }],
-              }),
-            };
-          },
-        }),
-      ).toThrow(`finding ${finding} is answered fixed, so it takes addressed or not_addressed`);
+          answering(
+            reviewOutput({
+              findings: [findingOn("b.txt")],
+              rulings: [{ finding, ruling: "refusal_accepted", reason: null }],
+            }),
+          ),
+        ),
+      ).rejects.toThrow(`finding ${finding} is answered fixed, so it takes addressed or not_addressed`);
       expect(db.query("SELECT count(*) AS n FROM factory_order_finding").get()).toEqual({ n: 1 });
       expect(
         db.query("SELECT count(*) AS n FROM factory_order_artifact WHERE kind = 'review'").get(),
       ).toEqual({ n: 1 });
     });
 
-    test("leaves an unanswered earlier finding out of the rulings it owes", () => {
+    test("leaves an unanswered earlier finding out of the rulings it owes", async () => {
       const f = floor();
       slice(f.db, f.dir, f.worker, "a");
-      runOrderReview(f.db, "order-1", f.operator, {
-        dir: f.dir,
-        env: machine,
-        spawn: (_argv, env) => {
-          bootstrapReviewer(f.db, env);
-          return { exitCode: 0, output: reviewOutput({ findings: [findingOn("a.txt")] }) };
-        },
-      });
+      await review(f.db, f.operator, f.dir, answering(reviewOutput({ findings: [findingOn("a.txt")] })));
       slice(f.db, f.dir, f.worker, "b");
-      const second = runOrderReview(f.db, "order-1", f.operator, {
-        dir: f.dir,
-        env: machine,
-        spawn: (_argv, env) => {
-          bootstrapReviewer(f.db, env);
-          return { exitCode: 0, output: reviewOutput() };
-        },
-      });
+      const second = await review(f.db, f.operator, f.dir, answering(reviewOutput()));
       expect(second.outcome).toBe("closed");
       const body = f.db
         .query<{ body: string }, [number]>(
@@ -839,23 +747,18 @@ describe("a review round", () => {
       );
     });
 
-    test("briefs the round after an overturned refusal with the last ruling and the owner's reason", () => {
+    test("briefs the round after an overturned refusal with the last ruling and the owner's reason", async () => {
       const f = floor();
-      const review = (output: string) => {
+      const briefed = async (output: string) => {
         let brief = "";
-        runOrderReview(f.db, "order-1", f.operator, {
-          dir: f.dir,
-          env: machine,
-          spawn: (argv, env) => {
-            bootstrapReviewer(f.db, env);
-            brief = argv.join(" ");
-            return { exitCode: 0, output };
-          },
+        await review(f.db, f.operator, f.dir, (request) => {
+          brief = argvOf(request).join(" ");
+          return { output };
         });
         return brief;
       };
       slice(f.db, f.dir, f.worker, "a");
-      review(reviewOutput({ findings: [findingOn("a.txt")] }));
+      await briefed(reviewOutput({ findings: [findingOn("a.txt")] }));
       const finding = f.db.query<{ id: number }, []>("SELECT id FROM factory_order_finding").get()
         ?.id as number;
       answerOrderFindings(
@@ -866,7 +769,7 @@ describe("a review round", () => {
         f.worker,
       );
       slice(f.db, f.dir, f.worker, "b");
-      review(
+      await briefed(
         reviewOutput({ rulings: [{ finding, ruling: "refusal_contested", reason: "it is this slice" }] }),
       );
       recordOwnerRuling(f.db, finding, { ruling: "refusal_overturned", reason: "fix it here" }, f.operator);
@@ -878,7 +781,9 @@ describe("a review round", () => {
         f.worker,
       );
       slice(f.db, f.dir, f.worker, "c");
-      const brief = review(reviewOutput({ rulings: [{ finding, ruling: "addressed", reason: null }] }));
+      const brief = await briefed(
+        reviewOutput({ rulings: [{ finding, ruling: "addressed", reason: null }] }),
+      );
       expect(brief).toContain(
         [
           "  - Builder's answer: fixed: moved the gate here",
@@ -894,19 +799,14 @@ describe("a review round", () => {
       expect(body).toContain("## Owner rulings\n\nNone.");
     });
 
-    test("records its rulings and renders them as earlier findings", () => {
-      const { db, operator, dir, finding } = raisedAndFixed();
-      runOrderReview(db, "order-1", operator, {
+    test("records its rulings and renders them as earlier findings", async () => {
+      const { db, operator, dir, finding } = await raisedAndFixed();
+      await review(
+        db,
+        operator,
         dir,
-        env: machine,
-        spawn: (_argv, env) => {
-          bootstrapReviewer(db, env);
-          return {
-            exitCode: 0,
-            output: reviewOutput({ rulings: [{ finding, ruling: "addressed", reason: null }] }),
-          };
-        },
-      });
+        answering(reviewOutput({ rulings: [{ finding, ruling: "addressed", reason: null }] })),
+      );
 
       expect(db.query("SELECT finding_id, ruling FROM factory_order_finding_ruling").all()).toEqual([
         { finding_id: finding, ruling: "addressed" },
