@@ -14,7 +14,7 @@ import {
 } from "./commit-gate";
 import { PROJECT_CONFIG, projectConfigPath, userConfigPath } from "./config";
 import { ConfigError } from "./config-error";
-import { harnessCommand } from "./harness-command";
+import { harnessExecutable } from "./harness-launch";
 import { HARNESSES } from "./harness-name";
 import { type HookPlan, hookGaps } from "./hooks";
 import { readJsonc } from "./jsonc-file";
@@ -189,7 +189,7 @@ function harnesses(env: Env): Health {
   const gaps: string[] = [];
   const repairs: string[] = [];
   for (const harness of HARNESSES) {
-    const installed = Bun.which(harnessCommand(harness), { PATH: env.PATH ?? "" }) !== null;
+    const installed = Bun.which(harnessExecutable(harness), { PATH: env.PATH ?? "" }) !== null;
     let mapped: boolean;
     try {
       readHarnessMap(harness, env);

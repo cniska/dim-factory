@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { type Command, UsageError } from "./command";
 import { dbPath, type Env } from "./paths";
 import { openReadOnly } from "./read-db";
 
@@ -67,7 +68,7 @@ export async function runTraceCommand(
   env: Env = process.env,
   write: (line: string) => void = console.log,
 ): Promise<void> {
-  if (!orderId) throw new Error("usage: dim trace <order-id>");
+  if (!orderId) throw new UsageError("trace names the order to follow");
   let lastId = 0;
   while (true) {
     const db = openReadOnly(dbPath(env));
@@ -85,3 +86,11 @@ export async function runTraceCommand(
     await wait(100);
   }
 }
+
+export const traceCommand: Command = {
+  name: "trace",
+  usage: "usage: dim trace <order-id>",
+  summary: "stream an order's diagnostic events as JSONL until it reaches a terminal state",
+  raw: () => true,
+  run: (args) => runTraceCommand(args[0]),
+};

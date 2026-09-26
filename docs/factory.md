@@ -73,7 +73,7 @@ A commit git refuses (`commit_refused`) or the comment step refuses (`comment_ad
 
 The turn fails, with the reason carried into the next turn's brief, when the tree cannot be committed as the builder left it — among them a red check, a check that changed the tree, a repository nested in the worktree (which git would stage as a gitlink, and inside which the operator's next `git status` would run under that repository's config, outside any sandbox), HEAD moved off the order's branch or past its recorded commit, a comment the comment step refused on every correction, and a commit git refused on every correction. Only a check an `operator` recorded counts as build evidence, and it is always the whole declared check, whatever the order's non-goals.
 
-Factory command responses are JSONL for an agent to consume. A successful response names the command and carries a structured result; a refusal names the command and carries an error name, stable code and message. Usage text is not mixed into the response, and diagnostic output never shares the harness protocol stream.
+Factory commands answer in the CLI's one output shape ([`design.md`](design.md#10-read-path)), and diagnostic output never shares the harness protocol stream.
 
 ## Who did it
 

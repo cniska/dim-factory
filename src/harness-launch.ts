@@ -12,9 +12,9 @@ import {
 import { runHarness } from "./harness-runner";
 import { stationEnvironment } from "./station-environment";
 
-export type HarnessCommandRequest = HarnessRequest & { harness: HarnessName };
+export type HarnessLaunch = HarnessRequest & { harness: HarnessName };
 
-export type HarnessCommandResult = {
+export type HarnessLaunchResult = {
   exitCode: number;
   output: string;
   events: HarnessEvent[];
@@ -63,15 +63,15 @@ function harnessAdapter(harness: HarnessName): HarnessAdapter {
   return processHarness(spec, (request) => workerEnvironment(spec, request));
 }
 
-export function harnessCommand(harness: HarnessName): string {
+export function harnessExecutable(harness: HarnessName): string {
   return HARNESS_PROCESSES[harness].command;
 }
 
-export function harnessArgv(request: HarnessCommandRequest): string[] {
+export function harnessArgv(request: HarnessLaunch): string[] {
   return commandLine(HARNESS_PROCESSES[request.harness], request);
 }
 
-export function runHarnessCommand(request: HarnessCommandRequest): HarnessCommandResult {
+export function launchHarness(request: HarnessLaunch): HarnessLaunchResult {
   const spec = HARNESS_PROCESSES[request.harness];
   const child = Bun.spawnSync(commandLine(spec, request), {
     cwd: request.cwd,
@@ -96,22 +96,22 @@ const WORKER_RUN_TIMEOUT_MS = 10 * 60 * 1000;
 
 type WorkerRunOptions = { timeoutMs?: number };
 
-export async function runHarnessCommandLive(
-  request: HarnessCommandRequest,
+export async function launchHarnessLive(
+  request: HarnessLaunch,
   onStarted: HarnessStarted,
   adapter: HarnessAdapter = harnessAdapter(request.harness),
   options: WorkerRunOptions = {},
-): Promise<HarnessCommandResult> {
+): Promise<HarnessLaunchResult> {
   return runHarnessSessionLive(await adapter.start(request), onStarted, options);
 }
 
-export async function runHarnessCommandResumeLive(
-  request: HarnessCommandRequest,
+export async function resumeHarnessLive(
+  request: HarnessLaunch,
   providerSessionId: string,
   onStarted: HarnessStarted,
   adapter: HarnessAdapter = harnessAdapter(request.harness),
   options: WorkerRunOptions = {},
-): Promise<HarnessCommandResult> {
+): Promise<HarnessLaunchResult> {
   return runHarnessSessionLive(await adapter.resume(providerSessionId, request), onStarted, options);
 }
 
@@ -119,7 +119,7 @@ async function runHarnessSessionLive(
   run: HarnessRun,
   onStarted: HarnessStarted,
   options: WorkerRunOptions,
-): Promise<HarnessCommandResult> {
+): Promise<HarnessLaunchResult> {
   const timeoutMs = options.timeoutMs ?? WORKER_RUN_TIMEOUT_MS;
   const result = await runHarness(run, {
     timeoutMs,

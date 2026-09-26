@@ -8,7 +8,7 @@ export const WALL_HOT_ENV = "DIM_WALL_HOT";
 
 export class WallPortError extends Error {
   constructor(
-    readonly kind: "not-a-port" | "in-use",
+    readonly code: "not-a-port" | "in-use",
     message: string,
   ) {
     super(message);

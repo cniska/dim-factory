@@ -6,7 +6,7 @@ import schema from "./build-turn.schema.json";
 import { claimOrder, queueOrder } from "./factory-order-lifecycle";
 import { closeOrderReview } from "./factory-order-review";
 import { integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
-import { workerFailureReason } from "./harness-command";
+import { workerFailureReason } from "./harness-launch";
 import { builderBrief, rebaseConflictBrief, reviewFindingsForBuild } from "./order-build";
 import {
   answerOrderFindings,

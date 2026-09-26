@@ -4,7 +4,7 @@ import { assertOrderPlanning, recordOrderPlan } from "./factory-order-artifacts"
 import { appendOrderEvent } from "./factory-order-ledger";
 import { resolveWorker } from "./factory-worker";
 import type { HarnessAdapter } from "./harness";
-import { workerFailureReason } from "./harness-command";
+import { workerFailureReason } from "./harness-launch";
 import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
 import { runOrderStation, runOrderStationLive } from "./order-worker";
 import { type PlanSlice, parsePlanArtifact } from "./plan-artifact";

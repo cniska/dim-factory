@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { checkoutRoot } from "./checkout";
+import { UsageError } from "./command";
 import { labelFor } from "./git-remote";
 
 export type Answer = "fixed" | "refused";
@@ -14,8 +15,6 @@ export type Finding = {
   reason: string | null;
 };
 
-export class FindingError extends Error {}
-
 const FLAGS = ["--slice", "--dimension", "--answer", "--summary", "--file", "--why"] as const;
 type Flag = (typeof FLAGS)[number];
 
@@ -23,11 +22,11 @@ export function parseFinding(args: string[]): Map<Flag, string> {
   const given = new Map<Flag, string>();
   for (let at = 0; at < args.length; at += 1) {
     const flag = FLAGS.find((f) => f === args[at]);
-    if (!flag) throw new FindingError(`dim finding: ${args[at]} is not one of ${FLAGS.join(", ")}`);
+    if (!flag) throw new UsageError(`dim finding: ${args[at]} is not one of ${FLAGS.join(", ")}`);
     const value = args[at + 1];
     if (value === undefined || value.startsWith("--"))
-      throw new FindingError(`dim finding: ${flag} needs a value`);
-    if (given.has(flag)) throw new FindingError(`dim finding: ${flag} given twice`);
+      throw new UsageError(`dim finding: ${flag} needs a value`);
+    if (given.has(flag)) throw new UsageError(`dim finding: ${flag} given twice`);
     given.set(flag, value);
     at += 1;
   }
@@ -36,27 +35,27 @@ export function parseFinding(args: string[]): Map<Flag, string> {
 
 function repoAt(dir: string): string {
   const root = checkoutRoot(dir);
-  if (!root) throw new FindingError(`dim finding: ${dir} is not inside a checkout`);
+  if (!root) throw new UsageError(`dim finding: ${dir} is not inside a checkout`);
   const label = labelFor(root);
-  if (!label) throw new FindingError(`dim finding: ${root} has no origin or upstream remote to name it`);
+  if (!label) throw new UsageError(`dim finding: ${root} has no origin or upstream remote to name it`);
   return label;
 }
 
 export function findingFrom(args: string[], dir: string): Finding {
   const given = parseFinding(args);
   for (const flag of ["--slice", "--dimension", "--answer", "--summary"] as const) {
-    if (!given.has(flag)) throw new FindingError(`dim finding: ${flag} is required`);
+    if (!given.has(flag)) throw new UsageError(`dim finding: ${flag} is required`);
   }
   const answer = given.get("--answer");
   if (answer !== "fixed" && answer !== "refused") {
-    throw new FindingError(`dim finding: --answer is fixed or refused, not ${answer}`);
+    throw new UsageError(`dim finding: --answer is fixed or refused, not ${answer}`);
   }
   const reason = given.get("--why") ?? null;
   if (answer === "refused" && (reason === null || reason.trim() === "")) {
-    throw new FindingError("dim finding: a refused finding needs --why, which is what ends it");
+    throw new UsageError("dim finding: a refused finding needs --why, which is what ends it");
   }
   if (answer === "fixed" && reason !== null) {
-    throw new FindingError("dim finding: --why states a refusal, so it does not belong on a fix");
+    throw new UsageError("dim finding: --why states a refusal, so it does not belong on a fix");
   }
   return {
     repo: repoAt(dir),

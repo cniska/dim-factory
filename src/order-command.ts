@@ -1,5 +1,8 @@
 import type { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
+import { checkoutRoot } from "./checkout";
+import { type Command, UsageError } from "./command";
+import { closeDb, openDb } from "./db";
 import type { OrderEventKind } from "./factory-events";
 import { assertOperator } from "./factory-operator";
 import {
@@ -30,6 +33,7 @@ import { shipOrder } from "./factory-order-ship";
 import { ORDER_PRIORITIES, type OrderPriority, type OrderStatus } from "./factory-order-status";
 import { resolveWorker } from "./factory-worker";
 import { readFlags, requiredFlag } from "./flags";
+import { labelFor } from "./git-remote";
 import { HARNESSES, type HarnessName, parseHarness } from "./harness-name";
 import { requireCurrentHooks } from "./hooks";
 import { recordedHarness } from "./operator-harness";
@@ -39,12 +43,10 @@ import { isOrderLine, ORDER_LINES } from "./order-line";
 import { runOrderPlan, runOrderPlanLive } from "./order-plan";
 import { heldOrders, readyOrders } from "./order-ready";
 import { runOrderReview, runOrderReviewLive } from "./order-review";
-import type { Env } from "./paths";
+import { dbPath, type Env } from "./paths";
 import type { ShipOutcome } from "./ship";
 import { resolveAssignedWorker } from "./worker-assignment";
 import { removeWorktree, repoRoot } from "./wt-command";
-
-export class OrderCommandError extends Error {}
 
 export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--line <${ORDER_LINES.join("|")}>] [--description "..."]
                      [--priority <${ORDER_PRIORITIES.join("|")}>] [--hold "..."] [--project <owner/repo>]
@@ -78,7 +80,7 @@ is built in rather than to wherever the command was typed.`;
 const CLAIM_FLAGS = ["--run", "--session", "--station"];
 const ADD_FLAGS = ["--title", "--line", "--description", "--priority", "--hold", "--project"];
 
-const fail = (message: string): Error => new OrderCommandError(message);
+const fail = (message: string): Error => new UsageError(message);
 
 function selectedHarness(db: Database, given: Map<string, string>, operator: string): HarnessName {
   const named = given.get("--harness");
@@ -105,7 +107,7 @@ function markdownBody(value: string): string {
 function priority(given: string | undefined): OrderPriority | undefined {
   if (given === undefined) return undefined;
   if (!(ORDER_PRIORITIES as readonly string[]).includes(given)) {
-    throw new OrderCommandError(`${given} is not a priority; one of ${ORDER_PRIORITIES.join(", ")}`);
+    throw new UsageError(`${given} is not a priority; one of ${ORDER_PRIORITIES.join(", ")}`);
   }
   return given as OrderPriority;
 }
@@ -160,14 +162,14 @@ function claim(db: Database, orderId: string, args: string[], worker: string, en
 
 function exitCode(given: Map<string, string>): number {
   const spec = required(given, "--exit");
-  if (!/^-?\d+$/.test(spec)) throw new OrderCommandError(`--exit ${spec} is not an exit code`);
+  if (!/^-?\d+$/.test(spec)) throw new UsageError(`--exit ${spec} is not an exit code`);
   return Number(spec);
 }
 
 function lineCount(given: Map<string, string>, flag: string): number | undefined {
   const spec = given.get(flag);
   if (spec === undefined || spec === "-") return undefined;
-  if (!/^\d+$/.test(spec)) throw new OrderCommandError(`${flag} ${spec} is not a line count`);
+  if (!/^\d+$/.test(spec)) throw new UsageError(`${flag} ${spec} is not a line count`);
   return Number(spec);
 }
 
@@ -212,7 +214,7 @@ const EVIDENCE: Record<string, Evidence> = {
       const body = given.get("--body");
       const bodyFile = given.get("--body-file");
       if ((body === undefined) === (bodyFile === undefined)) {
-        throw new OrderCommandError("provide exactly one of --body or --body-file");
+        throw new UsageError("provide exactly one of --body or --body-file");
       }
       const buildId = recordOrderBuild(
         db,
@@ -264,9 +266,9 @@ const STOP_KINDS = ["completed", "failed"] as const;
 
 function stop(db: Database, orderId: string, args: string[], cwd: string, worker: string): string {
   const [kind, ...rest] = args;
-  if (!kind) throw new OrderCommandError("stop needs how the order stopped");
+  if (!kind) throw new UsageError("stop needs how the order stopped");
   if (!(STOP_KINDS as readonly string[]).includes(kind)) {
-    throw new OrderCommandError(`${kind} is not a way an order can stop`);
+    throw new UsageError(`${kind} is not a way an order can stop`);
   }
   const given = flags(rest, ["--reason"]);
   if (kind === "failed") {
@@ -344,7 +346,7 @@ export function runOrderCommand(
   defaultProject: string | null = null,
   cwd = process.cwd(),
   env: Env = process.env,
-): string {
+): unknown {
   const [command, orderId, ...rest] = args;
   if (command === "ready") {
     const given = flags(
@@ -355,16 +357,12 @@ export function runOrderCommand(
     if (!project) throw fail("--project is required outside a checkout with a remote");
     const limit = given.get("--limit");
     if (limit !== undefined && !/^[1-9]\d*$/.test(limit)) throw fail("--limit takes a positive whole number");
-    return JSON.stringify(
-      {
-        ready: readyOrders(db, project, limit === undefined ? undefined : Number(limit)),
-        held: heldOrders(db, project),
-      },
-      null,
-      2,
-    );
+    return {
+      ready: readyOrders(db, project, limit === undefined ? undefined : Number(limit)),
+      held: heldOrders(db, project),
+    };
   }
-  if (!command || !orderId) throw new OrderCommandError("order takes a subcommand and an order id");
+  if (!command || !orderId) throw new UsageError("order takes a subcommand and an order id");
   const worker = env.DIM_WORKER_ASSIGNMENT_ID ? resolveAssignedWorker(db, env) : resolveWorker(db, env);
   if (command === "add") return add(db, orderId, rest, defaultProject, worker);
   if (command === "claim") return claim(db, orderId, rest, worker, env, cwd);
@@ -421,7 +419,7 @@ export function runOrderCommand(
       approveOrderReview(db, orderId, worker);
       return `${orderId} review approved by ${worker}`;
     }
-    throw new OrderCommandError(`${orderId} is not at an approvable station`);
+    throw new UsageError(`${orderId} is not at an approvable station`);
   }
   if (Object.hasOwn(EVIDENCE, command)) {
     const evidence = EVIDENCE[command] as Evidence;
@@ -440,7 +438,7 @@ export function runOrderCommand(
       ? `review ${done.review} aborted: ${done.reviewer} did not finish, so nothing it left is a clean reading`
       : `review ${done.review} closed with ${done.findings} finding${done.findings === 1 ? "" : "s"}`;
   }
-  throw new OrderCommandError(`${command} is not an order subcommand`);
+  throw new UsageError(`${command} is not an order subcommand`);
 }
 
 export async function runOrderCommandLive(
@@ -449,11 +447,11 @@ export async function runOrderCommandLive(
   defaultProject: string | null = null,
   cwd = process.cwd(),
   env: Env = process.env,
-): Promise<string> {
+): Promise<unknown> {
   if (args[0] !== "plan" && args[0] !== "build" && args[0] !== "review")
     return runOrderCommand(db, args, defaultProject, cwd, env);
   const [, orderId, ...rest] = args;
-  if (!orderId) throw new OrderCommandError("order takes a subcommand and an order id");
+  if (!orderId) throw new UsageError("order takes a subcommand and an order id");
   const given = flags(rest, ["--harness"]);
   const operator = resolveWorker(db, env);
   const harness = selectedHarness(db, given, operator);
@@ -471,3 +469,18 @@ export async function runOrderCommandLive(
     ? `review ${outcome.review} aborted: ${outcome.reviewer} did not finish, so nothing it left is a clean reading`
     : `review ${outcome.review} closed with ${outcome.findings} finding${outcome.findings === 1 ? "" : "s"}`;
 }
+
+export const orderCommand: Command = {
+  name: "order",
+  usage: ORDER_USAGE,
+  summary: "add, claim, move, record, ship and stop factory orders",
+  async run(args) {
+    const root = checkoutRoot(process.cwd());
+    const db = openDb(dbPath());
+    try {
+      return await runOrderCommandLive(db, args, root ? labelFor(root) : null);
+    } finally {
+      closeDb(db);
+    }
+  },
+};

@@ -13,7 +13,7 @@ import { claimOrder } from "./factory-order-lifecycle";
 import { isActiveOrderRun, OrderNotDone, orderStatus, PlanApprovalRefused } from "./factory-order-status";
 import { findingLocation } from "./finding-location";
 import type { HarnessAdapter } from "./harness";
-import { workerFailureReason } from "./harness-command";
+import { workerFailureReason } from "./harness-launch";
 import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
 import { BuildTurnRefused } from "./order-finding";
 import { type FindingStanding, orderFindingStandings, owesAnswer } from "./order-finding-state";

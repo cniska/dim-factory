@@ -30,7 +30,7 @@ describe("dim config", () => {
     expect(JSON.parse(readFileSync(join(dir, ".dim", "config.json"), "utf8"))).toEqual({
       comments: "banned",
     });
-    expect(JSON.parse(String(out.stdout))).toMatchObject({
+    expect(JSON.parse(String(out.stdout)).result).toMatchObject({
       user: { config: {} },
       project: { config: { comments: "banned" }, committed: {} },
       resolved: {},
@@ -55,7 +55,7 @@ describe("dim config", () => {
       encoding: "utf8",
       env: { ...process.env, HOME: join(dir, ".home") },
     });
-    expect(JSON.parse(listed.stdout)).toMatchObject({ resolved: { comments: "banned" } });
+    expect(JSON.parse(listed.stdout).result).toMatchObject({ resolved: { comments: "banned" } });
   });
 
   test("leaves no file beside the one it edits", () => {

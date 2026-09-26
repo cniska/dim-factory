@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { UsageError } from "./command";
 import {
   mintWorker,
   newWorkerSession,
@@ -11,7 +12,7 @@ import {
   WORKER_NAME_VAR,
   WORKER_SESSION_VAR,
 } from "./factory-worker";
-import { OperatorCommandError, runOperatorCommand } from "./operator-command";
+import { runOperatorCommand } from "./operator-command";
 import { SCHEMA_SQL } from "./schema";
 import { ensureSpoolDirs, toolSpoolDir } from "./spool";
 
@@ -182,8 +183,8 @@ describe("resolving the project's operator session", () => {
     const env = shell();
     runOperatorCommand(db, [], env);
 
-    expect(() => runOperatorCommand(db, ["--role", "builder"], env)).toThrow(OperatorCommandError);
-    expect(() => runOperatorCommand(db, ["--pid", "123"], env)).toThrow(OperatorCommandError);
+    expect(() => runOperatorCommand(db, ["--role", "builder"], env)).toThrow(UsageError);
+    expect(() => runOperatorCommand(db, ["--pid", "123"], env)).toThrow(UsageError);
     expect(db.query("SELECT role FROM factory_worker").get()).toEqual({ role: "operator" });
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 1 });
     db.close();

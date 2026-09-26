@@ -95,7 +95,7 @@ function purgeCommand(
     encoding: "utf8",
     env: { ...process.env, HOME: join(dir, ".home") },
   });
-  return { status: run.status, report: JSON.parse(run.stdout) };
+  return { status: run.status, report: JSON.parse(run.stdout).result };
 }
 
 describe("the purge command", () => {

@@ -146,7 +146,6 @@ describe("what dim route reports for a map it refuses", () => {
       );
       expect(run.exitCode).toBe(1);
       expect(JSON.parse(new TextDecoder().decode(run.stderr))).toEqual({
-        type: "factory",
         command: "route",
         ok: false,
         error: {

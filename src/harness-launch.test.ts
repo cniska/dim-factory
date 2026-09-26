@@ -6,11 +6,11 @@ import { fakeHarness } from "./fake-harness";
 import type { HarnessAdapter, HarnessEvent } from "./harness";
 import {
   harnessArgv,
-  runHarnessCommand,
-  runHarnessCommandLive,
-  runHarnessCommandResumeLive,
+  launchHarness,
+  launchHarnessLive,
+  resumeHarnessLive,
   workerFailureReason,
-} from "./harness-command";
+} from "./harness-launch";
 
 describe("selected harness commands", () => {
   test("gives a read-only planning request to Codex", () => {
@@ -55,7 +55,7 @@ describe("selected harness commands", () => {
   });
 
   test("runs a deterministic adapter through the live command boundary", async () => {
-    const result = await runHarnessCommandLive(
+    const result = await launchHarnessLive(
       {
         harness: "codex",
         cwd: "/worktree",
@@ -91,7 +91,7 @@ describe("selected harness commands", () => {
       },
     };
 
-    const result = await runHarnessCommandLive(
+    const result = await launchHarnessLive(
       {
         harness: "codex",
         cwd: "/worktree",
@@ -140,12 +140,12 @@ describe("selected harness commands", () => {
       text: "tests fail because the fixture is missing",
     } as const;
 
-    const failed = await runHarnessCommandLive(
+    const failed = await launchHarnessLive(
       request,
       () => undefined,
       scripted([said, { type: "run.failed", reason: "turn failed" }]),
     );
-    const completed = await runHarnessCommandLive(
+    const completed = await launchHarnessLive(
       request,
       () => undefined,
       scripted([said, { type: "run.completed" }]),
@@ -159,7 +159,7 @@ describe("selected harness commands", () => {
   });
 
   test("says a run that ran out of time timed out", async () => {
-    const result = await runHarnessCommandLive(
+    const result = await launchHarnessLive(
       {
         harness: "codex",
         cwd: "/worktree",
@@ -181,7 +181,7 @@ describe("selected harness commands", () => {
   });
 
   test("resumes a deterministic adapter through the live command boundary", async () => {
-    const result = await runHarnessCommandResumeLive(
+    const result = await resumeHarnessLive(
       {
         harness: "codex",
         cwd: "/worktree",
@@ -214,7 +214,7 @@ describe("selected harness commands", () => {
       },
     };
 
-    const result = await runHarnessCommandLive(
+    const result = await launchHarnessLive(
       {
         harness: "claude",
         cwd: "/worktree",
@@ -269,14 +269,14 @@ printf '%s\\n' "{\\"type\\":\\"result\\",\\"subtype\\":\\"success\\",\\"is_error
 
   test("runs the harness the request names", async () => {
     const started: string[] = [];
-    const result = await runHarnessCommandLive(request, (session) => started.push(session));
+    const result = await launchHarnessLive(request, (session) => started.push(session));
 
     expect(result).toMatchObject({ exitCode: 0, output: '{"body":"started"}' });
     expect(started).toEqual(["s1"]);
   });
 
   test("resumes through the harness the request names", async () => {
-    const result = await runHarnessCommandResumeLive(request, "s1", () => undefined);
+    const result = await resumeHarnessLive(request, "s1", () => undefined);
 
     expect(result).toMatchObject({ exitCode: 0, output: '{"body":"resumed"}' });
   });
@@ -347,8 +347,8 @@ echo '{"type":"turn.completed"}'
         };
         const expected = `|||assignment-1|assignment-token|||||||subscription|${harness === "codex" ? "sk-ant" : ""}`;
 
-        expect((await runHarnessCommandLive(assigned, () => undefined)).output).toBe(expected);
-        expect(runHarnessCommand(assigned).output).toBe(expected);
+        expect((await launchHarnessLive(assigned, () => undefined)).output).toBe(expected);
+        expect(launchHarness(assigned).output).toBe(expected);
       }
     } finally {
       for (const [name, value] of Object.entries(saved)) {
@@ -371,7 +371,7 @@ exit 0
     );
     chmodSync(join(failing, "claude"), 0o755);
 
-    const result = runHarnessCommand({
+    const result = launchHarness({
       ...request,
       env: { ...request.env, PATH: `${failing}:${process.env.PATH ?? ""}` },
     });
@@ -381,7 +381,7 @@ exit 0
   });
 
   test("reads the named harness's stream on the synchronous path", () => {
-    const result = runHarnessCommand(request);
+    const result = launchHarness(request);
 
     expect(result.output).toBe('{"body":"started"}');
     expect(result.events).toContainEqual({ type: "run.started", providerSessionId: "s1" });

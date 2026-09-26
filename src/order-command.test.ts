@@ -3,6 +3,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { UsageError } from "./command";
 import { approveOrderPlan, recordOrderPlan } from "./factory-order-artifacts";
 import { moveOrder } from "./factory-order-lifecycle";
 import { pullStop } from "./factory-stop";
@@ -16,7 +17,7 @@ import {
 } from "./factory-worker";
 import { collectingMachine, integratedRepo, scratchEnv } from "./fixtures.test-support";
 import { hookConfigPath } from "./hooks";
-import { OrderCommandError, runOrderCommand as runCommand, runOrderCommandLive } from "./order-command";
+import { runOrderCommand as runCommand, runOrderCommandLive } from "./order-command";
 import type { Env } from "./paths";
 import { SCHEMA_SQL } from "./schema";
 import { TOOLS } from "./tools";
@@ -43,7 +44,7 @@ function runOrderCommand(
   cwd: string = trunk.dir,
   as: Env = env,
 ): string {
-  return runCommand(database, args, project, cwd, as);
+  return runCommand(database, args, project, cwd, as) as string;
 }
 
 const trunk = integratedRepo();
@@ -266,7 +267,7 @@ describe("order command", () => {
     queued(database);
     runOrderCommand(database, claim);
 
-    expect(() => runOrderCommand(database, ["move", "order-1"])).toThrow(OrderCommandError);
+    expect(() => runOrderCommand(database, ["move", "order-1"])).toThrow(UsageError);
 
     expect(assembleWallSnapshot(database).orders[0]?.station).toBe("build");
   });
@@ -442,7 +443,10 @@ describe("order command", () => {
       "outward-facing",
     ]);
 
-    const read = JSON.parse(runOrderCommand(database, ["ready", "--project", "cniska/dim-factory"]));
+    const read = runCommand(database, ["ready", "--project", "cniska/dim-factory"], null, trunk.dir, env) as {
+      ready: { id: string }[];
+      held: { id: string }[];
+    };
 
     expect(read.ready.map((one: { id: string }) => one.id)).toEqual(["order-2", "order-1"]);
     expect(read.held.map((one: { id: string }) => one.id)).toEqual(["order-3"]);
@@ -546,7 +550,7 @@ describe("order command", () => {
     for (const spec of ["", " ", "1e3", "-4", "many"]) {
       expect(() =>
         runOrderCommand(database, ["file", "order-1", "--path", "src/a.ts", "--added", spec]),
-      ).toThrow(OrderCommandError);
+      ).toThrow(UsageError);
     }
     expect(
       runOrderCommand(database, [
@@ -574,7 +578,7 @@ describe("order command", () => {
     for (const spec of ["green", "", " ", "1e3"]) {
       expect(() =>
         runOrderCommand(database, ["check", "order-1", "--command", "bun run verify", "--exit", spec]),
-      ).toThrow(OrderCommandError);
+      ).toThrow(UsageError);
     }
 
     expect(database.query("SELECT count(*) AS rows FROM factory_order_check").get()).toEqual({ rows: 0 });
@@ -607,7 +611,7 @@ describe("order command", () => {
     expect(() => runOrderCommand(database, ["rule", "1", "--uphold", "--overturn", "--reason", "r"])).toThrow(
       "rule takes exactly one of --uphold or --overturn",
     );
-    expect(() => runOrderCommand(database, ["rule", "1", "--uphold"])).toThrow(OrderCommandError);
+    expect(() => runOrderCommand(database, ["rule", "1", "--uphold"])).toThrow(UsageError);
     expect(() => runOrderCommand(database, ["rule", "1", "--uphold", "--reason", "r"])).toThrow(
       expect.objectContaining({ code: "finding_unknown" }),
     );
@@ -618,7 +622,7 @@ describe("order command", () => {
     queued(database);
     runOrderCommand(database, claim);
 
-    expect(() => runOrderCommand(database, ["stop", "order-1", "working"])).toThrow(OrderCommandError);
+    expect(() => runOrderCommand(database, ["stop", "order-1", "working"])).toThrow(UsageError);
 
     expect(assembleWallSnapshot(database).orders[0]?.status).toBe("working");
     landed(database, "order-1");
@@ -631,7 +635,7 @@ describe("order command", () => {
     const database = db();
 
     expect(() => runOrderCommand(database, ["add", "order-1", "--project", "cniska/dim-factory"])).toThrow(
-      OrderCommandError,
+      UsageError,
     );
     expect(assembleWallSnapshot(database).orders).toEqual([]);
   });
@@ -696,10 +700,10 @@ describe("order command", () => {
   test("an unknown subcommand, an unknown flag and a repeated flag are refused", () => {
     const database = db();
 
-    expect(() => runOrderCommand(database, ["park", "order-1"])).toThrow(OrderCommandError);
-    expect(() => runOrderCommand(database, ["toString", "order-1"])).toThrow(OrderCommandError);
-    expect(() => runOrderCommand(database, [...claim, "--colour", "red"])).toThrow(OrderCommandError);
-    expect(() => runOrderCommand(database, [...claim, "--title", "second"])).toThrow(OrderCommandError);
+    expect(() => runOrderCommand(database, ["park", "order-1"])).toThrow(UsageError);
+    expect(() => runOrderCommand(database, ["toString", "order-1"])).toThrow(UsageError);
+    expect(() => runOrderCommand(database, [...claim, "--colour", "red"])).toThrow(UsageError);
+    expect(() => runOrderCommand(database, [...claim, "--title", "second"])).toThrow(UsageError);
   });
 
   test("an amend corrects a queued order's own words", () => {
@@ -722,7 +726,7 @@ describe("order command", () => {
     const database = db();
     queued(database);
 
-    expect(() => runOrderCommand(database, ["amend", "order-1"])).toThrow(OrderCommandError);
+    expect(() => runOrderCommand(database, ["amend", "order-1"])).toThrow(UsageError);
   });
 
   test("an amend is refused once the order is claimed", () => {
@@ -763,7 +767,7 @@ describe("order command", () => {
 
     expect(() =>
       runOrderCommand(database, ["drop", "order-1"], null, trunk.dir, operatorEnv(database)),
-    ).toThrow(OrderCommandError);
+    ).toThrow(UsageError);
   });
 
   test("a station worker cannot drop an order", () => {

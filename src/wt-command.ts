@@ -1,5 +1,6 @@
 import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { Command } from "./command";
 import { warn } from "./warn";
 import { runWorkerHook, type WorkerEnvironmentPhase, type WorkerHookReport } from "./worker-environment";
 
@@ -180,6 +181,23 @@ function remove(args: string[]): void {
   }
   removeWorktree(branch, { force });
 }
+
+export const wtCommand: Command = {
+  name: "wt",
+  usage:
+    "usage: dim wt <branch> | dim wt ls | dim wt path <branch> | dim wt rm [--force] <branch> | dim wt prune",
+  summary: "parallel-task worktrees, one per agent",
+  raw: () => true,
+  run(args) {
+    try {
+      runWt(args);
+    } catch (error) {
+      if (!(error instanceof WtError)) throw error;
+      warn(`wt: ${error.message}`);
+      process.exit(1);
+    }
+  },
+};
 
 export function runWt(args: string[]): void {
   const [command, ...rest] = args;

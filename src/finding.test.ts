@@ -3,7 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Finding, FindingError, findingFrom, parseFinding, recordFinding } from "./finding";
+import { UsageError } from "./command";
+import { type Finding, findingFrom, parseFinding, recordFinding } from "./finding";
 import { SCHEMA_SQL } from "./schema";
 import { rebuild } from "./sync";
 
@@ -80,7 +81,7 @@ describe("reading a finding off the command line", () => {
 
   test("refuses a directory that is no checkout, rather than labeling the row by guess", () => {
     const outside = mkdtempSync(join(tmpdir(), "dim-finding-"));
-    expect(() => findingFrom(complete, outside)).toThrow(FindingError);
+    expect(() => findingFrom(complete, outside)).toThrow(UsageError);
   });
 });
 

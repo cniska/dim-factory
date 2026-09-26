@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { gitSubcommands } from "./git-command";
+import { gitSubcommands } from "./git-operations";
 
 describe("reading git out of a shell command", () => {
   test("names the subcommand", () => {

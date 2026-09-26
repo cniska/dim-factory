@@ -1,4 +1,6 @@
 import type { Database } from "bun:sqlite";
+import { type Command, UsageError } from "./command";
+import { closeDb, openDb } from "./db";
 import {
   type MintedWorker,
   mintWorkerForSession,
@@ -9,19 +11,14 @@ import {
 } from "./factory-worker";
 import { readFlags } from "./flags";
 import { labelFor } from "./git-remote";
+import { dbPath } from "./paths";
 import type { Role } from "./roles";
 import { drainSpool } from "./spool";
 import { readWorkerCredential, saveWorkerCredential } from "./worker-credential";
 
-export class OperatorCommandError extends Error {}
-
 const OPERATOR_ROLE = "operator" as const;
 
-export const OPERATOR_USAGE = `usage: dim operator
-
-Print this project's operator credentials for the current shell.`;
-
-const fail = (message: string): Error => new OperatorCommandError(message);
+const fail = (message: string): Error => new UsageError(message);
 
 function activeSession(db: Database, env: Record<string, string | undefined>, cwd: string): string {
   const project = labelFor(cwd);
@@ -101,3 +98,18 @@ export function runOperatorCommand(
   const sessionId = activeSession(db, env, cwd);
   return workerExports(workerForSession(db, OPERATOR_ROLE, sessionId, env));
 }
+
+export const operatorCommand: Command = {
+  name: "operator",
+  usage: "usage: dim operator",
+  summary: "print this project's operator credentials as shell exports, for eval",
+  raw: () => true,
+  run(args) {
+    const db = openDb(dbPath());
+    try {
+      console.log(runOperatorCommand(db, args, process.env, process.cwd()));
+    } finally {
+      closeDb(db);
+    }
+  },
+};

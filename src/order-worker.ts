@@ -10,14 +10,14 @@ import {
 } from "./factory-worker";
 import type { HarnessAdapter } from "./harness";
 import {
-  type HarnessCommandRequest,
-  type HarnessCommandResult,
+  type HarnessLaunch,
+  type HarnessLaunchResult,
   type HarnessStarted,
   harnessArgv,
-  runHarnessCommand,
-  runHarnessCommandLive,
-  runHarnessCommandResumeLive,
-} from "./harness-command";
+  launchHarness,
+  launchHarnessLive,
+  resumeHarnessLive,
+} from "./harness-launch";
 import type { HarnessName } from "./harness-name";
 import type { Role } from "./roles";
 import { route } from "./routing";
@@ -43,7 +43,7 @@ export type OrderWorker = {
 };
 
 export type OrderStationName = "plan" | "build" | "review";
-export type ExecutionAttribution = { harness: HarnessCommandRequest["harness"]; model: string; tier: string };
+export type ExecutionAttribution = { harness: HarnessLaunch["harness"]; model: string; tier: string };
 
 const STATION_ROLES = {
   plan: "planner",
@@ -51,14 +51,14 @@ const STATION_ROLES = {
   review: "reviewer",
 } as const satisfies Record<OrderStationName, StationRole>;
 type ReturnedFor<Station extends OrderStationName> = Extract<ReturnedOrderArtifact, { station: Station }>;
-type StationRequest = Omit<HarnessCommandRequest, "harness" | "model" | "env">;
+type StationRequest = Omit<HarnessLaunch, "harness" | "model" | "env">;
 
 type OrderStationOptions<Station extends OrderStationName> = {
   db: Database;
   orderId: string;
   station: Station;
   parentWorker: string;
-  harness: HarnessCommandRequest["harness"];
+  harness: HarnessLaunch["harness"];
   env?: Record<string, string | undefined>;
   useReturnedArtifact?: boolean;
   requireReturnedArtifact?: boolean;
@@ -70,7 +70,7 @@ export type OrderStationTurn<Station extends OrderStationName> = {
   orderWorker: OrderWorker;
   returned: ReturnedFor<Station> | null;
   worker?: string;
-  run: Pick<HarnessCommandResult, "exitCode" | "output" | "failureReason" | "harnessExitCode">;
+  run: Pick<HarnessLaunchResult, "exitCode" | "output" | "failureReason" | "harnessExitCode">;
 };
 
 function prepareOrderStation<Station extends OrderStationName>(options: OrderStationOptions<Station>) {
@@ -111,7 +111,7 @@ export function runOrderStation<Station extends OrderStationName>(
   const env = orderWorkerRequest(options.db, options.env, orderWorker);
   const run = options.spawn
     ? options.spawn(harnessArgv({ ...request, env }), env)
-    : runHarnessCommand({ ...request, env });
+    : launchHarness({ ...request, env });
   const worker = assignedWorker(options.db, orderWorker.assignment.id) ?? undefined;
   if (worker)
     bindOrderWorkerName(options.db, options.orderId, orderWorker.role, orderWorker.assignment.id, worker);
@@ -163,12 +163,12 @@ export async function resumeOrderStationLive(options: {
 
 export function runOrderWorkerHarnessLive(
   db: Database,
-  request: HarnessCommandRequest,
+  request: HarnessLaunch,
   worker: OrderWorker,
   machine: Record<string, string | undefined> | undefined,
   adapter?: HarnessAdapter,
   onAssigned?: (worker: string, sessionId: string, attribution: ExecutionAttribution) => void,
-): Promise<Awaited<ReturnType<typeof runHarnessCommandLive>> & { worker?: string }> {
+): Promise<Awaited<ReturnType<typeof launchHarnessLive>> & { worker?: string }> {
   const env = orderWorkerRequest(db, machine, worker);
   let name = worker.worker;
   let running: string | undefined;
@@ -193,8 +193,8 @@ export function runOrderWorkerHarnessLive(
     onAssigned?.(name, sessionId, { harness: request.harness, model, tier });
   };
   const run = worker.providerSessionId
-    ? runHarnessCommandResumeLive({ ...request, env }, worker.providerSessionId, onStarted, adapter)
-    : runHarnessCommandLive({ ...request, env }, onStarted, adapter);
+    ? resumeHarnessLive({ ...request, env }, worker.providerSessionId, onStarted, adapter)
+    : launchHarnessLive({ ...request, env }, onStarted, adapter);
   return run
     .then((result) => ({
       ...result,

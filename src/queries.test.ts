@@ -8,7 +8,6 @@ import { scratchEnv, writeClaudeTranscript, writeCodexRollout } from "./fixtures
 import { dbPath, type Env } from "./paths";
 import { findQuery, QUERIES } from "./queries";
 import { NoDatabaseError, openReadOnly } from "./read-db";
-import { renderTable } from "./render";
 import { SCHEMA_SQL } from "./schema";
 import { sync } from "./sync";
 import { withoutWorktree } from "./worktree";
@@ -86,7 +85,6 @@ describe("read path", () => {
       const cost = findQuery("cost")?.run(db, {});
       expect(cost?.rows).toEqual([]);
       expect(cost?.note).toBe("no session reported a cost");
-      expect(renderTable(cost as never)).toContain("no session reported a cost");
 
       const sessions = findQuery("sessions")?.run(db, {});
       expect(sessions?.note).toContain("hooks are not installed");

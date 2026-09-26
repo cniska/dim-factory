@@ -292,7 +292,7 @@ Where they hold, the database gives the two arms and their locators and the eval
 
 ## 10. Read path
 
-**Shape**: `dim q <name> [--project <cwd>|--all-projects] [--since 30d] [--model <m>] [--tool claude|codex] [--skill <name>]`. Bash + sqlite3, each named query a `.sql` file under `queries/`, output as aligned text capped at 40 rows; `--json` for the eval export. Raw SQL stays available (`sqlite3 ~/.local/share/dim-factory/sessions.db`) for the owner; the agent uses only named queries. A TUI or dashboard is not built: the audience is one person and one agent, and 40 lines of text is the right size for both.
+**Shape**: `dim q <name> [--project <cwd>|--all-projects] [--since 30d] [--model <m>] [--tool claude|codex] [--skill <name>]`. Each named query is a `Query` in one of the `*-queries.ts` modules [`src/queries.ts`](../src/queries.ts) lists, and its result prints as JSON capped at 40 rows. Raw SQL stays available (`sqlite3 ~/.local/share/dim-factory/sessions.db`) for the owner; the agent uses only named queries. A TUI or dashboard is not built: the audience is one person and one agent, and 40 lines of text is the right size for both.
 
 **Named queries**:
 
@@ -402,13 +402,9 @@ The corpus lives beside the database and not in this repo. A question that measu
 
 **Three states, never two.** A query reports conformed, violated, or *not exercised*, and the third is never folded into the first two. Every result carries the base its numbers came from, printed above the rows, and a result with no rows prints why rather than an empty table a reader scores as zero. Where a figure covers a subset — Codex rollouts before roughly March 2026 emit `task_complete` with no `started_at` or `duration_ms`, so 8,896 of 18,094 turns are counted but not timed — the denominator names the subset instead of leaving a total that does not add up. No duration is derived for those turns: `completed_at` minus the `turn_context` timestamp is a different measurement, and mixing two into one column is worse than a gap.
 
-**An agent reads this output, not a person.** The consumers are the skills that call the CLI, and none of them passes `--json` — they read the table. Three things follow:
+**An agent reads this output, not a person.** The consumers are the skills that call the CLI, so there is one shape and no human format. Every command prints one line of compact JSON: `{command, ok, result}` on stdout, or `{command, ok: false, error}` on stderr, where `error` carries a `name`, a `code` that tells errors apart, a `message`, and the command's `usage` when the arguments were wrong ([`src/command-output.ts`](../src/command-output.ts)). A command whose output another program parses prints that program's format instead and says so by being `raw`: `wake` and `check-command` for their hooks, `trace`'s JSONL, and `wt`, `operator` and `comments check`, whose output a script reads.
 
-- A number prints as digits with no thousands separator, because a separator is punctuation a reader has to strip.
-- Cells are separated rather than padded to the widest value in their column. Alignment buys a person columns that line up and costs the agent a run of spaces on every row.
-- A cell that would widen every row is truncated where the distinctive end survives: a commit from a checkout with no remote is named by the tail of its path, not by the temp directory it starts with.
-
-A result longer than the cap says how many rows were cut and names `--rows`, so a short table is never read as the whole answer. What stays is the prose — the denominator above the rows and the note below them — which is the half actually written for a model, and is why an empty result prints why rather than an empty table.
+A query's result carries its `denominator`, `columns`, `rows` and `note`. A result longer than the cap says how many rows were cut and names `--rows` in `more`, so a short result is never read as the whole answer. The prose fields are the half actually written for a model, and are why an empty result says why rather than returning empty rows.
 
 **The reader cannot write.** A query reaches the database only through `openReadOnly`, which opens with SQLite's read-only flag. Everything else here is rebuilt from the source files, but `hook_event` has no source to re-read from, so a wrong query typed by the owner or issued by an agent must not be able to reach it. `dim q` does open a second, writable handle after the rows are rendered, to record one `trace_event` row; it is a separate connection for that write alone, so the handle the query itself holds stays read-only.
 

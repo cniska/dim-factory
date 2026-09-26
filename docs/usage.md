@@ -29,11 +29,10 @@ Named questions are listed and run with:
 ```sh
 dim q list
 dim q <name>
-dim q <name> --json
 dim sql "<read-only select>"
 ```
 
-Queries state the evidence base and report when no evidence is available. See [Session database](design.md) for sources, schema and read-path rules.
+Every command prints its result as one line of JSON, and `dim` with no command lists them all with their usage. Queries state the evidence base and report when no evidence is available. See [Session database](design.md) for sources, schema and read-path rules.
 
 ## Install the shared controls
 

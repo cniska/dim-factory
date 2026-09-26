@@ -7,7 +7,7 @@ import { carriedThroughRewrites, currentOrderCommits } from "./factory-order-com
 import { closeOrderReview, openAssignedOrderReview, recordOrderReviewArtifact } from "./factory-order-review";
 import { findingLocation } from "./finding-location";
 import type { HarnessAdapter } from "./harness";
-import { workerFailureReason } from "./harness-command";
+import { workerFailureReason } from "./harness-launch";
 import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
 import { raiseOrderFinding, ruleOnOrderFinding } from "./order-finding";
 import { type FindingStanding, orderFindingStandings } from "./order-finding-state";

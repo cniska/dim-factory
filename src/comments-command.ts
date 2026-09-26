@@ -1,5 +1,6 @@
 import { relative, resolve } from "node:path";
 import { checkoutRoot } from "./checkout";
+import { type Command, Ran, UsageError } from "./command";
 import { purgeCheckout } from "./comments-purge";
 import { stagedComments } from "./comments-staged";
 import { COMMENTS_FOUND_EXIT, commentsBanned } from "./commit-gate";
@@ -31,7 +32,7 @@ function formatted(root: string, command: string): Formatted {
   };
 }
 
-function purge(cwd: string, args: string[]): void {
+function purge(cwd: string, args: string[]): unknown {
   const root = checkoutRoot(cwd);
   if (root === null) throw new Error(`${cwd} is not inside a git checkout`);
   const write = args.includes("--write");
@@ -47,39 +48,39 @@ function purge(cwd: string, args: string[]): void {
   const check = checkCommand(root)?.command ?? null;
   if (!write) {
     const steps = [`removes them`, `bans comments in ${ban}`, format ? `runs ${format}` : null];
-    console.log(
-      JSON.stringify({
-        files,
-        unparsed,
-        comments,
-        next: `dim comments purge --write ${steps.filter(Boolean).join(", ")}`,
-      }),
-    );
-    return;
-  }
-  const ran = format ? formatted(root, format) : null;
-  console.log(
-    JSON.stringify({
+    return {
       files,
       unparsed,
       comments,
-      banned: ban,
-      format: ran,
-      next:
-        ran && ran.exitCode !== 0
-          ? `${ran.command} failed; fix it before committing`
-          : `${check ? `run ${check}, then ` : ""}commit the purge together with ${ban}`,
-    }),
-  );
-  if (ran && ran.exitCode !== 0) process.exit(1);
+      next: `dim comments purge --write ${steps.filter(Boolean).join(", ")}`,
+    };
+  }
+  const ran = format ? formatted(root, format) : null;
+  const failed = ran !== null && ran.exitCode !== 0;
+  const report = {
+    files,
+    unparsed,
+    comments,
+    banned: ban,
+    format: ran,
+    next: failed
+      ? `${ran.command} failed; fix it before committing`
+      : `${check ? `run ${check}, then ` : ""}commit the purge together with ${ban}`,
+  };
+  return failed ? new Ran(report, 1) : report;
 }
 
-export function runComments(args: string[], cwd = process.cwd()): void {
-  const [verb, ...rest] = args;
-  if (verb === "check") check(cwd);
-  else if (verb === "purge") purge(cwd, rest);
-  else {
-    warn(USAGE);
-    process.exit(1);
-  }
-}
+export const commentsCommand: Command = {
+  name: "comments",
+  usage: USAGE,
+  summary: "check staged lines for comments the config bans, or purge the comments a repo holds",
+  raw: (args) => args[0] === "check",
+  run(args) {
+    const [verb, ...rest] = args;
+    if (verb === "check") return check(process.cwd());
+    if (verb === "purge") return purge(process.cwd(), rest);
+    throw new UsageError(
+      verb === undefined ? "comments takes check or purge" : `${verb} is not a comments verb`,
+    );
+  },
+};

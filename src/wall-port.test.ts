@@ -26,7 +26,7 @@ describe("wallPort", () => {
       wallPort({ DIM_WALL_PORT: "abc" });
       throw new Error("expected a refusal");
     } catch (error) {
-      expect((error as WallPortError).kind).toBe("not-a-port");
+      expect((error as WallPortError).code).toBe("not-a-port");
     }
   });
 });
