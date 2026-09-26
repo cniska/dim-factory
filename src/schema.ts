@@ -1,5 +1,5 @@
 import { ATTEMPT_OUTCOMES_SQL, ORDER_EVENT_KINDS_SQL } from "./factory-events";
-import { ORDER_STATUSES_SQL } from "./factory-order";
+import { ORDER_STATUSES_SQL } from "./factory-order-status";
 import { HARNESSES_SQL } from "./harness-name";
 import { ORDER_LINES_SQL } from "./order-line";
 import { ROLES_SQL } from "./roles";

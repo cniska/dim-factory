@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { appendOrderEvent, dropOrder, queueOrder, setOrderHold, setOrderPriority } from "./factory-order";
+import { appendOrderEvent } from "./factory-order-ledger";
+import { dropOrder, queueOrder, setOrderHold, setOrderPriority } from "./factory-order-lifecycle";
 import { mintWorker } from "./factory-worker";
 import { SCHEMA_SQL } from "./schema";
 

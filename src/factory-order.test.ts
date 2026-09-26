@@ -6,39 +6,44 @@ import { join } from "node:path";
 import { closeDb, openDb } from "./db";
 import { runFactoryOrder } from "./factory-operator";
 import {
-  amendOrder,
-  appendOrderEvent,
   approveOrderBuild,
   approveOrderPlan,
-  approveOrderReview,
-  assertReviewApproved,
-  claimOrder as claimOrderAt,
-  closeOrderReview,
   completeOrderSlice,
-  currentOrderCommits,
-  dropOrder,
-  isTerminalOrderStatus,
-  moveOrder,
   nextOrderSlice,
-  type OrderClaim,
-  openAssignedOrderReview,
-  openOrderReview,
-  queueOrder,
-  ReviewNotOpen,
   recordOrderBuild,
+  recordOrderPlan,
+  returnedOrderArtifact,
+  returnOrderArtifact,
+} from "./factory-order-artifacts";
+import { currentOrderCommits } from "./factory-order-commits";
+import {
   recordOrderCheck,
   recordOrderCommit,
   recordOrderDocument,
   recordOrderEnvironment,
   recordOrderFile,
-  recordOrderPlan,
-  recordOrderReviewArtifact,
   recordOrderRewrite,
+} from "./factory-order-evidence";
+import { appendOrderEvent } from "./factory-order-ledger";
+import {
+  amendOrder,
+  claimOrder as claimOrderAt,
+  dropOrder,
+  moveOrder,
+  queueOrder,
   recoverOrderFailure,
-  returnedOrderArtifact,
-  returnOrderArtifact,
-  shipOrder,
-} from "./factory-order";
+} from "./factory-order-lifecycle";
+import {
+  approveOrderReview,
+  assertReviewApproved,
+  closeOrderReview,
+  openAssignedOrderReview,
+  openOrderReview,
+  ReviewNotOpen,
+  recordOrderReviewArtifact,
+} from "./factory-order-review";
+import { shipOrder } from "./factory-order-ship";
+import { isTerminalOrderStatus, type OrderClaim } from "./factory-order-status";
 import { clearStop, FactoryStopError, pullStop } from "./factory-stop";
 import { endWorker, mintWorker, newWorkerSession } from "./factory-worker";
 import {

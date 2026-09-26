@@ -1,7 +1,8 @@
 import type { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
 import { age } from "./age";
-import { ORDER_STATUSES, type OrderEventKind, type OrderStatus } from "./factory-order";
+import type { OrderEventKind } from "./factory-events";
+import { ORDER_STATUSES, type OrderStatus } from "./factory-order-status";
 import type { OrderLine } from "./order-line";
 import { dbPath, tildePath } from "./paths";
 import { openReadOnly } from "./read-db";

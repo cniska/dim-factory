@@ -2,16 +2,10 @@ import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-  approveOrderBuild,
-  approveOrderReview,
-  claimOrder,
-  moveOrder,
-  queueOrder,
-  recordOrderBuild,
-  recordOrderCheck,
-  recordOrderCommit,
-} from "./factory-order";
+import { approveOrderBuild, recordOrderBuild } from "./factory-order-artifacts";
+import { recordOrderCheck, recordOrderCommit } from "./factory-order-evidence";
+import { claimOrder, moveOrder, queueOrder } from "./factory-order-lifecycle";
+import { approveOrderReview } from "./factory-order-review";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { integratedRepo, orderWorktree, reviewOutput } from "./fixtures.test-support";
 import { builderBrief, reviewFindingsForBuild } from "./order-build";

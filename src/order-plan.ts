@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { Capability } from "./capabilities";
-import { appendOrderEvent, assertOrderPlanning, recordOrderPlan } from "./factory-order";
+import { assertOrderPlanning, recordOrderPlan } from "./factory-order-artifacts";
+import { appendOrderEvent } from "./factory-order-ledger";
 import { resolveWorker } from "./factory-worker";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-command";

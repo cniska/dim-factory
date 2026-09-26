@@ -1,13 +1,10 @@
 import type { Database } from "bun:sqlite";
 import { nestedRepository } from "./builder-tree";
-import {
-  isActiveOrderRun,
-  moveOrder,
-  type RecordedConflict,
-  recheck,
-  recordOrderCheck,
-  recordOrderRewrite,
-} from "./factory-order";
+import type { RecordedConflict } from "./factory-order-commits";
+import { recordOrderCheck, recordOrderRewrite } from "./factory-order-evidence";
+import { moveOrder } from "./factory-order-lifecycle";
+import { recheck } from "./factory-order-ship";
+import { isActiveOrderRun } from "./factory-order-status";
 import { BuildTurnRefused } from "./order-finding";
 import type { Env } from "./paths";
 import {

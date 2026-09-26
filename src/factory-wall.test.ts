@@ -4,24 +4,23 @@ import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename } from "node:path";
 import wallServeConfig from "../bunfig.toml";
+import { approveOrderBuild, recordOrderBuild } from "./factory-order-artifacts";
 import {
-  appendOrderEvent,
-  approveOrderBuild,
-  approveOrderReview,
-  claimOrder as claimOrderAt,
-  closeOrderReview,
-  moveOrder,
-  type OrderClaim,
-  queueOrder,
-  recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
   recordOrderDocument,
   recordOrderEnvironment,
   recordOrderFile,
-  recordOrderReviewArtifact,
+} from "./factory-order-evidence";
+import { appendOrderEvent } from "./factory-order-ledger";
+import {
+  claimOrder as claimOrderAt,
+  moveOrder,
+  queueOrder,
   setOrderPriority,
-} from "./factory-order";
+} from "./factory-order-lifecycle";
+import { approveOrderReview, closeOrderReview, recordOrderReviewArtifact } from "./factory-order-review";
+import type { OrderClaim } from "./factory-order-status";
 import { assembleItemView, assembleWallSnapshot, wallHandler } from "./factory-wall";
 import { integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
 import { answerOrderFindings, raiseOrderFinding, ruleOnOrderFinding } from "./order-finding";

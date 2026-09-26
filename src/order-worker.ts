@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { assertOperator } from "./factory-operator";
-import { type ReturnedOrderArtifact, returnedOrderArtifact } from "./factory-order";
+import { type ReturnedOrderArtifact, returnedOrderArtifact } from "./factory-order-artifacts";
 import {
   authenticateWorker,
   endWorker,

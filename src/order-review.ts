@@ -2,15 +2,9 @@ import type { Database } from "bun:sqlite";
 import { latestApprovedPlan } from "./approved-plan";
 import type { Capability } from "./capabilities";
 import { assertOperator } from "./factory-operator";
-import {
-  assertBuildReady,
-  carriedThroughRewrites,
-  closeOrderReview,
-  currentOrderCommits,
-  openAssignedOrderReview,
-  type ReturnedOrderArtifact,
-  recordOrderReviewArtifact,
-} from "./factory-order";
+import { assertBuildReady, type ReturnedOrderArtifact } from "./factory-order-artifacts";
+import { carriedThroughRewrites, currentOrderCommits } from "./factory-order-commits";
+import { closeOrderReview, openAssignedOrderReview, recordOrderReviewArtifact } from "./factory-order-review";
 import { findingLocation } from "./finding-location";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-command";

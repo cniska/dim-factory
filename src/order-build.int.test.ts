@@ -15,23 +15,19 @@ import { join } from "node:path";
 import type { BuildTurn } from "./build-turn";
 import { installCommitGate } from "./commit-gate";
 import {
-  appendOrderEvent,
   approveOrderBuild,
   approveOrderPlan,
-  claimOrder,
-  closeOrderReview,
   completeOrderBuildFollowup,
-  isActiveOrderRun,
-  moveOrder,
-  openOrderReview,
-  queueOrder,
   recordOrderBuild,
-  recordOrderCheck,
-  recordOrderCommit,
   recordOrderPlan,
   returnOrderArtifact,
-  shipOrder,
-} from "./factory-order";
+} from "./factory-order-artifacts";
+import { recordOrderCheck, recordOrderCommit } from "./factory-order-evidence";
+import { appendOrderEvent } from "./factory-order-ledger";
+import { claimOrder, moveOrder, queueOrder } from "./factory-order-lifecycle";
+import { closeOrderReview, openOrderReview } from "./factory-order-review";
+import { shipOrder } from "./factory-order-ship";
+import { isActiveOrderRun } from "./factory-order-status";
 import {
   endWorker,
   mintWorker,

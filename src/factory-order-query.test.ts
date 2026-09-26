@@ -1,19 +1,18 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
+import { recordOrderBuild } from "./factory-order-artifacts";
 import {
-  appendOrderEvent,
-  claimOrder as claimOrderAt,
-  closeOrderReview,
-  type OrderClaim,
-  queueOrder,
-  recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
   recordOrderDocument,
   recordOrderEnvironment,
   recordOrderFile,
-} from "./factory-order";
+} from "./factory-order-evidence";
+import { appendOrderEvent } from "./factory-order-ledger";
+import { claimOrder as claimOrderAt, queueOrder } from "./factory-order-lifecycle";
+import { closeOrderReview } from "./factory-order-review";
+import type { OrderClaim } from "./factory-order-status";
 import { integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
 import { answerOrderFindings, raiseOrderFinding, ruleOnOrderFinding } from "./order-finding";
 import { findQuery } from "./queries";

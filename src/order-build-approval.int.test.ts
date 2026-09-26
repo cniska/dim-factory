@@ -1,15 +1,10 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
-import {
-  appendOrderEvent,
-  claimOrder,
-  queueOrder,
-  recordOrderBuild,
-  recordOrderCheck,
-  recordOrderCommit,
-  returnedOrderArtifact,
-} from "./factory-order";
+import { recordOrderBuild, returnedOrderArtifact } from "./factory-order-artifacts";
+import { recordOrderCheck, recordOrderCommit } from "./factory-order-evidence";
+import { appendOrderEvent } from "./factory-order-ledger";
+import { claimOrder, queueOrder } from "./factory-order-lifecycle";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { integratedRepo } from "./fixtures.test-support";
 import { runOrderCommand } from "./order-command";

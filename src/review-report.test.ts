@@ -1,7 +1,8 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
-import { claimOrder, closeOrderReview, queueOrder } from "./factory-order";
+import { claimOrder, queueOrder } from "./factory-order-lifecycle";
+import { closeOrderReview } from "./factory-order-review";
 import { integratedRepo, reviewIn, reviewOutput, workerIn } from "./fixtures.test-support";
 import { answerOrderFindings, raiseOrderFinding, ruleOnOrderFinding } from "./order-finding";
 import { parseReviewReport } from "./review-artifact";

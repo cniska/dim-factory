@@ -4,15 +4,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { commitBuildTurn } from "./builder-commit";
-import {
-  claimOrder,
-  currentOrderCommits,
-  pendingRebaseConflict,
-  queueOrder,
-  type RecordedConflict,
-  recordOrderCommit,
-  shipOrder,
-} from "./factory-order";
+import { currentOrderCommits, pendingRebaseConflict, type RecordedConflict } from "./factory-order-commits";
+import { recordOrderCommit } from "./factory-order-evidence";
+import { claimOrder, queueOrder } from "./factory-order-lifecycle";
+import { shipOrder } from "./factory-order-ship";
 import { mintWorker, newWorkerSession } from "./factory-worker";
 import {
   confiningCheckSandbox,

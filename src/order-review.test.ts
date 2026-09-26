@@ -3,17 +3,10 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  appendOrderEvent,
-  approveOrderBuild,
-  claimOrder,
-  moveOrder,
-  queueOrder,
-  recordOrderBuild,
-  recordOrderCheck,
-  recordOrderCommit,
-  returnedOrderArtifact,
-} from "./factory-order";
+import { approveOrderBuild, recordOrderBuild, returnedOrderArtifact } from "./factory-order-artifacts";
+import { recordOrderCheck, recordOrderCommit } from "./factory-order-evidence";
+import { appendOrderEvent } from "./factory-order-ledger";
+import { claimOrder, moveOrder, queueOrder } from "./factory-order-lifecycle";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { fakeHarness } from "./fake-harness";
 import { integratedRepo, orderWorktree, reviewOutput } from "./fixtures.test-support";

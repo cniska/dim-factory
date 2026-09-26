@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { openDb } from "./db";
-import { claimOrder, queueOrder } from "./factory-order";
+import { claimOrder, queueOrder } from "./factory-order-lifecycle";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./factory-worker";
 import { collectingMachine, declareCheck, integratedRepo, reviewOutput } from "./fixtures.test-support";
 import { runOrderCommand, runOrderCommandLive } from "./order-command";

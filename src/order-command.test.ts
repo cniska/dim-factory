@@ -3,7 +3,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { approveOrderPlan, moveOrder, recordOrderPlan } from "./factory-order";
+import { approveOrderPlan, recordOrderPlan } from "./factory-order-artifacts";
+import { moveOrder } from "./factory-order-lifecycle";
 import { pullStop } from "./factory-stop";
 import { assembleWallSnapshot } from "./factory-wall";
 import {

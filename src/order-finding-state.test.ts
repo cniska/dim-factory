@@ -4,7 +4,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
-import { claimOrder, closeOrderReview, moveOrder, queueOrder, setOrderHold } from "./factory-order";
+import { claimOrder, moveOrder, queueOrder, setOrderHold } from "./factory-order-lifecycle";
+import { closeOrderReview } from "./factory-order-review";
 import { integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
 import {
   answerOrderFindings,

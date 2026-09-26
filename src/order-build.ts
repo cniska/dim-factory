@@ -5,20 +5,12 @@ import { commitBuildTurn } from "./builder-commit";
 import type { Capability } from "./capabilities";
 import { type CheckoutConvention, CONVENTION_FLOOR, checkoutConvention } from "./commit-convention";
 import { assertOperator } from "./factory-operator";
-import type { OrderSlice } from "./factory-order";
-import {
-  appendOrderEvent,
-  claimOrder,
-  completeOrderBuildFollowup,
-  completeOrderSlice,
-  isActiveOrderRun,
-  latestOrderCommit,
-  nextOrderSlice,
-  OrderNotDone,
-  orderStatus,
-  PlanApprovalRefused,
-  pendingRebaseConflict,
-} from "./factory-order";
+import type { OrderSlice } from "./factory-order-artifacts";
+import { completeOrderBuildFollowup, completeOrderSlice, nextOrderSlice } from "./factory-order-artifacts";
+import { latestOrderCommit, pendingRebaseConflict } from "./factory-order-commits";
+import { appendOrderEvent } from "./factory-order-ledger";
+import { claimOrder } from "./factory-order-lifecycle";
+import { isActiveOrderRun, OrderNotDone, orderStatus, PlanApprovalRefused } from "./factory-order-status";
 import { findingLocation } from "./finding-location";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-command";
