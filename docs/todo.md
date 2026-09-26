@@ -27,6 +27,7 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 - **Codex workers stop at their answer** — find out whether one can leave work running, and turn that off if so.
 - **A change summary before ship** — builder and reviewer each describe the change, read side by side.
 - **Gates earn trust per kind of order** — over a lookback window with a minimum sample, the record shows which kinds of order the owner has stopped needing to read, and the wall marks them. Trust is asymmetric: a return or a revert demotes at once, and promotion happens only on the owner's word, citing the evidence ([`landscape.md`](landscape.md#earned-autonomy)).
+- **Skill revision reuse** — report whether a changed skill loaded again, and name the versions the record could not identify ([`landscape.md`](landscape.md#session-records-and-gates)).
 - **Artifacts linked to commits by trailer** — so an order's plan, Build and Review artifacts stay attached to its commits through a rebase.
 - **Pull what every project repeats into `dim`** — commit checks, pre-push, worktree setup, ship scripts and CI checks each become one thing `dim` holds, and the per-project copy is deleted ([`findings.md`](findings.md), "The same script, five times, already drifted").
 - **The owner's rules as per-repo defaults** — the comment ban is already a setting; the subject limit, shipping to the default branch, a required `AGENTS.md` and the anti-pattern review become settings a repo adopts rather than conditions of using `dim`.
