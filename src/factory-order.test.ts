@@ -78,6 +78,15 @@ function db(): Database {
   return database;
 }
 
+/** A builder holding a claim, as the runner's is: its pid was recorded before it claimed. */
+function runningBuilder(database: Database): string {
+  return mintWorker(database, {
+    role: "builder",
+    pid: process.pid,
+    sessionId: newWorkerSession("running-builder"),
+  }).name;
+}
+
 const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
 
@@ -615,6 +624,7 @@ describe("factory order report records", () => {
     database: Database,
     orderId: string,
     runner: string,
+    pid: number | null = process.pid,
   ): { id: number; reviewer: string } {
     queueOrder(database, { ...order, id: orderId }, runner);
     claimOrder(database, orderId, { runId: `${orderId}-run`, station: "dim-station-review" }, runner);
@@ -629,7 +639,7 @@ describe("factory order report records", () => {
       id: assignment.id,
       token: assignment.token,
       sessionId: newWorkerSession("accepted-reviewer"),
-      pid: process.pid,
+      pid: pid ?? undefined,
     }).name;
     return { id: round.id, reviewer };
   }
@@ -692,6 +702,25 @@ describe("factory order report records", () => {
     database.close();
   });
 
+  test.each([
+    ["ran as a process that has exited", Bun.spawnSync(["true"]).pid],
+    ["has no recorded pid", null],
+  ])("recovery aborts the round of a reviewer that %s", (_, pid) => {
+    const database = db();
+    const runner = workerIn(database, "operator");
+    const operator = workerIn(database, "operator");
+    const round = acceptedRound(database, "reviewer-gone", runner, pid);
+
+    recoverOrderFailure(database, "reviewer-gone", operator, "runner died");
+
+    expect(
+      database
+        .query<{ outcome: string | null }, [number]>("SELECT outcome FROM factory_order_review WHERE id = ?")
+        .get(round.id),
+    ).toEqual({ outcome: "aborted" });
+    database.close();
+  });
+
   test("recovery aborts the round of a reviewer that has ended, under the operator", () => {
     const database = db();
     const runner = workerIn(database, "operator");
@@ -720,7 +749,7 @@ describe("factory order report records", () => {
     const database = db();
     const builder = workerIn(database, "builder");
     queueOrder(database, { ...order, id: "order-taken" }, worker);
-    claimOrder(database, "order-taken", { ...claim, station: "dim-station-build" }, worker);
+    claimOrder(database, "order-taken", { ...claim, station: "dim-station-build" }, runningBuilder(database));
 
     expect(() =>
       claimOrder(
@@ -2070,7 +2099,7 @@ describe("factory order report records", () => {
   test("refuses to drop an order while a hand is holding it", () => {
     const database = db();
     queueOrder(database, order, worker);
-    claimOrder(database, "order-1", claim, worker);
+    claimOrder(database, "order-1", claim, runningBuilder(database));
 
     expect(() => dropOrder(database, "order-1", "too late", worker)).toThrow(
       expect.objectContaining({ code: "order_held_by_run" }),
@@ -2100,8 +2129,9 @@ describe("factory order report records", () => {
     const database = db();
     const builder = workerIn(database, "builder");
     queueOrder(database, { ...order, id: "order-stranded" }, worker);
-    claimOrder(database, "order-stranded", claim, worker);
-    endWorker(database, worker);
+    const holder = runningBuilder(database);
+    claimOrder(database, "order-stranded", claim, holder);
+    endWorker(database, holder);
 
     claimOrder(database, "order-stranded", { ...claim, runId: "run-2" }, builder);
 
@@ -2114,8 +2144,9 @@ describe("factory order report records", () => {
   test("an order whose hand is over can be dropped", () => {
     const database = db();
     queueOrder(database, { ...order, id: "order-abandoned" }, worker);
-    claimOrder(database, "order-abandoned", claim, worker);
-    endWorker(database, worker);
+    const holder = runningBuilder(database);
+    claimOrder(database, "order-abandoned", claim, holder);
+    endWorker(database, holder);
 
     dropOrder(database, "order-abandoned", "nobody is coming back to it", workerIn(database, "operator"));
 

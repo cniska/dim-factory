@@ -189,18 +189,24 @@ export function mintWorkerForSession(
 }
 
 /**
- * Whether a hand is still there to hold anything, which is what `resolveWorker` refuses on
- * and what an order's holder is read through. A worker never issued is over by the same
+ * Whether a hand is still there to hold anything, which is what an order's holder and a
+ * review round's reviewer are read through. A worker never issued is over by the same
  * answer: nothing is holding what nothing can write as.
+ *
+ * The runner records every station worker's pid when its run starts, so a station worker
+ * with none predates that record and is over; an operator runs in a shell with no pid.
+ * `resolveWorker` does not take the no-pid rule, so such a worker's token still resolves.
  */
 export function workerIsOver(db: Database, name: string): boolean {
   const row = db
-    .query<{ pid: number | null; ended_at: string | null }, [string]>(
-      "SELECT pid, ended_at FROM factory_worker WHERE name = ?",
+    .query<{ role: Role; pid: number | null; ended_at: string | null }, [string]>(
+      "SELECT role, pid, ended_at FROM factory_worker WHERE name = ?",
     )
     .get(name);
   if (!row) return true;
-  return row.ended_at !== null || (row.pid !== null && !pidIsAlive(row.pid));
+  if (row.ended_at !== null) return true;
+  if (row.pid === null) return row.role !== "operator";
+  return !pidIsAlive(row.pid);
 }
 
 /** A resumed station worker runs as a new process, so its row describes that run from here. */

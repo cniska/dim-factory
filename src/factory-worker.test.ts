@@ -8,6 +8,7 @@ import {
   WORKER_NAME_VAR,
   WORKER_TOKEN_VAR,
   workerExports,
+  workerIsOver,
 } from "./factory-worker";
 import type { Env } from "./paths";
 import { SCHEMA_SQL } from "./schema";
@@ -174,6 +175,32 @@ describe("reading which worker a command is", () => {
     const minted = issue(db, { role: "builder", pid: process.pid });
 
     expect(resolveWorker(db, carried(minted))).toBe(minted.name);
+    db.close();
+  });
+});
+
+describe("whether a worker is over", () => {
+  test.each(["planner", "builder", "reviewer"] as const)("a %s with no recorded pid is over", (role) => {
+    const db = floor();
+
+    expect(workerIsOver(db, issue(db, { role }).name)).toBe(true);
+    db.close();
+  });
+
+  test("an operator with no recorded pid is not over", () => {
+    const db = floor();
+
+    expect(workerIsOver(db, issue(db, { role: "operator" }).name)).toBe(false);
+    db.close();
+  });
+
+  test("a station worker whose pid answers is not over, and one whose pid is gone is", () => {
+    const db = floor();
+
+    expect(workerIsOver(db, issue(db, { role: "reviewer", pid: process.pid }).name)).toBe(false);
+    expect(workerIsOver(db, issue(db, { role: "reviewer", pid: Bun.spawnSync(["true"]).pid }).name)).toBe(
+      true,
+    );
     db.close();
   });
 });
