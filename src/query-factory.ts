@@ -221,11 +221,7 @@ export const factory: Query = {
                         FROM factory_order_event e
                         JOIN factory_order_check c ON c.order_id = e.order_id AND c.id = e.check_id
                         WHERE e.order_id = o.id AND e.kind = 'check_finished'
-                        ORDER BY e.id DESC LIMIT 1), '(none recorded)') AS "check",
-              coalesce((SELECT nullif(trim(coalesce(e.reason, '')), '')
-                        FROM factory_order_event e WHERE e.order_id = o.id
-                          AND e.kind IN ('failed', 'ship_failed', 'dropped')
-                        ORDER BY e.ts DESC, e.id DESC LIMIT 1), '(none)') AS stop
+                        ORDER BY e.id DESC LIMIT 1), '(none recorded)') AS "check"
        FROM factory_order o ${filter}
        ORDER BY o.updated_at DESC, o.id`,
       arg ? [arg] : [],
@@ -260,7 +256,6 @@ export const factory: Query = {
       "commit",
       "check",
       "findings",
-      "stop",
     ];
     if (found.length === 0) {
       return {

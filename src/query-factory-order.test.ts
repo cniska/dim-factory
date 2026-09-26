@@ -189,7 +189,6 @@ describe("factory order query", () => {
       "commit",
       "check",
       "findings",
-      "stop",
     ]);
     expect(result?.rows).toEqual([
       [
@@ -203,7 +202,6 @@ describe("factory order query", () => {
         "late-event feat: event order wins",
         "bun run focused (0, green)",
         "tests: fixed - holds; docs: fixed - updated",
-        "(none)",
       ],
     ]);
     expect(result?.denominator).toContain("factory order");
@@ -220,7 +218,7 @@ describe("factory order query", () => {
     db.close();
   });
 
-  test("shows explicit absence when a failed order has no reason", () => {
+  test("keeps failure reasons in the order record rather than the factory summary", () => {
     const db = floor();
     queueOrder(
       db,
@@ -239,7 +237,7 @@ describe("factory order query", () => {
     expect(result?.rows[0]?.[3]).toBe("active");
     expect(result?.rows[0]?.[4]).toBe("failed");
     expect(result?.rows[0]?.[6]).toBe("run at plan");
-    expect(result?.rows[0]?.[10]).toBe("(none)");
+    expect(result?.columns).not.toContain("stop");
 
     queueOrder(
       db,
@@ -257,7 +255,12 @@ describe("factory order query", () => {
       reason: "ambiguous scope",
     });
     const reasoned = findQuery("factory")?.run(db, { arg: "order-reasoned" });
-    expect(reasoned?.rows[0]?.[10]).toBe("ambiguous scope");
+    expect(reasoned?.rows[0]).toHaveLength(10);
+    expect(
+      findQuery("order")
+        ?.run(db, { arg: "order-reasoned" })
+        .rows.find((row) => row[2] === "failed")?.[5],
+    ).toBe("ambiguous scope");
     db.close();
   });
 
