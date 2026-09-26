@@ -1,5 +1,4 @@
 import type { Database } from "bun:sqlite";
-import { BuildTurnRefused } from "./builder-commit";
 import { nestedRepository } from "./builder-tree";
 import {
   isActiveOrderRun,
@@ -9,6 +8,7 @@ import {
   recordOrderCheck,
   recordOrderRewrite,
 } from "./factory-order";
+import { BuildTurnRefused } from "./order-finding";
 import type { Env } from "./paths";
 import {
   changedPaths,

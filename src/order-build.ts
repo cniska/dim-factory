@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { latestApprovedPlan } from "./approved-plan";
 import { BUILD_TURN_SCHEMA, parseBuildTurn } from "./build-turn";
-import { BuildTurnRefused, commitBuildTurn } from "./builder-commit";
+import { commitBuildTurn } from "./builder-commit";
 import type { Capability } from "./capabilities";
 import { type CheckoutConvention, CONVENTION_FLOOR, checkoutConvention } from "./commit-convention";
 import { assertOperator } from "./factory-operator";
@@ -23,7 +23,8 @@ import { findingLocation } from "./finding-location";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-command";
 import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
-import { orderFindingStandings } from "./order-finding-state";
+import { BuildTurnRefused } from "./order-finding";
+import { type FindingStanding, orderFindingStandings, owesAnswer } from "./order-finding-state";
 import { assertOrderWorkerHarness, resumeOrderStationLive, runOrderStationLive } from "./order-worker";
 import type { Env } from "./paths";
 import type { PlanSlice } from "./plan-artifact";
@@ -98,12 +99,16 @@ export function builderBrief(
       ? ["# Returned Build artifact", revision.body, "", "# Owner feedback", revision.feedback]
       : []),
     ...(reviewFindings.work.length > 0
-      ? ["# Review findings", ...reviewFindings.work.map((one) => `- ${one}`)]
+      ? [
+          "# Review findings",
+          ...reviewFindings.work.map((one) => `- ${one.brief}`),
+          "Answer every finding listed here in the turn's `answers`, by its id: `fixed` when this turn's change fixes it, or `refused` with a `resolution` saying why it should not be fixed. A turn that changes nothing makes no commit, and the runner refuses a `fixed` answer from it.",
+        ]
       : []),
     ...(reviewFindings.refused.length > 0
       ? [
           "# Refused findings",
-          "These are refusals you gave that still stand. They are not work: change nothing for them. The reviewer rules on each one next round.",
+          "These are refusals you gave that still stand. They are not work: change nothing for them and leave them out of `answers`. The reviewer rules on each one next round.",
           ...reviewFindings.refused.map((one) => `- ${one}`),
         ]
       : []),
@@ -127,7 +132,7 @@ export function builderBrief(
     resolving
       ? "Work in the current order worktree, resolving only the conflict above; this turn does not run the build station loop."
       : needsCodeWork
-        ? "Work in the current order worktree and run the build station loop including simplification. Record each document and build finding with dim order."
+        ? "Work in the current order worktree and run the build station loop including simplification. Record each document you update with `dim order document`; review findings are answered in the turn's `answers`, never through dim order."
         : "Do not edit files or create commits. Use the order record to correct the returned Build artifact for the latest recorded order commit.",
     "The factory has already accepted your assignment before this turn starts. Do not register or bootstrap another worker, inspect worker credential files, or stop because DIM_WORKER_NAME and DIM_WORKER_TOKEN are absent; order commands authenticate this assigned process through its DIM_WORKER_ASSIGNMENT variables.",
     "The order description and approved plan define the scope. When they explicitly exclude a workspace surface, do not edit or test that surface.",
@@ -140,7 +145,7 @@ export function builderBrief(
             "Leave every change uncommitted in the worktree. Do not run git commit, git stash, or any command that rewrites history. When the turn ends, the factory runner runs the declared check in a sandbox, commits the worktree with the repository's own git identity and signing config, and records the commit and its files under you and the check under the operator. Stay on the order's branch and do not create a git repository inside the worktree; the runner refuses both.",
             "You may run the declared check yourself as feedback. A red check is feedback, not completion: diagnose it, fix the cause, rerun the check, and continue until it passes. If the cause is genuinely blocked, report the blocker instead of claiming success.",
             "Do not run dim order stop: the factory runner records this attempt and makes the order retryable when the turn fails.",
-            'End the turn by returning JSON `{"subject": "...", "artifact": "..."}`. `subject` is the commit subject, in the repo\'s own commit convention. `artifact` is the Build artifact for the whole order when this turn finishes the final slice or answers review findings, and an empty string otherwise. Use dim-station-build and dim-artifact for the artifact contract: separate Markdown headings, the result explained for the owner rather than the command transcript, and proportional to the change.',
+            'End the turn by returning JSON `{"subject": "...", "artifact": "...", "answers": [...]}`. `subject` is the commit subject, in the repo\'s own commit convention. `artifact` is the Build artifact for the whole order when this turn finishes the final slice or answers review findings, and an empty string otherwise. `answers` holds one `{"finding": <id>, "answer": "fixed"|"refused", "resolution": "..."|null}` per finding listed under Review findings, and is `[]` when none is. Use dim-station-build and dim-artifact for the artifact contract: separate Markdown headings, the result explained for the owner rather than the command transcript, and proportional to the change.',
           ]
         : [
             "Structure the returned artifact with separate Markdown headings: Outcome, Implementation, Why this shape, Verification, and Owner attention. Keep each section concise and include only claims supported by the order record.",
@@ -157,7 +162,7 @@ export function rebaseConflictBrief(conflicts: readonly string[]): string[] {
     ...conflicts.map((path) => `- ${path}`),
     "Resolve each of these files so it carries both the order's change and the trunk's, and remove every conflict marker. This turn is the resolution, not a slice: change nothing else, and keep the order's change, since a commit left empty is refused.",
     "Leave the resolution unstaged. Do not run git add, git rebase --continue, git rebase --abort or git commit. When the turn ends, the runner stages your resolution and continues the rebase; a later commit that conflicts comes back to you in this turn. The finished rebase is re-checked in the sandbox, and the order returns to review, which reads it whole.",
-    'End the turn by returning JSON `{"subject": "fix: resolve the rebase conflict", "artifact": ""}`. The subject must be one non-empty line, but the rebase keeps each commit\'s own message, so it is not used.',
+    'End the turn by returning JSON `{"subject": "fix: resolve the rebase conflict", "artifact": "", "answers": []}`. The subject must be one non-empty line, but the rebase keeps each commit\'s own message, so it is not used.',
   ];
 }
 
@@ -173,106 +178,57 @@ export function commitCorrectionBrief(subject: string, refusal: string): string 
     "",
     "This is feedback within the current Build attempt: the order is still claimed by this turn and your changes are still uncommitted in the worktree.",
     "Answer the refusal, leaving every change uncommitted. When the turn ends, the runner reruns the declared check and commits again.",
-    'Return the complete JSON `{"subject": "...", "artifact": "..."}` again, carrying the same artifact the turn owes.',
+    'Return the complete JSON `{"subject": "...", "artifact": "...", "answers": [...]}` again, carrying the same artifact and answers the turn owes.',
   ].join("\n");
 }
 
-export type ReviewFindingsForBuild = { work: readonly string[]; refused: readonly string[] };
+export type ReviewFindingsForBuild = {
+  work: readonly { finding: number; brief: string }[];
+  refused: readonly string[];
+};
 
 const NO_REVIEW_FINDINGS: ReviewFindingsForBuild = { work: [], refused: [] };
 
-/** Standing refusals alone still start the turn that answers the review, which owes a Build
- *  artifact like any other. */
 function answersReview(findings: ReviewFindingsForBuild): boolean {
-  return findings.work.length > 0 || findings.refused.length > 0;
+  return findings.work.length > 0;
 }
 
 export function reviewFindingsForBuild(db: Database, orderId: string): ReviewFindingsForBuild {
   const review = db
-    .query<{ event_id: number | null; outcome: string | null }, [string]>(
-      `SELECT r.outcome, e.id AS event_id
-       FROM factory_order_review r
-       LEFT JOIN factory_order_event e ON e.review_id = r.id AND e.kind = 'review_closed'
-       WHERE r.order_id = ?
-       ORDER BY r.round DESC LIMIT 1`,
+    .query<{ outcome: string | null }, [string]>(
+      "SELECT outcome FROM factory_order_review WHERE order_id = ? ORDER BY round DESC LIMIT 1",
     )
     .get(orderId);
-  if (review?.outcome !== "closed" || review.event_id === null) return NO_REVIEW_FINDINGS;
-  // A Build artifact written since the review answered it, unless the owner overturned a refusal
-  // after that artifact: the overturn is work the artifact never saw.
-  const overturned =
-    db
-      .query<{ id: number | null }, [string]>(
-        `SELECT max(e.id) AS id FROM factory_order_event e
-         JOIN factory_order_refusal_decision d ON d.finding_id = e.finding_id
-         WHERE e.order_id = ? AND e.kind = 'refusal_decided' AND d.decision = 'refusal_overturned'`,
-      )
-      .get(orderId)?.id ?? 0;
-  if (
-    db
-      .query(
-        "SELECT 1 FROM factory_order_event WHERE order_id = ? AND kind = 'build_artifact_written' AND id > ?",
-      )
-      .get(orderId, Math.max(review.event_id, overturned))
-  ) {
-    return NO_REVIEW_FINDINGS;
-  }
-  const open = orderFindingStandings(db, orderId).filter((finding) => finding.state === "open");
-  if (open.some((finding) => finding.answer === null)) {
-    throw new Error(`order ${orderId} has unanswered review findings`);
-  }
-  const read = db.query<BuildFinding, [number]>(
-    `SELECT f.id, f.dimension, f.summary, f.file, f.line, f.failure, f.fix, f.resolution,
-            r.ruling, r.reason,
-            (SELECT d.reason FROM factory_order_refusal_decision d WHERE d.finding_id = f.id) AS ownerReason
-     FROM factory_order_finding f
-     LEFT JOIN factory_order_finding_ruling r
-       ON r.id = (SELECT max(latest.id) FROM factory_order_finding_ruling latest WHERE latest.finding_id = f.id)
-     WHERE f.id = ?`,
-  );
-  // A refusal the owner has not overturned is the builder's own answer, standing until the next
-  // round rules on it; everything else open is work.
-  const work: string[] = [];
+  if (review?.outcome !== "closed") return NO_REVIEW_FINDINGS;
+  const work: { finding: number; brief: string }[] = [];
   const refused: string[] = [];
-  for (const standing of open) {
-    const finding = read.get(standing.id) as BuildFinding;
-    if (standing.refusalStands) {
+  for (const finding of orderFindingStandings(db, orderId)) {
+    if (finding.state !== "open") continue;
+    if (finding.answered && finding.refusalStands) {
       refused.push(`${describeFinding(finding)}\n  Your refusal: ${finding.resolution}`);
       continue;
     }
-    work.push(
-      [
+    if (!owesAnswer(finding)) continue;
+    work.push({
+      finding: finding.id,
+      brief: [
         describeFinding(finding),
         ...(finding.fix ? [`  Fix: ${finding.fix}`] : []),
-        ...(finding.ownerReason !== null
-          ? [`  The owner overturned your refusal: ${finding.ownerReason}`]
+        ...(finding.ownerRuling === "refusal_overturned"
+          ? [`  The owner overturned your refusal, so answer it fixed: ${finding.ownerReason}`]
           : []),
         ...(finding.ruling === "not_addressed"
-          ? [`  The reviewer found it not addressed: ${finding.reason}`]
+          ? [`  The reviewer found it not addressed: ${finding.rulingReason}`]
           : []),
       ].join("\n"),
-    );
+    });
   }
   return { work, refused };
 }
 
-type BuildFinding = {
-  id: number;
-  dimension: string;
-  summary: string;
-  file: string | null;
-  line: number | null;
-  failure: string | null;
-  fix: string | null;
-  resolution: string | null;
-  ruling: string | null;
-  reason: string | null;
-  ownerReason: string | null;
-};
-
-function describeFinding(finding: BuildFinding): string {
+function describeFinding(finding: FindingStanding): string {
   const where = findingLocation(finding) ?? "no location recorded";
-  return `Finding ${finding.id} (${finding.dimension}, ${where}): ${finding.failure ?? finding.summary}`;
+  return `Finding ${finding.id} (${finding.dimension}, ${where}): ${finding.failure}`;
 }
 
 export type BuildOutcome = { builder: string; runId: string; worktree: string; exitCode: number };
@@ -507,6 +463,7 @@ export async function runOrderBuildLive(
           operator,
           worktree,
           turn,
+          owed: reviewFindings.work.map((one) => one.finding),
           finalSlice: currentSlice === null || currentSlice.ordinal === slices.length,
           env: options.env,
           checkSandbox: options.checkSandbox,

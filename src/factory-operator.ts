@@ -1,6 +1,5 @@
 import type { Database } from "bun:sqlite";
 import {
-  answerOrderFinding,
   appendOrderEvent,
   claimOrder,
   isTerminalOrderStatus,
@@ -58,9 +57,6 @@ export type FactoryContext = {
     finishedAt?: string;
     result?: string;
   }): number;
-  /** Answering only: a finding is raised by the reviewer the round was opened for, which is a
-   *  hand this builder does not hold and cannot reach. */
-  answerFinding(findingId: number, answer: { answer: "fixed" | "refused"; resolution?: string }): number;
   recordDocument(path: string): void;
   recordEnvironment(report: WorkerHookReport): void;
 };
@@ -95,7 +91,6 @@ export async function runFactoryOrder(
     recordCommit: (sha, subject) => recordOrderCommit(db, item.id, sha, worker, subject),
     recordFile: (file) => recordOrderFile(db, item.id, file, worker),
     recordCheck: (check) => recordOrderCheck(db, item.id, check, worker),
-    answerFinding: (findingId, answer) => answerOrderFinding(db, findingId, answer, worker),
     recordDocument: (path) => recordOrderDocument(db, item.id, path, worker),
     recordEnvironment: (report) => recordOrderEnvironment(db, item.id, report),
   };

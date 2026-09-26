@@ -3,7 +3,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { approveOrderPlan, moveOrder, openOrderReview, recordOrderPlan } from "./factory-order";
+import { approveOrderPlan, moveOrder, recordOrderPlan } from "./factory-order";
 import { pullStop } from "./factory-stop";
 import { assembleWallSnapshot } from "./factory-wall";
 import {
@@ -51,22 +51,6 @@ function runOrderCommand(
   as: Env = env,
 ): string {
   return runCommand(database, args, project, cwd, as);
-}
-
-/**
- * Opens a round and returns the environment its reviewer was started in. Minted here rather
- * than through `dim operator`, which resolves the owner-facing hand — a reviewer exists only
- * because the station that spawns it made one, and that is the whole of its worth.
- */
-function reviewerEnv(database: Database, orderId: string): Env {
-  const minted = mintWorker(database, { role: "reviewer", sessionId: newWorkerSession("test-reviewer") });
-  openOrderReview(
-    database,
-    orderId,
-    { reviewer: minted.name, baseSha: "base000", headSha: "head000" },
-    env[WORKER_NAME_VAR] as string,
-  );
-  return { ...machine.env, [WORKER_NAME_VAR]: minted.name, [WORKER_TOKEN_VAR]: minted.token };
 }
 
 const trunk = integratedRepo();
@@ -514,16 +498,6 @@ describe("order command", () => {
         "abc123",
       ]),
     ).toBe("order-1 recorded build artifact 1");
-    expect(
-      runOrderCommand(
-        database,
-        ["finding", "order-1", "--dimension", "tests", "--summary", "the invariant holds"],
-        null,
-        trunk.dir,
-        reviewerEnv(database, "order-1"),
-      ),
-    ).toBe("order-1 raised finding 1 on tests");
-    expect(runOrderCommand(database, ["answer", "1", "--answer", "fixed"])).toBe("finding 1 is fixed");
     expect(runOrderCommand(database, ["document", "order-1", "--path", "docs/factory.md"])).toBe(
       "order-1 recorded docs/factory.md",
     );
@@ -546,11 +520,6 @@ describe("order command", () => {
       body: "## Result\n\nThe slice is built and verified.",
       head_sha: "abc123",
       worker: env[WORKER_NAME_VAR],
-    });
-    expect(database.query("SELECT dimension, summary, answer FROM factory_order_finding").get()).toEqual({
-      dimension: "tests",
-      summary: "the invariant holds",
-      answer: "fixed",
     });
     expect(database.query("SELECT path FROM factory_order_document").get()).toEqual({
       path: "docs/factory.md",
@@ -605,33 +574,31 @@ describe("order command", () => {
     });
   });
 
-  test("a check with no exit status and a finding with no answer are refused", () => {
+  test("a check with no exit status is refused", () => {
     const database = db();
     queued(database);
     runOrderCommand(database, claim);
 
-    expect(() =>
-      runOrderCommand(database, ["check", "order-1", "--command", "bun run verify", "--exit", "green"]),
-    ).toThrow(OrderCommandError);
-    runOrderCommand(
-      database,
-      ["finding", "order-1", "--dimension", "tests", "--summary", "s"],
-      null,
-      trunk.dir,
-      reviewerEnv(database, "order-1"),
-    );
-    expect(() => runOrderCommand(database, ["answer", "1", "--answer", "maybe"])).toThrow(OrderCommandError);
-    expect(() => runOrderCommand(database, ["answer", "nope", "--answer", "fixed"])).toThrow(
-      OrderCommandError,
-    );
-    for (const spec of ["", " ", "1e3"]) {
+    for (const spec of ["green", "", " ", "1e3"]) {
       expect(() =>
         runOrderCommand(database, ["check", "order-1", "--command", "bun run verify", "--exit", spec]),
       ).toThrow(OrderCommandError);
     }
 
     expect(database.query("SELECT count(*) AS rows FROM factory_order_check").get()).toEqual({ rows: 0 });
-    expect(database.query("SELECT answer FROM factory_order_finding").get()).toEqual({ answer: null });
+  });
+
+  test("raises and answers no finding from the command line", () => {
+    const database = db();
+    queued(database);
+    runOrderCommand(database, claim);
+
+    expect(() =>
+      runOrderCommand(database, ["finding", "order-1", "--dimension", "tests", "--summary", "s"]),
+    ).toThrow("finding is not an order subcommand");
+    expect(() => runOrderCommand(database, ["answer", "1", "--answer", "fixed"])).toThrow(
+      "answer is not an order subcommand",
+    );
   });
 
   test("a ruling names one finding, exactly one of uphold or overturn, and a reason", () => {
@@ -652,50 +619,6 @@ describe("order command", () => {
     expect(() => runOrderCommand(database, ["rule", "1", "--uphold", "--reason", "r"])).toThrow(
       expect.objectContaining({ code: "finding_unknown" }),
     );
-  });
-
-  test("a refused finding is not answered without the grounds it rests on", () => {
-    const database = db();
-    queued(database);
-    runOrderCommand(database, claim);
-    runOrderCommand(
-      database,
-      ["finding", "order-1", "--dimension", "docs", "--summary", "a doc did not move"],
-      null,
-      trunk.dir,
-      reviewerEnv(database, "order-1"),
-    );
-
-    expect(() => runOrderCommand(database, ["answer", "1", "--answer", "refused"])).toThrow(
-      expect.objectContaining({ code: "SQLITE_CONSTRAINT_CHECK" }),
-    );
-
-    expect(database.query("SELECT answer FROM factory_order_finding WHERE id = 1").get()).toEqual({
-      answer: null,
-    });
-  });
-
-  // Answering is a reply to one thing a reviewer said, and a second reply would rewrite a
-  // judgement the record may already have been read for.
-  test("a finding is answered once", () => {
-    const database = db();
-    queued(database);
-    runOrderCommand(database, claim);
-    runOrderCommand(
-      database,
-      ["finding", "order-1", "--dimension", "tests", "--summary", "thin"],
-      null,
-      trunk.dir,
-      reviewerEnv(database, "order-1"),
-    );
-    runOrderCommand(database, ["answer", "1", "--answer", "fixed"]);
-
-    expect(() =>
-      runOrderCommand(database, ["answer", "1", "--answer", "refused", "--resolution", "no"]),
-    ).toThrow(/already fixed/);
-    expect(database.query("SELECT answer FROM factory_order_finding WHERE id = 1").get()).toEqual({
-      answer: "fixed",
-    });
   });
 
   test("a way an order cannot stop is refused rather than written", () => {

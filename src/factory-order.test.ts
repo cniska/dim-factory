@@ -7,7 +7,6 @@ import { closeDb, openDb } from "./db";
 import { runFactoryOrder } from "./factory-operator";
 import {
   amendOrder,
-  answerOrderFinding,
   appendOrderEvent,
   approveOrderBuild,
   approveOrderPlan,
@@ -26,7 +25,6 @@ import {
   openOrderReview,
   queueOrder,
   ReviewNotOpen,
-  raiseOrderFinding,
   recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
@@ -54,6 +52,7 @@ import {
   scratchEnv,
   workerIn,
 } from "./fixtures.test-support";
+import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { reviewRange } from "./order-review";
 import { dbPath } from "./paths";
 import { findQuery } from "./queries";
@@ -776,13 +775,7 @@ describe("factory order report records", () => {
         context.recordFile({ path: "src/factory-operator.ts", added: 18, removed: 2 });
         context.recordCheck({ command: "bun run verify", exitCode: 0, result: "green" });
         const round = reviewIn(database, "order-2", worker);
-        const raised = raiseOrderFinding(
-          database,
-          "order-2",
-          { dimension: "tests", summary: "holds" },
-          round.reviewer,
-        );
-        context.answerFinding(raised, { answer: "fixed" });
+        raiseOrderFinding(database, "order-2", { dimension: "tests", failure: "holds" }, round.reviewer);
         context.recordDocument("docs/factory.md");
         context.recordEnvironment(setupReport);
         context.stop({ status: "completed", reason: "verified" });
@@ -806,7 +799,6 @@ describe("factory order report records", () => {
       { kind: "check_finished", status: null },
       { kind: "review_opened", status: null },
       { kind: "finding_raised", status: null },
-      { kind: "finding_answered", status: null },
       { kind: "completed", status: "completed" },
     ]);
     expect(database.query("SELECT sha FROM factory_order_commit WHERE order_id = 'order-2'").get()).toEqual({
@@ -1808,11 +1800,18 @@ describe("factory order report records", () => {
     const finding = raiseOrderFinding(
       database,
       "order-1",
-      { dimension: "tests", summary: "coverage is present" },
+      { dimension: "tests", failure: "coverage is present" },
       reviewIn(database, "order-1", worker).reviewer,
       "2026-09-18T10:04:00.000Z",
     );
-    answerOrderFinding(database, finding, { answer: "fixed" }, worker, "2026-09-18T10:04:00.000Z");
+    answerOrderFindings(
+      database,
+      "order-1",
+      "run-1",
+      [{ finding, answer: "fixed", resolution: null }],
+      worker,
+      "2026-09-18T10:04:00.000Z",
+    );
     recordOrderDocument(database, "order-1", "docs/factory.md", worker, "2026-09-18T10:05:00.000Z");
     appendOrderEvent(
       database,
@@ -1841,10 +1840,13 @@ describe("factory order report records", () => {
       command: "bun run verify",
       exit_code: 0,
     });
-    expect(database.query("SELECT dimension, answer FROM factory_order_finding").get()).toEqual({
-      dimension: "tests",
-      answer: "fixed",
-    });
+    expect(
+      database
+        .query(
+          "SELECT f.dimension, a.answer FROM factory_order_finding f JOIN factory_order_finding_answer a ON a.finding_id = f.id",
+        )
+        .get(),
+    ).toEqual({ dimension: "tests", answer: "fixed" });
     expect(database.query("SELECT path FROM factory_order_document").get()).toEqual({
       path: "docs/factory.md",
     });
@@ -1980,28 +1982,6 @@ describe("factory order report records", () => {
     ).toEqual({
       count: 0,
     });
-    database.close();
-  });
-
-  test("refused findings require a resolution", () => {
-    const database = db();
-    queueOrder(database, order, worker);
-    claimOrder(database, "order-1", claim, worker);
-    const round = reviewIn(database, "order-1", worker);
-    const raised = raiseOrderFinding(
-      database,
-      "order-1",
-      { dimension: "docs", summary: "missing" },
-      round.reviewer,
-    );
-
-    expect(() => answerOrderFinding(database, raised, { answer: "refused" }, worker)).toThrow();
-    expect(database.query("SELECT answer FROM factory_order_finding WHERE id = ?").get(raised)).toEqual({
-      answer: null,
-    });
-    expect(
-      answerOrderFinding(database, raised, { answer: "refused", resolution: "out of scope" }, worker),
-    ).toBeGreaterThan(0);
     database.close();
   });
 

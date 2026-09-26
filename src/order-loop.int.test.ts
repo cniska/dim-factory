@@ -3,7 +3,6 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  answerOrderFinding,
   approveOrderBuild,
   approveOrderReview,
   claimOrder,
@@ -17,6 +16,7 @@ import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } fro
 import { integratedRepo, orderWorktree, reviewOutput } from "./fixtures.test-support";
 import { builderBrief, reviewFindingsForBuild } from "./order-build";
 import { runOrderCommand } from "./order-command";
+import { answerOrderFindings } from "./order-finding";
 import { runOrderReview } from "./order-review";
 import { SCHEMA_SQL } from "./schema";
 import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR, bootstrapWorker } from "./worker-assignment";
@@ -117,10 +117,11 @@ describe("the operator loop", () => {
     );
     const finding = db.query<{ id: number }, []>("SELECT id FROM factory_order_finding").get();
     if (!finding) throw new Error("loop test did not raise a finding");
-    answerOrderFinding(
+    answerOrderFindings(
       db,
-      finding.id,
-      { answer: "fixed", resolution: "completed the missing behavior" },
+      "loop-order",
+      "build-2",
+      [{ finding: finding.id, answer: "fixed", resolution: "completed the missing behavior" }],
       builder.name,
     );
 
@@ -252,10 +253,11 @@ describe("the operator loop", () => {
       );
       const finding = db.query<{ id: number }, []>("SELECT id FROM factory_order_finding").get()
         ?.id as number;
-      answerOrderFinding(
+      answerOrderFindings(
         db,
-        finding,
-        { answer: "refused", resolution: "the test is the next slice" },
+        orderId,
+        "build-2",
+        [{ finding, answer: "refused", resolution: "the test is the next slice" }],
         builder.name,
       );
       moveOrder(db, orderId, "dim-station-build", operator.name);
@@ -322,7 +324,7 @@ describe("the operator loop", () => {
           "# Review findings",
           `- Finding ${finding} (tests, overturn-order-first.txt:1): no test holds the first behavior`,
           "  Fix: add a test that fails without it",
-          "  The owner overturned your refusal: the owner has read both",
+          "  The owner overturned your refusal, so answer it fixed: the owner has read both",
         ].join("\n"),
       );
       expect(brief).not.toContain("# Refused findings");

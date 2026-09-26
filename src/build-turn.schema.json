@@ -1,9 +1,22 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["subject", "artifact"],
+  "required": ["subject", "artifact", "answers"],
   "properties": {
     "subject": { "type": "string", "minLength": 1, "pattern": "^[^\\r\\n]+$" },
-    "artifact": { "type": "string" }
+    "artifact": { "type": "string" },
+    "answers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["finding", "answer", "resolution"],
+        "properties": {
+          "finding": { "type": "integer" },
+          "answer": { "type": "string", "enum": ["fixed", "refused"] },
+          "resolution": { "type": ["string", "null"] }
+        }
+      }
+    }
   }
 }

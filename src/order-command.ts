@@ -3,13 +3,11 @@ import { readFileSync } from "node:fs";
 import { assertOperator } from "./factory-operator";
 import {
   amendOrder,
-  answerOrderFinding,
   appendOrderEvent,
   approveOrderBuild,
   approveOrderPlan,
   approveOrderReview,
   claimOrder,
-  decideOrderRefusal,
   dropOrder,
   moveOrder,
   ORDER_PRIORITIES,
@@ -17,7 +15,6 @@ import {
   type OrderPriority,
   type OrderStatus,
   queueOrder,
-  raiseOrderFinding,
   recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
@@ -36,6 +33,7 @@ import { HARNESSES, type HarnessName, parseHarness } from "./harness-name";
 import { requireCurrentHooks } from "./hooks";
 import { recordedHarness } from "./operator-harness";
 import { runOrderBuildLive } from "./order-build";
+import { recordOwnerRuling } from "./order-finding";
 import { isOrderLine, ORDER_LINES } from "./order-line";
 import { runOrderPlan, runOrderPlanLive } from "./order-plan";
 import { heldOrders, readyOrders } from "./order-ready";
@@ -61,9 +59,6 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--lin
        dim order build-artifact <order-id> --body-file <path> --head <sha>
        dim order review-artifact <order-id> --body "..."
        dim order review <order-id> [--harness <${HARNESSES.join("|")}>]
-       dim order finding <order-id> --dimension <name> --summary "..."
-       dim order answer <finding-id> --answer <fixed|refused>
-                       [--resolution "..."]
        dim order rule <finding-id> --uphold|--overturn --reason "..."
        dim order document <order-id> --path <path>
        dim order plan <order-id> [--harness <${HARNESSES.join("|")}>]
@@ -191,14 +186,6 @@ function lineCount(given: Map<string, string>, flag: string): number | undefined
   return Number(spec);
 }
 
-function answer(given: Map<string, string>): "fixed" | "refused" {
-  const value = required(given, "--answer");
-  if (value !== "fixed" && value !== "refused") {
-    throw new OrderCommandError(`${value} is not an answer a finding can end on`);
-  }
-  return value;
-}
-
 /**
  * Each of these records one row and returns what it wrote, because the caller is a
  * skill reading its own shell output back rather than a caller holding a value.
@@ -261,14 +248,6 @@ const EVIDENCE: Record<string, Evidence> = {
     record: (db, id, given, worker) => {
       const artifactId = recordOrderReviewArtifact(db, id, markdownBody(required(given, "--body")), worker);
       return `${id} recorded Review artifact ${artifactId}`;
-    },
-  },
-  finding: {
-    flags: ["--dimension", "--summary"],
-    record: (db, id, given, worker) => {
-      const dimension = required(given, "--dimension");
-      const raised = raiseOrderFinding(db, id, { dimension, summary: required(given, "--summary") }, worker);
-      return `${id} raised finding ${raised} on ${dimension}`;
     },
   },
   document: {
@@ -362,28 +341,6 @@ function drop(db: Database, orderId: string, args: string[], worker: string): st
   return `${orderId} is dropped: ${reason}`;
 }
 
-/** Named by the finding rather than the order, because answering is a reply to one thing
- *  a reviewer said and an order may be carrying several. */
-function answerFinding(
-  db: Database,
-  findingSpec: string | undefined,
-  args: string[],
-  worker: string,
-): string {
-  if (findingSpec === undefined || !/^[1-9]\d*$/.test(findingSpec)) {
-    throw fail("answer names the finding it replies to: `dim order answer <finding-id> --answer ...`");
-  }
-  const given = flags(args, ["--answer", "--resolution"]);
-  const ended = answer(given);
-  answerOrderFinding(
-    db,
-    Number(findingSpec),
-    { answer: ended, resolution: given.get("--resolution") },
-    worker,
-  );
-  return `finding ${findingSpec} is ${ended}`;
-}
-
 /** The owner's word on a contested refusal, typed by the operator the way an approval is. */
 function ruleOnRefusal(
   db: Database,
@@ -406,8 +363,8 @@ function ruleOnRefusal(
     ),
     "--reason",
   );
-  const decision = upheld ? "refusal_upheld" : "refusal_overturned";
-  decideOrderRefusal(db, Number(findingSpec), { decision, reason }, worker);
+  const ruling = upheld ? "refusal_upheld" : "refusal_overturned";
+  recordOwnerRuling(db, Number(findingSpec), { ruling, reason }, worker);
   return upheld
     ? `finding ${findingSpec}: refusal upheld`
     : `finding ${findingSpec}: refusal overturned, back to the builder`;
@@ -512,7 +469,6 @@ export function runOrderCommand(
   if (command === "stop") return stop(db, orderId, rest, cwd, worker);
   if (command === "amend") return amend(db, orderId, rest);
   if (command === "drop") return drop(db, orderId, rest, worker);
-  if (command === "answer") return answerFinding(db, orderId, rest, worker);
   if (command === "rule") return ruleOnRefusal(db, orderId, rest, worker);
   if (command === "review") {
     const harness = selectedHarness(db, flags(rest, ["--harness"]), worker);

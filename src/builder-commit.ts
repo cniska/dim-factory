@@ -11,32 +11,12 @@ import {
   recordOrderCommit,
   recordOrderFile,
 } from "./factory-order";
+import { answerOrderFindings, assertFindingAnswersOwed, BuildTurnRefused } from "./order-finding";
 import { dataDir, type Env } from "./paths";
 import { rebaseInProgress } from "./rebase-onto-trunk";
 import { CHECK_SANDBOX, runSandboxedCheck } from "./sandboxed-check";
 import { trunkBranch } from "./trunk";
 import { checkCommand } from "./workspace-commands";
-
-export class BuildTurnRefused extends Error {
-  constructor(
-    readonly code:
-      | "no_declared_check"
-      | "empty_artifact"
-      | "builder_committed"
-      | "nested_repository"
-      | "check_failed"
-      | "check_changed_tree"
-      | "no_change"
-      | "order_not_building"
-      | "commit_refused"
-      | "rebase_in_progress"
-      | "rebase_mismatch"
-      | "conflict_unresolved",
-    message: string,
-  ) {
-    super(message);
-  }
-}
 
 function git(worktree: string, args: string[], options: { env?: Env; stdin?: string } = {}) {
   const run = Bun.spawnSync(["git", "-C", worktree, ...args], {
@@ -85,6 +65,24 @@ function lineCount(value: string | undefined): number | undefined {
   return value === undefined || value === "-" ? undefined : Number(value);
 }
 
+function assertTurnAnswersBrief(turn: BuildTurn, owed: readonly number[]): void {
+  const answered = turn.answers.map((one) => one.finding);
+  const extra = answered.filter((id, index) => !owed.includes(id) || answered.indexOf(id) !== index);
+  if (extra.length > 0) {
+    throw new BuildTurnRefused(
+      "answer_not_owed",
+      `the turn answers finding ${extra.join(", ")}, which its brief did not hand over as work or answers twice`,
+    );
+  }
+  const missing = owed.filter((id) => !answered.includes(id));
+  if (missing.length > 0) {
+    throw new BuildTurnRefused(
+      "finding_unanswered",
+      `the turn leaves finding ${missing.join(", ")} unanswered; answer each finding the brief lists as work, fixed or refused`,
+    );
+  }
+}
+
 /**
  * Turns what a builder left in its worktree into the order's record: runs the declared check in
  * the check sandbox, commits the worktree the way the repository's git config commits, and records
@@ -98,6 +96,7 @@ export function commitBuildTurn(options: {
   operator: string;
   worktree: string;
   turn: BuildTurn;
+  owed: readonly number[];
   finalSlice: boolean;
   env?: Env;
   checkSandbox?: string[];
@@ -114,6 +113,8 @@ export function commitBuildTurn(options: {
   if (options.finalSlice && turn.artifact === "") {
     throw new BuildTurnRefused("empty_artifact", "the final slice's turn returned an empty Build artifact");
   }
+  assertTurnAnswersBrief(turn, options.owed);
+  assertFindingAnswersOwed(db, orderId, turn.answers);
   if (rebaseInProgress(worktree)) {
     throw new BuildTurnRefused(
       "rebase_in_progress",
@@ -172,6 +173,13 @@ export function commitBuildTurn(options: {
   if (!changed && !recorded) {
     throw new BuildTurnRefused("no_change", "the turn left no change in the worktree to commit");
   }
+  const fixed = turn.answers.filter((one) => one.answer === "fixed").map((one) => one.finding);
+  if (!changed && fixed.length > 0) {
+    throw new BuildTurnRefused(
+      "no_change",
+      `the turn answers finding ${fixed.join(", ")} fixed and left no change in the worktree; refuse a finding that needs no change, with the reason`,
+    );
+  }
   // A long check leaves time for the order to be stopped, moved or taken by another run; committing
   // now would leave a commit no record can take, or one recorded under the wrong run.
   if (!isActiveOrderRun(db, orderId, options.runId)) {
@@ -183,8 +191,11 @@ export function commitBuildTurn(options: {
   }
 
   if (!changed) {
-    recordOrderCheck(db, orderId, checkRow, operator);
-    if (options.finalSlice) recordOrderBuild(db, orderId, turn.artifact, before, builder);
+    db.transaction(() => {
+      recordOrderCheck(db, orderId, checkRow, operator);
+      answerOrderFindings(db, orderId, options.runId, turn.answers, builder);
+      if (options.finalSlice) recordOrderBuild(db, orderId, turn.artifact, before, builder);
+    })();
     return { sha: before };
   }
   const commit = git(
@@ -228,6 +239,7 @@ export function commitBuildTurn(options: {
         );
       }
       recordOrderCheck(db, orderId, checkRow, operator);
+      answerOrderFindings(db, orderId, options.runId, turn.answers, builder);
       if (options.finalSlice) recordOrderBuild(db, orderId, turn.artifact, sha, builder);
     })();
     return { sha };

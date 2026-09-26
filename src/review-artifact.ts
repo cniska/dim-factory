@@ -1,4 +1,4 @@
-import { FINDING_RULINGS, type FindingRuling } from "./order-finding-state";
+import { REVIEWER_RULINGS, type ReviewerRuling } from "./order-finding-state";
 
 /** The rows of the table under "The passes" in `skills/dim-station-review/SKILL.md`. */
 export const REVIEW_DIMENSIONS = [
@@ -30,7 +30,7 @@ export type ReviewFinding = {
   severity: Severity;
 };
 
-export type ReviewRuling = { finding: number; ruling: FindingRuling; reason: string | null };
+export type ReviewRuling = { finding: number; ruling: ReviewerRuling; reason: string | null };
 
 export type ReviewReport = {
   verdict: string;
@@ -114,7 +114,7 @@ function parseRuling(value: unknown, index: number): ReviewRuling {
   if (typeof finding !== "number" || !Number.isInteger(finding)) {
     throw new Error(`${what} must name its finding by id`);
   }
-  const ruling = oneOf(fields, "ruling", FINDING_RULINGS, what);
+  const ruling = oneOf(fields, "ruling", REVIEWER_RULINGS, what);
   const reason = optionalText(fields, "reason", what);
   if ((ruling === "not_addressed" || ruling === "refusal_contested") && reason === null) {
     throw new Error(`${what} on finding ${finding} is ${ruling} and must give a reason`);

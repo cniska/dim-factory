@@ -26,7 +26,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { ROLES_SQL } from "./roles";
 import { TOOLS_SQL } from "./tools";
 
-export const SCHEMA_VERSION = 60;
+export const SCHEMA_VERSION = 61;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -413,6 +413,7 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   check_id              INTEGER,
   review_id             INTEGER,
   finding_id            INTEGER,
+  answer_id             INTEGER REFERENCES factory_order_finding_answer(id) ON DELETE CASCADE,
   plan_id               INTEGER,
   build_id              INTEGER REFERENCES factory_order_build(id),
   hold_type             TEXT,
@@ -549,10 +550,6 @@ CREATE TABLE IF NOT EXISTS factory_order_review_artifact (
   UNIQUE (review_id, revision)
 );
 
--- Raising a finding and answering it are two acts by two hands: the reviewer that read
--- the diff and the builder that wrote it. The events carry who did which, and this row
--- carries the finding's own state, so an unanswered finding is one with no answer yet
--- rather than one nobody wrote down.
 CREATE TABLE IF NOT EXISTS factory_order_finding (
   id            INTEGER PRIMARY KEY,
   order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
@@ -560,47 +557,47 @@ CREATE TABLE IF NOT EXISTS factory_order_finding (
   -- reviewer it came from is the one the factory spawned for that round.
   review_id     INTEGER NOT NULL REFERENCES factory_order_review(id) ON DELETE CASCADE,
   dimension     TEXT NOT NULL,
-  summary       TEXT NOT NULL,
   -- Nullable because rebuild writes every finding back as it was, and one recorded without a
   -- location keeps none.
   file          TEXT,
   line          INTEGER,
-  failure       TEXT,
+  failure       TEXT NOT NULL CHECK (trim(failure) <> ''),
   fix           TEXT,
   severity      TEXT CHECK (severity IN ('critical', 'high', 'medium')),
-  answer        TEXT CHECK (answer IN ('fixed', 'refused')),
-  resolution    TEXT,
-  raised_at     TEXT NOT NULL,
-  answered_at   TEXT,
-  CHECK (answer <> 'refused' OR (resolution IS NOT NULL AND trim(resolution) <> '')),
-  CHECK ((answer IS NULL) = (answered_at IS NULL))
+  raised_at     TEXT NOT NULL
 );
 
--- A later round's reviewer judging an earlier finding against the new diff. One per round,
--- since each round reads a different head.
+CREATE TABLE IF NOT EXISTS factory_order_finding_answer (
+  id            INTEGER PRIMARY KEY,
+  finding_id    INTEGER NOT NULL REFERENCES factory_order_finding(id) ON DELETE CASCADE,
+  run_id        TEXT NOT NULL,
+  answer        TEXT NOT NULL CHECK (answer IN ('fixed', 'refused')),
+  resolution    TEXT,
+  recorded_at   TEXT NOT NULL,
+  CHECK (answer <> 'refused' OR (resolution IS NOT NULL AND trim(resolution) <> '')),
+  UNIQUE (finding_id, run_id)
+);
+
+-- A judgement on the builder's answer. A later round's reviewer rules once per round, since
+-- each round reads a different head; the owner rules at most once, on a refusal a reviewer
+-- contested, and that ruling names no round.
 CREATE TABLE IF NOT EXISTS factory_order_finding_ruling (
   id            INTEGER PRIMARY KEY,
   finding_id    INTEGER NOT NULL REFERENCES factory_order_finding(id) ON DELETE CASCADE,
-  review_id     INTEGER NOT NULL REFERENCES factory_order_review(id) ON DELETE CASCADE,
-  ruling        TEXT NOT NULL
-                CHECK (ruling IN ('addressed', 'not_addressed', 'refusal_accepted', 'refusal_contested')),
+  review_id     INTEGER REFERENCES factory_order_review(id) ON DELETE CASCADE,
+  ruling        TEXT NOT NULL CHECK (ruling IN (
+                  'addressed', 'not_addressed', 'refusal_accepted', 'refusal_contested',
+                  'refusal_upheld', 'refusal_overturned')),
   reason        TEXT,
   worker        TEXT NOT NULL REFERENCES factory_worker(name),
   ruled_at      TEXT NOT NULL,
-  CHECK (ruling NOT IN ('not_addressed', 'refusal_contested') OR (reason IS NOT NULL AND trim(reason) <> '')),
-  UNIQUE (finding_id, review_id)
+  CHECK (ruling IN ('addressed', 'refusal_accepted') OR (reason IS NOT NULL AND trim(reason) <> '')),
+  CHECK ((review_id IS NULL) = (ruling IN ('refusal_upheld', 'refusal_overturned')))
 );
-
--- The owner settling a refusal the builder and reviewer disagree on. At most one per finding:
--- an upheld refusal is settled, and an overturned one no longer stands to be contested again.
-CREATE TABLE IF NOT EXISTS factory_order_refusal_decision (
-  id            INTEGER PRIMARY KEY,
-  finding_id    INTEGER NOT NULL UNIQUE REFERENCES factory_order_finding(id) ON DELETE CASCADE,
-  decision      TEXT NOT NULL CHECK (decision IN ('refusal_upheld', 'refusal_overturned')),
-  reason        TEXT NOT NULL CHECK (trim(reason) <> ''),
-  worker        TEXT NOT NULL REFERENCES factory_worker(name),
-  decided_at    TEXT NOT NULL
-);
+CREATE UNIQUE INDEX IF NOT EXISTS factory_order_finding_ruling_round
+  ON factory_order_finding_ruling(finding_id, review_id) WHERE review_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS factory_order_finding_ruling_owner
+  ON factory_order_finding_ruling(finding_id) WHERE review_id IS NULL;
 
 -- What a worktree's setup and teardown hooks reported. resources holds the
 -- identifiers the hook named — containers, volumes, ports — which is all that is

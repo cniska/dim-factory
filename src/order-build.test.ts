@@ -1,28 +1,25 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
+import { parseBuildTurn } from "./build-turn";
 import schema from "./build-turn.schema.json";
-import {
-  answerOrderFinding,
-  appendOrderEvent,
-  claimOrder,
-  closeOrderReview,
-  decideOrderRefusal,
-  queueOrder,
-  raiseOrderFinding,
-  ruleOnOrderFinding,
-} from "./factory-order";
+import { claimOrder, closeOrderReview, queueOrder } from "./factory-order";
 import { integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
 import { workerFailureReason } from "./harness-command";
 import { builderBrief, rebaseConflictBrief, reviewFindingsForBuild } from "./order-build";
+import {
+  answerOrderFindings,
+  raiseOrderFinding,
+  recordOwnerRuling,
+  ruleOnOrderFinding,
+} from "./order-finding";
 import { SCHEMA_SQL } from "./schema";
 
 const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
 
 describe("the review findings a builder is handed", () => {
-  /** An order whose closed first round raised one finding per answer, each answered as given. */
-  function reviewed(answers: ("fixed" | "refused")[]) {
+  function reviewed(answers: ("fixed" | "refused" | null)[]) {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     const builder = workerIn(db);
@@ -43,7 +40,6 @@ describe("the review findings a builder is handed", () => {
         "order-1",
         {
           dimension: "tests",
-          summary: `gap ${index}`,
           file: "src/gate.ts",
           line: index + 1,
           failure: `gap ${index}`,
@@ -55,58 +51,60 @@ describe("the review findings a builder is handed", () => {
       return { id, answer };
     });
     closeOrderReview(db, round.review, "closed", round.reviewer);
-    for (const { id, answer } of findings) {
-      answerOrderFinding(
-        db,
-        id,
-        answer === "fixed" ? { answer } : { answer, resolution: "out of scope" },
-        builder,
-      );
-    }
-    return { db, operator, findings: findings.map((finding) => finding.id) };
+    answerOrderFindings(
+      db,
+      "order-1",
+      "build-1",
+      findings.flatMap(({ id, answer }) =>
+        answer === null
+          ? []
+          : [{ finding: id, answer, resolution: answer === "refused" ? "out of scope" : null }],
+      ),
+      builder,
+    );
+    return { db, builder, operator, findings: findings.map((finding) => finding.id) };
   }
 
-  test("lists a fixed finding as work and a standing refusal apart from it", () => {
-    const { db, findings } = reviewed(["fixed", "refused"]);
-    const [fixed, refused] = findings;
+  const brief = (db: Database) =>
+    builderBrief(
+      { id: "order-1", title: "Brief", description: null },
+      { body: "## Outcome\n\nBrief.", slices: [] },
+      null,
+      null,
+      undefined,
+      undefined,
+      reviewFindingsForBuild(db, "order-1"),
+    );
+
+  test("hands over an unanswered finding as work by id and a standing refusal apart from it", () => {
+    const { db, findings } = reviewed([null, "refused"]);
+    const [open, refused] = findings as [number, number];
     expect(reviewFindingsForBuild(db, "order-1")).toEqual({
-      work: [`Finding ${fixed} (tests, src/gate.ts:1): gap 0\n  Fix: close gap 0`],
+      work: [{ finding: open, brief: `Finding ${open} (tests, src/gate.ts:1): gap 0\n  Fix: close gap 0` }],
       refused: [`Finding ${refused} (tests, src/gate.ts:2): gap 1\n  Your refusal: out of scope`],
     });
-    const brief = builderBrief(
-      { id: "order-1", title: "Brief", description: null },
-      { body: "## Outcome\n\nBrief.", slices: [] },
-      null,
-      null,
-      undefined,
-      undefined,
-      reviewFindingsForBuild(db, "order-1"),
-    );
-    const work = brief.split("# Refused findings")[0] ?? "";
-    expect(work).toContain(`- Finding ${fixed} `);
+    const text = brief(db);
+    const work = text.split("# Refused findings")[0] ?? "";
+    expect(work).toContain(`# Review findings\n- Finding ${open} `);
+    expect(work).toContain("Answer every finding listed here in the turn's `answers`, by its id");
     expect(work).not.toContain(`Finding ${refused} `);
-    expect(brief).toContain(
-      "# Refused findings\nThese are refusals you gave that still stand. They are not work: change nothing for them. The reviewer rules on each one next round.",
+    expect(text).toContain(
+      "# Refused findings\nThese are refusals you gave that still stand. They are not work: change nothing for them and leave them out of `answers`. The reviewer rules on each one next round.",
     );
   });
 
-  test("keeps a round whose every finding was refused as a turn that answers the review", () => {
-    const { db } = reviewed(["refused"]);
-    const brief = builderBrief(
-      { id: "order-1", title: "Brief", description: null },
-      { body: "## Outcome\n\nBrief.", slices: [] },
-      null,
-      null,
-      undefined,
-      undefined,
-      reviewFindingsForBuild(db, "order-1"),
-    );
-    expect(brief).not.toContain("# Review findings");
-    expect(brief).toContain("# Refused findings");
-    expect(brief).toContain("run the build station loop");
+  test("hands over no work once the builder answered every finding", () => {
+    const { db } = reviewed(["fixed"]);
+    expect(reviewFindingsForBuild(db, "order-1")).toEqual({ work: [], refused: [] });
   });
 
-  test("lists a fix the next round found not addressed as work with the reviewer's reason", () => {
+  test("hands over no work while the latest round is still open", () => {
+    const { db, operator } = reviewed([null]);
+    reviewIn(db, "order-1", operator);
+    expect(reviewFindingsForBuild(db, "order-1")).toEqual({ work: [], refused: [] });
+  });
+
+  test("hands over a fix the next round found not addressed as work again, with the reviewer's reason", () => {
     const { db, operator, findings } = reviewed(["fixed"]);
     const second = reviewIn(db, "order-1", operator);
     ruleOnOrderFinding(
@@ -117,12 +115,14 @@ describe("the review findings a builder is handed", () => {
     );
     closeOrderReview(db, second.review, "closed", second.reviewer);
     expect(reviewFindingsForBuild(db, "order-1").work).toEqual([
-      `Finding ${findings[0]} (tests, src/gate.ts:1): gap 0\n  Fix: close gap 0\n  The reviewer found it not addressed: still no test`,
+      {
+        finding: findings[0] as number,
+        brief: `Finding ${findings[0]} (tests, src/gate.ts:1): gap 0\n  Fix: close gap 0\n  The reviewer found it not addressed: still no test`,
+      },
     ]);
   });
 
-  /** Round two contests the refusal and the owner overturns it. */
-  function overturned() {
+  function contested() {
     const reviewedOrder = reviewed(["refused"]);
     const { db, operator, findings } = reviewedOrder;
     const second = reviewIn(db, "order-1", operator);
@@ -133,61 +133,46 @@ describe("the review findings a builder is handed", () => {
       second.reviewer,
     );
     closeOrderReview(db, second.review, "closed", second.reviewer);
-    decideOrderRefusal(
-      db,
-      findings[0] as number,
-      { decision: "refusal_overturned", reason: "fix it" },
-      operator,
-    );
     return reviewedOrder;
   }
 
-  test("gives an overturned refusal a later round found not addressed both reasons", () => {
-    const { db, operator, findings } = overturned();
-    const third = reviewIn(db, "order-1", operator);
-    ruleOnOrderFinding(
+  test("hands over a contested refusal only once the owner overturns it", () => {
+    const { db, operator, findings } = contested();
+    expect(reviewFindingsForBuild(db, "order-1")).toEqual({ work: [], refused: [] });
+    recordOwnerRuling(
       db,
       findings[0] as number,
-      { ruling: "not_addressed", reason: "still open" },
-      third.reviewer,
+      { ruling: "refusal_overturned", reason: "fix it" },
+      operator,
     );
-    closeOrderReview(db, third.review, "closed", third.reviewer);
     expect(reviewFindingsForBuild(db, "order-1").work).toEqual([
-      [
-        `Finding ${findings[0]} (tests, src/gate.ts:1): gap 0`,
-        "  Fix: close gap 0",
-        "  The owner overturned your refusal: fix it",
-        "  The reviewer found it not addressed: still open",
-      ].join("\n"),
+      {
+        finding: findings[0] as number,
+        brief: [
+          `Finding ${findings[0]} (tests, src/gate.ts:1): gap 0`,
+          "  Fix: close gap 0",
+          "  The owner overturned your refusal, so answer it fixed: fix it",
+        ].join("\n"),
+      },
     ]);
   });
 
-  test("hands over a refusal the owner overturned after the builder's last Build artifact", () => {
-    const { db, operator, findings } = reviewed(["refused"]);
-    const second = reviewIn(db, "order-1", operator);
-    ruleOnOrderFinding(
-      db,
-      findings[0] as number,
-      { ruling: "refusal_contested", reason: "in scope" },
-      second.reviewer,
-    );
-    closeOrderReview(db, second.review, "closed", second.reviewer);
-    appendOrderEvent(db, "order-1", { kind: "build_artifact_written", worker: operator });
-    expect(reviewFindingsForBuild(db, "order-1")).toEqual({ work: [], refused: [] });
-    decideOrderRefusal(
-      db,
-      findings[0] as number,
-      { decision: "refusal_overturned", reason: "fix it" },
-      operator,
-    );
-    expect(reviewFindingsForBuild(db, "order-1").work).toHaveLength(1);
-  });
-
-  test("hands over nothing once a Build artifact followed the review", () => {
-    const { db, operator } = reviewed(["fixed"]);
-    expect(reviewFindingsForBuild(db, "order-1").work).toHaveLength(1);
-    appendOrderEvent(db, "order-1", { kind: "build_artifact_written", worker: operator });
-    expect(reviewFindingsForBuild(db, "order-1")).toEqual({ work: [], refused: [] });
+  test("gives an overturned refusal a later round found not addressed both reasons", () => {
+    const { db, builder, operator, findings } = contested();
+    const finding = findings[0] as number;
+    recordOwnerRuling(db, finding, { ruling: "refusal_overturned", reason: "fix it" }, operator);
+    answerOrderFindings(db, "order-1", "build-2", [{ finding, answer: "fixed", resolution: null }], builder);
+    const third = reviewIn(db, "order-1", operator);
+    ruleOnOrderFinding(db, finding, { ruling: "not_addressed", reason: "still open" }, third.reviewer);
+    closeOrderReview(db, third.review, "closed", third.reviewer);
+    expect(reviewFindingsForBuild(db, "order-1").work.map((one) => one.brief)).toEqual([
+      [
+        `Finding ${finding} (tests, src/gate.ts:1): gap 0`,
+        "  Fix: close gap 0",
+        "  The owner overturned your refusal, so answer it fixed: fix it",
+        "  The reviewer found it not addressed: still open",
+      ].join("\n"),
+    ]);
   });
 
   test("leaves out a finding a later round settled", () => {
@@ -199,15 +184,50 @@ describe("the review findings a builder is handed", () => {
   });
 });
 
+describe("the build turn", () => {
+  const turn = (fields: Record<string, unknown>) =>
+    parseBuildTurn(JSON.stringify({ subject: "fix: it", artifact: "", answers: [], ...fields }));
+
+  test("carries each answer with its finding, trimming a resolution and leaving an absent one null", () => {
+    expect(
+      turn({
+        answers: [
+          { finding: 3, answer: "fixed", resolution: null },
+          { finding: 4, answer: "refused", resolution: " out of scope " },
+        ],
+      }).answers,
+    ).toEqual([
+      { finding: 3, answer: "fixed", resolution: null },
+      { finding: 4, answer: "refused", resolution: "out of scope" },
+    ]);
+  });
+
+  test("requires an answers list", () => {
+    expect(() => parseBuildTurn(JSON.stringify({ subject: "fix: it", artifact: "" }))).toThrow(
+      "builder output must contain an answers list",
+    );
+  });
+
+  test("refuses a refusal without a resolution and an answer outside fixed and refused", () => {
+    expect(() => turn({ answers: [{ finding: 3, answer: "refused", resolution: " " }] })).toThrow(
+      "refuses finding 3 without saying why",
+    );
+    expect(() => turn({ answers: [{ finding: 3, answer: "waived", resolution: null }] })).toThrow(
+      "must be fixed or refused",
+    );
+  });
+});
+
 describe("the rebase conflict brief", () => {
   test("asks for the output the build turn's schema accepts", () => {
     const ending = rebaseConflictBrief(["f.txt"]).find((line) => line.startsWith("End the turn")) ?? "";
-    const asked = JSON.parse(/`(\{.*?\})`/.exec(ending)?.[1] ?? "null") as Record<string, string>;
+    const asked = JSON.parse(/`(\{.*?\})`/.exec(ending)?.[1] ?? "null") as Record<string, unknown>;
 
     expect(Object.keys(asked).sort()).toEqual([...schema.required].sort());
-    expect(asked.subject?.length).toBeGreaterThanOrEqual(schema.properties.subject.minLength);
+    expect(String(asked.subject).length).toBeGreaterThanOrEqual(schema.properties.subject.minLength);
     expect(asked.subject).toMatch(new RegExp(schema.properties.subject.pattern));
     expect(typeof asked.artifact).toBe("string");
+    expect(asked.answers).toEqual([]);
   });
 });
 
@@ -288,7 +308,8 @@ describe("worker failure explanations", () => {
     expect(brief).toContain("Do not run git commit, git stash");
     expect(brief).toContain("commits the worktree with the repository's own git identity and signing config");
     expect(brief).toContain("Stay on the order's branch");
-    expect(brief).toContain('returning JSON `{"subject": "...", "artifact": "..."}`');
+    expect(brief).toContain('returning JSON `{"subject": "...", "artifact": "...", "answers": [...]}`');
+    expect(brief).toContain("review findings are answered in the turn's `answers`, never through dim order");
     expect(brief).toContain("the Build artifact for the whole order when this turn finishes the final slice");
     expect(brief).toContain("rather than the command transcript");
     expect(brief).not.toContain("dim order commit");

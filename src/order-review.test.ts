@@ -4,14 +4,11 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  answerOrderFinding,
   appendOrderEvent,
   approveOrderBuild,
   claimOrder,
-  decideOrderRefusal,
   moveOrder,
   queueOrder,
-  raiseOrderFinding,
   recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
@@ -21,6 +18,7 @@ import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } fro
 import { fakeHarness } from "./fake-harness";
 import { integratedRepo, orderWorktree, reviewOutput } from "./fixtures.test-support";
 import { runOrderCommand } from "./order-command";
+import { answerOrderFindings, raiseOrderFinding, recordOwnerRuling } from "./order-finding";
 import {
   type ReviewerSpawn,
   ReviewRefused,
@@ -299,7 +297,7 @@ describe("a review round", () => {
     };
     runOrderReview(db, "order-1", operator, { dir, spawn, env: machine });
 
-    expect(() => raiseOrderFinding(db, "order-1", { dimension: "tests", summary: "mine" }, worker)).toThrow(
+    expect(() => raiseOrderFinding(db, "order-1", { dimension: "tests", failure: "mine" }, worker)).toThrow(
       /no review open/,
     );
   });
@@ -655,17 +653,24 @@ describe("a review round", () => {
         earlier: [
           {
             id: 7,
+            orderId: "order-1",
+            reviewId: 1,
             dimension: "tests",
-            summary: "no test",
             file: null,
             line: null,
-            failure: null,
+            failure: "no test",
             fix: null,
+            severity: null,
+            raisedAt: "2026-09-26T10:00:00.000Z",
             answer: "refused",
             resolution: "later slice",
-            lastRuling: null,
-            lastReason: null,
+            answered: true,
+            ruling: null,
+            rulingReason: null,
+            ownerRuling: "refusal_overturned",
             ownerReason: "fix it here",
+            state: "open",
+            refusalStands: false,
           },
         ],
       },
@@ -741,7 +746,13 @@ describe("a review round", () => {
       });
       const finding = f.db.query<{ id: number }, []>("SELECT id FROM factory_order_finding").get()
         ?.id as number;
-      answerOrderFinding(f.db, finding, { answer: "fixed", resolution: "inverted it" }, f.worker);
+      answerOrderFindings(
+        f.db,
+        "order-1",
+        "build-1",
+        [{ finding, answer: "fixed", resolution: "inverted it" }],
+        f.worker,
+      );
       slice(f.db, f.dir, f.worker, "b");
       return { ...f, finding };
     }
@@ -840,22 +851,30 @@ describe("a review round", () => {
       review(reviewOutput({ findings: [findingOn("a.txt")] }));
       const finding = f.db.query<{ id: number }, []>("SELECT id FROM factory_order_finding").get()
         ?.id as number;
-      answerOrderFinding(f.db, finding, { answer: "refused", resolution: "later slice" }, f.worker);
+      answerOrderFindings(
+        f.db,
+        "order-1",
+        "build-1",
+        [{ finding, answer: "refused", resolution: "later slice" }],
+        f.worker,
+      );
       slice(f.db, f.dir, f.worker, "b");
       review(
         reviewOutput({ rulings: [{ finding, ruling: "refusal_contested", reason: "it is this slice" }] }),
       );
-      decideOrderRefusal(
+      recordOwnerRuling(f.db, finding, { ruling: "refusal_overturned", reason: "fix it here" }, f.operator);
+      answerOrderFindings(
         f.db,
-        finding,
-        { decision: "refusal_overturned", reason: "fix it here" },
-        f.operator,
+        "order-1",
+        "build-2",
+        [{ finding, answer: "fixed", resolution: "moved the gate here" }],
+        f.worker,
       );
       slice(f.db, f.dir, f.worker, "c");
       const brief = review(reviewOutput({ rulings: [{ finding, ruling: "addressed", reason: null }] }));
       expect(brief).toContain(
         [
-          "  - Builder's answer: refused: later slice",
+          "  - Builder's answer: fixed: moved the gate here",
           "  - Last ruled refusal_contested: it is this slice",
           "  - The owner overturned the refusal: fix it here",
         ].join("\n"),
@@ -863,7 +882,7 @@ describe("a review round", () => {
       const body = f.db
         .query<{ body: string }, []>("SELECT body FROM factory_order_review_artifact ORDER BY id DESC")
         .get()?.body;
-      expect(body).toContain("## Owner decisions\n\nNone.");
+      expect(body).toContain("## Owner rulings\n\nNone.");
     });
 
     test("records its rulings and renders them as earlier findings", () => {

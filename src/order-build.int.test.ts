@@ -14,7 +14,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BuildTurn } from "./build-turn";
 import {
-  answerOrderFinding,
   appendOrderEvent,
   approveOrderBuild,
   approveOrderPlan,
@@ -25,7 +24,6 @@ import {
   moveOrder,
   openOrderReview,
   queueOrder,
-  raiseOrderFinding,
   recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
@@ -44,6 +42,13 @@ import { fakeHarness } from "./fake-harness";
 import { confiningCheckSandbox, declareCheck, integratedRepo } from "./fixtures.test-support";
 import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
 import { runOrderBuildLive } from "./order-build";
+import {
+  answerOrderFindings,
+  BuildTurnRefused,
+  raiseOrderFinding,
+  recordOwnerRuling,
+  ruleOnOrderFinding,
+} from "./order-finding";
 import { SCHEMA_SQL } from "./schema";
 import { repoRoot } from "./wt-command";
 
@@ -60,7 +65,7 @@ afterAll(() => {
  * `afterAnswer` until the runner cancels it.
  */
 function builderTurn(
-  act: (request: HarnessRequest) => BuildTurn | string,
+  act: (request: HarnessRequest) => (Omit<BuildTurn, "answers"> & Partial<BuildTurn>) | string,
   afterAnswer: HarnessEvent[] = [],
 ): HarnessAdapter & { cancels(): number } {
   let cancels = 0;
@@ -72,7 +77,10 @@ function builderTurn(
         yield { type: "run.started", providerSessionId: "fake-session" };
         yield { type: "turn.started" };
         const answer = act(request);
-        yield { type: "run.completed", output: typeof answer === "string" ? answer : JSON.stringify(answer) };
+        yield {
+          type: "run.completed",
+          output: typeof answer === "string" ? answer : JSON.stringify({ answers: [], ...answer }),
+        };
         for (const event of afterAnswer) {
           if (cancelled) return;
           yield event;
@@ -717,78 +725,16 @@ describe("builder station", () => {
     db.close();
   });
 
-  test("returns answered review findings to the same builder for a new Build artifact", async () => {
-    const db = database();
-    const dimHome = home("dim-builder-review-rework-");
-    const { repo, operator } = orderAtBuild(db, "review-rework-order", [
-      { title: "Build the result", outcome: "The result is verified." },
-    ]);
-    const options = { dir: repo.dir, env: { DIM_HOME: dimHome }, checkSandbox: confiningCheckSandbox() };
-
-    const firstBuild = await runOrderBuildLive(db, "review-rework-order", operator.name, {
-      ...options,
-      adapter: builderTurn((request) => {
-        writeFileSync(join(request.cwd, "first.txt"), "first\n");
-        return { subject: "feat: build it", artifact: "Initial Build artifact." };
-      }),
-    });
-    const first = git(firstBuild.worktree, ["rev-parse", "HEAD"]);
-    approveOrderBuild(db, "review-rework-order", operator.name, "Build approved.");
-    moveOrder(db, "review-rework-order", "dim-station-review", operator.name);
-    const reviewer = mintWorker(db, {
-      role: "reviewer",
-      parentWorker: operator.name,
-      sessionId: "review-rework-reviewer",
-    });
-    const review = openOrderReview(
-      db,
-      "review-rework-order",
-      { reviewer: reviewer.name, baseSha: repo.sha, headSha: first },
-      reviewer.name,
-    );
-    const finding = raiseOrderFinding(
-      db,
-      "review-rework-order",
-      { dimension: "correctness", summary: "Count the actual order provenance." },
-      reviewer.name,
-    );
-    closeOrderReview(db, review.id, "closed", reviewer.name);
-    answerOrderFinding(db, finding, { answer: "fixed" }, operator.name);
-    moveOrder(db, "review-rework-order", "dim-station-build", operator.name);
-
-    let brief = "";
-    const followup = await runOrderBuildLive(db, "review-rework-order", operator.name, {
-      ...options,
-      adapter: builderTurn((request) => {
-        brief = request.brief;
-        writeFileSync(join(request.cwd, "fix.txt"), "fix\n");
-        expect(() => completeOrderBuildFollowup(db, "review-rework-order", firstBuild.builder)).toThrow(
-          "no Build artifact after its latest Review",
-        );
-        return { subject: "fix: review finding", artifact: "Revised Build artifact." };
-      }),
-    });
-    const head = git(followup.worktree, ["rev-parse", "HEAD"]);
-    expect(head).not.toBe(first);
-    expect(brief).toContain("Count the actual order provenance.");
-    expect(brief).toContain("Review findings");
-    expect(followup.builder).toBe(firstBuild.builder);
-    expect(db.query("SELECT run_id FROM factory_order WHERE id = ?").get("review-rework-order")).toEqual({
-      run_id: null,
-    });
-    expect(
-      db.query("SELECT revision, head_sha FROM factory_order_build ORDER BY revision DESC LIMIT 1").get(),
-    ).toEqual({ revision: 2, head_sha: head });
-    db.close();
-  });
-
-  describe("a round whose finding the builder refused", () => {
-    async function refusedRound(orderId: string, answer: boolean) {
+  describe("a round that raised a finding", () => {
+    async function reviewedAtBuild(orderId: string, check = "true") {
       const db = database();
       const dimHome = home(`dim-builder-${orderId}-`);
-      const { repo, operator } = orderAtBuild(db, orderId, [
-        { title: "Build the result", outcome: "The result is verified." },
-      ]);
+      const { repo, operator } = orderAtBuild(
+        db,
+        orderId,
+        [{ title: "Build the result", outcome: "The result is verified." }],
+        check,
+      );
       const options = { dir: repo.dir, env: { DIM_HOME: dimHome }, checkSandbox: confiningCheckSandbox() };
       const firstBuild = await runOrderBuildLive(db, orderId, operator.name, {
         ...options,
@@ -797,6 +743,7 @@ describe("builder station", () => {
           return { subject: "feat: build it", artifact: "Initial Build artifact." };
         }),
       });
+      const first = git(firstBuild.worktree, ["rev-parse", "HEAD"]);
       approveOrderBuild(db, orderId, operator.name, "Build approved.");
       moveOrder(db, orderId, "dim-station-review", operator.name);
       const reviewer = mintWorker(db, {
@@ -807,56 +754,219 @@ describe("builder station", () => {
       const review = openOrderReview(
         db,
         orderId,
-        {
-          reviewer: reviewer.name,
-          baseSha: repo.sha,
-          headSha: git(firstBuild.worktree, ["rev-parse", "HEAD"]),
-        },
+        { reviewer: reviewer.name, baseSha: repo.sha, headSha: first },
         reviewer.name,
       );
       const finding = raiseOrderFinding(
         db,
         orderId,
-        { dimension: "docs", summary: "Document the provenance count." },
+        { dimension: "correctness", failure: "Count the actual order provenance." },
         reviewer.name,
       );
       closeOrderReview(db, review.id, "closed", reviewer.name);
-      if (answer)
-        answerOrderFinding(db, finding, { answer: "refused", resolution: "no doc names it" }, operator.name);
       moveOrder(db, orderId, "dim-station-build", operator.name);
-      return { db, operator, options, firstBuild };
+      return { db, operator, options, firstBuild, first, finding };
     }
 
-    test("still gets the turn that answers the review, with the refusal marked as not work", async () => {
-      const { db, operator, options, firstBuild } = await refusedRound("refused-rework-order", true);
+    const answers = (db: Database) =>
+      db.query("SELECT finding_id, run_id, answer, resolution FROM factory_order_finding_answer").all();
+    const commits = (db: Database, orderId: string) =>
+      db.query("SELECT sha FROM factory_order_commit WHERE order_id = ?").all(orderId);
+
+    test("hands the finding to the same builder as work and records its answer under the builder and the run", async () => {
+      const { db, operator, options, firstBuild, first, finding } =
+        await reviewedAtBuild("review-rework-order");
       let brief = "";
-      const followup = await runOrderBuildLive(db, "refused-rework-order", operator.name, {
+      const followup = await runOrderBuildLive(db, "review-rework-order", operator.name, {
         ...options,
         adapter: builderTurn((request) => {
           brief = request.brief;
-          writeFileSync(join(request.cwd, "answer.txt"), "answer\n");
-          return { subject: "docs: answer the review", artifact: "Build artifact answering the review." };
+          writeFileSync(join(request.cwd, "fix.txt"), "fix\n");
+          expect(() => completeOrderBuildFollowup(db, "review-rework-order", firstBuild.builder)).toThrow(
+            "no Build artifact after its latest Review",
+          );
+          return {
+            subject: "fix: review finding",
+            artifact: "Revised Build artifact.",
+            answers: [{ finding, answer: "fixed", resolution: null }],
+          };
         }),
       });
-      expect(brief).toContain("# Refused findings");
-      expect(brief).toContain("Document the provenance count.\n  Your refusal: no doc names it");
-      expect(brief).not.toContain("# Review findings");
+      const head = git(followup.worktree, ["rev-parse", "HEAD"]);
+      expect(head).not.toBe(first);
+      expect(brief).toContain(
+        `# Review findings\n- Finding ${finding} (correctness, no location recorded): Count the actual order provenance.`,
+      );
       expect(followup.builder).toBe(firstBuild.builder);
-      expect(db.query("SELECT max(revision) AS revision FROM factory_order_build").get()).toEqual({
-        revision: 2,
+      expect(answers(db)).toEqual([
+        { finding_id: finding, run_id: followup.runId, answer: "fixed", resolution: null },
+      ]);
+      expect(
+        db.query("SELECT worker, finding_id FROM factory_order_event WHERE kind = 'finding_answered'").all(),
+      ).toEqual([{ worker: followup.builder, finding_id: finding }]);
+      expect(db.query("SELECT run_id FROM factory_order WHERE id = ?").get("review-rework-order")).toEqual({
+        run_id: null,
+      });
+      expect(
+        db.query("SELECT revision, head_sha FROM factory_order_build ORDER BY revision DESC LIMIT 1").get(),
+      ).toEqual({ revision: 2, head_sha: head });
+      db.close();
+    });
+
+    test("records a refuse-only turn's answers and makes no commit", async () => {
+      const { db, operator, options, first, finding } = await reviewedAtBuild("refused-rework-order");
+      const before = commits(db, "refused-rework-order");
+      const followup = await runOrderBuildLive(db, "refused-rework-order", operator.name, {
+        ...options,
+        adapter: builderTurn(() => ({
+          subject: "docs: answer the review",
+          artifact: "Build artifact refusing the finding.",
+          answers: [{ finding, answer: "refused", resolution: "no doc names it" }],
+        })),
+      });
+      expect(git(followup.worktree, ["rev-parse", "HEAD"])).toBe(first);
+      expect(commits(db, "refused-rework-order")).toEqual(before);
+      expect(answers(db)).toEqual([
+        { finding_id: finding, run_id: followup.runId, answer: "refused", resolution: "no doc names it" },
+      ]);
+      expect(
+        db.query("SELECT revision, head_sha FROM factory_order_build ORDER BY revision DESC LIMIT 1").get(),
+      ).toEqual({ revision: 2, head_sha: first });
+      expect(db.query("SELECT run_id FROM factory_order WHERE id = ?").get("refused-rework-order")).toEqual({
+        run_id: null,
       });
       db.close();
     });
 
-    test("refuses to brief the builder while the finding is unanswered", async () => {
-      const { db, operator, options } = await refusedRound("unanswered-rework-order", false);
-      await expect(
-        runOrderBuildLive(db, "unanswered-rework-order", operator.name, {
-          ...options,
-          adapter: builderTurn(() => ({ subject: "fix: nothing", artifact: "" })),
+    async function refusedTurn(
+      orderId: string,
+      turn: (finding: number) => Omit<BuildTurn, "subject" | "artifact">,
+      given: { change?: string; check?: string; prepare?: (db: Database) => void } = {},
+    ) {
+      const { db, operator, options, first, finding } = await reviewedAtBuild(orderId, given.check);
+      const recorded = commits(db, orderId);
+      given.prepare?.(db);
+      const failure = await runOrderBuildLive(db, orderId, operator.name, {
+        ...options,
+        adapter: builderTurn((request) => {
+          if (given.change !== "") writeFileSync(join(request.cwd, given.change ?? "fix.txt"), "fix\n");
+          return { subject: "fix: review finding", artifact: "Revised Build artifact.", ...turn(finding) };
         }),
-      ).rejects.toThrow("order unanswered-rework-order has unanswered review findings");
+      }).then(
+        () => undefined,
+        (error: Error) => error,
+      );
+      const worktree = join(options.dir, ".claude", "worktrees", orderId);
+      expect(git(worktree, ["rev-parse", "HEAD"])).toBe(first);
+      expect(commits(db, orderId)).toEqual(recorded);
+      expect(answers(db)).toEqual([]);
       db.close();
+      return failure;
+    }
+
+    const fixed = (finding: number) => ({
+      answers: [{ finding, answer: "fixed" as const, resolution: null }],
+    });
+
+    test("records no answer from a turn whose check is red", async () => {
+      const failure = await refusedTurn("red-rework-order", fixed, {
+        change: "red.txt",
+        check: "test ! -f red.txt",
+      });
+      expect(failure?.cause).toMatchObject({ code: "check_failed" });
+    });
+
+    test("records no answer and takes the commit back when a write in the commit's transaction fails", async () => {
+      const failure = await refusedTurn("unrecorded-rework-order", fixed, {
+        prepare: (db) =>
+          db.run(
+            `CREATE TRIGGER refuse_answered BEFORE INSERT ON factory_order_event
+             WHEN NEW.kind = 'finding_answered' BEGIN SELECT RAISE(ABORT, 'answer refused'); END`,
+          ),
+      });
+      expect(failure?.message).toContain("answer refused");
+    });
+
+    test("refuses a second refusal of a finding whose refusal the owner overturned", async () => {
+      const orderId = "overturned-rework-order";
+      const { db, operator, options, firstBuild, first, finding } = await reviewedAtBuild(orderId);
+      answerOrderFindings(
+        db,
+        orderId,
+        "build-2",
+        [{ finding, answer: "refused", resolution: "out of scope" }],
+        firstBuild.builder,
+      );
+      moveOrder(db, orderId, "dim-station-review", operator.name);
+      const reviewer = mintWorker(db, {
+        role: "reviewer",
+        parentWorker: operator.name,
+        sessionId: `${orderId}-r2`,
+      });
+      const second = openOrderReview(
+        db,
+        orderId,
+        { reviewer: reviewer.name, baseSha: first, headSha: first },
+        reviewer.name,
+      );
+      ruleOnOrderFinding(db, finding, { ruling: "refusal_contested", reason: "in scope" }, reviewer.name);
+      closeOrderReview(db, second.id, "closed", reviewer.name);
+      recordOwnerRuling(db, finding, { ruling: "refusal_overturned", reason: "fix it" }, operator.name);
+      moveOrder(db, orderId, "dim-station-build", operator.name);
+      const failure = await runOrderBuildLive(db, orderId, operator.name, {
+        ...options,
+        adapter: builderTurn((request) => {
+          writeFileSync(join(request.cwd, "fix.txt"), "fix\n");
+          return {
+            subject: "fix: review finding",
+            artifact: "Revised Build artifact.",
+            answers: [{ finding, answer: "refused", resolution: "still out of scope" }],
+          };
+        }),
+      }).then(
+        () => undefined,
+        (error: Error) => error,
+      );
+      expect(failure?.cause).toBeInstanceOf(BuildTurnRefused);
+      expect(failure?.cause).toMatchObject({ code: "refusal_overturned" });
+      expect(git(join(options.dir, ".claude", "worktrees", orderId), ["rev-parse", "HEAD"])).toBe(first);
+      expect(answers(db)).toHaveLength(1);
+      db.close();
+    });
+
+    test("refuses a turn that answers one finding twice before committing", async () => {
+      const failure = await refusedTurn("twice-rework-order", (finding) => ({
+        answers: [
+          { finding, answer: "fixed", resolution: null },
+          { finding, answer: "fixed", resolution: null },
+        ],
+      }));
+      expect(failure?.cause).toMatchObject({ code: "answer_not_owed" });
+    });
+
+    test("refuses a turn that leaves a briefed finding unanswered", async () => {
+      expect((await refusedTurn("unanswered-rework-order", () => ({ answers: [] })))?.cause).toMatchObject({
+        code: "finding_unanswered",
+      });
+    });
+
+    test("refuses an answer to a finding the brief did not hand over as work", async () => {
+      expect(
+        (
+          await refusedTurn("unowed-rework-order", (finding) => ({
+            answers: [
+              { finding, answer: "fixed", resolution: null },
+              { finding: finding + 1, answer: "fixed", resolution: null },
+            ],
+          }))
+        )?.cause,
+      ).toMatchObject({ code: "answer_not_owed" });
+    });
+
+    test("refuses a fixed answer from a turn that changed nothing", async () => {
+      expect((await refusedTurn("unchanged-rework-order", fixed, { change: "" }))?.cause).toMatchObject({
+        code: "no_change",
+      });
     });
   });
 
@@ -1112,7 +1222,11 @@ describe("builder station", () => {
 type BuilderCall = { kind: "start" | "resume"; sessionId?: string; brief: string };
 
 /** A builder answering its turns in order, where an Error is a run that fails, and the turns it was given. */
-function scriptedBuilder(answers: ((request: HarnessRequest) => BuildTurn | string | Error)[]): {
+function scriptedBuilder(
+  answers: ((
+    request: HarnessRequest,
+  ) => (Omit<BuildTurn, "answers"> & Partial<BuildTurn>) | string | Error)[],
+): {
   adapter: HarnessAdapter;
   calls: BuilderCall[];
 } {
@@ -1129,7 +1243,7 @@ function scriptedBuilder(answers: ((request: HarnessRequest) => BuildTurn | stri
         else
           yield {
             type: "run.completed",
-            output: typeof answer === "string" ? answer : JSON.stringify(answer),
+            output: typeof answer === "string" ? answer : JSON.stringify({ answers: [], ...answer }),
           };
       })(),
       cancel() {},
@@ -1225,7 +1339,7 @@ describe("a commit git refuses", () => {
     expect(correction).toContain(tooLong.subject);
     expect(correction).toContain("subject is 38 characters, over the 20 allowed");
     expect(correction).toContain("within the current Build attempt");
-    expect(correction).toContain('{"subject": "...", "artifact": "..."}');
+    expect(correction).toContain('{"subject": "...", "artifact": "...", "answers": [...]}');
     expect(order.checksRun()).toBe(2);
     expect(git(order.worktree, ["rev-list", "--count", `${order.repo.sha}..HEAD`])).toBe("1");
     expect(git(order.worktree, ["log", "-1", "--format=%s"])).toBe("feat: build it");

@@ -57,5 +57,5 @@ export function shortSha(sha: string): string {
 
 export function findingKey(entry: Pick<WallItemEntry, "finding">): string | null {
   if (!entry.finding) return null;
-  return `${entry.finding.dimension}\u0000${entry.finding.summary}`;
+  return `${entry.finding.dimension}\u0000${entry.finding.failure}`;
 }

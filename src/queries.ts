@@ -1,6 +1,12 @@
 import type { Database } from "bun:sqlite";
 import { CONVENTION_FLOOR, conventionCommits, conventionRecords } from "./commit-convention";
 import { EMBED_MODEL, fromBlob, type Question, similarity } from "./embed";
+import {
+  displayedAnswer,
+  findingStandingsOf,
+  orderFindingStandings,
+  owesAnswer,
+} from "./order-finding-state";
 import { parsePassageRef } from "./passage-ref";
 import { isScratchRepo } from "./scratch";
 import { withoutWorktree } from "./worktree";
@@ -1222,14 +1228,14 @@ const order: Query = {
          FROM factory_order_file WHERE order_id = ?`,
         [id],
       ),
-      ...table(
-        db,
-        `SELECT 'finding' AS section, raised_at AS "when",
-                CASE WHEN answer IS NULL THEN 'finding_raised' ELSE 'finding_answered' END AS kind,
-                coalesce(answer, 'unanswered') AS status, dimension AS subject, summary AS evidence
-         FROM factory_order_finding WHERE order_id = ?`,
-        [id],
-      ),
+      ...orderFindingStandings(db, id).map((finding) => ({
+        section: "finding",
+        when: finding.raisedAt,
+        kind: owesAnswer(finding) ? "finding_raised" : "finding_answered",
+        status: displayedAnswer(finding),
+        subject: finding.dimension,
+        evidence: finding.failure,
+      })),
       ...table(
         db,
         `SELECT 'document' AS section, recorded_at AS "when", 'document_updated' AS kind, '' AS status,
@@ -1264,7 +1270,7 @@ const factory: Query = {
   window: null,
   run: (db, { arg }) => {
     const filter = arg ? "WHERE o.id LIKE ? || '%'" : "";
-    const found = table(
+    const orders = table(
       db,
       `SELECT o.project AS project, o.id AS order_id, o.priority, o.status,
               (SELECT e.kind FROM factory_order_event e
@@ -1283,11 +1289,6 @@ const factory: Query = {
                         JOIN factory_order_check c ON c.order_id = e.order_id AND c.id = e.check_id
                         WHERE e.order_id = o.id AND e.kind = 'check_finished'
                         ORDER BY e.id DESC LIMIT 1), '(none recorded)') AS "check",
-              coalesce((SELECT group_concat(finding, '; ') FROM (
-                          SELECT f.dimension || ': ' || coalesce(f.answer, 'unanswered') || ' - ' || f.summary AS finding
-                          FROM factory_order_finding f WHERE f.order_id = o.id
-                          ORDER BY f.raised_at, f.id
-                        )), '(none recorded)') AS findings,
               coalesce((SELECT nullif(trim(coalesce(e.hold_type || ': ', '') || coalesce(e.reason, '')), '')
                         FROM factory_order_event e WHERE e.order_id = o.id
                           AND e.kind IN ('completed', 'failed')
@@ -1296,6 +1297,19 @@ const factory: Query = {
        ORDER BY o.updated_at DESC, o.id`,
       arg ? [arg] : [],
     );
+    const findings = new Map<string, string[]>();
+    for (const finding of findingStandingsOf(
+      db,
+      orders.map((row) => String(row.order_id)),
+    )) {
+      const listed = findings.get(finding.orderId) ?? [];
+      listed.push(`${finding.dimension}: ${displayedAnswer(finding)} - ${finding.failure}`);
+      findings.set(finding.orderId, listed);
+    }
+    const found = orders.map((row) => ({
+      ...row,
+      findings: findings.get(String(row.order_id))?.join("; ") ?? "(none recorded)",
+    }));
     const columns = [
       "project",
       "order_id",

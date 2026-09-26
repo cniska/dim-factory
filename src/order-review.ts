@@ -9,15 +9,14 @@ import {
   currentOrderCommits,
   openAssignedOrderReview,
   type ReturnedOrderArtifact,
-  raiseOrderFinding,
   recordOrderReviewArtifact,
-  ruleOnOrderFinding,
 } from "./factory-order";
 import { findingLocation } from "./finding-location";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-command";
 import { DEFAULT_HARNESS, type HarnessName } from "./harness-name";
-import { orderFindingStandings } from "./order-finding-state";
+import { raiseOrderFinding, ruleOnOrderFinding } from "./order-finding";
+import { type FindingStanding, orderFindingStandings } from "./order-finding-state";
 import { runOrderStation, runOrderStationLive } from "./order-worker";
 import type { PlanSlice } from "./plan-artifact";
 import { parseReviewReport, type ReviewFinding, type ReviewRuling } from "./review-artifact";
@@ -113,50 +112,26 @@ export function reviewRange(db: Database, orderId: string, dir: string): { base:
   return { base: parent.ok ? parent.out : first.sha, head: head.out };
 }
 
-/** An open finding from an earlier round, as the next reviewer rules on it. */
-export type EarlierFinding = {
-  id: number;
-  dimension: string;
-  summary: string;
-  file: string | null;
-  line: number | null;
-  failure: string | null;
-  fix: string | null;
-  answer: string | null;
-  resolution: string | null;
-  lastRuling: string | null;
-  lastReason: string | null;
-  ownerReason: string | null;
-};
-
-/** The open findings earlier rounds raised and the builder answered: exactly the set this round
- *  must rule on. A ruling judges an answer, so an unanswered finding waits, still open, for one. */
-export function earlierOpenFindings(db: Database, orderId: string, reviewId: number): EarlierFinding[] {
-  const open = orderFindingStandings(db, orderId).filter(
-    (finding) => finding.state === "open" && finding.reviewId !== reviewId && finding.answer !== null,
+/** A ruling judges an answer, so a finding with none since its last ruling waits, still open,
+ *  for one. */
+export function earlierOpenFindings(db: Database, orderId: string, reviewId: number): FindingStanding[] {
+  return orderFindingStandings(db, orderId).filter(
+    (finding) => finding.state === "open" && finding.reviewId !== reviewId && finding.answered,
   );
-  const read = db.query<EarlierFinding, [number]>(
-    `SELECT f.id, f.dimension, f.summary, f.file, f.line, f.failure, f.fix, f.answer, f.resolution,
-            r.ruling AS lastRuling, r.reason AS lastReason,
-            (SELECT d.reason FROM factory_order_refusal_decision d WHERE d.finding_id = f.id) AS ownerReason
-     FROM factory_order_finding f
-     LEFT JOIN factory_order_finding_ruling r
-       ON r.id = (SELECT max(latest.id) FROM factory_order_finding_ruling latest WHERE latest.finding_id = f.id)
-     WHERE f.id = ?`,
-  );
-  return open.map((finding) => read.get(finding.id) as EarlierFinding);
 }
 
-function earlierFindingLines(finding: EarlierFinding): string[] {
+function earlierFindingLines(finding: FindingStanding): string[] {
   const where = findingLocation(finding) ?? "no location recorded";
   return [
-    `- Finding ${finding.id} (${finding.dimension}, ${where}): ${finding.failure ?? finding.summary}`,
+    `- Finding ${finding.id} (${finding.dimension}, ${where}): ${finding.failure}`,
     ...(finding.fix ? [`  - Fix asked for: ${finding.fix}`] : []),
     `  - Builder's answer: ${finding.answer}${finding.resolution ? `: ${finding.resolution}` : ""}`,
-    ...(finding.lastRuling
-      ? [`  - Last ruled ${finding.lastRuling}${finding.lastReason ? `: ${finding.lastReason}` : ""}`]
+    ...(finding.ruling
+      ? [`  - Last ruled ${finding.ruling}${finding.rulingReason ? `: ${finding.rulingReason}` : ""}`]
       : []),
-    ...(finding.ownerReason ? [`  - The owner overturned the refusal: ${finding.ownerReason}`] : []),
+    ...(finding.ownerRuling === "refusal_overturned"
+      ? [`  - The owner overturned the refusal: ${finding.ownerReason}`]
+      : []),
   ];
 }
 
@@ -179,7 +154,7 @@ const REPORT_CONTRACT = [
 export function reviewerBrief(
   order: { id: string; title: string; description: string | null },
   range: { base: string; head: string },
-  context: { plan: { body: string; slices: readonly PlanSlice[] } | null; earlier: EarlierFinding[] },
+  context: { plan: { body: string; slices: readonly PlanSlice[] } | null; earlier: FindingStanding[] },
   revision?: { body: string; feedback: string },
 ): string {
   const header = [
@@ -322,7 +297,7 @@ function assertLocations(findings: ReviewFinding[], round: ReviewedRound): void 
   });
 }
 
-function assertRulingSet(rulings: ReviewRuling[], earlier: EarlierFinding[]): void {
+function assertRulingSet(rulings: ReviewRuling[], earlier: FindingStanding[]): void {
   const expected = new Set(earlier.map((finding) => finding.id));
   for (const ruling of rulings) {
     if (!expected.has(ruling.finding)) {
@@ -355,7 +330,7 @@ function recordReviewResult(
   }
   return db.transaction(() => {
     for (const finding of report.findings) {
-      raiseOrderFinding(db, orderId, { ...finding, summary: finding.failure }, reviewer);
+      raiseOrderFinding(db, orderId, finding, reviewer);
     }
     for (const ruling of report.rulings) {
       ruleOnOrderFinding(

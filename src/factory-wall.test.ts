@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { basename } from "node:path";
 import wallServeConfig from "../bunfig.toml";
 import {
-  answerOrderFinding,
   appendOrderEvent,
   approveOrderBuild,
   approveOrderReview,
@@ -14,7 +13,6 @@ import {
   moveOrder,
   type OrderClaim,
   queueOrder,
-  raiseOrderFinding,
   recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
@@ -26,6 +24,7 @@ import {
 } from "./factory-order";
 import { assembleItemView, assembleWallSnapshot, wallHandler } from "./factory-wall";
 import { integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
+import { answerOrderFindings, raiseOrderFinding, ruleOnOrderFinding } from "./order-finding";
 import { resolveHomeDir } from "./paths";
 import type { Role } from "./roles";
 import { SCHEMA_SQL } from "./schema";
@@ -580,25 +579,39 @@ describe("factory wall item view", () => {
     const onTests = raiseOrderFinding(
       db,
       "order-worked",
-      { dimension: "tests", summary: "the rail has no test" },
+      { dimension: "tests", failure: "the rail has no test" },
       reviewer,
       "2026-09-18T10:07:00.000Z",
     );
-    answerOrderFinding(db, onTests, { answer: "fixed" }, worker, "2026-09-18T10:07:00.000Z");
+    answerOrderFindings(
+      db,
+      "order-worked",
+      "run",
+      [{ finding: onTests, answer: "fixed", resolution: null }],
+      worker,
+      "2026-09-18T10:07:00.000Z",
+    );
     const onStyle = raiseOrderFinding(
       db,
       "order-worked",
       {
         dimension: "style",
-        summary: "the dialog should use a component library",
+        failure: "the dialog should use a component library",
       },
       reviewer,
       "2026-09-18T10:08:00.000Z",
     );
-    answerOrderFinding(
+    answerOrderFindings(
       db,
-      onStyle,
-      { answer: "refused", resolution: "the design doc rules a library out for this surface" },
+      "order-worked",
+      "run",
+      [
+        {
+          finding: onStyle,
+          answer: "refused",
+          resolution: "the design doc rules a library out for this surface",
+        },
+      ],
       worker,
       "2026-09-18T10:08:00.000Z",
     );
@@ -759,11 +772,11 @@ describe("factory wall item view", () => {
     expect(
       entries.filter((entry) => entry.kind === "finding_answered").map((entry) => entry.finding),
     ).toEqual([
-      { dimension: "tests", answer: "fixed", summary: "the rail has no test" },
+      { dimension: "tests", answer: "fixed", failure: "the rail has no test" },
       {
         dimension: "style",
         answer: "refused",
-        summary: "the dialog should use a component library",
+        failure: "the dialog should use a component library",
         resolution: "the design doc rules a library out for this surface",
       },
     ]);
@@ -781,6 +794,47 @@ describe("factory wall item view", () => {
       stderr: "the port was already held",
       resources: [{ port: 5433 }],
     });
+    db.close();
+  });
+
+  test("attaches to each finding_answered entry the answer that attempt gave", () => {
+    const db = floor();
+    queueOrder(db, { id: "order-reanswered", project: "cniska/dim-factory", title: "Answer twice" }, worker);
+    claimOrder(db, "order-reanswered", { runId: "run", station: "build" }, worker);
+    const first = reviewIn(db, "order-reanswered", worker);
+    const finding = raiseOrderFinding(
+      db,
+      "order-reanswered",
+      { dimension: "tests", failure: "no test holds it" },
+      first.reviewer,
+    );
+    closeOrderReview(db, first.review, "closed", first.reviewer);
+    answerOrderFindings(
+      db,
+      "order-reanswered",
+      "run-1",
+      [{ finding, answer: "fixed", resolution: null }],
+      worker,
+    );
+    const second = reviewIn(db, "order-reanswered", worker);
+    ruleOnOrderFinding(db, finding, { ruling: "not_addressed", reason: "still none" }, second.reviewer);
+    closeOrderReview(db, second.review, "closed", second.reviewer);
+    answerOrderFindings(
+      db,
+      "order-reanswered",
+      "run-2",
+      [{ finding, answer: "refused", resolution: "out of scope" }],
+      worker,
+    );
+
+    const entries = assembleItemView(db, "order-reanswered")?.entries ?? [];
+
+    expect(
+      entries.filter((entry) => entry.kind === "finding_answered").map((entry) => entry.finding),
+    ).toEqual([
+      { dimension: "tests", answer: "fixed", failure: "no test holds it" },
+      { dimension: "tests", answer: "refused", failure: "no test holds it", resolution: "out of scope" },
+    ]);
     db.close();
   });
 

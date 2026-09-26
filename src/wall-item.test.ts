@@ -16,9 +16,9 @@ describe("factory wall item view", () => {
   });
 
   test("identifies repeated finding text without merging the audit events", () => {
-    const first = { finding: { dimension: "tests", answer: "raised", summary: "missing check" } };
-    const answer = { finding: { dimension: "tests", answer: "fixed", summary: "missing check" } };
-    const other = { finding: { dimension: "tests", answer: "raised", summary: "different" } };
+    const first = { finding: { dimension: "tests", answer: "raised", failure: "missing check" } };
+    const answer = { finding: { dimension: "tests", answer: "fixed", failure: "missing check" } };
+    const other = { finding: { dimension: "tests", answer: "raised", failure: "different" } };
 
     expect(findingKey(first)).toBe(findingKey(answer));
     expect(findingKey(first)).not.toBe(findingKey(other));

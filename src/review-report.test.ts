@@ -1,15 +1,9 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
-import {
-  answerOrderFinding,
-  claimOrder,
-  closeOrderReview,
-  queueOrder,
-  raiseOrderFinding,
-  ruleOnOrderFinding,
-} from "./factory-order";
+import { claimOrder, closeOrderReview, queueOrder } from "./factory-order";
 import { integratedRepo, reviewIn, reviewOutput, workerIn } from "./fixtures.test-support";
+import { answerOrderFindings, raiseOrderFinding, ruleOnOrderFinding } from "./order-finding";
 import { parseReviewReport } from "./review-artifact";
 import { renderReviewReport } from "./review-report";
 import { SCHEMA_SQL } from "./schema";
@@ -38,7 +32,6 @@ function contested(): { db: Database; review: number; finding: number } {
     "order-1",
     {
       dimension: "tests",
-      summary: "no test holds the gate",
       file: "src/gate.ts",
       line: 4,
       failure: "no test holds the gate",
@@ -48,7 +41,13 @@ function contested(): { db: Database; review: number; finding: number } {
     first.reviewer,
   );
   closeOrderReview(db, first.review, "closed", first.reviewer);
-  answerOrderFinding(db, finding, { answer: "refused", resolution: "the gate is a later slice" }, builder);
+  answerOrderFindings(
+    db,
+    "order-1",
+    "build-1",
+    [{ finding, answer: "refused", resolution: "the gate is a later slice" }],
+    builder,
+  );
   const second = reviewIn(db, "order-1", operator);
   ruleOnOrderFinding(
     db,
@@ -67,7 +66,7 @@ describe("the rendered Review artifact", () => {
     expect(headings).toEqual([
       "Verdict",
       "Blocking findings",
-      "Owner decisions",
+      "Owner rulings",
       "Earlier findings",
       "Plan conformance",
       "Coverage",
@@ -106,7 +105,7 @@ describe("the rendered Review artifact", () => {
     const third = reviewIn(db, "order-1", operator);
     const body = renderReviewReport(db, third.review, parseReviewReport(reviewOutput()));
     expect(body).toStartWith("## Verdict\n\n**Held for an owner ruling.**");
-    expect(body).toContain(`## Owner decisions\n\n- Finding ${finding}, \`src/gate.ts:4\``);
+    expect(body).toContain(`## Owner rulings\n\n- Finding ${finding}, \`src/gate.ts:4\``);
     expect(body).toContain("## Earlier findings\n\nNone.");
   });
 

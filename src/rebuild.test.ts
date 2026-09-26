@@ -387,8 +387,8 @@ describe("rebuilding a database an older schema wrote", () => {
     expect(db.query("SELECT order_id FROM factory_order_event").all()).toEqual([{ order_id: "order-kept" }]);
     expect(db.query("SELECT order_id FROM factory_order_commit").all()).toEqual([]);
     expect(report.orphans).toEqual([
-      { table: "factory_order_event", rows: 1 },
       { table: "factory_order_commit", rows: 1 },
+      { table: "factory_order_event", rows: 1 },
     ]);
     db.close();
   });

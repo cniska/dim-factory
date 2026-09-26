@@ -5,13 +5,7 @@ import type { AttemptOutcome, EvidenceReference, OrderEventKind } from "./factor
 import { FactoryStopError, liveStop } from "./factory-stop";
 import { workerIsOver } from "./factory-worker";
 import { withLock } from "./lock";
-import {
-  type FindingRuling,
-  findingStanding,
-  orderFindingStandings,
-  type RefusalDecision,
-  rulingApplies,
-} from "./order-finding-state";
+import { orderFindingStandings } from "./order-finding-state";
 import type { OrderLine } from "./order-line";
 import { dataDir, type Env } from "./paths";
 import type { PlanSlice } from "./plan-artifact";
@@ -79,6 +73,7 @@ export type OrderEvent = {
   checkId?: number;
   reviewId?: number;
   findingId?: number;
+  answerId?: number;
   planId?: number;
   buildId?: number;
   holdType?: string;
@@ -235,6 +230,7 @@ function eventValues(orderId: string, event: OrderEvent, ts: string): (string | 
     event.checkId ?? null,
     event.reviewId ?? null,
     event.findingId ?? null,
+    event.answerId ?? null,
     event.planId ?? null,
     event.buildId ?? null,
     event.holdType ?? null,
@@ -633,6 +629,25 @@ export function setOrderHold(
 
 function setOrderHoldInTransaction(db: Database, orderId: string, hold: string | null, at: string) {
   return db.run("UPDATE factory_order SET hold = ?, updated_at = ? WHERE id = ?", [hold, at, orderId]);
+}
+
+/** An overturned refusal is work for the builder, so the review's approval hold has nothing left
+ *  to approve. A hold at another station waits on that station's artifact and stays. */
+export function releaseReviewApprovalInTransaction(
+  db: Database,
+  orderId: string,
+  worker: string,
+  at: string,
+): void {
+  const held = db
+    .query<{ hold: string | null; station: string | null }, [string]>(
+      "SELECT hold, station FROM factory_order WHERE id = ?",
+    )
+    .get(orderId);
+  const atReview = held?.station === "review" || held?.station === "dim-station-review";
+  if (held?.hold !== APPROVAL_HOLD || !atReview) return;
+  setOrderHoldInTransaction(db, orderId, null, at);
+  appendOrderEventInTransaction(db, orderId, { kind: "hold_released", worker, evidence: { hold: null } }, at);
 }
 
 function recordOwnerVerdictInTransaction(
@@ -1072,7 +1087,7 @@ export function recoverOrderFailure(
 }
 
 /** Returns the row it wrote, which is the id a command prints for the spool to attribute. */
-function appendOrderEventInTransaction(
+export function appendOrderEventInTransaction(
   db: Database,
   orderId: string,
   event: OrderEvent,
@@ -1130,9 +1145,9 @@ function appendOrderEventInTransaction(
 
   const written = db.run(
     `INSERT INTO factory_order_event
-       (order_id, ts, kind, worker, session_id, station, commit_sha, check_id, review_id, finding_id, plan_id,
-        build_id, hold_type, status, reason, evidence)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (order_id, ts, kind, worker, session_id, station, commit_sha, check_id, review_id, finding_id,
+        answer_id, plan_id, build_id, hold_type, status, reason, evidence)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     eventValues(orderId, event, event.ts ?? at),
   );
   // A failure hands the work back rather than ending it, so the row returns to the
@@ -1558,7 +1573,7 @@ export function recordOrderReviewArtifact(
   })();
 }
 
-function openReviewOf(db: Database, orderId: string): { id: number; reviewer: string | null } | null {
+export function openReviewOf(db: Database, orderId: string): { id: number; reviewer: string | null } | null {
   return db
     .query<{ id: number; reviewer: string | null }, [string]>(
       `SELECT r.id, coalesce(r.reviewer, a.accepted_worker) AS reviewer
@@ -1567,280 +1582,6 @@ function openReviewOf(db: Database, orderId: string): { id: number; reviewer: st
        WHERE r.order_id = ? AND r.closed_at IS NULL`,
     )
     .get(orderId);
-}
-
-/**
- * The reviewer's own act, refused from any hand but the one this round was opened for.
- * What it raises carries no answer, because whether the finding is fixed or refused is the
- * builder's to say and a hand may only write what it did.
- *
- * Returns the finding rather than the event, since answering it is the next act and the
- * finding is what that act names.
- */
-export function raiseOrderFinding(
-  db: Database,
-  orderId: string,
-  finding: {
-    dimension: string;
-    summary: string;
-    file?: string;
-    line?: number;
-    failure?: string;
-    fix?: string;
-    severity?: string;
-  },
-  worker: string,
-  at = now(),
-): number {
-  const row = openReviewOf(db, orderId);
-  if (!row) {
-    throw new ReviewNotOpen(
-      "review_unknown",
-      `order ${orderId} has no review open, and a finding belongs to the reading that raised it`,
-    );
-  }
-  if (row.reviewer !== worker) {
-    throw new ReviewNotOpen(
-      "review_not_its_reviewer",
-      `review ${row.id} was opened for ${row.reviewer}, and a finding is worth only what the hand ` +
-        `that read the diff is worth; ${worker} did not read it`,
-    );
-  }
-  assertOrderWorking(db, orderId);
-  return db.transaction(() => {
-    const result = db.run(
-      `INSERT INTO factory_order_finding
-         (order_id, review_id, dimension, summary, file, line, failure, fix, severity, raised_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        orderId,
-        row.id,
-        finding.dimension,
-        finding.summary,
-        finding.file ?? null,
-        finding.line ?? null,
-        finding.failure ?? null,
-        finding.fix ?? null,
-        finding.severity ?? null,
-        at,
-      ],
-    );
-    const id = Number(result.lastInsertRowid);
-    appendOrderEventInTransaction(db, orderId, { kind: "finding_raised", worker, findingId: id }, at);
-    return id;
-  })();
-}
-
-export class FindingNotOpen extends Error {
-  constructor(
-    readonly code: "finding_unknown" | "finding_answered",
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-/** The builder's answer to a finding it did not raise. Answered once: a second answer would
- *  rewrite a judgement the record may already have been read for. */
-export function answerOrderFinding(
-  db: Database,
-  findingId: number,
-  answer: { answer: "fixed" | "refused"; resolution?: string },
-  worker: string,
-  at = now(),
-): number {
-  const row = db
-    .query<{ order_id: string; answer: string | null }, [number]>(
-      "SELECT order_id, answer FROM factory_order_finding WHERE id = ?",
-    )
-    .get(findingId);
-  if (!row) throw new FindingNotOpen("finding_unknown", `no finding ${findingId}`);
-  if (row.answer !== null) {
-    throw new FindingNotOpen("finding_answered", `finding ${findingId} is already ${row.answer}`);
-  }
-  assertOrderWorking(db, row.order_id);
-  return db.transaction(() => {
-    db.run("UPDATE factory_order_finding SET answer = ?, resolution = ?, answered_at = ? WHERE id = ?", [
-      answer.answer,
-      answer.resolution ?? null,
-      at,
-      findingId,
-    ]);
-    return appendOrderEventInTransaction(
-      db,
-      row.order_id,
-      { kind: "finding_answered", worker, findingId },
-      at,
-    );
-  })();
-}
-
-export class FindingRulingRefused extends Error {
-  constructor(
-    readonly code:
-      | "finding_unknown"
-      | "finding_same_round"
-      | "finding_not_open"
-      | "ruling_repeated"
-      | "ruling_not_applicable"
-      | "reason_missing",
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-/**
- * The open round's reviewer judging a finding an earlier round raised. Refused from any other
- * hand for the reason a finding is, and refused on a finding that is not open, since a settled
- * one has nothing left to judge and a contested one waits on the owner rather than the reviewer.
- */
-export function ruleOnOrderFinding(
-  db: Database,
-  findingId: number,
-  ruling: { ruling: FindingRuling; reason?: string },
-  worker: string,
-  at = now(),
-): number {
-  const finding = findingStanding(db, findingId);
-  if (!finding) throw new FindingRulingRefused("finding_unknown", `no finding ${findingId}`);
-  const { orderId } = finding;
-  const review = openReviewOf(db, orderId);
-  if (!review) {
-    throw new ReviewNotOpen("review_unknown", `order ${orderId} has no review open to rule in`);
-  }
-  if (review.reviewer !== worker) {
-    throw new ReviewNotOpen(
-      "review_not_its_reviewer",
-      `review ${review.id} was opened for ${review.reviewer}, not ${worker}`,
-    );
-  }
-  if (finding.reviewId === review.id) {
-    throw new FindingRulingRefused(
-      "finding_same_round",
-      `finding ${findingId} was raised in review ${review.id}; a round rules only on earlier findings`,
-    );
-  }
-  if (finding.state !== "open") {
-    throw new FindingRulingRefused("finding_not_open", `finding ${findingId} is ${finding.state}`);
-  }
-  const ruled = db
-    .query("SELECT 1 FROM factory_order_finding_ruling WHERE finding_id = ? AND review_id = ?")
-    .get(findingId, review.id);
-  if (ruled) {
-    throw new FindingRulingRefused(
-      "ruling_repeated",
-      `finding ${findingId} already has a ruling from review ${review.id}`,
-    );
-  }
-  if (finding.answer === null) {
-    throw new FindingRulingRefused(
-      "ruling_not_applicable",
-      `finding ${findingId} is unanswered, and a ruling judges the builder's answer`,
-    );
-  }
-  if (!rulingApplies(finding, ruling.ruling)) {
-    throw new FindingRulingRefused(
-      "ruling_not_applicable",
-      finding.refusalStands
-        ? `finding ${findingId} is a standing refusal, so it takes refusal_accepted or refusal_contested`
-        : `finding ${findingId} is answered ${finding.answer}, so it takes addressed or not_addressed`,
-    );
-  }
-  const needsReason = ruling.ruling === "not_addressed" || ruling.ruling === "refusal_contested";
-  if (needsReason && !ruling.reason?.trim()) {
-    throw new FindingRulingRefused(
-      "reason_missing",
-      `ruling ${ruling.ruling} on finding ${findingId} needs a reason`,
-    );
-  }
-  assertOrderWorking(db, orderId);
-  return db.transaction(() => {
-    db.run(
-      `INSERT INTO factory_order_finding_ruling (finding_id, review_id, ruling, reason, worker, ruled_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [findingId, review.id, ruling.ruling, ruling.reason ?? null, worker, at],
-    );
-    return appendOrderEventInTransaction(
-      db,
-      orderId,
-      { kind: "finding_ruled", worker, findingId, reviewId: review.id, evidence: { ruling: ruling.ruling } },
-      at,
-    );
-  })();
-}
-
-export class RefusalDecisionRefused extends Error {
-  constructor(
-    readonly code:
-      | "worker_not_operator"
-      | "finding_unknown"
-      | "finding_not_awaiting_owner"
-      | "reason_missing",
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-/** The owner's word on a contested refusal, recorded under the operator the way an approval is. */
-export function decideOrderRefusal(
-  db: Database,
-  findingId: number,
-  decision: { decision: RefusalDecision; reason: string },
-  worker: string,
-  at = now(),
-): number {
-  const role = db
-    .query<{ role: string }, [string]>("SELECT role FROM factory_worker WHERE name = ?")
-    .get(worker)?.role;
-  if (role !== "operator") {
-    throw new RefusalDecisionRefused("worker_not_operator", `worker ${worker} is not an operator`);
-  }
-  const finding = findingStanding(db, findingId);
-  if (!finding) throw new RefusalDecisionRefused("finding_unknown", `no finding ${findingId}`);
-  if (finding.state !== "awaiting_owner") {
-    throw new RefusalDecisionRefused(
-      "finding_not_awaiting_owner",
-      `finding ${findingId} is ${finding.state}, and only a contested refusal waits on the owner`,
-    );
-  }
-  if (!decision.reason.trim()) {
-    throw new RefusalDecisionRefused("reason_missing", `a decision on finding ${findingId} needs a reason`);
-  }
-  const { orderId } = finding;
-  assertOrderWorking(db, orderId);
-  return db.transaction(() => {
-    db.run(
-      `INSERT INTO factory_order_refusal_decision (finding_id, decision, reason, worker, decided_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [findingId, decision.decision, decision.reason, worker, at],
-    );
-    const event = appendOrderEventInTransaction(
-      db,
-      orderId,
-      { kind: "refusal_decided", worker, findingId, evidence: { decision: decision.decision } },
-      at,
-    );
-    // An overturned refusal is work for the builder, so the review's approval hold has nothing
-    // left to approve. A hold at another station waits on that station's artifact and stays.
-    const held = db
-      .query<{ hold: string | null; station: string | null }, [string]>(
-        "SELECT hold, station FROM factory_order WHERE id = ?",
-      )
-      .get(orderId);
-    const atReview = held?.station === "review" || held?.station === "dim-station-review";
-    if (decision.decision === "refusal_overturned" && held?.hold === APPROVAL_HOLD && atReview) {
-      setOrderHoldInTransaction(db, orderId, null, at);
-      appendOrderEventInTransaction(
-        db,
-        orderId,
-        { kind: "hold_released", worker, evidence: { hold: null } },
-        at,
-      );
-    }
-    return event;
-  })();
 }
 
 export function recordOrderEnvironment(
@@ -2387,7 +2128,7 @@ function assertIntegrated(db: Database, orderId: string, worktree: string): void
   );
 }
 
-function assertOrderWorking(db: Database, orderId: string): void {
+export function assertOrderWorking(db: Database, orderId: string): void {
   const status = orderStatus(db, orderId);
   if (status === "working") return;
   // A queued order is short of the point that takes evidence rather than past it,

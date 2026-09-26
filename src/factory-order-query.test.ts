@@ -2,12 +2,11 @@ import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import {
-  answerOrderFinding,
   appendOrderEvent,
   claimOrder as claimOrderAt,
+  closeOrderReview,
   type OrderClaim,
   queueOrder,
-  raiseOrderFinding,
   recordOrderBuild,
   recordOrderCheck,
   recordOrderCommit,
@@ -16,6 +15,7 @@ import {
   recordOrderFile,
 } from "./factory-order";
 import { integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
+import { answerOrderFindings, raiseOrderFinding, ruleOnOrderFinding } from "./order-finding";
 import { findQuery } from "./queries";
 import { SCHEMA_SQL } from "./schema";
 
@@ -50,6 +50,74 @@ function claimOrder(
 const claim = { runId: "run-1", station: "dim-station-build" };
 
 describe("factory order query", () => {
+  test("reports a finding a later round found not addressed as unanswered until it is answered again", () => {
+    const db = floor();
+    queueOrder(db, { id: "order-reopened", project: "cniska/dim-factory", title: "Reopen" }, worker);
+    claimOrder(db, "order-reopened", claim, worker);
+    const first = reviewIn(db, "order-reopened", worker);
+    const finding = raiseOrderFinding(
+      db,
+      "order-reopened",
+      { dimension: "tests", failure: "no test" },
+      first.reviewer,
+    );
+    closeOrderReview(db, first.review, "closed", first.reviewer);
+    const answer = (run: string) =>
+      answerOrderFindings(
+        db,
+        "order-reopened",
+        run,
+        [{ finding, answer: "fixed", resolution: null }],
+        worker,
+      );
+    const reported = () => ({
+      order: findQuery("order")
+        ?.run(db, { arg: "order-reopened" })
+        .rows.filter((row) => row[0] === "finding")
+        .map((row) => [row[2], row[3]]),
+      factory: findQuery("factory")?.run(db, { arg: "order-reopened" }).rows[0]?.[10],
+    });
+    answer("run-1");
+    expect(reported()).toEqual({ order: [["finding_answered", "fixed"]], factory: "tests: fixed - no test" });
+    const second = reviewIn(db, "order-reopened", worker);
+    ruleOnOrderFinding(db, finding, { ruling: "not_addressed", reason: "still none" }, second.reviewer);
+    closeOrderReview(db, second.review, "closed", second.reviewer);
+    expect(reported()).toEqual({
+      order: [["finding_raised", "unanswered"]],
+      factory: "tests: unanswered - no test",
+    });
+    answer("run-2");
+    expect(reported()).toEqual({ order: [["finding_answered", "fixed"]], factory: "tests: fixed - no test" });
+    db.close();
+  });
+
+  test("lists each order's findings on its own row", () => {
+    const db = floor();
+    for (const [id, dimension, answered] of [
+      ["order-left", "tests", true],
+      ["order-right", "docs", false],
+    ] as const) {
+      queueOrder(db, { id, project: "cniska/dim-factory", title: id }, worker);
+      claimOrder(db, id, { ...claim, runId: `run-${id}` }, worker);
+      const round = reviewIn(db, id, worker);
+      const finding = raiseOrderFinding(db, id, { dimension, failure: `${id} gap` }, round.reviewer);
+      closeOrderReview(db, round.review, "closed", round.reviewer);
+      if (answered) {
+        answerOrderFindings(db, id, `build-${id}`, [{ finding, answer: "fixed", resolution: null }], worker);
+      }
+    }
+    queueOrder(db, { id: "order-clean", project: "cniska/dim-factory", title: "clean" }, worker);
+
+    const rows = findQuery("factory")?.run(db, {}).rows ?? [];
+
+    expect(Object.fromEntries(rows.map((row) => [row[1], row[10]]))).toEqual({
+      "order-left": "tests: fixed - order-left gap",
+      "order-right": "docs: unanswered - order-right gap",
+      "order-clean": "(none recorded)",
+    });
+    db.close();
+  });
+
   test("returns one unified status row with the latest lifecycle and evidence", () => {
     const db = floor();
     queueOrder(
@@ -98,18 +166,25 @@ describe("factory order query", () => {
       "2026-09-18T09:58:00.000Z",
     );
     const reviewer = reviewIn(db, "order-status", worker, "2026-09-18T10:03:30.000Z").reviewer;
-    for (const [dimension, summary] of [
+    for (const [dimension, failure] of [
       ["tests", "holds"],
       ["docs", "updated"],
     ] as const) {
       const raised = raiseOrderFinding(
         db,
         "order-status",
-        { dimension, summary },
+        { dimension, failure },
         reviewer,
         "2026-09-18T10:04:00.000Z",
       );
-      answerOrderFinding(db, raised, { answer: "fixed" }, worker, "2026-09-18T10:04:00.000Z");
+      answerOrderFindings(
+        db,
+        "order-status",
+        "run",
+        [{ finding: raised, answer: "fixed", resolution: null }],
+        worker,
+        "2026-09-18T10:04:00.000Z",
+      );
     }
     appendOrderEvent(
       db,
@@ -126,6 +201,7 @@ describe("factory order query", () => {
       "factory_order_file",
       "factory_order_check",
       "factory_order_finding",
+      "factory_order_finding_answer",
       "factory_order_document",
     ].map((table) => db.query(`SELECT * FROM ${table} ORDER BY 1`).all());
     const result = findQuery("factory")?.run(db, { arg: "order-st" });
@@ -168,6 +244,7 @@ describe("factory order query", () => {
       "factory_order_file",
       "factory_order_check",
       "factory_order_finding",
+      "factory_order_finding_answer",
       "factory_order_document",
     ].map((table) => db.query(`SELECT * FROM ${table} ORDER BY 1`).all());
     expect(after).toEqual(before);
@@ -254,11 +331,18 @@ describe("factory order query", () => {
     const raised = raiseOrderFinding(
       db,
       "order-123",
-      { dimension: "tests", summary: "holds" },
+      { dimension: "tests", failure: "holds" },
       reviewIn(db, "order-123", worker, "2026-09-18T10:02:30.000Z").reviewer,
       "2026-09-18T10:03:00.000Z",
     );
-    answerOrderFinding(db, raised, { answer: "fixed" }, worker, "2026-09-18T10:03:00.000Z");
+    answerOrderFindings(
+      db,
+      "order-123",
+      "run",
+      [{ finding: raised, answer: "fixed", resolution: null }],
+      worker,
+      "2026-09-18T10:03:00.000Z",
+    );
     recordOrderDocument(db, "order-123", "docs/factory.md", worker, "2026-09-18T10:04:00.000Z");
     recordOrderEnvironment(
       db,

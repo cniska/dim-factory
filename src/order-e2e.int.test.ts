@@ -50,7 +50,7 @@ if (brief.includes("planner")) {
   const file = "built-by-real-harness-" + slice + ".txt";
   writeFileSync(file, "slice " + slice + "\\n");
   const artifact = slice === "2" ? ${JSON.stringify("## Outcome\n\nThe requested queue flow is implemented across both slices.\n\n## Implementation\n\nThe factory now selects and reserves one ready order under its lock.\n\n## Why this shape\n\nReservation reuses the existing claim boundary, so selection and ownership cannot diverge.\n\n## Verification\n\nBoth slices recorded passing checks, and the final harness run completed successfully.\n\n## Owner attention\n\nThe wall remains outside this order.")} : "";
-  emit({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify({ subject: "feat: real harness slice " + slice, artifact }) } });
+  emit({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify({ subject: "feat: real harness slice " + slice, artifact, answers: [] }) } });
 } else if (brief.includes("reviewer")) {
   emit({ type: "item.completed", item: { type: "agent_message", text: ${JSON.stringify(reviewOutput({ verdict: "No findings; the change is ready to advance." }))} } });
 } else {
