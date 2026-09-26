@@ -1,9 +1,18 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { integratedRepo, orderWorktree, repoWithoutTrunk } from "./fixtures.test-support";
-import { patchesEqual, type Rewrite } from "./rebase-onto-trunk";
+import { patchesEqual, RebaseConflict, type Rewrite, rebaseState } from "./rebase-onto-trunk";
 import { type RebaseVerdict, shipBranch } from "./ship";
 import { ShipRefusal } from "./ship-refusal";
 
@@ -225,23 +234,29 @@ describe("shipBranch", () => {
     expect(git(dir, ["rev-parse", "refs/heads/feat-held"]).out).toBe(seen?.newHead as string);
   });
 
-  test("a conflict aborts the rebase and is refused with the paths, leaving the branch at its old head", () => {
+  test("a conflict is refused with the rebase it stopped, leaving the worktree mid-rebase and the trunk and branch where they were", () => {
     const { dir } = repo();
     const wt = worktree(dir, "feat-clash");
+    const base = git(dir, ["rev-parse", "HEAD"]).out;
     const sha = commitFile(wt, "clash.txt", "branch side");
     const trunkAhead = commitFile(dir, "clash.txt", "trunk side");
 
-    expect(() => ship(wt, "feat-clash", [sha])).toThrow(
-      expect.objectContaining({
-        code: "ship_rebase_conflict",
-        message: expect.stringContaining("clash.txt"),
-      }),
-    );
+    let refused: unknown;
+    try {
+      ship(wt, "feat-clash", [sha]);
+    } catch (error) {
+      refused = error;
+    }
+
+    expect(refused).toBeInstanceOf(RebaseConflict);
+    expect(refused).toMatchObject({
+      code: "ship_rebase_conflict",
+      paths: ["clash.txt"],
+      replay: { worktree: realpathSync(wt), oldBase: base, newBase: trunkAhead, oldHead: sha },
+    });
     expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkAhead);
     expect(git(dir, ["rev-parse", "refs/heads/feat-clash"]).out).toBe(sha);
-    expect(
-      existsSync(git(wt, ["rev-parse", "--path-format=absolute", "--git-path", "rebase-merge"]).out),
-    ).toBe(false);
+    expect(rebaseState(wt)).toEqual({ origHead: sha, onto: trunkAhead, headName: "refs/heads/feat-clash" });
   });
 
   test("a hook the builder committed into the tree does not run when its branch is rebased", () => {

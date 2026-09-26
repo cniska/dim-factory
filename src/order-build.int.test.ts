@@ -31,6 +31,7 @@ import {
   recordOrderCommit,
   recordOrderPlan,
   returnOrderArtifact,
+  shipOrder,
 } from "./factory-order";
 import {
   endWorker,
@@ -1349,6 +1350,67 @@ describe("a commit git refuses", () => {
 
     expect(builder.calls.map((call) => call.kind)).toEqual(["start"]);
     expect(order.events("failed")).toEqual([]);
+    db.close();
+  });
+});
+
+describe("a conflict at ship", () => {
+  test("goes back to the builder, whose resolution the runner continues, re-checks and hands to review", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-conflict-");
+    const { repo, operator } = orderAtBuild(db, "conflict-order", [
+      { title: "Build one half", outcome: "One half is verified." },
+      { title: "Build the other", outcome: "The other half is verified." },
+    ]);
+    const options = { dir: repo.dir, env: { DIM_HOME: dimHome }, checkSandbox: confiningCheckSandbox() };
+    const worktree = realpathSync(join(repo.dir, ".claude", "worktrees", "conflict-order"));
+    for (const [file, artifact] of [
+      ["built.txt", ""],
+      ["other.txt", "## Outcome\n\nBuilt."],
+    ] as const) {
+      await runOrderBuildLive(db, "conflict-order", operator.name, {
+        ...options,
+        adapter: scriptedBuilder([
+          (request) => {
+            writeFileSync(join(request.cwd, file), "built\n");
+            return { subject: `feat: build ${file}`, artifact };
+          },
+        ]).adapter,
+      });
+    }
+    approveOrderBuild(db, "conflict-order", operator.name, "built as planned");
+    writeFileSync(join(repo.dir, "built.txt"), "trunk\n");
+    writeFileSync(join(repo.dir, "other.txt"), "trunk\n");
+    git(repo.dir, ["add", "built.txt", "other.txt"]);
+    git(repo.dir, ["commit", "-q", "-m", "feat: build both on the trunk"]);
+    const trunkTip = git(repo.dir, ["rev-parse", "HEAD"]);
+    expect(() =>
+      shipOrder(db, "conflict-order", worktree, operator.name, {
+        env: options.env,
+        checkSandbox: options.checkSandbox,
+      }),
+    ).toThrow(expect.objectContaining({ code: "ship_rebase_conflict" }));
+
+    const resolve = (file: string) => (request: HarnessRequest) => {
+      writeFileSync(join(request.cwd, file), "built\ntrunk\n");
+      return { subject: "fix: resolve", artifact: "" };
+    };
+    const builder = scriptedBuilder([resolve("built.txt"), resolve("other.txt")]);
+    await runOrderBuildLive(db, "conflict-order", operator.name, { ...options, adapter: builder.adapter });
+
+    expect(builder.calls).toHaveLength(2);
+    expect(builder.calls[0]?.brief).toContain("# Rebase conflict");
+    expect(builder.calls[0]?.brief).toContain("- built.txt");
+    expect(builder.calls[0]?.brief).not.toContain("# Commit convention");
+    expect(builder.calls[0]?.brief).not.toContain("run the build station loop including simplification");
+    expect(builder.calls[1]?.brief).toContain("- other.txt");
+    expect(git(worktree, ["show", "HEAD:built.txt"])).toBe("built\ntrunk");
+    expect(git(worktree, ["show", "HEAD:other.txt"])).toBe("built\ntrunk");
+    expect(git(worktree, ["rev-parse", "HEAD~2"])).toBe(trunkTip);
+    expect(db.query("SELECT patch_equal FROM factory_order_rewrite").all()).toEqual([{ patch_equal: 0 }]);
+    expect(db.query("SELECT station FROM factory_order WHERE id = 'conflict-order'").get()).toEqual({
+      station: "dim-station-review",
+    });
     db.close();
   });
 });

@@ -8,7 +8,7 @@ import { withLock } from "./lock";
 import type { OrderLine } from "./order-line";
 import { dataDir, type Env } from "./paths";
 import type { PlanSlice } from "./plan-artifact";
-import type { Rewrite } from "./rebase-onto-trunk";
+import { RebaseConflict, type Replay, type Rewrite } from "./rebase-onto-trunk";
 import { CHECK_SANDBOX, runSandboxedCheck } from "./sandboxed-check";
 import { type RebaseVerdict, type ShipOutcome, shipBranch } from "./ship";
 import { ShipRefusal } from "./ship-refusal";
@@ -473,6 +473,40 @@ export function currentOrderCommits(db: Database, orderId: string): OrderCommit[
     .all(orderId);
 }
 
+export type RecordedConflict = Omit<Replay, "worktree"> & { paths: string[]; stoppedAt: string };
+
+/** The conflict a ship stopped on that no rewrite has resolved since: the rebase it recorded, the
+ *  commit it stopped on and the paths it stopped in. */
+export function pendingRebaseConflict(db: Database, orderId: string): RecordedConflict | null {
+  const row = db
+    .query<{ evidence: string }, [string]>(
+      `SELECT e.evidence FROM factory_order_event e
+       WHERE e.order_id = ? AND e.kind = 'delivery_recorded'
+         AND json_extract(e.evidence, '$.code') = 'ship_rebase_conflict'
+         AND e.id > coalesce((
+           SELECT max(rewritten.id) FROM factory_order_event rewritten
+           WHERE rewritten.order_id = e.order_id AND rewritten.kind = 'commit_rewritten'
+         ), 0)
+       ORDER BY e.id DESC LIMIT 1`,
+    )
+    .get(orderId);
+  if (!row) return null;
+  const evidence = JSON.parse(row.evidence) as {
+    oldBase: string;
+    newBase: string;
+    oldHead: string;
+    stoppedAt: string;
+    paths: string;
+  };
+  return {
+    oldBase: evidence.oldBase,
+    newBase: evidence.newBase,
+    oldHead: evidence.oldHead,
+    stoppedAt: evidence.stoppedAt,
+    paths: JSON.parse(evidence.paths) as string[],
+  };
+}
+
 export function latestOrderCommit(db: Database, orderId: string): OrderCommit | null {
   return currentOrderCommits(db, orderId).at(-1) ?? null;
 }
@@ -631,6 +665,7 @@ function recordDeliveryInTransaction(
   worker: string,
   at: string,
   reason?: string,
+  evidence: EvidenceReference = {},
 ): number {
   const sessionId = db
     .query<{ session_id: string | null }, [string]>("SELECT session_id FROM factory_worker WHERE name = ?")
@@ -649,7 +684,7 @@ function recordDeliveryInTransaction(
       worker,
       commitSha: commitSha ?? undefined,
       reason,
-      evidence: { deliveryId: Number(written.lastInsertRowid), outcome },
+      evidence: { ...evidence, deliveryId: Number(written.lastInsertRowid), outcome },
     },
     at,
   );
@@ -2147,16 +2182,16 @@ function assertOrderBuilding(db: Database, orderId: string): void {
  * The check a rebase at ship is held to: the repo's declared check, run in the check sandbox at
  * the rewritten head, since the code it runs is the builder's replayed onto a trunk it never saw.
  */
-function recheck(rewrite: Rewrite, env: Env, sandbox: string[]): OrderCheck {
-  const declared = checkCommand(rewrite.worktree);
+export function recheck(worktree: string, env: Env, sandbox: string[]): OrderCheck {
+  const declared = checkCommand(worktree);
   if (!declared) {
     throw new ShipRefusal(
       "ship_check_failed",
-      `${rewrite.worktree} declares no check, so the rebased branch cannot be verified`,
+      `${worktree} declares no check, so the rebased branch cannot be verified`,
     );
   }
   const check = runSandboxedCheck({
-    worktree: rewrite.worktree,
+    worktree,
     command: declared.command,
     canary: join(dataDir(env), `check-canary-${randomUUID()}`),
     sandbox,
@@ -2181,7 +2216,8 @@ function recheck(rewrite: Rewrite, env: Env, sandbox: string[]): OrderCheck {
  * Where the trunk has moved, the branch is rebased, re-checked and recorded as rewritten, all
  * under that lock. A red check takes the rebase back. A rebase that changed a patch keeps its
  * rewritten branch but lands nothing: the order returns to review, since what was approved is
- * not what the branch now holds.
+ * not what the branch now holds. A conflict is recorded with the rebase it stopped, and the
+ * order returns to build, where the builder resolves it in the worktree left mid-rebase.
  */
 export function shipOrder(
   db: Database,
@@ -2192,6 +2228,13 @@ export function shipOrder(
 ): ShipOutcome {
   const env = options.env ?? process.env;
   assertOrderWorking(db, orderId);
+  const conflict = pendingRebaseConflict(db, orderId);
+  if (conflict) {
+    throw new ShipRefusal(
+      "ship_rebase_conflict",
+      `order ${orderId} has a rebase conflict in ${conflict.paths.join(", ")} its builder has not resolved; it ships once build has`,
+    );
+  }
   const shas = currentOrderCommits(db, orderId).map((row) => row.sha);
   if (shas.length === 0) {
     throw new OrderNotDone(
@@ -2201,7 +2244,7 @@ export function shipOrder(
     );
   }
   const onRebased = (rewrite: Rewrite): RebaseVerdict => {
-    const check = recheck(rewrite, env, options.checkSandbox ?? CHECK_SANDBOX);
+    const check = recheck(rewrite.worktree, env, options.checkSandbox ?? CHECK_SANDBOX);
     if (check.exitCode !== 0) {
       recordOrderCheck(db, orderId, check, worker);
       throw new ShipRefusal(
@@ -2238,7 +2281,18 @@ export function shipOrder(
         worker,
         at,
         reason,
+        error instanceof RebaseConflict
+          ? {
+              code: error.code,
+              paths: JSON.stringify(error.paths),
+              oldBase: error.replay.oldBase,
+              newBase: error.replay.newBase,
+              oldHead: error.replay.oldHead,
+              stoppedAt: error.stoppedAt,
+            }
+          : {},
       );
+      if (error instanceof RebaseConflict) moveOrder(db, orderId, "dim-station-build", worker, at);
     })();
     throw error;
   }

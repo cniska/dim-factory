@@ -12,6 +12,7 @@ import {
   recordOrderFile,
 } from "./factory-order";
 import { dataDir, type Env } from "./paths";
+import { rebaseInProgress } from "./rebase-onto-trunk";
 import { CHECK_SANDBOX, runSandboxedCheck } from "./sandboxed-check";
 import { trunkBranch } from "./trunk";
 import { checkCommand } from "./workspace-commands";
@@ -27,7 +28,10 @@ export class BuildTurnRefused extends Error {
       | "check_changed_tree"
       | "no_change"
       | "order_not_building"
-      | "commit_refused",
+      | "commit_refused"
+      | "rebase_in_progress"
+      | "rebase_mismatch"
+      | "conflict_unresolved",
     message: string,
   ) {
     super(message);
@@ -109,6 +113,12 @@ export function commitBuildTurn(options: {
   }
   if (options.finalSlice && turn.artifact === "") {
     throw new BuildTurnRefused("empty_artifact", "the final slice's turn returned an empty Build artifact");
+  }
+  if (rebaseInProgress(worktree)) {
+    throw new BuildTurnRefused(
+      "rebase_in_progress",
+      `${worktree} is mid-rebase, and a commit made there would land inside the rebase rather than on the order's branch`,
+    );
   }
   const recorded = latestOrderCommit(db, orderId);
   const before = head(worktree);

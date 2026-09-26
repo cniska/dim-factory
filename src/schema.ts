@@ -480,7 +480,8 @@ CREATE TABLE IF NOT EXISTS factory_order_rewrite (
   new_base      TEXT NOT NULL,
   old_head      TEXT NOT NULL,
   new_head      TEXT NOT NULL,
-  -- From \`git range-diff\`: 1 when every replayed commit carries the patch it had.
+  -- From \`git range-diff\`: 1 when every replayed commit carries the patch it had. Always 0
+  -- where the builder resolved a conflict, since part of the rewrite is then its own.
   patch_equal   INTEGER NOT NULL CHECK (patch_equal IN (0, 1)),
   check_id      INTEGER NOT NULL REFERENCES factory_order_check(id),
   worker        TEXT NOT NULL REFERENCES factory_worker(name),
