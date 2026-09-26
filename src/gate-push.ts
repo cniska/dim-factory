@@ -1,4 +1,4 @@
-import { foldAscii, SLUG_SED } from "./git-remote-slug";
+import { ownerCasePatterns, ownerDeclaration, SLUG_SED } from "./git-remote-slug";
 
 export function unarmedCheckouts(dirs: string[]): string[] {
   return dirs.filter((dir) => {
@@ -20,6 +20,7 @@ export const URL_NORMALIZER = `dim_url() {
 export function prePushScript(owners: string[]): string {
   return `#!/usr/bin/env bash
 # Installed by \`dim install-commit-gate\`. One copy for every repo; see dim-factory.
+${ownerDeclaration(owners)}
 set -u
 
 remote="\${1:-}"
@@ -31,8 +32,8 @@ ${URL_NORMALIZER}
 url=$(dim_url "\${2:-}")
 owner=$(printf '%s' "$url" | sed -nE '${SLUG_SED}')
 [ -n "$owner" ] || exit 0
-case " ${owners.map(foldAscii).join(" ")} " in
-  *" $owner "*) ;;
+case "$owner" in
+  ${ownerCasePatterns(owners)}) ;;
   *) exit 0 ;;
 esac
 

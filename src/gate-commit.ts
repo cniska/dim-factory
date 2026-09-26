@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { readConfig } from "./config";
 import { prePushScript } from "./gate-push";
 import { checkoutSlug, labelFor } from "./git-remote";
-import { foldAscii, SLUG_SED } from "./git-remote-slug";
+import { foldAscii, ownerCasePatterns, ownerDeclaration, SLUG_SED } from "./git-remote-slug";
 import { type Env, resolveHomeDir } from "./paths";
 
 export const SUBJECT_LIMIT = 50;
@@ -29,6 +29,7 @@ export function sharedHooksDir(env: Env = process.env): string {
 export function hookScript(owners: string[]): string {
   return `#!/usr/bin/env bash
 # Installed by \`dim install-commit-gate\`. One copy for every repo; see dim-factory.
+${ownerDeclaration(owners)}
 set -u
 
 msg_file="\${1:-}"
@@ -37,8 +38,8 @@ msg_file="\${1:-}"
 origin=$(git config --get remote.origin.url 2>/dev/null || true)
 owner=$(printf '%s' "$origin" | sed -nE '${SLUG_SED}')
 [ -n "$owner" ] || exit 0
-case " ${owners.map(foldAscii).join(" ")} " in
-  *" $owner "*) ;;
+case "$owner" in
+  ${ownerCasePatterns(owners)}) ;;
   *) exit 0 ;;
 esac
 
@@ -68,6 +69,7 @@ export const COMMENTS_FOUND_EXIT = 3;
 export function preCommitScript(owners: string[]): string {
   return `#!/usr/bin/env bash
 # Installed by \`dim install-commit-gate\`. One copy for every repo; see dim-factory.
+${ownerDeclaration(owners)}
 set -u
 
 [ "\${${SKIP_CHECK_ENV}:-}" = "1" ] && exit 0
@@ -75,8 +77,8 @@ set -u
 origin=$(git config --get remote.origin.url 2>/dev/null || true)
 owner=$(printf '%s' "$origin" | sed -nE '${SLUG_SED}')
 [ -n "$owner" ] || exit 0
-case " ${owners.map(foldAscii).join(" ")} " in
-  *" $owner "*) ;;
+case "$owner" in
+  ${ownerCasePatterns(owners)}) ;;
   *) exit 0 ;;
 esac
 
@@ -220,8 +222,15 @@ export function installCommitGate(
 export function installedOwners(env: Env = process.env): string[] | null {
   const path = join(sharedHooksDir(env), "commit-msg");
   if (!existsSync(path)) return null;
-  const line = /^case " (.*) " in$/m.exec(readFileSync(path, "utf8"));
-  return line?.[1] === undefined ? [] : line[1].split(" ").filter(Boolean);
+  const line = /^# dim-owners: ([^\r\n]+)$/m.exec(readFileSync(path, "utf8"));
+  if (line?.[1] === undefined) return [];
+  try {
+    const owners: unknown = JSON.parse(line[1]);
+    return Array.isArray(owners) && owners.every((owner) => typeof owner === "string") ? owners : [];
+  } catch (error) {
+    if (error instanceof SyntaxError) return [];
+    throw error;
+  }
 }
 
 export function ownersCover(owners: string[], slug: string | null): boolean {

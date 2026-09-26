@@ -55,6 +55,14 @@ describe("isHostQualified", () => {
     expect(isHostQualified("/tmp/holding/cniska")).toBe(true);
   });
 
+  test("a local path with spaces still identifies an owner", () => {
+    expect(isHostQualified("/tmp/Chris Niska/project")).toBe(true);
+  });
+
+  test("control characters do not identify an owner", () => {
+    expect(isHostQualified("github.com/x\nexit 0")).toBe(false);
+  });
+
   test("a forge named without an account arms nothing", () => {
     expect(remoteSlug("https://github.com/x.git")).toBe("github.com");
     expect(isHostQualified("github.com")).toBe(false);

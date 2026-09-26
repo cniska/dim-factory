@@ -8,10 +8,13 @@ import {
   commentGateFor,
   hookScript,
   installCommitGate,
+  installedOwners,
   preCommitScript,
   SKIP_CHECK_ENV,
   sharedHooksDir,
 } from "./gate-commit";
+import { prePushScript } from "./gate-push";
+import { ownerCasePatterns } from "./git-remote-slug";
 
 describe("subject rules", () => {
   test("accepts a conforming subject", () => {
@@ -216,7 +219,55 @@ describe("the shared hook", () => {
 
   test("the owner list is the only thing that changes between installs", () => {
     expect(hookScript(["cniska"])).not.toEqual(hookScript(["cniska", "other-org"]));
-    expect(hookScript(["cniska", "other-org"])).toContain(" cniska other-org ");
+    expect(hookScript(["cniska", "other-org"])).toContain('# dim-owners: ["cniska","other-org"]');
+  });
+
+  test("shell syntax in an owner is treated as data by every generated hook", () => {
+    const root = mkdtempSync(join(tmpdir(), "dim-hook-owner-"));
+    const marker = join(root, "ran");
+    try {
+      const owners = [`github.com/x$(touch ${marker})`];
+      const pattern = ownerCasePatterns(owners);
+      for (const script of [hookScript(owners), preCommitScript(owners), prePushScript(owners)]) {
+        expect(script).toContain(`${pattern})`);
+        const result = spawnSync("bash", ["-n"], { input: script });
+        expect(result.status).toBe(0);
+      }
+      const match = spawnSync("bash", [
+        "-c",
+        `owner=github.com/x; case "$owner" in ${pattern}) exit 0 ;; *) exit 1 ;; esac`,
+      ]);
+      expect(match.status).toBe(1);
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a malformed owner declaration is treated as a stale hook", () => {
+    const home = mkdtempSync(join(tmpdir(), "dim-hook-owner-"));
+    try {
+      const env = { HOME: home };
+      const dir = sharedHooksDir(env);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "commit-msg"), "# dim-owners: [broken\n");
+      expect(installedOwners(env)).toEqual([]);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("reads an owner path containing a Unicode line separator", () => {
+    const home = mkdtempSync(join(tmpdir(), "dim-hook-owner-"));
+    try {
+      const env = { HOME: home };
+      const dir = sharedHooksDir(env);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "commit-msg"), hookScript(["/tmp/team\u2028name"]));
+      expect(installedOwners(env)).toEqual(["/tmp/team\u2028name"]);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
 
@@ -230,8 +281,8 @@ describe("the check gate", () => {
 
   test("runs nothing for a repo that is not the owner's", () => {
     const script = preCommitScript(["cniska"]);
-    expect(script).toContain('case " cniska " in');
-    expect(script.indexOf('case " cniska " in')).toBeLessThan(script.indexOf("dim check-command"));
+    expect(script).toContain("case \"$owner\" in\n  'cniska')");
+    expect(script.indexOf('case "$owner" in')).toBeLessThan(script.indexOf("dim check-command"));
   });
 
   test("exits 0 where dim or the declared check is missing", () => {

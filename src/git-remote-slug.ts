@@ -21,5 +21,15 @@ export function remoteSlug(url: string): string | null {
   return cut > 0 ? slug.slice(0, cut) : null;
 }
 export function isHostQualified(owner: string): boolean {
-  return owner.includes("/");
+  return (
+    owner.includes("/") && [...owner].every((char) => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127)
+  );
+}
+
+export function ownerDeclaration(owners: string[]): string {
+  return `# dim-owners: ${JSON.stringify(owners.map(foldAscii))}`;
+}
+
+export function ownerCasePatterns(owners: string[]): string {
+  return owners.map((owner) => `'${foldAscii(owner).replaceAll("'", "'\\''")}'`).join("|") || "''";
 }
