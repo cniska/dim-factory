@@ -9,6 +9,7 @@ import {
   approveOrderPlan,
   approveOrderReview,
   claimOrder,
+  decideOrderRefusal,
   dropOrder,
   moveOrder,
   ORDER_PRIORITIES,
@@ -63,6 +64,7 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--lin
        dim order finding <order-id> --dimension <name> --summary "..."
        dim order answer <finding-id> --answer <fixed|refused>
                        [--resolution "..."]
+       dim order rule <finding-id> --uphold|--overturn --reason "..."
        dim order document <order-id> --path <path>
        dim order plan <order-id> [--harness <${HARNESSES.join("|")}>]
        dim order build <order-id> [--harness <${HARNESSES.join("|")}>]
@@ -382,6 +384,35 @@ function answerFinding(
   return `finding ${findingSpec} is ${ended}`;
 }
 
+/** The owner's word on a contested refusal, typed by the operator the way an approval is. */
+function ruleOnRefusal(
+  db: Database,
+  findingSpec: string | undefined,
+  args: string[],
+  worker: string,
+): string {
+  if (findingSpec === undefined || !/^[1-9]\d*$/.test(findingSpec)) {
+    throw fail(
+      "rule names the finding it settles: `dim order rule <finding-id> --uphold|--overturn --reason ...`",
+    );
+  }
+  const upheld = args.includes("--uphold");
+  const overturned = args.includes("--overturn");
+  if (upheld === overturned) throw fail("rule takes exactly one of --uphold or --overturn");
+  const reason = required(
+    flags(
+      args.filter((arg) => arg !== "--uphold" && arg !== "--overturn"),
+      ["--reason"],
+    ),
+    "--reason",
+  );
+  const decision = upheld ? "refusal_upheld" : "refusal_overturned";
+  decideOrderRefusal(db, Number(findingSpec), { decision, reason }, worker);
+  return upheld
+    ? `finding ${findingSpec}: refusal upheld`
+    : `finding ${findingSpec}: refusal overturned, back to the builder`;
+}
+
 export function runOrderCommand(
   db: Database,
   args: string[],
@@ -482,6 +513,7 @@ export function runOrderCommand(
   if (command === "amend") return amend(db, orderId, rest);
   if (command === "drop") return drop(db, orderId, rest, worker);
   if (command === "answer") return answerFinding(db, orderId, rest, worker);
+  if (command === "rule") return ruleOnRefusal(db, orderId, rest, worker);
   if (command === "review") {
     const harness = selectedHarness(db, flags(rest, ["--harness"]), worker);
     assertOperator(db, worker, "delegate review");

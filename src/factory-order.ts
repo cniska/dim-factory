@@ -8,6 +8,7 @@ import { withLock } from "./lock";
 import {
   type FindingRuling,
   findingStanding,
+  orderFindingStandings,
   type RefusalDecision,
   rulingApplies,
 } from "./order-finding-state";
@@ -145,7 +146,8 @@ export class ReviewApprovalRefused extends Error {
       | "review_not_closed"
       | "review_aborted"
       | "review_artifact_missing"
-      | "findings_present"
+      | "finding_unsettled"
+      | "ruling_pending"
       | "review_already_approved",
     message: string,
   ) {
@@ -1461,11 +1463,10 @@ export function closeOrderReview(
       { kind: "review_closed", worker, reviewId, reason },
       at,
     );
-    const findings =
-      db
-        .query<{ n: number }, [number]>("SELECT count(*) AS n FROM factory_order_finding WHERE review_id = ?")
-        .get(reviewId)?.n ?? 0;
-    if (outcome === "closed" && findings === 0 && nextOrderSlice(db, row.order_id) === null) {
+    // Any open finding returns the order to the builder, and approval would refuse it; a contested
+    // refusal still holds here, where the owner rules on it.
+    const returnsWork = orderFindingStandings(db, row.order_id).some((finding) => finding.state === "open");
+    if (outcome === "closed" && !returnsWork && nextOrderSlice(db, row.order_id) === null) {
       setOrderHoldInTransaction(db, row.order_id, APPROVAL_HOLD, at);
       appendOrderEventInTransaction(
         db,
@@ -1815,12 +1816,30 @@ export function decideOrderRefusal(
        VALUES (?, ?, ?, ?, ?)`,
       [findingId, decision.decision, decision.reason, worker, at],
     );
-    return appendOrderEventInTransaction(
+    const event = appendOrderEventInTransaction(
       db,
       orderId,
       { kind: "refusal_decided", worker, findingId, evidence: { decision: decision.decision } },
       at,
     );
+    // An overturned refusal is work for the builder, so the review's approval hold has nothing
+    // left to approve. A hold at another station waits on that station's artifact and stays.
+    const held = db
+      .query<{ hold: string | null; station: string | null }, [string]>(
+        "SELECT hold, station FROM factory_order WHERE id = ?",
+      )
+      .get(orderId);
+    const atReview = held?.station === "review" || held?.station === "dim-station-review";
+    if (decision.decision === "refusal_overturned" && held?.hold === APPROVAL_HOLD && atReview) {
+      setOrderHoldInTransaction(db, orderId, null, at);
+      appendOrderEventInTransaction(
+        db,
+        orderId,
+        { kind: "hold_released", worker, evidence: { hold: null } },
+        at,
+      );
+    }
+    return event;
   })();
 }
 
@@ -2259,13 +2278,24 @@ export function approveOrderReview(db: Database, orderId: string, worker: string
       `review ${review.id} for order ${orderId} has no Review artifact`,
     );
   }
-  const findings = db
-    .query<{ n: number }, [number]>("SELECT count(*) AS n FROM factory_order_finding WHERE review_id = ?")
-    .get(review.id)?.n;
-  if (findings) {
+  // A finding holds the order from the round that raised it until a later round settles it or
+  // the owner rules on its refusal.
+  const standings = orderFindingStandings(db, orderId);
+  const open = standings.filter((finding) => finding.state === "open").map((finding) => finding.id);
+  if (open.length > 0) {
     throw new ReviewApprovalRefused(
-      "findings_present",
-      `review ${review.id} for order ${orderId} has ${findings} finding${findings === 1 ? "" : "s"}`,
+      "finding_unsettled",
+      `order ${orderId} has open finding${open.length === 1 ? "" : "s"} ${open.join(", ")}`,
+    );
+  }
+  const awaiting = standings
+    .filter((finding) => finding.state === "awaiting_owner")
+    .map((finding) => finding.id);
+  if (awaiting.length > 0) {
+    throw new ReviewApprovalRefused(
+      "ruling_pending",
+      `order ${orderId} holds contested refusal${awaiting.length === 1 ? "" : "s"} on finding${awaiting.length === 1 ? "" : "s"} ` +
+        `${awaiting.join(", ")} for the owner: \`dim order rule <finding-id> --uphold|--overturn --reason "..."\``,
     );
   }
   const approved = db

@@ -9,9 +9,11 @@ import {
   claimOrder,
   closeOrderReview,
   decideOrderRefusal,
+  moveOrder,
   queueOrder,
   raiseOrderFinding,
   ruleOnOrderFinding,
+  setOrderHold,
 } from "./factory-order";
 import { integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
 import { findingStanding, orderFindingStandings } from "./order-finding-state";
@@ -255,6 +257,82 @@ describe("recording a ruling", () => {
       review_id: openRound(f),
       evidence: '{"ruling":"addressed"}',
     });
+  });
+});
+
+describe("closing a round", () => {
+  const hold = (f: Floor) =>
+    f.db.query<{ hold: string | null }, []>("SELECT hold FROM factory_order WHERE id = 'order-1'").get()
+      ?.hold;
+
+  test("holds for approval when the round ruled every earlier finding addressed", () => {
+    const f = floor();
+    const { finding, reviewer } = answered(f, "fixed");
+    ruleOnOrderFinding(f.db, finding, { ruling: "addressed" }, reviewer);
+    closeOrderReview(f.db, openRound(f), "closed", reviewer);
+    expect(hold(f)).toBe("approval");
+  });
+
+  test("returns to the builder without a hold when the round ruled a fix not_addressed", () => {
+    const f = floor();
+    const { finding, reviewer } = answered(f, "fixed");
+    ruleOnOrderFinding(f.db, finding, { ruling: "not_addressed", reason: "still no test" }, reviewer);
+    closeOrderReview(f.db, openRound(f), "closed", reviewer);
+    expect(hold(f)).toBeNull();
+  });
+
+  test("holds a contested refusal for the owner and releases the hold when the owner overturns it", () => {
+    const f = floor();
+    const { finding, reviewer } = answered(f, "refused");
+    ruleOnOrderFinding(f.db, finding, { ruling: "refusal_contested", reason: "in scope" }, reviewer);
+    closeOrderReview(f.db, openRound(f), "closed", reviewer);
+    expect(hold(f)).toBe("approval");
+    decideOrderRefusal(f.db, finding, { decision: "refusal_overturned", reason: "fix it" }, f.operator);
+    expect(hold(f)).toBeNull();
+  });
+
+  test("returns to the builder without a hold while an earlier finding is unanswered", () => {
+    const f = floor();
+    const first = reviewIn(f.db, "order-1", f.operator);
+    raiseOrderFinding(f.db, "order-1", { dimension: "docs", summary: "stale" }, first.reviewer);
+    const second = nextRound(f, first.reviewer);
+    closeOrderReview(f.db, openRound(f), "closed", second);
+    expect(hold(f)).toBeNull();
+  });
+
+  function contestedAndClosed(): Floor & { finding: number } {
+    const f = floor();
+    const { finding, reviewer } = answered(f, "refused");
+    ruleOnOrderFinding(f.db, finding, { ruling: "refusal_contested", reason: "in scope" }, reviewer);
+    closeOrderReview(f.db, openRound(f), "closed", reviewer);
+    return { ...f, finding };
+  }
+
+  test("keeps the hold when the owner upholds the refusal", () => {
+    const f = contestedAndClosed();
+    decideOrderRefusal(f.db, f.finding, { decision: "refusal_upheld", reason: "later" }, f.operator);
+    expect(hold(f)).toBe("approval");
+  });
+
+  test("keeps a hold that is not the review's approval hold through an overturn", () => {
+    const owner = contestedAndClosed();
+    setOrderHold(owner.db, "order-1", "the owner wants to read it first", owner.operator);
+    decideOrderRefusal(
+      owner.db,
+      owner.finding,
+      { decision: "refusal_overturned", reason: "fix" },
+      owner.operator,
+    );
+    expect(hold(owner)).toBe("the owner wants to read it first");
+    const elsewhere = contestedAndClosed();
+    moveOrder(elsewhere.db, "order-1", "dim-station-build", elsewhere.operator);
+    decideOrderRefusal(
+      elsewhere.db,
+      elsewhere.finding,
+      { decision: "refusal_overturned", reason: "fix" },
+      elsewhere.operator,
+    );
+    expect(hold(elsewhere)).toBe("approval");
   });
 });
 
