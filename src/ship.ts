@@ -85,11 +85,13 @@ export function shipBranch(
       `${root} is not checked out on ${trunk.name}; check it out there before shipping`,
     );
   }
-  const status = git(root, ["status", "--porcelain"]);
+  // A repository nested at a gitlink carries its own config, and a plain status runs the
+  // commands it names; `dirty` still reports a submodule whose commit moved.
+  const status = git(root, ["status", "--porcelain", "--ignore-submodules=dirty"]);
   if (status.out !== "") {
     throw new ShipRefusal(
       "ship_dirty_trunk",
-      `${root} has uncommitted changes; commit or stash them before shipping`,
+      `${root} has uncommitted changes or a moved submodule; commit or discard them before shipping`,
     );
   }
 

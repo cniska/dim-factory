@@ -45,6 +45,21 @@ function repo(): { dir: string } {
   return { dir };
 }
 
+function nestedAtGitlink(dir: string): string {
+  const nested = join(dir, "sub");
+  mkdirSync(nested);
+  git(nested, ["init", "-q", "-b", "main"]);
+  git(nested, ["config", "user.email", "t@example.com"]);
+  git(nested, ["config", "user.name", "Test"]);
+  git(nested, ["config", "commit.gpgsign", "false"]);
+  git(nested, ["commit", "-q", "--allow-empty", "-m", "nested"]);
+  const head = git(nested, ["rev-parse", "HEAD"]).out;
+  git(dir, ["update-index", "--add", "--cacheinfo", `160000,${head},sub`]);
+  git(dir, ["commit", "-q", "-m", "chore: add sub"]);
+  expect(git(dir, ["ls-tree", "HEAD", "sub"]).out).toStartWith("160000 commit");
+  return nested;
+}
+
 function worktree(dir: string, branch: string): string {
   const path = orderWorktree(dir, branch);
   cleanup.push(path);
@@ -433,6 +448,34 @@ describe("shipBranch", () => {
     writeFileSync(join(dir, "dirty.txt"), "uncommitted");
 
     expect(() => ship(wt, "feat-d", [sha])).toThrow(
+      expect.objectContaining({ code: "ship_dirty_trunk" } satisfies Partial<ShipRefusal>),
+    );
+  });
+
+  test("checking the trunk runs no command a repository nested at a gitlink configured", () => {
+    const { dir } = repo();
+    const nested = nestedAtGitlink(dir);
+    const hooks = mkdtempSync(join(tmpdir(), "dim-ship-fsmonitor-"));
+    cleanup.push(hooks);
+    const marker = join(hooks, "ran");
+    writeFileSync(join(hooks, "fsmonitor.sh"), `#!/bin/sh\ntouch ${marker}\necho 0\n`);
+    chmodSync(join(hooks, "fsmonitor.sh"), 0o755);
+    git(nested, ["config", "core.fsmonitor", join(hooks, "fsmonitor.sh")]);
+    const wt = worktree(dir, "feat-nested");
+    const sha = commitFile(wt, "feat-nested.txt", "nested");
+
+    expect(ship(wt, "feat-nested", [sha])).toEqual({ landed: "fast_forward" });
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  test("a trunk whose submodule moved without a commit recording it is refused", () => {
+    const { dir } = repo();
+    const nested = nestedAtGitlink(dir);
+    const wt = worktree(dir, "feat-moved");
+    const sha = commitFile(wt, "feat-moved.txt", "moved");
+    git(nested, ["commit", "-q", "--allow-empty", "-m", "moved"]);
+
+    expect(() => ship(wt, "feat-moved", [sha])).toThrow(
       expect.objectContaining({ code: "ship_dirty_trunk" } satisfies Partial<ShipRefusal>),
     );
   });
