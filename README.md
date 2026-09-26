@@ -1,17 +1,12 @@
 # dim-factory
 
-> A local memory and software factory for coding agents: it records what sessions did, recovers prior context, and runs agreed work through isolated, checked stages.
+> A local record and software factory for coding agents: it records what every Claude Code and Codex session did, brings that back when it is needed, and runs agreed work through checked, isolated stations.
 
-## What it provides
-
-- **Memory.** Claude Code and Codex sessions, tool calls, commits and usage are ingested into one local SQLite database.
-- **Recall.** Named queries and semantic search recover prior decisions, context and repository history without a network call.
-- **A factory line.** `dim-factory` reads a repository queue and routes work through the `dim-line-feat` and `dim-line-fix` entry points. Those entry points use the `dim-station-plan`, `dim-station-build` and `dim-station-review` stations.
-- **Evidence.** Reports, lifecycle events, checks, findings and changed files are persisted so work can be inspected after the session ends.
-- **Gates.** Hooks hold mechanical rules for commits, pushes, collection and session context.
-- **Isolation.** `dim wt` gives each task its own worktree and branch.
-
-The session database, query CLI, hooks, worktrees, stations, factory report tables and queue planner are live. The self-sufficient operator and unified factory status view are being built. The design and current build order are in [`docs/`](docs/README.md).
+- **Record.** Sessions, tool calls, commits and usage in one local SQLite database. No network, no credential, no per-token cost.
+- **Recall.** Named queries and local semantic search over what was decided before; `dim wake` delivers the last handoff to a new session.
+- **Gates.** Hooks that hold mechanical rules — commit subjects, the repo's check, comments, pushes to the default branch — whether or not a skill loaded.
+- **Factory.** Orders run through plan, build and review stations as separate workers, each in its own worktree, with every act recorded and the owner approving each artifact.
+- **Wall.** A read-only board showing where every order is.
 
 ## Quick start
 
@@ -24,19 +19,12 @@ dim doctor
 dim q list
 ```
 
-Run the repository check with:
+`bun run verify` is the repository check.
 
-```sh
-bun run verify
-```
+## Docs
 
-## Learn more
-
-- [Using dim-factory](docs/usage.md) — installation, collection, queries, hooks, worktrees and stations
-- [Source layout](src/README.md) — module groups and where to start reading the code
-- [The factory](docs/factory.md) — line, order, report and queue design
-- [Session database](docs/design.md) — sources, schema and read path
-- [Reaching a session without being asked](docs/recall.md) — wake, handoffs and retrieval
-- [Worktrees](docs/worktrees.md) — isolated checkouts and write recovery
-- [Build order](docs/build-order.md) — why each unbuilt piece is next, over the orders `dim order ready` reads
-- [Findings](docs/findings.md) — measured observations and their limits
+- [Using dim-factory](docs/usage.md) — install, collect, query, gates and config
+- [The factory](docs/factory.md) — orders, stations, workers, ship and done
+- [My workflow](docs/my-workflow.md) — the manual workflow the factory replaces
+- [Todo](docs/todo.md) — what is not built
+- [Everything else](docs/README.md)

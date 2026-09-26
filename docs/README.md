@@ -1,28 +1,28 @@
 # Documentation
 
-dim keeps a local record of what every Claude Code and Codex session on this machine did, answers questions against it, and installs gates that hold a rule whether or not a skill loaded. [`README.md`](../README.md) is the tour; these pages are the reasoning behind it.
+dim keeps a local record of what every Claude Code and Codex session on this machine did, answers questions against it, and runs work through a factory whose gates hold a rule whether or not a skill loaded. [`README.md`](../README.md) is the tour.
 
-Each page owns its subject. A fact lives on one of them and is linked to from the others, because two authorities drift and the one nobody updates wins.
+Each fact lives on one page and is linked from the others.
 
-## Why it exists
+## Why
 
-- [The factory](factory.md) — the argument this repo executes, as a position to argue with
-- [Goals](goals.md) — what it is for, in order, and how each goal is known to be met
-- [The landscape](landscape.md) — what else exists, what is worth borrowing, and what was refused
+- [My workflow](my-workflow.md) — how I build with agents by hand, and what the factory replaces
+- [Goals](goals.md) — what the factory is for, in order, and how each is measured
+- [The landscape](landscape.md) — what else exists, what was borrowed, and what was refused
+
+## How it works
+
+- [The factory](factory.md) — orders, stations, workers, ship and done
+- [The wall](wall.md) — the read-only board the owner watches
+- [Using dim-factory](usage.md) — install, collect, query, gates and config
+- [Session database](design.md) — sources, schema, ingestion, hooks and read path
+- [Recall](recall.md) — what reaches a session unasked, and retrieval
+- [Worktrees](worktrees.md) — task checkouts and their environments
+- [Glossary](glossary.md) — one word per thing
+- [Agent anti-patterns](agent-anti-patterns.md) — shapes agents keep writing, and the fix for each
+- [Source layout](../src/README.md) — where to start reading the code
 
 ## What is true now
 
-- [Findings](findings.md) — what the corpus said when asked, dated, with what each number can carry
-- [Build order](build-order.md) — why each unbuilt piece is next, over the orders `dim order ready` reads
-
-## How it is built
-
-- [Source layout](../src/README.md) — module groups and where to start reading the code
-- [Using dim-factory](usage.md) — installation, collection, queries, hooks, worktrees and stations
-- [Session database](design.md) — the schema, the sources it re-reads, and the rules each table follows
-- [Reaching a session without being asked](recall.md) — the channel that arrives, and the benchmark that scores what is pulled
-- [Worktrees](worktrees.md) — parallel checkouts, and undoing what an agent wrote
-- [Human interface](human-interface.md) — the read-only wall for factory state
-- [Factory workflow](workflow.md) — research, contract review, planning, program design, build, review and ship
-- [Glossary](glossary.md) — the words this repo uses, one per thing
-- [Agent anti-patterns](agent-anti-patterns.md) — shapes agents keep writing here, and the fix for each
+- [Todo](todo.md) — what is not built
+- [Findings](findings.md) — dated measurements, and what each can carry
