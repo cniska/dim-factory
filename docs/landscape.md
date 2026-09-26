@@ -35,13 +35,3 @@ What the survey found overall: the argument for a factory with human-held gates 
 ## Planning
 
 - **[Superpowers](https://github.com/obra/superpowers)**, read at v6.4.1, asks which inputs or failure modes a spec implies that no task's test exercises. *Contributed:* that question in the plan reviewer's brief in `dim-station-plan`.
-
-## The owner's own projects
-
-- **[Acolyte](https://github.com/cniska/acolyte)**, the owner's coding agent, is the prior art the factory was built from. *Contributed:*
-  - the runtime and storage shape: Bun and TypeScript over `bun:sqlite` in WAL mode with typed prepared statements, a close that checkpoints, and a data directory read from an injected environment so a test can point a whole run elsewhere ([`design.md`](design.md));
-  - its transcript import's per-source parsers over one normalized shape, and the `stale` measure of how far a session's files have moved since ([`design.md`](design.md));
-  - embeddings stored as a blob beside the rows and scored by a cosine over `Float32Array` views, with no vector store, and its memory benchmark's recall and nDCG metrics ([`recall.md`](recall.md));
-  - the workspace contract and its `$FILES` placeholder ([`recall.md`](recall.md)), and the rule that an agent never changes the user's repository as a side effect of running ([`worktrees.md`](worktrees.md));
-  - the command contract, where each CLI command carries its usage with its handler: the `Command` in [`src/command.ts`](../src/command.ts), without the human-readable output;
-  - `unreachable(value: never)` for exhaustive switches over a closed vocabulary (`closed-vocabularies` in [`build-order.md`](build-order.md)).
