@@ -22,6 +22,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Hold | Why the owner must release an order before anyone takes it |
 | Status | The state an order is in: `queued`, `working`, `completed` or `dropped` |
 | Stage | How far along an order is, as the wall shows it: `todo`, `active` or `done` |
+| Next act | What an order waits on: its station and one of `run`, `approve`, `rule` or `ship`, read from the record by [`src/order-state.ts`](../src/order-state.ts) and never stored |
 | Slice | One increment inside an order that verifies and commits on its own |
 | Ship | Delivering an order's commits the way the repo declares in `dim.ship` — `dim order ship` |
 | Done | An order whose check passed on its final commit, whose findings are all answered, whose docs changed with the behavior, whose commits are on the trunk, and whose worktree is gone |

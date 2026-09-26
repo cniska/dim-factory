@@ -382,6 +382,7 @@ describe("factory order query", () => {
       '[{"port":5433}]',
     ]);
     expect(result?.rows[0]?.[4]).toBe("cniska/dim-factory/order-123");
+    expect(result?.rows[0]?.[5]).toBe("unset | approval | plan: run");
     expect(result?.rows.find((row) => row[0] === "file")?.slice(4)).toEqual([
       "src/factory-order.ts",
       "+12 -3",

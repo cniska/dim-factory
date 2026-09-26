@@ -44,7 +44,7 @@ dim order approve <id>
 dim order return <id> --reason "..."
 dim order rule <finding-id> --uphold|--overturn --reason "..."
 dim order ship <id>
-dim q order <id>                         # one order's full record
+dim q order <id>                         # one order's full record and its next act
 dim q factory                            # every order's current state
 dim trace <id>                           # diagnostic events, followed live
 ```

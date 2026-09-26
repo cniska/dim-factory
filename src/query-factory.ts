@@ -5,6 +5,8 @@ import {
   orderFindingStandings,
   owesAnswer,
 } from "./order-finding-state";
+import { orderState } from "./order-state";
+import { isTerminalOrderStatus, type OrderStatus } from "./order-status";
 import { type Query, scalar, table, toRows, window, windowLine } from "./query";
 
 export const findings: Query = {
@@ -83,6 +85,7 @@ export const order: Query = {
     }
     const report = found[0] as Record<string, unknown>;
     const id = report.id as string;
+    const state = isTerminalOrderStatus(report.status as OrderStatus) ? null : orderState(db, id);
     const columns = ["section", "when", "kind", "status", "subject", "evidence"];
     const aggregate: Record<string, unknown> = {
       section: "order",
@@ -90,7 +93,7 @@ export const order: Query = {
       kind: "report",
       status: report.status,
       subject: `${report.project}/${report.id}`,
-      evidence: [report.priority, report.hold, report.station, report.stop_reason]
+      evidence: [report.priority, report.hold, state && `${state.station}: ${state.next}`, report.stop_reason]
         .filter(Boolean)
         .join(" | "),
     };

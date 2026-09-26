@@ -31,5 +31,5 @@ Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` 
 - `cli-commands.ts` lists the commands; `cli-contract.ts` is what one is.
 - `db-schema.ts` holds every table and the reason for its shape.
 - `query-registry.ts` lists the named queries.
-- `order-lifecycle.ts`, `order-ledger.ts` and `order-status.ts` hold what an order is and how it moves.
+- `order-lifecycle.ts`, `order-ledger.ts` and `order-status.ts` hold what an order is and how it moves, and `order-state.ts` reads its next act from the record.
 - Read a module's `.test.ts` before changing its contract.

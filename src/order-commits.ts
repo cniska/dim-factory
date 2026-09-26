@@ -55,6 +55,18 @@ export function latestOrderCommit(db: Database, orderId: string): OrderCommit | 
   return currentOrderCommits(db, orderId).at(-1) ?? null;
 }
 
+export function rewrittenHead(db: Database, orderId: string, sha: string): string {
+  let current = sha;
+  for (const rewrite of db
+    .query<{ old_head: string; new_head: string }, [string]>(
+      "SELECT old_head, new_head FROM factory_order_rewrite WHERE order_id = ? ORDER BY id",
+    )
+    .all(orderId)) {
+    if (rewrite.old_head === current) current = rewrite.new_head;
+  }
+  return current;
+}
+
 export function carriedThroughRewrites(db: Database, orderId: string, sha: string): string | null {
   let current = sha;
   for (const rewrite of db
