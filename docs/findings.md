@@ -572,3 +572,13 @@ Probed on 2026-09-26 against Claude Code 2.1.282, building `worker-turn-ends-onc
 
 - The `init` event's tool list, which Claude writes before any request, held none of `ScheduleWakeup`, `CronCreate`, `Monitor` or `RemoteTrigger` under the worker settings. The same launch with the settings' `env` and `permissions.deny` emptied listed all four. `CronList` and `CronDelete` stayed in both lists.
 - `ANTHROPIC_LOG=debug` did not print the request body, so nothing here shows the Bash and Agent schemas losing `run_in_background` under `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, or the variable reaching a Bash command. That rests on the minified source of this version, where the switch gates `run_in_background` and synchronous subagents, until a probe with network access asks for a background command.
+
+## Which tree-sitter runtime reads the prebuilt Dart grammar
+
+Probed on 2026-09-26 under Bun 1.4.2, for `dart-comments`, loading `tree-sitter-dart.wasm` from `tree-sitter-wasms` 0.1.13 (961.6K; the package holds every grammar) into successive `web-tree-sitter` releases.
+
+- 0.27.0 and 0.26.13 refuse the file while reading its WebAssembly metadata (`getDylinkMetadata`), before any parse.
+- 0.20.8, the runtime `tree-sitter-wasms` names beside `tree-sitter-cli` ^0.20.8, loads the file and refuses it at `setLanguage` as language version 15, outside its 13 to 14.
+- 0.25.10 parses a sample with no error node and reports exactly its four comments: `// ignore_for_file: lint` and a trailing `//` as `comment`, `///` as `documentation_comment`, and `/* block /* nested */ still */` as one `comment`. Markers inside a plain, a raw, a triple-quoted and an interpolated string were not reported.
+
+So the prebuilt grammar holds on 0.25 only, until a grammar built with a current `tree-sitter-cli` replaces it. The sample was one file written for the probe, so it says nothing of how the grammar handles the Dart in a real repository.
