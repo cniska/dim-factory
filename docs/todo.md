@@ -16,7 +16,6 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 
 ## Features
 
-- **A red re-check at ship goes to the builder** — the rebase is kept, as a conflict's is, and the builder fixes the rebased head instead of the ship taking the rebase back.
 - **One path per act** — the runner is the only writer of commits, files, checks and artifacts, so `dim order commit`, `file`, `check`, `build-artifact` and `review-artifact` go.
 - **Ship and rebase records** — one table for ship refusals and one for rebases, replacing the conflict held in the `ship_failed` event's JSON.
 - **Refuse a secret at ship** — an order's diff carrying a key shape is not shipped.

@@ -8,6 +8,7 @@ import {
   rewrittenHead,
 } from "./order-commits";
 import { orderFindingStandings, owesAnswer } from "./order-finding-state";
+import { failedHeadCheck } from "./order-head-check";
 import { isTerminalOrderStatus, orderStatus } from "./order-status";
 import type { Station } from "./station";
 
@@ -58,7 +59,12 @@ export function orderState(db: Database, orderId: string): OrderState {
   }
   const head = latestOrderCommit(db, orderId)?.sha ?? null;
   const findings = orderFindingStandings(db, orderId);
-  if (nextOrderSlice(db, orderId) || pendingRebaseConflict(db, orderId) || findings.some(owesAnswer)) {
+  if (
+    nextOrderSlice(db, orderId) ||
+    pendingRebaseConflict(db, orderId) ||
+    failedHeadCheck(db, orderId) ||
+    findings.some(owesAnswer)
+  ) {
     return { station: "build", next: "run" };
   }
   if (!approvedArtifacts(db, orderId, "build").some((one) => buildCovers(db, orderId, one, head))) {

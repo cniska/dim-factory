@@ -37,6 +37,7 @@ import {
   recordOrderRewrite,
 } from "./order-evidence";
 import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
+import { failedHeadCheck } from "./order-head-check";
 import { appendOrderEvent, assertChecked } from "./order-ledger";
 import { amendOrder, dropOrder, queueOrder, startOrder } from "./order-lifecycle";
 import {
@@ -771,20 +772,35 @@ describe("factory order report records", () => {
       });
     });
 
-    test("a red check at the rebased head leaves the trunk and the branch where they were", () => {
+    test("a red check at the rebased head lands nothing, keeps the rebase and sends the order to build", () => {
       const { repo, wt, database, first, second, trunkTip, ship } = scene(unrelatedMove, { check: "exit 3" });
 
       expect(ship).toThrow(expect.objectContaining({ code: "ship_check_failed" }));
 
       expect(git(repo.dir, ["rev-parse", "HEAD"])).toBe(trunkTip);
-      expect(git(wt, ["rev-parse", "HEAD"])).toBe(second);
-      expect(currentOrderCommits(database, "order-1").map((c) => c.sha)).toEqual([first, second]);
-      expect(database.query("SELECT count(*) AS n FROM factory_order_rewrite").get()).toEqual({ n: 0 });
+      const current = currentOrderCommits(database, "order-1").map((c) => c.sha);
+      expect(current).toHaveLength(2);
+      expect(current).not.toContain(first);
+      expect(current).not.toContain(second);
+      expect(git(wt, ["rev-parse", "HEAD"])).toBe(current.at(-1) as string);
+      expect(git(wt, ["merge-base", "HEAD", "main"])).toBe(trunkTip);
       expect(
         database
           .query("SELECT exit_code FROM factory_order_check WHERE order_id = 'order-1' ORDER BY id")
           .all(),
       ).toEqual([{ exit_code: 0 }, { exit_code: 3 }]);
+      expect(failedHeadCheck(database, "order-1")).toMatchObject({ exitCode: 3 });
+      expect(orderState(database, "order-1")).toEqual({ station: "build", next: "run" });
+    });
+
+    test("a passing check recorded after the rebased head clears the red one", () => {
+      const { database, ship } = scene(unrelatedMove, { check: "exit 3" });
+      expect(ship).toThrow(expect.objectContaining({ code: "ship_check_failed" }));
+
+      recordOrderCheck(database, "order-1", { command: "true", exitCode: 0 }, attemptOperator);
+
+      expect(failedHeadCheck(database, "order-1")).toBeNull();
+      expect(orderState(database, "order-1")).toEqual({ station: null, next: "ship" });
     });
 
     test("a commit the branch carried but the order never recorded is replayed without becoming the order's", () => {

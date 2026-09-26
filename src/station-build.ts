@@ -17,6 +17,7 @@ import { assertNoRunningAttempt, openAttempt, startAttempt } from "./order-attem
 import { latestOrderCommit, pendingRebaseConflict } from "./order-commits";
 import { BuildTurnRefused } from "./order-finding";
 import { type FindingStanding, orderFindingStandings, owesAnswer } from "./order-finding-state";
+import { type FailedCheck, failedHeadCheck } from "./order-head-check";
 import { appendOrderEvent } from "./order-ledger";
 import { assertNext } from "./order-state";
 import { orderStatus } from "./order-status";
@@ -60,9 +61,11 @@ export function builderBrief(
   reviewFindings: ReviewFindingsForBuild = NO_REVIEW_FINDINGS,
   convention?: CheckoutConvention,
   conflicts: readonly string[] | null = null,
+  redCheck: FailedCheck | null = null,
 ): string {
   const resolving = conflicts !== null;
-  const needsCodeWork = currentSlice !== null || answersReview(reviewFindings) || resolving;
+  const needsCodeWork =
+    currentSlice !== null || answersReview(reviewFindings) || resolving || redCheck !== null;
   const workspaceContext = workspace
     ? [
         `Workspace ecosystem: ${workspace.ecosystems.join(", ") || "unknown"}.`,
@@ -104,6 +107,7 @@ export function builderBrief(
         ]
       : []),
     ...(resolving ? rebaseConflictBrief(conflicts) : []),
+    ...(redCheck ? redCheckBrief(redCheck) : []),
     ...(needsCodeWork && previousFailure
       ? [
           "# Previous failed Build attempt",
@@ -133,7 +137,7 @@ export function builderBrief(
         ? [
             "Leave every change uncommitted in the worktree. Do not run git commit, git stash, or any command that rewrites history. When the turn ends, the factory runner runs the declared check in a sandbox, commits the worktree with the repository's own git identity and signing config, and records the commit and its files under you and the check under the operator. Stay on the order's branch and do not create a git repository inside the worktree; the runner refuses both.",
             "You may run the declared check yourself as feedback. A red check is feedback, not completion: diagnose it, fix the cause, rerun the check, and continue until it passes. If the cause is genuinely blocked, report the blocker instead of claiming success.",
-            'End the turn by returning JSON `{"subject": "...", "artifact": "...", "answers": [...]}`. `subject` is the commit subject, in the repo\'s own commit convention. `artifact` is the Build artifact for the whole order when this turn finishes the final slice or answers review findings, and an empty string otherwise. `answers` holds one `{"finding": <id>, "answer": "fixed"|"refused", "resolution": "..."|null}` per finding listed under Review findings, and is `[]` when none is. Use dim-station-build and dim-artifact for the artifact contract: separate Markdown headings, the result explained for the owner rather than the command transcript, and proportional to the change.',
+            'End the turn by returning JSON `{"subject": "...", "artifact": "...", "answers": [...]}`. `subject` is the commit subject, in the repo\'s own commit convention. `artifact` is the Build artifact for the whole order when this turn finishes the final slice, answers review findings or fixes a red check at the rebased head, and an empty string otherwise. `answers` holds one `{"finding": <id>, "answer": "fixed"|"refused", "resolution": "..."|null}` per finding listed under Review findings, and is `[]` when none is. Use dim-station-build and dim-artifact for the artifact contract: separate Markdown headings, the result explained for the owner rather than the command transcript, and proportional to the change.',
           ]
         : [
             "Structure the returned artifact with separate Markdown headings: Outcome, Implementation, Why this shape, Verification, and Owner attention. Keep each section concise and include only claims supported by the order record.",
@@ -151,6 +155,16 @@ export function rebaseConflictBrief(conflicts: readonly string[]): string[] {
     "Resolve each of these files so it carries both the order's change and the trunk's, and remove every conflict marker. This turn is the resolution, not a slice: change nothing else, and keep the order's change, since a commit left empty is refused.",
     "Leave the resolution unstaged. Do not run git add, git rebase --continue, git rebase --abort or git commit. When the turn ends, the runner stages your resolution and continues the rebase; a later commit that conflicts comes back to you in this turn. The finished rebase is re-checked in the sandbox, and the order returns to review, which reads it whole.",
     'End the turn by returning JSON `{"subject": "fix: resolve the rebase conflict", "artifact": "", "answers": []}`. The subject must be one non-empty line, but the rebase keeps each commit\'s own message, so it is not used.',
+  ];
+}
+
+export function redCheckBrief(check: FailedCheck): string[] {
+  return [
+    "# Red check at the rebased head",
+    "Shipping rebased this order onto the moved trunk, and the declared check failed at the rebased head, so nothing landed. The worktree is on the order's branch at that head.",
+    `\`${check.command}\` exited ${check.exitCode}:`,
+    ...(check.result === null ? [] : ["```", check.result, "```"]),
+    "Fix the cause so the declared check passes on the rebased head. The fix is a new commit, which takes a new Build approval and a new review.",
   ];
 }
 
@@ -270,7 +284,10 @@ export async function runOrderBuildLive(
   const currentSlice = nextOrderSlice(db, orderId);
   const conflict = currentSlice ? null : pendingRebaseConflict(db, orderId);
   const reviewFindings = currentSlice || conflict ? NO_REVIEW_FINDINGS : reviewFindingsForBuild(db, orderId);
-  const needsCodeWork = currentSlice !== null || conflict !== null || answersReview(reviewFindings);
+  const redCheck =
+    currentSlice || conflict || answersReview(reviewFindings) ? null : failedHeadCheck(db, orderId);
+  const needsCodeWork =
+    currentSlice !== null || conflict !== null || answersReview(reviewFindings) || redCheck !== null;
   const previousFailure = db
     .query<{ reason: string | null }, [string]>(
       `SELECT reason FROM factory_order_attempt
@@ -349,6 +366,7 @@ export async function runOrderBuildLive(
           reviewFindings,
           convention,
           conflicts,
+          redCheck,
         ),
         capabilities: BUILDER_CAPABILITIES,
         ...(needsCodeWork ? { outputSchema: BUILD_TURN_SCHEMA } : {}),
@@ -445,7 +463,7 @@ export async function runOrderBuildLive(
     if (currentSlice) {
       requireBuildEvidence(db, orderId, currentSlice.ordinal === slices.length, worktree);
       completeOrderSlice(db, orderId, currentSlice.id, builder);
-    } else if (answersReview(reviewFindings)) {
+    } else if (answersReview(reviewFindings) || redCheck) {
       requireBuildEvidence(db, orderId, true, worktree);
       completeOrderBuildFollowup(db, orderId);
     } else if (!conflict) {

@@ -6,7 +6,7 @@ import { withLock } from "./db-lock";
 import { assertOperator } from "./factory-operator";
 import { currentOrderCommits, latestOrderCommit } from "./order-commits";
 import type { EvidenceReference } from "./order-events";
-import { type OrderCheck, recordOrderCheck, recordOrderRewrite } from "./order-evidence";
+import { type OrderCheck, recordOrderRewrite } from "./order-evidence";
 import { appendOrderEvent } from "./order-ledger";
 import { assertNext } from "./order-state";
 import { dataDir, type Env } from "./paths";
@@ -67,14 +67,15 @@ export function shipOrder(
   const shas = currentOrderCommits(db, orderId).map((row) => row.sha);
   const onRebased = (rewrite: Rewrite): RebaseVerdict => {
     const check = recheck(rewrite.worktree, env, options.checkSandbox ?? CHECK_SANDBOX);
-    if (check.exitCode !== 0) {
-      recordOrderCheck(db, orderId, check, worker);
-      throw new ShipRefusal(
-        "ship_check_failed",
-        `${check.command} exited ${check.exitCode} at the rebased head ${rewrite.newHead}; the rebase was taken back:\n${check.result}`,
-      );
-    }
     recordOrderRewrite(db, orderId, rewrite, check, worker);
+    if (check.exitCode !== 0) {
+      return {
+        hold: new ShipRefusal(
+          "ship_check_failed",
+          `${check.command} exited ${check.exitCode} at the rebased head ${rewrite.newHead}; the rebase is kept and the order is back at build:\n${check.result}`,
+        ),
+      };
+    }
     if (rewrite.patchEqual) return { land: currentOrderCommits(db, orderId).map((row) => row.sha) };
     return {
       hold: new ShipRefusal(

@@ -57,7 +57,7 @@ operator delegates → worker returns attributed artifact → operator checks ou
 ## Ship
 
 - Approving the Review artifact ships the order: its commits land on the local trunk, the order is done, and its worktree is removed. Nothing is pushed.
-- A ship that does not land says why in `dim q order`. A conflict goes back to build and a changed patch back to review, where the next act says so. When the next act is still ship, fix what the refusal names, such as a dirty trunk checkout, and run `dim order ship <order-id>`.
+- A ship that does not land says why in `dim q order`. A conflict or a red check at the rebased head goes back to build and a changed patch back to review, where the next act says so. When the next act is still ship, fix what the refusal names, such as a dirty trunk checkout, and run `dim order ship <order-id>`.
 - A station runner records a failed attempt itself, and the same station command runs it again.
 - Stop for an owner decision, an outward-facing action, a hard-to-reverse choice, or a machine-wide change.
 

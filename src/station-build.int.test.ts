@@ -1787,3 +1787,77 @@ describe("a conflict at ship", () => {
     db.close();
   });
 });
+
+describe("a red check at ship", () => {
+  test("goes back to the builder, whose fix of the rebased head takes a new Build approval and review before it ships", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-red-ship-");
+    const { repo, operator } = orderAtBuild(
+      db,
+      "red-ship-order",
+      [{ title: "Build it", outcome: "It is verified." }],
+      "test ! -f poison.txt || test -f antidote.txt",
+    );
+    const options = {
+      dir: repo.dir,
+      env: { DIM_HOME: dimHome },
+      harness: "codex" as const,
+      checkSandbox: confiningCheckSandbox(),
+    };
+    const worktree = realpathSync(join(repo.dir, ".claude", "worktrees", "red-ship-order"));
+    await runOrderBuildLive(db, "red-ship-order", operator.name, {
+      ...options,
+      adapter: scriptedBuilder([
+        (request) => {
+          writeFileSync(join(request.cwd, "built.txt"), "built\n");
+          return { subject: "feat: build it", artifact: "## Outcome\n\nBuilt." };
+        },
+      ]).adapter,
+    });
+    approveOrder(db, "red-ship-order", operator.name, "built as planned");
+    approveReviewAt(db, "red-ship-order", git(worktree, ["rev-parse", "HEAD"]), operator.name);
+    writeFileSync(join(repo.dir, "poison.txt"), "poison\n");
+    git(repo.dir, ["add", "poison.txt"]);
+    git(repo.dir, ["commit", "-q", "-m", "feat: add poison"]);
+    const trunkTip = git(repo.dir, ["rev-parse", "HEAD"]);
+    const ship = () =>
+      shipOrder(db, "red-ship-order", worktree, operator.name, {
+        env: options.env,
+        checkSandbox: options.checkSandbox,
+      });
+    expect(ship).toThrow(expect.objectContaining({ code: "ship_check_failed" }));
+    const rebased = git(worktree, ["rev-parse", "HEAD"]);
+    expect(git(worktree, ["rev-parse", "HEAD~1"])).toBe(trunkTip);
+    expect(orderState(db, "red-ship-order")).toEqual({ station: "build", next: "run" });
+
+    const builder = scriptedBuilder([
+      (request) => {
+        writeFileSync(join(request.cwd, "antidote.txt"), "antidote\n");
+        return { subject: "fix: pass the check on the trunk", artifact: "## Outcome\n\nFixed." };
+      },
+    ]);
+    await runOrderBuildLive(db, "red-ship-order", operator.name, { ...options, adapter: builder.adapter });
+
+    expect(builder.calls[0]?.brief).toContain("# Red check at the rebased head");
+    expect(builder.calls[0]?.brief).toContain("exited 1");
+    expect(git(worktree, ["rev-parse", "HEAD~1"])).toBe(rebased);
+    const fixed = git(worktree, ["rev-parse", "HEAD"]);
+    expect(
+      db
+        .query(
+          "SELECT head_sha FROM factory_order_artifact WHERE kind = 'build' ORDER BY revision DESC LIMIT 1",
+        )
+        .get(),
+    ).toEqual({ head_sha: fixed });
+    expect(openAttempt(db, "red-ship-order")).toBeNull();
+    expect(orderState(db, "red-ship-order")).toEqual({ station: "build", next: "approve" });
+    approveOrder(db, "red-ship-order", operator.name, "fixed");
+    expect(orderState(db, "red-ship-order")).toEqual({ station: "review", next: "run" });
+    approveReviewAt(db, "red-ship-order", fixed, operator.name);
+
+    expect(ship()).toEqual({ landed: "fast_forward" });
+    expect(git(repo.dir, ["rev-parse", "HEAD"])).toBe(fixed);
+    expect(orderStatus(db, "red-ship-order")).toBe("done");
+    db.close();
+  });
+});

@@ -25,7 +25,7 @@ One piece of work, written down before anyone takes it ([`glossary.md`](glossary
 queued → plan → build → review → ship → done
 ```
 
-- **Where an order is, is read from the record** ([`src/order-state.ts`](../src/order-state.ts)): its station and the act that station waits on — run the station, or approve its artifact. Approving the Review artifact ships the order, so the next act is ship only after a ship that failed without sending the order back to a station; a red re-check at ship is one of those until it goes to the builder ([`todo.md`](todo.md)). Nothing stores it and no command sets it, the status included: an order is `queued` until it starts, `active` until it ships or is dropped, then `done` or `dropped`.
+- **Where an order is, is read from the record** ([`src/order-state.ts`](../src/order-state.ts)): its station and the act that station waits on — run the station, or approve its artifact. Approving the Review artifact ships the order, so the next act is ship only after a ship that failed without sending the order back to a station. Nothing stores it and no command sets it, the status included: an order is `queued` until it starts, `active` until it ships or is dropped, then `done` or `dropped`.
 - **Every act checks on entry** that it is the act the record waits on, and a refusal names the one that is. `dim order plan` on a queued order starts it and makes its worktree.
 - **The operator** delegates each station to a worker, checks each artifact against the record, and approves it or returns it. It never does the work.
 - **Each station returns an artifact** — plan, Build artifact, Review artifact — that the operator approves (`dim order approve`) or sends back with a reason (`dim order return`). Only an artifact awaiting approval holds an order.
@@ -68,7 +68,7 @@ An order is done when it ships: its commits land on the local trunk, a `shipped`
 
 Ship lands the order the way the repo declares with `git config dim.ship`:
 
-- **`trunk`** fast-forwards the trunk to the order's branch. A branch the trunk has moved past is first rebased in the order's worktree and re-checked; a red check undoes the rebase.
+- **`trunk`** fast-forwards the trunk to the order's branch. A branch the trunk has moved past is first rebased in the order's worktree and re-checked.
 - **`pull-request`** is declared but not built, and refused.
 - A repo that declares nothing, or an unknown value, is refused, so no agent guesses how a repo ships.
 
@@ -77,6 +77,7 @@ Around it:
 - The trunk is `refs/remotes/origin/HEAD`, never an assumed name.
 - Ship runs under the factory lock, since two ships would race on one checkout.
 - A build approval carries through every rebase, since the rebase replays approved commits and re-checks them; a review approval carries only through one whose patches are equal. So a rebase that changed a patch puts the order back at review, reading the whole order from the new base, and a conflict puts it back at build: the builder resolves the paths in place, and the runner continues the rebase instead of committing ([`src/station-build-rebase.ts`](../src/station-build-rebase.ts)).
+- A red re-check keeps the rebase and puts the order back at build, where a build turn briefed with the check's output fixes the rebased head ([`src/order-head-check.ts`](../src/order-head-check.ts)). Its commit takes a new Build approval and a new review round before the order ships.
 - A rebase is recorded as a rewrite: each retired sha stays in the record and never counts as landed, reviewed or current.
 - Refused before anything moves: a dirty or nested worktree, a dirty trunk, a branch tip that is none of the order's recorded commits, and an unsigned commit where the repo signs.
 
