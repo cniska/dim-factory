@@ -21,7 +21,7 @@ import { harnessExecutable } from "./harness-launch";
 import { HARNESSES } from "./harness-name";
 import { type HookPlan, hookGaps } from "./hooks";
 import { codexConfigPath, planCodexTrust, type TrustState } from "./hooks-codex-trust";
-import { AGENT_LABEL, agentPlistPath } from "./ingest-launchd";
+import { AGENT_LABEL, planAgent } from "./ingest-launchd";
 import { TOOLS } from "./ingest-tools";
 import { dataDir, type Env, resolveHomeDir, tildePath } from "./paths";
 import { planRules } from "./rules";
@@ -465,7 +465,8 @@ export function diagnose(db: Database, env: Env = process.env, cwd: string = pro
         },
   );
 
-  const plist = agentPlistPath(env);
+  const agent = planAgent(env);
+  const plist = agent.path;
   checks.push(
     !existsSync(plist)
       ? {
@@ -474,14 +475,21 @@ export function diagnose(db: Database, env: Env = process.env, cwd: string = pro
           detail: "no launchd agent, so syncing is manual",
           fix: "dim install-agent --write",
         }
-      : launchdLoaded()
-        ? { name: "agent", state: "ok", detail: "launchd agent loaded" }
-        : {
+      : !agent.unchanged
+        ? {
             name: "agent",
             state: "warn",
-            detail: "launchd agent is written but not loaded",
-            fix: `launchctl bootstrap gui/$(id -u) ${plist}`,
-          },
+            detail: "launchd agent points to a different checkout or Bun path",
+            fix: "dim install-agent --write, then reload the launchd agent",
+          }
+        : launchdLoaded()
+          ? { name: "agent", state: "ok", detail: "launchd agent loaded" }
+          : {
+              name: "agent",
+              state: "warn",
+              detail: "launchd agent is written but not loaded",
+              fix: `launchctl bootstrap gui/$(id -u) ${plist}`,
+            },
   );
 
   const rules = planRules(env);

@@ -44,6 +44,7 @@ describe("skill install", () => {
   test("installs every skill directory in the repo, so a new one is not left behind", () => {
     const dirs = readdirSync(resolve(import.meta.dir, "..", "skills"), { withFileTypes: true })
       .filter((e) => e.isDirectory())
+      .filter((e) => existsSync(resolve(import.meta.dir, "..", "skills", e.name, "SKILL.md")))
       .map((e) => e.name)
       .sort();
     expect(shipped()).toEqual(dirs);
@@ -99,6 +100,9 @@ describe("skill install", () => {
           expect(lstatSync(link).isSymbolicLink()).toBe(true);
           expect(readlinkSync(link)).toBe(skillSourceDir(name));
         }
+        for (const name of ["dim-audit", "dim-review"]) {
+          expect(existsSync(join(dir, name, "references", "quality-dimensions.md"))).toBe(true);
+        }
       }
       expect(planSkill({ HOME: home }).every((p) => p.state === "linked")).toBe(true);
     } finally {
@@ -133,6 +137,27 @@ describe("skill install", () => {
       installSkill({ HOME: home });
       expect(lstatSync(link).isSymbolicLink()).toBe(true);
       expect(Bun.file(`${link}.dim-backup/SKILL.md`).size).toBeGreaterThan(0);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("preserves an earlier backup when replacing an occupied skill", async () => {
+    const home = newHome();
+    const name = SKILL_NAMES[0];
+    const link = join(home, ".agents", "skills", name);
+    try {
+      mkdirSync(link, { recursive: true });
+      writeFileSync(join(link, "SKILL.md"), "current skill");
+      writeFileSync(`${link}.dim-backup`, "earlier backup");
+
+      const plan = planSkill({ HOME: home }).find((p) => p.link === link);
+      expect(plan).toMatchObject({ state: "occupied", backup: `${link}.dim-backup-2` });
+      installSkill({ HOME: home });
+
+      expect(await Bun.file(`${link}.dim-backup`).text()).toBe("earlier backup");
+      expect(await Bun.file(`${link}.dim-backup-2/SKILL.md`).text()).toBe("current skill");
+      expect(lstatSync(link).isSymbolicLink()).toBe(true);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

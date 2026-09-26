@@ -1,6 +1,8 @@
 # dim-factory
 
-dim is a local CLI for coding agents. It records Claude Code and Codex sessions, lets agents recall earlier work, and runs agreed work through checked, isolated stations. The owner requests work through an agent and reads the factory's artifacts; the agent uses `dim` to operate the record and the factory.
+A software factory run by coding agents, with a human at the gates that still earn one.
+
+dim records Claude Code and Codex sessions, brings earlier work back to agents, and runs agreed work through checked, isolated stations. Agents use its local CLI to operate the record and the factory; the owner requests work and reads the artifacts.
 
 - **Record.** Sessions, tool calls, commits and usage in one local SQLite database. No network, no credential, no per-token cost.
 - **Recall.** Named queries and local semantic search over what was decided before; `dim wake` delivers the last handoff to a new session.
@@ -10,16 +12,9 @@ dim is a local CLI for coding agents. It records Claude Code and Codex sessions,
 
 ## Agent setup
 
-These commands set up dim in the agent's environment:
+Clone this repository, open the checkout in Claude Code or Codex, and ask the agent to run the project-local [dim-setup skill](.agents/skills/dim-setup/SKILL.md). It installs the CLI and shared skills for use across projects and checks readiness with `dim doctor`.
 
-```sh
-mise install
-bun install
-bun link
-dim sync
-dim doctor
-dim q list
-```
+Then open a project in your harness. For routine factory work, ask the agent to use `dim-add` to create an order and `dim-factory` to run it by id. The agents invoke the station skills as the order advances. The [agent command reference](docs/usage.md) explains the commands behind those skills.
 
 `bun run verify` is the repository check.
 

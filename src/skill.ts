@@ -42,12 +42,25 @@ export function skillLinkPaths(name: SkillName, env: Env = process.env): string[
   return skillLinkDirs(env).map((dir) => join(dir, name));
 }
 
-export type SkillPlan = {
+type SkillPlanBase = {
   name: SkillName;
   link: string;
   target: string;
-  state: "linked" | "missing" | "occupied";
 };
+
+export type SkillPlan = SkillPlanBase &
+  ({ state: "linked" | "missing" } | { state: "occupied"; backup: string });
+
+function backupPath(link: string): string {
+  const base = `${link}.dim-backup`;
+  let path = base;
+  let number = 2;
+  while (lstatSync(path, { throwIfNoEntry: false })) {
+    path = `${base}-${number}`;
+    number += 1;
+  }
+  return path;
+}
 
 export function planSkill(env: Env = process.env): SkillPlan[] {
   return SKILL_NAMES.flatMap((name) => {
@@ -56,7 +69,7 @@ export function planSkill(env: Env = process.env): SkillPlan[] {
       if (!existsSync(link) && !isLink(link)) return { name, link, target, state: "missing" as const };
       if (isLink(link) && readlinkSync(link) === target)
         return { name, link, target, state: "linked" as const };
-      return { name, link, target, state: "occupied" as const };
+      return { name, link, target, state: "occupied" as const, backup: backupPath(link) };
     });
   });
 }
@@ -90,7 +103,7 @@ export function installSkill(env: Env = process.env): SkillPlan[] {
   for (const plan of plans) {
     if (plan.state === "linked") continue;
     mkdirSync(dirname(plan.link), { recursive: true });
-    if (plan.state === "occupied") renameSync(plan.link, `${plan.link}.dim-backup`);
+    if (plan.state === "occupied") renameSync(plan.link, plan.backup);
     symlinkSync(plan.target, plan.link);
   }
   for (const link of retiredLinks(env)) unlinkSync(link);

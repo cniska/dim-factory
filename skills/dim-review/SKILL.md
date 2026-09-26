@@ -41,18 +41,18 @@ Before spawning anything:
 
 ## The passes
 
-Spawn one agent per dimension at the tier `dim route <harness> reviewer` gives you for the harness you run in, each given the diff, the intent, and only the grounding below, and each with read-only tools. Withhold your own read of the diff — hand over a conclusion and what comes back is agreement with it. A reviewer that can edit answers a finding by editing, and what it overwrites is work it was sent to read.
+Spawn one agent per dimension at the tier `dim route <harness> reviewer` gives you for the harness you run in, each given the diff, the intent, its brief from [quality dimensions](references/quality-dimensions.md), and only the grounding below, and each with read-only tools. Withhold your own read of the diff — hand over a conclusion and what comes back is agreement with it. A reviewer that can edit answers a finding by editing, and what it overwrites is work it was sent to read.
 
 | dimension | what the record gives it |
 |---|---|
 | plan | whether the diff delivers the approved plan's slices, naming work that is missing, extra or misunderstood; read the plan in the brief |
-| correctness | whether the changed code fulfills its stated behavior, handles failure paths and preserves existing contracts; use `dim q exemplars` as grounding |
-| tests | whether meaningful behavior is covered by tests that fail when the invariant is removed; use `dim q rework` as grounding |
-| architecture | whether responsibilities, boundaries, dependencies and extension points remain coherent; use `dim q prior-art "<path fragment>"` as grounding |
-| maintainability | whether the change leaves the next worker with readable, simple, cohesive code: clear names, direct control flow, earned abstractions, one vocabulary per domain concept, and no unnecessary indirection; use the glossary, project rules and nearby patterns |
-| docs | whether long-lived docs describe the resulting behavior and terminology; use `dim q stale <id-prefix>` as grounding |
-| security | whether the diff creates a concrete trust-boundary, data-exposure or unsafe-default path; read the diff and project rules |
-| performance | whether the change introduces a material cost in latency, memory, I/O or unbounded work; run only when the plan identifies a performance-sensitive path |
+| correctness | use `dim q exemplars` as grounding |
+| tests | use `dim q rework` as grounding; a test claiming an invariant must fail when it is removed |
+| architecture | use `dim q prior-art "<path fragment>"` as grounding |
+| maintainability | use the glossary, project rules and nearby patterns |
+| docs | use `dim q stale <id-prefix>` as grounding |
+| security | read the diff and project rules |
+| performance | run only when the plan identifies a performance-sensitive path |
 | style | whether naming, structure and local patterns remain consistent without adding comments or abstraction noise; read the diff and project rules |
 
 The performance pass is conditional: a plan that does not identify a performance-sensitive path does not spawn it. Maintainability remains a normal pass because every slice leaves code for the next worker. Both passes need concrete evidence; a preference or hypothetical cost is not a finding.

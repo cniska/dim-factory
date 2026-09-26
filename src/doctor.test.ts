@@ -10,6 +10,7 @@ import { scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
 import { gateHooks, installCommitGate } from "./gate-commit";
 import { installHooks } from "./hooks";
 import { codexConfigPath, planCodexTrust } from "./hooks-codex-trust";
+import { agentPlistPath } from "./ingest-launchd";
 import { sync } from "./ingest-sync";
 import { dbPath, type Env } from "./paths";
 import { installSkill } from "./skill";
@@ -52,6 +53,18 @@ function check(env: Env, name: string) {
 }
 
 describe("doctor", () => {
+  test("warns when the sync agent still points to a previous checkout", () => {
+    const env = seeded();
+    const plist = agentPlistPath(env);
+    mkdirSync(dirname(plist), { recursive: true });
+    writeFileSync(plist, "<plist>previous checkout</plist>");
+
+    expect(check(env, "agent")).toMatchObject({
+      state: "warn",
+      fix: "dim install-agent --write, then reload the launchd agent",
+    });
+  });
+
   test("warns on a link to a skill that no longer ships", () => {
     const env = seeded();
     installSkill(env);

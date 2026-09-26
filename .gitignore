@@ -4,7 +4,8 @@
 .DS_Store
 node_modules/
 dist/
-.claude/
+.claude/*
+!.claude/skills
 queue.json.lock*
 .queue-tmp-*
 # Creating an ONNX Runtime session writes this into the cwd under a Codex sandbox, and into

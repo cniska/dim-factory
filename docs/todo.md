@@ -39,7 +39,7 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 - **Checks from more manifests** — `pubspec.yaml` first.
 - **A new worktree installs its dependencies** from the lockfile.
 - **`dim adopt`** — bring an existing repo under `dim` in one command, including one with a weak or missing check: purge and ban comments, declare check and format, install the commit gate, and name what needs judgement.
-- **`/dim-setup`** — set up from a fresh clone, ending on `dim doctor` passing.
+- **Linux scheduled sync** — install and load a systemd user timer for `dim sync`, with `dim doctor` reporting whether it runs, as launchd does on macOS.
 - **Catch a stuck slice** retried across sessions.
 - **Wall gaps** — a silence threshold, station moves, durable worker names, the project on the card, and operator presence.
 - **Wall notifications** — held and failed orders reach the owner off the page.
@@ -84,7 +84,3 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 - Picking code to simplify from what keeps drawing fixes.
 - Why files edited under `agents-md` draw more fixes afterward.
 - A record of which guidance cuts a measurement settled.
-
-## Known limits
-
-- Scheduled sync is macOS only, since `install-agent` writes a launchd plist.

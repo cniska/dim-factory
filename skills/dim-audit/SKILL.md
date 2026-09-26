@@ -10,22 +10,13 @@ Audit existing code across independent dimensions, one reader per dimension. `di
 
 ## Scope
 
-Identify the project, revision and area being inspected. Read its rules and the available docs that state the area's behavior and boundaries, then enumerate the owned source and tests. Name a missing authority instead of assuming one exists. Exclude generated files and dependencies, and name any area that cannot be inspected. Size the area so each reader can inspect its relevant paths in full; divide a larger audit by coherent area and report each area separately.
+Audit the whole project when no narrower scope was requested. Identify the project, revision and area being inspected. Read its rules and the available docs that state the area's behavior and boundaries, then enumerate the owned source and tests. Name a missing authority instead of assuming one exists. Exclude generated files and dependencies, and name any area that cannot be inspected. Size the area so each reader can inspect its relevant paths in full; divide a larger audit by coherent area and report each area separately.
 
 ## The passes
 
-The passes adapt the dimensions in `dim-review` to code already on the default branch. Spawn a read-only agent for each dimension when independent sessions are available. Give each the same area and revision, the project's rules and only its own brief. A reader may use searches to locate candidates, but must inspect the surrounding implementation, callers, tests and contracts before judging them. When subagents are unavailable, run the passes separately and keep their findings distinct until convergence.
+Use the shared [quality dimensions](references/quality-dimensions.md) on code already on the default branch, plus the anti-pattern pass below. Spawn a read-only agent for each dimension when independent sessions are available. Give each the same area and revision, the project's rules and only its own brief. A reader may use searches to locate candidates, but must inspect the surrounding implementation, callers, tests and contracts before judging them. When subagents are unavailable, run the passes separately and keep their findings distinct until convergence.
 
-| Dimension | Question to answer |
-|---|---|
-| Anti-patterns | Does the area contain any entry in [the anti-pattern reference](references/agent-anti-patterns.md)? Check every entry. Its dim-factory examples are candidates; apply project-specific rules only where the audited project has adopted them, and translate fix directions to that project's own files and commands. |
-| Correctness | Do its entry points, state changes and failure paths fulfill the documented behavior and caller contracts? |
-| Tests | Do tests fail on credible regressions in important behavior? Which tests duplicate stronger proof, assert implementation details or keep test-only production seams alive? A test that must change for a behavior-preserving refactor is suspect, but preserve independent guards for wire values, model-facing instructions, security, storage and other contracts. |
-| Architecture | Do responsibilities, dependencies and extension points follow the project's stated boundaries? Does an abstraction carry a policy or invariant? |
-| Maintainability | Do names, control flow and local patterns leave a concrete cost to understanding or change? Ground convention findings in the project's rules or neighboring code. |
-| Docs | Do the area's pages describe its current behavior, commands and vocabulary? Cite the implementation behind a claim of drift. |
-| Security | Can a concrete path cross a trust boundary, expose sensitive data or execute unsafe input? |
-| Performance | When the area's stated behavior or observed use identifies a sensitive path, does it repeat work, grow without a bound or misuse resources? |
+The anti-pattern pass checks every entry in [the reference](references/agent-anti-patterns.md). Its dim-factory examples are candidates; apply project-specific rules only where the audited project has adopted them, and translate fix directions to that project's own files and commands. In the tests pass, a test that must change for a behavior-preserving refactor is suspect, but preserve independent guards for wire values, model-facing instructions, security, storage and other contracts. Run performance where stated behavior or observed use identifies a sensitive path.
 
 Each reader returns source-backed findings, areas checked and areas it could not judge. For a proposed test deletion, name the failure the test can detect, its production owner, overlapping tests and the stronger proof that would remain. Recheck candidate findings at their source, resolve duplicates and contradictions, and keep responsibility for the final result in this session.
 
