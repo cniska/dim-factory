@@ -4,16 +4,23 @@ import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-launch";
 import type { HarnessName } from "./harness-name";
 import { latestApprovedPlan } from "./order-approved-plan";
-import { assertBuildReady, type ReturnedOrderArtifact } from "./order-artifacts";
+import type { ReturnedOrderArtifact } from "./order-artifacts";
 import { carriedThroughRewrites, currentOrderCommits } from "./order-commits";
 import { raiseOrderFinding, ruleOnOrderFinding } from "./order-finding";
 import { type FindingStanding, orderFindingStandings } from "./order-finding-state";
-import { closeOrderReview, openAssignedOrderReview, recordOrderReviewArtifact } from "./order-review";
+import {
+  closeOrderReview,
+  openAssignedOrderReview,
+  openReviewOf,
+  recordOrderReviewArtifact,
+} from "./order-review";
+import { assertNext } from "./order-state";
 import { stationDirectory } from "./station-directory";
 import type { PlanSlice } from "./station-plan-artifact";
 import { parseReviewReport, type ReviewFinding, type ReviewRuling } from "./station-review-artifact";
 import { renderReviewReport } from "./station-review-report";
 import { runOrderStationLive } from "./station-worker";
+import { workerIsOver } from "./worker";
 import type { Capability } from "./worker-capabilities";
 
 export class ReviewRefused extends Error {
@@ -321,7 +328,11 @@ export async function runOrderReviewLive(
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
   assertOperator(db, worker, "delegate review");
-  assertBuildReady(db, orderId);
+  assertNext(db, orderId, "review");
+  const left = openReviewOf(db, orderId);
+  if (left && (!left.reviewer || workerIsOver(db, left.reviewer))) {
+    closeOrderReview(db, left.id, "aborted", worker, undefined, "its reviewer stopped without finishing");
+  }
   const dir = stationDirectory(options.dir, orderId);
   const harness = options.harness;
   let returned: ReturnedReview | null = null;

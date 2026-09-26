@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { SCHEMA_SQL } from "./db-schema";
 import { workerIn } from "./fixtures.test-support";
-import { orderState } from "./order-state";
+import { assertNext, type OrderAct, type OrderActRefused, orderState } from "./order-state";
 
 const ORDER = "order-1";
 
@@ -295,15 +295,15 @@ describe("the review station", () => {
   });
 });
 
-describe("the ship station", () => {
+describe("after the stations", () => {
   test("ships once the plan, the build and the review are approved at the head", () => {
-    expect(orderState(shippable().db, ORDER)).toEqual({ station: "ship", next: "ship" });
+    expect(orderState(shippable().db, ORDER)).toEqual({ station: null, next: "ship" });
   });
 
   test("keeps both approvals through a rebase with equal patches", () => {
     const r = shippable();
     r.rewrite("c1", "c1b", true);
-    expect(orderState(r.db, ORDER)).toEqual({ station: "ship", next: "ship" });
+    expect(orderState(r.db, ORDER)).toEqual({ station: null, next: "ship" });
   });
 
   test("ships after the owner upholds a contested refusal and a clean round is approved", () => {
@@ -315,6 +315,70 @@ describe("the ship station", () => {
     r.rule(finding, second, "refusal_contested");
     r.rule(finding, null, "refusal_upheld");
     r.approve(r.review(r.round("c1")));
-    expect(orderState(r.db, ORDER)).toEqual({ station: "ship", next: "ship" });
+    expect(orderState(r.db, ORDER)).toEqual({ station: null, next: "ship" });
+  });
+});
+
+const ACTS: OrderAct[] = ["plan", "build", "review", "approve", "return", "rule", "ship"];
+
+function admitted(r: { db: Database }): OrderAct[] {
+  return ACTS.filter((act) => {
+    try {
+      assertNext(r.db, ORDER, act);
+      return true;
+    } catch (error) {
+      expect((error as OrderActRefused).code).toBe("not_next");
+      return false;
+    }
+  });
+}
+
+describe("an act's entry", () => {
+  test("admits only planning while no plan is written", () => {
+    expect(admitted(record())).toEqual(["plan"]);
+  });
+
+  test("admits only approval or return of a written plan", () => {
+    const r = record();
+    r.plan();
+    expect(admitted(r)).toEqual(["approve", "return"]);
+  });
+
+  test("admits only building while a slice is left", () => {
+    const r = record();
+    r.approve(r.plan().id);
+    expect(admitted(r)).toEqual(["build"]);
+  });
+
+  test("admits only reviewing once the build is approved", () => {
+    expect(admitted(buildApproved())).toEqual(["review"]);
+  });
+
+  test("admits only the owner's ruling on a contested refusal", () => {
+    const r = buildApproved();
+    const first = r.round("c1");
+    const finding = r.finding(first);
+    r.answer(finding, "refused");
+    r.rule(finding, r.round("c1"), "refusal_contested");
+    expect(admitted(r)).toEqual(["rule"]);
+  });
+
+  test("admits only shipping once every station's artifact is approved", () => {
+    expect(admitted(shippable())).toEqual(["ship"]);
+  });
+
+  test("admits nothing once the order is completed, and says so", () => {
+    const r = shippable();
+    r.db.run("UPDATE factory_order SET status = 'completed' WHERE id = ?", [ORDER]);
+    expect(admitted(r)).toEqual([]);
+    expect(() => assertNext(r.db, ORDER, "ship")).toThrow("order order-1 is completed, so it cannot ship");
+  });
+
+  test("names the act the order waits on when it refuses another", () => {
+    const r = built();
+    r.build("c1");
+    expect(() => assertNext(r.db, ORDER, "review")).toThrow(
+      "order order-1 waits on approve at build, so it cannot review",
+    );
   });
 });

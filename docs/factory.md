@@ -25,22 +25,23 @@ One piece of work, written down before anyone takes it ([`glossary.md`](glossary
 queued → plan → build → review → ship → completed
 ```
 
-- **The operator** runs it: claims it, delegates each station to a worker, checks each artifact against the record, and advances or returns it. It never does the work.
-- **Each station returns an artifact** — plan, Build artifact, Review artifact — that the operator approves (`dim order approve`) or sends back with a reason (`dim order return`).
-- **Review with findings** sends the order back to build; the builder answers each finding `fixed` or `refused`, and the next round rules on the answers. The owner settles a contested refusal with `dim order rule`.
+- **Where an order is, is read from the record** ([`src/order-state.ts`](../src/order-state.ts)): its station and the act that station waits on — run the station, approve its artifact, or the owner's ruling. Once review's artifact is approved no station is left, and the next act is ship. Nothing stores it and no command sets it.
+- **Every act checks on entry** that it is the act the record waits on, and a refusal names the one that is. `dim order plan` on a queued order starts it and makes its worktree.
+- **The operator** delegates each station to a worker, checks each artifact against the record, and approves it or returns it. It never does the work.
+- **Each station returns an artifact** — plan, Build artifact, Review artifact — that the operator approves (`dim order approve`) or sends back with a reason (`dim order return`). Only an artifact awaiting approval, or a contested refusal awaiting the owner's ruling, holds an order.
+- **Build runs slice by slice**, and review reads the whole order after the last one. Findings send the order back to build; the builder answers each finding `fixed` or `refused`, and the next round rules on the answers. The owner settles a contested refusal with `dim order rule`.
 - **Ship** delivers it (see [Done](#done)).
-- **A failed attempt** puts the order back in `queued`, holding nothing; **a drop** is the owner deciding it will not be built.
-- **A hold** keeps an order until the owner releases it; a station artifact awaiting approval holds the order the same way.
+- **A failed attempt** leaves the order where its evidence puts it, and the same command runs the station again. A build attempt running on an order refuses a second one. **A drop** is the owner deciding it will not be built.
 - **One act, one path.** Findings arrive only in the reviewer's report and answers only in the builder's build turn.
 
 ### Commands
 
 ```sh
 dim order add <id> --title "..." [--line feat|fix] [--description "..."]
-dim order ready                          # the queue, with held orders beside it
-dim order priority|hold|release|amend|drop <id> ...
+dim order ready                          # the queue
+dim order priority|amend|drop <id> ...
 dim order plan|build|review <id> [--harness codex|claude]
-dim order approve <id>
+dim order approve <id> [--reason "..."]  # a Build artifact's approval gives its reason
 dim order return <id> --reason "..."
 dim order rule <finding-id> --uphold|--overturn --reason "..."
 dim order ship <id>
@@ -76,7 +77,7 @@ Around it:
 
 - The trunk is `refs/remotes/origin/HEAD`, never an assumed name.
 - Ship runs under the factory lock, since two ships would race on one checkout.
-- A rebase that changed a patch sends the order back to review, reading the whole order from the new base. A conflict sends it back to build: the builder resolves the paths in place, and the runner continues the rebase instead of committing ([`src/station-build-rebase.ts`](../src/station-build-rebase.ts)).
+- A build approval carries through every rebase, since the rebase replays approved commits and re-checks them; a review approval carries only through one whose patches are equal. So a rebase that changed a patch puts the order back at review, reading the whole order from the new base, and a conflict puts it back at build: the builder resolves the paths in place, and the runner continues the rebase instead of committing ([`src/station-build-rebase.ts`](../src/station-build-rebase.ts)).
 - A rebase is recorded as a rewrite: each retired sha stays in the record and never counts as landed, reviewed or current.
 - Refused before anything moves: a dirty or nested worktree, a dirty trunk, a branch tip that is none of the order's recorded commits, and an unsigned commit where the repo signs.
 
@@ -103,13 +104,13 @@ A station asks for capabilities, never a harness's flags ([`src/worker-capabilit
 
 ## Record
 
-Orders, workers, attempts, artifacts, evidence and the ledger live in the `factory_*` tables and survive `dim rebuild`, since nothing can recreate a claim after the fact. `dim q factory-analytics` derives retries, holds, outcomes and verdicts from them.
+Orders, workers, attempts, artifacts, evidence and the ledger live in the `factory_*` tables and survive `dim rebuild`, since nothing can recreate an attempt after the fact. `dim q factory-analytics` derives retries, approval waits, outcomes and verdicts from them.
 
 While the factory is being built, `DIM_HOME=<dir> bun run factory:reset -- --confirm-factory-reset` clears its orders in a named data directory; it refuses the default one.
 
 ## Scheduling
 
-`dim schedule define|pause|resume` and `dim q schedules` keep interval schedules. A host — launchd, cron, a harness — only invokes `dim`; claiming work from a schedule is not built ([`todo.md`](todo.md)).
+`dim schedule define|pause|resume` and `dim q schedules` keep interval schedules. A host — launchd, cron, a harness — only invokes `dim`; starting work from a schedule is not built ([`todo.md`](todo.md)).
 
 ## Borrowed from the assembly line
 

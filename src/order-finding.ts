@@ -8,7 +8,8 @@ import {
   rulingApplies,
 } from "./order-finding-state";
 import { appendOrderEventInTransaction } from "./order-ledger";
-import { openReviewOf, ReviewNotOpen, releaseReviewApprovalInTransaction } from "./order-review";
+import { openReviewOf, ReviewNotOpen } from "./order-review";
+import { assertNext } from "./order-state";
 import { assertOrderWorking } from "./order-status";
 import type { ReviewFinding } from "./station-review-artifact";
 
@@ -24,7 +25,6 @@ export class BuildTurnRefused extends Error {
       | "check_failed"
       | "check_changed_tree"
       | "no_change"
-      | "order_not_building"
       | "commit_refused"
       | "comment_added"
       | "rebase_in_progress"
@@ -278,20 +278,18 @@ export function recordOwnerRuling(
     throw new OwnerRulingRefused("reason_missing", `a ruling on finding ${findingId} needs a reason`);
   }
   const { orderId } = finding;
-  assertOrderWorking(db, orderId);
+  assertNext(db, orderId, "rule");
   return db.transaction(() => {
     db.run(
       `INSERT INTO factory_order_finding_ruling (finding_id, review_id, ruling, reason, worker, ruled_at)
        VALUES (?, NULL, ?, ?, ?, ?)`,
       [findingId, ruling.ruling, ruling.reason, worker, at],
     );
-    const event = appendOrderEventInTransaction(
+    return appendOrderEventInTransaction(
       db,
       orderId,
       { kind: "refusal_decided", worker, findingId, evidence: { ruling: ruling.ruling } },
       at,
     );
-    if (ruling.ruling === "refusal_overturned") releaseReviewApprovalInTransaction(db, orderId, worker, at);
-    return event;
   })();
 }

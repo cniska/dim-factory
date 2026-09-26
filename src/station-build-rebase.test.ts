@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SCHEMA_SQL } from "./db-schema";
 import {
+  attemptIn,
   confiningCheckSandbox,
   declareCheck,
   integratedRepo,
@@ -12,17 +13,14 @@ import {
   scratchEnv,
   workerIn,
 } from "./fixtures.test-support";
+import { finishAttempt, openAttempt } from "./order-attempt";
 import { currentOrderCommits, pendingRebaseConflict, type RecordedConflict } from "./order-commits";
 import { recordOrderCommit } from "./order-evidence";
-import { claimOrder, queueOrder } from "./order-lifecycle";
+import { queueOrder, startOrder } from "./order-lifecycle";
 import { shipOrder } from "./order-ship";
+import { orderState } from "./order-state";
 import { rebaseState } from "./ship-rebase";
-import type { Station } from "./station";
-import {
-  approveFinalBuildAt,
-  approvePlanAndMoveToBuild,
-  approveReviewAt,
-} from "./station-approvals.test-support";
+import { approveFinalBuildAt, approvePlan, approveReviewAt } from "./station-approvals.test-support";
 import { commitBuildTurn } from "./station-build-commit";
 import { continueRebaseTurn, reopenRebase } from "./station-build-rebase";
 import { reviewRange } from "./station-review";
@@ -51,9 +49,9 @@ const f = (d: string, notes = false) =>
 
 function conflicted(check = "true", markerSize?: number) {
   const repo = integratedRepo();
-  const claims = integratedRepo();
+  const starts = integratedRepo();
   const home = mkdtempSync(join(tmpdir(), "dim-rebase-turn-"));
-  cleanup.push(repo.dir, claims.dir, home);
+  cleanup.push(repo.dir, starts.dir, home);
   if (markerSize) {
     writeFileSync(join(repo.dir, ".git", "info", "attributes"), `* conflict-marker-size=${markerSize}\n`);
   }
@@ -63,19 +61,10 @@ function conflicted(check = "true", markerSize?: number) {
   db.run(SCHEMA_SQL);
   const builder = workerIn(db);
   const operator = mintWorker(db, { role: "operator", sessionId: newWorkerSession("test-operator") }).name;
-  const claim = (runId: string, station: Station = "build") =>
-    claimOrder(
-      db,
-      "order-1",
-      { runId, sessionId: runId, station, operatorWorker: operator },
-      builder,
-      undefined,
-      claims.dir,
-    );
   queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Collide" }, builder);
-  claim("plan-run", "plan");
-  approvePlanAndMoveToBuild(db, "order-1", operator);
-  claim("run-1");
+  startOrder(db, "order-1", operator, undefined, starts.dir);
+  approvePlan(db, "order-1", operator);
+  attemptIn(db, "order-1", builder, operator, "run-1");
   const wt = orderWorktree(repo.dir, "order-1");
   cleanup.push(wt);
   const first = commit(wt, "f.txt", f("D", true), "feat: change d");
@@ -94,13 +83,13 @@ function conflicted(check = "true", markerSize?: number) {
   } catch (error) {
     refused = error;
   }
-  claim("run-2");
+  finishAttempt(db, "order-1", "succeeded", undefined, new Date().toISOString());
+  attemptIn(db, "order-1", builder, operator, "run-2");
   const recorded = pendingRebaseConflict(db, "order-1") as RecordedConflict;
   const turn = (paths: string[] = ["f.txt"], conflict = recorded) =>
     continueRebaseTurn({
       db,
       orderId: "order-1",
-      runId: "run-2",
       operator,
       worktree: wt,
       conflict,
@@ -122,16 +111,14 @@ describe("a conflict at ship", () => {
     expect(
       db.query("SELECT kind, outcome, reason FROM factory_order_delivery WHERE order_id = 'order-1'").all(),
     ).toEqual([{ kind: "delivery", outcome: "failed", reason: expect.stringContaining("f.txt") }]);
-    expect(db.query("SELECT station FROM factory_order WHERE id = 'order-1'").get()).toEqual({
-      station: "build",
-    });
+    expect(orderState(db, "order-1")).toEqual({ station: "build", next: "run" });
   });
 
   test("cannot be shipped past before the builder resolves it", () => {
     const { wt, db, operator, second, recorded } = conflicted();
 
     expect(() => shipOrder(db, "order-1", wt, operator)).toThrow(
-      expect.objectContaining({ code: "ship_rebase_conflict", message: expect.stringContaining("f.txt") }),
+      expect.objectContaining({ code: "not_next", message: expect.stringContaining("run at build") }),
     );
     expect(pendingRebaseConflict(db, "order-1")).toEqual(recorded);
     expect(rebaseState(wt)).toMatchObject({ origHead: second, onto: recorded.newBase });
@@ -176,10 +163,15 @@ describe("continueRebaseTurn", () => {
     expect(`${git(wt, ["show", `${current[1]}:f.txt`])}\n`).toBe(f("D X", true));
     expect(git(repo.dir, ["rev-parse", "HEAD"])).toBe(trunkTip);
     expect(db.query("SELECT patch_equal FROM factory_order_rewrite").all()).toEqual([{ patch_equal: 0 }]);
-    expect(db.query("SELECT station, run_id FROM factory_order WHERE id = 'order-1'").get()).toEqual({
-      station: "review",
-      run_id: null,
-    });
+    expect(orderState(db, "order-1")).toEqual({ station: "review", next: "run" });
+    expect(openAttempt(db, "order-1")).toBeNull();
+    expect(
+      db
+        .query(
+          "SELECT run_id, outcome FROM factory_order_attempt WHERE kind = 'finished' ORDER BY id DESC LIMIT 1",
+        )
+        .get(),
+    ).toEqual({ run_id: "run-2", outcome: "succeeded" });
     expect(pendingRebaseConflict(db, "order-1")).toBeNull();
     expect(reviewRange(db, "order-1", wt)).toEqual({ base: trunkTip, head: current[1] as string });
   });

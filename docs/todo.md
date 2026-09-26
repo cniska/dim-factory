@@ -4,10 +4,9 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 
 ## Bugs
 
-- A failed attempt puts a started order back in the queue. The order lifecycle fixes it: a started order stays active and resumes at its station.
 - A database transaction that reads before it writes fails at once when another writer holds the lock, instead of waiting.
 - A worker can read the operator's credential and the model routing in `dim`'s data directory.
-- A worker that dies without recording a finish leaves its attempt running forever.
+- A worker that dies without recording a finish leaves its attempt open. Nothing is refused by it, since an attempt whose worker is over does not count as running, but no finish is recorded.
 - `dim rebuild` silently drops a renamed column of a factory table, or fails partway; it should list what it cannot carry before dropping anything.
 - A slice can reach review without a Build artifact of its own.
 - A moved checkout reads as a second repo.
@@ -17,11 +16,14 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 
 ## Features
 
-- **Order lifecycle** — one state machine read from the record, checked by each of plan, build, review and ship on entry. No `dim order move`, no return to the queue, ship ends the order, and only statuses that cannot be derived are stored.
+- **Ship ends the order** — ship writes the event that makes the order done and removes its worktree, `dim order stop` goes, and the status is read from the events rather than stored. A red re-check at ship keeps the rebase for the builder, as a conflict does.
+- **Approval is the only human gate** — a contested refusal goes back to the builder as work, and `dim order rule` goes.
+- **One path per act** — the runner is the only writer of commits, files, checks and artifacts, so `dim order commit`, `file`, `check`, `build-artifact` and `review-artifact` go.
 - **Ship and rebase records** — one table for ship outcomes and one for rebases, replacing the delivery rows and event JSON.
+- **Refuse a secret at ship** — an order's diff carrying a key shape is not shipped.
 - **Ship through a pull request** — `dim.ship = pull-request`, since most repos do not fast-forward their default branch. Built against one of the owner's repos that ships by PR, once the factory runs again.
 - **An attempt for every station run** — planner and reviewer runs claim the order too, and the order's worker folds into its assignment.
-- **Order table cleanup** — a station constraint, per-kind event references, stale columns dropped, and events for amend, priority and hold.
+- **Order table cleanup** — per-kind event references, stale columns dropped, and events for amend and priority.
 - **Operator–worker communication** — one design for how the operator and workers talk, with the operator as the only hub. The operator briefs a reviewer but never forwards the builder's arguments to it, and every message the operator sends a worker is an event, so a relay would show in the record.
 - **The factory picks its own work** — select ready orders and run a bounded count, with claims and integration serialized.
 - **Retake a failed order once** — a second failure leaves it.

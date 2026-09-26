@@ -9,34 +9,20 @@ import { labelFor } from "./git-remote";
 import { HARNESSES, type HarnessName, parseHarness } from "./harness-name";
 import { recordedHarness } from "./harness-operator";
 import { requireCurrentHooks } from "./hooks";
-import {
-  approveOrderBuild,
-  approveOrderPlan,
-  recordOrderBuild,
-  returnOrderArtifact,
-} from "./order-artifacts";
+import { approveOrder, returnOrderArtifact } from "./order-approval";
+import { recordOrderBuild } from "./order-artifacts";
 import type { OrderEventKind } from "./order-events";
 import { recordOrderCheck, recordOrderCommit, recordOrderDocument, recordOrderFile } from "./order-evidence";
 import { recordOwnerRuling } from "./order-finding";
 import { appendOrderEvent } from "./order-ledger";
-import {
-  amendOrder,
-  claimOrder,
-  dropOrder,
-  moveOrder,
-  queueOrder,
-  recoverOrderFailure,
-  setOrderHold,
-  setOrderPriority,
-} from "./order-lifecycle";
+import { amendOrder, dropOrder, queueOrder, recoverOrderFailure, setOrderPriority } from "./order-lifecycle";
 import { isOrderLine, ORDER_LINES } from "./order-line";
-import { heldOrders, readyOrders } from "./order-ready";
-import { approveOrderReview, recordOrderReviewArtifact } from "./order-review";
+import { readyOrders } from "./order-ready";
+import { recordOrderReviewArtifact } from "./order-review";
 import { shipOrder } from "./order-ship";
 import { ORDER_PRIORITIES, type OrderPriority, type OrderStatus } from "./order-status";
 import { dbPath, type Env } from "./paths";
 import type { ShipOutcome } from "./ship";
-import { parseStation, type Station } from "./station";
 import { runOrderBuildLive } from "./station-build";
 import { runOrderPlanLive } from "./station-plan";
 import { runOrderReviewLive } from "./station-review";
@@ -45,13 +31,9 @@ import { resolveAssignedWorker } from "./worker-assignment";
 import { removeWorktree, repoRoot } from "./wt-command";
 
 export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--line <${ORDER_LINES.join("|")}>] [--description "..."]
-                     [--priority <${ORDER_PRIORITIES.join("|")}>] [--hold "..."] [--project <owner/repo>]
+                     [--priority <${ORDER_PRIORITIES.join("|")}>] [--project <owner/repo>]
        dim order ready [--limit <n>] [--project <owner/repo>]
-       dim order claim <order-id> --run <id> [--session <id>] [--station <name>]
        dim order priority <order-id> <${ORDER_PRIORITIES.join("|")}>
-       dim order hold <order-id> --reason "..."
-       dim order release <order-id>
-       dim order move <order-id> --station <name>
        dim order commit <order-id> --sha <sha> [--subject "..."]
        dim order file <order-id> --path <path> [--added <n>] [--removed <n>]
        dim order check <order-id> --command "..." --exit <code> [--result "..."]
@@ -62,7 +44,6 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--lin
        dim order document <order-id> --path <path>
        dim order plan <order-id> [--harness <${HARNESSES.join("|")}>]
        dim order build <order-id> [--harness <${HARNESSES.join("|")}>]
-       dim order approve <order-id>
        dim order approve <order-id> [--reason "..."]
        dim order return <order-id> --reason "..."
        dim order ship <order-id>
@@ -73,8 +54,7 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--lin
 An order defaults to this checkout's owner/repo, so work belongs to the project it
 is built in rather than to wherever the command was typed.`;
 
-const CLAIM_FLAGS = ["--run", "--session", "--station"];
-const ADD_FLAGS = ["--title", "--line", "--description", "--priority", "--hold", "--project"];
+const ADD_FLAGS = ["--title", "--line", "--description", "--priority", "--project"];
 
 const fail = (message: string): Error => new UsageError(message);
 
@@ -129,35 +109,10 @@ function add(
       line,
       description: given.get("--description"),
       priority: priority(given.get("--priority")),
-      hold: given.get("--hold"),
     },
     worker,
   );
   return `queued ${orderId} on ${project}`;
-}
-
-function stationFlag(value: string | undefined): Station | undefined {
-  return value === undefined ? undefined : parseStation(value, (message) => new UsageError(message));
-}
-
-function claim(db: Database, orderId: string, args: string[], worker: string, env: Env, cwd: string): string {
-  const given = flags(args, CLAIM_FLAGS);
-  assertOperator(db, worker, "claim an order");
-  requireCurrentHooks(env);
-  claimOrder(
-    db,
-    orderId,
-    {
-      runId: required(given, "--run"),
-      sessionId: given.get("--session"),
-      station: stationFlag(given.get("--station")),
-      operatorWorker: worker,
-    },
-    worker,
-    undefined,
-    cwd,
-  );
-  return `${orderId} is working`;
 }
 
 function exitCode(given: Map<string, string>): number {
@@ -274,7 +229,7 @@ function stop(db: Database, orderId: string, args: string[], cwd: string, worker
   if (kind === "failed") {
     assertOperator(db, worker, "recover a failed order");
     recoverOrderFailure(db, orderId, worker, given.get("--reason"), undefined, repoRoot(cwd));
-    return `${orderId} is queued again`;
+    return `${orderId} failed its attempt and stays where its record puts it`;
   }
   appendOrderEvent(
     db,
@@ -289,7 +244,7 @@ function stop(db: Database, orderId: string, args: string[], cwd: string, worker
     repoRoot(cwd),
   );
   if (kind === "completed") removeWorktree(orderId, { cwd });
-  return kind === "completed" ? `${orderId} is completed` : `${orderId} is queued again`;
+  return `${orderId} is completed`;
 }
 
 const AMEND_FLAGS = ["--title", "--description"];
@@ -357,15 +312,11 @@ export function runOrderCommand(
     if (!project) throw fail("--project is required outside a checkout with a remote");
     const limit = given.get("--limit");
     if (limit !== undefined && !/^[1-9]\d*$/.test(limit)) throw fail("--limit takes a positive whole number");
-    return {
-      ready: readyOrders(db, project, limit === undefined ? undefined : Number(limit)),
-      held: heldOrders(db, project),
-    };
+    return readyOrders(db, project, limit === undefined ? undefined : Number(limit));
   }
   if (!command || !orderId) throw new UsageError("order takes a subcommand and an order id");
   const worker = env.DIM_WORKER_ASSIGNMENT_ID ? resolveAssignedWorker(db, env) : resolveWorker(db, env);
   if (command === "add") return add(db, orderId, rest, defaultProject, worker);
-  if (command === "claim") return claim(db, orderId, rest, worker, env, cwd);
   if (command === "priority") {
     const [level] = rest;
     const chosen = priority(level);
@@ -373,49 +324,14 @@ export function runOrderCommand(
     setOrderPriority(db, orderId, chosen, worker);
     return `${orderId} is ${chosen}`;
   }
-  if (command === "hold") {
-    const reason = required(flags(rest, ["--reason"]), "--reason");
-    setOrderHold(db, orderId, reason, worker);
-    return `${orderId} is held: ${reason}`;
-  }
-  if (command === "release") {
-    flags(rest, []);
-    setOrderHold(db, orderId, null, worker);
-    return `${orderId} is released`;
-  }
   if (command === "return") {
     const reason = required(flags(rest, ["--reason"]), "--reason");
-    returnOrderArtifact(db, orderId, worker, reason);
-    return `${orderId} artifact returned to its station`;
-  }
-  if (command === "move") {
-    const station = parseStation(
-      required(flags(rest, ["--station"]), "--station"),
-      (message) => new UsageError(message),
-    );
-    moveOrder(db, orderId, station, worker);
-    return `${orderId} moved to ${station}`;
+    const station = returnOrderArtifact(db, orderId, worker, reason);
+    return `${orderId} ${station} artifact returned to its worker`;
   }
   if (command === "approve") {
-    const station = db
-      .query<{ station: Station | null }, [string]>("SELECT station FROM factory_order WHERE id = ?")
-      .get(orderId)?.station;
-    if (station === "plan") {
-      flags(rest, []);
-      approveOrderPlan(db, orderId, worker);
-      return `${orderId} plan approved by ${worker}`;
-    }
-    if (station === "build") {
-      const given = flags(rest, ["--reason"]);
-      approveOrderBuild(db, orderId, worker, required(given, "--reason"));
-      return `${orderId} build approved by ${worker}`;
-    }
-    if (station === "review") {
-      flags(rest, []);
-      approveOrderReview(db, orderId, worker);
-      return `${orderId} review approved by ${worker}`;
-    }
-    throw new UsageError(`${orderId} is not at an approvable station`);
+    const station = approveOrder(db, orderId, worker, flags(rest, ["--reason"]).get("--reason"));
+    return `${orderId} ${station} approved by ${worker}`;
   }
   if (Object.hasOwn(EVIDENCE, command)) {
     const evidence = EVIDENCE[command] as Evidence;
@@ -444,6 +360,7 @@ export async function runOrderCommandLive(
   const operator = resolveWorker(db, env);
   const harness = selectedHarness(db, given, operator);
   if (args[0] === "plan") {
+    requireCurrentHooks(env);
     const outcome = await runOrderPlanLive(db, orderId, { dir: cwd, env, harness });
     return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;
   }
@@ -460,7 +377,7 @@ export async function runOrderCommandLive(
 export const orderCommand: Command = {
   name: "order",
   usage: ORDER_USAGE,
-  summary: "add, claim, move, record, ship and stop factory orders",
+  summary: "add, run, approve, ship and stop factory orders",
   async run(args) {
     const root = checkoutRoot(process.cwd());
     const db = openDb(dbPath());

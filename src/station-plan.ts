@@ -5,7 +5,9 @@ import { workerFailureReason } from "./harness-launch";
 import type { HarnessName } from "./harness-name";
 import { recordOrderPlan } from "./order-artifacts";
 import { appendOrderEvent } from "./order-ledger";
-import { assertOrderAtStation, assertOrderWorking } from "./order-status";
+import { startOrder } from "./order-lifecycle";
+import { assertNext } from "./order-state";
+import { orderStatus } from "./order-status";
 import { stationDirectory } from "./station-directory";
 import { type PlanSlice, parsePlanArtifact } from "./station-plan-artifact";
 import { runOrderStationLive } from "./station-worker";
@@ -73,8 +75,8 @@ export async function runOrderPlanLive(
   if (!order) throw new Error(`order not found: ${orderId}`);
   const parentWorker = resolveWorker(db, options.env);
   assertOperator(db, parentWorker, "delegate planning");
-  assertOrderWorking(db, orderId);
-  assertOrderAtStation(db, orderId, "plan", "start a planner");
+  assertNext(db, orderId, "plan");
+  if (orderStatus(db, orderId) === "queued") startOrder(db, orderId, parentWorker, undefined, options.dir);
   const harness = options.harness;
   let planner: string | undefined;
   try {

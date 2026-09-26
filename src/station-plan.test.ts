@@ -9,7 +9,8 @@ import { codexProcess } from "./harness-codex";
 import { fakeHarness } from "./harness-fake";
 import { commandLine } from "./harness-process";
 import { scriptedHarness } from "./harness-scripted.test-support";
-import { claimOrder, queueOrder } from "./order-lifecycle";
+import { returnOrderArtifact } from "./order-approval";
+import { dropOrder, queueOrder } from "./order-lifecycle";
 import { plannerBrief, runOrderPlanLive } from "./station-plan";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
 import { ASSIGNMENT_ID_VAR } from "./worker-assignment";
@@ -43,14 +44,6 @@ describe("planner station", () => {
     const operator = mintWorker(db, { role: "operator", sessionId: "operator-session" });
     const builder = mintWorker(db, { role: "builder", sessionId: "builder-session" });
     queueOrder(db, { id: "planner-order", project: "cniska/dim-factory", title: "Plan this" }, operator.name);
-    claimOrder(
-      db,
-      "planner-order",
-      { runId: "run", station: "plan", operatorWorker: operator.name },
-      operator.name,
-      undefined,
-      repo.dir,
-    );
 
     await expect(
       runOrderPlanLive(db, "planner-order", {
@@ -122,10 +115,12 @@ describe("planner station", () => {
     ]);
     expect(db.query("SELECT kind FROM factory_order_event WHERE order_id = 'planner-order'").all()).toEqual([
       { kind: "queued" },
-      { kind: "claimed" },
+      { kind: "started" },
       { kind: "artifact_written" },
-      { kind: "hold_set" },
     ]);
+    expect(db.query("SELECT status FROM factory_order WHERE id = 'planner-order'").get()).toEqual({
+      status: "working",
+    });
     db.close();
     rmSync(repo.dir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
@@ -145,14 +140,6 @@ describe("planner station", () => {
       db,
       { id: "planner-crash-order", project: "cniska/dim-factory", title: "Plan this" },
       operator.name,
-    );
-    claimOrder(
-      db,
-      "planner-crash-order",
-      { runId: "run", station: "plan", operatorWorker: operator.name },
-      operator.name,
-      undefined,
-      repo.dir,
     );
 
     await expect(
@@ -204,14 +191,6 @@ describe("planner station", () => {
       { id: "planner-resume-order", project: "cniska/dim-factory", title: "Plan this" },
       operator.name,
     );
-    claimOrder(
-      db,
-      "planner-resume-order",
-      { runId: "run", station: "plan", operatorWorker: operator.name },
-      operator.name,
-      undefined,
-      repo.dir,
-    );
     const base = fakeHarness("plan");
     let starts = 0;
     let resumes = 0;
@@ -240,6 +219,7 @@ describe("planner station", () => {
       dir: repo.dir,
       harness: "codex",
     });
+    returnOrderArtifact(db, "planner-resume-order", operator.name, "cut the plan smaller");
     const second = await runOrderPlanLive(db, "planner-resume-order", {
       adapter,
       env,
@@ -265,12 +245,13 @@ describe("planner station", () => {
     rmSync(home, { recursive: true, force: true });
   });
 
-  test("refuses to plan an order nobody claimed, before a planner exists", async () => {
+  test("refuses to plan a dropped order, before a planner exists or the order starts", async () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     const repo = integratedRepo();
-    const operator = mintWorker(db, { role: "operator", sessionId: "planner-unclaimed-operator" });
-    queueOrder(db, { id: "unclaimed-order", project: "cniska/dim-factory", title: "Plan me" }, operator.name);
+    const operator = mintWorker(db, { role: "operator", sessionId: "planner-dropped-operator" });
+    queueOrder(db, { id: "dropped-order", project: "cniska/dim-factory", title: "Plan me" }, operator.name);
+    dropOrder(db, "dropped-order", "not wanted", operator.name);
     const env = {
       [WORKER_NAME_VAR]: operator.name,
       [WORKER_TOKEN_VAR]: operator.token,
@@ -278,14 +259,17 @@ describe("planner station", () => {
     };
 
     await expect(
-      runOrderPlanLive(db, "unclaimed-order", {
+      runOrderPlanLive(db, "dropped-order", {
         adapter: fakeHarness("plan"),
         env,
         dir: repo.dir,
         harness: "codex",
       }),
-    ).rejects.toThrow("order unclaimed-order is not claimed");
+    ).rejects.toThrow(expect.objectContaining({ code: "not_next" }));
     expect(db.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 0 });
+    expect(db.query("SELECT count(*) AS n FROM factory_order_event WHERE kind = 'started'").get()).toEqual({
+      n: 0,
+    });
     db.close();
     rmSync(repo.dir, { recursive: true, force: true });
   });
@@ -304,14 +288,6 @@ describe("planner station", () => {
       db,
       { id: "planner-cwd-order", project: "cniska/dim-factory", title: "Plan here" },
       operator.name,
-    );
-    claimOrder(
-      db,
-      "planner-cwd-order",
-      { runId: "run", station: "plan", operatorWorker: operator.name },
-      operator.name,
-      undefined,
-      repo.dir,
     );
     const base = fakeHarness("plan");
     let plannedIn: string | undefined;

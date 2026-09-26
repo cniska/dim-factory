@@ -8,12 +8,15 @@ import {
   rewrittenHead,
 } from "./order-commits";
 import { orderFindingStandings, owesAnswer } from "./order-finding-state";
+import { isTerminalOrderStatus, orderStatus } from "./order-status";
 import type { Station } from "./station";
+
+export type NextAct = "run" | "approve" | "rule" | "ship";
 
 export type OrderState =
   | { station: Station; next: "run" | "approve" }
   | { station: "review"; next: "rule" }
-  | { station: "ship"; next: "ship" };
+  | { station: null; next: "ship" };
 
 type Artifact = Pick<StoredArtifact, "id" | "headSha" | "reviewId">;
 
@@ -73,5 +76,43 @@ export function orderState(db: Database, orderId: string): OrderState {
     const ready = review !== null && reviewCovers(db, orderId, review, head) && !wasReturned(db, review);
     return { station: "review", next: ready ? "approve" : "run" };
   }
-  return { station: "ship", next: "ship" };
+  return { station: null, next: "ship" };
+}
+
+export function describeState(state: OrderState): string {
+  return state.station === null ? state.next : `${state.next} at ${state.station}`;
+}
+
+export type OrderAct = "plan" | "build" | "review" | "approve" | "return" | "rule" | "ship";
+
+export class OrderActRefused extends Error {
+  readonly code = "not_next";
+}
+
+const ENTERS: Record<OrderAct, (state: OrderState) => boolean> = {
+  plan: (state) => state.station === "plan" && state.next === "run",
+  build: (state) => state.station === "build" && state.next === "run",
+  review: (state) => state.station === "review" && state.next === "run",
+  approve: (state) => state.next === "approve",
+  return: (state) => state.next === "approve",
+  rule: (state) => state.next === "rule",
+  ship: (state) => state.next === "ship",
+};
+
+export function assertNext(
+  db: Database,
+  orderId: string,
+  act: "approve" | "return",
+): Extract<OrderState, { next: "approve" }>;
+export function assertNext(db: Database, orderId: string, act: OrderAct): OrderState;
+export function assertNext(db: Database, orderId: string, act: OrderAct): OrderState {
+  const status = orderStatus(db, orderId);
+  if (isTerminalOrderStatus(status)) {
+    throw new OrderActRefused(`order ${orderId} is ${status}, so it cannot ${act}`);
+  }
+  const state = orderState(db, orderId);
+  if (!ENTERS[act](state)) {
+    throw new OrderActRefused(`order ${orderId} waits on ${describeState(state)}, so it cannot ${act}`);
+  }
+  return state;
 }

@@ -3,12 +3,9 @@ import type { WallItemEntry, WallItemKind } from "./wall-server";
 
 export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   queued: "Queued",
-  claimed: "Claimed",
-  moved: "Moved",
+  started: "Started",
   provenance_recorded: "Provenance",
   priority_changed: "Priority changed",
-  hold_set: "Hold set",
-  hold_released: "Hold released",
   artifact_written: "Artifact written",
   artifact_approved: "Artifact approved",
   artifact_returned: "Artifact returned",

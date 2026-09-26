@@ -1,11 +1,11 @@
 import type { Database } from "bun:sqlite";
 import { CHECK_SANDBOX } from "./check-sandbox";
+import { finishAttempt } from "./order-attempt";
 import type { RecordedConflict } from "./order-commits";
 import { recordOrderCheck, recordOrderRewrite } from "./order-evidence";
 import { BuildTurnRefused } from "./order-finding";
-import { moveOrder } from "./order-lifecycle";
+import { now } from "./order-ledger";
 import { recheck } from "./order-ship";
-import { isActiveOrderRun } from "./order-status";
 import type { Env } from "./paths";
 import {
   changedPaths,
@@ -74,7 +74,6 @@ export function reopenRebase(worktree: string, orderId: string, conflict: Record
 export function continueRebaseTurn(options: {
   db: Database;
   orderId: string;
-  runId: string;
   operator: string;
   worktree: string;
   conflict: RecordedConflict;
@@ -130,16 +129,9 @@ export function continueRebaseTurn(options: {
       `${check.command} exited ${check.exitCode} at the rebased head ${rewrite.newHead}; the rebase was taken back and is reopened next turn:\n${check.result}`,
     );
   }
-  if (!isActiveOrderRun(db, orderId, options.runId)) {
-    restoreBranch(replay);
-    throw new BuildTurnRefused(
-      "order_not_building",
-      `order ${orderId} is no longer held by run ${options.runId} after its check ran`,
-    );
-  }
   db.transaction(() => {
     recordOrderRewrite(db, orderId, rewrite, check, operator);
-    moveOrder(db, orderId, "review", operator);
+    finishAttempt(db, orderId, "succeeded", undefined, now());
   })();
   return { sha: rewrite.newHead };
 }

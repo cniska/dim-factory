@@ -2,16 +2,18 @@ import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { SCHEMA_SQL } from "./db-schema";
-import { integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
+import { attemptIn, integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
 import { workerFailureReason } from "./harness-launch";
+import { recordOrderCommit } from "./order-evidence";
 import {
   answerOrderFindings,
   raiseOrderFinding,
   recordOwnerRuling,
   ruleOnOrderFinding,
 } from "./order-finding";
-import { claimOrder, queueOrder } from "./order-lifecycle";
+import { queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview } from "./order-review";
+import { approveFinalBuildAt, approvePlan } from "./station-approvals.test-support";
 import { builderBrief, rebaseConflictBrief, reviewFindingsForBuild } from "./station-build";
 import { parseBuildTurn } from "./station-build-turn";
 import schema from "./station-build-turn.schema.json";
@@ -26,14 +28,11 @@ describe("the review findings a builder is handed", () => {
     const builder = workerIn(db);
     const operator = workerIn(db, "operator");
     queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Brief" }, operator);
-    claimOrder(
-      db,
-      "order-1",
-      { runId: "run-1", station: "review", operatorWorker: operator },
-      operator,
-      undefined,
-      trunk.dir,
-    );
+    startOrder(db, "order-1", operator, undefined, trunk.dir);
+    approvePlan(db, "order-1", operator);
+    attemptIn(db, "order-1", builder, operator);
+    recordOrderCommit(db, "order-1", "head0001", builder, "feat: brief");
+    approveFinalBuildAt(db, "order-1", "head0001", builder, operator);
     const round = reviewIn(db, "order-1", operator);
     const findings = answers.map((answer, index) => {
       const id = raiseOrderFinding(

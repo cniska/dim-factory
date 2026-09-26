@@ -3,22 +3,18 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SCHEMA_SQL } from "./db-schema";
-import { integratedRepo, orderWorktree, reviewOutput } from "./fixtures.test-support";
+import { attemptIn, integratedRepo, orderWorktree, reviewOutput } from "./fixtures.test-support";
 import { scriptedHarness } from "./harness-scripted.test-support";
-import {
-  approveOrderBuild,
-  approveOrderPlan,
-  completeOrderSlice,
-  nextOrderSlice,
-  recordOrderBuild,
-  recordOrderPlan,
-} from "./order-artifacts";
+import { approveOrder } from "./order-approval";
+import { completeOrderSlice, nextOrderSlice, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
+import { finishAttempt } from "./order-attempt";
 import { runOrderCommand } from "./order-command";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
 import { answerOrderFindings } from "./order-finding";
-import { claimOrder, moveOrder, queueOrder } from "./order-lifecycle";
-import { approveOrderReview, assertReviewApproved } from "./order-review";
+import { queueOrder, startOrder } from "./order-lifecycle";
 import { shipOrder } from "./order-ship";
+import { orderState } from "./order-state";
+import { approvePlan } from "./station-approvals.test-support";
 import { builderBrief, reviewFindingsForBuild } from "./station-build";
 import { runOrderReviewLive } from "./station-review";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
@@ -67,35 +63,19 @@ describe("the operator loop", () => {
     });
     const worktree = join(repo.dir, ".claude", "worktrees", "loop-order");
     queueOrder(db, { id: "loop-order", project: "cniska/dim-factory", title: "Run the loop" }, operator.name);
-    claimOrder(
-      db,
-      "loop-order",
-      { runId: "plan-1", station: "plan", operatorWorker: operator.name },
-      operator.name,
-      undefined,
-      repo.dir,
-    );
+    startOrder(db, "loop-order", operator.name, undefined, repo.dir);
     recordOrderPlan(db, "loop-order", "## Outcome\n\nRun the loop.", operator.name, [
       { title: "Run the loop", outcome: "the loop runs" },
     ]);
-    approveOrderPlan(db, "loop-order", operator.name);
-    moveOrder(db, "loop-order", "build", operator.name);
-    claimOrder(
-      db,
-      "loop-order",
-      { runId: "build-1", station: "build", operatorWorker: operator.name },
-      builder.name,
-      undefined,
-      repo.dir,
-    );
+    approveOrder(db, "loop-order", operator.name, undefined);
+    attemptIn(db, "loop-order", builder.name, operator.name, "build-1");
 
     const first = commit(worktree, "first");
     recordOrderCommit(db, "loop-order", first, builder.name, "feat: first");
     recordOrderCheck(db, "loop-order", { command: "bun run verify", exitCode: 0 }, builder.name);
     recordOrderBuild(db, "loop-order", "The first slice is built and verified.", first, builder.name);
     completeOrderSlice(db, "loop-order", nextOrderSlice(db, "loop-order")?.id as number, builder.name);
-    approveOrderBuild(db, "loop-order", operator.name, "the requested behavior is present");
-    moveOrder(db, "loop-order", "review", operator.name);
+    approveOrder(db, "loop-order", operator.name, "the requested behavior is present");
 
     const firstReview = await runOrderReviewLive(db, "loop-order", operator.name, {
       dir: worktree,
@@ -117,8 +97,8 @@ describe("the operator loop", () => {
       })),
     });
     expect(firstReview.findings).toBe(1);
-    expect(() => approveOrderReview(db, "loop-order", operator.name)).toThrow(
-      expect.objectContaining({ code: "finding_unsettled" }),
+    expect(() => approveOrder(db, "loop-order", operator.name, undefined)).toThrow(
+      expect.objectContaining({ code: "not_next", message: expect.stringContaining("run at build") }),
     );
     const finding = db.query<{ id: number }, []>("SELECT id FROM factory_order_finding").get();
     if (!finding) throw new Error("loop test did not raise a finding");
@@ -130,21 +110,13 @@ describe("the operator loop", () => {
       builder.name,
     );
 
-    moveOrder(db, "loop-order", "build", operator.name);
-    claimOrder(
-      db,
-      "loop-order",
-      { runId: "build-2", station: "build", operatorWorker: operator.name },
-      builder.name,
-      undefined,
-      repo.dir,
-    );
+    attemptIn(db, "loop-order", builder.name, operator.name, "build-2");
     const second = commit(worktree, "fixed");
     recordOrderCommit(db, "loop-order", second, builder.name, "fix: complete behavior");
     recordOrderCheck(db, "loop-order", { command: "bun run verify", exitCode: 0 }, builder.name);
     recordOrderBuild(db, "loop-order", "The finding is fixed and verified.", second, builder.name);
-    approveOrderBuild(db, "loop-order", operator.name, "the finding is answered");
-    moveOrder(db, "loop-order", "review", operator.name);
+    finishAttempt(db, "loop-order", "succeeded", undefined, new Date().toISOString());
+    approveOrder(db, "loop-order", operator.name, "the finding is answered");
     const secondReview = await runOrderReviewLive(db, "loop-order", operator.name, {
       dir: worktree,
       env: workerEnv(operator),
@@ -155,9 +127,9 @@ describe("the operator loop", () => {
     });
     expect(secondReview.findings).toBe(0);
     expect(() => shipOrder(db, "loop-order", worktree, operator.name)).toThrow(
-      expect.objectContaining({ code: "review_not_approved" }),
+      expect.objectContaining({ code: "not_next", message: expect.stringContaining("approve at review") }),
     );
-    approveOrderReview(db, "loop-order", operator.name);
+    approveOrder(db, "loop-order", operator.name, undefined);
 
     const events = db
       .query<{ kind: string; worker: string; review_id: number | null }, [string]>(
@@ -181,22 +153,15 @@ describe("the operator loop", () => {
         .get(),
     ).toEqual({ role: "reviewer" });
     expect(events.filter((event) => event.kind === "finding_answered")[0]?.worker).toBe(builder.name);
-    expect(() => assertReviewApproved(db, "loop-order")).not.toThrow();
-    moveOrder(db, "loop-order", "build", operator.name);
-    claimOrder(
-      db,
-      "loop-order",
-      { runId: "build-3", station: "build", operatorWorker: operator.name },
-      builder.name,
-      undefined,
-      repo.dir,
-    );
+    expect(orderState(db, "loop-order")).toEqual({ station: null, next: "ship" });
+    attemptIn(db, "loop-order", builder.name, operator.name, "build-3");
     recordOrderCommit(db, "loop-order", "later-commit", builder.name, "fix: another change");
     recordOrderCheck(db, "loop-order", { command: "bun run verify", exitCode: 0 }, builder.name);
     recordOrderBuild(db, "loop-order", "Another change is built and verified.", "later-commit", builder.name);
-    approveOrderBuild(db, "loop-order", operator.name, "the change is present");
+    finishAttempt(db, "loop-order", "succeeded", undefined, new Date().toISOString());
+    approveOrder(db, "loop-order", operator.name, "the change is present");
     expect(() => shipOrder(db, "loop-order", worktree, operator.name)).toThrow(
-      expect.objectContaining({ code: "review_not_approved" }),
+      expect.objectContaining({ code: "not_next", message: expect.stringContaining("run at review") }),
     );
     db.close();
   });
@@ -213,21 +178,18 @@ describe("the operator loop", () => {
       });
       const worktree = join(repo.dir, ".claude", "worktrees", orderId);
       queueOrder(db, { id: orderId, project: "cniska/dim-factory", title: "Contest" }, operator.name);
+      startOrder(db, orderId, operator.name, undefined, repo.dir);
+      approvePlan(db, orderId, operator.name);
       const build = (run: string, name: string) => {
-        claimOrder(
-          db,
-          orderId,
-          { runId: run, station: "build", operatorWorker: operator.name },
-          builder.name,
-          undefined,
-          repo.dir,
-        );
+        attemptIn(db, orderId, builder.name, operator.name, run);
         const sha = commit(worktree, name);
         recordOrderCommit(db, orderId, sha, builder.name, `feat: ${name}`);
         recordOrderCheck(db, orderId, { command: "bun run verify", exitCode: 0 }, builder.name);
         recordOrderBuild(db, orderId, `The ${name} slice is built.`, sha, builder.name);
-        approveOrderBuild(db, orderId, operator.name, "built");
-        moveOrder(db, orderId, "review", operator.name);
+        const left = nextOrderSlice(db, orderId);
+        if (left) completeOrderSlice(db, orderId, left.id, builder.name);
+        else finishAttempt(db, orderId, "succeeded", undefined, new Date().toISOString());
+        approveOrder(db, orderId, operator.name, "built");
       };
       const review = (output: string) =>
         runOrderReviewLive(db, orderId, operator.name, {
@@ -260,7 +222,6 @@ describe("the operator loop", () => {
         [{ finding, answer: "refused", resolution: "the test is the next slice" }],
         builder.name,
       );
-      moveOrder(db, orderId, "build", operator.name);
       build("build-2", `${orderId}-second`);
       await review(
         reviewOutput({
@@ -278,10 +239,10 @@ describe("the operator loop", () => {
       return { db, operator, builder, finding, rule };
     }
 
-    test("holds approval until the owner upholds the refusal", async () => {
+    test("refuses approval until the owner upholds the refusal", async () => {
       const { db, operator, builder, finding, rule } = await contested("uphold-order");
-      expect(() => approveOrderReview(db, "uphold-order", operator.name)).toThrow(
-        expect.objectContaining({ code: "ruling_pending" }),
+      expect(() => approveOrder(db, "uphold-order", operator.name, undefined)).toThrow(
+        expect.objectContaining({ code: "not_next", message: expect.stringContaining("rule at review") }),
       );
       expect(() =>
         runOrderCommand(
@@ -293,22 +254,19 @@ describe("the operator loop", () => {
         ),
       ).toThrow(expect.objectContaining({ code: "worker_not_operator" }));
       expect(rule("--uphold")).toBe(`finding ${finding}: refusal upheld`);
-      expect(() => approveOrderReview(db, "uphold-order", operator.name)).not.toThrow();
+      expect(approveOrder(db, "uphold-order", operator.name, undefined)).toBe("review");
+      expect(orderState(db, "uphold-order")).toEqual({ station: null, next: "ship" });
       db.close();
     });
 
     test("sends an overturned refusal back to the builder as open work", async () => {
       const { db, operator, finding, rule } = await contested("overturn-order");
-      expect(db.query("SELECT hold FROM factory_order WHERE id = 'overturn-order'").get()).toEqual({
-        hold: "approval",
-      });
+      expect(orderState(db, "overturn-order")).toEqual({ station: "review", next: "rule" });
       expect(rule("--overturn")).toBe(`finding ${finding}: refusal overturned, back to the builder`);
-      expect(() => approveOrderReview(db, "overturn-order", operator.name)).toThrow(
-        expect.objectContaining({ code: "finding_unsettled" }),
+      expect(() => approveOrder(db, "overturn-order", operator.name, undefined)).toThrow(
+        expect.objectContaining({ code: "not_next", message: expect.stringContaining("run at build") }),
       );
-      expect(db.query("SELECT hold FROM factory_order WHERE id = 'overturn-order'").get()).toEqual({
-        hold: null,
-      });
+      expect(orderState(db, "overturn-order")).toEqual({ station: "build", next: "run" });
       expect(() => rule("--uphold")).toThrow(expect.objectContaining({ code: "finding_not_awaiting_owner" }));
       const brief = builderBrief(
         { id: "overturn-order", title: "Contest", description: null },

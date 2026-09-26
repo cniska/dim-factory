@@ -5,8 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
 import { SCHEMA_SQL } from "./db-schema";
-import { integratedRepo, located, reviewIn, workerIn } from "./fixtures.test-support";
+import { attemptIn, integratedRepo, located, reviewIn, workerIn } from "./fixtures.test-support";
 import { rebuild } from "./ingest-sync";
+import { recordOrderCommit } from "./order-evidence";
 import {
   answerOrderFindings,
   raiseOrderFinding,
@@ -19,9 +20,11 @@ import {
   findingStanding,
   orderFindingStandings,
 } from "./order-finding-state";
-import { claimOrder, moveOrder, queueOrder, setOrderHold } from "./order-lifecycle";
-import { closeOrderReview } from "./order-review";
+import { queueOrder, startOrder } from "./order-lifecycle";
+import { closeOrderReview, recordOrderReviewArtifact } from "./order-review";
+import { describeState, orderState } from "./order-state";
 import { dbPath } from "./paths";
+import { approveFinalBuildAt, approvePlan } from "./station-approvals.test-support";
 
 const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
@@ -33,14 +36,11 @@ function floor(db = new Database(":memory:"), schema = true): Floor {
   const builder = workerIn(db);
   const operator = workerIn(db, "operator");
   queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Rule on findings" }, operator);
-  claimOrder(
-    db,
-    "order-1",
-    { runId: "run-1", sessionId: "session-1", station: "review", operatorWorker: operator },
-    operator,
-    undefined,
-    trunk.dir,
-  );
+  startOrder(db, "order-1", operator, undefined, trunk.dir);
+  approvePlan(db, "order-1", operator);
+  recordOrderCommit(db, "order-1", "base0000", builder);
+  attemptIn(db, "order-1", builder, operator);
+  approveFinalBuildAt(db, "order-1", "base0000", builder, operator);
   return { db, builder, operator };
 }
 
@@ -454,78 +454,67 @@ describe("recording a ruling", () => {
 });
 
 describe("closing a round", () => {
-  const hold = (f: Floor) =>
-    f.db.query<{ hold: string | null }, []>("SELECT hold FROM factory_order WHERE id = 'order-1'").get()
-      ?.hold;
+  const next = (f: Floor) => describeState(orderState(f.db, "order-1"));
+  const written = (f: Floor, reviewer: string) =>
+    recordOrderReviewArtifact(f.db, "order-1", "## Outcome\n\nClean.", reviewer);
 
-  test("holds for approval when the round ruled every earlier finding addressed", () => {
+  test("waits on review approval when the round ruled every earlier finding addressed", () => {
     const f = floor();
     const { finding, reviewer } = answered(f, "fixed");
     ruleOnOrderFinding(f.db, finding, { ruling: "addressed" }, reviewer);
+    written(f, reviewer);
     closeOrderReview(f.db, openRound(f), "closed", reviewer);
-    expect(hold(f)).toBe("approval");
+    expect(next(f)).toBe("approve at review");
   });
 
-  test("returns to the builder without a hold when the round ruled a fix not_addressed", () => {
+  test("returns to the builder when the round ruled a fix not_addressed", () => {
     const f = floor();
     const { finding, reviewer } = answered(f, "fixed");
     ruleOnOrderFinding(f.db, finding, { ruling: "not_addressed", reason: "still no test" }, reviewer);
     closeOrderReview(f.db, openRound(f), "closed", reviewer);
-    expect(hold(f)).toBeNull();
+    expect(next(f)).toBe("run at build");
   });
 
-  test("holds a contested refusal for the owner and releases the hold when the owner overturns it", () => {
+  test("waits on the owner's ruling over a contested refusal and returns to the builder when it is overturned", () => {
     const f = floor();
     const { finding, reviewer } = answered(f, "refused");
     ruleOnOrderFinding(f.db, finding, { ruling: "refusal_contested", reason: "in scope" }, reviewer);
+    written(f, reviewer);
     closeOrderReview(f.db, openRound(f), "closed", reviewer);
-    expect(hold(f)).toBe("approval");
+    expect(next(f)).toBe("rule at review");
     recordOwnerRuling(f.db, finding, { ruling: "refusal_overturned", reason: "fix it" }, f.operator);
-    expect(hold(f)).toBeNull();
+    expect(next(f)).toBe("run at build");
   });
 
-  test("returns to the builder without a hold while an earlier finding is unanswered", () => {
+  test("returns to the builder while an earlier finding is unanswered", () => {
     const f = floor();
     const first = reviewIn(f.db, "order-1", f.operator);
     raiseOrderFinding(f.db, "order-1", located({ dimension: "docs", failure: "stale" }), first.reviewer);
     const second = nextRound(f, first.reviewer);
     closeOrderReview(f.db, openRound(f), "closed", second);
-    expect(hold(f)).toBeNull();
+    expect(next(f)).toBe("run at build");
   });
 
-  function contestedAndClosed(): Floor & { finding: number } {
+  test("waits on review approval once the owner upholds a contested refusal", () => {
     const f = floor();
     const { finding, reviewer } = answered(f, "refused");
     ruleOnOrderFinding(f.db, finding, { ruling: "refusal_contested", reason: "in scope" }, reviewer);
+    written(f, reviewer);
     closeOrderReview(f.db, openRound(f), "closed", reviewer);
-    return { ...f, finding };
-  }
-
-  test("keeps the hold when the owner upholds the refusal", () => {
-    const f = contestedAndClosed();
-    recordOwnerRuling(f.db, f.finding, { ruling: "refusal_upheld", reason: "later" }, f.operator);
-    expect(hold(f)).toBe("approval");
+    recordOwnerRuling(f.db, finding, { ruling: "refusal_upheld", reason: "later" }, f.operator);
+    expect(next(f)).toBe("approve at review");
   });
 
-  test("keeps a hold that is not the review's approval hold through an overturn", () => {
-    const owner = contestedAndClosed();
-    setOrderHold(owner.db, "order-1", "the owner wants to read it first", owner.operator);
-    recordOwnerRuling(
-      owner.db,
-      owner.finding,
-      { ruling: "refusal_overturned", reason: "fix" },
-      owner.operator,
-    );
-    expect(hold(owner)).toBe("the owner wants to read it first");
-    const elsewhere = contestedAndClosed();
-    moveOrder(elsewhere.db, "order-1", "build", elsewhere.operator);
-    recordOwnerRuling(
-      elsewhere.db,
-      elsewhere.finding,
-      { ruling: "refusal_overturned", reason: "fix" },
-      elsewhere.operator,
-    );
-    expect(hold(elsewhere)).toBe("approval");
+  test("refuses an owner ruling while the order waits on another act", () => {
+    const f = floor();
+    const { finding, reviewer } = answered(f, "refused");
+    ruleOnOrderFinding(f.db, finding, { ruling: "refusal_contested", reason: "in scope" }, reviewer);
+    const third = nextRound(f, reviewer);
+    raiseOrderFinding(f.db, "order-1", located({ dimension: "docs", failure: "stale" }), third);
+    expect(next(f)).toBe("run at build");
+    expect(() =>
+      recordOwnerRuling(f.db, finding, { ruling: "refusal_upheld", reason: "later" }, f.operator),
+    ).toThrow(expect.objectContaining({ code: "not_next" }));
   });
 });
 

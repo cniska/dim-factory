@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { openDb } from "./db";
 import { collectingMachine, declareCheck, integratedRepo, reviewOutput } from "./fixtures.test-support";
 import { runOrderCommand, runOrderCommandLive } from "./order-command";
-import { claimOrder, queueOrder } from "./order-lifecycle";
+import { queueOrder } from "./order-lifecycle";
 import { dbPath, type Env } from "./paths";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
 
@@ -86,19 +86,6 @@ describe("headless factory loop", () => {
       { id: "headless-order", project: "cniska/dim-factory", title: "Run end to end" },
       operator.name,
     );
-    claimOrder(
-      db,
-      "headless-order",
-      {
-        runId: "plan-run",
-        station: "plan",
-        sessionId: operator.sessionId,
-        operatorWorker: operator.name,
-      },
-      operator.name,
-      undefined,
-      repo.dir,
-    );
 
     expect(
       await runOrderCommandLive(db, ["plan", "headless-order", "--harness", "codex"], null, repo.dir, env),
@@ -107,21 +94,11 @@ describe("headless factory loop", () => {
       "plan approved",
     );
     expect(
-      runOrderCommand(db, ["move", "headless-order", "--station", "build"], null, repo.dir, env),
-    ).toContain("moved");
-    expect(
       await runOrderCommandLive(db, ["build", "headless-order", "--harness", "codex"], null, repo.dir, env),
     ).toContain("build completed by");
 
     const worktree = join(repo.dir, ".claude", "worktrees", "headless-order");
     expect(existsSync(join(worktree, "built-by-real-harness-1.txt"))).toBe(true);
-    runOrderCommand(db, ["move", "headless-order", "--station", "review"], null, repo.dir, env);
-    expect(
-      await runOrderCommandLive(db, ["review", "headless-order", "--harness", "codex"], null, repo.dir, env),
-    ).toContain("0 findings");
-    expect(
-      runOrderCommand(db, ["move", "headless-order", "--station", "build"], null, repo.dir, env),
-    ).toContain("moved");
     expect(
       await runOrderCommandLive(db, ["build", "headless-order", "--harness", "codex"], null, repo.dir, env),
     ).toContain("build completed by");
@@ -135,7 +112,6 @@ describe("headless factory loop", () => {
         env,
       ),
     ).toContain("build approved");
-    runOrderCommand(db, ["move", "headless-order", "--station", "review"], null, repo.dir, env);
     expect(
       await runOrderCommandLive(db, ["review", "headless-order", "--harness", "codex"], null, repo.dir, env),
     ).toContain("0 findings");
@@ -157,34 +133,19 @@ describe("headless factory loop", () => {
         .map((row) => row.kind),
     ).toEqual([
       "queued",
-      "claimed",
+      "started",
       "artifact_written",
-      "hold_set",
       "artifact_approved",
-      "hold_released",
-      "moved",
-      "claimed",
       "commit_created",
       "check_finished",
-      "moved",
-      "review_opened",
-      "artifact_written",
-      "review_closed",
-      "moved",
-      "claimed",
       "commit_created",
       "check_finished",
       "artifact_written",
-      "hold_set",
       "artifact_approved",
-      "hold_released",
-      "moved",
       "review_opened",
       "artifact_written",
       "review_closed",
-      "hold_set",
       "artifact_approved",
-      "hold_released",
       "integration_recorded",
       "delivery_recorded",
       "completed",
@@ -194,11 +155,6 @@ describe("headless factory loop", () => {
         .query("SELECT body FROM factory_order_artifact WHERE order_id = ? AND kind = 'review' ORDER BY id")
         .all("headless-order"),
     ).toEqual([
-      {
-        body: expect.stringContaining(
-          "## Verdict\n\n**May advance.** No findings; the change is ready to advance.",
-        ),
-      },
       {
         body: expect.stringContaining(
           "## Verdict\n\n**May advance.** No findings; the change is ready to advance.",

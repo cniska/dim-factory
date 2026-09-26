@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { currentOrderCommits } from "./order-commits";
 import { appendOrderEventInTransaction, now } from "./order-ledger";
-import { assertOrderAtStation, assertOrderWorking } from "./order-status";
+import { assertOrderWorking } from "./order-status";
 import type { Rewrite } from "./ship-rebase";
 import type { WorkerHookReport } from "./worker-environment";
 
@@ -14,7 +14,6 @@ export function recordOrderCommit(
   at = now(),
 ): number {
   assertOrderWorking(db, orderId);
-  assertOrderAtStation(db, orderId, "build", "record a commit");
   return db.transaction(() => {
     db.run("INSERT INTO factory_order_commit (order_id, sha, subject, recorded_at) VALUES (?, ?, ?, ?)", [
       orderId,
@@ -36,7 +35,6 @@ export function recordOrderFile(
   at = now(),
 ): void {
   assertOrderWorking(db, orderId);
-  assertOrderAtStation(db, orderId, "build", "record a changed file");
   db.run(
     `INSERT INTO factory_order_file (order_id, worker, path, added, removed, recorded_at) VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT (order_id, path) DO UPDATE SET

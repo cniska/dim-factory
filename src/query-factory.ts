@@ -5,7 +5,7 @@ import {
   orderFindingStandings,
   owesAnswer,
 } from "./order-finding-state";
-import { orderState } from "./order-state";
+import { describeState, orderState } from "./order-state";
 import { isTerminalOrderStatus, type OrderStatus } from "./order-status";
 import { type Query, scalar, table, toRows, window, windowLine } from "./query";
 
@@ -93,7 +93,7 @@ export const order: Query = {
       kind: "report",
       status: report.status,
       subject: `${report.project}/${report.id}`,
-      evidence: [report.priority, report.hold, state && `${state.station}: ${state.next}`, report.stop_reason]
+      evidence: [report.priority, state && describeState(state), report.stop_reason]
         .filter(Boolean)
         .join(" | "),
     };
@@ -102,7 +102,7 @@ export const order: Query = {
         db,
         `SELECT 'event' AS section, e.ts AS "when", e.kind, coalesce(e.status, '') AS status,
                 coalesce(a.kind, e.station, '') AS subject,
-                coalesce(e.reason, e.hold_type,
+                coalesce(e.reason,
                          json_extract(e.evidence, '$.from') || ' -> ' || e.commit_sha,
                          e.commit_sha, cast(e.check_id AS TEXT),
                          cast(e.finding_id AS TEXT), cast(e.artifact_id AS TEXT),
@@ -217,8 +217,6 @@ export const factory: Query = {
                WHERE e.order_id = o.id ORDER BY e.ts DESC, e.id DESC LIMIT 1) AS latest_event,
               (SELECT e.ts FROM factory_order_event e
                WHERE e.order_id = o.id ORDER BY e.ts DESC, e.id DESC LIMIT 1) AS latest_event_at,
-              coalesce(o.hold, '(none)') AS hold,
-              coalesce(o.station, '(absent)') AS station,
               coalesce((SELECT c.sha || coalesce(' ' || c.subject, '')
                         FROM factory_order_event e
                         JOIN factory_order_commit c ON c.order_id = e.order_id AND c.sha = e.commit_sha
@@ -229,7 +227,7 @@ export const factory: Query = {
                         JOIN factory_order_check c ON c.order_id = e.order_id AND c.id = e.check_id
                         WHERE e.order_id = o.id AND e.kind = 'check_finished'
                         ORDER BY e.id DESC LIMIT 1), '(none recorded)') AS "check",
-              coalesce((SELECT nullif(trim(coalesce(e.hold_type || ': ', '') || coalesce(e.reason, '')), '')
+              coalesce((SELECT nullif(trim(coalesce(e.reason, '')), '')
                         FROM factory_order_event e WHERE e.order_id = o.id
                           AND e.kind IN ('completed', 'failed')
                         ORDER BY e.ts DESC, e.id DESC LIMIT 1), '(none)') AS stop
@@ -246,10 +244,16 @@ export const factory: Query = {
       listed.push(`${finding.dimension}: ${displayedAnswer(finding)} - ${finding.failure}`);
       findings.set(finding.orderId, listed);
     }
-    const found = orders.map((row) => ({
-      ...row,
-      findings: findings.get(String(row.order_id))?.join("; ") ?? "(none recorded)",
-    }));
+    const found = orders.map((row) => {
+      const state = isTerminalOrderStatus(row.status as OrderStatus)
+        ? null
+        : orderState(db, String(row.order_id));
+      return {
+        ...row,
+        next: state ? describeState(state) : "(none)",
+        findings: findings.get(String(row.order_id))?.join("; ") ?? "(none recorded)",
+      };
+    });
     const columns = [
       "project",
       "order_id",
@@ -257,8 +261,7 @@ export const factory: Query = {
       "status",
       "latest_event",
       "latest_event_at",
-      "hold",
-      "station",
+      "next",
       "commit",
       "check",
       "findings",
@@ -399,20 +402,16 @@ export const factoryAnalytics: Query = {
     )) {
       rows.push(metric(`attempt_outcome:${row.outcome}`, Number(row.n)));
     }
-    const holdSeconds = scalar(
+    const approvalWait = scalar(
       db,
-      `WITH holds AS (
-         SELECT order_id, ts, kind,
-                lead(ts) OVER (PARTITION BY order_id ORDER BY ts, id) AS next_ts,
-                lead(kind) OVER (PARTITION BY order_id ORDER BY ts, id) AS next_kind
-         FROM factory_order_event
-         WHERE kind IN ('hold_set', 'hold_released')${arg ? " AND order_id LIKE ? || '%'" : ""}
-       )
-       SELECT coalesce(round(sum((julianday(next_ts) - julianday(ts)) * 86400)), 0) AS n
-       FROM holds WHERE kind = 'hold_set' AND next_kind = 'hold_released'`,
-      params,
+      `SELECT coalesce(round(sum((julianday(decided.ts) - julianday(written.ts)) * 86400)), 0) AS n
+       FROM factory_order_event written
+       JOIN factory_order_event decided
+         ON decided.artifact_id = written.artifact_id AND decided.kind IN ('artifact_approved', 'artifact_returned')
+       WHERE written.kind = 'artifact_written'${arg ? " AND written.order_id LIKE ? || '%'" : ""}`,
+      ...params,
     );
-    rows.push(metric("hold_seconds", holdSeconds));
+    rows.push(metric("approval_wait_seconds", approvalWait));
     rows.push(
       metric(
         "provenance_events",
@@ -426,7 +425,7 @@ export const factoryAnalytics: Query = {
     for (const row of table(
       db,
       `SELECT kind, count(*) AS n FROM factory_order_event
-       WHERE kind IN ('completed', 'dropped', 'failed', 'moved')${arg ? " AND order_id LIKE ? || '%'" : ""}
+       WHERE kind IN ('started', 'completed', 'dropped', 'failed')${arg ? " AND order_id LIKE ? || '%'" : ""}
        GROUP BY kind ORDER BY kind`,
       params,
     )) {

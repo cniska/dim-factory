@@ -8,7 +8,8 @@ import { integratedRepo } from "./fixtures.test-support";
 import { scriptedHarness } from "./harness-scripted.test-support";
 import { recordOrderPlan } from "./order-artifacts";
 import { runOrderCommand, runOrderCommandLive } from "./order-command";
-import { claimOrder, queueOrder } from "./order-lifecycle";
+import { queueOrder, startOrder } from "./order-lifecycle";
+import { orderState } from "./order-state";
 import { runOrderPlanLive } from "./station-plan";
 import type { PlanSlice } from "./station-plan-artifact";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
@@ -50,14 +51,6 @@ describe("plan approval integration", () => {
       { id: "operator-plan-order", project: "cniska/dim-factory", title: "Delegate planning" },
       operator.name,
     );
-    claimOrder(
-      db,
-      "operator-plan-order",
-      { runId: "operator-run", station: "plan", operatorWorker: operator.name },
-      operator.name,
-      undefined,
-      repo.dir,
-    );
 
     const outcome = await runOrderPlanLive(db, "operator-plan-order", {
       dir: repo.dir,
@@ -86,11 +79,9 @@ describe("plan approval integration", () => {
         .all(),
     ).toEqual([
       { kind: "queued", worker: operator.name },
-      { kind: "claimed", worker: operator.name },
+      { kind: "started", worker: operator.name },
       { kind: "artifact_written", worker: outcome.planner },
-      { kind: "hold_set", worker: outcome.planner },
       { kind: "artifact_approved", worker: operator.name },
-      { kind: "hold_released", worker: operator.name },
     ]);
     db.close();
   });
@@ -111,14 +102,7 @@ describe("plan approval integration", () => {
       { id: "approval-order", project: "cniska/dim-factory", title: "Approve this" },
       operator.name,
     );
-    claimOrder(
-      db,
-      "approval-order",
-      { runId: "run-1", station: "plan", operatorWorker: operator.name },
-      operator.name,
-      undefined,
-      repo.dir,
-    );
+    startOrder(db, "approval-order", operator.name, undefined, repo.dir);
     const planId = recordOrderPlan(
       db,
       "approval-order",
@@ -127,25 +111,19 @@ describe("plan approval integration", () => {
       slices,
     );
 
-    expect(db.query("SELECT hold FROM factory_order WHERE id = ?").get("approval-order")).toEqual({
-      hold: "approval",
-    });
+    expect(orderState(db, "approval-order")).toEqual({ station: "plan", next: "approve" });
 
     expect(runOrderCommand(db, ["approve", "approval-order"], null, repo.dir, env(operator))).toContain(
       "plan approved",
     );
-    expect(db.query("SELECT hold FROM factory_order WHERE id = ?").get("approval-order")).toEqual({
-      hold: null,
-    });
+    expect(orderState(db, "approval-order")).toEqual({ station: "build", next: "run" });
     expect(
       db.query("SELECT kind, worker FROM factory_order_event WHERE order_id = ?").all("approval-order"),
     ).toEqual([
       { kind: "queued", worker: operator.name },
-      { kind: "claimed", worker: operator.name },
+      { kind: "started", worker: operator.name },
       { kind: "artifact_written", worker: planner.name },
-      { kind: "hold_set", worker: planner.name },
       { kind: "artifact_approved", worker: operator.name },
-      { kind: "hold_released", worker: operator.name },
     ]);
     expect(
       db.query("SELECT artifact_id FROM factory_order_event WHERE kind = 'artifact_approved'").get(),
@@ -153,7 +131,7 @@ describe("plan approval integration", () => {
       artifact_id: planId,
     });
     expect(() => runOrderCommand(db, ["approve", "approval-order"], null, repo.dir, env(operator))).toThrow(
-      expect.objectContaining({ code: "plan_already_approved" }),
+      expect.objectContaining({ code: "not_next", message: expect.stringContaining("run at build") }),
     );
     db.close();
   });
@@ -174,14 +152,7 @@ describe("plan approval integration", () => {
       { id: "approval-order-3", project: "cniska/dim-factory", title: "Revise this" },
       operator.name,
     );
-    claimOrder(
-      db,
-      "approval-order-3",
-      { runId: "run-3", station: "plan", operatorWorker: operator.name },
-      operator.name,
-      undefined,
-      repo.dir,
-    );
+    startOrder(db, "approval-order-3", operator.name, undefined, repo.dir);
     const first = recordOrderPlan(db, "approval-order-3", "## Build\n\nFirst path.", planner.name, slices);
     expect(
       runOrderCommand(
@@ -193,7 +164,7 @@ describe("plan approval integration", () => {
       ),
     ).toContain("returned");
     expect(() => runOrderCommand(db, ["approve", "approval-order-3"], null, repo.dir, env(operator))).toThrow(
-      expect.objectContaining({ code: "artifact_revision_required" }),
+      expect.objectContaining({ code: "not_next", message: expect.stringContaining("run at plan") }),
     );
     const second = recordOrderPlan(db, "approval-order-3", "## Build\n\nRevised path.", planner.name, slices);
     expect(second).not.toBe(first);
@@ -235,14 +206,7 @@ describe("plan approval integration", () => {
       { id: "approval-order-2", project: "cniska/dim-factory", title: "Approve this" },
       operator.name,
     );
-    claimOrder(
-      db,
-      "approval-order-2",
-      { runId: "run-2", station: "plan", operatorWorker: operator.name },
-      operator.name,
-      undefined,
-      repo.dir,
-    );
+    startOrder(db, "approval-order-2", operator.name, undefined, repo.dir);
     recordOrderPlan(db, "approval-order-2", "## Build\n\nMake the smallest change.", operator.name, slices);
 
     expect(() => runOrderCommand(db, ["approve", "approval-order-2"], null, repo.dir, env(builder))).toThrow(

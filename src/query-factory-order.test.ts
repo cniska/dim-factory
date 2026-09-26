@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { SCHEMA_SQL } from "./db-schema";
-import { integratedRepo, located, reviewIn, workerIn } from "./fixtures.test-support";
+import { attemptIn, integratedRepo, located, reviewIn, workerIn } from "./fixtures.test-support";
 import { recordOrderBuild } from "./order-artifacts";
 import {
   recordOrderCheck,
@@ -13,9 +13,8 @@ import {
 } from "./order-evidence";
 import { answerOrderFindings, raiseOrderFinding, ruleOnOrderFinding } from "./order-finding";
 import { appendOrderEvent } from "./order-ledger";
-import { claimOrder as claimOrderAt, queueOrder } from "./order-lifecycle";
+import { queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview } from "./order-review";
-import type { OrderClaim } from "./order-status";
 import { findQuery } from "./query-registry";
 
 let worker = "";
@@ -32,23 +31,16 @@ function floor(): Database {
 const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
 
-function claimOrder(
-  db: Database,
-  orderId: string,
-  given: Omit<OrderClaim, "operatorWorker">,
-  who: string,
-  at?: string,
-): number {
-  return claimOrderAt(db, orderId, { ...given, operatorWorker: attemptOperator }, who, at, trunk.dir);
+function building(db: Database, orderId: string, at?: string): void {
+  startOrder(db, orderId, attemptOperator, at, trunk.dir);
+  attemptIn(db, orderId, worker, attemptOperator, "run-1", at);
 }
-
-const claim: Omit<OrderClaim, "operatorWorker"> = { runId: "run-1", station: "build" };
 
 describe("factory order query", () => {
   test("reports a finding a later round found not addressed as unanswered until it is answered again", () => {
     const db = floor();
     queueOrder(db, { id: "order-reopened", project: "cniska/dim-factory", title: "Reopen" }, worker);
-    claimOrder(db, "order-reopened", claim, worker);
+    building(db, "order-reopened");
     const first = reviewIn(db, "order-reopened", worker);
     const finding = raiseOrderFinding(
       db,
@@ -70,7 +62,7 @@ describe("factory order query", () => {
         ?.run(db, { arg: "order-reopened" })
         .rows.filter((row) => row[0] === "finding")
         .map((row) => [row[2], row[3]]),
-      factory: findQuery("factory")?.run(db, { arg: "order-reopened" }).rows[0]?.[10],
+      factory: findQuery("factory")?.run(db, { arg: "order-reopened" }).rows[0]?.[9],
     });
     answer("run-1");
     expect(reported()).toEqual({ order: [["finding_answered", "fixed"]], factory: "tests: fixed - no test" });
@@ -93,7 +85,7 @@ describe("factory order query", () => {
       ["order-right", "docs", false],
     ] as const) {
       queueOrder(db, { id, project: "cniska/dim-factory", title: id }, worker);
-      claimOrder(db, id, { ...claim, runId: `run-${id}` }, worker);
+      building(db, id);
       const round = reviewIn(db, id, worker);
       const finding = raiseOrderFinding(db, id, located({ dimension, failure: `${id} gap` }), round.reviewer);
       closeOrderReview(db, round.review, "closed", round.reviewer);
@@ -105,7 +97,7 @@ describe("factory order query", () => {
 
     const rows = findQuery("factory")?.run(db, {}).rows ?? [];
 
-    expect(Object.fromEntries(rows.map((row) => [row[1], row[10]]))).toEqual({
+    expect(Object.fromEntries(rows.map((row) => [row[1], row[9]]))).toEqual({
       "order-left": "tests: fixed - order-left gap",
       "order-right": "docs: unanswered - order-right gap",
       "order-clean": "(none recorded)",
@@ -125,7 +117,7 @@ describe("factory order query", () => {
       worker,
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(db, "order-status", claim, worker, "2026-09-18T10:01:00.000Z");
+    building(db, "order-status", "2026-09-18T10:01:00.000Z");
     recordOrderCommit(db, "order-status", trunk.sha, worker, "feat: status", "2026-09-18T10:02:00.000Z");
     recordOrderCommit(db, "order-status", "fff111", worker, "feat: middle", "2026-09-18T10:02:00.000Z");
     recordOrderCommit(db, "order-status", "aaa222", worker, "feat: later", "2026-09-18T10:02:00.000Z");
@@ -206,8 +198,7 @@ describe("factory order query", () => {
       "status",
       "latest_event",
       "latest_event_at",
-      "hold",
-      "station",
+      "next",
       "commit",
       "check",
       "findings",
@@ -222,7 +213,6 @@ describe("factory order query", () => {
         "completed",
         "2026-09-18T10:05:00.000Z",
         "(none)",
-        "build",
         "late-event feat: event order wins",
         "bun run focused (0, green)",
         "tests: fixed - holds; docs: fixed - updated",
@@ -255,33 +245,33 @@ describe("factory order query", () => {
       },
       worker,
     );
-    claimOrder(db, "order-blocked", claim, worker);
+    building(db, "order-blocked");
     appendOrderEvent(db, "order-blocked", { worker, kind: "failed" });
 
     const result = findQuery("factory")?.run(db, { arg: "order-blocked" });
 
-    expect(result?.rows[0]?.[3]).toBe("queued");
+    expect(result?.rows[0]?.[3]).toBe("working");
     expect(result?.rows[0]?.[4]).toBe("failed");
-    expect(result?.rows[0]?.[11]).toBe("(none)");
+    expect(result?.rows[0]?.[6]).toBe("run at plan");
+    expect(result?.rows[0]?.[10]).toBe("(none)");
 
     queueOrder(
       db,
       {
-        id: "order-held",
+        id: "order-reasoned",
         project: "cniska/dim-factory",
-        title: "Stop at a hold",
+        title: "Fail with a reason",
       },
       worker,
     );
-    claimOrder(db, "order-held", claim, worker);
-    appendOrderEvent(db, "order-held", {
+    building(db, "order-reasoned");
+    appendOrderEvent(db, "order-reasoned", {
       worker,
       kind: "failed",
-      holdType: "owner-judgment",
       reason: "ambiguous scope",
     });
-    const held = findQuery("factory")?.run(db, { arg: "order-held" });
-    expect(held?.rows[0]?.[11]).toBe("owner-judgment: ambiguous scope");
+    const reasoned = findQuery("factory")?.run(db, { arg: "order-reasoned" });
+    expect(reasoned?.rows[0]?.[10]).toBe("ambiguous scope");
     db.close();
   });
 
@@ -297,7 +287,7 @@ describe("factory order query", () => {
       worker,
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(db, "order-123", claim, worker, "2026-09-18T10:00:30.000Z");
+    building(db, "order-123", "2026-09-18T10:00:30.000Z");
     recordOrderCommit(db, "order-123", "abc", worker, "feat: report", "2026-09-18T10:01:00.000Z");
     recordOrderFile(
       db,
@@ -364,7 +354,6 @@ describe("factory order query", () => {
       "event",
       "check",
       "event",
-      "event",
       "artifact",
       "event",
       "event",
@@ -382,7 +371,7 @@ describe("factory order query", () => {
       '[{"port":5433}]',
     ]);
     expect(result?.rows[0]?.[4]).toBe("cniska/dim-factory/order-123");
-    expect(result?.rows[0]?.[5]).toBe("unset | approval | plan: run");
+    expect(result?.rows[0]?.[5]).toBe("unset | run at plan");
     expect(result?.rows.find((row) => row[0] === "file")?.slice(4)).toEqual([
       "src/factory-order.ts",
       "+12 -3",
@@ -403,7 +392,7 @@ describe("factory order query", () => {
       worker,
       "2026-09-18T10:00:00.000Z",
     );
-    claimOrder(db, "order-killed", claim, worker, "2026-09-18T10:00:30.000Z");
+    building(db, "order-killed", "2026-09-18T10:00:30.000Z");
     recordOrderEnvironment(
       db,
       "order-killed",

@@ -9,7 +9,6 @@ import { recordOrderBuild } from "./order-artifacts";
 import { latestOrderCommit } from "./order-commits";
 import { recordOrderCheck, recordOrderCommit, recordOrderFile } from "./order-evidence";
 import { answerOrderFindings, assertFindingAnswersOwed, BuildTurnRefused } from "./order-finding";
-import { isActiveOrderRun } from "./order-status";
 import { dataDir, type Env } from "./paths";
 import { rebaseInProgress } from "./ship-rebase";
 import { hooksOutsideTree, nestedRepository } from "./station-build-tree";
@@ -191,14 +190,6 @@ export function commitBuildTurn(options: {
       `the turn answers finding ${fixed.join(", ")} fixed and left no change in the worktree; refuse a finding that needs no change, with the reason`,
     );
   }
-  if (!isActiveOrderRun(db, orderId, options.runId)) {
-    git(worktree, ["reset", "-q"]);
-    throw new BuildTurnRefused(
-      "order_not_building",
-      `order ${orderId} is no longer held by run ${options.runId} after its check ran`,
-    );
-  }
-
   if (!changed) {
     db.transaction(() => {
       recordOrderCheck(db, orderId, checkRow, operator);

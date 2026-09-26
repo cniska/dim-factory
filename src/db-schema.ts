@@ -6,7 +6,7 @@ import { ORDER_STATUSES_SQL } from "./order-status";
 import { STATIONS_SQL } from "./station";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 64;
+export const SCHEMA_VERSION = 65;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -183,7 +183,7 @@ CREATE INDEX IF NOT EXISTS factory_schedule_due ON factory_schedule(enabled, pau
 -- it was going to come from. Running orders are left alone, because killing a
 -- worker mid-write leaves a worktree nobody owns and a commit half made.
 --
--- A worker does not stop the factory. One that hits a defect holds its own order,
+-- A worker does not stop the factory. One that hits a defect fails its own attempt,
 -- which is already how it says the owner has to look, and the operator stops the
 -- floor having seen whether the defect is in the machinery or in the one piece of
 -- work. Nothing in the database can tell who ran the command, so that is held by
@@ -244,25 +244,12 @@ CREATE TABLE IF NOT EXISTS factory_order (
   -- because a tracker feeding this queue has about that many to hand over.
   priority        TEXT NOT NULL DEFAULT 'unset'
                   CHECK (priority IN ('urgent', 'high', 'medium', 'low', 'unset')),
-  -- Why the owner has to release this before anyone takes it, NULL when nobody
-  -- does. A hold met while working is recorded the same way, so what happened to
-  -- the attempt and who may let the work go stay two facts.
-  hold            TEXT,
-  -- Set by the claim: an order waits in the queue before any run exists.
-  run_id          TEXT,
-  -- Who holds the order is read off the worker on its latest moment, and the role
-  -- off that worker's own row, so neither is stated here. A holder a claim asserts
-  -- is testimony, and it disagreed with the record the moment work was delegated.
-  session_id      TEXT,
-  station         TEXT CHECK (station IN (${STATIONS_SQL})),
   -- One status per column on the board, except dropped, which leaves the board rather
-  -- than taking a column: a decision not to work is none of todo, active or done. Work
-  -- that stopped without landing goes back to queued, because it is work nobody is
-  -- holding; that it was tried, and why it stopped, is the failed event and stop_reason
-  -- rather than a state of its own.
+  -- than taking a column: a decision not to work is none of todo, active or done. A
+  -- started order stays working through a failure, since its evidence still says where
+  -- it is; the station it is at is read from that evidence and never stored.
   status          TEXT NOT NULL CHECK (status IN (${ORDER_STATUSES_SQL})),
   created_at      TEXT NOT NULL,
-  claimed_at      TEXT,
   updated_at      TEXT NOT NULL,
   completed_at    TEXT,
   stop_reason     TEXT
@@ -272,11 +259,11 @@ CREATE TABLE IF NOT EXISTS factory_order_attempt (
   id              INTEGER PRIMARY KEY,
   order_id        TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   run_id          TEXT NOT NULL,
-  worker          TEXT REFERENCES factory_worker(name),
+  worker          TEXT NOT NULL REFERENCES factory_worker(name),
   operator_worker TEXT REFERENCES factory_worker(name),
   session_id      TEXT,
   provider_session_id TEXT,
-  station         TEXT CHECK (station IN (${STATIONS_SQL})),
+  station         TEXT NOT NULL CHECK (station IN (${STATIONS_SQL})),
   harness         TEXT,
   model           TEXT,
   tier            TEXT,
@@ -384,7 +371,6 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   finding_id            INTEGER,
   answer_id             INTEGER REFERENCES factory_order_finding_answer(id) ON DELETE CASCADE,
   artifact_id           INTEGER REFERENCES factory_order_artifact(id) ON DELETE CASCADE,
-  hold_type             TEXT,
   status                TEXT,
   reason                TEXT,
   evidence              TEXT NOT NULL DEFAULT '{}'

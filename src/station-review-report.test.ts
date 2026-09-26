@@ -4,7 +4,7 @@ import { rmSync } from "node:fs";
 import { SCHEMA_SQL } from "./db-schema";
 import { integratedRepo, reviewIn, reviewOutput, workerIn } from "./fixtures.test-support";
 import { answerOrderFindings, raiseOrderFinding, ruleOnOrderFinding } from "./order-finding";
-import { claimOrder, queueOrder } from "./order-lifecycle";
+import { queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview } from "./order-review";
 import { parseReviewReport } from "./station-review-artifact";
 import { renderReviewReport } from "./station-review-report";
@@ -18,14 +18,7 @@ function contested(): { db: Database; review: number; finding: number } {
   const builder = workerIn(db);
   const operator = workerIn(db, "operator");
   queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Render" }, operator);
-  claimOrder(
-    db,
-    "order-1",
-    { runId: "run-1", station: "review", operatorWorker: operator },
-    operator,
-    undefined,
-    trunk.dir,
-  );
+  startOrder(db, "order-1", operator, undefined, trunk.dir);
   const first = reviewIn(db, "order-1", operator);
   const finding = raiseOrderFinding(
     db,

@@ -7,7 +7,7 @@ describe("factory wall item view", () => {
     expect(ITEM_KIND_LABELS.finding_raised).toBe("Finding raised");
     expect(ITEM_KIND_LABELS.finding_answered).toBe("Finding answered");
     expect(ITEM_KIND_LABELS.environment_reported).toBe("Worker environment");
-    expect(ITEM_KIND_LABELS.moved).toBe("Moved");
+    expect(ITEM_KIND_LABELS.started).toBe("Started");
     expect(Object.values(ITEM_KIND_LABELS).every((label) => !label.includes("_"))).toBe(true);
   });
 

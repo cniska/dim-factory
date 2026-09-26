@@ -1,73 +1,7 @@
 import type { Database } from "bun:sqlite";
-import {
-  approveArtifactInTransaction,
-  assertReturnedArtifactRevised,
-  holdForApprovalInTransaction,
-  nextOrderSlice,
-  returnedOrderArtifact,
-  writeArtifactInTransaction,
-} from "./order-artifacts";
-import { carriedThroughRewrites, latestOrderCommit } from "./order-commits";
-import { orderFindingStandings } from "./order-finding-state";
-import { appendOrderEventInTransaction, now, setOrderHoldInTransaction } from "./order-ledger";
-import { APPROVAL_HOLD, assertOrderWorking, OrderNotDone, ReviewApprovalRefused } from "./order-status";
-
-function latestReview(
-  db: Database,
-  orderId: string,
-): { id: number; outcome: string | null; headSha: string } | null {
-  return db
-    .query<{ id: number; outcome: string | null; headSha: string }, [string]>(
-      "SELECT id, outcome, head_sha AS headSha FROM factory_order_review WHERE order_id = ? ORDER BY round DESC, id DESC LIMIT 1",
-    )
-    .get(orderId);
-}
-
-function reviewApproved(db: Database, reviewId: number): boolean {
-  return (
-    db
-      .query(
-        `SELECT 1 FROM factory_order_event e
-         JOIN factory_order_artifact a ON a.id = e.artifact_id
-         WHERE e.kind = 'artifact_approved' AND a.review_id = ?`,
-      )
-      .get(reviewId) !== null
-  );
-}
-
-export function assertReviewApproved(db: Database, orderId: string): void {
-  const review = latestReview(db, orderId);
-  if (!review) throw new OrderNotDone("review_not_approved", `order ${orderId} has no review to approve`);
-  const commit = latestOrderCommit(db, orderId);
-  if (!commit || commit.sha !== carriedThroughRewrites(db, orderId, review.headSha)) {
-    throw new OrderNotDone(
-      "review_not_approved",
-      `order ${orderId} has a commit its approved review did not read, or a rebase since changed a patch`,
-    );
-  }
-  if (!reviewApproved(db, review.id)) {
-    throw new OrderNotDone(
-      "review_not_approved",
-      `review ${review.id} for order ${orderId} is not approved by the operator`,
-    );
-  }
-}
-
-export function releaseReviewApprovalInTransaction(
-  db: Database,
-  orderId: string,
-  worker: string,
-  at: string,
-): void {
-  const held = db
-    .query<{ hold: string | null; station: string | null }, [string]>(
-      "SELECT hold, station FROM factory_order WHERE id = ?",
-    )
-    .get(orderId);
-  if (held?.hold !== APPROVAL_HOLD || held.station !== "review") return;
-  setOrderHoldInTransaction(db, orderId, null, at);
-  appendOrderEventInTransaction(db, orderId, { kind: "hold_released", worker, evidence: { hold: null } }, at);
-}
+import { returnedOrderArtifact, writeArtifactInTransaction } from "./order-artifacts";
+import { appendOrderEventInTransaction, now } from "./order-ledger";
+import { assertOrderWorking } from "./order-status";
 
 export type ReviewRound = { id: number; round: number; reviewer: string | null };
 
@@ -175,17 +109,12 @@ export function closeOrderReview(
       outcome,
       reviewId,
     ]);
-    const event = appendOrderEventInTransaction(
+    return appendOrderEventInTransaction(
       db,
       row.order_id,
       { kind: "review_closed", worker, reviewId, reason },
       at,
     );
-    const returnsWork = orderFindingStandings(db, row.order_id).some((finding) => finding.state === "open");
-    if (outcome === "closed" && !returnsWork && nextOrderSlice(db, row.order_id) === null) {
-      holdForApprovalInTransaction(db, row.order_id, worker, at);
-    }
-    return event;
   })();
 }
 
@@ -243,17 +172,15 @@ export function recordOrderReviewArtifact(
       throw new ReviewNotOpen("review_closed", `review ${review.id} is not a clean review`);
     }
   }
-  return db.transaction(() => {
-    const artifactId = writeArtifactInTransaction(
+  return db.transaction(() =>
+    writeArtifactInTransaction(
       db,
       orderId,
       { kind: "review", body, headSha: review.head_sha, reviewId: review.id },
       worker,
       at,
-    );
-    if (review.closed_at !== null) holdForApprovalInTransaction(db, orderId, worker, at);
-    return artifactId;
-  })();
+    ),
+  )();
 }
 
 export function openReviewOf(db: Database, orderId: string): { id: number; reviewer: string | null } | null {
@@ -265,58 +192,4 @@ export function openReviewOf(db: Database, orderId: string): { id: number; revie
        WHERE r.order_id = ? AND r.closed_at IS NULL`,
     )
     .get(orderId);
-}
-
-export function approveOrderReview(db: Database, orderId: string, worker: string, at = now()): void {
-  assertOrderWorking(db, orderId);
-  const role = db
-    .query<{ role: string }, [string]>("SELECT role FROM factory_worker WHERE name = ?")
-    .get(worker)?.role;
-  if (role !== "operator")
-    throw new ReviewApprovalRefused("worker_not_operator", `worker ${worker} is not an operator`);
-  assertReturnedArtifactRevised(db, orderId, "review");
-  const review = latestReview(db, orderId);
-  if (!review) throw new ReviewApprovalRefused("review_missing", `order ${orderId} has no review to approve`);
-  if (review.outcome === null)
-    throw new ReviewApprovalRefused(
-      "review_not_closed",
-      `review ${review.id} for order ${orderId} is still open`,
-    );
-  if (review.outcome !== "closed")
-    throw new ReviewApprovalRefused("review_aborted", `review ${review.id} for order ${orderId} was aborted`);
-  const artifact = db
-    .query<{ id: number }, [number]>(
-      "SELECT id FROM factory_order_artifact WHERE review_id = ? ORDER BY revision DESC LIMIT 1",
-    )
-    .get(review.id);
-  if (!artifact) {
-    throw new ReviewApprovalRefused(
-      "review_artifact_missing",
-      `review ${review.id} for order ${orderId} has no Review artifact`,
-    );
-  }
-  const standings = orderFindingStandings(db, orderId);
-  const open = standings.filter((finding) => finding.state === "open").map((finding) => finding.id);
-  if (open.length > 0) {
-    throw new ReviewApprovalRefused(
-      "finding_unsettled",
-      `order ${orderId} has open finding${open.length === 1 ? "" : "s"} ${open.join(", ")}`,
-    );
-  }
-  const awaiting = standings
-    .filter((finding) => finding.state === "awaiting_owner")
-    .map((finding) => finding.id);
-  if (awaiting.length > 0) {
-    throw new ReviewApprovalRefused(
-      "ruling_pending",
-      `order ${orderId} holds contested refusal${awaiting.length === 1 ? "" : "s"} on finding${awaiting.length === 1 ? "" : "s"} ` +
-        `${awaiting.join(", ")} for the owner: \`dim order rule <finding-id> --uphold|--overturn --reason "..."\``,
-    );
-  }
-  if (reviewApproved(db, review.id))
-    throw new ReviewApprovalRefused(
-      "review_already_approved",
-      `review ${review.id} for order ${orderId} is already approved`,
-    );
-  db.transaction(() => approveArtifactInTransaction(db, orderId, artifact.id, worker, undefined, at))();
 }

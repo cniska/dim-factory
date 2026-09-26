@@ -4,20 +4,11 @@ import { join } from "node:path";
 import { CHECK_SANDBOX, runSandboxedCheck } from "./check-sandbox";
 import { withLock } from "./db-lock";
 import { assertOperator } from "./factory-operator";
-import { latestApprovedPlan } from "./order-approved-plan";
-import { isArtifactApproved, latestArtifact, nextOrderSlice } from "./order-artifacts";
-import {
-  carriedThroughRewrites,
-  currentOrderCommits,
-  latestOrderCommit,
-  pendingRebaseConflict,
-} from "./order-commits";
+import { currentOrderCommits, latestOrderCommit } from "./order-commits";
 import type { EvidenceReference } from "./order-events";
 import { type OrderCheck, recordOrderCheck, recordOrderRewrite } from "./order-evidence";
 import { appendOrderEventInTransaction, now } from "./order-ledger";
-import { moveOrder } from "./order-lifecycle";
-import { assertReviewApproved } from "./order-review";
-import { assertOrderWorking, OrderNotDone } from "./order-status";
+import { assertNext } from "./order-state";
 import { dataDir, type Env } from "./paths";
 import { type RebaseVerdict, type ShipOutcome, shipBranch } from "./ship";
 import { RebaseConflict, type Rewrite } from "./ship-rebase";
@@ -84,31 +75,6 @@ export function recheck(worktree: string, env: Env, sandbox: string[]): OrderChe
   };
 }
 
-function assertShippable(db: Database, orderId: string): void {
-  if (!latestApprovedPlan(db, orderId)) {
-    throw new OrderNotDone(
-      "plan_not_approved",
-      `order ${orderId} has no approved plan, so nothing of it can ship`,
-    );
-  }
-  if (nextOrderSlice(db, orderId)) {
-    throw new OrderNotDone("build_not_final", `order ${orderId} has slices its builder has not finished`);
-  }
-  const build = latestArtifact(db, orderId, "build");
-  const head = latestOrderCommit(db, orderId)?.sha;
-  if (
-    !build ||
-    !isArtifactApproved(db, build.id) ||
-    carriedThroughRewrites(db, orderId, build.headSha as string) !== head
-  ) {
-    throw new OrderNotDone(
-      "build_not_approved",
-      `order ${orderId} has no approved Build artifact for the commit it would ship`,
-    );
-  }
-  assertReviewApproved(db, orderId);
-}
-
 export function shipOrder(
   db: Database,
   orderId: string,
@@ -118,15 +84,7 @@ export function shipOrder(
 ): ShipOutcome {
   const env = options.env ?? process.env;
   assertOperator(db, worker, "ship an order");
-  assertOrderWorking(db, orderId);
-  assertShippable(db, orderId);
-  const conflict = pendingRebaseConflict(db, orderId);
-  if (conflict) {
-    throw new ShipRefusal(
-      "ship_rebase_conflict",
-      `order ${orderId} has a rebase conflict in ${conflict.paths.join(", ")} its builder has not resolved; it ships once build has`,
-    );
-  }
+  assertNext(db, orderId, "ship");
   const shas = currentOrderCommits(db, orderId).map((row) => row.sha);
   const onRebased = (rewrite: Rewrite): RebaseVerdict => {
     const check = recheck(rewrite.worktree, env, options.checkSandbox ?? CHECK_SANDBOX);
@@ -137,10 +95,7 @@ export function shipOrder(
         `${check.command} exited ${check.exitCode} at the rebased head ${rewrite.newHead}; the rebase was taken back:\n${check.result}`,
       );
     }
-    db.transaction(() => {
-      recordOrderRewrite(db, orderId, rewrite, check, worker);
-      if (!rewrite.patchEqual) moveOrder(db, orderId, "review", worker);
-    })();
+    recordOrderRewrite(db, orderId, rewrite, check, worker);
     if (rewrite.patchEqual) return { land: currentOrderCommits(db, orderId).map((row) => row.sha) };
     return {
       hold: new ShipRefusal(
@@ -177,7 +132,6 @@ export function shipOrder(
             }
           : {},
       );
-      if (error instanceof RebaseConflict) moveOrder(db, orderId, "build", worker, at);
     })();
     throw error;
   }

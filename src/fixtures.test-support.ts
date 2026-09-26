@@ -3,11 +3,23 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { installHooks } from "./hooks";
+import { startAttempt } from "./order-attempt";
 import { openOrderReview } from "./order-review";
 import type { Env } from "./paths";
 import { REVIEW_DIMENSIONS, type ReviewFinding } from "./station-review-artifact";
 import { mintWorker, newWorkerSession, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./worker";
 import type { Role } from "./worker-roles";
+
+export function attemptIn(
+  db: Database,
+  orderId: string,
+  worker: string,
+  operatorWorker: string,
+  runId = "run-1",
+  at = new Date().toISOString(),
+): void {
+  startAttempt(db, orderId, { runId, worker, operatorWorker, station: "build" }, at);
+}
 
 export function workerIn(db: Database, role: Role = "builder"): string {
   return mintWorker(db, { role, sessionId: newWorkerSession("test-worker") }).name;

@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { SCHEMA_SQL } from "./db-schema";
 import { appendOrderEvent } from "./order-ledger";
-import { dropOrder, queueOrder, setOrderHold, setOrderPriority } from "./order-lifecycle";
+import { dropOrder, queueOrder, setOrderPriority } from "./order-lifecycle";
 import { mintWorker } from "./worker";
 
 function columns(db: Database, table: string): string[] {
@@ -86,8 +86,6 @@ describe("factory domain event boundary", () => {
       "2026-09-25T09:00:00.000Z",
     );
     setOrderPriority(db, "queue-history", "urgent", worker, "2026-09-25T09:01:00.000Z");
-    setOrderHold(db, "queue-history", "owner", worker, "2026-09-25T09:02:00.000Z");
-    setOrderHold(db, "queue-history", null, worker, "2026-09-25T09:03:00.000Z");
     dropOrder(db, "queue-history", "superseded", worker, "2026-09-25T09:04:00.000Z");
 
     expect(
@@ -97,12 +95,9 @@ describe("factory domain event boundary", () => {
         )
         .all("queue-history")
         .map((row) => row.kind),
-    ).toEqual(["queued", "priority_changed", "hold_set", "hold_released", "dropped"]);
-    expect(
-      db.query("SELECT priority, hold, status FROM factory_order WHERE id = ?").get("queue-history"),
-    ).toEqual({
+    ).toEqual(["queued", "priority_changed", "dropped"]);
+    expect(db.query("SELECT priority, status FROM factory_order WHERE id = ?").get("queue-history")).toEqual({
       priority: "urgent",
-      hold: null,
       status: "dropped",
     });
     expect(

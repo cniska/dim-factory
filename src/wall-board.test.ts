@@ -20,6 +20,7 @@ const order = (
   age: "2m",
   lastEventAt: "2026-09-18T10:00:00.000Z",
   failedChecks: 0,
+  next: null,
 });
 
 describe("factory wall board", () => {

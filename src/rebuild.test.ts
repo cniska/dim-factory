@@ -194,7 +194,7 @@ describe("rebuilding a database an older schema wrote", () => {
     );
     db.run(
       `INSERT INTO factory_order_event (order_id, ts, kind, worker)
-       VALUES ('order-1', '2026-01-01T00:00:00Z', 'claimed', 'copper-1')`,
+       VALUES ('order-1', '2026-01-01T00:00:00Z', 'started', 'copper-1')`,
     );
     db.run(
       "INSERT INTO factory_order_commit (order_id, sha, recorded_at) VALUES ('order-1', 'abc', '2026-01-01T00:00:00Z')",
@@ -207,7 +207,7 @@ describe("rebuilding a database an older schema wrote", () => {
       { id: "order-1", project: "cniska/dim-factory", status: "working" },
     ]);
     expect(db.query("SELECT order_id, kind FROM factory_order_event").all()).toEqual([
-      { order_id: "order-1", kind: "claimed" },
+      { order_id: "order-1", kind: "started" },
     ]);
     expect(db.query("SELECT order_id, sha FROM factory_order_commit").all()).toEqual([
       { order_id: "order-1", sha: "abc" },
@@ -374,8 +374,8 @@ describe("rebuilding a database an older schema wrote", () => {
     );
     db.run(
       `INSERT INTO factory_order_event (order_id, ts, kind, worker)
-       VALUES ('order-kept', '2026-01-01T00:00:00Z', 'claimed', 'copper-1'),
-              ('order-gone', '2026-01-01T00:00:00Z', 'claimed', 'copper-1')`,
+       VALUES ('order-kept', '2026-01-01T00:00:00Z', 'started', 'copper-1'),
+              ('order-gone', '2026-01-01T00:00:00Z', 'started', 'copper-1')`,
     );
     db.run(
       `INSERT INTO factory_order_commit (order_id, sha, recorded_at)

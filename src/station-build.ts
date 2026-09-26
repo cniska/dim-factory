@@ -13,18 +13,13 @@ import {
   nextOrderSlice,
   type OrderSlice,
 } from "./order-artifacts";
+import { assertNoRunningAttempt, openAttempt, startAttempt } from "./order-attempt";
 import { latestOrderCommit, pendingRebaseConflict } from "./order-commits";
 import { BuildTurnRefused } from "./order-finding";
 import { type FindingStanding, orderFindingStandings, owesAnswer } from "./order-finding-state";
 import { appendOrderEvent } from "./order-ledger";
-import { claimOrder } from "./order-lifecycle";
-import {
-  assertOrderAtStation,
-  isActiveOrderRun,
-  OrderNotDone,
-  orderStatus,
-  PlanApprovalRefused,
-} from "./order-status";
+import { assertNext } from "./order-state";
+import { orderStatus } from "./order-status";
 import type { Env } from "./paths";
 import { commitBuildTurn } from "./station-build-commit";
 import { continueRebaseTurn, reopenRebase } from "./station-build-rebase";
@@ -294,15 +289,10 @@ export async function runOrderBuildLive(
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
   assertOperator(db, operator, "delegate build");
-  assertOrderAtStation(db, orderId, "build", "start a builder");
-  const runIdHeld = db
-    .query<{ run_id: string | null }, [string]>("SELECT run_id FROM factory_order WHERE id = ?")
-    .get(orderId)?.run_id;
-  if (runIdHeld) {
-    throw new OrderNotDone("order_held_by_run", `order ${orderId} is already held by a run`);
-  }
+  assertNext(db, orderId, "build");
+  assertNoRunningAttempt(db, orderId, "start a builder");
   const plan = latestApprovedPlan(db, orderId);
-  if (!plan) throw new PlanApprovalRefused("plan_missing", `order ${orderId} has no approved plan to build`);
+  if (!plan) throw new Error(`order ${orderId} has no approved plan to build`);
   const { harness } = options;
   assertOrderWorkerHarness(db, orderId, "builder", harness);
   const { slices } = plan;
@@ -329,7 +319,7 @@ export async function runOrderBuildLive(
   let claimed = false;
   const recordFailure = (reason: string): void => {
     if (!needsCodeWork || failureRecorded || orderStatus(db, orderId) !== "working") return;
-    if (claimed && !isActiveOrderRun(db, orderId, runId)) return;
+    if (claimed && openAttempt(db, orderId)?.runId !== runId) return;
     failureRecorded = true;
     appendOrderEvent(db, orderId, { kind: "failed", worker: builder, reason });
   };
@@ -342,20 +332,19 @@ export async function runOrderBuildLive(
     ): void => {
       builder = assigned;
       if (needsCodeWork) {
-        claimOrder(
+        startAttempt(
           db,
           orderId,
           {
             runId,
+            worker: assigned,
             sessionId: providerSessionId,
             providerSessionId,
             station: "build",
             operatorWorker: operator,
             ...attribution,
           },
-          builder,
-          undefined,
-          worktree,
+          new Date().toISOString(),
         );
         claimed = true;
       }
@@ -413,7 +402,6 @@ export async function runOrderBuildLive(
       const continued = continueRebaseTurn({
         db,
         orderId,
-        runId,
         operator,
         worktree,
         conflict,
@@ -422,12 +410,6 @@ export async function runOrderBuildLive(
         checkSandbox: options.checkSandbox,
       });
       if ("sha" in continued) break;
-      if (!isActiveOrderRun(db, orderId, runId)) {
-        throw new BuildTurnRefused(
-          "order_not_building",
-          `order ${orderId} is no longer held by run ${runId}, so its next conflict is not handed on`,
-        );
-      }
       paths = continued.conflicts;
       finished(
         await resumeOrderStationLive({
@@ -467,8 +449,7 @@ export async function runOrderBuildLive(
         if (
           !(error instanceof BuildTurnRefused) ||
           (error.code !== "commit_refused" && error.code !== "comment_added") ||
-          corrections === COMMIT_CORRECTIONS ||
-          !isActiveOrderRun(db, orderId, runId)
+          corrections === COMMIT_CORRECTIONS
         ) {
           throw error;
         }
@@ -495,7 +476,7 @@ export async function runOrderBuildLive(
       completeOrderSlice(db, orderId, currentSlice.id, builder);
     } else if (answersReview(reviewFindings)) {
       requireBuildEvidence(db, orderId, true, worktree);
-      completeOrderBuildFollowup(db, orderId, builder);
+      completeOrderBuildFollowup(db, orderId);
     } else if (!conflict) {
       const revision = latestArtifact(db, orderId, "build");
       if (!revision || revision.id === returned?.artifactId || artifactWriter(db, revision.id) !== builder) {

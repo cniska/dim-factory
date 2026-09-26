@@ -1,21 +1,8 @@
 import type { Database } from "bun:sqlite";
+import { finishAttempt, openAttempt } from "./order-attempt";
 import { latestOrderCommit } from "./order-commits";
-import {
-  appendOrderEventInTransaction,
-  assertChecked,
-  now,
-  recordAttemptFinish,
-  setOrderHoldInTransaction,
-} from "./order-ledger";
-import {
-  APPROVAL_HOLD,
-  assertOrderAtStation,
-  assertOrderWorking,
-  BuildApprovalRefused,
-  OrderNotDone,
-  type OrderStatus,
-  PlanApprovalRefused,
-} from "./order-status";
+import { appendOrderEventInTransaction, assertChecked, now } from "./order-ledger";
+import { assertOrderWorking, OrderNotDone } from "./order-status";
 import type { Station } from "./station";
 import type { PlanSlice } from "./station-plan-artifact";
 
@@ -76,109 +63,6 @@ export function writeArtifactInTransaction(
   const artifactId = Number(written.lastInsertRowid);
   appendOrderEventInTransaction(db, orderId, { kind: "artifact_written", worker, artifactId }, at);
   return artifactId;
-}
-
-export function holdForApprovalInTransaction(
-  db: Database,
-  orderId: string,
-  worker: string,
-  at: string,
-): void {
-  setOrderHoldInTransaction(db, orderId, APPROVAL_HOLD, at);
-  appendOrderEventInTransaction(
-    db,
-    orderId,
-    { kind: "hold_set", worker, holdType: APPROVAL_HOLD, evidence: { hold: APPROVAL_HOLD } },
-    at,
-  );
-}
-
-export function approveArtifactInTransaction(
-  db: Database,
-  orderId: string,
-  artifactId: number,
-  worker: string,
-  reason: string | undefined,
-  at: string,
-): void {
-  appendOrderEventInTransaction(db, orderId, { kind: "artifact_approved", worker, artifactId, reason }, at);
-  setOrderHoldInTransaction(db, orderId, null, at);
-  appendOrderEventInTransaction(db, orderId, { kind: "hold_released", worker, evidence: { hold: null } }, at);
-}
-
-export function assertBuildReady(db: Database, orderId: string): { sha: string } {
-  const commit = latestOrderCommit(db, orderId);
-  if (!commit) throw new OrderNotDone("build_not_approved", `order ${orderId} has no build commit to review`);
-  return { sha: commit.sha };
-}
-
-function returnable(db: Database, orderId: string, station: Station): StoredArtifact {
-  const artifact = latestArtifact(db, orderId, station);
-  if (!artifact) throw new Error(`order ${orderId} has no ${station} artifact to return`);
-  if (isArtifactApproved(db, artifact.id))
-    throw new Error(`order ${orderId} has an approved ${station} artifact`);
-  if (station === "review") {
-    const round = db
-      .query<{ outcome: string | null; findings: number }, [number]>(
-        `SELECT r.outcome, (SELECT count(*) FROM factory_order_finding f WHERE f.review_id = r.id) AS findings
-         FROM factory_order_review r WHERE r.id = ?`,
-      )
-      .get(artifact.reviewId as number);
-    if (round?.outcome !== "closed" || round.findings !== 0) {
-      throw new Error(`review ${artifact.reviewId} is not a clean Review artifact`);
-    }
-  }
-  return artifact;
-}
-
-export function returnOrderArtifact(
-  db: Database,
-  orderId: string,
-  operator: string,
-  reason: string,
-  at = now(),
-): void {
-  const role = db
-    .query<{ role: string }, [string]>("SELECT role FROM factory_worker WHERE name = ?")
-    .get(operator)?.role;
-  if (role !== "operator") throw new Error(`worker ${operator} is not an operator`);
-  if (reason.trim() === "") throw new Error("artifact return reason must not be empty");
-  db.transaction(() => {
-    const order = db
-      .query<{ status: OrderStatus; station: Station | null; hold: string | null }, [string]>(
-        "SELECT status, station, hold FROM factory_order WHERE id = ?",
-      )
-      .get(orderId);
-    if ((order?.status !== "working" && order?.status !== "queued") || order.hold !== APPROVAL_HOLD) {
-      throw new Error(`order ${orderId} has no station artifact awaiting owner approval`);
-    }
-    const { station } = order;
-    if (station === null)
-      throw new Error(`order ${orderId} is at no station, so it has no artifact to return`);
-    const artifact = returnable(db, orderId, station);
-    appendOrderEventInTransaction(
-      db,
-      orderId,
-      {
-        kind: "artifact_returned",
-        worker: operator,
-        station,
-        status: order.status === "queued" ? "working" : undefined,
-        artifactId: artifact.id,
-        reason,
-      },
-      at,
-      process.cwd(),
-      true,
-    );
-    setOrderHoldInTransaction(db, orderId, null, at);
-    appendOrderEventInTransaction(
-      db,
-      orderId,
-      { kind: "hold_released", worker: operator, evidence: { hold: null } },
-      at,
-    );
-  })();
 }
 
 export type ReturnedOrderArtifact =
@@ -265,15 +149,6 @@ export function returnedOrderArtifact(
   };
 }
 
-export function assertReturnedArtifactRevised(db: Database, orderId: string, station: Station): void {
-  if (returnedOrderArtifact(db, orderId, station)) {
-    throw new OrderNotDone(
-      "artifact_revision_required",
-      `order ${orderId} must receive a new ${station} artifact after its return before approval`,
-    );
-  }
-}
-
 export function recordOrderPlan(
   db: Database,
   orderId: string,
@@ -283,7 +158,6 @@ export function recordOrderPlan(
   at = now(),
 ): number {
   assertOrderWorking(db, orderId);
-  assertOrderAtStation(db, orderId, "plan", "submit a plan");
   if (body.trim() === "") throw new Error("plan body must not be empty");
   if (slices.length === 0) throw new Error("plan must contain at least one slice");
   return db.transaction(() => {
@@ -302,7 +176,6 @@ export function recordOrderPlan(
         slice.outcome,
       ]);
     }
-    holdForApprovalInTransaction(db, orderId, worker, at);
     return artifactId;
   })();
 }
@@ -320,12 +193,8 @@ export function recordOrderBuild(
   at = now(),
 ): number {
   assertOrderWorking(db, orderId);
-  assertOrderAtStation(db, orderId, "build", "submit a Build artifact");
-  const runId = db
-    .query<{ run_id: string | null }, [string]>("SELECT run_id FROM factory_order WHERE id = ?")
-    .get(orderId)?.run_id;
   const returned = returnedOrderArtifact(db, orderId, "build");
-  if (!runId && !returned) {
+  if (!openAttempt(db, orderId) && !returned) {
     throw new OrderNotDone(
       "build_artifact_before_final_slice",
       `order ${orderId} has no active final build turn or returned Build artifact`,
@@ -360,17 +229,9 @@ export function recordOrderBuild(
     }
     assertChecked(db, orderId);
   }
-  return db.transaction(() => {
-    const artifactId = writeArtifactInTransaction(
-      db,
-      orderId,
-      { kind: "build", body, headSha, reviewId: null },
-      worker,
-      at,
-    );
-    holdForApprovalInTransaction(db, orderId, worker, at);
-    return artifactId;
-  })();
+  return db.transaction(() =>
+    writeArtifactInTransaction(db, orderId, { kind: "build", body, headSha, reviewId: null }, worker, at),
+  )();
 }
 
 export type OrderSlice = PlanSlice & { id: number; ordinal: number };
@@ -399,11 +260,6 @@ export function completeOrderSlice(
 ): void {
   db.transaction(() => {
     assertOrderWorking(db, orderId);
-    const order = db
-      .query<{ run_id: string | null; station: string | null }, [string]>(
-        "SELECT run_id, station FROM factory_order WHERE id = ?",
-      )
-      .get(orderId);
     const slice = db
       .query<{ id: number }, [string, number]>(
         `SELECT s.id FROM factory_order_slice s
@@ -420,27 +276,13 @@ export function completeOrderSlice(
       worker,
       at,
     ]);
-    recordAttemptFinish(
-      db,
-      orderId,
-      order?.run_id ?? null,
-      worker,
-      order?.station ?? null,
-      "succeeded",
-      undefined,
-      at,
-    );
-    db.run("UPDATE factory_order SET run_id = NULL, session_id = NULL, updated_at = ? WHERE id = ?", [
-      at,
-      orderId,
-    ]);
+    finishAttempt(db, orderId, "succeeded", undefined, at);
   })();
 }
 
-export function completeOrderBuildFollowup(db: Database, orderId: string, worker: string, at = now()): void {
+export function completeOrderBuildFollowup(db: Database, orderId: string, at = now()): void {
   db.transaction(() => {
     assertOrderWorking(db, orderId);
-    assertOrderAtStation(db, orderId, "build", "finish a build follow-up");
     if (nextOrderSlice(db, orderId) !== null) {
       throw new Error(`order ${orderId} still has an incomplete build slice`);
     }
@@ -463,105 +305,6 @@ export function completeOrderBuildFollowup(db: Database, orderId: string, worker
           .get(orderId, commit.sha, review?.event_id ?? Number.MAX_SAFE_INTEGER)
       : null;
     if (!artifact) throw new Error(`order ${orderId} has no Build artifact after its latest Review`);
-    const order = db
-      .query<{ run_id: string | null; station: string | null }, [string]>(
-        "SELECT run_id, station FROM factory_order WHERE id = ?",
-      )
-      .get(orderId);
-    if (!order?.run_id) throw new Error(`order ${orderId} has no active build follow-up`);
-    recordAttemptFinish(db, orderId, order.run_id, worker, order.station, "succeeded", undefined, at);
-    db.run("UPDATE factory_order SET run_id = NULL, session_id = NULL, updated_at = ? WHERE id = ?", [
-      at,
-      orderId,
-    ]);
+    finishAttempt(db, orderId, "succeeded", undefined, at);
   })();
-}
-
-export function approveOrderPlan(db: Database, orderId: string, worker: string, at = now()): void {
-  assertOrderWorking(db, orderId);
-  const role = db
-    .query<{ role: string }, [string]>("SELECT role FROM factory_worker WHERE name = ?")
-    .get(worker)?.role;
-  if (role !== "operator")
-    throw new PlanApprovalRefused("worker_not_operator", `worker ${worker} is not an operator`);
-  assertReturnedArtifactRevised(db, orderId, "plan");
-  const plan = latestArtifact(db, orderId, "plan");
-  if (!plan) throw new PlanApprovalRefused("plan_missing", `order ${orderId} has no plan to approve`);
-  if (isArtifactApproved(db, plan.id))
-    throw new PlanApprovalRefused(
-      "plan_already_approved",
-      `plan ${plan.id} for order ${orderId} is already approved`,
-    );
-  db.transaction(() => approveArtifactInTransaction(db, orderId, plan.id, worker, undefined, at))();
-}
-
-export function approveOrderBuild(
-  db: Database,
-  orderId: string,
-  worker: string,
-  reason: string,
-  at = now(),
-): void {
-  assertOrderWorking(db, orderId);
-  const role = db
-    .query<{ role: string }, [string]>("SELECT role FROM factory_worker WHERE name = ?")
-    .get(worker)?.role;
-  if (role !== "operator")
-    throw new BuildApprovalRefused("worker_not_operator", `worker ${worker} is not an operator`);
-  if (reason.trim() === "") throw new Error("build approval reason must not be empty");
-  assertReturnedArtifactRevised(db, orderId, "build");
-  const commit = latestOrderCommit(db, orderId);
-  if (!commit)
-    throw new BuildApprovalRefused("commit_missing", `order ${orderId} has no build commit to approve`);
-  const check = db
-    .query(
-      `SELECT 1 FROM factory_order_check c
-       JOIN factory_order_event check_event
-         ON check_event.order_id = c.order_id AND check_event.check_id = c.id AND check_event.kind = 'check_finished'
-       WHERE c.order_id = ? AND c.exit_code = 0
-         AND check_event.id > coalesce((
-           SELECT max(commit_event.id) FROM factory_order_event commit_event
-           WHERE commit_event.order_id = c.order_id AND commit_event.kind = 'commit_created'
-         ), 0)
-       LIMIT 1`,
-    )
-    .get(orderId);
-  if (!check) {
-    throw new BuildApprovalRefused(
-      "build_not_checked",
-      `order ${orderId} has no passing check after its latest build commit`,
-    );
-  }
-  if (nextOrderSlice(db, orderId) !== null) {
-    throw new BuildApprovalRefused(
-      "build_not_final",
-      `order ${orderId} has incomplete slices; build approval belongs after the final slice`,
-    );
-  }
-  const buildArtifact = db
-    .query<{ id: number }, [string, string]>(
-      `SELECT id FROM factory_order_artifact
-       WHERE order_id = ? AND kind = 'build' AND head_sha = ? ORDER BY revision DESC LIMIT 1`,
-    )
-    .get(orderId, commit.sha);
-  if (!buildArtifact) {
-    throw new BuildApprovalRefused(
-      "build_artifact_missing",
-      `build ${commit.sha} for order ${orderId} has no artifact recorded by its builder`,
-    );
-  }
-  const approved = db
-    .query(
-      `SELECT 1 FROM factory_order_event e
-       JOIN factory_order_artifact a ON a.id = e.artifact_id
-       WHERE e.kind = 'artifact_approved' AND a.order_id = ? AND a.kind = 'build' AND a.head_sha = ?`,
-    )
-    .get(orderId, commit.sha);
-  if (approved) {
-    throw new BuildApprovalRefused(
-      "build_already_approved",
-      `build ${commit.sha} for order ${orderId} is already approved`,
-    );
-  }
-  db.transaction(() => approveArtifactInTransaction(db, orderId, buildArtifact.id, worker, reason, at))();
 }

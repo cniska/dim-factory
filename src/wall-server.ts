@@ -1,15 +1,17 @@
 import type { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
 import { openReadOnly } from "./db-read";
+import { runningAttempt } from "./order-attempt";
 import type { OrderEventKind } from "./order-events";
 import type { OrderLine } from "./order-line";
-import { ORDER_STATUSES, type OrderStatus } from "./order-status";
+import { type NextAct, orderState } from "./order-state";
+import type { OrderStatus } from "./order-status";
 import { dbPath, tildePath } from "./paths";
 import { age } from "./query-age";
 import type { Station } from "./station";
 import wallPage from "./wall.html";
 import type { ResourceEvidence, WorkerEnvironmentPhase, WorkerHookReport } from "./worker-environment";
-import { isRole, type Role } from "./worker-roles";
+import type { Role } from "./worker-roles";
 
 export type WallStage = "todo" | "active" | "done";
 export type WallRole = Role;
@@ -28,7 +30,7 @@ export type WallOrder = {
   age: string;
   lastEventAt: string;
   failedChecks: number;
-  hold?: string;
+  next: NextAct | null;
 };
 
 export type WallSnapshot = {
@@ -48,7 +50,6 @@ export type WallItemEntry = {
   role?: WallRole;
   station?: Station;
   reason?: string;
-  hold?: string;
   commit?: { sha: string; subject?: string };
   check?: { command: string; exitCode: number; result?: string };
   finding?: { dimension: string; answer: string; failure: string; resolution?: string };
@@ -103,42 +104,27 @@ const MAX_COLUMN_CARDS = 12;
 type OrderRow = {
   id: string;
   title: string;
-  line: string;
+  line: OrderLine;
   description: string | null;
-  station: Station | null;
-  status: string;
+  status: OrderStatus;
   stop_reason: string | null;
-  run_id: string | null;
   project: string;
   priority: string;
-  hold: string | null;
   last_event_at: string;
   latest_reason: string | null;
-  holder_worker: string | null;
-  holder_role: string | null;
-  has_started: number;
   failed_check_count: number;
 };
 
-const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.line, o.description, o.station, o.status,
-              o.stop_reason, o.run_id, o.project, o.priority, o.hold,
+const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.line, o.description, o.status,
+              o.stop_reason, o.project, o.priority,
               e.ts AS last_event_at, e.reason AS latest_reason,
-              (SELECT e2.worker FROM factory_order_event e2
-                WHERE e2.order_id = o.id AND e2.kind = 'claimed'
-                ORDER BY e2.ts DESC, e2.id DESC LIMIT 1) AS holder_worker,
-              fw.role AS holder_role,
-              EXISTS (SELECT 1 FROM factory_order_event e2
-                WHERE e2.order_id = o.id AND e2.kind = 'claimed') AS has_started,
               (SELECT count(*) FROM factory_order_check c
                 WHERE c.order_id = o.id AND c.exit_code <> 0) AS failed_check_count
        FROM factory_order o
-       LEFT JOIN factory_order_event e ON e.id = (SELECT e2.id FROM factory_order_event e2 WHERE e2.order_id = o.id ORDER BY e2.ts DESC, e2.id DESC LIMIT 1)
-       LEFT JOIN factory_worker fw ON fw.name = (SELECT e2.worker FROM factory_order_event e2
-         WHERE e2.order_id = o.id AND e2.kind = 'claimed'
-         ORDER BY e2.ts DESC, e2.id DESC LIMIT 1)`;
-
+       LEFT JOIN factory_order_event e ON e.id = (SELECT e2.id FROM factory_order_event e2 WHERE e2.order_id = o.id ORDER BY e2.ts DESC, e2.id DESC LIMIT 1)`;
 export type BoardStatus = Exclude<OrderStatus, "dropped">;
-const WALL_STATUSES = new Set<string>(ORDER_STATUSES.filter((status) => status !== "dropped"));
+
+type BoardRow = OrderRow & { status: BoardStatus };
 
 const stageByStatus: Record<BoardStatus, WallStage> = {
   queued: "todo",
@@ -146,52 +132,32 @@ const stageByStatus: Record<BoardStatus, WallStage> = {
   completed: "done",
 };
 
-function role(value: string | null): WallRole | undefined {
-  if (value === null) return undefined;
-  if (!isRole(value)) throw new Error(`unknown factory worker role: ${value}`);
-  return value;
-}
-
-function requiredRole(value: string | null): WallRole {
-  const workerRole = role(value);
-  if (!workerRole) throw new Error("factory worker role is missing");
-  return workerRole;
-}
-
-function status(value: string): BoardStatus {
-  if (!WALL_STATUSES.has(value)) throw new Error(`unknown factory order status: ${value}`);
-  return value as BoardStatus;
-}
-
-function mapOrder(row: OrderRow, now: Date): WallOrder | null {
-  if (row.holder_worker !== null && row.holder_role === null) return null;
-  const worker = row.holder_worker;
-  const workerRole = worker ? requiredRole(row.holder_role) : undefined;
-  const orderStatus = status(row.status);
-  const baseStage = stageByStatus[orderStatus];
+function mapOrder(db: Database, row: BoardRow, now: Date): WallOrder {
+  const working = row.status === "working";
+  const state = working ? orderState(db, row.id) : null;
+  const attempt = working ? runningAttempt(db, row.id) : null;
   const lastEventAt = row.last_event_at;
   return {
     id: row.id,
     title: row.title,
-    line: row.line as OrderLine,
+    line: row.line,
     ...(row.description ? { description: row.description } : {}),
-    station: orderStatus === "completed" ? null : row.station,
-    stage: baseStage === "done" ? baseStage : row.has_started ? "active" : baseStage,
-    ...(worker ? { agent: worker, worker } : {}),
-    ...(workerRole ? { role: workerRole } : {}),
-    status: orderStatus,
+    station: state === null ? null : state.station,
+    stage: stageByStatus[row.status],
+    ...(attempt ? { agent: attempt.worker, worker: attempt.worker, role: attempt.role } : {}),
+    status: row.status,
     age: age(lastEventAt, now),
     lastEventAt,
     failedChecks: row.failed_check_count,
-    ...(row.hold ? { hold: row.hold } : {}),
+    next: state === null ? null : state.next,
   };
 }
 
 export function assembleWallSnapshot(db: Database, now = new Date()): WallSnapshot {
   const rows = db
-    .query(`${ORDER_ROW_SELECT} WHERE o.status <> 'dropped' ORDER BY e.ts DESC, o.id`)
-    .all() as OrderRow[];
-  const mapped = rows.map((row) => mapOrder(row, now)).filter((order): order is WallOrder => order !== null);
+    .query<BoardRow, []>(`${ORDER_ROW_SELECT} WHERE o.status <> 'dropped' ORDER BY e.ts DESC, o.id`)
+    .all();
+  const mapped = rows.map((row) => mapOrder(db, row, now));
   const totals: Record<WallStage, number> = { todo: 0, active: 0, done: 0 };
   const orders: WallOrder[] = [];
   for (const order of mapped) {
@@ -205,9 +171,8 @@ type EventRow = {
   ts: string;
   kind: WallItemKind;
   worker_id: string | null;
-  worker_role: string | null;
+  worker_role: Role | null;
   station: Station | null;
-  hold_type: string | null;
   reason: string | null;
   commit_sha: string | null;
   commit_subject: string | null;
@@ -220,7 +185,7 @@ type EventRow = {
   resolution: string | null;
 };
 
-type PathRow = { recorded_at: string; worker_id: string; worker_role: string | null; path: string };
+type PathRow = { recorded_at: string; worker_id: string; worker_role: Role | null; path: string };
 
 type FileRow = { path: string; added: number | null; removed: number | null };
 
@@ -265,10 +230,9 @@ function eventEntry(row: EventRow): WallItemEntry {
     at: row.ts,
     kind: row.kind,
     ...(row.worker_id ? { agent: row.worker_id, worker: row.worker_id } : {}),
-    ...(role(row.worker_role) ? { role: role(row.worker_role) } : {}),
+    ...(row.worker_role ? { role: row.worker_role } : {}),
     ...(row.station ? { station: row.station } : {}),
     ...(row.reason ? { reason: row.reason } : {}),
-    ...(row.hold_type ? { hold: row.hold_type } : {}),
     ...(row.commit_sha
       ? { commit: { sha: row.commit_sha, ...(row.commit_subject ? { subject: row.commit_subject } : {}) } }
       : {}),
@@ -302,7 +266,7 @@ function artifactPanel(db: Database, orderId: string, kind: "plan" | "build" | "
         body: string;
         head_sha: string | null;
         worker: string;
-        worker_role: string | null;
+        worker_role: Role;
         approved: number;
       },
       [string, string]
@@ -323,21 +287,21 @@ function artifactPanel(db: Database, orderId: string, kind: "plan" | "build" | "
       revision: row.revision,
       body: row.body,
       worker: row.worker,
-      role: requiredRole(row.worker_role),
+      role: row.worker_role,
       approved: row.approved === 1,
     },
   };
 }
 
 export function assembleItemView(db: Database, orderId: string, now = new Date()): WallItemView | null {
-  const row = db.query(`${ORDER_ROW_SELECT} WHERE o.id = ?`).get(orderId) as OrderRow | null;
+  const row = db.query<OrderRow, [string]>(`${ORDER_ROW_SELECT} WHERE o.id = ?`).get(orderId);
   if (!row || row.status === "dropped") return null;
-  const order = mapOrder(row, now);
-  if (!order) return null;
+  const order = mapOrder(db, { ...row, status: row.status }, now);
+  const running = runningAttempt(db, orderId);
   const events = db
     .query(
       `SELECT e.ts, e.kind, e.worker AS worker_id, fw.role AS worker_role,
-              coalesce(art.kind, e.station) AS station, e.hold_type, e.reason,
+              coalesce(art.kind, e.station) AS station, e.reason,
               coalesce(c.sha, e.commit_sha, art.head_sha) AS commit_sha, c.subject AS commit_subject,
               ch.command, ch.exit_code, ch.result,
               f.dimension, a.answer, f.failure, a.resolution
@@ -381,14 +345,14 @@ export function assembleItemView(db: Database, orderId: string, now = new Date()
       at: doc.recorded_at,
       kind: "document_updated" as const,
       worker: doc.worker_id,
-      ...(role(doc.worker_role) ? { role: role(doc.worker_role) } : {}),
+      ...(doc.worker_role ? { role: doc.worker_role } : {}),
       path: tildePath(doc.path),
     })),
     ...environments.map(environmentEntry),
   ].sort((a, b) => a.at.localeCompare(b.at));
   return {
     order,
-    ...(row.run_id ? { runId: row.run_id } : {}),
+    ...(running ? { runId: running.runId } : {}),
     project: row.project,
     ...(plan ? { plan } : {}),
     ...(build ? { build } : {}),

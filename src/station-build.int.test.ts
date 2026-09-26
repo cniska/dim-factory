@@ -13,18 +13,19 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SCHEMA_SQL } from "./db-schema";
-import { confiningCheckSandbox, declareCheck, integratedRepo, located } from "./fixtures.test-support";
+import {
+  attemptIn,
+  confiningCheckSandbox,
+  declareCheck,
+  integratedRepo,
+  located,
+} from "./fixtures.test-support";
 import { installCommitGate } from "./gate-commit";
 import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
 import { fakeHarness } from "./harness-fake";
-import {
-  approveOrderBuild,
-  approveOrderPlan,
-  completeOrderBuildFollowup,
-  recordOrderBuild,
-  recordOrderPlan,
-  returnOrderArtifact,
-} from "./order-artifacts";
+import { approveOrder, returnOrderArtifact } from "./order-approval";
+import { completeOrderBuildFollowup, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
+import { openAttempt } from "./order-attempt";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
 import {
   answerOrderFindings,
@@ -34,10 +35,10 @@ import {
   ruleOnOrderFinding,
 } from "./order-finding";
 import { appendOrderEvent } from "./order-ledger";
-import { claimOrder, moveOrder, queueOrder } from "./order-lifecycle";
+import { queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview, openOrderReview } from "./order-review";
 import { shipOrder } from "./order-ship";
-import { isActiveOrderRun } from "./order-status";
+import { orderState } from "./order-state";
 import { approveReviewAt } from "./station-approvals.test-support";
 import { runOrderBuildLive } from "./station-build";
 import type { BuildTurn } from "./station-build-turn";
@@ -118,22 +119,14 @@ function orderAtBuild(
   const repo = { dir: trunk.dir, sha: declareCheck(trunk.dir, check) };
   const operator = mintWorker(db, { role: "operator", sessionId: `${orderId}-operator` });
   queueOrder(db, { id: orderId, project: "cniska/dim-factory", title: "Build this" }, operator.name);
-  claimOrder(
-    db,
-    orderId,
-    { runId: "plan-run", station: "plan", operatorWorker: operator.name },
-    operator.name,
-    undefined,
-    repo.dir,
-  );
+  startOrder(db, orderId, operator.name, undefined, repo.dir);
   const planner = mintWorker(db, {
     role: "planner",
     parentWorker: operator.name,
     sessionId: `${orderId}/planner`,
   });
   recordOrderPlan(db, orderId, "## Outcome\n\nBuild the requested result.", planner.name, slices);
-  approveOrderPlan(db, orderId, operator.name);
-  moveOrder(db, orderId, "build", operator.name);
+  approveOrder(db, orderId, operator.name, undefined);
   return { repo, operator, planner: planner.name };
 }
 
@@ -189,17 +182,36 @@ describe("builder station", () => {
         .all("builder-order"),
     ).toEqual([
       { kind: "queued", worker: operator.name, station: null },
-      { kind: "claimed", worker: operator.name, station: "plan" },
+      { kind: "started", worker: operator.name, station: null },
       { kind: "artifact_written", worker: planner, station: null },
-      { kind: "hold_set", worker: planner, station: null },
       { kind: "artifact_approved", worker: operator.name, station: null },
-      { kind: "hold_released", worker: operator.name, station: null },
-      { kind: "moved", worker: operator.name, station: "build" },
-      { kind: "claimed", worker: outcome.builder, station: "build" },
       { kind: "commit_created", worker: outcome.builder, station: null },
       { kind: "check_finished", worker: operator.name, station: null },
       { kind: "artifact_written", worker: outcome.builder, station: null },
-      { kind: "hold_set", worker: outcome.builder, station: null },
+    ]);
+    expect(
+      db
+        .query(
+          "SELECT run_id, worker, operator_worker, station, kind, outcome FROM factory_order_attempt ORDER BY id",
+        )
+        .all(),
+    ).toEqual([
+      {
+        run_id: outcome.runId,
+        worker: outcome.builder,
+        operator_worker: operator.name,
+        station: "build",
+        kind: "started",
+        outcome: "running",
+      },
+      {
+        run_id: outcome.runId,
+        worker: outcome.builder,
+        operator_worker: operator.name,
+        station: "build",
+        kind: "finished",
+        outcome: "succeeded",
+      },
     ]);
 
     const head = git(outcome.worktree, ["rev-parse", "HEAD"]);
@@ -237,7 +249,8 @@ describe("builder station", () => {
     expect(db.query("SELECT worker FROM factory_order_slice_completion").get()).toEqual({
       worker: outcome.builder,
     });
-    expect(isActiveOrderRun(db, "builder-order", outcome.runId)).toBe(false);
+    expect(openAttempt(db, "builder-order")).toBeNull();
+    expect(orderState(db, "builder-order")).toEqual({ station: "build", next: "approve" });
 
     returnOrderArtifact(db, "builder-order", operator.name, "Explain what the build verified.");
     const unavailable = unavailableHarness();
@@ -259,15 +272,15 @@ describe("builder station", () => {
         adapter: fakeHarness("crash"),
       }),
     ).rejects.toThrow("fake process crashed");
-    expect(db.query("SELECT status, hold FROM factory_order WHERE id = ?").get("builder-order")).toEqual({
+    expect(db.query("SELECT status FROM factory_order WHERE id = ?").get("builder-order")).toEqual({
       status: "working",
-      hold: null,
     });
+    expect(orderState(db, "builder-order")).toEqual({ station: "build", next: "run" });
     expect(
       db
         .query("SELECT kind FROM factory_order_event WHERE order_id = ? ORDER BY id DESC LIMIT 1")
         .get("builder-order"),
-    ).toEqual({ kind: "hold_released" });
+    ).toEqual({ kind: "artifact_returned" });
     db.close();
   });
 
@@ -590,7 +603,7 @@ describe("builder station", () => {
     db.close();
   });
 
-  test("keeps an incomplete final slice while giving the builder returned artifact feedback", async () => {
+  test("keeps an incomplete final slice after a failed attempt, and hands a later returned Build artifact's feedback to the builder", async () => {
     const db = database();
     const dimHome = home("dim-builder-return-");
     const { repo, operator } = orderAtBuild(db, "returned-builder-order", [
@@ -607,14 +620,7 @@ describe("builder station", () => {
       parentWorker: operator.name,
       sessionId: "return-operator/builder",
     });
-    claimOrder(
-      db,
-      "returned-builder-order",
-      { runId: "build-run", station: "build", operatorWorker: operator.name },
-      builder.name,
-      undefined,
-      repo.dir,
-    );
+    attemptIn(db, "returned-builder-order", builder.name, operator.name, "build-run");
     recordOrderCommit(db, "returned-builder-order", repo.sha, builder.name, "feat: build it");
     recordOrderCheck(
       db,
@@ -628,11 +634,15 @@ describe("builder station", () => {
       worker: builder.name,
       reason: "Artifact needs revision.",
     });
-    returnOrderArtifact(
-      db,
-      "returned-builder-order",
-      operator.name,
-      "Explain the verification for the owner.",
+    expect(() =>
+      returnOrderArtifact(
+        db,
+        "returned-builder-order",
+        operator.name,
+        "Explain the verification for the owner.",
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: "not_next", message: expect.stringContaining("run at build") }),
     );
 
     const unavailable = unavailableHarness();
@@ -645,10 +655,7 @@ describe("builder station", () => {
     const brief = unavailable.brief();
     expect(brief).toContain("# Current slice");
     expect(brief).toContain("Finish the result: The result is verified.");
-    expect(brief).toContain("# Returned Build artifact");
-    expect(brief).toContain("The initial Build artifact.");
-    expect(brief).toContain("# Owner feedback");
-    expect(brief).toContain("Explain the verification for the owner.");
+    expect(brief).not.toContain("# Returned Build artifact");
     expect(brief).not.toContain("The code work is complete; revise only the artifact.");
     expect(db.query("SELECT count(*) AS n FROM factory_order_slice_completion").get()).toEqual({ n: 0 });
 
@@ -679,10 +686,12 @@ describe("builder station", () => {
     );
     expect(laterCommit.success).toBe(true);
     const later = git(outcome.worktree, ["rev-parse", "HEAD"]);
+    let returnedBrief = "";
     await expect(
       runOrderBuildLive(db, "returned-builder-order", operator.name, {
         ...options,
-        adapter: builderTurn(() => {
+        adapter: builderTurn((request) => {
+          returnedBrief = request.brief;
           recordOrderBuild(
             db,
             "returned-builder-order",
@@ -694,6 +703,10 @@ describe("builder station", () => {
         }),
       }),
     ).rejects.toThrow("builder did not record worktree HEAD");
+    expect(returnedBrief).toContain("# Returned Build artifact");
+    expect(returnedBrief).toContain("The revised Build artifact explains the verification.");
+    expect(returnedBrief).toContain("# Owner feedback");
+    expect(returnedBrief).toContain("Match the actual worktree HEAD.");
 
     returnOrderArtifact(db, "returned-builder-order", operator.name, "Record the check after that head.");
     await expect(
@@ -764,8 +777,7 @@ describe("builder station", () => {
         }),
       });
       const first = git(firstBuild.worktree, ["rev-parse", "HEAD"]);
-      approveOrderBuild(db, orderId, operator.name, "Build approved.");
-      moveOrder(db, orderId, "review", operator.name);
+      approveOrder(db, orderId, operator.name, "Build approved.");
       const reviewer = mintWorker(db, {
         role: "reviewer",
         parentWorker: operator.name,
@@ -784,7 +796,6 @@ describe("builder station", () => {
         reviewer.name,
       );
       closeOrderReview(db, review.id, "closed", reviewer.name);
-      moveOrder(db, orderId, "build", operator.name);
       return { db, operator, options, firstBuild, first, finding };
     }
 
@@ -802,7 +813,7 @@ describe("builder station", () => {
         adapter: builderTurn((request) => {
           brief = request.brief;
           writeFileSync(join(request.cwd, "fix.txt"), "fix\n");
-          expect(() => completeOrderBuildFollowup(db, "review-rework-order", firstBuild.builder)).toThrow(
+          expect(() => completeOrderBuildFollowup(db, "review-rework-order")).toThrow(
             "no Build artifact after its latest Review",
           );
           return {
@@ -824,9 +835,8 @@ describe("builder station", () => {
       expect(
         db.query("SELECT worker, finding_id FROM factory_order_event WHERE kind = 'finding_answered'").all(),
       ).toEqual([{ worker: followup.builder, finding_id: finding }]);
-      expect(db.query("SELECT run_id FROM factory_order WHERE id = ?").get("review-rework-order")).toEqual({
-        run_id: null,
-      });
+      expect(openAttempt(db, "review-rework-order")).toBeNull();
+      expect(orderState(db, "review-rework-order")).toEqual({ station: "build", next: "approve" });
       expect(
         db
           .query(
@@ -860,9 +870,7 @@ describe("builder station", () => {
           )
           .get(),
       ).toEqual({ revision: 2, head_sha: first });
-      expect(db.query("SELECT run_id FROM factory_order WHERE id = ?").get("refused-rework-order")).toEqual({
-        run_id: null,
-      });
+      expect(openAttempt(db, "refused-rework-order")).toBeNull();
       db.close();
     });
 
@@ -925,7 +933,6 @@ describe("builder station", () => {
         [{ finding, answer: "refused", resolution: "out of scope" }],
         firstBuild.builder,
       );
-      moveOrder(db, orderId, "review", operator.name);
       const reviewer = mintWorker(db, {
         role: "reviewer",
         parentWorker: operator.name,
@@ -940,7 +947,6 @@ describe("builder station", () => {
       ruleOnOrderFinding(db, finding, { ruling: "refusal_contested", reason: "in scope" }, reviewer.name);
       closeOrderReview(db, second.id, "closed", reviewer.name);
       recordOwnerRuling(db, finding, { ruling: "refusal_overturned", reason: "fix it" }, operator.name);
-      moveOrder(db, orderId, "build", operator.name);
       const failure = await runOrderBuildLive(db, orderId, operator.name, {
         ...options,
         adapter: builderTurn((request) => {
@@ -998,7 +1004,7 @@ describe("builder station", () => {
     });
   });
 
-  test("claims once and commits the answer when the builder begins another turn after answering", async () => {
+  test("starts one attempt and commits the answer when the builder begins another turn after answering", async () => {
     const db = database();
     const dimHome = home("dim-builder-second-turn-");
     const { repo, operator } = orderAtBuild(db, "second-turn-order", [
@@ -1020,14 +1026,18 @@ describe("builder station", () => {
       adapter,
     });
 
-    const events = db
-      .query<{ kind: string; worker: string | null }, [string]>(
-        "SELECT kind, worker FROM factory_order_event WHERE order_id = ? AND kind IN ('claimed', 'failed')",
-      )
-      .all("second-turn-order");
-    expect(events).toEqual([
-      { kind: "claimed", worker: operator.name },
-      { kind: "claimed", worker: outcome.builder },
+    expect(
+      db
+        .query("SELECT count(*) AS n FROM factory_order_event WHERE order_id = ? AND kind = 'failed'")
+        .get("second-turn-order"),
+    ).toEqual({ n: 0 });
+    expect(
+      db
+        .query("SELECT worker, kind, outcome FROM factory_order_attempt WHERE order_id = ? ORDER BY id")
+        .all("second-turn-order"),
+    ).toEqual([
+      { worker: outcome.builder, kind: "started", outcome: "running" },
+      { worker: outcome.builder, kind: "finished", outcome: "succeeded" },
     ]);
     expect(adapter.cancels()).toBe(1);
     expect(db.query("SELECT subject FROM factory_order_commit").all()).toEqual([
@@ -1036,7 +1046,7 @@ describe("builder station", () => {
     db.close();
   });
 
-  test("fails a builder run that starts twice as a harness fault, not a second claim", async () => {
+  test("fails a builder run that starts twice as a harness fault, not a second attempt", async () => {
     const db = database();
     const dimHome = home("dim-builder-second-start-");
     const { repo, operator } = orderAtBuild(db, "second-start-order", [
@@ -1054,9 +1064,12 @@ describe("builder station", () => {
 
     expect(
       db
-        .query("SELECT kind FROM factory_order_event WHERE order_id = ? AND kind = 'claimed'")
+        .query("SELECT kind, outcome FROM factory_order_attempt WHERE order_id = ? ORDER BY id")
         .all("second-start-order"),
-    ).toHaveLength(2);
+    ).toEqual([
+      { kind: "started", outcome: "running" },
+      { kind: "finished", outcome: "failed" },
+    ]);
     db.close();
   });
 
@@ -1081,12 +1094,11 @@ describe("builder station", () => {
         .query("SELECT kind, worker, reason FROM factory_order_event WHERE order_id = ?")
         .all("failed-builder-order"),
     ).toContainEqual({ kind: "failed", worker: null, reason: "harness unavailable" });
-    expect(
-      db.query("SELECT status, run_id FROM factory_order WHERE id = ?").get("failed-builder-order"),
-    ).toEqual({
-      status: "queued",
-      run_id: null,
+    expect(db.query("SELECT status FROM factory_order WHERE id = ?").get("failed-builder-order")).toEqual({
+      status: "working",
     });
+    expect(openAttempt(db, "failed-builder-order")).toBeNull();
+    expect(orderState(db, "failed-builder-order")).toEqual({ station: "build", next: "run" });
     db.close();
   });
 
@@ -1228,18 +1240,13 @@ describe("builder station", () => {
         )
         .get("harness-order")?.reason,
     ).toMatch(/ did not finish: fake process crashed/);
-    claimOrder(
-      db,
-      "harness-order",
-      { runId: "retake-run", station: "build", operatorWorker: operator.name },
-      operator.name,
-      undefined,
-      repo.dir,
-    );
-    moveOrder(db, "harness-order", "build", operator.name);
-    const working = () =>
-      db.query("SELECT status, run_id FROM factory_order WHERE id = ?").get("harness-order");
-    expect(working()).toEqual({ status: "working", run_id: null });
+    const working = () => ({
+      status: db
+        .query<{ status: string }, [string]>("SELECT status FROM factory_order WHERE id = ?")
+        .get("harness-order")?.status,
+      attempt: openAttempt(db, "harness-order"),
+    });
+    expect(working()).toEqual({ status: "working", attempt: null });
 
     await expect(
       runOrderBuildLive(db, "harness-order", operator.name, { dir: repo.dir, env, harness: "codex" }),
@@ -1247,7 +1254,7 @@ describe("builder station", () => {
       "order harness-order builder runs under the claude harness; delegate it with --harness claude",
     );
     expect(failures()).toEqual({ n: 1 });
-    expect(working()).toEqual({ status: "working", run_id: null });
+    expect(working()).toEqual({ status: "working", attempt: null });
     db.close();
   });
 });
@@ -1382,9 +1389,11 @@ describe("a commit git refuses", () => {
     expect(order.db.query("SELECT subject FROM factory_order_commit").all()).toEqual([
       { subject: "feat: build it" },
     ]);
-    expect(order.events("claimed")).toEqual([
-      { worker: order.operator.name, reason: null },
-      { worker: outcome.builder, reason: null },
+    expect(
+      order.db.query("SELECT worker, kind, outcome FROM factory_order_attempt ORDER BY id").all(),
+    ).toEqual([
+      { worker: outcome.builder, kind: "started", outcome: "running" },
+      { worker: outcome.builder, kind: "finished", outcome: "succeeded" },
     ]);
     expect(order.events("failed")).toEqual([]);
     expect(order.db.query("SELECT worker FROM factory_order_slice_completion").all()).toEqual([
@@ -1499,88 +1508,6 @@ describe("a commit git refuses", () => {
     expect(builder.calls.map((call) => call.kind)).toEqual(["start", "resume"]);
     expect(order.events("failed")).toHaveLength(1);
     order.db.close();
-  });
-
-  test("commits nothing and records no failure once another run holds the order during the correction's check", async () => {
-    const scratch = home("dim-builder-replaced-db-");
-    const file = join(scratch, "dim.db");
-    const db = new Database(file);
-    db.run(SCHEMA_SQL);
-    const replace = join(scratch, "replace.ts");
-    const order = refusingOrder("replaced-order", db, (checks) => {
-      writeFileSync(
-        replace,
-        [
-          'import { Database } from "bun:sqlite";',
-          'import { appendFileSync, readFileSync } from "node:fs";',
-          `appendFileSync(${JSON.stringify(checks)}, "ran\\n");`,
-          `if (readFileSync(${JSON.stringify(checks)}, "utf8").trim().split("\\n").length === 2) {`,
-          `  new Database(${JSON.stringify(file)}).run("UPDATE factory_order SET run_id = 'build-replacement' WHERE id = 'replaced-order'");`,
-          "}",
-          "",
-        ].join("\n"),
-      );
-      return `${process.execPath} ${replace}`;
-    });
-    const builder = scriptedBuilder([
-      (request) => {
-        build(request);
-        return tooLong;
-      },
-      () => corrected,
-      () => corrected,
-    ]);
-
-    await expect(
-      runOrderBuildLive(db, "replaced-order", order.operator.name, {
-        ...order.options,
-        adapter: builder.adapter,
-      }),
-    ).rejects.toThrow("replaced-order");
-
-    expect(builder.calls.map((call) => call.kind)).toEqual(["start", "resume"]);
-    expect(order.checksRun()).toBe(2);
-    expect(git(order.worktree, ["rev-parse", "HEAD"])).toBe(order.repo.sha);
-    expect(db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 0 });
-    expect(order.events("failed")).toEqual([]);
-    db.close();
-  });
-
-  test("does not resume the builder once another run took the order while git refused the commit", async () => {
-    const scratch = home("dim-builder-taken-db-");
-    const file = join(scratch, "dim.db");
-    const db = new Database(file);
-    db.run(SCHEMA_SQL);
-    const order = refusingOrder("taken-order", db);
-    const take = join(scratch, "take.ts");
-    writeFileSync(
-      take,
-      `import { Database } from "bun:sqlite";\nnew Database(${JSON.stringify(file)}).run("UPDATE factory_order SET run_id = 'build-replacement' WHERE id = 'taken-order'");\n`,
-    );
-    const hooks = git(order.repo.dir, ["rev-parse", "--path-format=absolute", "--git-path", "hooks"]);
-    writeFileSync(
-      join(hooks, "commit-msg"),
-      `#!/bin/sh\n${process.execPath} ${take}\necho "refused after the order was taken" >&2\nexit 1\n`,
-      { mode: 0o755 },
-    );
-    const builder = scriptedBuilder([
-      (request) => {
-        build(request);
-        return corrected;
-      },
-      () => corrected,
-    ]);
-
-    await expect(
-      runOrderBuildLive(db, "taken-order", order.operator.name, {
-        ...order.options,
-        adapter: builder.adapter,
-      }),
-    ).rejects.toThrow("refused after the order was taken");
-
-    expect(builder.calls.map((call) => call.kind)).toEqual(["start"]);
-    expect(order.events("failed")).toEqual([]);
-    db.close();
   });
 });
 
@@ -1880,7 +1807,7 @@ describe("a conflict at ship", () => {
         ]).adapter,
       });
     }
-    approveOrderBuild(db, "conflict-order", operator.name, "built as planned");
+    approveOrder(db, "conflict-order", operator.name, "built as planned");
     approveReviewAt(db, "conflict-order", git(worktree, ["rev-parse", "HEAD"]), operator.name);
     writeFileSync(join(repo.dir, "built.txt"), "trunk\n");
     writeFileSync(join(repo.dir, "other.txt"), "trunk\n");
@@ -1911,9 +1838,8 @@ describe("a conflict at ship", () => {
     expect(git(worktree, ["show", "HEAD:other.txt"])).toBe("built\ntrunk");
     expect(git(worktree, ["rev-parse", "HEAD~2"])).toBe(trunkTip);
     expect(db.query("SELECT patch_equal FROM factory_order_rewrite").all()).toEqual([{ patch_equal: 0 }]);
-    expect(db.query("SELECT station FROM factory_order WHERE id = 'conflict-order'").get()).toEqual({
-      station: "review",
-    });
+    expect(orderState(db, "conflict-order")).toEqual({ station: "review", next: "run" });
+    expect(openAttempt(db, "conflict-order")).toBeNull();
     db.close();
   });
 });

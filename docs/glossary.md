@@ -6,7 +6,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 
 | Term | Definition |
 |---|---|
-| Owner | The person the factory runs for. They release holds, approve artifacts and read the wall |
+| Owner | The person the factory runs for. They approve artifacts, rule on contested refusals and read the wall |
 | Operator | The hand that runs the line: reads the queue, delegates each station and checks what comes back. It decides which work starts and when to stop, never how the work is done |
 | Worker | A hand the factory issues before any work starts, named like `nut-7` and carrying one role. Every act on an order names its worker when it is written |
 | Role | What a worker is called in as: `operator`, `planner`, `builder` or `reviewer` ([`src/worker-roles.ts`](../src/worker-roles.ts)) |
@@ -17,12 +17,11 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Harness | The agent product that runs a worker session, such as Claude Code or Codex |
 | Line | The kind of work an order is: `feat` (shown as **feature**) or `fix`. `dim-line-feat` and `dim-line-fix` are its entry points |
 | Station | One repeatable step of work on an order: `plan`, `build` or `review` ([`src/station.ts`](../src/station.ts)). Each has a skill named `dim-station-<station>` |
-| Order | One piece of work: an id, a line, a title, a description, a priority and an optional hold. It exists before anyone takes it and is worked in one worktree |
-| Queue | The orders nobody holds, most urgent first, then oldest |
-| Hold | Why the owner must release an order before anyone takes it |
+| Order | One piece of work: an id, a line, a title, a description and a priority. It exists before it is started and is worked in one worktree |
+| Queue | The orders not yet started, most urgent first, then oldest |
 | Status | The state an order is in: `queued`, `working`, `completed` or `dropped` |
 | Stage | How far along an order is, as the wall shows it: `todo`, `active` or `done` |
-| Next act | What an order waits on: its station and one of `run`, `approve`, `rule` or `ship`, read from the record by [`src/order-state.ts`](../src/order-state.ts) and never stored |
+| Next act | What an order waits on, read from the record by [`src/order-state.ts`](../src/order-state.ts) and never stored: at a station, `run`, `approve` or `rule`; once every station's artifact is approved, `ship`. Every act checks it on entry |
 | Slice | One increment inside an order that verifies and commits on its own |
 | Ship | Delivering an order's commits the way the repo declares in `dim.ship` — `dim order ship` |
 | Done | An order whose check passed on its final commit, whose findings are all answered, whose docs changed with the behavior, whose commits are on the trunk, and whose worktree is gone |
@@ -34,8 +33,8 @@ One word per thing. A page that uses a word links here rather than defining it a
 
 | Term | Definition |
 |---|---|
-| Claim | A worker taking an order, which also makes its worktree |
-| Attempt | One station hand's run on an order, from start to finish, with its outcome |
+| Start | The first `dim order plan` on a queued order, which makes its worktree and moves it out of the queue |
+| Attempt | One station hand's run on an order, from start to finish, with its outcome. A build attempt that has not finished and whose worker is not over refuses a second one ([`src/order-attempt.ts`](../src/order-attempt.ts)) |
 | Drop | The owner's decision not to build an order, with the reason |
 | Ledger | An order's events in `factory_order_event`, appended and never changed ([`src/order-ledger.ts`](../src/order-ledger.ts)) |
 | Evidence | What an order produced: commits, changed files, checks, findings and answers, documents |

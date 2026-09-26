@@ -13,32 +13,43 @@ describe("factory analytics", () => {
       ["2026-09-18T09:00:00.000Z", "2026-09-18T09:10:00.000Z"],
     );
     db.run(
-      `INSERT INTO factory_order_event (order_id, ts, kind, evidence)
-       VALUES ('order-analytics', ?, 'queued', ?),
-              ('order-analytics', ?, 'queued', '{}'),
-              ('order-analytics', ?, 'hold_set', '{"hold":"approval"}'),
-              ('order-analytics', ?, 'artifact_returned', '{}'),
-              ('order-analytics', ?, 'artifact_approved', '{}'),
-              ('order-analytics', ?, 'hold_released', '{"hold":null}'),
-              ('order-analytics', ?, 'completed', '{}')`,
+      `INSERT INTO factory_order_artifact (id, order_id, kind, revision, body)
+       VALUES (1, 'order-analytics', 'plan', 1, '## Outcome'),
+              (2, 'order-analytics', 'plan', 2, '## Outcome')`,
+    );
+    db.run(
+      `INSERT INTO factory_order_event (order_id, ts, kind, artifact_id, evidence)
+       VALUES ('order-analytics', ?, 'queued', NULL, ?),
+              ('order-analytics', ?, 'queued', NULL, '{}'),
+              ('order-analytics', ?, 'started', NULL, '{}'),
+              ('order-analytics', ?, 'artifact_written', 1, '{}'),
+              ('order-analytics', ?, 'artifact_returned', 1, '{}'),
+              ('order-analytics', ?, 'artifact_written', 2, '{}'),
+              ('order-analytics', ?, 'artifact_approved', 2, '{}'),
+              ('order-analytics', ?, 'completed', NULL, '{}')`,
       [
         "2026-09-18T09:00:00.000Z",
         '{"source":"issue-123"}',
         "2026-09-18T09:01:00.000Z",
+        "2026-09-18T09:01:00.000Z",
         "2026-09-18T09:02:00.000Z",
         "2026-09-18T09:03:00.000Z",
-        "2026-09-18T09:04:00.000Z",
+        "2026-09-18T09:03:00.000Z",
         "2026-09-18T09:05:00.000Z",
         "2026-09-18T09:10:00.000Z",
       ],
     );
     db.run(
+      `INSERT INTO factory_worker (name, role, token_digest, started_at)
+       VALUES ('nut-1', 'builder', 'digest', '2026-09-18T09:00:00.000Z')`,
+    );
+    db.run(
       `INSERT INTO factory_order_attempt
-         (order_id, run_id, station, harness, model, tier, started_at, ended_at, recorded_at, kind, outcome)
-       VALUES ('order-analytics', 'run-1', 'build', 'codex', 'gpt-test', 'standard', ?, ?, ?, 'started', 'running'),
-              ('order-analytics', 'run-1', 'build', 'codex', 'gpt-test', 'standard', ?, ?, ?, 'finished', 'failed'),
-              ('order-analytics', 'run-2', 'build', 'codex', 'gpt-test', 'standard', ?, ?, ?, 'started', 'running'),
-              ('order-analytics', 'run-2', 'build', 'codex', 'gpt-test', 'standard', ?, ?, ?, 'finished', 'succeeded')`,
+         (order_id, run_id, worker, station, harness, model, tier, started_at, ended_at, recorded_at, kind, outcome)
+       VALUES ('order-analytics', 'run-1', 'nut-1', 'build', 'codex', 'gpt-test', 'standard', ?, ?, ?, 'started', 'running'),
+              ('order-analytics', 'run-1', 'nut-1', 'build', 'codex', 'gpt-test', 'standard', ?, ?, ?, 'finished', 'failed'),
+              ('order-analytics', 'run-2', 'nut-1', 'build', 'codex', 'gpt-test', 'standard', ?, ?, ?, 'started', 'running'),
+              ('order-analytics', 'run-2', 'nut-1', 'build', 'codex', 'gpt-test', 'standard', ?, ?, ?, 'finished', 'succeeded')`,
       [
         "2026-09-18T09:01:00.000Z",
         "2026-09-18T09:02:00.000Z",
@@ -79,7 +90,9 @@ describe("factory analytics", () => {
     expect(metrics.get("retries")).toBe(1);
     expect(metrics.get("attempt_outcome:failed")).toBe(1);
     expect(metrics.get("attempt_outcome:succeeded")).toBe(1);
-    expect(metrics.get("hold_seconds")).toBe(180);
+    expect(metrics.get("approval_wait_seconds")).toBe(180);
+    expect(metrics.get("order_event:started")).toBe(1);
+    expect(metrics.get("order_event:completed")).toBe(1);
     expect(metrics.get("provenance_events")).toBe(1);
     expect(metrics.get("integration:succeeded")).toBe(1);
     expect(metrics.get("delivery:succeeded")).toBe(1);

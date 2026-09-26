@@ -2,12 +2,20 @@ import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { SCHEMA_SQL } from "./db-schema";
-import { integratedRepo } from "./fixtures.test-support";
-import { recordOrderBuild, returnedOrderArtifact } from "./order-artifacts";
+import { attemptIn, integratedRepo } from "./fixtures.test-support";
+import {
+  completeOrderSlice,
+  nextOrderSlice,
+  recordOrderBuild,
+  returnedOrderArtifact,
+} from "./order-artifacts";
+import { openAttempt } from "./order-attempt";
 import { runOrderCommand, runOrderCommandLive } from "./order-command";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
 import { appendOrderEvent } from "./order-ledger";
-import { claimOrder, queueOrder } from "./order-lifecycle";
+import { queueOrder, startOrder } from "./order-lifecycle";
+import { orderState } from "./order-state";
+import { approvePlan } from "./station-approvals.test-support";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
 
 const repos: string[] = [];
@@ -24,78 +32,78 @@ function env(worker: { name: string; token: string; sessionId: string }): Record
 }
 
 describe("build approval integration", () => {
-  test("returns a Build artifact after its failed attempt requeues the order", () => {
+  test("returns a Build artifact after a failed attempt, which leaves the order working", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
     const repo = integratedRepo();
     repos.push(repo.dir);
-    const operator = mintWorker(db, { role: "operator", sessionId: "queued-return-operator" });
+    const operator = mintWorker(db, { role: "operator", sessionId: "failed-return-operator" });
     const builder = mintWorker(db, {
       role: "builder",
       parentWorker: operator.name,
-      sessionId: "queued-return-operator/builder",
+      sessionId: "failed-return-operator/builder",
     });
     queueOrder(
       db,
-      { id: "queued-return-order", project: "cniska/dim-factory", title: "Return the Build" },
+      { id: "failed-return-order", project: "cniska/dim-factory", title: "Return the Build" },
       operator.name,
     );
-    claimOrder(
-      db,
-      "queued-return-order",
-      { runId: "queued-return-run", station: "build", operatorWorker: operator.name },
-      builder.name,
-      undefined,
-      repo.dir,
-    );
-    recordOrderCommit(db, "queued-return-order", repo.sha, builder.name, "feat: build it");
+    startOrder(db, "failed-return-order", operator.name, undefined, repo.dir);
+    approvePlan(db, "failed-return-order", operator.name);
+    attemptIn(db, "failed-return-order", builder.name, operator.name, "built-run");
+    recordOrderCommit(db, "failed-return-order", repo.sha, builder.name, "feat: build it");
     recordOrderCheck(
       db,
-      "queued-return-order",
+      "failed-return-order",
       { command: "bun run verify", exitCode: 0, result: "green" },
       builder.name,
     );
-    recordOrderBuild(db, "queued-return-order", "## Outcome\n\nBuild it.", repo.sha, builder.name);
-    appendOrderEvent(db, "queued-return-order", {
+    const build = recordOrderBuild(
+      db,
+      "failed-return-order",
+      "## Outcome\n\nBuild it.",
+      repo.sha,
+      builder.name,
+    );
+    completeOrderSlice(
+      db,
+      "failed-return-order",
+      nextOrderSlice(db, "failed-return-order")?.id as number,
+      builder.name,
+    );
+    attemptIn(db, "failed-return-order", builder.name, operator.name, "failing-run");
+    appendOrderEvent(db, "failed-return-order", {
       kind: "failed",
       worker: builder.name,
       reason: "runner could not complete the attempt",
     });
 
-    expect(
-      db.query("SELECT status, hold FROM factory_order WHERE id = ?").get("queued-return-order"),
-    ).toEqual({
-      status: "queued",
-      hold: "approval",
+    expect(db.query("SELECT status FROM factory_order WHERE id = ?").get("failed-return-order")).toEqual({
+      status: "working",
     });
-    expect(() =>
-      appendOrderEvent(db, "queued-return-order", {
-        kind: "artifact_returned",
-        worker: operator.name,
-        station: "build",
-        artifactId: 1,
-        reason: "direct event writes cannot return the artifact",
-      }),
-    ).toThrow("order queued-return-order must be working before it can artifact_returned");
+    expect(openAttempt(db, "failed-return-order")).toBeNull();
+    expect(
+      db
+        .query(
+          "SELECT outcome, reason FROM factory_order_attempt WHERE run_id = 'failing-run' AND kind = 'finished'",
+        )
+        .get(),
+    ).toEqual({ outcome: "failed", reason: "runner could not complete the attempt" });
+    expect(orderState(db, "failed-return-order")).toEqual({ station: "build", next: "approve" });
     expect(
       runOrderCommand(
         db,
-        ["return", "queued-return-order", "--reason", "Explain the verified result for review."],
+        ["return", "failed-return-order", "--reason", "Explain the verified result for review."],
         null,
         repo.dir,
         env(operator),
       ),
     ).toContain("returned");
-    expect(
-      db.query("SELECT status, hold FROM factory_order WHERE id = ?").get("queued-return-order"),
-    ).toEqual({
-      status: "working",
-      hold: null,
-    });
-    expect(returnedOrderArtifact(db, "queued-return-order", "build")).toEqual({
+    expect(orderState(db, "failed-return-order")).toEqual({ station: "build", next: "run" });
+    expect(returnedOrderArtifact(db, "failed-return-order", "build")).toEqual({
       station: "build",
       reason: "Explain the verified result for review.",
-      artifactId: 1,
+      artifactId: build,
       body: "## Outcome\n\nBuild it.",
       headSha: repo.sha,
     });
@@ -118,14 +126,8 @@ describe("build approval integration", () => {
       { id: "build-approval-order", project: "cniska/dim-factory", title: "Approve the build" },
       operator.name,
     );
-    claimOrder(
-      db,
-      "build-approval-order",
-      { runId: "build-run", station: "build", operatorWorker: operator.name },
-      builder.name,
-      undefined,
-      repo.dir,
-    );
+    startOrder(db, "build-approval-order", operator.name, undefined, repo.dir);
+    approvePlan(db, "build-approval-order", operator.name);
     expect(
       db.query("SELECT role, parent_worker FROM factory_worker WHERE name = ?").get(builder.name),
     ).toEqual({
@@ -141,7 +143,9 @@ describe("build approval integration", () => {
         repo.dir,
         env(operator),
       ),
-    ).rejects.toThrow(expect.objectContaining({ code: "build_not_approved" }));
+    ).rejects.toThrow(
+      expect.objectContaining({ code: "not_next", message: expect.stringContaining("run at build") }),
+    );
 
     await expect(
       runOrderCommandLive(
@@ -153,6 +157,7 @@ describe("build approval integration", () => {
       ),
     ).rejects.toThrow(expect.objectContaining({ code: "worker_not_operator" }));
 
+    attemptIn(db, "build-approval-order", builder.name, operator.name, "build-run");
     recordOrderCommit(db, "build-approval-order", repo.sha, builder.name, "feat: build it");
     recordOrderCheck(
       db,
@@ -160,11 +165,17 @@ describe("build approval integration", () => {
       { command: "bun run verify", exitCode: 0, result: "green" },
       builder.name,
     );
-    recordOrderBuild(
+    const build = recordOrderBuild(
       db,
       "build-approval-order",
       "The build is complete and verified.",
       repo.sha,
+      builder.name,
+    );
+    completeOrderSlice(
+      db,
+      "build-approval-order",
+      nextOrderSlice(db, "build-approval-order")?.id as number,
       builder.name,
     );
     expect(
@@ -179,7 +190,7 @@ describe("build approval integration", () => {
     expect(returnedOrderArtifact(db, "build-approval-order", "build")).toEqual({
       station: "build",
       reason: "Explain the verified result, not the command log.",
-      artifactId: 1,
+      artifactId: build,
       body: "The build is complete and verified.",
       headSha: repo.sha,
     });
@@ -200,7 +211,9 @@ describe("build approval integration", () => {
         repo.dir,
         env(operator),
       ),
-    ).toThrow(expect.objectContaining({ code: "artifact_revision_required" }));
+    ).toThrow(
+      expect.objectContaining({ code: "not_next", message: expect.stringContaining("run at build") }),
+    );
     recordOrderCommit(
       db,
       "build-approval-order",
@@ -251,15 +264,7 @@ describe("build approval integration", () => {
         env(operator),
       ),
     ).toContain("build approved");
-    expect(
-      runOrderCommand(
-        db,
-        ["move", "build-approval-order", "--station", "review"],
-        null,
-        repo.dir,
-        env(operator),
-      ),
-    ).toContain("moved");
+    expect(orderState(db, "build-approval-order")).toEqual({ station: "review", next: "run" });
     expect(
       db
         .query(
@@ -271,7 +276,21 @@ describe("build approval integration", () => {
         .all("build-approval-order"),
     ).toEqual([
       { kind: "queued", worker: operator.name, commit_sha: null, artifact_head: null, reason: null },
-      { kind: "claimed", worker: builder.name, commit_sha: null, artifact_head: null, reason: null },
+      { kind: "started", worker: operator.name, commit_sha: null, artifact_head: null, reason: null },
+      {
+        kind: "artifact_written",
+        worker: operator.name,
+        commit_sha: null,
+        artifact_head: null,
+        reason: null,
+      },
+      {
+        kind: "artifact_approved",
+        worker: operator.name,
+        commit_sha: null,
+        artifact_head: null,
+        reason: null,
+      },
       {
         kind: "commit_created",
         worker: builder.name,
@@ -287,7 +306,6 @@ describe("build approval integration", () => {
         artifact_head: repo.sha,
         reason: null,
       },
-      { kind: "hold_set", worker: builder.name, commit_sha: null, artifact_head: null, reason: null },
       {
         kind: "artifact_returned",
         worker: operator.name,
@@ -295,7 +313,6 @@ describe("build approval integration", () => {
         artifact_head: repo.sha,
         reason: "Explain the verified result, not the command log.",
       },
-      { kind: "hold_released", worker: operator.name, commit_sha: null, artifact_head: null, reason: null },
       {
         kind: "commit_created",
         worker: builder.name,
@@ -311,7 +328,6 @@ describe("build approval integration", () => {
         artifact_head: "new-head",
         reason: null,
       },
-      { kind: "hold_set", worker: builder.name, commit_sha: null, artifact_head: null, reason: null },
       {
         kind: "artifact_approved",
         worker: operator.name,
@@ -319,8 +335,6 @@ describe("build approval integration", () => {
         artifact_head: "new-head",
         reason: "answers the request",
       },
-      { kind: "hold_released", worker: operator.name, commit_sha: null, artifact_head: null, reason: null },
-      { kind: "moved", worker: operator.name, commit_sha: null, artifact_head: null, reason: null },
     ]);
     db.close();
   });

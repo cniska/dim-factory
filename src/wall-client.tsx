@@ -8,6 +8,7 @@ import { Digits } from "./components/ui/digits";
 import { Robot } from "./components/ui/robot";
 import { cn } from "./lib/utils";
 import type { OrderLine } from "./order-line";
+import type { NextAct } from "./order-state";
 import { age } from "./query-age";
 import { ordersByStage, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
 import { itemKindLabel } from "./wall-item";
@@ -35,12 +36,25 @@ const statusLabels: Record<BoardStatus, string> = {
   completed: "Completed",
 };
 
-function isStopped(order: { hold?: string }): boolean {
-  return order.hold !== undefined;
+const OWNER_ACTS: Record<NextAct, string | null> = {
+  run: null,
+  approve: "approval",
+  rule: "a ruling",
+  ship: null,
+};
+
+function isStopped(order: Pick<WallOrder, "next">): boolean {
+  return order.next !== null && OWNER_ACTS[order.next] !== null;
 }
 
-function isWorking(order: Pick<WallOrder, "status" | "hold">): boolean {
+function isWorking(order: Pick<WallOrder, "status" | "next">): boolean {
   return order.status === "working" && !isStopped(order);
+}
+
+function stateLabel(order: WallOrder): string {
+  const act = order.next === null ? null : OWNER_ACTS[order.next];
+  if (act === null || order.station === null) return statusLabels[order.status];
+  return `${STATION_LABELS[order.station]} awaiting ${act}`;
 }
 
 const statusIcon: Record<BoardStatus, LucideIcon> = {
@@ -126,9 +140,7 @@ function OrderCard({
             aria-hidden="true"
             className={isWorking(order) ? "breathing" : undefined}
           />
-          <span className={isWorking(order) ? "breathing" : undefined}>
-            {isStopped(order) ? "Awaiting approval" : statusLabels[order.status]}
-          </span>
+          <span className={isWorking(order) ? "breathing" : undefined}>{stateLabel(order)}</span>
         </span>
         <span className="tabular-nums">
           <Digits value={age(order.lastEventAt, now)} />
@@ -345,9 +357,7 @@ function ItemDialog({ card, movedAt, onClose }: { card: WallOrder; movedAt: stri
                   aria-hidden="true"
                   className={isWorking(order) ? "breathing" : undefined}
                 />
-                <span className={isWorking(order) ? "breathing" : undefined}>
-                  {isStopped(order) ? "Awaiting approval" : statusLabels[order.status]}
-                </span>
+                <span className={isWorking(order) ? "breathing" : undefined}>{stateLabel(order)}</span>
               </dd>
             </div>
           </dl>

@@ -1,11 +1,8 @@
 export const ORDER_EVENT_KINDS = [
   "queued",
-  "claimed",
-  "moved",
+  "started",
   "provenance_recorded",
   "priority_changed",
-  "hold_set",
-  "hold_released",
   "artifact_written",
   "artifact_approved",
   "artifact_returned",
