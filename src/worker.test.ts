@@ -1,4 +1,4 @@
-import { Database } from "bun:sqlite";
+import { Database, SQLiteError } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { SCHEMA_SQL } from "./db-schema";
 import type { Env } from "./paths";
@@ -57,6 +57,15 @@ describe("issuing a factory worker", () => {
       expect.objectContaining({ code: "worker_session_taken" }),
     );
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 1 });
+    db.close();
+  });
+
+  test("reports other unique constraint failures as database errors", () => {
+    const db = floor();
+    db.run("CREATE UNIQUE INDEX one_builder ON factory_worker(role)");
+    mintWorker(db, { role: "builder", sessionId: "session-1" });
+
+    expect(() => mintWorker(db, { role: "builder", sessionId: "session-2" })).toThrow(SQLiteError);
     db.close();
   });
 

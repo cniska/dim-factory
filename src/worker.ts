@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite";
+import { type Database, SQLiteError } from "bun:sqlite";
 import { createHash, randomBytes } from "node:crypto";
 import type { Env } from "./paths";
 import { pidIsAlive } from "./pid";
@@ -79,7 +79,13 @@ export function mintWorker(
         ],
       );
     } catch (error) {
-      if (String(error).includes("UNIQUE constraint failed: factory_worker.session_id")) {
+      if (
+        error instanceof SQLiteError &&
+        error.code === "SQLITE_CONSTRAINT_UNIQUE" &&
+        db
+          .query<{ name: string }, [string]>("SELECT name FROM factory_worker WHERE session_id = ?")
+          .get(sessionId)
+      ) {
         throw new WorkerSessionTaken(`session ${sessionId} already has a factory identity`);
       }
       throw error;
