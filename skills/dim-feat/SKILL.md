@@ -8,7 +8,8 @@ argument-hint: "<what to build>"
 
 The front door for new work. It runs the whole line: scope, then the slice loop in `dim-build`. You type this once; it invokes what it needs.
 
-When `dim-factory` hands this line a queue item, create the isolated checkout first with `dim wt <branch>`, then continue from inside that worktree. The operator routes the item; this line owns the checkout and work.
+When `dim-factory` assigns an order, work in the order worktree that `dim order plan` created. The factory runner owns its checkout, check, commit, and recorded evidence.
+The approved plan supplies the order's scope and slices; report a plan defect to the operator for return to planning. The factory Review station reads the completed order.
 
 Use `dim-git` for the worktree ownership, commit evidence and integration boundaries; this line decides the feature's scope and slices, not a second Git policy.
 
@@ -27,13 +28,13 @@ If the queries came back empty, say that. An empty record is a fact about the wo
 
 ## Cut it into slices
 
-A slice changes behavior, is checked on its own, and is committed on its own. Name them before editing, and name what checks each — the repo's own task, so that what runs locally is what CI runs.
+A slice changes behavior and is checked on its own. Name them before editing, and name what checks each — the repo's own task, so that what runs locally is what CI runs. Outside a factory order, commit each passing slice; for an order, the runner commits it after the turn.
 
 A slice that only makes sense once a later slice lands is not a slice. A branch of unverified slices is one slice with a long diff.
 
 ## Build them
 
-Use `dim-build` one slice at a time: the repo's own task at the end of each, the simplification pass over that slice, the task again, one checking agent on the slice's diff, an answer to every finding it raises, then the commit, then the next.
+Use `dim-build` one slice at a time: the repo's own task at the end of each, the simplification pass over that slice, the task again, one checking agent on the slice's diff, an answer to every finding it raises, then the commit boundary, then the next.
 
 Where a slice turns out to be blocked, finish every other slice in full and say plainly what was left and why. Scaling the work down is the owner's call.
 

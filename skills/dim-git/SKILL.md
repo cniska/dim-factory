@@ -11,15 +11,15 @@ The shared Git boundary for the factory. Use this skill whenever Git work affect
 ## Establish ownership
 
 - Read the current status, worktree, branch and recent commits before changing anything.
-- Work in the isolated worktree assigned to the item. The parent worktree is not a worker workspace.
+- Work in the worktree assigned to a factory order. Outside an order, follow the repository's checkout rules before editing.
 - One order owns one item end to end. Do not edit another order's worktree or combine unrelated changes into its commit.
 - Preserve uncommitted changes you did not create. Stage by naming paths, never `git add -A`, `git add .` or `git add --all`. Stop when the target or ownership is unclear.
 
 ## Commit a slice
 
-A commit is evidence that one slice passed its boundary, not a save point for unfinished work.
+A commit is evidence that one slice passed its boundary, not a save point for unfinished work. In a factory order, leave the slice uncommitted and return its subject and artifact; the runner runs the final check, commits, and records the evidence. Outside an order, commit a passing slice yourself.
 
-Before committing:
+Before handing a slice to the runner or committing it yourself:
 
 1. Run the repository's declared check and format the files the repository says to format.
 2. Read the diff and simplify it without changing the intended behavior.
@@ -29,11 +29,11 @@ Before committing:
 
 An unwanted commit is dropped, never reverted: reset or rebase it out while it is still local. Once it is pushed, dropping it rewrites the shared branch, which is the owner's call — stop and ask. A revert leaves both commits in the history and the message git writes for it answers to no one.
 
-Record the commit SHA, changed files, check command and result, reviewer findings and resolutions, and documentation updated. A hold or infrastructure failure is part of the report; it is not green evidence.
+Outside a factory order, record the commit SHA, changed files, check command and result, reviewer findings and resolutions, and documentation updated. The factory runner records the order's commit and check evidence. A hold or infrastructure failure is part of the report; it is not green evidence.
 
 ## Review work
 
-Review reads a diff, history and evidence without changing the worktree. It does not repair a finding in place or create a commit for someone else's item. The owner answers findings in the item's worktree, then reruns the relevant check and review.
+Review reads a diff, history and evidence without changing the worktree. It does not repair a finding in place or create a commit for someone else's item. The builder answers findings in the item's worktree, then reruns the relevant check and review.
 
 ## Land work
 
@@ -43,13 +43,7 @@ Do not force-push, rewrite a shared branch, or push outside the explicit owner a
 
 ## Report the boundary
 
-Every stopped or completed operation says:
-
-- the item, worktree and branch
-- the commit or commits involved
-- the check and review evidence
-- the documentation status
-- the hold, blocker or final outcome
+Report the change or order, its worktree and branch, the commit or commits, check and review evidence, documentation status, and final outcome. For a factory order, include its id and any hold or blocker.
 
 ## Red flags
 

@@ -1,6 +1,6 @@
 ---
 name: dim-build
-description: Run the slice loop — the repo's own check, a simplification pass, a checking agent on the diff, an answer to every finding, then the commit, one slice at a time. Invoked by dim-feat and dim-fix after their own first phase; use directly only for a change that is neither.
+description: Run the slice loop — the repo's own check, a simplification pass, a checking agent on the diff, an answer to every finding, then the commit boundary, one slice at a time. Invoked by dim-feat and dim-fix after their own first phase; use directly only for a change that is neither.
 argument-hint: "<what to build>"
 ---
 
@@ -22,13 +22,13 @@ What makes this a station is that the record aims it. This machine knows which f
 
 ## Slices
 
-A slice is a vertical cut: it changes behavior, it is checked on its own, and it is committed on its own. Work through them one at a time, running the repo's task at the end of each, and commit what passes before starting the next. A branch of unverified slices is one slice with a long diff.
+A slice is a vertical cut: it changes behavior and is checked on its own. Work through them one at a time, running the repo's task at the end of each. Outside a factory order, commit what passes before starting the next. In an order, return the completed slice uncommitted; the runner checks and commits it before starting the next. A branch of unverified slices is one slice with a long diff.
 
 A red check is feedback to the builder. Diagnose and fix its cause, rerun the check, and continue until the final commit passes; report a blocker only when the cause cannot be resolved in the current station.
 
-Commit in the same order every time: the task passes, the slice is simplified, the task passes again, the reviewer reads what will land, every finding it raises is answered and the task passes over the answers, then the commit, then the next slice.
+Finish a slice in the same order every time: the task passes, the slice is simplified, the task passes again, the reviewer reads what will land, every finding it raises is answered and the task passes over the answers, then the commit boundary, then the next slice. In a factory order, return the subject, artifact, and answers to handed Review findings in the turn's JSON; the runner performs the final check and commit.
 
-Use `dim-git` at the commit boundary. It owns the repository status, worktree ownership, evidence recorded with the commit and the rules for later integration; this station owns the slice loop.
+Use `dim-git` at the commit boundary. It owns repository status and worktree ownership; the factory runner records the order's check and commit evidence. This station owns the slice loop.
 
 Use `dim-tdd` for behavior-changing slices and `dim-simplify` for the simplification pass. Their methods remain shared; this station supplies the slice boundary, repository evidence and finding loop.
 
@@ -40,9 +40,9 @@ Where a slice turns out to be blocked, finish every other slice in full and say 
 
 ## Produce the Build artifact
 
-Use `dim-artifact` for the shared artifact-writing contract. The Build artifact is the builder's explanation of the completed order, grounded in the recorded diff and checks:
+For a factory order, use `dim-artifact` for the shared artifact-writing contract. The Build artifact is the builder's explanation of the completed order, grounded in the recorded diff and checks. Outside an order, report the verified change directly to the requester.
 
-After the final slice has a passing check, return one Build artifact for the owner. Structure it around the questions that are not answered by the diff alone:
+After the final order slice passes the check you ran, return one Build artifact for the owner. Structure it around the questions that are not answered by the diff alone:
 
 - **Outcome.** What is true for the owner now and why it satisfies the requested result.
 - **Implementation.** The meaningful behavior and boundaries that changed, grouped by logical change rather than by file or slice.
@@ -93,7 +93,7 @@ Returning nothing is the expected result and not a sign the check was wasted: of
 
 Two answers that read as evasions and are not: a finding that is true and does not matter here, refused and said so; and a finding that is true and belongs to a different slice, written into [`todo.md`](../../docs/todo.md) rather than folded in, which is what keeps the diff one thing.
 
-**Record each answer as you make it**, with `dim finding --slice <name> --dimension <name> --answer fixed|refused --summary "..."`, plus `--file` where the finding names one and `--why` on a refusal. Write it when the finding is answered rather than at the end: the judgement exists only in this session, nothing re-reads it into the database afterward, and a round recalled later is a round summarized. `dim q findings` reads them back by dimension, which is what can eventually say whether checking pays — it grades the reviewer and never the builder, so a slice that drew several findings is not a worse slice.
+**Record each answer as you make it.** A slice checking agent's findings are answered in the builder's pass and explained in the Build artifact; they do not go in the factory turn's `answers`. That field holds only the ids listed under Review findings in the factory brief, from a closed Review round; use `[]` when none were handed to this turn. The runner records those answers. Outside an order, record checking-agent answers with `dim finding --slice <name> --dimension <name> --answer fixed|refused --summary "..."`, plus `--file` where the finding names one and `--why` on a refusal. Write it when the finding is answered rather than at the end: the judgement exists only in this session, nothing re-reads it into the database afterward, and a round recalled later is a round summarized. `dim q findings` reads them back by dimension, which is what can eventually say whether checking pays — it grades the reviewer and never the builder, so a slice that drew several findings is not a worse slice.
 
 ## Exit check
 

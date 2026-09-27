@@ -8,7 +8,8 @@ argument-hint: "<what is broken>"
 
 The front door for a defect. It runs the whole line: triage, a test that fails on the bug, then the slice loop in `dim-build`. You type this once; it invokes what it needs.
 
-When `dim-factory` hands this line a queue item, create the isolated checkout first with `dim wt <branch>`, then continue from inside that worktree. The operator routes the item; this line owns the checkout and work.
+When `dim-factory` assigns an order, work in the order worktree that `dim order plan` created. The factory runner owns its checkout, check, commit, and recorded evidence.
+The approved plan supplies the order's scope and slices; report a plan defect to the operator for return to planning. The factory Review station reads the completed order.
 
 Use `dim-git` for the worktree ownership, commit evidence and integration boundaries; this line decides the defect's cause and fix slices, not a second Git policy.
 
@@ -38,7 +39,7 @@ The test names the behavior in plain terms, and pins wire values as literals rat
 
 ## Build the fix
 
-Use `dim-build` and follow it: the repo's own task at the end of each slice, the simplification pass over that slice, the task again, one checking agent on the slice's diff, an answer to every finding it raises, then the commit. The test that proved the defect is part of the slice and stays; the simplification pass is the one step that may not touch a test file. A fix is usually one slice; where it is more, it is still one slice at a time.
+Use `dim-build` and follow it: the repo's own task at the end of each slice, the simplification pass over that slice, the task again, one checking agent on the slice's diff, an answer to every finding it raises, then the commit boundary. The test that proved the defect is part of the slice and stays; the simplification pass is the one step that may not touch a test file. A fix is usually one slice; where it is more, it is still one slice at a time.
 
 Fix the cause. Where the cause is out of reach, stop and say what the real options are rather than patching the patch — a band-aid is how the next fix commit to this file gets written.
 
