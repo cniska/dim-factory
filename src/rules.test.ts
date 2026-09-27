@@ -40,6 +40,23 @@ describe("flatten", () => {
     expect(flatten("@nope.md", join(root, ".codex"))).toContain("not found for this tool");
   });
 
+  test("expands nested imports until it reaches their content", () => {
+    const root = home();
+    const dir = join(root, ".codex");
+    for (let index = 0; index < 6; index += 1) {
+      writeFileSync(join(dir, `${index}.md`), index === 5 ? "deep rule" : `@${index + 1}.md`);
+    }
+    expect(flatten("@0.md", dir)).toBe("deep rule");
+  });
+
+  test("reports a cycle instead of emitting an unresolved import", () => {
+    const root = home();
+    const dir = join(root, ".codex");
+    writeFileSync(join(dir, "first.md"), "@second.md");
+    writeFileSync(join(dir, "second.md"), "@first.md");
+    expect(() => flatten("@first.md", dir)).toThrow("rules import cycle");
+  });
+
   test("leaves ordinary text alone, including an address mid-line", () => {
     expect(flatten("mail me @ home", "/tmp")).toBe("mail me @ home");
     expect(flatten("# Heading\n\nbody", "/tmp")).toBe("# Heading\n\nbody");
