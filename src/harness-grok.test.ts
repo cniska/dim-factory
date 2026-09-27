@@ -96,7 +96,7 @@ describe("the Grok harness adapter", () => {
     ]);
   });
 
-  test("runs every worker in the workspace sandbox and denies edits to a reader", () => {
+  test("runs builders in the workspace sandbox and readers in the read-only sandbox", () => {
     const builder = commandLine(grokProcess, { ...request, capabilities: ["edit-files"] });
     const reader = commandLine(grokProcess, request);
 
@@ -110,7 +110,7 @@ describe("the Grok harness adapter", () => {
       "--sandbox",
       "workspace",
     ]);
-    expect(reader[reader.indexOf("--sandbox") + 1]).toBe("workspace");
+    expect(reader[reader.indexOf("--sandbox") + 1]).toBe("read-only");
     expect(denies(reader)).toEqual(["Edit", "Write"]);
     expect(builder.slice(-4)).toEqual(["--model", "grok-model", "-p", "build it"]);
   });
@@ -148,6 +148,12 @@ describe("the Grok harness adapter", () => {
   });
 
   test("does not pass an API key through to the worker", () => {
-    expect(grokProcess.environment?.({ XAI_API_KEY: "xai-key", PATH: "/bin" })).toEqual({ PATH: "/bin" });
+    expect(
+      grokProcess.environment?.({
+        XAI_API_KEY: "xai-key",
+        GROK_CODE_XAI_API_KEY: "legacy-key",
+        PATH: "/bin",
+      }),
+    ).toEqual({ PATH: "/bin" });
   });
 });

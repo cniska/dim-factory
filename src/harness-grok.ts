@@ -124,6 +124,7 @@ function editDenies(request: HarnessRequest): string[] {
 }
 
 function grokFlags(request: HarnessRequest): string[] {
+  const edits = request.capabilities.includes("edit-files");
   return [
     "--no-auto-update",
     "--output-format",
@@ -131,7 +132,7 @@ function grokFlags(request: HarnessRequest): string[] {
     "--permission-mode",
     "bypassPermissions",
     "--sandbox",
-    "workspace",
+    edits ? "workspace" : "read-only",
     ...editDenies(request),
     ...(request.outputSchema ? ["--json-schema", readFileSync(request.outputSchema, "utf8")] : []),
     "--model",
@@ -148,7 +149,9 @@ export function grokResumeArgs(providerSessionId: string, request: HarnessReques
 }
 
 function withoutApiKey(inherited: ProcessEnvironment): ProcessEnvironment {
-  return Object.fromEntries(Object.entries(inherited).filter(([name]) => name !== "XAI_API_KEY"));
+  return Object.fromEntries(
+    Object.entries(inherited).filter(([name]) => name !== "XAI_API_KEY" && name !== "GROK_CODE_XAI_API_KEY"),
+  );
 }
 
 export const grokProcess: HarnessProcess = {
