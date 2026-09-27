@@ -25,7 +25,12 @@ import { commitBuildTurn } from "./station-build-commit";
 import { continueRebaseTurn, reopenRebase } from "./station-build-rebase";
 import { BUILD_TURN_SCHEMA, parseBuildTurn } from "./station-build-turn";
 import type { PlanSlice } from "./station-plan-artifact";
-import { assertOrderWorkerHarness, resumeOrderStationLive, runOrderStationLive } from "./station-worker";
+import {
+  assertOrderWorkerHarness,
+  orderWorkerIsBound,
+  resumeOrderStationLive,
+  runOrderStationLive,
+} from "./station-worker";
 import type { Capability } from "./worker-capabilities";
 import { workspaceContract } from "./workspace";
 import { repoRoot, worktreePath } from "./wt-command";
@@ -303,11 +308,13 @@ export async function runOrderBuildLive(
     if (failureRecorded || orderStatus(db, orderId) !== "running") return;
     if (claimed && openAttempt(db, orderId)?.runId !== runId) return;
     failureRecorded = true;
+    const turn = orderWorkerIsBound(db, orderId, "builder", builder);
     appendOrderEvent(db, orderId, {
       kind: "failed",
       station: "build",
       worker: claimed ? builder : undefined,
       reason,
+      evidence: { turn },
     });
   };
   try {
@@ -367,12 +374,14 @@ export async function runOrderBuildLive(
     const finished = (turn: typeof run): string => {
       harnessOutput = turn.output;
       harnessFailureReason = turn.failureReason;
-      if (turn.exitCode === 0) return turn.output;
-      throw new Error(
-        turn.harnessExitCode === undefined
-          ? `${builder} did not finish`
-          : `${builder} exited with code ${turn.harnessExitCode}`,
-      );
+      if (turn.exitCode !== 0) {
+        throw new Error(
+          turn.harnessExitCode === undefined
+            ? `${builder} did not finish`
+            : `${builder} exited with code ${turn.harnessExitCode}`,
+        );
+      }
+      return turn.output;
     };
     harnessOutput = run.output;
     harnessFailureReason = run.failureReason;

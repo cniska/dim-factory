@@ -128,7 +128,7 @@ export async function resumeOrderStationLive(options: {
   );
 }
 
-export function runOrderWorkerHarnessLive(
+export async function runOrderWorkerHarnessLive(
   db: Database,
   request: HarnessLaunch,
   worker: OrderWorker,
@@ -136,7 +136,6 @@ export function runOrderWorkerHarnessLive(
   adapter?: HarnessAdapter,
   onAssigned?: (worker: string, sessionId: string, attribution: ExecutionAttribution) => void,
 ): Promise<Awaited<ReturnType<typeof launchHarnessLive>> & { worker?: string }> {
-  const env = orderWorkerRequest(db, machine, worker);
   let name = worker.worker;
   let running: string | undefined;
   const onStarted: HarnessStarted = (sessionId, pid) => {
@@ -160,17 +159,25 @@ export function runOrderWorkerHarnessLive(
     const { tier, model } = route(worker.role, request.harness, machine);
     onAssigned?.(name, sessionId, { harness: request.harness, model, tier });
   };
-  const run = worker.providerSessionId
-    ? resumeHarnessLive({ ...request, env }, worker.providerSessionId, onStarted, adapter)
-    : launchHarnessLive({ ...request, env }, onStarted, adapter);
-  return run
-    .then((result) => ({
+  try {
+    const env = orderWorkerRequest(db, machine, worker);
+    const result = await (worker.providerSessionId
+      ? resumeHarnessLive({ ...request, env }, worker.providerSessionId, onStarted, adapter)
+      : launchHarnessLive({ ...request, env }, onStarted, adapter));
+    if (result.exitCode === 0 && !running) {
+      throw new Error(`order ${worker.orderId} ${worker.role} did not start a turn`);
+    }
+    if (result.exitCode !== 0) releaseOrderWorker(db, worker.orderId, worker.role);
+    return {
       ...result,
       worker: name ?? assignedWorker(db, worker.assignment.id) ?? undefined,
-    }))
-    .finally(() => {
-      if (running) endWorker(db, running);
-    });
+    };
+  } catch (error) {
+    releaseOrderWorker(db, worker.orderId, worker.role);
+    throw error;
+  } finally {
+    if (running) endWorker(db, running);
+  }
 }
 
 function readOrderWorker(db: Database, orderId: string, role: StationRole): OrderWorker | undefined {
@@ -221,12 +228,66 @@ function refuseHarnessSwitch(existing: OrderWorker | undefined, harness: Harness
   }
 }
 
+const ROLE_STATIONS = {
+  planner: "plan",
+  builder: "build",
+  reviewer: "review",
+} as const satisfies Record<StationRole, OrderStationName>;
+
+function sessionEndedWithoutTurn(db: Database, orderId: string, role: StationRole, worker: string): boolean {
+  const station = ROLE_STATIONS[role];
+  const failed = db
+    .query<{ evidence: string }, [string, string, string]>(
+      `SELECT evidence FROM factory_order_event
+       WHERE order_id = ? AND kind = 'failed' AND station = ? AND worker = ?
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .get(orderId, station, worker);
+  if (!failed) return false;
+  const evidence = JSON.parse(failed.evidence) as { turn?: unknown };
+  return evidence.turn === false;
+}
+
+export function releaseOrderWorker(db: Database, orderId: string, role: StationRole): void {
+  const existing = readOrderWorker(db, orderId, role);
+  if (!existing?.worker) return;
+  db.transaction(() => {
+    const assignment = createWorkerAssignment(db, {
+      parentWorker: existing.assignment.parentWorker,
+      role,
+    });
+    const changed = db.run(
+      `UPDATE factory_order_worker
+       SET assignment_id = ?, worker = NULL, provider_session_id = NULL
+       WHERE order_id = ? AND role = ? AND assignment_id = ?`,
+      [assignment.id, orderId, role, existing.assignment.id],
+    );
+    if (changed.changes !== 1) throw new Error(`order ${orderId} ${role} worker release was not writable`);
+  })();
+}
+
+export function orderWorkerIsBound(
+  db: Database,
+  orderId: string,
+  role: StationRole,
+  worker?: string,
+): boolean {
+  return worker !== undefined && readOrderWorker(db, orderId, role)?.worker === worker;
+}
+
+function releaseUnavailableOrderWorker(db: Database, orderId: string, role: StationRole): void {
+  const existing = readOrderWorker(db, orderId, role);
+  if (!existing?.worker || !sessionEndedWithoutTurn(db, orderId, role, existing.worker)) return;
+  releaseOrderWorker(db, orderId, role);
+}
+
 export function assertOrderWorkerHarness(
   db: Database,
   orderId: string,
   role: StationRole,
   harness: HarnessName,
 ): void {
+  releaseUnavailableOrderWorker(db, orderId, role);
   refuseHarnessSwitch(readOrderWorker(db, orderId, role), harness);
 }
 
@@ -238,6 +299,7 @@ export function ensureOrderWorker(
   harness: HarnessName,
   at = new Date().toISOString(),
 ): OrderWorker {
+  releaseUnavailableOrderWorker(db, orderId, role);
   const existing = readOrderWorker(db, orderId, role);
   refuseHarnessSwitch(existing, harness);
   if (existing) {

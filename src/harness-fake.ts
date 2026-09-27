@@ -21,11 +21,8 @@ export type FakeHarness = HarnessAdapter & {
   cancels(): number;
 };
 
-function scenario(name: FakeHarnessScenario): Scenario {
-  const started: HarnessEvent[] = [
-    { type: "run.started", providerSessionId: "fake-session" },
-    { type: "turn.started" },
-  ];
+function scenario(name: FakeHarnessScenario, providerSessionId: string): Scenario {
+  const started: HarnessEvent[] = [{ type: "run.started", providerSessionId }, { type: "turn.started" }];
   if (name === "success") {
     return {
       events: [
@@ -105,10 +102,13 @@ function scenario(name: FakeHarnessScenario): Scenario {
   return { events: started, completes: false };
 }
 
-export function fakeHarness(scenarioName: FakeHarnessScenario): FakeHarness {
+export function fakeHarness(
+  scenarioName: FakeHarnessScenario,
+  providerSessionId = "fake-session",
+): FakeHarness {
   let cancels = 0;
   const run = async (): Promise<HarnessRun> => {
-    const plan = scenario(scenarioName);
+    const plan = scenario(scenarioName, providerSessionId);
     let cancelled = false;
     let release: (() => void) | undefined;
     const cancellation = new Promise<void>((resolve) => {

@@ -463,7 +463,7 @@ describe("a review round", () => {
     });
   });
 
-  test("keeps the same reviewer identity for a later review round", async () => {
+  test("briefs a new reviewer after a review that did not finish a turn", async () => {
     const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
     slice(db, dir, worker, "review-first");
     const base = fakeHarness("crash");
@@ -473,7 +473,7 @@ describe("a review round", () => {
       ...base,
       start: async (request: Parameters<typeof base.start>[0]) => {
         starts += 1;
-        return base.start(request);
+        return fakeHarness("crash", `fake-session-${starts}`).start(request);
       },
       resume: async (sessionId: string, request: Parameters<typeof base.start>[0]) => {
         resumes += 1;
@@ -492,11 +492,11 @@ describe("a review round", () => {
     slice(db, dir, worker, "review-second");
     const second = await runOrderReviewLive(db, "order-1", operator, { dir, adapter, env, harness: "codex" });
 
-    expect(first.reviewer).toBe(second.reviewer);
-    expect(starts).toBe(1);
-    expect(resumes).toBe(1);
+    expect(first.reviewer).not.toBe(second.reviewer);
+    expect(starts).toBe(2);
+    expect(resumes).toBe(0);
     expect(db.query("SELECT count(*) AS n FROM factory_worker WHERE role = 'reviewer'").get()).toEqual({
-      n: 1,
+      n: 2,
     });
     expect(db.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 1 });
   });

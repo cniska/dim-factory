@@ -94,15 +94,11 @@ describe("headless factory loop", () => {
     expect(runOrderCommand(db, ["approve", "headless-order"], null, repo.dir, env)).toContain(
       "plan approved",
     );
-    expect(
-      await runOrderCommandLive(db, ["build", "headless-order", "--harness", "codex"], null, repo.dir, env),
-    ).toContain("build completed by");
-
     const worktree = join(repo.dir, ".claude", "worktrees", "headless-order");
-    expect(existsSync(join(worktree, "built-by-real-harness-1.txt"))).toBe(true);
     expect(
       await runOrderCommandLive(db, ["build", "headless-order", "--harness", "codex"], null, repo.dir, env),
     ).toContain("build completed by");
+    expect(existsSync(join(worktree, "built-by-real-harness-1.txt"))).toBe(true);
     expect(existsSync(join(worktree, "built-by-real-harness-2.txt"))).toBe(true);
     expect(
       runOrderCommand(

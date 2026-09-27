@@ -9,10 +9,13 @@ import { HARNESSES, type HarnessName, parseHarness } from "./harness-name";
 import { recordedHarness } from "./harness-operator";
 import { requireCurrentHooks } from "./hooks";
 import { approveOrder, returnApprovedPlan, returnOrderArtifact, returnReviewToBuild } from "./order-approval";
+import { nextOrderSlice } from "./order-artifacts";
+import { latestOrderCommit } from "./order-commits";
 import { amendOrder, dropOrder, queueOrder, setOrderPriority } from "./order-lifecycle";
 import { isOrderLine, ORDER_LINES } from "./order-line";
 import { readyOrders } from "./order-ready";
 import { shipOrder } from "./order-ship";
+import { orderState } from "./order-state";
 import { ORDER_PRIORITIES, type OrderPriority } from "./order-status";
 import { dbPath, type Env } from "./paths";
 import type { ShipOutcome } from "./ship";
@@ -184,6 +187,23 @@ export function runOrderCommand(
   throw new UsageError(`${command} is not an order subcommand`);
 }
 
+export async function runRemainingBuilds<T>(
+  orderId: string,
+  read: () => { waiting: boolean; progress: string },
+  run: () => Promise<T>,
+): Promise<T> {
+  let outcome: T;
+  for (;;) {
+    const before = read().progress;
+    outcome = await run();
+    const after = read();
+    if (!after.waiting) return outcome;
+    if (after.progress === before) {
+      throw new Error(`order ${orderId} is still run at build and the turn did not advance`);
+    }
+  }
+}
+
 export async function runOrderCommandLive(
   db: Database,
   args: string[],
@@ -205,7 +225,17 @@ export async function runOrderCommandLive(
     return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;
   }
   if (args[0] === "build") {
-    const outcome = await runOrderBuildLive(db, orderId, operator, { dir: cwd, env, harness });
+    const outcome = await runRemainingBuilds(
+      orderId,
+      () => {
+        const state = orderState(db, orderId);
+        return {
+          waiting: state.station === "build" && state.next === "run",
+          progress: `${nextOrderSlice(db, orderId)?.id ?? "none"}:${latestOrderCommit(db, orderId)?.sha ?? ""}`,
+        };
+      },
+      () => runOrderBuildLive(db, orderId, operator, { dir: cwd, env, harness }),
+    );
     return `build completed by ${outcome.builder}`;
   }
   const outcome = await runOrderReviewLive(db, orderId, operator, { dir: cwd, env, harness });

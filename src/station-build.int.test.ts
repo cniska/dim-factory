@@ -266,7 +266,7 @@ describe("builder station", () => {
         dir: repo.dir,
         env,
         harness: "codex",
-        adapter: fakeHarness("crash"),
+        adapter: fakeHarness("crash", "new-session"),
       }),
     ).rejects.toThrow("fake process crashed");
     expect(orderStatus(db, "builder-order")).toBe("running");
@@ -1031,7 +1031,7 @@ describe("builder station", () => {
     db.close();
   });
 
-  test("keeps the same builder identity after a failed build turn", async () => {
+  test("briefs a new builder after a build that did not finish a turn", async () => {
     const db = database();
     const dimHome = home("dim-builder-resume-");
     const { repo, operator } = orderAtBuild(db, "builder-resume-order", [
@@ -1047,13 +1047,14 @@ describe("builder station", () => {
       ...base,
       start: async (request: Parameters<typeof base.start>[0]) => {
         starts += 1;
-        return base.start(request);
+        if (starts === 2) {
+          expect(request.brief).toContain("# Previous failed Build attempt");
+          expect(request.brief).toContain("fake process crashed");
+        }
+        return fakeHarness("crash", `fake-session-${starts}`).start(request);
       },
       resume: async (sessionId: string, request: Parameters<typeof base.start>[0]) => {
         resumes += 1;
-        expect(sessionId).toBe("fake-session");
-        expect(request.brief).toContain("# Previous failed Build attempt");
-        expect(request.brief).toContain("fake process crashed");
         return base.resume(sessionId, request);
       },
     };
@@ -1093,10 +1094,10 @@ describe("builder station", () => {
       }),
     ).rejects.toThrow("fake process crashed");
 
-    expect(starts).toBe(1);
-    expect(resumes).toBe(1);
+    expect(starts).toBe(2);
+    expect(resumes).toBe(0);
     expect(db.query("SELECT count(*) AS n FROM factory_worker WHERE role = 'builder'").get()).toEqual({
-      n: 1,
+      n: 2,
     });
     expect(db.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 1 });
     expect(
@@ -1124,7 +1125,9 @@ describe("builder station", () => {
       db
         .query(
           `SELECT parent_worker FROM factory_worker WHERE name = (
-            SELECT worker FROM factory_order_worker WHERE order_id = ? AND role = 'builder'
+            SELECT worker FROM factory_order_attempt
+            WHERE order_id = ? AND station = 'build' AND kind = 'started'
+            ORDER BY rowid DESC LIMIT 1
           )`,
         )
         .get("builder-resume-order"),
@@ -1132,7 +1135,7 @@ describe("builder station", () => {
     db.close();
   });
 
-  test("refuses a builder's next turn under another harness without failing the order", async () => {
+  test("starts the next build under another harness after a turn that did not finish", async () => {
     const db = database();
     const dimHome = home("dim-builder-harness-");
     writeFileSync(
@@ -1176,11 +1179,14 @@ describe("builder station", () => {
     expect(working()).toEqual({ status: "running", attempt: null });
 
     await expect(
-      runOrderBuildLive(db, "harness-order", operator.name, { dir: repo.dir, env, harness: "codex" }),
-    ).rejects.toThrow(
-      "order harness-order builder runs under the claude harness; delegate it with --harness claude",
-    );
-    expect(failures()).toEqual({ n: 1 });
+      runOrderBuildLive(db, "harness-order", operator.name, {
+        dir: repo.dir,
+        env,
+        harness: "codex",
+        adapter: fakeHarness("crash", "fake-session-2"),
+      }),
+    ).rejects.toThrow("fake process crashed");
+    expect(failures()).toEqual({ n: 2 });
     expect(working()).toEqual({ status: "running", attempt: null });
     db.close();
   });
@@ -1406,7 +1412,74 @@ describe("a commit git refuses", () => {
 
     expect(builder.calls.map((call) => call.kind)).toEqual(["start", "resume"]);
     expect(order.events("failed")).toHaveLength(1);
+    const failed = order.db
+      .query<{ evidence: string }, [string]>(
+        "SELECT evidence FROM factory_order_event WHERE order_id = ? AND kind = 'failed'",
+      )
+      .get("correction-crash-order");
+    expect(JSON.parse(failed?.evidence ?? "null")).toEqual({ turn: false });
+    expect(
+      order.db
+        .query("SELECT worker FROM factory_order_worker WHERE order_id = 'correction-crash-order'")
+        .get(),
+    ).toEqual({ worker: null });
     expect(order.db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 0 });
+    order.db.close();
+  });
+
+  test("starts a new builder when correction resume cannot launch", async () => {
+    const order = refusingOrder("correction-unavailable-order");
+    const builder = scriptedBuilder([
+      (request) => {
+        build(request);
+        return tooLong;
+      },
+    ]);
+    const unavailable: HarnessAdapter = {
+      ...builder.adapter,
+      resume: async () => {
+        throw new Error("provider session unavailable");
+      },
+    };
+
+    await expect(
+      runOrderBuildLive(order.db, "correction-unavailable-order", order.operator.name, {
+        ...order.options,
+        adapter: unavailable,
+      }),
+    ).rejects.toThrow("provider session unavailable");
+
+    const failed = order.db
+      .query<{ evidence: string }, [string]>(
+        "SELECT evidence FROM factory_order_event WHERE order_id = ? AND kind = 'failed'",
+      )
+      .get("correction-unavailable-order");
+    expect(JSON.parse(failed?.evidence ?? "null")).toEqual({ turn: false });
+    expect(
+      order.db
+        .query("SELECT worker FROM factory_order_worker WHERE order_id = 'correction-unavailable-order'")
+        .get(),
+    ).toEqual({ worker: null });
+
+    const fresh = fakeHarness("crash", "new-session");
+    let starts = 0;
+    const retry: HarnessAdapter = {
+      ...fresh,
+      start: async (request) => {
+        starts += 1;
+        return fresh.start(request);
+      },
+      resume: async () => {
+        throw new Error("tried to resume unavailable session");
+      },
+    };
+    await expect(
+      runOrderBuildLive(order.db, "correction-unavailable-order", order.operator.name, {
+        ...order.options,
+        adapter: retry,
+      }),
+    ).rejects.toThrow("fake process crashed");
+    expect(starts).toBe(1);
     order.db.close();
   });
 

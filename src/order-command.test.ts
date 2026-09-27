@@ -17,7 +17,7 @@ import {
 import { hookConfigPath } from "./hooks";
 import { HOOK_TOOLS } from "./ingest-tools";
 import { completeOrderSlice, nextOrderSlice, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
-import { runOrderCommand as runCommand, runOrderCommandLive } from "./order-command";
+import { runOrderCommand as runCommand, runOrderCommandLive, runRemainingBuilds } from "./order-command";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
 import { appendOrderEvent } from "./order-ledger";
 import { startOrder } from "./order-lifecycle";
@@ -770,5 +770,49 @@ describe("order command", () => {
         operatorEnv(database),
       ),
     ).toThrow("order-1 is already dropped");
+  });
+});
+
+describe("a build command", () => {
+  test("runs each remaining slice and stops when the order is no longer waiting on build", async () => {
+    let step = 0;
+    const progress = ["slice-1", "slice-2", "done"];
+
+    const outcome = await runRemainingBuilds(
+      "order-1",
+      () => ({ waiting: step < 2, progress: progress[step] ?? "done" }),
+      async () => {
+        step += 1;
+        return step;
+      },
+    );
+
+    expect(outcome).toBe(2);
+  });
+
+  test("stops when a turn leaves the order waiting on build without moving it", async () => {
+    await expect(
+      runRemainingBuilds(
+        "order-1",
+        () => ({ waiting: true, progress: "slice-1" }),
+        async () => "turn",
+      ),
+    ).rejects.toThrow("order order-1 is still run at build and the turn did not advance");
+  });
+
+  test("does not start another slice after a turn fails", async () => {
+    let runs = 0;
+
+    await expect(
+      runRemainingBuilds(
+        "order-1",
+        () => ({ waiting: true, progress: "slice-1" }),
+        async () => {
+          runs += 1;
+          throw new Error("ok.txt is missing");
+        },
+      ),
+    ).rejects.toThrow("ok.txt is missing");
+    expect(runs).toBe(1);
   });
 });

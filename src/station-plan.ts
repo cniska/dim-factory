@@ -11,7 +11,7 @@ import { assertNext } from "./order-state";
 import { orderStatus } from "./order-status";
 import { stationDirectory } from "./station-directory";
 import { type PlanSlice, parsePlanArtifact } from "./station-plan-artifact";
-import { runOrderStationLive } from "./station-worker";
+import { orderWorkerIsBound, runOrderStationLive } from "./station-worker";
 import { resolveWorker } from "./worker";
 import type { Capability } from "./worker-capabilities";
 
@@ -136,6 +136,7 @@ export async function runOrderPlanLive(
       station: "plan",
       worker: claimed ? planner : undefined,
       reason,
+      evidence: { turn: orderWorkerIsBound(db, orderId, "planner", planner) },
     });
     throw error;
   }
