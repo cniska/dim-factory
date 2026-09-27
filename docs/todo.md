@@ -23,6 +23,7 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 - **Retake a failed order once** — a second failure leaves it.
 - **Fix orders triage first** — diagnose the cause, prove the test catches the bug, and review against the named cause.
 - **Codex workers stop at their answer** — find out whether one can leave work running, and turn that off if so.
+- **More harnesses** — Qwen Code, Kimi CLI, Antigravity, and Pi, each able to start and resume a station worker the way Claude Code, Codex, and Grok Build do.
 - **Reasoning effort per tier** — a harness that reasons, Grok, chooses effort separately from the model and defaults to high. `routing.json` names one model per tier. The effort is set for that harness and omitted for the others.
 - **A change summary before ship** — builder and reviewer each describe the change, read side by side.
 - **Artifact check before operator review** — validate worker-authored Plan and Build Markdown against the artifact contract before the operator reads it. Parse the same GFM the wall renders; return empty sections and sections that use a list or table for a single point to the worker for revision. Check record references against the order's evidence and keep the result in the order record. Review Markdown is rendered from structured findings, where a single item is valid. Clarity and proportional length remain judgment calls under the artifact guidance, not fixed word or heading quotas.
