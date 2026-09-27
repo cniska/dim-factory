@@ -207,7 +207,6 @@ export function removeWorktree(branch: string, options: { force?: boolean; cwd?:
     : ["-C", root, "worktree", "remove", path];
   if (!git(args2).ok) die(`could not remove the worktree at ${path}`);
   console.log(`wt: removed worktree ${path}`);
-  console.log(`wt: branch '${branch}' kept — delete with 'git -C ${root} branch -d ${branch}' once merged`);
 }
 
 function remove(args: string[]): void {
@@ -225,7 +224,9 @@ function remove(args: string[]): void {
       branch = arg;
     }
   }
-  removeWorktree(branch, { force });
+  const root = repoRoot();
+  removeWorktree(branch, { force, cwd: root });
+  console.log(`wt: branch '${branch}' kept — delete with 'git -C ${root} branch -d ${branch}' once merged`);
 }
 
 export const wtCommand: Command = {

@@ -622,7 +622,7 @@ describe("factory order report records", () => {
     database.close();
   });
 
-  test("ships a commit onto the trunk, which makes the order done and removes its worktree", () => {
+  test("ships a commit onto the trunk, which makes the order done and removes its worktree and branch", () => {
     const repo = integratedRepo();
     const home = mkdtempSync(join(tmpdir(), "dim-ship-"));
     const env = scratchEnv(home);
@@ -660,6 +660,9 @@ describe("factory order report records", () => {
         .get(),
     ).toEqual({ worker: attemptOperator, commit_sha: sha, evidence: '{"landed":"fast_forward"}' });
     expect(existsSync(wt)).toBe(false);
+    expect(
+      Bun.spawnSync(["git", "-C", repo.dir, "show-ref", "--verify", "--quiet", "refs/heads/order-1"]).success,
+    ).toBe(false);
 
     database.close();
     rmSync(repo.dir, { recursive: true, force: true });

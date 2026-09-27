@@ -11,10 +11,10 @@ import { appendOrderEvent } from "./order-ledger";
 import { assertNext } from "./order-state";
 import { dataDir, type Env } from "./paths";
 import { type RebaseVerdict, type ShipOutcome, shipBranch } from "./ship";
+import { removeShippedBranch } from "./ship-cleanup";
 import { RebaseConflict, type Rewrite } from "./ship-rebase";
 import { ShipRefusal } from "./ship-refusal";
 import { checkTask } from "./workspace-tasks";
-import { removeWorktree } from "./wt-command";
 
 function refusalEvidence(error: unknown): EvidenceReference {
   if (error instanceof RebaseConflict) {
@@ -98,7 +98,7 @@ export function shipOrder(
       });
       throw error;
     }
-    removeWorktree(orderId, { cwd });
+    removeShippedBranch(orderId, cwd);
     appendOrderEvent(db, orderId, {
       kind: "shipped",
       worker,

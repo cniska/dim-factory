@@ -22,7 +22,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Status | The state an order is in, read from its events: `queued`, `running` once started, `shipped` once a shipped event is recorded, or `dropped`. The wall's columns are these words, and a dropped order leaves the board |
 | Next act | What an order waits on, read from the record by [`src/order-state.ts`](../src/order-state.ts) and never stored: at a station, `run` or `approve`; once every station's artifact is approved, `ship`. Every act checks it on entry |
 | Slice | One increment inside an order that verifies and commits on its own |
-| Ship | Landing an order's commits on the local default branch the way the repo declares in `dim.ship`, which ends the order and removes its worktree. Approving the Review artifact ships; `dim order ship` retries a ship that failed |
+| Ship | Landing an order's commits on the local default branch the way the repo declares in `dim.ship`, which ends the order and removes its worktree and branch. Approving the Review artifact ships; `dim order ship` retries a ship that failed |
 | Command | One `dim` subcommand, in the `src/<name>-command.ts` named for it ([`src/cli-contract.ts`](../src/cli-contract.ts)) |
 | Command line | The text a shell runs, such as `bun run verify` |
 | Workspace task | What a repo declares in its manifest — a `package.json` script, a `mise` task, a `Makefile` target — read, never inferred ([`src/workspace-tasks.ts`](../src/workspace-tasks.ts)). The check is the task that says a change is sound |
