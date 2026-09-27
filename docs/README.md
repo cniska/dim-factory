@@ -23,5 +23,6 @@ Each fact lives on one page and is linked from the others.
 
 ## What is true now
 
+- [Specification](../SPEC.md) — what holds
 - [Todo](todo.md) — what is not built
 - [Findings](findings.md) — dated measurements, and what each can carry

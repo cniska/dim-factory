@@ -25,7 +25,7 @@ Setup already installs the shared controls, while each project still supplies it
 ## The line
 
 - **Skills are the stations.** `dim-feat` and `dim-fix` are the entry points; `dim-plan`, `dim-build` and `dim-review` are the stations.
-- **The same three stations serve every line**, each routing on the line its brief names ([`SPEC.md`](../SPEC.md#2-stations)).
+- **The same three stations serve every line**, each routing on the line its brief names.
 - **Coding agents are the floor.** Each station runs as a worker in Claude Code, Codex or Grok Build.
 - **`AGENTS.md` and `SPEC.md` are the tolerances.** A line cannot run unattended without them.
 - **Checks, review and gates are QC.**
@@ -41,7 +41,7 @@ queued → plan → build → review → ship → shipped
 - **Where an order is, is read from the record** ([`src/order-state.ts`](../src/order-state.ts)): its station and the act that station waits on — run the station, or approve its artifact. Approving the Review artifact ships the order, so the next act is ship only after a ship that failed without sending the order back to a station. Nothing stores it and no command sets it, the status included: an order is `queued` until it starts, `running` until it ships or is dropped, then `shipped` or `dropped`.
 - **Every act checks on entry** that it is the act the record waits on, and a refusal names the one that is. `dim order plan` on a queued order starts it and makes its worktree.
 - **The operator** delegates each station to a worker, checks each artifact against the record, and approves it or returns it. It never does the work.
-- **Each station returns an artifact** — plan, Build artifact, Review artifact — that the operator approves (`dim order approve`) or sends back with a reason (`dim order return`). [`SPEC.md`](../SPEC.md#1-orders) states when that decision holds an order.
+- **Each station returns an artifact** — plan, Build artifact, Review artifact — that the operator approves (`dim order approve`) or sends back with a reason (`dim order return`).
 - **Build runs slice by slice.** One `dim order build` runs each remaining slice, and the runner checks and commits that slice before the next starts. Review reads the whole order after the last one. A round's findings send the order back to build, where the builder answers each one once, `fixed` or `refused` with a reason. The next round is briefed with those answers and raises a new finding for any that still holds; a round that raises nothing writes the Review artifact.
 - **An order returns to the station that can correct it.** During build, the operator uses `dim order return <id> --to plan --reason "..."` when the approved plan needs revision. During review approval, `--to build` sends a code correction to the builder. A return without `--to` sends the current artifact to its worker for revision. The revised plan needs approval before build resumes from its slices. A plan revision needs fresh Build and Review approvals, and Review reads the whole order again.
 - **Ship** follows the Review approval and ends the order (see [Shipped](#shipped)).
@@ -80,7 +80,7 @@ A refused commit or comment goes back to the same builder, at most twice per tur
 
 ## Shipped
 
-Landing an order's commits on the local default branch ships it ([`SPEC.md`](../SPEC.md#1-orders)). Ship then removes its worktree, and deletes its branch if the branch tip reaches the local default branch. A worktree or branch that cannot be removed is kept; the `shipped` event records the reason under `worktreeKept` or `branchKept`, and `dim order ship` reports it. Nothing is pushed. Ship waits on an approved Build artifact, which the runner writes only with a check that passed at the head, and on an approved Review artifact at the head; the docs changing with the behavior rest on the stations. A failed branch landing attempt writes a `ship_failed` event with its reason.
+Landing an order's commits on the local default branch ships it. Ship then removes its worktree, and deletes its branch if the branch tip reaches the local default branch. A worktree or branch that cannot be removed is kept; the `shipped` event records the reason under `worktreeKept` or `branchKept`, and `dim order ship` reports it. Nothing is pushed. Ship waits on an approved Build artifact, which the runner writes only with a check that passed at the head, and on an approved Review artifact at the head; the docs changing with the behavior rest on the stations. A failed branch landing attempt writes a `ship_failed` event with its reason.
 
 Ship lands the order the way the repo declares with `git config dim.ship`:
 
@@ -99,7 +99,7 @@ Around it:
 
 ## Workers
 
-- **An act's worker is written with the act**, never attributed afterwards, which is what keeps the history to worker acts ([`SPEC.md`](../SPEC.md#1-orders)).
+- **An act's worker is written with the act**, never attributed afterwards.
 - **The operator** is resolved by `dim operator` from the active session in this checkout's `owner/repo`, and keeps one credential for its session.
 - **Station workers** are issued through assignments. One worker per station per order keeps its provider session, so a later turn resumes it with its context. A failed harness run releases that worker, and the next command briefs a new one from the record. A returned turn whose artifact or check fails keeps its worker for correction. A worker bound to one harness is refused under a `--harness` that names another.
 - **A usage limit moves the station to a harness with capacity.** An attempt a harness's usage limit stopped finishes `limited`, with the reset time the harness reports ([`src/station-worker.ts`](../src/station-worker.ts)). Without `--harness`, a station command runs on the first harness with capacity — the bound worker's, then the operator's own, then each one `routing.json` maps — releasing a worker bound to a limited harness, and moves on when a run is limited. A limit counts until its reset passes, or, with no reset reported, until a later attempt on that harness; with none left the command refuses with `harnesses_limited` ([`src/station-harness.ts`](../src/station-harness.ts)).

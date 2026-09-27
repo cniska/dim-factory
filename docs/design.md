@@ -65,7 +65,7 @@ dim sync: drain the spool → read changed files → derive session ends
 
 Grok's file is `~/.grok/hooks/dim.json`. `GROK_HOME` overrides `~/.grok`. A Grok event names the session as `sessionId` and the event as `hookEventName` (`session_start`, `session_end`, `post_tool_use`). The model, when the event carries one, is `modelId`. The reader uses those when the Claude field names are absent.
 
-- **The spool hook never opens the database.** It writes one file per event, so a session never waits on `sessions.db` ([`SPEC.md`](../SPEC.md#3-hooks-and-reads) says how every hook exits); `sync` drains the spool into `hook_event`.
+- **The spool hook never opens the database.** It writes one file per event, so a session never waits on `sessions.db`; `sync` drains the spool into `hook_event`.
 - **`hook_event` is never re-derived**, because a hook fires once. It has no foreign key to `session`, so an event that arrives before its transcript waits for it. A spool file that cannot be placed moves to `spool/unreadable/`, since it is the only copy.
 - **One source per column.** `session.ended_at` and `end_reason` come from `hook_event` alone, never from a transcript.
 - **Concurrency.** `sync`, `rebuild` and a ship hold the lock. Other `dim` commands open their own connections in WAL mode, and a writer waits a bounded time for SQLite's write lock before failing with `SQLITE_BUSY` ([`src/db.ts`](../src/db.ts)); a trace waits less and drops its row ([`src/trace.ts`](../src/trace.ts)). A reader opens read-write under `query_only` ([`src/db-read.ts`](../src/db-read.ts)): a `readonly` connection fails with `SQLITE_CANTOPEN` on a WAL database whose `-wal` and `-shm` files are gone.
@@ -83,7 +83,7 @@ Grok's file is `~/.grok/hooks/dim.json`. `GROK_HOME` overrides `~/.grok`. A Grok
 - **A result states its base.** It carries `denominator`, `columns`, `rows` and `note`; an empty result says why, and a figure covering a subset names the subset.
 - **Capped rows.** A result longer than 40 rows says how many were cut and names `--rows`.
 - **A 30-day window** by default, moved with `--since` and removed with `--all`, and stated in the denominator. Time series and queries about a named thing are unwindowed.
-- **Read-only** ([`SPEC.md`](../SPEC.md#3-hooks-and-reads)). A query opens the database through `openReadOnly`, because `hook_event` has no source to restore it from. Its trace row goes through a separate connection.
+- **Read-only.** A query opens the database through `openReadOnly`, because `hook_event` has no source to restore it from. Its trace row goes through a separate connection.
 - **A repository is named by its remote** — `owner/repo`, lowercased, host dropped — so worktrees and checkouts of one project share a label.
 - **A scratch tree is not work.** [`src/ingest-scratch.ts`](../src/ingest-scratch.ts) excludes commits made under temp directories wherever session directories become repos.
 

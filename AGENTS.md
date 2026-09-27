@@ -1,6 +1,6 @@
 # dim-factory
 
-A local record of what every coding-agent session on this machine did, the questions asked of that record, and the gates that hold a rule whether or not a skill loaded. [`SPEC.md`](SPEC.md) states what holds, and changes in the same commit as the behavior it states. Which sessions are read is in [`docs/design.md`](docs/design.md#sources). [`README.md`](README.md) is the tour, [`docs/todo.md`](docs/todo.md) says what is unbuilt, and each design doc under `docs/` owns its own subject. A fact lives in one of those places and is linked to from here, never copied — two authorities drift, and the one nobody remembers to update wins.
+A local record of what every coding-agent session on this machine did, the questions asked of that record, and the gates that hold a rule whether or not a skill loaded. [`SPEC.md`](SPEC.md) states what holds, for agents and the owner alike, so a changed requirement shows as a change to that one file; it changes in the same commit as the behavior it states, only [`docs/README.md`](docs/README.md) links it, and no other doc, commit, code or test names it or its IDs. Which sessions are read is in [`docs/design.md`](docs/design.md#sources). [`README.md`](README.md) is the tour, [`docs/todo.md`](docs/todo.md) says what is unbuilt, and each design doc under `docs/` owns its own subject. A fact lives in one of those places and is linked to from here, never copied — two authorities drift, and the one nobody remembers to update wins.
 
 Only what holds here and nowhere else is written below. General engineering conventions belong to whoever is working, machine-wide and once; restating one here would cost the same tokens twice and create a second place for it to drift.
 
@@ -12,7 +12,6 @@ Only what holds here and nowhere else is written below. General engineering conv
 
 ## Invariants
 
-- A hook runs before every session, commit and push on this machine, so it holds [`SPEC.md`](SPEC.md) NF-1 and NF-2 in every change.
 - An order that changes the schema runs with no other order in flight ([`docs/design.md`](docs/design.md#schema)).
 
 ## Working
