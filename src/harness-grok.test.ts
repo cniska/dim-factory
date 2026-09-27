@@ -96,6 +96,37 @@ describe("the Grok harness adapter", () => {
     ]);
   });
 
+  test("fails with the provider's own message from a failed result's errors", () => {
+    expect(
+      parseAll([
+        {
+          type: "result",
+          subtype: "error_during_execution",
+          is_error: true,
+          errors: [
+            'Internal error: {\n  "message": "API error (status 402 Payment Required): Grok Build usage balance exhausted",\n  "http_status": 402\n}',
+          ],
+        },
+        { type: "result", subtype: "error_during_execution", is_error: true, errors: ["Session aborted"] },
+        {
+          type: "result",
+          subtype: "error_during_execution",
+          is_error: true,
+          errors: ['Internal error: {"message": "first"}', "second"],
+        },
+        { type: "result", subtype: "error_during_execution", is_error: true },
+      ]),
+    ).toEqual([
+      {
+        type: "run.failed",
+        reason: "API error (status 402 Payment Required): Grok Build usage balance exhausted",
+      },
+      { type: "run.failed", reason: "Session aborted" },
+      { type: "run.failed", reason: "first; second" },
+      { type: "run.failed", reason: "error_during_execution" },
+    ]);
+  });
+
   test("runs builders in the workspace sandbox and readers in the read-only sandbox", () => {
     const builder = commandLine(grokProcess, { ...request, capabilities: ["edit-files"] });
     const reader = commandLine(grokProcess, request);

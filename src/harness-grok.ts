@@ -19,9 +19,28 @@ type GrokEvent = {
   apiKeySource?: string;
   is_error?: boolean;
   result?: string;
+  errors?: string[];
   structured_output?: unknown;
   message?: string | { content?: GrokBlock[] };
 };
+
+const INTERNAL_ERROR_PREFIX = "Internal error: ";
+
+function providerMessage(error: string): string {
+  if (!error.startsWith(INTERNAL_ERROR_PREFIX)) return error;
+  try {
+    const detail: unknown = JSON.parse(error.slice(INTERNAL_ERROR_PREFIX.length));
+    if (detail && typeof detail === "object" && "message" in detail && typeof detail.message === "string") {
+      return detail.message;
+    }
+  } catch {}
+  return error;
+}
+
+function failureReason(event: GrokEvent): string {
+  if (event.errors?.length) return event.errors.map(providerMessage).join("; ");
+  return event.result || event.subtype || "Grok run failed";
+}
 
 function resultText(content: GrokBlock["content"]): string {
   if (typeof content === "string") return content;
@@ -93,10 +112,7 @@ function grokEventParser(): HarnessLineParser {
           event.structured_output === undefined ? event.result : JSON.stringify(event.structured_output);
         return { type: "run.completed", output };
       }
-      return {
-        type: "run.failed",
-        reason: event.result || event.subtype || "Grok run failed",
-      };
+      return { type: "run.failed", reason: failureReason(event) };
     }
     if (event.type === "error") {
       return {
