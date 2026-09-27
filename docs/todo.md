@@ -24,6 +24,7 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 - **Fix orders triage first** — diagnose the cause, prove the test catches the bug, and review against the named cause.
 - **Codex workers stop at their answer** — find out whether one can leave work running, and turn that off if so.
 - **A change summary before ship** — builder and reviewer each describe the change, read side by side.
+- **Artifact check before operator review** — validate worker-authored Plan and Build Markdown against the artifact contract before the operator reads it. Parse the same GFM the wall renders; return empty sections and sections that use a list or table for a single point to the worker for revision. Check record references against the order's evidence and keep the result in the order record. Review Markdown is rendered from structured findings, where a single item is valid. Clarity and proportional length remain judgment calls under the artifact guidance, not fixed word or heading quotas.
 - **Gates earn trust per kind of order** — over a lookback window with a minimum sample, the record shows which kinds of order the owner has stopped needing to read, and the wall marks them. Trust is asymmetric: a return or a revert demotes at once, and promotion happens only on the owner's word, citing the evidence ([`landscape.md`](landscape.md#earned-autonomy)).
 - **Skill revision reuse** — report whether a changed skill loaded again, and name the versions the record could not identify ([`landscape.md`](landscape.md#session-records-and-gates)).
 - **Artifacts linked to commits by trailer** — so an order's plan, Build and Review artifacts stay attached to its commits through a rebase.
@@ -36,7 +37,7 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 - **The check read through the workspace detectors.**
 - **Checks from more manifests** — `pubspec.yaml` first.
 - **A new worktree installs its dependencies** from the lockfile.
-- **`dim adopt`** — bring an existing repo under `dim` in one command, including one with a weak or missing check: purge and ban comments, declare check and format, install the commit gate, and name what needs judgement.
+- **`dim adopt`** — bring an existing repo under `dim` in one command, including one with a weak or missing check: purge and ban comments, declare check and format, install the commit gate, identify its style guide, run a baseline audit, and name what needs judgement.
 - **Linux scheduled sync** — install and load a systemd user timer for `dim sync`, with `dim doctor` reporting whether it runs, as launchd does on macOS.
 - **Catch a stuck slice** retried across sessions.
 - **Wall gaps** — a silence threshold, station moves, durable worker names, the project on the card, and operator presence.

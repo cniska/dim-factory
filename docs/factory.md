@@ -10,6 +10,18 @@ A factory with no human reading the work ships whatever the checks miss, and the
 - **A human at the gates that matter.** Hard-to-reverse, outward-facing or ambiguous work waits for the owner.
 - **Each gate earns its automation from a record.** Every approval and return is an attributed event, so which kinds of work stopped needing a read is a query over verdicts, not a feeling. Reviewing everything is the starting point, because a gate cannot earn its way out of a record never kept.
 
+## Trust across projects
+
+The factory aims to give each project the conditions that let its owner delegate work with evidence:
+
+- **Codebase quality.** Clear boundaries, current docs and tests give a worker a reliable starting point. [`dim-audit`](../skills/dim-audit/SKILL.md) inspects an existing project and reports debt for the owner to turn into work.
+- **Static analysis and tests.** The project declares the check it needs; the commit gate and factory runner execute it before accepting code ([`usage.md`](usage.md#commit-gate)).
+- **Rules.** Standing instructions tell agents what holds throughout a project. Mechanical rules become gates, which still run when an agent misses an instruction ([`usage.md`](usage.md#install-the-shared-controls)).
+- **Skills.** Shared, task-specific procedures guide planning, building, review and audit. [`dim-setup`](../.agents/skills/dim-setup/SKILL.md) installs them for use from other projects.
+- **Style guide.** The project's conventions and examples show what its code and docs should look like: names, file boundaries, API patterns and writing. Formatting is one enforceable part; reviewers judge conventions that tools cannot decide. [Google's style guide overview](https://github.com/google/styleguide/blob/gh-pages/README.md) uses the term for conventions ranging from names to design choices.
+
+Setup already installs the shared controls, while each project still supplies its declared check and local conventions. [`dim adopt`](todo.md) is planned to establish the project baseline in one step. An audit reports codebase quality problems; fixing them remains work with its own evidence and approvals.
+
 ## The line
 
 - **Skills are the stations.** `dim-feat` and `dim-fix` are the entry points; `dim-plan`, `dim-build` and `dim-review` are the stations.
