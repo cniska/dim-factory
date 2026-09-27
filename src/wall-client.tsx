@@ -25,7 +25,6 @@ import type { Role } from "./worker-roles";
 import "./wall.css";
 
 const unavailableSnapshot: WallSnapshot = {
-  generatedAt: "",
   orders: [],
   totals: { todo: 0, active: 0, done: 0 },
 };
@@ -261,9 +260,9 @@ function ItemHistory({ entries, now }: { entries: WallItemEntry[]; now: Date }) 
   );
 }
 
-function ItemDialog({ card, movedAt, onClose }: { card: WallOrder; movedAt: string; onClose: () => void }) {
+function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const read = useItemView(card.id, movedAt);
+  const read = useItemView(card.id);
 
   useEffect(() => {
     const element = dialog.current;
@@ -585,6 +584,7 @@ function useSnapshot() {
   useEffect(() => {
     let socket: WebSocket | undefined;
     let clearBump: ReturnType<typeof setTimeout> | undefined;
+    let acceptedSocketSnapshot = false;
 
     const accept = (data: WallSnapshot) => {
       const changed = new Set(
@@ -607,8 +607,11 @@ function useSnapshot() {
 
     fetch("/api/snapshot")
       .then((response) => (response.ok ? response.json() : Promise.reject()))
-      .then(accept)
+      .then((data: WallSnapshot) => {
+        if (!acceptedSocketSnapshot) accept(data);
+      })
       .catch(() => {
+        if (acceptedSocketSnapshot) return;
         setUnavailable(true);
         setAnswered(true);
       });
@@ -620,6 +623,7 @@ function useSnapshot() {
           setStale(true);
           return;
         }
+        acceptedSocketSnapshot = true;
         accept(data);
       };
       socket.onclose = () => setStale(true);
@@ -646,24 +650,34 @@ const ITEM_READ_MESSAGE: Record<ItemRead["state"], string> = {
   unavailable: "This order's record could not be read.",
 };
 
-function useItemView(orderId: string, movedAt: string): ItemRead {
+function useItemView(orderId: string): ItemRead {
   const [read, setRead] = useState<ItemRead>({ state: "reading", view: null });
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `movedAt` is why this re-reads — the beat the board reports for this order is the signal its record may have changed
   useEffect(() => {
     let current = true;
-    fetch(`/api/order/${encodeURIComponent(orderId)}`)
-      .then((response) => (response.ok ? response.json() : Promise.reject()))
-      .then((data: WallItemView) => {
-        if (current) setRead({ state: "read", view: data });
-      })
-      .catch(() => {
-        if (current) setRead((last) => ({ state: "unavailable", view: last.view }));
-      });
+    let inFlight = false;
+    const refresh = () => {
+      if (inFlight) return;
+      inFlight = true;
+      fetch(`/api/order/${encodeURIComponent(orderId)}`)
+        .then((response) => (response.ok ? response.json() : Promise.reject()))
+        .then((data: WallItemView) => {
+          if (current) setRead({ state: "read", view: data });
+        })
+        .catch(() => {
+          if (current) setRead((last) => ({ state: "unavailable", view: last.view }));
+        })
+        .finally(() => {
+          inFlight = false;
+        });
+    };
+    refresh();
+    const interval = setInterval(refresh, 1000);
     return () => {
       current = false;
+      clearInterval(interval);
     };
-  }, [orderId, movedAt]);
+  }, [orderId]);
 
   return read;
 }
@@ -772,14 +786,7 @@ function App() {
         ))}
       </section>
 
-      {openCard ? (
-        <ItemDialog
-          key={openCard.id}
-          card={openCard}
-          movedAt={onBoard?.lastEventAt ?? snapshot.generatedAt}
-          onClose={() => setOpened(null)}
-        />
-      ) : null}
+      {openCard ? <ItemDialog key={openCard.id} card={openCard} onClose={() => setOpened(null)} /> : null}
 
       <footer className="mt-auto text-center text-[11px] tracking-[0.02em] text-quiet">
         Built with ♥︎ by{" "}

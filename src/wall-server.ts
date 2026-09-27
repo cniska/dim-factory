@@ -29,7 +29,6 @@ export type WallOrder = {
 };
 
 export type WallSnapshot = {
-  generatedAt: string;
   orders: WallOrder[];
   totals: Record<WallStage, number>;
 };
@@ -103,7 +102,7 @@ function mapOrder(db: Database, row: BoardRow): WallOrder {
   };
 }
 
-export function assembleWallSnapshot(db: Database, now = new Date()): WallSnapshot {
+export function assembleWallSnapshot(db: Database): WallSnapshot {
   const rows = db
     .query<BoardRow, []>(
       `${ORDER_ROW_SELECT} WHERE ${orderStatusSql("o.id")} <> 'dropped' ORDER BY e.ts DESC, o.id`,
@@ -116,7 +115,7 @@ export function assembleWallSnapshot(db: Database, now = new Date()): WallSnapsh
     totals[order.stage] += 1;
     if (totals[order.stage] <= MAX_COLUMN_CARDS) orders.push(order);
   }
-  return { generatedAt: now.toISOString(), orders, totals };
+  return { orders, totals };
 }
 
 type EventRow = {
@@ -224,7 +223,7 @@ export function wallHandler(path: string = dbPath()) {
   const snapshot = (): WallSnapshot => {
     const db = openReadOnly(path);
     try {
-      return assembleWallSnapshot(db, new Date());
+      return assembleWallSnapshot(db);
     } finally {
       db.close();
     }
@@ -276,6 +275,11 @@ export function wallHandler(path: string = dbPath()) {
     websocket: {
       open(socket: WallSocket) {
         clients.add(socket);
+        try {
+          socket.send(JSON.stringify(snapshot()));
+        } catch {
+          socket.send(JSON.stringify({ error: "snapshot unavailable" }));
+        }
       },
       close(socket: WallSocket) {
         clients.delete(socket);
@@ -285,6 +289,23 @@ export function wallHandler(path: string = dbPath()) {
       },
     },
   };
+}
+
+export function broadcastWallSnapshot(
+  snapshot: () => WallSnapshot,
+  previousHash: string,
+  send: (message: string) => void,
+): string {
+  try {
+    const current = snapshot();
+    const body = JSON.stringify(current);
+    const hash = Bun.hash(body).toString(16);
+    if (hash !== previousHash) send(body);
+    return hash;
+  } catch {
+    send(JSON.stringify({ error: "snapshot unavailable" }));
+    return "";
+  }
 }
 
 export async function serveWall(
@@ -298,19 +319,19 @@ export async function serveWall(
     routes: { "/": wallPage },
     development: options.hmr ? { hmr: true } : false,
     fetch,
-    websocket,
+    websocket: {
+      ...websocket,
+      open(socket) {
+        hash = "";
+        websocket.open(socket);
+      },
+    },
   });
   const poll = setInterval(() => {
     if (clients.size === 0) return;
-    try {
-      const current = snapshot();
-      const nextHash = Bun.hash(JSON.stringify(current)).toString(16);
-      if (nextHash === hash) return;
-      hash = nextHash;
-      for (const client of clients) client.send(JSON.stringify(current));
-    } catch {
-      for (const client of clients) client.send(JSON.stringify({ error: "snapshot unavailable" }));
-    }
+    hash = broadcastWallSnapshot(snapshot, hash, (message) => {
+      for (const client of clients) client.send(message);
+    });
   }, 1000);
   poll.unref();
   return server;

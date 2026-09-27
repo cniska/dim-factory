@@ -21,7 +21,7 @@ import { queueOrder, setOrderPriority, startOrder } from "./order-lifecycle";
 import { closeOrderReview, recordOrderReviewArtifact } from "./order-review";
 import type { Station } from "./station";
 import { approveFinalBuildAt, approvePlan, approveReviewAt } from "./station-approvals.test-support";
-import { assembleItemView, assembleWallSnapshot, wallHandler } from "./wall-server";
+import { assembleItemView, assembleWallSnapshot, broadcastWallSnapshot, wallHandler } from "./wall-server";
 import { startWorkerRun } from "./worker";
 import type { Role } from "./worker-roles";
 
@@ -38,6 +38,29 @@ function floor(): Database {
 
 const ORIGIN = "http://127.0.0.1";
 const WALL_PAGE = new URL("./wall.html", import.meta.url).pathname;
+
+test("wall broadcasts a changed board and recovers after a read failure", () => {
+  const board = { orders: [], totals: { todo: 0, active: 0, done: 0 } };
+  const sent: string[] = [];
+  let failed = false;
+  const snapshot = () => {
+    if (failed) throw new Error("database unavailable");
+    return board;
+  };
+  const send = (message: string) => sent.push(message);
+  let hash = "";
+
+  hash = broadcastWallSnapshot(snapshot, hash, send);
+  hash = broadcastWallSnapshot(snapshot, hash, send);
+  expect(sent).toEqual([JSON.stringify(board)]);
+
+  failed = true;
+  hash = broadcastWallSnapshot(snapshot, hash, send);
+  failed = false;
+  hash = broadcastWallSnapshot(snapshot, hash, send);
+  expect(sent).toEqual([JSON.stringify(board), '{"error":"snapshot unavailable"}', JSON.stringify(board)]);
+  expect(hash).not.toBe("");
+});
 
 function answer(wall: ReturnType<typeof wallHandler>, path: string, init?: RequestInit): Response {
   const response = wall.fetch(new Request(`${ORIGIN}${path}`, init), { upgrade: () => false });
@@ -153,7 +176,7 @@ describe("factory wall snapshot", () => {
     approveOrder(db, "order-done", operator, undefined, "2026-09-18T08:01:38.000Z");
     appendOrderEvent(db, "order-done", { worker: operator, kind: "shipped" }, "2026-09-18T08:02:00.000Z");
 
-    const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:10:00.000Z"));
+    const snapshot = assembleWallSnapshot(db);
 
     expect(snapshot.orders.map((order) => [order.title, order.station, order.status, order.stage])).toEqual([
       ["Show the wall", "build", "active", "active"],
@@ -216,7 +239,7 @@ describe("factory wall snapshot", () => {
       "2026-09-18T09:00:00.000Z",
     );
 
-    const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z"));
+    const snapshot = assembleWallSnapshot(db);
 
     expect(snapshot.orders.map((order) => [order.id, order.status, order.stage])).toEqual([
       ["order-started", "active", "active"],
@@ -241,7 +264,7 @@ describe("factory wall snapshot", () => {
       "2026-09-18T10:02:00.000Z",
     );
 
-    const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z"));
+    const snapshot = assembleWallSnapshot(db);
 
     expect(snapshot.orders.map((order) => [order.status, order.stage, order.station, order.next])).toEqual([
       ["active", "active", "plan", "run"],
@@ -265,7 +288,7 @@ describe("factory wall snapshot", () => {
       "order-quiet",
     ]);
 
-    const order = assembleWallSnapshot(db, new Date("2026-09-18T10:05:00.000Z")).orders[0];
+    const order = assembleWallSnapshot(db).orders[0];
 
     expect(order?.lastEventAt).toBe("2026-09-18T09:05:00.000Z");
     db.close();
@@ -286,9 +309,7 @@ describe("factory wall snapshot", () => {
          VALUES ('order-named', '2026-09-18T10:01:00.000Z', 'failed', NULL)`,
       ),
     ).not.toThrow();
-    const card = assembleWallSnapshot(db, new Date("2026-09-18T10:02:00.000Z")).orders.find(
-      (order) => order.id === "order-named",
-    );
+    const card = assembleWallSnapshot(db).orders.find((order) => order.id === "order-named");
     expect(card?.worker).toBeNull();
     db.run("PRAGMA foreign_keys = ON");
     expect(() =>
@@ -404,7 +425,7 @@ describe("factory wall snapshot", () => {
     for (let index = 0; index < 14; index += 1) seed(`failed-${index}`, "failed");
     for (let index = 0; index < 14; index += 1) seed(`done-${index}`, "shipped");
 
-    const snapshot = assembleWallSnapshot(db, new Date("2026-09-18T10:10:00.000Z"));
+    const snapshot = assembleWallSnapshot(db);
 
     expect(snapshot.orders.filter((order) => order.stage === "active")).toHaveLength(12);
     expect(snapshot.orders.filter((order) => order.stage === "done")).toHaveLength(12);
@@ -430,6 +451,12 @@ describe("factory wall snapshot", () => {
       expect(wall.fetch(new Request(`${ORIGIN}/ws`), server)).toBeUndefined();
       expect(upgraded).toHaveLength(1);
       const sent: string[] = [];
+      wall.websocket.open({ send: (message: string) => sent.push(message) } as never);
+      expect(JSON.parse(sent[0] ?? "{}")).toMatchObject({
+        orders: [],
+        totals: { todo: 0, active: 0, done: 0 },
+      });
+      sent.length = 0;
       wall.websocket.message({ send: (message: string) => sent.push(message) } as never);
       expect(sent.map((message) => JSON.parse(message))).toEqual([{ error: "read-only wall" }]);
     } finally {
