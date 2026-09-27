@@ -31,6 +31,11 @@ if (mode === "hold") {
   const db = openDb(path);
   db.run("INSERT INTO probe (who) VALUES (?)", [who]);
   closeDb(db);
+} else if (mode === "initialize") {
+  console.log("ready");
+  await nextLine();
+  const db = openDb(path);
+  closeDb(db);
 } else {
   throw new Error(`unknown mode ${mode}`);
 }

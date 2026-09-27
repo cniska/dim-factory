@@ -31,7 +31,7 @@ interface Writer {
   send(): void;
 }
 
-function spawnWriter(mode: "hold" | "write" | "open", path: string, who: string): Writer {
+function spawnWriter(mode: "hold" | "write" | "open" | "initialize", path: string, who: string): Writer {
   const proc = Bun.spawn(["bun", WRITER, mode, path, who], { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
   const reader = proc.stdout.pipeThrough(new TextDecoderStream()).getReader();
   let buffered = "";
@@ -74,6 +74,42 @@ function committed(path: string): string[] {
 }
 
 describe("concurrent writers", () => {
+  test("two first opens create one version row", async () => {
+    const path = scratchPath();
+    const empty = new Database(path, { create: true });
+    empty.run("PRAGMA journal_mode = WAL");
+    empty.close();
+    const first = spawnWriter("initialize", path, "first");
+    const second = spawnWriter("initialize", path, "second");
+    await Promise.all([first.expectLine("ready"), second.expectLine("ready")]);
+    first.send();
+    second.send();
+
+    expect(await exited(first)).toEqual({ code: 0, stderr: "" });
+    expect(await exited(second)).toEqual({ code: 0, stderr: "" });
+    const initialized = new Database(path, { readonly: true });
+    expect(initialized.query("SELECT count(*) AS n FROM schema_version").get()).toEqual({ n: 1 });
+    initialized.close();
+  });
+
+  test("a first open can retry after initialization times out on the write lock", () => {
+    const path = scratchPath();
+    const holder = new Database(path, { create: true });
+    holder.run("PRAGMA journal_mode = WAL");
+    holder.run("BEGIN IMMEDIATE");
+    try {
+      expect(() => openDb(path, { busyTimeoutMs: 50 })).toThrow(
+        expect.objectContaining({ code: "SQLITE_BUSY" }),
+      );
+    } finally {
+      holder.run("ROLLBACK");
+      holder.close();
+    }
+    const reopened = openDb(path);
+    expect(reopened.query("SELECT count(*) AS n FROM schema_version").get()).toEqual({ n: 1 });
+    closeDb(reopened);
+  });
+
   test("a writer opening while another holds the write lock waits for it and both commit", async () => {
     const path = scratchPath();
     const setup = new Database(path, { create: true });
@@ -161,4 +197,22 @@ describe("the lock wait a connection is opened with", () => {
       opened.mockRestore();
     }
   });
+});
+
+test("opening an older schema leaves its tables unchanged", () => {
+  const path = scratchPath();
+  const old = new Database(path, { create: true });
+  old.run("CREATE TABLE schema_version (version INTEGER NOT NULL)");
+  old.run("INSERT INTO schema_version (version) VALUES (1)");
+  old.run("CREATE TABLE legacy (value TEXT)");
+  old.close();
+
+  expect(() => openDb(path)).toThrow(expect.objectContaining({ code: "SCHEMA_TOO_OLD", found: 1 }));
+
+  const after = new Database(path, { readonly: true });
+  expect(after.query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all()).toEqual([
+    { name: "legacy" },
+    { name: "schema_version" },
+  ]);
+  after.close();
 });

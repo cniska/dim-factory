@@ -15,19 +15,47 @@ export class SchemaTooOldError extends Error {
 export function openDb(path: string, opts: { forRebuild?: boolean; busyTimeoutMs?: number } = {}): Database {
   mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path, { create: true });
-  db.run(`PRAGMA busy_timeout = ${opts.busyTimeoutMs ?? 5000}`);
-  db.run("PRAGMA journal_mode = WAL");
-  db.run("PRAGMA foreign_keys = ON");
-  db.run(SCHEMA_SQL);
-
-  const row = db.prepare<{ version: number }, []>("SELECT version FROM schema_version LIMIT 1").get();
-  if (!row) {
-    db.run("INSERT INTO schema_version (version) VALUES (?)", [SCHEMA_VERSION]);
-  } else if (row.version !== SCHEMA_VERSION && !opts.forRebuild) {
-    db.close();
-    throw new SchemaTooOldError(row.version);
+  let transactionOpen = false;
+  try {
+    db.run(`PRAGMA busy_timeout = ${opts.busyTimeoutMs ?? 5000}`);
+    const hasVersionTable = db
+      .query<{ present: number }, []>(
+        "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'schema_version'",
+      )
+      .get();
+    const row = hasVersionTable
+      ? db.prepare<{ version: number }, []>("SELECT version FROM schema_version LIMIT 1").get()
+      : null;
+    if (row && row.version !== SCHEMA_VERSION && !opts.forRebuild) {
+      throw new SchemaTooOldError(row.version);
+    }
+    db.run("PRAGMA journal_mode = WAL");
+    db.run("PRAGMA foreign_keys = ON");
+    if (!row) {
+      db.run("BEGIN IMMEDIATE");
+      transactionOpen = true;
+    }
+    db.run(SCHEMA_SQL);
+    if (!row) {
+      const initialized = db
+        .prepare<{ version: number }, []>("SELECT version FROM schema_version LIMIT 1")
+        .get();
+      if (!initialized) db.run("INSERT INTO schema_version (version) VALUES (?)", [SCHEMA_VERSION]);
+      else if (initialized.version !== SCHEMA_VERSION && !opts.forRebuild) {
+        throw new SchemaTooOldError(initialized.version);
+      }
+      db.run("COMMIT");
+      transactionOpen = false;
+    }
+    return db;
+  } catch (error) {
+    try {
+      if (transactionOpen) db.run("ROLLBACK");
+    } finally {
+      db.close();
+    }
+    throw error;
   }
-  return db;
 }
 
 export function closeDb(db: Database): void {
