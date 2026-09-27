@@ -479,6 +479,7 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
 }
 
 function BoardColumn({
+  status,
   label,
   orders,
   total,
@@ -486,6 +487,7 @@ function BoardColumn({
   bumped,
   onOpen,
 }: {
+  status: BoardStatus;
   label: string;
   orders: WallOrder[];
   total: number;
@@ -493,7 +495,7 @@ function BoardColumn({
   bumped: ReadonlySet<string>;
   onOpen: (order: WallOrder) => void;
 }) {
-  const id = `column-${label.toLowerCase()}`;
+  const id = `column-${status}`;
 
   return (
     <section className="min-w-0" aria-labelledby={id}>
@@ -782,6 +784,7 @@ function App() {
         {WALL_COLUMNS.map(({ status, label }) => (
           <BoardColumn
             key={status}
+            status={status}
             label={label}
             orders={columns[status]}
             total={snapshot.totals[status]}
