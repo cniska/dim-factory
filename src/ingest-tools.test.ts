@@ -4,13 +4,13 @@ import { SCHEMA_SQL } from "./db-schema";
 import { TOOLS, TOOLS_SQL } from "./ingest-tools";
 
 describe("the tool vocabulary", () => {
-  test("is the two tools, spelled as the database spells them", () => {
-    expect([...TOOLS]).toEqual(["claude", "codex"]);
-    expect(TOOLS_SQL).toBe("'claude','codex'");
+  test("is the tools, spelled as the database spells them", () => {
+    expect([...TOOLS]).toEqual(["claude", "codex", "grok"]);
+    expect(TOOLS_SQL).toBe("'claude','codex','grok'");
   });
 
   test("reaches every tool column, so the code and the constraint cannot disagree", () => {
-    const constrained = SCHEMA_SQL.match(/CHECK \(tool IN \('claude','codex'\)\)/g) ?? [];
+    const constrained = SCHEMA_SQL.match(/CHECK \(tool IN \('claude','codex','grok'\)\)/g) ?? [];
     expect(constrained.length).toBe(4);
   });
 

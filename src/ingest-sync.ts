@@ -6,6 +6,7 @@ import { createIngester, type FileSpec } from "./ingest";
 import { listClaudeSubagents, listClaudeTranscripts } from "./ingest-claude-source";
 import { listCodexRollouts, readCodexTitles } from "./ingest-codex-source";
 import { type GitReport, ingestCommits } from "./ingest-git";
+import { listGrokSessions } from "./ingest-grok-source";
 import { type HistoryReport, ingestHistory } from "./ingest-history";
 import { applyHookEvents, type DrainReport, drainSpool } from "./ingest-spool";
 import type { Env } from "./paths";
@@ -17,6 +18,7 @@ export type SyncReport = {
   claudeTranscripts: number;
   claudeSubagents: number;
   codexRollouts: number;
+  grokSessions: number;
   filesRead: number;
   orphanSubagents: string[];
   failures: { path: string; error: string }[];
@@ -44,6 +46,7 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     claudeTranscripts: 0,
     claudeSubagents: 0,
     codexRollouts: 0,
+    grokSessions: 0,
     filesRead: 0,
     orphanSubagents: [],
     failures: [],
@@ -91,6 +94,15 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     report.codexRollouts += 1;
     const title = titles.get(spec.sessionId);
     if (title) setTitle.run(title, spec.sessionId);
+  }
+
+  for (const spec of listGrokSessions(env)) {
+    if (spec.parentId && !sessionExists.get(spec.parentId)) {
+      report.orphanSubagents.push(spec.sessionId);
+      spec.parentId = undefined;
+    }
+    run(spec);
+    report.grokSessions += 1;
   }
 
   applyHookEvents(db);

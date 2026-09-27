@@ -67,7 +67,7 @@ export const CLAUDE_STOPS =
   "instead, which `dim q turns` reports";
 
 export const claudeOnly = (...bases: string[]): string =>
-  `These counts are Claude's alone: ${bases.join("; ")}. A Codex session is absent from them rather than idle.`;
+  `These counts are Claude's alone: ${bases.join("; ")}. A session under another tool is absent from them rather than idle.`;
 
 export const stoppedByOwner = (prefix = "m."): string =>
   `(${prefix}denial_kind = 'user-rejected' OR ${prefix}interrupted_message_id IS NOT NULL ` +

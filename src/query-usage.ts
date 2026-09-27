@@ -126,9 +126,9 @@ export const cost: Query = {
     );
     const claudeSessions = scalar(db, "SELECT count(*) AS n FROM session WHERE tool = 'claude'");
     const reporting = scalar(db, "SELECT count(*) AS n FROM session_cost_reported");
-    const codex = scalar(db, "SELECT count(*) AS n FROM session WHERE tool = 'codex'");
+    const other = scalar(db, "SELECT count(*) AS n FROM session WHERE tool != 'claude'");
     return {
-      denominator: `${reporting} of ${claudeSessions} Claude sessions carry a cost record; ${codex} Codex sessions report none (${windowLine(ctx)})`,
+      denominator: `${reporting} of ${claudeSessions} Claude sessions carry a cost record; ${other} sessions under another tool report none (${windowLine(ctx)})`,
       columns,
       rows: toRows(records, columns),
       note:

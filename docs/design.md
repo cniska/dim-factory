@@ -1,12 +1,13 @@
 # Session database
 
-A local SQLite database, fed from Claude Code and Codex on this machine, that records what each session did and the commits that followed, so an agent or the owner can ask it instead of re-deriving the answer.
+A local SQLite database, fed from the coding-agent sessions on this machine, that records what each session did and the commits that followed, so an agent or the owner can ask it instead of re-deriving the answer.
 
 ## Sources
 
 - **Claude Code transcripts** — `~/.claude/projects/<slug>/<session-id>.jsonl`, one JSON object per line, with subagents under `<session-id>/subagents/`. A subagent's session is `<agent id>@<parent session id>`, because an agent id repeats across parents.
 - **Codex rollouts** — `~/.codex/sessions/**/rollout-*.jsonl` and `~/.codex/archived_sessions/`. The rollout is the source of record; Codex's own SQLite files are a projection of it, and only the rollout holds token usage.
-- **Prompt history** — `~/.claude/history.jsonl` and `~/.codex/history.jsonl`, the only remnant of a session whose transcript was deleted.
+- **Grok Build sessions** — `~/.grok/sessions/<encoded-cwd>/<session-id>/updates.jsonl`. `summary.json` beside it supplies the title, directory, branch, model, and parent. `GROK_HOME` overrides the base directory. A child session is an ordinary session whose summary names its parent.
+- **Prompt history** — `~/.claude/history.jsonl`, `~/.codex/history.jsonl`, and each Grok cwd group's `prompt_history.jsonl`, the only remnant of a session whose transcript was deleted.
 - **Hooks** — events spooled by the hooks `dim` installs (see [Hooks](#hooks)).
 - **Git** — `git log` of the repos the session rows name, read into `repo_commit` and `commit_file`, and `git ls-files` into `repo_file`.
 
@@ -22,7 +23,7 @@ Claude Code deletes transcripts after 30 days unless `cleanupPeriodDays` is rais
 
 [`src/db-schema.ts`](../src/db-schema.ts) is the schema, and each table carries the reason for its own shape beside it.
 
-- **Both tools land in the same tables.** A session records its `tool`, `claude` or `codex`, and tool-specific detail goes in an `extra` JSON column, so a question about both needs no `UNION`. Times are ISO-8601 UTC text.
+- **Every tool lands in the same tables.** A session records its `tool` from the vocabulary in [`src/ingest-tools.ts`](../src/ingest-tools.ts), and tool-specific detail goes in an `extra` JSON column, so a question about more than one needs no `UNION`. Times are ISO-8601 UTC text.
 - **Tables are rebuilt by re-reading their sources**, so a schema change is `dim rebuild`, not a migration. `rebuild` drops the derived tables it names and recreates them from `SCHEMA_SQL`, since `CREATE TABLE IF NOT EXISTS` would leave an old shape in place.
 - **Tables with no source to re-read survive it.** `correction_label`, `hook_event` and the factory tables ([`src/ingest-sync.ts`](../src/ingest-sync.ts)) are dropped and written back row for row, so they can still take a schema change. A table `rebuild` does not name, such as `guidance_walk`, `trace_event`, `finding` or `embedding`, is left as it is.
 - **`SCHEMA_VERSION` is bumped for a change only a re-read can correct** — a changed column, or a changed rule for what identifies a row. Until `rebuild` has finished and stamped the new version, `sync` and every other write refuse the database.
@@ -38,10 +39,10 @@ dim sync: drain the spool → read changed files → derive session ends
 ```
 
 - **No network, credential or per-token cost, and no model reads a transcript.** Nothing is filtered or scored at ingest; deciding at read time is the only policy that is reversible.
-- **Per-tool parsers** ([`src/ingest-parse-claude.ts`](../src/ingest-parse-claude.ts), [`src/ingest-parse-codex.ts`](../src/ingest-parse-codex.ts)) turn lines into rows and know nothing of the database; [`src/ingest.ts`](../src/ingest.ts) writes their rows and knows nothing of either format.
+- **Per-tool parsers** ([`src/ingest-parse-claude.ts`](../src/ingest-parse-claude.ts), [`src/ingest-parse-codex.ts`](../src/ingest-parse-codex.ts), [`src/ingest-parse-grok.ts`](../src/ingest-parse-grok.ts)) turn lines into rows and know nothing of the database; [`src/ingest.ts`](../src/ingest.ts) writes their rows and knows nothing of any format.
 - **Incremental.** `source_file.bytes_ingested` is each file's cursor, and a changed file is read from it. A file shorter than its cursor is re-ingested from zero.
 - **The cursor follows the session, not the path.** Codex archives a rollout by moving it, so the cursor is keyed by `(session_id, kind)` and `message.src_file` follows the new path through `ON UPDATE CASCADE`.
-- **Idempotent.** Natural keys make a re-run a no-op: Claude `message.id` and `uuid`, tool-use ids, `response_id`, Codex item ids and `(thread_id, turn_id)`.
+- **Idempotent.** Natural keys make a re-run a no-op: Claude `message.id` and `uuid`, tool-use ids, `response_id`, Codex item ids and `(thread_id, turn_id)`, Grok event ids and tool-call ids.
 - **Claude usage is deduplicated and the largest kept.** One API response is written as one line per content block, each repeating `message.id` and a `usage` that accumulates as the response streams, so the line with the most output tokens holds the total.
 - **Schedule.** `dim install-agent` writes a `launchd` agent that runs `dim sync` every 15 minutes, naming `bun` by absolute path because launchd starts with almost no environment. `dim rebuild` is `sync` with every cursor reset.
 - **The lock** is a directory under the data directory that records its holder's pid, since macOS has no `flock` and a killed run would otherwise leave it held forever.
@@ -97,7 +98,7 @@ dim sync: drain the spool → read changed files → derive session ends
 - `src/db-schema.ts` — tables, and the reason for each shape
 - `src/ingest-sync.ts` — sync, rebuild and the tables carried through it
 - `src/db.ts`, `src/db-read.ts`, `src/db-lock.ts` — opening the database, and the lock
-- `src/ingest.ts`, `src/ingest-parse-claude.ts`, `src/ingest-parse-codex.ts` — ingestion
+- `src/ingest.ts`, `src/ingest-parse-claude.ts`, `src/ingest-parse-codex.ts`, `src/ingest-parse-grok.ts` — ingestion
 - `src/ingest-spool.ts`, `src/hooks.ts` — hook spool and install
 - `src/query-registry.ts`, `src/*-queries.ts` — named queries
 - `src/search-embed.ts`, `src/bench.ts` — embeddings and the retrieval benchmark

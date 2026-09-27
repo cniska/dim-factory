@@ -256,7 +256,7 @@ export const repeats: Query = {
           ? "nothing recurs across three sessions in this window; try fewer words per phrase or a wider window"
           : "A phrase is a place to look, not a rule. What recurs may be a habit of speech rather than an " +
             "instruction — read the sessions before promoting one into guidance every session will load. " +
-            "Both tools mark a typed prompt; only Claude marks a stop, so the stopped half is Claude's alone.",
+            "Every tool marks a typed prompt; only Claude marks a stop, so the stopped half is Claude's alone.",
     };
   },
 };

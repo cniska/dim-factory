@@ -13,7 +13,7 @@ bun link       # puts dim on PATH
 ## Collect and inspect
 
 ```sh
-dim sync       # read new Claude Code and Codex session data
+dim sync       # read new session data
 dim stats      # stored row and usage counts
 dim doctor     # check the installation and name repairs
 dim rebuild    # rebuild tables from their sources

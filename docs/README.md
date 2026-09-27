@@ -1,6 +1,6 @@
 # Documentation
 
-dim keeps a local record of what every Claude Code and Codex session on this machine did, answers questions against it, and runs work through a factory whose gates hold a rule whether or not a skill loaded. [`README.md`](../README.md) is the tour.
+dim keeps a local record of what every coding-agent session on this machine did, answers questions against it, and runs work through a factory whose gates hold a rule whether or not a skill loaded. [`README.md`](../README.md) is the tour. The sessions it reads are listed in [the session database](design.md#sources).
 
 Each fact lives on one page and is linked from the others.
 
