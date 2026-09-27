@@ -1,6 +1,6 @@
-import type { OrderEventKind } from "./order-events";
-import { STATION_LABELS } from "./wall-board";
-import type { WallItemEntry } from "./wall-server";
+import type { OrderEventKind } from "../order-events";
+import { STATION_LABELS } from "./board";
+import type { WallItemEntry } from "./server";
 
 export const ITEM_KIND_LABELS: Record<OrderEventKind, string> = {
   queued: "Queued",

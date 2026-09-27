@@ -1,15 +1,15 @@
 import type { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
-import { openReadOnly } from "./db-read";
-import { runningAttempt } from "./order-attempt";
-import type { OrderEventKind } from "./order-events";
-import type { OrderLine } from "./order-line";
-import { type NextAct, orderState } from "./order-state";
-import { type OrderStatus, orderStatusSql } from "./order-status";
-import { dbPath } from "./paths";
-import type { Station } from "./station";
-import wallPage from "./wall.html";
-import type { Role } from "./worker-roles";
+import { openReadOnly } from "../db-read";
+import { runningAttempt } from "../order-attempt";
+import type { OrderEventKind } from "../order-events";
+import type { OrderLine } from "../order-line";
+import { type NextAct, orderState } from "../order-state";
+import { type OrderStatus, orderStatusSql } from "../order-status";
+import { dbPath } from "../paths";
+import type { Station } from "../station";
+import type { Role } from "../worker-roles";
+import wallPage from "./index.html";
 
 export type BoardStatus = Exclude<OrderStatus, "dropped">;
 

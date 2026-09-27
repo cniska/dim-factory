@@ -3,27 +3,27 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename } from "node:path";
-import wallServeConfig from "../bunfig.toml";
-import { SCHEMA_SQL } from "./db-schema";
-import { attemptIn, integratedRepo, located, ranCheck, reviewIn, workerIn } from "./fixtures.test-support";
-import { approveOrder } from "./order-approval";
-import { completeOrderSlice, nextOrderSlice, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
-import { finishAttempt, startAttempt } from "./order-attempt";
+import wallServeConfig from "../../bunfig.toml";
+import { SCHEMA_SQL } from "../db-schema";
+import { attemptIn, integratedRepo, located, ranCheck, reviewIn, workerIn } from "../fixtures.test-support";
+import { approveOrder } from "../order-approval";
+import { completeOrderSlice, nextOrderSlice, recordOrderBuild, recordOrderPlan } from "../order-artifacts";
+import { finishAttempt, startAttempt } from "../order-attempt";
 import {
   recordOrderCheck,
   recordOrderCommit,
   recordOrderEnvironment,
   recordOrderFile,
-} from "./order-evidence";
-import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
-import { appendOrderEvent } from "./order-ledger";
-import { queueOrder, setOrderPriority, startOrder } from "./order-lifecycle";
-import { closeOrderReview, recordOrderReviewArtifact } from "./order-review";
-import type { Station } from "./station";
-import { approveFinalBuildAt, approvePlan, approveReviewAt } from "./station-approvals.test-support";
-import { assembleItemView, assembleWallSnapshot, broadcastWallSnapshot, wallHandler } from "./wall-server";
-import { startWorkerRun } from "./worker";
-import type { Role } from "./worker-roles";
+} from "../order-evidence";
+import { answerOrderFindings, raiseOrderFinding } from "../order-finding";
+import { appendOrderEvent } from "../order-ledger";
+import { queueOrder, setOrderPriority, startOrder } from "../order-lifecycle";
+import { closeOrderReview, recordOrderReviewArtifact } from "../order-review";
+import type { Station } from "../station";
+import { approveFinalBuildAt, approvePlan, approveReviewAt } from "../station-approvals.test-support";
+import { startWorkerRun } from "../worker";
+import type { Role } from "../worker-roles";
+import { assembleItemView, assembleWallSnapshot, broadcastWallSnapshot, wallHandler } from "./server";
 
 let worker = "";
 let attemptOperator = "";
@@ -37,7 +37,7 @@ function floor(): Database {
 }
 
 const ORIGIN = "http://127.0.0.1";
-const WALL_PAGE = new URL("./wall.html", import.meta.url).pathname;
+const WALL_PAGE = new URL("./index.html", import.meta.url).pathname;
 
 test("wall broadcasts a changed board and recovers after a read failure", () => {
   const board = { orders: [], totals: { queued: 0, running: 0, shipped: 0 } };

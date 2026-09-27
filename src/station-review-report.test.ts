@@ -10,7 +10,7 @@ import { queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview } from "./order-review";
 import { parseReviewReport } from "./station-review-artifact";
 import { renderReviewReport } from "./station-review-report";
-import { WallMarkdown } from "./wall-markdown";
+import { WallMarkdown } from "./wall/markdown";
 
 const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ITEM_KIND_LABELS, itemKindLabel } from "./wall-item";
+import { ITEM_KIND_LABELS, itemKindLabel } from "./item";
 
 describe("factory wall item view", () => {
   test("calls a record's kinds what a person calls them, not what the column holds", () => {

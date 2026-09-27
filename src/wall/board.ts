@@ -1,5 +1,5 @@
-import type { Station } from "./station";
-import type { BoardStatus, WallOrder } from "./wall-server";
+import type { Station } from "../station";
+import type { BoardStatus, WallOrder } from "./server";
 
 export const WALL_COLUMNS: ReadonlyArray<{ status: BoardStatus; label: string }> = [
   { status: "queued", label: "Queued" },

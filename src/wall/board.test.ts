@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { ordersByStatus, WALL_COLUMNS } from "./wall-board";
-import type { WallOrder } from "./wall-server";
+import { ordersByStatus, WALL_COLUMNS } from "./board";
+import type { WallOrder } from "./server";
 
 const order = (id: string, status: WallOrder["status"], station: WallOrder["station"]): WallOrder => ({
   id,

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { WallMarkdown } from "./wall-markdown";
+import { WallMarkdown } from "./markdown";
 
 test("artifact Markdown renders a table with a scrollable container", () => {
   const html = renderToStaticMarkup(

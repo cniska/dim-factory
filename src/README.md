@@ -1,6 +1,6 @@
 # src/
 
-Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` belongs to `db`, `order-ship.ts` to `order`. A module that is one file carries its bare name (`doctor.ts`, `paths.ts`). Commands are the exception, named `<name>-command.ts` for the one `dim` command `<name>` each holds. A test sits beside its module as `<module>.test.ts`.
+Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` belongs to `db`, `order-ship.ts` to `order`. A module that is one file carries its bare name (`doctor.ts`, `paths.ts`). Commands are the exception, named `<name>-command.ts` for the one `dim` command `<name>` each holds. A test sits beside its module as `<module>.test.ts`. The wall is the one directory, `wall/`, because it is a separate app that only reads the record; its files drop the prefix.
 
 ## Modules
 
@@ -23,7 +23,7 @@ Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` 
 | `check` | The check sandbox |
 | `gate`, `comments`, `hooks`, `skill`, `rules`, `install` | Install and enforce the shared controls |
 | `git`, `repo`, `worktree`, `workspace` | Repositories, what they declare, and task worktrees |
-| `wall` | The read-only board; `components/` and `lib/` hold its UI primitives |
+| `wall/` | The read-only board; `components/` and `lib/` hold its UI primitives |
 | `trace` | Diagnostic events |
 
 ## Where to start

@@ -26,7 +26,7 @@ import { orderState } from "./order-state";
 import { orderStatus } from "./order-status";
 import type { Env } from "./paths";
 import { approveFinalBuildAt, approvePlan, approveReviewAt } from "./station-approvals.test-support";
-import { assembleWallSnapshot } from "./wall-server";
+import { assembleWallSnapshot } from "./wall/server";
 import { mintWorker, newWorkerSession, resolveWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./worker";
 
 const opened: Database[] = [];

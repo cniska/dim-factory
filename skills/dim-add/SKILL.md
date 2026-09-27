@@ -33,7 +33,7 @@ Turn the request into the one order the operator will run. This is intake, not p
 
 ## Description
 
-The wall prints the description as plain text, markup and all: a card shows its first three lines and the item view the whole of it with line breaks kept (`src/wall-client.tsx`). So open with what should become true, and write the rest to be read unrendered.
+The wall prints the description as plain text, markup and all: a card shows its first three lines and the item view the whole of it with line breaks kept (`src/wall/client.tsx`). So open with what should become true, and write the rest to be read unrendered.
 
 ## Result
 

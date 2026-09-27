@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { msUntilNextMinute } from "./wall-minute-beat";
+import { msUntilNextMinute } from "./minute-beat";
 
 describe("waiting for the minute to turn", () => {
   test("a fresh minute waits the whole one out", () => {

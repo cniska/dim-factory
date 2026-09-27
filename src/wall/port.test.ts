@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_WALL_PORT, WallPortError, wallPort } from "./wall-port";
+import { DEFAULT_WALL_PORT, WallPortError, wallPort } from "./port";
 
 describe("wallPort", () => {
   test("serves on one address when nothing is set, so a link keeps working", () => {

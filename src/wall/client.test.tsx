@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 describe("item history", () => {
   test("keeps per-file evidence out of the wall", async () => {
-    const source = await Bun.file(new URL("./wall-client.tsx", import.meta.url)).text();
+    const source = await Bun.file(new URL("./client.tsx", import.meta.url)).text();
 
     expect(source).not.toContain("read.view.changes.length > 0 ? <ItemChanges");
     expect(source).not.toContain('className="text-role-builder">+{change.added}</span>');
@@ -10,7 +10,7 @@ describe("item history", () => {
   });
 
   test("keeps the audit log's bottom inset equal to its other sides", async () => {
-    const source = await Bun.file(new URL("./wall-client.tsx", import.meta.url)).text();
+    const source = await Bun.file(new URL("./client.tsx", import.meta.url)).text();
 
     expect(source).toContain('className="min-w-0 space-y-[var(--space-lg)] text-[12px]"');
     expect(source).toContain('className="flex flex-col gap-[var(--space-lg)]"');
@@ -32,7 +32,7 @@ describe("item history", () => {
   });
 
   test("renders the description on cards and in the item dialog", async () => {
-    const source = await Bun.file(new URL("./wall-client.tsx", import.meta.url)).text();
+    const source = await Bun.file(new URL("./client.tsx", import.meta.url)).text();
 
     expect(source).toContain('className="line-clamp-3 min-h-[54px] shrink-0 text-quiet leading-[18px]"');
     expect(source).toContain(
@@ -50,8 +50,8 @@ describe("item history", () => {
   });
 
   test("labels the plan and audit log in the detail view", async () => {
-    const source = await Bun.file(new URL("./wall-client.tsx", import.meta.url)).text();
-    const styles = await Bun.file(new URL("./wall.css", import.meta.url)).text();
+    const source = await Bun.file(new URL("./client.tsx", import.meta.url)).text();
+    const styles = await Bun.file(new URL("./styles.css", import.meta.url)).text();
 
     expect(source).toContain('aria-labelledby="item-plan"');
     expect(source).toMatch(/>\s*Plan\s*</);

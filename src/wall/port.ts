@@ -1,4 +1,4 @@
-import type { Env } from "./paths";
+import type { Env } from "../paths";
 
 export const DEFAULT_WALL_PORT = 7326;
 

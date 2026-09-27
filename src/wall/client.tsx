@@ -1,27 +1,20 @@
 import { CircleAlert, CircleCheck, CircleDot, CircleX, type LucideIcon, Radio, X } from "lucide-react";
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import type { OrderLine } from "../order-line";
+import { age } from "../query-age";
+import type { Role } from "../worker-roles";
+import { ordersByStatus, STATION_LABELS, WALL_COLUMNS } from "./board";
 import { Badge } from "./components/ui/badge";
 import { Card, CardFooter } from "./components/ui/card";
 import { Digits } from "./components/ui/digits";
 import { Robot } from "./components/ui/robot";
+import { itemKindLabel } from "./item";
 import { cn } from "./lib/utils";
-import type { OrderLine } from "./order-line";
-import { age } from "./query-age";
-import { ordersByStatus, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
-import { itemKindLabel } from "./wall-item";
-import { WallMarkdown } from "./wall-markdown";
-import { msUntilNextMinute } from "./wall-minute-beat";
-import type {
-  BoardStatus,
-  WallItemEntry,
-  WallItemView,
-  WallOrder,
-  WallSnapshot,
-  WallWorker,
-} from "./wall-server";
-import type { Role } from "./worker-roles";
-import "./wall.css";
+import { WallMarkdown } from "./markdown";
+import { msUntilNextMinute } from "./minute-beat";
+import type { BoardStatus, WallItemEntry, WallItemView, WallOrder, WallSnapshot, WallWorker } from "./server";
+import "./styles.css";
 
 const unavailableSnapshot: WallSnapshot = {
   orders: [],

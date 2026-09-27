@@ -15,7 +15,7 @@
     "outDir": "dist",
     // What `components.json` already declares, so a component `shadcn add` writes resolves
     // its import of this repo's own `cn` instead of reaching for a package that spells it.
-    "paths": { "@/*": ["./src/*"] }
+    "paths": { "@/*": ["./src/wall/*"] }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"]
 }
