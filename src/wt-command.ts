@@ -21,7 +21,7 @@ changed its tip. On removal it runs the primary checkout's
 scripts/worktree-teardown.sh inside the
 worktree first, and keeps the worktree if that fails unless --force.`;
 
-export type WtFailure = { code: "teardown_failed"; exitCode: number };
+export type WtFailure = { code: "teardown_failed"; exitCode: number } | { code: "worktree_missing" };
 
 export class WtError extends Error {
   constructor(
@@ -212,7 +212,7 @@ export function removeWorktree(branch: string, options: { force?: boolean; cwd?:
   const force = options.force ?? false;
   const root = repoRoot(options.cwd);
   const path = worktreePath(root, branch);
-  if (!isDirectory(path)) die(`no worktree at ${path}`);
+  if (!isDirectory(path)) die(`no worktree at ${path}`, { code: "worktree_missing" });
   if (!registeredWorktree(root, path, branch)) die(`${path} is not a registered worktree for ${branch}`);
 
   teardown(root, path, force);

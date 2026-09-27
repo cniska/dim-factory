@@ -25,11 +25,13 @@ export function removeShippedBranch(branch: string, cwd: string): ShipCleanup {
     removeWorktree(branch, { cwd: root });
   } catch (error) {
     if (!(error instanceof WtError)) throw error;
-    const worktreeKept =
-      error.failure?.code === "teardown_failed"
-        ? `its teardown hook exited ${error.failure.exitCode}`
-        : error.message;
-    return { worktreeKept, branchKept: "its worktree still holds it" };
+    if (error.failure?.code !== "worktree_missing") {
+      const worktreeKept =
+        error.failure?.code === "teardown_failed"
+          ? `its teardown hook exited ${error.failure.exitCode}`
+          : error.message;
+      return { worktreeKept, branchKept: "its worktree still holds it" };
+    }
   }
   const kept = branchKept(root, branch);
   return kept === undefined ? {} : { branchKept: kept };

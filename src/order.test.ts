@@ -708,6 +708,79 @@ describe("factory order report records", () => {
     rmSync(home, { recursive: true, force: true });
   });
 
+  test("a landed branch is deleted when its worktree was already removed", () => {
+    const repo = integratedRepo();
+    const home = mkdtempSync(join(tmpdir(), "dim-ship-"));
+    const env = scratchEnv(home);
+    const database = db();
+    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    startPlannedBuild(database);
+    const wt = orderWorktree(repo.dir, "order-1");
+    writeFileSync(join(wt, "ship-slice.txt"), "slice");
+    Bun.spawnSync(["git", "-C", wt, "add", "."]);
+    Bun.spawnSync(["git", "-C", wt, "commit", "-q", "-m", "feat: ship-slice"]);
+    const sha = Bun.spawnSync(["git", "-C", wt, "rev-parse", "HEAD"], { stdout: "pipe" })
+      .stdout.toString()
+      .trim();
+    recordOrderCommit(database, "order-1", sha, worker, "feat: ship-slice");
+    approveFinalBuildAt(database, "order-1", sha, worker, attemptOperator);
+    approveReviewAt(database, "order-1", sha, attemptOperator);
+    Bun.spawnSync(["git", "-C", repo.dir, "worktree", "remove", wt]);
+
+    shipOrder(database, "order-1", repo.dir, attemptOperator, { env });
+
+    expect(orderStatus(database, "order-1")).toBe("shipped");
+    expect(database.query("SELECT evidence FROM factory_order_event WHERE kind = 'shipped'").get()).toEqual({
+      evidence: '{"landed":"fast_forward"}',
+    });
+    expect(
+      Bun.spawnSync(["git", "-C", repo.dir, "show-ref", "--verify", "--quiet", "refs/heads/order-1"]).success,
+    ).toBe(false);
+
+    database.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  test("a branch still registered to a deleted worktree directory is kept with git's reason", () => {
+    const repo = integratedRepo();
+    const home = mkdtempSync(join(tmpdir(), "dim-ship-"));
+    const env = scratchEnv(home);
+    const database = db();
+    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    startPlannedBuild(database);
+    const wt = orderWorktree(repo.dir, "order-1");
+    writeFileSync(join(wt, "ship-slice.txt"), "slice");
+    Bun.spawnSync(["git", "-C", wt, "add", "."]);
+    Bun.spawnSync(["git", "-C", wt, "commit", "-q", "-m", "feat: ship-slice"]);
+    const sha = Bun.spawnSync(["git", "-C", wt, "rev-parse", "HEAD"], { stdout: "pipe" })
+      .stdout.toString()
+      .trim();
+    recordOrderCommit(database, "order-1", sha, worker, "feat: ship-slice");
+    approveFinalBuildAt(database, "order-1", sha, worker, attemptOperator);
+    approveReviewAt(database, "order-1", sha, attemptOperator);
+    rmSync(wt, { recursive: true, force: true });
+
+    shipOrder(database, "order-1", repo.dir, attemptOperator, { env });
+
+    expect(orderStatus(database, "order-1")).toBe("shipped");
+    const shipped = database
+      .query("SELECT evidence FROM factory_order_event WHERE kind = 'shipped'")
+      .get() as {
+      evidence: string;
+    };
+    const evidence = JSON.parse(shipped.evidence);
+    expect(evidence.worktreeKept).toBeUndefined();
+    expect(evidence.branchKept).toStartWith("git refused to delete it:");
+    expect(
+      Bun.spawnSync(["git", "-C", repo.dir, "show-ref", "--verify", "--quiet", "refs/heads/order-1"]).success,
+    ).toBe(true);
+
+    database.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  });
+
   test("a branch whose tip has not landed is kept when its recorded commits already have", () => {
     const repo = integratedRepo();
     const home = mkdtempSync(join(tmpdir(), "dim-ship-"));
