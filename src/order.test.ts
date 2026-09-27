@@ -696,7 +696,7 @@ describe("factory order report records", () => {
     expect(orderStatus(database, "order-1")).toBe("shipped");
     expect(database.query("SELECT evidence FROM factory_order_event WHERE kind = 'shipped'").get()).toEqual({
       evidence:
-        '{"landed":"fast_forward","worktreeKept":"teardown failed (exit 3) — worktree kept; fix it, or re-run with --force","branchKept":"its worktree still holds it"}',
+        '{"landed":"fast_forward","worktreeKept":"its teardown hook exited 3","branchKept":"its worktree still holds it"}',
     });
     expect(existsSync(wt)).toBe(true);
     expect(

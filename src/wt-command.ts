@@ -21,14 +21,23 @@ changed its tip. On removal it runs the primary checkout's
 scripts/worktree-teardown.sh inside the
 worktree first, and keeps the worktree if that fails unless --force.`;
 
-export class WtError extends Error {}
+export type WtFailure = { code: "teardown_failed"; exitCode: number };
+
+export class WtError extends Error {
+  constructor(
+    message: string,
+    readonly failure?: WtFailure,
+  ) {
+    super(message);
+  }
+}
 
 function hookStatus(proc: { exitCode: number | null }): number {
   return proc.exitCode ?? 128;
 }
 
-function die(message: string): never {
-  throw new WtError(message);
+function die(message: string, failure?: WtFailure): never {
+  throw new WtError(message, failure);
 }
 
 function git(args: string[], cwd?: string): { ok: boolean; out: string } {
@@ -87,7 +96,12 @@ function teardown(root: string, path: string, force: boolean): void {
   console.log("wt: tearing down worktree via scripts/worktree-teardown.sh");
   const rc = hookStatus(runHook(hook, "teardown", path));
   if (rc === 0) return;
-  if (!force) die(`teardown failed (exit ${rc}) — worktree kept; fix it, or re-run with --force`);
+  if (!force) {
+    die(`teardown failed (exit ${rc}) — worktree kept; fix it, or re-run with --force`, {
+      code: "teardown_failed",
+      exitCode: rc,
+    });
+  }
   warn(`wt: teardown failed (exit ${rc}) — removing anyway (--force)`);
 }
 
