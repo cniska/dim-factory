@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { currentOrderCommits } from "./order-commits";
 import { appendOrderEventInTransaction, now } from "./order-ledger";
-import { assertOrderActive } from "./order-status";
+import { assertOrderRunning } from "./order-status";
 import type { Rewrite } from "./ship-rebase";
 import type { WorkerHookReport } from "./worker-environment";
 
@@ -13,7 +13,7 @@ export function recordOrderCommit(
   subject: string,
   at = now(),
 ): number {
-  assertOrderActive(db, orderId);
+  assertOrderRunning(db, orderId);
   return db.transaction(() => {
     db.run("INSERT INTO factory_order_commit (order_id, sha, subject, recorded_at) VALUES (?, ?, ?, ?)", [
       orderId,
@@ -34,7 +34,7 @@ export function recordOrderFile(
   worker: string,
   at = now(),
 ): void {
-  assertOrderActive(db, orderId);
+  assertOrderRunning(db, orderId);
   db.run(
     `INSERT INTO factory_order_file (order_id, worker, path, added, removed, recorded_at) VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT (order_id, path) DO UPDATE SET
@@ -78,7 +78,7 @@ export function recordOrderCheck(
   worker: string,
   at = now(),
 ): number {
-  assertOrderActive(db, orderId);
+  assertOrderRunning(db, orderId);
   return db.transaction(() => recordOrderCheckInTransaction(db, orderId, check, worker, at).eventId)();
 }
 
@@ -90,7 +90,7 @@ export function recordOrderRewrite(
   worker: string,
   at = now(),
 ): void {
-  assertOrderActive(db, orderId);
+  assertOrderRunning(db, orderId);
   db.transaction(() => {
     const current = currentOrderCommits(db, orderId);
     for (const { from, to } of rewrite.commits) {
@@ -135,7 +135,7 @@ export function recordOrderEnvironment(
   report: WorkerHookReport,
   at = now(),
 ): void {
-  assertOrderActive(db, orderId);
+  assertOrderRunning(db, orderId);
   db.run(
     `INSERT INTO factory_order_environment
        (order_id, phase, argv, exit_code, signal, stdout, stderr, resources, recorded_at)

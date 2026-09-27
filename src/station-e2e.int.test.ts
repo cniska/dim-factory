@@ -120,7 +120,7 @@ describe("headless factory loop", () => {
       "review approved by",
     );
 
-    expect(orderStatus(db, "headless-order")).toBe("done");
+    expect(orderStatus(db, "headless-order")).toBe("shipped");
     expect(existsSync(worktree)).toBe(false);
     expect(
       db

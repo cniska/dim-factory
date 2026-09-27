@@ -126,7 +126,7 @@ describe("planner station", () => {
       { kind: "started" },
       { kind: "artifact_written" },
     ]);
-    expect(orderStatus(db, "planner-order")).toBe("active");
+    expect(orderStatus(db, "planner-order")).toBe("running");
     db.close();
     rmSync(repo.dir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });

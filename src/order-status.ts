@@ -3,15 +3,15 @@ import type { EvidenceReference, OrderEventKind } from "./order-events";
 import type { OrderLine } from "./order-line";
 import type { Station } from "./station";
 
-export const ORDER_STATUSES = ["queued", "active", "done", "dropped"] as const;
+export const ORDER_STATUSES = ["queued", "running", "shipped", "dropped"] as const;
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 export function orderStatusSql(orderId: string): string {
   const has = (kind: OrderEventKind) =>
     `EXISTS (SELECT 1 FROM factory_order_event s WHERE s.order_id = ${orderId} AND s.kind = '${kind}')`;
-  return `CASE WHEN ${has("dropped")} THEN 'dropped' WHEN ${has("shipped")} THEN 'done'
-               WHEN ${has("started")} THEN 'active' ELSE 'queued' END`;
+  return `CASE WHEN ${has("dropped")} THEN 'dropped' WHEN ${has("shipped")} THEN 'shipped'
+               WHEN ${has("started")} THEN 'running' ELSE 'queued' END`;
 }
 
 export const ORDER_PRIORITIES = ["urgent", "high", "medium", "low", "unset"] as const;
@@ -60,7 +60,7 @@ export class OrderNotDone extends Error {
 }
 
 export function isTerminalOrderStatus(status: OrderStatus): boolean {
-  return status === "done" || status === "dropped";
+  return status === "shipped" || status === "dropped";
 }
 
 export function orderStatus(db: Database, orderId: string): OrderStatus {
@@ -83,9 +83,9 @@ export function assertOrderQueued(db: Database, orderId: string, act: string): v
   }
 }
 
-export function assertOrderActive(db: Database, orderId: string): void {
+export function assertOrderRunning(db: Database, orderId: string): void {
   const status = orderStatus(db, orderId);
-  if (status === "active") return;
+  if (status === "running") return;
   throw new Error(
     status === "queued" ? `order ${orderId} is not started` : `order ${orderId} is already ${status}`,
   );

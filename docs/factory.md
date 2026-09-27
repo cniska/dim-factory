@@ -34,16 +34,16 @@ Setup already installs the shared controls, while each project still supplies it
 One piece of work, written down before anyone takes it ([`glossary.md`](glossary.md)). Its id is also its branch and its worktree, `<repo>/.claude/worktrees/<order-id>`.
 
 ```text
-queued → plan → build → review → ship → done
+queued → plan → build → review → ship → shipped
 ```
 
-- **Where an order is, is read from the record** ([`src/order-state.ts`](../src/order-state.ts)): its station and the act that station waits on — run the station, or approve its artifact. Approving the Review artifact ships the order, so the next act is ship only after a ship that failed without sending the order back to a station. Nothing stores it and no command sets it, the status included: an order is `queued` until it starts, `active` until it ships or is dropped, then `done` or `dropped`.
+- **Where an order is, is read from the record** ([`src/order-state.ts`](../src/order-state.ts)): its station and the act that station waits on — run the station, or approve its artifact. Approving the Review artifact ships the order, so the next act is ship only after a ship that failed without sending the order back to a station. Nothing stores it and no command sets it, the status included: an order is `queued` until it starts, `running` until it ships or is dropped, then `shipped` or `dropped`.
 - **Every act checks on entry** that it is the act the record waits on, and a refusal names the one that is. `dim order plan` on a queued order starts it and makes its worktree.
 - **The operator** delegates each station to a worker, checks each artifact against the record, and approves it or returns it. It never does the work.
 - **Each station returns an artifact** — plan, Build artifact, Review artifact — that the operator approves (`dim order approve`) or sends back with a reason (`dim order return`). Only an artifact awaiting approval holds an order.
 - **Build runs slice by slice**, and review reads the whole order after the last one. A round's findings send the order back to build, where the builder answers each one once, `fixed` or `refused` with a reason. The next round is briefed with those answers and raises a new finding for any that still holds; a round that raises nothing writes the Review artifact.
 - **An order returns to the station that can correct it.** During build, the operator uses `dim order return <id> --to plan --reason "..."` when the approved plan needs revision. During review approval, `--to build` sends a code correction to the builder. A return without `--to` sends the current artifact to its worker for revision. The revised plan needs approval before build resumes from its slices. A plan revision needs fresh Build and Review approvals, and Review reads the whole order again.
-- **Ship** follows the Review approval and ends the order (see [Done](#done)).
+- **Ship** follows the Review approval and ends the order (see [Shipped](#shipped)).
 - **A failed attempt** leaves the order where its evidence puts it, and the same command runs the station again. A build attempt running on an order refuses a second one. **A drop** is the owner deciding it will not be built. A started order's worktree stays available for inspection; `dim wt rm <id>` removes it after its work is saved.
 - **One act, one path.** Findings arrive only in the reviewer's report and answers only in the builder's build turn. Commits, files, checks and Build artifacts are written by the build runner and by ship, and Review artifacts by the review station; no command writes them.
 
@@ -77,9 +77,9 @@ A builder leaves its changes uncommitted and returns a build turn: a commit subj
 
 A refused commit or comment goes back to the same builder, at most twice per turn. A red check, a check that changed the tree, a nested repository, or HEAD moved off the order's branch fails the turn, and the reason is in the next turn's brief.
 
-## Done
+## Shipped
 
-An order is done when it ships: its commits land on the local default branch, a `shipped` event records it, and its worktree is removed. Nothing is pushed. Ship waits on an approved Build artifact, which the runner writes only with a check that passed at the head, and on an approved Review artifact at the head; the docs changing with the behavior rest on the stations. A failed branch landing attempt writes a `ship_failed` event with its reason.
+An order is shipped when its commits land on the local default branch, a `shipped` event records it, and its worktree is removed. Nothing is pushed. Ship waits on an approved Build artifact, which the runner writes only with a check that passed at the head, and on an approved Review artifact at the head; the docs changing with the behavior rest on the stations. A failed branch landing attempt writes a `ship_failed` event with its reason.
 
 Ship lands the order the way the repo declares with `git config dim.ship`:
 

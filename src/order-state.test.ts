@@ -453,7 +453,7 @@ describe("an act's entry", () => {
     const r = shippable();
     r.event("shipped");
     expect(admitted(r)).toEqual([]);
-    expect(() => assertNext(r.db, ORDER, "ship")).toThrow("order order-1 is done, so it cannot ship");
+    expect(() => assertNext(r.db, ORDER, "ship")).toThrow("order order-1 is shipped, so it cannot ship");
   });
 
   test("names the act the order waits on when it refuses another", () => {

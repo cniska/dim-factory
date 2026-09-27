@@ -119,7 +119,7 @@ describe("order command", () => {
     expect(runOrderCommand(database, add)).toBe("queued order-1 on cniska/dim-factory");
 
     const snapshot = assembleWallSnapshot(database);
-    expect(snapshot.totals).toEqual({ todo: 1, active: 0, done: 0 });
+    expect(snapshot.totals).toEqual({ queued: 1, running: 0, shipped: 0 });
     expect(snapshot.orders[0]?.title).toBe("Record a factory order as work is taken");
     expect(snapshot.orders[0]?.line).toBe("fix");
     expect(snapshot.orders[0]?.status).toBe("queued");
@@ -222,15 +222,15 @@ describe("order command", () => {
     }
   });
 
-  test("a started order moves into the active column at the plan station", () => {
+  test("a started order moves into the running column at the plan station", () => {
     const database = db();
     queued(database);
 
     started(database);
 
     const snapshot = assembleWallSnapshot(database);
-    expect(snapshot.totals).toEqual({ todo: 0, active: 1, done: 0 });
-    expect(snapshot.orders[0]?.status).toBe("active");
+    expect(snapshot.totals).toEqual({ queued: 0, running: 1, shipped: 0 });
+    expect(snapshot.orders[0]?.status).toBe("running");
     expect(snapshot.orders[0]?.station).toBe("plan");
     expect(snapshot.orders[0]?.next).toBe("run");
   });
@@ -295,12 +295,12 @@ describe("order command", () => {
     recordOrderReviewArtifact(database, "order-1", "## Outcome\n\nClean.", round.reviewer);
     closeOrderReview(database, round.review, "closed", round.reviewer);
     expect(runOrderCommand(database, ["approve", "order-1"])).toBe(
-      `order-1 review approved by ${operator}; order-1 is already on the default branch and done`,
+      `order-1 review approved by ${operator}; order-1 is already on the default branch and shipped`,
     );
     expect(() => runOrderCommand(database, ["approve", "order-1"])).toThrow(
       expect.objectContaining({
         code: "not_next",
-        message: "order order-1 is done, so it cannot approve",
+        message: "order order-1 is shipped, so it cannot approve",
       }),
     );
   });
@@ -365,7 +365,7 @@ describe("order command", () => {
     approvedAt(database, sha);
 
     expect(runOrderCommand(database, ["ship", "order-1"], null, wt)).toBe(
-      "order-1 is fast-forwarded onto the default branch and done",
+      "order-1 is fast-forwarded onto the default branch and shipped",
     );
 
     expect(Bun.spawnSync(["git", "-C", trunk.dir, "merge-base", "--is-ancestor", sha, "HEAD"]).success).toBe(
@@ -393,7 +393,7 @@ describe("order command", () => {
     approvedAt(database, sha);
 
     expect(runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toBe(
-      "order-1 is fast-forwarded onto the default branch and done",
+      "order-1 is fast-forwarded onto the default branch and shipped",
     );
 
     expect(Bun.spawnSync(["git", "-C", trunk.dir, "merge-base", "--is-ancestor", sha, "HEAD"]).success).toBe(
@@ -401,7 +401,7 @@ describe("order command", () => {
     );
   });
 
-  test("a ship of a commit already on the trunk reports it as already landed and moves the card to done", () => {
+  test("a ship of a commit already on the trunk reports it as already landed and moves the card to shipped", () => {
     const database = db();
     queued(database);
     atBuild(database);
@@ -409,11 +409,11 @@ describe("order command", () => {
     approvedAt(database, trunk.sha);
 
     expect(runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toBe(
-      "order-1 is already on the default branch and done",
+      "order-1 is already on the default branch and shipped",
     );
     const snapshot = assembleWallSnapshot(database);
-    expect(snapshot.totals).toEqual({ todo: 0, active: 0, done: 1 });
-    expect(snapshot.orders[0]?.status).toBe("done");
+    expect(snapshot.totals).toEqual({ queued: 0, running: 0, shipped: 1 });
+    expect(snapshot.orders[0]?.status).toBe("shipped");
   });
 
   test("a ship is refused before the order recorded any commit", () => {
@@ -491,7 +491,7 @@ describe("order command", () => {
     );
   });
 
-  test("a failed order stays active at the station its record puts it", () => {
+  test("a failed order stays running at the station its record puts it", () => {
     const database = db();
     queued(database);
     started(database);
@@ -499,8 +499,8 @@ describe("order command", () => {
     appendOrderEvent(database, "order-1", { kind: "failed", reason: "the check never passed" });
 
     const snapshot = assembleWallSnapshot(database);
-    expect(snapshot.totals).toEqual({ todo: 0, active: 1, done: 0 });
-    expect(snapshot.orders[0]?.status).toBe("active");
+    expect(snapshot.totals).toEqual({ queued: 0, running: 1, shipped: 0 });
+    expect(snapshot.orders[0]?.status).toBe("running");
     expect([snapshot.orders[0]?.station, snapshot.orders[0]?.next]).toEqual(["plan", "run"]);
   });
 
@@ -581,7 +581,7 @@ describe("order command", () => {
     await expect(
       runOrderCommandLive(database, ["plan", "order-1", "--harness", "claude"], null, trunk.dir, env),
     ).rejects.toThrow(/the commit gate records nothing/);
-    expect(assembleWallSnapshot(database).totals).toEqual({ todo: 1, active: 0, done: 0 });
+    expect(assembleWallSnapshot(database).totals).toEqual({ queued: 1, running: 0, shipped: 0 });
   });
 
   test("a plan is refused on a machine whose session hooks were never installed", async () => {
@@ -595,7 +595,7 @@ describe("order command", () => {
         ...scratchEnv(bare),
       }),
     ).rejects.toThrow(expect.objectContaining({ code: "hooks_missing" }));
-    expect(assembleWallSnapshot(database).totals).toEqual({ todo: 1, active: 0, done: 0 });
+    expect(assembleWallSnapshot(database).totals).toEqual({ queued: 1, running: 0, shipped: 0 });
     rmSync(bare, { recursive: true, force: true });
   });
 
@@ -614,7 +614,7 @@ describe("order command", () => {
         ...older.env,
       }),
     ).rejects.toThrow(expect.objectContaining({ code: "hooks_stale" }));
-    expect(assembleWallSnapshot(database).totals).toEqual({ todo: 1, active: 0, done: 0 });
+    expect(assembleWallSnapshot(database).totals).toEqual({ queued: 1, running: 0, shipped: 0 });
     rmSync(older.dir, { recursive: true, force: true });
   });
 
@@ -698,7 +698,7 @@ describe("order command", () => {
 
     expect(orderStatus(database, "order-1")).toBe("dropped");
     const snapshot = assembleWallSnapshot(database);
-    expect(snapshot.totals).toEqual({ todo: 0, active: 0, done: 0 });
+    expect(snapshot.totals).toEqual({ queued: 0, running: 0, shipped: 0 });
     expect(snapshot.orders).toEqual([]);
   });
 

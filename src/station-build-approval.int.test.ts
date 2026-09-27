@@ -79,7 +79,7 @@ describe("build approval integration", () => {
       reason: "runner could not complete the attempt",
     });
 
-    expect(orderStatus(db, "failed-return-order")).toBe("active");
+    expect(orderStatus(db, "failed-return-order")).toBe("running");
     expect(openAttempt(db, "failed-return-order")).toBeNull();
     expect(
       db

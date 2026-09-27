@@ -9,7 +9,7 @@ import { cn } from "./lib/utils";
 import type { OrderLine } from "./order-line";
 import type { NextAct } from "./order-state";
 import { age } from "./query-age";
-import { ordersByStage, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
+import { ordersByStatus, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
 import { itemKindLabel } from "./wall-item";
 import { WallMarkdown } from "./wall-markdown";
 import { msUntilNextMinute } from "./wall-minute-beat";
@@ -26,13 +26,13 @@ import "./wall.css";
 
 const unavailableSnapshot: WallSnapshot = {
   orders: [],
-  totals: { todo: 0, active: 0, done: 0 },
+  totals: { queued: 0, running: 0, shipped: 0 },
 };
 
 const statusLabels: Record<BoardStatus, string> = {
   queued: "Queued",
-  active: "Active",
-  done: "Done",
+  running: "Running",
+  shipped: "Shipped",
 };
 
 const OWNER_ACTS: Record<NextAct, string | null> = {
@@ -46,7 +46,7 @@ function isStopped(order: Pick<WallOrder, "next">): boolean {
 }
 
 function isWorking(order: Pick<WallOrder, "status" | "next">): boolean {
-  return order.status === "active" && !isStopped(order);
+  return order.status === "running" && !isStopped(order);
 }
 
 function stateLabel(order: WallOrder): string {
@@ -57,8 +57,8 @@ function stateLabel(order: WallOrder): string {
 
 const statusIcon: Record<BoardStatus, LucideIcon> = {
   queued: CircleDot,
-  active: CircleDot,
-  done: CircleCheck,
+  running: CircleDot,
+  shipped: CircleCheck,
 };
 
 const roleTint: Record<Role, string | undefined> = {
@@ -739,7 +739,7 @@ function App() {
   const [opened, setOpened] = useState<WallOrder | null>(null);
   const feed = feedStateOf(unavailable, stale);
   const FeedIcon = FEED_ICON[feed];
-  const columns = ordersByStage(snapshot.orders);
+  const columns = ordersByStatus(snapshot.orders);
   const onBoard = snapshot.orders.find((order) => order.id === opened?.id);
   const openCard = onBoard ?? opened;
 
@@ -773,12 +773,12 @@ function App() {
         className="grid grid-cols-3 items-start gap-[var(--space-md)] pb-[var(--space-xxl)]"
         aria-label="Factory kanban board"
       >
-        {WALL_COLUMNS.map(({ stage, label }) => (
+        {WALL_COLUMNS.map(({ status, label }) => (
           <BoardColumn
-            key={stage}
+            key={status}
             label={label}
-            orders={columns[stage]}
-            total={snapshot.totals[stage]}
+            orders={columns[status]}
+            total={snapshot.totals[status]}
             now={now}
             bumped={bumped}
             onOpen={setOpened}

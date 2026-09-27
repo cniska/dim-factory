@@ -40,7 +40,7 @@ const ORIGIN = "http://127.0.0.1";
 const WALL_PAGE = new URL("./wall.html", import.meta.url).pathname;
 
 test("wall broadcasts a changed board and recovers after a read failure", () => {
-  const board = { orders: [], totals: { todo: 0, active: 0, done: 0 } };
+  const board = { orders: [], totals: { queued: 0, running: 0, shipped: 0 } };
   const sent: string[] = [];
   let failed = false;
   const snapshot = () => {
@@ -178,10 +178,10 @@ describe("factory wall snapshot", () => {
 
     const snapshot = assembleWallSnapshot(db);
 
-    expect(snapshot.orders.map((order) => [order.title, order.station, order.status, order.stage])).toEqual([
-      ["Show the wall", "build", "active", "active"],
-      ["Unblock the queue", "plan", "active", "active"],
-      ["Ship the board", null, "done", "done"],
+    expect(snapshot.orders.map((order) => [order.title, order.station, order.status])).toEqual([
+      ["Show the wall", "build", "running"],
+      ["Unblock the queue", "plan", "running"],
+      ["Ship the board", null, "shipped"],
     ]);
     expect(snapshot.orders[0]).toEqual({
       id: "order-running",
@@ -189,9 +189,8 @@ describe("factory wall snapshot", () => {
       line: "feat",
       description: null,
       station: "build",
-      stage: "active",
       worker: { name: worker, role: "builder" },
-      status: "active",
+      status: "running",
       lastEventAt: "2026-09-18T10:02:00.000Z",
       next: "run",
     });
@@ -223,7 +222,7 @@ describe("factory wall snapshot", () => {
     db.close();
   });
 
-  test("puts a started order in the active column and a queued one in the todo column", () => {
+  test("puts a started order in the running column and a queued one in the queued column", () => {
     const db = floor();
     queueOrder(
       db,
@@ -241,14 +240,14 @@ describe("factory wall snapshot", () => {
 
     const snapshot = assembleWallSnapshot(db);
 
-    expect(snapshot.orders.map((order) => [order.id, order.status, order.stage])).toEqual([
-      ["order-started", "active", "active"],
-      ["order-waiting", "queued", "todo"],
+    expect(snapshot.orders.map((order) => [order.id, order.status])).toEqual([
+      ["order-started", "running"],
+      ["order-waiting", "queued"],
     ]);
     db.close();
   });
 
-  test("keeps an order active after an attempt fails", () => {
+  test("keeps an order running after an attempt fails", () => {
     const db = floor();
     queueOrder(
       db,
@@ -266,8 +265,8 @@ describe("factory wall snapshot", () => {
 
     const snapshot = assembleWallSnapshot(db);
 
-    expect(snapshot.orders.map((order) => [order.status, order.stage, order.station, order.next])).toEqual([
-      ["active", "active", "plan", "run"],
+    expect(snapshot.orders.map((order) => [order.status, order.station, order.next])).toEqual([
+      ["running", "plan", "run"],
     ]);
     expect(snapshot.orders[0]?.worker).toBeNull();
     db.close();
@@ -372,9 +371,9 @@ describe("factory wall snapshot", () => {
 
     const cards = new Map(assembleWallSnapshot(db).orders.map((order) => [order.id, order]));
 
-    expect(cards.get("order-waiting")).toMatchObject({ station: null, stage: "todo" });
+    expect(cards.get("order-waiting")).toMatchObject({ station: null, status: "queued" });
     expect(cards.get("order-waiting")).toHaveProperty("next", null);
-    expect(cards.get("order-shippable")).toMatchObject({ station: null, next: "ship", stage: "active" });
+    expect(cards.get("order-shippable")).toMatchObject({ station: null, next: "ship", status: "running" });
     db.close();
   });
 
@@ -397,7 +396,7 @@ describe("factory wall snapshot", () => {
     db.close();
   });
 
-  test("bounds each stage column so finished work cannot crowd out current work", () => {
+  test("bounds each status column so shipped work cannot crowd out current work", () => {
     const db = floor();
     const seed = (id: string, kind: "failed" | "shipped") => {
       queueOrder(db, { id, project: "cniska/dim-factory", title: id }, worker, "2026-09-18T09:00:00.000Z");
@@ -427,9 +426,9 @@ describe("factory wall snapshot", () => {
 
     const snapshot = assembleWallSnapshot(db);
 
-    expect(snapshot.orders.filter((order) => order.stage === "active")).toHaveLength(12);
-    expect(snapshot.orders.filter((order) => order.stage === "done")).toHaveLength(12);
-    expect(snapshot.totals).toEqual({ todo: 0, active: 14, done: 14 });
+    expect(snapshot.orders.filter((order) => order.status === "running")).toHaveLength(12);
+    expect(snapshot.orders.filter((order) => order.status === "shipped")).toHaveLength(12);
+    expect(snapshot.totals).toEqual({ queued: 0, running: 14, shipped: 14 });
     db.close();
   });
 
@@ -454,7 +453,7 @@ describe("factory wall snapshot", () => {
       wall.websocket.open({ send: (message: string) => sent.push(message) } as never);
       expect(JSON.parse(sent[0] ?? "{}")).toMatchObject({
         orders: [],
-        totals: { todo: 0, active: 0, done: 0 },
+        totals: { queued: 0, running: 0, shipped: 0 },
       });
       sent.length = 0;
       wall.websocket.message({ send: (message: string) => sent.push(message) } as never);
@@ -658,7 +657,7 @@ describe("factory wall item view", () => {
 
     expect(view?.order.title).toBe("Work an item through");
     expect(view?.order.station).toBeNull();
-    expect(view?.order.status).toBe("done");
+    expect(view?.order.status).toBe("shipped");
     expect(view?.order.worker).toBeNull();
     expect(view?.plan).toEqual({
       revision: 1,

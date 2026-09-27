@@ -1,78 +1,76 @@
 import { describe, expect, test } from "bun:test";
-import { ordersByStage, WALL_COLUMNS } from "./wall-board";
+import { ordersByStatus, WALL_COLUMNS } from "./wall-board";
 import type { WallOrder } from "./wall-server";
 
-const order = (
-  id: string,
-  stage: WallOrder["stage"],
-  station: WallOrder["station"],
-  status: WallOrder["status"],
-): WallOrder => ({
+const order = (id: string, status: WallOrder["status"], station: WallOrder["station"]): WallOrder => ({
   id,
   title: `Work on ${id}`,
   line: "feat",
   description: null,
   worker: { name: "copper-1", role: "builder" },
   station,
-  stage,
   status,
   lastEventAt: "2026-09-18T10:00:00.000Z",
   next: null,
 });
 
 describe("factory wall board", () => {
-  test("keeps the three stage columns in flow order", () => {
-    expect(WALL_COLUMNS.map((column) => [column.stage, column.label])).toEqual([
-      ["todo", "Todo"],
-      ["active", "Active"],
-      ["done", "Done"],
+  test("keeps the three status columns in flow order", () => {
+    expect(WALL_COLUMNS.map((column) => [column.status, column.label])).toEqual([
+      ["queued", "Queued"],
+      ["running", "Running"],
+      ["shipped", "Shipped"],
     ]);
   });
 
-  test("groups each snapshot order into its stage without dropping empty columns", () => {
-    const columns = ordersByStage([
-      order("planned-item", "todo", "plan", "queued"),
-      order("shipped-item", "done", null, "done"),
-      order("busy-item", "active", "review", "active"),
+  test("groups each snapshot order into its status without dropping empty columns", () => {
+    const columns = ordersByStatus([
+      order("planned-item", "queued", "plan"),
+      order("shipped-item", "shipped", null),
+      order("busy-item", "running", "review"),
     ]);
 
     expect(columns).toEqual({
-      todo: [order("planned-item", "todo", "plan", "queued")],
-      active: [order("busy-item", "active", "review", "active")],
-      done: [order("shipped-item", "done", null, "done")],
+      queued: [order("planned-item", "queued", "plan")],
+      running: [order("busy-item", "running", "review")],
+      shipped: [order("shipped-item", "shipped", null)],
     });
   });
 
   test("keeps the order the snapshot ranked its orders in", () => {
-    const needsAnswer = { ...order("busy-item", "active", "build", "active"), attention: "scope unclear" };
-    const columns = ordersByStage([
-      order("first-running", "active", "build", "active"),
-      order("second-running", "active", "build", "active"),
+    const needsAnswer = { ...order("busy-item", "running", "build"), attention: "scope unclear" };
+    const columns = ordersByStatus([
+      order("first-running", "running", "build"),
+      order("second-running", "running", "build"),
       needsAnswer,
     ]);
 
-    expect(columns.active.map((entry) => entry.id)).toEqual(["first-running", "second-running", "busy-item"]);
+    expect(columns.running.map((entry) => entry.id)).toEqual([
+      "first-running",
+      "second-running",
+      "busy-item",
+    ]);
   });
 
-  test("groups by stage rather than by the status the card displays", () => {
-    const columns = ordersByStage([
-      order("running-item", "active", "build", "active"),
-      order("handed-back-item", "todo", "build", "queued"),
-      order("completed-item", "done", "build", "done"),
+  test("keeps a queued order in the queued column when it still names a station", () => {
+    const columns = ordersByStatus([
+      order("running-item", "running", "build"),
+      order("handed-back-item", "queued", "build"),
+      order("shipped-item", "shipped", "build"),
     ]);
 
-    expect(columns.active.map((entry) => entry.id)).toEqual(["running-item"]);
-    expect(columns.todo.map((entry) => entry.id)).toEqual(["handed-back-item"]);
-    expect(columns.done.map((entry) => entry.id)).toEqual(["completed-item"]);
+    expect(columns.running.map((entry) => entry.id)).toEqual(["running-item"]);
+    expect(columns.queued.map((entry) => entry.id)).toEqual(["handed-back-item"]);
+    expect(columns.shipped.map((entry) => entry.id)).toEqual(["shipped-item"]);
   });
 
-  test("keeps orders from every station in the same stage column", () => {
-    const columns = ordersByStage([
-      order("building", "active", "build", "active"),
-      order("reviewing", "active", "review", "active"),
-      order("planning", "active", "plan", "active"),
+  test("keeps orders from every station in the same status column", () => {
+    const columns = ordersByStatus([
+      order("building", "running", "build"),
+      order("reviewing", "running", "review"),
+      order("planning", "running", "plan"),
     ]);
 
-    expect(columns.active.map((entry) => entry.station)).toEqual(["build", "review", "plan"]);
+    expect(columns.running.map((entry) => entry.station)).toEqual(["build", "review", "plan"]);
   });
 });

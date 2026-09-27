@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { assertOperator } from "./factory-operator";
 import type { AttemptOutcome } from "./order-events";
-import { assertOrderActive, OrderNotDone } from "./order-status";
+import { assertOrderRunning, OrderNotDone } from "./order-status";
 import type { Station } from "./station";
 import { workerIsOver } from "./worker";
 import type { Role } from "./worker-roles";
@@ -58,7 +58,7 @@ export function finishStoppedAttempt(db: Database, orderId: string, at: string):
 
 export function startAttempt(db: Database, orderId: string, attempt: Attempt, at: string): void {
   db.transaction(() => {
-    assertOrderActive(db, orderId);
+    assertOrderRunning(db, orderId);
     finishStoppedAttempt(db, orderId, at);
     assertNoRunningAttempt(db, orderId, "start another attempt");
     assertOperator(db, attempt.operatorWorker, "delegate an attempt");

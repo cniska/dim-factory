@@ -269,7 +269,7 @@ describe("builder station", () => {
         adapter: fakeHarness("crash"),
       }),
     ).rejects.toThrow("fake process crashed");
-    expect(orderStatus(db, "builder-order")).toBe("active");
+    expect(orderStatus(db, "builder-order")).toBe("running");
     expect(orderState(db, "builder-order")).toEqual({ station: "build", next: "run" });
     expect(
       db
@@ -1025,7 +1025,7 @@ describe("builder station", () => {
         .query("SELECT kind, worker, reason FROM factory_order_event WHERE order_id = ?")
         .all("failed-builder-order"),
     ).toContainEqual({ kind: "failed", worker: null, reason: "harness unavailable" });
-    expect(orderStatus(db, "failed-builder-order")).toBe("active");
+    expect(orderStatus(db, "failed-builder-order")).toBe("running");
     expect(openAttempt(db, "failed-builder-order")).toBeNull();
     expect(orderState(db, "failed-builder-order")).toEqual({ station: "build", next: "run" });
     db.close();
@@ -1173,7 +1173,7 @@ describe("builder station", () => {
       status: orderStatus(db, "harness-order"),
       attempt: openAttempt(db, "harness-order"),
     });
-    expect(working()).toEqual({ status: "active", attempt: null });
+    expect(working()).toEqual({ status: "running", attempt: null });
 
     await expect(
       runOrderBuildLive(db, "harness-order", operator.name, { dir: repo.dir, env, harness: "codex" }),
@@ -1181,7 +1181,7 @@ describe("builder station", () => {
       "order harness-order builder runs under the claude harness; delegate it with --harness claude",
     );
     expect(failures()).toEqual({ n: 1 });
-    expect(working()).toEqual({ status: "active", attempt: null });
+    expect(working()).toEqual({ status: "running", attempt: null });
     db.close();
   });
 });
@@ -1848,7 +1848,7 @@ describe("a red check at ship", () => {
 
     expect(ship()).toEqual({ landed: "fast_forward" });
     expect(git(repo.dir, ["rev-parse", "HEAD"])).toBe(fixed);
-    expect(orderStatus(db, "red-ship-order")).toBe("done");
+    expect(orderStatus(db, "red-ship-order")).toBe("shipped");
     db.close();
   });
 });

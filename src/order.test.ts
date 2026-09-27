@@ -697,7 +697,7 @@ describe("factory order report records", () => {
     expect(Bun.spawnSync(["git", "-C", repo.dir, "merge-base", "--is-ancestor", sha, "HEAD"]).success).toBe(
       true,
     );
-    expect(orderStatus(database, "order-1")).toBe("done");
+    expect(orderStatus(database, "order-1")).toBe("shipped");
     expect(
       database
         .query("SELECT worker, commit_sha, evidence FROM factory_order_event WHERE kind = 'shipped'")
@@ -820,8 +820,8 @@ describe("factory order report records", () => {
 
       ship();
 
-      expect(orderStatus(database, "order-1")).toBe("done");
-      expect(ship).toThrow("order order-1 is done, so it cannot ship");
+      expect(orderStatus(database, "order-1")).toBe("shipped");
+      expect(ship).toThrow("order order-1 is shipped, so it cannot ship");
     });
 
     test("a rebase that changed a patch lands nothing and returns the order to review for the whole order", () => {
@@ -1171,7 +1171,7 @@ describe("factory order report records", () => {
 
     appendOrderEvent(database, "order-1", { worker, kind: "failed", reason: "the check never passed" });
 
-    expect(orderStatus(database, "order-1")).toBe("active");
+    expect(orderStatus(database, "order-1")).toBe("running");
     expect(orderState(database, "order-1")).toEqual(before);
     expect(
       database.query("SELECT worker, outcome FROM factory_order_attempt WHERE kind = 'finished'").all(),
@@ -1210,7 +1210,7 @@ describe("factory order report records", () => {
     });
     expect(orderStatus(database, "order-1")).toBe("queued");
     start(database, "order-1", attemptOperator, "2026-09-18T10:01:00.000Z");
-    expect(orderStatus(database, "order-1")).toBe("active");
+    expect(orderStatus(database, "order-1")).toBe("running");
     expect(database.query("SELECT updated_at FROM factory_order").get()).toEqual({
       updated_at: "2026-09-18T10:01:00.000Z",
     });
@@ -1237,7 +1237,7 @@ describe("factory order report records", () => {
     appendOrderEvent(database, "order-1", { worker: attemptOperator, kind: "shipped" });
 
     expect(() => start(database, "order-1")).toThrow(expect.objectContaining({ code: "order_not_queued" }));
-    expect(orderStatus(database, "order-1")).toBe("done");
+    expect(orderStatus(database, "order-1")).toBe("shipped");
     database.close();
   });
 
@@ -1323,7 +1323,7 @@ describe("factory order report records", () => {
       { worker, kind: "shipped", reason: "verified", checkId: check, findingId: finding },
       "2026-09-18T10:06:00.000Z",
     );
-    expect(orderStatus(database, "order-1")).toBe("done");
+    expect(orderStatus(database, "order-1")).toBe("shipped");
     expect(database.query("SELECT updated_at FROM factory_order").get()).toEqual({
       updated_at: "2026-09-18T10:06:00.000Z",
     });
@@ -1350,7 +1350,7 @@ describe("factory order report records", () => {
         .get(),
     ).toEqual({
       event: "order.lifecycle",
-      fields: JSON.stringify({ kind: "shipped", status: "done", reason: "verified", artifact: null }),
+      fields: JSON.stringify({ kind: "shipped", status: "shipped", reason: "verified", artifact: null }),
     });
     database.close();
   });
@@ -1401,12 +1401,12 @@ describe("factory order report records", () => {
     appendOrderEvent(database, "order-1", { worker, kind: "shipped" }, "2026-09-18T10:01:00.000Z");
 
     expect(() => appendOrderEvent(database, "order-1", { worker, kind: "started" })).toThrow(
-      "order order-1 is already done",
+      "order order-1 is already shipped",
     );
     expect(() => appendOrderEvent(database, "order-1", { worker, kind: "commit_created" })).toThrow(
-      "order order-1 is already done",
+      "order order-1 is already shipped",
     );
-    expect(orderStatus(database, "order-1")).toBe("done");
+    expect(orderStatus(database, "order-1")).toBe("shipped");
     database.close();
   });
 
@@ -1462,7 +1462,7 @@ describe("factory order report records", () => {
     closeDb(database);
     const rebuilt = openDb(dbPath(environment), { forRebuild: true });
     rebuild(rebuilt, environment);
-    expect(orderStatus(rebuilt, "order-1")).toBe("active");
+    expect(orderStatus(rebuilt, "order-1")).toBe("running");
     expect(
       rebuilt.query("SELECT phase, signal FROM factory_order_environment WHERE order_id = 'order-1'").get(),
     ).toEqual({ phase: "teardown", signal: "SIGKILL" });
@@ -1492,7 +1492,7 @@ describe("factory order report records", () => {
 
     start(database);
 
-    expect(orderStatus(database, "order-1")).toBe("active");
+    expect(orderStatus(database, "order-1")).toBe("running");
     database.close();
   });
 
@@ -1505,7 +1505,7 @@ describe("factory order report records", () => {
     landed(database, "order-1");
     appendOrderEvent(database, "order-1", { worker: attemptOperator, kind: "shipped" });
 
-    expect(orderStatus(database, "order-1")).toBe("done");
+    expect(orderStatus(database, "order-1")).toBe("shipped");
     database.close();
   });
 

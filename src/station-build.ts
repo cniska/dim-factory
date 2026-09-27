@@ -300,7 +300,7 @@ export async function runOrderBuildLive(
   let failureRecorded = false;
   let claimed = false;
   const recordFailure = (reason: string): void => {
-    if (failureRecorded || orderStatus(db, orderId) !== "active") return;
+    if (failureRecorded || orderStatus(db, orderId) !== "running") return;
     if (claimed && openAttempt(db, orderId)?.runId !== runId) return;
     failureRecorded = true;
     appendOrderEvent(db, orderId, {

@@ -38,7 +38,7 @@ function building(db: Database, orderId: string, at?: string): void {
 }
 
 describe("factory order query", () => {
-  test("shows the current next act for queued, active, and terminal orders", () => {
+  test("shows the current next act for queued, running, and terminal orders", () => {
     const db = floor();
     queueOrder(db, { id: "queued", project: "cniska/dim-factory", title: "Queued" }, worker);
     const row = (id: string) => findQuery("order")?.run(db, { arg: id }).rows[0]?.slice(3);
@@ -48,16 +48,16 @@ describe("factory order query", () => {
     recordOrderPlan(db, "queued", "Build the result.", worker, [
       { title: "Build", outcome: "The result is built." },
     ]);
-    expect(row("queued")).toEqual(["active", "approve at plan", "cniska/dim-factory/queued", "unset"]);
+    expect(row("queued")).toEqual(["running", "approve at plan", "cniska/dim-factory/queued", "unset"]);
     approveOrder(db, "queued", attemptOperator, undefined);
-    expect(row("queued")).toEqual(["active", "run at build", "cniska/dim-factory/queued", "unset"]);
+    expect(row("queued")).toEqual(["running", "run at build", "cniska/dim-factory/queued", "unset"]);
 
     recordOrderCommit(db, "queued", trunk.sha, worker, "feat: result");
     approveFinalBuildAt(db, "queued", trunk.sha, worker, attemptOperator);
     approveReviewAt(db, "queued", trunk.sha, attemptOperator);
-    expect(row("queued")).toEqual(["active", "ship", "cniska/dim-factory/queued", "unset"]);
+    expect(row("queued")).toEqual(["running", "ship", "cniska/dim-factory/queued", "unset"]);
     appendOrderEvent(db, "queued", { worker, kind: "shipped" });
-    expect(row("queued")).toEqual(["done", "(none)", "cniska/dim-factory/queued", "unset"]);
+    expect(row("queued")).toEqual(["shipped", "(none)", "cniska/dim-factory/queued", "unset"]);
 
     queueOrder(db, { id: "dropped", project: "cniska/dim-factory", title: "Dropped" }, worker);
     dropOrder(db, "dropped", "superseded", worker);
@@ -230,7 +230,7 @@ describe("factory order query", () => {
         "cniska/dim-factory",
         "order-status",
         "unset",
-        "done",
+        "shipped",
         "shipped",
         "2026-09-18T10:05:00.000Z",
         "(none)",
@@ -269,7 +269,7 @@ describe("factory order query", () => {
 
     const result = findQuery("factory")?.run(db, { arg: "order-blocked" });
 
-    expect(result?.rows[0]?.[3]).toBe("active");
+    expect(result?.rows[0]?.[3]).toBe("running");
     expect(result?.rows[0]?.[4]).toBe("failed");
     expect(result?.rows[0]?.[6]).toBe("run at plan");
     expect(result?.columns).not.toContain("stop");
@@ -394,7 +394,7 @@ describe("factory order query", () => {
       '[{"port":5433}]',
     ]);
     expect(result?.rows[0]?.slice(3)).toEqual([
-      "active",
+      "running",
       "run at plan",
       "cniska/dim-factory/order-123",
       "unset",
@@ -417,7 +417,7 @@ describe("factory order query", () => {
       "src/factory-order.ts",
       "+12 -3",
     ]);
-    expect(result?.denominator).toContain("order order-123: active");
+    expect(result?.denominator).toContain("order order-123: running");
     db.close();
   });
 

@@ -1,10 +1,10 @@
 import type { Station } from "./station";
-import type { WallOrder, WallStage } from "./wall-server";
+import type { BoardStatus, WallOrder } from "./wall-server";
 
-export const WALL_COLUMNS: ReadonlyArray<{ stage: WallStage; label: string }> = [
-  { stage: "todo", label: "Todo" },
-  { stage: "active", label: "Active" },
-  { stage: "done", label: "Done" },
+export const WALL_COLUMNS: ReadonlyArray<{ status: BoardStatus; label: string }> = [
+  { status: "queued", label: "Queued" },
+  { status: "running", label: "Running" },
+  { status: "shipped", label: "Shipped" },
 ];
 
 export const STATION_LABELS: Record<Station, string> = {
@@ -13,12 +13,12 @@ export const STATION_LABELS: Record<Station, string> = {
   review: "Review",
 };
 
-export function ordersByStage(orders: WallOrder[]): Record<WallStage, WallOrder[]> {
+export function ordersByStatus(orders: WallOrder[]): Record<BoardStatus, WallOrder[]> {
   return WALL_COLUMNS.reduce(
     (columns, column) => {
-      columns[column.stage] = orders.filter((order) => order.stage === column.stage);
+      columns[column.status] = orders.filter((order) => order.status === column.status);
       return columns;
     },
-    { todo: [], active: [], done: [] } as Record<WallStage, WallOrder[]>,
+    { queued: [], running: [], shipped: [] } as Record<BoardStatus, WallOrder[]>,
   );
 }

@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { finishAttempt, openAttempt } from "./order-attempt";
 import { latestOrderCommit } from "./order-commits";
 import { appendOrderEventInTransaction, assertChecked, now } from "./order-ledger";
-import { assertOrderActive, OrderNotDone } from "./order-status";
+import { assertOrderRunning, OrderNotDone } from "./order-status";
 import type { Station } from "./station";
 import type { PlanSlice } from "./station-plan-artifact";
 
@@ -90,7 +90,7 @@ export function recordOrderPlan(
   slices: readonly PlanSlice[],
   at = now(),
 ): number {
-  assertOrderActive(db, orderId);
+  assertOrderRunning(db, orderId);
   if (body.trim() === "") throw new Error("plan body must not be empty");
   if (slices.length === 0) throw new Error("plan must contain at least one slice");
   return db.transaction(() => {
@@ -131,7 +131,7 @@ export function recordOrderBuild(
   worker: string,
   at = now(),
 ): number {
-  assertOrderActive(db, orderId);
+  assertOrderRunning(db, orderId);
   if (!openAttempt(db, orderId)) {
     throw new OrderNotDone(
       "build_artifact_before_final_slice",
@@ -187,7 +187,7 @@ export function completeOrderSlice(
   at = now(),
 ): void {
   db.transaction(() => {
-    assertOrderActive(db, orderId);
+    assertOrderRunning(db, orderId);
     const slice = db
       .query<{ id: number }, [string, number]>(
         `SELECT s.id FROM factory_order_slice s
@@ -215,7 +215,7 @@ export function completeOrderBuildFollowup(
   at = now(),
 ): void {
   db.transaction(() => {
-    assertOrderActive(db, orderId);
+    assertOrderRunning(db, orderId);
     if (nextOrderSlice(db, orderId) !== null) {
       throw new Error(`order ${orderId} still has an incomplete build slice`);
     }

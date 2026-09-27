@@ -11,7 +11,7 @@ import type { Station } from "./station";
 import wallPage from "./wall.html";
 import type { Role } from "./worker-roles";
 
-export type WallStage = "todo" | "active" | "done";
+export type BoardStatus = Exclude<OrderStatus, "dropped">;
 
 export type WallWorker = { name: string; role: Role };
 
@@ -21,7 +21,6 @@ export type WallOrder = {
   line: OrderLine;
   description: string | null;
   station: Station | null;
-  stage: WallStage;
   worker: WallWorker | null;
   status: BoardStatus;
   lastEventAt: string;
@@ -30,7 +29,7 @@ export type WallOrder = {
 
 export type WallSnapshot = {
   orders: WallOrder[];
-  totals: Record<WallStage, number>;
+  totals: Record<BoardStatus, number>;
 };
 
 export type WallItemKind = OrderEventKind | "environment_reported";
@@ -74,27 +73,18 @@ const ORDER_ROW_SELECT = `SELECT o.id, o.title, o.line, o.description, ${orderSt
               o.project, e.ts AS last_event_at
        FROM factory_order o
        LEFT JOIN factory_order_event e ON e.id = (SELECT e2.id FROM factory_order_event e2 WHERE e2.order_id = o.id ORDER BY e2.ts DESC, e2.id DESC LIMIT 1)`;
-export type BoardStatus = Exclude<OrderStatus, "dropped">;
-
 type BoardRow = OrderRow & { status: BoardStatus };
 
-const stageByStatus: Record<BoardStatus, WallStage> = {
-  queued: "todo",
-  active: "active",
-  done: "done",
-};
-
 function mapOrder(db: Database, row: BoardRow): WallOrder {
-  const active = row.status === "active";
-  const state = active ? orderState(db, row.id) : null;
-  const attempt = active ? runningAttempt(db, row.id) : null;
+  const running = row.status === "running";
+  const state = running ? orderState(db, row.id) : null;
+  const attempt = running ? runningAttempt(db, row.id) : null;
   return {
     id: row.id,
     title: row.title,
     line: row.line,
     description: row.description,
     station: state === null ? null : state.station,
-    stage: stageByStatus[row.status],
     worker: attempt ? { name: attempt.worker, role: attempt.role } : null,
     status: row.status,
     lastEventAt: row.last_event_at,
@@ -109,11 +99,11 @@ export function assembleWallSnapshot(db: Database): WallSnapshot {
     )
     .all();
   const mapped = rows.map((row) => mapOrder(db, row));
-  const totals: Record<WallStage, number> = { todo: 0, active: 0, done: 0 };
+  const totals: Record<BoardStatus, number> = { queued: 0, running: 0, shipped: 0 };
   const orders: WallOrder[] = [];
   for (const order of mapped) {
-    totals[order.stage] += 1;
-    if (totals[order.stage] <= MAX_COLUMN_CARDS) orders.push(order);
+    totals[order.status] += 1;
+    if (totals[order.status] <= MAX_COLUMN_CARDS) orders.push(order);
   }
   return { orders, totals };
 }

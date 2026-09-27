@@ -52,7 +52,7 @@ export function appendOrderEventInTransaction(
   }
   if (isTerminalOrderStatus(status)) throw new Error(`order ${orderId} is already ${status}`);
   if (event.kind === "dropped") assertNoRunningAttempt(db, orderId, "be dropped");
-  if (!BEFORE_START.includes(event.kind) && status !== "active") {
+  if (!BEFORE_START.includes(event.kind) && status !== "running") {
     throw new Error(`order ${orderId} is ${status}, so it cannot record ${event.kind}`);
   }
 

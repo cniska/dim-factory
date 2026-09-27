@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { writeArtifactInTransaction } from "./order-artifacts";
 import { appendOrderEventInTransaction, now } from "./order-ledger";
-import { assertOrderActive } from "./order-status";
+import { assertOrderRunning } from "./order-status";
 import { workerIsOver } from "./worker";
 
 export class ReviewNotOpen extends Error {
@@ -20,7 +20,7 @@ export function openOrderReview(
   worker: string,
   at = now(),
 ): { id: number; round: number } {
-  assertOrderActive(db, orderId);
+  assertOrderRunning(db, orderId);
   return db.transaction(() => {
     const live = db
       .query<{ id: number }, [string]>(
@@ -110,7 +110,7 @@ export function recordOrderReviewArtifact(
       `review ${review.id} belongs to ${review.reviewer}, not ${worker}`,
     );
   }
-  assertOrderActive(db, orderId);
+  assertOrderRunning(db, orderId);
   if (review.closed_at !== null) {
     throw new ReviewNotOpen("review_closed", `review ${review.id} is closed`);
   }
