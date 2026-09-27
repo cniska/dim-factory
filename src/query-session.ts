@@ -14,6 +14,7 @@ import {
   windowLine,
 } from "./query";
 import { repeats } from "./query-correction";
+import { SAID } from "./query-search";
 import { parsePassageRef } from "./search-passage-ref";
 
 export const corpusLine = (db: Database, ctx: QueryContext): string => {
@@ -176,8 +177,7 @@ export const thread: Query = {
     }
     const id = found[0]?.id as string;
     const columns = ["when", "role", "skill", "text"];
-    const said = `FROM message WHERE session_id = ? AND text IS NOT NULL
-                  AND is_skill_body = 0 AND is_meta = 0`;
+    const said = `FROM message m WHERE m.session_id = ? AND m.text IS NOT NULL AND ${SAID}`;
     const select = `SELECT substr(ts, 1, 16) AS "when", role,
                            coalesce(attribution_skill, '') AS skill,
                            replace(substr(text, 1, 240), char(10), ' ') AS text, ts`;
@@ -200,7 +200,7 @@ export const thread: Query = {
       note:
         records.length === 0
           ? "nothing was said in this session outside tool calls and injected text"
-          : "Text is cut at 240 characters. Tool calls, their results, skill bodies and injected meta are not here.",
+          : "Text is cut at 240 characters. Tool calls, their results, skill bodies and injected reminders are not here.",
     };
   },
 };

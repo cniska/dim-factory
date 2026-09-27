@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { runBench } from "./bench";
 import type { BenchQuestion } from "./bench-corpus";
 import { SCHEMA_SQL } from "./db-schema";
+import { findQuery } from "./query-registry";
 import { EMBED_DIMS, type Embedder, type Question } from "./search-embed";
 import { buildIndex } from "./search-embed-index";
 
@@ -84,17 +85,85 @@ function withTwoPassages(db: Database): { early: string; late: string } {
 }
 
 describe("scoring the corpus through the queries themselves", () => {
-  test("reports a query whose rows name no ref, rather than skipping it", async () => {
+  test("scores a keyword hit on a raw message", async () => {
     const db = seeded();
-    const report = await runBench(db, [graded("keywords", [["m1", 3]])], 5, {}, embedNothing);
-    expect(report.scores).toEqual([]);
-    expect(report.unscorable).toEqual([{ id: "q1", why: "keywords prints no ref column to score against" }]);
+    const asked = graded("keywords", [["s1@2026-09-01T10:30:00Z", 3]]);
+    asked.question = "shadow checkout";
+    const report = await runBench(db, [asked], 5, {}, embedNothing);
+    expect(report.unscorable).toEqual([]);
+    expect(report.scores[0]?.recall).toBe(1);
+    expect(report.scores[0]?.ndcg).toBe(1);
+    db.close();
+  });
+
+  test("scores a search fallback against raw messages", async () => {
+    const db = seeded();
+    const asked = graded("search", [["s1@2026-09-01T10:30:00Z", 3]]);
+    asked.question = "shadow checkout";
+    const report = await runBench(db, [asked], 5, {}, async () => ({ unavailable: "no model" }));
+    expect(report.unscorable).toEqual([]);
+    expect(report.scores[0]?.recall).toBe(1);
+    db.close();
+  });
+
+  test("refuses a keyword label for an injected message", async () => {
+    const db = seeded();
+    db.run(
+      `INSERT INTO message (id, session_id, ts, role, text, src_file, src_line, is_meta)
+       VALUES ('m-meta', 's1', '2026-09-01T10:31:00Z', 'user', 'shadow checkout', '/f.jsonl', 2, 1)`,
+    );
+    const asked = graded("keywords", [["s1@2026-09-01T10:31:00Z", 3]]);
+    asked.question = "shadow checkout";
+    const report = await runBench(db, [asked], 5, {}, embedNothing);
+    expect(report.unscorable[0]?.why).toContain("keywords cannot search");
+    db.close();
+  });
+
+  test("does not credit a different session sharing the printed prefix", async () => {
+    const db = seeded();
+    for (const [id, messageId, text] of [
+      ["abcdefgh-one", "m-one", "A different decision."],
+      ["abcdefgh-two", "m-two", "The shadow checkout was chosen."],
+    ] as const) {
+      db.run(
+        `INSERT INTO session (id, tool, cwd, project, started_at, last_seen_at)
+         VALUES (?, 'claude', '/w', '/p', '2026-09-01T10:00:00Z', '2026-09-01T11:00:00Z')`,
+        [id],
+      );
+      db.run(
+        `INSERT INTO message (id, session_id, ts, role, text, src_file, src_line)
+         VALUES (?, ?, '2026-09-01T10:30:00Z', 'user', ?, '/f.jsonl', 1)`,
+        [messageId, id, text],
+      );
+    }
+    const asked = graded("keywords", [["abcdefgh-one@2026-09-01T10:30:00Z", 3]]);
+    asked.question = "shadow checkout";
+    const hits = findQuery("keywords")?.run(db, { arg: asked.question });
+    expect(
+      hits?.rows.some((row) => row[hits.columns.indexOf("ref")] === "abcdefgh-two@2026-09-01T10:30:00Z"),
+    ).toBe(true);
+    const report = await runBench(db, [asked], 5, {}, embedNothing);
+    expect(report.unscorable).toEqual([]);
+    expect(report.scores[0]?.recall).toBe(0);
+    db.close();
+  });
+
+  test("refuses a keyword label shared by messages at one timestamp", async () => {
+    const db = seeded();
+    db.run(
+      `INSERT INTO message (id, session_id, ts, role, text, src_file, src_line)
+       VALUES ('m-second', 's1', '2026-09-01T10:30:00Z', 'assistant', 'the other checkout', '/f.jsonl', 2)`,
+    );
+    const asked = graded("keywords", [["s1@2026-09-01T10:30:00Z", 3]]);
+    asked.question = "shadow checkout";
+    const report = await runBench(db, [asked], 5, {}, embedNothing);
+    expect(report.unscorable[0]?.why).toContain("multiple searchable messages");
     db.close();
   });
 
   test("a corpus nothing could score reports no mean, not a NaN", async () => {
     const db = seeded();
-    const report = await runBench(db, [graded("keywords", [["m1", 3]])], 5, {}, embedNothing);
+    const report = await runBench(db, [graded("keywords", [["missing", 3]])], 5, {}, embedNothing);
     expect(report.recall).toBe(0);
     expect(Number.isNaN(report.ndcg)).toBe(false);
     db.close();

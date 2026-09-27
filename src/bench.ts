@@ -3,6 +3,7 @@ import type { BenchQuestion } from "./bench-corpus";
 import { ndcgAtK, recallAtK } from "./bench-rank-metrics";
 import type { QueryContext } from "./query";
 import { findQuery } from "./query-registry";
+import { SAID } from "./query-search";
 import { readDistilled } from "./search-distilled";
 import type { Question } from "./search-embed";
 import { type PassageRef, parsePassageRef } from "./search-passage-ref";
@@ -11,7 +12,11 @@ const REF_COLUMN = "ref";
 
 const PRINTED_REF = 8;
 
-function distilled(db: Database): { messages: Set<string>; sessions: Set<string> } {
+type KnownPassages =
+  | { source: "distilled"; messages: Set<string>; sessions: Set<string> }
+  | { source: "messages" };
+
+function distilled(db: Database): KnownPassages {
   const messages = new Set(readDistilled(db, null).map((item) => item.ref));
   const holder = db.prepare<{ session_id: string }, [string]>("SELECT session_id FROM message WHERE id = ?");
   const sessions = new Set<string>();
@@ -19,17 +24,32 @@ function distilled(db: Database): { messages: Set<string>; sessions: Set<string>
     const row = holder.get(id);
     if (row) sessions.add(row.session_id);
   }
-  return { messages, sessions };
+  return { messages, sessions, source: "distilled" };
 }
 
-function refusal(db: Database, ref: string, known: ReturnType<typeof distilled>): string | undefined {
+function refusal(db: Database, ref: string, known: KnownPassages): string | undefined {
   const { id, at } = parsePassageRef(ref);
   const count = (sql: string, params: string[]): number =>
     db.prepare<{ n: number }, string[]>(sql).get(...params)?.n ?? 0;
   if (at === undefined) {
-    if (count("SELECT count(*) AS n FROM repo_commit WHERE sha = ?", [id]) > 0) return undefined;
+    if (
+      known.source === "distilled" &&
+      count("SELECT count(*) AS n FROM repo_commit WHERE sha = ?", [id]) > 0
+    ) {
+      return undefined;
+    }
     if (count("SELECT count(*) AS n FROM session WHERE id = ?", [id]) === 0) {
-      return `${ref} names no commit and no session`;
+      return known.source === "distilled"
+        ? `${ref} names no commit and no session`
+        : `${ref} names no session; keywords grades messages`;
+    }
+    if (known.source === "messages") {
+      return count(
+        `SELECT count(*) AS n FROM message m WHERE m.session_id = ? AND m.text IS NOT NULL AND ${SAID}`,
+        [id],
+      ) > 0
+        ? undefined
+        : `${ref} names a session holding no searchable message`;
     }
     if (!known.sessions.has(id)) {
       return `${ref} names a session holding nothing anyone distilled, which no query returns`;
@@ -46,16 +66,28 @@ function refusal(db: Database, ref: string, known: ReturnType<typeof distilled>)
   if (named.length === 0) {
     return `${ref} names no message in that session; a passage carries the whole timestamp search prints`;
   }
+  if (known.source === "messages") {
+    const eligible = count(
+      `SELECT count(*) AS n FROM message m
+       WHERE m.session_id = ? AND m.ts = ? AND m.text IS NOT NULL AND ${SAID}`,
+      [id, at],
+    );
+    if (eligible === 0) return `${ref} names a turn that keywords cannot search`;
+    if (eligible > 1) return `${ref} names multiple searchable messages at one timestamp`;
+    return undefined;
+  }
   if (!named.some((messageId) => known.messages.has(messageId))) {
     return `${ref} names a turn nobody distilled, which no query returns`;
   }
   return undefined;
 }
 
-const grades = (labeled: PassageRef, printed: PassageRef): boolean =>
-  labeled.id.startsWith(printed.id) && (labeled.at === undefined || labeled.at === printed.at);
+const grades = (labeled: PassageRef, printed: PassageRef, raw: boolean): boolean =>
+  (raw ? labeled.id === printed.id : labeled.id.startsWith(printed.id)) &&
+  (labeled.at === undefined || labeled.at === printed.at);
 
-function inseparable(a: PassageRef, b: PassageRef): boolean {
+function inseparable(a: PassageRef, b: PassageRef, raw: boolean): boolean {
+  if (raw) return a.id === b.id && (a.at === undefined || b.at === undefined || a.at === b.at);
   const [x, y] = [a.id.slice(0, PRINTED_REF), b.id.slice(0, PRINTED_REF)];
   return (x.startsWith(y) || y.startsWith(x)) && (a.at === undefined || b.at === undefined || a.at === b.at);
 }
@@ -90,7 +122,7 @@ export async function runBench(
 ): Promise<BenchReport> {
   const scores: QuestionScore[] = [];
   const unscorable: { id: string; why: string }[] = [];
-  const known = distilled(db);
+  let distilledPassages: KnownPassages | undefined;
   for (const asked of questions) {
     const query = findQuery(asked.query);
     if (!query) {
@@ -107,6 +139,14 @@ export async function runBench(
       unscorable.push({ id: asked.id, why });
       continue;
     }
+    const raw = asked.query === "keywords" || result.path === "keyword";
+    let known: KnownPassages;
+    if (raw) {
+      known = { source: "messages" };
+    } else {
+      distilledPassages ??= distilled(db);
+      known = distilledPassages;
+    }
     const labeled = [...asked.relevant.keys()];
     const refused = labeled.map((ref) => refusal(db, ref, known)).filter((why) => why !== undefined);
     if (refused.length > 0) {
@@ -114,7 +154,7 @@ export async function runBench(
       continue;
     }
     const refs = labeled.map((ref) => ({ ref, parsed: parsePassageRef(ref) }));
-    const clash = refs.some((a, i) => refs.slice(i + 1).some((b) => inseparable(a.parsed, b.parsed)));
+    const clash = refs.some((a, i) => refs.slice(i + 1).some((b) => inseparable(a.parsed, b.parsed, raw)));
     if (clash) {
       unscorable.push({
         id: asked.id,
@@ -125,7 +165,7 @@ export async function runBench(
     const retrieved = result.rows.map((row) => {
       const printed = String(row[refColumn]);
       const returned = parsePassageRef(printed);
-      return refs.find(({ parsed }) => grades(parsed, returned))?.ref ?? printed;
+      return refs.find(({ parsed }) => grades(parsed, returned, raw))?.ref ?? printed;
     });
     scores.push({
       id: asked.id,

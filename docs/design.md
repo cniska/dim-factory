@@ -80,7 +80,7 @@ dim sync: drain the spool → read changed files → derive session ends
 
 ## Search
 
-- **Keywords.** `message_fts` is an FTS5 index over `message.text` with external content, kept level by triggers. `keywords` unions one match per term and ranks by terms matched, then relevance, then recency. Terms are quoted before they reach FTS5.
+- **Keywords.** `message_fts` is an FTS5 index over `message.text` with external content, kept level by triggers. `keywords` unions one match per term and ranks by terms matched, then relevance, then recency. Each hit prints a full session ID and timestamp for `q thread`. Terms are quoted before they reach FTS5.
 - **Meaning.** `embedding` holds one 384-float unit vector per distilled passage — a handoff's `## Next`, a commit subject, a labeled correction — with its text beside it. `q search` scores every vector with a dot product; there is no vector store. Where nothing is embedded, it answers from `message_fts` and says so.
 - **Re-embedding** is keyed on `text_sha` and `model`, so only changed passages are embedded again.
 - **Benchmark.** `dim bench` reads `retrieval.jsonl` from the data directory, runs each question through the query it names, and reports recall@k and nDCG@k ([`src/bench-rank-metrics.ts`](../src/bench-rank-metrics.ts)). A line is `{"id", "query", "question", "relevant": [{"ref", "grade"}]}`, where a ref is a commit sha, a session id, or `<session id>@<timestamp>`. The corpus stays out of this repo because its questions name the owner's work.

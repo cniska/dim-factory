@@ -24,10 +24,10 @@ const quotedTerms = (terms: string): { raw: string[]; quoted: string[]; dropped:
   };
 };
 
-const SAID = "(m.is_meta = 0 OR m.origin_kind IN ('coordinator', 'peer'))";
+export const SAID = "m.is_skill_body = 0 AND (m.is_meta = 0 OR m.origin_kind IN ('coordinator', 'peer'))";
 
 function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryResult {
-  const columns = ["session", "when", "role", "project", "terms", "text"];
+  const columns = ["session", "when", "ref", "role", "project", "terms", "text"];
   const { raw, quoted, dropped } = quotedTerms(terms);
   if (quoted.length === 0) {
     return { denominator: "", columns: ["error"], rows: [["nothing to search for but whitespace"]] };
@@ -54,7 +54,8 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryRes
     db,
     `WITH per_term AS (${perTerm}),
           counted AS (SELECT rowid, count(*) AS matched FROM per_term GROUP BY rowid)
-     SELECT substr(m.session_id, 1, 8) AS session, substr(m.ts, 1, 16) AS "when", m.role,
+     SELECT substr(m.session_id, 1, 8) AS session, substr(m.ts, 1, 16) AS "when",
+            m.session_id || '@' || m.ts AS ref, m.role,
             replace(coalesce(s.project, ''), ? || '/', '') AS project,
             c.matched || '/' || ? AS terms,
             replace(snippet(message_fts, 0, '[', ']', '…', 12), char(10), ' ') AS text
