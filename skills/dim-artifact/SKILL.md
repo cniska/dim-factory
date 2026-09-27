@@ -10,7 +10,7 @@ A station worker writes an artifact as its explanation for the owner. It is not 
 
 ## Write the artifact
 
-1. Open with the first `##` section, leading with the outcome and why it matters to the order. The wall shows the artifact under its order's title and station, and the record names the worker that wrote it, so the artifact carries no title or byline of its own.
+1. Write only the content. Open with the first `##` section, leading with the outcome and why it matters to the order.
 2. Keep the detail proportional to the change. A small change needs a short artifact; a broad or risky change needs the contracts, evidence and decisions an owner must check.
 3. Use Markdown that reads without the worker session. Give every included dimension its own `##` heading; do not compress the artifact into one paragraph. Use a table for comparable rows, such as plan slices or review dimensions, when it makes differences easier to scan. Write one point as a sentence and use bullets for multiple distinct points. Keep commands, paths, identifiers and decisions exact where they let the operator verify a claim.
 4. Separate facts from judgment. Name the evidence behind a conclusion and label unresolved risks, assumptions and deviations instead of smoothing them over.
