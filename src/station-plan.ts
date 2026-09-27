@@ -4,11 +4,12 @@ import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-launch";
 import type { HarnessName } from "./harness-name";
 import { recordOrderPlan } from "./order-artifacts";
-import { assertNoRunningAttempt, finishAttempt, startAttempt } from "./order-attempt";
+import { assertNoRunningAttempt, finishAttempt } from "./order-attempt";
 import { appendOrderEvent } from "./order-ledger";
 import { startOrder } from "./order-lifecycle";
 import { assertNext } from "./order-state";
 import { orderStatus } from "./order-status";
+import { startStationAttempt } from "./station-attempt";
 import { stationDirectory } from "./station-directory";
 import { type BriefedOrder, lineBrief } from "./station-line-brief";
 import { type PlanSlice, parsePlanArtifact } from "./station-plan-artifact";
@@ -94,7 +95,7 @@ export async function runOrderPlanLive(
       },
       onAssigned: (assigned, providerSessionId, attribution) => {
         planner = assigned;
-        startAttempt(
+        startStationAttempt(
           db,
           orderId,
           {

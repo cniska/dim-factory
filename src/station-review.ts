@@ -5,7 +5,7 @@ import { workerFailureReason } from "./harness-launch";
 import type { HarnessName } from "./harness-name";
 import { latestApprovedPlan } from "./order-approved-plan";
 import type { ReturnedOrderArtifact } from "./order-artifacts";
-import { finishAttempt, startAttempt } from "./order-attempt";
+import { finishAttempt } from "./order-attempt";
 import { carriedThroughRewrites, currentOrderCommits } from "./order-commits";
 import { raiseOrderFinding } from "./order-finding";
 import { type FindingStanding, orderFindingStandings } from "./order-finding-state";
@@ -17,6 +17,7 @@ import {
   recordOrderReviewArtifact,
 } from "./order-review";
 import { assertNext } from "./order-state";
+import { startStationAttempt } from "./station-attempt";
 import { stationDirectory } from "./station-directory";
 import { type BriefedOrder, lineBrief } from "./station-line-brief";
 import type { PlanSlice } from "./station-plan-artifact";
@@ -296,7 +297,7 @@ export async function runOrderReviewLive(
       env: options.env,
       adapter: options.adapter,
       onAssigned: (assigned, providerSessionId, attribution) => {
-        startAttempt(
+        startStationAttempt(
           db,
           orderId,
           {

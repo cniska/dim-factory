@@ -140,7 +140,7 @@ function slice(
     .stdout.toString()
     .trim();
   recordOrderCommit(db, "order-1", sha, worker, `feat: ${name}`);
-  recordOrderCheck(db, "order-1", ranCheck({ command: "bun run verify", exitCode: 0 }), worker);
+  recordOrderCheck(db, "order-1", ranCheck({ command: "bun run verify", exitCode: 0 }), sha);
   recordOrderBuild(db, "order-1", `The ${name} slice is built and verified.`, sha, worker);
   const left = nextOrderSlice(db, "order-1");
   if (left) completeOrderSlice(db, "order-1", left.id, worker);

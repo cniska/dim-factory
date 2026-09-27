@@ -58,28 +58,27 @@ function recordOrderCheckInTransaction(
   db: Database,
   orderId: string,
   check: OrderCheck,
-  worker: string,
+  headSha: string,
   at: string,
-): { checkId: number; eventId: number } {
+): number {
   const result = db.run(
-    `INSERT INTO factory_order_check (order_id, command, exit_code, started_at, finished_at, result, recorded_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [orderId, check.command, check.exitCode, check.startedAt, check.finishedAt, check.result, at],
+    `INSERT INTO factory_order_check
+       (order_id, head_sha, command, exit_code, started_at, finished_at, result, recorded_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [orderId, headSha, check.command, check.exitCode, check.startedAt, check.finishedAt, check.result, at],
   );
-  const checkId = Number(result.lastInsertRowid);
-  const eventId = appendOrderEventInTransaction(db, orderId, { kind: "check_finished", worker, checkId }, at);
-  return { checkId, eventId };
+  return Number(result.lastInsertRowid);
 }
 
 export function recordOrderCheck(
   db: Database,
   orderId: string,
   check: OrderCheck,
-  worker: string,
+  headSha: string,
   at = now(),
 ): number {
   assertOrderRunning(db, orderId);
-  return db.transaction(() => recordOrderCheckInTransaction(db, orderId, check, worker, at).eventId)();
+  return recordOrderCheckInTransaction(db, orderId, check, headSha, at);
 }
 
 export function recordOrderRewrite(
@@ -109,7 +108,7 @@ export function recordOrderRewrite(
         at,
       );
     }
-    const { checkId } = recordOrderCheckInTransaction(db, orderId, check, worker, at);
+    const checkId = recordOrderCheckInTransaction(db, orderId, check, rewrite.newHead, at);
     db.run(
       `INSERT INTO factory_order_rewrite
          (order_id, old_base, new_base, old_head, new_head, patch_equal, check_id, worker, recorded_at)

@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { assertNoRunningAttempt, finishAttempt, openAttempt } from "./order-attempt";
 import type { OrderEventKind } from "./order-events";
-import { isTerminalOrderStatus, type OrderEvent, OrderNotDone, orderStatus } from "./order-status";
+import { isTerminalOrderStatus, type OrderEvent, orderStatus } from "./order-status";
 import { writeTrace } from "./trace-store";
 
 export const now = (): string => new Date().toISOString();
@@ -86,26 +86,4 @@ export function appendOrderEventInTransaction(
     ts,
   );
   return Number(written.lastInsertRowid);
-}
-
-export function assertChecked(db: Database, orderId: string): void {
-  const passed = db
-    .query(
-      `SELECT 1 FROM factory_order_check c
-       JOIN factory_order_event check_event
-         ON check_event.order_id = c.order_id AND check_event.check_id = c.id AND check_event.kind = 'check_finished'
-       WHERE c.order_id = ? AND c.exit_code = 0
-         AND check_event.id > coalesce((
-           SELECT max(commit_event.id) FROM factory_order_event commit_event
-           WHERE commit_event.order_id = c.order_id AND commit_event.kind = 'commit_created'
-         ), 0)
-       LIMIT 1`,
-    )
-    .get(orderId);
-  if (!passed) {
-    throw new OrderNotDone(
-      "order_not_checked",
-      `order ${orderId} has no check that passed after its last commit`,
-    );
-  }
 }

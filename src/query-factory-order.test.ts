@@ -154,14 +154,14 @@ describe("factory order query", () => {
       db,
       "order-status",
       ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }, "2026-09-18T10:03:00.000Z"),
-      worker,
+      "aaa222",
       "2026-09-18T10:03:00.000Z",
     );
     recordOrderCheck(
       db,
       "order-status",
       ranCheck({ command: "bun run test", exitCode: 0, result: "green" }, "2026-09-18T10:03:00.000Z"),
-      worker,
+      "aaa222",
       "2026-09-18T10:03:00.000Z",
     );
     recordOrderCommit(
@@ -176,7 +176,7 @@ describe("factory order query", () => {
       db,
       "order-status",
       ranCheck({ command: "bun run focused", exitCode: 0, result: "green" }, "2026-09-18T09:58:00.000Z"),
-      worker,
+      "late-event",
       "2026-09-18T09:58:00.000Z",
     );
     const reviewer = reviewIn(db, "order-status", "2026-09-18T10:03:30.000Z").reviewer;
@@ -324,7 +324,7 @@ describe("factory order query", () => {
       db,
       "order-123",
       ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }, "2026-09-18T10:02:00.000Z"),
-      worker,
+      "abc",
       "2026-09-18T10:02:00.000Z",
     );
     recordOrderBuild(
@@ -370,11 +370,11 @@ describe("factory order query", () => {
       "order",
       "event",
       "event",
+      "event",
       "attempt",
       "event",
       "commit",
       "file",
-      "event",
       "check",
       "event",
       "artifact",

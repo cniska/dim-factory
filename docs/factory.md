@@ -74,7 +74,7 @@ A builder leaves its changes uncommitted and returns a build turn: a commit subj
 1. refuses a turn that leaves a handed finding unanswered or answers one it was not handed
 2. applies the comment gate over the staged tree, reading the ban from the local default branch's config so a builder cannot lift it
 3. runs the repo's check in the check sandbox, without the operator's identity
-4. commits with the repo's own identity and signing, and records the commit under the builder and the check under the operator
+4. commits with the repo's own identity and signing, and records the commit under the builder and the check at the commit it ran on — the new commit, or for a turn that failed or changed nothing the head it was built on ([`src/order-head-check.ts`](../src/order-head-check.ts))
 
 A refused commit or comment goes back to the same builder, at most twice per turn. A red check, a check that changed the tree, a nested repository, or HEAD moved off the order's branch fails the turn, and the reason is in the next turn's brief.
 

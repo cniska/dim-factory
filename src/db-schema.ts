@@ -5,7 +5,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { STATIONS_SQL } from "./station";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 74;
+export const SCHEMA_VERSION = 75;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -425,9 +425,12 @@ CREATE TABLE IF NOT EXISTS factory_order_file (
   PRIMARY KEY (order_id, path)
 );
 
+-- A check the runner ran, named by the commit it ran on: the new commit for a
+-- committed turn, and the head it was built on for a turn that failed or changed nothing.
 CREATE TABLE IF NOT EXISTS factory_order_check (
   id            INTEGER PRIMARY KEY,
   order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  head_sha      TEXT NOT NULL,
   command       TEXT NOT NULL,
   exit_code     INTEGER NOT NULL,
   started_at    TEXT NOT NULL,

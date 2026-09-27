@@ -80,6 +80,7 @@ describe("plan approval integration", () => {
     ).toEqual([
       { kind: "queued", worker: operator.name },
       { kind: "started", worker: operator.name },
+      { kind: "station_started", worker: outcome.planner },
       { kind: "artifact_submitted", worker: outcome.planner },
       { kind: "artifact_approved", worker: operator.name },
     ]);

@@ -64,7 +64,7 @@ afterAll(() => {
 function landed(database: Database, orderId: string): void {
   const operator = resolveWorker(database, env);
   recordOrderCommit(database, orderId, trunk.sha, operator, "feat: land it");
-  recordOrderCheck(database, orderId, ranCheck({ command: "bun run verify", exitCode: 0 }), operator);
+  recordOrderCheck(database, orderId, ranCheck({ command: "bun run verify", exitCode: 0 }), trunk.sha);
 }
 
 const add = [

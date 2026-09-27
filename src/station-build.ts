@@ -12,15 +12,16 @@ import {
   nextOrderSlice,
   type OrderSlice,
 } from "./order-artifacts";
-import { assertNoRunningAttempt, openAttempt, startAttempt } from "./order-attempt";
+import { assertNoRunningAttempt, openAttempt } from "./order-attempt";
 import { latestOrderCommit, pendingRebaseConflict } from "./order-commits";
 import { BuildTurnRefused } from "./order-finding";
 import { type FindingStanding, orderFindingStandings, owesAnswer } from "./order-finding-state";
-import { type FailedCheck, failedHeadCheck } from "./order-head-check";
+import { assertChecked, type FailedCheck, failedHeadCheck } from "./order-head-check";
 import { appendOrderEvent } from "./order-ledger";
 import { assertNext } from "./order-state";
 import { orderStatus } from "./order-status";
 import type { Env } from "./paths";
+import { startStationAttempt } from "./station-attempt";
 import { commitBuildTurn } from "./station-build-commit";
 import { continueRebaseTurn, reopenRebase } from "./station-build-rebase";
 import { BUILD_TURN_SCHEMA, parseBuildTurn } from "./station-build-turn";
@@ -232,21 +233,7 @@ function requireBuildEvidence(db: Database, orderId: string, finalSlice: boolean
   if (!head.stdout.toString().trim().startsWith(commit.sha.toLowerCase())) {
     throw new Error(`builder did not record worktree HEAD for ${orderId}`);
   }
-  const check = db
-    .query<{ exit_code: number }, [string]>(
-      `SELECT c.exit_code FROM factory_order_check c
-       JOIN factory_order_event check_event
-         ON check_event.order_id = c.order_id AND check_event.check_id = c.id AND check_event.kind = 'check_finished'
-       JOIN factory_worker w ON w.name = check_event.worker AND w.role = 'operator'
-       WHERE c.order_id = ? AND check_event.id > coalesce((
-         SELECT max(commit_event.id) FROM factory_order_event commit_event
-         WHERE commit_event.order_id = c.order_id AND commit_event.kind = 'commit_created'
-       ), 0)
-       ORDER BY check_event.id DESC LIMIT 1`,
-    )
-    .get(orderId);
-  if (check?.exit_code !== 0)
-    throw new Error("the runner did not record a passing check after the latest commit");
+  assertChecked(db, orderId);
   if (finalSlice) {
     const build = db
       .query<{ id: number }, [string, string]>(
@@ -325,7 +312,7 @@ export async function runOrderBuildLive(
       attribution: { harness: string; model: string; tier: string },
     ): void => {
       builder = assigned;
-      startAttempt(
+      startStationAttempt(
         db,
         orderId,
         {
@@ -426,7 +413,6 @@ export async function runOrderBuildLive(
           orderId,
           runId,
           builder,
-          operator,
           worktree,
           turn,
           owed: reviewFindings.work.map((one) => one.finding),

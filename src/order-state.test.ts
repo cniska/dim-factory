@@ -46,11 +46,11 @@ function record() {
   const approve = (artifactId: number): void => event("artifact_approved", { artifact_id: artifactId });
   const giveBack = (artifactId: number): void =>
     event("artifact_returned", { artifact_id: artifactId, reason: "not yet" });
-  const check = (): number =>
+  const check = (head: string): number =>
     Number(
       db.run(
-        "INSERT INTO factory_order_check (order_id, command, exit_code, started_at, finished_at, result, recorded_at) VALUES (?, 'bun run verify', 0, ?, ?, 'green', ?)",
-        [ORDER, at(), at(), at()],
+        "INSERT INTO factory_order_check (order_id, head_sha, command, exit_code, started_at, finished_at, result, recorded_at) VALUES (?, ?, 'bun run verify', 0, ?, ?, 'green', ?)",
+        [ORDER, head, at(), at(), at()],
       ).lastInsertRowid,
     );
   const r = {
@@ -133,7 +133,7 @@ function record() {
         `INSERT INTO factory_order_rewrite
          (order_id, old_base, new_base, old_head, new_head, patch_equal, check_id, worker, recorded_at)
          VALUES (?, 'base', 'trunk', ?, ?, ?, ?, ?, ?)`,
-        [ORDER, oldHead, newHead, patchEqual ? 1 : 0, check(), worker, at()],
+        [ORDER, oldHead, newHead, patchEqual ? 1 : 0, check(newHead), worker, at()],
       );
     },
     conflict(): void {

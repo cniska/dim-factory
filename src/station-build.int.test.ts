@@ -182,8 +182,8 @@ describe("builder station", () => {
       { kind: "started", worker: operator.name, station: null },
       { kind: "artifact_submitted", worker: planner, station: null },
       { kind: "artifact_approved", worker: operator.name, station: null },
+      { kind: "station_started", worker: outcome.builder, station: "build" },
       { kind: "commit_created", worker: outcome.builder, station: null },
-      { kind: "check_finished", worker: operator.name, station: null },
       { kind: "artifact_submitted", worker: outcome.builder, station: null },
     ]);
     expect(
@@ -318,7 +318,7 @@ describe("builder station", () => {
     db.close();
   });
 
-  test("records a red check under the runner, commits nothing, and hands the output to the next turn", async () => {
+  test("records a red check at the head it ran on, commits nothing, and hands the output to the next turn", async () => {
     const db = database();
     const dimHome = home("dim-builder-red-");
     const { repo, operator } = orderAtBuild(
@@ -352,11 +352,10 @@ describe("builder station", () => {
     expect(
       db
         .query(
-          `SELECT c.exit_code, c.result LIKE '%ok.txt is missing%' AS carries_output, e.worker
-           FROM factory_order_check c JOIN factory_order_event e ON e.check_id = c.id`,
+          "SELECT exit_code, result LIKE '%ok.txt is missing%' AS carries_output, head_sha FROM factory_order_check",
         )
         .all(),
-    ).toEqual([{ exit_code: 1, carries_output: 1, worker: operator.name }]);
+    ).toEqual([{ exit_code: 1, carries_output: 1, head_sha: repo.sha }]);
 
     let retryBrief = "";
     const retry = await runOrderBuildLive(db, "red-order", operator.name, {
@@ -621,7 +620,7 @@ describe("builder station", () => {
       db,
       "returned-builder-order",
       ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
-      operator.name,
+      repo.sha,
     );
     recordOrderBuild(db, "returned-builder-order", "The initial Build artifact.", repo.sha, builder.name);
     appendOrderEvent(db, "returned-builder-order", {

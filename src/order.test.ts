@@ -29,7 +29,7 @@ import {
   returnedOrderArtifact,
 } from "./order-artifacts";
 import { openAttempt } from "./order-attempt";
-import { currentOrderCommits } from "./order-commits";
+import { currentOrderCommits, latestOrderCommit } from "./order-commits";
 import {
   recordOrderCheck,
   recordOrderCommit,
@@ -38,8 +38,8 @@ import {
   recordOrderRewrite,
 } from "./order-evidence";
 import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
-import { failedHeadCheck } from "./order-head-check";
-import { appendOrderEvent, assertChecked } from "./order-ledger";
+import { assertChecked, failedHeadCheck } from "./order-head-check";
+import { appendOrderEvent } from "./order-ledger";
 import { amendOrder, dropOrder, queueOrder, startOrder } from "./order-lifecycle";
 import {
   abortStrandedReview,
@@ -106,7 +106,7 @@ function landed(database: Database, orderId: string, at?: string): void {
     database,
     orderId,
     ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
-    worker,
+    trunk.sha,
     at,
   );
 }
@@ -181,7 +181,7 @@ describe("factory order report records", () => {
       database,
       "order-build-artifact",
       ranCheck({ command: "bun run verify", exitCode: 0 }),
-      builder.name,
+      "old-head",
     );
     recordOrderBuild(
       database,
@@ -201,7 +201,7 @@ describe("factory order report records", () => {
       database,
       "order-build-artifact",
       ranCheck({ command: "bun run verify", exitCode: 0 }),
-      builder.name,
+      "new-head",
     );
 
     expect(() =>
@@ -904,7 +904,8 @@ describe("factory order report records", () => {
       const { database, ship } = scene(unrelatedMove, { check: "exit 3" });
       expect(ship).toThrow(expect.objectContaining({ code: "ship_check_failed" }));
 
-      recordOrderCheck(database, "order-1", ranCheck({ command: "true", exitCode: 0 }), attemptOperator);
+      const rebased = latestOrderCommit(database, "order-1")?.sha as string;
+      recordOrderCheck(database, "order-1", ranCheck({ command: "true", exitCode: 0 }), rebased);
 
       expect(failedHeadCheck(database, "order-1")).toBeNull();
       expect(orderState(database, "order-1")).toEqual({ station: null, next: "ship" });
@@ -1045,7 +1046,7 @@ describe("factory order report records", () => {
       expect(ship()).toEqual({ landed: "rebased" });
     });
 
-    test("the re-check and the rewrite are recorded under the operator", () => {
+    test("the rewrite is recorded under the operator, and the re-check at the rebased head", () => {
       const { database, ship } = scene(unrelatedMove);
 
       ship();
@@ -1056,16 +1057,12 @@ describe("factory order report records", () => {
       ]);
       expect(
         database
-          .query(
-            "SELECT worker FROM factory_order_event WHERE kind IN ('check_finished', 'commit_rewritten') ORDER BY id",
-          )
+          .query("SELECT worker FROM factory_order_event WHERE kind = 'commit_rewritten' ORDER BY id")
           .all(),
-      ).toEqual([
-        { worker },
-        { worker: attemptOperator },
-        { worker: attemptOperator },
-        { worker: attemptOperator },
-      ]);
+      ).toEqual([{ worker: attemptOperator }, { worker: attemptOperator }]);
+      expect(
+        database.query("SELECT head_sha, exit_code FROM factory_order_check ORDER BY id DESC LIMIT 1").get(),
+      ).toEqual({ head_sha: current.at(-1), exit_code: 0 });
       const rows = findQuery("order")?.run(database, { arg: "order-1" }).rows ?? [];
       expect(rows.filter((row) => row[0] === "commit").map((row) => row[2])).toEqual([
         "commit_created",
@@ -1113,84 +1110,47 @@ describe("factory order report records", () => {
     });
   });
 
-  test("counts a check by when it was recorded, not by when it says it ran", () => {
-    const repo = integratedRepo();
+  test("refuses an order with no passing check at its last commit", () => {
     const database = db();
     queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
     start(database, "order-1", attemptOperator, "2026-09-18T10:01:00.000Z");
-    recordOrderCommit(database, "order-1", repo.sha, worker, "feat: land it", "2026-09-18T10:03:00.000Z");
-    recordOrderCheck(
-      database,
-      "order-1",
-      {
-        command: "bun run verify",
-        exitCode: 0,
-        result: "green",
-        startedAt: "2026-09-18T10:01:30.000Z",
-        finishedAt: "2026-09-18T10:02:00.000Z",
-      },
-      worker,
-      "2026-09-18T10:04:00.000Z",
-    );
-
-    expect(() => assertChecked(database, "order-1")).not.toThrow();
-    database.close();
-    rmSync(repo.dir, { recursive: true, force: true });
-  });
-
-  test("refuses an order no passing check was recorded for", () => {
-    const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
-    start(database, "order-1", attemptOperator, "2026-09-18T10:01:00.000Z");
-    recordOrderCheck(
-      database,
-      "order-1",
-      ranCheck({ command: "bun run verify", exitCode: 1, result: "2 failed" }),
-      worker,
-      "2026-09-18T10:02:00.000Z",
-    );
     recordOrderCommit(database, "order-1", trunk.sha, worker, "feat: land it", "2026-09-18T10:02:30.000Z");
+    recordOrderCheck(database, "order-1", ranCheck({ command: "bun run verify", exitCode: 1 }), trunk.sha);
 
     expect(() => assertChecked(database, "order-1")).toThrow(
       expect.objectContaining({ code: "order_not_checked" }),
     );
 
-    recordOrderCheck(
-      database,
-      "order-1",
-      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
-      worker,
-      "2026-09-18T10:03:00.000Z",
-    );
+    recordOrderCheck(database, "order-1", ranCheck({ command: "bun run verify", exitCode: 0 }), trunk.sha);
     expect(() => assertChecked(database, "order-1")).not.toThrow();
     database.close();
   });
 
-  test("refuses a check that passed before the order's last commit", () => {
+  test("refuses a check that passed at an earlier commit", () => {
     const database = db();
     queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
     start(database, "order-1", attemptOperator, "2026-09-18T10:01:00.000Z");
-    recordOrderCheck(
-      database,
-      "order-1",
-      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
-      worker,
-      "2026-09-18T10:02:00.000Z",
-    );
+    recordOrderCheck(database, "order-1", ranCheck({ command: "bun run verify", exitCode: 0 }), "base0000");
     recordOrderCommit(database, "order-1", trunk.sha, worker, "feat: land it", "2026-09-18T10:03:00.000Z");
 
     expect(() => assertChecked(database, "order-1")).toThrow(
       expect.objectContaining({ code: "order_not_checked" }),
     );
+    database.close();
+  });
 
-    recordOrderCheck(
-      database,
-      "order-1",
-      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
-      worker,
-      "2026-09-18T10:04:00.000Z",
+  test("a later failing check at the last commit outweighs an earlier passing one", () => {
+    const database = db();
+    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    start(database, "order-1", attemptOperator, "2026-09-18T10:01:00.000Z");
+    recordOrderCommit(database, "order-1", trunk.sha, worker, "feat: land it", "2026-09-18T10:03:00.000Z");
+    recordOrderCheck(database, "order-1", ranCheck({ command: "bun run verify", exitCode: 0 }), trunk.sha);
+    recordOrderCheck(database, "order-1", ranCheck({ command: "bun run verify", exitCode: 1 }), trunk.sha);
+
+    expect(() => assertChecked(database, "order-1")).toThrow(
+      expect.objectContaining({ code: "order_not_checked" }),
     );
-    expect(() => assertChecked(database, "order-1")).not.toThrow();
+    expect(failedHeadCheck(database, "order-1")).toMatchObject({ exitCode: 1 });
     database.close();
   });
 
@@ -1330,7 +1290,7 @@ describe("factory order report records", () => {
       database,
       "order-1",
       ranCheck({ command: "bun run verify", exitCode: 0, result: "426 tests" }),
-      worker,
+      trunk.sha,
       "2026-09-18T10:03:00.000Z",
     );
     const finding = raiseOrderFinding(

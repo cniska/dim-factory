@@ -104,7 +104,6 @@ export function commitBuildTurn(options: {
   orderId: string;
   runId: string;
   builder: string;
-  operator: string;
   worktree: string;
   turn: BuildTurn;
   owed: readonly number[];
@@ -112,7 +111,7 @@ export function commitBuildTurn(options: {
   env?: Env;
   checkSandbox?: string[];
 }): { sha: string } {
-  const { db, orderId, builder, operator, worktree, turn } = options;
+  const { db, orderId, builder, worktree, turn } = options;
   const env = options.env ?? process.env;
   const declared = checkTask(worktree);
   if (!declared) {
@@ -164,7 +163,7 @@ export function commitBuildTurn(options: {
   };
   if (check.exitCode !== 0) {
     git(worktree, ["reset", "-q"]);
-    recordOrderCheck(db, orderId, checkRow, operator);
+    recordOrderCheck(db, orderId, checkRow, before);
     throw new BuildTurnRefused(
       "check_failed",
       `${check.command} exited ${check.exitCode} in the check sandbox:\n${check.output}`,
@@ -192,7 +191,7 @@ export function commitBuildTurn(options: {
   }
   if (!changed) {
     db.transaction(() => {
-      recordOrderCheck(db, orderId, checkRow, operator);
+      recordOrderCheck(db, orderId, checkRow, before);
       answerOrderFindings(db, orderId, options.runId, turn.answers, builder);
       if (options.finalSlice) recordOrderBuild(db, orderId, turn.artifact, before, builder);
     })();
@@ -234,7 +233,7 @@ export function commitBuildTurn(options: {
           builder,
         );
       }
-      recordOrderCheck(db, orderId, checkRow, operator);
+      recordOrderCheck(db, orderId, checkRow, sha);
       answerOrderFindings(db, orderId, options.runId, turn.answers, builder);
       if (options.finalSlice) recordOrderBuild(db, orderId, turn.artifact, sha, builder);
     })();

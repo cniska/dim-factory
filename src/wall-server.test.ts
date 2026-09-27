@@ -109,14 +109,7 @@ describe("factory wall snapshot", () => {
     started(db, "order-running", "2026-09-18T10:00:00.000Z");
     planned(db, "order-running", "2026-09-18T10:00:00.000Z");
     running(db, "order-running", "2026-09-18T10:00:00.000Z");
-
-    recordOrderCheck(
-      db,
-      "order-running",
-      ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
-      worker,
-      "2026-09-18T10:02:00.000Z",
-    );
+    recordOrderCommit(db, "order-running", "run0001", worker, "feat: first cut", "2026-09-18T10:02:00.000Z");
     queueOrder(
       db,
       { id: "order-blocked", project: "cniska/dim-factory", title: "Unblock the queue" },
@@ -144,7 +137,7 @@ describe("factory wall snapshot", () => {
       db,
       "order-done",
       ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
-      worker,
+      trunk.sha,
       "2026-09-18T08:01:30.000Z",
     );
     recordOrderBuild(
@@ -407,7 +400,7 @@ describe("factory wall snapshot", () => {
           db,
           id,
           ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
-          worker,
+          trunk.sha,
           "2026-09-18T09:00:45.000Z",
         );
         recordOrderBuild(
@@ -523,14 +516,14 @@ describe("factory wall item view", () => {
       db,
       "order-worked",
       ranCheck({ command: "bun run verify", exitCode: 1, result: "typecheck failed" }),
-      worker,
+      "base0000",
       "2026-09-18T10:03:00.000Z",
     );
     recordOrderCheck(
       db,
       "order-worked",
       ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
-      worker,
+      "base0000",
       "2026-09-18T10:04:00.000Z",
     );
     recordOrderFile(
@@ -552,7 +545,7 @@ describe("factory wall item view", () => {
       db,
       "order-worked",
       ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
-      worker,
+      trunk.sha,
       "2026-09-18T10:06:30.000Z",
     );
     recordOrderBuild(
@@ -634,11 +627,7 @@ describe("factory wall item view", () => {
       "started",
       "station_started",
       "artifact_submitted",
-      "environment_reported",
-      "check_finished",
-      "check_finished",
       "commit_created",
-      "check_finished",
       "artifact_submitted",
       "finding_raised",
       "finding_answered",
@@ -691,17 +680,18 @@ describe("factory wall item view", () => {
       "2026-09-18T10:00:00.000Z",
     );
     building(db, "order-reviewed", "2026-09-18T10:00:00.000Z");
-    recordOrderCheck(
+    recordOrderCommit(
       db,
       "order-reviewed",
-      ranCheck({ command: "bun run verify", exitCode: 0 }),
+      trunk.sha,
       reviewer,
+      "feat: review it",
       "2026-09-18T10:02:00.000Z",
     );
 
     const view = assembleItemView(db, "order-reviewed");
 
-    expect(view?.entries.find((entry) => entry.kind === "check_finished")?.worker).toEqual({
+    expect(view?.entries.find((entry) => entry.kind === "commit_created")?.worker).toEqual({
       name: reviewer,
       role: "reviewer",
     });
@@ -733,17 +723,11 @@ describe("factory wall item view", () => {
       "2026-09-18T10:00:00.000Z",
     );
     started(db, "order-other", "2026-09-18T10:01:00.000Z");
-    recordOrderCheck(
-      db,
-      "order-other",
-      ranCheck({ command: "bun run other", exitCode: 0, result: "green" }),
-      worker,
-      "2026-09-18T10:03:00.000Z",
-    );
+    recordOrderCommit(db, "order-other", trunk.sha, worker, "feat: other", "2026-09-18T10:03:00.000Z");
 
     const entries = assembleItemView(db, "order-other")?.entries ?? [];
 
-    expect(entries.map((entry) => entry.kind)).toEqual(["queued", "started", "check_finished"]);
+    expect(entries.map((entry) => entry.kind)).toEqual(["queued", "started", "commit_created"]);
     db.close();
   });
 

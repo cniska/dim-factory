@@ -158,8 +158,8 @@ export const order: Query = {
       ),
       ...table(
         db,
-        `SELECT 'check' AS section, finished_at AS "when", 'check_finished' AS kind,
-                cast(exit_code AS TEXT) AS status, command AS subject, result AS evidence
+        `SELECT 'check' AS section, finished_at AS "when", 'check_ran' AS kind,
+                cast(exit_code AS TEXT) AS status, command || ' at ' || head_sha AS subject, result AS evidence
          FROM factory_order_check WHERE order_id = ?`,
         [id],
       ),
@@ -218,11 +218,9 @@ export const factory: Query = {
                         JOIN factory_order_commit c ON c.order_id = e.order_id AND c.sha = e.commit_sha
                         WHERE e.order_id = o.id AND e.kind IN ('commit_created', 'commit_rewritten')
                         ORDER BY e.id DESC LIMIT 1), '(none recorded)') AS "commit",
-              coalesce((SELECT c.command || ' (' || c.exit_code || ', ' || coalesce(c.result, 'no result') || ')'
-                        FROM factory_order_event e
-                        JOIN factory_order_check c ON c.order_id = e.order_id AND c.id = e.check_id
-                        WHERE e.order_id = o.id AND e.kind = 'check_finished'
-                        ORDER BY e.id DESC LIMIT 1), '(none recorded)') AS "check"
+              coalesce((SELECT c.command || ' (' || c.exit_code || ', ' || c.result || ')'
+                        FROM factory_order_check c WHERE c.order_id = o.id
+                        ORDER BY c.id DESC LIMIT 1), '(none recorded)') AS "check"
        FROM factory_order o ${filter}
        ORDER BY o.updated_at DESC, o.id`,
       arg ? [arg] : [],

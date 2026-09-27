@@ -132,6 +132,7 @@ describe("planner station", () => {
     expect(db.query("SELECT kind FROM factory_order_event WHERE order_id = 'planner-order'").all()).toEqual([
       { kind: "queued" },
       { kind: "started" },
+      { kind: "station_started" },
       { kind: "artifact_submitted" },
     ]);
     expect(orderStatus(db, "planner-order")).toBe("running");

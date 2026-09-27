@@ -57,7 +57,7 @@ describe("build approval integration", () => {
       db,
       "failed-return-order",
       ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
-      builder.name,
+      repo.sha,
     );
     const build = recordOrderBuild(
       db,
@@ -160,7 +160,7 @@ describe("build approval integration", () => {
       db,
       "build-approval-order",
       ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
-      builder.name,
+      repo.sha,
     );
     const build = recordOrderBuild(
       db,
@@ -209,7 +209,7 @@ describe("build approval integration", () => {
       db,
       "build-approval-order",
       ranCheck({ command: "bun run verify", exitCode: 0, result: "green" }),
-      builder.name,
+      "new-head",
     );
     recordOrderBuild(
       db,
@@ -264,6 +264,7 @@ describe("build approval integration", () => {
         artifact_head: null,
         reason: null,
       },
+      { kind: "station_started", worker: builder.name, commit_sha: null, artifact_head: null, reason: null },
       {
         kind: "commit_created",
         worker: builder.name,
@@ -271,7 +272,6 @@ describe("build approval integration", () => {
         artifact_head: null,
         reason: null,
       },
-      { kind: "check_finished", worker: builder.name, commit_sha: null, artifact_head: null, reason: null },
       {
         kind: "artifact_submitted",
         worker: builder.name,
@@ -286,6 +286,7 @@ describe("build approval integration", () => {
         artifact_head: repo.sha,
         reason: "Explain the verified result, not the command log.",
       },
+      { kind: "station_started", worker: builder.name, commit_sha: null, artifact_head: null, reason: null },
       {
         kind: "commit_created",
         worker: builder.name,
@@ -293,7 +294,6 @@ describe("build approval integration", () => {
         artifact_head: null,
         reason: null,
       },
-      { kind: "check_finished", worker: builder.name, commit_sha: null, artifact_head: null, reason: null },
       {
         kind: "artifact_submitted",
         worker: builder.name,

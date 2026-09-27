@@ -3,9 +3,9 @@ import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, writeF
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { installHooks } from "./hooks";
-import { startAttempt } from "./order-attempt";
 import type { OrderCheck } from "./order-evidence";
 import type { Env } from "./paths";
+import { startStationAttempt } from "./station-attempt";
 import { REVIEW_DIMENSIONS, type ReviewFinding } from "./station-review-artifact";
 import { mintWorker, newWorkerSession, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./worker";
 import type { Role } from "./worker-roles";
@@ -19,7 +19,7 @@ export function attemptIn(
   runId = "run-1",
   at = new Date().toISOString(),
 ): void {
-  startAttempt(db, orderId, { runId, worker, operatorWorker, station: "build" }, at);
+  startStationAttempt(db, orderId, { runId, worker, operatorWorker, station: "build" }, at);
 }
 
 export function workerIn(db: Database, role: Role = "builder"): string {

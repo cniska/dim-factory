@@ -38,7 +38,7 @@ Approval is the operator's check that the returned artifact answers the request.
 
 After plan approval:
 
-1. Run `dim order build <order-id>` once. It runs each remaining slice on the one builder for the order, in the order's worktree. After each turn, the runner runs the declared check in the check sandbox, commits the worktree the way your git config commits, records the commit and its files under the builder and the check under you, and starts the next slice. A red check fails that attempt and stops the command. Read `dim q order <order-id>` when it returns.
+1. Run `dim order build <order-id>` once. It runs each remaining slice on the one builder for the order, in the order's worktree. After each turn, the runner runs the declared check in the check sandbox, commits the worktree the way your git config commits, records the commit and its files under the builder and the check at that commit, and starts the next slice. A red check fails that attempt and stops the command. Read `dim q order <order-id>` when it returns.
    When the approved plan itself cannot satisfy the order, run `dim order return <order-id> --to plan --reason "..."` while build is next. Read `dim q order`, then delegate the same planner to revise it and approve that revision before building again. Keep implementation mistakes in build.
 2. After the final slice, read the single Build artifact for the whole order. Approve it with `dim order approve <order-id> --reason "..."` or return it to the same builder with `dim order return <order-id> --reason "..."`.
 3. Run `dim order review <order-id>`. The review reads the whole order. The factory creates the reviewer identity and resumes its provider session on later rounds.

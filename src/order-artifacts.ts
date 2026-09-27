@@ -1,7 +1,8 @@
 import type { Database } from "bun:sqlite";
 import { finishAttempt, openAttempt } from "./order-attempt";
 import { latestOrderCommit } from "./order-commits";
-import { appendOrderEventInTransaction, assertChecked, now } from "./order-ledger";
+import { assertChecked } from "./order-head-check";
+import { appendOrderEventInTransaction, now } from "./order-ledger";
 import { assertOrderRunning, OrderNotDone } from "./order-status";
 import type { Station } from "./station";
 import type { PlanSlice } from "./station-plan-artifact";

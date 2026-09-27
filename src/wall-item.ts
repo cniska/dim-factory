@@ -1,7 +1,8 @@
+import type { OrderEventKind } from "./order-events";
 import { STATION_LABELS } from "./wall-board";
-import type { WallItemEntry, WallItemKind } from "./wall-server";
+import type { WallItemEntry } from "./wall-server";
 
-export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
+export const ITEM_KIND_LABELS: Record<OrderEventKind, string> = {
   queued: "Queued",
   started: "Order started",
   station_started: "Station started",
@@ -11,17 +12,15 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   artifact_returned: "Artifact returned",
   commit_created: "Commit",
   commit_rewritten: "Commit rebased",
-  check_finished: "Check",
   finding_raised: "Finding raised",
   finding_answered: "Finding answered",
   ship_failed: "Ship failed",
   shipped: "Shipped",
-  environment_reported: "Worker environment",
   dropped: "Dropped",
   failed: "Failed",
 };
 
-const STATION_VERBS: Partial<Record<WallItemKind, string>> = {
+const STATION_VERBS: Partial<Record<OrderEventKind, string>> = {
   station_started: "started",
   artifact_submitted: "submitted",
   artifact_approved: "approved",

@@ -6,7 +6,6 @@ describe("factory wall item view", () => {
     expect(ITEM_KIND_LABELS.commit_created).toBe("Commit");
     expect(ITEM_KIND_LABELS.finding_raised).toBe("Finding raised");
     expect(ITEM_KIND_LABELS.finding_answered).toBe("Finding answered");
-    expect(ITEM_KIND_LABELS.environment_reported).toBe("Worker environment");
     expect(ITEM_KIND_LABELS.started).toBe("Order started");
     expect(Object.values(ITEM_KIND_LABELS).every((label) => !label.includes("_"))).toBe(true);
   });

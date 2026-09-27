@@ -126,14 +126,16 @@ describe("headless factory loop", () => {
     ).toEqual([
       "queued",
       "started",
+      "station_started",
       "artifact_submitted",
       "artifact_approved",
+      "station_started",
       "commit_created",
-      "check_finished",
+      "station_started",
       "commit_created",
-      "check_finished",
       "artifact_submitted",
       "artifact_approved",
+      "station_started",
       "artifact_submitted",
       "artifact_approved",
       "shipped",
@@ -244,13 +246,6 @@ describe("headless factory loop", () => {
         )
         .all("headless-order"),
     ).toEqual([{ worker: builder ?? "" }]);
-    expect(
-      db
-        .query<{ worker: string }, [string]>(
-          "SELECT DISTINCT worker FROM factory_order_event WHERE order_id = ? AND kind = 'check_finished'",
-        )
-        .all("headless-order"),
-    ).toEqual([{ worker: operator.name }]);
     db.close();
   });
 });

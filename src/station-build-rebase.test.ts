@@ -125,7 +125,7 @@ describe("a conflict at ship", () => {
   });
 
   test("refuses a commit of the build turn while the rebase is in progress", () => {
-    const { wt, db, builder, operator } = conflicted();
+    const { wt, db, builder } = conflicted();
 
     expect(() =>
       commitBuildTurn({
@@ -133,7 +133,6 @@ describe("a conflict at ship", () => {
         orderId: "order-1",
         runId: "run-2",
         builder,
-        operator,
         worktree: wt,
         turn: { subject: "fix: resolve", artifact: "", answers: [] },
         owed: [],

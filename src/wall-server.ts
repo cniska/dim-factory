@@ -32,11 +32,9 @@ export type WallSnapshot = {
   totals: Record<BoardStatus, number>;
 };
 
-export type WallItemKind = OrderEventKind | "station_started" | "environment_reported";
-
 export type WallItemEntry = {
   at: string;
-  kind: WallItemKind;
+  kind: OrderEventKind;
   station: Station | null;
   worker: WallWorker | null;
 };
@@ -110,7 +108,7 @@ export function assembleWallSnapshot(db: Database): WallSnapshot {
 
 type EventRow = {
   ts: string;
-  kind: WallItemKind;
+  kind: OrderEventKind;
   worker_id: string | null;
   worker_role: Role | null;
   station: Station | null;
@@ -156,7 +154,7 @@ function artifactPanel(
 export function assembleItemView(db: Database, orderId: string): WallItemView | null {
   const row = db.query<OrderRow, [string]>(`${ORDER_ROW_SELECT} WHERE o.id = ?`).get(orderId);
   if (!row || row.status === "dropped") return null;
-  const events = db
+  const entries = db
     .query<EventRow, [string]>(
       `SELECT e.ts, e.kind, e.worker AS worker_id, fw.role AS worker_role,
               coalesce(art.kind, e.station) AS station
@@ -165,33 +163,8 @@ export function assembleItemView(db: Database, orderId: string): WallItemView | 
        LEFT JOIN factory_order_artifact art ON art.id = e.artifact_id
        WHERE e.order_id = ? ORDER BY e.ts, e.id`,
     )
-    .all(orderId);
-  const stationStarts = db
-    .query<EventRow, [string]>(
-      `SELECT a.started_at AS ts, 'station_started' AS kind, a.worker AS worker_id, fw.role AS worker_role,
-              a.station
-       FROM factory_order_attempt a
-       LEFT JOIN factory_worker fw ON fw.name = a.worker
-       WHERE a.order_id = ? AND a.kind = 'started' ORDER BY a.started_at, a.id`,
-    )
-    .all(orderId);
-  const environments = db
-    .query<{ recorded_at: string }, [string]>(
-      "SELECT recorded_at FROM factory_order_environment WHERE order_id = ? ORDER BY recorded_at, id",
-    )
-    .all(orderId);
-  const entries: WallItemEntry[] = [
-    ...events.map(eventEntry),
-    ...stationStarts.map(eventEntry),
-    ...environments.map(
-      (environment): WallItemEntry => ({
-        at: environment.recorded_at,
-        kind: "environment_reported",
-        station: null,
-        worker: null,
-      }),
-    ),
-  ].sort((a, b) => a.at.localeCompare(b.at));
+    .all(orderId)
+    .map(eventEntry);
   return {
     order: mapOrder(db, { ...row, status: row.status }),
     project: row.project,
