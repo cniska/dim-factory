@@ -7,11 +7,12 @@ describe("factory wall item view", () => {
     expect(ITEM_KIND_LABELS.finding_raised).toBe("Finding raised");
     expect(ITEM_KIND_LABELS.finding_answered).toBe("Finding answered");
     expect(ITEM_KIND_LABELS.environment_reported).toBe("Worker environment");
-    expect(ITEM_KIND_LABELS.started).toBe("Started");
+    expect(ITEM_KIND_LABELS.started).toBe("Order started");
     expect(Object.values(ITEM_KIND_LABELS).every((label) => !label.includes("_"))).toBe(true);
   });
 
   test("names an artifact event by the station whose artifact it is", () => {
+    expect(itemKindLabel({ kind: "station_started", station: "plan" })).toBe("Plan started");
     expect(itemKindLabel({ kind: "artifact_written", station: "plan" })).toBe("Plan written");
     expect(itemKindLabel({ kind: "artifact_approved", station: "build" })).toBe("Build approved");
     expect(itemKindLabel({ kind: "artifact_returned", station: "review" })).toBe("Review returned");

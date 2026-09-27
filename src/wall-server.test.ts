@@ -632,6 +632,7 @@ describe("factory wall item view", () => {
     expect(view?.entries.map((entry) => entry.kind)).toEqual([
       "queued",
       "started",
+      "station_started",
       "artifact_written",
       "environment_reported",
       "check_finished",
@@ -706,6 +707,12 @@ describe("factory wall item view", () => {
       role: "reviewer",
     });
     expect(view?.entries.find((entry) => entry.kind === "started")?.worker?.name).toBe(attemptOperator);
+    expect(view?.entries.find((entry) => entry.kind === "station_started")).toEqual({
+      at: "2026-09-18T10:00:00.000Z",
+      kind: "station_started",
+      station: "build",
+      worker: { name: worker, role: "builder" },
+    });
     expect(view?.order.worker).toEqual({ name: worker, role: "builder" });
     db.close();
   });

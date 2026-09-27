@@ -3,7 +3,8 @@ import type { WallItemEntry, WallItemKind } from "./wall-server";
 
 export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   queued: "Queued",
-  started: "Started",
+  started: "Order started",
+  station_started: "Station started",
   priority_changed: "Priority changed",
   artifact_written: "Artifact written",
   artifact_approved: "Artifact approved",
@@ -22,15 +23,16 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   failed: "Failed",
 };
 
-const ARTIFACT_VERBS: Partial<Record<WallItemKind, string>> = {
+const STATION_VERBS: Partial<Record<WallItemKind, string>> = {
+  station_started: "started",
   artifact_written: "written",
   artifact_approved: "approved",
   artifact_returned: "returned",
 };
 
 export function itemKindLabel(entry: Pick<WallItemEntry, "kind" | "station">): string {
-  const verb = ARTIFACT_VERBS[entry.kind];
+  const verb = STATION_VERBS[entry.kind];
   if (verb === undefined) return ITEM_KIND_LABELS[entry.kind];
-  if (!entry.station) throw new Error(`${entry.kind} names no artifact station`);
+  if (!entry.station) throw new Error(`${entry.kind} names no station`);
   return `${STATION_LABELS[entry.station]} ${verb}`;
 }

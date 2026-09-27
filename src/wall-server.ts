@@ -32,7 +32,7 @@ export type WallSnapshot = {
   totals: Record<BoardStatus, number>;
 };
 
-export type WallItemKind = OrderEventKind | "environment_reported";
+export type WallItemKind = OrderEventKind | "station_started" | "environment_reported";
 
 export type WallItemEntry = {
   at: string;
@@ -166,6 +166,15 @@ export function assembleItemView(db: Database, orderId: string): WallItemView | 
        WHERE e.order_id = ? ORDER BY e.ts, e.id`,
     )
     .all(orderId);
+  const stationStarts = db
+    .query<EventRow, [string]>(
+      `SELECT a.started_at AS ts, 'station_started' AS kind, a.worker AS worker_id, fw.role AS worker_role,
+              a.station
+       FROM factory_order_attempt a
+       LEFT JOIN factory_worker fw ON fw.name = a.worker
+       WHERE a.order_id = ? AND a.kind = 'started' ORDER BY a.started_at, a.id`,
+    )
+    .all(orderId);
   const environments = db
     .query<{ recorded_at: string }, [string]>(
       "SELECT recorded_at FROM factory_order_environment WHERE order_id = ? ORDER BY recorded_at, id",
@@ -173,6 +182,7 @@ export function assembleItemView(db: Database, orderId: string): WallItemView | 
     .all(orderId);
   const entries: WallItemEntry[] = [
     ...events.map(eventEntry),
+    ...stationStarts.map(eventEntry),
     ...environments.map(
       (environment): WallItemEntry => ({
         at: environment.recorded_at,
