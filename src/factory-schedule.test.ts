@@ -126,6 +126,15 @@ describe("factory schedules", () => {
     const history = findQuery("schedule-history")?.run(db, { arg: "retries" });
     expect(history?.denominator).toBe("3 schedule invocations read from factory_schedule_invocation");
     expect(history?.rows.map((row) => row[11])).toEqual([null, "dispatch refused", null]);
+    const recent = findQuery("schedule-history")?.run(db, {
+      arg: "retries",
+      since: "2026-09-18T09:02:30.000Z",
+    });
+    expect(recent?.rows.map((row) => row[1])).toEqual(["2026-09-18T09:03:00.000Z"]);
+    expect(recent?.denominator).toContain("since 2026-09-18");
+    const empty = findQuery("schedule-history")?.run(db, { since: "2026-09-19T00:00:00.000Z" });
+    expect(empty?.rows).toEqual([]);
+    expect(empty?.note).toBe("no schedule invocations match this query");
     db.close();
   });
 });

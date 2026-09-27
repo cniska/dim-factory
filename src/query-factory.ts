@@ -316,8 +316,17 @@ export const scheduleHistory: Query = {
   spansHistory: true,
   window: "evaluated_at",
   run: (db, ctx) => {
-    const filter = ctx.arg ? " WHERE schedule_id = ?" : "";
-    const params = ctx.arg ? [ctx.arg] : [];
+    const conditions: string[] = [];
+    const params: string[] = [];
+    if (ctx.arg) {
+      conditions.push("schedule_id = ?");
+      params.push(ctx.arg);
+    }
+    if (ctx.since) {
+      conditions.push("evaluated_at >= ?");
+      params.push(ctx.since);
+    }
+    const filter = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
     const columns = [
       "schedule_id",
       "evaluated_at",
@@ -343,10 +352,10 @@ export const scheduleHistory: Query = {
       params,
     );
     return {
-      denominator: `${rows.length} schedule invocation${rows.length === 1 ? "" : "s"} read from factory_schedule_invocation`,
+      denominator: `${rows.length} schedule invocation${rows.length === 1 ? "" : "s"} read from factory_schedule_invocation${ctx.since ? ` since ${ctx.since}` : ""}`,
       columns,
       rows: toRows(rows, columns),
-      note: rows.length === 0 ? "no schedule invocations are recorded" : undefined,
+      note: rows.length === 0 ? "no schedule invocations match this query" : undefined,
     };
   },
 };
