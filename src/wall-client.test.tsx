@@ -24,7 +24,7 @@ describe("item history", () => {
     expect(source).toContain(
       'className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"',
     );
-    expect(source).toContain("h-[164px] justify-between p-[var(--space-md)] text-left text-[11px]");
+    expect(source).toContain("h-[146px] justify-between p-[var(--space-md)] text-left text-[11px]");
     expect(source).toContain("cursor-pointer rounded-wall p-[var(--space-xs)]");
     expect(source).not.toContain('className="mt-2 flex flex-wrap items-center');
     expect(source).not.toContain('"mt-3 space-y-3 text-quiet"');

@@ -14,7 +14,7 @@ It always serves on the same port, so a link survives restarts; `DIM_WALL_PORT` 
 Three columns — **Queued**, **Running**, **Shipped** — answer where each order is. Those are the order's statuses.
 
 - **Queued** holds orders never started, **Running** every started order that has not landed, **Shipped** the landed ones. A dropped order leaves the board.
-- **A card** shows the title, the station, the worker and its role, and time since the last event. It names a state only where the column cannot — an order waiting on the owner names the artifact, as "Plan awaiting approval".
+- **A card** shows the title, the station, the worker and its role, and time since the last event. It does not repeat the status. An order waiting on approval is the orange card.
 - **Bounded columns.** Each draws its most recent cards up to a fixed number, and its header carries the whole count.
 - **The header** says whether the feed is live, stale or unavailable.
 

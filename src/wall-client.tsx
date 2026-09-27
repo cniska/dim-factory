@@ -2,12 +2,11 @@ import { CircleAlert, CircleCheck, CircleDot, CircleX, type LucideIcon, Radio, X
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Badge } from "./components/ui/badge";
-import { Card, CardFooter, CardHeader } from "./components/ui/card";
+import { Card, CardFooter } from "./components/ui/card";
 import { Digits } from "./components/ui/digits";
 import { Robot } from "./components/ui/robot";
 import { cn } from "./lib/utils";
 import type { OrderLine } from "./order-line";
-import type { NextAct } from "./order-state";
 import { age } from "./query-age";
 import { ordersByStatus, STATION_LABELS, WALL_COLUMNS } from "./wall-board";
 import { itemKindLabel } from "./wall-item";
@@ -35,14 +34,8 @@ const statusLabels: Record<BoardStatus, string> = {
   shipped: "Shipped",
 };
 
-const OWNER_ACTS: Record<NextAct, string | null> = {
-  run: null,
-  approve: "approval",
-  ship: null,
-};
-
 function isStopped(order: Pick<WallOrder, "next">): boolean {
-  return order.next !== null && OWNER_ACTS[order.next] !== null;
+  return order.next === "approve";
 }
 
 function isWorking(order: Pick<WallOrder, "status" | "next">): boolean {
@@ -50,9 +43,8 @@ function isWorking(order: Pick<WallOrder, "status" | "next">): boolean {
 }
 
 function stateLabel(order: WallOrder): string {
-  const act = order.next === null ? null : OWNER_ACTS[order.next];
-  if (act === null || order.station === null) return statusLabels[order.status];
-  return `${STATION_LABELS[order.station]} awaiting ${act}`;
+  if (order.next === "approve") return "awaiting approval";
+  return statusLabels[order.status];
 }
 
 const statusIcon: Record<BoardStatus, LucideIcon> = {
@@ -72,10 +64,6 @@ const NO_WORKER = "none";
 
 const LINE_LABELS: Record<OrderLine, string> = { feat: "feature", fix: "fix" };
 const LINE_TINT: Record<OrderLine, string> = { feat: "bg-good", fix: "bg-danger" };
-
-function statusTint(order: WallOrder): string {
-  return isStopped(order) ? "text-warn-foreground" : "text-muted-foreground";
-}
 
 function LineMarker({ line, size = "card" }: { line: OrderLine; size?: "card" | "dialog" }) {
   return (
@@ -118,36 +106,24 @@ function OrderCard({
   bumped: boolean;
   onOpen: (order: WallOrder) => void;
 }) {
-  const StatusIcon = statusIcon[order.status];
-
   return (
     <Card
       onClick={() => onOpen(order)}
       stopped={isStopped(order)}
       className={cn(
-        "h-[164px] justify-between p-[var(--space-md)] text-left text-[11px]",
+        "h-[146px] justify-between p-[var(--space-md)] text-left text-[11px]",
         "cursor-pointer hover:border-accent focus-visible:border-accent focus-visible:outline-none",
         bumped && "border-accent",
       )}
     >
-      <CardHeader className={cn(ROW, "justify-between text-quiet")}>
-        <span className={cn("flex items-center gap-[var(--space-sm)] lowercase", statusTint(order))}>
-          <StatusIcon
-            size={12}
-            strokeWidth={1.8}
-            aria-hidden="true"
-            className={isWorking(order) ? "breathing" : undefined}
-          />
-          <span className={isWorking(order) ? "breathing" : undefined}>{stateLabel(order)}</span>
+      <div className={cn(ROW, "justify-between gap-[var(--space-sm)]")}>
+        <span className="flex min-w-0 items-center gap-[var(--space-sm)]">
+          <LineMarker line={order.line} />
+          <h3 className="min-w-0 truncate font-medium text-foreground leading-[18px]">{order.title}</h3>
         </span>
-        <span className="tabular-nums">
+        <span className="shrink-0 tabular-nums text-quiet">
           <Digits value={age(order.lastEventAt, now)} />
         </span>
-      </CardHeader>
-
-      <div className="flex min-w-0 items-center gap-[var(--space-sm)]">
-        <LineMarker line={order.line} />
-        <h3 className="min-w-0 truncate font-medium text-foreground leading-[18px]">{order.title}</h3>
       </div>
 
       <p className="line-clamp-3 min-h-[54px] shrink-0 text-quiet leading-[18px]">{order.description}</p>
@@ -166,9 +142,7 @@ function OrderCard({
         <span className="flex min-w-0 items-center gap-[var(--space-xs)]">
           {order.worker ? <WorkerLabel worker={order.worker} className="truncate" /> : <NoWorkerLabel />}
         </span>
-        {order.station === null ? null : (
-          <Badge className="shrink-0 lowercase">{STATION_LABELS[order.station]}</Badge>
-        )}
+        {order.station === null ? null : <Badge>{STATION_LABELS[order.station]}</Badge>}
       </CardFooter>
     </Card>
   );
@@ -571,6 +545,7 @@ function cardState(order: WallOrder): string {
 }
 
 const BUMP_MS = 2000;
+const RECONNECT_MS = 1000;
 
 function useSnapshot() {
   const [snapshot, setSnapshot] = useState<WallSnapshot>(unavailableSnapshot);
@@ -584,6 +559,8 @@ function useSnapshot() {
   useEffect(() => {
     let socket: WebSocket | undefined;
     let clearBump: ReturnType<typeof setTimeout> | undefined;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let stopped = false;
     let acceptedSocketSnapshot = false;
 
     const accept = (data: WallSnapshot) => {
@@ -615,9 +592,31 @@ function useSnapshot() {
         setUnavailable(true);
         setAnswered(true);
       });
-    try {
-      socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
-      socket.onmessage = (event) => {
+    const release = (current: WebSocket | undefined) => {
+      if (current === undefined) return;
+      current.onmessage = null;
+      current.onerror = null;
+      current.onclose = null;
+      if (current.readyState !== WebSocket.CLOSED) current.close();
+    };
+    const connect = () => {
+      clearTimeout(retry);
+      release(socket);
+      socket = undefined;
+      if (stopped) return;
+      let next: WebSocket;
+      try {
+        next = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
+      } catch {
+        setStale(true);
+        setUnavailable(true);
+        setAnswered(true);
+        retry = setTimeout(connect, RECONNECT_MS);
+        return;
+      }
+      socket = next;
+      next.onmessage = (event) => {
+        if (socket !== next) return;
         const data = JSON.parse(event.data) as WallSnapshot & { error?: string };
         if (data.error) {
           setStale(true);
@@ -626,16 +625,23 @@ function useSnapshot() {
         acceptedSocketSnapshot = true;
         accept(data);
       };
-      socket.onclose = () => setStale(true);
-      socket.onerror = () => setStale(true);
-    } catch {
-      setStale(true);
-      setUnavailable(true);
-      setAnswered(true);
-    }
+      next.onerror = () => {
+        if (socket === next) setStale(true);
+      };
+      next.onclose = () => {
+        if (socket !== next) return;
+        socket = undefined;
+        setStale(true);
+        if (!stopped) retry = setTimeout(connect, RECONNECT_MS);
+      };
+    };
+    connect();
     return () => {
+      stopped = true;
       clearTimeout(clearBump);
-      socket?.close();
+      clearTimeout(retry);
+      release(socket);
+      socket = undefined;
     };
   }, []);
 
