@@ -9,7 +9,8 @@ import {
   unlinkSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { type Env, resolveHomeDir } from "./paths";
+import { withPathLock } from "./db-lock";
+import { defaultDataDir, type Env, resolveHomeDir } from "./paths";
 
 export const SKILL_NAMES = [
   "dim-add",
@@ -99,13 +100,15 @@ export function retiredLinks(env: Env = process.env): string[] {
 }
 
 export function installSkill(env: Env = process.env): SkillPlan[] {
-  const plans = planSkill(env);
-  for (const plan of plans) {
-    if (plan.state === "linked") continue;
-    mkdirSync(dirname(plan.link), { recursive: true });
-    if (plan.state === "occupied") renameSync(plan.link, plan.backup);
-    symlinkSync(plan.target, plan.link);
-  }
-  for (const link of retiredLinks(env)) unlinkSync(link);
-  return plans;
+  return withPathLock(join(defaultDataDir(env), "skill-install.lock"), () => {
+    const plans = planSkill(env);
+    for (const plan of plans) {
+      if (plan.state === "linked") continue;
+      mkdirSync(dirname(plan.link), { recursive: true });
+      if (plan.state === "occupied") renameSync(plan.link, plan.backup);
+      symlinkSync(plan.target, plan.link);
+    }
+    for (const link of retiredLinks(env)) unlinkSync(link);
+    return plans;
+  });
 }

@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { LockHeldError, withPathLock } from "./db-lock";
 import { installSkill, planSkill, retiredLinks, SKILL_NAMES, skillLinkDirs, skillSourceDir } from "./skill";
 
 function shipped(): string[] {
@@ -158,6 +159,36 @@ describe("skill install", () => {
       expect(await Bun.file(`${link}.dim-backup`).text()).toBe("earlier backup");
       expect(await Bun.file(`${link}.dim-backup-2/SKILL.md`).text()).toBe("current skill");
       expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("leaves an occupied skill untouched while another installer holds the lock", async () => {
+    const home = newHome();
+    const env = { HOME: home, DIM_HOME: join(home, "another-data-dir") };
+    const link = join(home, ".agents", "skills", SKILL_NAMES[0]);
+    try {
+      mkdirSync(link, { recursive: true });
+      writeFileSync(join(link, "SKILL.md"), "owner skill");
+      withPathLock(join(home, ".local", "share", "dim-factory", "skill-install.lock"), () => {
+        expect(() => installSkill(env)).toThrow(LockHeldError);
+      });
+      await expect(Bun.file(join(link, "SKILL.md")).text()).resolves.toBe("owner skill");
+      expect(existsSync(`${link}.dim-backup`)).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("leaves a user's directory in the shared skills folder alone", async () => {
+    const home = newHome();
+    const occupied = join(home, ".agents", "skills", ".dim-install-lock");
+    try {
+      mkdirSync(occupied, { recursive: true });
+      writeFileSync(join(occupied, "keep.txt"), "owner data");
+      installSkill({ HOME: home });
+      await expect(Bun.file(join(occupied, "keep.txt")).text()).resolves.toBe("owner data");
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

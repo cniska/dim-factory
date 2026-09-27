@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { dataDir, type Env } from "./paths";
 import { pidIsAlive } from "./pid";
 
@@ -75,10 +75,9 @@ function release(path: string): void {
   rmSync(dropped, { recursive: true, force: true });
 }
 
-export function withLock<T>(fn: () => T, env: Env = process.env): T {
-  const path = join(dataDir(env), "lock");
+export function withPathLock<T>(path: string, fn: () => T): T {
   const pidFile = join(path, "pid");
-  mkdirSync(dataDir(env), { recursive: true });
+  mkdirSync(dirname(path), { recursive: true });
 
   claim(path, pidFile);
 
@@ -92,4 +91,8 @@ export function withLock<T>(fn: () => T, env: Env = process.env): T {
   if (result instanceof Promise) return result.finally(() => release(path)) as T;
   release(path);
   return result;
+}
+
+export function withLock<T>(fn: () => T, env: Env = process.env): T {
+  return withPathLock(join(dataDir(env), "lock"), fn);
 }
