@@ -10,11 +10,11 @@ A station worker writes an artifact as its explanation for the owner. It is not 
 
 ## Write the artifact
 
-1. Lead with the outcome and why it matters to the order.
+1. Open with the first `##` section, leading with the outcome and why it matters to the order. The wall shows the artifact under its order's title and station, and the record names the worker that wrote it, so the artifact carries no title or byline of its own.
 2. Keep the detail proportional to the change. A small change needs a short artifact; a broad or risky change needs the contracts, evidence and decisions an owner must check.
 3. Use Markdown that reads without the worker session. Give every included dimension its own `##` heading; do not compress the artifact into one paragraph. Use a table for comparable rows, such as plan slices or review dimensions, when it makes differences easier to scan. Write one point as a sentence and use bullets for multiple distinct points. Keep commands, paths, identifiers and decisions exact where they let the operator verify a claim.
 4. Separate facts from judgment. Name the evidence behind a conclusion and label unresolved risks, assumptions and deviations instead of smoothing them over.
-5. Attribute the artifact to the worker that wrote it. Attribute findings, approvals and other acts to the worker that performed them; never borrow the operator's identity for missing evidence.
+5. Name the worker that performed each act you cite, such as a finding or an approval; never borrow the operator's identity for missing evidence.
 6. Do not invent evidence, claim a check passed from an exit message, or repeat the same fact in several sections.
 
 The station supplies the artifact's subject and required sections. Use the station's section names as headings and omit only a section the evidence cannot support. Write one artifact for the worker's completed work. The operator checks it against the record and decides whether the order advances. A returned artifact is feedback for the same station: address the stated gap, then write a new revision under the same station worker identity. Keep the earlier artifact unchanged so the record shows what was returned and what changed. Each revision has its own evidence and approval.
