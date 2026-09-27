@@ -6,7 +6,7 @@ import { dataDir, type Env } from "./paths";
 
 export type DrainReport = { applied: number; duplicate: number; unreadable: number };
 
-const SPOOL_NAME = /^(\d{10,})-(\d+)(?:-([A-Za-z0-9-]*))?\.json$/;
+const SPOOL_NAME = /^(\d{10,})-([A-Za-z0-9]+)(?:-([A-Za-z0-9-]*))?\.json$/;
 
 export function spoolDir(env: Env = process.env): string {
   return join(dataDir(env), "spool");
@@ -32,6 +32,7 @@ type HookPayload = {
   session_id?: string;
   sessionId?: string;
   hook_event_name?: string;
+  hookEventName?: string;
   cwd?: string;
   source?: string;
   reason?: string;
@@ -43,10 +44,13 @@ function text(value: string | undefined): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function eventOf(name: string | undefined): "session_start" | "session_end" | "post_tool_use" | undefined {
-  if (name === "SessionStart") return "session_start";
-  if (name === "SessionEnd") return "session_end";
-  if (name === "PostToolUse") return "post_tool_use";
+function eventOf(
+  payload: HookPayload | undefined,
+): "session_start" | "session_end" | "post_tool_use" | undefined {
+  const name = payload?.hook_event_name ?? payload?.hookEventName;
+  if (name === "SessionStart" || name === "session_start") return "session_start";
+  if (name === "SessionEnd" || name === "session_end") return "session_end";
+  if (name === "PostToolUse" || name === "post_tool_use") return "post_tool_use";
   return undefined;
 }
 
@@ -80,7 +84,7 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
           payload = undefined;
         }
       }
-      const event = eventOf(payload?.hook_event_name);
+      const event = eventOf(payload);
       const sessionId = text(payload?.session_id) ?? text(payload?.sessionId);
       if (!match || !sessionId || !event) {
         renameSync(path, join(spoolDir(env), "unreadable", name));

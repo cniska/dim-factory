@@ -229,20 +229,28 @@ describe("spool", () => {
     const env = scratchEnv(root);
     spool(env, "grok", "1789000000000000000", {
       sessionId: SESSION,
-      hook_event_name: "SessionEnd",
+      hookEventName: "session_end",
       reason: "shutdown",
       modelId: "grok-4",
       cwd: "/Users/x/code/demo",
     });
+    writeFileSync(
+      join(toolSpoolDir("grok", env), "1789000000000000001-hBc.json"),
+      JSON.stringify({
+        sessionId: SESSION,
+        hookEventName: "post_tool_use",
+        cwd: "/Users/x/code/demo",
+      }),
+    );
     const db = openDb(dbPath(env));
     try {
-      expect(drainSpool(db, env)).toMatchObject({ applied: 1, unreadable: 0 });
-      expect(db.prepare("SELECT session_id, event, reason, model, cwd FROM hook_event").get()).toEqual({
-        session_id: SESSION,
+      expect(drainSpool(db, env)).toMatchObject({ applied: 2, unreadable: 0 });
+      expect(db.prepare("SELECT event, model FROM hook_event WHERE event = 'session_end'").get()).toEqual({
         event: "session_end",
-        reason: "shutdown",
         model: "grok-4",
-        cwd: "/Users/x/code/demo",
+      });
+      expect(db.prepare("SELECT event FROM hook_event WHERE event = 'post_tool_use'").get()).toEqual({
+        event: "post_tool_use",
       });
     } finally {
       closeDb(db);
