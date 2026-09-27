@@ -23,6 +23,7 @@ describe("planner station", () => {
       id: "human-plan",
       title: "Make the change understandable",
       description: "Keep the plan readable.",
+      line: "feat",
     });
 
     expect(brief).toContain(
@@ -32,6 +33,13 @@ describe("planner station", () => {
     expect(brief).toContain(
       "For this Plan artifact, include only the outcome, boundary, evidence, contracts, slices, checks, risks, and owner decisions that this change needs.",
     );
+    expect(brief).toContain("This order's line is feat.");
+  });
+
+  test("tells a fix order's planner the order's line", () => {
+    const brief = plannerBrief({ id: "fix-plan", title: "Stop the crash", description: null, line: "fix" });
+
+    expect(brief).toContain("This order's line is fix.");
   });
 
   test("spawns a read-only planner and records its Markdown report", async () => {

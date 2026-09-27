@@ -6,7 +6,7 @@ argument-hint: "<what to build>"
 
 # Build
 
-The shared half of both fronts. `dim-feat` arrives here having cut the work into slices; `dim-fix` arrives with a failing test and a named cause. What follows is the same either way.
+The shared half of both fronts. `dim-feat` arrives here having cut the work into slices; `dim-fix` arrives with a failing test and a named cause. What follows is the same either way. A factory brief names the order's line; for a `fix` order, run `dim-fix`'s Prove it before the first slice.
 
 One agent, in one session. The work is edits, and edits need the context that produced them to stay coherent across slices; a subagent returns a conclusion and keeps its evidence. That is a good trade for a review, where findings are the product, and a bad one here.
 

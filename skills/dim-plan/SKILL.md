@@ -10,6 +10,8 @@ A plan written without reading the record re-derives what is already on disk. Th
 
 This is what separates a station from a checklist: the checklist is the same everywhere, and these answers are about this machine.
 
+A factory brief names the order's line. For a `fix` order, run `dim-fix`'s Triage before planning.
+
 ## Entry contract
 
 Answer all four before proposing an approach.

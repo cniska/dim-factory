@@ -25,7 +25,8 @@ Setup already installs the shared controls, while each project still supplies it
 ## The line
 
 - **Skills are the stations.** `dim-feat` and `dim-fix` are the entry points; `dim-plan`, `dim-build` and `dim-review` are the stations.
-- **Coding agents are the floor.** Each station runs as a worker in Claude Code or Codex.
+- **A brief names the order's line, and the station skill routes on it.** The same three stations serve every line; a `fix` order's station loads `dim-fix` for its part, and a `feat` order's never does.
+- **Coding agents are the floor.** Each station runs as a worker in Claude Code, Codex or Grok Build.
 - **`AGENTS.md` and `SPEC.md` are the tolerances.** A line cannot run unattended without them.
 - **Checks, review and gates are QC.**
 

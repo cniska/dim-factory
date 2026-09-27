@@ -684,7 +684,7 @@ describe("a review round", () => {
 
   test("the brief carries the approved plan and loads the review station", () => {
     const brief = reviewerBrief(
-      { id: "order-1", title: "Read a slice", description: null },
+      { id: "order-1", title: "Read a slice", description: null, line: "fix" },
       { base: "aaa", head: "bbb" },
       {
         plan: {
@@ -697,13 +697,14 @@ describe("a review round", () => {
     expect(brief).toContain("# Approved plan\n## Outcome\n\nRefuse empty tokens.");
     expect(brief).toContain("# Plan slices\n1. Gate: Empty refused.");
     expect(brief).toContain("Use dim-review and dim-artifact.");
+    expect(brief).toContain("This order's line is fix.");
     expect(brief).toContain("`git diff aaa..bbb`");
     expect(brief).not.toContain("# Earlier findings");
   });
 
   test("the brief lists each earlier finding with the builder's answer", () => {
     const brief = reviewerBrief(
-      { id: "order-1", title: "Read a slice", description: null },
+      { id: "order-1", title: "Read a slice", description: null, line: "fix" },
       { base: "aaa", head: "bbb" },
       {
         plan: null,

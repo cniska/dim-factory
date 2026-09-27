@@ -234,7 +234,7 @@ describe("the operator loop", () => {
         expect.objectContaining({ code: "not_next", message: expect.stringContaining("run at build") }),
       );
       const brief = builderBrief(
-        { id: "raised-again-order", title: "Refuse", description: null },
+        { id: "raised-again-order", title: "Refuse", description: null, line: "feat" },
         { body: "## Outcome\n\nRefuse.", slices: [] },
         null,
         null,

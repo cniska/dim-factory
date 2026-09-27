@@ -12,7 +12,7 @@ What makes this a station rather than a checklist is that the record says where 
 
 Use `dim-git` for the read-only diff boundary and handoff evidence. Review does not edit, commit or land the work it inspects.
 
-This station carries its review briefs directly. Each dimension supplies findings; this station supplies the factory grounding, read-only boundary and finding convergence.
+This station carries its review briefs directly. Each dimension supplies findings; this station supplies the factory grounding, read-only boundary and finding convergence. A factory brief names the order's line; for a `fix` order, the `plan` dimension also holds the diff to `dim-fix`'s exit check.
 
 The reviewer returns a structured report, and the factory records its findings under the reviewer identity and renders the owner's Review artifact from it ([`src/station-review-report.ts`](../../src/station-review-report.ts)): the verdict, blocking findings, earlier findings with the builder's answers, plan conformance, coverage, what was not judged, and observations. The report carries no praise, no walkthrough of the diff and no account of how the review ran.
 
@@ -28,7 +28,7 @@ The report is one JSON object, defined in [`src/station-review-artifact.schema.j
 - `unverified` — each `{claim, would_settle}` that could not be checked.
 - `observations` — at most three strings, none of which blocks.
 
-Every property is present, and one with nothing to say is `null` or `[]`. Stop for the operator's gate after returning the report. If the owner returns the artifact, the next round reads the same diff again, briefed with the returned artifact and the owner's feedback, and may raise findings like any round. A closed review is not accepted until the operator approves it with `dim order approve <order-id>`.
+Every property is present, and one with nothing to say is `null` or `[]`. Stop for the operator's gate after returning the report. If the owner returns the artifact, the next round reads the same diff again, briefed with the returned artifact and the owner's feedback, and may raise findings like any round. A finished round is not accepted until the operator approves its Review artifact with `dim order approve <order-id>`, which ships the order.
 
 ## Entry contract
 

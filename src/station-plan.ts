@@ -10,6 +10,7 @@ import { startOrder } from "./order-lifecycle";
 import { assertNext } from "./order-state";
 import { orderStatus } from "./order-status";
 import { stationDirectory } from "./station-directory";
+import { type BriefedOrder, lineBrief } from "./station-line-brief";
 import { type PlanSlice, parsePlanArtifact } from "./station-plan-artifact";
 import { orderWorkerIsBound, runOrderStationLive } from "./station-worker";
 import { resolveWorker } from "./worker";
@@ -24,10 +25,7 @@ export const PLANNER_CAPABILITIES: Capability[] = [
   "ask-dim",
 ];
 
-export function plannerBrief(
-  order: { id: string; title: string; description: string | null },
-  revision?: { body: string; feedback: string },
-): string {
+export function plannerBrief(order: BriefedOrder, revision?: { body: string; feedback: string }): string {
   return [
     `You are the planner for factory order ${order.id} in this repository.`,
     "",
@@ -46,6 +44,7 @@ export function plannerBrief(
         ]
       : []),
     "",
+    lineBrief(order.line),
     "Read the repository rules and prior decisions before proposing work.",
     "Write one Markdown plan for the owner to read on the factory wall and the builder to execute, and list its independently verifiable slices.",
     "Write for both readers: state the outcome, boundary, non-goals, and owner decisions.",
@@ -69,9 +68,7 @@ export async function runOrderPlanLive(
   },
 ): Promise<PlanOutcome> {
   const order = db
-    .query<{ id: string; title: string; description: string | null }, [string]>(
-      "SELECT id, title, description FROM factory_order WHERE id = ?",
-    )
+    .query<BriefedOrder, [string]>("SELECT id, title, description, line FROM factory_order WHERE id = ?")
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
   const parentWorker = resolveWorker(db, options.env);

@@ -23,7 +23,6 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 - **The factory picks its own work** — select ready orders and run a bounded count, with claims and integration serialized.
 - **Retake a failed order once** — a second failure leaves it.
 - **Plan and review against a spec** — a repo's `SPEC.md` states what holds; the plan names the requirements an order touches and proposes the spec changes it makes, and review checks the diff against them. The spec takes over what the design docs state as rules rather than repeating it.
-- **Fix orders triage first** — diagnose the cause, prove the test catches the bug, and review against the named cause.
 - **Codex workers stop at their answer** — find out whether one can leave work running, and turn that off if so.
 - **More harnesses** — Qwen Code, Kimi CLI, Antigravity, and Pi, each able to start and resume a station worker the way Claude Code, Codex, and Grok Build do.
 - **Reasoning effort per tier** — a harness that reasons, Grok, chooses effort separately from the model and defaults to high. `routing.json` names one model per tier. The effort is set for that harness and omitted for the others.

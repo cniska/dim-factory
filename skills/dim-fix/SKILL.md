@@ -8,8 +8,11 @@ argument-hint: "<what is broken>"
 
 The front door for a defect. It runs the whole line: triage, a test that fails on the bug, then the slice loop in `dim-build`. You type this once; it invokes what it needs.
 
-When `dim-factory` assigns an order, work in the order worktree that `dim order plan` created. The factory runner owns its checkout, check, commit, and recorded evidence.
-The approved plan supplies the order's scope and slices; report a plan defect to the operator for return to planning. The factory Review station reads the completed order.
+In a factory order, each phase belongs to one station, and the runner owns the checkout, check, commit and recorded evidence:
+
+- **Plan** runs Triage. The plan names the cause and the line believed wrong; where triage found no defect, the plan says so and proposes no fix, and the owner drops the order.
+- **Build** runs Prove it and Build the fix in the order worktree, against the cause the approved plan names. A plan defect goes back to the operator for return to planning.
+- **Review** holds the diff to the exit check: the named cause is fixed rather than a symptom, and a test in the diff fails without the fix.
 
 Use `dim-git` for the worktree ownership, commit evidence and integration boundaries; this line decides the defect's cause and fix slices, not a second Git policy.
 

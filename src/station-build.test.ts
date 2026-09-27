@@ -62,7 +62,7 @@ describe("the review findings a builder is handed", () => {
 
   const brief = (db: Database) =>
     builderBrief(
-      { id: "order-1", title: "Brief", description: null },
+      { id: "order-1", title: "Brief", description: null, line: "feat" },
       { body: "## Outcome\n\nBrief.", slices: [] },
       null,
       null,
@@ -145,7 +145,7 @@ describe("the rebase conflict brief", () => {
 describe("worker failure explanations", () => {
   test("hands a returned Build artifact's feedback to a build turn that may change code", () => {
     const brief = builderBrief(
-      { id: "order-1", title: "Build it", description: null },
+      { id: "order-1", title: "Build it", description: null, line: "feat" },
       {
         body: "## Outcome\n\nBuild it.",
         slices: [{ title: "Build it", outcome: "The result is verified." }],
@@ -166,7 +166,7 @@ describe("worker failure explanations", () => {
   test("tells the builder to fix a red check before finishing", () => {
     expect(
       builderBrief(
-        { id: "order-1", title: "Build it", description: null },
+        { id: "order-1", title: "Build it", description: null, line: "feat" },
         {
           body: "## Outcome\n\nBuild it.",
           slices: [{ title: "Build it", outcome: "The result is verified." }],
@@ -177,7 +177,7 @@ describe("worker failure explanations", () => {
     ).toContain("A red check is feedback, not completion");
     expect(
       builderBrief(
-        { id: "order-1", title: "Build it", description: "The wall is out of scope." },
+        { id: "order-1", title: "Build it", description: "The wall is out of scope.", line: "feat" },
         {
           body: "## Outcome\n\nBuild it.",
           slices: [{ title: "Build it", outcome: "The result is verified." }],
@@ -188,7 +188,7 @@ describe("worker failure explanations", () => {
     ).toContain("explicitly exclude a workspace surface");
     expect(
       builderBrief(
-        { id: "order-1", title: "Build it", description: null },
+        { id: "order-1", title: "Build it", description: null, line: "feat" },
         {
           body: "## Outcome\n\nBuild it.",
           slices: [{ title: "First cut", outcome: "The cut is verified." }],
@@ -198,7 +198,7 @@ describe("worker failure explanations", () => {
       ),
     ).toContain("1. First cut: The cut is verified.");
     const brief = builderBrief(
-      { id: "order-1", title: "Build it", description: null },
+      { id: "order-1", title: "Build it", description: null, line: "feat" },
       {
         body: "## Outcome\n\nBuild it.",
         slices: [{ title: "Build it", outcome: "The result is verified." }],
@@ -223,9 +223,22 @@ describe("worker failure explanations", () => {
     expect(brief).not.toContain("dim order build-artifact");
   });
 
+  test("tells the builder the order's line, except while it resolves a rebase", () => {
+    const plan = {
+      body: "## Outcome\n\nFix it.",
+      slices: [{ title: "Fix it", outcome: "The crash is gone." }],
+    };
+    const order = { id: "order-1", title: "Fix it", description: null, line: "fix" } as const;
+
+    expect(builderBrief(order, plan, null, null)).toContain("This order's line is fix.");
+    expect(
+      builderBrief(order, plan, null, null, undefined, undefined, undefined, undefined, ["src/a.ts"]),
+    ).not.toContain("This order's line is");
+  });
+
   test("includes the prior failed attempt when the builder resumes", () => {
     const brief = builderBrief(
-      { id: "order-1", title: "Build it", description: null },
+      { id: "order-1", title: "Build it", description: null, line: "feat" },
       {
         body: "## Outcome\n\nBuild it.",
         slices: [{ title: "Build it", outcome: "The result is verified." }],

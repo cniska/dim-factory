@@ -18,6 +18,7 @@ import {
 } from "./order-review";
 import { assertNext } from "./order-state";
 import { stationDirectory } from "./station-directory";
+import { type BriefedOrder, lineBrief } from "./station-line-brief";
 import type { PlanSlice } from "./station-plan-artifact";
 import { parseReviewReport, type ReviewFinding } from "./station-review-artifact";
 import { renderReviewReport } from "./station-review-report";
@@ -126,7 +127,7 @@ const REPORT_CONTRACT = [
 ];
 
 export function reviewerBrief(
-  order: { id: string; title: string; description: string | null },
+  order: BriefedOrder,
   range: { base: string; head: string },
   context: { plan: { body: string; slices: readonly PlanSlice[] } | null; earlier: FindingStanding[] },
   returned: { body: string; feedback: string } | null = null,
@@ -136,6 +137,8 @@ export function reviewerBrief(
     "",
     `# ${order.title}`,
     order.description ?? "",
+    "",
+    lineBrief(order.line),
     "",
     "# Approved plan",
     context.plan?.body ??
@@ -191,7 +194,7 @@ function openRound(db: Database, orderId: string, dir: string, assignmentId: str
 
 function reviewerRequest(
   db: Database,
-  order: { id: string; title: string; description: string | null },
+  order: BriefedOrder,
   round: ReviewedRound,
   returned: ReturnedOrderArtifact | null,
 ) {
@@ -271,9 +274,7 @@ export async function runOrderReviewLive(
   },
 ): Promise<ReviewOutcome> {
   const order = db
-    .query<{ id: string; title: string; description: string | null }, [string]>(
-      "SELECT id, title, description FROM factory_order WHERE id = ?",
-    )
+    .query<BriefedOrder, [string]>("SELECT id, title, description, line FROM factory_order WHERE id = ?")
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
   assertOperator(db, worker, "delegate review");

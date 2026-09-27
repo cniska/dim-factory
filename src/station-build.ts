@@ -24,6 +24,7 @@ import type { Env } from "./paths";
 import { commitBuildTurn } from "./station-build-commit";
 import { continueRebaseTurn, reopenRebase } from "./station-build-rebase";
 import { BUILD_TURN_SCHEMA, parseBuildTurn } from "./station-build-turn";
+import { type BriefedOrder, lineBrief } from "./station-line-brief";
 import type { PlanSlice } from "./station-plan-artifact";
 import {
   assertOrderWorkerHarness,
@@ -56,7 +57,7 @@ function conventionContext({ repo, commits, observed }: CheckoutConvention): str
 }
 
 export function builderBrief(
-  order: { id: string; title: string; description: string | null },
+  order: BriefedOrder,
   plan: { body: string; slices: readonly PlanSlice[] },
   currentSlice: OrderSlice | null,
   workspace: ReturnType<typeof workspaceContract>,
@@ -89,6 +90,7 @@ export function builderBrief(
     ...workspaceContext,
     "",
     ...(!resolving && convention ? ["# Commit convention", conventionContext(convention), ""] : []),
+    ...(!resolving ? [lineBrief(order.line), ""] : []),
     "The operator approved the following plan. Implement only this outcome:",
     "",
     plan.body,
@@ -268,9 +270,7 @@ export async function runOrderBuildLive(
   },
 ): Promise<BuildOutcome> {
   const order = db
-    .query<{ id: string; title: string; description: string | null }, [string]>(
-      "SELECT id, title, description FROM factory_order WHERE id = ?",
-    )
+    .query<BriefedOrder, [string]>("SELECT id, title, description, line FROM factory_order WHERE id = ?")
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
   assertOperator(db, operator, "delegate build");
