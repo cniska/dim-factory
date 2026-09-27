@@ -1,8 +1,8 @@
 # dim-factory Specification
 
-> A local record of every coding-agent session on this machine, and a factory that runs orders through plan, build and review stations under that record.
+> A software factory run by coding agents, with the owner at the gates that still earn one.
 
-This document states what must hold, not how. [`docs/`](docs/) explains how each part works and why; where a doc touches one of these rules it links here rather than restating it.
+This document states what must hold, not how. [`docs/`](docs/) explains how each part works and why.
 
 ## 1. Orders
 
