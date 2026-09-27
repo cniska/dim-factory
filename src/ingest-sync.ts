@@ -1,4 +1,4 @@
-import type { Database, SQLQueryBindings } from "bun:sqlite";
+import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { SCHEMA_SQL, SCHEMA_VERSION } from "./db-schema";
 import { type GuidanceReport, ingestGuidance } from "./guidance";
 import { drainWalk, type WalkReport } from "./guidance-walk";
@@ -164,6 +164,49 @@ function assertCascadesCarried(db: Database, tables: string[]): void {
   }
 }
 
+type ColumnInfo = { name: string; notnull: number; dflt_value: unknown };
+
+function columnsOf(db: Database, table: string): ColumnInfo[] {
+  return db.query<ColumnInfo, []>(`PRAGMA table_info(${table})`).all();
+}
+
+function quoteIdentifier(name: string): string {
+  return `"${name.replaceAll('"', '""')}"`;
+}
+
+function assertCarriedColumnsFit(db: Database, tables: string[]): void {
+  const target = new Database(":memory:");
+  target.run(SCHEMA_SQL);
+  const unfit: string[] = [];
+  for (const table of tables) {
+    const live = columnsOf(db, table);
+    if (live.length === 0) continue;
+    const wanted = columnsOf(target, table);
+    const liveNames = new Set(live.map((column) => column.name));
+    const wantedNames = new Set(wanted.map((column) => column.name));
+    const lost = live
+      .filter((column) => !wantedNames.has(column.name))
+      .filter((column) =>
+        db.query(`SELECT 1 FROM ${table} WHERE ${quoteIdentifier(column.name)} IS NOT NULL LIMIT 1`).get(),
+      );
+    const hasRows = db.query(`SELECT 1 FROM ${table} LIMIT 1`).get() !== null;
+    const unfilled = hasRows
+      ? wanted.filter(
+          (column) => column.notnull === 1 && column.dflt_value === null && !liveNames.has(column.name),
+        )
+      : [];
+    for (const column of [...lost, ...unfilled]) unfit.push(`${table}.${column.name}`);
+  }
+  target.close();
+  if (unfit.length > 0) {
+    throw new Error(
+      `The new schema cannot take the data in ${unfit.join(", ")}: the column is gone and holds values, ` +
+        "or is required and existing rows lack it. Fix those rows or columns with sqlite3 against the " +
+        "database, then run `dim rebuild` again.",
+    );
+  }
+}
+
 export type OrphanReport = { table: string; rows: number };
 
 function dropOrphans(
@@ -218,22 +261,8 @@ function carryThroughRebuild(
   for (const table of [...tables].reverse()) db.run(`DROP TABLE IF EXISTS ${table}`);
   const restore = () => {
     for (const { table, rows } of saved) {
-      const info = db
-        .query<{ name: string; notnull: number; dflt_value: unknown }, []>(`PRAGMA table_info(${table})`)
-        .all();
-      const columns = new Set(info.map((column) => column.name));
-      const demanded = info
-        .filter((column) => column.notnull === 1 && column.dflt_value === null)
-        .map((column) => column.name);
+      const columns = new Set(columnsOf(db, table).map((column) => column.name));
       for (const row of rows) {
-        const missing = demanded.filter((name) => !(name in row));
-        if (missing.length > 0) {
-          throw new Error(
-            `${table} holds rows written before ${missing.map((name) => `${table}.${name}`).join(", ")}, ` +
-              "which the schema now requires and no source can supply. Fill or delete those rows with " +
-              "sqlite3 against the database, then run `dim rebuild` again.",
-          );
-        }
         const names = Object.keys(row).filter((name) => columns.has(name));
         db.run(
           `INSERT INTO ${table} (${names.join(", ")}) VALUES (${names.map(() => "?").join(", ")})`,
@@ -249,6 +278,7 @@ export function rebuild(db: Database, env: Env = process.env): RebuildReport {
   let orphans: OrphanReport[] = [];
   let retired: string[] = [];
   db.transaction(() => {
+    assertCarriedColumnsFit(db, FACTORY_ORDER_TABLES);
     retired = dropRetiredTables(db);
     const carried = carryThroughRebuild(db, FACTORY_ORDER_TABLES);
     orphans = carried.orphans;

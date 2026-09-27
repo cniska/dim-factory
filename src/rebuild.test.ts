@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -421,6 +421,59 @@ describe("rebuilding a database an older schema wrote", () => {
     expect(() => rebuild(db, env)).toThrow(/sqlite3/);
 
     expect(db.query("SELECT id FROM factory_order").all()).toEqual([{ id: "order-old" }]);
+    db.close();
+  });
+
+  test("factory data the new schema cannot take stops the rebuild before anything is dropped", () => {
+    const { db, env } = scratch();
+    db.run("ALTER TABLE factory_order RENAME COLUMN description TO summary");
+    db.run('ALTER TABLE factory_order ADD COLUMN "retired note" TEXT');
+    db.run(
+      `INSERT INTO factory_order (id, project, title, summary, created_at, updated_at)
+       VALUES ('order-1', 'cniska/dim-factory', 'Keep the summary', 'held only here', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+    );
+    db.run("UPDATE factory_order SET \"retired note\" = 'keep this too'");
+    db.run("ALTER TABLE factory_stop DROP COLUMN pulled_by");
+    db.run("INSERT INTO factory_stop (reason, pulled_at) VALUES ('line down', '2026-01-01T00:00:00Z')");
+    db.run("CREATE TABLE queue_item (id TEXT PRIMARY KEY)");
+    db.run("INSERT INTO queue_item (id) VALUES ('item-1')");
+    const snapshot = () => ({
+      schema: db.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all(),
+      orders: db.query("SELECT * FROM factory_order").all(),
+      stops: db.query("SELECT * FROM factory_stop").all(),
+      items: db.query("SELECT * FROM queue_item").all(),
+    });
+    const before = snapshot();
+    const run = spyOn(db, "run");
+
+    let message = "";
+    try {
+      rebuild(db, env);
+    } catch (error) {
+      message = (error as Error).message;
+    }
+
+    expect(message).toContain("factory_order.summary");
+    expect(message).toContain("factory_order.retired note");
+    expect(message).toContain("factory_stop.pulled_by");
+    expect(message).toContain("sqlite3");
+    expect(run.mock.calls.some(([sql]) => /^DROP TABLE/.test(sql))).toBe(false);
+    expect(snapshot()).toEqual(before);
+    run.mockRestore();
+    db.close();
+  });
+
+  test("a factory column the schema dropped goes without a refusal when it holds no values", () => {
+    const { db, env } = scratch();
+    db.run("ALTER TABLE factory_order ADD COLUMN retired_note TEXT");
+    db.run(
+      `INSERT INTO factory_order (id, project, title, created_at, updated_at)
+       VALUES ('order-1', 'cniska/dim-factory', 'Drop an empty column', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+    );
+
+    rebuild(db, env);
+
+    expect(db.query("SELECT id FROM factory_order").all()).toEqual([{ id: "order-1" }]);
     db.close();
   });
 

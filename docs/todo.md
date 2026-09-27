@@ -7,7 +7,6 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 - A database transaction that reads before it writes fails at once when another writer holds the lock, instead of waiting.
 - A worker can read the operator's credential and the model routing in `dim`'s data directory.
 - A worker that dies without recording a finish leaves its attempt open until another attempt starts.
-- `dim rebuild` silently drops a renamed column of a factory table, or fails partway; it should list what it cannot carry before dropping anything.
 - A moved checkout reads as a second repo.
 - Editing a JSONC file moves a trailing array comment onto the new entry, and turns CRLF into LF.
 
