@@ -68,7 +68,7 @@ Grok's file is `~/.grok/hooks/dim.json`. `GROK_HOME` overrides `~/.grok`. A Grok
 - **The spool hook never opens the database.** It writes one file per event and exits 0, so a session never waits on `sessions.db`; `sync` drains the spool into `hook_event`.
 - **`hook_event` is never re-derived**, because a hook fires once. It has no foreign key to `session`, so an event that arrives before its transcript waits for it. A spool file that cannot be placed moves to `spool/unreadable/`, since it is the only copy.
 - **One source per column.** `session.ended_at` and `end_reason` come from `hook_event` alone, never from a transcript.
-- **Concurrency.** `sync`, `rebuild`, `embed` and a ship hold the lock. Other `dim` commands open their own connections in WAL mode, and a writer waits a bounded time for SQLite's write lock before failing with `SQLITE_BUSY` ([`src/db.ts`](../src/db.ts)); a trace waits less and drops its row ([`src/trace.ts`](../src/trace.ts)).
+- **Concurrency.** `sync`, `rebuild`, `embed` and a ship hold the lock. Other `dim` commands open their own connections in WAL mode, and a writer waits a bounded time for SQLite's write lock before failing with `SQLITE_BUSY` ([`src/db.ts`](../src/db.ts)); a trace waits less and drops its row ([`src/trace.ts`](../src/trace.ts)). A reader opens read-write under `query_only` ([`src/db-read.ts`](../src/db-read.ts)): a `readonly` connection fails with `SQLITE_CANTOPEN` on a WAL database whose `-wal` and `-shm` files are gone.
 - **Codex is coarser.** Its `SessionEnd` reason is always `other` and it has no per-turn skill attribution, so tokens cannot be attributed to a skill within a Codex session.
 
 ## Tokens and cost

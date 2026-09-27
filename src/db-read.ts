@@ -10,5 +10,7 @@ export class NoDatabaseError extends Error {
 
 export function openReadOnly(path: string): Database {
   if (!existsSync(path)) throw new NoDatabaseError(path);
-  return new Database(path, { readonly: true });
+  const db = new Database(path, { readwrite: true, create: false });
+  db.run("PRAGMA query_only = ON");
+  return db;
 }
