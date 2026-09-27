@@ -111,7 +111,7 @@ describe("the Grok harness adapter", () => {
       "workspace",
     ]);
     expect(reader[reader.indexOf("--sandbox") + 1]).toBe("workspace");
-    expect(denies(reader)).toEqual(["Edit", "Write", "search_replace"]);
+    expect(denies(reader)).toEqual(["Edit", "Write"]);
     expect(builder.slice(-4)).toEqual(["--model", "grok-model", "-p", "build it"]);
   });
 
@@ -131,8 +131,6 @@ describe("the Grok harness adapter", () => {
       `Edit(/${gitPath}/**)`,
       `Write(/${gitPath})`,
       `Write(/${gitPath}/**)`,
-      `search_replace(/${gitPath})`,
-      `search_replace(/${gitPath}/**)`,
     ]);
   });
 

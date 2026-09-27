@@ -108,7 +108,7 @@ function grokEventParser(): HarnessLineParser {
   };
 }
 
-const EDIT_TOOLS = ["Edit", "Write", "search_replace"];
+const EDIT_TOOLS = ["Edit", "Write"];
 
 function deny(rule: string): string[] {
   return ["--deny", rule];

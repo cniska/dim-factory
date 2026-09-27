@@ -79,17 +79,15 @@
 
 @layer components {
   .wall-markdown code:not(pre code) {
-    display: inline-block;
-    max-width: 100%;
-    overflow-x: auto;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
     background: var(--color-background);
-    padding: var(--space-2xs) var(--space-xs);
+    padding: 0 var(--space-xs);
     color: var(--color-muted-foreground);
     font-size: 11px;
-    vertical-align: bottom;
-    white-space: nowrap;
+    line-height: inherit;
+    vertical-align: baseline;
+    box-decoration-break: clone;
   }
 
   .wall-markdown pre {
