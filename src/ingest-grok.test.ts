@@ -163,7 +163,7 @@ describe("grok sessions", () => {
     const db = openDb(dbPath(env));
     try {
       const report = sync(db, env);
-      expect(report.grokSessions).toBe(3);
+      expect(report.sources.find((source) => source.tool === "grok")).toEqual({ tool: "grok", files: 3 });
       expect(report.dropped).toEqual([{ path, lines: [8] }]);
       expect(report.orphanSubagents).toEqual([ORPHAN]);
       expect(
@@ -239,7 +239,7 @@ describe("grok sessions", () => {
     const db = openDb(dbPath(env));
     try {
       const report = sync(db, env);
-      expect(report.grokSessions).toBe(0);
+      expect(report.sources.find((source) => source.tool === "grok")).toEqual({ tool: "grok", files: 0 });
       expect(db.prepare("SELECT count(*) AS n FROM session WHERE tool = 'grok'").get()).toEqual({ n: 0 });
     } finally {
       closeDb(db);

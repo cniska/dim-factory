@@ -3,22 +3,18 @@ import { SCHEMA_SQL, SCHEMA_VERSION } from "./db-schema";
 import { type GuidanceReport, ingestGuidance } from "./guidance";
 import { drainWalk, type WalkReport } from "./guidance-walk";
 import { createIngester, type FileSpec } from "./ingest";
-import { listClaudeSubagents, listClaudeTranscripts } from "./ingest-claude-source";
-import { listCodexRollouts, readCodexTitles } from "./ingest-codex-source";
 import { type GitReport, ingestCommits } from "./ingest-git";
-import { listGrokSessions } from "./ingest-grok-source";
 import { type HistoryReport, ingestHistory } from "./ingest-history";
+import { SESSION_SOURCES } from "./ingest-sources";
 import { applyHookEvents, type DrainReport, drainSpool } from "./ingest-spool";
+import type { Tool } from "./ingest-tools";
 import type { Env } from "./paths";
 import { backfillHandoffs, type HandoffLinkReport, linkHandoffs } from "./recall-handoff";
 import { type RepoCheckReport, recordRepoChecks } from "./repo-check";
 import { indexRepoFiles, type RepoFileReport } from "./repo-files";
 
 export type SyncReport = {
-  claudeTranscripts: number;
-  claudeSubagents: number;
-  codexRollouts: number;
-  grokSessions: number;
+  sources: { tool: Tool; files: number }[];
   filesRead: number;
   orphanSubagents: string[];
   failures: { path: string; error: string }[];
@@ -43,10 +39,7 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
   );
 
   const report: SyncReport = {
-    claudeTranscripts: 0,
-    claudeSubagents: 0,
-    codexRollouts: 0,
-    grokSessions: 0,
+    sources: [],
     filesRead: 0,
     orphanSubagents: [],
     failures: [],
@@ -74,35 +67,19 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     }
   };
 
-  for (const spec of listClaudeTranscripts(env)) {
-    run(spec);
-    report.claudeTranscripts += 1;
-  }
-
-  for (const spec of listClaudeSubagents(env)) {
-    if (spec.parentId && !sessionExists.get(spec.parentId)) {
-      report.orphanSubagents.push(spec.sessionId);
-      spec.parentId = undefined;
+  for (const source of SESSION_SOURCES) {
+    const specs = source.list(env);
+    const titles = source.titles?.(env);
+    for (const spec of specs) {
+      if (spec.parentId && !sessionExists.get(spec.parentId)) {
+        report.orphanSubagents.push(spec.sessionId);
+        spec.parentId = undefined;
+      }
+      run(spec);
+      const title = titles?.get(spec.sessionId);
+      if (title) setTitle.run(title, spec.sessionId);
     }
-    run(spec);
-    report.claudeSubagents += 1;
-  }
-
-  const titles = readCodexTitles(env);
-  for (const spec of listCodexRollouts(env)) {
-    run(spec);
-    report.codexRollouts += 1;
-    const title = titles.get(spec.sessionId);
-    if (title) setTitle.run(title, spec.sessionId);
-  }
-
-  for (const spec of listGrokSessions(env)) {
-    if (spec.parentId && !sessionExists.get(spec.parentId)) {
-      report.orphanSubagents.push(spec.sessionId);
-      spec.parentId = undefined;
-    }
-    run(spec);
-    report.grokSessions += 1;
+    report.sources.push({ tool: source.tool, files: specs.length });
   }
 
   applyHookEvents(db);

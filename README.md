@@ -2,7 +2,15 @@
 
 A software factory run by coding agents, with a human at the gates that still earn one.
 
-dim records coding-agent sessions on this machine, brings earlier work back to agents, and runs agreed work through checked, isolated stations. Agents use its local CLI to operate the record and the factory; the owner requests work and reads the artifacts. Which sessions are read is in [the session database](docs/design.md#sources).
+dim records sessions on this machine, brings earlier work back to agents, and runs agreed work through checked, isolated stations. Agents use its local CLI to operate the record and the factory; the owner requests work and reads the artifacts.
+
+It reads:
+
+- Claude Code
+- Codex
+- Grok Build
+
+Where those files live, and what adding another source takes, is in [the session database](docs/design.md#sources).
 
 - **Record.** Sessions, tool calls, commits and usage in one local SQLite database. No network, no credential, no per-token cost.
 - **Recall.** Named queries and local semantic search let agents ask what was decided before, including the last handoff.
