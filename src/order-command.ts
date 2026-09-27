@@ -240,8 +240,10 @@ export async function runOrderCommandLive(
   }
   const outcome = await runOrderReviewLive(db, orderId, operator, { dir: cwd, env, harness });
   return outcome.outcome === "aborted"
-    ? `review ${outcome.review} aborted: ${outcome.reviewer} did not finish, so nothing it left is a clean reading`
-    : `review ${outcome.review} closed with ${outcome.findings} finding${outcome.findings === 1 ? "" : "s"}`;
+    ? `review aborted: ${outcome.reviewer} did not finish, so nothing it left is a clean reading; dim order review runs it again`
+    : outcome.findings === 0
+      ? "review raised no findings; approve the Review artifact to ship"
+      : `review raised ${outcome.findings} finding${outcome.findings === 1 ? "" : "s"}; dim order build answers them`;
 }
 
 export const orderCommand: Command = {

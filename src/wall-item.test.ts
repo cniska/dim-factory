@@ -17,5 +17,7 @@ describe("factory wall item view", () => {
     expect(itemKindLabel({ kind: "artifact_approved", station: "build" })).toBe("Build approved");
     expect(itemKindLabel({ kind: "artifact_returned", station: "review" })).toBe("Review returned");
     expect(itemKindLabel({ kind: "commit_created", station: "build" })).toBe("Commit");
+    expect(itemKindLabel({ kind: "failed", station: "build" })).toBe("Build failed");
+    expect(itemKindLabel({ kind: "failed", station: null })).toBe("Failed");
   });
 });

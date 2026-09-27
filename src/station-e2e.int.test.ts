@@ -111,7 +111,7 @@ describe("headless factory loop", () => {
     ).toContain("build approved");
     expect(
       await runOrderCommandLive(db, ["review", "headless-order", "--harness", "codex"], null, repo.dir, env),
-    ).toContain("0 findings");
+    ).toBe("review raised no findings; approve the Review artifact to ship");
     expect(runOrderCommand(db, ["approve", "headless-order"], null, repo.dir, env)).toContain(
       "review approved by",
     );

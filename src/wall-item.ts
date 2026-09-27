@@ -29,6 +29,7 @@ const STATION_VERBS: Partial<Record<WallItemKind, string>> = {
 };
 
 export function itemKindLabel(entry: Pick<WallItemEntry, "kind" | "station">): string {
+  if (entry.kind === "failed" && entry.station) return `${STATION_LABELS[entry.station]} failed`;
   const verb = STATION_VERBS[entry.kind];
   if (verb === undefined) return ITEM_KIND_LABELS[entry.kind];
   if (!entry.station) throw new Error(`${entry.kind} names no station`);
