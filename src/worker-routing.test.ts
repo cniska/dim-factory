@@ -5,7 +5,14 @@ import { join } from "node:path";
 import { Glob } from "bun";
 import { HARNESSES } from "./harness-name";
 import { ROLES } from "./worker-roles";
-import { harnessMapPath, ROLE_TIERS, RoutingError, route, routeReport } from "./worker-routing";
+import {
+  harnessMapPath,
+  mappedHarnesses,
+  ROLE_TIERS,
+  RoutingError,
+  route,
+  routeReport,
+} from "./worker-routing";
 
 function machine(map?: string): { DIM_HOME: string } {
   const home = mkdtempSync(join(tmpdir(), "dim-routing-"));
@@ -14,6 +21,20 @@ function machine(map?: string): { DIM_HOME: string } {
 }
 
 const COMPLETE = '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }';
+
+describe("the harnesses a machine maps", () => {
+  test("lists each harness routing.json maps, and none it leaves out", () => {
+    const env = machine(
+      '{ "grok": { "light": "a", "standard": "b", "deep": "c" }, "codex": { "light": "d", "standard": "e", "deep": "f" } }',
+    );
+    expect(mappedHarnesses(env)).toEqual(["codex", "grok"]);
+    expect(mappedHarnesses(machine())).toEqual([]);
+  });
+
+  test("refuses a malformed map rather than treating it as unmapped", () => {
+    expect(() => mappedHarnesses(machine('{ "codex": { "light": "" } }'))).toThrow(RoutingError);
+  });
+});
 
 describe("resolving a role", () => {
   test("every role runs at the tier the factory declares for it", () => {

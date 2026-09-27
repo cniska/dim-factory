@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { readSettingFile } from "./config-setting-file";
-import { type HarnessName, isHarness } from "./harness-name";
+import { HARNESSES, type HarnessName, isHarness } from "./harness-name";
 import { dataDir, type Env } from "./paths";
 import { ROLES, type Role } from "./worker-roles";
 
@@ -86,6 +86,18 @@ export function readHarnessMap(harness: HarnessName, env: Env = process.env): Ha
     map[tier] = name.trim();
   }
   return map;
+}
+
+export function mappedHarnesses(env: Env = process.env): HarnessName[] {
+  return HARNESSES.filter((harness) => {
+    try {
+      readHarnessMap(harness, env);
+      return true;
+    } catch (error) {
+      if (error instanceof RoutingError && error.kind === "no-map") return false;
+      throw error;
+    }
+  });
 }
 
 export function route(

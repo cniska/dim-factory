@@ -20,10 +20,13 @@ import { ORDER_PRIORITIES, type OrderPriority } from "./order-status";
 import { dbPath, type Env } from "./paths";
 import type { ShipOutcome } from "./ship";
 import { runOrderBuildLive } from "./station-build";
+import { onHarnessWithCapacity } from "./station-harness";
 import { runOrderPlanLive } from "./station-plan";
 import { runOrderReviewLive } from "./station-review";
+import type { OrderStationName } from "./station-worker";
 import { resolveWorker } from "./worker";
 import { resolveAssignedWorker } from "./worker-assignment";
+import { mappedHarnesses } from "./worker-routing";
 
 export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--line <${ORDER_LINES.join("|")}>] [--description "..."]
                      [--priority <${ORDER_PRIORITIES.join("|")}>] [--project <owner/repo>]
@@ -45,11 +48,15 @@ const ADD_FLAGS = ["--title", "--line", "--description", "--priority", "--projec
 
 const fail = (message: string): Error => new UsageError(message);
 
-function selectedHarness(db: Database, given: Map<string, string>, operator: string): HarnessName {
+function namedHarness(given: Map<string, string>): HarnessName | null {
   const named = given.get("--harness");
-  if (named !== undefined) return parseHarness(named, fail);
+  return named === undefined ? null : parseHarness(named, fail);
+}
+
+function candidateHarnesses(db: Database, operator: string, env: Env): HarnessName[] {
   const recorded = recordedHarness(db, operator);
-  if (recorded) return recorded;
+  const candidates = [...new Set([...(recorded ? [recorded] : []), ...mappedHarnesses(env)])];
+  if (candidates.length > 0) return candidates;
   throw fail(
     `${operator} runs in no recorded harness session; delegate with --harness <${HARNESSES.join("|")}>`,
   );
@@ -217,11 +224,16 @@ export async function runOrderCommandLive(
   if (!orderId) throw new UsageError("order takes a subcommand and an order id");
   const given = flags(rest, ["--harness"]);
   const operator = resolveWorker(db, env);
-  const harness = selectedHarness(db, given, operator);
+  const named = namedHarness(given);
+  const candidates = named ? [] : candidateHarnesses(db, operator, env);
+  const onCapacity = <T>(station: OrderStationName, run: (harness: HarnessName) => Promise<T>) =>
+    onHarnessWithCapacity(db, orderId, station, candidates, named, run);
   if (args[0] === "plan") {
     assertOperator(db, operator, "delegate planning");
     requireCurrentHooks(env);
-    const outcome = await runOrderPlanLive(db, orderId, { dir: cwd, env, harness });
+    const outcome = await onCapacity("plan", (harness) =>
+      runOrderPlanLive(db, orderId, { dir: cwd, env, harness }),
+    );
     return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;
   }
   if (args[0] === "build") {
@@ -234,11 +246,16 @@ export async function runOrderCommandLive(
           progress: `${nextOrderSlice(db, orderId)?.id ?? "none"}:${latestOrderCommit(db, orderId)?.sha ?? ""}`,
         };
       },
-      () => runOrderBuildLive(db, orderId, operator, { dir: cwd, env, harness }),
+      () =>
+        onCapacity("build", (harness) =>
+          runOrderBuildLive(db, orderId, operator, { dir: cwd, env, harness }),
+        ),
     );
     return `build completed by ${outcome.builder}`;
   }
-  const outcome = await runOrderReviewLive(db, orderId, operator, { dir: cwd, env, harness });
+  const outcome = await onCapacity("review", (harness) =>
+    runOrderReviewLive(db, orderId, operator, { dir: cwd, env, harness }),
+  );
   return outcome.outcome === "aborted"
     ? `review aborted: ${outcome.reviewer} did not finish, so nothing it left is a clean reading; dim order review runs it again`
     : outcome.findings === 0

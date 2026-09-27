@@ -276,6 +276,19 @@ export function releaseOrderWorker(db: Database, orderId: string, role: StationR
   })();
 }
 
+export function boundStationHarness(
+  db: Database,
+  orderId: string,
+  station: OrderStationName,
+): HarnessName | undefined {
+  const bound = readOrderWorker(db, orderId, STATION_ROLES[station]);
+  return bound?.worker ? bound.harness : undefined;
+}
+
+export function releaseStationWorker(db: Database, orderId: string, station: OrderStationName): void {
+  releaseOrderWorker(db, orderId, STATION_ROLES[station]);
+}
+
 export function orderWorkerIsBound(
   db: Database,
   orderId: string,
