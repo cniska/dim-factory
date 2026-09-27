@@ -93,6 +93,33 @@ describe("install", () => {
 
     installRules(env);
     expect(readFileSync(`${generatedPath(env)}.dim-backup`, "utf8")).toBe("something the owner wrote");
+    writeFileSync(join(root, ".claude", "CLAUDE.md"), "revised canonical");
+    installRules(env);
+    expect(readFileSync(`${generatedPath(env)}.dim-backup`, "utf8")).toBe("something the owner wrote");
+    expect(readFileSync(`${generatedPath(env)}.dim-backup-2`, "utf8")).toContain("canonical");
+  });
+
+  test("reports the backup made by each install command", () => {
+    const root = home();
+    const source = join(root, ".claude", "CLAUDE.md");
+    const target = generatedPath({ HOME: root });
+    writeFileSync(source, "canonical");
+    writeFileSync(target, "owner rules");
+    const run = () => {
+      const child = Bun.spawnSync(
+        [process.execPath, join(import.meta.dir, "cli.ts"), "install-rules", "--write"],
+        {
+          env: { ...process.env, HOME: root },
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+      expect(child.exitCode).toBe(0);
+      return JSON.parse(child.stdout.toString()).result.backup;
+    };
+    expect(run()).toBe(`${target}.dim-backup`);
+    writeFileSync(source, "revised canonical");
+    expect(run()).toBe(`${target}.dim-backup-2`);
   });
 
   test("does nothing when there is no canonical file to flatten", () => {

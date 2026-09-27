@@ -55,6 +55,9 @@ describe("writing a config back", () => {
     expect(writeJsoncFile(path, '{ "hooks": {} }')).toBe(`${path}.dim-backup`);
     expect(readFileSync(`${path}.dim-backup`, "utf8")).toBe('{ "hooks": { "SessionEnd": [] } }');
     expect(readFileSync(path, "utf8")).toBe('{ "hooks": {} }');
+    expect(writeJsoncFile(path, '{ "hooks": { "SessionStart": [] } }')).toBe(`${path}.dim-backup-2`);
+    expect(readFileSync(`${path}.dim-backup`, "utf8")).toBe('{ "hooks": { "SessionEnd": [] } }');
+    expect(readFileSync(`${path}.dim-backup-2`, "utf8")).toBe('{ "hooks": {} }');
   });
 
   test("creates the directory a first config is written into", () => {

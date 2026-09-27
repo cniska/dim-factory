@@ -54,13 +54,19 @@ describe("launchd agent", () => {
     expect(planAgent(e).unchanged).toBe(true);
   });
 
-  test("keeps the previous plist when overwriting one", () => {
+  test("keeps the previous plists when overwriting one", async () => {
     const dir = newRoot();
     const e = env(dir);
     mkdirSync(join(dir, "Library", "LaunchAgents"), { recursive: true });
     writeFileSync(agentPlistPath(e), "<plist>old</plist>");
     installAgent(e);
-    expect(Bun.file(`${agentPlistPath(e)}.dim-backup`).text()).resolves.toBe("<plist>old</plist>");
+    await expect(Bun.file(`${agentPlistPath(e)}.dim-backup`).text()).resolves.toBe("<plist>old</plist>");
+    writeFileSync(agentPlistPath(e), "<plist>changed</plist>");
+    installAgent(e);
+    await expect(Bun.file(`${agentPlistPath(e)}.dim-backup`).text()).resolves.toBe("<plist>old</plist>");
+    await expect(Bun.file(`${agentPlistPath(e)}.dim-backup-2`).text()).resolves.toBe(
+      "<plist>changed</plist>",
+    );
   });
 });
 

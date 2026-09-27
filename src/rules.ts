@@ -1,5 +1,6 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
+import { copyBackup } from "./file-backup";
 import { type Env, resolveHomeDir } from "./paths";
 
 export const CANONICAL = [".claude", "CLAUDE.md"];
@@ -64,11 +65,11 @@ export function planRules(env: Env = process.env): RulesPlan {
   };
 }
 
-export function installRules(env: Env = process.env): RulesPlan {
+export function installRules(env: Env = process.env): RulesPlan & { backup?: string | null } {
   const plan = planRules(env);
   if (plan.state === "unchanged" || plan.state === "missing-source") return plan;
   mkdirSync(dirname(plan.path), { recursive: true });
-  if (existsSync(plan.path)) copyFileSync(plan.path, `${plan.path}.dim-backup`);
+  const backup = existsSync(plan.path) ? copyBackup(plan.path) : null;
   writeFileSync(plan.path, plan.contents);
-  return plan;
+  return { ...plan, backup };
 }

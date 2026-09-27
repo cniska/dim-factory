@@ -1,5 +1,6 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { copyBackup } from "./file-backup";
 import { dataDir, type Env, resolveHomeDir } from "./paths";
 
 export const AGENT_LABEL = "dev.dimfactory.sync";
@@ -61,7 +62,7 @@ export function installAgent(env: Env = process.env): AgentPlan {
   const plan = planAgent(env);
   if (plan.unchanged) return plan;
   mkdirSync(dirname(plan.path), { recursive: true });
-  if (existsSync(plan.path)) copyFileSync(plan.path, `${plan.path}.dim-backup`);
+  if (existsSync(plan.path)) copyBackup(plan.path);
   writeFileSync(plan.path, plan.contents);
   return plan;
 }

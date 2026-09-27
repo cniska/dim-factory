@@ -1,6 +1,7 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { parseJsonc } from "./config-jsonc";
+import { copyBackup } from "./file-backup";
 
 export function readJsoncText(path: string): string {
   return existsSync(path) ? readFileSync(path, "utf8") : "";
@@ -12,9 +13,8 @@ export function readJsonc<T>(path: string): T | null {
 }
 
 export function writeJsoncFile(path: string, text: string): string | null {
-  const backup = existsSync(path) ? `${path}.dim-backup` : null;
-  if (backup) copyFileSync(path, backup);
-  else mkdirSync(dirname(path), { recursive: true });
+  if (!existsSync(path)) mkdirSync(dirname(path), { recursive: true });
+  const backup = existsSync(path) ? copyBackup(path) : null;
   writeFileSync(path, text);
   return backup;
 }

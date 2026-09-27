@@ -11,7 +11,7 @@ export const installRulesCommand: Command = {
     if (plan.state === "missing-source" || plan.state === "unchanged") return plan;
     const summary = { ...plan, lines: plan.contents.split("\n").length };
     if (!args.includes("--write")) return { ...summary, next: WRITE_NEXT };
-    installRules();
-    return { ...summary, written: true, backup: plan.state === "stale" ? `${plan.path}.dim-backup` : null };
+    const installed = installRules();
+    return { ...summary, written: true, backup: installed.backup ?? null };
   },
 };
