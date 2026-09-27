@@ -1,11 +1,9 @@
-import { benchCommand } from "./bench-command";
 import { checkCommandCommand } from "./check-command-command";
 import { checkCommitsCommand } from "./check-commits-command";
 import type { Command } from "./cli-contract";
 import { commentsCommand } from "./comments-command";
 import { configCommand } from "./config-command";
 import { doctorCommand } from "./doctor-command";
-import { embedCommand } from "./embed-command";
 import { factoryCommand } from "./factory-command";
 import { findingCommand } from "./finding-command";
 import { formatEditCommand } from "./format-edit-command";
@@ -34,7 +32,6 @@ export const COMMANDS: readonly Command[] = [
   initCommand,
   syncCommand,
   rebuildCommand,
-  embedCommand,
   statsCommand,
   doctorCommand,
   qCommand,
@@ -60,7 +57,6 @@ export const COMMANDS: readonly Command[] = [
   wallCommand,
   labelCommand,
   findingCommand,
-  benchCommand,
 ];
 
 export function findCommand(name: string | undefined): Command | undefined {

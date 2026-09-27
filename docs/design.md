@@ -30,7 +30,7 @@ Claude Code deletes transcripts after 30 days unless `cleanupPeriodDays` is rais
 
 - **Every tool lands in the same tables.** A session records its `tool` from the vocabulary in [`src/ingest-tools.ts`](../src/ingest-tools.ts), and tool-specific detail goes in an `extra` JSON column, so a question about more than one needs no `UNION`. Times are ISO-8601 UTC text.
 - **Tables are rebuilt by re-reading their sources**, so a schema change is `dim rebuild`, not a migration. `rebuild` drops the derived tables it names and recreates them from `SCHEMA_SQL`, since `CREATE TABLE IF NOT EXISTS` would leave an old shape in place.
-- **Tables with no source to re-read survive it.** `correction_label`, `hook_event` and the factory tables ([`src/ingest-sync.ts`](../src/ingest-sync.ts)) are dropped and written back row for row, so they can still take a schema change. A table `rebuild` does not name, such as `guidance_walk`, `trace_event`, `finding` or `embedding`, is left as it is.
+- **Tables with no source to re-read survive it.** `correction_label`, `hook_event` and the factory tables ([`src/ingest-sync.ts`](../src/ingest-sync.ts)) are dropped and written back row for row, so they can still take a schema change. A table `rebuild` does not name, such as `guidance_walk`, `trace_event` or `finding`, is left as it is.
 - **`SCHEMA_VERSION` is bumped for a change only a re-read can correct** — a changed column, or a changed rule for what identifies a row. Until `rebuild` has finished and stamped the new version, `sync` and every other write refuse the database.
 - **A new table needs no bump**, because every write opens the database through `SCHEMA_SQL`, which creates it. That holds only until some database has run the statement; after that, changing its columns takes a bump ([`findings.md`](findings.md) has the case).
 - [`src/db-schema-version.test.ts`](../src/db-schema-version.test.ts) pins the version beside a digest of `SCHEMA_SQL`, so every schema edit changes that line and two branches editing the schema conflict there.
@@ -43,7 +43,7 @@ Claude Code deletes transcripts after 30 days unless `cleanupPeriodDays` is rais
 dim sync: drain the spool → read changed files → derive session ends
 ```
 
-- **No network, credential or per-token cost, and no model reads a transcript.** Nothing is filtered or scored at ingest; deciding at read time is the only policy that is reversible. Downloading the embedding model is the one exception, and it happens once.
+- **No network, credential or per-token cost, and no model reads a transcript.** Nothing is filtered or scored at ingest; deciding at read time is the only policy that is reversible.
 - **Per-tool parsers** ([`src/ingest-parse-claude.ts`](../src/ingest-parse-claude.ts), [`src/ingest-parse-codex.ts`](../src/ingest-parse-codex.ts), [`src/ingest-parse-grok.ts`](../src/ingest-parse-grok.ts)) turn lines into rows and know nothing of the database; [`src/ingest.ts`](../src/ingest.ts) writes their rows and knows nothing of any format.
 - **Another session source is one entry in [`src/ingest-sources.ts`](../src/ingest-sources.ts).** It lists session files and parses each into the same rows. Listing names the session and where it lives. Claude Code, Codex, and Grok Build are files, so each one is a [`FileSpec`](../src/ingest.ts) and a byte cursor. A source whose sessions are not files implements the same two steps without a path. The name is added to the vocabulary in [`src/ingest-tools.ts`](../src/ingest-tools.ts), which is what the schema checks. Prompt history, when the tool keeps one, is a path and a function that picks the session id, the time, and the text. A source does not require hooks or a harness.
 - **Incremental.** `source_file.bytes_ingested` is each file's cursor, and a changed file is read from it. A file shorter than its cursor is re-ingested from zero.
@@ -68,7 +68,7 @@ Grok's file is `~/.grok/hooks/dim.json`. `GROK_HOME` overrides `~/.grok`. A Grok
 - **The spool hook never opens the database.** It writes one file per event and exits 0, so a session never waits on `sessions.db`; `sync` drains the spool into `hook_event`.
 - **`hook_event` is never re-derived**, because a hook fires once. It has no foreign key to `session`, so an event that arrives before its transcript waits for it. A spool file that cannot be placed moves to `spool/unreadable/`, since it is the only copy.
 - **One source per column.** `session.ended_at` and `end_reason` come from `hook_event` alone, never from a transcript.
-- **Concurrency.** `sync`, `rebuild`, `embed` and a ship hold the lock. Other `dim` commands open their own connections in WAL mode, and a writer waits a bounded time for SQLite's write lock before failing with `SQLITE_BUSY` ([`src/db.ts`](../src/db.ts)); a trace waits less and drops its row ([`src/trace.ts`](../src/trace.ts)). A reader opens read-write under `query_only` ([`src/db-read.ts`](../src/db-read.ts)): a `readonly` connection fails with `SQLITE_CANTOPEN` on a WAL database whose `-wal` and `-shm` files are gone.
+- **Concurrency.** `sync`, `rebuild` and a ship hold the lock. Other `dim` commands open their own connections in WAL mode, and a writer waits a bounded time for SQLite's write lock before failing with `SQLITE_BUSY` ([`src/db.ts`](../src/db.ts)); a trace waits less and drops its row ([`src/trace.ts`](../src/trace.ts)). A reader opens read-write under `query_only` ([`src/db-read.ts`](../src/db-read.ts)): a `readonly` connection fails with `SQLITE_CANTOPEN` on a WAL database whose `-wal` and `-shm` files are gone.
 - **Codex is coarser.** Its `SessionEnd` reason is always `other` and it has no per-turn skill attribution, so tokens cannot be attributed to a skill within a Codex session.
 
 ## Tokens and cost
@@ -89,10 +89,7 @@ Grok's file is `~/.grok/hooks/dim.json`. `GROK_HOME` overrides `~/.grok`. A Grok
 
 ## Search
 
-- **Keywords.** `message_fts` is an FTS5 index over `message.text` with external content, kept level by triggers. `keywords` unions one match per term and ranks by terms matched, then relevance, then recency. Each hit prints a full session ID and timestamp for `q thread`. Terms are quoted before they reach FTS5.
-- **Meaning.** `embedding` holds one 384-float unit vector per distilled passage — a handoff's `## Next`, a commit subject, a labeled correction — with its text beside it. `q search` scores every vector with a dot product; there is no vector store. Where nothing is embedded, it answers from `message_fts` and says so.
-- **Re-embedding** is keyed on `text_sha` and `model`, so only changed passages are embedded again.
-- **Benchmark.** `dim bench` reads `retrieval.jsonl` from the data directory, runs each question through the query it names, and reports recall@k and nDCG@k ([`src/bench-rank-metrics.ts`](../src/bench-rank-metrics.ts)). A line is `{"id", "query", "question", "relevant": [{"ref", "grade"}]}`, where a ref is a commit sha, a session id, or `<session id>@<timestamp>`. The corpus stays out of this repo because its questions name the owner's work.
+- **Keywords.** `message_fts` is an FTS5 index over `message.text` with external content, kept level by triggers. `q search` unions one match per term and ranks by terms matched, then relevance, then recency. Each hit prints a full session ID and timestamp for `q thread`. Terms are quoted before they reach FTS5.
 
 ## What the record cannot say
 
@@ -109,4 +106,3 @@ Grok's file is `~/.grok/hooks/dim.json`. `GROK_HOME` overrides `~/.grok`. A Grok
 - `src/ingest.ts`, `src/ingest-parse-claude.ts`, `src/ingest-parse-codex.ts`, `src/ingest-parse-grok.ts` — ingestion
 - `src/ingest-spool.ts`, `src/hooks.ts` — hook spool and install
 - `src/query-registry.ts`, `src/*-queries.ts` — named queries
-- `src/search-embed.ts`, `src/bench.ts` — embeddings and the retrieval benchmark

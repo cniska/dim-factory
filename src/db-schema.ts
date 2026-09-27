@@ -5,7 +5,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { STATIONS_SQL } from "./station";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 72;
+export const SCHEMA_VERSION = 73;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -729,28 +729,6 @@ CREATE TABLE IF NOT EXISTS guidance_version (
   PRIMARY KEY (path, blob_sha)
 );
 CREATE INDEX IF NOT EXISTS guidance_version_seen ON guidance_version(path, first_seen);
-
--- What \`q search\` ranks: only text a person already distilled, for the reasons in
--- docs/recall.md. A projection of its sources and never a second archive —
--- \`dim embed\` drops the row when the source is gone.
---
--- Never cleared by \`rebuild\`, because only the model \`dim embed\` runs can
--- produce these vectors again. No foreign key, because \`rebuild\` drops message
--- and repo_commit and then writes the same ids back, so a vector keyed by one
--- survives it. text is
--- stored rather than joined because a vector only means anything against the
--- exact string the model was given, and a Next is a slice of a larger message
--- that exists nowhere else.
-CREATE TABLE IF NOT EXISTS embedding (
-  kind        TEXT NOT NULL CHECK (kind IN ('next','subject','correction')),
-  ref         TEXT NOT NULL,        -- message.id, or repo_commit.sha for a subject
-  text        TEXT NOT NULL,
-  text_sha    TEXT NOT NULL,        -- so a re-run embeds only what changed
-  vector      BLOB NOT NULL,        -- 384 little-endian float32, unit length
-  model       TEXT NOT NULL,
-  built_at    TEXT NOT NULL,
-  PRIMARY KEY (kind, ref)
-);
 
 -- Which session continued which. session.parent_id links a subagent to its
 -- parent and nothing else links a session to the one it carried on from, so a

@@ -8,7 +8,6 @@
   },
   "scripts": {
     "dim": "bun run src/cli.ts",
-    "fetch-model": "bun run scripts/fetch-model.ts",
     "factory:reset": "bun run scripts/reset-factory.ts",
     "format": "bunx biome check --write src",
     "lint": "bunx biome check --error-on-warnings src",
@@ -28,7 +27,6 @@
   },
   "dependencies": {
     "@babel/parser": "^7.29.9",
-    "@huggingface/transformers": "^4.3.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "jsonc-parser": "^3.3.1",

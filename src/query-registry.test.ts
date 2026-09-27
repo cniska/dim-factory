@@ -334,13 +334,12 @@ describe("read path", () => {
   test("search finds a message by its words and keeps the index level with the table", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
-    const unranked = { unavailable: "nothing embedded in this corpus" };
     try {
-      const hit = findQuery("search")?.run(db, { arg: "parser", question: unranked });
+      const hit = findQuery("search")?.run(db, { arg: "parser" });
       expect(hit?.rows.length).toBeGreaterThan(0);
       expect(String(hit?.rows[0]?.[hit.columns.indexOf("text")])).toContain("parser");
 
-      const miss = findQuery("search")?.run(db, { arg: "nothingmatchesthis", question: unranked });
+      const miss = findQuery("search")?.run(db, { arg: "nothingmatchesthis" });
       expect(miss?.rows).toEqual([]);
       expect(miss?.note).toContain("nothing matches");
     } finally {

@@ -1,6 +1,6 @@
 # Recall
 
-Agents recall earlier work by querying the local record when the task calls for it. `dim q resume <id>` retrieves a handoff's next move; `dim q search` finds earlier decisions by meaning.
+Agents recall earlier work by querying the local record when the task calls for it. `dim q resume <id>` retrieves a handoff's next move; `dim q search` finds what was said earlier by the words in it.
 
 ## The handoff chain
 
@@ -10,9 +10,6 @@ Agents recall earlier work by querying the local record when the task calls for 
 
 ## Retrieval
 
-- **Input beats algorithm.** Distilled text retrieves better than raw turns ([The Distillation Gap](https://crisu.me/blog/the-distillation-gap)), so what is embedded is text a person already distilled: handoffs, commit subjects, labeled corrections. Whether raw turns help is a question for the benchmark.
-- **Local only.** The embedder runs on disk, reads no transcript and no raw turn, and nothing reaches the network or is billed.
-- **Degrade, don't fail.** `q search` falls back to the keyword index when nothing is embedded or the model will not load.
-- [`design.md`](design.md#search) has the mechanics and the benchmark format.
+`q search` matches words in what people and agents said, across every session, and each hit names the exchange `q thread` reads. [`design.md`](design.md#search) has the mechanics.
 
 What is not built is in [`todo.md`](todo.md).

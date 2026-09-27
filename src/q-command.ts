@@ -5,7 +5,6 @@ import type { QueryResult } from "./query";
 import { findQuery, QUERIES } from "./query-registry";
 import { capRows, DEFAULT_MAX_ROWS, rowsFromArgs } from "./query-row-cap";
 import { DEFAULT_WINDOW, windowFromArgs } from "./query-since";
-import { embedQuestion } from "./search-embed";
 import { trace } from "./trace";
 
 export const qCommand: Command = {
@@ -33,19 +32,17 @@ export const qCommand: Command = {
     const arg = args.find((a) => !a.startsWith("--") && a !== name && !flagValues.has(a));
     const since = windowFromArgs(args, { spansHistory: query.spansHistory });
     const maxRows = rowsFromArgs(args);
-    const question = query.embedsArg && arg ? await embedQuestion(arg) : undefined;
     const db = openReadOnly(dbPath());
     const started = Date.now();
     let result: QueryResult | undefined;
     try {
-      result = query.run(db, { arg, since, home: resolveHomeDir(), question });
+      result = query.run(db, { arg, since, home: resolveHomeDir() });
       return { ...result, ...capRows(result.rows, maxRows) };
     } finally {
       trace({
         event: "query.completed",
         command: "q",
         name: query.name,
-        path: result?.path,
         rowCount: result?.rows.length,
         durationMs: Date.now() - started,
       });

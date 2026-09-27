@@ -1,19 +1,16 @@
 import type { Database } from "bun:sqlite";
-import type { Question } from "./search-embed";
 
 export type QueryResult = {
   denominator: string;
   columns: string[];
   rows: (string | number | null)[][];
   note?: string;
-  path?: string;
 };
 
 export type QueryContext = {
   arg?: string;
   since?: string;
   home?: string;
-  question?: Question;
   windowColumn?: string | string[] | null;
 };
 
@@ -25,7 +22,6 @@ export type Query = {
   usage?: string;
   window: string | string[] | null;
   spansHistory?: boolean;
-  embedsArg?: boolean;
   run: (db: Database, ctx: QueryContext) => QueryResult;
 };
 

@@ -10,7 +10,7 @@ import {
   schedules,
   slices,
 } from "./query-factory";
-import { keywords, search } from "./query-search";
+import { search } from "./query-search";
 import { chain, delegation, digest, resume, running, session, sessions, thread } from "./query-session";
 import { skill, skills, tools } from "./query-skill";
 import { burn, cost, models, tokens, turns } from "./query-usage";
@@ -28,7 +28,6 @@ export const QUERIES: Query[] = [
   digest,
   stale,
   search,
-  keywords,
   thread,
   factory,
   schedules,

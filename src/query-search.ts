@@ -10,7 +10,6 @@ import {
   window,
   windowLine,
 } from "./query";
-import { EMBED_MODEL, fromBlob, similarity } from "./search-embed";
 
 const MAX_TERMS = 16;
 
@@ -82,7 +81,8 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryRes
       `top 40 shown.${dropped > 0 ? ` Only the first ${MAX_TERMS} words were searched; ${dropped} more were dropped.` : ""}` +
       (missing.length > 0
         ? ` ${missing.length === 1 ? "This term matched" : "These terms matched"} nothing anyone said in this window: ${missing.join(", ")}.`
-        : ""),
+        : "") +
+      " `dim q thread <session>@<when>` reads the exchange a hit sits in.",
     columns,
     rows: toRows(records, columns),
     note:
@@ -93,150 +93,17 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryRes
   };
 }
 
-const degradedToKeywords = (db: Database, ctx: QueryContext, terms: string, why: string): QueryResult => {
-  const result = keywordSearch(db, ctx, terms);
-  return { ...result, path: "keyword", denominator: `${result.denominator} Meaning was not ranked: ${why}` };
-};
-
-const SEMANTIC_HITS = 20;
-
-const SNIPPET_CHARS = 96;
-
-const PLACE_CHARS = 30;
-
-const snippet = (text: string): string => {
-  const line = text.replace(/\s+/g, " ").trim();
-  return line.length > SNIPPET_CHARS ? `${line.slice(0, SNIPPET_CHARS - 1)}…` : line;
-};
-
-const place = (value: string | null): string | null => {
-  if (value === null || value.length <= PLACE_CHARS) return value;
-  return `…${value.slice(value.length - (PLACE_CHARS - 1))}`;
-};
-
-const hasEmbeddings = (db: Database): boolean =>
-  scalar(db, "SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'embedding'") > 0;
-
 export const search: Query = {
   name: "search",
-  summary: "find a distilled passage by meaning, falling back to keywords",
-  usage: 'dim q search "<question>"',
-  spansHistory: true,
-  window: "coalesce(m.ts, c.ts)",
-  embedsArg: true,
-  run: (db, ctx) => {
-    const { arg, question } = ctx;
-    if (!arg) {
-      return { denominator: "", columns: ["error"], rows: [['usage: dim q search "<question>"']] };
-    }
-    if (!question) throw new Error("search ranks by meaning, so the caller must resolve ctx.question");
-    if (!hasEmbeddings(db)) {
-      return degradedToKeywords(db, ctx, arg, "this database predates the embedding index; run `dim embed`");
-    }
-    if ("unavailable" in question) return degradedToKeywords(db, ctx, arg, question.unavailable);
-
-    const w = window("coalesce(m.ts, c.ts)", ctx, "WHERE");
-    const inWindow = db
-      .prepare<{ kind: string; ref: string; vector: Uint8Array; model: string }, string[]>(
-        `SELECT e.kind, e.ref, e.vector, e.model
-         FROM embedding e
-         LEFT JOIN message m ON e.kind <> 'subject' AND m.id = e.ref
-         LEFT JOIN repo_commit c ON e.kind = 'subject' AND c.sha = e.ref${w.sql}`,
-      )
-      .all(...w.params);
-    const rows = inWindow.filter((row) => row.model === EMBED_MODEL);
-    const otherScale = inWindow.length - rows.length;
-    if (rows.length === 0) {
-      return degradedToKeywords(
-        db,
-        ctx,
-        arg,
-        otherScale > 0
-          ? "every vector in this window was built by another model; run `dim embed`"
-          : "nothing is embedded in this window; run `dim embed`",
-      );
-    }
-
-    const scored = rows
-      .map((row) => ({
-        kind: row.kind,
-        ref: row.ref,
-        score: similarity(question.vector, fromBlob(row.vector)),
-      }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, SEMANTIC_HITS);
-
-    const detail = db.prepare<
-      { text: string; when: string | null; ref: string | null; place: string | null },
-      [string, string, string, string]
-    >(
-      `SELECT e.text AS text, substr(coalesce(m.ts, c.ts), 1, 16) AS "when",
-              CASE WHEN e.kind = 'subject' THEN substr(e.ref, 1, 8)
-                   ELSE substr(m.session_id, 1, 8) || '@' || m.ts END AS ref,
-              coalesce(replace(s.project, ? || '/', ''), c.label, replace(c.repo, ? || '/', '')) AS place
-       FROM embedding e
-       LEFT JOIN message m ON e.kind <> 'subject' AND m.id = e.ref
-       LEFT JOIN session s ON s.id = m.session_id
-       LEFT JOIN repo_commit c ON e.kind = 'subject' AND c.sha = e.ref
-       WHERE e.kind = ? AND e.ref = ?`,
-    );
-
-    const columns = ["score", "kind", "when", "ref", "where", "text"];
-    const records = scored.map((hit) => {
-      const row = detail.get(homeOf(ctx), homeOf(ctx), hit.kind, hit.ref);
-      return {
-        score: Number(hit.score.toFixed(3)),
-        kind: hit.kind,
-        when: row?.when ?? null,
-        ref: row?.ref ?? hit.ref.slice(0, 8),
-        where: place(row?.place ?? null),
-        text: snippet(row?.text ?? ""),
-      };
-    });
-
-    const byKind = table(
-      db,
-      "SELECT kind, count(*) AS n FROM embedding WHERE model = ? GROUP BY kind ORDER BY kind",
-      [EMBED_MODEL],
-    )
-      .map((r) => `${r.n} ${r.kind}`)
-      .join(", ");
-    return {
-      path: "cosine",
-      denominator:
-        `cosine over ${rows.length} distilled passages in this window, of ${byKind} embedded ` +
-        `by ${EMBED_MODEL}` +
-        (otherScale > 0 ? `, ${otherScale} in this window built by another model and not ranked` : "") +
-        ` (${windowLine(ctx)}); the ${records.length} closest shown`,
-      columns,
-      rows: toRows(records as unknown as Record<string, unknown>[], columns),
-      note:
-        "Meaning, not words: a hit need share no term with the question, and a low score is still the " +
-        "closest thing indexed rather than an answer. This index holds text a person distilled — a " +
-        "handoff's Next, a subject they authored, a prompt they labeled a correction — and no raw " +
-        "conversation turn, so a sentence said in passing is not in it. `dim q thread <ref>` reads the " +
-        "exchange a next or a correction came from, centered on the passage the ref names.",
-    };
-  },
-};
-
-export const keywords: Query = {
-  name: "keywords",
   summary: "find a message by the words in it, across every session",
-  usage: 'dim q keywords "<words>"',
+  usage: 'dim q search "<words>"',
   spansHistory: true,
   window: "m.ts",
   run: (db, ctx) => {
     const { arg } = ctx;
     if (!arg) {
-      return { denominator: "", columns: ["error"], rows: [['usage: dim q keywords "<words>"']] };
+      return { denominator: "", columns: ["error"], rows: [['usage: dim q search "<words>"']] };
     }
-    const result = keywordSearch(db, ctx, arg);
-    return {
-      ...result,
-      denominator:
-        `${result.denominator} Words, not meaning: \`dim q search\` ranks distilled text, and ` +
-        "`dim q thread <session>@<when>` reads the exchange a hit sits in.",
-    };
+    return keywordSearch(db, ctx, arg);
   },
 };
