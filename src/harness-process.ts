@@ -90,6 +90,7 @@ export function processHarness(
         let stdoutBuffer = "";
         let stderrOutput = "";
         let terminalSeen = false;
+        let completedSeen = false;
         const drain = (fd: number, decoder: TextDecoder, cursor: number): [string, number] => {
           const size = fstatSync(fd).size;
           const bytes = Buffer.alloc(size - cursor);
@@ -121,6 +122,7 @@ export function processHarness(
             stderrOutput += stderrText;
             for (const event of events(stdoutText)) {
               terminalSeen ||= terminal(event);
+              completedSeen ||= event.type === "run.completed";
               yield event;
             }
 
@@ -138,9 +140,10 @@ export function processHarness(
             const remaining = events(lastStdout + stdoutDecoder.decode(), true);
             for (const event of remaining) {
               terminalSeen ||= terminal(event);
+              completedSeen ||= event.type === "run.completed";
               yield event;
             }
-            if (!cancelled && !terminalSeen) {
+            if (!cancelled && (!terminalSeen || (completedSeen && outcome.code !== 0))) {
               const errorOutput = stderrOutput.trim();
               yield {
                 type: "run.failed",

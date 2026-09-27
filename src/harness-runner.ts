@@ -53,6 +53,18 @@ export async function runHarness(run: HarnessRun, options: HarnessRunnerOptions)
     let started = false;
     for await (const event of run.events) {
       arm();
+      if (event.type === "run.failed") {
+        events.push(event);
+        options.onEvent?.(event);
+        return {
+          outcome: "failed",
+          events,
+          reason: event.reason,
+          ...(event.exitCode === undefined ? {} : { exitCode: event.exitCode }),
+          ...(event.stderr === undefined ? {} : { stderr: event.stderr }),
+          ...(event.termination === undefined ? {} : { termination: event.termination }),
+        };
+      }
       if (answer) {
         if (!stopped && beginsTurn(event)) stopAfterAnswer(`it began another turn (${event.type})`);
         continue;
@@ -65,17 +77,6 @@ export async function runHarness(run: HarnessRun, options: HarnessRunnerOptions)
       options.onEvent?.(event);
       if (event.type === "run.completed") {
         answer = { outcome: "completed", events };
-        continue;
-      }
-      if (event.type === "run.failed") {
-        return {
-          outcome: "failed",
-          events,
-          reason: event.reason,
-          ...(event.exitCode === undefined ? {} : { exitCode: event.exitCode }),
-          ...(event.stderr === undefined ? {} : { stderr: event.stderr }),
-          ...(event.termination === undefined ? {} : { termination: event.termination }),
-        };
       }
     }
     return answer ?? { outcome: "failed", events, reason: "harness stream ended without a terminal event" };

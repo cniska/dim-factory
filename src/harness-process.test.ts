@@ -104,6 +104,21 @@ describe("the external process harness", () => {
     });
   });
 
+  test("fails when a process announces completion and then exits nonzero", async () => {
+    const result = await runStarted(
+      command('console.log(JSON.stringify({type:"run.completed",output:"done"})); process.exit(7)'),
+      request,
+      { timeoutMs: 1000 },
+    );
+
+    expect(result).toMatchObject({
+      outcome: "failed",
+      reason: "harness exited with code 7",
+      exitCode: 7,
+      termination: "exited",
+    });
+  });
+
   test("records stderr when a process exits without a terminal event", async () => {
     const result = await runStarted(
       command('console.error("codex stream closed"); process.exit(0)'),
