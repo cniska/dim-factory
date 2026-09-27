@@ -291,9 +291,9 @@ describe("order command", () => {
       `order-1 build approved by ${operator}`,
     );
 
-    const round = reviewIn(database, "order-1", operator, undefined, trunk.sha);
+    const round = reviewIn(database, "order-1", undefined, trunk.sha);
     recordOrderReviewArtifact(database, "order-1", "## Outcome\n\nClean.", round.reviewer);
-    closeOrderReview(database, round.review, "closed", round.reviewer);
+    closeOrderReview(database, round.review, "closed");
     expect(runOrderCommand(database, ["approve", "order-1"])).toBe(
       `order-1 review approved by ${operator}; order-1 is already on the default branch and shipped`,
     );
@@ -330,9 +330,9 @@ describe("order command", () => {
     if (!slice) throw new Error("the order has no slice");
     completeOrderSlice(database, "order-1", slice.id, operator);
     runOrderCommand(database, ["approve", "order-1", "--reason", "the check passed"]);
-    const round = reviewIn(database, "order-1", operator, undefined, trunk.sha);
+    const round = reviewIn(database, "order-1", undefined, trunk.sha);
     recordOrderReviewArtifact(database, "order-1", "The review found no defect.", round.reviewer);
-    closeOrderReview(database, round.review, "closed", round.reviewer);
+    closeOrderReview(database, round.review, "closed");
 
     expect(
       runOrderCommand(database, ["return", "order-1", "--to", "build", "--reason", "fix the code"]),

@@ -31,9 +31,9 @@ function refused(): { db: Database; review: number; finding: number } {
   const operator = workerIn(db, "operator");
   queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Render" }, operator);
   startOrder(db, "order-1", operator, undefined, trunk.dir);
-  const first = reviewIn(db, "order-1", operator);
+  const first = reviewIn(db, "order-1");
   const finding = raiseOrderFinding(db, "order-1", GATE, first.reviewer);
-  closeOrderReview(db, first.review, "closed", first.reviewer);
+  closeOrderReview(db, first.review, "closed");
   answerOrderFindings(
     db,
     "order-1",
@@ -41,7 +41,7 @@ function refused(): { db: Database; review: number; finding: number } {
     [{ finding, answer: "refused", resolution: "the gate is a later slice" }],
     builder,
   );
-  const second = reviewIn(db, "order-1", operator);
+  const second = reviewIn(db, "order-1");
   return { db, review: second.review, finding };
 }
 

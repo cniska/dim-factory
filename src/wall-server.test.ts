@@ -164,7 +164,7 @@ describe("factory wall snapshot", () => {
       "2026-09-18T08:01:33.000Z",
     );
     approveOrder(db, "order-done", operator, "the board change is complete", "2026-09-18T08:01:35.000Z");
-    const review = reviewIn(db, "order-done", operator, "2026-09-18T08:01:36.000Z", trunk.sha);
+    const review = reviewIn(db, "order-done", "2026-09-18T08:01:36.000Z", trunk.sha);
     recordOrderReviewArtifact(
       db,
       "order-done",
@@ -172,7 +172,7 @@ describe("factory wall snapshot", () => {
       review.reviewer,
       "2026-09-18T08:01:36.500Z",
     );
-    closeOrderReview(db, review.review, "closed", operator, "2026-09-18T08:01:37.000Z");
+    closeOrderReview(db, review.review, "closed", "2026-09-18T08:01:37.000Z");
     approveOrder(db, "order-done", operator, undefined, "2026-09-18T08:01:38.000Z");
     appendOrderEvent(db, "order-done", { worker: operator, kind: "shipped" }, "2026-09-18T08:02:00.000Z");
 
@@ -501,7 +501,7 @@ describe("factory wall item view", () => {
     appendOrderEvent(
       db,
       "order-worked",
-      { kind: "artifact_written", worker, artifactId: Number(plan.lastInsertRowid) },
+      { kind: "artifact_submitted", worker, artifactId: Number(plan.lastInsertRowid) },
       "2026-09-18T10:00:30.000Z",
     );
 
@@ -563,7 +563,7 @@ describe("factory wall item view", () => {
       worker,
       "2026-09-18T10:06:35.000Z",
     );
-    const review = reviewIn(db, "order-worked", worker, "2026-09-18T10:06:45.000Z");
+    const review = reviewIn(db, "order-worked", "2026-09-18T10:06:45.000Z");
     const reviewer = review.reviewer;
     const onTests = raiseOrderFinding(
       db,
@@ -633,14 +633,13 @@ describe("factory wall item view", () => {
       "queued",
       "started",
       "station_started",
-      "artifact_written",
+      "artifact_submitted",
       "environment_reported",
       "check_finished",
       "check_finished",
       "commit_created",
       "check_finished",
-      "artifact_written",
-      "review_opened",
+      "artifact_submitted",
       "finding_raised",
       "finding_answered",
       "finding_raised",

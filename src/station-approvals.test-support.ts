@@ -31,8 +31,8 @@ export function approveFinalBuildAt(
 }
 
 export function approveReviewAt(db: Database, orderId: string, head: string, operator: string): void {
-  const opened = reviewIn(db, orderId, operator, undefined, head);
+  const opened = reviewIn(db, orderId, undefined, head);
   recordOrderReviewArtifact(db, orderId, "## Outcome\n\nClean.", opened.reviewer);
-  closeOrderReview(db, opened.review, "closed", opened.reviewer);
+  closeOrderReview(db, opened.review, "closed");
   approveOrder(db, orderId, operator, undefined);
 }

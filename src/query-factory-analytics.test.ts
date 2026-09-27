@@ -17,7 +17,7 @@ describe("factory analytics", () => {
     );
     db.run(
       `INSERT INTO factory_order_event (order_id, ts, kind, artifact_id)
-       VALUES ('replanned', '2026-09-18T09:00:00.000Z', 'artifact_written', 1),
+       VALUES ('replanned', '2026-09-18T09:00:00.000Z', 'artifact_submitted', 1),
               ('replanned', '2026-09-18T09:02:00.000Z', 'artifact_approved', 1),
               ('replanned', '2026-09-18T09:05:00.000Z', 'artifact_returned', 1)`,
     );
@@ -49,9 +49,9 @@ describe("factory analytics", () => {
        VALUES ('order-analytics', ?, 'queued', NULL, ?),
               ('order-analytics', ?, 'queued', NULL, '{}'),
               ('order-analytics', ?, 'started', NULL, '{}'),
-              ('order-analytics', ?, 'artifact_written', 1, '{}'),
+              ('order-analytics', ?, 'artifact_submitted', 1, '{}'),
               ('order-analytics', ?, 'artifact_returned', 1, '{}'),
-              ('order-analytics', ?, 'artifact_written', 2, '{}'),
+              ('order-analytics', ?, 'artifact_submitted', 2, '{}'),
               ('order-analytics', ?, 'artifact_approved', 2, '{}'),
               ('order-analytics', ?, 'artifact_approved', 3, '{}'),
               ('order-analytics', ?, 'ship_failed', NULL, '{}'),

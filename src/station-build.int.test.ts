@@ -180,11 +180,11 @@ describe("builder station", () => {
     ).toEqual([
       { kind: "queued", worker: operator.name, station: null },
       { kind: "started", worker: operator.name, station: null },
-      { kind: "artifact_written", worker: planner, station: null },
+      { kind: "artifact_submitted", worker: planner, station: null },
       { kind: "artifact_approved", worker: operator.name, station: null },
       { kind: "commit_created", worker: outcome.builder, station: null },
       { kind: "check_finished", worker: operator.name, station: null },
-      { kind: "artifact_written", worker: outcome.builder, station: null },
+      { kind: "artifact_submitted", worker: outcome.builder, station: null },
     ]);
     expect(
       db
@@ -236,7 +236,7 @@ describe("builder station", () => {
       db
         .query(
           `SELECT a.body, a.head_sha, w.worker FROM factory_order_artifact a
-           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_written'
+           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_submitted'
            WHERE a.kind = 'build'`,
         )
         .all(),
@@ -754,19 +754,18 @@ describe("builder station", () => {
         parentWorker: operator.name,
         sessionId: `${orderId}-r`,
       });
-      const review = openReviewBy(
-        db,
-        orderId,
-        { reviewer: reviewer.name, baseSha: repo.sha, headSha: first },
-        reviewer.name,
-      );
+      const review = openReviewBy(db, orderId, {
+        reviewer: reviewer.name,
+        baseSha: repo.sha,
+        headSha: first,
+      });
       const finding = raiseOrderFinding(
         db,
         orderId,
         located({ dimension: "correctness", failure: "Count the actual order provenance." }),
         reviewer.name,
       );
-      closeOrderReview(db, review.id, "closed", reviewer.name);
+      closeOrderReview(db, review.id, "closed");
       return { db, operator, options, firstBuild, first, finding };
     }
 

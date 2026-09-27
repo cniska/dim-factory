@@ -317,7 +317,7 @@ describe("rebuilding a database an older schema wrote", () => {
     );
     db.run(
       `INSERT INTO factory_order_event (order_id, ts, kind, worker, artifact_id)
-       VALUES ('order-1', '2026-01-01T00:00:00Z', 'artifact_written', 'copper-1', 1)`,
+       VALUES ('order-1', '2026-01-01T00:00:00Z', 'artifact_submitted', 'copper-1', 1)`,
     );
 
     rebuild(db, env);
@@ -326,7 +326,7 @@ describe("rebuilding a database an older schema wrote", () => {
       db
         .query(
           `SELECT a.order_id, a.kind, a.body, w.worker FROM factory_order_artifact a
-           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_written'`,
+           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_submitted'`,
         )
         .all(),
     ).toEqual([

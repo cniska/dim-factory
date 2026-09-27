@@ -28,7 +28,7 @@ describe("the review findings a builder is handed", () => {
     attemptIn(db, "order-1", builder, operator);
     recordOrderCommit(db, "order-1", "head0001", builder, "feat: brief");
     approveFinalBuildAt(db, "order-1", "head0001", builder, operator);
-    const round = reviewIn(db, "order-1", operator);
+    const round = reviewIn(db, "order-1");
     const findings = answers.map((answer, index) => {
       const id = raiseOrderFinding(
         db,
@@ -45,7 +45,7 @@ describe("the review findings a builder is handed", () => {
       );
       return { id, answer };
     });
-    closeOrderReview(db, round.review, "closed", round.reviewer);
+    closeOrderReview(db, round.review, "closed");
     answerOrderFindings(
       db,
       "order-1",
@@ -89,8 +89,8 @@ describe("the review findings a builder is handed", () => {
   });
 
   test("hands over no work while the latest round is still open", () => {
-    const { db, operator } = reviewed([null]);
-    reviewIn(db, "order-1", operator);
+    const { db } = reviewed([null]);
+    reviewIn(db, "order-1");
     expect(reviewFindingsForBuild(db, "order-1")).toEqual({ work: [] });
   });
 });

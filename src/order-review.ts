@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { writeArtifactInTransaction } from "./order-artifacts";
-import { appendOrderEventInTransaction, now } from "./order-ledger";
+import { now } from "./order-ledger";
 import { assertOrderRunning } from "./order-status";
 import { workerIsOver } from "./worker";
 
@@ -17,7 +17,6 @@ export function openOrderReview(
   db: Database,
   orderId: string,
   round: { assignmentId: string; baseSha: string; headSha: string },
-  worker: string,
   at = now(),
 ): { id: number; round: number } {
   assertOrderRunning(db, orderId);
@@ -40,9 +39,7 @@ export function openOrderReview(
        VALUES (?, ?, NULL, ?, ?, ?, ?)`,
       [orderId, next, round.assignmentId, round.baseSha, round.headSha, at],
     );
-    const id = Number(written.lastInsertRowid);
-    appendOrderEventInTransaction(db, orderId, { kind: "review_opened", worker, reviewId: id }, at);
-    return { id, round: next };
+    return { id: Number(written.lastInsertRowid), round: next };
   })();
 }
 
@@ -50,32 +47,16 @@ export function closeOrderReview(
   db: Database,
   reviewId: number,
   outcome: "closed" | "aborted",
-  worker: string,
   at = now(),
-  reason?: string,
-): number {
+): void {
   const row = db
-    .query<{ order_id: string; closed_at: string | null }, [number]>(
-      "SELECT order_id, closed_at FROM factory_order_review WHERE id = ?",
-    )
+    .query<{ closed_at: string | null }, [number]>("SELECT closed_at FROM factory_order_review WHERE id = ?")
     .get(reviewId);
   if (!row) throw new ReviewNotOpen("review_unknown", `no review ${reviewId}`);
   if (row.closed_at !== null) {
     throw new ReviewNotOpen("review_closed", `review ${reviewId} closed at ${row.closed_at}`);
   }
-  return db.transaction(() => {
-    db.run("UPDATE factory_order_review SET closed_at = ?, outcome = ? WHERE id = ?", [
-      at,
-      outcome,
-      reviewId,
-    ]);
-    return appendOrderEventInTransaction(
-      db,
-      row.order_id,
-      { kind: "review_closed", worker, reviewId, reason },
-      at,
-    );
-  })();
+  db.run("UPDATE factory_order_review SET closed_at = ?, outcome = ? WHERE id = ?", [at, outcome, reviewId]);
 }
 
 export function recordOrderReviewArtifact(
@@ -136,9 +117,8 @@ export function openReviewOf(db: Database, orderId: string): { id: number; revie
     .get(orderId);
 }
 
-export function abortStrandedReview(db: Database, orderId: string, worker: string, at = now()): void {
+export function abortStrandedReview(db: Database, orderId: string, at = now()): void {
   const left = openReviewOf(db, orderId);
-  if (left && (!left.reviewer || workerIsOver(db, left.reviewer))) {
-    closeOrderReview(db, left.id, "aborted", worker, at, "its reviewer stopped without finishing");
-  }
+  if (left && (!left.reviewer || workerIsOver(db, left.reviewer)))
+    closeOrderReview(db, left.id, "aborted", at);
 }

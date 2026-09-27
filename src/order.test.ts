@@ -147,21 +147,16 @@ describe("factory order report records", () => {
       startPlannedBuild(database, id, operator.name);
       recordOrderCommit(database, id, "head", worker, "feat: built");
       approveFinalBuildAt(database, id, "head", worker, operator.name);
-      return openReviewBy(
-        database,
-        id,
-        { reviewer: reviewer.name, baseSha: "head", headSha: "head" },
-        operator.name,
-      );
+      return openReviewBy(database, id, { reviewer: reviewer.name, baseSha: "head", headSha: "head" });
     };
     const missing = open("order-review-artifact-missing");
-    closeOrderReview(database, missing.id, "closed", reviewer.name);
+    closeOrderReview(database, missing.id, "closed");
     expect(() => approveOrder(database, "order-review-artifact-missing", operator.name, undefined)).toThrow(
       expect.objectContaining({ code: "not_next" }),
     );
     const ready = open("order-review-artifact-ready");
     recordOrderReviewArtifact(database, "order-review-artifact-ready", "## Outcome\n\nClean.", reviewer.name);
-    closeOrderReview(database, ready.id, "closed", reviewer.name);
+    closeOrderReview(database, ready.id, "closed");
     expect(approveOrder(database, "order-review-artifact-ready", operator.name, undefined)).toBe("review");
     database.close();
   });
@@ -228,14 +223,14 @@ describe("factory order report records", () => {
       database
         .query(
           `SELECT a.kind, a.body, w.worker FROM factory_order_artifact a
-           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_written'
+           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_submitted'
            WHERE a.order_id = 'order-planned'`,
         )
         .get(),
     ).toEqual({ kind: "plan", body: "## outcome\n\nMove the order before building.", worker });
     expect(
       database.query("SELECT kind FROM factory_order_event WHERE order_id = 'order-planned'").all(),
-    ).toEqual([{ kind: "queued" }, { kind: "started" }, { kind: "artifact_written" }]);
+    ).toEqual([{ kind: "queued" }, { kind: "started" }, { kind: "artifact_submitted" }]);
     expect(orderState(database, "order-planned")).toEqual({ station: "plan", next: "approve" });
     database.close();
   });
@@ -491,11 +486,10 @@ describe("factory order report records", () => {
       database,
       "stranded-review",
       { assignmentId: unaccepted.id, baseSha: "base0000", headSha: "base0000" },
-      runner,
       "2026-09-22T12:01:00.000Z",
     );
 
-    abortStrandedReview(database, "stranded-review", operator, "2026-09-22T12:02:00.000Z");
+    abortStrandedReview(database, "stranded-review", "2026-09-22T12:02:00.000Z");
 
     expect(
       database
@@ -504,30 +498,14 @@ describe("factory order report records", () => {
         )
         .get(stranded.id),
     ).toEqual({ outcome: "aborted", closed_at: "2026-09-22T12:02:00.000Z" });
-    expect(
-      database
-        .query<
-          { kind: string; worker: string | null; review_id: number | null; reason: string | null },
-          [string]
-        >(
-          "SELECT kind, worker, review_id, reason FROM factory_order_event WHERE order_id = ? ORDER BY id DESC LIMIT 1",
-        )
-        .get("stranded-review"),
-    ).toEqual({
-      kind: "review_closed",
-      worker: operator,
-      review_id: stranded.id,
-      reason: "its reviewer stopped without finishing",
-    });
 
     const again = createWorkerAssignment(database, { parentWorker: operator, role: "reviewer" });
     expect(
-      openOrderReview(
-        database,
-        "stranded-review",
-        { assignmentId: again.id, baseSha: "base0000", headSha: "base0000" },
-        operator,
-      ).round,
+      openOrderReview(database, "stranded-review", {
+        assignmentId: again.id,
+        baseSha: "base0000",
+        headSha: "base0000",
+      }).round,
     ).toBe(2);
     database.close();
   });
@@ -541,12 +519,11 @@ describe("factory order report records", () => {
     queueOrder(database, { ...order, id: orderId }, runner);
     start(database, orderId, runner);
     const assignment = createWorkerAssignment(database, { parentWorker: runner, role: "reviewer" });
-    const round = openOrderReview(
-      database,
-      orderId,
-      { assignmentId: assignment.id, baseSha: "base0000", headSha: "base0000" },
-      runner,
-    );
+    const round = openOrderReview(database, orderId, {
+      assignmentId: assignment.id,
+      baseSha: "base0000",
+      headSha: "base0000",
+    });
     const reviewer = bootstrapWorker(database, {
       id: assignment.id,
       token: assignment.token,
@@ -564,12 +541,7 @@ describe("factory order report records", () => {
       pid: process.pid,
       sessionId: newWorkerSession("named-reviewer"),
     }).name;
-    const round = openReviewBy(
-      database,
-      orderId,
-      { reviewer, baseSha: "base0000", headSha: "base0000" },
-      runner,
-    );
+    const round = openReviewBy(database, orderId, { reviewer, baseSha: "base0000", headSha: "base0000" });
     return { id: round.id, reviewer };
   }
 
@@ -579,15 +551,9 @@ describe("factory order report records", () => {
   ])("a review leaves the round of a reviewer that %s and is still running open", (_, openRound) => {
     const database = db();
     const runner = workerIn(database, "operator");
-    const operator = workerIn(database, "operator");
     const round = openRound(database, "reviewer-running", runner);
-    const events = () =>
-      database
-        .query<{ n: number }, [string]>("SELECT count(*) AS n FROM factory_order_event WHERE order_id = ?")
-        .get("reviewer-running")?.n;
-    const before = events();
 
-    abortStrandedReview(database, "reviewer-running", operator);
+    abortStrandedReview(database, "reviewer-running");
 
     expect(
       database
@@ -596,7 +562,6 @@ describe("factory order report records", () => {
         )
         .get(round.id),
     ).toEqual({ closed_at: null });
-    expect(events()).toBe(before);
     database.close();
   });
 
@@ -606,10 +571,9 @@ describe("factory order report records", () => {
   ])("a review aborts the round of a reviewer that %s", (_, pid) => {
     const database = db();
     const runner = workerIn(database, "operator");
-    const operator = workerIn(database, "operator");
     const round = acceptedRound(database, "reviewer-gone", runner, pid);
 
-    abortStrandedReview(database, "reviewer-gone", operator);
+    abortStrandedReview(database, "reviewer-gone");
 
     expect(
       database
@@ -619,27 +583,19 @@ describe("factory order report records", () => {
     database.close();
   });
 
-  test("a review aborts the round of a reviewer that has ended, under the operator", () => {
+  test("a review aborts the round of a reviewer that has ended", () => {
     const database = db();
     const runner = workerIn(database, "operator");
-    const operator = workerIn(database, "operator");
     const round = acceptedRound(database, "reviewer-ended", runner);
     endWorker(database, round.reviewer);
 
-    abortStrandedReview(database, "reviewer-ended", operator);
+    abortStrandedReview(database, "reviewer-ended");
 
     expect(
       database
         .query<{ outcome: string | null }, [number]>("SELECT outcome FROM factory_order_review WHERE id = ?")
         .get(round.id),
     ).toEqual({ outcome: "aborted" });
-    expect(
-      database
-        .query<{ worker: string }, [number]>(
-          "SELECT worker FROM factory_order_event WHERE review_id = ? AND kind = 'review_closed'",
-        )
-        .get(round.id),
-    ).toEqual({ worker: operator });
     database.close();
   });
 
@@ -889,8 +845,8 @@ describe("factory order report records", () => {
 
     test("a review after a rebase that kept every patch reads on from the head it last read", () => {
       const { wt, database, first, second, trunkTip } = scene(unrelatedMove, { reviewed: false });
-      const read = reviewIn(database, "order-1", attemptOperator, undefined, second);
-      closeOrderReview(database, read.review, "closed", read.reviewer);
+      const read = reviewIn(database, "order-1", undefined, second);
+      closeOrderReview(database, read.review, "closed");
       const oldBase = git(wt, ["merge-base", "HEAD", "main"]);
       git(wt, ["rebase", "-q", "main"]);
       const head = git(wt, ["rev-parse", "HEAD"]);
@@ -918,8 +874,8 @@ describe("factory order report records", () => {
 
     test("a review after plan revision reads the whole order again", () => {
       const { wt, database, first, second } = scene(unrelatedMove, { reviewed: false });
-      const read = reviewIn(database, "order-1", attemptOperator, undefined, second);
-      closeOrderReview(database, read.review, "closed", read.reviewer);
+      const read = reviewIn(database, "order-1", undefined, second);
+      closeOrderReview(database, read.review, "closed");
       const oldPlan = database
         .query<{ id: number }, []>("SELECT id FROM factory_order_artifact WHERE kind = 'plan'")
         .get();
@@ -944,8 +900,8 @@ describe("factory order report records", () => {
 
     test("a review after a rebase that replayed commits past the head it last read reads the whole order", () => {
       const { wt, database, first, second, trunkTip } = scene(unrelatedMove, { reviewed: false });
-      const read = reviewIn(database, "order-1", attemptOperator, undefined, first);
-      closeOrderReview(database, read.review, "closed", read.reviewer);
+      const read = reviewIn(database, "order-1", undefined, first);
+      closeOrderReview(database, read.review, "closed");
       const oldBase = git(wt, ["merge-base", "HEAD", "main"]);
       git(wt, ["rebase", "-q", "main"]);
       const head = git(wt, ["rev-parse", "HEAD"]);
@@ -973,8 +929,8 @@ describe("factory order report records", () => {
 
     test("an aborted round read nothing, so the next round reads the whole order", () => {
       const { wt, database, first, second } = scene(unrelatedMove, { reviewed: false });
-      const read = reviewIn(database, "order-1", attemptOperator, undefined, second);
-      closeOrderReview(database, read.review, "aborted", read.reviewer);
+      const read = reviewIn(database, "order-1", undefined, second);
+      closeOrderReview(database, read.review, "aborted");
 
       expect(reviewRange(database, "order-1", wt)).toEqual({
         base: git(wt, ["rev-parse", `${first}^`]),
@@ -984,14 +940,8 @@ describe("factory order report records", () => {
 
     test("a review whose last head the order no longer carries, with no rebase to explain it, is refused", () => {
       const { wt, database } = scene(unrelatedMove);
-      const read = reviewIn(
-        database,
-        "order-1",
-        attemptOperator,
-        undefined,
-        "0000000000000000000000000000000000000000",
-      );
-      closeOrderReview(database, read.review, "closed", read.reviewer);
+      const read = reviewIn(database, "order-1", undefined, "0000000000000000000000000000000000000000");
+      closeOrderReview(database, read.review, "closed");
 
       expect(() => reviewRange(database, "order-1", wt)).toThrow(/no longer carries/);
     });
@@ -1306,7 +1256,7 @@ describe("factory order report records", () => {
       database,
       "order-1",
       located({ dimension: "tests", failure: "coverage is present" }),
-      reviewIn(database, "order-1", worker).reviewer,
+      reviewIn(database, "order-1").reviewer,
       "2026-09-18T10:04:00.000Z",
     );
     answerOrderFindings(

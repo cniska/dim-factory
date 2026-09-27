@@ -45,14 +45,14 @@ function answer(f: Floor, finding: number, given: "fixed" | "refused", run = "bu
 }
 
 function raised(f: Floor): number {
-  const round = reviewIn(f.db, "order-1", f.operator);
+  const round = reviewIn(f.db, "order-1");
   const finding = raiseOrderFinding(
     f.db,
     "order-1",
     located({ dimension: "tests", failure: "no test holds the gate" }),
     round.reviewer,
   );
-  closeOrderReview(f.db, round.review, "closed", round.reviewer);
+  closeOrderReview(f.db, round.review, "closed");
   return finding;
 }
 
@@ -145,9 +145,9 @@ describe("closing a round", () => {
   test("waits on review approval when a round after the answers raised nothing", () => {
     const f = floor();
     answer(f, raised(f), "refused");
-    const round = reviewIn(f.db, "order-1", f.operator);
+    const round = reviewIn(f.db, "order-1");
     recordOrderReviewArtifact(f.db, "order-1", "## Outcome\n\nClean.", round.reviewer);
-    closeOrderReview(f.db, round.review, "closed", round.reviewer);
+    closeOrderReview(f.db, round.review, "closed");
     expect(next(f)).toBe("approve at review");
   });
 });

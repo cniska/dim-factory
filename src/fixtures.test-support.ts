@@ -5,7 +5,6 @@ import { dirname, join } from "node:path";
 import { installHooks } from "./hooks";
 import { startAttempt } from "./order-attempt";
 import type { OrderCheck } from "./order-evidence";
-import { appendOrderEventInTransaction } from "./order-ledger";
 import type { Env } from "./paths";
 import { REVIEW_DIMENSIONS, type ReviewFinding } from "./station-review-artifact";
 import { mintWorker, newWorkerSession, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./worker";
@@ -31,36 +30,30 @@ export function openReviewBy(
   db: Database,
   orderId: string,
   round: { reviewer: string; baseSha: string; headSha: string },
-  worker: string,
   at = new Date().toISOString(),
 ): { id: number; reviewer: string } {
-  return db.transaction(() => {
-    const next =
-      (db
-        .query<{ n: number }, [string]>(
-          "SELECT coalesce(max(round), 0) AS n FROM factory_order_review WHERE order_id = ?",
-        )
-        .get(orderId)?.n as number) + 1;
-    const written = db.run(
-      `INSERT INTO factory_order_review (order_id, round, reviewer, base_sha, head_sha, opened_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [orderId, next, round.reviewer, round.baseSha, round.headSha, at],
-    );
-    const id = Number(written.lastInsertRowid);
-    appendOrderEventInTransaction(db, orderId, { kind: "review_opened", worker, reviewId: id }, at);
-    return { id, reviewer: round.reviewer };
-  })();
+  const next =
+    (db
+      .query<{ n: number }, [string]>(
+        "SELECT coalesce(max(round), 0) AS n FROM factory_order_review WHERE order_id = ?",
+      )
+      .get(orderId)?.n as number) + 1;
+  const written = db.run(
+    `INSERT INTO factory_order_review (order_id, round, reviewer, base_sha, head_sha, opened_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [orderId, next, round.reviewer, round.baseSha, round.headSha, at],
+  );
+  return { id: Number(written.lastInsertRowid), reviewer: round.reviewer };
 }
 
 export function reviewIn(
   db: Database,
   orderId: string,
-  by: string,
   at?: string,
   sha = "base0000",
 ): { review: number; reviewer: string } {
   const reviewer = mintWorker(db, { role: "reviewer", sessionId: newWorkerSession("test-reviewer") }).name;
-  const opened = openReviewBy(db, orderId, { reviewer, baseSha: sha, headSha: sha }, by, at);
+  const opened = openReviewBy(db, orderId, { reviewer, baseSha: sha, headSha: sha }, at);
   return { review: opened.id, reviewer };
 }
 

@@ -40,7 +40,7 @@ function record() {
         [ORDER, kind, revision(kind), headSha, reviewId],
       ).lastInsertRowid,
     );
-    event("artifact_written", { artifact_id: id });
+    event("artifact_submitted", { artifact_id: id });
     return id;
   };
   const approve = (artifactId: number): void => event("artifact_approved", { artifact_id: artifactId });

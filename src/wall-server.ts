@@ -139,7 +139,7 @@ function artifactPanel(
               EXISTS (SELECT 1 FROM factory_order_event e
                 WHERE e.kind = 'artifact_approved' AND e.artifact_id = a.id) AS approved
        FROM factory_order_artifact a
-       JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_written'
+       JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_submitted'
        JOIN factory_worker fw ON fw.name = w.worker
        WHERE a.order_id = ? AND a.kind = ? ORDER BY a.revision DESC LIMIT 1`,
     )

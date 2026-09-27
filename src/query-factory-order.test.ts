@@ -75,14 +75,14 @@ describe("factory order query", () => {
     const db = floor();
     queueOrder(db, { id: "order-reopened", project: "cniska/dim-factory", title: "Reopen" }, worker);
     building(db, "order-reopened");
-    const first = reviewIn(db, "order-reopened", worker);
+    const first = reviewIn(db, "order-reopened");
     const finding = raiseOrderFinding(
       db,
       "order-reopened",
       located({ dimension: "tests", failure: "no test" }),
       first.reviewer,
     );
-    closeOrderReview(db, first.review, "closed", first.reviewer);
+    closeOrderReview(db, first.review, "closed");
     const answer = (run: string) =>
       answerOrderFindings(
         db,
@@ -115,9 +115,9 @@ describe("factory order query", () => {
     ] as const) {
       queueOrder(db, { id, project: "cniska/dim-factory", title: id }, worker);
       building(db, id);
-      const round = reviewIn(db, id, worker);
+      const round = reviewIn(db, id);
       const finding = raiseOrderFinding(db, id, located({ dimension, failure: `${id} gap` }), round.reviewer);
-      closeOrderReview(db, round.review, "closed", round.reviewer);
+      closeOrderReview(db, round.review, "closed");
       if (answered) {
         answerOrderFindings(db, id, `build-${id}`, [{ finding, answer: "fixed", resolution: null }], worker);
       }
@@ -179,7 +179,7 @@ describe("factory order query", () => {
       worker,
       "2026-09-18T09:58:00.000Z",
     );
-    const reviewer = reviewIn(db, "order-status", worker, "2026-09-18T10:03:30.000Z").reviewer;
+    const reviewer = reviewIn(db, "order-status", "2026-09-18T10:03:30.000Z").reviewer;
     for (const [dimension, failure] of [
       ["tests", "holds"],
       ["docs", "updated"],
@@ -339,7 +339,7 @@ describe("factory order query", () => {
       db,
       "order-123",
       located({ dimension: "tests", failure: "holds" }),
-      reviewIn(db, "order-123", worker, "2026-09-18T10:02:30.000Z").reviewer,
+      reviewIn(db, "order-123", "2026-09-18T10:02:30.000Z").reviewer,
       "2026-09-18T10:03:00.000Z",
     );
     answerOrderFindings(
@@ -378,7 +378,6 @@ describe("factory order query", () => {
       "check",
       "event",
       "artifact",
-      "event",
       "event",
       "event",
       "finding",

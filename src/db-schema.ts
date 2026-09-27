@@ -5,7 +5,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { STATIONS_SQL } from "./station";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 71;
+export const SCHEMA_VERSION = 72;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -460,7 +460,7 @@ CREATE TABLE IF NOT EXISTS factory_order_review (
 );
 
 -- What a station handed back, one row per revision. Who wrote it and when is its
--- artifact_written event, and an approval or a return is an event naming it, so the row
+-- artifact_submitted event, and an approval or a return is an event naming it, so the row
 -- holds only what was written. A Build artifact names the commit it describes and a
 -- Review artifact the round it reports, which also gives it the head that round read.
 CREATE TABLE IF NOT EXISTS factory_order_artifact (

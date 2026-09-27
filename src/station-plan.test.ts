@@ -104,7 +104,7 @@ describe("planner station", () => {
       db
         .query(
           `SELECT a.kind, a.body, w.worker FROM factory_order_artifact a
-           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_written'`,
+           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_submitted'`,
         )
         .get(),
     ).toEqual({
@@ -124,7 +124,7 @@ describe("planner station", () => {
     expect(db.query("SELECT kind FROM factory_order_event WHERE order_id = 'planner-order'").all()).toEqual([
       { kind: "queued" },
       { kind: "started" },
-      { kind: "artifact_written" },
+      { kind: "artifact_submitted" },
     ]);
     expect(orderStatus(db, "planner-order")).toBe("running");
     db.close();

@@ -67,28 +67,21 @@ export function reviewRange(db: Database, orderId: string, dir: string): { base:
       `${head.out} is not a commit order ${orderId} recorded; only a build turn's commit can be reviewed`,
     );
   }
-  const planApproval =
-    db
-      .query<{ id: number }, [string]>(
-        `SELECT coalesce(max(e.id), 0) AS id FROM factory_order_event e
-       JOIN factory_order_artifact a ON a.id = e.artifact_id
-       WHERE e.order_id = ? AND e.kind = 'artifact_approved' AND a.kind = 'plan'`,
-      )
-      .get(orderId)?.id ?? 0;
   const last = db
-    .query<{ head_sha: string }, [string, number]>(
+    .query<{ head_sha: string }, [string]>(
       `SELECT r.head_sha FROM factory_order_review r
        WHERE r.order_id = ? AND r.outcome = 'closed' AND NOT EXISTS (
          SELECT 1 FROM factory_order_artifact a
          JOIN factory_order_event e ON e.artifact_id = a.id AND e.kind = 'artifact_returned'
          WHERE a.review_id = r.id
-       ) AND EXISTS (
-         SELECT 1 FROM factory_order_event opened
-         WHERE opened.kind = 'review_opened' AND opened.review_id = r.id AND opened.id > ?
+       ) AND r.opened_at > (
+         SELECT coalesce(max(e.ts), '') FROM factory_order_event e
+         JOIN factory_order_artifact a ON a.id = e.artifact_id
+         WHERE e.order_id = r.order_id AND e.kind = 'artifact_approved' AND a.kind = 'plan'
        )
        ORDER BY r.round DESC LIMIT 1`,
     )
-    .get(orderId, planApproval);
+    .get(orderId);
   if (last) {
     const carried = carriedThroughRewrites(db, orderId, last.head_sha);
     if (carried && current.some((row) => carried.startsWith(row.sha)))
@@ -190,20 +183,9 @@ export function reviewerBrief(
 
 type ReviewedRound = { id: number; base: string; head: string; dir: string };
 
-function openRound(
-  db: Database,
-  orderId: string,
-  dir: string,
-  assignmentId: string,
-  worker: string,
-): ReviewedRound {
+function openRound(db: Database, orderId: string, dir: string, assignmentId: string): ReviewedRound {
   const range = reviewRange(db, orderId, dir);
-  const round = openOrderReview(
-    db,
-    orderId,
-    { assignmentId, baseSha: range.base, headSha: range.head },
-    worker,
-  );
+  const round = openOrderReview(db, orderId, { assignmentId, baseSha: range.base, headSha: range.head });
   return { id: round.id, ...range, dir };
 }
 
@@ -296,7 +278,7 @@ export async function runOrderReviewLive(
   if (!order) throw new Error(`order not found: ${orderId}`);
   assertOperator(db, worker, "delegate review");
   assertNext(db, orderId, "review");
-  abortStrandedReview(db, orderId, worker);
+  abortStrandedReview(db, orderId);
   const dir = stationDirectory(options.dir, orderId);
   const harness = options.harness;
   const runId = `review-${crypto.randomUUID()}`;
@@ -330,7 +312,7 @@ export async function runOrderReviewLive(
         claimed = true;
       },
       request: ({ orderWorker: assigned, returned }) => {
-        opened = openRound(db, orderId, dir, assigned.assignment.id, worker);
+        opened = openRound(db, orderId, dir, assigned.assignment.id);
         return reviewerRequest(db, order, opened, returned);
       },
     });
@@ -339,7 +321,7 @@ export async function runOrderReviewLive(
     if (opened) {
       const reason = workerFailureReason("reviewer did not finish reviewing", failure, undefined);
       try {
-        closeOrderReview(db, opened.id, "aborted", worker, undefined, reason);
+        closeOrderReview(db, opened.id, "aborted");
         if (claimed) finishAttempt(db, orderId, "failed", reason, new Date().toISOString());
       } catch {
         throw error;
@@ -357,7 +339,7 @@ export async function runOrderReviewLive(
       turn.run.output,
       turn.run.failureReason,
     );
-    closeOrderReview(db, opened.id, "aborted", worker, undefined, failure);
+    closeOrderReview(db, opened.id, "aborted");
     if (claimed) finishAttempt(db, orderId, "failed", failure, new Date().toISOString());
     else appendOrderEvent(db, orderId, { kind: "failed", station: "review", reason: failure });
     throw new Error(failure);
@@ -370,7 +352,7 @@ export async function runOrderReviewLive(
       ? workerFailureReason("reviewer did not finish reviewing", turn.run.output, turn.run.failureReason)
       : undefined;
   if (outcome === "aborted") {
-    closeOrderReview(db, opened.id, outcome, worker, undefined, reason);
+    closeOrderReview(db, opened.id, outcome);
     finishAttempt(db, orderId, "failed", reason, new Date().toISOString());
     return { review: opened.id, reviewer, findings: 0, outcome };
   }
@@ -379,11 +361,11 @@ export async function runOrderReviewLive(
     findings = recordReviewResult(db, orderId, reviewer, turn.run.output, opened);
   } catch (error) {
     const failure = error instanceof Error ? error.message : String(error);
-    closeOrderReview(db, opened.id, "aborted", worker, undefined, failure);
+    closeOrderReview(db, opened.id, "aborted");
     finishAttempt(db, orderId, "failed", failure, new Date().toISOString());
     throw error;
   }
-  closeOrderReview(db, opened.id, outcome, worker, undefined, reason);
+  closeOrderReview(db, opened.id, outcome);
   finishAttempt(db, orderId, "succeeded", undefined, new Date().toISOString());
   return { review: opened.id, reviewer, findings, outcome };
 }

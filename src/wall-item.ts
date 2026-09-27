@@ -6,14 +6,12 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
   started: "Order started",
   station_started: "Station started",
   priority_changed: "Priority changed",
-  artifact_written: "Artifact written",
+  artifact_submitted: "Artifact submitted",
   artifact_approved: "Artifact approved",
   artifact_returned: "Artifact returned",
   commit_created: "Commit",
   commit_rewritten: "Commit rebased",
   check_finished: "Check",
-  review_opened: "Review opened",
-  review_closed: "Review closed",
   finding_raised: "Finding raised",
   finding_answered: "Finding answered",
   ship_failed: "Ship failed",
@@ -25,7 +23,7 @@ export const ITEM_KIND_LABELS: Record<WallItemKind, string> = {
 
 const STATION_VERBS: Partial<Record<WallItemKind, string>> = {
   station_started: "started",
-  artifact_written: "written",
+  artifact_submitted: "submitted",
   artifact_approved: "approved",
   artifact_returned: "returned",
 };

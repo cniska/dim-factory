@@ -251,7 +251,7 @@ describe("build approval integration", () => {
       { kind: "queued", worker: operator.name, commit_sha: null, artifact_head: null, reason: null },
       { kind: "started", worker: operator.name, commit_sha: null, artifact_head: null, reason: null },
       {
-        kind: "artifact_written",
+        kind: "artifact_submitted",
         worker: operator.name,
         commit_sha: null,
         artifact_head: null,
@@ -273,7 +273,7 @@ describe("build approval integration", () => {
       },
       { kind: "check_finished", worker: builder.name, commit_sha: null, artifact_head: null, reason: null },
       {
-        kind: "artifact_written",
+        kind: "artifact_submitted",
         worker: builder.name,
         commit_sha: null,
         artifact_head: repo.sha,
@@ -295,7 +295,7 @@ describe("build approval integration", () => {
       },
       { kind: "check_finished", worker: builder.name, commit_sha: null, artifact_head: null, reason: null },
       {
-        kind: "artifact_written",
+        kind: "artifact_submitted",
         worker: builder.name,
         commit_sha: null,
         artifact_head: "new-head",

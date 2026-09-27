@@ -132,7 +132,7 @@ export const order: Query = {
                 cast(a.revision AS TEXT) AS status,
                 w.worker || coalesce(' @ ' || a.head_sha, '') AS subject, a.body AS evidence
          FROM factory_order_artifact a
-         JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_written'
+         JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_submitted'
          WHERE a.order_id = ? ORDER BY a.kind, a.revision`,
         [id],
       ),
@@ -411,7 +411,7 @@ export const factoryAnalytics: Query = {
         AND decided.id = (SELECT min(first.id) FROM factory_order_event first
                           WHERE first.artifact_id = written.artifact_id
                             AND first.kind IN ('artifact_approved', 'artifact_returned'))
-       WHERE written.kind = 'artifact_written'${arg ? " AND written.order_id LIKE ? || '%'" : ""}`,
+       WHERE written.kind = 'artifact_submitted'${arg ? " AND written.order_id LIKE ? || '%'" : ""}`,
       ...params,
     );
     rows.push(metric("approval_wait_seconds", approvalWait));

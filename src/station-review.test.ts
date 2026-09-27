@@ -208,7 +208,7 @@ describe("a review round", () => {
       db
         .query(
           `SELECT a.revision, w.worker FROM factory_order_artifact a
-           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_written'
+           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_submitted'
            WHERE a.kind = 'review' ORDER BY a.revision`,
         )
         .all(),
@@ -225,9 +225,9 @@ describe("a review round", () => {
         )
         .all(),
     ).toEqual([
-      { kind: "artifact_written", worker: done.reviewer, revision: 1 },
+      { kind: "artifact_submitted", worker: done.reviewer, revision: 1 },
       { kind: "artifact_returned", worker: operator, revision: 1 },
-      { kind: "artifact_written", worker: done.reviewer, revision: 2 },
+      { kind: "artifact_submitted", worker: done.reviewer, revision: 2 },
       { kind: "artifact_approved", worker: operator, revision: 2 },
     ]);
   });
@@ -331,10 +331,10 @@ describe("a review round", () => {
     expect(outcome).toMatchObject({ findings: 0, outcome: "aborted" });
     expect(
       db
-        .query<{ reason: string | null }, [number]>(
-          "SELECT reason FROM factory_order_event WHERE review_id = ? AND kind = 'review_closed'",
+        .query<{ reason: string | null }, []>(
+          "SELECT reason FROM factory_order_attempt WHERE station = 'review' AND kind = 'finished'",
         )
-        .get(outcome.review),
+        .get(),
     ).toEqual({ reason: expect.stringContaining("fake process crashed") });
     const reviewer = db
       .query<{ reviewer: string }, [number]>("SELECT reviewer FROM factory_order_review WHERE id = ?")
@@ -453,7 +453,7 @@ describe("a review round", () => {
       db
         .query(
           `SELECT a.body, w.worker FROM factory_order_artifact a
-           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_written'
+           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_submitted'
            WHERE a.kind = 'review'`,
         )
         .get(),

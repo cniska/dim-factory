@@ -43,7 +43,7 @@ export function writeArtifactInTransaction(
     [orderId, artifact.kind, revision, artifact.body, artifact.headSha, artifact.reviewId],
   );
   const artifactId = Number(written.lastInsertRowid);
-  appendOrderEventInTransaction(db, orderId, { kind: "artifact_written", worker, artifactId }, at);
+  appendOrderEventInTransaction(db, orderId, { kind: "artifact_submitted", worker, artifactId }, at);
   return artifactId;
 }
 
@@ -68,13 +68,13 @@ export function returnedOrderArtifact(
          AND NOT EXISTS (
            SELECT 1 FROM factory_order_event w
            JOIN factory_order_artifact wa ON wa.id = w.artifact_id
-           WHERE w.order_id = e.order_id AND w.kind = 'artifact_written' AND wa.kind = a.kind
+           WHERE w.order_id = e.order_id AND w.kind = 'artifact_submitted' AND wa.kind = a.kind
              AND w.id > e.id
          )
          AND (a.kind <> 'review' OR NOT EXISTS (
            SELECT 1 FROM factory_order_event w
            JOIN factory_order_artifact wa ON wa.id = w.artifact_id
-           WHERE w.order_id = e.order_id AND w.kind = 'artifact_written' AND wa.kind = 'build'
+           WHERE w.order_id = e.order_id AND w.kind = 'artifact_submitted' AND wa.kind = 'build'
              AND w.id > e.id
          ))
        ORDER BY e.id DESC LIMIT 1`,
