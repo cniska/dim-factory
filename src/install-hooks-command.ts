@@ -6,8 +6,7 @@ import { WRITE_NEXT } from "./install-write";
 export const installHooksCommand: Command = {
   name: "install-hooks",
   usage: "usage: dim install-hooks [--write]",
-  summary:
-    "show the session hooks to add to both tools' config (--write applies them, copying each config aside)",
+  summary: "show the session hooks to add (--write applies them, copying each config aside)",
   run(args) {
     const plans = planHooks();
     const pending = plans.filter((plan) => plan.state !== "installed");

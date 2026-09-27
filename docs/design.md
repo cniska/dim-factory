@@ -55,13 +55,15 @@ dim sync: drain the spool → read changed files → derive session ends
 
 ## Hooks
 
-`dim install-hooks` installs these for Claude Code and Codex ([`src/hooks.ts`](../src/hooks.ts)). Grok sessions are read from the files above and do not spool hook events.
+`dim install-hooks` installs a spool hook for Claude Code, Codex, and Grok Build ([`src/hooks.ts`](../src/hooks.ts)). Claude Code and Codex also get `dim wake` on `SessionStart` and `dim format-edit` on `PostToolUse`.
 
 | Event | What it does |
 |---|---|
-| `SessionStart` | spools the start source and model; `dim wake` prints declared repo commands and records the guidance in force |
+| `SessionStart` | spools the start source and model. On Claude Code and Codex, `dim wake` prints declared repo commands and records the guidance in force |
 | `SessionEnd` | spools the end time and reason, which a transcript lacks |
-| `PostToolUse` | spools the tool call with its payload; `dim format-edit` runs the repo's declared format task in the checkout an edit touched ([`src/format-edit.ts`](../src/format-edit.ts)), bounded and failing open |
+| `PostToolUse` | spools the tool call with its payload. On Claude Code and Codex, `dim format-edit` runs the repo's declared format task in the checkout an edit touched ([`src/format-edit.ts`](../src/format-edit.ts)), bounded and failing open |
+
+Grok's file is `~/.grok/hooks/dim.json`. `GROK_HOME` overrides `~/.grok`. A Grok event names the session as `sessionId`. The model, when the event carries one, is `modelId`. The reader uses those when `session_id` and `model` are absent.
 
 - **The spool hook never opens the database.** It writes one file per event and exits 0, so a session never waits on `sessions.db`; `sync` drains the spool into `hook_event`.
 - **`hook_event` is never re-derived**, because a hook fires once. It has no foreign key to `session`, so an event that arrives before its transcript waits for it. A spool file that cannot be placed moves to `spool/unreadable/`, since it is the only copy.

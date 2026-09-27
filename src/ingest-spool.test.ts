@@ -223,6 +223,31 @@ describe("spool", () => {
       closeDb(db);
     }
   });
+
+  test("reads a session id and model named the way Grok names them", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    spool(env, "grok", "1789000000000000000", {
+      sessionId: SESSION,
+      hook_event_name: "SessionEnd",
+      reason: "shutdown",
+      modelId: "grok-4",
+      cwd: "/Users/x/code/demo",
+    });
+    const db = openDb(dbPath(env));
+    try {
+      expect(drainSpool(db, env)).toMatchObject({ applied: 1, unreadable: 0 });
+      expect(db.prepare("SELECT session_id, event, reason, model, cwd FROM hook_event").get()).toEqual({
+        session_id: SESSION,
+        event: "session_end",
+        reason: "shutdown",
+        model: "grok-4",
+        cwd: "/Users/x/code/demo",
+      });
+    } finally {
+      closeDb(db);
+    }
+  });
 });
 
 describe("installHooks", () => {
@@ -240,6 +265,7 @@ describe("installHooks", () => {
       DIM_HOME: join(dir, "home"),
       DIM_CLAUDE_PROJECTS: join(dir, ".claude", "projects"),
       DIM_CODEX_DIR: join(dir, ".codex"),
+      GROK_HOME: join(dir, ".grok"),
     };
   }
 
@@ -412,12 +438,30 @@ describe("installHooks", () => {
     expect(existsSync(paths.claude)).toBe(false);
   });
 
+  test("installs grok spool hooks and not the hooks that speak into the session", () => {
+    const dir = newRoot();
+    const env = hookEnv(dir);
+    installHooks(env);
+    const after = JSON.parse(readFileSync(join(dir, ".grok", "hooks", "dim.json"), "utf8")) as {
+      hooks: Record<string, { hooks: { command: string }[] }[]>;
+    };
+    expect(Object.keys(after.hooks).sort()).toEqual(["PostToolUse", "SessionEnd", "SessionStart"]);
+    expect(after.hooks.SessionStart).toHaveLength(1);
+    expect(after.hooks.SessionEnd).toHaveLength(1);
+    expect(after.hooks.PostToolUse).toHaveLength(1);
+    expect(after.hooks.SessionStart?.[0]?.hooks[0]?.command).toBe(hookCommand("grok", env));
+    expect(after.hooks.SessionEnd?.[0]?.hooks[0]?.command).toBe(hookCommand("grok", env));
+    expect(after.hooks.PostToolUse?.[0]?.hooks[0]?.command).toBe(hookCommand("grok", env));
+    expect(JSON.stringify(after)).not.toContain("wake");
+    expect(JSON.stringify(after)).not.toContain("format-edit");
+  });
+
   test("installing twice adds one hook", () => {
     const dir = newRoot();
     const env = hookEnv(dir);
     installHooks(env);
     const first = readFileSync(configs(env).claude, "utf8");
-    expect(installHooks(env)).toMatchObject({ written: [], alreadyPresent: 10 });
+    expect(installHooks(env)).toMatchObject({ written: [], alreadyPresent: 13 });
     expect(readFileSync(configs(env).claude, "utf8")).toBe(first);
     expect(planHooks(env).every((p) => p.state === "installed")).toBe(true);
   });

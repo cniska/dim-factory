@@ -5,7 +5,7 @@ import { appendToJsoncArray, parseJsonc, setJsoncValue } from "./config-jsonc";
 import { readJsonc, readJsoncText, writeJsoncFile } from "./config-jsonc-file";
 import { toolSpoolDir } from "./ingest-spool";
 import { HOOK_TOOLS, type Tool } from "./ingest-tools";
-import { claudeProjectsDir, codexDir, type Env } from "./paths";
+import { claudeProjectsDir, codexDir, type Env, grokDir } from "./paths";
 
 export const HOOK_CONTRACT_VERSION = 2;
 
@@ -70,9 +70,9 @@ export function dimPath(): string {
 }
 
 export function hookConfigPath(tool: Tool, env: Env = process.env): string {
-  return tool === "claude"
-    ? join(dirname(claudeProjectsDir(env)), "settings.json")
-    : join(codexDir(env), "hooks.json");
+  if (tool === "claude") return join(dirname(claudeProjectsDir(env)), "settings.json");
+  if (tool === "grok") return join(grokDir(env), "hooks", "dim.json");
+  return join(codexDir(env), "hooks.json");
 }
 
 export type HookEntry = { matcher?: string; hooks?: { type?: string; command?: string; timeout?: number }[] };
@@ -81,11 +81,17 @@ type HookConfig = { hooks?: Record<string, HookEntry[]> };
 export type WantedHook = { event: string; kind: HookKind; command: string };
 
 export function wantedHooks(tool: Tool, env: Env = process.env): WantedHook[] {
+  const spool = (event: string): WantedHook => ({
+    event,
+    kind: "spool",
+    command: hookCommand(tool, env),
+  });
+  if (tool === "grok") return [spool("SessionStart"), spool("SessionEnd"), spool("PostToolUse")];
   return [
-    { event: "SessionStart", kind: "spool", command: hookCommand(tool, env) },
+    spool("SessionStart"),
     { event: "SessionStart", kind: "wake", command: wakeCommand(tool) },
-    { event: "SessionEnd", kind: "spool", command: hookCommand(tool, env) },
-    { event: "PostToolUse", kind: "spool", command: hookCommand(tool, env) },
+    spool("SessionEnd"),
+    spool("PostToolUse"),
     { event: "PostToolUse", kind: "format", command: formatEditCommand() },
   ];
 }

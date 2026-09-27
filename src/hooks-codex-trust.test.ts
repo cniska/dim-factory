@@ -17,7 +17,11 @@ function codexEnv(hooksJson: (env: Env) => string): Env {
   const root = mkdtempSync(join(tmpdir(), "dim-codex-trust-"));
   roots.push(root);
   const codexDir = join(root, ".codex");
-  const env: Env = { DIM_HOME: join(root, "home"), DIM_CODEX_DIR: codexDir };
+  const env: Env = {
+    DIM_HOME: join(root, "home"),
+    DIM_CODEX_DIR: codexDir,
+    GROK_HOME: join(root, ".grok"),
+  };
   mkdirSync(codexDir, { recursive: true });
   writeFileSync(join(codexDir, "hooks.json"), hooksJson(env));
   return env;

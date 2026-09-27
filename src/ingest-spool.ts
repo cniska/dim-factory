@@ -30,12 +30,18 @@ export function ensureSpoolDirs(env: Env = process.env): void {
 
 type HookPayload = {
   session_id?: string;
+  sessionId?: string;
   hook_event_name?: string;
   cwd?: string;
   source?: string;
   reason?: string;
   model?: string;
+  modelId?: string;
 };
+
+function text(value: string | undefined): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
 
 function eventOf(name: string | undefined): "session_start" | "session_end" | "post_tool_use" | undefined {
   if (name === "SessionStart") return "session_start";
@@ -75,7 +81,8 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
         }
       }
       const event = eventOf(payload?.hook_event_name);
-      if (!match || !payload?.session_id || !event) {
+      const sessionId = text(payload?.session_id) ?? text(payload?.sessionId);
+      if (!match || !sessionId || !event) {
         renameSync(path, join(spoolDir(env), "unreadable", name));
         report.unreadable += 1;
         continue;
@@ -83,18 +90,18 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
       const ts = new Date(Number(match[1]) / 1e6).toISOString();
       const worker = match[3];
       if (worker) {
-        sighting.run({ $worker: worker, $sessionId: payload.session_id as string, $seenAt: ts });
+        sighting.run({ $worker: worker, $sessionId: sessionId, $seenAt: ts });
       }
       const changes = db.transaction(() =>
         insert.run({
           $tool: tool,
-          $sessionId: payload.session_id as string,
+          $sessionId: sessionId,
           $event: event,
           $ts: ts,
-          $source: payload.source ?? null,
-          $reason: payload.reason ?? null,
-          $model: payload.model ?? null,
-          $cwd: payload.cwd ?? null,
+          $source: payload?.source ?? null,
+          $reason: payload?.reason ?? null,
+          $model: text(payload?.model) ?? text(payload?.modelId) ?? null,
+          $cwd: payload?.cwd ?? null,
           $payload: raw,
         }),
       )();

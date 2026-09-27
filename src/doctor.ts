@@ -59,7 +59,7 @@ function readHooks(env: Env): HookRead {
 function sessionHooks(hooks: HookRead): Health {
   if (!hooks.read) return unreadable("hooks", hooks.error);
   if (hooks.missing.length === 0 && hooks.stale.length === 0) {
-    return { name: "hooks", state: "ok", detail: "installed in both tools" };
+    return { name: "hooks", state: "ok", detail: "installed" };
   }
   const counts = [
     hooks.missing.length > 0 &&
