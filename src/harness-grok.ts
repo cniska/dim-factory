@@ -124,7 +124,6 @@ function editDenies(request: HarnessRequest): string[] {
 }
 
 function grokFlags(request: HarnessRequest): string[] {
-  const edits = request.capabilities.includes("edit-files");
   return [
     "--no-auto-update",
     "--output-format",
@@ -132,7 +131,7 @@ function grokFlags(request: HarnessRequest): string[] {
     "--permission-mode",
     "bypassPermissions",
     "--sandbox",
-    edits ? "workspace" : "read-only",
+    "workspace",
     ...editDenies(request),
     ...(request.outputSchema ? ["--json-schema", readFileSync(request.outputSchema, "utf8")] : []),
     "--model",

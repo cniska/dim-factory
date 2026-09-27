@@ -104,7 +104,7 @@ Around it:
 - **Station attempts** start when a planner, builder, or reviewer run receives its worker identity. The runner records the outcome; if a worker stops without one, the next run records that attempt as failed before starting. A failure before assignment records the station and reason with no worker.
 - **A worker is over when its process stops answering** a signal ([`src/worker.ts`](../src/worker.ts)); nothing needs to be awake to notice.
 - **A worker is started without the operator's identity** or session, and without an API key, so it is never billed per token. A Claude worker cannot start background work.
-- **Sandboxes.** No worker gets the checkout's git metadata. Codex builders run `workspace-write`, everything else read-only. Claude workers run in its Bash sandbox with `.git` denied. Grok builders run the `workspace` sandbox and other Grok workers `read-only`; edit tools are denied on `.git`, and on every path when the worker cannot edit.
+- **Sandboxes.** No worker gets the checkout's git metadata. Codex builders run `workspace-write`, everything else read-only. Claude workers run in its Bash sandbox with `.git` denied. Grok workers run the `workspace` sandbox. A Grok worker that cannot edit is denied the edit tools, and every Grok worker is denied those tools on `.git`.
 
 ## Roles and tiers
 

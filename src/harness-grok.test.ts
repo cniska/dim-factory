@@ -96,7 +96,7 @@ describe("the Grok harness adapter", () => {
     ]);
   });
 
-  test("runs a builder in the workspace sandbox and a reader in the read-only one", () => {
+  test("runs every worker in the workspace sandbox and denies edits to a reader", () => {
     const builder = commandLine(grokProcess, { ...request, capabilities: ["edit-files"] });
     const reader = commandLine(grokProcess, request);
 
@@ -110,7 +110,7 @@ describe("the Grok harness adapter", () => {
       "--sandbox",
       "workspace",
     ]);
-    expect(reader[reader.indexOf("--sandbox") + 1]).toBe("read-only");
+    expect(reader[reader.indexOf("--sandbox") + 1]).toBe("workspace");
     expect(denies(reader)).toEqual(["Edit", "Write", "search_replace"]);
     expect(builder.slice(-4)).toEqual(["--model", "grok-model", "-p", "build it"]);
   });
