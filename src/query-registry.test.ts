@@ -581,6 +581,21 @@ describe("who stopped the agent", () => {
       db.close();
     }
   });
+
+  test("label counts exclude a label whose message is gone", () => {
+    const db = stopped();
+    try {
+      db.run(
+        `INSERT INTO correction_label (message_id, label, labeled_at)
+         VALUES ('m-refused', 'correction', '2026-09-02T10:00:00Z'),
+                ('m-gone', 'clarification', '2026-09-02T10:00:00Z')`,
+      );
+      expect(findQuery("corrections")?.run(db, {})?.denominator).toContain("1 have been labeled by hand");
+      expect(findQuery("candidates")?.run(db, {})?.denominator).toContain("1 labeled so far");
+    } finally {
+      db.close();
+    }
+  });
 });
 
 describe("a thin sample is a row with its base, not a row withheld", () => {

@@ -12,6 +12,9 @@ import {
   windowLine,
 } from "./query";
 
+const LIVE_LABEL_COUNT =
+  "SELECT count(*) AS n FROM correction_label cl JOIN message m ON m.id = cl.message_id";
+
 const attributed = (ctx: QueryContext): string => `
   SELECT m.id, m.session_id, m.ts, m.model, m.text, m.denial_kind, m.user_feedback,
          m.interrupted_message_id,
@@ -49,7 +52,7 @@ export const corrections: Query = {
        GROUP BY c.skill ORDER BY rejected + interrupted DESC`,
       [...w.params, ...(arg ? [arg] : [])],
     );
-    const labeled = scalar(db, "SELECT count(*) AS n FROM correction_label");
+    const labeled = scalar(db, LIVE_LABEL_COUNT);
     const candidates = scalar(db, `WITH c AS (${attributed(ctx)}) SELECT count(*) AS n FROM c`, ...w.params);
     return {
       denominator: `${candidates} turns the user physically stopped; ${labeled} have been labeled by hand (${windowLine(ctx)})`,
@@ -89,7 +92,7 @@ export const candidates: Query = {
        ORDER BY c.ts DESC LIMIT 20`,
       [...w.params, ...(arg ? [arg] : [])],
     );
-    const labeled = scalar(db, "SELECT count(*) AS n FROM correction_label");
+    const labeled = scalar(db, LIVE_LABEL_COUNT);
     const total = scalar(db, `WITH c AS (${attributed(ctx)}) SELECT count(*) AS n FROM c`, ...w.params);
     return {
       denominator: `${total} candidates in this window (${windowLine(ctx)}); ${labeled} labeled so far, newest 20 unlabeled shown`,
