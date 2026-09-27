@@ -10,7 +10,7 @@ import {
 } from "./harness-launch";
 import type { HarnessName } from "./harness-name";
 import { type ReturnedOrderArtifact, returnedOrderArtifact } from "./order-artifacts";
-import { finishStoppedAttempt } from "./order-attempt";
+import { finishAttempt, finishStoppedAttempt } from "./order-attempt";
 import { authenticateWorker, endWorker, type MintedWorker, startWorkerRun, workerProcessEnv } from "./worker";
 import {
   assignedWorker,
@@ -166,6 +166,16 @@ export async function runOrderWorkerHarnessLive(
       : launchHarnessLive({ ...request, env }, onStarted, adapter));
     if (result.exitCode === 0 && !running) {
       throw new Error(`order ${worker.orderId} ${worker.role} did not start a turn`);
+    }
+    if (result.usageLimit) {
+      finishAttempt(
+        db,
+        worker.orderId,
+        "limited",
+        result.failureReason,
+        new Date().toISOString(),
+        result.usageLimit.resetsAt,
+      );
     }
     if (result.exitCode !== 0) releaseOrderWorker(db, worker.orderId, worker.role);
     return {

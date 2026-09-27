@@ -25,6 +25,7 @@ export const ATTEMPT_OUTCOMES = [
   "failed",
   "timed_out",
   "stalled",
+  "limited",
   "cancelled",
 ] as const;
 

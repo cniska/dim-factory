@@ -5,7 +5,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { STATIONS_SQL } from "./station";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 73;
+export const SCHEMA_VERSION = 74;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -263,7 +263,8 @@ CREATE TABLE IF NOT EXISTS factory_order_attempt (
   recorded_at     TEXT NOT NULL,
   kind            TEXT NOT NULL CHECK (kind IN ('started', 'finished')),
   outcome         TEXT NOT NULL CHECK (outcome IN (${ATTEMPT_OUTCOMES_SQL})),
-  reason          TEXT
+  reason          TEXT,
+  resets_at       TEXT
 );
 CREATE INDEX IF NOT EXISTS factory_order_attempt_order ON factory_order_attempt(order_id, recorded_at, id);
 

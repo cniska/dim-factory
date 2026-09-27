@@ -201,6 +201,45 @@ describe("planner station", () => {
     rmSync(home, { recursive: true, force: true });
   });
 
+  test("records a planner stopped by a usage limit as limited, with its reset", async () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const home = mkdtempSync(join(tmpdir(), "dim-planner-limited-"));
+    writeFileSync(
+      join(home, "routing.json"),
+      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
+    );
+    const repo = integratedRepo();
+    const operator = mintWorker(db, { role: "operator", sessionId: "planner-limited-operator" });
+    queueOrder(
+      db,
+      { id: "planner-limited-order", project: "cniska/dim-factory", title: "Plan this" },
+      operator.name,
+    );
+
+    await expect(
+      runOrderPlanLive(db, "planner-limited-order", {
+        dir: repo.dir,
+        harness: "codex",
+        adapter: fakeHarness("limited"),
+        env: {
+          DIM_HOME: home,
+          [WORKER_NAME_VAR]: operator.name,
+          [WORKER_TOKEN_VAR]: operator.token,
+          [WORKER_SESSION_VAR]: operator.sessionId,
+        },
+      }),
+    ).rejects.toThrow("fake usage limit reached");
+
+    expect(
+      db.query("SELECT kind, outcome, resets_at FROM factory_order_attempt WHERE kind = 'finished'").all(),
+    ).toEqual([{ kind: "finished", outcome: "limited", resets_at: "2026-09-27T16:50:00.000Z" }]);
+
+    db.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  });
+
   test("records a harness failure before a planner is assigned", async () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);

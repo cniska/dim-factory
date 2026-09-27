@@ -91,16 +91,17 @@ export function finishAttempt(
   outcome: Exclude<AttemptOutcome, "running">,
   reason: string | undefined,
   at: string,
+  resetsAt?: string,
 ): void {
   const open = openAttempt(db, orderId);
   if (!open) return;
   db.run(
     `INSERT INTO factory_order_attempt
        (order_id, run_id, worker, operator_worker, session_id, provider_session_id, station, harness, model, tier,
-        started_at, ended_at, recorded_at, kind, outcome, reason)
+        started_at, ended_at, recorded_at, kind, outcome, reason, resets_at)
      SELECT order_id, run_id, worker, operator_worker, session_id, provider_session_id, station, harness, model, tier,
-            started_at, ?, ?, 'finished', ?, ?
+            started_at, ?, ?, 'finished', ?, ?, ?
      FROM factory_order_attempt WHERE order_id = ? AND run_id = ? AND kind = 'started'`,
-    [at, at, outcome, reason ?? null, orderId, open.runId],
+    [at, at, outcome, reason ?? null, resetsAt ?? null, orderId, open.runId],
   );
 }

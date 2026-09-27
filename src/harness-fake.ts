@@ -7,6 +7,7 @@ export type FakeHarnessScenario =
   | "review"
   | "findings"
   | "crash"
+  | "limited"
   | "hang"
   | "bootstrap-failure"
   | "turn-after-answer"
@@ -78,6 +79,19 @@ function scenario(name: FakeHarnessScenario, providerSessionId: string): Scenari
   }
   if (name === "crash") {
     return { events: [...started, { type: "run.failed", reason: "fake process crashed" }], completes: true };
+  }
+  if (name === "limited") {
+    return {
+      events: [
+        ...started,
+        {
+          type: "run.failed",
+          reason: "fake usage limit reached",
+          usageLimit: { resetsAt: "2026-09-27T16:50:00.000Z" },
+        },
+      ],
+      completes: true,
+    };
   }
   if (name === "bootstrap-failure") {
     return {
