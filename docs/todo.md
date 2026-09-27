@@ -72,6 +72,7 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 - Does an unattended self-maintaining run push, or commit locally?
 - Does the wall become where the owner reads artifacts and approves, rather than only watches?
 - Is `dim` for one owner, or for teams with several?
+- Sunset handoffs once the factory is live? An order and its resumed worker replace the next move a handoff carries. Those next-sections are what the embedding index stores besides commit subjects and labeled corrections.
 
 ## Waiting on data
 
