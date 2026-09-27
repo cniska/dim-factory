@@ -9,6 +9,13 @@ describe("window", () => {
     expect(resolveSince("1d", NOW)).toBe("2026-09-15T12:00:00.000Z");
   });
 
+  test("rejects dates that normalize to another day and windows outside the date range", () => {
+    expect(() => resolveSince("2026-02-30", NOW)).toThrow(BadWindowError);
+    expect(() => resolveSince("2025-02-29", NOW)).toThrow(BadWindowError);
+    expect(resolveSince("2024-02-29", NOW)).toBe("2024-02-29T00:00:00.000Z");
+    expect(() => resolveSince("999999999999d", NOW)).toThrow(BadWindowError);
+  });
+
   test("takes a date as the start of that day", () => {
     expect(resolveSince("2026-08-01", NOW)).toBe("2026-08-01T00:00:00.000Z");
   });

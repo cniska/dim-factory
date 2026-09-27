@@ -11,11 +11,12 @@ export function resolveSince(spec: string, now: Date = new Date()): string {
   const days = /^(\d+)d$/.exec(spec);
   if (days) {
     const at = new Date(now.getTime() - Number(days[1]) * 86_400_000);
+    if (Number.isNaN(at.getTime())) throw new BadWindowError(spec);
     return at.toISOString();
   }
   if (/^\d{4}-\d{2}-\d{2}$/.test(spec)) {
     const at = new Date(`${spec}T00:00:00.000Z`);
-    if (Number.isNaN(at.getTime())) throw new BadWindowError(spec);
+    if (Number.isNaN(at.getTime()) || at.toISOString().slice(0, 10) !== spec) throw new BadWindowError(spec);
     return at.toISOString();
   }
   throw new BadWindowError(spec);
