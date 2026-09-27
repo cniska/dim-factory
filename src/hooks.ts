@@ -23,9 +23,20 @@ export function hookContractVersion(command: string): number | null {
 export type HookKind = "spool" | "wake" | "format";
 
 function hookKind(command: string, tool: Tool, env: Env): HookKind | null {
-  if (command.includes(toolSpoolDir(tool, env))) return "spool";
-  if (command.includes(`wake --tool=${tool}`)) return "wake";
-  if (command.includes("format-edit")) return "format";
+  const bare = command.replace(CONTRACT_MARKER, "").trimEnd();
+  if (bare === hookCommand(tool, env).replace(CONTRACT_MARKER, "").trimEnd()) return "spool";
+  if (bare === `cat > "${toolSpoolDir(tool, env)}/$(date +%s%N)-$$.json" 2>/dev/null; exit 0`) return "spool";
+  const spool = `/spool/${tool}/$(date +%s%N)-$$`;
+  if (
+    hookContractVersion(command) !== null &&
+    bare.startsWith('cat > "') &&
+    [`${spool}.json" 2>/dev/null; exit 0`, `${spool}-\${DIM_WORKER_NAME:-}.json" 2>/dev/null; exit 0`].some(
+      (suffix) => bare.endsWith(suffix),
+    )
+  )
+    return "spool";
+  if (new RegExp(`^(?:\\S*/)?dim wake --tool=${tool} 2>/dev/null \\|\\| true$`).test(bare)) return "wake";
+  if (/^(?:\S*\/)?dim format-edit 2>\/dev\/null \|\| true$/.test(bare)) return "format";
   return null;
 }
 

@@ -276,6 +276,94 @@ describe("installHooks", () => {
     expect(readFileSync(`${paths.claude}.dim-backup`, "utf8")).toContain("existing-notifier");
   });
 
+  test("a user's hook that mentions a dim command is not replaced", () => {
+    const dir = newRoot();
+    const env = hookEnv(dir);
+    const paths = configs(env);
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    writeFileSync(
+      paths.claude,
+      JSON.stringify({
+        hooks: {
+          PostToolUse: [{ hooks: [{ type: "command", command: "echo format-edit" }] }],
+          SessionEnd: [{ hooks: [{ type: "command", command: `echo ${toolSpoolDir("claude", env)}` }] }],
+        },
+      }),
+    );
+
+    installHooks(env);
+
+    const after = JSON.parse(readFileSync(paths.claude, "utf8"));
+    expect(after.hooks.PostToolUse[0].hooks[0].command).toBe("echo format-edit");
+    expect(after.hooks.SessionEnd[0].hooks[0].command).toBe(`echo ${toolSpoolDir("claude", env)}`);
+    expect(after.hooks.PostToolUse).toHaveLength(3);
+    expect(after.hooks.SessionEnd).toHaveLength(2);
+  });
+
+  test("an older spool hook is refreshed in place", () => {
+    const dir = newRoot();
+    const env = hookEnv(dir);
+    const paths = configs(env);
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    const old = hookCommand("claude", env)
+      .replace(/-\$\$-\$\{DIM_WORKER_NAME:-\}\.json/, () => "-$$.json")
+      .replace(`dim-hook:${HOOK_CONTRACT_VERSION}`, "dim-hook:1");
+    writeFileSync(
+      paths.claude,
+      JSON.stringify({ hooks: { SessionEnd: [{ hooks: [{ type: "command", command: old }] }] } }),
+    );
+
+    expect(
+      planHooks(env).find((plan) => plan.tool === "claude" && plan.event === "SessionEnd"),
+    ).toMatchObject({
+      state: "stale",
+      installedVersion: 1,
+    });
+    expect(installHooks(env).refreshed).toBe(1);
+    const after = JSON.parse(readFileSync(paths.claude, "utf8"));
+    expect(after.hooks.SessionEnd).toHaveLength(1);
+    expect(after.hooks.SessionEnd[0].hooks[0].command).toBe(hookCommand("claude", env));
+    expect(installHooks(env).written).toEqual([]);
+  });
+
+  test("an unmarked original spool hook is refreshed in place", () => {
+    const dir = newRoot();
+    const env = hookEnv(dir);
+    const paths = configs(env);
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    const old = hookCommand("claude", env)
+      .replace(/-\$\$-\$\{DIM_WORKER_NAME:-\}\.json/, () => "-$$.json")
+      .replace(/ # dim-hook:\d+$/, "");
+    writeFileSync(
+      paths.claude,
+      JSON.stringify({ hooks: { SessionEnd: [{ hooks: [{ type: "command", command: old }] }] } }),
+    );
+
+    expect(
+      planHooks(env).find((plan) => plan.tool === "claude" && plan.event === "SessionEnd"),
+    ).toMatchObject({ state: "stale", installedVersion: null });
+    expect(installHooks(env).refreshed).toBe(1);
+    const after = JSON.parse(readFileSync(paths.claude, "utf8"));
+    expect(after.hooks.SessionEnd).toHaveLength(1);
+    expect(after.hooks.SessionEnd[0].hooks[0].command).toBe(hookCommand("claude", env));
+  });
+
+  test("a moved spool directory refreshes the installed hook", () => {
+    const dir = newRoot();
+    const oldEnv = { ...hookEnv(dir), DIM_HOME: join(dir, "old-data") };
+    const newEnv = { ...oldEnv, DIM_HOME: join(dir, "new-data") };
+    installHooks(oldEnv);
+
+    expect(
+      planHooks(newEnv).find((plan) => plan.tool === "claude" && plan.event === "SessionEnd")?.state,
+    ).toBe("stale");
+    installHooks(newEnv);
+    const after = JSON.parse(readFileSync(configs(newEnv).claude, "utf8"));
+    expect(after.hooks.SessionEnd).toHaveLength(1);
+    expect(after.hooks.SessionEnd[0].hooks[0].command).toBe(hookCommand("claude", newEnv));
+    expect(installHooks(newEnv).written).toEqual([]);
+  });
+
   test("installs into a config carrying comments, keeping them", () => {
     const dir = newRoot();
     const env = hookEnv(dir);
