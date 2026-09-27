@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { writeTransaction } from "./db";
 import { assertOperator } from "./factory-operator";
 import type { HarnessAdapter } from "./harness";
 import {
@@ -261,7 +262,7 @@ function sessionEndedWithoutTurn(db: Database, orderId: string, role: StationRol
 export function releaseOrderWorker(db: Database, orderId: string, role: StationRole): void {
   const existing = readOrderWorker(db, orderId, role);
   if (!existing?.worker) return;
-  db.transaction(() => {
+  writeTransaction(db, () => {
     const assignment = createWorkerAssignment(db, {
       parentWorker: existing.assignment.parentWorker,
       role,
@@ -273,7 +274,7 @@ export function releaseOrderWorker(db: Database, orderId: string, role: StationR
       [assignment.id, orderId, role, existing.assignment.id],
     );
     if (changed.changes !== 1) throw new Error(`order ${orderId} ${role} worker release was not writable`);
-  })();
+  });
 }
 
 export function boundStationHarness(
@@ -327,17 +328,17 @@ export function ensureOrderWorker(
   refuseHarnessSwitch(existing, harness);
   if (existing) {
     if (existing.worker) return existing;
-    return db.transaction(() => {
+    return writeTransaction(db, () => {
       db.run("UPDATE factory_order_worker SET harness = ? WHERE order_id = ? AND role = ?", [
         harness,
         orderId,
         role,
       ]);
       return { ...existing, harness, assignment: renewWorkerAssignment(db, existing.assignment.id) };
-    })();
+    });
   }
 
-  return db.transaction(() => {
+  return writeTransaction(db, () => {
     const assignment = createWorkerAssignment(db, { parentWorker, role }, at);
     db.run(
       `INSERT INTO factory_order_worker
@@ -346,7 +347,7 @@ export function ensureOrderWorker(
       [orderId, role, assignment.id, harness, at],
     );
     return { orderId, role, assignment, harness };
-  })();
+  });
 }
 
 export function bindOrderWorker(

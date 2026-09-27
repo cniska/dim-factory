@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Glob } from "bun";
+import { writeTransaction } from "./db";
 import { readChunk } from "./ingest-chunk";
 import { grokGroupCwd } from "./ingest-grok-source";
 import { projectOf } from "./ingest-session-records";
@@ -55,9 +56,9 @@ export function ingestHistory(db: Database, env: Env = process.env): HistoryRepo
       if (!f.sessionId || !f.text || f.ts == null || known.has(f.sessionId)) continue;
       rows.push([tool, f.sessionId, new Date(f.ts).toISOString(), f.project ?? null, f.text]);
     }
-    db.transaction(() => {
+    writeTransaction(db, () => {
       for (const row of rows) insert.run(...row);
-    })();
+    });
     report.orphans += rows.length;
   };
 

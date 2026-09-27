@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { writeTransaction } from "./db";
 import { assertNoRunningAttempt, finishAttempt, openAttempt } from "./order-attempt";
 import type { OrderEventKind } from "./order-events";
 import { isTerminalOrderStatus, type OrderEvent, orderStatus } from "./order-status";
@@ -37,7 +38,7 @@ function artifactKind(db: Database, artifactId: number | undefined): string | nu
 }
 
 export function appendOrderEvent(db: Database, orderId: string, event: OrderEvent, at = now()): number {
-  return db.transaction(() => appendOrderEventInTransaction(db, orderId, event, at))();
+  return writeTransaction(db, () => appendOrderEventInTransaction(db, orderId, event, at));
 }
 
 export function appendOrderEventInTransaction(

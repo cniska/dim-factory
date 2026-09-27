@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { writeTransaction } from "./db";
 import { findingStanding, type OrderFindingAnswer, owesAnswer } from "./order-finding-state";
 import { appendOrderEventInTransaction } from "./order-ledger";
 import { openReviewOf, ReviewNotOpen } from "./order-review";
@@ -54,7 +55,7 @@ export function raiseOrderFinding(
     );
   }
   assertOrderRunning(db, orderId);
-  return db.transaction(() => {
+  return writeTransaction(db, () => {
     const result = db.run(
       `INSERT INTO factory_order_finding
          (review_id, dimension, file, line, failure, fix, severity, raised_at)
@@ -73,7 +74,7 @@ export function raiseOrderFinding(
     const id = Number(result.lastInsertRowid);
     appendOrderEventInTransaction(db, orderId, { kind: "finding_raised", worker, findingId: id }, at);
     return id;
-  })();
+  });
 }
 
 export function assertFindingAnswersOwed(
@@ -107,7 +108,7 @@ export function answerOrderFindings(
     throw new BuildTurnRefused("worker_not_builder", `worker ${worker} is not a builder`);
   }
   assertOrderRunning(db, orderId);
-  db.transaction(() => {
+  writeTransaction(db, () => {
     assertFindingAnswersOwed(db, orderId, answers);
     for (const given of answers) {
       const answer = db.run(
@@ -127,5 +128,5 @@ export function answerOrderFindings(
         at,
       );
     }
-  })();
+  });
 }

@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { writeTransaction } from "./db";
 
 export type RepoFileReport = { repos: number; files: number };
 
@@ -25,7 +26,7 @@ export function indexRepoFiles(db: Database): RepoFileReport {
   const insert = db.prepare("INSERT INTO repo_file (repo, path) VALUES (?, ?) ON CONFLICT DO NOTHING");
 
   const report: RepoFileReport = { repos: 0, files: 0 };
-  db.transaction(() => {
+  writeTransaction(db, () => {
     for (const repo of repos) {
       const paths = trackedFiles(repo);
       if (paths.length === 0) continue;
@@ -34,6 +35,6 @@ export function indexRepoFiles(db: Database): RepoFileReport {
       report.repos += 1;
       report.files += paths.length;
     }
-  })();
+  });
   return report;
 }

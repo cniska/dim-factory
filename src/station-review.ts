@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { writeTransaction } from "./db";
 import { assertOperator } from "./factory-operator";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-launch";
@@ -254,13 +255,13 @@ function recordReviewResult(
 ): number {
   const report = parseReviewReport(raw);
   assertLocations(report.findings, round);
-  return db.transaction(() => {
+  return writeTransaction(db, () => {
     for (const finding of report.findings) {
       raiseOrderFinding(db, orderId, finding, reviewer);
     }
     recordOrderReviewArtifact(db, orderId, renderReviewReport(db, round.id, report), reviewer);
     return report.findings.length;
-  })();
+  });
 }
 
 export async function runOrderReviewLive(

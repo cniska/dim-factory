@@ -1,4 +1,5 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
+import { writeTransaction } from "./db";
 import { SCHEMA_SQL, SCHEMA_VERSION } from "./db-schema";
 import { type GuidanceReport, ingestGuidance } from "./guidance";
 import { drainWalk, type WalkReport } from "./guidance-walk";
@@ -277,7 +278,7 @@ function carryThroughRebuild(
 export function rebuild(db: Database, env: Env = process.env): RebuildReport {
   let orphans: OrphanReport[] = [];
   let retired: string[] = [];
-  db.transaction(() => {
+  writeTransaction(db, () => {
     assertCarriedColumnsFit(db, FACTORY_ORDER_TABLES);
     retired = dropRetiredTables(db);
     const carried = carryThroughRebuild(db, FACTORY_ORDER_TABLES);
@@ -342,7 +343,7 @@ export function rebuild(db: Database, env: Env = process.env): RebuildReport {
         row.payload,
       );
     }
-  })();
+  });
   const report = sync(db, env);
   db.run("UPDATE schema_version SET version = ?", [SCHEMA_VERSION]);
   return { ...report, orphans, retired };

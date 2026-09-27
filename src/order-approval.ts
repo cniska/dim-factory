@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { writeTransaction } from "./db";
 import { assertOperator } from "./factory-operator";
 import { latestApprovedPlan } from "./order-approved-plan";
 import { latestArtifact } from "./order-artifacts";
@@ -82,7 +83,7 @@ export function returnReviewToBuild(
   const build = latestArtifact(db, orderId, "build");
   const review = latestArtifact(db, orderId, "review");
   if (!build || !review) throw new Error(`order ${orderId} has no Build and Review artifacts`);
-  db.transaction(() => {
+  writeTransaction(db, () => {
     appendOrderEventInTransaction(
       db,
       orderId,
@@ -95,5 +96,5 @@ export function returnReviewToBuild(
       { kind: "artifact_returned", worker, station: "build", artifactId: build.id, reason },
       at,
     );
-  })();
+  });
 }

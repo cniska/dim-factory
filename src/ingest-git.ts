@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { writeTransaction } from "./db";
 import { labelFor } from "./git-remote";
 import { readCommits, repoRoot } from "./ingest-git-source";
 import { isScratchRepo } from "./ingest-scratch";
@@ -34,7 +35,7 @@ export function ingestCommits(db: Database): GitReport {
   );
 
   const report: GitReport = { repos: roots.size, commits: 0, files: 0 };
-  db.transaction(() => {
+  writeTransaction(db, () => {
     for (const repo of roots) {
       const newest = db
         .prepare<{ ts: string | null }, [string]>("SELECT max(ts) AS ts FROM repo_commit WHERE repo = ?")
@@ -51,6 +52,6 @@ export function ingestCommits(db: Database): GitReport {
         }
       }
     }
-  })();
+  });
   return report;
 }

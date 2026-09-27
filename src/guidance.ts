@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { writeTransaction } from "./db";
 import { type Env, resolveHomeDir } from "./paths";
 
 const NAMES = ["AGENTS.md", "CLAUDE.md"];
@@ -53,7 +54,7 @@ export function ingestGuidance(db: Database, env: Env = process.env): GuidanceRe
   );
 
   const report: GuidanceReport = { files: 0, versions: 0 };
-  db.transaction(() => {
+  writeTransaction(db, () => {
     for (const repo of repos) {
       for (const name of NAMES) {
         const versions = versionsFromGit(repo, name);
@@ -75,6 +76,6 @@ export function ingestGuidance(db: Database, env: Env = process.env): GuidanceRe
       report.files += 1;
       report.versions += 1;
     }
-  })();
+  });
   return report;
 }

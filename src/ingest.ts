@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { statSync } from "node:fs";
+import { writeTransaction } from "./db";
 import { gitSubcommands } from "./git-operations";
 import { readChunk } from "./ingest-chunk";
 import type { ParsedChunk, SessionFacts } from "./ingest-session-records";
@@ -439,9 +440,9 @@ export function createIngester(db: Database) {
     if (chunk.bytes === 0) return nothing;
 
     const parsed = spec.parse(chunk.lines, lines + 1, state);
-    db.transaction(() => {
+    writeTransaction(db, () => {
       applyChunk(spec, parsed, cursor + chunk.bytes, lines + chunk.lines.length, mtime);
-    })();
+    });
 
     return {
       read: true,

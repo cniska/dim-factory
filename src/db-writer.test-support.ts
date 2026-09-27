@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { closeDb, openDb } from "./db";
+import { closeDb, openDb, writeTransaction } from "./db";
 
 const [mode, path, who] = process.argv.slice(2) as [string, string, string];
 function nextLine(): Promise<void> {
@@ -25,6 +25,16 @@ if (mode === "hold") {
   await nextLine();
   console.log("writing");
   db.run("INSERT INTO probe (who) VALUES (?)", [who]);
+  closeDb(db);
+} else if (mode === "read-write") {
+  const db = openDb(path);
+  console.log("opened");
+  await nextLine();
+  console.log("writing");
+  writeTransaction(db, () => {
+    db.query("SELECT count(*) FROM probe").get();
+    db.run("INSERT INTO probe (who) VALUES (?)", [who]);
+  });
   closeDb(db);
 } else if (mode === "open") {
   console.log("opening");

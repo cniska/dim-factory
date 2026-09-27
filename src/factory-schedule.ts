@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { writeTransaction } from "./db";
 import type { ScheduleInvocation } from "./order-events";
 
 export type Schedule = {
@@ -82,7 +83,7 @@ export function recordScheduleEvaluation(db: Database, id: string, at: string, d
 }
 
 export function recordScheduleInvocation(db: Database, invocation: ScheduleInvocation): number {
-  return db.transaction(() => {
+  return writeTransaction(db, () => {
     const sessionId =
       invocation.sessionId ??
       (invocation.worker
@@ -126,5 +127,5 @@ export function recordScheduleInvocation(db: Database, invocation: ScheduleInvoc
     );
     if (updated.changes !== 1) throw new Error(`schedule not found: ${invocation.scheduleId}`);
     return Number(written.lastInsertRowid);
-  })();
+  });
 }

@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { writeTransaction } from "./db";
 import { walkSpoolDir } from "./ingest-spool";
 import type { Tool } from "./ingest-tools";
 import { codexDir, type Env, resolveHomeDir } from "./paths";
@@ -113,12 +114,12 @@ export function drainWalk(db: Database, env: Env = process.env): WalkReport {
       continue;
     }
     if (!record.session_id || !Array.isArray(record.surfaces)) continue;
-    db.transaction(() => {
+    writeTransaction(db, () => {
       for (const s of record.surfaces) {
         insert.run(record.session_id, record.tool, record.seen_at, s.path, s.sha, s.importedBy);
         report.surfaces += 1;
       }
-    })();
+    });
     report.sessions += 1;
     unlinkSync(path);
   }

@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { writeTransaction } from "./db";
 
 const NEXT_MAX_CHARS = 700;
 
@@ -53,7 +54,7 @@ export function backfillHandoffs(db: Database): HandoffBackfillReport {
      VALUES (?, ?, ?, ?, ?, ?)`,
   );
   let found = 0;
-  db.transaction(() => {
+  writeTransaction(db, () => {
     db.run("DELETE FROM factory_handoff");
     for (const row of rows) {
       const title = handoffTitle(row.text);
@@ -62,7 +63,7 @@ export function backfillHandoffs(db: Database): HandoffBackfillReport {
       insert.run(row.id, row.session_id, row.role, row.ts, title, next);
       found += 1;
     }
-  })();
+  });
   return { found };
 }
 
@@ -109,7 +110,7 @@ export function linkHandoffs(db: Database): HandoffLinkReport {
     `INSERT INTO handoff_link (to_message, to_session, to_ts, from_message, from_session, from_ts, title)
      VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
   );
-  db.transaction(() => {
+  writeTransaction(db, () => {
     db.run("DELETE FROM handoff_link");
     for (const paste of all) {
       if (paste.role !== "user") continue;
@@ -129,6 +130,6 @@ export function linkHandoffs(db: Database): HandoffLinkReport {
       );
       report.linked += 1;
     }
-  })();
+  });
   return report;
 }

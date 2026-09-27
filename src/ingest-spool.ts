@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+import { writeTransaction } from "./db";
 import { TOOLS, type Tool } from "./ingest-tools";
 import { dataDir, type Env } from "./paths";
 
@@ -96,7 +97,7 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
       if (worker) {
         sighting.run({ $worker: worker, $sessionId: sessionId, $seenAt: ts });
       }
-      const changes = db.transaction(() =>
+      const changes = writeTransaction(db, () =>
         insert.run({
           $tool: tool,
           $sessionId: sessionId,
@@ -108,7 +109,7 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
           $cwd: payload?.cwd ?? null,
           $payload: raw,
         }),
-      )();
+      );
       if (changes.changes === 0) report.duplicate += 1;
       else report.applied += 1;
       unlinkSync(path);

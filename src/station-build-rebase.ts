@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { CHECK_SANDBOX } from "./check-sandbox";
+import { writeTransaction } from "./db";
 import { finishAttempt } from "./order-attempt";
 import type { RecordedConflict } from "./order-commits";
 import { recordOrderCheck, recordOrderRewrite } from "./order-evidence";
@@ -129,9 +130,9 @@ export function continueRebaseTurn(options: {
       `${check.command} exited ${check.exitCode} at the rebased head ${rewrite.newHead}; the rebase was taken back and is reopened next turn:\n${check.result}`,
     );
   }
-  db.transaction(() => {
+  writeTransaction(db, () => {
     recordOrderRewrite(db, orderId, rewrite, check, operator);
     finishAttempt(db, orderId, "succeeded", undefined, now());
-  })();
+  });
   return { sha: rewrite.newHead };
 }

@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { writeTransaction } from "./db";
 import { finishAttempt, openAttempt } from "./order-attempt";
 import { latestOrderCommit } from "./order-commits";
 import { assertChecked } from "./order-head-check";
@@ -94,7 +95,7 @@ export function recordOrderPlan(
   assertOrderRunning(db, orderId);
   if (body.trim() === "") throw new Error("plan body must not be empty");
   if (slices.length === 0) throw new Error("plan must contain at least one slice");
-  return db.transaction(() => {
+  return writeTransaction(db, () => {
     const artifactId = writeArtifactInTransaction(
       db,
       orderId,
@@ -111,7 +112,7 @@ export function recordOrderPlan(
       ]);
     }
     return artifactId;
-  })();
+  });
 }
 
 const APPROVED_PLAN = `EXISTS (
@@ -158,9 +159,9 @@ export function recordOrderBuild(
   }
   if (body.trim() === "") throw new Error("build artifact body must not be empty");
   if (headSha.trim() === "") throw new Error("build artifact head must not be empty");
-  return db.transaction(() =>
+  return writeTransaction(db, () =>
     writeArtifactInTransaction(db, orderId, { kind: "build", body, headSha, reviewId: null }, worker, at),
-  )();
+  );
 }
 
 export type OrderSlice = PlanSlice & { id: number; ordinal: number };
@@ -187,7 +188,7 @@ export function completeOrderSlice(
   worker: string,
   at = now(),
 ): void {
-  db.transaction(() => {
+  writeTransaction(db, () => {
     assertOrderRunning(db, orderId);
     const slice = db
       .query<{ id: number }, [string, number]>(
@@ -206,7 +207,7 @@ export function completeOrderSlice(
       at,
     ]);
     finishAttempt(db, orderId, "succeeded", undefined, at);
-  })();
+  });
 }
 
 export function completeOrderBuildFollowup(
@@ -215,7 +216,7 @@ export function completeOrderBuildFollowup(
   priorArtifactId: number,
   at = now(),
 ): void {
-  db.transaction(() => {
+  writeTransaction(db, () => {
     assertOrderRunning(db, orderId);
     if (nextOrderSlice(db, orderId) !== null) {
       throw new Error(`order ${orderId} still has an incomplete build slice`);
@@ -231,5 +232,5 @@ export function completeOrderBuildFollowup(
       : null;
     if (!artifact) throw new Error(`order ${orderId} has no Build artifact from this build turn`);
     finishAttempt(db, orderId, "succeeded", undefined, at);
-  })();
+  });
 }

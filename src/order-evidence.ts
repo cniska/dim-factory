@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { writeTransaction } from "./db";
 import { currentOrderCommits } from "./order-commits";
 import { appendOrderEventInTransaction, now } from "./order-ledger";
 import { assertOrderRunning } from "./order-status";
@@ -14,7 +15,7 @@ export function recordOrderCommit(
   at = now(),
 ): number {
   assertOrderRunning(db, orderId);
-  return db.transaction(() => {
+  return writeTransaction(db, () => {
     db.run("INSERT INTO factory_order_commit (order_id, sha, subject, recorded_at) VALUES (?, ?, ?, ?)", [
       orderId,
       sha,
@@ -22,7 +23,7 @@ export function recordOrderCommit(
       at,
     ]);
     return appendOrderEventInTransaction(db, orderId, { kind: "commit_created", worker, commitSha: sha }, at);
-  })();
+  });
 }
 
 export type OrderFile = { path: string; added: number | null; removed: number | null };
@@ -90,7 +91,7 @@ export function recordOrderRewrite(
   at = now(),
 ): void {
   assertOrderRunning(db, orderId);
-  db.transaction(() => {
+  writeTransaction(db, () => {
     const current = currentOrderCommits(db, orderId);
     for (const { from, to } of rewrite.commits) {
       const recorded = current.find((row) => from.startsWith(row.sha.toLowerCase()));
@@ -125,7 +126,7 @@ export function recordOrderRewrite(
         at,
       ],
     );
-  })();
+  });
 }
 
 export function recordOrderEnvironment(

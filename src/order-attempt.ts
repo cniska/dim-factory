@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { writeTransaction } from "./db";
 import { assertOperator } from "./factory-operator";
 import type { AttemptOutcome } from "./order-events";
 import { assertOrderRunning, OrderNotDone } from "./order-status";
@@ -57,7 +58,7 @@ export function finishStoppedAttempt(db: Database, orderId: string, at: string):
 }
 
 export function startAttempt(db: Database, orderId: string, attempt: Attempt, at: string): void {
-  db.transaction(() => {
+  writeTransaction(db, () => {
     assertOrderRunning(db, orderId);
     finishStoppedAttempt(db, orderId, at);
     assertNoRunningAttempt(db, orderId, "start another attempt");
@@ -82,7 +83,7 @@ export function startAttempt(db: Database, orderId: string, attempt: Attempt, at
         at,
       ],
     );
-  })();
+  });
 }
 
 export function finishAttempt(

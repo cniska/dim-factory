@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { CHECK_SANDBOX, runSandboxedCheck } from "./check-sandbox";
 import { stagedComments } from "./comments-staged";
+import { writeTransaction } from "./db";
 import { commentGateFor } from "./gate-commit";
 import { trunkBranch } from "./git-trunk";
 import { recordOrderBuild } from "./order-artifacts";
@@ -190,11 +191,11 @@ export function commitBuildTurn(options: {
     );
   }
   if (!changed) {
-    db.transaction(() => {
+    writeTransaction(db, () => {
       recordOrderCheck(db, orderId, checkRow, before);
       answerOrderFindings(db, orderId, options.runId, turn.answers, builder);
       if (options.finalSlice) recordOrderBuild(db, orderId, turn.artifact, before, builder);
-    })();
+    });
     return { sha: before };
   }
   const commit = git(
@@ -222,7 +223,7 @@ export function commitBuildTurn(options: {
       sha,
     ]);
     if (!numstat.ok) throw new Error(`cannot list the files of ${sha}: ${numstat.err}`);
-    db.transaction(() => {
+    writeTransaction(db, () => {
       recordOrderCommit(db, orderId, sha, builder, turn.subject);
       for (const entry of numstat.out.split("\0").filter(Boolean)) {
         const [added, removed, ...path] = entry.split("\t");
@@ -236,7 +237,7 @@ export function commitBuildTurn(options: {
       recordOrderCheck(db, orderId, checkRow, sha);
       answerOrderFindings(db, orderId, options.runId, turn.answers, builder);
       if (options.finalSlice) recordOrderBuild(db, orderId, turn.artifact, sha, builder);
-    })();
+    });
     for (const path of unparsed) writeTrace(db, { event: "order.file_unparsed", orderId, path });
     return { sha };
   } catch (error) {

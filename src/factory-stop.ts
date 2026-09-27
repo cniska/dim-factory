@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { writeTransaction } from "./db";
 import { assertOperator } from "./factory-operator";
 
 export type FactoryStop = {
@@ -63,7 +64,7 @@ export function pullStop(
   if (stop.reason.trim() === "") {
     throw new FactoryStopError("reason_missing", "a stop says why, or the next operator clears it blind");
   }
-  return db.transaction(() => {
+  return writeTransaction(db, () => {
     const live = liveStop(db);
     if (live) {
       throw new FactoryStopError(
@@ -82,15 +83,15 @@ export function pullStop(
       pulledAt: at,
       orderId: stop.orderId,
     };
-  })();
+  });
 }
 
 export function clearStop(db: Database, by: string, at = now()): FactoryStop {
-  return db.transaction(() => {
+  return writeTransaction(db, () => {
     const live = liveStop(db);
     if (!live) throw new FactoryStopError("none_live", "the factory is not stopped");
     assertOperator(db, by, "clear the factory stop");
     db.run("UPDATE factory_stop SET cleared_at = ?, cleared_by = ? WHERE id = ?", [at, by, live.id]);
     return live;
-  })();
+  });
 }

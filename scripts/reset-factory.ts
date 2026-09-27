@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { closeDb, openDb } from "../src/db";
+import { closeDb, openDb, writeTransaction } from "../src/db";
 import { dataDir, dbPath } from "../src/paths";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
@@ -56,9 +56,9 @@ try {
     table,
     rows: db.query<{ count: number }, []>(`SELECT count(*) AS count FROM ${table}`).get()?.count ?? 0,
   }));
-  db.transaction(() => {
+  writeTransaction(db, () => {
     for (const table of present) db.run(`DELETE FROM ${table}`);
-  })();
+  });
   rmSync(join(dataDir(), "worker-credentials"), { recursive: true, force: true });
 
   for (const count of counts) console.log(`${count.table}\t${count.rows}`);

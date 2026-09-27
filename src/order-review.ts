@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { writeTransaction } from "./db";
 import { writeArtifactInTransaction } from "./order-artifacts";
 import { now } from "./order-ledger";
 import { assertOrderRunning } from "./order-status";
@@ -20,7 +21,7 @@ export function openOrderReview(
   at = now(),
 ): { id: number; round: number } {
   assertOrderRunning(db, orderId);
-  return db.transaction(() => {
+  return writeTransaction(db, () => {
     const live = db
       .query<{ id: number }, [string]>(
         "SELECT id FROM factory_order_review WHERE order_id = ? AND closed_at IS NULL",
@@ -40,7 +41,7 @@ export function openOrderReview(
       [orderId, next, round.assignmentId, round.baseSha, round.headSha, at],
     );
     return { id: Number(written.lastInsertRowid), round: next };
-  })();
+  });
 }
 
 export function closeOrderReview(
@@ -95,7 +96,7 @@ export function recordOrderReviewArtifact(
   if (review.closed_at !== null) {
     throw new ReviewNotOpen("review_closed", `review ${review.id} is closed`);
   }
-  return db.transaction(() =>
+  return writeTransaction(db, () =>
     writeArtifactInTransaction(
       db,
       orderId,
@@ -103,7 +104,7 @@ export function recordOrderReviewArtifact(
       worker,
       at,
     ),
-  )();
+  );
 }
 
 export function openReviewOf(db: Database, orderId: string): { id: number; reviewer: string | null } | null {

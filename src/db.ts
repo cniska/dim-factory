@@ -58,6 +58,10 @@ export function openDb(path: string, opts: { forRebuild?: boolean; busyTimeoutMs
   }
 }
 
+export function writeTransaction<T>(db: Database, fn: () => T): T {
+  return db.transaction(fn).immediate();
+}
+
 export function closeDb(db: Database): void {
   db.run("PRAGMA wal_checkpoint(TRUNCATE)");
   db.close();

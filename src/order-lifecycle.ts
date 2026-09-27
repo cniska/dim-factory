@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { writeTransaction } from "./db";
 import { assertOperator } from "./factory-operator";
 import { FactoryStopError, liveStop } from "./factory-stop";
 import { appendOrderEvent, appendOrderEventInTransaction, now } from "./order-ledger";
@@ -7,7 +8,7 @@ import { createWorktree, validateWorktreeBranch } from "./wt-command";
 
 export function queueOrder(db: Database, order: Order, worker: string, at = now()): number {
   validateWorktreeBranch(order.id);
-  return db.transaction(() => {
+  return writeTransaction(db, () => {
     db.run(
       `INSERT INTO factory_order
        (id, project, title, line, description, priority, created_at, updated_at)
@@ -29,7 +30,7 @@ export function queueOrder(db: Database, order: Order, worker: string, at = now(
       { kind: "queued", worker, evidence: order.provenance },
       at,
     );
-  })();
+  });
 }
 
 export function startOrder(
@@ -39,7 +40,7 @@ export function startOrder(
   at = now(),
   cwd: string = process.cwd(),
 ): number {
-  return db.transaction(() => {
+  return writeTransaction(db, () => {
     const stop = liveStop(db);
     if (stop) {
       throw new FactoryStopError(
@@ -52,7 +53,7 @@ export function startOrder(
     assertOperator(db, operator, "start an order");
     createWorktree(orderId, cwd);
     return appendOrderEventInTransaction(db, orderId, { kind: "started", worker: operator }, at);
-  })();
+  });
 }
 
 export function setOrderPriority(
@@ -62,7 +63,7 @@ export function setOrderPriority(
   worker?: string,
   at = now(),
 ): void {
-  db.transaction(() => {
+  writeTransaction(db, () => {
     const result = db.run("UPDATE factory_order SET priority = ?, updated_at = ? WHERE id = ?", [
       priority,
       at,
@@ -77,7 +78,7 @@ export function setOrderPriority(
         at,
       );
     }
-  })();
+  });
 }
 
 export function dropOrder(db: Database, orderId: string, reason: string, worker: string, at = now()): number {

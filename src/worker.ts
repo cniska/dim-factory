@@ -1,5 +1,6 @@
 import { type Database, SQLiteError } from "bun:sqlite";
 import { createHash, randomBytes } from "node:crypto";
+import { writeTransaction } from "./db";
 import type { Env } from "./paths";
 import { pidIsAlive } from "./pid";
 import { randomWorkerName } from "./worker-name";
@@ -56,7 +57,7 @@ export function mintWorker(
   const sessionId = worker.sessionId;
   if (!sessionId || sessionId.trim() === "") throw new Error("worker session id is required");
   const token = randomBytes(16).toString("hex");
-  return db.transaction(() => {
+  return writeTransaction(db, () => {
     if (worker.parentWorker !== undefined) {
       const parent = db
         .query<{ name: string }, [string]>("SELECT name FROM factory_worker WHERE name = ?")
@@ -91,7 +92,7 @@ export function mintWorker(
       throw error;
     }
     return { name, token, sessionId };
-  })();
+  });
 }
 
 type WorkerRow = { name: string; token_digest: string; pid: number | null; ended_at: string | null };
@@ -140,41 +141,37 @@ export function mintWorkerForSession(
     credential?: MintedWorker | null;
   },
 ): MintedWorker {
-  return db
-    .transaction(() => {
-      const existing = db
-        .query<{ name: string; role: Role; parent_worker: string | null; ended_at: string | null }, [string]>(
-          "SELECT name, role, parent_worker, ended_at FROM factory_worker WHERE session_id = ?",
-        )
-        .get(worker.sessionId);
-      if (!existing) return mintWorker(db, worker);
-      if (existing.role !== worker.role) {
-        throw new Error(`this factory session already carries ${existing.role}, not ${worker.role}`);
-      }
-      if (worker.parentWorker !== undefined && existing.parent_worker !== worker.parentWorker) {
-        throw new Error(
-          `worker ${existing.name} does not belong to assignment parent ${worker.parentWorker}`,
-        );
-      }
-      if (existing.ended_at !== null)
-        throw new WorkerUnknown("worker_over", `worker ${existing.name} has ended`);
-      if (!worker.credential) {
-        throw new WorkerCredentialUnavailable(
-          `the credential for worker ${existing.name} in session ${worker.sessionId} is unavailable`,
-        );
-      }
-      if (worker.credential.name !== existing.name || worker.credential.sessionId !== worker.sessionId) {
-        throw new WorkerCredentialUnavailable(
-          `the saved credential does not belong to session ${worker.sessionId}`,
-        );
-      }
-      resolveWorker(db, {
-        [WORKER_NAME_VAR]: worker.credential.name,
-        [WORKER_TOKEN_VAR]: worker.credential.token,
-      });
-      return worker.credential;
-    })
-    .immediate();
+  return writeTransaction(db, () => {
+    const existing = db
+      .query<{ name: string; role: Role; parent_worker: string | null; ended_at: string | null }, [string]>(
+        "SELECT name, role, parent_worker, ended_at FROM factory_worker WHERE session_id = ?",
+      )
+      .get(worker.sessionId);
+    if (!existing) return mintWorker(db, worker);
+    if (existing.role !== worker.role) {
+      throw new Error(`this factory session already carries ${existing.role}, not ${worker.role}`);
+    }
+    if (worker.parentWorker !== undefined && existing.parent_worker !== worker.parentWorker) {
+      throw new Error(`worker ${existing.name} does not belong to assignment parent ${worker.parentWorker}`);
+    }
+    if (existing.ended_at !== null)
+      throw new WorkerUnknown("worker_over", `worker ${existing.name} has ended`);
+    if (!worker.credential) {
+      throw new WorkerCredentialUnavailable(
+        `the credential for worker ${existing.name} in session ${worker.sessionId} is unavailable`,
+      );
+    }
+    if (worker.credential.name !== existing.name || worker.credential.sessionId !== worker.sessionId) {
+      throw new WorkerCredentialUnavailable(
+        `the saved credential does not belong to session ${worker.sessionId}`,
+      );
+    }
+    resolveWorker(db, {
+      [WORKER_NAME_VAR]: worker.credential.name,
+      [WORKER_TOKEN_VAR]: worker.credential.token,
+    });
+    return worker.credential;
+  });
 }
 
 export function workerIsOver(db: Database, name: string): boolean {

@@ -31,7 +31,11 @@ interface Writer {
   send(): void;
 }
 
-function spawnWriter(mode: "hold" | "write" | "open" | "initialize", path: string, who: string): Writer {
+function spawnWriter(
+  mode: "hold" | "write" | "read-write" | "open" | "initialize",
+  path: string,
+  who: string,
+): Writer {
   const proc = Bun.spawn(["bun", WRITER, mode, path, who], { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
   const reader = proc.stdout.pipeThrough(new TextDecoderStream()).getReader();
   let buffered = "";
@@ -136,6 +140,26 @@ describe("concurrent writers", () => {
     closeDb(setup);
 
     const writer = spawnWriter("write", path, "writer");
+    await writer.expectLine("opened");
+    const holder = spawnWriter("hold", path, "holder");
+    await holder.expectLine("held");
+    writer.send();
+    await writer.expectLine("writing");
+    await Bun.sleep(HOLD_MS);
+    holder.send();
+
+    expect(await exited(holder)).toEqual({ code: 0, stderr: "" });
+    expect(await exited(writer)).toEqual({ code: 0, stderr: "" });
+    expect(committed(path)).toEqual(["holder", "writer"]);
+  }, 20_000);
+
+  test("a transaction that reads before it writes waits for another's write lock and both commit", async () => {
+    const path = scratchPath();
+    const setup = openDb(path);
+    setup.run("CREATE TABLE probe (who TEXT NOT NULL)");
+    closeDb(setup);
+
+    const writer = spawnWriter("read-write", path, "writer");
     await writer.expectLine("opened");
     const holder = spawnWriter("hold", path, "holder");
     await holder.expectLine("held");

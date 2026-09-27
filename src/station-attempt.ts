@@ -1,9 +1,10 @@
 import type { Database } from "bun:sqlite";
+import { writeTransaction } from "./db";
 import { type Attempt, startAttempt } from "./order-attempt";
 import { appendOrderEventInTransaction } from "./order-ledger";
 
 export function startStationAttempt(db: Database, orderId: string, attempt: Attempt, at: string): void {
-  db.transaction(() => {
+  writeTransaction(db, () => {
     startAttempt(db, orderId, attempt, at);
     appendOrderEventInTransaction(
       db,
@@ -16,5 +17,5 @@ export function startStationAttempt(db: Database, orderId: string, attempt: Atte
       },
       at,
     );
-  })();
+  });
 }
