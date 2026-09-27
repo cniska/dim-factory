@@ -43,7 +43,7 @@ function parseAll(lines: unknown[]) {
 
 describe("the Claude harness adapter", () => {
   test("starts a run on the init event and names its session", () => {
-    expect(parseAll([{ type: "system", subtype: "init", session_id: "s1" }])).toEqual([
+    expect(parseAll([{ type: "system", subtype: "init", session_id: "s1", apiKeySource: "none" }])).toEqual([
       { type: "run.started", providerSessionId: "s1" },
       { type: "turn.started" },
     ]);
@@ -285,6 +285,15 @@ describe("the Claude harness adapter", () => {
       },
       { type: "run.started", providerSessionId: "s2" },
       { type: "turn.started" },
+    ]);
+  });
+
+  test("refuses an init event that does not report its API key source", () => {
+    expect(parseAll([{ type: "system", subtype: "init", session_id: "s1" }])).toEqual([
+      {
+        type: "run.failed",
+        reason: "Claude did not report its API key source; cannot verify billing for this worker",
+      },
     ]);
   });
 

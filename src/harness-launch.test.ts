@@ -190,7 +190,7 @@ describe("a harness run with no adapter given", () => {
     join(bin, "claude"),
     `#!/bin/sh
 case " $* " in *" --resume s1 "*) answer='{"body":"resumed"}' ;; *) answer='{"body":"started"}' ;; esac
-echo '{"type":"system","subtype":"init","session_id":"s1"}'
+echo '{"type":"system","subtype":"init","session_id":"s1","apiKeySource":"none"}'
 echo '{"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]}}'
 printf '%s\\n' "{\\"type\\":\\"result\\",\\"subtype\\":\\"success\\",\\"is_error\\":false,\\"result\\":$(printf '%s' "$answer" | sed 's/"/\\\\"/g; s/^/"/; s/$/"/')}"
 `,
@@ -242,7 +242,7 @@ printf '%s\\n' "{\\"type\\":\\"result\\",\\"subtype\\":\\"success\\",\\"is_error
     writeFileSync(
       join(reporting, "claude"),
       `#!/bin/sh
-echo '{"type":"system","subtype":"init","session_id":"s1"}'
+echo '{"type":"system","subtype":"init","session_id":"s1","apiKeySource":"none"}'
 echo "{\\"type\\":\\"result\\",\\"subtype\\":\\"success\\",\\"is_error\\":false,\\"result\\":\\"${seen}\\"}"
 `,
     );
@@ -302,7 +302,7 @@ echo '{"type":"turn.completed"}'
     writeFileSync(
       join(failing, "claude"),
       `#!/bin/sh
-echo '{"type":"system","subtype":"init","session_id":"s1"}'
+echo '{"type":"system","subtype":"init","session_id":"s1","apiKeySource":"none"}'
 echo '{"type":"result","subtype":"success","is_error":true,"result":"Not logged in"}'
 exit 0
 `,

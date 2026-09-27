@@ -42,7 +42,13 @@ function claudeEventParser(): HarnessLineParser {
       return { type: "diagnostic", level: "error", message: "Claude emitted invalid JSON" };
     }
     if (event.type === "system" && event.subtype === "init") {
-      if (event.apiKeySource !== undefined && event.apiKeySource !== "none") {
+      if (!event.apiKeySource) {
+        return {
+          type: "run.failed",
+          reason: "Claude did not report its API key source; cannot verify billing for this worker",
+        };
+      }
+      if (event.apiKeySource !== "none") {
         return {
           type: "run.failed",
           reason: `Claude would bill this worker per token through ${event.apiKeySource}; sign in with a subscription instead`,
