@@ -416,6 +416,26 @@ describe("order command", () => {
     expect(snapshot.orders[0]?.status).toBe("shipped");
   });
 
+  test("a ship names the branch it kept and why", () => {
+    const database = db();
+    queued(database);
+    atBuild(database);
+    const wt = join(trunk.dir, ".claude", "worktrees", "order-1");
+    writeFileSync(join(wt, "unlanded.txt"), "unlanded");
+    Bun.spawnSync(["git", "-C", wt, "add", "."]);
+    Bun.spawnSync(["git", "-C", wt, "commit", "-q", "-m", "feat: unlanded"]);
+    const tip = Bun.spawnSync(["git", "-C", wt, "rev-parse", "HEAD"], { stdout: "pipe" })
+      .stdout.toString()
+      .trim();
+    landed(database, "order-1");
+    approvedAt(database, trunk.sha);
+
+    expect(runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toBe(
+      `order-1 is already on the default branch and shipped; branch order-1 kept: its tip ${tip} has not landed on the default branch`,
+    );
+    Bun.spawnSync(["git", "-C", trunk.dir, "branch", "-D", "order-1"]);
+  });
+
   test("a ship is refused before the order recorded any commit", () => {
     const database = db();
     queued(database);

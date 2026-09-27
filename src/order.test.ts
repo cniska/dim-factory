@@ -669,6 +669,84 @@ describe("factory order report records", () => {
     rmSync(home, { recursive: true, force: true });
   });
 
+  test("a worktree whose teardown fails is kept with its branch, and the order is still shipped", () => {
+    const repo = integratedRepo();
+    const home = mkdtempSync(join(tmpdir(), "dim-ship-"));
+    const env = scratchEnv(home);
+    mkdirSync(join(repo.dir, "scripts"));
+    writeFileSync(join(repo.dir, "scripts", "worktree-teardown.sh"), "#!/bin/sh\nexit 3\n", { mode: 0o755 });
+    Bun.spawnSync(["git", "-C", repo.dir, "add", "scripts/worktree-teardown.sh"]);
+    Bun.spawnSync(["git", "-C", repo.dir, "commit", "-q", "-m", "test: fail teardown"]);
+    const database = db();
+    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    startPlannedBuild(database);
+    const wt = orderWorktree(repo.dir, "order-1");
+    writeFileSync(join(wt, "ship-slice.txt"), "slice");
+    Bun.spawnSync(["git", "-C", wt, "add", "."]);
+    Bun.spawnSync(["git", "-C", wt, "commit", "-q", "-m", "feat: ship-slice"]);
+    const sha = Bun.spawnSync(["git", "-C", wt, "rev-parse", "HEAD"], { stdout: "pipe" })
+      .stdout.toString()
+      .trim();
+    recordOrderCommit(database, "order-1", sha, worker, "feat: ship-slice");
+    approveFinalBuildAt(database, "order-1", sha, worker, attemptOperator);
+    approveReviewAt(database, "order-1", sha, attemptOperator);
+
+    shipOrder(database, "order-1", wt, attemptOperator, { env });
+
+    expect(orderStatus(database, "order-1")).toBe("shipped");
+    expect(database.query("SELECT evidence FROM factory_order_event WHERE kind = 'shipped'").get()).toEqual({
+      evidence:
+        '{"landed":"fast_forward","worktreeKept":"teardown failed (exit 3) — worktree kept; fix it, or re-run with --force","branchKept":"its worktree still holds it"}',
+    });
+    expect(existsSync(wt)).toBe(true);
+    expect(
+      Bun.spawnSync(["git", "-C", repo.dir, "show-ref", "--verify", "--quiet", "refs/heads/order-1"]).success,
+    ).toBe(true);
+
+    database.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  test("a branch whose tip has not landed is kept when its recorded commits already have", () => {
+    const repo = integratedRepo();
+    const home = mkdtempSync(join(tmpdir(), "dim-ship-"));
+    const env = scratchEnv(home);
+    const database = db();
+    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    startPlannedBuild(database);
+    const wt = orderWorktree(repo.dir, "order-1");
+    const head = () =>
+      Bun.spawnSync(["git", "-C", wt, "rev-parse", "HEAD"], { stdout: "pipe" }).stdout.toString().trim();
+    writeFileSync(join(wt, "landed.txt"), "landed");
+    Bun.spawnSync(["git", "-C", wt, "add", "."]);
+    Bun.spawnSync(["git", "-C", wt, "commit", "-q", "-m", "feat: landed"]);
+    const sha = head();
+    Bun.spawnSync(["git", "-C", repo.dir, "merge", "-q", "--ff-only", sha]);
+    writeFileSync(join(wt, "unlanded.txt"), "unlanded");
+    Bun.spawnSync(["git", "-C", wt, "add", "."]);
+    Bun.spawnSync(["git", "-C", wt, "commit", "-q", "-m", "feat: unlanded"]);
+    const tip = head();
+    recordOrderCommit(database, "order-1", sha, worker, "feat: landed");
+    approveFinalBuildAt(database, "order-1", sha, worker, attemptOperator);
+    approveReviewAt(database, "order-1", sha, attemptOperator);
+
+    expect(shipOrder(database, "order-1", repo.dir, attemptOperator, { env }).landed).toBe("already");
+
+    expect(orderStatus(database, "order-1")).toBe("shipped");
+    expect(database.query("SELECT evidence FROM factory_order_event WHERE kind = 'shipped'").get()).toEqual({
+      evidence: `{"landed":"already","branchKept":"its tip ${tip} has not landed on the default branch"}`,
+    });
+    expect(existsSync(wt)).toBe(false);
+    expect(
+      Bun.spawnSync(["git", "-C", repo.dir, "show-ref", "--verify", "--quiet", "refs/heads/order-1"]).success,
+    ).toBe(true);
+
+    database.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  });
+
   test("a ship is refused for an order that recorded no commit", () => {
     const repo = integratedRepo();
     const home = mkdtempSync(join(tmpdir(), "dim-ship-"));

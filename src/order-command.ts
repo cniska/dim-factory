@@ -114,7 +114,11 @@ const SHIP_OUTCOME_TEXT: Record<ShipOutcome["landed"], string> = {
 function ship(db: Database, orderId: string, args: string[], cwd: string, env: Env, worker: string): string {
   flags(args, []);
   const outcome = shipOrder(db, orderId, cwd, worker, { env });
-  return `${orderId} is ${SHIP_OUTCOME_TEXT[outcome.landed]} and shipped`;
+  const kept = [
+    outcome.worktreeKept === undefined ? [] : [`worktree kept: ${outcome.worktreeKept}`],
+    outcome.branchKept === undefined ? [] : [`branch ${orderId} kept: ${outcome.branchKept}`],
+  ].flat();
+  return [`${orderId} is ${SHIP_OUTCOME_TEXT[outcome.landed]} and shipped`, ...kept].join("; ");
 }
 
 const AMEND_FLAGS = ["--title", "--description"];

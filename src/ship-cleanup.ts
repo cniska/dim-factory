@@ -1,16 +1,32 @@
 import { reachesTrunk } from "./git-trunk";
-import { removeWorktree, repoRoot } from "./wt-command";
+import { removeWorktree, repoRoot, WtError } from "./wt-command";
+
+export type ShipCleanup = { worktreeKept?: string; branchKept?: string };
 
 function git(root: string, args: string[]): { ok: boolean; out: string } {
   const run = Bun.spawnSync(["git", "-C", root, ...args], { stdout: "pipe", stderr: "pipe" });
   return { ok: run.success, out: (run.success ? run.stdout : run.stderr).toString().trim() };
 }
 
-export function removeShippedBranch(branch: string, cwd: string): void {
-  const root = repoRoot(cwd);
-  removeWorktree(branch, { cwd: root });
-  const tip = git(root, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]).out;
-  if (reachesTrunk(root, tip).reach !== "reached") return;
+function branchKept(root: string, branch: string): string | undefined {
+  const tip = git(root, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
+  if (!tip.ok) return undefined;
+  const trunk = reachesTrunk(root, tip.out);
+  if (trunk.reach === "unknown") return trunk.why;
+  if (trunk.reach !== "reached") return `its tip ${tip.out} has not landed on the default branch`;
   const deleted = git(root, ["branch", "-D", branch]);
-  if (!deleted.ok) throw new Error(`could not delete the branch ${branch}: ${deleted.out}`);
+  if (!deleted.ok) return `git refused to delete it: ${deleted.out.split("\n")[0]}`;
+  return undefined;
+}
+
+export function removeShippedBranch(branch: string, cwd: string): ShipCleanup {
+  const root = repoRoot(cwd);
+  try {
+    removeWorktree(branch, { cwd: root });
+  } catch (error) {
+    if (!(error instanceof WtError)) throw error;
+    return { worktreeKept: error.message, branchKept: "its worktree still holds it" };
+  }
+  const kept = branchKept(root, branch);
+  return kept === undefined ? {} : { branchKept: kept };
 }

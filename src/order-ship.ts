@@ -11,7 +11,7 @@ import { appendOrderEvent } from "./order-ledger";
 import { assertNext } from "./order-state";
 import { dataDir, type Env } from "./paths";
 import { type RebaseVerdict, type ShipOutcome, shipBranch } from "./ship";
-import { removeShippedBranch } from "./ship-cleanup";
+import { removeShippedBranch, type ShipCleanup } from "./ship-cleanup";
 import { RebaseConflict, type Rewrite } from "./ship-rebase";
 import { ShipRefusal } from "./ship-refusal";
 import { checkTask } from "./workspace-tasks";
@@ -60,7 +60,7 @@ export function shipOrder(
   cwd: string,
   worker: string,
   options: { env?: Env; checkSandbox?: string[] } = {},
-): ShipOutcome {
+): ShipOutcome & ShipCleanup {
   const env = options.env ?? process.env;
   return withLock(() => {
     assertOperator(db, worker, "ship an order");
@@ -98,13 +98,13 @@ export function shipOrder(
       });
       throw error;
     }
-    removeShippedBranch(orderId, cwd);
+    const kept = removeShippedBranch(orderId, cwd);
     appendOrderEvent(db, orderId, {
       kind: "shipped",
       worker,
       commitSha: latestOrderCommit(db, orderId)?.sha,
-      evidence: { landed: outcome.landed },
+      evidence: { landed: outcome.landed, ...kept },
     });
-    return outcome;
+    return { ...outcome, ...kept };
   }, env);
 }
