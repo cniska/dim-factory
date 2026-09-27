@@ -4,14 +4,19 @@ A local SQLite database, fed from the coding-agent sessions on this machine, tha
 
 ## Sources
 
-- **Claude Code transcripts** — `~/.claude/projects/<slug>/<session-id>.jsonl`, one JSON object per line, with subagents under `<session-id>/subagents/`. A subagent's session is `<agent id>@<parent session id>`, because an agent id repeats across parents.
-- **Codex rollouts** — `~/.codex/sessions/**/rollout-*.jsonl` and `~/.codex/archived_sessions/`. The rollout is the source of record; Codex's own SQLite files are a projection of it, and only the rollout holds token usage.
-- **Grok Build sessions** — `~/.grok/sessions/<encoded-cwd>/<session-id>/updates.jsonl`. `summary.json` beside it supplies the title, directory, branch, model, and parent. `GROK_HOME` overrides the base directory. A child session is an ordinary session whose summary names its parent.
-- **Prompt history** — `~/.claude/history.jsonl`, `~/.codex/history.jsonl`, and each Grok cwd group's `prompt_history.jsonl`, the only remnant of a session whose transcript was deleted.
-- **Hooks** — events spooled by the hooks `dim` installs (see [Hooks](#hooks)).
-- **Git** — `git log` of the repos the session rows name, read into `repo_commit` and `commit_file`, and `git ls-files` into `repo_file`.
+Sessions are read from these files. Each one lands in the same tables.
 
-Claude Code deletes transcripts after 30 days unless `cleanupPeriodDays` is raised; this machine sets it to 3650, and Codex never prunes. The database stores pointers into these files rather than archiving them, so a deleted source file loses whatever the database did not extract.
+- **Claude Code.** `~/.claude/projects/<slug>/<session-id>.jsonl`, one JSON object per line. Subagents are under `<session-id>/subagents/`. A subagent's session is `<agent id>@<parent session id>`, because an agent id repeats across parents.
+- **Codex.** `~/.codex/sessions/**/rollout-*.jsonl` and `~/.codex/archived_sessions/`. The rollout is the source of record. Codex's own SQLite files are a projection of it, and only the rollout holds token usage.
+- **Grok Build.** `~/.grok/sessions/<encoded-cwd>/<session-id>/updates.jsonl`. `summary.json` in that directory holds the title, working directory, branch, model, and parent. `GROK_HOME` overrides `~/.grok`. A child session is an ordinary session whose summary names its parent.
+
+These are read too.
+
+- **Prompt history.** `~/.claude/history.jsonl`, `~/.codex/history.jsonl`, and each Grok directory's `prompt_history.jsonl`. This is what remains when the transcript was deleted.
+- **Hooks.** Events spooled by the hooks `dim` installs (see [Hooks](#hooks)).
+- **Git.** `git log` of the repos the session rows name, into `repo_commit` and `commit_file`, and `git ls-files` into `repo_file`.
+
+Claude Code deletes transcripts after 30 days unless `cleanupPeriodDays` is raised. This machine sets it to 3650. Codex does not prune. Grok removes a session when it is deleted. The database stores pointers into these files rather than archiving them, so a deleted source file loses whatever the database did not extract.
 
 ## What is stored
 
@@ -40,6 +45,7 @@ dim sync: drain the spool → read changed files → derive session ends
 
 - **No network, credential or per-token cost, and no model reads a transcript.** Nothing is filtered or scored at ingest; deciding at read time is the only policy that is reversible.
 - **Per-tool parsers** ([`src/ingest-parse-claude.ts`](../src/ingest-parse-claude.ts), [`src/ingest-parse-codex.ts`](../src/ingest-parse-codex.ts), [`src/ingest-parse-grok.ts`](../src/ingest-parse-grok.ts)) turn lines into rows and know nothing of the database; [`src/ingest.ts`](../src/ingest.ts) writes their rows and knows nothing of any format.
+- **Another session source is another parser and another list of files.** The parser returns the same rows. The list returns one [`FileSpec`](../src/ingest.ts) per file. The name is added to the vocabulary in [`src/ingest-tools.ts`](../src/ingest-tools.ts), which is what the schema checks. Prompt history, when the tool keeps one, is a path and a function that picks the session id, the time, and the text. A source does not require hooks or a harness.
 - **Incremental.** `source_file.bytes_ingested` is each file's cursor, and a changed file is read from it. A file shorter than its cursor is re-ingested from zero.
 - **The cursor follows the session, not the path.** Codex archives a rollout by moving it, so the cursor is keyed by `(session_id, kind)` and `message.src_file` follows the new path through `ON UPDATE CASCADE`.
 - **Idempotent.** Natural keys make a re-run a no-op: Claude `message.id` and `uuid`, tool-use ids, `response_id`, Codex item ids and `(thread_id, turn_id)`, Grok event ids and tool-call ids.
@@ -49,7 +55,7 @@ dim sync: drain the spool → read changed files → derive session ends
 
 ## Hooks
 
-`dim install-hooks` installs these for both tools ([`src/hooks.ts`](../src/hooks.ts)):
+`dim install-hooks` installs these for Claude Code and Codex ([`src/hooks.ts`](../src/hooks.ts)). Grok sessions are read from the files above and do not spool hook events.
 
 | Event | What it does |
 |---|---|
@@ -65,8 +71,8 @@ dim sync: drain the spool → read changed files → derive session ends
 
 ## Tokens and cost
 
-- **Tokens** come from `usage` only, and the two tools' counts are never summed into one total, since they are not the same currency.
-- **Cost** is stored only where the tool computed it — Claude's `cost-state`. Codex reports none, and the database derives no dollar figure.
+- **Tokens** come from `usage` only. Counts from different tools are never summed into one total, since they are not the same currency.
+- **Cost** is stored only where the tool computed it. Claude writes that figure on `cost-state`. The database derives no dollar figure.
 
 ## Read path
 
