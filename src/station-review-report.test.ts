@@ -1,6 +1,8 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { SCHEMA_SQL } from "./db-schema";
 import { integratedRepo, reviewIn, reviewOutput, workerIn } from "./fixtures.test-support";
 import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
@@ -8,6 +10,7 @@ import { queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview } from "./order-review";
 import { parseReviewReport } from "./station-review-artifact";
 import { renderReviewReport } from "./station-review-report";
+import { WallMarkdown } from "./wall-markdown";
 
 const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
@@ -105,6 +108,23 @@ describe("the rendered Review artifact", () => {
       ].join("\n"),
     );
     expect(body).toContain("## Observations\n\n- The helper could be inlined.");
+  });
+
+  test("keeps punctuation and line breaks inside a coverage table cell", () => {
+    const { db, review } = refused();
+    const input = JSON.parse(reviewOutput()) as { coverage: { reason: string | null }[] };
+    input.coverage = input.coverage.map((entry, index) =>
+      index === 0
+        ? { ...entry, reason: "path \\| state\nfollow-up; use `C:\\foo` and `a\\|b` with &copy; <tag>" }
+        : entry,
+    );
+
+    const body = renderReviewReport(db, review, parseReviewReport(JSON.stringify(input)));
+
+    const html = renderToStaticMarkup(createElement(WallMarkdown, null, body));
+    expect(html).toContain(
+      "<td>path \\| state follow-up; use `C:\\foo` and `a\\|b` with &amp;copy; &lt;tag&gt;</td>",
+    );
   });
 
   test("says None under a section with nothing in it", () => {

@@ -12,6 +12,16 @@ test("artifact Markdown renders a table with a scrollable container", () => {
   expect(html).toContain("<tbody><tr><td>Tests</td><td><strong>clean</strong></td></tr></tbody>");
 });
 
+test("escaped pipes remain inside one table cell", () => {
+  const html = renderToStaticMarkup(
+    <WallMarkdown>{String.raw`| Dimension | Reason |
+| --- | --- |
+| Plan | path \\\| state |`}</WallMarkdown>,
+  );
+
+  expect(html).toContain("<tbody><tr><td>Plan</td><td>path \\| state</td></tr></tbody>");
+});
+
 test("fenced callgraphs keep their indentation and line breaks", () => {
   const html = renderToStaticMarkup(
     <WallMarkdown>{"```text\nroot\n  child\n    leaf\n| code | not a table |\n```"}</WallMarkdown>,

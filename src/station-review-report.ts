@@ -10,6 +10,16 @@ function section(heading: string, lines: string[]): string {
   return [`## ${heading}`, "", ...(lines.length > 0 ? lines : ["None."])].join("\n");
 }
 
+function tableCell(value: string): string {
+  return value
+    .replace(/\s+/g, " ")
+    .trim()
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replace(/[\\`*_{}[\]()#+.!|~-]/g, "\\$&");
+}
+
 export function renderReviewReport(db: Database, reviewId: number, report: ReviewReport): string {
   const orderId = db
     .query<{ order_id: string }, [number]>("SELECT order_id FROM factory_order_review WHERE id = ?")
@@ -47,7 +57,9 @@ export function renderReviewReport(db: Database, reviewId: number, report: Revie
     section("Coverage", [
       "| Dimension | Status | Reason |",
       "|---|---|---|",
-      ...report.coverage.map((entry) => `| ${entry.dimension} | ${entry.status} | ${entry.reason ?? ""} |`),
+      ...report.coverage.map(
+        (entry) => `| ${entry.dimension} | ${entry.status} | ${tableCell(entry.reason ?? "")} |`,
+      ),
     ]),
     section("What was not judged", [
       ...report.setAside.map((entry) => `- Set aside: ${entry.item}. ${entry.why}`),
