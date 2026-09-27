@@ -221,7 +221,7 @@ function harnesses(env: Env): Health {
       name: "harnesses",
       state: "warn",
       detail: "no harness is ready, so no station can start a worker",
-      fix: "install codex or claude and map it in routing.json",
+      fix: "install codex, claude, or grok and map it in routing.json",
     };
   }
   const readiness = ready.length > 0 ? `${ready.join(", ")} ready` : "no harness is ready";

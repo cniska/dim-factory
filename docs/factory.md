@@ -53,7 +53,7 @@ queued → plan → build → review → ship → done
 dim order add <id> --title "..." [--line feat|fix] [--description "..."]
 dim order ready                          # the queue
 dim order priority|amend|drop <id> ...
-dim order plan|build|review <id> [--harness codex|claude]
+dim order plan|build|review <id> [--harness codex|claude|grok]
 dim order approve <id> [--reason "..."]  # a Build artifact's approval gives its reason; a Review artifact's ships
 dim order return <id> --reason "..." [--to plan|build]
 dim order ship <id>                      # retries a ship that failed with no station's work to do
@@ -104,13 +104,13 @@ Around it:
 - **Station attempts** start when a planner, builder, or reviewer run receives its worker identity. The runner records the outcome; if a worker stops without one, the next run records that attempt as failed before starting. A failure before assignment records the station and reason with no worker.
 - **A worker is over when its process stops answering** a signal ([`src/worker.ts`](../src/worker.ts)); nothing needs to be awake to notice.
 - **A worker is started without the operator's identity** or session, and without an API key, so it is never billed per token. A Claude worker cannot start background work.
-- **Sandboxes.** No worker gets the checkout's git metadata. Codex builders run `workspace-write`, everything else read-only; Claude workers run in its Bash sandbox with `.git` denied.
+- **Sandboxes.** No worker gets the checkout's git metadata. Codex builders run `workspace-write`, everything else read-only. Claude workers run in its Bash sandbox with `.git` denied. Grok builders run the `workspace` sandbox and other Grok workers `read-only`; edit tools are denied on `.git`, and on every path when the worker cannot edit.
 
 ## Roles and tiers
 
 Each role runs at a tier declared in [`src/worker-routing.ts`](../src/worker-routing.ts): the planner, the reviewer and the operator at `deep`, the builder at `standard`. The machine's `routing.json` maps each harness's models to the tiers, and `dim route` refuses a map that does not say exactly one thing. No model name appears in this repo.
 
-A station asks for capabilities, never a harness's flags ([`src/worker-capabilities.ts`](../src/worker-capabilities.ts)); each harness adapter maps them ([`src/harness-codex.ts`](../src/harness-codex.ts), [`src/harness-claude.ts`](../src/harness-claude.ts)).
+A station asks for capabilities, never a harness's flags ([`src/worker-capabilities.ts`](../src/worker-capabilities.ts)); each harness adapter maps them ([`src/harness-codex.ts`](../src/harness-codex.ts), [`src/harness-claude.ts`](../src/harness-claude.ts), [`src/harness-grok.ts`](../src/harness-grok.ts)).
 
 ## Worker environments
 

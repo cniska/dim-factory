@@ -18,7 +18,7 @@ Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` 
 | `order` | An order: its lifecycle, ledger, evidence, findings, ship and queue |
 | `station` | The plan, build and review stations: briefs, turns, artifacts and the build runner |
 | `worker` | Who a worker is: assignment, credential, roles, routing and capabilities |
-| `harness` | Starting a worker under Claude Code or Codex |
+| `harness` | Starting a worker under Claude Code, Codex, or Grok Build |
 | `factory` | The floor: stop, schedule and operator |
 | `ship` | Landing an order on the trunk, and its rebase |
 | `check` | The check sandbox |

@@ -234,6 +234,7 @@ printf '%s\\n' "{\\"type\\":\\"result\\",\\"subtype\\":\\"success\\",\\"is_error
       "CLAUDE_CODE_SESSION_ID",
       "CLAUDE_CODE_MESSAGING_TOKEN",
       "CODEX_THREAD_ID",
+      "GROK_SESSION_ID",
       "CLAUDE_CODE_OAUTH_TOKEN",
       "ANTHROPIC_API_KEY",
     ]
@@ -267,6 +268,7 @@ echo '{"type":"turn.completed"}'
       CLAUDE_CODE_SESSION_ID: "operator-session",
       CLAUDE_CODE_MESSAGING_TOKEN: "operator-messaging-token",
       CODEX_THREAD_ID: "operator-thread",
+      GROK_SESSION_ID: "operator-grok-session",
       CLAUDE_CODE_OAUTH_TOKEN: "subscription",
       ANTHROPIC_API_KEY: "sk-ant",
     };
@@ -284,7 +286,7 @@ echo '{"type":"turn.completed"}'
             DIM_WORKER_ASSIGNMENT_TOKEN: "assignment-token",
           },
         };
-        const expected = `|||assignment-1|assignment-token|||||||subscription|${harness === "codex" ? "sk-ant" : ""}`;
+        const expected = `|||assignment-1|assignment-token||||||||subscription|${harness === "codex" ? "sk-ant" : ""}`;
 
         expect((await launchHarnessLive(assigned, () => undefined)).output).toBe(expected);
       }

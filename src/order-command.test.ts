@@ -202,7 +202,7 @@ describe("order command", () => {
     runOrderCommand(database, add);
     const operator = resolveWorker(database, env);
 
-    const refusal = `${operator} runs in no recorded harness session; delegate with --harness <codex|claude>`;
+    const refusal = `${operator} runs in no recorded harness session; delegate with --harness <codex|claude|grok>`;
     for (const station of ["plan", "build", "review"]) {
       await expect(runOrderCommandLive(database, [station, "order-1"], null, trunk.dir, env)).rejects.toThrow(
         refusal,

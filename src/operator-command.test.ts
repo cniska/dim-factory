@@ -111,6 +111,26 @@ describe("resolving the project's operator session", () => {
     db.close();
   });
 
+  test("uses the grok session id to choose among active project sessions", () => {
+    const db = floor();
+    const env = shell("grok-session");
+    env.GROK_SESSION_ID = "grok-session";
+    env.CODEX_THREAD_ID = "codex-session";
+    writeFileSync(
+      join(toolSpoolDir("codex", env), "1770000000000000001-123.json"),
+      JSON.stringify({
+        session_id: "other-session",
+        hook_event_name: "SessionStart",
+        cwd: process.cwd(),
+      }),
+    );
+
+    const printed = runOperatorCommand(db, [], env);
+
+    expect(printed).toContain(`export ${WORKER_SESSION_VAR}=grok-session`);
+    db.close();
+  });
+
   test("checks the second harness id when the first is not active", () => {
     const db = floor();
     const env = shell("claude-session");

@@ -1,6 +1,7 @@
 import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
 import { claudeProcess } from "./harness-claude";
 import { codexProcess } from "./harness-codex";
+import { grokProcess } from "./harness-grok";
 import type { HarnessName } from "./harness-name";
 import { type HarnessProcess, type ProcessEnvironment, processHarness } from "./harness-process";
 import { runHarness } from "./harness-runner";
@@ -31,6 +32,7 @@ export function workerFailureReason(
 const HARNESS_PROCESSES: Record<HarnessName, HarnessProcess> = {
   codex: codexProcess,
   claude: claudeProcess,
+  grok: grokProcess,
 };
 
 function workerOutput(events: HarnessEvent[]): string {

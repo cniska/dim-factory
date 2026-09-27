@@ -370,7 +370,7 @@ describe("harness readiness", () => {
       name: "harnesses",
       state: "warn",
       detail: "no harness is ready, so no station can start a worker",
-      fix: "install codex or claude and map it in routing.json",
+      fix: "install codex, claude, or grok and map it in routing.json",
     });
   });
 
