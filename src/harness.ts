@@ -9,6 +9,8 @@ export type HarnessRequest = {
   outputSchema?: string;
 };
 
+export type UsageLimit = { resetsAt?: string };
+
 export type HarnessEvent =
   | { type: "run.started"; providerSessionId?: string }
   | { type: "turn.started" }
@@ -21,6 +23,7 @@ export type HarnessEvent =
   | {
       type: "run.failed";
       reason: string;
+      usageLimit?: UsageLimit;
       exitCode?: number;
       stderr?: string;
       termination?: "exited" | "cancelled";

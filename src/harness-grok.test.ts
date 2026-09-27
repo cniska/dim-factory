@@ -120,6 +120,7 @@ describe("the Grok harness adapter", () => {
       {
         type: "run.failed",
         reason: "API error (status 402 Payment Required): Grok Build usage balance exhausted",
+        usageLimit: {},
       },
       { type: "run.failed", reason: "Session aborted" },
       { type: "run.failed", reason: "first; second" },

@@ -118,6 +118,36 @@ describe("the Claude harness adapter", () => {
     ]);
   });
 
+  test("names a usage limit and when it resets, from the rate-limit event Claude streams", () => {
+    const limitText = "You've hit your session limit · resets 7:50pm (Europe/Helsinki)";
+    expect(
+      parseAll([
+        {
+          type: "rate_limit_event",
+          rate_limit_info: { status: "rejected", resetsAt: 1790527800, rateLimitType: "five_hour" },
+        },
+        {
+          type: "assistant",
+          error: "rate_limit",
+          message: { content: [{ type: "text", text: limitText }] },
+        },
+        { type: "result", subtype: "success", is_error: true, api_error_status: 429, result: limitText },
+      ]),
+    ).toEqual([
+      { type: "message", role: "assistant", text: limitText },
+      { type: "run.failed", reason: limitText, usageLimit: { resetsAt: "2026-09-27T16:50:00.000Z" } },
+    ]);
+  });
+
+  test("an allowed rate-limit event is no limit", () => {
+    expect(
+      parseAll([
+        { type: "rate_limit_event", rate_limit_info: { status: "allowed", resetsAt: 1790527800 } },
+        { type: "result", subtype: "error_max_turns", is_error: true },
+      ]),
+    ).toEqual([{ type: "run.failed", reason: "error_max_turns" }]);
+  });
+
   test("gives a builder edits inside a sandbox that cannot fall back to running unconfined", () => {
     const argv = commandLine(claudeProcess, { ...request, capabilities: ["edit-files"] });
 

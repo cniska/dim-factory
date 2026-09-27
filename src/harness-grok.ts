@@ -26,20 +26,35 @@ type GrokEvent = {
 
 const INTERNAL_ERROR_PREFIX = "Internal error: ";
 
-function providerMessage(error: string): string {
-  if (!error.startsWith(INTERNAL_ERROR_PREFIX)) return error;
+const USAGE_LIMIT_STATUSES = [402, 429];
+
+type ProviderError = { message: string; httpStatus?: number };
+
+function providerError(error: string): ProviderError {
+  if (!error.startsWith(INTERNAL_ERROR_PREFIX)) return { message: error };
   try {
     const detail: unknown = JSON.parse(error.slice(INTERNAL_ERROR_PREFIX.length));
     if (detail && typeof detail === "object" && "message" in detail && typeof detail.message === "string") {
-      return detail.message;
+      const status =
+        "http_status" in detail && typeof detail.http_status === "number" ? detail.http_status : undefined;
+      return { message: detail.message, ...(status === undefined ? {} : { httpStatus: status }) };
     }
   } catch {}
-  return error;
+  return { message: error };
 }
 
-function failureReason(event: GrokEvent): string {
-  if (event.errors?.length) return event.errors.map(providerMessage).join("; ");
-  return event.result || event.subtype || "Grok run failed";
+function failedRun(event: GrokEvent): HarnessEvent {
+  if (!event.errors?.length)
+    return { type: "run.failed", reason: event.result || event.subtype || "Grok run failed" };
+  const errors = event.errors.map(providerError);
+  const limited = errors.some(
+    (error) => error.httpStatus !== undefined && USAGE_LIMIT_STATUSES.includes(error.httpStatus),
+  );
+  return {
+    type: "run.failed",
+    reason: errors.map((error) => error.message).join("; "),
+    ...(limited ? { usageLimit: {} } : {}),
+  };
 }
 
 function resultText(content: GrokBlock["content"]): string {
@@ -112,7 +127,7 @@ function grokEventParser(): HarnessLineParser {
           event.structured_output === undefined ? event.result : JSON.stringify(event.structured_output);
         return { type: "run.completed", output };
       }
-      return { type: "run.failed", reason: failureReason(event) };
+      return failedRun(event);
     }
     if (event.type === "error") {
       return {

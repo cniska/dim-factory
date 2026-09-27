@@ -1,4 +1,4 @@
-import type { HarnessEvent, HarnessRun } from "./harness";
+import type { HarnessEvent, HarnessRun, UsageLimit } from "./harness";
 
 export type HarnessRunResult =
   | { outcome: "completed"; events: HarnessEvent[] }
@@ -6,6 +6,7 @@ export type HarnessRunResult =
       outcome: "failed";
       events: HarnessEvent[];
       reason: string;
+      usageLimit?: UsageLimit;
       exitCode?: number;
       stderr?: string;
       termination?: "exited" | "cancelled";
@@ -60,6 +61,7 @@ export async function runHarness(run: HarnessRun, options: HarnessRunnerOptions)
           outcome: "failed",
           events,
           reason: event.reason,
+          ...(event.usageLimit === undefined ? {} : { usageLimit: event.usageLimit }),
           ...(event.exitCode === undefined ? {} : { exitCode: event.exitCode }),
           ...(event.stderr === undefined ? {} : { stderr: event.stderr }),
           ...(event.termination === undefined ? {} : { termination: event.termination }),

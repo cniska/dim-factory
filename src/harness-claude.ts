@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { checkoutGitPath } from "./git-checkout-dir";
-import type { HarnessEvent, HarnessRequest } from "./harness";
+import type { HarnessEvent, HarnessRequest, UsageLimit } from "./harness";
 import type { HarnessLineParser, HarnessProcess, ProcessEnvironment } from "./harness-process";
 import { dataDir } from "./paths";
 
@@ -22,6 +22,7 @@ type ClaudeEvent = {
   result?: string;
   structured_output?: unknown;
   message?: { content?: ClaudeBlock[] };
+  rate_limit_info?: { status?: string; resetsAt?: number };
 };
 
 function resultText(content: ClaudeBlock["content"]): string {
@@ -34,6 +35,7 @@ function resultText(content: ClaudeBlock["content"]): string {
 
 function claudeEventParser(): HarnessLineParser {
   const toolNames = new Map<string, string>();
+  let usageLimit: UsageLimit | undefined;
   return (line) => {
     let event: ClaudeEvent;
     try {
@@ -55,6 +57,14 @@ function claudeEventParser(): HarnessLineParser {
         };
       }
       return [{ type: "run.started", providerSessionId: event.session_id }, { type: "turn.started" }];
+    }
+    if (event.type === "rate_limit_event") {
+      const info = event.rate_limit_info;
+      if (info?.status === "rejected") {
+        usageLimit =
+          info.resetsAt === undefined ? {} : { resetsAt: new Date(info.resetsAt * 1000).toISOString() };
+      }
+      return undefined;
     }
     if (event.type === "assistant") {
       return (event.message?.content ?? []).flatMap((block): HarnessEvent[] => {
@@ -83,7 +93,11 @@ function claudeEventParser(): HarnessLineParser {
           event.structured_output === undefined ? event.result : JSON.stringify(event.structured_output);
         return { type: "run.completed", output };
       }
-      return { type: "run.failed", reason: event.result || event.subtype || "Claude run failed" };
+      return {
+        type: "run.failed",
+        reason: event.result || event.subtype || "Claude run failed",
+        ...(usageLimit ? { usageLimit } : {}),
+      };
     }
     return undefined;
   };

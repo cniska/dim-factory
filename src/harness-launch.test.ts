@@ -66,6 +66,44 @@ describe("selected harness commands", () => {
     });
   });
 
+  test("carries a usage limit and its reset into the worker failure", async () => {
+    const adapter: HarnessAdapter = {
+      start: async () => ({
+        pid: process.pid,
+        events: (async function* () {
+          yield {
+            type: "run.failed",
+            reason: "You've hit your session limit",
+            usageLimit: { resetsAt: "2026-09-27T16:50:00.000Z" },
+          } as const;
+        })(),
+        cancel() {},
+      }),
+      resume: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const result = await launchHarnessLive(
+      {
+        harness: "claude",
+        cwd: "/worktree",
+        brief: "run the worker",
+        model: "standard-model",
+        capabilities: ["read-files"],
+        env: {},
+      },
+      () => undefined,
+      adapter,
+    );
+
+    expect(result).toMatchObject({
+      exitCode: 1,
+      failureReason: "You've hit your session limit",
+      usageLimit: { resetsAt: "2026-09-27T16:50:00.000Z" },
+    });
+  });
+
   test("keeps the worker's last word on a failed run, and takes a completed run's answer only from its completion", async () => {
     const scripted = (events: HarnessEvent[]): HarnessAdapter => ({
       start: async () => ({

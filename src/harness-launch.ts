@@ -1,4 +1,4 @@
-import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
+import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun, UsageLimit } from "./harness";
 import { claudeProcess } from "./harness-claude";
 import { codexProcess } from "./harness-codex";
 import { grokProcess } from "./harness-grok";
@@ -14,6 +14,7 @@ export type HarnessLaunchResult = {
   output: string;
   events: HarnessEvent[];
   failureReason?: string;
+  usageLimit?: UsageLimit;
   harnessExitCode?: number;
   stderr?: string;
   termination?: "exited" | "cancelled";
@@ -113,6 +114,7 @@ async function runHarnessSessionLive(
     output,
     events: result.events,
     ...(failureReason ? { failureReason } : {}),
+    ...(result.outcome === "failed" && result.usageLimit ? { usageLimit: result.usageLimit } : {}),
     ...(result.outcome === "failed" && result.exitCode !== undefined
       ? { harnessExitCode: result.exitCode }
       : {}),
