@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { committedTree } from "./git-committed";
 import { trunkRef } from "./git-trunk";
 
 const LONGEST_MANIFEST = 1024 * 1024;
@@ -42,27 +43,9 @@ function onDisk(repo: string): Manifests {
 }
 
 function committed(repo: string, at: string): Manifests {
-  const git = (args: string[]) => {
-    const run = Bun.spawnSync(["git", "-C", repo, ...args], { stdout: "pipe", stderr: "pipe" });
-    if (!run.success) throw new Error(`cannot read ${at} in ${repo}: ${run.stderr.toString().trim()}`);
-    return run.stdout.toString();
-  };
-  const entries = new Map<string, { mode: string; oid: string; size: number }>();
-  for (const entry of git(["ls-tree", "-l", "-z", at, "--", ...MANIFESTS])
-    .split("\0")
-    .filter(Boolean)) {
-    const [meta = "", name = ""] = entry.split("\t");
-    const [mode = "", , oid = "", size = ""] = meta.split(/\s+/);
-    entries.set(name, { mode, oid, size: Number(size) });
-  }
-  return {
-    has: (name) => entries.has(name),
-    read: (name) => {
-      const entry = entries.get(name);
-      if (!entry || !["100644", "100755"].includes(entry.mode) || entry.size > LONGEST_MANIFEST) return null;
-      return git(["cat-file", "blob", entry.oid]);
-    },
-  };
+  const tree = committedTree(repo, at, MANIFESTS);
+  if (!tree) throw new Error(`cannot read ${at} in ${repo}: it names no commit`);
+  return { has: (name) => tree.has(name), read: (name) => tree.read(name, LONGEST_MANIFEST) };
 }
 
 function managerOf(manifests: Manifests): string | null {

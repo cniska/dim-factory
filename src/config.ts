@@ -1,10 +1,10 @@
-import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { applyEdits, modify } from "jsonc-parser";
 import { ConfigError } from "./config-error";
 import { readJsoncText } from "./config-jsonc-file";
 import { parseSetting, type SettingDefect } from "./config-setting-file";
+import { committedTree } from "./git-committed";
 import { type Env, resolveHomeDir } from "./paths";
 
 export const SETTINGS = {
@@ -59,23 +59,7 @@ function parseConfig(text: string, file: string): Config {
 }
 
 function committedText(root: string, at: string): string {
-  const git = (args: string[]) => {
-    const run = spawnSync("git", ["-C", root, ...args], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    return { status: run.status, out: run.stdout, err: run.stderr.trim() };
-  };
-  const commit = git(["rev-parse", "--verify", "-q", `${at}^{commit}`]);
-  if (commit.status === 1) return "";
-  if (commit.status !== 0) throw new Error(`cannot read ${at} in ${root}: ${commit.err}`);
-  const listed = git(["ls-tree", "--name-only", at, "--", PROJECT_CONFIG]);
-  if (listed.status !== 0)
-    throw new Error(`cannot list ${PROJECT_CONFIG} at ${at} in ${root}: ${listed.err}`);
-  if (listed.out.trim() === "") return "";
-  const shown = git(["show", `${at}:${PROJECT_CONFIG}`]);
-  if (shown.status !== 0) throw new Error(`cannot read ${PROJECT_CONFIG} at ${at} in ${root}: ${shown.err}`);
-  return shown.out;
+  return committedTree(root, at, [PROJECT_CONFIG])?.read(PROJECT_CONFIG) ?? "";
 }
 
 export function readUserConfig(env: Env = process.env): Config {
