@@ -84,4 +84,19 @@ describe("parseCodexChunk", () => {
     const rules = withInjected.messages.find((m) => m.text?.startsWith("# AGENTS.md"));
     expect(rules?.promptSource).toBe("system");
   });
+
+  test("refuses a line with no timestamp rather than writing its rows untimed", () => {
+    const untimed = codexRolloutLines(THREAD, { withIds: true }).map((line, index) => {
+      if (index !== 3 && index !== 4) return JSON.stringify(line);
+      const { timestamp: _, ...rest } = line as Record<string, unknown>;
+      return JSON.stringify(rest);
+    });
+    const parsed = parseCodexChunk(untimed, 1, THREAD, {});
+    expect(parsed.dropped).toEqual([4, 5]);
+    expect(parsed.messages.map((m) => m.ts)).toEqual([
+      "2026-09-16T10:03:00.000Z",
+      "2026-09-16T10:07:00.000Z",
+    ]);
+    expect(parsed.usage).toEqual([]);
+  });
 });

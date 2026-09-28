@@ -86,6 +86,28 @@ describe("parseClaudeChunk", () => {
     expect(corrupt.messages.length).toBeGreaterThan(0);
   });
 
+  test("refuses a line whose rows need a timestamp it does not carry", () => {
+    const untimed = (line: unknown) => {
+      const { timestamp: _, ...rest } = line as Record<string, unknown>;
+      return JSON.stringify(rest);
+    };
+    const source = claudeTranscriptLines("s-1");
+    const chunk = parseClaudeChunk(
+      [lines[0], untimed(source[1]), untimed(source[2]), lines[3], untimed(source[8])] as string[],
+      1,
+    );
+    expect(chunk.dropped).toEqual([2, 3, 5]);
+    expect(chunk.messages.map((m) => m.ts)).toEqual(["2026-09-16T10:03:00.000Z"]);
+    expect(chunk.usage.map((u) => u.ts)).toEqual(["2026-09-16T10:03:00.000Z"]);
+    expect(chunk.turns).toEqual([]);
+  });
+
+  test("keeps a line that writes no timed row, timestamp or not", () => {
+    const titled = parseClaudeChunk([JSON.stringify({ type: "ai-title", aiTitle: "Untimed" })], 1);
+    expect(titled.dropped).toEqual([]);
+    expect(titled.session).toEqual([{ title: "Untimed" }]);
+  });
+
   test("reports nothing dropped for a chunk that parsed whole", () => {
     expect(parsed.dropped).toEqual([]);
   });

@@ -123,11 +123,16 @@ export function parseCodexChunk(
     }
     const p = line.payload;
     if (!p) continue;
+    const ts = nonEmpty(line.timestamp);
+    if (!ts) {
+      dropped.push(firstLineNumber + index);
+      continue;
+    }
     const ordinal = line.ordinal ?? 0;
 
     if (line.type === "session_meta") {
       session.push({
-        ts: p.timestamp ?? line.timestamp,
+        ts: p.timestamp ?? ts,
         cwd: p.cwd,
         project: projectOf(p.cwd),
         gitBranch: nonEmpty(p.git?.branch),
@@ -149,7 +154,7 @@ export function parseCodexChunk(
         turnId: nonEmpty(p.turn_id) ?? current.turnId,
       };
       session.push({
-        ts: line.timestamp,
+        ts,
         cwd: p.cwd,
         project: projectOf(p.cwd),
         model: current.model,
@@ -157,7 +162,7 @@ export function parseCodexChunk(
       if (current.turnId) {
         turns.push({
           turnId: current.turnId,
-          tsEnd: line.timestamp ?? "",
+          tsEnd: ts,
           status: "started",
           model: current.model,
         });
@@ -177,7 +182,7 @@ export function parseCodexChunk(
       const id = nonEmpty(p.id) ?? `${threadId}:${ordinal}`;
       messages.push({
         id,
-        ts: line.timestamp ?? "",
+        ts,
         role: p.role,
         model: p.role === "assistant" ? current.model : undefined,
         turnId: current.turnId,
@@ -195,7 +200,7 @@ export function parseCodexChunk(
       turns.push({
         turnId: p.turn_id,
         tsStart: epochSeconds(p.started_at),
-        tsEnd: epochSeconds(p.completed_at) ?? line.timestamp ?? "",
+        tsEnd: epochSeconds(p.completed_at) ?? ts,
         durationMs: p.duration_ms,
         messageCount: undefined,
         status: p.type === "task_complete" ? "completed" : (nonEmpty(p.reason) ?? "aborted"),
@@ -213,7 +218,7 @@ export function parseCodexChunk(
         const readSkill = cmd ? skillFromFileRead(cmd) : undefined;
         if (readSkill) {
           skillLoads.push({
-            ts: msSince(p.started_at_ms) ?? line.timestamp ?? "",
+            ts: msSince(p.started_at_ms) ?? ts,
             model: current.model,
             skillName: readSkill,
             how: "read",
@@ -222,8 +227,8 @@ export function parseCodexChunk(
         toolCalls.push({
           id: item.id as string,
           model: current.model,
-          tsCall: msSince(p.started_at_ms) ?? line.timestamp,
-          tsResult: msSince(p.completed_at_ms) ?? line.timestamp,
+          tsCall: msSince(p.started_at_ms) ?? ts,
+          tsResult: msSince(p.completed_at_ms) ?? ts,
           toolName: kind,
           filePath:
             kind === "FileChange" ? Object.keys(item.changes ?? {}).join(" ") || undefined : undefined,
@@ -244,7 +249,7 @@ export function parseCodexChunk(
       const u = p.usage ?? {};
       usage.push({
         responseId: p.response_id,
-        ts: line.timestamp ?? "",
+        ts,
         model: current.model,
         inputTokens: u.input_tokens ?? 0,
         cacheReadTokens: u.cached_input_tokens ?? 0,

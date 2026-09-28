@@ -383,6 +383,31 @@ describe("ingest", () => {
     }
   });
 
+  test("refuses a transcript line with no timestamp, keeping the message's real time", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    const path = join(env.DIM_CLAUDE_PROJECTS as string, "-Users-x-code-demo", `${SESSION}.jsonl`);
+    const lines = claudeTranscriptLines(SESSION).map((line, index) => {
+      if (index !== 3) return JSON.stringify(line);
+      const { timestamp: _, ...untimed } = line as Record<string, unknown>;
+      return JSON.stringify(untimed);
+    });
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${lines.join("\n")}\n`);
+
+    const db = openDb(dbPath(env));
+    try {
+      const report = sync(db, env);
+      expect(db.prepare("SELECT ts FROM message WHERE id = 'msg-1'").get()).toEqual({
+        ts: "2026-09-16T10:02:00.000Z",
+      });
+      expect(report.dropped).toEqual([{ path, lines: [4] }]);
+      expect(db.prepare("SELECT count(*) AS n FROM message WHERE ts = ''").get()).toEqual({ n: 0 });
+    } finally {
+      closeDb(db);
+    }
+  });
+
   test("addresses a pre-August Codex message by thread and ordinal", () => {
     const root = newRoot();
     const env = scratchEnv(root);

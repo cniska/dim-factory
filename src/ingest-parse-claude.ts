@@ -147,15 +147,21 @@ export function parseClaudeChunk(
       continue;
     }
 
-    if (line.type === "system" && line.subtype === "turn_duration" && line.uuid && line.timestamp) {
-      const end = Date.parse(line.timestamp);
+    const ts = nonEmpty(line.timestamp);
+
+    if (line.type === "system" && line.subtype === "turn_duration" && line.uuid) {
+      if (!ts) {
+        dropped.push(srcLine);
+        continue;
+      }
+      const end = Date.parse(ts);
       turns.push({
         turnId: line.uuid,
         tsStart:
           Number.isFinite(end) && line.durationMs != null
             ? new Date(end - line.durationMs).toISOString()
             : undefined,
-        tsEnd: line.timestamp,
+        tsEnd: ts,
         durationMs: line.durationMs,
         messageCount: line.messageCount,
         status: "completed",
@@ -169,15 +175,19 @@ export function parseClaudeChunk(
         totalCostUsd: line.totalCostUSD,
         modelUsage: JSON.stringify(line.modelUsage),
         hasUnknownModelCost: line.hasUnknownModelCost,
-        ts: nonEmpty(line.timestamp),
+        ts,
       });
       continue;
     }
 
     if (line.type === "assistant" && line.message?.id) {
+      if (!ts) {
+        dropped.push(srcLine);
+        continue;
+      }
       const model = nonEmpty(line.message.model);
       session.push({
-        ts: line.timestamp,
+        ts,
         cwd: line.cwd,
         project: projectOf(line.cwd),
         gitBranch: nonEmpty(line.gitBranch),
@@ -187,7 +197,7 @@ export function parseClaudeChunk(
       });
       messages.push({
         id: line.message.id,
-        ts: line.timestamp ?? "",
+        ts,
         role: "assistant",
         model,
         isMeta: false,
@@ -212,7 +222,7 @@ export function parseClaudeChunk(
           if (block.name === "Skill" && typeof chosen === "string") {
             skillLoads.push({
               messageId: line.message.id,
-              ts: line.timestamp ?? "",
+              ts,
               model,
               skillName: chosen,
               how: "model",
@@ -224,7 +234,7 @@ export function parseClaudeChunk(
             messageId: line.message.id,
             model,
             attributionSkill: nonEmpty(line.attributionSkill),
-            tsCall: line.timestamp,
+            tsCall: ts,
             toolName: block.name,
             skillName: typeof input.skill === "string" ? input.skill : undefined,
             filePath: typeof input.file_path === "string" ? input.file_path : undefined,
@@ -238,7 +248,7 @@ export function parseClaudeChunk(
         usage.push({
           responseId: line.message.id,
           messageId: line.message.id,
-          ts: line.timestamp ?? "",
+          ts,
           model,
           inputTokens: u.input_tokens ?? 0,
           cacheReadTokens: u.cache_read_input_tokens ?? 0,
@@ -258,6 +268,10 @@ export function parseClaudeChunk(
     }
 
     if (line.type === "user" && line.uuid) {
+      if (!ts) {
+        dropped.push(srcLine);
+        continue;
+      }
       const text = visibleText(line.message?.content);
       if (Array.isArray(line.message?.content)) {
         for (const block of line.message.content) {
@@ -266,7 +280,7 @@ export function parseClaudeChunk(
           toolCalls.push({
             id: block.tool_use_id,
             toolName: "",
-            tsResult: line.timestamp,
+            tsResult: ts,
             isError: block.is_error === true,
             interrupted: r?.interrupted === true,
             resultBytes: resultSize(block.content, r),
@@ -276,7 +290,7 @@ export function parseClaudeChunk(
         }
       }
       session.push({
-        ts: line.timestamp,
+        ts,
         cwd: line.cwd,
         project: projectOf(line.cwd),
         gitBranch: nonEmpty(line.gitBranch),
@@ -288,7 +302,7 @@ export function parseClaudeChunk(
       if (typed) {
         skillLoads.push({
           messageId: line.uuid,
-          ts: line.timestamp ?? "",
+          ts,
           skillName: typed,
           how: "user",
         });
@@ -297,7 +311,7 @@ export function parseClaudeChunk(
       if (body) {
         skillLoads.push({
           messageId: line.uuid,
-          ts: line.timestamp ?? "",
+          ts,
           skillName: body.name,
           how: "model",
           bodyChars: body.body.length,
@@ -307,7 +321,7 @@ export function parseClaudeChunk(
       }
       messages.push({
         id: line.uuid,
-        ts: line.timestamp ?? "",
+        ts,
         role: "user",
         turnId: nonEmpty(line.promptId),
         promptSource: nonEmpty(line.promptSource),
