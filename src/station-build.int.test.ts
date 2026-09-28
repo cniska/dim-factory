@@ -39,6 +39,7 @@ import { orderStatus } from "./order-status";
 import { approveReviewAt } from "./station-approvals.test-support";
 import { runOrderBuildLive } from "./station-build";
 import type { BuildTurn } from "./station-build-turn";
+import { UsageLimited } from "./station-worker";
 import { endWorker, mintWorker } from "./worker";
 import { WORKER_NAME_VAR } from "./worker-name";
 import { repoRoot } from "./worktree";
@@ -274,6 +275,34 @@ describe("builder station", () => {
         .query("SELECT kind FROM factory_order_event WHERE order_id = ? ORDER BY id DESC LIMIT 1")
         .get("builder-order"),
     ).toEqual({ kind: "failed" });
+    db.close();
+  });
+
+  test("fails a builder stopped by a usage limit with the limit, and records it limited with its reset", async () => {
+    const db = database();
+    const { repo, operator } = orderAtBuild(db, "limited-order", [
+      { title: "Build the result", outcome: "The requested result is verified." },
+    ]);
+
+    const failure = await runOrderBuildLive(db, "limited-order", operator.name, {
+      dir: repo.dir,
+      harness: "codex",
+      env: { DIM_HOME: home("dim-builder-limited-"), [WORKER_NAME_VAR]: operator.name },
+      adapter: fakeHarness("limited"),
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(UsageLimited);
+    expect(failure).toMatchObject({
+      message:
+        "codex stopped at its usage limit until 2026-09-27T16:50:00.000Z; delegate again after the reset with --harness codex, or name another of <codex|claude|grok>",
+    });
+    expect(
+      db
+        .query(
+          "SELECT kind, outcome, resets_at FROM factory_order_attempt WHERE order_id = ? ORDER BY id DESC LIMIT 1",
+        )
+        .get("limited-order"),
+    ).toEqual({ kind: "finished", outcome: "limited", resets_at: "2026-09-27T16:50:00.000Z" });
     db.close();
   });
 

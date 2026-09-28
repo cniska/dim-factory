@@ -9,7 +9,7 @@ import {
   launchHarnessLive,
   resumeHarnessLive,
 } from "./harness-launch";
-import type { HarnessName } from "./harness-name";
+import { HARNESSES, type HarnessName } from "./harness-name";
 import { type ReturnedOrderArtifact, returnedOrderArtifact } from "./order-artifacts";
 import { finishAttempt, finishStoppedAttempt } from "./order-attempt";
 import { endWorker, type MintedWorker, startWorkerRun, workerProcessEnv } from "./worker";
@@ -35,6 +35,18 @@ export type OrderWorker = {
 
 export type OrderStationName = "plan" | "build" | "review";
 export type ExecutionAttribution = { harness: HarnessLaunch["harness"]; model: string; tier: string };
+
+export class UsageLimited extends Error {
+  readonly code = "usage_limited";
+  constructor(
+    readonly harness: HarnessName,
+    readonly resetsAt: string | undefined,
+  ) {
+    super(
+      `${harness} stopped at its usage limit ${resetsAt ? `until ${resetsAt}` : "with no reset given"}; delegate again after the reset with --harness ${harness}, or name another of <${HARNESSES.join("|")}>`,
+    );
+  }
+}
 
 const STATION_ROLES = {
   plan: "planner",
@@ -173,6 +185,7 @@ export async function runOrderWorkerHarnessLive(
         new Date().toISOString(),
         result.usageLimit.resetsAt,
       );
+      throw new UsageLimited(request.harness, result.usageLimit.resetsAt);
     }
     if (result.exitCode !== 0) releaseOrderWorker(db, worker.orderId, worker.role);
     return {
@@ -279,10 +292,6 @@ export function boundStationHarness(
 ): HarnessName | undefined {
   const bound = readOrderWorker(db, orderId, STATION_ROLES[station]);
   return bound?.worker ? bound.harness : undefined;
-}
-
-export function releaseStationWorker(db: Database, orderId: string, station: OrderStationName): void {
-  releaseOrderWorker(db, orderId, STATION_ROLES[station]);
 }
 
 export function orderWorkerIsBound(

@@ -27,8 +27,10 @@ import { orderStatus } from "./order-status";
 import type { Env } from "./paths";
 import { findQuery } from "./query-registry";
 import { approveFinalBuildAt, approvePlan, approveReviewAt } from "./station-approvals.test-support";
+import { bindOrderWorker, ensureOrderWorker, releaseOrderWorker } from "./station-worker";
 import { assembleWallSnapshot } from "./wall/server";
 import { mintWorker, newWorkerSession, resolveWorker as resolveFromAncestry } from "./worker";
+import { bootstrapWorker } from "./worker-assignment";
 import { WORKER_NAME_VAR } from "./worker-name";
 
 const opened: Database[] = [];
@@ -207,6 +209,29 @@ describe("order command", () => {
     ]);
   });
 
+  test("a delegation that names no harness runs under its bound worker's harness before the operator's, and a released one's not at all", async () => {
+    const database = db();
+    runOrderCommand(database, add);
+    const operator = resolveWorker(database, env);
+    database.run(
+      `INSERT INTO hook_event (tool, session_id, event, ts, payload)
+       SELECT 'claude', session_id, 'session_start', '2026-01-01T00:00:00Z', '{}' FROM factory_worker WHERE name = ?`,
+      [operator],
+    );
+    const planner = ensureOrderWorker(database, "order-1", "planner", operator, "codex");
+    const minted = bootstrapWorker(database, { id: planner.assignment.id, sessionId: "codex-planner" });
+    bindOrderWorker(database, "order-1", "planner", planner.assignment.id, minted);
+
+    await expect(runOrderCommandLive(database, ["plan", "order-1"], null, trunk.dir, env)).rejects.toThrow(
+      expect.objectContaining({ kind: "no-map", message: expect.stringContaining('{ "codex": {') }),
+    );
+
+    releaseOrderWorker(database, "order-1", "planner");
+    await expect(runOrderCommandLive(database, ["plan", "order-1"], null, trunk.dir, env)).rejects.toThrow(
+      expect.objectContaining({ kind: "no-map", message: expect.stringContaining('{ "claude": {') }),
+    );
+  });
+
   test("a delegation that names no harness is refused when the record holds none for its operator", async () => {
     const database = db();
     runOrderCommand(database, add);
@@ -219,6 +244,28 @@ describe("order command", () => {
       );
     }
     expect(database.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 0 });
+  });
+
+  test("a delegation that names no harness is refused even where routing.json maps one", async () => {
+    const database = db();
+    runOrderCommand(database, add);
+    const operator = resolveWorker(database, env);
+    const mapped = collectingMachine();
+    mkdirSync(join(mapped.dir, "home"), { recursive: true });
+    writeFileSync(
+      join(mapped.dir, "home", "routing.json"),
+      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
+    );
+    const as = { ...mapped.env, [WORKER_NAME_VAR]: operator };
+
+    const refusal = `${operator} runs in no recorded harness session; delegate with --harness <codex|claude|grok>`;
+    for (const station of ["plan", "build", "review"]) {
+      await expect(runOrderCommandLive(database, [station, "order-1"], null, trunk.dir, as)).rejects.toThrow(
+        refusal,
+      );
+    }
+    expect(database.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 0 });
+    rmSync(mapped.dir, { recursive: true, force: true });
   });
 
   test("a delegation to a harness with no adapter is refused", async () => {

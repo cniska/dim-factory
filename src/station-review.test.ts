@@ -32,6 +32,7 @@ import { queueOrder, startOrder } from "./order-lifecycle";
 import { orderState } from "./order-state";
 import { approvePlan } from "./station-approvals.test-support";
 import { ReviewRefused, reviewerBrief, reviewRange, runOrderReviewLive } from "./station-review";
+import { UsageLimited } from "./station-worker";
 import { mintWorker } from "./worker";
 import { WORKER_NAME_VAR } from "./worker-name";
 
@@ -335,6 +336,32 @@ describe("a review round", () => {
     ).toEqual({
       role: "reviewer",
     });
+  });
+
+  test("fails a reviewer stopped by a usage limit with the limit, and records it limited with its reset", async () => {
+    const { db, worker, operator, dir } = floor();
+    slice(db, dir, worker, "limited-review");
+
+    const failure = await runOrderReviewLive(db, "order-1", operator, {
+      dir,
+      harness: "codex",
+      adapter: fakeHarness("limited"),
+      env: { ...machine, [WORKER_NAME_VAR]: operator },
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(UsageLimited);
+    expect(failure).toMatchObject({
+      message:
+        "codex stopped at its usage limit until 2026-09-27T16:50:00.000Z; delegate again after the reset with --harness codex, or name another of <codex|claude|grok>",
+    });
+    expect(
+      db
+        .query(
+          "SELECT kind, outcome, resets_at FROM factory_order_attempt WHERE order_id = ? ORDER BY id DESC LIMIT 1",
+        )
+        .get("order-1"),
+    ).toEqual({ kind: "finished", outcome: "limited", resets_at: "2026-09-27T16:50:00.000Z" });
+    expect(db.query("SELECT outcome FROM factory_order_review").get()).toEqual({ outcome: "aborted" });
   });
 
   test("records a harness failure after opening a round but before reviewer assignment", async () => {

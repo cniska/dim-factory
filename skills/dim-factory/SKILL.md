@@ -21,13 +21,13 @@ Run the order named by the caller. The operator owns the request and the route; 
 
 1. Read the next act from `dim q order <order-id>`: the station and whether it waits on a run or an approval, or that the order is ready to ship. The record sets it; no command moves an order.
 2. Run the command for that act. Each checks on entry that it is the act the record waits on and refuses with `not_next` otherwise, naming the act that is. `dim order plan` on a queued order starts it and makes its worktree.
-3. A failed run leaves the order where it was: read the failure in `dim q order` and run the same command again. A build refuses while another build attempt on the order is still running.
+3. A failed run leaves the order where it was: read the failure in `dim q order` and run the same command again. A run stopped at its usage limit fails with `usage_limited`: run it again after the reset, or name another harness with `--harness`. A build refuses while another build attempt on the order is still running.
 
 ## Delegate planning
 
 For an order without an approved current plan:
 
-1. Run `dim order plan <order-id>`. A station command runs its worker under your own harness; add `--harness <codex|claude|grok>` to run it under another, and a station worker stays on the harness it started under. The command assigns one planner under the operator, and the planner bootstraps that assignment under its own harness session before its plan is recorded under the planner identity. Later planning turns reuse that same planner identity.
+1. Run `dim order plan <order-id>`. A station command runs its worker under the harness of the station's bound worker, or else your own; add `--harness <codex|claude|grok>` to run it under another, and a station worker stays on the harness it started under. The command assigns one planner under the operator, and the planner bootstraps that assignment under its own harness session before its plan is recorded under the planner identity. Later planning turns reuse that same planner identity.
 2. Read the returned Plan artifact and `dim q order <order-id>`.
 3. Check that it answers the order, names independently verifiable slices, uses the repository's own check, and states risks, owner decisions, and non-goals.
 4. Approve the exact current Plan artifact with `dim order approve <order-id>`, or return it to the same planner with `dim order return <order-id> --reason "..."`.

@@ -14,6 +14,7 @@ import { startAttempt } from "./order-attempt";
 import { dropOrder, queueOrder } from "./order-lifecycle";
 import { orderStatus } from "./order-status";
 import { plannerBrief, runOrderPlanLive as runPlan } from "./station-plan";
+import { UsageLimited } from "./station-worker";
 import { mintWorker } from "./worker";
 import { WORKER_NAME_VAR } from "./worker-name";
 
@@ -233,21 +234,29 @@ describe("planner station", () => {
       operator.name,
     );
 
-    await expect(
-      runOrderPlanLive(db, "planner-limited-order", {
-        dir: repo.dir,
-        harness: "codex",
-        adapter: fakeHarness("limited"),
-        env: {
-          DIM_HOME: home,
-          [WORKER_NAME_VAR]: operator.name,
-        },
-      }),
-    ).rejects.toThrow("fake usage limit reached");
+    const failure = await runOrderPlanLive(db, "planner-limited-order", {
+      dir: repo.dir,
+      harness: "codex",
+      adapter: fakeHarness("limited"),
+      env: {
+        DIM_HOME: home,
+        [WORKER_NAME_VAR]: operator.name,
+      },
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(UsageLimited);
+    expect(failure).toMatchObject({
+      code: "usage_limited",
+      message:
+        "codex stopped at its usage limit until 2026-09-27T16:50:00.000Z; delegate again after the reset with --harness codex, or name another of <codex|claude|grok>",
+    });
 
     expect(
       db.query("SELECT kind, outcome, resets_at FROM factory_order_attempt WHERE kind = 'finished'").all(),
     ).toEqual([{ kind: "finished", outcome: "limited", resets_at: "2026-09-27T16:50:00.000Z" }]);
+    expect(db.query("SELECT worker FROM factory_order_worker WHERE role = 'planner'").get()).toEqual({
+      worker: null,
+    });
 
     db.close();
     rmSync(repo.dir, { recursive: true, force: true });

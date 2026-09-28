@@ -13,6 +13,7 @@ import {
   releaseOrderWorker,
   resumeOrderStationLive,
   runOrderStationLive,
+  UsageLimited,
 } from "./station-worker";
 import { mintWorker } from "./worker";
 import { bootstrapWorker } from "./worker-assignment";
@@ -28,6 +29,14 @@ function floor() {
 function harnessOf(db: Database): unknown {
   return db.query("SELECT harness FROM factory_order_worker WHERE order_id = 'order-1'").get();
 }
+
+describe("a usage limit", () => {
+  test("names the harness and says so when it reported no reset", () => {
+    expect(new UsageLimited("grok", undefined).message).toBe(
+      "grok stopped at its usage limit with no reset given; delegate again after the reset with --harness grok, or name another of <codex|claude|grok>",
+    );
+  });
+});
 
 describe("an order's station worker", () => {
   test("records the harness its first delegation named", () => {

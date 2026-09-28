@@ -32,6 +32,7 @@ import {
   orderWorkerIsBound,
   resumeOrderStationLive,
   runOrderStationLive,
+  UsageLimited,
 } from "./station-worker";
 import type { Capability } from "./worker-capabilities";
 import { workspaceContract } from "./workspace";
@@ -406,6 +407,7 @@ export async function runOrderBuildLive(
       harnessFailureReason,
     );
     recordFailure(reason);
+    if (error instanceof UsageLimited) throw error;
     throw new Error(reason, { cause: error });
   }
 }
