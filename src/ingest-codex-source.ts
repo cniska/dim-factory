@@ -41,8 +41,11 @@ export function listCodexRollouts(env: Env = process.env): FileSpec[] {
   return specs.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-export function readCodexTitles(env: Env = process.env): Map<string, string> {
-  const statePath = join(codexDir(env), "state_5.sqlite");
+export function codexTitlesPath(env: Env = process.env): string {
+  return join(codexDir(env), "state_5.sqlite");
+}
+
+export function readCodexTitles(statePath: string): Map<string, string> {
   const titles = new Map<string, string>();
   if (!existsSync(statePath)) return titles;
   const db = new Database(statePath, { readonly: true });
@@ -52,7 +55,6 @@ export function readCodexTitles(env: Env = process.env): Map<string, string> {
       .all()) {
       if (row.title) titles.set(row.id, row.title);
     }
-  } catch {
   } finally {
     db.close();
   }

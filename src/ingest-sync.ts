@@ -6,7 +6,7 @@ import { drainWalk, type WalkReport } from "./guidance-walk";
 import { createIngester, type FileSpec } from "./ingest";
 import { type GitReport, ingestCommits } from "./ingest-git";
 import { type HistoryReport, ingestHistory } from "./ingest-history";
-import { SESSION_SOURCES } from "./ingest-sources";
+import { SESSION_SOURCES, type SessionSource } from "./ingest-sources";
 import { applyHookEvents, type DrainReport, drainSpool } from "./ingest-spool";
 import type { Tool } from "./ingest-tools";
 import type { Env } from "./paths";
@@ -55,22 +55,34 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     walk: drainWalk(db, env),
   };
 
+  const fail = (path: string, error: unknown): void => {
+    report.failures.push({ path, error: error instanceof Error ? error.message : String(error) });
+  };
+
   const run = (spec: FileSpec): void => {
     try {
       const result = ingester.ingestFile(spec);
       if (result.read) report.filesRead += 1;
       if (result.dropped.length > 0) report.dropped.push({ path: spec.path, lines: result.dropped });
     } catch (error) {
-      report.failures.push({
-        path: spec.path,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      fail(spec.path, error);
+    }
+  };
+
+  const titlesOf = (source: SessionSource): ReadonlyMap<string, string> | undefined => {
+    if (!source.titles) return undefined;
+    const path = source.titles.path(env);
+    try {
+      return source.titles.read(path);
+    } catch (error) {
+      fail(path, error);
+      return undefined;
     }
   };
 
   for (const source of SESSION_SOURCES) {
     const specs = source.list(env);
-    const titles = source.titles?.(env);
+    const titles = titlesOf(source);
     for (const spec of specs) {
       if (spec.parentId && !sessionExists.get(spec.parentId)) {
         report.orphanSubagents.push(spec.sessionId);

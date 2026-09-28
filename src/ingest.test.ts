@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite";
+import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -358,6 +358,46 @@ describe("ingest", () => {
       expect(db.prepare("SELECT count(*) AS n FROM source_file").get()).toEqual({ n: 1 });
       const src = db.prepare<{ src_file: string }, []>("SELECT src_file FROM message LIMIT 1").get();
       expect(src?.src_file).toContain("archived_sessions");
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("titles a Codex session from the thread Codex keeps", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    writeCodexRollout(env, "sessions", THREAD);
+    const state = new Database(join(env.DIM_CODEX_DIR as string, "state_5.sqlite"));
+    state.run("CREATE TABLE threads (id TEXT, title TEXT)");
+    state.run("INSERT INTO threads VALUES (?, ?)", [THREAD, "Read the slice"]);
+    state.close();
+
+    const db = openDb(dbPath(env));
+    try {
+      expect(sync(db, env).failures).toEqual([]);
+      expect(db.prepare("SELECT title FROM session WHERE id = ?").get(THREAD)).toEqual({
+        title: "Read the slice",
+      });
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("names a Codex thread store it cannot read as a failure and still reads the rollouts", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    writeCodexRollout(env, "sessions", THREAD);
+    const statePath = join(env.DIM_CODEX_DIR as string, "state_5.sqlite");
+    const state = new Database(statePath);
+    state.run("CREATE TABLE threads (id TEXT, name TEXT)");
+    state.close();
+
+    const db = openDb(dbPath(env));
+    try {
+      expect(sync(db, env).failures).toEqual([
+        { path: statePath, error: expect.stringContaining("no such column: title") },
+      ]);
+      expect(db.prepare("SELECT count(*) AS n FROM session WHERE id = ?").get(THREAD)).toEqual({ n: 1 });
     } finally {
       closeDb(db);
     }
