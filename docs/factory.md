@@ -73,10 +73,12 @@ A builder leaves its changes uncommitted and returns a build turn: a commit subj
 
 1. refuses a turn that leaves a handed finding unanswered or answers one it was not handed
 2. applies the comment gate over the staged tree, reading the ban from the local default branch's config so a builder cannot lift it
-3. runs the repo's check in the check sandbox, whose environment holds only what a process needs to run — `PATH`, `HOME`, the user, shell, temporary directory, locale and time zone — so no credential, factory name or proxy reaches it ([`src/station-environment.ts`](../src/station-environment.ts))
+3. runs the check the local default branch declares, in the worktree's check sandbox; a turn that redefines that task in its manifest fails before it runs, so a builder cannot redefine the check its own code is held to ([`src/workspace-tasks.ts`](../src/workspace-tasks.ts) `trunkCheck`). The sandbox's environment holds only what a process needs to run — `PATH`, `HOME`, the user, shell, temporary directory, locale and time zone — so no credential, factory name or proxy reaches it ([`src/station-environment.ts`](../src/station-environment.ts))
 4. commits with the repo's own identity and signing, and records the commit under the builder and the check at the commit it ran on — the new commit, or for a turn that failed or changed nothing the head it was built on ([`src/order-head-check.ts`](../src/order-head-check.ts))
 
-A refused commit or comment goes back to the same builder, at most twice per turn. A red check, a check that changed the tree, a nested repository, or HEAD moved off the order's branch fails the turn, and the reason is in the next turn's brief.
+The default branch's declaration governs until a change to it lands there. An order may add tasks, and a task it adds above the declared one in the check order is not the check until it ships. An order may not change the declared task's definition, its script, recipe or package manager: that change is the owner's, made on the default branch, and the order's next turn is checked by it.
+
+A refused commit or comment goes back to the same builder, at most twice per turn. A red check, a redefined check, a check that changed the tree, a nested repository, or HEAD moved off the order's branch fails the turn, and the reason is in the next turn's brief.
 
 ## Shipped
 
@@ -86,7 +88,7 @@ Every ship writes one [ship run](glossary.md#the-record), whatever its outcome a
 
 Ship lands the order the way the repo declares with `git config dim.ship`:
 
-- **`trunk`** fast-forwards the local default branch to the order's branch. If the default branch has moved ahead, the order's branch is first rebased in its worktree and re-checked.
+- **`trunk`** fast-forwards the local default branch to the order's branch. If the default branch has moved ahead, the order's branch is first rebased in its worktree and re-checked with the check the default branch declares, as the build runner does.
 - **`pull-request`** is declared but not built, and refused.
 - A repo that declares nothing, or an unknown value, is refused, so no agent guesses how a repo ships.
 

@@ -12,6 +12,7 @@ export class BuildTurnRefused extends Error {
   constructor(
     readonly code:
       | "no_declared_check"
+      | "check_redefined"
       | "empty_artifact"
       | "builder_committed"
       | "nested_repository"

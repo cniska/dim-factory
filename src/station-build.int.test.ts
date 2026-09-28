@@ -33,7 +33,7 @@ import { BuildTurnRefused, raiseOrderFinding } from "./order-finding";
 import { appendOrderEvent } from "./order-ledger";
 import { queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview } from "./order-review";
-import { shipOrder } from "./order-ship";
+import { recheck, shipOrder } from "./order-ship";
 import { orderState } from "./order-state";
 import { orderStatus } from "./order-status";
 import { approveReviewAt } from "./station-approvals.test-support";
@@ -1919,5 +1919,83 @@ describe("a red check at ship", () => {
     expect(git(repo.dir, ["rev-parse", "HEAD"])).toBe(fixed);
     expect(orderStatus(db, "red-ship-order")).toBe("shipped");
     db.close();
+  });
+});
+
+describe("a check the builder redefines", () => {
+  const redefine = (request: HarnessRequest) => {
+    writeFileSync(join(request.cwd, "built.txt"), "built\n");
+    writeFileSync(join(request.cwd, "package.json"), JSON.stringify({ scripts: { verify: "true" } }));
+    return { subject: "feat: build it", artifact: "## Outcome\n\nBuilt." };
+  };
+
+  test("fails the turn with no passing check recorded, since the trunk declares the check", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-redefined-");
+    const { repo, operator } = orderAtBuild(
+      db,
+      "redefined-order",
+      [{ title: "Build it", outcome: "It is verified." }],
+      "false",
+    );
+    const worktree = realpathSync(join(repo.dir, ".claude", "worktrees", "redefined-order"));
+    const error = await runOrderBuildLive(db, "redefined-order", operator.name, {
+      dir: repo.dir,
+      env: { DIM_HOME: dimHome },
+      harness: "codex",
+      checkSandbox: confiningCheckSandbox(),
+      adapter: scriptedBuilder([redefine]).adapter,
+    }).catch((caught: unknown) => caught);
+
+    expect((error as Error).cause).toMatchObject({ code: "check_redefined" });
+    expect(git(worktree, ["rev-parse", "HEAD"])).toBe(repo.sha);
+    expect(db.query("SELECT exit_code FROM factory_order_check WHERE exit_code = 0").all()).toEqual([]);
+    expect(db.query("SELECT sha FROM factory_order_commit").all()).toEqual([]);
+    db.close();
+  });
+
+  test("runs the trunk's check for a script the order only adds", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-added-");
+    const { repo, operator } = orderAtBuild(
+      db,
+      "added-script-order",
+      [{ title: "Build it", outcome: "It is verified." }],
+      "test -f built.txt",
+    );
+    await runOrderBuildLive(db, "added-script-order", operator.name, {
+      dir: repo.dir,
+      env: { DIM_HOME: dimHome },
+      harness: "codex",
+      checkSandbox: confiningCheckSandbox(),
+      adapter: scriptedBuilder([
+        (request) => {
+          writeFileSync(join(request.cwd, "built.txt"), "built\n");
+          writeFileSync(
+            join(request.cwd, "package.json"),
+            JSON.stringify({ scripts: { check: "true", verify: "test -f built.txt" } }),
+          );
+          return { subject: "feat: build it", artifact: "## Outcome\n\nBuilt." };
+        },
+      ]).adapter,
+    });
+    expect(db.query("SELECT command, exit_code FROM factory_order_check").all()).toEqual([
+      { command: "bun run verify", exit_code: 0 },
+    ]);
+    db.close();
+  });
+
+  test("refuses the ship's re-check of a rebased head that redefines the check", () => {
+    const trunk = integratedRepo();
+    repos.push(trunk.dir);
+    declareCheck(trunk.dir, "false");
+    const worktree = join(trunk.dir, ".claude", "worktrees", "redefined-ship");
+    git(trunk.dir, ["worktree", "add", "-q", "-b", "redefined-ship", worktree]);
+    writeFileSync(join(worktree, "package.json"), JSON.stringify({ scripts: { verify: "true" } }));
+    git(worktree, ["commit", "-qam", "feat: pass the check"]);
+
+    expect(() => recheck(worktree, { DIM_HOME: home("dim-recheck-") }, confiningCheckSandbox())).toThrow(
+      expect.objectContaining({ code: "ship_check_redefined" }),
+    );
   });
 });

@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkTask, declaredTasks, packageManager } from "./workspace-tasks";
+import { checkTask, declaredTasks, packageManager, trunkCheck } from "./workspace-tasks";
 
 const roots: string[] = [];
 
@@ -103,6 +103,79 @@ describe("a manifest that is not a manifest", () => {
     child.kill();
     expect(outcome).toBe("returned");
   }, 10_000);
+});
+
+describe("the check the trunk declares", () => {
+  function trunkWith(files: Record<string, string>): string {
+    const root = repo(files);
+    const git = (args: string[]) => execFileSync("git", ["-C", root, ...args], { stdio: "pipe" });
+    git(["init", "-q", "-b", "main"]);
+    git(["add", "."]);
+    git([
+      "-c",
+      "user.name=T",
+      "-c",
+      "user.email=t@example.com",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "-q",
+      "--no-verify",
+      "-m",
+      "x",
+    ]);
+    git(["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"]);
+    return root;
+  }
+
+  test("governs over a higher check the worktree only adds", () => {
+    const root = trunkWith({
+      "package.json": JSON.stringify({ scripts: { test: "bun test" } }),
+      "bun.lock": "",
+    });
+    writeFileSync(
+      join(root, "package.json"),
+      JSON.stringify({ scripts: { test: "bun test", verify: "true" } }),
+    );
+    expect(trunkCheck(root)).toEqual({
+      task: { name: "test", commandLine: "bun run test", source: "package.json" },
+    });
+  });
+
+  test("is refused where the worktree redefines it", () => {
+    const root = trunkWith({
+      "package.json": JSON.stringify({ scripts: { verify: "false" } }),
+      "bun.lock": "",
+    });
+    writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { verify: "true" } }));
+    expect(trunkCheck(root)).toMatchObject({ refused: "redefined", trunk: "refs/heads/main" });
+  });
+
+  test("is refused where the worktree swaps the package manager that runs it", () => {
+    const root = trunkWith({
+      "package.json": JSON.stringify({ scripts: { verify: "false" } }),
+      "bun.lock": "",
+    });
+    rmSync(join(root, "bun.lock"));
+    writeFileSync(join(root, "yarn.lock"), "");
+    expect(trunkCheck(root)).toMatchObject({ refused: "redefined" });
+  });
+
+  test("is refused where the worktree rewrites the recipe of a Makefile check", () => {
+    const root = trunkWith({ Makefile: "verify:\n\tfalse\n" });
+    expect(trunkCheck(root)).toEqual({
+      task: { name: "verify", commandLine: "make verify", source: "Makefile" },
+    });
+    writeFileSync(join(root, "Makefile"), "verify:\n\ttrue\n");
+    expect(trunkCheck(root)).toMatchObject({ refused: "redefined" });
+  });
+
+  test("is undeclared where only the worktree declares one", () => {
+    const root = trunkWith({ "landed.txt": "landed" });
+    writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { verify: "true" } }));
+    writeFileSync(join(root, "bun.lock"), "");
+    expect(trunkCheck(root)).toEqual({ refused: "undeclared", trunk: "refs/heads/main" });
+  });
 });
 
 describe("the package manager", () => {

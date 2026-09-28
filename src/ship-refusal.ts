@@ -14,6 +14,7 @@ export type ShipRefusalCode =
   | "ship_rebase_failed"
   | "ship_rebase_unpaired"
   | "ship_check_failed"
+  | "ship_check_redefined"
   | "ship_patch_changed"
   | "ship_not_fast_forward"
   | "ship_unsigned"

@@ -6,7 +6,7 @@ import { stagedComments } from "./comments-staged";
 import { writeTransaction } from "./db";
 import { commentGateFor } from "./gate-commit";
 import { repoIdentityEnv } from "./git-identity";
-import { trunkBranch } from "./git-trunk";
+import { trunkRef } from "./git-trunk";
 import { recordOrderBuild } from "./order-artifacts";
 import { latestOrderCommit } from "./order-commits";
 import { recordOrderCheck, recordOrderCommit, recordOrderFile } from "./order-evidence";
@@ -16,7 +16,7 @@ import { rebaseInProgress } from "./ship-rebase";
 import { hooksOutsideTree, nestedRepository } from "./station-build-tree";
 import type { BuildTurn } from "./station-build-turn";
 import { writeTrace } from "./trace-store";
-import { checkTask } from "./workspace-tasks";
+import { trunkCheck } from "./workspace-tasks";
 
 function git(worktree: string, args: string[], options: { env?: Env; stdin?: string } = {}) {
   const run = Bun.spawnSync(["git", "-C", worktree, ...args], {
@@ -32,12 +32,6 @@ function head(worktree: string): string {
   const read = git(worktree, ["rev-parse", "HEAD"]);
   if (!read.ok) throw new Error(`cannot read HEAD of ${worktree}: ${read.err}`);
   return read.out;
-}
-
-function trunkRef(worktree: string): string {
-  const trunk = trunkBranch(worktree);
-  if ("why" in trunk) throw new Error(trunk.why);
-  return `refs/heads/${trunk.name}`;
 }
 
 function trunkForkPoint(worktree: string): string {
@@ -115,13 +109,19 @@ export function commitBuildTurn(options: {
 }): { sha: string } {
   const { db, orderId, builder, worktree, turn } = options;
   const env = options.env ?? process.env;
-  const declared = checkTask(worktree);
-  if (!declared) {
-    throw new BuildTurnRefused(
-      "no_declared_check",
-      `${worktree} declares no check, so the builder's turn cannot be verified`,
-    );
+  const governing = trunkCheck(worktree);
+  if ("refused" in governing) {
+    throw governing.refused === "undeclared"
+      ? new BuildTurnRefused(
+          "no_declared_check",
+          `${governing.trunk} declares no check, so the builder's turn cannot be verified`,
+        )
+      : new BuildTurnRefused(
+          "check_redefined",
+          `the turn redefines ${governing.task.name} in ${governing.task.source}, the check ${governing.trunk} declares; restore it, since a change to the check lands on ${governing.trunk} before an order is checked by it`,
+        );
   }
+  const declared = governing.task;
   if (options.finalSlice && turn.artifact === "") {
     throw new BuildTurnRefused("empty_artifact", "the final slice's turn returned an empty Build artifact");
   }

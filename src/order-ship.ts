@@ -14,7 +14,7 @@ import { type RebaseVerdict, type ShipOutcome, shipBranch } from "./ship";
 import { removeShippedBranch, type ShipCleanup } from "./ship-cleanup";
 import { RebaseConflict, type Rewrite } from "./ship-rebase";
 import { ShipRefusal } from "./ship-refusal";
-import { checkTask } from "./workspace-tasks";
+import { trunkCheck } from "./workspace-tasks";
 
 function refusal(error: unknown): Exclude<ShipRun, { outcome: "landed" }> {
   if (error instanceof RebaseConflict) {
@@ -34,13 +34,19 @@ function refusal(error: unknown): Exclude<ShipRun, { outcome: "landed" }> {
 }
 
 export function recheck(worktree: string, env: Env, sandbox: string[]): OrderCheck {
-  const declared = checkTask(worktree);
-  if (!declared) {
-    throw new ShipRefusal(
-      "ship_check_failed",
-      `${worktree} declares no check, so the rebased branch cannot be verified`,
-    );
+  const governing = trunkCheck(worktree);
+  if ("refused" in governing) {
+    throw governing.refused === "undeclared"
+      ? new ShipRefusal(
+          "ship_check_failed",
+          `${governing.trunk} declares no check, so the rebased branch cannot be verified`,
+        )
+      : new ShipRefusal(
+          "ship_check_redefined",
+          `the rebased branch redefines ${governing.task.name} in ${governing.task.source}, the check ${governing.trunk} declares, so it is not verified by it`,
+        );
   }
+  const declared = governing.task;
   const check = runSandboxedCheck({
     worktree,
     command: declared.commandLine,

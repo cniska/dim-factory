@@ -24,6 +24,12 @@ export function trunkBranch(dir: string): { name: string } | { why: string } {
   return { name };
 }
 
+export function trunkRef(dir: string): string {
+  const trunk = trunkBranch(dir);
+  if ("why" in trunk) throw new Error(trunk.why);
+  return `refs/heads/${trunk.name}`;
+}
+
 export function reachesTrunk(dir: string, sha: string): TrunkReach {
   const trunk = trunkBranch(dir);
   if ("why" in trunk) return { reach: "unknown", why: trunk.why };
