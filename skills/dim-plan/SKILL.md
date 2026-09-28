@@ -41,6 +41,8 @@ The brief is these questions:
 - does the change imply an input or failure mode that no slice's test exercises
 - does the plan say what the record returned and what that removed, or does it read as though nothing was looked up
 - does anything here ask the owner a question one of the four queries could have answered
+- does the design add a function, wrapper, file, column or term the outcome does not need, or give an existing name a second meaning; name the smaller design without it
+- does the plan set aside a defect of the same shape as the one it fixes, when fixing it is in reach of this order
 
 Returning nothing is the expected result. A reviewer earns trust the way a test does — plant a defect once, watch it be caught, take it out.
 
