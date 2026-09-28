@@ -14,7 +14,8 @@ import { startAttempt } from "./order-attempt";
 import { dropOrder, queueOrder } from "./order-lifecycle";
 import { orderStatus } from "./order-status";
 import { plannerBrief, runOrderPlanLive as runPlan } from "./station-plan";
-import { mintWorker, WORKER_NAME_VAR } from "./worker";
+import { mintWorker } from "./worker";
+import { WORKER_NAME_VAR } from "./worker-name";
 
 function runOrderPlanLive(
   db: Database,

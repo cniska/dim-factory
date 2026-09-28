@@ -39,7 +39,8 @@ import { orderStatus } from "./order-status";
 import { approveReviewAt } from "./station-approvals.test-support";
 import { runOrderBuildLive } from "./station-build";
 import type { BuildTurn } from "./station-build-turn";
-import { endWorker, mintWorker, WORKER_NAME_VAR } from "./worker";
+import { endWorker, mintWorker } from "./worker";
+import { WORKER_NAME_VAR } from "./worker-name";
 import { repoRoot } from "./worktree";
 
 const repos: string[] = [];

@@ -1,5 +1,5 @@
 import type { ProcessEnvironment } from "./harness-process";
-import { WORKER_NAME_VAR } from "./worker";
+import { WORKER_NAME_VAR } from "./worker-name";
 
 const PROCESS_VARS = [
   "PATH",

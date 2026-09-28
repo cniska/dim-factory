@@ -28,12 +28,8 @@ import type { Env } from "./paths";
 import { findQuery } from "./query-registry";
 import { approveFinalBuildAt, approvePlan, approveReviewAt } from "./station-approvals.test-support";
 import { assembleWallSnapshot } from "./wall/server";
-import {
-  mintWorker,
-  newWorkerSession,
-  resolveWorker as resolveFromAncestry,
-  WORKER_NAME_VAR,
-} from "./worker";
+import { mintWorker, newWorkerSession, resolveWorker as resolveFromAncestry } from "./worker";
+import { WORKER_NAME_VAR } from "./worker-name";
 
 const opened: Database[] = [];
 

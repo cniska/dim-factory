@@ -12,7 +12,8 @@ import { queueOrder, startOrder } from "./order-lifecycle";
 import { orderState } from "./order-state";
 import { runOrderPlanLive } from "./station-plan";
 import type { PlanSlice } from "./station-plan-artifact";
-import { mintWorker, WORKER_NAME_VAR } from "./worker";
+import { mintWorker } from "./worker";
+import { WORKER_NAME_VAR } from "./worker-name";
 
 const repos: string[] = [];
 const homes: string[] = [];

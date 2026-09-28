@@ -3,10 +3,8 @@ import { randomBytes } from "node:crypto";
 import { writeTransaction } from "./db";
 import type { Env } from "./paths";
 import { type ProcessIdentity, processAncestry, processStartTime } from "./pid";
-import { randomWorkerName } from "./worker-name";
+import { randomWorkerName, WORKER_NAME_VAR } from "./worker-name";
 import type { Role } from "./worker-roles";
-
-export const WORKER_NAME_VAR = "DIM_WORKER_NAME";
 
 export type WorkerUnknownCode = "worker_missing" | "worker_unissued" | "worker_over";
 

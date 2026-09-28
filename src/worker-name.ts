@@ -1,5 +1,7 @@
 import { randomInt } from "node:crypto";
 
+export const WORKER_NAME_VAR = "DIM_WORKER_NAME";
+
 const WORDS = [
   "nut",
   "bolt",

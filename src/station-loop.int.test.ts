@@ -16,7 +16,8 @@ import { orderState } from "./order-state";
 import { approvePlan } from "./station-approvals.test-support";
 import { builderBrief, reviewFindingsForBuild } from "./station-build";
 import { runOrderReviewLive } from "./station-review";
-import { mintWorker, WORKER_NAME_VAR } from "./worker";
+import { mintWorker } from "./worker";
+import { WORKER_NAME_VAR } from "./worker-name";
 
 const repo = integratedRepo();
 const worktrees: string[] = [];

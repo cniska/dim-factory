@@ -8,7 +8,8 @@ import { queueOrder } from "./order-lifecycle";
 import type { OrderLine } from "./order-line";
 import { orderStatus } from "./order-status";
 import { dbPath, type Env } from "./paths";
-import { mintWorker, WORKER_NAME_VAR } from "./worker";
+import { mintWorker } from "./worker";
+import { WORKER_NAME_VAR } from "./worker-name";
 
 const roots: string[] = [];
 afterAll(() => {

@@ -18,7 +18,8 @@ import { orderState } from "./order-state";
 import { orderStatus } from "./order-status";
 import { processStartTime } from "./pid";
 import { approvePlan } from "./station-approvals.test-support";
-import { mintWorker, WORKER_NAME_VAR } from "./worker";
+import { mintWorker } from "./worker";
+import { WORKER_NAME_VAR } from "./worker-name";
 
 const repos: string[] = [];
 afterAll(() => {
