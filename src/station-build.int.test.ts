@@ -500,6 +500,7 @@ describe("builder station", () => {
         proofs: db
           .query("SELECT head_sha, base_sha, paths, exit_code FROM factory_order_proof ORDER BY id")
           .all(),
+        outputs: db.query<{ result: string }, []>("SELECT result FROM factory_order_proof ORDER BY id").all(),
         checked: existsSync(join(worktree, "checked.txt")),
       };
       db.close();
@@ -654,11 +655,82 @@ describe("builder station", () => {
 
     test("refuses a proof whose check nests a repository, before staging over it", async () => {
       const { failure, base, moved, proofs } = await sliceTurn("nested-proof-order", "fix", ["proof.sh"], {
-        check: "test -f fixed.txt || git init -q vendor/planted; sh proof.sh",
+        check: "if test -f fixed.txt; then rm -rf vendor; else git init -q vendor/planted; fi; sh proof.sh",
       });
       expect(failure?.cause).toMatchObject({ code: "nested_repository" });
       expect(moved).toBe(false);
       expect(proofs).toEqual([{ head_sha: base, base_sha: base, paths: '["proof.sh"]', exit_code: 1 }]);
+    });
+
+    test("keeps the slice's ignore rules in force while it proves, so a file they ignore stays out", async () => {
+      const { failure, worktree, moved } = await sliceTurn("ignored-proof-order", "fix", ["proof.sh"], {
+        edit: (worktree) => {
+          mkdirSync(join(worktree, ".cache"));
+          writeFileSync(join(worktree, ".cache", "out"), "from an earlier run\n");
+          writeFileSync(join(worktree, ".gitignore"), ".claude/\n.cache/\n");
+        },
+      });
+      expect(failure).toBeUndefined();
+      expect(moved).toBe(true);
+      expect(readFileSync(join(worktree, ".cache", "out"), "utf8")).toBe("from an earlier run\n");
+    });
+
+    test("pins the slice's tree while it proves and drops the pin once the slice is back", async () => {
+      const { failure, worktree, head, outputs } = await sliceTurn(
+        "pinned-proof-order",
+        "fix",
+        ["proof.sh"],
+        {
+          check: "git rev-parse refs/dim/proof/pinned-proof-order; sh proof.sh",
+        },
+      );
+      expect(failure).toBeUndefined();
+      expect(outputs[0]?.result).toContain(git(worktree, ["rev-parse", `${head}^{tree}`]));
+      expect(git(worktree, ["for-each-ref", "refs/dim/proof/"])).toBe("");
+    });
+
+    test("puts back a slice a killed proof left pinned before the next builder starts", async () => {
+      const db = database();
+      const orderId = "killed-proof-order";
+      const { repo, operator } = orderAtBuild(
+        db,
+        orderId,
+        [{ title: "Fix it", outcome: "The defect is fixed." }],
+        "sh proof.sh",
+        "fix",
+      );
+      const worktree = realpathSync(join(repo.dir, ".claude", "worktrees", orderId));
+      writeFileSync(join(worktree, "proof.sh"), "test -f fixed.txt\n");
+      writeFileSync(join(worktree, "fixed.txt"), "fixed\n");
+      git(worktree, ["add", "-A"]);
+      const slice = git(worktree, ["write-tree"]);
+      git(worktree, ["update-ref", `refs/dim/proof/${orderId}`, slice]);
+      git(worktree, ["restore", "--source=HEAD", "--staged", "--worktree", "--", ":/"]);
+      let found = {};
+      await runOrderBuildLive(db, orderId, operator.name, {
+        dir: repo.dir,
+        harness: "codex",
+        env: { DIM_HOME: home(`dim-builder-${orderId}-`) },
+        checkSandbox: confiningCheckSandbox(),
+        adapter: builderTurn((request) => {
+          found = {
+            restored: existsSync(join(request.cwd, "fixed.txt")),
+            staged: git(request.cwd, ["diff", "--cached", "--name-only"]),
+            pins: git(request.cwd, ["for-each-ref", "refs/dim/proof/"]),
+          };
+          return { subject: "fix: fix it", artifact: "Fixed.", tests: ["proof.sh"] };
+        }),
+      });
+      expect(found).toEqual({ restored: true, staged: "", pins: "" });
+      expect(git(worktree, ["show", "--name-only", "--format=", "HEAD"]).split("\n").sort()).toEqual([
+        "fixed.txt",
+        "proof.sh",
+      ]);
+      expect(db.query("SELECT name FROM trace_event WHERE event = 'order.proof_pin_restored'").all()).toEqual(
+        [{ name: slice }],
+      );
+      expect(git(worktree, ["for-each-ref", "refs/dim/proof/"])).toBe("");
+      db.close();
     });
 
     test("commits a feat slice whose named tests pass at its base, recording the proof", async () => {
@@ -678,7 +750,9 @@ describe("builder station", () => {
       );
       expect(failure?.cause).toMatchObject({
         code: "check_changed_tree",
-        message: expect.stringContaining("while it proved proof.sh"),
+        message: expect.stringMatching(
+          /^the proof of proof\.sh at \w+ was refused: the check changed the worktree/,
+        ),
       });
       expect(moved).toBe(false);
       expect(proofs).toEqual([{ head_sha: base, base_sha: base, paths: '["proof.sh"]', exit_code: 1 }]);

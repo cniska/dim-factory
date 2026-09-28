@@ -21,7 +21,7 @@ import { answerOrderFindings, assertFindingAnswersOwed, BuildTurnRefused } from 
 import { dataDir, type Env } from "./paths";
 import { rebaseInProgress } from "./ship-rebase";
 import { proveTests } from "./station-build-proof";
-import { git, hooksOutsideTree, nestedRepository, stagedTree } from "./station-build-tree";
+import { checkedTreeRefusal, git, hooksOutsideTree, nestedRefusal, stagedTree } from "./station-build-tree";
 import type { BuildTurn } from "./station-build-turn";
 import { writeTrace } from "./trace-store";
 import { trunkCheck } from "./workspace-tasks";
@@ -37,10 +37,6 @@ function trunkForkPoint(worktree: string): string {
   const base = git(worktree, ["merge-base", "HEAD", trunk]);
   if (!base.ok) throw new Error(`cannot place ${worktree} against ${trunk}: ${base.err}`);
   return base.out;
-}
-
-function nestedMessage(nested: string): string {
-  return `${nested} is a git repository inside the worktree, which the runner does not stage`;
 }
 
 function refuseChangedAttributes(worktree: string, trunk: string): void {
@@ -186,8 +182,8 @@ export function commitBuildTurn(options: {
     );
   }
 
-  const nested = nestedRepository(worktree);
-  if (nested) throw new BuildTurnRefused("nested_repository", nestedMessage(nested));
+  const nested = nestedRefusal(worktree);
+  if (nested) throw new BuildTurnRefused(nested.code, nested.message);
   const trunk = trunkRef(worktree);
   const commentGate = commentGateFor(worktree, trunk, env);
   const checked = stagedTree(worktree);
@@ -206,7 +202,7 @@ export function commitBuildTurn(options: {
   const proved =
     turn.tests.length === 0
       ? null
-      : proveTests({ worktree, tree: checked, tests: turn.tests, check: sandboxedCheck });
+      : proveTests({ worktree, orderId, tree: checked, tests: turn.tests, check: sandboxedCheck });
   const proof: OrderProof | null = proved && {
     ...checkRowOf(proved.check),
     baseSha: before,
@@ -217,11 +213,10 @@ export function commitBuildTurn(options: {
     if (proof) recordOrderProof(db, orderId, proof, before);
     return new BuildTurnRefused(code, message);
   };
-  if (proved?.nested) throw refuse("nested_repository", nestedMessage(proved.nested));
-  if (proved?.treeChanged) {
+  if (proved?.refusal) {
     throw refuse(
-      "check_changed_tree",
-      `the check changed the worktree while it proved ${turn.tests.join(", ")} at ${before}, so the proof did not run over the slice's tests alone: ${proved.check.command}`,
+      proved.refusal.code,
+      `the proof of ${turn.tests.join(", ")} at ${before} was refused: ${proved.refusal.message}`,
     );
   }
   if (proved && proved.check.exitCode === 0 && options.proofRequired) {
@@ -243,14 +238,8 @@ export function commitBuildTurn(options: {
     );
   }
 
-  const nestedByCheck = nestedRepository(worktree);
-  if (nestedByCheck) throw refuse("nested_repository", nestedMessage(nestedByCheck));
-  if (stagedTree(worktree) !== checked) {
-    throw refuse(
-      "check_changed_tree",
-      `the check changed the worktree while it ran, so what it passed is not what would be committed: ${check.command}`,
-    );
-  }
+  const drifted = checkedTreeRefusal(worktree, checked, check.command);
+  if (drifted) throw refuse(drifted.code, drifted.message);
   const changed = !git(worktree, ["diff", "--cached", "--quiet"]).ok;
   if (!changed && !recorded) {
     throw new BuildTurnRefused("no_change", "the turn left no change in the worktree to commit");

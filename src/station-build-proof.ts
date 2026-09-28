@@ -1,5 +1,7 @@
 import type { SandboxedCheck } from "./check-sandbox";
-import { git, nestedRepository, stagedTree } from "./station-build-tree";
+import { checkedTreeRefusal, git, type TreeRefusal } from "./station-build-tree";
+
+const pinOf = (orderId: string): string => `refs/dim/proof/${orderId}`;
 
 function restoreSlice(worktree: string, tree: string): void {
   const fault = (why: string) =>
@@ -11,15 +13,42 @@ function restoreSlice(worktree: string, tree: string): void {
   if (written.out !== tree) throw fault(`the index holds tree ${written.out}`);
 }
 
+function unpin(worktree: string, orderId: string): void {
+  const unpinned = git(worktree, ["update-ref", "-d", pinOf(orderId)]);
+  if (!unpinned.ok) throw new Error(`cannot drop the proof pin of ${orderId}: ${unpinned.err}`);
+}
+
+export function restorePinnedSlice(worktree: string, orderId: string): string | null {
+  const pinned = git(worktree, ["for-each-ref", "--format=%(objectname)", pinOf(orderId)]);
+  if (!pinned.ok) throw new Error(`cannot read the proof pin of ${orderId}: ${pinned.err}`);
+  if (pinned.out === "") return null;
+  restoreSlice(worktree, pinned.out);
+  const unstaged = git(worktree, ["reset", "-q"]);
+  if (!unstaged.ok) throw new Error(`cannot unstage the restored slice in ${worktree}: ${unstaged.err}`);
+  unpin(worktree, orderId);
+  return pinned.out;
+}
+
 export function proveTests(options: {
   worktree: string;
+  orderId: string;
   tree: string;
   tests: readonly string[];
   check: () => SandboxedCheck;
-}): { check: SandboxedCheck; nested: string | null; treeChanged: boolean } {
-  const { worktree, tree } = options;
+}): { check: SandboxedCheck; refusal: TreeRefusal | null } {
+  const { worktree, orderId, tree } = options;
+  const pinned = git(worktree, ["update-ref", pinOf(orderId), tree, ""]);
+  if (!pinned.ok) throw new Error(`cannot pin the slice's tree ${tree} before its proof: ${pinned.err}`);
   try {
-    const based = git(worktree, ["restore", "--source=HEAD", "--staged", "--worktree", "--", ":/"]);
+    const based = git(worktree, [
+      "restore",
+      "--source=HEAD",
+      "--staged",
+      "--worktree",
+      "--",
+      ":/",
+      ":(top,exclude,glob)**/.gitignore",
+    ]);
     if (!based.ok) throw new Error(`the proof could not put ${worktree} back at HEAD: ${based.err}`);
     const laid = git(worktree, [
       "restore",
@@ -35,9 +64,9 @@ export function proveTests(options: {
     if (!laidTree.ok)
       throw new Error(`the proof could not read the laid tree of ${worktree}: ${laidTree.err}`);
     const check = options.check();
-    const nested = nestedRepository(worktree);
-    return { check, nested, treeChanged: nested === null && stagedTree(worktree) !== laidTree.out };
+    return { check, refusal: checkedTreeRefusal(worktree, laidTree.out, check.command) };
   } finally {
     restoreSlice(worktree, tree);
+    unpin(worktree, orderId);
   }
 }

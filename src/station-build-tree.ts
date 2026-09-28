@@ -47,6 +47,27 @@ export function nestedRepository(worktree: string): string | null {
   return null;
 }
 
+export type TreeRefusal = { code: "nested_repository" | "check_changed_tree"; message: string };
+
+export function nestedRefusal(worktree: string): TreeRefusal | null {
+  const nested = nestedRepository(worktree);
+  if (nested === null) return null;
+  return {
+    code: "nested_repository",
+    message: `${nested} is a git repository inside the worktree, which the runner does not stage`,
+  };
+}
+
+export function checkedTreeRefusal(worktree: string, tree: string, command: string): TreeRefusal | null {
+  const nested = nestedRefusal(worktree);
+  if (nested) return nested;
+  if (stagedTree(worktree) === tree) return null;
+  return {
+    code: "check_changed_tree",
+    message: `the check changed the worktree while it ran, so it did not run over the tree it was handed: ${command}`,
+  };
+}
+
 export function hooksOutsideTree(worktree: string): string {
   const hooks = git(worktree, ["rev-parse", "--path-format=absolute", "--git-path", "hooks"]);
   const top = git(worktree, ["rev-parse", "--show-toplevel"]);
