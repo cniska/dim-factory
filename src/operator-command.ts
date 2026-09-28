@@ -15,7 +15,14 @@ const fail = (message: string): Error => new UsageError(message);
 
 type ActiveSession = { session_id: string; harness_pid: number | null; ts: string };
 
-function activeSession(db: Database, env: Record<string, string | undefined>, cwd: string): ActiveSession {
+type OwnSession = { sessionId: string; harness: ProcessIdentity };
+
+function ownSession(
+  db: Database,
+  env: Record<string, string | undefined>,
+  cwd: string,
+  ancestry: readonly ProcessIdentity[],
+): OwnSession {
   const project = labelFor(cwd);
   if (!project) throw fail(`cannot resolve this checkout's owner/repo for ${cwd}`);
   drainSpool(db, env);
@@ -36,21 +43,30 @@ function activeSession(db: Database, env: Record<string, string | undefined>, cw
          AND NOT EXISTS (
            SELECT 1 FROM hook_event ended
            WHERE ended.session_id = start.session_id AND ended.event = 'session_end'
-         ) ORDER BY start.ts`,
+         ) ORDER BY start.ts DESC`,
     )
     .all();
-  const sessions = new Map<string, ActiveSession>();
+  const latest = new Map<string, ActiveSession>();
   for (const session of active) {
-    if (session.cwd && labelFor(session.cwd) === project && !sessions.has(session.session_id)) {
-      sessions.set(session.session_id, session);
+    if (session.cwd && labelFor(session.cwd) === project && !latest.has(session.session_id)) {
+      latest.set(session.session_id, session);
     }
   }
-  if (sessions.size > 1) {
-    throw fail(`more than one active operator session is recorded for ${project}; the factory cannot choose`);
+  if (latest.size === 0) throw fail(`no active harness session is recorded for project ${project}`);
+  const own = [...latest.values()].flatMap((session) => {
+    const harness = ancestry.find((entry) => entry.pid === session.harness_pid);
+    return harness && processStartedBefore(harness.startedAt, session.ts)
+      ? [{ sessionId: session.session_id, harness }]
+      : [];
+  });
+  if (own.length > 1) {
+    throw fail(
+      `more than one active session in ${project} runs above this process; the factory cannot choose`,
+    );
   }
-  const [current] = sessions.values();
+  const [current] = own;
   if (current) return current;
-  throw fail(`no active harness session is recorded for project ${project}`);
+  throw fail(`no active session in ${project} has its harness above this process`);
 }
 
 function roleOf(db: Database, worker: string): Role | undefined {
@@ -71,15 +87,10 @@ export function runOperatorCommand(
     return registered.worker.name;
   }
   if (registered) throw fail("this process already belongs to a factory worker or runner");
-  const session = activeSession(db, env, cwd);
-  const harness = ancestry.find((entry) => entry.pid === session.harness_pid);
-  if (!harness) throw fail("the active session's harness is not an ancestor of this process");
-  if (!processStartedBefore(harness.startedAt, session.ts)) {
-    throw fail("the active session's harness started after its SessionStart event");
-  }
+  const { sessionId, harness } = ownSession(db, env, cwd, ancestry);
   return mintWorkerForSession(db, {
     role: OPERATOR_ROLE,
-    sessionId: session.session_id,
+    sessionId,
     pid: harness.pid,
     processStartedAt: harness.startedAt,
   }).name;

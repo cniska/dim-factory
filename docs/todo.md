@@ -4,7 +4,7 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 
 ## Bugs
 
-- A builder can write `sessions.db` directly, since its sandbox grants `dim`'s data directory, so it can forge a row no `dim` command would write.
+- A builder's sandbox grants `dim`'s data directory, so it can write `sessions.db` directly or forge spool files, such as a SessionStart for a session it then registers as operator from a detached process.
 - A moved checkout reads as a second repo.
 - Editing a JSONC file moves a trailing array comment onto the new entry, and turns CRLF into LF.
 

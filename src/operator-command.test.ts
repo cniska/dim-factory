@@ -68,7 +68,7 @@ describe("registering the operator from its harness", () => {
     const db = floor();
     expect(() =>
       runOperatorCommand(db, [], session(), process.cwd(), [{ pid: 300, startedAt: "3000000" }]),
-    ).toThrow(/harness is not an ancestor/);
+    ).toThrow(/has its harness above this process/);
     db.close();
   });
 
@@ -76,7 +76,7 @@ describe("registering the operator from its harness", () => {
     const db = floor();
     const startedAfter: ProcessIdentity = { pid: 100, startedAt: "9999999999999999" };
     expect(() => runOperatorCommand(db, [], session(), process.cwd(), [startedAfter])).toThrow(
-      /started after its SessionStart/,
+      /has its harness above this process/,
     );
     db.close();
   });
@@ -101,7 +101,7 @@ describe("registering the operator from its harness", () => {
     db.close();
   });
 
-  test("refuses to choose among active sessions in the checkout", () => {
+  test("refuses to choose between two active sessions whose harness is the same caller's ancestor", () => {
     const db = floor();
     const env = session();
     writeFileSync(
@@ -109,7 +109,31 @@ describe("registering the operator from its harness", () => {
       JSON.stringify({ session_id: "other-session", hook_event_name: "SessionStart", cwd: process.cwd() }),
     );
     expect(() => runOperatorCommand(db, [], env, process.cwd(), [harness])).toThrow(
-      /more than one active operator session/,
+      /more than one active session/,
+    );
+    db.close();
+  });
+
+  test("takes the one active session whose harness is above the caller, whatever else is active", () => {
+    const db = floor();
+    const env = session();
+    writeFileSync(
+      join(toolSpoolDir("codex", env), "1789000000000000001-4242-900-.json"),
+      JSON.stringify({ session_id: "other-terminal", hook_event_name: "SessionStart", cwd: process.cwd() }),
+    );
+    const name = runOperatorCommand(db, [], env, process.cwd(), [harness]);
+    expect(db.query("SELECT session_id FROM factory_worker WHERE name = ?").get(name)).toEqual({
+      session_id: "operator-session",
+    });
+    db.close();
+  });
+
+  test("never takes a station worker's session as the operator's", () => {
+    const db = floor();
+    const env = session();
+    mintWorker(db, { role: "builder", sessionId: "operator-session" });
+    expect(() => runOperatorCommand(db, [], env, process.cwd(), [harness])).toThrow(
+      /no active harness session is recorded/,
     );
     db.close();
   });
