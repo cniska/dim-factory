@@ -5,8 +5,7 @@ import { closeDb, openDb } from "./db";
 import { assertOperator } from "./factory-operator";
 import { checkoutRoot } from "./git-checkout";
 import { labelFor } from "./git-remote";
-import { HARNESSES, type HarnessName, parseHarness } from "./harness-name";
-import { recordedHarness } from "./harness-operator";
+import { HARNESSES, type HarnessName, isHarness, parseHarness } from "./harness-name";
 import { requireCurrentHooks } from "./hooks";
 import { approveOrder, returnApprovedPlan, returnOrderArtifact, returnReviewToBuild } from "./order-approval";
 import { nextOrderSlice } from "./order-artifacts";
@@ -50,6 +49,18 @@ const fail = (message: string): Error => new UsageError(message);
 function namedHarness(given: Map<string, string>): HarnessName | null {
   const named = given.get("--harness");
   return named === undefined ? null : parseHarness(named, fail);
+}
+
+function recordedHarness(db: Database, worker: string): HarnessName | null {
+  const tool = db
+    .query<{ tool: string }, [string]>(
+      `SELECT h.tool FROM hook_event h
+       JOIN factory_worker w ON w.session_id = h.session_id
+       WHERE w.name = ? AND h.event = 'session_start'
+       ORDER BY h.ts LIMIT 1`,
+    )
+    .get(worker)?.tool;
+  return isHarness(tool) ? tool : null;
 }
 
 function candidateHarnesses(db: Database, operator: string, env: Env): HarnessName[] {
