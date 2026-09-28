@@ -59,12 +59,13 @@ export function shipOrder(
   orderId: string,
   cwd: string,
   worker: string,
-  options: { env?: Env; checkSandbox?: string[] } = {},
+  options: { env?: Env; checkSandbox?: string[]; retry?: boolean } = {},
 ): ShipOutcome & ShipCleanup {
   const env = options.env ?? process.env;
   return withLock(() => {
     assertOperator(db, worker, "ship an order");
     assertNext(db, orderId, "ship");
+    if (options.retry) appendOrderEvent(db, orderId, { kind: "ship_retried", worker });
     const shas = currentOrderCommits(db, orderId).map((row) => row.sha);
     const onRebased = (rewrite: Rewrite): RebaseVerdict => {
       const check = recheck(rewrite.worktree, env, options.checkSandbox ?? CHECK_SANDBOX);

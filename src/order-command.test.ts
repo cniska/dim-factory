@@ -297,6 +297,14 @@ describe("order command", () => {
     expect(runOrderCommand(database, ["approve", "order-1"])).toBe(
       `order-1 review approved by ${operator}; order-1 is already on the default branch and shipped`,
     );
+    expect(
+      database
+        .query("SELECT kind, worker FROM factory_order_event WHERE order_id = ? ORDER BY id DESC LIMIT 2")
+        .all("order-1"),
+    ).toEqual([
+      { kind: "shipped", worker: operator },
+      { kind: "artifact_approved", worker: operator },
+    ]);
     expect(() => runOrderCommand(database, ["approve", "order-1"])).toThrow(
       expect.objectContaining({
         code: "not_next",
@@ -373,9 +381,12 @@ describe("order command", () => {
     );
     expect(
       database
-        .query("SELECT kind FROM factory_order_event WHERE order_id = ? ORDER BY id DESC")
-        .get("order-1"),
-    ).toEqual({ kind: "shipped" });
+        .query("SELECT kind, worker FROM factory_order_event WHERE order_id = ? ORDER BY id DESC LIMIT 2")
+        .all("order-1"),
+    ).toEqual([
+      { kind: "shipped", worker: resolveWorker(database, env) },
+      { kind: "ship_retried", worker: resolveWorker(database, env) },
+    ]);
   });
 
   test("a ship run from the trunk checkout still lands the order's branch", () => {
@@ -448,6 +459,9 @@ describe("order command", () => {
         code: "not_next",
         message: "order order-1 waits on run at build, so it cannot ship",
       }),
+    );
+    expect(database.query("SELECT kind FROM factory_order_event WHERE kind = 'ship_retried'").all()).toEqual(
+      [],
     );
   });
 

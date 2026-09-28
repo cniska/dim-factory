@@ -80,7 +80,7 @@ A refused commit or comment goes back to the same builder, at most twice per tur
 
 ## Shipped
 
-Landing an order's commits on the local default branch ships it. Ship then removes its worktree, and deletes its branch if the branch tip reaches the local default branch. A worktree or branch that cannot be removed is kept; the `shipped` event records the reason under `worktreeKept` or `branchKept`, and `dim order ship` reports it. Nothing is pushed. Ship waits on an approved Build artifact, which the runner writes only with a check that passed at the head, and on an approved Review artifact at the head; the docs changing with the behavior rest on the stations. A failed branch landing attempt writes a `ship_failed` event with its reason.
+Landing an order's commits on the local default branch ships it. Ship then removes its worktree, and deletes its branch if the branch tip reaches the local default branch. A worktree or branch that cannot be removed is kept; the `shipped` event records the reason under `worktreeKept` or `branchKept`, and `dim order ship` reports it. Nothing is pushed. Ship waits on an approved Build artifact, which the runner writes only with a check that passed at the head, and on an approved Review artifact at the head; the docs changing with the behavior rest on the stations. A failed branch landing attempt writes a `ship_failed` event with its reason. Approving the Review artifact ships; `dim order ship` retries, and writes a `ship_retried` event under the operator before the attempt.
 
 Ship lands the order the way the repo declares with `git config dim.ship`:
 

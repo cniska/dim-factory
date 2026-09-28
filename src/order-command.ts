@@ -111,9 +111,8 @@ const SHIP_OUTCOME_TEXT: Record<ShipOutcome["landed"], string> = {
   rebased: "rebased onto the default branch, re-checked and fast-forwarded",
 };
 
-function ship(db: Database, orderId: string, args: string[], cwd: string, env: Env, worker: string): string {
-  flags(args, []);
-  const outcome = shipOrder(db, orderId, cwd, worker, { env });
+function ship(db: Database, orderId: string, cwd: string, env: Env, worker: string, retry: boolean): string {
+  const outcome = shipOrder(db, orderId, cwd, worker, { env, retry });
   const kept = [
     outcome.worktreeKept === undefined ? [] : [`worktree kept: ${outcome.worktreeKept}`],
     outcome.branchKept === undefined ? [] : [`branch ${orderId} kept: ${outcome.branchKept}`],
@@ -190,9 +189,12 @@ export function runOrderCommand(
     const station = approveOrder(db, orderId, worker, flags(rest, ["--reason"]).get("--reason"));
     const approved = `${orderId} ${station} approved by ${worker}`;
     if (station !== "review") return approved;
-    return `${approved}; ${ship(db, orderId, [], cwd, env, worker)}`;
+    return `${approved}; ${ship(db, orderId, cwd, env, worker, false)}`;
   }
-  if (command === "ship") return ship(db, orderId, rest, cwd, env, worker);
+  if (command === "ship") {
+    flags(rest, []);
+    return ship(db, orderId, cwd, env, worker, true);
+  }
   if (command === "amend") return amend(db, orderId, rest);
   if (command === "drop") return drop(db, orderId, rest, worker);
   throw new UsageError(`${command} is not an order subcommand`);

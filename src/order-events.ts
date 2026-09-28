@@ -10,6 +10,7 @@ export const ORDER_EVENT_KINDS = [
   "commit_rewritten",
   "finding_raised",
   "finding_answered",
+  "ship_retried",
   "ship_failed",
   "shipped",
   "dropped",
