@@ -490,6 +490,51 @@ describe("ingest", () => {
     }
   });
 
+  test("re-reads a shrunk transcript whose session spawned a subagent, keeping the subagent's link", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    const path = writeClaudeTranscript(env, "-Users-x-code-demo", SESSION);
+    const agentDir = join(env.DIM_CLAUDE_PROJECTS as string, "-Users-x-code-demo", SESSION, "subagents");
+    mkdirSync(agentDir, { recursive: true });
+    writeFileSync(
+      join(agentDir, "agent-a07d010a033dbe536.jsonl"),
+      `${claudeTranscriptLines(SESSION)
+        .map((l) => JSON.stringify(l).replace(/"(msg|toolu|u|a)-/g, '"agent-$1-'))
+        .join("\n")}\n`,
+    );
+    closeDb(run(env));
+    const kept = claudeTranscriptLines(SESSION).slice(0, 2);
+    writeFileSync(path, `${kept.map((l) => JSON.stringify(l)).join("\n")}\n`);
+
+    const db = openDb(dbPath(env));
+    try {
+      expect(sync(db, env).failures).toEqual([]);
+      expect(sync(db, env).failures).toEqual([]);
+      const reread = db
+        .prepare<{ n: number }, [string]>("SELECT count(*) AS n FROM message WHERE session_id = ?")
+        .get(SESSION)?.n;
+      const fresh = openDb(join(root, "fresh.db"));
+      const expected = (() => {
+        const other = scratchEnv(join(root, "fresh"));
+        writeFileSync(
+          writeClaudeTranscript(other, "-Users-x-code-demo", SESSION),
+          `${kept.map((l) => JSON.stringify(l)).join("\n")}\n`,
+        );
+        sync(fresh, other);
+        return fresh
+          .prepare<{ n: number }, [string]>("SELECT count(*) AS n FROM message WHERE session_id = ?")
+          .get(SESSION)?.n;
+      })();
+      closeDb(fresh);
+      expect(reread).toBe(expected);
+      expect(
+        db.prepare("SELECT parent_id FROM session WHERE id = ?").get(`a07d010a033dbe536@${SESSION}`),
+      ).toEqual({ parent_id: SESSION });
+    } finally {
+      closeDb(db);
+    }
+  });
+
   test("keeps two subagents that share an agent id apart", () => {
     const root = newRoot();
     const env = scratchEnv(root);

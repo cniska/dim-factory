@@ -242,7 +242,12 @@ export function createIngester(db: Database) {
   const deleteCost = db.prepare<void, [string]>("DELETE FROM session_cost_reported WHERE session_id = ?");
   const deleteUsage = db.prepare<void, [string]>("DELETE FROM usage WHERE session_id = ?");
   const deleteMessages = db.prepare<void, [string]>("DELETE FROM message WHERE session_id = ?");
-  const deleteSession = db.prepare<void, [string]>("DELETE FROM session WHERE id = ?");
+  const clearTranscriptFields = db.prepare<void, [string]>(
+    `UPDATE session SET agent_type = NULL, cwd = NULL, worktree = NULL, project = NULL, git_branch = NULL,
+       cli_version = NULL, entrypoint = NULL, started_at = NULL, last_seen_at = NULL, first_model = NULL,
+       last_model = NULL, title = NULL, extra = NULL
+     WHERE id = ?`,
+  );
   const resetCursor = db.prepare<void, [string]>(
     "UPDATE source_file SET bytes_ingested = 0, lines_ingested = 0, cursor_state = NULL WHERE path = ?",
   );
@@ -254,7 +259,7 @@ export function createIngester(db: Database) {
     deleteTurns.run(sessionId);
     deleteUsage.run(sessionId);
     deleteMessages.run(sessionId);
-    deleteSession.run(sessionId);
+    clearTranscriptFields.run(sessionId);
     resetCursor.run(path);
   }
 
@@ -424,23 +429,22 @@ export function createIngester(db: Database) {
     let cursor = existing?.bytes_ingested ?? 0;
     let lines = existing?.lines_ingested ?? 0;
     let state = existing?.cursor_state ?? null;
-    let reset = false;
-
-    if (stat.size < cursor) {
-      resetSession(spec.sessionId, spec.path);
+    const reset = stat.size < cursor;
+    if (reset) {
       cursor = 0;
       lines = 0;
       state = null;
-      reset = true;
     }
     const nothing = { read: false, bytes: 0, lines: 0, reset, dropped: [] };
-    if (stat.size === cursor) return nothing;
-
-    const chunk = readChunk(spec.path, cursor);
-    if (chunk.bytes === 0) return nothing;
+    const chunk = stat.size === cursor ? null : readChunk(spec.path, cursor);
+    if (!chunk || chunk.bytes === 0) {
+      if (reset) writeTransaction(db, () => resetSession(spec.sessionId, spec.path));
+      return nothing;
+    }
 
     const parsed = spec.parse(chunk.lines, lines + 1, state);
     writeTransaction(db, () => {
+      if (reset) resetSession(spec.sessionId, spec.path);
       applyChunk(spec, parsed, cursor + chunk.bytes, lines + chunk.lines.length, mtime);
     });
 
@@ -453,7 +457,7 @@ export function createIngester(db: Database) {
     };
   }
 
-  return { ingestFile, resetSession };
+  return { ingestFile };
 }
 
 export type Ingester = ReturnType<typeof createIngester>;
