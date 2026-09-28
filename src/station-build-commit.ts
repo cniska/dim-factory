@@ -59,6 +59,23 @@ function refuseNested(worktree: string): void {
   }
 }
 
+function refuseChangedAttributes(worktree: string, trunk: string): void {
+  const listed = git(worktree, ["diff", "--cached", "--name-only", "-z", trunk, "--"]);
+  if (!listed.ok) throw new Error(`cannot compare ${worktree} with ${trunk}: ${listed.err}`);
+  const changed = listed.out
+    .split("\0")
+    .filter((path) => path === ".gitattributes" || path.endsWith("/.gitattributes"));
+  if (changed.length === 0) return;
+  git(worktree, ["reset", "-q"]);
+  throw new BuildTurnRefused(
+    "attributes_changed",
+    [
+      `the turn changes ${changed.join(", ")}, which decides the files the comment ban reads;`,
+      `restore it, since a change to it lands on ${trunk} before an order is held to it`,
+    ].join("\n"),
+  );
+}
+
 function refuseAddedComments(worktree: string, label: string): { unparsed: string[] } {
   const { found, unparsed } = stagedComments(worktree);
   if (found.length === 0) return { unparsed };
@@ -145,8 +162,10 @@ export function commitBuildTurn(options: {
   }
 
   refuseNested(worktree);
-  const commentGate = commentGateFor(worktree, trunkRef(worktree), env);
+  const trunk = trunkRef(worktree);
+  const commentGate = commentGateFor(worktree, trunk, env);
   const checked = stagedTree(worktree);
+  if (commentGate.state === "armed") refuseChangedAttributes(worktree, trunk);
   const { unparsed } =
     commentGate.state === "armed" ? refuseAddedComments(worktree, commentGate.label) : { unparsed: [] };
   const check = runSandboxedCheck({

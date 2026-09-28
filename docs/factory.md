@@ -72,7 +72,7 @@ A command with no `--harness` runs the worker under the harness the operator's o
 A builder leaves its changes uncommitted and returns a build turn: a commit subject, an answer per finding, and the Build artifact on every turn but one that finishes an earlier slice. A returned Build artifact runs a build turn too, briefed with the owner's feedback, and it may change code. The runner then ([`src/station-build-commit.ts`](../src/station-build-commit.ts)):
 
 1. refuses a turn that leaves a handed finding unanswered or answers one it was not handed
-2. applies the comment gate over the staged tree, reading the ban from the local default branch's config so a builder cannot lift it
+2. applies the comment gate over the staged tree, reading the ban from the local default branch's config so a builder cannot lift it, and refusing a turn that changes a `.gitattributes`, which decides the files the ban reads
 3. runs the check the local default branch declares, in the worktree's check sandbox; a turn that redefines that task in its manifest fails before it runs, so a builder cannot redefine the check its own code is held to ([`src/workspace-tasks.ts`](../src/workspace-tasks.ts) `trunkCheck`). The sandbox's environment holds only what a process needs to run — `PATH`, `HOME`, the user, shell, temporary directory, locale and time zone — so no credential, factory name or proxy reaches it ([`src/station-environment.ts`](../src/station-environment.ts))
 4. commits with the repo's own identity and signing, and records the commit under the builder and the check at the commit it ran on — the new commit, or for a turn that failed or changed nothing the head it was built on ([`src/order-head-check.ts`](../src/order-head-check.ts))
 

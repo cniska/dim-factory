@@ -21,6 +21,7 @@ export class BuildTurnRefused extends Error {
       | "no_change"
       | "commit_refused"
       | "comment_added"
+      | "attributes_changed"
       | "rebase_in_progress"
       | "rebase_mismatch"
       | "conflict_unresolved"

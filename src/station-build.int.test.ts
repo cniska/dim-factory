@@ -1611,6 +1611,25 @@ describe("a comment a builder adds", () => {
     order.db.close();
   });
 
+  test("refuses a turn that marks files generated, so a builder cannot hide a comment from the ban", async () => {
+    const order = commentOrder("comment-attributes-order", '{ "comments": "banned" }');
+    const hidden = write(commented, { ".gitattributes": "* linguist-generated\n" });
+    const builder = scriptedBuilder([hidden, hidden, hidden]);
+
+    const error = await runOrderBuildLive(order.db, "comment-attributes-order", order.operator.name, {
+      ...order.options,
+      adapter: builder.adapter,
+    }).catch((caught: unknown) => caught);
+
+    expect((error as Error).cause).toMatchObject({ code: "attributes_changed" });
+    expect(builder.calls.map((call) => call.kind)).toEqual(["start", "resume", "resume"]);
+    expect(builder.calls[1]?.brief).toContain("the turn changes .gitattributes");
+    expect(order.checksRun()).toBe(0);
+    expect(git(order.worktree, ["rev-parse", "HEAD"])).toBe(order.repo.sha);
+    expect(order.db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 0 });
+    order.db.close();
+  });
+
   test("fails the attempt where git's config cannot be read", async () => {
     const order = commentOrder("comment-git-config-order", '{ "comments": "banned" }');
     writeFileSync(order.options.env.GIT_CONFIG_GLOBAL, "[core\n");

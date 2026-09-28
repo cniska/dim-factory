@@ -368,7 +368,7 @@ export async function runOrderBuildLive(
       } catch (error) {
         if (
           !(error instanceof BuildTurnRefused) ||
-          (error.code !== "commit_refused" && error.code !== "comment_added") ||
+          !["commit_refused", "comment_added", "attributes_changed"].includes(error.code) ||
           corrections === COMMIT_CORRECTIONS
         ) {
           throw error;
