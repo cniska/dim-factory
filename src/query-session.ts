@@ -18,6 +18,11 @@ import { SAID } from "./query-search";
 
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/;
 
+const TRANSCRIPT_READING_CHARS = 240;
+const RESUME_STOP_GIST_CHARS = 160;
+const RESUME_RECENT_SAID_CHARS = 200;
+const RUNNING_GLANCE_CHARS = 140;
+
 function passageTime(ref: string): string | undefined {
   const cut = ref.lastIndexOf("@");
   if (cut === -1) return undefined;
@@ -193,7 +198,7 @@ export const thread: Query = {
     const said = `FROM message m WHERE m.session_id = ? AND m.text IS NOT NULL AND ${SAID}`;
     const select = `SELECT substr(ts, 1, 16) AS "when", role,
                            coalesce(attribution_skill, '') AS skill,
-                           replace(substr(text, 1, 240), char(10), ' ') AS text, ts`;
+                           replace(substr(text, 1, ${TRANSCRIPT_READING_CHARS}), char(10), ' ') AS text, ts`;
     const records = at
       ? table(
           db,
@@ -213,7 +218,7 @@ export const thread: Query = {
       note:
         records.length === 0
           ? "nothing was said in this session outside tool calls and injected text"
-          : "Text is cut at 240 characters. Tool calls, their results, skill bodies and injected reminders are not here.",
+          : `Text is cut at ${TRANSCRIPT_READING_CHARS} characters. Tool calls, their results, skill bodies and injected reminders are not here.`,
     };
   },
 };
@@ -278,7 +283,7 @@ export const resume: Query = {
 
     for (const p of table(
       db,
-      `SELECT substr(ts, 1, 16) AS ts, replace(substr(coalesce(user_feedback, text, ''), 1, 160), char(10), ' ') AS said
+      `SELECT substr(ts, 1, 16) AS ts, replace(substr(coalesce(user_feedback, text, ''), 1, ${RESUME_STOP_GIST_CHARS}), char(10), ' ') AS said
        FROM message
        WHERE session_id = ? AND role = 'user' AND ${stoppedByOwner("")}
        ORDER BY ts DESC LIMIT 3`,
@@ -291,7 +296,7 @@ export const resume: Query = {
       db,
       `SELECT * FROM (
          SELECT substr(ts, 1, 16) AS ts, role,
-                replace(substr(text, 1, 200), char(10), ' ') AS said
+                replace(substr(text, 1, ${RESUME_RECENT_SAID_CHARS}), char(10), ' ') AS said
          FROM message
          WHERE session_id = ? AND text IS NOT NULL AND is_skill_body = 0 AND is_meta = 0
          ORDER BY ts DESC LIMIT 6
@@ -392,7 +397,7 @@ export const running: Query = {
               replace(coalesce(s.project, ''), ? || '/', '') AS project,
               substr(s.last_seen_at, 12, 5) AS last_seen,
               coalesce(
-                (SELECT replace(substr(m.text, 1, 140), char(10), ' ') FROM message m
+                (SELECT replace(substr(m.text, 1, ${RUNNING_GLANCE_CHARS}), char(10), ' ') FROM message m
                  WHERE m.session_id = s.id AND m.text IS NOT NULL
                    AND m.is_skill_body = 0 AND m.is_meta = 0
                  ORDER BY m.ts DESC LIMIT 1),

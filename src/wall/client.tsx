@@ -13,6 +13,7 @@ import { itemKindLabel } from "./item";
 import { cn } from "./lib/utils";
 import { WallMarkdown } from "./markdown";
 import { msUntilNextMinute } from "./minute-beat";
+import { RECORD_POLL_MS } from "./record-poll";
 import type {
   BoardStatus,
   WallFailure,
@@ -549,6 +550,7 @@ function cardState(order: WallOrder): string {
 
 const BUMP_MS = 2000;
 const RECONNECT_MS = 1000;
+const CLOCK_BLINK_MS = 1000;
 
 function useSnapshot() {
   const [snapshot, setSnapshot] = useState<WallSnapshot>(unavailableSnapshot);
@@ -689,7 +691,7 @@ function useItemView(orderId: string): ItemRead {
         });
     };
     refresh();
-    const interval = setInterval(refresh, 1000);
+    const interval = setInterval(refresh, RECORD_POLL_MS);
     return () => {
       current = false;
       clearInterval(interval);
@@ -726,7 +728,7 @@ function useBlink(live: boolean): boolean {
 
   useEffect(() => {
     if (!live) return;
-    const tick = setInterval(() => setOn((was) => !was), 1000);
+    const tick = setInterval(() => setOn((was) => !was), CLOCK_BLINK_MS);
     return () => clearInterval(tick);
   }, [live]);
 

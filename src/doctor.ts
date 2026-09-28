@@ -32,6 +32,12 @@ import { RoutingError, readHarnessMap } from "./worker-routing";
 export type Health = { name: string; state: "ok" | "warn" | "fail"; detail: string; fix?: string };
 
 const HOUR_MS = 3_600_000;
+const SYNC_STOPPED_AFTER_MS = 24 * HOUR_MS;
+const SESSION_SETTLED_HOURS = 2;
+const BROKEN_HOOK_END_SHARE = 0.5;
+const CLAUDE_CODE_DEFAULT_CLEANUP_DAYS = 30;
+const RETENTION_WANTED_DAYS = 365;
+const SPOOL_BEHIND_EVENTS = 200;
 
 function scalar(db: Database, sql: string): number {
   return (db.prepare(sql).get() as { n: number } | null)?.n ?? 0;
@@ -113,7 +119,7 @@ function codexTrust(env: Env): Health {
   };
 }
 
-function endReasons(hooks: HookRead, since: string | null, judgeable: number, ended: number): Health {
+function judgeEnds(hooks: HookRead, since: string | null, judgeable: number, ended: number): Health {
   const name = "end reasons";
   const RUNS = "check the hook command runs: it must write to the spool and exit 0";
   if (!hooks.read) {
@@ -137,7 +143,7 @@ function endReasons(hooks: HookRead, since: string | null, judgeable: number, en
       detail: "no session has both started and finished since the hooks went in",
     };
   }
-  if (ended / judgeable < 0.5) {
+  if (ended / judgeable < BROKEN_HOOK_END_SHARE) {
     return {
       name,
       state: "fail",
@@ -174,11 +180,15 @@ function retention(env: Env): Health {
     return {
       name: "retention",
       state: "fail",
-      detail: "cleanupPeriodDays is unset, so Claude Code deletes transcripts after 30 days",
+      detail: `cleanupPeriodDays is unset, so Claude Code deletes transcripts after ${CLAUDE_CODE_DEFAULT_CLEANUP_DAYS} days`,
       fix: `set "cleanupPeriodDays" in ${path}`,
     };
   }
-  return { name: "retention", state: days >= 365 ? "ok" : "warn", detail: `transcripts kept ${days} days` };
+  return {
+    name: "retention",
+    state: days >= RETENTION_WANTED_DAYS ? "ok" : "warn",
+    detail: `transcripts kept ${days} days`,
+  };
 }
 
 function spool(env: Env): Health {
@@ -191,9 +201,9 @@ function spool(env: Env): Health {
   if (waiting === 0) return { name: "spool", state: "ok", detail: "no hook events waiting" };
   return {
     name: "spool",
-    state: waiting > 200 ? "warn" : "ok",
+    state: waiting > SPOOL_BEHIND_EVENTS ? "warn" : "ok",
     detail: `${waiting} hook events written but not yet read`,
-    fix: waiting > 200 ? "dim sync" : undefined,
+    fix: waiting > SPOOL_BEHIND_EVENTS ? "dim sync" : undefined,
   };
 }
 
@@ -307,57 +317,53 @@ function commentGate(env: Env, cwd: string, commitGate: Health): Health {
   };
 }
 
-export function diagnose(db: Database, env: Env = process.env, cwd: string = process.cwd()): Health[] {
-  const checks: Health[] = [];
+function dimOnPath(): Health {
+  return Bun.which("dim")
+    ? { name: "path", state: "ok", detail: `dim resolves to ${Bun.which("dim")}` }
+    : {
+        name: "path",
+        state: "fail",
+        detail: "dim is not on PATH, so no agent can reach it from another repo",
+        fix: "bun link, from this repo",
+      };
+}
 
-  checks.push(
-    Bun.which("dim")
-      ? { name: "path", state: "ok", detail: `dim resolves to ${Bun.which("dim")}` }
-      : {
-          name: "path",
-          state: "fail",
-          detail: "dim is not on PATH, so no agent can reach it from another repo",
-          fix: "bun link, from this repo",
-        },
-  );
-
+function schema(db: Database): Health {
   const version = scalar(db, "SELECT version AS n FROM schema_version LIMIT 1");
-  checks.push(
-    version === SCHEMA_VERSION
-      ? { name: "schema", state: "ok", detail: `version ${version}` }
-      : {
-          name: "schema",
-          state: "fail",
-          detail: `database is version ${version}, this build expects ${SCHEMA_VERSION}`,
-          fix: "dim rebuild",
-        },
-  );
+  return version === SCHEMA_VERSION
+    ? { name: "schema", state: "ok", detail: `version ${version}` }
+    : {
+        name: "schema",
+        state: "fail",
+        detail: `database is version ${version}, this build expects ${SCHEMA_VERSION}`,
+        fix: "dim rebuild",
+      };
+}
 
+function freshness(db: Database): Health {
   const last = text(db, "SELECT max(ingested_at) AS v FROM source_file");
   const age = last ? Date.now() - Date.parse(last) : Number.POSITIVE_INFINITY;
-  checks.push(
-    !last
-      ? { name: "freshness", state: "fail", detail: "nothing has ever been read", fix: "dim sync" }
-      : age > 24 * HOUR_MS
-        ? {
-            name: "freshness",
-            state: "warn",
-            detail: `last read ${Math.round(age / HOUR_MS)} hours ago`,
-            fix: "dim sync",
-          }
-        : { name: "freshness", state: "ok", detail: `last read ${Math.round(age / HOUR_MS)} hours ago` },
-  );
+  return !last
+    ? { name: "freshness", state: "fail", detail: "nothing has ever been read", fix: "dim sync" }
+    : age > SYNC_STOPPED_AFTER_MS
+      ? {
+          name: "freshness",
+          state: "warn",
+          detail: `last read ${Math.round(age / HOUR_MS)} hours ago`,
+          fix: "dim sync",
+        }
+      : { name: "freshness", state: "ok", detail: `last read ${Math.round(age / HOUR_MS)} hours ago` };
+}
 
-  const hooks = readHooks(env);
-  checks.push(sessionHooks(hooks), codexTrust(env));
-
+function endReasons(db: Database, hooks: HookRead): Health {
   const since = text(db, "SELECT min(ts) AS v FROM hook_event");
+  const settled = `last_seen_at < strftime('%Y-%m-%dT%H:%M:%SZ','now','-${SESSION_SETTLED_HOURS} hours')`;
   const judgeable = since
     ? scalar(
         db,
         `SELECT count(*) AS n FROM session
          WHERE parent_id IS NULL AND started_at >= '${since}'
-           AND last_seen_at < strftime('%Y-%m-%dT%H:%M:%SZ','now','-2 hours')`,
+           AND ${settled}`,
       )
     : 0;
   const ended = since
@@ -365,29 +371,31 @@ export function diagnose(db: Database, env: Env = process.env, cwd: string = pro
         db,
         `SELECT count(*) AS n FROM session
          WHERE parent_id IS NULL AND started_at >= '${since}' AND end_reason IS NOT NULL
-           AND last_seen_at < strftime('%Y-%m-%dT%H:%M:%SZ','now','-2 hours')`,
+           AND ${settled}`,
       )
     : 0;
-  checks.push(endReasons(hooks, since, judgeable, ended));
+  return judgeEnds(hooks, since, judgeable, ended);
+}
 
+function skill(env: Env): Health {
   const pendingLinks = planSkill(env).filter((p) => p.state !== "linked");
   const retired = retiredLinks(env);
-  checks.push(
-    pendingLinks.length === 0 && retired.length === 0
-      ? { name: "skill", state: "ok", detail: "every skill linked for every tool" }
-      : {
-          name: "skill",
-          state: "warn",
-          detail: [
-            ...(pendingLinks.length > 0
-              ? [`${pendingLinks.length} of ${planSkill(env).length} skill links missing`]
-              : []),
-            ...(retired.length > 0 ? [`links to skills that no longer ship: ${retired.join(", ")}`] : []),
-          ].join("; "),
-          fix: "dim install-skill --write",
-        },
-  );
+  return pendingLinks.length === 0 && retired.length === 0
+    ? { name: "skill", state: "ok", detail: "every skill linked for every tool" }
+    : {
+        name: "skill",
+        state: "warn",
+        detail: [
+          ...(pendingLinks.length > 0
+            ? [`${pendingLinks.length} of ${planSkill(env).length} skill links missing`]
+            : []),
+          ...(retired.length > 0 ? [`links to skills that no longer ship: ${retired.join(", ")}`] : []),
+        ].join("; "),
+        fix: "dim install-skill --write",
+      };
+}
 
+function commitGate(env: Env): Health {
   const plan = planCommitGate(installedOwners(env) ?? [], [], env);
   const dir = sharedHooksDir(env);
   const gaps = plan.hooks
@@ -398,56 +406,55 @@ export function diagnose(db: Database, env: Env = process.env, cwd: string = pro
         ? []
         : [`git's global core.hooksPath is ${plan.globalHooksPath ?? "unset"} rather than ${dir}`],
     );
-  const commitGate: Health =
-    gaps.length === 0
-      ? { name: "commit gate", state: "ok", detail: "every hook in place, for every repo" }
-      : {
-          name: "commit gate",
-          state: "warn",
-          detail: `${gaps.join(", ")}; those rules are held only where a repo gates its own`,
-          fix: "dim install-commit-gate --owner=<owner> --write",
-        };
-  checks.push(commitGate);
+  return gaps.length === 0
+    ? { name: "commit gate", state: "ok", detail: "every hook in place, for every repo" }
+    : {
+        name: "commit gate",
+        state: "warn",
+        detail: `${gaps.join(", ")}; those rules are held only where a repo gates its own`,
+        fix: "dim install-commit-gate --owner=<owner> --write",
+      };
+}
 
+function gateOwners(env: Env): Health[] {
   const owners = installedOwners(env);
-  const bareOwners = (owners ?? []).filter((o) => !isHostQualified(o));
-  if (owners !== null) {
-    checks.push(
-      bareOwners.length === 0
-        ? {
-            name: "gate owners",
-            state: "ok",
-            detail: `${owners.length} owners, each naming a host and an account`,
-          }
-        : {
-            name: "gate owners",
-            state: "fail",
-            detail: `${bareOwners.length} owners name an account but no host (${bareOwners.join(", ")}), so the gate arms nowhere`,
-            fix: "dim install-commit-gate --owner=<host>/<account> --write",
-          },
-    );
-  }
+  if (owners === null) return [];
+  const bareOwners = owners.filter((o) => !isHostQualified(o));
+  return [
+    bareOwners.length === 0
+      ? {
+          name: "gate owners",
+          state: "ok",
+          detail: `${owners.length} owners, each naming a host and an account`,
+        }
+      : {
+          name: "gate owners",
+          state: "fail",
+          detail: `${bareOwners.length} owners name an account but no host (${bareOwners.join(", ")}), so the gate arms nowhere`,
+          fix: "dim install-commit-gate --owner=<host>/<account> --write",
+        },
+  ];
+}
 
-  checks.push(commentGate(env, cwd, commitGate));
-
+function pushGate(db: Database, env: Env): Health {
   const unarmed = unarmedCheckouts(
     (db.query("SELECT DISTINCT repo FROM repo_commit ORDER BY repo").all() as { repo: string }[])
       .map((r) => r.repo)
       .filter((repo) => existsSync(join(repo, ".git"))),
   );
-  checks.push(
-    unarmed.length === 0
-      ? { name: "push gate", state: "ok", detail: "every checkout names the branch the gate protects" }
-      : {
-          name: "push gate",
-          state: "warn",
-          detail: `${unarmed.length} checkouts have no origin/HEAD, so the push gate exits before reading anything there: ${unarmed
-            .map((d) => d.replace(`${resolveHomeDir(env)}/`, ""))
-            .join(", ")}`,
-          fix: "git remote set-head origin -a, in each",
-        },
-  );
+  return unarmed.length === 0
+    ? { name: "push gate", state: "ok", detail: "every checkout names the branch the gate protects" }
+    : {
+        name: "push gate",
+        state: "warn",
+        detail: `${unarmed.length} checkouts have no origin/HEAD, so the push gate exits before reading anything there: ${unarmed
+          .map((d) => d.replace(`${resolveHomeDir(env)}/`, ""))
+          .join(", ")}`,
+        fix: "git remote set-head origin -a, in each",
+      };
+}
 
+function shipMethods(db: Database, env: Env): Health {
   const shippedFrom = new Set(
     (
       db
@@ -461,83 +468,101 @@ export function diagnose(db: Database, env: Env = process.env, cwd: string = pro
     const declared = shipMethod(root);
     return !("method" in declared) || declared.method !== "trunk";
   });
-  checks.push(
-    unusable.length === 0
-      ? {
-          name: "ship method",
-          state: "ok",
-          detail: "every checkout the factory ships from declares dim.ship = trunk",
-        }
-      : {
-          name: "ship method",
-          state: "warn",
-          detail: `${unusable.length} checkouts the factory ships from declare no dim.ship that \`dim order ship\` can land, so it refuses there: ${unusable
-            .map((d) => d.replace(`${resolveHomeDir(env)}/`, ""))
-            .join(", ")}`,
-          fix: "git config dim.ship trunk, in each",
-        },
-  );
+  return unusable.length === 0
+    ? {
+        name: "ship method",
+        state: "ok",
+        detail: "every checkout the factory ships from declares dim.ship = trunk",
+      }
+    : {
+        name: "ship method",
+        state: "warn",
+        detail: `${unusable.length} checkouts the factory ships from declare no dim.ship that \`dim order ship\` can land, so it refuses there: ${unusable
+          .map((d) => d.replace(`${resolveHomeDir(env)}/`, ""))
+          .join(", ")}`,
+        fix: "git config dim.ship trunk, in each",
+      };
+}
 
-  const agent = planAgent(env);
-  const plist = agent.path;
-  checks.push(
-    !existsSync(plist)
+function agent(env: Env): Health {
+  const plan = planAgent(env);
+  const plist = plan.path;
+  return !existsSync(plist)
+    ? {
+        name: "agent",
+        state: "warn",
+        detail: "no launchd agent, so syncing is manual",
+        fix: "dim install-agent --write",
+      }
+    : !plan.unchanged
       ? {
           name: "agent",
           state: "warn",
-          detail: "no launchd agent, so syncing is manual",
-          fix: "dim install-agent --write",
+          detail: "launchd agent points to a different checkout or Bun path",
+          fix: "dim install-agent --write, then reload the launchd agent",
         }
-      : !agent.unchanged
-        ? {
+      : launchdLoaded()
+        ? { name: "agent", state: "ok", detail: "launchd agent loaded" }
+        : {
             name: "agent",
             state: "warn",
-            detail: "launchd agent points to a different checkout or Bun path",
-            fix: "dim install-agent --write, then reload the launchd agent",
-          }
-        : launchdLoaded()
-          ? { name: "agent", state: "ok", detail: "launchd agent loaded" }
-          : {
-              name: "agent",
-              state: "warn",
-              detail: "launchd agent is written but not loaded",
-              fix: `launchctl bootstrap gui/$(id -u) ${plist}`,
-            },
-  );
+            detail: "launchd agent is written but not loaded",
+            fix: `launchctl bootstrap gui/$(id -u) ${plist}`,
+          };
+}
 
-  const rules = planRules(env);
-  checks.push(
-    rules.state === "not-installed"
-      ? { name: "rules", state: "ok", detail: "codex is not installed, so it needs no rules file" }
-      : rules.state === "missing-source"
-        ? { name: "rules", state: "warn", detail: `no ${rules.source} to flatten` }
-        : rules.state === "unchanged"
-          ? { name: "rules", state: "ok", detail: "codex rules match the canonical file" }
-          : {
-              name: "rules",
-              state: "fail",
-              detail:
-                rules.state === "absent"
-                  ? "codex has no rules file, so none of the conventions reach it"
-                  : "codex rules differ from the canonical file",
-              fix: "dim install-rules --write",
-            },
-  );
+function rules(env: Env): Health {
+  const plan = planRules(env);
+  return plan.state === "not-installed"
+    ? { name: "rules", state: "ok", detail: "codex is not installed, so it needs no rules file" }
+    : plan.state === "missing-source"
+      ? { name: "rules", state: "warn", detail: `no ${plan.source} to flatten` }
+      : plan.state === "unchanged"
+        ? { name: "rules", state: "ok", detail: "codex rules match the canonical file" }
+        : {
+            name: "rules",
+            state: "fail",
+            detail:
+              plan.state === "absent"
+                ? "codex has no rules file, so none of the conventions reach it"
+                : "codex rules differ from the canonical file",
+            fix: "dim install-rules --write",
+          };
+}
 
-  checks.push(retention(env));
-  checks.push(spool(env));
-  checks.push(harnesses(env));
+function outcomes(db: Database): Health {
   const commits = scalar(db, "SELECT count(*) AS n FROM repo_commit");
-  checks.push(
-    commits === 0
-      ? {
-          name: "outcomes",
-          state: "warn",
-          detail: "no commits read, so nothing here can say whether work was right",
-          fix: "dim sync, from a machine holding the repos",
-        }
-      : { name: "outcomes", state: "ok", detail: `${commits} commits read from the repos on disk` },
-  );
+  return commits === 0
+    ? {
+        name: "outcomes",
+        state: "warn",
+        detail: "no commits read, so nothing here can say whether work was right",
+        fix: "dim sync, from a machine holding the repos",
+      }
+    : { name: "outcomes", state: "ok", detail: `${commits} commits read from the repos on disk` };
+}
 
-  return checks;
+export function diagnose(db: Database, env: Env = process.env, cwd: string = process.cwd()): Health[] {
+  const hooks = readHooks(env);
+  const commit = commitGate(env);
+  return [
+    dimOnPath(),
+    schema(db),
+    freshness(db),
+    sessionHooks(hooks),
+    codexTrust(env),
+    endReasons(db, hooks),
+    skill(env),
+    commit,
+    ...gateOwners(env),
+    commentGate(env, cwd, commit),
+    pushGate(db, env),
+    shipMethods(db, env),
+    agent(env),
+    rules(env),
+    retention(env),
+    spool(env),
+    harnesses(env),
+    outcomes(db),
+  ];
 }

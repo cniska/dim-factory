@@ -28,12 +28,14 @@ export function refuseOtherSchema(found: number | null): void {
   if (found !== null && found !== SCHEMA_VERSION) throw new SchemaTooOldError(found);
 }
 
+const CONCURRENT_WRITER_WAIT_MS = 5000;
+
 export function openDb(path: string, opts: { forRebuild?: boolean; busyTimeoutMs?: number } = {}): Database {
   mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path, { create: true });
   let transactionOpen = false;
   try {
-    db.run(`PRAGMA busy_timeout = ${opts.busyTimeoutMs ?? 5000}`);
+    db.run(`PRAGMA busy_timeout = ${opts.busyTimeoutMs ?? CONCURRENT_WRITER_WAIT_MS}`);
     const found = storedSchemaVersion(db);
     if (!opts.forRebuild) refuseOtherSchema(found);
     db.run("PRAGMA journal_mode = WAL");

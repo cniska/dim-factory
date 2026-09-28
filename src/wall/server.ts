@@ -10,6 +10,7 @@ import { dbPath } from "../paths";
 import type { Station } from "../station";
 import type { Role } from "../worker-roles";
 import wallPage from "./index.html";
+import { RECORD_POLL_MS } from "./record-poll";
 
 export type BoardStatus = Exclude<OrderStatus, "dropped">;
 
@@ -305,7 +306,7 @@ export async function serveWall(
     hash = broadcastWallSnapshot(snapshot, hash, (message) => {
       for (const client of clients) client.send(message);
     });
-  }, 1000);
+  }, RECORD_POLL_MS);
   poll.unref();
   return server;
 }

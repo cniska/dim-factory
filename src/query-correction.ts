@@ -12,6 +12,9 @@ import {
   windowLine,
 } from "./query";
 
+const JUDGEABLE_TEXT_CHARS = 200;
+const CANDIDATES_SHOWN = 20;
+
 const LIVE_LABEL_COUNT =
   "SELECT count(*) AS n FROM correction_label cl JOIN message m ON m.id = cl.message_id";
 
@@ -85,17 +88,17 @@ export const candidates: Query = {
               CASE WHEN c.denial_kind = 'user-rejected' THEN 'rejected'
                    WHEN c.interrupted_message_id IS NOT NULL THEN 'interrupted'
                    ELSE 'feedback' END AS kind,
-              replace(substr(coalesce(c.user_feedback, c.text, ''), 1, 200), char(10), ' ') AS text
+              replace(substr(coalesce(c.user_feedback, c.text, ''), 1, ${JUDGEABLE_TEXT_CHARS}), char(10), ' ') AS text
        FROM c
        WHERE c.id NOT IN (SELECT message_id FROM correction_label)
          ${arg ? "AND c.skill = ?" : ""}
-       ORDER BY c.ts DESC LIMIT 20`,
+       ORDER BY c.ts DESC LIMIT ${CANDIDATES_SHOWN}`,
       [...w.params, ...(arg ? [arg] : [])],
     );
     const labeled = scalar(db, LIVE_LABEL_COUNT);
     const total = scalar(db, `WITH c AS (${attributed(ctx)}) SELECT count(*) AS n FROM c`, ...w.params);
     return {
-      denominator: `${total} candidates in this window (${windowLine(ctx)}); ${labeled} labeled so far, newest 20 unlabeled shown`,
+      denominator: `${total} candidates in this window (${windowLine(ctx)}); ${labeled} labeled so far, newest ${CANDIDATES_SHOWN} unlabeled shown`,
       columns,
       rows: toRows(records, columns),
       note:

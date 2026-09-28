@@ -1,10 +1,12 @@
 import { execFileSync } from "node:child_process";
 
+const LARGE_REPO_GIT_OUTPUT_BYTES = 256 * 1024 * 1024;
+
 export function git(root: string, args: string[], input?: string): string {
   return execFileSync("git", ["--literal-pathspecs", ...args], {
     cwd: root,
     encoding: "utf8",
-    maxBuffer: 256 * 1024 * 1024,
+    maxBuffer: LARGE_REPO_GIT_OUTPUT_BYTES,
     input,
     stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
   });
