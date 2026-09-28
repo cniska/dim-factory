@@ -1,6 +1,13 @@
 import type { Command } from "./cli-contract";
 import { WRITE_NEXT } from "./install-write";
-import { installSkill, planSkill, retiredLinks, SKILL_NAMES } from "./skill";
+import { installSkill, planSkill, retiredLinks, SKILL_NAMES, type SkillPlan } from "./skill";
+
+function skillState(plans: SkillPlan[]) {
+  const linked = SKILL_NAMES.filter((name) =>
+    plans.every((plan) => plan.name !== name || plan.state === "linked"),
+  ).length;
+  return { linked, links: plans };
+}
 
 export const installSkillCommand: Command = {
   name: "install-skill",
@@ -10,9 +17,9 @@ export const installSkillCommand: Command = {
     const plans = planSkill();
     const pending = plans.filter((plan) => plan.state !== "linked");
     const retired = retiredLinks();
-    if (pending.length === 0 && retired.length === 0) return { linked: SKILL_NAMES.length, links: plans };
+    if (pending.length === 0 && retired.length === 0) return skillState(plans);
     if (!args.includes("--write")) return { pending, retired, next: WRITE_NEXT };
-    installSkill();
-    return { pending, retired, written: true };
+    const backups = installSkill().flatMap((plan) => (plan.state === "occupied" ? [plan.backup] : []));
+    return { ...skillState(planSkill()), written: true, backups };
   },
 };
