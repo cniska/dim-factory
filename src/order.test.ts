@@ -1014,8 +1014,8 @@ describe("factory order report records", () => {
       const rows = findQuery("order")?.run(database, { arg: "order-1" }).rows ?? [];
       const rewritten = rows.filter((row) => row[0] === "commit" && row[2] === "commit_rewritten");
       expect(rewritten.map((row) => [row[3], row[5]])).toEqual([
-        ["ship run 1", `${first} -> ${current[0]}`],
         ["ship run 1", `${second} -> ${current[1]}`],
+        ["ship run 1", `${first} -> ${current[0]}`],
       ]);
       expect(rows.filter((row) => row[0] === "ship_run").map((row) => row[3])).toEqual([
         "landed patch_equal",
@@ -1247,10 +1247,10 @@ describe("factory order report records", () => {
       ).toEqual({ head_sha: current.at(-1), exit_code: 0 });
       const rows = findQuery("order")?.run(database, { arg: "order-1" }).rows ?? [];
       expect(rows.filter((row) => row[0] === "commit").map((row) => row[2])).toEqual([
-        "commit_created",
-        "commit_created",
         "commit_rewritten",
         "commit_rewritten",
+        "commit_created",
+        "commit_created",
       ]);
       const board = findQuery("factory")?.run(database, { arg: "order-1" });
       const column = board?.columns.indexOf("commit") ?? -1;

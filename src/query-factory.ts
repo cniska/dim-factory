@@ -124,7 +124,7 @@ export const order: Query = {
                          cast(e.review_id AS TEXT), '') AS evidence
          FROM factory_order_event e
          LEFT JOIN factory_order_artifact a ON a.id = e.artifact_id
-         WHERE e.order_id = ?`,
+         WHERE e.order_id = ? ORDER BY e.id`,
         [id],
       ),
       ...table(
@@ -174,7 +174,7 @@ export const order: Query = {
         db,
         `SELECT 'check' AS section, finished_at AS "when", 'check_ran' AS kind,
                 cast(exit_code AS TEXT) AS status, command || ' at ' || head_sha AS subject, result AS evidence
-         FROM factory_order_check WHERE order_id = ?`,
+         FROM factory_order_check WHERE order_id = ? ORDER BY id`,
         [id],
       ),
       ...table(
@@ -182,7 +182,7 @@ export const order: Query = {
         `SELECT 'file' AS section, recorded_at AS "when", 'file_changed' AS kind, '' AS status,
                 path AS subject,
                 coalesce('+' || added, '') || coalesce(' -' || removed, '') AS evidence
-         FROM factory_order_file WHERE order_id = ?`,
+         FROM factory_order_file WHERE order_id = ? ORDER BY path`,
         [id],
       ),
       ...orderFindingStandings(db, id).map((finding) => ({
@@ -198,10 +198,12 @@ export const order: Query = {
         `SELECT 'environment' AS section, recorded_at AS "when", 'environment_reported' AS kind,
                 coalesce(cast(exit_code AS TEXT), signal, '') AS status, phase AS subject,
                 resources AS evidence
-         FROM factory_order_environment WHERE order_id = ?`,
+         FROM factory_order_environment WHERE order_id = ? ORDER BY id`,
         [id],
       ),
-    ].sort((a, b) => String(a.when).localeCompare(String(b.when)));
+    ]
+      .sort((a, b) => String(a.when).localeCompare(String(b.when)))
+      .reverse();
     const rows = [aggregate, ...evidence];
     return {
       denominator: `order ${id}: ${report.status}; one aggregate, ${rows.length - 1} lifecycle and evidence rows`,

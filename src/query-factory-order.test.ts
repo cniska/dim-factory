@@ -17,6 +17,7 @@ import { dropOrder, queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview } from "./order-review";
 import { recordShipRun } from "./order-ship-run";
 import { findQuery } from "./query-registry";
+import { capRows, DEFAULT_MAX_ROWS } from "./query-row-cap";
 import { approveFinalBuildAt, approveReviewAt } from "./station-approvals.test-support";
 
 let worker = "";
@@ -428,22 +429,22 @@ describe("factory order query", () => {
     ]);
     expect(result?.rows.map((row) => row[0])).toEqual([
       "order",
+      "environment",
+      "finding",
       "event",
-      "event",
-      "event",
-      "attempt",
-      "event",
-      "commit",
-      "file",
-      "check",
       "event",
       "artifact",
       "event",
+      "check",
+      "file",
+      "commit",
       "event",
-      "finding",
-      "environment",
+      "attempt",
+      "event",
+      "event",
+      "event",
     ]);
-    expect(result?.rows.at(-1)).toEqual([
+    expect(result?.rows[1]).toEqual([
       "environment",
       "2026-09-18T10:05:00.000Z",
       "environment_reported",
@@ -524,6 +525,43 @@ describe("factory order query", () => {
     db.close();
   });
 
+  test("shows the newest evidence first, so the row cap keeps the latest", () => {
+    const db = floor();
+    queueOrder(
+      db,
+      { id: "order-long", project: "cniska/dim-factory", title: "Long" },
+      attemptOperator,
+      "2026-09-18T09:00:00.000Z",
+    );
+    building(db, "order-long", "2026-09-18T09:00:30.000Z");
+    for (let minute = 10; minute < 55; minute++) {
+      const at = `2026-09-18T10:${minute}:00.000Z`;
+      recordOrderCheck(
+        db,
+        "order-long",
+        ranCheck({ command: `check ${minute}`, exitCode: 0 }, at),
+        "abc",
+        at,
+      );
+    }
+    const tie = "2026-09-18T11:00:00.000Z";
+    recordOrderCheck(db, "order-long", ranCheck({ command: "tie first", exitCode: 0 }, tie), "abc", tie);
+    recordOrderCheck(db, "order-long", ranCheck({ command: "tie second", exitCode: 0 }, tie), "abc", tie);
+
+    const result = findQuery("order")?.run(db, { arg: "order-long" });
+    const rows = result?.rows ?? [];
+    expect(rows[0]?.[0]).toBe("order");
+    const evidence = rows.slice(1);
+    const whens = evidence.map((row) => String(row[1]));
+    expect(whens).toEqual([...whens].sort().reverse());
+    expect(evidence.slice(0, 2).map((row) => row[5])).toEqual(["tie second at abc", "tie first at abc"]);
+    expect(evidence.at(-1)?.[2]).toBe("queued");
+    const capped = capRows(rows, DEFAULT_MAX_ROWS).rows;
+    expect(capped[0]?.[0]).toBe("order");
+    expect(capped[1]?.[5]).toBe("tie second at abc");
+    db.close();
+  });
+
   test("reports the signal that killed a hook where it left no exit code", () => {
     const db = floor();
     queueOrder(
@@ -554,7 +592,7 @@ describe("factory order query", () => {
 
     const result = findQuery("order")?.run(db, { arg: "order-killed" });
 
-    expect(result?.rows.at(-1)).toEqual([
+    expect(result?.rows[1]).toEqual([
       "environment",
       "2026-09-18T10:05:00.000Z",
       "environment_reported",

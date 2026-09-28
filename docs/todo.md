@@ -24,7 +24,7 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 - **A Claude skill load counts twice** — the `Skill` call and its injected body are two rows, doubling `q skills` and `q skill`. `ingest-parse-claude.ts`, `query-skill.ts`. Attach the body to the call's row.
 - **`q fixes` and `q stale` miss worktree edits** — they compare paths without folding worktrees, as `exemplars` does. `query-code.ts`. Apply `withoutWorktree` to both sides.
 - **`q slices` reads `verify && git commit` as unchecked** — `is_check` needs an exact command match. `query-factory.ts` `slices`.
-- **`dim q order` hides the request and the latest evidence** — its first row has no title, description or line, which `dim-factory` and `dim-add` read there, and its rows are oldest first under a 40-row cap. `query-factory.ts` `order`. Add the fields; show the newest first.
+- **`format-edit.test.ts` fails inside a worker** — two tests call `formatAfterEdit` with the process environment, so under a worker's `DIM_WORKER_NAME` it formats nothing and `bun run verify` goes red in a build turn. `format-edit.test.ts`. Pass the tests an empty environment.
 - **`@~/` guidance imports resolve from the importing file**, not home. `guidance-walk.ts`.
 - **A moved data directory duplicates the SessionStart hook** — `hookKind` recognises a spool hook under an old data directory only without `-$PPID`, so after `DIM_HOME` moves the SessionStart hook reads as missing and `install-hooks` adds a second one. `hooks.ts` `hookKind`.
 - **The wall's order view drops its error** — a failed order read shows "This order's record could not be read." without the server's message, which the feed now carries. `wall/client.tsx`.
