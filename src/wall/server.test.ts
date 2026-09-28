@@ -438,6 +438,33 @@ describe("factory wall snapshot", () => {
     db.close();
   });
 
+  test("answers only a request addressed to a loopback host, so a rebound name reads nothing", () => {
+    const wall = wallHandler(`${tmpdir()}/wall-rebound-${Date.now()}.sqlite`);
+    const refused = (path: string) =>
+      wall.fetch(new Request(`http://attacker.example:7326${path}`), { upgrade: () => true })?.status;
+
+    expect(refused("/api/snapshot")).toBe(403);
+    expect(refused("/api/order/order-1")).toBe(403);
+    expect(refused("/ws")).toBe(403);
+    expect(
+      wall.fetch(new Request("http://localhost:7326/wall.woff2"), { upgrade: () => false })?.status,
+    ).toBe(200);
+  });
+
+  test("opens the socket only to a page the wall served", () => {
+    const wall = wallHandler(`${tmpdir()}/wall-origin-${Date.now()}.sqlite`);
+    const upgraded: Request[] = [];
+    const server = { upgrade: (request: Request) => upgraded.push(request) > 0 };
+    const socket = (origin: string) =>
+      wall.fetch(new Request("http://127.0.0.1:7326/ws", { headers: { origin } }), server);
+
+    expect(socket("https://attacker.example")?.status).toBe(403);
+    expect(socket("http://localhost:7326")?.status).toBe(403);
+    expect(upgraded).toHaveLength(0);
+    expect(socket("http://127.0.0.1:7326")).toBeUndefined();
+    expect(upgraded).toHaveLength(1);
+  });
+
   test("serves snapshots, has no control route and refuses client messages", async () => {
     const file = `${tmpdir()}/wall-${Date.now()}.sqlite`;
     const seed = new Database(file);

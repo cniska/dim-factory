@@ -197,6 +197,10 @@ function wallFailure(error: unknown): WallFailure {
 
 type WallSocket = Pick<Bun.ServerWebSocket<undefined>, "send">;
 
+const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+const forbidden = (): Response => new Response("Forbidden", { status: 403 });
+
 export function wallHandler(path: string = dbPath()) {
   const font = wallFont();
   const clients = new Set<WallSocket>();
@@ -221,6 +225,7 @@ export function wallHandler(path: string = dbPath()) {
     snapshot,
     fetch(request: Request, server: Pick<Bun.Server<undefined>, "upgrade">): Response | undefined {
       const url = new URL(request.url);
+      if (!LOOPBACK_HOSTNAMES.has(url.hostname)) return forbidden();
       if (url.pathname === "/wall.woff2")
         return new Response(font as unknown as BodyInit, {
           headers: { "content-type": "font/woff2", "cache-control": "max-age=31536000, immutable" },
@@ -243,7 +248,11 @@ export function wallHandler(path: string = dbPath()) {
           return Response.json(wallFailure(error), { status: 503 });
         }
       }
-      if (url.pathname === "/ws" && server.upgrade(request)) return;
+      if (url.pathname === "/ws") {
+        const origin = request.headers.get("origin");
+        if (origin !== null && origin !== url.origin) return forbidden();
+        if (server.upgrade(request)) return;
+      }
       return new Response("Not found", { status: 404 });
     },
     websocket: {

@@ -32,6 +32,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 - **NF-4** — A reader refuses a record built by another schema version before it reads anything from it, save `dim doctor`, which reports the drift and its repair.
 - **NF-5** — No hook runs a command from a factory worker's worktree outside that worker's sandbox.
 - **NF-6** — A factory worker cannot write the git directory its worktree shares with the checkout, so it cannot change what the runner's git does.
+- **NF-7** — Only the owner's own browser page reads the wall: another site, or a name rebound to this machine, reads nothing.
 
 ## 5. Acceptance criteria
 
@@ -49,6 +50,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 - **AC-12** — An edit in a factory worker's session whose worktree declares a format task runs nothing. (NF-5)
 - **AC-13** — A worker started in a linked worktree, with or without edit-files, is denied writes to both the worktree's `.git` and the checkout's shared git directory. (NF-6)
 - **AC-14** — A worker that is not the operator is refused the queue, priority, amendment and drop of an order, and the order and its history are left as they were. (FR-11)
+- **AC-15** — The wall refuses a request addressed to a host that is not loopback, and a WebSocket opened from another origin. (NF-7)
 
 ## 6. Open decisions
 
