@@ -133,6 +133,10 @@ function orderAtBuild(
   return { repo, operator, planner: planner.name };
 }
 
+function redCheckOutput(brief: string): string | undefined {
+  return brief.match(/## Red check\n`[^\n]*` exited \d+:\n```\n([\s\S]*?)\n```/)?.[1];
+}
+
 function database(): Database {
   const db = new Database(":memory:");
   db.run(SCHEMA_SQL);
@@ -398,7 +402,7 @@ describe("builder station", () => {
       }),
     });
     expect(retryBrief).toContain("## Previous failed Build attempt");
-    expect(retryBrief).toContain("ok.txt is missing");
+    expect(redCheckOutput(retryBrief)).toContain("ok.txt is missing");
     expect(git(worktree, ["show", "--name-only", "--format=", "HEAD"]).split("\n").sort()).toEqual([
       "ok.txt",
       "partial.txt",
@@ -1298,6 +1302,32 @@ describe("builder station", () => {
         check: "test ! -f red.txt",
       });
       expect(failure?.cause).toMatchObject({ code: "check_failed" });
+    });
+
+    test("briefs the red check of a turn that answered the finding to the next turn", async () => {
+      const { db, operator, options, finding } = await reviewedAtBuild(
+        "red-answer-order",
+        'test ! -f red.txt || { echo "red.txt is there"; exit 1; }',
+      );
+      const answer = (file: string) => (request: HarnessRequest) => {
+        writeFileSync(join(request.cwd, file), "fix\n");
+        return { subject: "fix: review finding", artifact: "Revised Build artifact.", ...fixed(finding) };
+      };
+      await expect(
+        runOrderBuildLive(db, "red-answer-order", operator.name, {
+          ...options,
+          adapter: scriptedBuilder([answer("red.txt")]).adapter,
+        }),
+      ).rejects.toMatchObject({ cause: { code: "check_failed" } });
+      const worktree = join(options.dir, ".claude", "worktrees", "red-answer-order");
+      rmSync(join(worktree, "red.txt"));
+
+      const retry = scriptedBuilder([answer("fix.txt")]);
+      await runOrderBuildLive(db, "red-answer-order", operator.name, { ...options, adapter: retry.adapter });
+
+      expect(retry.calls[0]?.brief).toContain("## Review findings");
+      expect(redCheckOutput(retry.calls[0]?.brief ?? "")).toContain("red.txt is there");
+      db.close();
     });
 
     test("records no answer and takes the commit back when a write in the commit's transaction fails", async () => {
@@ -2280,6 +2310,63 @@ describe("a conflict at ship", () => {
     expect(openAttempt(db, "conflict-order")).toBeNull();
     db.close();
   });
+
+  test("briefs the red check of a resolution along with the conflict it reopens", async () => {
+    const db = database();
+    const dimHome = home("dim-builder-red-conflict-");
+    const { repo, operator } = orderAtBuild(
+      db,
+      "red-conflict-order",
+      [{ title: "Build it", outcome: "It is verified." }],
+      'test ! -f poison.txt || test -f antidote.txt || { echo "antidote.txt is missing"; exit 1; }',
+    );
+    const options = {
+      dir: repo.dir,
+      env: { DIM_HOME: dimHome },
+      harness: "codex" as const,
+      checkSandbox: confiningCheckSandbox(),
+    };
+    const worktree = realpathSync(join(repo.dir, ".claude", "worktrees", "red-conflict-order"));
+    await runOrderBuildLive(db, "red-conflict-order", operator.name, {
+      ...options,
+      adapter: scriptedBuilder([
+        (request) => {
+          writeFileSync(join(request.cwd, "built.txt"), "built\n");
+          return { subject: "feat: build it", artifact: "## Outcome\n\nBuilt." };
+        },
+      ]).adapter,
+    });
+    approveOrder(db, "red-conflict-order", operator.name, "built as planned");
+    approveReviewAt(db, "red-conflict-order", git(worktree, ["rev-parse", "HEAD"]), operator.name);
+    writeFileSync(join(repo.dir, "built.txt"), "trunk\n");
+    writeFileSync(join(repo.dir, "poison.txt"), "poison\n");
+    git(repo.dir, ["add", "built.txt", "poison.txt"]);
+    git(repo.dir, ["commit", "-q", "-m", "feat: build it on the trunk"]);
+    expect(() =>
+      shipOrder(db, "red-conflict-order", worktree, operator.name, {
+        env: options.env,
+        checkSandbox: options.checkSandbox,
+      }),
+    ).toThrow(expect.objectContaining({ code: "ship_rebase_conflict" }));
+
+    const resolve = (files: string[]) => (request: HarnessRequest) => {
+      for (const file of files) writeFileSync(join(request.cwd, file), "built\ntrunk\n");
+      return { subject: "fix: resolve", artifact: "" };
+    };
+    await expect(
+      runOrderBuildLive(db, "red-conflict-order", operator.name, {
+        ...options,
+        adapter: scriptedBuilder([resolve(["built.txt"])]).adapter,
+      }),
+    ).rejects.toMatchObject({ cause: { code: "check_failed" } });
+
+    const retry = scriptedBuilder([resolve(["built.txt", "antidote.txt"])]);
+    await runOrderBuildLive(db, "red-conflict-order", operator.name, { ...options, adapter: retry.adapter });
+
+    expect(retry.calls[0]?.brief).toContain("## Rebase conflict\n- built.txt");
+    expect(redCheckOutput(retry.calls[0]?.brief ?? "")).toContain("antidote.txt is missing");
+    db.close();
+  });
 });
 
 describe("a red check at ship", () => {
@@ -2332,7 +2419,7 @@ describe("a red check at ship", () => {
     ]);
     await runOrderBuildLive(db, "red-ship-order", operator.name, { ...options, adapter: builder.adapter });
 
-    expect(builder.calls[0]?.brief).toContain("## Red check at the rebased head");
+    expect(builder.calls[0]?.brief).toContain("## Red check\n");
     expect(builder.calls[0]?.brief).toContain("exited 1");
     expect(git(worktree, ["rev-parse", "HEAD~1"])).toBe(rebased);
     const fixed = git(worktree, ["rev-parse", "HEAD"]);

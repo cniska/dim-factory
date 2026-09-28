@@ -80,7 +80,7 @@ A builder leaves its changes uncommitted and returns a build turn: a commit subj
 
 The default branch's declaration governs until a change to it lands there. An order may add tasks, and a task it adds above the declared one in the check order is not the check until it ships. An order may not change the declared task's definition, its script, recipe or package manager: that change is the owner's, made on the default branch, and the order's next turn is checked by it.
 
-A refused commit or comment goes back to the same builder, at most twice per turn. A red check, a redefined check, a check that changed the tree, a named test the slice deletes or leaves as it was, a `fix` slice turn that names no test or whose proof passes, a nested repository, or HEAD moved off the order's branch fails the turn, and the reason is in the next turn's brief.
+A refused commit or comment goes back to the same builder, at most twice per turn. A red check, a redefined check, a check that changed the tree, a named test the slice deletes or leaves as it was, a `fix` slice turn that names no test or whose proof passes, a nested repository, or HEAD moved off the order's branch fails the turn, and the reason is in the next turn's brief. Every build turn's brief also carries the latest check at the order's head, its last commit or else its base, while that check is red, with its command, exit code and output.
 
 ## Shipped
 

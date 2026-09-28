@@ -200,7 +200,7 @@ describe("the builder's brief", () => {
       exitCode: 1,
       result: "1 fail",
     });
-    expect(red).toContain("## Red check at the rebased head\n`bun run verify` exited 1:\n```\n1 fail\n```");
+    expect(red).toContain("## Red check\n`bun run verify` exited 1:\n```\n1 fail\n```");
   });
 
   test("tells the builder the order's line, except while it resolves a rebase", () => {

@@ -112,7 +112,7 @@ export function builderBrief(
     ...(redCheck
       ? [
           "",
-          "## Red check at the rebased head",
+          "## Red check",
           `\`${redCheck.command}\` exited ${redCheck.exitCode}:`,
           "```",
           redCheck.result,
@@ -139,10 +139,6 @@ export function commitCorrectionBrief(subject: string, refusal: BuildTurnRefused
 export type ReviewFindingsForBuild = { work: readonly { finding: number; brief: string }[] };
 
 const NO_REVIEW_FINDINGS: ReviewFindingsForBuild = { work: [] };
-
-function answersReview(findings: ReviewFindingsForBuild): boolean {
-  return findings.work.length > 0;
-}
 
 export function reviewFindingsForBuild(db: Database, orderId: string): ReviewFindingsForBuild {
   const review = db
@@ -219,8 +215,7 @@ export async function runOrderBuildLive(
   const currentSlice = nextOrderSlice(db, orderId);
   const conflict = currentSlice ? null : pendingRebaseConflict(db, orderId);
   const reviewFindings = currentSlice || conflict ? NO_REVIEW_FINDINGS : reviewFindingsForBuild(db, orderId);
-  const redCheck =
-    currentSlice || conflict || answersReview(reviewFindings) ? null : failedHeadCheck(db, orderId);
+  const redCheck = failedHeadCheck(db, orderId);
   const priorBuild = latestArtifact(db, orderId, "build")?.id ?? 0;
   const previousFailure = db
     .query<{ reason: string | null }, [string]>(

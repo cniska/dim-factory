@@ -16,14 +16,14 @@ What makes this a station is that the record aims it. This machine knows which f
 
 ## A factory turn
 
-In a factory order the brief carries only what this skill cannot know: the order and its line, the workspace profile, the commit subjects the record has seen in the repo, the approved plan and its slices, the slice this turn builds, and whatever the turn answers — a returned Build artifact with the owner's feedback, review findings by id, a rebase conflict, a red check at the rebased head, a refused commit, or the last failed attempt. A turn that resolves a rebase conflict carries neither the line nor the commit subjects, since it builds nothing new.
+In a factory order the brief carries only what this skill cannot know: the order and its line, the workspace profile, the commit subjects the record has seen in the repo, the approved plan and its slices, the slice this turn builds, and whatever the turn answers — a returned Build artifact with the owner's feedback, review findings by id, a rebase conflict, a red check at the order's head, a refused commit, or the last failed attempt. A turn that resolves a rebase conflict carries neither the line nor the commit subjects, since it builds nothing new.
 
 - **Scope.** Build the current slice of the approved plan. Do not edit or test a surface the order or the plan excludes. For a `fix` order, run `dim-fix`'s Prove it before the first slice.
 - **Tasks.** Use the workspace's declared tasks, not a tool you infer; a task naming `$FILES` takes the changed paths. When the profile could not be read, stop and say so before editing.
 - **Commits, a refused commit and a rebase conflict.** Follow `dim-git`.
 - **A returned Build artifact.** Change the code where the feedback asks for a change; the revision itself follows `dim-artifact`.
 - **Review findings.** Answer each listed finding by its id: `fixed` when this turn's change fixes it, or `refused` with a resolution saying why not. The runner refuses a `fixed` answer from a turn that changed nothing.
-- **A red check at the rebased head.** Fix its cause on that head. The fix is a new commit, and it takes a new Build approval and a new review.
+- **A red check.** Fix its cause. A fix after the Build was approved takes a new Build approval and a new review.
 - **The last failed attempt.** Continue from it.
 - **The result.** `subject` follows `dim-git`. `artifact` is the Build artifact for the whole order, empty only when the turn finishes a slice before the last. `answers` holds one answer per listed finding. `tests` names each test file the slice adds or changes, and nothing else; a `fix` order's slice turn names at least the test that proves the defect, and a turn that answers findings, a returned Build artifact or a red check may return `[]`. A result returned again after a refused commit carries the same artifact, answers and tests.
 
