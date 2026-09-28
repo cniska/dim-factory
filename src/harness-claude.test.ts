@@ -171,6 +171,7 @@ describe("the Claude harness adapter", () => {
     ]);
     expect(settings(argv)).toEqual({
       env: WORKER_ENV,
+      hooks: expect.any(Object),
       permissions: { deny: SCHEDULING_TOOLS },
       sandbox: {
         enabled: true,
@@ -190,6 +191,7 @@ describe("the Claude harness adapter", () => {
     expect(argv[argv.indexOf("--permission-mode") + 1]).toBe("default");
     expect(settings(argv)).toEqual({
       env: WORKER_ENV,
+      hooks: expect.any(Object),
       permissions: { deny: ["Edit", "Write", "NotebookEdit", ...SCHEDULING_TOOLS] },
       sandbox: {
         enabled: true,
@@ -267,26 +269,13 @@ describe("the Claude harness adapter", () => {
   });
 
   test("resumes a Claude session by its provider id with the same boundary", () => {
-    expect(
-      resumeCommandLine(claudeProcess, "session-1", { ...request, capabilities: ["edit-files"] }),
-    ).toEqual([
+    const builder: HarnessRequest = { ...request, capabilities: ["edit-files"] };
+
+    expect(resumeCommandLine(claudeProcess, "session-1", builder)).toEqual([
       "claude",
       "--resume",
       "session-1",
-      "-p",
-      "--output-format",
-      "stream-json",
-      "--verbose",
-      "--permission-mode",
-      "acceptEdits",
-      "--settings",
-      '{"env":{"ANTHROPIC_API_KEY":"","ANTHROPIC_AUTH_TOKEN":"","CLAUDE_CODE_USE_BEDROCK":"","CLAUDE_CODE_USE_VERTEX":"","CLAUDE_CODE_USE_FOUNDRY":"","CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1"},"permissions":{"deny":["ScheduleWakeup","CronCreate","Monitor","RemoteTrigger"]},"sandbox":{"enabled":true,"failIfUnavailable":true,"autoAllowBashIfSandboxed":true,"allowUnsandboxedCommands":false,"filesystem":{"denyWrite":[]}}}',
-      "--add-dir",
-      "/dim-home",
-      "--model",
-      "claude-model",
-      "--",
-      "build it",
+      ...claudeArgs(builder),
     ]);
   });
 
@@ -317,6 +306,21 @@ describe("the Claude harness adapter", () => {
         CLAUDE_CODE_USE_FOUNDRY: "",
       },
     });
+  });
+
+  test("loads no settings of the owner's or the worktree's, and spools into the worker's own record", () => {
+    const argv = claudeArgs(request);
+    const launched = settings(argv) as { hooks: Record<string, { hooks: { command: string }[] }[]> };
+    const spooled = (event: string) =>
+      launched.hooks[event]?.flatMap((entry) => entry.hooks.map((h) => h.command));
+    const spool = `cat > "/dim-home/spool/claude/$(date +%s%N)-$$-\${DIM_WORKER_NAME:-}.json" 2>/dev/null; exit 0 # dim-hook:3`;
+
+    expect(argv[argv.indexOf("--setting-sources") + 1]).toBe("");
+    expect(spooled("SessionStart")).toContain(
+      `cat > "/dim-home/spool/claude/$(date +%s%N)-$$-$PPID-\${DIM_WORKER_NAME:-}.json" 2>/dev/null; exit 0 # dim-hook:3`,
+    );
+    expect(spooled("SessionEnd")).toContain(spool);
+    expect(spooled("PostToolUse")).toContain(spool);
   });
 
   test("gives no worker a way to leave work running past its answer", () => {

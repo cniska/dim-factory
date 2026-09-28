@@ -53,6 +53,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 - **AC-14** — A worker that is not the operator is refused the queue, priority, amendment and drop of an order, and the order and its history are left as they were. (FR-11)
 - **AC-15** — The wall refuses a request addressed to a host that is not loopback, and a WebSocket opened from another origin. (NF-7)
 - **AC-16** — An artifact holding an image and a link renders neither as something the browser fetches. (NF-8)
+- **AC-17** — A Claude worker whose worktree holds a settings file with a hook runs none of it. (NF-5)
 
 ## 6. Open decisions
 

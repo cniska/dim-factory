@@ -19,13 +19,11 @@ import {
   formatEditCommand,
   HOOK_CONTRACT_VERSION,
   hookCommand,
-  hookConfigPath,
   hookContractVersion,
-  installHooks,
-  planHooks,
   wakeCommand,
   wantedHooks,
-} from "./hooks";
+} from "./hook-commands";
+import { hookConfigPath, installHooks, planHooks } from "./hooks";
 import { drainSpool, ensureSpoolDirs, toolSpoolDir } from "./ingest-spool";
 import { rebuild, sync } from "./ingest-sync";
 import type { Tool } from "./ingest-tools";

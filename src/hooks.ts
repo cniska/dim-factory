@@ -3,31 +3,27 @@ import type { JSONPath } from "jsonc-parser";
 import { ConfigError } from "./config-error";
 import { appendToJsoncArray, parseJsonc, setJsoncValue } from "./config-jsonc";
 import { readJsonc, readJsoncText, writeJsoncFile } from "./config-jsonc-file";
-import { EDIT_TOOLS } from "./format-edit";
 import { installedHarnesses } from "./harness-installed";
+import {
+  entryFor,
+  HOOK_CONTRACT_VERSION,
+  type HookEntry,
+  type HookHandler,
+  type HookKind,
+  hookCommand,
+  hookContractVersion,
+  unmarked,
+  type WantedHook,
+  wantedHooks,
+} from "./hook-commands";
 import { toolSpoolDir } from "./ingest-spool";
 import type { Tool } from "./ingest-tools";
 import { claudeProjectsDir, codexDir, type Env, grokDir } from "./paths";
 
-export const HOOK_CONTRACT_VERSION = 3;
-
-const CONTRACT_MARKER = /#\s*dim-hook:(\d+)\s*$/;
-
-function marked(command: string): string {
-  return `${command} # dim-hook:${HOOK_CONTRACT_VERSION}`;
-}
-
-export function hookContractVersion(command: string): number | null {
-  const found = CONTRACT_MARKER.exec(command);
-  return found ? Number(found[1]) : null;
-}
-
-export type HookKind = "spool" | "wake" | "format";
-
 function hookKind(command: string, tool: Tool, env: Env): HookKind | null {
-  const bare = command.replace(CONTRACT_MARKER, "").trimEnd();
-  if (bare === hookCommand(tool, env).replace(CONTRACT_MARKER, "").trimEnd()) return "spool";
-  if (bare === hookCommand(tool, env, "SessionStart").replace(CONTRACT_MARKER, "").trimEnd()) return "spool";
+  const bare = unmarked(command);
+  if (bare === unmarked(hookCommand(tool, env))) return "spool";
+  if (bare === unmarked(hookCommand(tool, env, "SessionStart"))) return "spool";
   if (bare === `cat > "${toolSpoolDir(tool, env)}/$(date +%s%N)-$$.json" 2>/dev/null; exit 0`) return "spool";
   const spool = `/spool/${tool}/$(date +%s%N)-$$`;
   if (
@@ -58,57 +54,13 @@ export type HookPlan = {
   installedVersion?: number | null;
 };
 
-export function hookCommand(tool: Tool, env: Env = process.env, event?: string): string {
-  const harnessPid = event === "SessionStart" ? "-$PPID" : "";
-  return marked(
-    `cat > "${toolSpoolDir(tool, env)}/$(date +%s%N)-$$${harnessPid}-\${DIM_WORKER_NAME:-}.json" 2>/dev/null; exit 0`,
-  );
-}
-
-export function wakeCommand(tool: Tool): string {
-  return marked(`${dimPath()} wake --tool=${tool} 2>/dev/null || true`);
-}
-
-export function formatEditCommand(): string {
-  return marked(`${dimPath()} format-edit 2>/dev/null || true`);
-}
-
-export function dimPath(): string {
-  return Bun.which("dim") ?? "dim";
-}
-
 export function hookConfigPath(tool: Tool, env: Env = process.env): string {
   if (tool === "claude") return join(dirname(claudeProjectsDir(env)), "settings.json");
   if (tool === "grok") return join(grokDir(env), "hooks", "dim.json");
   return join(codexDir(env), "hooks.json");
 }
 
-type HookHandler = { type?: string; command?: string; timeout?: number };
-export type HookEntry = { matcher?: string; hooks?: HookHandler[] };
 type HookConfig = { hooks?: Record<string, HookEntry[]> };
-
-export type WantedHook = { event: string; kind: HookKind; command: string; matcher?: string };
-
-export function wantedHooks(tool: Tool, env: Env = process.env): WantedHook[] {
-  const spool = (event: string): WantedHook => ({
-    event,
-    kind: "spool",
-    command: hookCommand(tool, env, event),
-  });
-  if (tool === "grok") return [spool("SessionStart"), spool("SessionEnd"), spool("PostToolUse")];
-  return [
-    spool("SessionStart"),
-    { event: "SessionStart", kind: "wake", command: wakeCommand(tool) },
-    spool("SessionEnd"),
-    spool("PostToolUse"),
-    {
-      event: "PostToolUse",
-      kind: "format",
-      command: formatEditCommand(),
-      matcher: EDIT_TOOLS[tool].join("|"),
-    },
-  ];
-}
 
 function readConfig(path: string): HookConfig {
   return readJsonc<HookConfig>(path) ?? {};
@@ -142,10 +94,6 @@ function refreshOf(own: OwnHook, event: string, wanted: WantedHook): HookRefresh
     return { at: entryAt, value: { ...entryFor(wanted.matcher, handler), ...rest, hooks: [handler] } };
   }
   return { at: [...entryAt, "hooks", own.hook], append: entryFor(wanted.matcher, handler) };
-}
-
-function entryFor(matcher: string | undefined, handler: HookHandler): HookEntry {
-  return matcher === undefined ? { hooks: [handler] } : { matcher, hooks: [handler] };
 }
 
 export function planHooks(env: Env = process.env): HookPlan[] {

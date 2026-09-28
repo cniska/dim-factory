@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { checkoutGitPaths } from "./git-checkout-dir";
 import type { HarnessEvent, HarnessRequest, UsageLimit } from "./harness";
 import type { HarnessLineParser, HarnessProcess } from "./harness-process";
+import { hookSettings } from "./hook-commands";
 import { dataDir } from "./paths";
 import { NETWORK_VARS } from "./station-environment";
 
@@ -113,6 +114,7 @@ function claudeSettings(request: HarnessRequest, protectedGit: string[]): string
       ...Object.fromEntries(PER_TOKEN_VARS.map((name) => [name, ""])),
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
     },
+    hooks: hookSettings("claude", request.env),
     permissions: {
       deny: [
         ...(edits
@@ -145,6 +147,8 @@ function claudeFlags(request: HarnessRequest): string[] {
     "--verbose",
     "--permission-mode",
     edits ? "acceptEdits" : "default",
+    "--setting-sources",
+    "",
     "--settings",
     claudeSettings(request, checkoutGitPaths(request.cwd)),
     ...(request.outputSchema ? ["--json-schema", readFileSync(request.outputSchema, "utf8")] : []),

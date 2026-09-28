@@ -2,7 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ConfigError } from "./config-error";
 import { readJsonc } from "./config-jsonc-file";
-import { type HookEntry, hookConfigPath, wantedHooks } from "./hooks";
+import { type HookEntry, wantedHooks } from "./hook-commands";
+import { hookConfigPath } from "./hooks";
 import { codexDir, type Env } from "./paths";
 
 export type TrustState = {

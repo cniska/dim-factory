@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfigError } from "./config-error";
 import { harnessesOnPath } from "./fixtures.test-support";
-import { hookCommand, planHooks } from "./hooks";
+import { hookCommand } from "./hook-commands";
+import { planHooks } from "./hooks";
 import { planCodexTrust } from "./hooks-codex-trust";
 import type { Env } from "./paths";
 
