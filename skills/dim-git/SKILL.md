@@ -19,7 +19,7 @@ The shared Git boundary for the factory. Use this skill whenever Git work affect
 
 A commit is evidence that one slice passed `dim-build`'s slice loop, not a save point for unfinished work. Outside an order, commit a passing slice yourself.
 
-In a factory order, leave the slice uncommitted on the order's branch and return its subject. The runner runs the declared check in its sandbox, commits with the repository's own identity and signing, and records the evidence; it fails a turn that moved the branch or nested a repository.
+In a factory order, leave the slice uncommitted and unstaged on the order's branch and return its subject. The sandbox denies the git directory, so `git add` and `git commit` fail there. The runner runs the declared check in its sandbox, commits with the repository's own identity and signing, and records the evidence; it fails a turn that moved the branch or nested a repository.
 
 Take the subject's form from the commit subjects the brief says the record has seen, or from the repository's `git log` where the record holds too few to read one. The repository's hooks decide what git accepts, and the runner refuses a new code comment where the repository bans them. A refused commit comes back in the same turn with its reason and the changes still uncommitted: answer it, and return the whole result again.
 
