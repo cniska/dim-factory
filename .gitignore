@@ -6,6 +6,8 @@ node_modules/
 dist/
 .claude/*
 !.claude/skills
+!.claude/settings.json
+!.claude/hooks
 queue.json.lock*
 .queue-tmp-*
 # Creating an ONNX Runtime session writes this into the cwd under a Codex sandbox, and into
