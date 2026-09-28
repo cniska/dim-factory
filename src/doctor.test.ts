@@ -3,9 +3,12 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { devNull, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { Ran } from "./cli-contract";
 import { closeDb, openDb } from "./db";
 import { openReadOnly } from "./db-read";
+import { SCHEMA_VERSION } from "./db-schema";
 import { diagnose } from "./doctor";
+import { doctorCommand } from "./doctor-command";
 import { harnessesOnPath, scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
 import { gateHooks, installCommitGate } from "./gate-commit";
 import { installHooks, wantedHooks } from "./hooks";
@@ -53,6 +56,24 @@ function check(env: Env, name: string) {
 }
 
 describe("doctor", () => {
+  test("diagnoses a record built by another schema version rather than refusing it", () => {
+    const env = seeded();
+    const db = openDb(dbPath(env));
+    db.run("UPDATE schema_version SET version = ?", [SCHEMA_VERSION - 1]);
+    closeDb(db);
+    const home = process.env.DIM_HOME;
+    process.env.DIM_HOME = env.DIM_HOME;
+    try {
+      const ran = doctorCommand.run([]);
+      expect(ran).toBeInstanceOf(Ran);
+      const { checks } = (ran as Ran).result as { checks: { name: string; state: string; fix?: string }[] };
+      expect(checks.find((c) => c.name === "schema")).toMatchObject({ state: "fail", fix: "dim rebuild" });
+    } finally {
+      if (home === undefined) delete process.env.DIM_HOME;
+      else process.env.DIM_HOME = home;
+    }
+  });
+
   test("warns when the sync agent still points to a previous checkout", () => {
     const env = seeded();
     const plist = agentPlistPath(env);

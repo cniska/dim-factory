@@ -27,7 +27,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 - **NF-1** — A hook a coding-agent session runs exits 0 whatever happens.
 - **NF-2** — A git hook `dim` installs exits non-zero only to refuse a commit or push it has read and understood; anything it cannot read lets the commit or push through.
 - **NF-3** — A reader cannot change the record it reads: a query, `dim sql`, `dim stats` and the wall fail on any write rather than make it.
-- **NF-4** — A reader refuses a record built by another schema version before it reads anything from it.
+- **NF-4** — A reader refuses a record built by another schema version before it reads anything from it, save `dim doctor`, which reports the drift and its repair.
 
 ## 5. Acceptance criteria
 

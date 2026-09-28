@@ -8,7 +8,7 @@ export const doctorCommand: Command = {
   usage: "usage: dim doctor",
   summary: "check that collection and the gates are actually working, and say what to fix",
   run() {
-    const db = openReadOnly(dbPath());
+    const db = openReadOnly(dbPath(), { forDiagnosis: true });
     try {
       const checks = diagnose(db);
       const failing = checks.filter((check) => check.state === "fail").length;
