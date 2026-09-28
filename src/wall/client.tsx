@@ -13,7 +13,15 @@ import { itemKindLabel } from "./item";
 import { cn } from "./lib/utils";
 import { WallMarkdown } from "./markdown";
 import { msUntilNextMinute } from "./minute-beat";
-import type { BoardStatus, WallItemEntry, WallItemView, WallOrder, WallSnapshot, WallWorker } from "./server";
+import type {
+  BoardStatus,
+  WallFailure,
+  WallItemEntry,
+  WallItemView,
+  WallOrder,
+  WallSnapshot,
+  WallWorker,
+} from "./server";
 import "./styles.css";
 
 const unavailableSnapshot: WallSnapshot = {
@@ -546,6 +554,7 @@ function useSnapshot() {
   const [snapshot, setSnapshot] = useState<WallSnapshot>(unavailableSnapshot);
   const [stale, setStale] = useState(true);
   const [unavailable, setUnavailable] = useState(true);
+  const [failure, setFailure] = useState<string | null>(null);
   const [answered, setAnswered] = useState(false);
   const [lastMessage, setLastMessage] = useState<number | null>(null);
   const [bumped, setBumped] = useState<ReadonlySet<string>>(new Set());
@@ -573,17 +582,23 @@ function useSnapshot() {
       setSnapshot(data);
       setStale(false);
       setUnavailable(false);
+      setFailure(null);
       setAnswered(true);
       setLastMessage(Date.now());
     };
 
     fetch("/api/snapshot")
-      .then((response) => (response.ok ? response.json() : Promise.reject()))
-      .then((data: WallSnapshot) => {
+      .then(async (response) => {
+        const body: unknown = await response.json();
+        if (!response.ok) throw new Error((body as WallFailure).error);
+        return body as WallSnapshot;
+      })
+      .then((data) => {
         if (!acceptedSocketSnapshot) accept(data);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (acceptedSocketSnapshot) return;
+        setFailure(error instanceof Error ? error.message : String(error));
         setUnavailable(true);
         setAnswered(true);
       });
@@ -612,8 +627,9 @@ function useSnapshot() {
       socket = next;
       next.onmessage = (event) => {
         if (socket !== next) return;
-        const data = JSON.parse(event.data) as WallSnapshot & { error?: string };
+        const data = JSON.parse(event.data) as WallSnapshot & Partial<WallFailure>;
         if (data.error) {
+          setFailure(data.error);
           setStale(true);
           return;
         }
@@ -640,7 +656,7 @@ function useSnapshot() {
     };
   }, []);
 
-  return { snapshot, stale, unavailable, answered, lastMessage, bumped };
+  return { snapshot, stale, unavailable, failure, answered, lastMessage, bumped };
 }
 
 type ItemRead = { state: "reading" | "read" | "unavailable"; view: WallItemView | null };
@@ -734,7 +750,7 @@ function Clock({ at, beat }: { at: string; beat: boolean }) {
 }
 
 function App() {
-  const { snapshot, stale, unavailable, answered, lastMessage, bumped } = useSnapshot();
+  const { snapshot, stale, unavailable, failure, answered, lastMessage, bumped } = useSnapshot();
   const now = useNow(lastMessage);
   const blink = useBlink(!stale && !unavailable);
   const [opened, setOpened] = useState<WallOrder | null>(null);
@@ -760,6 +776,7 @@ function App() {
             FEED_TINT[feed],
             !answered && "invisible",
           )}
+          title={failure ?? undefined}
         >
           <FeedIcon size={15} aria-hidden="true" />
           <span>{FEED_LABEL[feed]}</span>

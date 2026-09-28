@@ -188,6 +188,12 @@ export function wallFont(): Uint8Array {
   return new Uint8Array(readFileSync(new URL("./fonts/jetbrains-mono-latin.woff2", import.meta.url)));
 }
 
+export type WallFailure = { error: string };
+
+function wallFailure(error: unknown): WallFailure {
+  return { error: error instanceof Error ? error.message : String(error) };
+}
+
 type WallSocket = Pick<Bun.ServerWebSocket<undefined>, "send">;
 
 export function wallHandler(path: string = dbPath()) {
@@ -222,10 +228,7 @@ export function wallHandler(path: string = dbPath()) {
         try {
           return Response.json(snapshot(), { headers: { "cache-control": "no-store" } });
         } catch (error) {
-          return Response.json(
-            { error: error instanceof Error ? error.message : String(error) },
-            { status: 503 },
-          );
+          return Response.json(wallFailure(error), { status: 503 });
         }
       }
       if (url.pathname.startsWith("/api/order/")) {
@@ -236,10 +239,7 @@ export function wallHandler(path: string = dbPath()) {
           if (!view) return new Response("Not found", { status: 404 });
           return Response.json(view, { headers: { "cache-control": "no-store" } });
         } catch (error) {
-          return Response.json(
-            { error: error instanceof Error ? error.message : String(error) },
-            { status: 503 },
-          );
+          return Response.json(wallFailure(error), { status: 503 });
         }
       }
       if (url.pathname === "/ws" && server.upgrade(request)) return;
@@ -250,8 +250,8 @@ export function wallHandler(path: string = dbPath()) {
         clients.add(socket);
         try {
           socket.send(JSON.stringify(snapshot()));
-        } catch {
-          socket.send(JSON.stringify({ error: "snapshot unavailable" }));
+        } catch (error) {
+          socket.send(JSON.stringify(wallFailure(error)));
         }
       },
       close(socket: WallSocket) {
@@ -275,8 +275,8 @@ export function broadcastWallSnapshot(
     const hash = Bun.hash(body).toString(16);
     if (hash !== previousHash) send(body);
     return hash;
-  } catch {
-    send(JSON.stringify({ error: "snapshot unavailable" }));
+  } catch (error) {
+    send(JSON.stringify(wallFailure(error)));
     return "";
   }
 }

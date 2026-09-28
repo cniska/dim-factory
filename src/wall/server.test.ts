@@ -59,7 +59,7 @@ test("wall broadcasts a changed board and recovers after a read failure", () => 
   hash = broadcastWallSnapshot(snapshot, hash, send);
   failed = false;
   hash = broadcastWallSnapshot(snapshot, hash, send);
-  expect(sent).toEqual([JSON.stringify(board), '{"error":"snapshot unavailable"}', JSON.stringify(board)]);
+  expect(sent).toEqual([JSON.stringify(board), '{"error":"database unavailable"}', JSON.stringify(board)]);
   expect(hash).not.toBe("");
 });
 
@@ -766,6 +766,11 @@ describe("factory wall item view", () => {
 
     const snapshot = answer(wall, "/api/snapshot");
     expect(snapshot.status).toBe(503);
-    expect((await snapshot.json()).error).toContain("no database at");
+    const reason = (await snapshot.json()).error;
+    expect(reason).toContain("no database at");
+
+    const sent: string[] = [];
+    wall.websocket.open({ send: (message: string) => sent.push(message) } as never);
+    expect(sent.map((message) => JSON.parse(message))).toEqual([{ error: reason }]);
   });
 });
