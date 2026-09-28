@@ -35,12 +35,12 @@ describe("reading the codex hooks a trust key points at", () => {
       (e) => `{
   // written by dim install-hooks
   "hooks": {
-    "SessionStart": [{ "hooks": [{ "type": "command", "command": ${JSON.stringify(hookCommand("codex", e))} }] }],
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": ${JSON.stringify(hookCommand("codex", e, "SessionStart"))} }] }],
   }
 }
 `,
     );
-    const start = planCodexTrust(env).find((t) => t.command === hookCommand("codex", env));
+    const start = planCodexTrust(env).find((t) => t.command === hookCommand("codex", env, "SessionStart"));
     expect(start?.key).toEndWith(":session_start:0:0");
   });
 

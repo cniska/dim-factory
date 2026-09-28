@@ -59,7 +59,7 @@ dim sync: drain the spool → read changed files → derive session ends
 
 | Event | What it does |
 |---|---|
-| `SessionStart` | spools the start source and model. On Claude Code and Codex, `dim wake` prints declared repo commands and records the guidance in force |
+| `SessionStart` | spools the start source, model and harness pid from the hook's parent process. On Claude Code and Codex, `dim wake` prints declared repo commands and records the guidance in force |
 | `SessionEnd` | spools the end time and reason, which a transcript lacks |
 | `PostToolUse` | spools the tool call with its payload. On Claude Code and Codex, `dim format-edit` runs the repo's declared format task in the checkout an edit touched ([`src/format-edit.ts`](../src/format-edit.ts)), bounded and failing open |
 

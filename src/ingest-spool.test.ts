@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -75,6 +76,42 @@ function toolEvent(sessionId: string) {
 }
 
 describe("spool", () => {
+  test("records the harness pid from a SessionStart spool filename", () => {
+    const env = scratchEnv(newRoot());
+    ensureSpoolDirs(env);
+    writeFileSync(
+      join(toolSpoolDir("codex", env), "1789000000000000000-4242-7319-.json"),
+      JSON.stringify(startEvent(SESSION, "startup")),
+    );
+    const db = openDb(dbPath(env));
+    try {
+      expect(drainSpool(db, env)).toMatchObject({ applied: 1, unreadable: 0 });
+      expect(db.prepare("SELECT harness_pid FROM hook_event").get()).toEqual({ harness_pid: 7319 });
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("a SessionStart shell hook writes its live parent pid for each harness", () => {
+    const env = scratchEnv(newRoot());
+    ensureSpoolDirs(env);
+    for (const tool of ["claude", "codex"] as const) {
+      execFileSync("/bin/sh", ["-c", hookCommand(tool, env, "SessionStart")], {
+        input: JSON.stringify(startEvent(`${SESSION}-${tool}`, "startup")),
+        env: { ...process.env, DIM_WORKER_NAME: "" },
+      });
+      const db = openDb(dbPath(env));
+      try {
+        expect(drainSpool(db, env)).toMatchObject({ applied: 1, unreadable: 0 });
+        expect(
+          db.prepare("SELECT harness_pid FROM hook_event WHERE session_id = ?").get(`${SESSION}-${tool}`),
+        ).toEqual({ harness_pid: process.pid });
+      } finally {
+        closeDb(db);
+      }
+    }
+  });
+
   test("records why a session ended, which no transcript says", () => {
     const root = newRoot();
     const env = scratchEnv(root);
@@ -131,11 +168,18 @@ describe("spool", () => {
     const env = scratchEnv(root);
     writeClaudeTranscript(env, "-Users-x-code-demo", SESSION);
     spool(env, "claude", "1789000000000000000", endEvent(SESSION, "clear"));
+    ensureSpoolDirs(env);
+    writeFileSync(
+      join(toolSpoolDir("claude", env), "1789000000000000001-4242-7319-.json"),
+      JSON.stringify(startEvent(SESSION, "startup")),
+    );
     const db = openDb(dbPath(env));
     try {
       sync(db, env);
       rebuild(db, env);
-      expect(db.prepare("SELECT count(*) AS n FROM hook_event").get()).toEqual({ n: 1 });
+      expect(db.prepare("SELECT harness_pid FROM hook_event WHERE event = 'session_start'").get()).toEqual({
+        harness_pid: 7319,
+      });
       expect(db.prepare(`SELECT end_reason FROM session WHERE id = '${SESSION}'`).get()).toEqual({
         end_reason: "clear",
       });
@@ -315,7 +359,7 @@ describe("installHooks", () => {
     expect(after.hooks.SessionEnd[0].hooks[0].command).toBe("existing-notifier");
     expect(after.hooks.SessionEnd[1].hooks[0].command).toBe(hookCommand("claude", env));
     expect(after.hooks.SessionStart).toHaveLength(2);
-    expect(after.hooks.SessionStart[0].hooks[0].command).toBe(hookCommand("claude", env));
+    expect(after.hooks.SessionStart[0].hooks[0].command).toBe(hookCommand("claude", env, "SessionStart"));
     expect(after.hooks.SessionStart[1].hooks[0].command).toBe(wakeCommand("claude"));
     expect(after.hooks.PostToolUse).toHaveLength(2);
     expect(after.hooks.PostToolUse[0].hooks[0].command).toBe(hookCommand("claude", env));
@@ -470,7 +514,7 @@ describe("installHooks", () => {
     expect(after.hooks.SessionStart).toHaveLength(1);
     expect(after.hooks.SessionEnd).toHaveLength(1);
     expect(after.hooks.PostToolUse).toHaveLength(1);
-    expect(after.hooks.SessionStart?.[0]?.hooks[0]?.command).toBe(hookCommand("grok", env));
+    expect(after.hooks.SessionStart?.[0]?.hooks[0]?.command).toBe(hookCommand("grok", env, "SessionStart"));
     expect(after.hooks.SessionEnd?.[0]?.hooks[0]?.command).toBe(hookCommand("grok", env));
     expect(after.hooks.PostToolUse?.[0]?.hooks[0]?.command).toBe(hookCommand("grok", env));
     expect(JSON.stringify(after)).not.toContain("wake");
@@ -504,6 +548,30 @@ describe("installHooks", () => {
     expect(command).toStartWith("cat > ");
     expect(command).toMatch(/; exit 0( # dim-hook:\d+)?$/);
     expect(command).not.toContain("|");
+  });
+
+  test("SessionStart names the harness parent pid in the spool file", () => {
+    const env = hookEnv(newRoot());
+    for (const tool of ["claude", "codex"] as const) {
+      expect(hookCommand(tool, env, "SessionStart")).toMatch(/-\$\$-\$PPID-\$\{DIM_WORKER_NAME:-\}\.json/);
+    }
+  });
+
+  test("a version 2 SessionStart spool hook is stale", () => {
+    const dir = newRoot();
+    const env = hookEnv(dir);
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    const old = hookCommand("claude", env).replace("dim-hook:3", "dim-hook:2");
+    writeFileSync(
+      configs(env).claude,
+      JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: old }] }] } }),
+    );
+    expect(
+      planHooks(env).find((plan) => plan.tool === "claude" && plan.event === "SessionStart"),
+    ).toMatchObject({
+      state: "stale",
+      installedVersion: 2,
+    });
   });
 
   test("every command it installs says which contract wrote it", () => {

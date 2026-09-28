@@ -7,7 +7,7 @@ import { dataDir, type Env } from "./paths";
 
 export type DrainReport = { applied: number; duplicate: number; unreadable: number };
 
-const SPOOL_NAME = /^(\d{10,})-([A-Za-z0-9]+)(?:-([A-Za-z0-9-]*))?\.json$/;
+const SPOOL_NAME = /^(\d{10,})-([A-Za-z0-9]+)(?:-(\d+)-([A-Za-z0-9-]*))?(?:-([A-Za-z0-9-]*))?\.json$/;
 
 export function spoolDir(env: Env = process.env): string {
   return join(dataDir(env), "spool");
@@ -60,8 +60,8 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
   const report: DrainReport = { applied: 0, duplicate: 0, unreadable: 0 };
 
   const insert = db.prepare(
-    `INSERT INTO hook_event (tool, session_id, event, ts, source, reason, model, cwd, payload)
-     VALUES ($tool, $sessionId, $event, $ts, $source, $reason, $model, $cwd, $payload)
+    `INSERT INTO hook_event (tool, session_id, event, ts, harness_pid, source, reason, model, cwd, payload)
+     VALUES ($tool, $sessionId, $event, $ts, $harnessPid, $source, $reason, $model, $cwd, $payload)
      ON CONFLICT(session_id, event, ts) DO NOTHING`,
   );
   const sighting = db.prepare(
@@ -93,7 +93,7 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
         continue;
       }
       const ts = new Date(Number(match[1]) / 1e6).toISOString();
-      const worker = match[3];
+      const worker = match[4] ?? match[5];
       if (worker) {
         sighting.run({ $worker: worker, $sessionId: sessionId, $seenAt: ts });
       }
@@ -103,6 +103,7 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
           $sessionId: sessionId,
           $event: event,
           $ts: ts,
+          $harnessPid: event === "session_start" && match[3] ? Number(match[3]) : null,
           $source: payload?.source ?? null,
           $reason: payload?.reason ?? null,
           $model: text(payload?.model) ?? text(payload?.modelId) ?? null,

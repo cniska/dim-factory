@@ -107,6 +107,7 @@ type HookEvent = {
   session_id: string;
   event: string;
   ts: string;
+  harness_pid: number | null;
   source: string | null;
   reason: string | null;
   model: string | null;
@@ -290,9 +291,13 @@ export function rebuild(db: Database, env: Env = process.env): RebuildReport {
       )
       .all();
     db.run("DROP TABLE IF EXISTS correction_label");
+    const hasHarnessPid = db
+      .query<{ name: string }, []>("PRAGMA table_info(hook_event)")
+      .all()
+      .some((column) => column.name === "harness_pid");
     const hookEvents = db
       .query<HookEvent, []>(
-        "SELECT tool, session_id, event, ts, source, reason, model, cwd, payload FROM hook_event",
+        `SELECT tool, session_id, event, ts, ${hasHarnessPid ? "harness_pid" : "NULL AS harness_pid"}, source, reason, model, cwd, payload FROM hook_event`,
       )
       .all();
     db.run("DROP TABLE IF EXISTS hook_event");
@@ -325,10 +330,21 @@ export function rebuild(db: Database, env: Env = process.env): RebuildReport {
     }
     const restoreHook = db.prepare<
       void,
-      [string, string, string, string, string | null, string | null, string | null, string | null, string]
+      [
+        string,
+        string,
+        string,
+        string,
+        number | null,
+        string | null,
+        string | null,
+        string | null,
+        string | null,
+        string,
+      ]
     >(
-      `INSERT INTO hook_event (tool, session_id, event, ts, source, reason, model, cwd, payload)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO hook_event (tool, session_id, event, ts, harness_pid, source, reason, model, cwd, payload)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const row of hookEvents) {
       restoreHook.run(
@@ -336,6 +352,7 @@ export function rebuild(db: Database, env: Env = process.env): RebuildReport {
         row.session_id,
         row.event,
         row.ts,
+        row.harness_pid,
         row.source,
         row.reason,
         row.model,

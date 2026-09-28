@@ -8,7 +8,7 @@ import { toolSpoolDir } from "./ingest-spool";
 import type { Tool } from "./ingest-tools";
 import { claudeProjectsDir, codexDir, type Env, grokDir } from "./paths";
 
-export const HOOK_CONTRACT_VERSION = 2;
+export const HOOK_CONTRACT_VERSION = 3;
 
 const CONTRACT_MARKER = /#\s*dim-hook:(\d+)\s*$/;
 
@@ -26,6 +26,7 @@ export type HookKind = "spool" | "wake" | "format";
 function hookKind(command: string, tool: Tool, env: Env): HookKind | null {
   const bare = command.replace(CONTRACT_MARKER, "").trimEnd();
   if (bare === hookCommand(tool, env).replace(CONTRACT_MARKER, "").trimEnd()) return "spool";
+  if (bare === hookCommand(tool, env, "SessionStart").replace(CONTRACT_MARKER, "").trimEnd()) return "spool";
   if (bare === `cat > "${toolSpoolDir(tool, env)}/$(date +%s%N)-$$.json" 2>/dev/null; exit 0`) return "spool";
   const spool = `/spool/${tool}/$(date +%s%N)-$$`;
   if (
@@ -52,9 +53,10 @@ export type HookPlan = {
   installedVersion?: number | null;
 };
 
-export function hookCommand(tool: Tool, env: Env = process.env): string {
+export function hookCommand(tool: Tool, env: Env = process.env, event?: string): string {
+  const harnessPid = event === "SessionStart" ? "-$PPID" : "";
   return marked(
-    `cat > "${toolSpoolDir(tool, env)}/$(date +%s%N)-$$-\${DIM_WORKER_NAME:-}.json" 2>/dev/null; exit 0`,
+    `cat > "${toolSpoolDir(tool, env)}/$(date +%s%N)-$$${harnessPid}-\${DIM_WORKER_NAME:-}.json" 2>/dev/null; exit 0`,
   );
 }
 
@@ -85,7 +87,7 @@ export function wantedHooks(tool: Tool, env: Env = process.env): WantedHook[] {
   const spool = (event: string): WantedHook => ({
     event,
     kind: "spool",
-    command: hookCommand(tool, env),
+    command: hookCommand(tool, env, event),
   });
   if (tool === "grok") return [spool("SessionStart"), spool("SessionEnd"), spool("PostToolUse")];
   return [

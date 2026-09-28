@@ -5,7 +5,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { STATIONS_SQL } from "./station";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 77;
+export const SCHEMA_VERSION = 78;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS hook_event (
   session_id  TEXT NOT NULL,
   event       TEXT NOT NULL CHECK (event IN ('session_start','session_end','post_tool_use')),
   ts          TEXT NOT NULL,
+  harness_pid INTEGER,
   source      TEXT,               -- SessionStart: startup|resume|clear|compact|fork
   reason      TEXT,               -- SessionEnd: clear|resume|logout|prompt_input_exit|other
   model       TEXT,
