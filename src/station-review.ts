@@ -19,8 +19,8 @@ import {
 } from "./order-review";
 import { assertNext } from "./order-state";
 import { startStationAttempt } from "./station-attempt";
+import { type BriefedOrder, briefHeader } from "./station-brief";
 import { stationDirectory } from "./station-directory";
-import { type BriefedOrder, lineBrief } from "./station-line-brief";
 import type { PlanSlice } from "./station-plan-artifact";
 import { parseReviewReport, type ReviewFinding } from "./station-review-artifact";
 import { renderReviewReport } from "./station-review-report";
@@ -117,18 +117,6 @@ function earlierFindingLines(finding: FindingStanding): string[] {
   ];
 }
 
-const REPORT_CONTRACT = [
-  "Return exactly one JSON object matching the output schema, with no Markdown fence and no text outside it:",
-  '- "verdict": one sentence saying why the order may advance or must return.',
-  '- "findings": each {dimension, file, line, failure, fix, severity}. Every finding blocks: severity is critical, high or medium, file is the repo-relative path of a file the diff changed exactly as git prints it, and line exists in that file at the head commit. A point that would not block goes in "observations" instead.',
-  '- "conformance": each {kind: missing|extra|misunderstood, slice, detail}, judged against the approved plan. A deviation that must be fixed is also a finding with dimension plan.',
-  '- "coverage": exactly one {dimension, status, reason} per dimension (plan, correctness, tests, architecture, maintainability, docs, security, performance, style). status is findings exactly when a finding carries that dimension, clean exactly when none does, or not_applicable or not_run with a reason.',
-  '- "set_aside": each {item, why} left out as outside the order.',
-  '- "unverified": each {claim, would_settle} you could not verify.',
-  '- "observations": at most three strings, none of which blocks.',
-  "Use null for a reason or slice that has nothing to say, and [] for an empty list.",
-];
-
 export function reviewerBrief(
   order: BriefedOrder,
   range: { base: string; head: string },
@@ -136,54 +124,26 @@ export function reviewerBrief(
   returned: { body: string; feedback: string } | null = null,
 ): string {
   return [
-    `You are the reviewer for factory order ${order.id} in this repository.`,
+    ...briefHeader("reviewer", "dim-review", order),
     "",
-    `# ${order.title}`,
-    order.description ?? "",
+    "## Diff",
+    `\`git diff ${range.base}..${range.head}\``,
     "",
-    lineBrief(order.line),
-    "",
-    "# Approved plan",
-    context.plan?.body ??
-      "No approved plan is recorded for this order. Judge the diff against the order's own words, and report the plan dimension as not_applicable with that reason.",
+    "## Approved plan",
+    context.plan?.body ?? "None is recorded for this order.",
     ...(context.plan && context.plan.slices.length > 0
       ? [
           "",
-          "# Plan slices",
+          "## Plan slices",
           ...context.plan.slices.map((slice, index) => `${index + 1}. ${slice.title}: ${slice.outcome}`),
         ]
       : []),
-    "",
     ...(context.earlier.length > 0
-      ? [
-          "# Earlier findings",
-          "Earlier rounds raised these, and the builder answered each. Raise a new finding for any that still holds at this head.",
-          ...context.earlier.flatMap(earlierFindingLines),
-          "",
-        ]
+      ? ["", "## Earlier findings", ...context.earlier.flatMap(earlierFindingLines)]
       : []),
     ...(returned
-      ? [
-          "# Returned Review artifact",
-          "The owner returned the last round's Review artifact, which read this same diff. Review it again with the owner's feedback in mind.",
-          "",
-          returned.body,
-          "",
-          "# Owner feedback",
-          returned.feedback,
-          "",
-        ]
+      ? ["", "## Returned Review artifact", returned.body, "", "## Owner feedback", returned.feedback]
       : []),
-    `Read the diff \`git diff ${range.base}..${range.head}\` and nothing else about how it came to be.`,
-    "Judge it against the approved plan: name work that is missing, extra, or misunderstood.",
-    "Check each claim at its source before raising it; a reading you did not verify is not a finding.",
-    "",
-    "Use dim-review and dim-artifact.",
-    "",
-    ...REPORT_CONTRACT,
-    "",
-    "Raising nothing is the expected result and the right one when the diff is sound.",
-    "Do not edit the repository.",
   ].join("\n");
 }
 

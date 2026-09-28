@@ -22,10 +22,10 @@ import { assertNext } from "./order-state";
 import { orderStatus } from "./order-status";
 import type { Env } from "./paths";
 import { startStationAttempt } from "./station-attempt";
+import { type BriefedOrder, briefHeader } from "./station-brief";
 import { commitBuildTurn } from "./station-build-commit";
 import { continueRebaseTurn, reopenRebase } from "./station-build-rebase";
 import { BUILD_TURN_SCHEMA, parseBuildTurn } from "./station-build-turn";
-import { type BriefedOrder, lineBrief } from "./station-line-brief";
 import type { PlanSlice } from "./station-plan-artifact";
 import {
   assertOrderWorkerHarness,
@@ -48,13 +48,29 @@ export const BUILDER_CAPABILITIES: Capability[] = [
 
 function conventionContext({ repo, commits, observed }: CheckoutConvention): string {
   if (!observed) {
-    return `The record holds ${commits} commits from ${repo}, fewer than the ${CONVENTION_FLOOR} it takes to read a convention from; take the subject's form from the repository's own git log.`;
+    return `The record holds ${commits} commits from ${repo}, fewer than the ${CONVENTION_FLOOR} it takes to read a convention from.`;
   }
   const kinds = observed.topKinds.length > 0 ? `, most often ${observed.topKinds.join(", ")}` : "";
+  return `The record holds ${commits} commits from ${repo}. ${observed.conventionalPct}% of their subjects carry a Conventional Commits type${kinds}; subjects average ${observed.meanLength} characters and ${observed.over50Pct}% run over 50.`;
+}
+
+function workspaceLines(workspace: ReturnType<typeof workspaceContract>): string[] {
+  if (!workspace) return ["The workspace profile could not be read."];
   return [
-    `The record holds ${commits} commits from ${repo}. ${observed.conventionalPct}% of their subjects carry a Conventional Commits type${kinds}; subjects average ${observed.meanLength} characters and ${observed.over50Pct}% run over 50.`,
-    "This is what the log shows, not a limit: the repository's commit hooks decide what git accepts, and a commit git refuses comes back to you with its reason.",
-  ].join(" ");
+    `Ecosystem: ${workspace.ecosystems.join(", ") || "unknown"}.`,
+    `Package managers: ${workspace.packageManagers.join(", ") || "none declared"}.`,
+    `Check: ${workspace.checkTask?.commandLine ?? "none"}.`,
+    `Format: ${workspace.formatTask?.commandLine ?? "none"}.`,
+    `Tasks: ${workspace.tasks.map((one) => `${one.name}=${one.commandLine} (${one.source})`).join("; ") || "none"}.`,
+  ];
+}
+
+function conflictLines(paths: readonly string[]): string[] {
+  return ["## Rebase conflict", ...paths.map((path) => `- ${path}`)];
+}
+
+function sliceLine(slice: PlanSlice, ordinal: number): string {
+  return `${ordinal}. ${slice.title}: ${slice.outcome}`;
 }
 
 export function builderBrief(
@@ -70,121 +86,50 @@ export function builderBrief(
   redCheck: FailedCheck | null = null,
 ): string {
   const resolving = conflicts !== null;
-  const workspaceContext = workspace
-    ? [
-        `Workspace ecosystem: ${workspace.ecosystems.join(", ") || "unknown"}.`,
-        `Workspace package managers: ${workspace.packageManagers.join(", ") || "none declared"}.`,
-        `Declared check: ${workspace.checkTask?.commandLine ?? "none"}.`,
-        `Declared format: ${workspace.formatTask?.commandLine ?? "none"}.`,
-        `Workspace tasks: ${workspace.tasks.map((one) => `${one.name}=${one.commandLine} (${one.source})`).join("; ") || "none"}.`,
-        "Replace $FILES in a workspace task with the changed paths when the task is scoped.",
-        "Use these workspace tasks; do not infer a different project tool.",
-      ]
-    : ["The workspace profile could not be read; stop and report that before editing."];
   return [
-    `You are the builder for factory order ${order.id} in this repository.`,
+    ...briefHeader("builder", "dim-build", order, !resolving),
     "",
-    `# ${order.title}`,
-    order.description ?? "",
+    "## Workspace",
+    ...workspaceLines(workspace),
+    ...(!resolving && convention ? ["", "## Commit convention", conventionContext(convention)] : []),
     "",
-    "# Workspace",
-    ...workspaceContext,
-    "",
-    ...(!resolving && convention ? ["# Commit convention", conventionContext(convention), ""] : []),
-    ...(!resolving ? [lineBrief(order.line), ""] : []),
-    "The operator approved the following plan. Implement only this outcome:",
-    "",
+    "## Approved plan",
     plan.body,
     "",
-    ...(currentSlice
-      ? ["# Current slice", `${currentSlice.ordinal}. ${currentSlice.title}: ${currentSlice.outcome}`]
-      : []),
+    "## Slices",
+    ...plan.slices.map((slice, index) => sliceLine(slice, index + 1)),
+    ...(currentSlice ? ["", "## Current slice", sliceLine(currentSlice, currentSlice.ordinal)] : []),
     ...(revision
-      ? [
-          "# Returned Build artifact",
-          revision.body,
-          "",
-          "# Owner feedback",
-          revision.feedback,
-          "Answer this feedback: change the code where it asks for a change, and return a revised Build artifact. A turn that changes nothing makes no commit.",
-        ]
+      ? ["", "## Returned Build artifact", revision.body, "", "## Owner feedback", revision.feedback]
       : []),
     ...(reviewFindings.work.length > 0
+      ? ["", "## Review findings", ...reviewFindings.work.map((one) => `- ${one.brief}`)]
+      : []),
+    ...(resolving ? ["", ...conflictLines(conflicts)] : []),
+    ...(redCheck
       ? [
-          "# Review findings",
-          ...reviewFindings.work.map((one) => `- ${one.brief}`),
-          "Answer every finding listed here in the turn's `answers`, by its id: `fixed` when this turn's change fixes it, or `refused` with a `resolution` saying why it should not be fixed. A turn that changes nothing makes no commit, and the runner refuses a `fixed` answer from it.",
+          "",
+          "## Red check at the rebased head",
+          `\`${redCheck.command}\` exited ${redCheck.exitCode}:`,
+          "```",
+          redCheck.result,
+          "```",
         ]
       : []),
-    ...(resolving ? rebaseConflictBrief(conflicts) : []),
-    ...(redCheck ? redCheckBrief(redCheck) : []),
-    ...(previousFailure
-      ? [
-          "# Previous failed Build attempt",
-          previousFailure,
-          resolving
-            ? "Continue from this feedback."
-            : "Continue from this feedback and leave the worktree passing the declared check before ending the turn.",
-        ]
-      : []),
-    "",
-    "# Ordered slices",
-    ...plan.slices.map((slice, index) => `${index + 1}. ${slice.title}: ${slice.outcome}`),
-    "",
-    "The factory runner has already claimed this order for this build turn under your worker identity.",
-    resolving
-      ? "Work in the current order worktree, resolving only the conflict above; this turn does not run the build station loop."
-      : "Work in the current order worktree and run the build station loop including simplification. Review findings are answered in the turn's `answers`.",
-    "The factory has already registered your process as this order's builder before this turn starts. Do not register another worker; `dim` commands you run resolve to you from your process.",
-    "The order description and approved plan define the scope. When they explicitly exclude a workspace surface, do not edit or test that surface.",
-    ...(resolving
-      ? []
-      : [
-          "Leave every change uncommitted in the worktree. Do not run git commit, git stash, or any command that rewrites history. When the turn ends, the factory runner runs the declared check in a sandbox, commits the worktree with the repository's own git identity and signing config, and records the commit and its files under you and the check at that commit. Stay on the order's branch and do not create a git repository inside the worktree; the runner refuses both.",
-          "You may run the declared check yourself as feedback. A red check is feedback, not completion: diagnose it, fix the cause, rerun the check, and continue until it passes. If the cause is genuinely blocked, report the blocker instead of claiming success.",
-          'End the turn by returning JSON `{"subject": "...", "artifact": "...", "answers": [...]}`. `subject` is the commit subject, in the repo\'s own commit convention. `artifact` is the Build artifact for the whole order, and an empty string only when this turn finishes a slice before the last. `answers` holds one `{"finding": <id>, "answer": "fixed"|"refused", "resolution": "..."|null}` per finding listed under Review findings, and is `[]` when none is. Use dim-build and dim-artifact for the artifact contract: separate Markdown headings, the result explained for the owner rather than the command transcript, and proportional to the change.',
-        ]),
-    "Do not approve the plan or build, start review, ship, or edit outside the order worktree.",
+    ...(previousFailure ? ["", "## Previous failed Build attempt", previousFailure] : []),
   ].join("\n");
-}
-
-export function rebaseConflictBrief(conflicts: readonly string[]): string[] {
-  return [
-    "# Rebase conflict",
-    "Shipping rebased this order onto the moved trunk and stopped on a conflict. The worktree is mid-rebase, at the commit that conflicts, in:",
-    ...conflicts.map((path) => `- ${path}`),
-    "Resolve each of these files so it carries both the order's change and the trunk's, and remove every conflict marker. This turn is the resolution, not a slice: change nothing else, and keep the order's change, since a commit left empty is refused.",
-    "Leave the resolution unstaged. Do not run git add, git rebase --continue, git rebase --abort or git commit. When the turn ends, the runner stages your resolution and continues the rebase; a later commit that conflicts comes back to you in this turn. The finished rebase is re-checked in the sandbox, and the order returns to review, which reads it whole.",
-    'End the turn by returning JSON `{"subject": "fix: resolve the rebase conflict", "artifact": "", "answers": []}`. The subject must be one non-empty line, but the rebase keeps each commit\'s own message, so it is not used.',
-  ];
-}
-
-export function redCheckBrief(check: FailedCheck): string[] {
-  return [
-    "# Red check at the rebased head",
-    "Shipping rebased this order onto the moved trunk, and the declared check failed at the rebased head, so nothing landed. The worktree is on the order's branch at that head.",
-    `\`${check.command}\` exited ${check.exitCode}:`,
-    "```",
-    check.result,
-    "```",
-    "Fix the cause so the declared check passes on the rebased head. The fix is a new commit, which takes a new Build approval and a new review.",
-  ];
 }
 
 const COMMIT_CORRECTIONS = 2;
 
 export function commitCorrectionBrief(subject: string, refusal: BuildTurnRefused): string {
   return [
-    "# Commit refused",
+    "## Commit refused",
     refusal.code === "comment_added"
       ? `The runner refused to commit your worktree with the subject \`${subject}\` before running its check:`
       : `The runner's check passed, and its commit of your worktree with the subject \`${subject}\` was refused:`,
     "",
     refusal.message,
-    "",
-    "This is feedback within the current Build attempt: the order is still claimed by this turn and your changes are still uncommitted in the worktree.",
-    "Answer the refusal, leaving every change uncommitted. When the turn ends, the runner reruns the declared check and commits again.",
-    'Return the complete JSON `{"subject": "...", "artifact": "...", "answers": [...]}` again, carrying the same artifact and answers the turn owes.',
   ].join("\n");
 }
 
@@ -397,7 +342,7 @@ export async function runOrderBuildLive(
           adapter: options.adapter,
           request: {
             cwd: worktree,
-            brief: rebaseConflictBrief(paths).join("\n"),
+            brief: conflictLines(paths).join("\n"),
             capabilities: BUILDER_CAPABILITIES,
             outputSchema: BUILD_TURN_SCHEMA,
           },

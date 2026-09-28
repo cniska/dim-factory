@@ -27,7 +27,7 @@ function runOrderPlanLive(
 }
 
 describe("planner station", () => {
-  test("uses the shared artifact contract and names the plan dimensions", () => {
+  test("carries only the order and names dim-plan, which holds the procedure", () => {
     const brief = plannerBrief({
       id: "human-plan",
       title: "Make the change understandable",
@@ -35,14 +35,26 @@ describe("planner station", () => {
       line: "feat",
     });
 
-    expect(brief).toContain(
-      "Write one Markdown plan for the owner to read on the factory wall and the builder to execute",
+    expect(brief).toBe(
+      [
+        "You are the planner for factory order human-plan in this repository. Run dim-plan.",
+        "",
+        "# Make the change understandable",
+        "Keep the plan readable.",
+        "",
+        "This order's line is feat.",
+      ].join("\n"),
     );
-    expect(brief).toContain("Use dim-artifact for the shared artifact-writing and sizing contract.");
-    expect(brief).toContain(
-      "For this Plan artifact, include only the outcome, boundary, evidence, contracts, slices, checks, risks, and owner decisions that this change needs.",
+  });
+
+  test("hands a returned plan and the owner's feedback to the planner", () => {
+    const brief = plannerBrief(
+      { id: "returned-plan", title: "Plan it", description: null, line: "feat" },
+      { body: "## Outcome\n\nFirst try.", feedback: "Split the second slice." },
     );
-    expect(brief).toContain("This order's line is feat.");
+
+    expect(brief).toContain("## Returned Plan artifact\n## Outcome\n\nFirst try.");
+    expect(brief).toContain("## Owner feedback\nSplit the second slice.");
   });
 
   test("tells a fix order's planner the order's line", () => {

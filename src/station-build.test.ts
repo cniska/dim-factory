@@ -9,9 +9,8 @@ import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview } from "./order-review";
 import { approveFinalBuildAt, approvePlan } from "./station-approvals.test-support";
-import { builderBrief, rebaseConflictBrief, reviewFindingsForBuild } from "./station-build";
+import { builderBrief, reviewFindingsForBuild } from "./station-build";
 import { parseBuildTurn } from "./station-build-turn";
-import schema from "./station-build-turn.schema.json";
 
 const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
@@ -78,8 +77,7 @@ describe("the review findings a builder is handed", () => {
       work: [{ finding: open, brief: `Finding ${open} (tests, src/gate.ts:1): gap 0\n  Fix: close gap 0` }],
     });
     const text = brief(db);
-    expect(text).toContain(`# Review findings\n- Finding ${open} `);
-    expect(text).toContain("Answer every finding listed here in the turn's `answers`, by its id");
+    expect(text).toContain(`## Review findings\n- Finding ${open} `);
     expect(text).not.toContain(`Finding ${refused} `);
   });
 
@@ -129,98 +127,65 @@ describe("the build turn", () => {
   });
 });
 
-describe("the rebase conflict brief", () => {
-  test("asks for the output the build turn's schema accepts", () => {
-    const ending = rebaseConflictBrief(["f.txt"]).find((line) => line.startsWith("End the turn")) ?? "";
-    const asked = JSON.parse(/`(\{.*?\})`/.exec(ending)?.[1] ?? "null") as Record<string, unknown>;
+describe("the builder's brief", () => {
+  const plan = {
+    body: "## Outcome\n\nBuild it.",
+    slices: [
+      { title: "First cut", outcome: "The cut is verified." },
+      { title: "Second cut", outcome: "The rest is verified." },
+    ],
+  };
+  const order = { id: "order-1", title: "Build it", description: null, line: "feat" } as const;
+  const current = { id: 1, ordinal: 1, title: "First cut", outcome: "The cut is verified." };
 
-    expect(Object.keys(asked).sort()).toEqual([...schema.required].sort());
-    expect(String(asked.subject).length).toBeGreaterThanOrEqual(schema.properties.subject.minLength);
-    expect(asked.subject).toMatch(new RegExp(schema.properties.subject.pattern));
-    expect(typeof asked.artifact).toBe("string");
-    expect(asked.answers).toEqual([]);
+  test("carries only the order, the workspace, the plan and the slice, and names dim-build", () => {
+    expect(builderBrief(order, plan, current, null)).toBe(
+      [
+        "You are the builder for factory order order-1 in this repository. Run dim-build.",
+        "",
+        "# Build it",
+        "",
+        "This order's line is feat.",
+        "",
+        "## Workspace",
+        "The workspace profile could not be read.",
+        "",
+        "## Approved plan",
+        "## Outcome\n\nBuild it.",
+        "",
+        "## Slices",
+        "1. First cut: The cut is verified.",
+        "2. Second cut: The rest is verified.",
+        "",
+        "## Current slice",
+        "1. First cut: The cut is verified.",
+      ].join("\n"),
+    );
   });
-});
 
-describe("worker failure explanations", () => {
-  test("hands a returned Build artifact's feedback to a build turn that may change code", () => {
-    const brief = builderBrief(
-      { id: "order-1", title: "Build it", description: null, line: "feat" },
-      {
-        body: "## Outcome\n\nBuild it.",
-        slices: [{ title: "Build it", outcome: "The result is verified." }],
-      },
-      null,
-      null,
-      { body: "## Outcome\n\nThe artifact was a wall of text.", feedback: "Make it readable." },
-    );
+  test("hands a returned Build artifact and the owner's feedback to the builder", () => {
+    const brief = builderBrief(order, plan, null, null, {
+      body: "## Outcome\n\nThe artifact was a wall of text.",
+      feedback: "Make it readable.",
+    });
 
-    expect(brief).toContain("# Owner feedback\nMake it readable.");
-    expect(brief).toContain(
-      "change the code where it asks for a change, and return a revised Build artifact",
-    );
-    expect(brief).toContain('returning JSON `{"subject": "...", "artifact": "...", "answers": [...]}`');
-    expect(brief).not.toContain("dim order build-artifact");
+    expect(brief).toContain("## Returned Build artifact\n## Outcome\n\nThe artifact was a wall of text.");
+    expect(brief).toContain("## Owner feedback\nMake it readable.");
   });
 
-  test("tells the builder to fix a red check before finishing", () => {
-    expect(
-      builderBrief(
-        { id: "order-1", title: "Build it", description: null, line: "feat" },
-        {
-          body: "## Outcome\n\nBuild it.",
-          slices: [{ title: "Build it", outcome: "The result is verified." }],
-        },
-        { id: 1, ordinal: 1, title: "Build it", outcome: "The result is verified." },
-        null,
-      ),
-    ).toContain("A red check is feedback, not completion");
-    expect(
-      builderBrief(
-        { id: "order-1", title: "Build it", description: "The wall is out of scope.", line: "feat" },
-        {
-          body: "## Outcome\n\nBuild it.",
-          slices: [{ title: "Build it", outcome: "The result is verified." }],
-        },
-        { id: 1, ordinal: 1, title: "Build it", outcome: "The result is verified." },
-        null,
-      ),
-    ).toContain("explicitly exclude a workspace surface");
-    expect(
-      builderBrief(
-        { id: "order-1", title: "Build it", description: null, line: "feat" },
-        {
-          body: "## Outcome\n\nBuild it.",
-          slices: [{ title: "First cut", outcome: "The cut is verified." }],
-        },
-        { id: 1, ordinal: 1, title: "First cut", outcome: "The cut is verified." },
-        null,
-      ),
-    ).toContain("1. First cut: The cut is verified.");
-    const brief = builderBrief(
-      { id: "order-1", title: "Build it", description: null, line: "feat" },
-      {
-        body: "## Outcome\n\nBuild it.",
-        slices: [{ title: "Build it", outcome: "The result is verified." }],
-      },
-      { id: 1, ordinal: 1, title: "Build it", outcome: "The result is verified." },
-      null,
-    );
-    expect(brief).toContain("Do not register another worker");
-    expect(brief).toContain("Leave every change uncommitted in the worktree");
-    expect(brief).toContain("Do not run git commit, git stash");
-    expect(brief).toContain("commits the worktree with the repository's own git identity and signing config");
-    expect(brief).toContain("Stay on the order's branch");
-    expect(brief).toContain('returning JSON `{"subject": "...", "artifact": "...", "answers": [...]}`');
-    expect(brief).toContain("Review findings are answered in the turn's `answers`.");
-    expect(brief).not.toContain("dim order document");
-    expect(brief).toContain(
-      "the Build artifact for the whole order, and an empty string only when this turn finishes a slice before the last",
-    );
-    expect(brief).toContain("rather than the command transcript");
-    expect(brief).not.toContain("dim order commit");
-    expect(brief).not.toContain("dim order check");
-    expect(brief).not.toContain("dim order build-artifact");
+  test("carries a rebase conflict's paths and a red check's output as the turn's state", () => {
+    const resolving = builderBrief(order, plan, null, null, undefined, undefined, undefined, undefined, [
+      "src/a.ts",
+    ]);
+    expect(resolving).toContain("## Rebase conflict\n- src/a.ts");
+    expect(resolving).not.toContain("This order's line is");
+
+    const red = builderBrief(order, plan, null, null, undefined, undefined, undefined, undefined, null, {
+      command: "bun run verify",
+      exitCode: 1,
+      result: "1 fail",
+    });
+    expect(red).toContain("## Red check at the rebased head\n`bun run verify` exited 1:\n```\n1 fail\n```");
   });
 
   test("tells the builder the order's line, except while it resolves a rebase", () => {
@@ -249,9 +214,9 @@ describe("worker failure explanations", () => {
       "bun run verify exited 1 in the check sandbox.",
     );
 
-    expect(brief).toContain("# Previous failed Build attempt");
-    expect(brief).toContain("bun run verify exited 1");
-    expect(brief).toContain("Continue from this feedback and leave the worktree passing the declared check");
+    expect(brief).toContain(
+      "## Previous failed Build attempt\nbun run verify exited 1 in the check sandbox.",
+    );
   });
 
   test("keeps the harness explanation beside the failure", () => {

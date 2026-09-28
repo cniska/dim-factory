@@ -10,8 +10,8 @@ import { startOrder } from "./order-lifecycle";
 import { assertNext } from "./order-state";
 import { orderStatus } from "./order-status";
 import { startStationAttempt } from "./station-attempt";
+import { type BriefedOrder, briefHeader } from "./station-brief";
 import { stationDirectory } from "./station-directory";
-import { type BriefedOrder, lineBrief } from "./station-line-brief";
 import { type PlanSlice, parsePlanArtifact } from "./station-plan-artifact";
 import { orderWorkerIsBound, runOrderStationLive } from "./station-worker";
 import type { Capability } from "./worker-capabilities";
@@ -27,31 +27,10 @@ export const PLANNER_CAPABILITIES: Capability[] = [
 
 export function plannerBrief(order: BriefedOrder, revision?: { body: string; feedback: string }): string {
   return [
-    `You are the planner for factory order ${order.id} in this repository.`,
-    "",
-    `# ${order.title}`,
-    order.description ?? "",
+    ...briefHeader("planner", "dim-plan", order),
     ...(revision
-      ? [
-          "",
-          "The owner returned this Plan artifact. Address the feedback and write a new revision.",
-          "",
-          "# Previous Plan",
-          revision.body,
-          "",
-          "# Owner feedback",
-          revision.feedback,
-        ]
+      ? ["", "## Returned Plan artifact", revision.body, "", "## Owner feedback", revision.feedback]
       : []),
-    "",
-    lineBrief(order.line),
-    "Read the repository rules and prior decisions before proposing work.",
-    "Write one Markdown plan for the owner to read on the factory wall and the builder to execute, and list its independently verifiable slices.",
-    "Write for both readers: state the outcome, boundary, non-goals, and owner decisions.",
-    "Use dim-artifact for the shared artifact-writing and sizing contract.",
-    "For this Plan artifact, include only the outcome, boundary, evidence, contracts, slices, checks, risks, and owner decisions that this change needs.",
-    "The factory runner has already created your worker identity from this harness session before your first tool call.",
-    'Return exactly one JSON object with a non-empty string "body" and a non-empty "slices" array. Each slice has a non-empty "title" and "outcome". Do not use a Markdown fence or add any text outside the JSON object. Do not edit files, commit, or run mutation commands.',
   ].join("\n");
 }
 

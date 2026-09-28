@@ -10,7 +10,7 @@ A plan written without reading the record re-derives what is already on disk. Th
 
 This is what separates a station from a checklist: the checklist is the same everywhere, and these answers are about this machine.
 
-A factory brief names the order's line. For a `fix` order, run `dim-fix`'s Triage before planning.
+In a factory order the brief carries only what this skill cannot know: the order, its line and, on a revision, the returned Plan artifact with the owner's feedback. For a `fix` order, run `dim-fix`'s Triage before planning. The turn's result is the Plan artifact as `body` and the ordered slices as `slices`, each a `title` and the `outcome` that verifies it.
 
 ## Entry contract
 

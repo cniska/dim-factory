@@ -10,9 +10,9 @@ One pass per dimension, each in its own agent. A single reader carrying every di
 
 What makes this a station rather than a checklist is that the record says where to aim. This machine knows which kinds of work have been drawing later `fix:` commits and which code shipped with nothing coming back, so a dimension arrives knowing what it is reading against instead of sweeping.
 
-Use `dim-git` for the read-only diff boundary and handoff evidence. Review does not edit, commit or land the work it inspects.
+Review does not edit, commit or land the work it inspects.
 
-This station carries its review briefs directly. Each dimension supplies findings; this station supplies the factory grounding, read-only boundary and finding convergence. A factory brief names the order's line; for a `fix` order, the `plan` dimension also holds the diff to `dim-fix`'s exit check.
+This station carries its review briefs directly. Each dimension supplies findings; this station supplies the factory grounding, read-only boundary and finding convergence. In a factory order the brief carries only what this skill cannot know: the order, its line, the diff range, the approved plan and its slices, earlier findings with the builder's answers, and on a revision the returned Review artifact with the owner's feedback. Read that diff and nothing about how it came to be. Where no plan is recorded, judge the diff against the order's own words and report the `plan` dimension `not_applicable` with that reason. For a `fix` order, the `plan` dimension also holds the diff to `dim-fix`'s exit check. Raising nothing is the expected result when the diff is sound.
 
 The reviewer returns a structured report, and the factory records its findings under the reviewer identity and renders the owner's Review artifact from it ([`src/station-review-report.ts`](../../src/station-review-report.ts)): the verdict, blocking findings, earlier findings with the builder's answers, plan conformance, coverage, what was not judged, and observations. The report carries no praise, no walkthrough of the diff and no account of how the review ran.
 

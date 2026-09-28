@@ -660,7 +660,7 @@ describe("a review round", () => {
     );
   });
 
-  test("the brief carries the approved plan and loads the review station", () => {
+  test("the brief carries only the order, the diff and the plan, and names dim-review", () => {
     const brief = reviewerBrief(
       { id: "order-1", title: "Read a slice", description: null, line: "fix" },
       { base: "aaa", head: "bbb" },
@@ -672,12 +672,24 @@ describe("a review round", () => {
         earlier: [],
       },
     );
-    expect(brief).toContain("# Approved plan\n## Outcome\n\nRefuse empty tokens.");
-    expect(brief).toContain("# Plan slices\n1. Gate: Empty refused.");
-    expect(brief).toContain("Use dim-review and dim-artifact.");
-    expect(brief).toContain("This order's line is fix.");
-    expect(brief).toContain("`git diff aaa..bbb`");
-    expect(brief).not.toContain("# Earlier findings");
+    expect(brief).toBe(
+      [
+        "You are the reviewer for factory order order-1 in this repository. Run dim-review.",
+        "",
+        "# Read a slice",
+        "",
+        "This order's line is fix.",
+        "",
+        "## Diff",
+        "`git diff aaa..bbb`",
+        "",
+        "## Approved plan",
+        "## Outcome\n\nRefuse empty tokens.",
+        "",
+        "## Plan slices",
+        "1. Gate: Empty refused.",
+      ].join("\n"),
+    );
   });
 
   test("the brief lists each earlier finding with the builder's answer", () => {
@@ -706,14 +718,13 @@ describe("a review round", () => {
     );
     expect(brief).toContain(
       [
-        "# Earlier findings",
-        "Earlier rounds raised these, and the builder answered each. Raise a new finding for any that still holds at this head.",
+        "## Earlier findings",
         "- Finding 7 (tests, src/example.ts:1): no test",
         "  - Fix asked for: add the test",
         "  - Builder's answer: refused: later slice",
       ].join("\n"),
     );
-    expect(brief).toContain("No approved plan is recorded for this order.");
+    expect(brief).toContain("## Approved plan\nNone is recorded for this order.");
   });
 
   test("sends the order to build when the round after a return raises a finding", async () => {

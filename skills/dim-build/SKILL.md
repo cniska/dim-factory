@@ -6,13 +6,26 @@ argument-hint: "<what to build>"
 
 # Build
 
-The shared half of both fronts. `dim-feat` arrives here having cut the work into slices; `dim-fix` arrives with a failing test and a named cause. What follows is the same either way. A factory brief names the order's line; for a `fix` order, run `dim-fix`'s Prove it before the first slice.
+The shared half of both fronts. `dim-feat` arrives here having cut the work into slices; `dim-fix` arrives with a failing test and a named cause. What follows is the same either way.
 
 One agent, in one session. The work is edits, and edits need the context that produced them to stay coherent across slices; a subagent returns a conclusion and keeps its evidence. That is a good trade for a review, where findings are the product, and a bad one here.
 
 This is a decision to measure rather than a principle. `build` has handed work to a subagent five times in the whole corpus, so nothing says fan-out is worse here — it says nobody has tried it. The review arm that did fan out is confounded by being review ([`findings.md`](../../docs/findings.md), "Delegating has cost nothing measurable"). Fan-out in a build is a change that earns its way in through a measured arm, not an assumption.
 
 What makes this a station is that the record aims it. This machine knows which files a later `fix:` commit had to come back to, which shipped untouched, and what the owner has had to say more than once.
+
+## A factory turn
+
+In a factory order the brief carries only what this skill cannot know: the order and its line, the workspace profile, the commit subjects the record has seen in the repo, the approved plan and its slices, the slice this turn builds, and whatever the turn answers — a returned Build artifact with the owner's feedback, review findings by id, a rebase conflict, a red check at the rebased head, a refused commit, or the last failed attempt. A turn that resolves a rebase conflict carries neither the line nor the commit subjects, since it builds nothing new.
+
+- **Scope.** Build the current slice of the approved plan. Do not edit or test a surface the order or the plan excludes. For a `fix` order, run `dim-fix`'s Prove it before the first slice.
+- **Tasks.** Use the workspace's declared tasks, not a tool you infer; a task naming `$FILES` takes the changed paths. When the profile could not be read, stop and say so before editing.
+- **Commits, a refused commit and a rebase conflict.** Follow `dim-git`.
+- **A returned Build artifact.** Change the code where the feedback asks for a change; the revision itself follows `dim-artifact`.
+- **Review findings.** Answer each listed finding by its id: `fixed` when this turn's change fixes it, or `refused` with a resolution saying why not. The runner refuses a `fixed` answer from a turn that changed nothing.
+- **A red check at the rebased head.** Fix its cause on that head. The fix is a new commit, and it takes a new Build approval and a new review.
+- **The last failed attempt.** Continue from it.
+- **The result.** `subject` follows `dim-git`. `artifact` is the Build artifact for the whole order, empty only when the turn finishes a slice before the last. `answers` holds one answer per listed finding. A result returned again after a refused commit carries the same artifact and answers.
 
 ## Entry contract
 
@@ -22,11 +35,11 @@ What makes this a station is that the record aims it. This machine knows which f
 
 ## Slices
 
-A slice is a vertical cut: it changes behavior and is checked on its own. Work through them one at a time, running the repo's task at the end of each. Outside a factory order, commit what passes before starting the next. In an order, return the completed slice uncommitted; the runner checks and commits it before starting the next. A branch of unverified slices is one slice with a long diff.
+A slice is a vertical cut: it changes behavior and is checked on its own. Work through them one at a time, running the repo's task at the end of each. Outside a factory order, commit what passes before starting the next. A branch of unverified slices is one slice with a long diff.
 
 A red check is feedback to the builder. Diagnose and fix its cause, rerun the check, and continue until the final commit passes; report a blocker only when the cause cannot be resolved in the current station.
 
-Finish a slice in the same order every time: the task passes, the slice is simplified, the task passes again, the reviewer reads what will land, every finding it raises is answered and the task passes over the answers, then the commit boundary, then the next slice. In a factory order, return the subject, artifact, and answers to handed Review findings in the turn's JSON; the runner performs the final check and commit.
+Finish a slice in the same order every time: the task passes, the slice is simplified, the task passes again, the reviewer reads what will land, every finding it raises is answered and the task passes over the answers, then the commit boundary, then the next slice.
 
 Use `dim-git` at the commit boundary. It owns repository status and worktree ownership; the factory runner records the order's check and commit evidence. This station owns the slice loop.
 
@@ -50,7 +63,7 @@ After the final order slice passes the check you ran, return one Build artifact 
 - **Verification.** What the recorded checks and review evidence establish, stated as conclusions rather than a command transcript.
 - **Owner attention.** Deviations from the approved plan, unresolved risks, and what a careful reader should scrutinize.
 
-Use only the sections the change earns. Do not repeat the audit log's command output, exhaustive file list, slice history, or unrelated failures. The Build artifact explains the result; it does not replace the record, review, or approval. The Build artifact is provisional until the operator approves it. If the operator returns it for revision, address the stated gap and write a new artifact revision under the same builder identity before review starts. The builder also updates it when review returns the work.
+Use only the sections the change earns. Do not repeat the audit log's command output, exhaustive file list, slice history, or unrelated failures. The Build artifact explains the result; it does not replace the record, review, or approval. The builder also updates it when review returns the work.
 
 ## Simplify the slice before it is checked
 

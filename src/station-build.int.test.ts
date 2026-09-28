@@ -159,8 +159,7 @@ describe("builder station", () => {
     });
 
     expect(request?.cwd).toBe(realpathSync(join(repo.dir, ".claude", "worktrees", "builder-order")));
-    expect(request?.brief).toContain("The operator approved the following plan");
-    expect(request?.brief).toContain("Build the requested result.");
+    expect(request?.brief).toContain("## Approved plan\n## Outcome\n\nBuild the requested result.");
     expect(request?.brief).toContain(
       `The record holds 0 commits from ${repoRoot(repo.dir)}, fewer than the 20 it takes to read a convention from`,
     );
@@ -257,7 +256,7 @@ describe("builder station", () => {
         adapter: unavailable.adapter,
       }),
     ).rejects.toThrow("harness unavailable");
-    expect(unavailable.brief()).toContain("# Returned Build artifact");
+    expect(unavailable.brief()).toContain("## Returned Build artifact");
     expect(unavailable.brief()).toContain("Explain what the build verified.");
     await expect(
       runOrderBuildLive(db, "builder-order", operator.name, {
@@ -309,7 +308,7 @@ describe("builder station", () => {
       }),
     });
 
-    expect(brief).toContain("# Commit convention");
+    expect(brief).toContain("## Commit convention");
     expect(brief).toContain(
       `The record holds 20 commits from ${root}. 75% of their subjects carry a Conventional Commits type, most often fix; subjects average 18 characters and 0% run over 50.`,
     );
@@ -364,7 +363,7 @@ describe("builder station", () => {
         return { subject: "feat: first slice", artifact: "" };
       }),
     });
-    expect(retryBrief).toContain("# Previous failed Build attempt");
+    expect(retryBrief).toContain("## Previous failed Build attempt");
     expect(retryBrief).toContain("ok.txt is missing");
     expect(git(worktree, ["show", "--name-only", "--format=", "HEAD"]).split("\n").sort()).toEqual([
       "ok.txt",
@@ -645,10 +644,9 @@ describe("builder station", () => {
       }),
     ).rejects.toThrow("harness unavailable");
     const brief = unavailable.brief();
-    expect(brief).toContain("# Current slice");
+    expect(brief).toContain("## Current slice");
     expect(brief).toContain("Finish the result: The result is verified.");
-    expect(brief).not.toContain("# Returned Build artifact");
-    expect(brief).not.toContain("The code work is complete; revise only the artifact.");
+    expect(brief).not.toContain("## Returned Build artifact");
     expect(db.query("SELECT count(*) AS n FROM factory_order_slice_completion").get()).toEqual({ n: 0 });
 
     const outcome = await runOrderBuildLive(db, "returned-builder-order", operator.name, {
@@ -687,7 +685,7 @@ describe("builder station", () => {
         return { subject: "docs: explain the check", artifact: "The check verified the result." };
       }),
     });
-    expect(returnedBrief).toContain("# Returned Build artifact");
+    expect(returnedBrief).toContain("## Returned Build artifact");
     expect(returnedBrief).toContain("The revised Build artifact explains the verification.");
     expect(returnedBrief).toContain("# Owner feedback");
     expect(returnedBrief).toContain("Say what the check verified.");
@@ -798,7 +796,7 @@ describe("builder station", () => {
       const head = git(followup.worktree, ["rev-parse", "HEAD"]);
       expect(head).not.toBe(first);
       expect(brief).toContain(
-        `# Review findings\n- Finding ${finding} (correctness, src/example.ts:1): Count the actual order provenance.`,
+        `## Review findings\n- Finding ${finding} (correctness, src/example.ts:1): Count the actual order provenance.`,
       );
       expect(followup.builder).toBe(firstBuild.builder);
       expect(answers(db)).toEqual([
@@ -1044,7 +1042,7 @@ describe("builder station", () => {
       start: async (request: Parameters<typeof base.start>[0]) => {
         starts += 1;
         if (starts === 2) {
-          expect(request.brief).toContain("# Previous failed Build attempt");
+          expect(request.brief).toContain("## Previous failed Build attempt");
           expect(request.brief).toContain("fake process crashed");
         }
         return fakeHarness("crash", `fake-session-${starts}`).start(request);
@@ -1305,9 +1303,14 @@ describe("a commit git refuses", () => {
     ]);
     const correction = builder.calls[1]?.brief ?? "";
     expect(correction).toContain(tooLong.subject);
-    expect(correction).toContain("subject is 38 characters, over the 20 allowed");
-    expect(correction).toContain("within the current Build attempt");
-    expect(correction).toContain('{"subject": "...", "artifact": "...", "answers": [...]}');
+    expect(correction).toBe(
+      [
+        "## Commit refused",
+        `The runner's check passed, and its commit of your worktree with the subject \`${tooLong.subject}\` was refused:`,
+        "",
+        "git refused the commit: subject is 38 characters, over the 20 allowed",
+      ].join("\n"),
+    );
     expect(order.checksRun()).toBe(2);
     expect(git(order.worktree, ["rev-list", "--count", `${order.repo.sha}..HEAD`])).toBe("1");
     expect(git(order.worktree, ["log", "-1", "--format=%s"])).toBe("feat: build it");
@@ -1829,10 +1832,9 @@ describe("a conflict at ship", () => {
     await runOrderBuildLive(db, "conflict-order", operator.name, { ...options, adapter: builder.adapter });
 
     expect(builder.calls).toHaveLength(2);
-    expect(builder.calls[0]?.brief).toContain("# Rebase conflict");
+    expect(builder.calls[0]?.brief).toContain("## Rebase conflict");
     expect(builder.calls[0]?.brief).toContain("- built.txt");
-    expect(builder.calls[0]?.brief).not.toContain("# Commit convention");
-    expect(builder.calls[0]?.brief).not.toContain("run the build station loop including simplification");
+    expect(builder.calls[0]?.brief).not.toContain("## Commit convention");
     expect(builder.calls[1]?.brief).toContain("- other.txt");
     expect(git(worktree, ["show", "HEAD:built.txt"])).toBe("built\ntrunk");
     expect(git(worktree, ["show", "HEAD:other.txt"])).toBe("built\ntrunk");
@@ -1901,7 +1903,7 @@ describe("a red check at ship", () => {
     ]);
     await runOrderBuildLive(db, "red-ship-order", operator.name, { ...options, adapter: builder.adapter });
 
-    expect(builder.calls[0]?.brief).toContain("# Red check at the rebased head");
+    expect(builder.calls[0]?.brief).toContain("## Red check at the rebased head");
     expect(builder.calls[0]?.brief).toContain("exited 1");
     expect(git(worktree, ["rev-parse", "HEAD~1"])).toBe(rebased);
     const fixed = git(worktree, ["rev-parse", "HEAD"]);
