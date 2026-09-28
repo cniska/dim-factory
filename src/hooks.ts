@@ -3,8 +3,9 @@ import type { JSONPath } from "jsonc-parser";
 import { ConfigError } from "./config-error";
 import { appendToJsoncArray, parseJsonc, setJsoncValue } from "./config-jsonc";
 import { readJsonc, readJsoncText, writeJsoncFile } from "./config-jsonc-file";
+import { installedHarnesses } from "./harness-installed";
 import { toolSpoolDir } from "./ingest-spool";
-import { HOOK_TOOLS, type Tool } from "./ingest-tools";
+import type { Tool } from "./ingest-tools";
 import { claudeProjectsDir, codexDir, type Env, grokDir } from "./paths";
 
 export const HOOK_CONTRACT_VERSION = 2;
@@ -122,7 +123,7 @@ function findOwn(
 
 export function planHooks(env: Env = process.env): HookPlan[] {
   const plans: HookPlan[] = [];
-  for (const tool of HOOK_TOOLS) {
+  for (const tool of installedHarnesses(env)) {
     const configPath = hookConfigPath(tool, env);
     const config = readConfig(configPath);
     for (const { event, kind, command } of wantedHooks(tool, env)) {

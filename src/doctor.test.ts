@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { closeDb, openDb } from "./db";
 import { openReadOnly } from "./db-read";
 import { diagnose } from "./doctor";
-import { scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
+import { harnessesOnPath, scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
 import { gateHooks, installCommitGate } from "./gate-commit";
 import { installHooks } from "./hooks";
 import { codexConfigPath, planCodexTrust } from "./hooks-codex-trust";
@@ -274,6 +274,22 @@ describe("doctor", () => {
     hooks.hooks.SessionStart?.unshift({ hooks: [{ type: "command", command: "other-tool" }] });
     writeFileSync(hooksPath, JSON.stringify(hooks));
     expect(check(env, "codex trust")?.state).toBe("fail");
+  });
+
+  test("holds a harness that is not installed to nothing: no codex trust, no codex rules, no hooks for it", () => {
+    const env = { ...seeded(), PATH: `${harnessesOnPath(newRoot(), ["claude"])}:/usr/bin:/bin` };
+    installHooks(env);
+
+    expect(check(env, "codex trust")).toMatchObject({ state: "ok", detail: "codex is not installed" });
+    expect(check(env, "rules")?.state).toBe("ok");
+    expect(check(env, "hooks")?.state).toBe("ok");
+  });
+
+  test("says no harness is installed rather than calling absent hooks installed", () => {
+    const env = { ...seeded(), PATH: "/usr/bin:/bin" };
+    expect(check(env, "hooks")).toMatchObject({ state: "warn" });
+    expect(check(env, "hooks")?.detail).toContain("no harness is installed");
+    expect(check(env, "end reasons")?.state).toBe("warn");
   });
 
   test("reports an unreadable codex config as one failure, keeping the other checks", () => {

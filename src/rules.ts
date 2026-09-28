@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { copyBackup } from "./file-backup";
+import { harnessInstalled } from "./harness-installed";
 import { type Env, resolveHomeDir } from "./paths";
 
 export const CANONICAL = [".claude", "CLAUDE.md"];
@@ -45,12 +46,13 @@ export type RulesPlan = {
   source: string;
   path: string;
   contents: string;
-  state: "missing-source" | "unchanged" | "stale" | "absent";
+  state: "not-installed" | "missing-source" | "unchanged" | "stale" | "absent";
 };
 
 export function planRules(env: Env = process.env): RulesPlan {
   const source = canonicalPath(env);
   const path = generatedPath(env);
+  if (!harnessInstalled("codex", env)) return { source, path, contents: "", state: "not-installed" };
   if (!existsSync(source)) {
     return { source, path, contents: "", state: "missing-source" };
   }
@@ -67,7 +69,9 @@ export function planRules(env: Env = process.env): RulesPlan {
 
 export function installRules(env: Env = process.env): RulesPlan & { backup?: string | null } {
   const plan = planRules(env);
-  if (plan.state === "unchanged" || plan.state === "missing-source") return plan;
+  if (plan.state === "unchanged" || plan.state === "missing-source" || plan.state === "not-installed") {
+    return plan;
+  }
   mkdirSync(dirname(plan.path), { recursive: true });
   const backup = existsSync(plan.path) ? copyBackup(plan.path) : null;
   writeFileSync(plan.path, plan.contents);

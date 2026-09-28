@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfigError } from "./config-error";
+import { harnessesOnPath } from "./fixtures.test-support";
 import { hookCommand, planHooks } from "./hooks";
 import { planCodexTrust } from "./hooks-codex-trust";
 import type { Env } from "./paths";
@@ -21,6 +22,7 @@ function codexEnv(hooksJson: (env: Env) => string): Env {
     DIM_HOME: join(root, "home"),
     DIM_CODEX_DIR: codexDir,
     GROK_HOME: join(root, ".grok"),
+    PATH: harnessesOnPath(root, ["codex"]),
   };
   mkdirSync(codexDir, { recursive: true });
   writeFileSync(join(codexDir, "hooks.json"), hooksJson(env));

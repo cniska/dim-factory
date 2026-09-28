@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { harnessesOnPath } from "./fixtures.test-support";
 import { flatten, generatedPath, installRules, planRules } from "./rules";
 
 const roots: string[] = [];
@@ -12,6 +13,10 @@ function home(): string {
   mkdirSync(join(root, ".claude"), { recursive: true });
   mkdirSync(join(root, ".codex"), { recursive: true });
   return root;
+}
+
+function withCodex(root: string): { HOME: string; PATH: string } {
+  return { HOME: root, PATH: harnessesOnPath(root, ["codex"]) };
 }
 
 afterEach(() => {
@@ -69,7 +74,7 @@ describe("install", () => {
     writeFileSync(join(root, ".claude", "RTK.md"), "tool bits");
     writeFileSync(join(root, ".codex", "RTK.md"), "codex bits");
     writeFileSync(join(root, ".claude", "CLAUDE.md"), "@RTK.md\n\nno hacks");
-    const env = { HOME: root };
+    const env = withCodex(root);
 
     expect(planRules(env).state).toBe("absent");
     installRules(env);
@@ -89,7 +94,7 @@ describe("install", () => {
     const root = home();
     writeFileSync(join(root, ".claude", "CLAUDE.md"), "canonical");
     writeFileSync(join(root, ".codex", "AGENTS.md"), "something the owner wrote");
-    const env = { HOME: root };
+    const env = withCodex(root);
 
     installRules(env);
     expect(readFileSync(`${generatedPath(env)}.dim-backup`, "utf8")).toBe("something the owner wrote");
@@ -109,7 +114,11 @@ describe("install", () => {
       const child = Bun.spawnSync(
         [process.execPath, join(import.meta.dir, "cli.ts"), "install-rules", "--write"],
         {
-          env: { ...process.env, HOME: root },
+          env: {
+            ...process.env,
+            HOME: root,
+            PATH: `${harnessesOnPath(root, ["codex"])}:${process.env.PATH}`,
+          },
           stdout: "pipe",
           stderr: "pipe",
         },
@@ -122,8 +131,18 @@ describe("install", () => {
     expect(run()).toBe(`${target}.dim-backup-2`);
   });
 
+  test("writes no codex rules where codex is not installed", () => {
+    const root = home();
+    writeFileSync(join(root, ".claude", "CLAUDE.md"), "canonical");
+    const env = { HOME: root, PATH: harnessesOnPath(root, ["claude"]) };
+
+    expect(planRules(env).state).toBe("not-installed");
+    installRules(env);
+    expect(existsSync(generatedPath(env))).toBe(false);
+  });
+
   test("does nothing when there is no canonical file to flatten", () => {
-    const env = { HOME: home() };
+    const env = withCodex(home());
     expect(planRules(env).state).toBe("missing-source");
     installRules(env);
     expect(planRules(env).state).toBe("missing-source");

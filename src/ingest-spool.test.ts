@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfigError } from "./config-error";
 import { closeDb, openDb } from "./db";
-import { scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
+import { harnessesOnPath, scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
 import {
   formatEditCommand,
   HOOK_CONTRACT_VERSION,
@@ -268,14 +268,27 @@ describe("installHooks", () => {
   function root(env: Env): string {
     return (env.DIM_CLAUDE_PROJECTS as string).replace("/.claude/projects", "");
   }
-  function hookEnv(dir: string): Env {
+  function hookEnv(dir: string, onPath: readonly string[] = ["claude", "codex", "grok"]): Env {
     return {
       DIM_HOME: join(dir, "home"),
       DIM_CLAUDE_PROJECTS: join(dir, ".claude", "projects"),
       DIM_CODEX_DIR: join(dir, ".codex"),
       GROK_HOME: join(dir, ".grok"),
+      PATH: harnessesOnPath(dir, onPath),
     };
   }
+
+  test("writes hooks only for the harnesses installed on this machine", () => {
+    const dir = newRoot();
+    const env = hookEnv(dir, ["claude"]);
+
+    installHooks(env);
+
+    expect(existsSync(configs(env).claude)).toBe(true);
+    expect(existsSync(configs(env).codex)).toBe(false);
+    expect(existsSync(join(dir, ".grok", "hooks", "dim.json"))).toBe(false);
+    expect(new Set(planHooks(env).map((plan) => plan.tool))).toEqual(new Set(["claude"]));
+  });
 
   test("adds the hook to each tool without disturbing hooks already there", () => {
     const dir = newRoot();

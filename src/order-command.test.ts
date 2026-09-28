@@ -15,7 +15,7 @@ import {
   scratchEnv,
 } from "./fixtures.test-support";
 import { hookConfigPath } from "./hooks";
-import { HOOK_TOOLS } from "./ingest-tools";
+import { TOOLS } from "./ingest-tools";
 import { completeOrderSlice, nextOrderSlice, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
 import { runOrderCommand as runCommand, runOrderCommandLive, runRemainingBuilds } from "./order-command";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
@@ -655,7 +655,7 @@ describe("order command", () => {
     const database = db();
     queued(database);
     const older = collectingMachine();
-    for (const tool of HOOK_TOOLS) {
+    for (const tool of TOOLS) {
       const config = hookConfigPath(tool, older.env);
       writeFileSync(config, readFileSync(config, "utf8").replaceAll(/dim-hook:\d+/g, "dim-hook:1"));
     }

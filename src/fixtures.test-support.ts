@@ -185,12 +185,23 @@ export function collectingMachine(): { dir: string; env: Env } {
   return { dir, env };
 }
 
+export function harnessesOnPath(root: string, executables: readonly string[]): string {
+  const bin = join(root, "harness-bin");
+  mkdirSync(bin, { recursive: true });
+  for (const name of executables) {
+    writeFileSync(join(bin, name), "#!/bin/sh\nexit 0\n");
+    chmodSync(join(bin, name), 0o755);
+  }
+  return bin;
+}
+
 export function scratchEnv(root: string): Env {
   return {
     DIM_HOME: join(root, "home"),
     DIM_CLAUDE_PROJECTS: join(root, "claude-projects"),
     DIM_CODEX_DIR: join(root, "codex"),
     GROK_HOME: join(root, "grok"),
+    PATH: `${harnessesOnPath(root, ["claude", "codex", "grok"])}:${process.env.PATH}`,
   };
 }
 

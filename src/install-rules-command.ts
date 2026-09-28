@@ -8,7 +8,9 @@ export const installRulesCommand: Command = {
   summary: "flatten ~/.claude/CLAUDE.md into ~/.codex/AGENTS.md, which reads no imports (--write applies it)",
   run(args) {
     const plan = planRules();
-    if (plan.state === "missing-source" || plan.state === "unchanged") return plan;
+    if (plan.state === "missing-source" || plan.state === "unchanged" || plan.state === "not-installed") {
+      return plan;
+    }
     const summary = { ...plan, lines: plan.contents.split("\n").length };
     if (!args.includes("--write")) return { ...summary, next: WRITE_NEXT };
     const installed = installRules();

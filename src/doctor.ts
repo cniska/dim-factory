@@ -17,7 +17,7 @@ import { unarmedCheckouts } from "./gate-push";
 import { checkoutRoot } from "./git-checkout";
 import { primaryCheckout } from "./git-primary-checkout";
 import { isHostQualified } from "./git-remote-slug";
-import { harnessExecutable } from "./harness-launch";
+import { harnessInstalled, installedHarnesses } from "./harness-installed";
 import { HARNESSES } from "./harness-name";
 import { type HookPlan, hookGaps } from "./hooks";
 import { codexConfigPath, planCodexTrust, type TrustState } from "./hooks-codex-trust";
@@ -45,11 +45,13 @@ function unreadable(name: string, error: ConfigError): Health {
   return { name, state: "fail", detail: error.message, fix: `repair ${error.path} by hand` };
 }
 
-type HookRead = { read: true; missing: HookPlan[]; stale: HookPlan[] } | { read: false; error: ConfigError };
+type HookRead =
+  | { read: true; harnesses: number; missing: HookPlan[]; stale: HookPlan[] }
+  | { read: false; error: ConfigError };
 
 function readHooks(env: Env): HookRead {
   try {
-    return { read: true, ...hookGaps(env) };
+    return { read: true, harnesses: installedHarnesses(env).length, ...hookGaps(env) };
   } catch (error) {
     if (!(error instanceof ConfigError)) throw error;
     return { read: false, error };
@@ -58,6 +60,14 @@ function readHooks(env: Env): HookRead {
 
 function sessionHooks(hooks: HookRead): Health {
   if (!hooks.read) return unreadable("hooks", hooks.error);
+  if (hooks.harnesses === 0) {
+    return {
+      name: "hooks",
+      state: "warn",
+      detail: "no harness is installed, so no session hook is written and nothing is recorded",
+      fix: "install codex, claude, or grok, then dim install-hooks --write",
+    };
+  }
   if (hooks.missing.length === 0 && hooks.stale.length === 0) {
     return { name: "hooks", state: "ok", detail: "installed" };
   }
@@ -76,6 +86,9 @@ function sessionHooks(hooks: HookRead): Health {
 }
 
 function codexTrust(env: Env): Health {
+  if (!harnessInstalled("codex", env)) {
+    return { name: "codex trust", state: "ok", detail: "codex is not installed" };
+  }
   let untrusted: TrustState[];
   try {
     untrusted = planCodexTrust(env).filter((t) => !t.recorded);
@@ -106,7 +119,7 @@ function endReasons(hooks: HookRead, since: string | null, judgeable: number, en
   if (!hooks.read) {
     return { name, state: "warn", detail: "not judged; the hook config could not be read" };
   }
-  if (hooks.missing.length > 0) {
+  if (hooks.harnesses === 0 || hooks.missing.length > 0) {
     return { name, state: "warn", detail: "not expected yet; the hooks are not installed" };
   }
   if (!since) {
@@ -189,7 +202,7 @@ function harnesses(env: Env): Health {
   const gaps: string[] = [];
   const repairs: string[] = [];
   for (const harness of HARNESSES) {
-    const installed = Bun.which(harnessExecutable(harness), { PATH: env.PATH ?? "" }) !== null;
+    const installed = harnessInstalled(harness, env);
     let mapped: boolean;
     try {
       readHarnessMap(harness, env);
@@ -494,19 +507,21 @@ export function diagnose(db: Database, env: Env = process.env, cwd: string = pro
 
   const rules = planRules(env);
   checks.push(
-    rules.state === "missing-source"
-      ? { name: "rules", state: "warn", detail: `no ${rules.source} to flatten` }
-      : rules.state === "unchanged"
-        ? { name: "rules", state: "ok", detail: "codex rules match the canonical file" }
-        : {
-            name: "rules",
-            state: "fail",
-            detail:
-              rules.state === "absent"
-                ? "codex has no rules file, so none of the conventions reach it"
-                : "codex rules differ from the canonical file",
-            fix: "dim install-rules --write",
-          },
+    rules.state === "not-installed"
+      ? { name: "rules", state: "ok", detail: "codex is not installed, so it needs no rules file" }
+      : rules.state === "missing-source"
+        ? { name: "rules", state: "warn", detail: `no ${rules.source} to flatten` }
+        : rules.state === "unchanged"
+          ? { name: "rules", state: "ok", detail: "codex rules match the canonical file" }
+          : {
+              name: "rules",
+              state: "fail",
+              detail:
+                rules.state === "absent"
+                  ? "codex has no rules file, so none of the conventions reach it"
+                  : "codex rules differ from the canonical file",
+              fix: "dim install-rules --write",
+            },
   );
 
   checks.push(retention(env));

@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { LockHeldError, withPathLock } from "./db-lock";
+import { harnessesOnPath } from "./fixtures.test-support";
 import { installSkill, planSkill, retiredLinks, SKILL_NAMES, skillLinkDirs, skillSourceDir } from "./skill";
 
 function shipped(): string[] {
@@ -67,14 +68,15 @@ describe("skill install", () => {
   test("install-skill --write retires a stale link when every current skill is already linked", () => {
     const home = newHome();
     try {
-      installSkill({ HOME: home });
+      const codex = harnessesOnPath(home, ["codex"]);
+      installSkill({ HOME: home, PATH: codex });
       const stale = join(home, ".codex", "skills", "dim-retired");
       symlinkSync(join(resolve(import.meta.dir, "..", "skills"), "dim-retired"), stale);
 
       const run = Bun.spawnSync(
         [process.execPath, resolve(import.meta.dir, "cli.ts"), "install-skill", "--write"],
         {
-          env: { ...process.env, HOME: home },
+          env: { ...process.env, HOME: home, PATH: `${codex}:${process.env.PATH}` },
         },
       );
       expect(run.exitCode).toBe(0);
@@ -92,10 +94,12 @@ describe("skill install", () => {
 
   test("links every skill where every tool looks for it", () => {
     const home = newHome();
+    const env = { HOME: home, PATH: harnessesOnPath(home, ["codex"]) };
     try {
-      expect(planSkill({ HOME: home }).every((p) => p.state === "missing")).toBe(true);
-      installSkill({ HOME: home });
-      for (const dir of skillLinkDirs({ HOME: home })) {
+      expect(skillLinkDirs(env)).toEqual([join(home, ".agents", "skills"), join(home, ".codex", "skills")]);
+      expect(planSkill(env).every((p) => p.state === "missing")).toBe(true);
+      installSkill(env);
+      for (const dir of skillLinkDirs(env)) {
         for (const name of SKILL_NAMES) {
           const link = join(dir, name);
           expect(lstatSync(link).isSymbolicLink()).toBe(true);
@@ -105,7 +109,20 @@ describe("skill install", () => {
           expect(existsSync(join(dir, name, "references", "quality-dimensions.md"))).toBe(true);
         }
       }
-      expect(planSkill({ HOME: home }).every((p) => p.state === "linked")).toBe(true);
+      expect(planSkill(env).every((p) => p.state === "linked")).toBe(true);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("links the codex skills only where codex is installed", () => {
+    const home = newHome();
+    try {
+      const env = { HOME: home, PATH: harnessesOnPath(home, ["claude"]) };
+      expect(skillLinkDirs(env)).toEqual([join(home, ".agents", "skills")]);
+      installSkill(env);
+      expect(existsSync(join(home, ".codex", "skills"))).toBe(false);
+      expect(planSkill(env).every((p) => p.state === "linked")).toBe(true);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -113,12 +130,13 @@ describe("skill install", () => {
 
   test("a skill linked for one tool still leaves the other pending", () => {
     const home = newHome();
-    const [first] = skillLinkDirs({ HOME: home });
+    const env = { HOME: home, PATH: harnessesOnPath(home, ["codex"]) };
+    const [first] = skillLinkDirs(env);
     try {
       mkdirSync(first as string, { recursive: true });
       const name = SKILL_NAMES[0];
       symlinkSync(skillSourceDir(name), join(first as string, name));
-      const pending = planSkill({ HOME: home }).filter((p) => p.state !== "linked");
+      const pending = planSkill(env).filter((p) => p.state !== "linked");
       expect(pending).not.toHaveLength(0);
       expect(pending.some((p) => p.name === name)).toBe(true);
     } finally {
