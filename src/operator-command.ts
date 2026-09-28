@@ -42,7 +42,7 @@ function ownSession(
          )
          AND NOT EXISTS (
            SELECT 1 FROM hook_event ended
-           WHERE ended.session_id = start.session_id AND ended.event = 'session_end'
+           WHERE ended.session_id = start.session_id AND ended.event = 'session_end' AND ended.ts > start.ts
          ) ORDER BY start.ts DESC`,
     )
     .all();

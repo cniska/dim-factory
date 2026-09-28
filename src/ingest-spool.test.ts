@@ -129,6 +129,24 @@ describe("spool", () => {
     }
   });
 
+  test("keeps a session that was resumed after it ended open", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    writeClaudeTranscript(env, "-Users-x-code-demo", SESSION);
+    spool(env, "claude", "1789000000000000000", endEvent(SESSION, "other"));
+    spool(env, "claude", "1789000001000000000", startEvent(SESSION, "resume"));
+    const db = openDb(dbPath(env));
+    try {
+      sync(db, env);
+      expect(db.prepare(`SELECT ended_at, end_reason FROM session WHERE id = '${SESSION}'`).get()).toEqual({
+        ended_at: null,
+        end_reason: null,
+      });
+    } finally {
+      closeDb(db);
+    }
+  });
+
   test("deletes each spooled file once it is stored", () => {
     const root = newRoot();
     const env = scratchEnv(root);

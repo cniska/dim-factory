@@ -138,6 +138,43 @@ describe("registering the operator from its harness", () => {
     db.close();
   });
 
+  test("registers a session that ended and was resumed under its ancestor harness", () => {
+    const db = floor();
+    const env = session("operator-session", 100, "1789000000000000000");
+    const spool = toolSpoolDir("codex", env);
+    writeFileSync(
+      join(spool, "1789000001000000000-4242-.json"),
+      JSON.stringify({ session_id: "operator-session", hook_event_name: "SessionEnd", reason: "other" }),
+    );
+    writeFileSync(
+      join(spool, "1789000002000000000-4242-100-.json"),
+      JSON.stringify({
+        session_id: "operator-session",
+        hook_event_name: "SessionStart",
+        source: "resume",
+        cwd: process.cwd(),
+      }),
+    );
+    const name = runOperatorCommand(db, [], env, process.cwd(), [harness]);
+    expect(db.query("SELECT session_id FROM factory_worker WHERE name = ?").get(name)).toEqual({
+      session_id: "operator-session",
+    });
+    db.close();
+  });
+
+  test("refuses a session whose last event is its end", () => {
+    const db = floor();
+    const env = session("operator-session", 100, "1789000000000000000");
+    writeFileSync(
+      join(toolSpoolDir("codex", env), "1789000001000000000-4242-.json"),
+      JSON.stringify({ session_id: "operator-session", hook_event_name: "SessionEnd", reason: "other" }),
+    );
+    expect(() => runOperatorCommand(db, [], env, process.cwd(), [harness])).toThrow(
+      /no active harness session is recorded/,
+    );
+    db.close();
+  });
+
   test("refuses without a SessionStart event", () => {
     const db = floor();
     const root = mkdtempSync(join(tmpdir(), "dim-operator-empty-"));

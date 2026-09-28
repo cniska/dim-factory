@@ -126,13 +126,15 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
 }
 
 export function applyHookEvents(db: Database): void {
+  const lastEnd = `FROM hook_event h
+    WHERE h.session_id = session.id AND h.event = 'session_end'
+      AND NOT EXISTS (SELECT 1 FROM hook_event resumed
+                      WHERE resumed.session_id = h.session_id AND resumed.event = 'session_start'
+                        AND resumed.ts > h.ts)`;
   db.run(`
     UPDATE session SET
-      ended_at = (SELECT max(h.ts) FROM hook_event h
-                  WHERE h.session_id = session.id AND h.event = 'session_end'),
-      end_reason = (SELECT h.reason FROM hook_event h
-                    WHERE h.session_id = session.id AND h.event = 'session_end'
-                    ORDER BY h.ts DESC LIMIT 1)
+      ended_at = (SELECT max(h.ts) ${lastEnd}),
+      end_reason = (SELECT h.reason ${lastEnd} ORDER BY h.ts DESC LIMIT 1)
     WHERE EXISTS (SELECT 1 FROM hook_event h
                   WHERE h.session_id = session.id AND h.event = 'session_end')
   `);
