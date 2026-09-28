@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
@@ -1569,7 +1569,9 @@ describe("factory order report records", () => {
     ).toEqual([
       {
         phase: "setup",
-        argv: JSON.stringify([join(worktreePath(repo.dir, "order-1"), "scripts", "worktree-setup.sh")]),
+        argv: JSON.stringify([
+          join(worktreePath(realpathSync(repo.dir), "order-1"), "scripts", "worktree-setup.sh"),
+        ]),
         exit_code: 0,
         resources: '[{"port":4100}]',
         recorded_at: "2026-09-18T10:01:00.000Z",
