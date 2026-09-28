@@ -1,23 +1,22 @@
 #!/bin/bash
 set -euo pipefail
 
+usage="usage: scripts/verify-dim.sh new | scripts/verify-dim.sh <run-dir> <dim args...>"
 checkout=$(cd "$(dirname "$0")/.." && pwd)
-scratch="${1:-}"
-fresh=false
-if [ -z "$scratch" ]; then
-  scratch=$(mktemp -d "${TMPDIR:-/tmp}/dim-verify-XXXXXX")
-  fresh=true
-fi
-[ -d "$scratch/dim" ] || [ "$fresh" = true ] || { echo "verify-home: $scratch holds no verify home" >&2; exit 1; }
-repo="$scratch/repo"
+[ $# -ge 1 ] || { echo "$usage" >&2; exit 2; }
 
-export DIM_HOME="$scratch/dim"
-export DIM_CLAUDE_PROJECTS="$scratch/claude/projects"
-export DIM_CODEX_DIR="$scratch/codex"
-export GROK_HOME="$scratch/grok"
-export PATH="$scratch/bin:$PATH"
+enter() {
+  scratch="$1"
+  repo="$scratch/repo"
+  export DIM_HOME="$scratch/dim"
+  export DIM_CLAUDE_PROJECTS="$scratch/claude/projects"
+  export DIM_CODEX_DIR="$scratch/codex"
+  export GROK_HOME="$scratch/grok"
+  export PATH="$scratch/bin:$PATH"
+}
 
-if [ "$fresh" = true ]; then
+if [ "$1" = new ]; then
+  enter "$(mktemp -d "${TMPDIR:-/tmp}/dim-verify-XXXXXX")"
   mkdir -p "$scratch/bin" "$DIM_HOME"
   printf '#!/bin/sh\nexec bun "%s" "$@"\n' "$checkout/src/cli.ts" > "$scratch/bin/dim"
   printf '#!/bin/sh\nexec bun "%s" "$@"\n' "$checkout/scripts/verify-harness.ts" > "$scratch/bin/codex"
@@ -40,24 +39,20 @@ if [ "$fresh" = true ]; then
   git -C "$repo" update-ref refs/remotes/origin/main HEAD
   git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
   dim sync > /dev/null
+  echo "$scratch"
+  exit 0
 fi
 
+[ -d "$1/dim" ] || { echo "verify-dim: $1 holds no verify run" >&2; exit 1; }
+enter "$1"
+shift
 spool_hook=$(bun -e '
 const config = await Bun.file(process.argv[1]).json();
 const hook = config.hooks.SessionStart.flatMap((entry) => entry.hooks).find((h) => h.command.startsWith("cat >"));
 console.log(hook.command);
 ' "$scratch/claude/settings.json")
-session="verify-operator-$(date +%s%N)"
-payload=$(printf '{"session_id":"%s","hook_event_name":"SessionStart","source":"startup","cwd":"%s"}' "$session" "$repo")
-
-cat <<EOF
-export DIM_VERIFY_DIR=$(printf %q "$scratch")
-export DIM_VERIFY_REPO=$(printf %q "$repo")
-export DIM_HOME=$(printf %q "$DIM_HOME")
-export DIM_CLAUDE_PROJECTS=$(printf %q "$DIM_CLAUDE_PROJECTS")
-export DIM_CODEX_DIR=$(printf %q "$DIM_CODEX_DIR")
-export GROK_HOME=$(printf %q "$GROK_HOME")
-export PATH=$(printf %q "$PATH")
-printf '%s' $(printf %q "$payload") | sh -c $(printf %q "$spool_hook")
-(cd "\$DIM_VERIFY_REPO" && dim operator >&2)
-EOF
+printf '{"session_id":"verify-operator-%s","hook_event_name":"SessionStart","source":"startup","cwd":"%s"}' \
+  "$(date +%s%N)" "$repo" | sh -c "$spool_hook"
+cd "$repo"
+dim operator > /dev/null
+dim "$@"
