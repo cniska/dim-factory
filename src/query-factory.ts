@@ -179,6 +179,16 @@ export const order: Query = {
       ),
       ...table(
         db,
+        `SELECT 'proof' AS section, finished_at AS "when", 'proof_ran' AS kind,
+                cast(exit_code AS TEXT) AS status,
+                command || ' over ' || (SELECT group_concat(value, ', ') FROM json_each(paths)) ||
+                  ' on ' || base_sha || ' for ' || head_sha AS subject,
+                result AS evidence
+         FROM factory_order_proof WHERE order_id = ? ORDER BY id`,
+        [id],
+      ),
+      ...table(
+        db,
         `SELECT 'file' AS section, recorded_at AS "when", 'file_changed' AS kind, '' AS status,
                 path AS subject,
                 coalesce('+' || added, '') || coalesce(' -' || removed, '') AS evidence

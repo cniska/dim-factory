@@ -22,7 +22,10 @@ function workerEnv(machine: Env, worker: { name: string }): Env {
 
 async function shipThroughStations(line: OrderLine) {
   const repo = integratedRepo();
-  const base = declareCheck(repo.dir);
+  const base = declareCheck(
+    repo.dir,
+    line === "fix" ? 'for proof in proves-*.sh; do [ ! -e "$proof" ] || sh "$proof" || exit 1; done' : "true",
+  );
   const machine = collectingMachine();
   roots.push(repo.dir, machine.dir);
   mkdirSync(machine.env.DIM_HOME as string, { recursive: true });
@@ -230,6 +233,12 @@ describe("headless factory loop", () => {
   test("briefs every station of a queued fix order with its line", async () => {
     const { db, briefs } = await shipThroughStations("fix");
     expect(orderStatus(db, "headless-order")).toBe("shipped");
+    expect(
+      db.query("SELECT paths, exit_code != 0 AS red FROM factory_order_proof ORDER BY id").all(),
+    ).toEqual([
+      { paths: '["proves-scripted-harness-1.sh"]', red: 1 },
+      { paths: '["proves-scripted-harness-2.sh"]', red: 1 },
+    ]);
     expect(
       briefs.map((brief) => ({
         header: brief.split("\n")[0],

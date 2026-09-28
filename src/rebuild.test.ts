@@ -217,6 +217,12 @@ describe("rebuilding a database an older schema wrote", () => {
     db.run(
       "INSERT INTO factory_order_commit (order_id, sha, subject, recorded_at) VALUES ('order-1', 'abc', 'feat: abc', '2026-01-01T00:00:00Z')",
     );
+    db.run(
+      `INSERT INTO factory_order_proof
+         (order_id, head_sha, base_sha, paths, command, exit_code, started_at, finished_at, result, recorded_at)
+       VALUES ('order-1', 'abc', 'base', '["a.test.ts"]', 'bun run verify', 1, '2026-01-01T00:00:00Z',
+               '2026-01-01T00:00:00Z', 'red', '2026-01-01T00:00:00Z')`,
+    );
 
     rebuild(db, env);
 
@@ -229,6 +235,9 @@ describe("rebuilding a database an older schema wrote", () => {
     ]);
     expect(db.query("SELECT order_id, sha FROM factory_order_commit").all()).toEqual([
       { order_id: "order-1", sha: "abc" },
+    ]);
+    expect(db.query("SELECT order_id, base_sha, paths FROM factory_order_proof").all()).toEqual([
+      { order_id: "order-1", base_sha: "base", paths: '["a.test.ts"]' },
     ]);
     expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
     db.close();

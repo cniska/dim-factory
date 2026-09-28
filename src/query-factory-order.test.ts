@@ -10,6 +10,7 @@ import {
   recordOrderCommit,
   recordOrderEnvironment,
   recordOrderFile,
+  recordOrderProof,
 } from "./order-evidence";
 import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { appendOrderEvent } from "./order-ledger";
@@ -370,6 +371,17 @@ describe("factory order query", () => {
       worker,
       "2026-09-18T10:01:30.000Z",
     );
+    recordOrderProof(
+      db,
+      "order-123",
+      {
+        ...ranCheck({ command: "bun run verify", exitCode: 1, result: "red" }, "2026-09-18T10:01:45.000Z"),
+        baseSha: "base",
+        paths: ["src/a.test.ts", "src/b c.test.ts"],
+      },
+      "abc",
+      "2026-09-18T10:01:45.000Z",
+    );
     recordOrderCheck(
       db,
       "order-123",
@@ -436,6 +448,7 @@ describe("factory order query", () => {
       "artifact",
       "event",
       "check",
+      "proof",
       "file",
       "commit",
       "event",
@@ -481,6 +494,16 @@ describe("factory order query", () => {
       null,
       "tests",
       "holds",
+      null,
+      null,
+      null,
+    ]);
+    expect(result?.rows.find((row) => row[0] === "proof")?.slice(2)).toEqual([
+      "proof_ran",
+      "1",
+      null,
+      "bun run verify over src/a.test.ts, src/b c.test.ts on base for abc",
+      "red",
       null,
       null,
       null,

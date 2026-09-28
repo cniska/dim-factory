@@ -467,6 +467,23 @@ CREATE TABLE IF NOT EXISTS factory_order_check (
   recorded_at   TEXT NOT NULL
 );
 
+-- A proof the runner ran: the declared check at the slice's base with only the named
+-- tests laid over it. head_sha names the new commit for a committed turn and the base
+-- for one that did not commit. Its own table, since a check row is the order's check.
+CREATE TABLE IF NOT EXISTS factory_order_proof (
+  id            INTEGER PRIMARY KEY,
+  order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  head_sha      TEXT NOT NULL,
+  base_sha      TEXT NOT NULL,
+  paths         TEXT NOT NULL CHECK (json_type(paths) = 'array'),
+  command       TEXT NOT NULL,
+  exit_code     INTEGER NOT NULL,
+  started_at    TEXT NOT NULL,
+  finished_at   TEXT NOT NULL,
+  result        TEXT NOT NULL,
+  recorded_at   TEXT NOT NULL
+);
+
 -- One reading of one diff, named by the two shas that bound it rather than by the state
 -- of a tree: a sha cannot move while it is being read, and a worktree can. The reviewer
 -- is bound to the assignment when the round opens. Bootstrap supplies the worker name

@@ -457,7 +457,11 @@ describe("builder station", () => {
       orderId: string,
       line: OrderLine,
       tests: string[],
-      { check = "sh proof.sh", edit }: { check?: string; edit?: (worktree: string) => void } = {},
+      {
+        check = "sh proof.sh",
+        edit,
+        checkSandbox = confiningCheckSandbox(),
+      }: { check?: string; edit?: (worktree: string) => void; checkSandbox?: string[] } = {},
     ) {
       const db = database();
       const { repo, operator } = orderAtBuild(
@@ -471,7 +475,7 @@ describe("builder station", () => {
         dir: repo.dir,
         harness: "codex",
         env: { DIM_HOME: home(`dim-builder-${orderId}-`) },
-        checkSandbox: confiningCheckSandbox(),
+        checkSandbox,
         adapter: builderTurn((request) => {
           writeFileSync(join(request.cwd, "proof.sh"), "test -f fixed.txt\n");
           writeFileSync(join(request.cwd, "fixed.txt"), "fixed\n");
@@ -483,11 +487,19 @@ describe("builder station", () => {
         (error: Error) => error,
       );
       const worktree = realpathSync(join(repo.dir, ".claude", "worktrees", orderId));
+      const head = git(worktree, ["rev-parse", "HEAD"]);
       const state = {
         failure,
-        moved: git(worktree, ["rev-parse", "HEAD"]) !== repo.sha,
+        worktree,
+        base: repo.sha,
+        head,
+        moved: head !== repo.sha,
         staged: git(worktree, ["diff", "--cached", "--name-only"]),
         commits: db.query("SELECT count(*) AS n FROM factory_order_commit").get(),
+        checks: db.query("SELECT head_sha FROM factory_order_check ORDER BY id").all(),
+        proofs: db
+          .query("SELECT head_sha, base_sha, paths, exit_code FROM factory_order_proof ORDER BY id")
+          .all(),
         checked: existsSync(join(worktree, "checked.txt")),
       };
       db.close();
@@ -495,16 +507,21 @@ describe("builder station", () => {
     }
 
     test("refuses a fix slice that names no test, committing and staging nothing", async () => {
-      const { failure, moved, staged, commits } = await sliceTurn("unnamed-fix-order", "fix", []);
+      const { failure, moved, staged, commits, proofs } = await sliceTurn("unnamed-fix-order", "fix", []);
       expect(failure?.cause).toMatchObject({
         code: "proof_missing",
         message: expect.stringContaining("names no test"),
       });
-      expect({ moved, staged, commits }).toEqual({ moved: false, staged: "", commits: { n: 0 } });
+      expect({ moved, staged, commits, proofs }).toEqual({
+        moved: false,
+        staged: "",
+        commits: { n: 0 },
+        proofs: [],
+      });
     });
 
     test("refuses a fix slice that names a test it did not add or change, before its check runs", async () => {
-      const { failure, moved, staged, checked } = await sliceTurn(
+      const { failure, moved, staged, checked, proofs } = await sliceTurn(
         "untouched-fix-order",
         "fix",
         ["proof.sh", "landed.txt"],
@@ -514,7 +531,12 @@ describe("builder station", () => {
         code: "proof_missing",
         message: expect.stringContaining("names test landed.txt,"),
       });
-      expect({ moved, staged, checked }).toEqual({ moved: false, staged: "", checked: false });
+      expect({ moved, staged, checked, proofs }).toEqual({
+        moved: false,
+        staged: "",
+        checked: false,
+        proofs: [],
+      });
     });
 
     test("refuses a slice that names a test it deletes", async () => {
@@ -552,7 +574,145 @@ describe("builder station", () => {
         failure: undefined,
         moved: true,
         commits: { n: 1 },
+        proofs: [],
       });
+    });
+
+    test("commits a fix slice whose named tests fail at its base, recording the proof at the commit", async () => {
+      const { failure, worktree, base, head, checks, proofs } = await sliceTurn(
+        "red-proof-order",
+        "fix",
+        ["proof.sh", "a spaced test.sh", "[f]ixed.txt"],
+        {
+          edit: (worktree) => {
+            writeFileSync(join(worktree, "a spaced test.sh"), "true\n");
+            writeFileSync(join(worktree, "[f]ixed.txt"), "not the fix\n");
+            rmSync(join(worktree, "landed.txt"));
+          },
+        },
+      );
+      expect(failure).toBeUndefined();
+      expect(git(worktree, ["rev-parse", "HEAD~1"])).toBe(base);
+      expect(git(worktree, ["ls-tree", "--name-only", "HEAD"]).split("\n")).toEqual(
+        expect.not.arrayContaining(["landed.txt"]),
+      );
+      expect(git(worktree, ["status", "--porcelain"])).toBe("");
+      expect(checks).toEqual([{ head_sha: head }]);
+      expect(proofs).toEqual([
+        {
+          head_sha: head,
+          base_sha: base,
+          paths: '["proof.sh","a spaced test.sh","[f]ixed.txt"]',
+          exit_code: 1,
+        },
+      ]);
+    });
+
+    test("refuses a fix slice whose named tests pass at its base, keeping the slice uncommitted", async () => {
+      const { failure, worktree, base, moved, staged, checks, proofs } = await sliceTurn(
+        "green-proof-order",
+        "fix",
+        ["proof.sh"],
+        { check: "true" },
+      );
+      expect(failure?.cause).toMatchObject({ code: "proof_green" });
+      expect({ moved, staged, checks }).toEqual({ moved: false, staged: "", checks: [] });
+      expect(proofs).toEqual([{ head_sha: base, base_sha: base, paths: '["proof.sh"]', exit_code: 0 }]);
+      expect(git(worktree, ["status", "--porcelain"]).split("\n").sort()).toEqual([
+        "?? fixed.txt",
+        "?? proof.sh",
+      ]);
+    });
+
+    test("records the proof at the base of a slice whose check is red", async () => {
+      const { failure, base, moved, checks, proofs } = await sliceTurn(
+        "red-check-proof-order",
+        "fix",
+        ["proof.sh"],
+        {
+          check: "sh proof.sh && test -f never.txt",
+        },
+      );
+      expect(failure?.cause).toMatchObject({ code: "check_failed" });
+      expect({ moved, checks }).toEqual({ moved: false, checks: [{ head_sha: base }] });
+      expect(proofs).toEqual([{ head_sha: base, base_sha: base, paths: '["proof.sh"]', exit_code: 1 }]);
+    });
+
+    test("records the proof at the base of a slice whose check changes the tree or nests a repository", async () => {
+      for (const [orderId, plant, code] of [
+        ["planted-check-proof-order", "touch planted.txt", "check_changed_tree"],
+        ["nested-check-proof-order", "mkdir -p vendor/.git", "nested_repository"],
+      ] as const) {
+        const { failure, base, moved, staged, proofs } = await sliceTurn(orderId, "fix", ["proof.sh"], {
+          check: `sh proof.sh && ${plant}`,
+        });
+        expect(failure?.cause).toMatchObject({ code });
+        expect({ moved, staged }).toEqual({ moved: false, staged: "" });
+        expect(proofs).toEqual([{ head_sha: base, base_sha: base, paths: '["proof.sh"]', exit_code: 1 }]);
+      }
+    });
+
+    test("refuses a proof whose check nests a repository, before staging over it", async () => {
+      const { failure, base, moved, proofs } = await sliceTurn("nested-proof-order", "fix", ["proof.sh"], {
+        check: "test -f fixed.txt || git init -q vendor/planted; sh proof.sh",
+      });
+      expect(failure?.cause).toMatchObject({ code: "nested_repository" });
+      expect(moved).toBe(false);
+      expect(proofs).toEqual([{ head_sha: base, base_sha: base, paths: '["proof.sh"]', exit_code: 1 }]);
+    });
+
+    test("commits a feat slice whose named tests pass at its base, recording the proof", async () => {
+      const { failure, head, base, proofs } = await sliceTurn("green-feat-order", "feat", ["proof.sh"], {
+        check: "true",
+      });
+      expect(failure).toBeUndefined();
+      expect(proofs).toEqual([{ head_sha: head, base_sha: base, paths: '["proof.sh"]', exit_code: 0 }]);
+    });
+
+    test("refuses a proof whose check writes a file, restoring the slice", async () => {
+      const { failure, worktree, base, moved, proofs } = await sliceTurn(
+        "planted-proof-order",
+        "fix",
+        ["proof.sh"],
+        { check: "test -f fixed.txt || touch planted.txt; sh proof.sh" },
+      );
+      expect(failure?.cause).toMatchObject({
+        code: "check_changed_tree",
+        message: expect.stringContaining("while it proved proof.sh"),
+      });
+      expect(moved).toBe(false);
+      expect(proofs).toEqual([{ head_sha: base, base_sha: base, paths: '["proof.sh"]', exit_code: 1 }]);
+      expect(git(worktree, ["status", "--porcelain"]).split("\n").sort()).toEqual([
+        "?? fixed.txt",
+        "?? proof.sh",
+      ]);
+    });
+
+    test("refuses a proof whose check edits a tracked file, restoring the slice", async () => {
+      const { failure, worktree, moved } = await sliceTurn("edited-proof-order", "fix", ["proof.sh"], {
+        check: "test -f fixed.txt || echo edited >> landed.txt; sh proof.sh",
+      });
+      expect(failure?.cause).toMatchObject({ code: "check_changed_tree" });
+      expect(moved).toBe(false);
+      expect(readFileSync(join(worktree, "landed.txt"), "utf8")).toBe("landed");
+      expect(existsSync(join(worktree, "fixed.txt"))).toBe(true);
+    });
+
+    test("puts the slice back when the check sandbox does not hold during the proof", async () => {
+      const { failure, worktree, moved, proofs } = await sliceTurn(
+        "unheld-proof-order",
+        "fix",
+        ["proof.sh"],
+        {
+          checkSandbox: [],
+        },
+      );
+      expect(failure?.message).toContain("the check sandbox let a write through");
+      expect({ moved, proofs }).toEqual({ moved: false, proofs: [] });
+      expect(git(worktree, ["status", "--porcelain"]).split("\n").sort()).toEqual([
+        "A  fixed.txt",
+        "A  proof.sh",
+      ]);
     });
   });
 

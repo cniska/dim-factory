@@ -82,6 +82,35 @@ export function recordOrderCheck(
   return recordOrderCheckInTransaction(db, orderId, check, headSha, at);
 }
 
+export type OrderProof = OrderCheck & { baseSha: string; paths: readonly string[] };
+
+export function recordOrderProof(
+  db: Database,
+  orderId: string,
+  proof: OrderProof,
+  headSha: string,
+  at = now(),
+): void {
+  assertOrderRunning(db, orderId);
+  db.run(
+    `INSERT INTO factory_order_proof
+       (order_id, head_sha, base_sha, paths, command, exit_code, started_at, finished_at, result, recorded_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      orderId,
+      headSha,
+      proof.baseSha,
+      JSON.stringify(proof.paths),
+      proof.command,
+      proof.exitCode,
+      proof.startedAt,
+      proof.finishedAt,
+      proof.result,
+      at,
+    ],
+  );
+}
+
 export function recordRewrittenCommits(
   db: Database,
   orderId: string,

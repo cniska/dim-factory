@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { CHECK_SANDBOX, runSandboxedCheck } from "./check-sandbox";
+import { CHECK_SANDBOX, runSandboxedCheck, type SandboxedCheck } from "./check-sandbox";
 import { stagedComments } from "./comments-staged";
 import { writeTransaction } from "./db";
 import { commentGateFor } from "./gate-commit";
@@ -9,10 +9,18 @@ import { repoIdentityEnv } from "./git-identity";
 import { trunkRef } from "./git-trunk";
 import { recordOrderBuild } from "./order-artifacts";
 import { latestOrderCommit } from "./order-commits";
-import { recordOrderCheck, recordOrderCommit, recordOrderFile } from "./order-evidence";
+import {
+  type OrderCheck,
+  type OrderProof,
+  recordOrderCheck,
+  recordOrderCommit,
+  recordOrderFile,
+  recordOrderProof,
+} from "./order-evidence";
 import { answerOrderFindings, assertFindingAnswersOwed, BuildTurnRefused } from "./order-finding";
 import { dataDir, type Env } from "./paths";
 import { rebaseInProgress } from "./ship-rebase";
+import { proveTests } from "./station-build-proof";
 import { hooksOutsideTree, nestedRepository } from "./station-build-tree";
 import type { BuildTurn } from "./station-build-turn";
 import { writeTrace } from "./trace-store";
@@ -49,14 +57,8 @@ function stagedTree(worktree: string): string {
   return tree.out;
 }
 
-function refuseNested(worktree: string): void {
-  const nested = nestedRepository(worktree);
-  if (nested) {
-    throw new BuildTurnRefused(
-      "nested_repository",
-      `${nested} is a git repository inside the worktree, which the runner does not stage`,
-    );
-  }
+function nestedMessage(nested: string): string {
+  return `${nested} is a git repository inside the worktree, which the runner does not stage`;
 }
 
 function refuseChangedAttributes(worktree: string, trunk: string): void {
@@ -118,6 +120,16 @@ function refuseUntouchedTests(worktree: string, tests: readonly string[], proofR
     "proof_missing",
     `the turn names test ${untouched.join(", ")}, which the slice does not add or change; name only test files the slice adds or changes`,
   );
+}
+
+function checkRowOf(check: SandboxedCheck): OrderCheck {
+  return {
+    command: check.command,
+    exitCode: check.exitCode,
+    startedAt: check.startedAt,
+    finishedAt: check.finishedAt,
+    result: check.output,
+  };
 }
 
 function lineCount(value: string | undefined): number | null {
@@ -192,7 +204,8 @@ export function commitBuildTurn(options: {
     );
   }
 
-  refuseNested(worktree);
+  const nested = nestedRepository(worktree);
+  if (nested) throw new BuildTurnRefused("nested_repository", nestedMessage(nested));
   const trunk = trunkRef(worktree);
   const commentGate = commentGateFor(worktree, trunk, env);
   const checked = stagedTree(worktree);
@@ -200,33 +213,58 @@ export function commitBuildTurn(options: {
   const { unparsed } =
     commentGate.state === "armed" ? refuseAddedComments(worktree, commentGate.label) : { unparsed: [] };
   refuseUntouchedTests(worktree, turn.tests, options.proofRequired);
-  const check = runSandboxedCheck({
-    worktree,
-    command: declared.commandLine,
-    canary: join(dataDir(env), `check-canary-${randomUUID()}`),
-    sandbox: options.checkSandbox ?? CHECK_SANDBOX,
-    env: env.PATH === undefined ? {} : { PATH: env.PATH },
-  });
-  const checkRow = {
-    command: check.command,
-    exitCode: check.exitCode,
-    startedAt: check.startedAt,
-    finishedAt: check.finishedAt,
-    result: check.output,
+  const sandboxedCheck = () =>
+    runSandboxedCheck({
+      worktree,
+      command: declared.commandLine,
+      canary: join(dataDir(env), `check-canary-${randomUUID()}`),
+      sandbox: options.checkSandbox ?? CHECK_SANDBOX,
+      env: env.PATH === undefined ? {} : { PATH: env.PATH },
+    });
+  const proved =
+    turn.tests.length === 0
+      ? null
+      : proveTests({ worktree, tree: checked, tests: turn.tests, check: sandboxedCheck });
+  const proof: OrderProof | null = proved && {
+    ...checkRowOf(proved.check),
+    baseSha: before,
+    paths: turn.tests,
   };
-  if (check.exitCode !== 0) {
+  const refuse = (code: BuildTurnRefused["code"], message: string): BuildTurnRefused => {
     git(worktree, ["reset", "-q"]);
+    if (proof) recordOrderProof(db, orderId, proof, before);
+    return new BuildTurnRefused(code, message);
+  };
+  if (proved?.nested) throw refuse("nested_repository", nestedMessage(proved.nested));
+  if (proved?.treeChanged) {
+    throw refuse(
+      "check_changed_tree",
+      `the check changed the worktree while it proved ${turn.tests.join(", ")} at ${before}, so the proof did not run over the slice's tests alone: ${proved.check.command}`,
+    );
+  }
+  if (proved && proved.check.exitCode === 0 && options.proofRequired) {
+    throw refuse(
+      "proof_green",
+      [
+        `${proved.check.command} passed at ${before} with only ${turn.tests.join(", ")} laid over it, so the named tests do not fail without the fix:`,
+        proved.check.output,
+      ].join("\n"),
+    );
+  }
+  const check = sandboxedCheck();
+  const checkRow = checkRowOf(check);
+  if (check.exitCode !== 0) {
     recordOrderCheck(db, orderId, checkRow, before);
-    throw new BuildTurnRefused(
+    throw refuse(
       "check_failed",
       `${check.command} exited ${check.exitCode} in the check sandbox:\n${check.output}`,
     );
   }
 
-  refuseNested(worktree);
+  const nestedByCheck = nestedRepository(worktree);
+  if (nestedByCheck) throw refuse("nested_repository", nestedMessage(nestedByCheck));
   if (stagedTree(worktree) !== checked) {
-    git(worktree, ["reset", "-q"]);
-    throw new BuildTurnRefused(
+    throw refuse(
       "check_changed_tree",
       `the check changed the worktree while it ran, so what it passed is not what would be committed: ${check.command}`,
     );
@@ -258,10 +296,7 @@ export function commitBuildTurn(options: {
       stdin: `${turn.subject}\n`,
     },
   );
-  if (!commit.ok) {
-    git(worktree, ["reset", "-q"]);
-    throw new BuildTurnRefused("commit_refused", `git refused the commit: ${commit.err || commit.out}`);
-  }
+  if (!commit.ok) throw refuse("commit_refused", `git refused the commit: ${commit.err || commit.out}`);
   try {
     const sha = head(worktree);
     const numstat = git(worktree, [
@@ -287,6 +322,7 @@ export function commitBuildTurn(options: {
         );
       }
       recordOrderCheck(db, orderId, checkRow, sha);
+      if (proof) recordOrderProof(db, orderId, proof, sha);
       answerOrderFindings(db, orderId, options.runId, turn.answers, builder);
       if (options.finalSlice) recordOrderBuild(db, orderId, turn.artifact, sha, builder);
     });

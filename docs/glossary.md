@@ -35,9 +35,10 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Attempt | One station hand's run on an order, from start to finish, with its outcome. A build attempt that has not finished and whose worker is not over refuses a second one ([`src/order-attempt.ts`](../src/order-attempt.ts)) |
 | Drop | The owner's decision not to build an order, with the reason |
 | Ledger | An order's events in `factory_order_event`, appended and never changed ([`src/order-ledger.ts`](../src/order-ledger.ts)) |
-| Evidence | What an order produced: commits, changed files, checks, findings and answers |
+| Evidence | What an order produced: commits, changed files, checks, proofs, findings and answers |
 | Artifact | A document a station worker writes for the owner — a plan, a Build artifact or a review — one row per revision in `factory_order_artifact`. The worker submits each revision, and the operator approves or returns it. It leads with the outcome and never lives in the worktree |
 | Build turn | What a builder returns after code work: the commit subject, an answer per finding it was handed, the test files the slice adds or changes, and on the last turn the Build artifact ([`src/station-build-turn.ts`](../src/station-build-turn.ts)). The runner commits; the builder does not |
+| Proof | The runner's run of the declared check at the head a slice was built on, with only the build turn's named tests laid over it. A `fix` order's slice commits only when its proof fails ([`src/station-build-proof.ts`](../src/station-build-proof.ts)) |
 | Check sandbox | The confinement the runner runs a repo's check in: worktree writable, network and `dim`'s data refused ([`src/check-sandbox.ts`](../src/check-sandbox.ts)) |
 | Ship run | One ship of an order, recorded by the factory with no worker in `factory_order_ship_run`: `landed`, `refused` with its code and reason, or `conflict` with the paths the rebase stopped on ([`src/order-ship-run.ts`](../src/order-ship-run.ts)) |
 | Rewrite | The commits a ship run's rebase replaced. Each new commit row names the run and the sha it retires; a builder resolving a conflict finishes the conflict run's rebase, so its commits name that run |

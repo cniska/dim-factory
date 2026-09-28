@@ -29,7 +29,8 @@ export class BuildTurnRefused extends Error {
       | "finding_unknown"
       | "finding_unanswered"
       | "answer_not_owed"
-      | "proof_missing",
+      | "proof_missing"
+      | "proof_green",
     message: string,
   ) {
     super(message);

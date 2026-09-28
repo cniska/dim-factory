@@ -40,6 +40,8 @@ This is the gate between reading and editing, and skipping it is how a fix lands
 
 The test names the behavior in plain terms, and pins wire values as literals rather than importing the production constant, so a rename cannot ratify itself.
 
+In a factory order, name each test file that proves the defect in the build turn's `tests`. The runner runs the proof itself, the declared check at the slice's base with only those files laid over it, and refuses the slice `proof_green` when they pass there. The runner counts any failure of the check as red, so a test that fails there only because it imports what the fix adds passes the gate and proves nothing; it has to fail on the defect in the code as it was.
+
 ## Build the fix
 
 Use `dim-build` and follow it: the repo's own task at the end of each slice, the simplification pass over that slice, the task again, one checking agent on the slice's diff, an answer to every finding it raises, then the commit boundary. The test that proved the defect is part of the slice and stays; the simplification pass is the one step that may not touch a test file. A fix is usually one slice; where it is more, it is still one slice at a time.
@@ -52,7 +54,7 @@ Where the fix ran to more than one slice, invoke `dim-review` over the range the
 
 The fix is done when:
 
-- a test fails without it and passes with it, and that was watched in that order
+- a test fails without it and passes with it, and that was watched in that order; in a factory order the proof row records the red, and Review judges from the test itself that it fails because of the defect
 - the repo's own task passes, and its output was read rather than assumed
 - the cause is named — in the commit subject in plain words, and in a comment only where a reader would otherwise break the constraint again
 - the docs describing the changed behavior changed in the same commit

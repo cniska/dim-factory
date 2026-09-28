@@ -139,6 +139,7 @@ export const FACTORY_ORDER_TABLES = [
   "factory_order_attempt",
   "factory_schedule_invocation",
   "factory_order_check",
+  "factory_order_proof",
   "factory_order_ship_run",
   "factory_order_commit",
   "factory_order_file",
