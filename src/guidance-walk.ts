@@ -2,8 +2,8 @@ import type { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { writeTransaction } from "./db";
-import { walkSpoolDir } from "./ingest-spool";
-import type { Tool } from "./ingest-tools";
+import { ensureSpoolDirs, setAsideUnreadable, walkSpoolDir } from "./ingest-spool";
+import { TOOLS, type Tool } from "./ingest-tools";
 import { codexDir, type Env, resolveHomeDir } from "./paths";
 
 const NAMES = ["CLAUDE.md", "AGENTS.md"];
@@ -94,12 +94,38 @@ export function spoolWalk(record: WalkRecord, env: Env = process.env): void {
   writeFileSync(join(dir, `${Date.now()}-${process.pid}.json`), JSON.stringify(record));
 }
 
-export type WalkReport = { sessions: number; surfaces: number };
+export type WalkReport = { sessions: number; surfaces: number; unreadable: number };
+
+function isSurface(value: unknown): value is Surface {
+  const surface = value as Surface;
+  return (
+    typeof surface?.path === "string" &&
+    typeof surface.sha === "string" &&
+    (surface.importedBy === null || typeof surface.importedBy === "string")
+  );
+}
+
+function placeableWalk(path: string): WalkRecord | undefined {
+  let record: WalkRecord;
+  try {
+    record = JSON.parse(readFileSync(path, "utf8")) as WalkRecord;
+  } catch {
+    return undefined;
+  }
+  const placeable =
+    typeof record?.session_id === "string" &&
+    record.session_id.length > 0 &&
+    TOOLS.includes(record.tool) &&
+    typeof record.seen_at === "string" &&
+    Array.isArray(record.surfaces) &&
+    record.surfaces.every(isSurface);
+  return placeable ? record : undefined;
+}
 
 export function drainWalk(db: Database, env: Env = process.env): WalkReport {
+  ensureSpoolDirs(env);
   const dir = walkSpoolDir(env);
-  mkdirSync(dir, { recursive: true });
-  const report: WalkReport = { sessions: 0, surfaces: 0 };
+  const report: WalkReport = { sessions: 0, surfaces: 0, unreadable: 0 };
 
   const insert = db.prepare(
     `INSERT INTO guidance_walk (session_id, tool, seen_at, path, blob_sha, imported_by)
@@ -107,13 +133,12 @@ export function drainWalk(db: Database, env: Env = process.env): WalkReport {
   );
   for (const name of readdirSync(dir).sort()) {
     const path = join(dir, name);
-    let record: WalkRecord;
-    try {
-      record = JSON.parse(readFileSync(path, "utf8")) as WalkRecord;
-    } catch {
+    const record = placeableWalk(path);
+    if (!record) {
+      setAsideUnreadable(path, env);
+      report.unreadable += 1;
       continue;
     }
-    if (!record.session_id || !Array.isArray(record.surfaces)) continue;
     writeTransaction(db, () => {
       for (const s of record.surfaces) {
         insert.run(record.session_id, record.tool, record.seen_at, s.path, s.sha, s.importedBy);

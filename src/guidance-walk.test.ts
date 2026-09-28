@@ -1,10 +1,11 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SCHEMA_SQL } from "./db-schema";
 import { drainWalk, resolveWalk, spoolWalk } from "./guidance-walk";
+import { spoolDir, walkSpoolDir } from "./ingest-spool";
 import type { Env } from "./paths";
 
 const roots: string[] = [];
@@ -98,14 +99,14 @@ describe("the walk spool", () => {
         },
         env,
       );
-      expect(drainWalk(db, env)).toEqual({ sessions: 1, surfaces: 2 });
+      expect(drainWalk(db, env)).toEqual({ sessions: 1, surfaces: 2, unreadable: 0 });
       expect(
         db.query("SELECT path, imported_by FROM guidance_walk WHERE session_id = 's-1' ORDER BY path").all(),
       ).toEqual([
         { path: "/h/.claude/CLAUDE.md", imported_by: null },
         { path: "/h/.claude/RTK.md", imported_by: "/h/.claude/CLAUDE.md" },
       ]);
-      expect(drainWalk(db, env)).toEqual({ sessions: 0, surfaces: 0 });
+      expect(drainWalk(db, env)).toEqual({ sessions: 0, surfaces: 0, unreadable: 0 });
     } finally {
       db.close();
     }
@@ -118,7 +119,39 @@ describe("the walk spool", () => {
     try {
       db.run(SCHEMA_SQL);
       spoolWalk({ session_id: "s-2", tool: "codex", seen_at: "2026-09-17T10:00:00.000Z", surfaces: [] }, env);
-      expect(drainWalk(db, env)).toEqual({ sessions: 0, surfaces: 0 });
+      expect(drainWalk(db, env)).toEqual({ sessions: 0, surfaces: 0, unreadable: 0 });
+    } finally {
+      db.close();
+    }
+  });
+
+  test("sets aside a file it cannot place and counts it, rather than meeting it on every sync", () => {
+    const root = newRoot();
+    const env = home(root);
+    const db = new Database(":memory:");
+    try {
+      db.run(SCHEMA_SQL);
+      const dir = walkSpoolDir(env);
+      mkdirSync(dir, { recursive: true });
+      const truncated = join(dir, "1789000000000-1.json");
+      const foreign = join(dir, "1789000000000-2.json");
+      writeFileSync(truncated, "{not json");
+      writeFileSync(
+        foreign,
+        JSON.stringify({
+          session_id: "s-3",
+          tool: "vim",
+          seen_at: "2026-09-17T10:00:00.000Z",
+          surfaces: [{ path: "/h/.vimrc", sha: "cc", importedBy: null }],
+        }),
+      );
+      expect(drainWalk(db, env)).toEqual({ sessions: 0, surfaces: 0, unreadable: 2 });
+      expect(existsSync(truncated) || existsSync(foreign)).toBe(false);
+      expect(readdirSync(join(spoolDir(env), "unreadable")).sort()).toEqual([
+        "1789000000000-1.json",
+        "1789000000000-2.json",
+      ]);
+      expect(drainWalk(db, env)).toEqual({ sessions: 0, surfaces: 0, unreadable: 0 });
     } finally {
       db.close();
     }

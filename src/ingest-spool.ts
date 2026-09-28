@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { writeTransaction } from "./db";
 import { TOOLS, type Tool } from "./ingest-tools";
 import { dataDir, type Env } from "./paths";
@@ -19,6 +19,10 @@ export function toolSpoolDir(tool: Tool, env: Env = process.env): string {
 
 export function walkSpoolDir(env: Env = process.env): string {
   return join(spoolDir(env), "walk");
+}
+
+export function setAsideUnreadable(path: string, env: Env = process.env): void {
+  renameSync(path, join(spoolDir(env), "unreadable", basename(path)));
 }
 
 export function ensureSpoolDirs(env: Env = process.env): void {
@@ -88,7 +92,7 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
       const event = eventOf(payload);
       const sessionId = text(payload?.session_id) ?? text(payload?.sessionId);
       if (!match || !sessionId || !event) {
-        renameSync(path, join(spoolDir(env), "unreadable", name));
+        setAsideUnreadable(path, env);
         report.unreadable += 1;
         continue;
       }
