@@ -129,7 +129,7 @@ type HookEvent = {
 
 const PARENT_ORDER_TABLE = "factory_order";
 
-const FACTORY_ORDER_TABLES = [
+export const FACTORY_ORDER_TABLES = [
   "factory_worker",
   "factory_runner_barrier",
   "factory_worker_assignment",
