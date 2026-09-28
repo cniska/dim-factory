@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import {
   checkSubject,
   commentGateFor,
@@ -506,7 +506,11 @@ describe("the check gate", () => {
     const { dir, commit, commits } = repoDeclaringCheck("exit 1");
     try {
       rmSync(join(dir, "bin", "dim"));
-      expect(commit({ "a.ts": "export const a = 1;\n" }).ok).toBe(true);
+      const pathWithoutDim = `${process.env.PATH}`
+        .split(delimiter)
+        .filter((entry) => !existsSync(join(entry, "dim")))
+        .join(delimiter);
+      expect(commit({ "a.ts": "export const a = 1;\n" }, { PATH: pathWithoutDim }).ok).toBe(true);
       expect(commits()).toBe(2);
     } finally {
       rmSync(dir, { recursive: true, force: true });
