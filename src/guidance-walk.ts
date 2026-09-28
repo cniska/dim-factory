@@ -1,10 +1,11 @@
 import type { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { writeTransaction } from "./db";
 import { ensureSpoolDirs, setAsideUnreadable, walkSpoolDir } from "./ingest-spool";
 import { TOOLS, type Tool } from "./ingest-tools";
 import { codexDir, type Env, resolveHomeDir } from "./paths";
+import { readManifest } from "./workspace-tasks";
 
 const NAMES = ["CLAUDE.md", "AGENTS.md"];
 
@@ -16,7 +17,7 @@ export type Surface = {
   importedBy: string | null;
 };
 
-function sha256(body: Buffer): string {
+function sha256(body: string): string {
   return new Bun.CryptoHasher("sha256").update(body).digest("hex");
 }
 
@@ -61,18 +62,14 @@ export function resolveWalk(tool: Tool, cwd: string, env: Env = process.env): Su
 
   while (queue.length > 0) {
     const next = queue.shift() as { path: string; importedBy: string | null };
-    if (seen.has(next.path) || !existsSync(next.path)) continue;
+    if (seen.has(next.path)) continue;
     seen.add(next.path);
 
-    let body: Buffer;
-    try {
-      body = readFileSync(next.path);
-    } catch {
-      continue;
-    }
+    const body = readManifest(next.path);
+    if (body === null) continue;
     surfaces.push({ path: next.path, sha: sha256(body), importedBy: next.importedBy });
 
-    for (const line of body.toString("utf8").split("\n")) {
+    for (const line of body.split("\n")) {
       const spec = IMPORT_LINE.exec(line)?.[1];
       if (spec) queue.push({ path: resolve(dirname(next.path), spec), importedBy: next.path });
     }

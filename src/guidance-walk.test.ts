@@ -1,8 +1,9 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { SCHEMA_SQL } from "./db-schema";
 import { drainWalk, resolveWalk, spoolWalk } from "./guidance-walk";
 import { spoolDir, walkSpoolDir } from "./ingest-spool";
@@ -69,6 +70,38 @@ describe("the walk a session starts with", () => {
     writeFileSync(join(claude, "RTK.md"), "@CLAUDE.md\n");
     expect(resolveWalk("claude", root, env)).toHaveLength(2);
   });
+
+  test("names no surface that is not a regular file of a readable size", () => {
+    const root = newRoot();
+    const env = home(root);
+    const claude = join(env.HOME as string, ".claude");
+    writeFileSync(join(claude, "CLAUDE.md"), "@huge.md\n@folder.md\n");
+    writeFileSync(join(claude, "huge.md"), "x".repeat(1024 * 1024 + 1));
+    mkdirSync(join(claude, "folder.md"));
+    expect(resolveWalk("claude", root, env).map((s) => s.path)).toEqual([join(claude, "CLAUDE.md")]);
+  });
+
+  test("a session start is not held by a rules file that never delivers", async () => {
+    const root = newRoot();
+    const env = home(root);
+    const repo = join(root, "repo");
+    mkdirSync(repo);
+    execFileSync("mkfifo", [join(repo, "AGENTS.md")]);
+
+    const child = Bun.spawn([process.execPath, resolve(import.meta.dir, "cli.ts"), "wake"], {
+      cwd: repo,
+      env: { ...process.env, ...env },
+      stdin: new Blob([JSON.stringify({ session_id: "s-fifo", cwd: repo })]),
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    const outcome = await Promise.race([
+      child.exited,
+      new Promise((r) => setTimeout(() => r("still reading"), 4000)),
+    ]);
+    child.kill();
+    expect(outcome).toBe(0);
+  }, 10_000);
 
   test("names no surface that is not on disk", () => {
     const root = newRoot();
