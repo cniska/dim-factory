@@ -1,10 +1,11 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { openDb } from "./db";
 import { collectingMachine, declareCheck, integratedRepo } from "./fixtures.test-support";
 import { runOrderCommand, runOrderCommandLive } from "./order-command";
 import { queueOrder } from "./order-lifecycle";
+import type { OrderLine } from "./order-line";
 import { orderStatus } from "./order-status";
 import { dbPath, type Env } from "./paths";
 import { mintWorker, WORKER_NAME_VAR } from "./worker";
@@ -18,86 +19,100 @@ function workerEnv(machine: Env, worker: { name: string }): Env {
   return { ...machine, [WORKER_NAME_VAR]: worker.name };
 }
 
+async function shipThroughStations(line: OrderLine) {
+  const repo = integratedRepo();
+  const base = declareCheck(repo.dir);
+  const machine = collectingMachine();
+  roots.push(repo.dir, machine.dir);
+  mkdirSync(machine.env.DIM_HOME as string, { recursive: true });
+  writeFileSync(
+    join(machine.env.DIM_HOME as string, "routing.json"),
+    '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
+  );
+  const bin = join(machine.dir, "bin");
+  mkdirSync(bin);
+  const fakeCodex = join(bin, "codex");
+  const argvLog = join(machine.dir, "harness-argv");
+  writeFileSync(
+    fakeCodex,
+    `#!/bin/sh\nprintf '%s\\0' "$@" >> "${argvLog}"\nexec bun "${join(import.meta.dir, "..", "scripts", "verify-harness.ts")}" "$@"\n`,
+  );
+  chmodSync(fakeCodex, 0o755);
+  machine.env.PATH = `${bin}:${process.env.PATH ?? ""}`;
+
+  const db = openDb(dbPath(machine.env));
+  const operator = mintWorker(db, { role: "operator", pid: process.ppid, sessionId: "e2e-operator" });
+  const env = workerEnv(machine.env, operator);
+  queueOrder(
+    db,
+    { id: "headless-order", project: "cniska/dim-factory", title: "Run end to end", line },
+    operator.name,
+  );
+
+  expect(
+    await runOrderCommandLive(db, ["plan", "headless-order", "--harness", "codex"], null, repo.dir, env),
+  ).toContain("## Outcome");
+  expect(runOrderCommand(db, ["approve", "headless-order"], null, repo.dir, env)).toContain("plan approved");
+  const worktree = join(repo.dir, ".claude", "worktrees", "headless-order");
+  expect(
+    await runOrderCommandLive(db, ["build", "headless-order", "--harness", "codex"], null, repo.dir, env),
+  ).toContain("build completed by");
+  expect(existsSync(join(worktree, "built-by-scripted-harness-1.txt"))).toBe(true);
+  expect(existsSync(join(worktree, "built-by-scripted-harness-2.txt"))).toBe(true);
+  expect(
+    runOrderCommand(
+      db,
+      ["approve", "headless-order", "--reason", "the complete build artifact is present"],
+      null,
+      repo.dir,
+      env,
+    ),
+  ).toContain("build approved");
+  expect(
+    await runOrderCommandLive(db, ["review", "headless-order", "--harness", "codex"], null, repo.dir, env),
+  ).toBe("review raised no findings; approve the Review artifact to ship");
+  expect(runOrderCommand(db, ["approve", "headless-order"], null, repo.dir, env)).toContain(
+    "review approved by",
+  );
+  const briefs = readFileSync(argvLog, "utf8")
+    .split("\0")
+    .filter((arg) => arg.includes("factory order headless-order"));
+  return { repo, base, db, operator, worktree, briefs };
+}
+
 describe("headless factory loop", () => {
   test("runs an order through real configured station processes", async () => {
-    const repo = integratedRepo();
-    const base = declareCheck(repo.dir);
-    const machine = collectingMachine();
-    roots.push(repo.dir, machine.dir);
-    mkdirSync(machine.env.DIM_HOME as string, { recursive: true });
-    writeFileSync(
-      join(machine.env.DIM_HOME as string, "routing.json"),
-      '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
-    );
-    const bin = join(machine.dir, "bin");
-    mkdirSync(bin);
-    const fakeCodex = join(bin, "codex");
-    writeFileSync(
-      fakeCodex,
-      `#!/bin/sh\nexec bun "${join(import.meta.dir, "..", "scripts", "verify-harness.ts")}" "$@"\n`,
-    );
-    chmodSync(fakeCodex, 0o755);
-    machine.env.PATH = `${bin}:${process.env.PATH ?? ""}`;
-
-    const db = openDb(dbPath(machine.env));
-    const operator = mintWorker(db, { role: "operator", pid: process.ppid, sessionId: "e2e-operator" });
-    const env = workerEnv(machine.env, operator);
-    queueOrder(
-      db,
-      { id: "headless-order", project: "cniska/dim-factory", title: "Run end to end" },
-      operator.name,
-    );
-
-    expect(
-      await runOrderCommandLive(db, ["plan", "headless-order", "--harness", "codex"], null, repo.dir, env),
-    ).toContain("## Outcome");
-    expect(runOrderCommand(db, ["approve", "headless-order"], null, repo.dir, env)).toContain(
-      "plan approved",
-    );
-    const worktree = join(repo.dir, ".claude", "worktrees", "headless-order");
-    expect(
-      await runOrderCommandLive(db, ["build", "headless-order", "--harness", "codex"], null, repo.dir, env),
-    ).toContain("build completed by");
-    expect(existsSync(join(worktree, "built-by-scripted-harness-1.txt"))).toBe(true);
-    expect(existsSync(join(worktree, "built-by-scripted-harness-2.txt"))).toBe(true);
-    expect(
-      runOrderCommand(
-        db,
-        ["approve", "headless-order", "--reason", "the complete build artifact is present"],
-        null,
-        repo.dir,
-        env,
-      ),
-    ).toContain("build approved");
-    expect(
-      await runOrderCommandLive(db, ["review", "headless-order", "--harness", "codex"], null, repo.dir, env),
-    ).toBe("review raised no findings; approve the Review artifact to ship");
-    expect(runOrderCommand(db, ["approve", "headless-order"], null, repo.dir, env)).toContain(
-      "review approved by",
-    );
+    const { repo, base, db, operator, worktree } = await shipThroughStations("feat");
 
     expect(orderStatus(db, "headless-order")).toBe("shipped");
     expect(existsSync(worktree)).toBe(false);
     expect(
       db
-        .query<{ kind: string }, [string]>("SELECT kind FROM factory_order_event WHERE order_id = ?")
+        .query<
+          { kind: string; station: string | null; role: string | null; worker: string | null },
+          [string]
+        >(
+          `SELECT e.kind, e.station, w.role, e.worker
+           FROM factory_order_event e LEFT JOIN factory_worker w ON w.name = e.worker
+           WHERE e.order_id = ? ORDER BY e.id`,
+        )
         .all("headless-order")
-        .map((row) => row.kind),
+        .map(({ worker, ...event }) => ({ ...event, operator: worker === operator.name })),
     ).toEqual([
-      "queued",
-      "started",
-      "station_started",
-      "artifact_submitted",
-      "artifact_approved",
-      "station_started",
-      "commit_created",
-      "station_started",
-      "commit_created",
-      "artifact_submitted",
-      "artifact_approved",
-      "station_started",
-      "artifact_submitted",
-      "artifact_approved",
+      { kind: "queued", station: null, role: "operator", operator: true },
+      { kind: "started", station: null, role: "operator", operator: true },
+      { kind: "station_started", station: "plan", role: "planner", operator: false },
+      { kind: "artifact_submitted", station: null, role: "planner", operator: false },
+      { kind: "artifact_approved", station: null, role: "operator", operator: true },
+      { kind: "station_started", station: "build", role: "builder", operator: false },
+      { kind: "commit_created", station: null, role: "builder", operator: false },
+      { kind: "station_started", station: "build", role: "builder", operator: false },
+      { kind: "commit_created", station: null, role: "builder", operator: false },
+      { kind: "artifact_submitted", station: null, role: "builder", operator: false },
+      { kind: "artifact_approved", station: null, role: "operator", operator: true },
+      { kind: "station_started", station: "review", role: "reviewer", operator: false },
+      { kind: "artifact_submitted", station: null, role: "reviewer", operator: false },
+      { kind: "artifact_approved", station: null, role: "operator", operator: true },
     ]);
     expect(
       db.query("SELECT outcome FROM factory_order_ship_run WHERE order_id = ?").all("headless-order"),
@@ -208,6 +223,35 @@ describe("headless factory loop", () => {
         )
         .all("headless-order"),
     ).toEqual([{ worker: builder ?? "" }]);
+    db.close();
+  });
+
+  test("briefs every station of a queued fix order with its line", async () => {
+    const { db, briefs } = await shipThroughStations("fix");
+    expect(orderStatus(db, "headless-order")).toBe("shipped");
+    expect(
+      briefs.map((brief) => ({
+        header: brief.split("\n")[0],
+        line: brief.split("\n").filter((text) => text.startsWith("This order's line is ")),
+      })),
+    ).toEqual([
+      {
+        header: "You are the planner for factory order headless-order in this repository. Run dim-plan.",
+        line: ["This order's line is fix."],
+      },
+      {
+        header: "You are the builder for factory order headless-order in this repository. Run dim-build.",
+        line: ["This order's line is fix."],
+      },
+      {
+        header: "You are the builder for factory order headless-order in this repository. Run dim-build.",
+        line: ["This order's line is fix."],
+      },
+      {
+        header: "You are the reviewer for factory order headless-order in this repository. Run dim-review.",
+        line: ["This order's line is fix."],
+      },
+    ]);
     db.close();
   });
 });
