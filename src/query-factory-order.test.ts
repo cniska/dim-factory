@@ -43,32 +43,80 @@ describe("factory order query", () => {
     const db = floor();
     queueOrder(db, { id: "queued", project: "cniska/dim-factory", title: "Queued" }, attemptOperator);
     const row = (id: string) => findQuery("order")?.run(db, { arg: id }).rows[0]?.slice(3);
-    expect(row("queued")).toEqual(["queued", "run at plan", "cniska/dim-factory/queued", "unset"]);
+    expect(row("queued")).toEqual([
+      "queued",
+      "run at plan",
+      "cniska/dim-factory/queued",
+      "unset",
+      "feat",
+      "Queued",
+      null,
+    ]);
 
     building(db, "queued");
     recordOrderPlan(db, "queued", "Build the result.", worker, [
       { title: "Build", outcome: "The result is built." },
     ]);
-    expect(row("queued")).toEqual(["running", "approve at plan", "cniska/dim-factory/queued", "unset"]);
+    expect(row("queued")).toEqual([
+      "running",
+      "approve at plan",
+      "cniska/dim-factory/queued",
+      "unset",
+      "feat",
+      "Queued",
+      null,
+    ]);
     approveOrder(db, "queued", attemptOperator, undefined);
-    expect(row("queued")).toEqual(["running", "run at build", "cniska/dim-factory/queued", "unset"]);
+    expect(row("queued")).toEqual([
+      "running",
+      "run at build",
+      "cniska/dim-factory/queued",
+      "unset",
+      "feat",
+      "Queued",
+      null,
+    ]);
 
     recordOrderCommit(db, "queued", trunk.sha, worker, "feat: result");
     approveFinalBuildAt(db, "queued", trunk.sha, worker, attemptOperator);
     approveReviewAt(db, "queued", trunk.sha, attemptOperator);
-    expect(row("queued")).toEqual(["running", "ship", "cniska/dim-factory/queued", "unset"]);
+    expect(row("queued")).toEqual([
+      "running",
+      "ship",
+      "cniska/dim-factory/queued",
+      "unset",
+      "feat",
+      "Queued",
+      null,
+    ]);
     recordShipRun(db, "queued", { outcome: "landed" });
-    expect(row("queued")).toEqual(["shipped", "(none)", "cniska/dim-factory/queued", "unset"]);
+    expect(row("queued")).toEqual([
+      "shipped",
+      "(none)",
+      "cniska/dim-factory/queued",
+      "unset",
+      "feat",
+      "Queued",
+      null,
+    ]);
 
     queueOrder(db, { id: "dropped", project: "cniska/dim-factory", title: "Dropped" }, attemptOperator);
     dropOrder(db, "dropped", "superseded", attemptOperator);
-    expect(row("dropped")).toEqual(["dropped", "(none)", "cniska/dim-factory/dropped", "unset"]);
+    expect(row("dropped")).toEqual([
+      "dropped",
+      "(none)",
+      "cniska/dim-factory/dropped",
+      "unset",
+      "feat",
+      "Dropped",
+      null,
+    ]);
     expect(
       findQuery("order")
         ?.run(db, { arg: "dropped" })
         .rows.find((item) => item[2] === "dropped")
         ?.slice(3),
-    ).toEqual(["", null, "", "superseded"]);
+    ).toEqual(["", null, "", "superseded", null, null, null]);
     db.close();
   });
 
@@ -366,7 +414,18 @@ describe("factory order query", () => {
       "2026-09-18T10:05:00.000Z",
     );
     const result = findQuery("order")?.run(db, { arg: "order-12" });
-    expect(result?.columns).toEqual(["section", "when", "kind", "status", "next", "subject", "evidence"]);
+    expect(result?.columns).toEqual([
+      "section",
+      "when",
+      "kind",
+      "status",
+      "next",
+      "subject",
+      "evidence",
+      "line",
+      "title",
+      "description",
+    ]);
     expect(result?.rows.map((row) => row[0])).toEqual([
       "order",
       "event",
@@ -392,12 +451,18 @@ describe("factory order query", () => {
       null,
       "setup",
       '[{"port":5433}]',
+      null,
+      null,
+      null,
     ]);
     expect(result?.rows[0]?.slice(3)).toEqual([
       "running",
       "run at plan",
       "cniska/dim-factory/order-123",
       "unset",
+      "feat",
+      "Read the detailed report",
+      null,
     ]);
     expect(result?.rows?.every((row) => row.length === result.columns.length)).toBe(true);
     expect(result?.rows?.slice(1).every((row) => row[4] === null)).toBe(true);
@@ -406,18 +471,56 @@ describe("factory order query", () => {
       null,
       `${worker} @ abc`,
       "The report is built and verified.",
+      null,
+      null,
+      null,
     ]);
     expect(result?.rows.find((row) => row[0] === "finding")?.slice(3)).toEqual([
       "fixed",
       null,
       "tests",
       "holds",
+      null,
+      null,
+      null,
     ]);
     expect(result?.rows.find((row) => row[0] === "file")?.slice(5)).toEqual([
       "src/factory-order.ts",
       "+12 -3",
+      null,
+      null,
+      null,
     ]);
     expect(result?.denominator).toContain("order order-123: running");
+    db.close();
+  });
+
+  test("carries the order's line, title and description on the first row alone", () => {
+    const db = floor();
+    queueOrder(
+      db,
+      {
+        id: "order-described",
+        project: "cniska/dim-factory",
+        title: "Show the title",
+        line: "fix",
+        description: "The first row has no title.",
+      },
+      attemptOperator,
+    );
+    queueOrder(db, { id: "order-bare", project: "cniska/dim-factory", title: "Bare" }, attemptOperator);
+    building(db, "order-described");
+    const described = findQuery("order")?.run(db, { arg: "order-described" });
+    expect(described?.columns.slice(7)).toEqual(["line", "title", "description"]);
+    expect(described?.rows[0]?.[2]).toBe("report");
+    expect(described?.rows[0]?.slice(7)).toEqual(["fix", "Show the title", "The first row has no title."]);
+    expect(described?.rows.length).toBeGreaterThan(1);
+    expect(described?.rows.slice(1).every((row) => row.slice(7).every((cell) => cell === null))).toBe(true);
+    expect(findQuery("order")?.run(db, { arg: "order-bare" }).rows[0]?.slice(7)).toEqual([
+      "feat",
+      "Bare",
+      null,
+    ]);
     db.close();
   });
 
@@ -459,6 +562,9 @@ describe("factory order query", () => {
       null,
       "teardown",
       "[]",
+      null,
+      null,
+      null,
     ]);
     db.close();
   });

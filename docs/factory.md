@@ -63,7 +63,7 @@ dim q factory                            # every order's current state
 dim trace <id>                           # diagnostic events, followed live
 ```
 
-`dim q order <id>` places the order's current `status` and `next` act in adjacent columns of its first row. The first row's `evidence` is its priority; terminal orders show `(none)` in `next`. Lifecycle and evidence rows keep their own `status`, `subject`, and `evidence`, with an empty `next` cell.
+`dim q order <id>` places the order's current `status` and `next` act in adjacent columns of its first row. The first row's `evidence` is its priority; terminal orders show `(none)` in `next`. Its last three columns carry the order's `line`, `title` and `description`. Lifecycle and evidence rows keep their own `status`, `subject`, and `evidence`, with empty `next`, `line`, `title` and `description` cells.
 
 A command with no `--harness` runs the worker under the harness of the station's bound worker, or else the one the operator's own session is in.
 
