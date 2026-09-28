@@ -53,6 +53,14 @@ describe("a scratch tree is not the work", () => {
   });
 
   test("a relative path is judged where it actually resolves", () => {
-    expect(isScratchRepo("code/dim-factory")).toBe(false);
+    const cwd = process.cwd();
+    try {
+      process.chdir("/");
+      expect(isScratchRepo("code/dim-factory")).toBe(false);
+      process.chdir(realpathSync(tmpdir()));
+      expect(isScratchRepo("code/dim-factory")).toBe(true);
+    } finally {
+      process.chdir(cwd);
+    }
   });
 });
