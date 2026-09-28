@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { UsageError } from "./cli-contract";
@@ -25,6 +25,7 @@ import { closeOrderReview, recordOrderReviewArtifact } from "./order-review";
 import { orderState } from "./order-state";
 import { orderStatus } from "./order-status";
 import type { Env } from "./paths";
+import { findQuery } from "./query-registry";
 import { approveFinalBuildAt, approvePlan, approveReviewAt } from "./station-approvals.test-support";
 import { assembleWallSnapshot } from "./wall/server";
 import {
@@ -476,6 +477,47 @@ describe("order command", () => {
       `order-1 is already on the default branch and shipped; branch order-1 kept: its tip ${tip} has not landed on the default branch`,
     );
     Bun.spawnSync(["git", "-C", trunk.dir, "branch", "-D", "order-1"]);
+  });
+
+  test("a ship and the order query name the worktree it kept and why", () => {
+    const repo = integratedRepo();
+    try {
+      mkdirSync(join(repo.dir, "scripts"));
+      writeFileSync(join(repo.dir, "scripts", "worktree-teardown.sh"), "#!/bin/sh\nexit 3\n", {
+        mode: 0o755,
+      });
+      Bun.spawnSync(["git", "-C", repo.dir, "add", "scripts/worktree-teardown.sh"]);
+      Bun.spawnSync(["git", "-C", repo.dir, "commit", "-q", "-m", "test: fail teardown"]);
+      const database = db();
+      const operator = resolveWorker(database, env);
+      queued(database);
+      startOrder(database, "order-1", operator, undefined, repo.dir);
+      approvePlan(database, "order-1", operator);
+      attemptIn(database, "order-1", operator, operator, "run-2");
+      const wt = join(repo.dir, ".claude", "worktrees", "order-1");
+      writeFileSync(join(wt, "kept.txt"), "kept");
+      Bun.spawnSync(["git", "-C", wt, "add", "."]);
+      Bun.spawnSync(["git", "-C", wt, "commit", "-q", "-m", "feat: keep the worktree"]);
+      const sha = Bun.spawnSync(["git", "-C", wt, "rev-parse", "HEAD"], { stdout: "pipe" })
+        .stdout.toString()
+        .trim();
+      recordOrderCommit(database, "order-1", sha, operator, "feat: keep the worktree");
+      approveFinalBuildAt(database, "order-1", sha, operator, operator);
+      approveReviewAt(database, "order-1", sha, operator);
+
+      expect(runOrderCommand(database, ["ship", "order-1"], null, repo.dir)).toBe(
+        "order-1 is fast-forwarded onto the default branch and shipped; " +
+          "worktree kept: its teardown hook exited 3; branch order-1 kept: its worktree still holds it",
+      );
+      expect(orderStatus(database, "order-1")).toBe("shipped");
+      const report = findQuery("order")?.run(database, { arg: "order-1" });
+      const shipRun = report?.rows.find((row) => row[0] === "ship_run");
+      expect(shipRun?.[report?.columns.indexOf("evidence") ?? -1]).toBe(
+        "worktree kept: its teardown hook exited 3 | branch kept: its worktree still holds it",
+      );
+    } finally {
+      rmSync(repo.dir, { recursive: true, force: true });
+    }
   });
 
   test("a ship is refused before the order recorded any commit", () => {
