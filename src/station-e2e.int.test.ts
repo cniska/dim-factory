@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { openDb } from "./db";
-import { collectingMachine, declareCheck, integratedRepo, reviewOutput } from "./fixtures.test-support";
+import { collectingMachine, declareCheck, integratedRepo } from "./fixtures.test-support";
 import { runOrderCommand, runOrderCommandLive } from "./order-command";
 import { queueOrder } from "./order-lifecycle";
 import { orderStatus } from "./order-status";
@@ -23,44 +23,6 @@ function workerEnv(machine: Env, worker: { name: string; token: string; sessionI
   };
 }
 
-function harness(): string {
-  return `
-import { writeFileSync } from "node:fs";
-
-// The runner's check sandbox is \`codex sandbox ... -- <command>\`; this stands in for it by refusing
-// the canary write and running the check unconfined.
-if (Bun.argv[2] === "sandbox") {
-  const command = Bun.argv.slice(Bun.argv.indexOf("--") + 1);
-  if (command.join(" ").includes("check-canary-")) process.exit(1);
-  process.exit(Bun.spawnSync(command, { stdout: "inherit", stderr: "inherit" }).exitCode ?? 1);
-}
-
-const brief = Bun.argv.find((arg) => arg.includes("factory order ")) ?? "";
-const order = /factory order ([^\\s]+)/.exec(brief)?.[1];
-if (!order) process.exit(2);
-const role = brief.includes("planner") ? "planner" : brief.includes("builder") ? "builder" : "reviewer";
-
-const emit = (event) => process.stdout.write(JSON.stringify(event) + "\\n");
-
-emit({ type: "thread.started", thread_id: "harness-" + role + "-" + order });
-emit({ type: "turn.started" });
-if (brief.includes("planner")) {
-  emit({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify({ body: "## Outcome\\n\\nBuild the requested result.", slices: [{ title: "First slice", outcome: "The first slice is verified." }, { title: "Second slice", outcome: "The second slice is verified." }] }) } });
-} else if (brief.includes("builder")) {
-  const slice = /# Current slice\\s+(\\d+)\\./.exec(brief)?.[1] ?? "1";
-  const file = "built-by-real-harness-" + slice + ".txt";
-  writeFileSync(file, "slice " + slice + "\\n");
-  const artifact = slice === "2" ? ${JSON.stringify("## Outcome\n\nThe requested queue flow is implemented across both slices.\n\n## Implementation\n\nThe factory now selects and reserves one ready order under its lock.\n\n## Why this shape\n\nReservation reuses the existing claim boundary, so selection and ownership cannot diverge.\n\n## Verification\n\nBoth slices recorded passing checks, and the final harness run completed successfully.\n\n## Owner attention\n\nThe wall remains outside this order.")} : "";
-  emit({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify({ subject: "feat: real harness slice " + slice, artifact, answers: [] }) } });
-} else if (brief.includes("reviewer")) {
-  emit({ type: "item.completed", item: { type: "agent_message", text: ${JSON.stringify(reviewOutput({ verdict: "No findings; the change is ready to advance." }))} } });
-} else {
-  process.exit(4);
-}
-emit({ type: "turn.completed" });
-`;
-}
-
 describe("headless factory loop", () => {
   test("runs an order through real configured station processes", async () => {
     const repo = integratedRepo();
@@ -75,7 +37,10 @@ describe("headless factory loop", () => {
     const bin = join(machine.dir, "bin");
     mkdirSync(bin);
     const fakeCodex = join(bin, "codex");
-    writeFileSync(fakeCodex, `#!/usr/bin/env bun\n${harness()}`);
+    writeFileSync(
+      fakeCodex,
+      `#!/bin/sh\nexec bun "${join(import.meta.dir, "..", "scripts", "verify-harness.ts")}" "$@"\n`,
+    );
     chmodSync(fakeCodex, 0o755);
     machine.env.PATH = `${bin}:${process.env.PATH ?? ""}`;
 
@@ -98,8 +63,8 @@ describe("headless factory loop", () => {
     expect(
       await runOrderCommandLive(db, ["build", "headless-order", "--harness", "codex"], null, repo.dir, env),
     ).toContain("build completed by");
-    expect(existsSync(join(worktree, "built-by-real-harness-1.txt"))).toBe(true);
-    expect(existsSync(join(worktree, "built-by-real-harness-2.txt"))).toBe(true);
+    expect(existsSync(join(worktree, "built-by-scripted-harness-1.txt"))).toBe(true);
+    expect(existsSync(join(worktree, "built-by-scripted-harness-2.txt"))).toBe(true);
     expect(
       runOrderCommand(
         db,
@@ -160,8 +125,8 @@ describe("headless factory loop", () => {
         )
         .all("headless-order"),
     ).toEqual([
-      { worker: expect.any(String), path: "built-by-real-harness-1.txt" },
-      { worker: expect.any(String), path: "built-by-real-harness-2.txt" },
+      { worker: expect.any(String), path: "built-by-scripted-harness-1.txt" },
+      { worker: expect.any(String), path: "built-by-scripted-harness-2.txt" },
     ]);
     expect(
       db
