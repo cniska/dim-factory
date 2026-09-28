@@ -145,6 +145,39 @@ describe("the walk spool", () => {
     }
   });
 
+  test("a drain that fails partway keeps every walk for the next one", () => {
+    const root = newRoot();
+    const env = home(root);
+    const db = new Database(":memory:");
+    try {
+      db.run(SCHEMA_SQL);
+      const dir = walkSpoolDir(env);
+      mkdirSync(dir, { recursive: true });
+      const walk = (session: string) =>
+        JSON.stringify({
+          session_id: session,
+          tool: "claude",
+          seen_at: "2026-09-17T10:00:00.000Z",
+          surfaces: [{ path: "/h/.claude/CLAUDE.md", sha: "aa", importedBy: null }],
+        });
+      writeFileSync(join(dir, "1789000000000-1.json"), walk("s-kept"));
+      writeFileSync(join(dir, "1789000000000-2.json"), walk("s-refused"));
+      db.run(
+        `CREATE TRIGGER refuse BEFORE INSERT ON guidance_walk
+         WHEN NEW.session_id = 's-refused' BEGIN SELECT RAISE(ABORT, 'refused'); END`,
+      );
+      expect(() => drainWalk(db, env)).toThrow("refused");
+      expect(db.query("SELECT count(*) AS n FROM guidance_walk").get()).toEqual({ n: 0 });
+      expect(readdirSync(dir).sort()).toEqual(["1789000000000-1.json", "1789000000000-2.json"]);
+
+      db.run("DROP TRIGGER refuse");
+      expect(drainWalk(db, env)).toEqual({ sessions: 2, surfaces: 2, unreadable: 0 });
+      expect(readdirSync(dir)).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
   test("writes nothing for a session that found no rules file at all", () => {
     const root = newRoot();
     const env = home(root);

@@ -74,35 +74,36 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
      ON CONFLICT DO NOTHING`,
   );
 
-  for (const tool of TOOLS) {
-    const dir = toolSpoolDir(tool, env);
-    for (const name of readdirSync(dir).sort()) {
-      const path = join(dir, name);
-      const match = SPOOL_NAME.exec(name);
-      let payload: HookPayload | undefined;
-      let raw = "";
-      if (match) {
-        try {
-          raw = readFileSync(path, "utf8");
-          payload = JSON.parse(raw) as HookPayload;
-        } catch {
-          payload = undefined;
+  const drained: string[] = [];
+  writeTransaction(db, () => {
+    for (const tool of TOOLS) {
+      const dir = toolSpoolDir(tool, env);
+      for (const name of readdirSync(dir).sort()) {
+        const path = join(dir, name);
+        const match = SPOOL_NAME.exec(name);
+        let payload: HookPayload | undefined;
+        let raw = "";
+        if (match) {
+          try {
+            raw = readFileSync(path, "utf8");
+            payload = JSON.parse(raw) as HookPayload;
+          } catch {
+            payload = undefined;
+          }
         }
-      }
-      const event = eventOf(payload);
-      const sessionId = text(payload?.session_id) ?? text(payload?.sessionId);
-      if (!match || !sessionId || !event) {
-        setAsideUnreadable(path, env);
-        report.unreadable += 1;
-        continue;
-      }
-      const ts = new Date(Number(match[1]) / 1e6).toISOString();
-      const worker = match[4] ?? match[5];
-      if (worker) {
-        sighting.run({ $worker: worker, $sessionId: sessionId, $seenAt: ts });
-      }
-      const changes = writeTransaction(db, () =>
-        insert.run({
+        const event = eventOf(payload);
+        const sessionId = text(payload?.session_id) ?? text(payload?.sessionId);
+        if (!match || !sessionId || !event) {
+          setAsideUnreadable(path, env);
+          report.unreadable += 1;
+          continue;
+        }
+        const ts = new Date(Number(match[1]) / 1e6).toISOString();
+        const worker = match[4] ?? match[5];
+        if (worker) {
+          sighting.run({ $worker: worker, $sessionId: sessionId, $seenAt: ts });
+        }
+        const changes = insert.run({
           $tool: tool,
           $sessionId: sessionId,
           $event: event,
@@ -113,13 +114,14 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
           $model: text(payload?.model) ?? text(payload?.modelId) ?? null,
           $cwd: payload?.cwd ?? null,
           $payload: raw,
-        }),
-      );
-      if (changes.changes === 0) report.duplicate += 1;
-      else report.applied += 1;
-      unlinkSync(path);
+        });
+        if (changes.changes === 0) report.duplicate += 1;
+        else report.applied += 1;
+        drained.push(path);
+      }
     }
-  }
+  });
+  for (const path of drained) unlinkSync(path);
   return report;
 }
 

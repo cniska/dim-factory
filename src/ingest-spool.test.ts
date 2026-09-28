@@ -222,6 +222,31 @@ describe("spool", () => {
     }
   });
 
+  test("a drain that fails partway keeps every spool file for the next one", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    const first = spool(env, "claude", "1789000000000000000", endEvent(SESSION, "prompt_input_exit"));
+    const second = spool(env, "claude", "1789000000000000001", endEvent("refused", "other"));
+    writeFileSync(join(toolSpoolDir("claude", env), "1789000000000000000-1.json"), "{not json");
+    const db = openDb(dbPath(env));
+    try {
+      db.run(
+        `CREATE TEMP TRIGGER refuse BEFORE INSERT ON hook_event
+         WHEN NEW.session_id = 'refused' BEGIN SELECT RAISE(ABORT, 'refused'); END`,
+      );
+      expect(() => drainSpool(db, env)).toThrow("refused");
+      expect(db.prepare("SELECT count(*) AS n FROM hook_event").get()).toEqual({ n: 0 });
+      expect([existsSync(first), existsSync(second)]).toEqual([true, true]);
+      expect(readdirSync(join(root, "home", "spool", "unreadable"))).toEqual(["1789000000000000000-1.json"]);
+
+      db.run("DROP TRIGGER refuse");
+      expect(drainSpool(db, env)).toMatchObject({ applied: 2, unreadable: 0 });
+      expect([existsSync(first), existsSync(second)]).toEqual([false, false]);
+    } finally {
+      closeDb(db);
+    }
+  });
+
   test("sets aside a file it cannot place rather than dropping it", () => {
     const root = newRoot();
     const env = scratchEnv(root);

@@ -128,22 +128,24 @@ export function drainWalk(db: Database, env: Env = process.env): WalkReport {
     `INSERT INTO guidance_walk (session_id, tool, seen_at, path, blob_sha, imported_by)
      VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
   );
-  for (const name of readdirSync(dir).sort()) {
-    const path = join(dir, name);
-    const record = placeableWalk(path);
-    if (!record) {
-      setAsideUnreadable(path, env);
-      report.unreadable += 1;
-      continue;
-    }
-    writeTransaction(db, () => {
+  const drained: string[] = [];
+  writeTransaction(db, () => {
+    for (const name of readdirSync(dir).sort()) {
+      const path = join(dir, name);
+      const record = placeableWalk(path);
+      if (!record) {
+        setAsideUnreadable(path, env);
+        report.unreadable += 1;
+        continue;
+      }
       for (const s of record.surfaces) {
         insert.run(record.session_id, record.tool, record.seen_at, s.path, s.sha, s.importedBy);
         report.surfaces += 1;
       }
-    });
-    report.sessions += 1;
-    unlinkSync(path);
-  }
+      report.sessions += 1;
+      drained.push(path);
+    }
+  });
+  for (const path of drained) unlinkSync(path);
   return report;
 }
