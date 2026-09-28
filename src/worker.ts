@@ -2,7 +2,7 @@ import { type Database, SQLiteError } from "bun:sqlite";
 import { createHash, randomBytes } from "node:crypto";
 import { writeTransaction } from "./db";
 import type { Env } from "./paths";
-import { pidIsAlive } from "./pid";
+import { type ProcessIdentity, processAncestry, processStartTime } from "./pid";
 import { randomWorkerName } from "./worker-name";
 import type { Role } from "./worker-roles";
 
@@ -51,11 +51,16 @@ function digest(token: string): string {
 
 export function mintWorker(
   db: Database,
-  worker: { role: Role; parentWorker?: string; pid?: number; sessionId: string },
+  worker: { role: Role; parentWorker?: string; pid?: number; processStartedAt?: string; sessionId: string },
   at = now(),
 ): MintedWorker {
   const sessionId = worker.sessionId;
   if (!sessionId || sessionId.trim() === "") throw new Error("worker session id is required");
+  const processStartedAt =
+    worker.pid === undefined ? null : (worker.processStartedAt ?? processStartTime(worker.pid));
+  if (worker.pid !== undefined && !processStartedAt) {
+    throw new Error(`cannot read start time for worker pid ${worker.pid}`);
+  }
   const token = randomBytes(16).toString("hex");
   return writeTransaction(db, () => {
     if (worker.parentWorker !== undefined) {
@@ -68,7 +73,7 @@ export function mintWorker(
     const name = randomWorkerName(new Set(held.map((row) => row.name)));
     try {
       db.run(
-        "INSERT INTO factory_worker (name, role, parent_worker, session_id, token_digest, pid, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO factory_worker (name, role, parent_worker, session_id, token_digest, pid, process_started_at, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         [
           name,
           worker.role ?? null,
@@ -76,6 +81,7 @@ export function mintWorker(
           sessionId,
           digest(token),
           worker.pid ?? null,
+          processStartedAt,
           at,
         ],
       );
@@ -95,35 +101,78 @@ export function mintWorker(
   });
 }
 
-type WorkerRow = { name: string; token_digest: string; pid: number | null; ended_at: string | null };
+type WorkerRow = {
+  name: string;
+  pid: number | null;
+  process_started_at: string | null;
+  ended_at: string | null;
+};
 
-export function assertLiveWorker(row: Pick<WorkerRow, "name" | "pid" | "ended_at">): void {
+type CredentialRow = WorkerRow & { token_digest: string };
+
+export function assertLiveWorker(
+  row: Pick<WorkerRow, "name" | "pid" | "process_started_at" | "ended_at">,
+  observed?: ProcessIdentity,
+): void {
   if (row.ended_at !== null) {
     throw new WorkerUnknown("worker_over", `worker ${row.name} ended at ${row.ended_at}`);
   }
-  if (row.pid !== null && !pidIsAlive(row.pid)) {
-    throw new WorkerUnknown("worker_over", `worker ${row.name} ran as pid ${row.pid}, which is gone`);
+  if (
+    row.pid === null ||
+    row.process_started_at === null ||
+    (observed?.startedAt ?? processStartTime(row.pid)) !== row.process_started_at
+  ) {
+    throw new WorkerUnknown("worker_over", `worker ${row.name}'s registered process is gone`);
   }
 }
 
-export function resolveWorker(db: Database, env: Env = process.env): string {
-  const row = authenticateWorker(db, env);
-  assertLiveWorker(row);
-  return row.name;
+export type RegisteredCaller = { kind: "worker"; worker: WorkerRow } | { kind: "barrier" };
+
+export function registeredCaller(
+  db: Database,
+  ancestry: readonly ProcessIdentity[],
+): RegisteredCaller | null {
+  for (const process of ancestry) {
+    const barrier = db
+      .query<{ process_started_at: string }, [number]>(
+        "SELECT process_started_at FROM factory_runner_barrier WHERE pid = ?",
+      )
+      .get(process.pid);
+    if (barrier?.process_started_at === process.startedAt) return { kind: "barrier" };
+    const worker = db
+      .query<WorkerRow, [number, string]>(
+        `SELECT name, pid, process_started_at, ended_at FROM factory_worker
+         WHERE pid = ? AND process_started_at = ? ORDER BY ended_at IS NOT NULL LIMIT 1`,
+      )
+      .get(process.pid, process.startedAt);
+    if (worker) return { kind: "worker", worker };
+  }
+  return null;
 }
 
-export function authenticateWorker(db: Database, env: Env): WorkerRow {
+export function resolveWorker(
+  db: Database,
+  ancestry: readonly ProcessIdentity[] = processAncestry(),
+): string {
+  const registered = registeredCaller(db, ancestry);
+  if (!registered || registered.kind === "barrier") {
+    throw new WorkerUnknown("worker_missing", "no live worker owns this process");
+  }
+  const process = ancestry.find((one) => one.pid === registered.worker.pid);
+  assertLiveWorker(registered.worker, process);
+  return registered.worker.name;
+}
+
+export function authenticateWorker(db: Database, env: Env): CredentialRow {
   const name = env[WORKER_NAME_VAR];
   const token = env[WORKER_TOKEN_VAR];
   if (!name || !token) {
-    throw new WorkerUnknown(
-      "worker_missing",
-      `nothing says which worker this is: ${WORKER_NAME_VAR} and ${WORKER_TOKEN_VAR} identify a ` +
-        "station worker; operators resolve their identity with `dim operator`.",
-    );
+    throw new WorkerUnknown("worker_missing", "worker credential is missing");
   }
   const row = db
-    .query<WorkerRow, [string]>("SELECT name, token_digest, pid, ended_at FROM factory_worker WHERE name = ?")
+    .query<CredentialRow, [string]>(
+      "SELECT name, token_digest, pid, process_started_at, ended_at FROM factory_worker WHERE name = ?",
+    )
     .get(name);
   if (!row || row.token_digest !== digest(token)) {
     throw new WorkerUnknown("worker_unissued", `this factory issued no worker ${name}`);
@@ -137,6 +186,7 @@ export function mintWorkerForSession(
     role: Role;
     sessionId: string;
     pid?: number;
+    processStartedAt?: string;
     parentWorker?: string;
     credential?: MintedWorker | null;
   },
@@ -166,7 +216,7 @@ export function mintWorkerForSession(
         `the saved credential does not belong to session ${worker.sessionId}`,
       );
     }
-    resolveWorker(db, {
+    authenticateWorker(db, {
       [WORKER_NAME_VAR]: worker.credential.name,
       [WORKER_TOKEN_VAR]: worker.credential.token,
     });
@@ -176,19 +226,38 @@ export function mintWorkerForSession(
 
 export function workerIsOver(db: Database, name: string): boolean {
   const row = db
-    .query<{ role: Role; pid: number | null; ended_at: string | null }, [string]>(
-      "SELECT role, pid, ended_at FROM factory_worker WHERE name = ?",
+    .query<{ pid: number | null; process_started_at: string | null; ended_at: string | null }, [string]>(
+      "SELECT pid, process_started_at, ended_at FROM factory_worker WHERE name = ?",
     )
     .get(name);
   if (!row) return true;
   if (row.ended_at !== null) return true;
-  if (row.pid === null) return row.role !== "operator";
-  return !pidIsAlive(row.pid);
+  if (row.pid === null || row.process_started_at === null) return true;
+  return processStartTime(row.pid) !== row.process_started_at;
 }
 
-export function startWorkerRun(db: Database, name: string, pid: number): void {
-  const done = db.run("UPDATE factory_worker SET pid = ?, ended_at = NULL WHERE name = ?", [pid, name]);
+export function startWorkerRun(db: Database, name: string, pid: number, processStartedAt?: string): void {
+  const startedAt = processStartedAt ?? processStartTime(pid);
+  if (!startedAt) throw new Error(`cannot read start time for worker pid ${pid}`);
+  const done = db.run(
+    "UPDATE factory_worker SET pid = ?, process_started_at = ?, ended_at = NULL WHERE name = ?",
+    [pid, startedAt, name],
+  );
   if (done.changes !== 1) throw new Error(`worker ${name} was not registered`);
+}
+
+export function registerRunnerBarrier(db: Database, pid = process.pid): void {
+  const startedAt = processStartTime(pid);
+  if (!startedAt) throw new Error(`cannot read start time for runner pid ${pid}`);
+  db.run(
+    `INSERT INTO factory_runner_barrier (pid, process_started_at) VALUES (?, ?)
+     ON CONFLICT(pid) DO UPDATE SET process_started_at = excluded.process_started_at`,
+    [pid, startedAt],
+  );
+}
+
+export function clearRunnerBarrier(db: Database, pid = process.pid): void {
+  db.run("DELETE FROM factory_runner_barrier WHERE pid = ?", [pid]);
 }
 
 export function endWorker(db: Database, name: string, at = now()): boolean {

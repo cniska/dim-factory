@@ -31,6 +31,7 @@ export type HarnessEvent =
 
 export type HarnessRun = {
   pid: number;
+  processStartedAt?: string;
   events: AsyncIterable<HarnessEvent>;
   cancel(): void;
 };

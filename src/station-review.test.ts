@@ -98,7 +98,11 @@ function floor(): {
 } {
   const db = new Database(":memory:");
   db.run(SCHEMA_SQL);
-  const operator = mintWorker(db, { role: "operator", sessionId: `operator-${opened.length}` });
+  const operator = mintWorker(db, {
+    role: "operator",
+    pid: process.ppid,
+    sessionId: `operator-${opened.length}`,
+  });
   opened.push(db);
   const builder = mintWorker(db, { role: "builder", sessionId: `builder-${opened.length}` });
   const dir = orderWorktree(trunk.dir, `review-${opened.length}`);

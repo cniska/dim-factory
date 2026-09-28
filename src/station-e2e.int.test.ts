@@ -45,7 +45,7 @@ describe("headless factory loop", () => {
     machine.env.PATH = `${bin}:${process.env.PATH ?? ""}`;
 
     const db = openDb(dbPath(machine.env));
-    const operator = mintWorker(db, { role: "operator", sessionId: "e2e-operator" });
+    const operator = mintWorker(db, { role: "operator", pid: process.ppid, sessionId: "e2e-operator" });
     const env = workerEnv(machine.env, operator);
     queueOrder(
       db,

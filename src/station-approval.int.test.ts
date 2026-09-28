@@ -45,7 +45,11 @@ describe("plan approval integration", () => {
       join(home, "routing.json"),
       '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }',
     );
-    const operator = mintWorker(db, { role: "operator", sessionId: "operator-plan-session" });
+    const operator = mintWorker(db, {
+      role: "operator",
+      pid: process.ppid,
+      sessionId: "operator-plan-session",
+    });
     queueOrder(
       db,
       { id: "operator-plan-order", project: "cniska/dim-factory", title: "Delegate planning" },
@@ -54,6 +58,7 @@ describe("plan approval integration", () => {
 
     const outcome = await runOrderPlanLive(db, "operator-plan-order", {
       dir: repo.dir,
+      parentWorker: operator.name,
       env: { ...env(operator), DIM_HOME: home },
       harness: "codex",
       adapter: scriptedHarness((request) => ({
@@ -92,7 +97,7 @@ describe("plan approval integration", () => {
     db.run(SCHEMA_SQL);
     const repo = integratedRepo();
     repos.push(repo.dir);
-    const operator = mintWorker(db, { role: "operator", sessionId: "operator-session" });
+    const operator = mintWorker(db, { role: "operator", pid: process.ppid, sessionId: "operator-session" });
     const planner = mintWorker(db, {
       role: "planner",
       parentWorker: operator.name,
@@ -142,7 +147,7 @@ describe("plan approval integration", () => {
     db.run(SCHEMA_SQL);
     const repo = integratedRepo();
     repos.push(repo.dir);
-    const operator = mintWorker(db, { role: "operator", sessionId: "operator-session-3" });
+    const operator = mintWorker(db, { role: "operator", pid: process.ppid, sessionId: "operator-session-3" });
     const planner = mintWorker(db, {
       role: "planner",
       parentWorker: operator.name,
@@ -196,12 +201,14 @@ describe("plan approval integration", () => {
     db.run(SCHEMA_SQL);
     const repo = integratedRepo();
     repos.push(repo.dir);
-    const operator = mintWorker(db, { role: "operator", sessionId: "operator-session-2" });
+    const operator = mintWorker(db, { role: "operator", pid: process.ppid, sessionId: "operator-session-2" });
     const builder = mintWorker(db, {
       role: "builder",
       parentWorker: operator.name,
       sessionId: "operator-session-2/builder-session",
+      pid: process.ppid,
     });
+    db.run("UPDATE factory_worker SET pid = NULL, process_started_at = NULL WHERE name = ?", [operator.name]);
     queueOrder(
       db,
       { id: "approval-order-2", project: "cniska/dim-factory", title: "Approve this" },
@@ -228,12 +235,14 @@ describe("plan approval integration", () => {
     repos.push(repo.dir);
     const home = mkdtempSync(join(tmpdir(), "dim-plan-delegation-"));
     homes.push(home);
-    const operator = mintWorker(db, { role: "operator", sessionId: "delegate-operator" });
+    const operator = mintWorker(db, { role: "operator", pid: process.ppid, sessionId: "delegate-operator" });
     const builder = mintWorker(db, {
       role: "builder",
       parentWorker: operator.name,
       sessionId: "delegate-operator/builder",
+      pid: process.ppid,
     });
+    db.run("UPDATE factory_worker SET pid = NULL, process_started_at = NULL WHERE name = ?", [operator.name]);
     queueOrder(
       db,
       { id: "delegation-order", project: "cniska/dim-factory", title: "Delegate this" },

@@ -27,7 +27,13 @@ import { orderStatus } from "./order-status";
 import type { Env } from "./paths";
 import { approveFinalBuildAt, approvePlan, approveReviewAt } from "./station-approvals.test-support";
 import { assembleWallSnapshot } from "./wall/server";
-import { mintWorker, newWorkerSession, resolveWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./worker";
+import {
+  mintWorker,
+  newWorkerSession,
+  resolveWorker as resolveFromAncestry,
+  WORKER_NAME_VAR,
+  WORKER_TOKEN_VAR,
+} from "./worker";
 
 const opened: Database[] = [];
 
@@ -38,10 +44,18 @@ const machine = collectingMachine();
 function db(): Database {
   const database = new Database(":memory:");
   database.run(SCHEMA_SQL);
-  const operator = mintWorker(database, { role: "operator", sessionId: newWorkerSession("test-operator") });
+  const operator = mintWorker(database, {
+    role: "operator",
+    pid: process.ppid,
+    sessionId: newWorkerSession("test-operator"),
+  });
   env = { ...machine.env, [WORKER_NAME_VAR]: operator.name, [WORKER_TOKEN_VAR]: operator.token };
   opened.push(database);
   return database;
+}
+
+function resolveWorker(database: Database, _env?: Env): string {
+  return resolveFromAncestry(database);
 }
 
 function runOrderCommand(
@@ -523,7 +537,9 @@ describe("order command", () => {
       role: "builder",
       parentWorker: env[WORKER_NAME_VAR] as string,
       sessionId: newWorkerSession("ship-builder"),
+      pid: process.ppid,
     });
+    database.run("UPDATE factory_worker SET pid = NULL, process_started_at = NULL WHERE role = 'operator'");
 
     expect(() =>
       runOrderCommand(database, ["ship", "order-1"], null, trunk.dir, {
@@ -674,6 +690,7 @@ describe("order command", () => {
     const database = db();
     queued(database);
     const unissued = { ...env, DIM_WORKER_TOKEN: "not the one it was handed" };
+    database.run("UPDATE factory_worker SET pid = NULL, process_started_at = NULL WHERE role = 'operator'");
 
     for (const args of [
       add,
@@ -685,7 +702,7 @@ describe("order command", () => {
         expect.objectContaining({ code: "worker_missing" }),
       );
       expect(() => runCommand(database, args, null, undefined, unissued)).toThrow(
-        expect.objectContaining({ code: "worker_unissued" }),
+        expect.objectContaining({ code: "worker_missing" }),
       );
     }
     expect(database.query("SELECT count(*) AS n FROM factory_order_event").get()).toEqual({ n: 1 });
@@ -770,7 +787,9 @@ describe("order command", () => {
       role: "builder",
       parentWorker: env[WORKER_NAME_VAR] as string,
       sessionId: newWorkerSession("drop-builder"),
+      pid: process.ppid,
     });
+    database.run("UPDATE factory_worker SET pid = NULL, process_started_at = NULL WHERE role = 'operator'");
 
     expect(() =>
       runOrderCommand(database, ["drop", "order-1", "--reason", "disposable"], null, trunk.dir, {

@@ -3,9 +3,8 @@ import { type Command, UsageError } from "./cli-contract";
 import { readFlags, requiredFlag } from "./cli-flags";
 import { withDb } from "./db";
 import { clearStop, pullStop } from "./factory-stop";
-import { dbPath, type Env } from "./paths";
+import { dbPath } from "./paths";
 import { resolveWorker } from "./worker";
-import { resolveAssignedWorker } from "./worker-assignment";
 
 const usage = (message: string): Error => new UsageError(message);
 
@@ -18,13 +17,13 @@ export const factoryCommand: Command = {
   },
 };
 
-export function runFactoryCommand(db: Database, args: string[], env: Env = process.env) {
+export function runFactoryCommand(db: Database, args: string[]) {
   const [action, ...rest] = args;
   if (action !== "stop" && action !== "clear") {
     throw usage(`${action ?? "factory"} is not a factory subcommand`);
   }
   const given = readFlags(rest, action === "stop" ? ["--reason", "--order"] : [], usage);
-  const worker = env.DIM_WORKER_ASSIGNMENT_ID ? resolveAssignedWorker(db, env) : resolveWorker(db, env);
+  const worker = resolveWorker(db);
   if (action === "stop") {
     const stop = pullStop(db, {
       reason: requiredFlag(given, "--reason", usage),

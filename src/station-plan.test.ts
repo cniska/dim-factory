@@ -13,9 +13,19 @@ import { returnOrderArtifact } from "./order-approval";
 import { startAttempt } from "./order-attempt";
 import { dropOrder, queueOrder } from "./order-lifecycle";
 import { orderStatus } from "./order-status";
-import { plannerBrief, runOrderPlanLive } from "./station-plan";
+import { plannerBrief, runOrderPlanLive as runPlan } from "./station-plan";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
 import { ASSIGNMENT_ID_VAR } from "./worker-assignment";
+
+function runOrderPlanLive(
+  db: Database,
+  orderId: string,
+  options: Omit<Parameters<typeof runPlan>[2], "parentWorker">,
+) {
+  const parentWorker = options.env?.[WORKER_NAME_VAR];
+  if (!parentWorker) throw new Error("test needs a named parent worker");
+  return runPlan(db, orderId, { ...options, parentWorker });
+}
 
 describe("planner station", () => {
   test("uses the shared artifact contract and names the plan dimensions", () => {

@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { SCHEMA_SQL } from "./db-schema";
 import { endWorker, mintWorker, WorkerCredentialUnavailable } from "./worker";
 import {
+  assignedWorker,
   assignWorker,
   bootstrapWorker,
   renewWorkerAssignment,
@@ -80,12 +81,6 @@ describe("worker assignments", () => {
 
     expect(retried.name).toBe(first.name);
     expect(retried.token).toBe(first.token);
-    expect(
-      resolveAssignedWorker(db, {
-        DIM_WORKER_ASSIGNMENT_ID: assignment.id,
-        DIM_WORKER_ASSIGNMENT_TOKEN: assignment.token,
-      }),
-    ).toBe(first.name);
     expect(() =>
       bootstrapWorker(db, {
         id: assignment.id,
@@ -121,7 +116,7 @@ describe("worker assignments", () => {
     db.close();
   });
 
-  test("lets the harness assignment authenticate the bootstrapped worker", () => {
+  test("records the worker accepted through a harness assignment", () => {
     const db = floor();
     const parent = mintWorker(db, { role: "operator", sessionId: "operator-session" });
     const assignment = assignWorker(db, { parentWorker: parent.name, role: "reviewer" });
@@ -131,12 +126,7 @@ describe("worker assignments", () => {
       sessionId: "reviewer-session",
     });
 
-    expect(
-      resolveAssignedWorker(db, {
-        DIM_WORKER_ASSIGNMENT_ID: assignment.id,
-        DIM_WORKER_ASSIGNMENT_TOKEN: assignment.token,
-      }),
-    ).toBe(child.name);
+    expect(assignedWorker(db, assignment.id)).toBe(child.name);
     db.close();
   });
 

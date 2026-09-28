@@ -5,9 +5,11 @@ import { closeDb, openDb } from "./db";
 import { labelFor } from "./git-remote";
 import { drainSpool } from "./ingest-spool";
 import { dbPath } from "./paths";
+import { type ProcessIdentity, processAncestry, processStartedBefore } from "./pid";
 import {
   type MintedWorker,
   mintWorkerForSession,
+  registeredCaller,
   WORKER_NAME_VAR,
   WORKER_SESSION_VAR,
   WORKER_TOKEN_VAR,
@@ -20,13 +22,15 @@ const OPERATOR_ROLE = "operator" as const;
 
 const fail = (message: string): Error => new UsageError(message);
 
-function activeSession(db: Database, env: Record<string, string | undefined>, cwd: string): string {
+type ActiveSession = { session_id: string; harness_pid: number | null; ts: string };
+
+function activeSession(db: Database, env: Record<string, string | undefined>, cwd: string): ActiveSession {
   const project = labelFor(cwd);
   if (!project) throw fail(`cannot resolve this checkout's owner/repo for ${cwd}`);
   drainSpool(db, env);
   const active = db
-    .query<{ session_id: string; cwd: string | null }, []>(
-      `SELECT DISTINCT start.session_id, start.cwd
+    .query<ActiveSession & { cwd: string | null }, []>(
+      `SELECT start.session_id, start.cwd, start.harness_pid, start.ts
        FROM hook_event start
        WHERE start.event = 'session_start'
          AND NOT EXISTS (
@@ -41,25 +45,19 @@ function activeSession(db: Database, env: Record<string, string | undefined>, cw
          AND NOT EXISTS (
            SELECT 1 FROM hook_event ended
            WHERE ended.session_id = start.session_id AND ended.event = 'session_end'
-         )`,
+         ) ORDER BY start.ts`,
     )
     .all();
-  const sessions = new Set(
-    active
-      .filter((session) => session.cwd && labelFor(session.cwd) === project)
-      .map((session) => session.session_id),
-  );
-  const harnessSessions = new Set(
-    [env.CODEX_THREAD_ID, env.CLAUDE_CODE_SESSION_ID, env.GROK_SESSION_ID].filter(
-      (sessionId): sessionId is string => Boolean(sessionId && sessions.has(sessionId)),
-    ),
-  );
-  const [harnessSession] = harnessSessions;
-  if (harnessSessions.size === 1 && harnessSession) return harnessSession;
+  const sessions = new Map<string, ActiveSession>();
+  for (const session of active) {
+    if (session.cwd && labelFor(session.cwd) === project && !sessions.has(session.session_id)) {
+      sessions.set(session.session_id, session);
+    }
+  }
   if (sessions.size > 1) {
     throw fail(`more than one active operator session is recorded for ${project}; the factory cannot choose`);
   }
-  const [current] = sessions;
+  const [current] = sessions.values();
   if (current) return current;
   throw fail(`no active harness session is recorded for project ${project}`);
 }
@@ -69,6 +67,7 @@ function workerForSession(
   workerRole: Role,
   sessionId: string,
   env: Record<string, string | undefined>,
+  harness: ProcessIdentity,
 ): MintedWorker {
   const workerName = env[WORKER_NAME_VAR];
   const workerToken = env[WORKER_TOKEN_VAR];
@@ -82,6 +81,8 @@ function workerForSession(
   const minted = mintWorkerForSession(db, {
     role: workerRole,
     sessionId,
+    pid: harness.pid,
+    processStartedAt: harness.startedAt,
     credential,
   });
   saveWorkerCredential(env, minted);
@@ -93,10 +94,18 @@ export function runOperatorCommand(
   args: string[] = [],
   env = process.env,
   cwd = process.cwd(),
+  ancestry: readonly ProcessIdentity[] = processAncestry(),
 ): string {
   readFlags(args, [], fail);
-  const sessionId = activeSession(db, env, cwd);
-  return workerExports(workerForSession(db, OPERATOR_ROLE, sessionId, env));
+  if (registeredCaller(db, ancestry))
+    throw fail("this process already belongs to a factory worker or runner");
+  const session = activeSession(db, env, cwd);
+  const harness = ancestry.find((entry) => entry.pid === session.harness_pid);
+  if (!harness) throw fail("the active session's harness is not an ancestor of this process");
+  if (!processStartedBefore(harness.startedAt, session.ts)) {
+    throw fail("the active session's harness started after its SessionStart event");
+  }
+  return workerExports(workerForSession(db, OPERATOR_ROLE, session.session_id, env, harness));
 }
 
 export const operatorCommand: Command = {

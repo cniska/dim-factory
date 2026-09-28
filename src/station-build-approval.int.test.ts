@@ -16,6 +16,7 @@ import { appendOrderEvent } from "./order-ledger";
 import { queueOrder, startOrder } from "./order-lifecycle";
 import { orderState } from "./order-state";
 import { orderStatus } from "./order-status";
+import { processStartTime } from "./pid";
 import { approvePlan } from "./station-approvals.test-support";
 import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
 
@@ -38,7 +39,11 @@ describe("build approval integration", () => {
     db.run(SCHEMA_SQL);
     const repo = integratedRepo();
     repos.push(repo.dir);
-    const operator = mintWorker(db, { role: "operator", sessionId: "failed-return-operator" });
+    const operator = mintWorker(db, {
+      role: "operator",
+      pid: process.ppid,
+      sessionId: "failed-return-operator",
+    });
     const builder = mintWorker(db, {
       role: "builder",
       parentWorker: operator.name,
@@ -112,7 +117,7 @@ describe("build approval integration", () => {
     db.run(SCHEMA_SQL);
     const repo = integratedRepo();
     repos.push(repo.dir);
-    const operator = mintWorker(db, { role: "operator", sessionId: "build-operator" });
+    const operator = mintWorker(db, { role: "operator", pid: process.ppid, sessionId: "build-operator" });
     const builder = mintWorker(db, {
       role: "builder",
       parentWorker: operator.name,
@@ -144,6 +149,13 @@ describe("build approval integration", () => {
       expect.objectContaining({ code: "not_next", message: expect.stringContaining("run at build") }),
     );
 
+    db.run("UPDATE factory_worker SET pid = NULL, process_started_at = NULL WHERE name = ?", [operator.name]);
+    db.run("UPDATE factory_worker SET pid = ?, process_started_at = ? WHERE name = ?", [
+      process.ppid,
+      processStartTime(process.ppid),
+      builder.name,
+    ]);
+
     await expect(
       runOrderCommandLive(
         db,
@@ -153,6 +165,12 @@ describe("build approval integration", () => {
         env(builder),
       ),
     ).rejects.toThrow(expect.objectContaining({ code: "worker_not_operator" }));
+    db.run("UPDATE factory_worker SET pid = NULL, process_started_at = NULL WHERE name = ?", [builder.name]);
+    db.run("UPDATE factory_worker SET pid = ?, process_started_at = ? WHERE name = ?", [
+      process.ppid,
+      processStartTime(process.ppid),
+      operator.name,
+    ]);
 
     attemptIn(db, "build-approval-order", builder.name, operator.name, "build-run");
     recordOrderCommit(db, "build-approval-order", repo.sha, builder.name, "feat: build it");
@@ -219,6 +237,13 @@ describe("build approval integration", () => {
       builder.name,
     );
 
+    db.run("UPDATE factory_worker SET pid = NULL, process_started_at = NULL WHERE name = ?", [operator.name]);
+    db.run("UPDATE factory_worker SET pid = ?, process_started_at = ? WHERE name = ?", [
+      process.ppid,
+      processStartTime(process.ppid),
+      builder.name,
+    ]);
+
     expect(() =>
       runOrderCommand(
         db,
@@ -228,6 +253,12 @@ describe("build approval integration", () => {
         env(builder),
       ),
     ).toThrow(expect.objectContaining({ code: "worker_not_operator" }));
+    db.run("UPDATE factory_worker SET pid = NULL, process_started_at = NULL WHERE name = ?", [builder.name]);
+    db.run("UPDATE factory_worker SET pid = ?, process_started_at = ? WHERE name = ?", [
+      process.ppid,
+      processStartTime(process.ppid),
+      operator.name,
+    ]);
     expect(
       runOrderCommand(
         db,

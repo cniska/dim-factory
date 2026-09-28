@@ -3,7 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { SCHEMA_SQL } from "./db-schema";
 import { runFactoryCommand } from "./factory-command";
 import { clearStop, FactoryStopError, liveStop, pullStop } from "./factory-stop";
-import { mintWorker, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./worker";
+import { processStartTime } from "./pid";
+import { mintWorker } from "./worker";
 
 function floor(): Database {
   const db = new Database(":memory:");
@@ -65,23 +66,29 @@ describe("pulling and clearing a stop", () => {
     const db = floor();
     const operator = mintWorker(db, { role: "operator", sessionId: "operator-session" });
     const builder = mintWorker(db, { role: "builder", sessionId: "builder-session" });
-    const operatorEnv = { [WORKER_NAME_VAR]: operator.name, [WORKER_TOKEN_VAR]: operator.token };
-    const builderEnv = { [WORKER_NAME_VAR]: builder.name, [WORKER_TOKEN_VAR]: builder.token };
-
-    expect(() => runFactoryCommand(db, ["stop", "--reason", "broken"], {})).toThrow(
+    expect(() => runFactoryCommand(db, ["stop", "--reason", "broken"])).toThrow(
       expect.objectContaining({ code: "worker_missing" }),
     );
-    expect(() =>
-      runFactoryCommand(db, ["stop", "--reason", "broken", "--by", operator.name], builderEnv),
-    ).toThrow();
-    expect(runFactoryCommand(db, ["stop", "--reason", "broken"], builderEnv)).toMatchObject({
+    db.run("UPDATE factory_worker SET pid = ?, process_started_at = ? WHERE name = ?", [
+      process.ppid,
+      processStartTime(process.ppid),
+      builder.name,
+    ]);
+    expect(() => runFactoryCommand(db, ["stop", "--reason", "broken", "--by", operator.name])).toThrow();
+    expect(runFactoryCommand(db, ["stop", "--reason", "broken"])).toMatchObject({
       by: builder.name,
     });
-    expect(() => runFactoryCommand(db, ["clear"], builderEnv)).toThrow(
+    expect(() => runFactoryCommand(db, ["clear"])).toThrow(
       expect.objectContaining({ code: "worker_not_operator" }),
     );
     expect(liveStop(db)?.pulledBy).toBe(builder.name);
-    expect(runFactoryCommand(db, ["clear"], operatorEnv)).toMatchObject({ action: "cleared" });
+    db.run("UPDATE factory_worker SET pid = NULL, process_started_at = NULL WHERE name = ?", [builder.name]);
+    db.run("UPDATE factory_worker SET pid = ?, process_started_at = ? WHERE name = ?", [
+      process.ppid,
+      processStartTime(process.ppid),
+      operator.name,
+    ]);
+    expect(runFactoryCommand(db, ["clear"])).toMatchObject({ action: "cleared" });
     db.close();
   });
   test("a pulled stop is the live one, and names the order it came from", () => {

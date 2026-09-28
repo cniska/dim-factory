@@ -2,6 +2,7 @@ import { closeSync, fstatSync, mkdtempSync, openSync, readSync, rmSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
+import { processStartTime } from "./pid";
 
 export type ProcessEnvironment = Record<string, string | undefined>;
 
@@ -82,6 +83,7 @@ export function processHarness(
     };
     return {
       pid: child.pid,
+      processStartedAt: processStartTime(child.pid) ?? undefined,
       events: (async function* () {
         const stdoutDecoder = new TextDecoder();
         const stderrDecoder = new TextDecoder();

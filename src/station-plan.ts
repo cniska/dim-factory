@@ -14,7 +14,6 @@ import { stationDirectory } from "./station-directory";
 import { type BriefedOrder, lineBrief } from "./station-line-brief";
 import { type PlanSlice, parsePlanArtifact } from "./station-plan-artifact";
 import { orderWorkerIsBound, runOrderStationLive } from "./station-worker";
-import { resolveWorker } from "./worker";
 import type { Capability } from "./worker-capabilities";
 
 const PLAN_OUTPUT_SCHEMA = `${import.meta.dir}/station-plan-artifact.schema.json`;
@@ -65,6 +64,7 @@ export async function runOrderPlanLive(
     dir: string;
     env?: Record<string, string | undefined>;
     harness: HarnessName;
+    parentWorker: string;
     adapter?: HarnessAdapter;
   },
 ): Promise<PlanOutcome> {
@@ -72,7 +72,7 @@ export async function runOrderPlanLive(
     .query<BriefedOrder, [string]>("SELECT id, title, description, line FROM factory_order WHERE id = ?")
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
-  const parentWorker = resolveWorker(db, options.env);
+  const parentWorker = options.parentWorker;
   assertOperator(db, parentWorker, "delegate planning");
   assertNext(db, orderId, "plan");
   assertNoRunningAttempt(db, orderId, "start a planner");

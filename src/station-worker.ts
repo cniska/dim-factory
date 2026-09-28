@@ -139,10 +139,10 @@ export async function runOrderWorkerHarnessLive(
 ): Promise<Awaited<ReturnType<typeof launchHarnessLive>> & { worker?: string }> {
   let name = worker.worker;
   let running: string | undefined;
-  const onStarted: HarnessStarted = (sessionId, pid) => {
+  const onStarted: HarnessStarted = (sessionId, pid, processStartedAt) => {
     if (name) {
       if (onAssigned) finishStoppedAttempt(db, worker.orderId, new Date().toISOString());
-      startWorkerRun(db, name, pid);
+      startWorkerRun(db, name, pid, processStartedAt);
       running = name;
       bindOrderWorkerSession(db, worker.orderId, worker.role, sessionId);
     } else {
@@ -151,6 +151,7 @@ export async function runOrderWorkerHarnessLive(
         token: worker.assignment.token,
         sessionId,
         pid,
+        processStartedAt,
       });
       running = minted.name;
       saveWorkerCredential(machine ?? process.env, minted);

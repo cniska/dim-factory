@@ -567,13 +567,28 @@ describe("factory order report records", () => {
     database.close();
   });
 
-  test.each([
-    ["ran as a process that has exited", Bun.spawnSync(["true"]).pid],
-    ["has no recorded pid", null],
-  ])("a review aborts the round of a reviewer that %s", (_, pid) => {
+  test("a review aborts the round of a reviewer whose process has exited", async () => {
+    const child = Bun.spawn(["sleep", "30"]);
     const database = db();
     const runner = workerIn(database, "operator");
-    const round = acceptedRound(database, "reviewer-gone", runner, pid);
+    const round = acceptedRound(database, "reviewer-gone", runner, child.pid);
+    child.kill();
+    await child.exited;
+
+    abortStrandedReview(database, "reviewer-gone");
+
+    expect(
+      database
+        .query<{ outcome: string | null }, [number]>("SELECT outcome FROM factory_order_review WHERE id = ?")
+        .get(round.id),
+    ).toEqual({ outcome: "aborted" });
+    database.close();
+  });
+
+  test("a review aborts the round of a reviewer with no recorded pid", () => {
+    const database = db();
+    const runner = workerIn(database, "operator");
+    const round = acceptedRound(database, "reviewer-gone", runner, null);
 
     abortStrandedReview(database, "reviewer-gone");
 

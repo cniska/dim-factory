@@ -114,6 +114,7 @@ export function bootstrapWorker(
     token: string;
     sessionId: string;
     pid?: number;
+    processStartedAt?: string;
     credential?: MintedWorker | null;
   },
   at = now(),
@@ -166,6 +167,7 @@ export function bootstrapWorker(
       parentWorker: row.parent_worker,
       sessionId: assignment.sessionId,
       pid: assignment.pid,
+      processStartedAt: assignment.processStartedAt,
     });
     db.run(
       `UPDATE factory_worker_assignment
@@ -200,9 +202,10 @@ export function resolveAssignedWorker(db: Database, env: Record<string, string |
   if (row.token_digest !== digest(token)) throw new WorkerAssignmentError("assignment_token");
   if (!row.accepted_worker) throw new WorkerAssignmentError("assignment_used");
   const worker = db
-    .query<{ name: string; pid: number | null; ended_at: string | null }, [string]>(
-      "SELECT name, pid, ended_at FROM factory_worker WHERE name = ?",
-    )
+    .query<
+      { name: string; pid: number | null; process_started_at: string | null; ended_at: string | null },
+      [string]
+    >("SELECT name, pid, process_started_at, ended_at FROM factory_worker WHERE name = ?")
     .get(row.accepted_worker);
   if (!worker)
     throw new WorkerUnknown("worker_unissued", `this factory issued no worker ${row.accepted_worker}`);

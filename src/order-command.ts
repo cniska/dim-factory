@@ -24,8 +24,7 @@ import { onHarnessWithCapacity } from "./station-harness";
 import { runOrderPlanLive } from "./station-plan";
 import { runOrderReviewLive } from "./station-review";
 import type { OrderStationName } from "./station-worker";
-import { resolveWorker } from "./worker";
-import { resolveAssignedWorker } from "./worker-assignment";
+import { clearRunnerBarrier, registerRunnerBarrier, resolveWorker } from "./worker";
 import { mappedHarnesses } from "./worker-routing";
 
 export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--line <${ORDER_LINES.join("|")}>] [--description "..."]
@@ -160,7 +159,7 @@ export function runOrderCommand(
     return readyOrders(db, project, limit === undefined ? undefined : Number(limit));
   }
   if (!command || !orderId) throw new UsageError("order takes a subcommand and an order id");
-  const worker = env.DIM_WORKER_ASSIGNMENT_ID ? resolveAssignedWorker(db, env) : resolveWorker(db, env);
+  const worker = resolveWorker(db);
   if (command === "add") return add(db, orderId, rest, defaultProject, worker);
   if (command === "priority") {
     const [level] = rest;
@@ -229,44 +228,49 @@ export async function runOrderCommandLive(
   const [, orderId, ...rest] = args;
   if (!orderId) throw new UsageError("order takes a subcommand and an order id");
   const given = flags(rest, ["--harness"]);
-  const operator = resolveWorker(db, env);
-  const named = namedHarness(given);
-  const candidates = named ? [] : candidateHarnesses(db, operator, env);
-  const onCapacity = <T>(station: OrderStationName, run: (harness: HarnessName) => Promise<T>) =>
-    onHarnessWithCapacity(db, orderId, station, candidates, named, run);
-  if (args[0] === "plan") {
-    assertOperator(db, operator, "delegate planning");
-    requireCurrentHooks(env);
-    const outcome = await onCapacity("plan", (harness) =>
-      runOrderPlanLive(db, orderId, { dir: cwd, env, harness }),
+  const operator = resolveWorker(db);
+  registerRunnerBarrier(db);
+  try {
+    const named = namedHarness(given);
+    const candidates = named ? [] : candidateHarnesses(db, operator, env);
+    const onCapacity = <T>(station: OrderStationName, run: (harness: HarnessName) => Promise<T>) =>
+      onHarnessWithCapacity(db, orderId, station, candidates, named, run);
+    if (args[0] === "plan") {
+      assertOperator(db, operator, "delegate planning");
+      requireCurrentHooks(env);
+      const outcome = await onCapacity("plan", (harness) =>
+        runOrderPlanLive(db, orderId, { dir: cwd, env, harness, parentWorker: operator }),
+      );
+      return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;
+    }
+    if (args[0] === "build") {
+      const outcome = await runRemainingBuilds(
+        orderId,
+        () => {
+          const state = orderState(db, orderId);
+          return {
+            waiting: state.station === "build" && state.next === "run",
+            progress: `${nextOrderSlice(db, orderId)?.id ?? "none"}:${latestOrderCommit(db, orderId)?.sha ?? ""}`,
+          };
+        },
+        () =>
+          onCapacity("build", (harness) =>
+            runOrderBuildLive(db, orderId, operator, { dir: cwd, env, harness }),
+          ),
+      );
+      return `build completed by ${outcome.builder}`;
+    }
+    const outcome = await onCapacity("review", (harness) =>
+      runOrderReviewLive(db, orderId, operator, { dir: cwd, env, harness }),
     );
-    return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;
+    return outcome.outcome === "aborted"
+      ? `review aborted: ${outcome.reviewer} did not finish, so nothing it left is a clean reading; dim order review runs it again`
+      : outcome.findings === 0
+        ? "review raised no findings; approve the Review artifact to ship"
+        : `review raised ${outcome.findings} finding${outcome.findings === 1 ? "" : "s"}; dim order build answers them`;
+  } finally {
+    clearRunnerBarrier(db);
   }
-  if (args[0] === "build") {
-    const outcome = await runRemainingBuilds(
-      orderId,
-      () => {
-        const state = orderState(db, orderId);
-        return {
-          waiting: state.station === "build" && state.next === "run",
-          progress: `${nextOrderSlice(db, orderId)?.id ?? "none"}:${latestOrderCommit(db, orderId)?.sha ?? ""}`,
-        };
-      },
-      () =>
-        onCapacity("build", (harness) =>
-          runOrderBuildLive(db, orderId, operator, { dir: cwd, env, harness }),
-        ),
-    );
-    return `build completed by ${outcome.builder}`;
-  }
-  const outcome = await onCapacity("review", (harness) =>
-    runOrderReviewLive(db, orderId, operator, { dir: cwd, env, harness }),
-  );
-  return outcome.outcome === "aborted"
-    ? `review aborted: ${outcome.reviewer} did not finish, so nothing it left is a clean reading; dim order review runs it again`
-    : outcome.findings === 0
-      ? "review raised no findings; approve the Review artifact to ship"
-      : `review raised ${outcome.findings} finding${outcome.findings === 1 ? "" : "s"}; dim order build answers them`;
 }
 
 export const orderCommand: Command = {

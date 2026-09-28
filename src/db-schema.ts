@@ -5,7 +5,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { STATIONS_SQL } from "./station";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 78;
+export const SCHEMA_VERSION = 79;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -296,20 +296,27 @@ CREATE TABLE IF NOT EXISTS factory_worker (
   session_id    TEXT UNIQUE,
   -- The digest of the secret the worker carries, never the secret. The issued set is
   -- readable through \`dim sql\`, so without something only the worker holds, any
-  -- worker could write under another's name. It is a capability rather than a
-  -- credential: it is minted here, never leaves this machine, and stops working when
-  -- the worker does.
+  -- worker could write under another's name.
   token_digest  TEXT NOT NULL,
-  -- The process the worker runs as, so that it is over is a signal sent to a pid
-  -- rather than a heartbeat something has to keep writing. A station worker resumes
-  -- as a new process each run, and the runner writes that run's pid when it starts.
-  -- NULL for a worker issued to a shell instead of to a process this spawned.
+  -- The process the worker runs as. A caller is the nearest registered process above
+  -- it, so identity is its process tree rather than anything a file or variable holds.
+  -- The start time is part of the match because a pid alone is reused once its process
+  -- is gone. A station worker resumes as a new process each run, and the runner writes
+  -- both when the run starts.
   pid           INTEGER,
+  process_started_at TEXT,
   started_at    TEXT NOT NULL,
   -- The runner writes this when a station worker's run ends and clears it when the
-  -- next run starts. A stopped pid is over whether or not this row was written,
-  -- which keeps a killed worker from holding a live token.
+  -- next run starts. A stopped process is over whether or not this row was written.
   ended_at      TEXT
+);
+
+-- A running station command's own process. Everything it spawns before a worker is
+-- registered under it — git, the check, a harness child — has the operator above it, so
+-- the barrier makes those resolve to no one instead of to the operator.
+CREATE TABLE IF NOT EXISTS factory_runner_barrier (
+  pid                INTEGER PRIMARY KEY,
+  process_started_at TEXT NOT NULL
 );
 
 -- A station can assign a child before the harness has created that child's session.
