@@ -271,49 +271,6 @@ describe("the shared hook", () => {
   });
 });
 
-describe("the check gate", () => {
-  test("skips itself on the env escape, before anything else", () => {
-    const script = preCommitScript(["cniska"]);
-    const skip = script.indexOf(SKIP_CHECK_ENV);
-    expect(skip).toBeGreaterThan(-1);
-    expect(skip).toBeLessThan(script.indexOf("remote.origin.url"));
-  });
-
-  test("runs nothing for a repo that is not the owner's", () => {
-    const script = preCommitScript(["cniska"]);
-    expect(script).toContain("case \"$owner\" in\n  'cniska')");
-    expect(script.indexOf('case "$owner" in')).toBeLessThan(script.indexOf("dim check-command"));
-  });
-
-  test("exits 0 where dim or the declared check is missing", () => {
-    const script = preCommitScript(["cniska"]);
-    expect(script).toContain("command -v dim >/dev/null 2>&1 || exit 0");
-    expect(script).toContain('[ -n "$check" ] || exit 0');
-  });
-
-  test("clears git's own environment before running the check", () => {
-    const script = preCommitScript(["cniska"]);
-    for (const v of [
-      "GIT_DIR",
-      "GIT_INDEX_FILE",
-      "GIT_WORK_TREE",
-      "GIT_OBJECT_DIRECTORY",
-      "GIT_AUTHOR_NAME",
-      "GIT_AUTHOR_EMAIL",
-      "GIT_AUTHOR_DATE",
-    ]) {
-      expect(script).toContain(v);
-    }
-    expect(script.indexOf("unset GIT_DIR")).toBeLessThan(script.indexOf('eval "$check"'));
-  });
-
-  test("refuses the commit when the check fails, and names the way past it", () => {
-    const script = preCommitScript(["cniska"]);
-    expect(script).toContain("exit 1");
-    expect(script).toContain(`${SKIP_CHECK_ENV}=1 git commit`);
-  });
-});
-
 describe("the comment step", () => {
   test("runs after the ownership check and before git's environment is cleared", () => {
     const script = preCommitScript(["cniska"]);
@@ -487,6 +444,91 @@ describe("the comment gate", () => {
     const { dir, commit } = repoWithCommentGate({ project: BANNED });
     try {
       expect(commit({ "a.ts": "// why\n" }, { DIM_SKIP_CHECK: "1" }).ok).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+const CLEAN_GIT_ENVIRONMENT =
+  'test -z "$GIT_INDEX_FILE$GIT_DIR$GIT_AUTHOR_NAME$GIT_AUTHOR_EMAIL$GIT_AUTHOR_DATE"';
+
+function repoDeclaringCheck(script: string) {
+  const gate = repoWithCommentGate({});
+  const declared = gate.commit(
+    { "package.json": JSON.stringify({ scripts: { verify: script } }), "bun.lock": "" },
+    { [SKIP_CHECK_ENV]: "1" },
+  );
+  if (!declared.ok) throw new Error(`could not commit the declared check: ${declared.err}`);
+  const commits = () =>
+    Number(
+      execFileSync("git", ["-C", gate.work, "rev-list", "--count", "HEAD"], { encoding: "utf8" }).trim(),
+    );
+  return { ...gate, commits };
+}
+
+describe("the check gate", () => {
+  test("refuses a real commit whose declared check fails, and names the way past it", () => {
+    const { dir, commit, commits } = repoDeclaringCheck("exit 1");
+    try {
+      const refused = commit({ "a.ts": "export const a = 1;\n" });
+      expect(refused.ok).toBe(false);
+      expect(refused.err).toContain("pre-commit: bun run verify");
+      expect(refused.err).toContain("the repo's own check failed, so the commit is refused");
+      expect(refused.err).toContain(`${SKIP_CHECK_ENV}=1 git commit`);
+      expect(commits()).toBe(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("lets a commit through when its declared check passes", () => {
+    const { dir, commit, commits } = repoDeclaringCheck("exit 0");
+    try {
+      expect(commit({ "a.ts": "export const a = 1;\n" }).ok).toBe(true);
+      expect(commits()).toBe(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("steps aside on the env escape, over a failing check", () => {
+    const { dir, commit, commits } = repoDeclaringCheck("exit 1");
+    try {
+      expect(commit({ "a.ts": "export const a = 1;\n" }, { [SKIP_CHECK_ENV]: "1" }).ok).toBe(true);
+      expect(commits()).toBe(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("lets a commit through where dim is missing, over a failing check", () => {
+    const { dir, commit, commits } = repoDeclaringCheck("exit 1");
+    try {
+      rmSync(join(dir, "bin", "dim"));
+      expect(commit({ "a.ts": "export const a = 1;\n" }).ok).toBe(true);
+      expect(commits()).toBe(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("lets a commit through in a repo that declares no check", () => {
+    const { dir, commit } = repoWithCommentGate({});
+    try {
+      expect(commit({ "a.ts": "export const a = 1;\n" }).ok).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("runs the check outside the committing repo's git environment", () => {
+    const { dir, commit, commits } = repoDeclaringCheck(CLEAN_GIT_ENVIRONMENT);
+    try {
+      const run = commit({ "a.ts": "export const a = 1;\n" });
+      expect(run.err).not.toContain("the repo's own check failed");
+      expect(run.ok).toBe(true);
+      expect(commits()).toBe(2);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
