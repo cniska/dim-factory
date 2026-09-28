@@ -11,6 +11,7 @@ import { closeOrderReview } from "./order-review";
 import { approveFinalBuildAt, approvePlan } from "./station-approvals.test-support";
 import { builderBrief, reviewFindingsForBuild } from "./station-build";
 import { parseBuildTurn } from "./station-build-turn";
+import schema from "./station-build-turn.schema.json";
 
 const trunk = integratedRepo();
 afterAll(() => rmSync(trunk.dir, { recursive: true, force: true }));
@@ -95,7 +96,7 @@ describe("the review findings a builder is handed", () => {
 
 describe("the build turn", () => {
   const turn = (fields: Record<string, unknown>) =>
-    parseBuildTurn(JSON.stringify({ subject: "fix: it", artifact: "", answers: [], ...fields }));
+    parseBuildTurn(JSON.stringify({ subject: "fix: it", artifact: "", answers: [], tests: [], ...fields }));
 
   test("carries each answer with its finding, trimming a resolution and leaving an absent one null", () => {
     expect(
@@ -115,6 +116,20 @@ describe("the build turn", () => {
     expect(() => parseBuildTurn(JSON.stringify({ subject: "fix: it", artifact: "" }))).toThrow(
       "builder output must contain an answers list",
     );
+  });
+
+  test("requires a tests list of non-empty paths", () => {
+    expect(() => parseBuildTurn(JSON.stringify({ subject: "fix: it", artifact: "", answers: [] }))).toThrow(
+      "builder output must contain a tests list",
+    );
+    expect(() => turn({ tests: ["src/a.test.ts", 3] })).toThrow("test 2 must be a non-empty path");
+    expect(() => turn({ tests: [""] })).toThrow("test 1 must be a non-empty path");
+    expect(turn({ tests: ["src/a b.test.ts"] }).tests).toEqual(["src/a b.test.ts"]);
+  });
+
+  test("is held by the output schema to a tests list of non-empty paths", () => {
+    expect(schema.required).toContain("tests");
+    expect(schema.properties.tests).toEqual({ type: "array", items: { type: "string", minLength: 1 } });
   });
 
   test("refuses a refusal without a resolution and an answer outside fixed and refused", () => {

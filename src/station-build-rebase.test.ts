@@ -146,9 +146,10 @@ describe("a conflict at ship", () => {
         runId: "run-2",
         builder,
         worktree: wt,
-        turn: { subject: "fix: resolve", artifact: "", answers: [] },
+        turn: { subject: "fix: resolve", artifact: "", answers: [], tests: [] },
         owed: [],
         finalSlice: false,
+        proofRequired: false,
         checkSandbox: confiningCheckSandbox(),
       }),
     ).toThrow(expect.objectContaining({ code: "rebase_in_progress" }));

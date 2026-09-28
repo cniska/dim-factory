@@ -362,6 +362,7 @@ export async function runOrderBuildLive(
           turn,
           owed: reviewFindings.work.map((one) => one.finding),
           finalSlice: currentSlice === null || currentSlice.ordinal === slices.length,
+          proofRequired: order.line === "fix" && currentSlice !== null,
           env: options.env,
           checkSandbox: options.checkSandbox,
         });

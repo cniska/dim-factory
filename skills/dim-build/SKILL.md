@@ -25,7 +25,7 @@ In a factory order the brief carries only what this skill cannot know: the order
 - **Review findings.** Answer each listed finding by its id: `fixed` when this turn's change fixes it, or `refused` with a resolution saying why not. The runner refuses a `fixed` answer from a turn that changed nothing.
 - **A red check at the rebased head.** Fix its cause on that head. The fix is a new commit, and it takes a new Build approval and a new review.
 - **The last failed attempt.** Continue from it.
-- **The result.** `subject` follows `dim-git`. `artifact` is the Build artifact for the whole order, empty only when the turn finishes a slice before the last. `answers` holds one answer per listed finding. A result returned again after a refused commit carries the same artifact and answers.
+- **The result.** `subject` follows `dim-git`. `artifact` is the Build artifact for the whole order, empty only when the turn finishes a slice before the last. `answers` holds one answer per listed finding. `tests` names each test file the slice adds or changes, and nothing else; a `fix` order's slice turn names at least the test that proves the defect, and a turn that answers findings, a returned Build artifact or a red check may return `[]`. A result returned again after a refused commit carries the same artifact, answers and tests.
 
 ## Entry contract
 

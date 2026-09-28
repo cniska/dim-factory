@@ -19,7 +19,7 @@ The shared Git boundary for the factory. Use this skill whenever Git work affect
 
 A commit is evidence that one slice passed `dim-build`'s slice loop, not a save point for unfinished work. Outside an order, commit a passing slice yourself.
 
-In a factory order, leave the slice uncommitted and unstaged on the order's branch and return its subject. The sandbox denies the git directory, so `git add` and `git commit` fail there. The runner runs the declared check in its sandbox, commits with the repository's own identity and signing, and records the evidence; it fails a turn that moved the branch or nested a repository.
+In a factory order, leave the slice uncommitted and unstaged on the order's branch and return its subject and the test files it adds or changes. The sandbox denies the git directory, so `git add` and `git commit` fail there. The runner runs the declared check in its sandbox, commits with the repository's own identity and signing, and records the evidence; it fails a turn that moved the branch or nested a repository.
 
 Take the subject's form from the commit subjects the brief says the record has seen, or from the repository's `git log` where the record holds too few to read one. The repository's hooks decide what git accepts, and the runner refuses a new code comment where the repository bans them. A refused commit comes back in the same turn with its reason and the changes still uncommitted: answer it, and return the whole result again.
 
@@ -29,7 +29,7 @@ Outside a factory order, record the commit SHA, changed files, check command and
 
 ## Resolve a rebase conflict
 
-Shipping rebases an order onto the moved default branch, and a conflict comes back to the builder with the worktree mid-rebase. Resolve only the listed files, so each carries both the order's change and the trunk's with no conflict markers, and change nothing else. Leave the resolution unstaged and run no git command that stages, continues, aborts or commits; the runner continues the rebase, re-checks it and sends the order back to review. A later commit that conflicts comes back in the same turn. The turn's subject is not used, since the rebase keeps each commit's own message.
+Shipping rebases an order onto the moved default branch, and a conflict comes back to the builder with the worktree mid-rebase. Resolve only the listed files, so each carries both the order's change and the trunk's with no conflict markers, and change nothing else. Leave the resolution unstaged and run no git command that stages, continues, aborts or commits; the runner continues the rebase, re-checks it and sends the order back to review. A later commit that conflicts comes back in the same turn. The turn's subject is not used, since the rebase keeps each commit's own message, and its `tests` is `[]`.
 
 ## Land work
 

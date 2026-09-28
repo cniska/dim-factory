@@ -69,16 +69,17 @@ A command with no `--harness` runs the worker under the harness of the station's
 
 ## The build turn
 
-A builder leaves its changes uncommitted and returns a build turn: a commit subject, an answer per finding, and the Build artifact on every turn but one that finishes an earlier slice. A returned Build artifact runs a build turn too, briefed with the owner's feedback, and it may change code. The runner then ([`src/station-build-commit.ts`](../src/station-build-commit.ts)):
+A builder leaves its changes uncommitted and returns a build turn: a commit subject, an answer per finding, the test files the slice adds or changes, and the Build artifact on every turn but one that finishes an earlier slice. A returned Build artifact runs a build turn too, briefed with the owner's feedback, and it may change code. The runner then ([`src/station-build-commit.ts`](../src/station-build-commit.ts)):
 
 1. refuses a turn that leaves a handed finding unanswered or answers one it was not handed
 2. applies the comment gate over the staged tree, reading the ban from the local default branch's config so a builder cannot lift it, and refusing a turn that changes a `.gitattributes`, which decides the files the ban reads
-3. runs the check the local default branch declares, in the worktree's check sandbox; a turn that redefines that task in its manifest fails before it runs, so a builder cannot redefine the check its own code is held to ([`src/workspace-tasks.ts`](../src/workspace-tasks.ts) `trunkCheck`). The sandbox's environment holds only what a process needs to run — `PATH`, `HOME`, the user, shell, temporary directory, locale and time zone — so no credential, factory name or proxy reaches it ([`src/station-environment.ts`](../src/station-environment.ts))
-4. commits with the repo's own identity and signing, and records the commit under the builder and the check at the commit it ran on — the new commit, or for a turn that failed or changed nothing the head it was built on ([`src/order-head-check.ts`](../src/order-head-check.ts))
+3. refuses a turn that names a test the slice deletes or leaves as it was, where a moved test counts as added, and a `fix` order's slice turn that names none; a turn answering findings, a returned Build artifact or a red check needs none
+4. runs the check the local default branch declares, in the worktree's check sandbox; a turn that redefines that task in its manifest fails before it runs, so a builder cannot redefine the check its own code is held to ([`src/workspace-tasks.ts`](../src/workspace-tasks.ts) `trunkCheck`). The sandbox's environment holds only what a process needs to run — `PATH`, `HOME`, the user, shell, temporary directory, locale and time zone — so no credential, factory name or proxy reaches it ([`src/station-environment.ts`](../src/station-environment.ts))
+5. commits with the repo's own identity and signing, and records the commit under the builder and the check at the commit it ran on — the new commit, or for a turn that failed or changed nothing the head it was built on ([`src/order-head-check.ts`](../src/order-head-check.ts))
 
 The default branch's declaration governs until a change to it lands there. An order may add tasks, and a task it adds above the declared one in the check order is not the check until it ships. An order may not change the declared task's definition, its script, recipe or package manager: that change is the owner's, made on the default branch, and the order's next turn is checked by it.
 
-A refused commit or comment goes back to the same builder, at most twice per turn. A red check, a redefined check, a check that changed the tree, a nested repository, or HEAD moved off the order's branch fails the turn, and the reason is in the next turn's brief.
+A refused commit or comment goes back to the same builder, at most twice per turn. A red check, a redefined check, a check that changed the tree, a named test the slice deletes or leaves as it was, a `fix` slice turn that names no test, a nested repository, or HEAD moved off the order's branch fails the turn, and the reason is in the next turn's brief.
 
 ## Shipped
 

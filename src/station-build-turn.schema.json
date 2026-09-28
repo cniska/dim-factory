@@ -1,7 +1,7 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["subject", "artifact", "answers"],
+  "required": ["subject", "artifact", "answers", "tests"],
   "properties": {
     "subject": { "type": "string", "minLength": 1, "pattern": "^[^\\r\\n]+$" },
     "artifact": { "type": "string" },
@@ -17,6 +17,7 @@
           "resolution": { "type": ["string", "null"] }
         }
       }
-    }
+    },
+    "tests": { "type": "array", "items": { "type": "string", "minLength": 1 } }
   }
 }

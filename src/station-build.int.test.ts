@@ -32,6 +32,7 @@ import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
 import { BuildTurnRefused, raiseOrderFinding } from "./order-finding";
 import { appendOrderEvent } from "./order-ledger";
 import { queueOrder, startOrder } from "./order-lifecycle";
+import type { OrderLine } from "./order-line";
 import { closeOrderReview } from "./order-review";
 import { recheck, shipOrder } from "./order-ship";
 import { orderState } from "./order-state";
@@ -51,8 +52,13 @@ afterAll(() => {
   for (const home of homes) rmSync(home, { recursive: true, force: true });
 });
 
+type ScriptedTurn = Pick<BuildTurn, "subject" | "artifact"> & Partial<BuildTurn>;
+
+const turnOutput = (answer: ScriptedTurn | string): string =>
+  typeof answer === "string" ? answer : JSON.stringify({ answers: [], tests: [], ...answer });
+
 function builderTurn(
-  act: (request: HarnessRequest) => (Omit<BuildTurn, "answers"> & Partial<BuildTurn>) | string,
+  act: (request: HarnessRequest) => ScriptedTurn | string,
   afterAnswer: HarnessEvent[] = [],
 ): HarnessAdapter & { cancels(): number } {
   let cancels = 0;
@@ -64,10 +70,7 @@ function builderTurn(
         yield { type: "run.started", providerSessionId: "fake-session" };
         yield { type: "turn.started" };
         const answer = act(request);
-        yield {
-          type: "run.completed",
-          output: typeof answer === "string" ? answer : JSON.stringify({ answers: [], ...answer }),
-        };
+        yield { type: "run.completed", output: turnOutput(answer) };
         for (const event of afterAnswer) {
           if (cancelled) return;
           yield event;
@@ -112,12 +115,13 @@ function orderAtBuild(
   orderId: string,
   slices: { title: string; outcome: string }[],
   check = "true",
+  line: OrderLine = "feat",
 ): { repo: { dir: string; sha: string }; operator: ReturnType<typeof mintWorker>; planner: string } {
   const trunk = integratedRepo();
   repos.push(trunk.dir);
   const repo = { dir: trunk.dir, sha: declareCheck(trunk.dir, check) };
   const operator = mintWorker(db, { role: "operator", sessionId: `${orderId}-operator` });
-  queueOrder(db, { id: orderId, project: "cniska/dim-factory", title: "Build this" }, operator.name);
+  queueOrder(db, { id: orderId, project: "cniska/dim-factory", title: "Build this", line }, operator.name);
   startOrder(db, orderId, operator.name, undefined, repo.dir);
   const planner = mintWorker(db, {
     role: "planner",
@@ -448,6 +452,110 @@ describe("builder station", () => {
     db.close();
   });
 
+  describe("a slice's named tests", () => {
+    async function sliceTurn(
+      orderId: string,
+      line: OrderLine,
+      tests: string[],
+      { check = "sh proof.sh", edit }: { check?: string; edit?: (worktree: string) => void } = {},
+    ) {
+      const db = database();
+      const { repo, operator } = orderAtBuild(
+        db,
+        orderId,
+        [{ title: "Fix it", outcome: "The defect is fixed." }],
+        check,
+        line,
+      );
+      const failure = await runOrderBuildLive(db, orderId, operator.name, {
+        dir: repo.dir,
+        harness: "codex",
+        env: { DIM_HOME: home(`dim-builder-${orderId}-`) },
+        checkSandbox: confiningCheckSandbox(),
+        adapter: builderTurn((request) => {
+          writeFileSync(join(request.cwd, "proof.sh"), "test -f fixed.txt\n");
+          writeFileSync(join(request.cwd, "fixed.txt"), "fixed\n");
+          edit?.(request.cwd);
+          return { subject: `${line}: fix it`, artifact: "Fixed.", tests };
+        }),
+      }).then(
+        () => undefined,
+        (error: Error) => error,
+      );
+      const worktree = realpathSync(join(repo.dir, ".claude", "worktrees", orderId));
+      const state = {
+        failure,
+        moved: git(worktree, ["rev-parse", "HEAD"]) !== repo.sha,
+        staged: git(worktree, ["diff", "--cached", "--name-only"]),
+        commits: db.query("SELECT count(*) AS n FROM factory_order_commit").get(),
+        checked: existsSync(join(worktree, "checked.txt")),
+      };
+      db.close();
+      return state;
+    }
+
+    test("refuses a fix slice that names no test, committing and staging nothing", async () => {
+      const { failure, moved, staged, commits } = await sliceTurn("unnamed-fix-order", "fix", []);
+      expect(failure?.cause).toMatchObject({
+        code: "proof_missing",
+        message: expect.stringContaining("names no test"),
+      });
+      expect({ moved, staged, commits }).toEqual({ moved: false, staged: "", commits: { n: 0 } });
+    });
+
+    test("refuses a fix slice that names a test it did not add or change, before its check runs", async () => {
+      const { failure, moved, staged, checked } = await sliceTurn(
+        "untouched-fix-order",
+        "fix",
+        ["proof.sh", "landed.txt"],
+        { check: "touch checked.txt" },
+      );
+      expect(failure?.cause).toMatchObject({
+        code: "proof_missing",
+        message: expect.stringContaining("names test landed.txt,"),
+      });
+      expect({ moved, staged, checked }).toEqual({ moved: false, staged: "", checked: false });
+    });
+
+    test("refuses a slice that names a test it deletes", async () => {
+      const { failure, moved } = await sliceTurn("deleted-fix-order", "fix", ["proof.sh", "landed.txt"], {
+        edit: (worktree) => rmSync(join(worktree, "landed.txt")),
+      });
+      expect(failure?.cause).toMatchObject({ code: "proof_missing" });
+      expect(moved).toBe(false);
+    });
+
+    test("reads the named tests of a slice that adds a file named HEAD", async () => {
+      expect(
+        await sliceTurn("head-file-feat-order", "feat", ["proof.sh"], {
+          edit: (worktree) => writeFileSync(join(worktree, "HEAD"), "head\n"),
+        }),
+      ).toMatchObject({ failure: undefined, moved: true });
+    });
+
+    test("counts a test the slice moves as one it adds", async () => {
+      expect(
+        await sliceTurn("moved-feat-order", "feat", ["moved.txt"], {
+          edit: (worktree) => renameSync(join(worktree, "landed.txt"), join(worktree, "moved.txt")),
+        }),
+      ).toMatchObject({ failure: undefined, moved: true });
+    });
+
+    test("refuses a feat slice that names a test it did not add or change", async () => {
+      const { failure, moved } = await sliceTurn("untouched-feat-order", "feat", ["landed.txt"]);
+      expect(failure?.cause).toMatchObject({ code: "proof_missing" });
+      expect(moved).toBe(false);
+    });
+
+    test("commits a feat slice that names no test", async () => {
+      expect(await sliceTurn("unnamed-feat-order", "feat", [])).toMatchObject({
+        failure: undefined,
+        moved: true,
+        commits: { n: 1 },
+      });
+    });
+  });
+
   test("refuses a turn that left a repository nested in the worktree, before any git runs in it", async () => {
     const db = database();
     const dimHome = home("dim-builder-nested-");
@@ -745,7 +853,7 @@ describe("builder station", () => {
   });
 
   describe("a round that raised a finding", () => {
-    async function reviewedAtBuild(orderId: string, check = "true") {
+    async function reviewedAtBuild(orderId: string, check = "true", line: OrderLine = "feat") {
       const db = database();
       const dimHome = home(`dim-builder-${orderId}-`);
       const { repo, operator } = orderAtBuild(
@@ -753,6 +861,7 @@ describe("builder station", () => {
         orderId,
         [{ title: "Build the result", outcome: "The result is verified." }],
         check,
+        line,
       );
       const options = {
         dir: repo.dir,
@@ -764,7 +873,9 @@ describe("builder station", () => {
         ...options,
         adapter: builderTurn((request) => {
           writeFileSync(join(request.cwd, "first.txt"), "first\n");
-          return { subject: "feat: build it", artifact: "Initial Build artifact." };
+          if (line === "feat") return { subject: "feat: build it", artifact: "Initial Build artifact." };
+          writeFileSync(join(request.cwd, "proof.sh"), "test -f first.txt\n");
+          return { subject: "fix: build it", artifact: "Initial Build artifact.", tests: ["proof.sh"] };
         }),
       });
       const first = git(firstBuild.worktree, ["rev-parse", "HEAD"]);
@@ -842,6 +953,28 @@ describe("builder station", () => {
       db.close();
     });
 
+    test("commits a fix order's turn answering the finding with no test named", async () => {
+      const { db, operator, options, first, finding } = await reviewedAtBuild(
+        "fix-rework-order",
+        "sh proof.sh",
+        "fix",
+      );
+      const followup = await runOrderBuildLive(db, "fix-rework-order", operator.name, {
+        ...options,
+        adapter: builderTurn((request) => {
+          writeFileSync(join(request.cwd, "fix.txt"), "fix\n");
+          return {
+            subject: "fix: review finding",
+            artifact: "Revised Build artifact.",
+            answers: [{ finding, answer: "fixed", resolution: null }],
+          };
+        }),
+      });
+      expect(git(followup.worktree, ["rev-parse", "HEAD~1"])).toBe(first);
+      expect(commits(db, "fix-rework-order")).toHaveLength(2);
+      db.close();
+    });
+
     test("records a refuse-only turn's answers and makes no commit", async () => {
       const { db, operator, options, first, finding } = await reviewedAtBuild("refused-rework-order");
       const before = commits(db, "refused-rework-order");
@@ -871,7 +1004,7 @@ describe("builder station", () => {
 
     async function refusedTurn(
       orderId: string,
-      turn: (finding: number) => Omit<BuildTurn, "subject" | "artifact">,
+      turn: (finding: number) => Pick<BuildTurn, "answers">,
       given: { change?: string; check?: string; prepare?: (db: Database) => void } = {},
     ) {
       const { db, operator, options, first, finding } = await reviewedAtBuild(orderId, given.check);
@@ -1209,11 +1342,7 @@ describe("builder station", () => {
 
 type BuilderCall = { kind: "start" | "resume"; sessionId?: string; brief: string };
 
-function scriptedBuilder(
-  answers: ((
-    request: HarnessRequest,
-  ) => (Omit<BuildTurn, "answers"> & Partial<BuildTurn>) | string | Error)[],
-): {
+function scriptedBuilder(answers: ((request: HarnessRequest) => ScriptedTurn | string | Error)[]): {
   adapter: HarnessAdapter;
   calls: BuilderCall[];
 } {
@@ -1227,11 +1356,7 @@ function scriptedBuilder(
         yield { type: "run.started", providerSessionId: "fake-session" };
         yield { type: "turn.started" };
         if (answer instanceof Error) yield { type: "run.failed", reason: answer.message };
-        else
-          yield {
-            type: "run.completed",
-            output: typeof answer === "string" ? answer : JSON.stringify({ answers: [], ...answer }),
-          };
+        else yield { type: "run.completed", output: turnOutput(answer) };
       })(),
       cancel() {},
     };

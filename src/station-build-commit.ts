@@ -90,6 +90,36 @@ function refuseAddedComments(worktree: string, label: string): { unparsed: strin
   );
 }
 
+function refuseUntouchedTests(worktree: string, tests: readonly string[], proofRequired: boolean): void {
+  if (tests.length === 0) {
+    if (!proofRequired) return;
+    git(worktree, ["reset", "-q"]);
+    throw new BuildTurnRefused(
+      "proof_missing",
+      "a fix order's slice turn names no test; name in tests each test file the slice adds or changes to prove the defect",
+    );
+  }
+  const listed = git(worktree, [
+    "diff",
+    "--cached",
+    "--name-only",
+    "--no-renames",
+    "-z",
+    "--diff-filter=AM",
+    "HEAD",
+    "--",
+  ]);
+  if (!listed.ok) throw new Error(`cannot list the files the turn changes in ${worktree}: ${listed.err}`);
+  const touched = new Set(listed.out.split("\0"));
+  const untouched = tests.filter((path) => !touched.has(path));
+  if (untouched.length === 0) return;
+  git(worktree, ["reset", "-q"]);
+  throw new BuildTurnRefused(
+    "proof_missing",
+    `the turn names test ${untouched.join(", ")}, which the slice does not add or change; name only test files the slice adds or changes`,
+  );
+}
+
 function lineCount(value: string | undefined): number | null {
   return value === undefined || value === "-" ? null : Number(value);
 }
@@ -121,6 +151,7 @@ export function commitBuildTurn(options: {
   turn: BuildTurn;
   owed: readonly number[];
   finalSlice: boolean;
+  proofRequired: boolean;
   env?: Env;
   checkSandbox?: string[];
 }): { sha: string } {
@@ -168,6 +199,7 @@ export function commitBuildTurn(options: {
   if (commentGate.state === "armed") refuseChangedAttributes(worktree, trunk);
   const { unparsed } =
     commentGate.state === "armed" ? refuseAddedComments(worktree, commentGate.label) : { unparsed: [] };
+  refuseUntouchedTests(worktree, turn.tests, options.proofRequired);
   const check = runSandboxedCheck({
     worktree,
     command: declared.commandLine,

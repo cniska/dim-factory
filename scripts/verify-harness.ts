@@ -43,11 +43,15 @@ function turn(brief: string, order: string): unknown {
   }
   if (brief.includes("builder")) {
     const slice = /# Current slice\s+(\d+)\./.exec(brief)?.[1] ?? "1";
-    writeFileSync(`built-by-scripted-harness-${slice}.txt`, `${order} slice ${slice}\n`);
+    const built = `built-by-scripted-harness-${slice}.txt`;
+    writeFileSync(built, `${order} slice ${slice}\n`);
+    const tests = brief.includes("This order's line is fix.") ? [`proves-scripted-harness-${slice}.sh`] : [];
+    for (const test of tests) writeFileSync(test, `test -f ${built}\n`);
     return {
       subject: `feat: scripted harness slice ${slice}`,
       artifact: slice === "2" ? BUILD_ARTIFACT : "",
       answers: [],
+      tests,
     };
   }
   if (brief.includes("reviewer")) return REVIEW;

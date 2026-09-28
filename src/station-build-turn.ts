@@ -1,6 +1,11 @@
 import type { OrderFindingAnswer } from "./order-finding-state";
 
-export type BuildTurn = { subject: string; artifact: string; answers: OrderFindingAnswer[] };
+export type BuildTurn = {
+  subject: string;
+  artifact: string;
+  answers: OrderFindingAnswer[];
+  tests: string[];
+};
 
 export const BUILD_TURN_SCHEMA = `${import.meta.dir}/station-build-turn.schema.json`;
 
@@ -35,7 +40,7 @@ export function parseBuildTurn(raw: string): BuildTurn {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("builder output must be a JSON object");
   }
-  const turn = value as { subject?: unknown; artifact?: unknown; answers?: unknown };
+  const turn = value as { subject?: unknown; artifact?: unknown; answers?: unknown; tests?: unknown };
   if (typeof turn.subject !== "string" || turn.subject.trim() === "") {
     throw new Error("builder output must contain a non-empty commit subject");
   }
@@ -48,9 +53,19 @@ export function parseBuildTurn(raw: string): BuildTurn {
   if (!Array.isArray(turn.answers)) {
     throw new Error("builder output must contain an answers list");
   }
+  if (!Array.isArray(turn.tests)) {
+    throw new Error("builder output must contain a tests list");
+  }
+  const tests = turn.tests.map((path, index) => {
+    if (typeof path !== "string" || path === "") {
+      throw new Error(`builder output's test ${index + 1} must be a non-empty path`);
+    }
+    return path;
+  });
   return {
     subject: turn.subject.trim(),
     artifact: turn.artifact.trim(),
     answers: turn.answers.map(parseAnswer),
+    tests,
   };
 }
