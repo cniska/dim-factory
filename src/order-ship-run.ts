@@ -1,14 +1,19 @@
 import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
 import { latestOrderCommit } from "./order-commits";
-import { type OrderCheck, recordOrderCheckInTransaction, recordRewrittenCommits } from "./order-evidence";
+import {
+  insertOrderEnvironment,
+  type OrderCheck,
+  recordOrderCheckInTransaction,
+  recordRewrittenCommits,
+} from "./order-evidence";
 import { now } from "./order-ledger";
 import { assertOrderRunning } from "./order-status";
-import type { ShipCleanup } from "./ship-cleanup";
+import type { ShipTeardown } from "./ship-cleanup";
 import type { Replay, Rewrite } from "./ship-rebase";
 
 export type ShipRun = { rebased?: { rewrite: Rewrite; check: OrderCheck } } & (
-  | ({ outcome: "landed" } & ShipCleanup)
+  | { outcome: "landed" }
   | { outcome: "refused"; code: string | null; reason: string }
   | { outcome: "conflict"; replay: Omit<Replay, "worktree">; paths: string[]; stoppedAt: string }
 );
@@ -26,8 +31,8 @@ export function recordShipRun(db: Database, orderId: string, run: ShipRun, at = 
     const written = db.run(
       `INSERT INTO factory_order_ship_run
          (order_id, outcome, code, reason, conflict_paths, stopped_at, old_base, new_base, old_head,
-          patch_equal, check_id, head, worktree_kept, branch_kept, recorded_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          patch_equal, check_id, head, recorded_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         orderId,
         run.outcome,
@@ -41,8 +46,6 @@ export function recordShipRun(db: Database, orderId: string, run: ShipRun, at = 
         rebased ? Number(rebased.rewrite.patchEqual) : null,
         checkId,
         head,
-        run.outcome === "landed" ? (run.worktreeKept ?? null) : null,
-        run.outcome === "landed" ? (run.branchKept ?? null) : null,
         at,
       ],
     );
@@ -50,5 +53,23 @@ export function recordShipRun(db: Database, orderId: string, run: ShipRun, at = 
     if (rebased) recordRewrittenCommits(db, orderId, id, rebased.rewrite, at);
     db.run("UPDATE factory_order SET updated_at = ? WHERE id = ?", [at, orderId]);
     return id;
+  });
+}
+
+export function recordShipCleanup(
+  db: Database,
+  orderId: string,
+  shipRunId: number,
+  { teardown, worktreeKept, branchKept }: ShipTeardown,
+  at = now(),
+): void {
+  writeTransaction(db, () => {
+    const updated = db.run(
+      `UPDATE factory_order_ship_run SET worktree_kept = ?, branch_kept = ?
+       WHERE id = ? AND order_id = ? AND outcome = 'landed'`,
+      [worktreeKept ?? null, branchKept ?? null, shipRunId, orderId],
+    );
+    if (updated.changes !== 1) throw new Error(`order ${orderId} has no landed ship run ${shipRunId}`);
+    if (teardown) insertOrderEnvironment(db, orderId, teardown, at);
   });
 }

@@ -108,6 +108,15 @@ export function recordOrderEnvironment(
   at = now(),
 ): void {
   assertOrderRunning(db, orderId);
+  insertOrderEnvironment(db, orderId, report, at);
+}
+
+export function insertOrderEnvironment(
+  db: Database,
+  orderId: string,
+  report: WorkerHookReport,
+  at: string,
+): void {
   db.run(
     `INSERT INTO factory_order_environment
        (order_id, phase, argv, exit_code, signal, stdout, stderr, resources, recorded_at)

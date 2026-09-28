@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -53,6 +53,7 @@ import { orderState } from "./order-state";
 import { isTerminalOrderStatus, orderStatus } from "./order-status";
 import { dbPath } from "./paths";
 import { findQuery } from "./query-registry";
+import * as shipCleanup from "./ship-cleanup";
 import type { Rewrite } from "./ship-rebase";
 import { approveFinalBuildAt, approvePlan, approveReviewAt } from "./station-approvals.test-support";
 import { reviewRange } from "./station-review";
@@ -653,6 +654,44 @@ describe("factory order report records", () => {
       "order order-1 is queued, so it cannot record ship_retried",
     );
     database.close();
+  });
+
+  test("records the landing before its cleanup, so a cleanup that dies leaves the order shipped", () => {
+    const repo = integratedRepo();
+    const home = mkdtempSync(join(tmpdir(), "dim-ship-"));
+    const env = scratchEnv(home);
+    const database = db();
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
+    startPlannedBuild(database);
+    const wt = orderWorktree(repo.dir, "order-1");
+    writeFileSync(join(wt, "ship-slice.txt"), "slice");
+    Bun.spawnSync(["git", "-C", wt, "add", "."]);
+    Bun.spawnSync(["git", "-C", wt, "commit", "-q", "-m", "feat: ship-slice"]);
+    const sha = Bun.spawnSync(["git", "-C", wt, "rev-parse", "HEAD"], { stdout: "pipe" })
+      .stdout.toString()
+      .trim();
+    recordOrderCommit(database, "order-1", sha, worker, "feat: ship-slice");
+    approveFinalBuildAt(database, "order-1", sha, worker, attemptOperator);
+    approveReviewAt(database, "order-1", sha, attemptOperator);
+    const cleanup = spyOn(shipCleanup, "removeShippedBranch").mockImplementation(() => {
+      throw new Error("the teardown hook was killed");
+    });
+
+    try {
+      expect(() => shipOrder(database, "order-1", wt, attemptOperator, { env })).toThrow(
+        "the teardown hook was killed",
+      );
+    } finally {
+      cleanup.mockRestore();
+    }
+
+    expect(orderStatus(database, "order-1")).toBe("shipped");
+    expect(database.query("SELECT outcome, head FROM factory_order_ship_run").all()).toEqual([
+      { outcome: "landed", head: sha },
+    ]);
+    database.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
   });
 
   test("ships a commit onto the trunk, which makes the order done and removes its worktree and branch", () => {
