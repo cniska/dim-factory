@@ -55,7 +55,7 @@ Spawn one agent per dimension at the tier `dim route <harness> reviewer` gives y
 | performance | run only when the plan identifies a performance-sensitive path |
 | style | whether naming, structure and local patterns remain consistent without adding comments or abstraction noise; read the diff and project rules |
 
-The performance pass is conditional: a plan that does not identify a performance-sensitive path does not spawn it. Maintainability remains a normal pass because every slice leaves code for the next worker. Both passes need concrete evidence; a preference or hypothetical cost is not a finding.
+The performance pass is conditional: a plan that does not identify a performance-sensitive path does not spawn it. Every other pass runs whatever the plan's review scope says; that scope aims a pass, and a dimension it leaves out is still run, never reported `not_run` for that reason. Maintainability remains a normal pass because every slice leaves code for the next worker. Both passes need concrete evidence; a preference or hypothetical cost is not a finding.
 
 ## Exit check
 

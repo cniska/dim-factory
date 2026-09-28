@@ -57,7 +57,7 @@ The plan is the shared artifact the owner approves and the builder executes, not
 - **Checks.** An executable check for each contract and the repository's own task for every slice.
 - **Slices.** The behavior, affected area, check, and dependency for each independently verifiable vertical cut.
 - **Risks and decisions.** Holds, unresolved questions, predictions, and the conditions under which the operator should approve the plan.
-- **Review scope.** The dimensions this change needs. Include maintainability and performance when the change materially affects them; do not add a dimension without a concrete question it can answer.
+- **Review scope.** What the review should aim at: the concrete questions each dimension must answer for this change, and whether it touches a performance-sensitive path, the one dimension review runs only when the plan names one. It never removes a dimension; every other pass `dim-review` lists runs on every order.
 
 Use readable Markdown and project language. Keep identifiers, commands, and paths where they let the owner verify a claim; do not make the owner reconstruct the design from a worker transcript.
 
