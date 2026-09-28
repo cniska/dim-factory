@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { writeTransaction } from "./db";
 import { latestOrderCommit } from "./order-commits";
 import { type OrderCheck, recordOrderCheckInTransaction, recordRewrittenCommits } from "./order-evidence";
 import { now } from "./order-ledger";
@@ -14,7 +15,7 @@ export type ShipRun = { rebased?: { rewrite: Rewrite; check: OrderCheck } } & (
 
 export function recordShipRun(db: Database, orderId: string, run: ShipRun, at = now()): number {
   assertOrderRunning(db, orderId);
-  return db.transaction(() => {
+  return writeTransaction(db, () => {
     const { rebased } = run;
     const head = rebased ? rebased.rewrite.newHead : latestOrderCommit(db, orderId)?.sha;
     if (!head) throw new Error(`order ${orderId} records no commit, so a ship run has no head`);
@@ -49,5 +50,5 @@ export function recordShipRun(db: Database, orderId: string, run: ShipRun, at = 
     if (rebased) recordRewrittenCommits(db, orderId, id, rebased.rewrite, at);
     db.run("UPDATE factory_order SET updated_at = ? WHERE id = ?", [at, orderId]);
     return id;
-  })();
+  });
 }
