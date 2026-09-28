@@ -24,7 +24,7 @@ import { onHarnessWithCapacity } from "./station-harness";
 import { runOrderPlanLive } from "./station-plan";
 import { runOrderReviewLive } from "./station-review";
 import type { OrderStationName } from "./station-worker";
-import { clearRunnerBarrier, registerRunnerBarrier, resolveWorker } from "./worker";
+import { clearRunnerBarrier, registerRunnerBarrier, resolveWorker, withRunnerBarrier } from "./worker";
 import { mappedHarnesses } from "./worker-routing";
 
 export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--line <${ORDER_LINES.join("|")}>] [--description "..."]
@@ -111,7 +111,7 @@ const SHIP_OUTCOME_TEXT: Record<ShipOutcome["landed"], string> = {
 };
 
 function ship(db: Database, orderId: string, cwd: string, env: Env, worker: string, retry: boolean): string {
-  const outcome = shipOrder(db, orderId, cwd, worker, { env, retry });
+  const outcome = withRunnerBarrier(db, () => shipOrder(db, orderId, cwd, worker, { env, retry }));
   const kept = [
     outcome.worktreeKept === undefined ? [] : [`worktree kept: ${outcome.worktreeKept}`],
     outcome.branchKept === undefined ? [] : [`branch ${orderId} kept: ${outcome.branchKept}`],

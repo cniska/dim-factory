@@ -215,6 +215,15 @@ export function clearRunnerBarrier(db: Database, pid = process.pid): void {
   db.run("DELETE FROM factory_runner_barrier WHERE pid = ?", [pid]);
 }
 
+export function withRunnerBarrier<T>(db: Database, run: () => T): T {
+  registerRunnerBarrier(db);
+  try {
+    return run();
+  } finally {
+    clearRunnerBarrier(db);
+  }
+}
+
 export function endWorker(db: Database, name: string, at = now()): boolean {
   const done = db.run("UPDATE factory_worker SET ended_at = ? WHERE name = ? AND ended_at IS NULL", [
     at,

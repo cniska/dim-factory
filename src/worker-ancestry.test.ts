@@ -1,7 +1,14 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { SCHEMA_SQL } from "./db-schema";
-import { clearRunnerBarrier, mintWorker, registerRunnerBarrier, resolveWorker } from "./worker";
+import {
+  clearRunnerBarrier,
+  endWorker,
+  mintWorker,
+  registerRunnerBarrier,
+  resolveWorker,
+  withRunnerBarrier,
+} from "./worker";
 
 function floor(): Database {
   const db = new Database(":memory:");
@@ -80,6 +87,34 @@ describe("resolving a caller from its ancestors", () => {
     expect(() => resolveWorker(db, [{ pid: 200, startedAt: "new-start" }])).toThrow(
       expect.objectContaining({ code: "worker_missing" }),
     );
+    db.close();
+  });
+
+  test("an ended worker nearer than the operator refuses rather than falling through to it", () => {
+    const db = floor();
+    register(db, "operator", 100, "operator-start");
+    const builder = register(db, "builder", 200, "builder-start");
+    endWorker(db, builder);
+    expect(() =>
+      resolveWorker(db, [
+        { pid: 200, startedAt: "builder-start" },
+        { pid: 100, startedAt: "operator-start" },
+      ]),
+    ).toThrow(expect.objectContaining({ code: "worker_over" }));
+    db.close();
+  });
+
+  test("a barrier held around a call is gone after it, even when the call throws", () => {
+    const db = floor();
+    const barriers = () => db.query("SELECT count(*) AS n FROM factory_runner_barrier").get();
+    expect(withRunnerBarrier(db, () => barriers())).toEqual({ n: 1 });
+    expect(barriers()).toEqual({ n: 0 });
+    expect(() =>
+      withRunnerBarrier(db, () => {
+        throw new Error("ship refused");
+      }),
+    ).toThrow("ship refused");
+    expect(barriers()).toEqual({ n: 0 });
     db.close();
   });
 });
