@@ -675,23 +675,26 @@ describe("builder station", () => {
       expect(readFileSync(join(worktree, ".cache", "out"), "utf8")).toBe("from an earlier run\n");
     });
 
-    test("pins the slice's tree while it proves and drops the pin once the slice is back", async () => {
-      const { failure, worktree, head, outputs } = await sliceTurn(
+    test("pins the slice as a commit on its base while it proves and drops the pin once the slice is back", async () => {
+      const { failure, worktree, base, head, outputs } = await sliceTurn(
         "pinned-proof-order",
         "fix",
         ["proof.sh"],
         {
-          check: "git rev-parse refs/dim/proof/pinned-proof-order; sh proof.sh",
+          check:
+            "git rev-parse refs/dim/proof/pinned-proof-order^ refs/dim/proof/pinned-proof-order^{tree}; sh proof.sh",
         },
       );
       expect(failure).toBeUndefined();
-      expect(outputs[0]?.result).toContain(git(worktree, ["rev-parse", `${head}^{tree}`]));
+      expect(outputs[0]?.result.split("\n").slice(0, 2)).toEqual([
+        base,
+        git(worktree, ["rev-parse", `${head}^{tree}`]),
+      ]);
       expect(git(worktree, ["for-each-ref", "refs/dim/proof/"])).toBe("");
     });
 
-    test("puts back a slice a killed proof left pinned before the next builder starts", async () => {
+    async function leftPinned(orderId: string, parentOf: (head: string) => string) {
       const db = database();
-      const orderId = "killed-proof-order";
       const { repo, operator } = orderAtBuild(
         db,
         orderId,
@@ -704,7 +707,21 @@ describe("builder station", () => {
       writeFileSync(join(worktree, "fixed.txt"), "fixed\n");
       git(worktree, ["add", "-A"]);
       const slice = git(worktree, ["write-tree"]);
-      git(worktree, ["update-ref", `refs/dim/proof/${orderId}`, slice]);
+      const parent = parentOf(git(worktree, ["rev-parse", "HEAD"]));
+      const pin = git(worktree, [
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@e",
+        "commit-tree",
+        "--no-gpg-sign",
+        "-p",
+        parent,
+        "-m",
+        "pin",
+        slice,
+      ]);
+      git(worktree, ["update-ref", `refs/dim/proof/${orderId}`, pin]);
       git(worktree, ["restore", "--source=HEAD", "--staged", "--worktree", "--", ":/"]);
       let found = {};
       await runOrderBuildLive(db, orderId, operator.name, {
@@ -718,19 +735,28 @@ describe("builder station", () => {
             staged: git(request.cwd, ["diff", "--cached", "--name-only"]),
             pins: git(request.cwd, ["for-each-ref", "refs/dim/proof/"]),
           };
+          writeFileSync(join(request.cwd, "proof.sh"), "test -f fixed.txt\n");
+          writeFileSync(join(request.cwd, "fixed.txt"), "fixed\n");
           return { subject: "fix: fix it", artifact: "Fixed.", tests: ["proof.sh"] };
         }),
       });
-      expect(found).toEqual({ restored: true, staged: "", pins: "" });
-      expect(git(worktree, ["show", "--name-only", "--format=", "HEAD"]).split("\n").sort()).toEqual([
-        "fixed.txt",
-        "proof.sh",
-      ]);
-      expect(db.query("SELECT name FROM trace_event WHERE event = 'order.proof_pin_restored'").all()).toEqual(
-        [{ name: slice }],
-      );
-      expect(git(worktree, ["for-each-ref", "refs/dim/proof/"])).toBe("");
+      const traced = db
+        .query("SELECT event, name FROM trace_event WHERE event LIKE 'order.proof_pin_%'")
+        .all();
       db.close();
+      return { found, pin, traced };
+    }
+
+    test("puts back a slice a killed proof left pinned before the next builder starts", async () => {
+      const { found, pin, traced } = await leftPinned("killed-proof-order", (head) => head);
+      expect(found).toEqual({ restored: true, staged: "", pins: "" });
+      expect(traced).toEqual([{ event: "order.proof_pin_restored", name: pin }]);
+    });
+
+    test("drops a pin built on another commit, leaving the worktree as it is", async () => {
+      const { found, pin, traced } = await leftPinned("stale-pin-order", (head) => `${head}~1`);
+      expect(found).toEqual({ restored: false, staged: "", pins: "" });
+      expect(traced).toEqual([{ event: "order.proof_pin_dropped", name: pin }]);
     });
 
     test("commits a feat slice whose named tests pass at its base, recording the proof", async () => {

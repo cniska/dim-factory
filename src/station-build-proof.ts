@@ -1,7 +1,12 @@
 import type { SandboxedCheck } from "./check-sandbox";
 import { checkedTreeRefusal, git, type TreeRefusal } from "./station-build-tree";
+import { proofPin } from "./worktree";
 
-const pinOf = (orderId: string): string => `refs/dim/proof/${orderId}`;
+function revision(worktree: string, name: string): string {
+  const read = git(worktree, ["rev-parse", "--verify", "-q", name]);
+  if (!read.ok) throw new Error(`cannot resolve ${name} in ${worktree}: ${read.err}`);
+  return read.out;
+}
 
 function restoreSlice(worktree: string, tree: string): void {
   const fault = (why: string) =>
@@ -14,19 +19,25 @@ function restoreSlice(worktree: string, tree: string): void {
 }
 
 function unpin(worktree: string, orderId: string): void {
-  const unpinned = git(worktree, ["update-ref", "-d", pinOf(orderId)]);
+  const unpinned = git(worktree, ["update-ref", "-d", proofPin(orderId)]);
   if (!unpinned.ok) throw new Error(`cannot drop the proof pin of ${orderId}: ${unpinned.err}`);
 }
 
-export function restorePinnedSlice(worktree: string, orderId: string): string | null {
-  const pinned = git(worktree, ["for-each-ref", "--format=%(objectname)", pinOf(orderId)]);
+export function settlePinnedSlice(
+  worktree: string,
+  orderId: string,
+): { pin: string; restored: boolean } | null {
+  const pinned = git(worktree, ["for-each-ref", "--format=%(objectname)", proofPin(orderId)]);
   if (!pinned.ok) throw new Error(`cannot read the proof pin of ${orderId}: ${pinned.err}`);
   if (pinned.out === "") return null;
-  restoreSlice(worktree, pinned.out);
-  const unstaged = git(worktree, ["reset", "-q"]);
-  if (!unstaged.ok) throw new Error(`cannot unstage the restored slice in ${worktree}: ${unstaged.err}`);
+  const restored = revision(worktree, `${pinned.out}^`) === revision(worktree, "HEAD");
+  if (restored) {
+    restoreSlice(worktree, revision(worktree, `${pinned.out}^{tree}`));
+    const unstaged = git(worktree, ["reset", "-q"]);
+    if (!unstaged.ok) throw new Error(`cannot unstage the restored slice in ${worktree}: ${unstaged.err}`);
+  }
   unpin(worktree, orderId);
-  return pinned.out;
+  return { pin: pinned.out, restored };
 }
 
 export function proveTests(options: {
@@ -37,7 +48,22 @@ export function proveTests(options: {
   check: () => SandboxedCheck;
 }): { check: SandboxedCheck; refusal: TreeRefusal | null } {
   const { worktree, orderId, tree } = options;
-  const pinned = git(worktree, ["update-ref", pinOf(orderId), tree, ""]);
+  const snapshot = git(worktree, [
+    "-c",
+    "user.name=dim",
+    "-c",
+    "user.email=dim@localhost",
+    "commit-tree",
+    "--no-gpg-sign",
+    "-p",
+    "HEAD",
+    "-m",
+    `proof pin for ${orderId}`,
+    tree,
+  ]);
+  if (!snapshot.ok)
+    throw new Error(`cannot snapshot the slice's tree ${tree} before its proof: ${snapshot.err}`);
+  const pinned = git(worktree, ["update-ref", proofPin(orderId), snapshot.out, ""]);
   if (!pinned.ok) throw new Error(`cannot pin the slice's tree ${tree} before its proof: ${pinned.err}`);
   try {
     const based = git(worktree, [

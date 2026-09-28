@@ -24,7 +24,7 @@ import type { Env } from "./paths";
 import { startStationAttempt } from "./station-attempt";
 import { type BriefedOrder, briefHeader } from "./station-brief";
 import { commitBuildTurn } from "./station-build-commit";
-import { restorePinnedSlice } from "./station-build-proof";
+import { settlePinnedSlice } from "./station-build-proof";
 import { continueRebaseTurn, reopenRebase } from "./station-build-rebase";
 import { BUILD_TURN_SCHEMA, parseBuildTurn } from "./station-build-turn";
 import type { PlanSlice } from "./station-plan-artifact";
@@ -232,8 +232,11 @@ export async function runOrderBuildLive(
   const runId = `build-${crypto.randomUUID()}`;
   const root = repoRoot(options.dir);
   const worktree = worktreePath(root, orderId);
-  const pinned = restorePinnedSlice(worktree, orderId);
-  if (pinned) writeTrace(db, { event: "order.proof_pin_restored", orderId, name: pinned });
+  const pinned = settlePinnedSlice(worktree, orderId);
+  if (pinned) {
+    const event = pinned.restored ? "order.proof_pin_restored" : "order.proof_pin_dropped";
+    writeTrace(db, { event, orderId, name: pinned.pin });
+  }
   const workspace = workspaceContract(worktree);
   const convention = conflict ? undefined : checkoutConvention(db, root);
   let builder: string | undefined;

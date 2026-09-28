@@ -721,6 +721,7 @@ describe("factory order report records", () => {
     recordOrderCommit(database, "order-1", sha, worker, "feat: ship-slice");
     approveFinalBuildAt(database, "order-1", sha, worker, attemptOperator);
     approveReviewAt(database, "order-1", sha, attemptOperator);
+    Bun.spawnSync(["git", "-C", wt, "update-ref", "refs/dim/proof/order-1", sha]);
     expect(shipOrder(database, "order-1", wt, attemptOperator, { env })).toEqual({ landed: "fast_forward" });
     expect(Bun.spawnSync(["git", "-C", repo.dir, "merge-base", "--is-ancestor", sha, "HEAD"]).success).toBe(
       true,
@@ -748,6 +749,10 @@ describe("factory order report records", () => {
     expect(existsSync(wt)).toBe(false);
     expect(
       Bun.spawnSync(["git", "-C", repo.dir, "show-ref", "--verify", "--quiet", "refs/heads/order-1"]).success,
+    ).toBe(false);
+    expect(
+      Bun.spawnSync(["git", "-C", repo.dir, "show-ref", "--verify", "--quiet", "refs/dim/proof/order-1"])
+        .success,
     ).toBe(false);
 
     database.close();
