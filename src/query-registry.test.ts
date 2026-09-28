@@ -369,11 +369,16 @@ describe("read path", () => {
 
   test("skill splits one skill by version and says how thin each arm is", () => {
     const env = seeded();
+    const writer = openDb(dbPath(env));
+    writer.run(
+      `INSERT INTO skill_load (session_id, message_id, ts, skill_name, how, body_chars, body_sha256)
+       VALUES (?, 'msg-1', '2026-09-16T10:02:00.000Z', 'build', 'model', 7, 'abcdef0123')`,
+      [SESSION],
+    );
+    closeDb(writer);
     const db = openReadOnly(dbPath(env));
     try {
-      const loaded = findQuery("skills")?.run(db, {});
-      const name = String(loaded?.rows[0]?.[0]);
-      const one = findQuery("skill")?.run(db, { arg: name });
+      const one = findQuery("skill")?.run(db, { arg: "build" });
       expect(one?.rows.length).toBeGreaterThan(0);
       expect(one?.denominator).toMatch(/\d+ of them were loaded in a single session/);
 

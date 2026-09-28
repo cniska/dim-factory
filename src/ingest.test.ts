@@ -595,3 +595,201 @@ describe("ingest", () => {
     }
   });
 });
+
+describe("skill loads", () => {
+  const COPY = "66666666-7777-8888-9999-000000000000";
+  const at = (n: number) => `2026-09-20T10:0${n}:00.000Z`;
+  const base = { sessionId: SESSION, cwd: "/Users/x/code/demo", isSidechain: false };
+  const bodyText = (path: string) => `Base directory for this skill: ${path}\n\n# Body`;
+
+  const skillCall = {
+    ...base,
+    type: "assistant",
+    uuid: "a-skill",
+    timestamp: at(1),
+    message: {
+      id: "msg-skill",
+      role: "assistant",
+      model: "claude-opus-5-5",
+      content: [{ type: "tool_use", id: "toolu-skill", name: "Skill", input: { skill: "dim:dim-plan" } }],
+    },
+  };
+  const skillBody = {
+    ...base,
+    type: "user",
+    uuid: "u-skill-body",
+    parentUuid: "a-skill",
+    timestamp: at(2),
+    isMeta: true,
+    sourceToolUseID: "toolu-skill",
+    message: { role: "user", content: bodyText("/Users/x/code/dim-factory/plugin/skills/dim-plan") },
+  };
+  const typed = (uuid: string, command: string) => ({
+    ...base,
+    type: "user",
+    uuid,
+    timestamp: at(3),
+    message: { role: "user", content: `<command-name>/${command}</command-name>` },
+  });
+  const typedBody = (uuid: string, parentUuid: string, path: string) => ({
+    ...base,
+    type: "user",
+    uuid,
+    parentUuid,
+    timestamp: at(4),
+    isMeta: true,
+    message: { role: "user", content: bodyText(path) },
+  });
+
+  function writeTranscript(env: Env, sessionId: string, lines: unknown[]): string {
+    const path = join(env.DIM_CLAUDE_PROJECTS as string, "-Users-x-code-demo", `${sessionId}.jsonl`);
+    writePrefix(path, lines, fullBytes(lines));
+    return path;
+  }
+
+  function skillLoads(db: Database) {
+    return db
+      .prepare(
+        `SELECT session_id, message_id, ts, model, skill_name, how, body_chars, skill_path
+         FROM skill_load ORDER BY session_id, ts`,
+      )
+      .all();
+  }
+
+  const calledLoad = {
+    session_id: SESSION,
+    message_id: "msg-skill",
+    ts: at(1),
+    model: "claude-opus-5-5",
+    skill_name: "dim:dim-plan",
+    how: "model",
+    body_chars: 6,
+    skill_path: "/Users/x/code/dim-factory/plugin/skills/dim-plan",
+  };
+
+  test("stores a Skill call and the body it injected as one load", () => {
+    const env = scratchEnv(newRoot());
+    writeTranscript(env, SESSION, [skillCall, skillBody]);
+    const db = run(env);
+    try {
+      expect(skillLoads(db)).toEqual([calledLoad]);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("stores one load when the body arrives in a later sync than its call", () => {
+    const env = scratchEnv(newRoot());
+    const lines = [skillCall, skillBody];
+    const path = writeTranscript(env, SESSION, lines);
+    writePrefix(path, lines, bytesThroughLine(lines, 0));
+    const db = run(env);
+    try {
+      expect(skillLoads(db)).toEqual([{ ...calledLoad, body_chars: null, skill_path: null }]);
+      writePrefix(path, lines, fullBytes(lines));
+      sync(db, env);
+      expect(skillLoads(db)).toEqual([calledLoad]);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("stores a typed skill and its body as one load the user chose", () => {
+    const root = newRoot();
+    const env = scratchEnv(root);
+    mkdirSync(join(root, "skills", "review"), { recursive: true });
+    writeFileSync(join(root, "skills", "review", "SKILL.md"), "# Review");
+    writeTranscript(env, SESSION, [
+      typed("u-typed", "review"),
+      typedBody("u-typed-body", "u-typed", "/Users/x/.claude/skills/review"),
+    ]);
+    const db = run(env);
+    try {
+      expect(skillLoads(db)).toEqual([
+        {
+          session_id: SESSION,
+          message_id: "u-typed",
+          ts: at(3),
+          model: null,
+          skill_name: "review",
+          how: "user",
+          body_chars: 6,
+          skill_path: "/Users/x/.claude/skills/review",
+        },
+      ]);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("stores a typed plugin skill the command form misses as one load the user chose", () => {
+    const env = scratchEnv(newRoot());
+    writeTranscript(env, SESSION, [
+      typed("u-plugin", "dim:dim-plan"),
+      typedBody("u-plugin-body", "u-plugin", "/Users/x/code/dim-factory/plugin/skills/dim-plan"),
+    ]);
+    const db = run(env);
+    try {
+      expect(skillLoads(db)).toEqual([
+        {
+          session_id: SESSION,
+          message_id: "u-plugin",
+          ts: at(4),
+          model: null,
+          skill_name: "dim-plan",
+          how: "user",
+          body_chars: 6,
+          skill_path: "/Users/x/code/dim-factory/plugin/skills/dim-plan",
+        },
+      ]);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("stores a Skill call copied into a second session file once in each session", () => {
+    const env = scratchEnv(newRoot());
+    writeTranscript(env, SESSION, [skillCall, skillBody]);
+    writeTranscript(env, COPY, [skillCall, skillBody]);
+    const db = run(env);
+    try {
+      expect(skillLoads(db)).toEqual([calledLoad, { ...calledLoad, session_id: COPY }]);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("stores nothing for a body whose Skill call is missing", () => {
+    const env = scratchEnv(newRoot());
+    writeClaudeTranscript(env, "-Users-x-code-demo", SESSION);
+    const db = openDb(dbPath(env));
+    try {
+      expect(sync(db, env).failures).toEqual([]);
+      expect(skillLoads(db)).toEqual([]);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("stores nothing for a body pointing at a call that names no skill or is not a Skill call", () => {
+    const env = scratchEnv(newRoot());
+    const call = (id: string, name: string, input: unknown) => ({
+      ...skillCall,
+      uuid: `a-${id}`,
+      message: { ...skillCall.message, id: `msg-${id}`, content: [{ type: "tool_use", id, name, input }] },
+    });
+    writeTranscript(env, SESSION, [
+      call("toolu-unnamed", "Skill", {}),
+      { ...skillBody, uuid: "u-unnamed-body", sourceToolUseID: "toolu-unnamed" },
+      call("toolu-agent", "Agent", { skill: "dim:dim-plan" }),
+      { ...skillBody, uuid: "u-agent-body", sourceToolUseID: "toolu-agent" },
+    ]);
+    const db = openDb(dbPath(env));
+    try {
+      expect(sync(db, env).failures).toEqual([]);
+      expect(skillLoads(db)).toEqual([]);
+    } finally {
+      closeDb(db);
+    }
+  });
+});

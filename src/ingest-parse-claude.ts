@@ -10,7 +10,7 @@ import {
   type UsageRow,
 } from "./ingest-session-records";
 
-import { parseSkillBody, type SkillLoadRow, sha256, skillFromCommand } from "./ingest-skill-load";
+import { parseSkillBody, type SkillLoadRow, skillFromCommand } from "./ingest-skill-load";
 
 const SKILL_BODY_PREFIX = "Base directory for this skill:";
 
@@ -309,15 +309,13 @@ export function parseClaudeChunk(
       }
       const body = line.isMeta === true && text ? parseSkillBody(text) : undefined;
       if (body) {
-        skillLoads.push({
-          messageId: line.uuid,
-          ts,
-          skillName: body.name,
-          how: "model",
-          bodyChars: body.body.length,
-          bodySha256: sha256(body.body),
-          skillPath: body.path,
-        });
+        const { name, ...fields } = body;
+        const toolUseId = nonEmpty(line.sourceToolUseID);
+        skillLoads.push(
+          toolUseId
+            ? { toolUseId, ...fields }
+            : { messageId: nonEmpty(line.parentUuid), ts, skillName: name, how: "user", ...fields },
+        );
       }
       messages.push({
         id: line.uuid,

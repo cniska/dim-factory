@@ -224,16 +224,26 @@ export function createIngester(db: Database) {
     "INSERT INTO git_command (tool_call_id, position, subcommand) VALUES (?, ?, ?)",
   );
 
+  const skillLoadConflict = `ON CONFLICT(session_id, message_id, skill_name, how) DO UPDATE SET
+       body_chars  = coalesce(excluded.body_chars, skill_load.body_chars),
+       body_sha256 = coalesce(excluded.body_sha256, skill_load.body_sha256),
+       skill_path  = coalesce(excluded.skill_path, skill_load.skill_path),
+       model       = coalesce(excluded.model, skill_load.model)`;
   const insertSkillLoad = db.prepare(
     `INSERT INTO skill_load (session_id, message_id, ts, model, skill_name, how,
        body_chars, body_sha256, skill_path)
      VALUES ($sessionId, $messageId, $ts, $model, $skillName, $how,
        $bodyChars, $bodySha256, $skillPath)
-     ON CONFLICT(session_id, message_id, skill_name, how) DO UPDATE SET
-       body_chars  = coalesce(excluded.body_chars, skill_load.body_chars),
-       body_sha256 = coalesce(excluded.body_sha256, skill_load.body_sha256),
-       skill_path  = coalesce(excluded.skill_path, skill_load.skill_path),
-       model       = coalesce(excluded.model, skill_load.model)`,
+     ${skillLoadConflict}`,
+  );
+  const insertCalledSkillBody = db.prepare(
+    `INSERT INTO skill_load (session_id, message_id, ts, model, skill_name, how,
+       body_chars, body_sha256, skill_path)
+     SELECT $sessionId, message_id, ts_call, model, skill_name, 'model',
+       $bodyChars, $bodySha256, $skillPath
+     FROM tool_call
+     WHERE id = $toolUseId AND tool_name = 'Skill' AND skill_name IS NOT NULL
+     ${skillLoadConflict}`,
   );
 
   const deleteSkillLoads = db.prepare<void, [string]>("DELETE FROM skill_load WHERE session_id = ?");
@@ -384,6 +394,16 @@ export function createIngester(db: Database) {
     }
 
     for (const l of parsed.skillLoads) {
+      if ("toolUseId" in l) {
+        insertCalledSkillBody.run({
+          $sessionId: spec.sessionId,
+          $toolUseId: l.toolUseId,
+          $bodyChars: l.bodyChars,
+          $bodySha256: l.bodySha256,
+          $skillPath: l.skillPath,
+        });
+        continue;
+      }
       insertSkillLoad.run({
         $sessionId: spec.sessionId,
         $messageId: l.messageId ?? null,
