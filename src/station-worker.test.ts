@@ -52,7 +52,6 @@ describe("an order's station worker", () => {
     const first = ensureOrderWorker(db, "order-1", "builder", operator, "claude");
     const minted = bootstrapWorker(db, {
       id: first.assignment.id,
-      token: first.assignment.token,
       sessionId: "claude-session",
     });
     bindOrderWorker(db, "order-1", "builder", first.assignment.id, minted);
@@ -68,7 +67,6 @@ describe("an order's station worker", () => {
     const first = ensureOrderWorker(db, "order-1", "builder", operator, "claude");
     bootstrapWorker(db, {
       id: first.assignment.id,
-      token: first.assignment.token,
       sessionId: "claude-session",
     });
 
@@ -83,7 +81,6 @@ describe("an order's station worker", () => {
       const created = ensureOrderWorker(db, "order-1", "builder", operator, "claude");
       const minted = bootstrapWorker(db, {
         id: created.assignment.id,
-        token: created.assignment.token,
         sessionId: "claude-session",
       });
       bindOrderWorker(db, "order-1", "builder", created.assignment.id, minted);
@@ -118,7 +115,6 @@ describe("an order's station worker", () => {
     const first = ensureOrderWorker(db, "order-1", "builder", operator, "codex");
     bootstrapWorker(db, {
       id: first.assignment.id,
-      token: first.assignment.token,
       sessionId: "first-session",
     });
 
@@ -280,14 +276,6 @@ describe("a station worker's run", () => {
 
     expect(run.exitCode).toBe(0);
     expect(atFirstTurn).toEqual([{ pid: process.ppid, ended_at: null }]);
-    expect(builderRun(db)).toEqual({ pid: process.ppid, ended_at: expect.any(String) });
-  });
-
-  test("ends a run whose pid was recorded even when saving the worker's credential then fails", async () => {
-    const { db, home, turn } = builder([{ pid: process.ppid, end: "completed" }]);
-    writeFileSync(join(home, "worker-credentials"), "");
-
-    await expect(turn()).rejects.toThrow();
     expect(builderRun(db)).toEqual({ pid: process.ppid, ended_at: expect.any(String) });
   });
 

@@ -7,7 +7,6 @@ const SRC = import.meta.dir;
 const RAW_OUTPUT = [
   "check-command-command.ts",
   "comments-command.ts",
-  "operator-command.ts",
   "trace-command.ts",
   "wake-command.ts",
   "wt-command.ts",

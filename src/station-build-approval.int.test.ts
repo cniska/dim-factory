@@ -18,19 +18,15 @@ import { orderState } from "./order-state";
 import { orderStatus } from "./order-status";
 import { processStartTime } from "./pid";
 import { approvePlan } from "./station-approvals.test-support";
-import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
+import { mintWorker, WORKER_NAME_VAR } from "./worker";
 
 const repos: string[] = [];
 afterAll(() => {
   for (const repo of repos) rmSync(repo, { recursive: true, force: true });
 });
 
-function env(worker: { name: string; token: string; sessionId: string }): Record<string, string> {
-  return {
-    [WORKER_NAME_VAR]: worker.name,
-    [WORKER_TOKEN_VAR]: worker.token,
-    [WORKER_SESSION_VAR]: worker.sessionId,
-  };
+function env(worker: { name: string }): Record<string, string> {
+  return { [WORKER_NAME_VAR]: worker.name };
 }
 
 describe("build approval integration", () => {

@@ -39,8 +39,8 @@ describe("registering the operator from its harness", () => {
   test("registers the sole session under its ancestor harness", () => {
     const db = floor();
     const result = runOperatorCommand(db, [], session(), process.cwd(), [harness]);
-    expect(result).toContain("DIM_WORKER_NAME=");
-    expect(db.query("SELECT role, pid, process_started_at FROM factory_worker").get()).toEqual({
+    expect(db.query("SELECT name, role, pid, process_started_at FROM factory_worker").get()).toEqual({
+      name: result,
       role: "operator",
       pid: 100,
       process_started_at: "1000000",
@@ -90,11 +90,14 @@ describe("registering the operator from its harness", () => {
     db.close();
   });
 
-  test("refuses a second call from a registered operator", () => {
+  test("names the same operator on a second call from beneath its harness", () => {
     const db = floor();
     const env = session();
-    runOperatorCommand(db, [], env, process.cwd(), [harness]);
-    expect(() => runOperatorCommand(db, [], env, process.cwd(), [harness])).toThrow(UsageError);
+    const first = runOperatorCommand(db, [], env, process.cwd(), [harness]);
+    expect(
+      runOperatorCommand(db, [], env, process.cwd(), [{ pid: 300, startedAt: "3000000" }, harness]),
+    ).toBe(first);
+    expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 1 });
     db.close();
   });
 

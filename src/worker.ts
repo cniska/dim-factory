@@ -1,5 +1,5 @@
 import { type Database, SQLiteError } from "bun:sqlite";
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { writeTransaction } from "./db";
 import type { Env } from "./paths";
 import { type ProcessIdentity, processAncestry, processStartTime } from "./pid";
@@ -7,17 +7,11 @@ import { randomWorkerName } from "./worker-name";
 import type { Role } from "./worker-roles";
 
 export const WORKER_NAME_VAR = "DIM_WORKER_NAME";
-export const WORKER_TOKEN_VAR = "DIM_WORKER_TOKEN";
-export const WORKER_SESSION_VAR = "DIM_SESSION_ID";
 
 export type WorkerUnknownCode = "worker_missing" | "worker_unissued" | "worker_over";
 
 export class WorkerSessionTaken extends Error {
   readonly code = "worker_session_taken";
-}
-
-export class WorkerCredentialUnavailable extends Error {
-  readonly code = "worker_credential_unavailable";
 }
 
 export class WorkerUnknown extends Error {
@@ -29,25 +23,21 @@ export class WorkerUnknown extends Error {
   }
 }
 
-export type MintedWorker = { name: string; token: string; sessionId: string };
+export type MintedWorker = { name: string; sessionId: string };
 
-export function workerProcessEnv(machine: Env | undefined, worker: MintedWorker): Record<string, string> {
+export function workerProcessEnv(
+  machine: Env | undefined,
+  worker: string | undefined,
+): Record<string, string> {
   const inherited = Object.fromEntries(
-    Object.entries(machine ?? {}).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    Object.entries(machine ?? {}).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined && entry[0] !== WORKER_NAME_VAR,
+    ),
   );
-  return {
-    ...inherited,
-    [WORKER_NAME_VAR]: worker.name,
-    [WORKER_TOKEN_VAR]: worker.token,
-    [WORKER_SESSION_VAR]: worker.sessionId,
-  };
+  return worker ? { ...inherited, [WORKER_NAME_VAR]: worker } : inherited;
 }
 
 const now = (): string => new Date().toISOString();
-
-function digest(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
-}
 
 export function mintWorker(
   db: Database,
@@ -61,7 +51,6 @@ export function mintWorker(
   if (worker.pid !== undefined && !processStartedAt) {
     throw new Error(`cannot read start time for worker pid ${worker.pid}`);
   }
-  const token = randomBytes(16).toString("hex");
   return writeTransaction(db, () => {
     if (worker.parentWorker !== undefined) {
       const parent = db
@@ -73,13 +62,12 @@ export function mintWorker(
     const name = randomWorkerName(new Set(held.map((row) => row.name)));
     try {
       db.run(
-        "INSERT INTO factory_worker (name, role, parent_worker, session_id, token_digest, pid, process_started_at, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO factory_worker (name, role, parent_worker, session_id, pid, process_started_at, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
           name,
           worker.role ?? null,
           worker.parentWorker ?? null,
           sessionId,
-          digest(token),
           worker.pid ?? null,
           processStartedAt,
           at,
@@ -97,7 +85,7 @@ export function mintWorker(
       }
       throw error;
     }
-    return { name, token, sessionId };
+    return { name, sessionId };
   });
 }
 
@@ -107,8 +95,6 @@ type WorkerRow = {
   process_started_at: string | null;
   ended_at: string | null;
 };
-
-type CredentialRow = WorkerRow & { token_digest: string };
 
 export function assertLiveWorker(
   row: Pick<WorkerRow, "name" | "pid" | "process_started_at" | "ended_at">,
@@ -163,23 +149,6 @@ export function resolveWorker(
   return registered.worker.name;
 }
 
-export function authenticateWorker(db: Database, env: Env): CredentialRow {
-  const name = env[WORKER_NAME_VAR];
-  const token = env[WORKER_TOKEN_VAR];
-  if (!name || !token) {
-    throw new WorkerUnknown("worker_missing", "worker credential is missing");
-  }
-  const row = db
-    .query<CredentialRow, [string]>(
-      "SELECT name, token_digest, pid, process_started_at, ended_at FROM factory_worker WHERE name = ?",
-    )
-    .get(name);
-  if (!row || row.token_digest !== digest(token)) {
-    throw new WorkerUnknown("worker_unissued", `this factory issued no worker ${name}`);
-  }
-  return row;
-}
-
 export function mintWorkerForSession(
   db: Database,
   worker: {
@@ -188,7 +157,6 @@ export function mintWorkerForSession(
     pid?: number;
     processStartedAt?: string;
     parentWorker?: string;
-    credential?: MintedWorker | null;
   },
 ): MintedWorker {
   return writeTransaction(db, () => {
@@ -206,21 +174,8 @@ export function mintWorkerForSession(
     }
     if (existing.ended_at !== null)
       throw new WorkerUnknown("worker_over", `worker ${existing.name} has ended`);
-    if (!worker.credential) {
-      throw new WorkerCredentialUnavailable(
-        `the credential for worker ${existing.name} in session ${worker.sessionId} is unavailable`,
-      );
-    }
-    if (worker.credential.name !== existing.name || worker.credential.sessionId !== worker.sessionId) {
-      throw new WorkerCredentialUnavailable(
-        `the saved credential does not belong to session ${worker.sessionId}`,
-      );
-    }
-    authenticateWorker(db, {
-      [WORKER_NAME_VAR]: worker.credential.name,
-      [WORKER_TOKEN_VAR]: worker.credential.token,
-    });
-    return worker.credential;
+    if (worker.pid !== undefined) startWorkerRun(db, existing.name, worker.pid, worker.processStartedAt);
+    return { name: existing.name, sessionId: worker.sessionId };
   });
 }
 
@@ -266,13 +221,6 @@ export function endWorker(db: Database, name: string, at = now()): boolean {
     name,
   ]);
   return done.changes === 1;
-}
-
-export function workerExports(minted: MintedWorker): string {
-  return (
-    `export ${WORKER_SESSION_VAR}=${minted.sessionId}\n` +
-    `export ${WORKER_NAME_VAR}=${minted.name}\nexport ${WORKER_TOKEN_VAR}=${minted.token}`
-  );
 }
 
 export function newWorkerSession(prefix = "session"): string {

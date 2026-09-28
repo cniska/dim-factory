@@ -528,7 +528,6 @@ describe("factory order report records", () => {
     });
     const reviewer = bootstrapWorker(database, {
       id: assignment.id,
-      token: assignment.token,
       sessionId: newWorkerSession("accepted-reviewer"),
       pid: pid ?? undefined,
     }).name;

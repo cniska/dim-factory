@@ -16,7 +16,7 @@ import { orderState } from "./order-state";
 import { approvePlan } from "./station-approvals.test-support";
 import { builderBrief, reviewFindingsForBuild } from "./station-build";
 import { runOrderReviewLive } from "./station-review";
-import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
+import { mintWorker, WORKER_NAME_VAR } from "./worker";
 
 const repo = integratedRepo();
 const worktrees: string[] = [];
@@ -32,13 +32,8 @@ const machine = (() => {
   return { DIM_HOME: home };
 })();
 
-function workerEnv(worker: { name: string; token: string; sessionId: string }): Record<string, string> {
-  return {
-    ...machine,
-    [WORKER_NAME_VAR]: worker.name,
-    [WORKER_TOKEN_VAR]: worker.token,
-    [WORKER_SESSION_VAR]: worker.sessionId,
-  };
+function workerEnv(worker: { name: string }): Record<string, string> {
+  return { ...machine, [WORKER_NAME_VAR]: worker.name };
 }
 
 function commit(worktree: string, name: string): string {

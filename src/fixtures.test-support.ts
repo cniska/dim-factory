@@ -7,7 +7,7 @@ import type { OrderCheck } from "./order-evidence";
 import type { Env } from "./paths";
 import { startStationAttempt } from "./station-attempt";
 import { REVIEW_DIMENSIONS, type ReviewFinding } from "./station-review-artifact";
-import { mintWorker, newWorkerSession, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./worker";
+import { mintWorker, newWorkerSession } from "./worker";
 import type { Role } from "./worker-roles";
 import { worktreePath } from "./worktree";
 
@@ -85,11 +85,6 @@ export function reviewOutput(fields: Record<string, unknown> = {}): string {
     observations: [],
     ...fields,
   });
-}
-
-export function workerEnv(db: Database, role: Role = "builder"): Env {
-  const minted = mintWorker(db, { role, sessionId: newWorkerSession("test-worker") });
-  return { [WORKER_NAME_VAR]: minted.name, [WORKER_TOKEN_VAR]: minted.token };
 }
 
 let signingKey: { key: string; allowedSigners: string } | undefined;

@@ -4,7 +4,6 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 
 ## Bugs
 
-- A worker can read the operator's credential and the model routing in `dim`'s data directory.
 - A builder can write `sessions.db` directly, since its sandbox grants `dim`'s data directory, so it can forge a row no `dim` command would write.
 - A moved checkout reads as a second repo.
 - Editing a JSONC file moves a trailing array comment onto the new entry, and turns CRLF into LF.

@@ -70,22 +70,22 @@ describe("running a repo's check in a sandbox", () => {
     expect(Date.parse(check.finishedAt)).toBeGreaterThanOrEqual(Date.parse(check.startedAt));
   });
 
-  test("gives the check none of the operator's factory identity", () => {
+  test("gives the check none of the operator's factory name", () => {
     const worktree = scratch("dim-check-worktree-");
     const canary = join(scratch("dim-check-data-"), "canary");
-    const saved = process.env.DIM_WORKER_TOKEN;
-    process.env.DIM_WORKER_TOKEN = "operator-token";
+    const saved = process.env.DIM_WORKER_NAME;
+    process.env.DIM_WORKER_NAME = "operator-1";
     try {
       const check = runSandboxedCheck({
         worktree,
-        command: 'echo "token=$DIM_WORKER_TOKEN"',
+        command: 'echo "name=$DIM_WORKER_NAME"',
         canary,
         sandbox: confiningSandbox(canary),
       });
-      expect(check.output).toContain("token=\n");
+      expect(check.output).toContain("name=\n");
     } finally {
-      if (saved === undefined) delete process.env.DIM_WORKER_TOKEN;
-      else process.env.DIM_WORKER_TOKEN = saved;
+      if (saved === undefined) delete process.env.DIM_WORKER_NAME;
+      else process.env.DIM_WORKER_NAME = saved;
     }
   });
 });

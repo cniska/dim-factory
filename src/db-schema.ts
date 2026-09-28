@@ -5,7 +5,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { STATIONS_SQL } from "./station";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 79;
+export const SCHEMA_VERSION = 80;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -294,12 +294,9 @@ CREATE TABLE IF NOT EXISTS factory_worker (
   -- The session that holds this identity. One session can mint one worker; a station
   -- spawned child uses its own explicit session id.
   session_id    TEXT UNIQUE,
-  -- The digest of the secret the worker carries, never the secret. The issued set is
-  -- readable through \`dim sql\`, so without something only the worker holds, any
-  -- worker could write under another's name.
-  token_digest  TEXT NOT NULL,
   -- The process the worker runs as. A caller is the nearest registered process above
-  -- it, so identity is its process tree rather than anything a file or variable holds.
+  -- it, so identity is its process tree and no file or variable a worker can read
+  -- grants one.
   -- The start time is part of the match because a pid alone is reused once its process
   -- is gone. A station worker resumes as a new process each run, and the runner writes
   -- both when the run starts.
@@ -326,7 +323,6 @@ CREATE TABLE IF NOT EXISTS factory_worker_assignment (
   id              TEXT PRIMARY KEY,
   parent_worker   TEXT NOT NULL REFERENCES factory_worker(name),
   role            TEXT NOT NULL CHECK (role IN (${ROLES_SQL})),
-  token_digest    TEXT NOT NULL UNIQUE,
   created_at      TEXT NOT NULL,
   accepted_at     TEXT,
   accepted_worker TEXT REFERENCES factory_worker(name),

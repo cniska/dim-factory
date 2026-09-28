@@ -12,16 +12,13 @@ import {
 import type { HarnessName } from "./harness-name";
 import { type ReturnedOrderArtifact, returnedOrderArtifact } from "./order-artifacts";
 import { finishAttempt, finishStoppedAttempt } from "./order-attempt";
-import { authenticateWorker, endWorker, type MintedWorker, startWorkerRun, workerProcessEnv } from "./worker";
+import { endWorker, type MintedWorker, startWorkerRun, workerProcessEnv } from "./worker";
 import {
   assignedWorker,
-  assignmentProcessEnv,
   bootstrapWorker,
   createWorkerAssignment,
-  renewWorkerAssignment,
   type WorkerAssignment,
 } from "./worker-assignment";
-import { readWorkerCredential, saveWorkerCredential } from "./worker-credential";
 import type { Role } from "./worker-roles";
 import { route } from "./worker-routing";
 
@@ -148,13 +145,11 @@ export async function runOrderWorkerHarnessLive(
     } else {
       const minted = bootstrapWorker(db, {
         id: worker.assignment.id,
-        token: worker.assignment.token,
         sessionId,
         pid,
         processStartedAt,
       });
       running = minted.name;
-      saveWorkerCredential(machine ?? process.env, minted);
       bindOrderWorker(db, worker.orderId, worker.role, worker.assignment.id, minted);
       name = minted.name;
     }
@@ -162,7 +157,7 @@ export async function runOrderWorkerHarnessLive(
     onAssigned?.(name, sessionId, { harness: request.harness, model, tier });
   };
   try {
-    const env = orderWorkerRequest(db, machine, worker);
+    const env = orderWorkerRequest(machine, worker);
     const result = await (worker.providerSessionId
       ? resumeHarnessLive({ ...request, env }, worker.providerSessionId, onStarted, adapter)
       : launchHarnessLive({ ...request, env }, onStarted, adapter));
@@ -221,7 +216,6 @@ function readOrderWorker(db: Database, orderId: string, role: StationRole): Orde
     role,
     assignment: {
       id: row.assignment_id,
-      token: "",
       parentWorker: row.parent_worker,
       role: row.assignment_role,
       createdAt: row.created_at,
@@ -335,7 +329,7 @@ export function ensureOrderWorker(
         orderId,
         role,
       ]);
-      return { ...existing, harness, assignment: renewWorkerAssignment(db, existing.assignment.id) };
+      return { ...existing, harness };
     });
   }
 
@@ -411,21 +405,11 @@ export function bindOrderWorkerSession(
 }
 
 export function orderWorkerRequest(
-  db: Database,
   machine: Record<string, string | undefined> | undefined,
   orderWorker: OrderWorker,
 ): Record<string, string> {
-  if (!orderWorker.worker) return assignmentProcessEnv(machine, orderWorker.assignment);
-  if (!orderWorker.providerSessionId) {
+  if (orderWorker.worker && !orderWorker.providerSessionId) {
     throw new Error(`order ${orderWorker.orderId} ${orderWorker.role} worker has no provider session`);
   }
-  const credential = readWorkerCredential(machine ?? process.env, orderWorker.providerSessionId);
-  if (credential?.name !== orderWorker.worker) {
-    throw new Error(`order ${orderWorker.orderId} ${orderWorker.role} worker credential is unavailable`);
-  }
-  const env = workerProcessEnv(machine, credential);
-  if (authenticateWorker(db, env).name !== orderWorker.worker) {
-    throw new Error(`order ${orderWorker.orderId} ${orderWorker.role} worker credential changed identity`);
-  }
-  return env;
+  return workerProcessEnv(machine, orderWorker.worker);
 }

@@ -32,8 +32,7 @@ import { queueOrder, startOrder } from "./order-lifecycle";
 import { orderState } from "./order-state";
 import { approvePlan } from "./station-approvals.test-support";
 import { ReviewRefused, reviewerBrief, reviewRange, runOrderReviewLive } from "./station-review";
-import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
-import { ASSIGNMENT_TOKEN_VAR } from "./worker-assignment";
+import { mintWorker, WORKER_NAME_VAR } from "./worker";
 
 const trunk = integratedRepo();
 const worktrees: string[] = [];
@@ -90,10 +89,6 @@ function floor(): {
   db: Database;
   worker: string;
   operator: string;
-  operatorToken: string;
-  operatorSession: string;
-  builderToken: string;
-  builderSession: string;
   dir: string;
 } {
   const db = new Database(":memory:");
@@ -114,10 +109,6 @@ function floor(): {
     db,
     worker: builder.name,
     operator: operator.name,
-    operatorToken: operator.token,
-    operatorSession: operator.sessionId,
-    builderToken: builder.token,
-    builderSession: builder.sessionId,
     dir,
   };
 }
@@ -155,7 +146,7 @@ function slice(
 
 describe("a review round", () => {
   test("reads the same diff again in a new round when its Review artifact is returned", async () => {
-    const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
+    const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "review-artifact");
     const done = await review(db, operator, dir, answering(reviewOutput()));
     expect(done.reviewer).toBeTruthy();
@@ -169,8 +160,6 @@ describe("a review round", () => {
         {
           ...machine,
           [WORKER_NAME_VAR]: operator,
-          [WORKER_TOKEN_VAR]: operatorToken,
-          [WORKER_SESSION_VAR]: operatorSession,
         },
       ),
     ).toContain("returned");
@@ -188,8 +177,6 @@ describe("a review round", () => {
       runOrderCommand(db, ["approve", "order-1"], null, dir, {
         ...machine,
         [WORKER_NAME_VAR]: operator,
-        [WORKER_TOKEN_VAR]: operatorToken,
-        [WORKER_SESSION_VAR]: operatorSession,
       }),
     ).toThrow(
       expect.objectContaining({ code: "not_next", message: expect.stringContaining("run at review") }),
@@ -264,14 +251,12 @@ describe("a review round", () => {
   });
 
   test("records the operator as the reviewer's parent", async () => {
-    const { db, worker, operator, builderToken, builderSession, dir } = floor();
+    const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "parent");
 
     const done = await review(db, operator, dir, answering(reviewOutput()), {
       ...machine,
       [WORKER_NAME_VAR]: worker,
-      [WORKER_TOKEN_VAR]: builderToken,
-      [WORKER_SESSION_VAR]: builderSession,
     });
 
     expect(db.query("SELECT parent_worker FROM factory_worker WHERE name = ?").get(done.reviewer)).toEqual({
@@ -317,7 +302,7 @@ describe("a review round", () => {
   });
 
   test("records a crashed reviewer with the harness explanation", async () => {
-    const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
+    const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "crashed-review");
 
     const outcome = await runOrderReviewLive(db, "order-1", operator, {
@@ -327,8 +312,6 @@ describe("a review round", () => {
       env: {
         ...machine,
         [WORKER_NAME_VAR]: operator,
-        [WORKER_TOKEN_VAR]: operatorToken,
-        [WORKER_SESSION_VAR]: operatorSession,
       },
     });
 
@@ -402,14 +385,12 @@ describe("a review round", () => {
   });
 
   test("a resumed reviewer that ends before assignment leaves review retryable", async () => {
-    const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
+    const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "bootstrap-resume-review");
     await review(db, operator, dir, answering(reviewOutput()));
     runOrderCommand(db, ["return", "order-1", "--reason", "review again"], null, dir, {
       ...machine,
       [WORKER_NAME_VAR]: operator,
-      [WORKER_TOKEN_VAR]: operatorToken,
-      [WORKER_SESSION_VAR]: operatorSession,
     });
 
     await expect(
@@ -428,7 +409,7 @@ describe("a review round", () => {
   });
 
   test("records the reviewer's structured result through the factory", async () => {
-    const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
+    const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "review-result");
     const outcome = await runOrderReviewLive(db, "order-1", operator, {
       dir,
@@ -437,8 +418,6 @@ describe("a review round", () => {
       env: {
         ...machine,
         [WORKER_NAME_VAR]: operator,
-        [WORKER_TOKEN_VAR]: operatorToken,
-        [WORKER_SESSION_VAR]: operatorSession,
       },
     });
 
@@ -468,7 +447,7 @@ describe("a review round", () => {
   });
 
   test("briefs a new reviewer after a review that did not finish a turn", async () => {
-    const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
+    const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "review-first");
     const base = fakeHarness("crash");
     let starts = 0;
@@ -488,8 +467,6 @@ describe("a review round", () => {
     const env = {
       ...machine,
       [WORKER_NAME_VAR]: operator,
-      [WORKER_TOKEN_VAR]: operatorToken,
-      [WORKER_SESSION_VAR]: operatorSession,
     };
 
     const first = await runOrderReviewLive(db, "order-1", operator, { dir, adapter, env, harness: "codex" });
@@ -520,28 +497,25 @@ describe("a review round", () => {
     expect(handed).toContain("--output-schema");
   });
 
-  test("the reviewer's credential rides in its environment and not its argv", async () => {
+  test("the reviewer's environment carries its name as a label and no credential", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
-    let argv: string[] = [];
     let env: Readonly<Record<string, string>> = {};
     const seen = (request: HarnessRequest): ScriptedAnswer => {
-      argv = argvOf(request);
       env = request.env;
       return { output: reviewOutput() };
     };
+    const factoryVars = () => Object.keys(env).filter((name) => name.startsWith("DIM_WORKER"));
 
     await review(db, operator, dir, seen);
 
-    expect(env[ASSIGNMENT_TOKEN_VAR]).toBeString();
-    expect(argv.join(" ")).not.toContain(env[ASSIGNMENT_TOKEN_VAR] as string);
+    expect(factoryVars()).toEqual([]);
 
     slice(db, dir, worker, "b");
     const done = await review(db, operator, dir, seen);
 
+    expect(factoryVars()).toEqual(["DIM_WORKER_NAME"]);
     expect(env[WORKER_NAME_VAR]).toBe(done.reviewer);
-    expect(env[WORKER_TOKEN_VAR]).toMatch(/^[0-9a-f]{32}$/);
-    expect(argv.join(" ")).not.toContain(env[WORKER_TOKEN_VAR] as string);
   });
 
   test("a second round reads only what the first one did not", async () => {
@@ -743,13 +717,11 @@ describe("a review round", () => {
   });
 
   test("sends the order to build when the round after a return raises a finding", async () => {
-    const { db, worker, operator, operatorToken, operatorSession, dir } = floor();
+    const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     const env = {
       ...machine,
       [WORKER_NAME_VAR]: operator,
-      [WORKER_TOKEN_VAR]: operatorToken,
-      [WORKER_SESSION_VAR]: operatorSession,
     };
     await review(db, operator, dir, answering(reviewOutput()));
     runOrderCommand(db, ["return", "order-1", "--reason", "Say more."], null, dir, env);

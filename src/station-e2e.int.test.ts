@@ -7,20 +7,15 @@ import { runOrderCommand, runOrderCommandLive } from "./order-command";
 import { queueOrder } from "./order-lifecycle";
 import { orderStatus } from "./order-status";
 import { dbPath, type Env } from "./paths";
-import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
+import { mintWorker, WORKER_NAME_VAR } from "./worker";
 
 const roots: string[] = [];
 afterAll(() => {
   for (const root of roots) rmSync(root, { recursive: true, force: true });
 });
 
-function workerEnv(machine: Env, worker: { name: string; token: string; sessionId: string }): Env {
-  return {
-    ...machine,
-    [WORKER_NAME_VAR]: worker.name,
-    [WORKER_TOKEN_VAR]: worker.token,
-    [WORKER_SESSION_VAR]: worker.sessionId,
-  };
+function workerEnv(machine: Env, worker: { name: string }): Env {
+  return { ...machine, [WORKER_NAME_VAR]: worker.name };
 }
 
 describe("headless factory loop", () => {

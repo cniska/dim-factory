@@ -39,7 +39,7 @@ import { orderStatus } from "./order-status";
 import { approveReviewAt } from "./station-approvals.test-support";
 import { runOrderBuildLive } from "./station-build";
 import type { BuildTurn } from "./station-build-turn";
-import { endWorker, mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
+import { endWorker, mintWorker, WORKER_NAME_VAR } from "./worker";
 import { repoRoot } from "./worktree";
 
 const repos: string[] = [];
@@ -143,8 +143,6 @@ describe("builder station", () => {
     const env = {
       DIM_HOME: dimHome,
       [WORKER_NAME_VAR]: operator.name,
-      [WORKER_TOKEN_VAR]: operator.token,
-      [WORKER_SESSION_VAR]: operator.sessionId,
     };
 
     let request: HarnessRequest | undefined;
@@ -1059,8 +1057,6 @@ describe("builder station", () => {
     const env = (worker: ReturnType<typeof mintWorker>) => ({
       DIM_HOME: dimHome,
       [WORKER_NAME_VAR]: worker.name,
-      [WORKER_TOKEN_VAR]: worker.token,
-      [WORKER_SESSION_VAR]: worker.sessionId,
     });
 
     await expect(
@@ -1146,8 +1142,6 @@ describe("builder station", () => {
     const env = {
       DIM_HOME: dimHome,
       [WORKER_NAME_VAR]: operator.name,
-      [WORKER_TOKEN_VAR]: operator.token,
-      [WORKER_SESSION_VAR]: operator.sessionId,
     };
     const failures = () =>
       db

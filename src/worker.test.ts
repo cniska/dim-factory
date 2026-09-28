@@ -64,15 +64,6 @@ describe("issuing a factory worker", () => {
     });
     db.close();
   });
-
-  test("still stores only a digest of the issued token", () => {
-    const db = floor();
-    const worker = issue(db, "builder");
-    const row = db.query<{ token_digest: string }, []>("SELECT token_digest FROM factory_worker").get();
-    expect(row?.token_digest).not.toBe(worker.token);
-    expect(row?.token_digest).toHaveLength(64);
-    db.close();
-  });
 });
 
 describe("whether a worker is over", () => {

@@ -75,8 +75,8 @@ describe("factory analytics", () => {
       ["2026-09-18T09:09:00.000Z", "2026-09-18T09:09:30.000Z", "2026-09-18T09:10:00.000Z"],
     );
     db.run(
-      `INSERT INTO factory_worker (name, role, token_digest, started_at)
-       VALUES ('nut-1', 'builder', 'digest', '2026-09-18T09:00:00.000Z')`,
+      `INSERT INTO factory_worker (name, role, started_at)
+       VALUES ('nut-1', 'builder', '2026-09-18T09:00:00.000Z')`,
     );
     db.run(
       `INSERT INTO factory_order_attempt

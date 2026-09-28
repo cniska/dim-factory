@@ -14,8 +14,7 @@ import { startAttempt } from "./order-attempt";
 import { dropOrder, queueOrder } from "./order-lifecycle";
 import { orderStatus } from "./order-status";
 import { plannerBrief, runOrderPlanLive as runPlan } from "./station-plan";
-import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
-import { ASSIGNMENT_ID_VAR } from "./worker-assignment";
+import { mintWorker, WORKER_NAME_VAR } from "./worker";
 
 function runOrderPlanLive(
   db: Database,
@@ -72,8 +71,6 @@ describe("planner station", () => {
         env: {
           DIM_HOME: home,
           [WORKER_NAME_VAR]: builder.name,
-          [WORKER_TOKEN_VAR]: builder.token,
-          [WORKER_SESSION_VAR]: builder.sessionId,
         },
       }),
     ).rejects.toThrow(expect.objectContaining({ code: "worker_not_operator" }));
@@ -85,14 +82,11 @@ describe("planner station", () => {
       env: {
         DIM_HOME: home,
         [WORKER_NAME_VAR]: operator.name,
-        [WORKER_TOKEN_VAR]: operator.token,
-        [WORKER_SESSION_VAR]: operator.sessionId,
       },
       adapter: scriptedHarness((request) => {
         argv = commandLine(codexProcess, request);
         expect(request.env.DIM_WORKER_NAME).toBeUndefined();
-        expect(request.env.DIM_WORKER_TOKEN).toBeUndefined();
-        expect(request.env[ASSIGNMENT_ID_VAR]).toBeString();
+        expect(Object.keys(request.env).filter((name) => name.startsWith("DIM_WORKER_"))).toEqual([]);
         return {
           output: JSON.stringify({
             body: "## outcome\n\nBuild the smallest path.",
@@ -175,8 +169,6 @@ describe("planner station", () => {
         env: {
           DIM_HOME: home,
           [WORKER_NAME_VAR]: operator.name,
-          [WORKER_TOKEN_VAR]: operator.token,
-          [WORKER_SESSION_VAR]: operator.sessionId,
         },
       }),
     ).rejects.toThrow("fake process crashed");
@@ -236,8 +228,6 @@ describe("planner station", () => {
         env: {
           DIM_HOME: home,
           [WORKER_NAME_VAR]: operator.name,
-          [WORKER_TOKEN_VAR]: operator.token,
-          [WORKER_SESSION_VAR]: operator.sessionId,
         },
       }),
     ).rejects.toThrow("fake usage limit reached");
@@ -281,8 +271,6 @@ describe("planner station", () => {
         env: {
           DIM_HOME: home,
           [WORKER_NAME_VAR]: operator.name,
-          [WORKER_TOKEN_VAR]: operator.token,
-          [WORKER_SESSION_VAR]: operator.sessionId,
         },
       }),
     ).rejects.toThrow("harness unavailable");
@@ -297,8 +285,6 @@ describe("planner station", () => {
       env: {
         DIM_HOME: home,
         [WORKER_NAME_VAR]: operator.name,
-        [WORKER_TOKEN_VAR]: operator.token,
-        [WORKER_SESSION_VAR]: operator.sessionId,
       },
     });
     expect(recovered.slices).toHaveLength(1);
@@ -340,8 +326,6 @@ describe("planner station", () => {
     const env = {
       DIM_HOME: home,
       [WORKER_NAME_VAR]: operator.name,
-      [WORKER_TOKEN_VAR]: operator.token,
-      [WORKER_SESSION_VAR]: operator.sessionId,
     };
 
     const first = await runOrderPlanLive(db, "planner-resume-order", {
@@ -403,8 +387,6 @@ describe("planner station", () => {
     dropOrder(db, "dropped-order", "not wanted", operator.name);
     const env = {
       [WORKER_NAME_VAR]: operator.name,
-      [WORKER_TOKEN_VAR]: operator.token,
-      [WORKER_SESSION_VAR]: operator.sessionId,
     };
 
     await expect(
@@ -450,8 +432,6 @@ describe("planner station", () => {
     const env = {
       DIM_HOME: home,
       [WORKER_NAME_VAR]: operator.name,
-      [WORKER_TOKEN_VAR]: operator.token,
-      [WORKER_SESSION_VAR]: operator.sessionId,
     };
 
     await runOrderPlanLive(db, "planner-cwd-order", { adapter, env, dir: repo.dir, harness: "codex" });

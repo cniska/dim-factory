@@ -262,10 +262,6 @@ printf '%s\\n' "{\\"type\\":\\"result\\",\\"subtype\\":\\"success\\",\\"is_error
     const reporting = mkdtempSync(join(tmpdir(), "dim-harness-bin-"));
     const seen = [
       "DIM_WORKER_NAME",
-      "DIM_WORKER_TOKEN",
-      "DIM_SESSION_ID",
-      "DIM_WORKER_ASSIGNMENT_ID",
-      "DIM_WORKER_ASSIGNMENT_TOKEN",
       "CLAUDECODE",
       "CLAUDE_PID",
       "CLAUDE_EFFORT",
@@ -297,9 +293,6 @@ echo '{"type":"turn.completed"}'
     chmodSync(join(reporting, "codex"), 0o755);
     const operator = {
       DIM_WORKER_NAME: "operator-1",
-      DIM_WORKER_TOKEN: "operator-token",
-      DIM_SESSION_ID: "operator-dim-session",
-      DIM_WORKER_ASSIGNMENT_TOKEN: "stale-assignment-token",
       CLAUDECODE: "1",
       CLAUDE_PID: "4242",
       CLAUDE_EFFORT: "high",
@@ -320,11 +313,10 @@ echo '{"type":"turn.completed"}'
           env: {
             ...request.env,
             PATH: `${reporting}:${process.env.PATH ?? ""}`,
-            DIM_WORKER_ASSIGNMENT_ID: "assignment-1",
-            DIM_WORKER_ASSIGNMENT_TOKEN: "assignment-token",
+            DIM_WORKER_NAME: "builder-1",
           },
         };
-        const expected = `|||assignment-1|assignment-token||||||||subscription|${harness === "codex" ? "sk-ant" : ""}`;
+        const expected = `builder-1||||||||subscription|${harness === "codex" ? "sk-ant" : ""}`;
 
         expect((await launchHarnessLive(assigned, () => undefined)).output).toBe(expected);
       }

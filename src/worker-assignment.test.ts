@@ -1,40 +1,15 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { SCHEMA_SQL } from "./db-schema";
-import { endWorker, mintWorker, WorkerCredentialUnavailable } from "./worker";
-import {
-  assignedWorker,
-  assignWorker,
-  bootstrapWorker,
-  renewWorkerAssignment,
-  resolveAssignedWorker,
-} from "./worker-assignment";
+import { processStartTime } from "./pid";
+import { endWorker, mintWorker } from "./worker";
+import { assignedWorker, assignWorker, bootstrapWorker } from "./worker-assignment";
 
 function floor(): Database {
   const db = new Database(":memory:");
   db.run(SCHEMA_SQL);
   return db;
 }
-
-test("an accepted assignment cannot act after its worker ends", () => {
-  const db = floor();
-  const parent = mintWorker(db, { role: "operator", sessionId: "operator-session" });
-  const assignment = assignWorker(db, { role: "builder", parentWorker: parent.name });
-  const child = bootstrapWorker(db, {
-    id: assignment.id,
-    token: assignment.token,
-    sessionId: "builder-session",
-  });
-  endWorker(db, child.name);
-
-  expect(() =>
-    resolveAssignedWorker(db, {
-      DIM_WORKER_ASSIGNMENT_ID: assignment.id,
-      DIM_WORKER_ASSIGNMENT_TOKEN: assignment.token,
-    }),
-  ).toThrow(expect.objectContaining({ code: "worker_over" }));
-  db.close();
-});
 
 describe("worker assignments", () => {
   test("creates a child only when its harness session bootstraps", () => {
@@ -43,11 +18,7 @@ describe("worker assignments", () => {
     const assignment = assignWorker(db, { parentWorker: parent.name, role: "planner" });
 
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 1 });
-    const child = bootstrapWorker(db, {
-      id: assignment.id,
-      token: assignment.token,
-      sessionId: "planner-session",
-    });
+    const child = bootstrapWorker(db, { id: assignment.id, sessionId: "planner-session" });
 
     expect(db.query("SELECT role, parent_worker FROM factory_worker WHERE name = ?").get(child.name)).toEqual(
       {
@@ -63,35 +34,38 @@ describe("worker assignments", () => {
     db.close();
   });
 
-  test("returns one worker when a harness retries its assignment bootstrap", () => {
+  test("returns one worker when a harness retries its assignment bootstrap, and registers its new process", () => {
     const db = floor();
     const parent = mintWorker(db, { role: "operator", sessionId: "operator-session" });
     const assignment = assignWorker(db, { parentWorker: parent.name, role: "builder" });
-    const first = bootstrapWorker(db, {
-      id: assignment.id,
-      token: assignment.token,
-      sessionId: "builder-session",
-    });
+    const first = bootstrapWorker(db, { id: assignment.id, sessionId: "builder-session" });
     const retried = bootstrapWorker(db, {
       id: assignment.id,
-      token: assignment.token,
       sessionId: "builder-session",
-      credential: first,
+      pid: process.pid,
     });
 
     expect(retried.name).toBe(first.name);
-    expect(retried.token).toBe(first.token);
-    expect(() =>
-      bootstrapWorker(db, {
-        id: assignment.id,
-        token: assignment.token,
-        sessionId: "builder-session",
-      }),
-    ).toThrow(WorkerCredentialUnavailable);
+    expect(
+      db.query("SELECT pid, process_started_at FROM factory_worker WHERE name = ?").get(first.name),
+    ).toEqual({ pid: process.pid, process_started_at: processStartTime(process.pid) });
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 2 });
-    expect(() =>
-      bootstrapWorker(db, { id: assignment.id, token: assignment.token, sessionId: "other-session" }),
-    ).toThrow(expect.objectContaining({ code: "assignment_used" }));
+    expect(() => bootstrapWorker(db, { id: assignment.id, sessionId: "other-session" })).toThrow(
+      expect.objectContaining({ code: "assignment_used" }),
+    );
+    db.close();
+  });
+
+  test("refuses to re-register a worker that has ended", () => {
+    const db = floor();
+    const parent = mintWorker(db, { role: "operator", sessionId: "operator-session" });
+    const assignment = assignWorker(db, { role: "builder", parentWorker: parent.name });
+    const child = bootstrapWorker(db, { id: assignment.id, sessionId: "builder-session" });
+    endWorker(db, child.name);
+
+    expect(() => bootstrapWorker(db, { id: assignment.id, sessionId: "builder-session" })).toThrow(
+      expect.objectContaining({ code: "worker_over" }),
+    );
     db.close();
   });
 
@@ -101,11 +75,7 @@ describe("worker assignments", () => {
     const assignment = assignWorker(db, { parentWorker: parent.name, role: "builder" });
     endWorker(db, parent.name);
 
-    const builder = bootstrapWorker(db, {
-      id: assignment.id,
-      token: assignment.token,
-      sessionId: "takeover-builder-session",
-    });
+    const builder = bootstrapWorker(db, { id: assignment.id, sessionId: "takeover-builder-session" });
 
     expect(
       db.query("SELECT role, parent_worker FROM factory_worker WHERE name = ?").get(builder.name),
@@ -120,42 +90,18 @@ describe("worker assignments", () => {
     const db = floor();
     const parent = mintWorker(db, { role: "operator", sessionId: "operator-session" });
     const assignment = assignWorker(db, { parentWorker: parent.name, role: "reviewer" });
-    const child = bootstrapWorker(db, {
-      id: assignment.id,
-      token: assignment.token,
-      sessionId: "reviewer-session",
-    });
+    const child = bootstrapWorker(db, { id: assignment.id, sessionId: "reviewer-session" });
 
     expect(assignedWorker(db, assignment.id)).toBe(child.name);
     db.close();
   });
 
-  test("does not let a child choose another assignment's token", () => {
+  test("refuses an assignment the factory never made", () => {
     const db = floor();
-    const parent = mintWorker(db, { role: "operator", sessionId: "operator-session" });
-    const assignment = assignWorker(db, { parentWorker: parent.name, role: "reviewer" });
-
-    expect(() =>
-      bootstrapWorker(db, { id: assignment.id, token: "wrong", sessionId: "reviewer-session" }),
-    ).toThrow(expect.objectContaining({ code: "assignment_token" }));
-    expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 1 });
-    db.close();
-  });
-
-  test("renews an unused assignment without changing its identity", () => {
-    const db = floor();
-    const parent = mintWorker(db, { role: "operator", sessionId: "operator-session" });
-    const assignment = assignWorker(db, { parentWorker: parent.name, role: "planner" });
-
-    const renewed = renewWorkerAssignment(db, assignment.id);
-
-    expect(renewed.id).toBe(assignment.id);
-    expect(renewed.token).not.toBe(assignment.token);
-    expect(renewed.parentWorker).toBe(parent.name);
-    expect(() => bootstrapWorker(db, { ...assignment, sessionId: "old-session" })).toThrow(
-      expect.objectContaining({ code: "assignment_token" }),
+    expect(() => bootstrapWorker(db, { id: "assignment-unknown", sessionId: "reviewer-session" })).toThrow(
+      expect.objectContaining({ code: "assignment_missing" }),
     );
-    expect(bootstrapWorker(db, { ...renewed, sessionId: "planner-session" }).name).toBeString();
+    expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 0 });
     db.close();
   });
 });

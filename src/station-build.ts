@@ -135,12 +135,12 @@ export function builderBrief(
     resolving
       ? "Work in the current order worktree, resolving only the conflict above; this turn does not run the build station loop."
       : "Work in the current order worktree and run the build station loop including simplification. Review findings are answered in the turn's `answers`.",
-    "The factory has already accepted your assignment before this turn starts. Do not register or bootstrap another worker, inspect worker credential files, or stop because DIM_WORKER_NAME and DIM_WORKER_TOKEN are absent; order commands authenticate this assigned process through its DIM_WORKER_ASSIGNMENT variables.",
+    "The factory has already registered your process as this order's builder before this turn starts. Do not register another worker; `dim` commands you run resolve to you from your process.",
     "The order description and approved plan define the scope. When they explicitly exclude a workspace surface, do not edit or test that surface.",
     ...(resolving
       ? []
       : [
-          "Leave every change uncommitted in the worktree. Do not run git commit, git stash, or any command that rewrites history. When the turn ends, the factory runner runs the declared check in a sandbox, commits the worktree with the repository's own git identity and signing config, and records the commit and its files under you and the check under the operator. Stay on the order's branch and do not create a git repository inside the worktree; the runner refuses both.",
+          "Leave every change uncommitted in the worktree. Do not run git commit, git stash, or any command that rewrites history. When the turn ends, the factory runner runs the declared check in a sandbox, commits the worktree with the repository's own git identity and signing config, and records the commit and its files under you and the check at that commit. Stay on the order's branch and do not create a git repository inside the worktree; the runner refuses both.",
           "You may run the declared check yourself as feedback. A red check is feedback, not completion: diagnose it, fix the cause, rerun the check, and continue until it passes. If the cause is genuinely blocked, report the blocker instead of claiming success.",
           'End the turn by returning JSON `{"subject": "...", "artifact": "...", "answers": [...]}`. `subject` is the commit subject, in the repo\'s own commit convention. `artifact` is the Build artifact for the whole order, and an empty string only when this turn finishes a slice before the last. `answers` holds one `{"finding": <id>, "answer": "fixed"|"refused", "resolution": "..."|null}` per finding listed under Review findings, and is `[]` when none is. Use dim-build and dim-artifact for the artifact contract: separate Markdown headings, the result explained for the owner rather than the command transcript, and proportional to the change.',
         ]),

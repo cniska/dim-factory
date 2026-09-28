@@ -15,7 +15,7 @@ Run the order named by the caller. The operator owns the request and the route; 
 - Read the repository rules and current check before starting work.
 - Run as an operator. Do not lend the operator identity to a station worker.
 - Work only in the order's project and isolated worktree. Do not edit the project from the operator session.
-- Ensure the operator identity exists with `eval "$(dim operator)"`; the command resolves the sole active operator session from its startup hook.
+- Register the operator with `dim operator`; it registers the harness of the sole active operator session in this checkout and prints the operator's name. Every later `dim` command from that session resolves to it.
 
 ## Start or resume the order
 

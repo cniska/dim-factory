@@ -79,7 +79,7 @@ Grok's file is `~/.grok/hooks/dim.json`. `GROK_HOME` overrides `~/.grok`. A Grok
 ## Read path
 
 - **`dim q <name>`** runs a named query; `dim q list` names them. Each is a `Query` in one of the modules [`src/query-registry.ts`](../src/query-registry.ts) imports.
-- **One output shape.** Every command prints one line of JSON: `{command, ok, result}` on stdout, or `{command, ok: false, error}` on stderr with a `code` that tells errors apart ([`src/cli-output.ts`](../src/cli-output.ts)). A `raw` command prints the format its consumer parses instead: `wake`, `check-command`, `trace`, `wt`, `operator` and `comments check`.
+- **One output shape.** Every command prints one line of JSON: `{command, ok, result}` on stdout, or `{command, ok: false, error}` on stderr with a `code` that tells errors apart ([`src/cli-output.ts`](../src/cli-output.ts)). A `raw` command prints the format its consumer parses instead: `wake`, `check-command`, `trace`, `wt` and `comments check`.
 - **A result states its base.** It carries `denominator`, `columns`, `rows` and `note`; an empty result says why, and a figure covering a subset names the subset.
 - **Capped rows.** A result longer than 40 rows says how many were cut and names `--rows`.
 - **A 30-day window** by default, moved with `--since` and removed with `--all`, and stated in the denominator. Time series and queries about a named thing are unwindowed.

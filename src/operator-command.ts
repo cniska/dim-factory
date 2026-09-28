@@ -6,16 +6,7 @@ import { labelFor } from "./git-remote";
 import { drainSpool } from "./ingest-spool";
 import { dbPath } from "./paths";
 import { type ProcessIdentity, processAncestry, processStartedBefore } from "./pid";
-import {
-  type MintedWorker,
-  mintWorkerForSession,
-  registeredCaller,
-  WORKER_NAME_VAR,
-  WORKER_SESSION_VAR,
-  WORKER_TOKEN_VAR,
-  workerExports,
-} from "./worker";
-import { readWorkerCredential, saveWorkerCredential } from "./worker-credential";
+import { mintWorkerForSession, registeredCaller } from "./worker";
 import type { Role } from "./worker-roles";
 
 const OPERATOR_ROLE = "operator" as const;
@@ -62,31 +53,9 @@ function activeSession(db: Database, env: Record<string, string | undefined>, cw
   throw fail(`no active harness session is recorded for project ${project}`);
 }
 
-function workerForSession(
-  db: Database,
-  workerRole: Role,
-  sessionId: string,
-  env: Record<string, string | undefined>,
-  harness: ProcessIdentity,
-): MintedWorker {
-  const workerName = env[WORKER_NAME_VAR];
-  const workerToken = env[WORKER_TOKEN_VAR];
-  if (Boolean(workerName) !== Boolean(workerToken)) {
-    throw fail(`both ${WORKER_NAME_VAR} and ${WORKER_TOKEN_VAR} must be present together`);
-  }
-  const credential =
-    workerName && workerToken
-      ? { name: workerName, token: workerToken, sessionId: env[WORKER_SESSION_VAR] ?? "" }
-      : readWorkerCredential(env, sessionId);
-  const minted = mintWorkerForSession(db, {
-    role: workerRole,
-    sessionId,
-    pid: harness.pid,
-    processStartedAt: harness.startedAt,
-    credential,
-  });
-  saveWorkerCredential(env, minted);
-  return minted;
+function roleOf(db: Database, worker: string): Role | undefined {
+  return db.query<{ role: Role }, [string]>("SELECT role FROM factory_worker WHERE name = ?").get(worker)
+    ?.role;
 }
 
 export function runOperatorCommand(
@@ -97,26 +66,33 @@ export function runOperatorCommand(
   ancestry: readonly ProcessIdentity[] = processAncestry(),
 ): string {
   readFlags(args, [], fail);
-  if (registeredCaller(db, ancestry))
-    throw fail("this process already belongs to a factory worker or runner");
+  const registered = registeredCaller(db, ancestry);
+  if (registered?.kind === "worker" && roleOf(db, registered.worker.name) === OPERATOR_ROLE) {
+    return registered.worker.name;
+  }
+  if (registered) throw fail("this process already belongs to a factory worker or runner");
   const session = activeSession(db, env, cwd);
   const harness = ancestry.find((entry) => entry.pid === session.harness_pid);
   if (!harness) throw fail("the active session's harness is not an ancestor of this process");
   if (!processStartedBefore(harness.startedAt, session.ts)) {
     throw fail("the active session's harness started after its SessionStart event");
   }
-  return workerExports(workerForSession(db, OPERATOR_ROLE, session.session_id, env, harness));
+  return mintWorkerForSession(db, {
+    role: OPERATOR_ROLE,
+    sessionId: session.session_id,
+    pid: harness.pid,
+    processStartedAt: harness.startedAt,
+  }).name;
 }
 
 export const operatorCommand: Command = {
   name: "operator",
   usage: "usage: dim operator",
-  summary: "print this project's operator credentials as shell exports, for eval",
-  raw: () => true,
+  summary: "register this session's harness as the project's operator and print its name",
   run(args) {
     const db = openDb(dbPath());
     try {
-      console.log(runOperatorCommand(db, args, process.env, process.cwd()));
+      return runOperatorCommand(db, args, process.env, process.cwd());
     } finally {
       closeDb(db);
     }

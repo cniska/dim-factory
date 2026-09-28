@@ -32,7 +32,6 @@ import {
   newWorkerSession,
   resolveWorker as resolveFromAncestry,
   WORKER_NAME_VAR,
-  WORKER_TOKEN_VAR,
 } from "./worker";
 
 const opened: Database[] = [];
@@ -49,7 +48,7 @@ function db(): Database {
     pid: process.ppid,
     sessionId: newWorkerSession("test-operator"),
   });
-  env = { ...machine.env, [WORKER_NAME_VAR]: operator.name, [WORKER_TOKEN_VAR]: operator.token };
+  env = { ...machine.env, [WORKER_NAME_VAR]: operator.name };
   opened.push(database);
   return database;
 }
@@ -123,7 +122,7 @@ function approvedAt(database: Database, sha: string): void {
 
 function operatorEnv(database: Database): Env {
   const operator = mintWorker(database, { role: "operator", sessionId: newWorkerSession("test-operator") });
-  return { ...machine.env, [WORKER_NAME_VAR]: operator.name, [WORKER_TOKEN_VAR]: operator.token };
+  return { ...machine.env, [WORKER_NAME_VAR]: operator.name };
 }
 
 describe("order command", () => {
@@ -545,7 +544,6 @@ describe("order command", () => {
       runOrderCommand(database, ["ship", "order-1"], null, trunk.dir, {
         ...machine.env,
         [WORKER_NAME_VAR]: builder.name,
-        [WORKER_TOKEN_VAR]: builder.token,
       }),
     ).toThrow(expect.objectContaining({ code: "worker_not_operator" }));
   });
@@ -689,7 +687,7 @@ describe("order command", () => {
   test("every write is refused where nothing says which worker is making it", () => {
     const database = db();
     queued(database);
-    const unissued = { ...env, DIM_WORKER_TOKEN: "not the one it was handed" };
+    const namedOnly = { ...env };
     database.run("UPDATE factory_worker SET pid = NULL, process_started_at = NULL WHERE role = 'operator'");
 
     for (const args of [
@@ -701,7 +699,7 @@ describe("order command", () => {
       expect(() => runCommand(database, args, null, undefined, {})).toThrow(
         expect.objectContaining({ code: "worker_missing" }),
       );
-      expect(() => runCommand(database, args, null, undefined, unissued)).toThrow(
+      expect(() => runCommand(database, args, null, undefined, namedOnly)).toThrow(
         expect.objectContaining({ code: "worker_missing" }),
       );
     }
@@ -795,7 +793,6 @@ describe("order command", () => {
       runOrderCommand(database, ["drop", "order-1", "--reason", "disposable"], null, trunk.dir, {
         ...machine.env,
         [WORKER_NAME_VAR]: builder.name,
-        [WORKER_TOKEN_VAR]: builder.token,
       }),
     ).toThrow(expect.objectContaining({ code: "worker_not_operator" }));
     expect(orderStatus(database, "order-1")).toBe("queued");

@@ -104,11 +104,11 @@ describe("the Codex harness adapter", () => {
     expect(
       codexProcess.environment?.({
         PATH: "/bin",
-        DIM_WORKER_TOKEN: "worker-token",
+        DIM_WORKER_NAME: "worker-1",
         CODEX_API_KEY: "codex-key",
         OPENAI_API_KEY: "openai-key",
       }),
-    ).toEqual({ PATH: "/bin", DIM_WORKER_TOKEN: "worker-token" });
+    ).toEqual({ PATH: "/bin", DIM_WORKER_NAME: "worker-1" });
   });
 
   test("resumes a Codex session by its provider id", () => {

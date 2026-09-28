@@ -264,7 +264,7 @@ describe("the Claude harness adapter", () => {
   test("keeps every per-token credential and provider out of a worker, from the shell and from settings", () => {
     const env = claudeProcess.environment?.({
       PATH: "/bin",
-      DIM_WORKER_TOKEN: "worker-token",
+      DIM_WORKER_NAME: "worker-1",
       CLAUDE_CODE_OAUTH_TOKEN: "subscription",
       ANTHROPIC_API_KEY: "sk-ant",
       ANTHROPIC_AUTH_TOKEN: "bearer",
@@ -275,7 +275,7 @@ describe("the Claude harness adapter", () => {
 
     expect(env).toEqual({
       PATH: "/bin",
-      DIM_WORKER_TOKEN: "worker-token",
+      DIM_WORKER_NAME: "worker-1",
       CLAUDE_CODE_OAUTH_TOKEN: "subscription",
     });
     expect(settings(claudeArgs(request))).toMatchObject({

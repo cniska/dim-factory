@@ -206,7 +206,7 @@ describe("worker failure explanations", () => {
       { id: 1, ordinal: 1, title: "Build it", outcome: "The result is verified." },
       null,
     );
-    expect(brief).toContain("Do not register or bootstrap another worker");
+    expect(brief).toContain("Do not register another worker");
     expect(brief).toContain("Leave every change uncommitted in the worktree");
     expect(brief).toContain("Do not run git commit, git stash");
     expect(brief).toContain("commits the worktree with the repository's own git identity and signing config");

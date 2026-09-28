@@ -1,14 +1,7 @@
 import type { ProcessEnvironment } from "./harness-process";
-import { WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
-import { ASSIGNMENT_ID_VAR, ASSIGNMENT_TOKEN_VAR } from "./worker-assignment";
+import { WORKER_NAME_VAR } from "./worker";
 
-const FACTORY_IDENTITY_VARS = [
-  WORKER_NAME_VAR,
-  WORKER_TOKEN_VAR,
-  WORKER_SESSION_VAR,
-  ASSIGNMENT_ID_VAR,
-  ASSIGNMENT_TOKEN_VAR,
-];
+const FACTORY_IDENTITY_VARS = [WORKER_NAME_VAR];
 
 const OPERATOR_SESSION_VARS = [
   "CLAUDECODE",

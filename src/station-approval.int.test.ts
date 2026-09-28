@@ -12,8 +12,7 @@ import { queueOrder, startOrder } from "./order-lifecycle";
 import { orderState } from "./order-state";
 import { runOrderPlanLive } from "./station-plan";
 import type { PlanSlice } from "./station-plan-artifact";
-import { mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
-import { ASSIGNMENT_ID_VAR, assignedWorker } from "./worker-assignment";
+import { mintWorker, WORKER_NAME_VAR } from "./worker";
 
 const repos: string[] = [];
 const homes: string[] = [];
@@ -25,12 +24,8 @@ afterAll(() => {
   for (const home of homes) rmSync(home, { recursive: true, force: true });
 });
 
-function env(worker: { name: string; token: string; sessionId: string }): Record<string, string> {
-  return {
-    [WORKER_NAME_VAR]: worker.name,
-    [WORKER_TOKEN_VAR]: worker.token,
-    [WORKER_SESSION_VAR]: worker.sessionId,
-  };
+function env(worker: { name: string }): Record<string, string> {
+  return { [WORKER_NAME_VAR]: worker.name };
 }
 
 describe("plan approval integration", () => {
@@ -61,9 +56,9 @@ describe("plan approval integration", () => {
       parentWorker: operator.name,
       env: { ...env(operator), DIM_HOME: home },
       harness: "codex",
-      adapter: scriptedHarness((request) => ({
+      adapter: scriptedHarness(() => ({
         output: JSON.stringify({
-          body: `## Outcome\n\nPlan for ${assignedWorker(db, request.env[ASSIGNMENT_ID_VAR] as string)}.`,
+          body: "## Outcome\n\nPlan the request.",
           slices: [{ title: "Complete the request", outcome: "The requested result is verified." }],
         }),
       })),
