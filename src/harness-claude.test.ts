@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { HarnessRequest } from "./harness";
 import { claudeArgs, claudeProcess } from "./harness-claude";
 import { commandLine, resumeCommandLine } from "./harness-process";
@@ -323,6 +323,17 @@ describe("the Claude harness adapter", () => {
     );
     expect(spooled("SessionEnd")).toContain(spool);
     expect(spooled("PostToolUse")).toContain(spool);
+  });
+
+  test("loads dim's station skills as the dim plugin, since a worker loads no user skills", () => {
+    const argv = claudeArgs(request);
+    const plugin = argv[argv.indexOf("--plugin-dir") + 1] ?? "";
+
+    expect(plugin).toBe(resolve(import.meta.dir, ".."));
+    expect(JSON.parse(readFileSync(join(plugin, ".claude-plugin", "plugin.json"), "utf8")).name).toBe("dim");
+    for (const skill of ["dim-plan", "dim-build", "dim-review"]) {
+      expect(existsSync(join(plugin, "skills", skill, "SKILL.md"))).toBe(true);
+    }
   });
 
   test("gives no worker a way to leave work running past its answer", () => {

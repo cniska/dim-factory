@@ -4,6 +4,7 @@ import type { HarnessEvent, HarnessRequest, UsageLimit } from "./harness";
 import type { HarnessLineParser, HarnessProcess } from "./harness-process";
 import { hookSettings } from "./hook-commands";
 import { dataDir } from "./paths";
+import { SKILL_PLUGIN_DIR } from "./skill-plugin";
 import { NETWORK_VARS } from "./station-environment";
 
 type ClaudeBlock = {
@@ -149,6 +150,8 @@ function claudeFlags(request: HarnessRequest): string[] {
     edits ? "acceptEdits" : "default",
     "--setting-sources",
     "",
+    "--plugin-dir",
+    SKILL_PLUGIN_DIR,
     "--settings",
     claudeSettings(request, checkoutGitPaths(request.cwd)),
     ...(request.outputSchema ? ["--json-schema", readFileSync(request.outputSchema, "utf8")] : []),

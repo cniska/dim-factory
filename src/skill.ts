@@ -8,10 +8,11 @@ import {
   symlinkSync,
   unlinkSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { withPathLock } from "./db-lock";
 import { harnessInstalled } from "./harness-installed";
 import { defaultDataDir, type Env, resolveHomeDir } from "./paths";
+import { SKILLS_DIR } from "./skill-plugin";
 
 export const SKILL_NAMES = [
   "dim-add",
@@ -32,7 +33,7 @@ export const SKILL_NAMES = [
 export type SkillName = (typeof SKILL_NAMES)[number];
 
 export function skillSourceDir(name: SkillName): string {
-  return resolve(import.meta.dir, "..", "skills", name);
+  return join(SKILLS_DIR, name);
 }
 
 export function skillLinkDirs(env: Env = process.env): string[] {
@@ -86,7 +87,6 @@ function isLink(path: string): boolean {
 }
 
 export function retiredLinks(env: Env = process.env): string[] {
-  const root = resolve(import.meta.dir, "..", "skills");
   const current = new Set<string>(SKILL_NAMES.map((name) => skillSourceDir(name)));
   const stale: string[] = [];
   for (const dir of skillLinkDirs(env)) {
@@ -95,7 +95,7 @@ export function retiredLinks(env: Env = process.env): string[] {
       const link = join(dir, entry);
       if (!isLink(link)) continue;
       const target = readlinkSync(link);
-      if (target.startsWith(`${root}/`) && !current.has(target)) stale.push(link);
+      if (target.startsWith(`${SKILLS_DIR}/`) && !current.has(target)) stale.push(link);
     }
   }
   return stale;
