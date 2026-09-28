@@ -21,7 +21,7 @@ Run `dim sync` to populate the local record. If it refuses a schema mismatch, ru
 
 Use the doctor's findings to choose only the needed installers. Preview each before `--write` and inspect the paths and scope it will change:
 
-- `dim install-hooks` for Claude Code and Codex session hooks.
+- `dim install-hooks` for Claude Code, Codex and Grok Build session hooks.
 - `dim install-skill` for dim's shared skills in the agent skill directories.
 - `dim install-rules` when its canonical Claude rules source exists.
 - `dim install-commit-gate --owner=<host>/<account>` for the owner's verified remote scope. Do not infer that scope from an unrelated clone.

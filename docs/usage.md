@@ -20,6 +20,7 @@ dim rebuild    # rebuild tables from their sources
 dim q list     # the named queries
 dim q <name>
 dim sql "<read-only select>"
+dim label <message-id> <correction|clarification|not_correction> [--rule "..."]   # judge one candidate correction
 ```
 
 `dim` with no command lists every command with its usage. [Session database](design.md) covers sources, schema and output.
@@ -83,6 +84,8 @@ dim config unset comments
 dim wt <branch>
 dim wt ls
 dim wt path <branch>
+dim wt rm [--force] <branch>
+dim wt prune   # prune stale worktree admin entries
 ```
 
 See [Worktrees](worktrees.md). The line's entry points are the `dim-feat` and `dim-fix` skills, its stations `dim-plan`, `dim-build` and `dim-review`, and `dim-factory` operates it ([`factory.md`](factory.md)). `dim-audit` reads existing code across quality dimensions without changing the project.

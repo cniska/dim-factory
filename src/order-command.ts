@@ -34,7 +34,7 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--lin
        dim order review <order-id> [--harness <${HARNESSES.join("|")}>]
        dim order plan <order-id> [--harness <${HARNESSES.join("|")}>]
        dim order build <order-id> [--harness <${HARNESSES.join("|")}>]
-       dim order approve <order-id> [--reason "..."]
+       dim order approve <order-id> [--reason "..."]   --reason is required on a Build artifact
        dim order return <order-id> --reason "..." [--to plan|build]
        dim order ship <order-id>
        dim order amend <order-id> [--title "..."] [--description "..."]

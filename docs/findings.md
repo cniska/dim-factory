@@ -33,7 +33,7 @@ Dated measurements from this machine's record, each with what it can and cannot 
 
 ## Retrieval
 
-- **Meaning is found where the words match, or not at all** (2026-09-17). `dim bench` over 16 hand-labeled questions: recall@10 0.531, nDCG@10 0.472, bimodal — seven questions perfect, six at zero. Word overlap does not explain the split.
+- **Meaning is found where the words match, or not at all** (2026-09-17). The embedding search, benchmarked by `dim bench` before both were removed, over 16 hand-labeled questions: recall@10 0.531, nDCG@10 0.472, bimodal — seven questions perfect, six at zero. Word overlap does not explain the split.
 - **An ANDed keyword search grows fourfold per doubling of terms** (2026-09-17): 400 words took 64 seconds, 4,000 took 1 h 43 min. Unioning one match per term (2026-09-20) keeps 16 stopwords under 0.7 s, so the cap stays at 16 terms.
 - **Injected text floods the keyword index** (2026-09-17). One harness reminder repeats across 295 sessions; coordinator and peer messages carry the same flag but are real, so `origin_kind` separates them.
 - **A passage ref needs the whole timestamp** (2026-09-18). Cut to the minute, one session in 33 collides; `@` already appears in subagent session ids, so a ref is read by the timestamp's shape.

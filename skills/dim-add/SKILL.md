@@ -13,7 +13,7 @@ Turn the request into the one order the operator will run. This is intake, not p
 - The request states what should become true in ordinary project language.
 - Read the repository's project and factory rules before choosing the order's project.
 - Use `dim q search` or `dim q prior-art` only when the request refers to an earlier decision or existing order; do not redesign the request here.
-- Run intake under the operator identity assigned to the project.
+- Run intake as the project's operator, registered by `dim operator`; `dim` reads the worker from the process tree.
 
 ## Write the order
 
@@ -56,7 +56,7 @@ The order is added when:
 
 - inventing a plan while writing the order
 - creating a second order for one request
-- using a worker name or token from a flag or prose instead of the environment
+- naming a worker in a flag or prose instead of letting the process tree name it
 - claiming or starting the order during intake
 - adding a timestamp or model name to the id
 - silently dropping request details

@@ -27,7 +27,7 @@ Setup already installs the shared controls, while each project still supplies it
 - **Skills are the stations.** `dim-feat` and `dim-fix` are the entry points; `dim-plan`, `dim-build` and `dim-review` are the stations.
 - **The same three stations serve every line**, each routing on the line its brief names.
 - **Coding agents are the floor.** Each station runs as a worker in Claude Code, Codex or Grok Build.
-- **`AGENTS.md` and `SPEC.md` are the tolerances.** A line cannot run unattended without them.
+- **The repo's `AGENTS.md` sets the tolerances.**
 - **Checks, review and gates are QC.**
 
 ## An order
@@ -55,7 +55,7 @@ dim order add <id> --title "..." [--line feat|fix] [--description "..."]
 dim order ready                          # the queue
 dim order priority|amend|drop <id> ...
 dim order plan|build|review <id> [--harness codex|claude|grok]
-dim order approve <id> [--reason "..."]  # a Build artifact's approval gives its reason; a Review artifact's ships
+dim order approve <id> [--reason "..."]  # a Build artifact's approval requires --reason; a Review artifact's ships
 dim order return <id> --reason "..." [--to plan|build]
 dim order ship <id>                      # retries a ship that failed with no station's work to do
 dim q order <id>                         # one order's full record and its next act
@@ -126,7 +126,7 @@ A station asks for capabilities, never a harness's flags ([`src/worker-capabilit
 
 ## Record
 
-Orders, workers, attempts, artifacts, evidence and the ledger live in the `factory_*` tables and survive `dim rebuild`, since nothing can recreate an attempt after the fact. `dim q factory-analytics` derives retries, approval waits, outcomes and verdicts from them.
+Orders, workers, attempts, artifacts, evidence and the ledger live in `factory_*` tables that `dim rebuild` carries through ([`design.md`](design.md#schema)), since nothing can recreate an attempt after the fact. `dim q factory-analytics` derives retries, approval waits, outcomes and verdicts from them.
 
 While the factory is being built, `DIM_HOME=<dir> bun run factory:reset -- --confirm-factory-reset` clears its orders in a named data directory; it refuses the default one.
 
@@ -137,7 +137,7 @@ While the factory is being built, `DIM_HOME=<dir> bun run factory:reset -- --con
 ## Borrowed from the assembly line
 
 - **Stop on a defect, never on success** (*jidoka*). The commit gate halts a failing change; the operator halts on a second failure of one order.
-- **Anyone may halt the line** (*andon*). A finding stops its slice until answered. An authenticated worker uses `dim factory stop --reason "..."` to stop the floor; the operator uses `dim factory clear` after resolving the defect.
+- **Anyone may halt the line** (*andon*). A finding stops its slice until answered. A worker uses `dim factory stop --reason "..."` to stop the floor; the operator uses `dim factory clear` after resolving the defect.
 - **Fix the process, not the part.** A defect found repeatedly is a gate that does not exist yet.
 - **Make the error impossible** (*poka-yoke*). Whatever is mechanical is a gate; judgement goes to an agent with a fixed brief.
 - **One piece at a time.** A slice is verified and committed before the next begins.
