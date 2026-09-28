@@ -39,8 +39,8 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryRes
       ([, quote]) =>
         scalar(
           db,
-          `SELECT count(*) AS n FROM message_fts JOIN message m ON m.rowid = message_fts.rowid
-           WHERE message_fts MATCH ? AND ${SAID}${w.sql}`,
+          `SELECT EXISTS (SELECT 1 FROM message_fts JOIN message m ON m.rowid = message_fts.rowid
+           WHERE message_fts MATCH ? AND ${SAID}${w.sql}) AS n`,
           quote,
           ...w.params,
         ) === 0,
