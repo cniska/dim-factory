@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
-import { COMMANDS, findCommand } from "./cli-commands";
+import { allCommands, findCommand } from "./cli-commands";
 import { UsageError } from "./cli-contract";
 import { listing, writeError, writeResult } from "./cli-output";
 
 const [name, ...args] = process.argv.slice(2);
-const command = findCommand(name);
+const command = await findCommand(name);
 
 if (name === undefined) {
-  process.exitCode = writeResult("dim", listing(COMMANDS));
+  process.exitCode = writeResult("dim", listing(await allCommands()));
 } else if (command === undefined) {
   process.exitCode = writeError(
     "dim",

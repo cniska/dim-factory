@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { COMMANDS } from "./cli-commands";
+import { allCommands, findCommand } from "./cli-commands";
+
+const COMMANDS = await allCommands();
 
 const SRC = import.meta.dir;
 const RAW_OUTPUT = [
@@ -37,7 +39,7 @@ describe("the command contract", () => {
     const importers = sources().filter(
       (path) =>
         path !== "cli-commands.ts" &&
-        /from "\.\/[a-z-]+-command"/.test(readFileSync(join(SRC, path), "utf8")),
+        /(?:from |import\()"\.\/[a-z-]+-command"/.test(readFileSync(join(SRC, path), "utf8")),
     );
     expect(importers).toEqual([]);
   });
@@ -51,6 +53,13 @@ describe("the command contract", () => {
     const names = COMMANDS.map((command) => command.name);
     expect(new Set(names).size).toBe(names.length);
     expect(declared).toHaveLength(COMMANDS.length);
+  });
+
+  test("a name loads the command it names, and nothing else", async () => {
+    for (const command of COMMANDS) {
+      expect((await findCommand(command.name))?.name).toBe(command.name);
+    }
+    expect(findCommand("constructor")).toBeUndefined();
   });
 
   test("each command file holds one command, named for the file", () => {
