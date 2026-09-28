@@ -1,6 +1,6 @@
 import { existsSync, rmSync } from "node:fs";
 import type { ProcessEnvironment } from "./harness-process";
-import { stationEnvironment } from "./station-environment";
+import { checkEnvironment } from "./station-environment";
 
 export const CHECK_SANDBOX = ["codex", "sandbox", "-c", 'sandbox_mode="workspace-write"', "--"];
 
@@ -26,7 +26,7 @@ export function runSandboxedCheck(options: {
   env?: ProcessEnvironment;
 }): SandboxedCheck {
   const sandbox = options.sandbox ?? CHECK_SANDBOX;
-  const env = stationEnvironment(options.env);
+  const env = checkEnvironment(options.env);
   const run = (argv: string[]) => {
     try {
       return Bun.spawnSync([...sandbox, ...argv], {

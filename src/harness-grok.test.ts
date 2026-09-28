@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { HarnessRequest } from "./harness";
 import { grokArgs, grokProcess } from "./harness-grok";
 import { commandLine, resumeCommandLine } from "./harness-process";
+import { workerEnvironment } from "./station-environment";
 
 const request: HarnessRequest = {
   cwd: "/repo",
@@ -180,12 +181,14 @@ describe("the Grok harness adapter", () => {
   });
 
   test("does not pass an API key through to the worker", () => {
-    expect(
-      grokProcess.environment?.({
-        XAI_API_KEY: "xai-key",
-        GROK_CODE_XAI_API_KEY: "legacy-key",
-        PATH: "/bin",
-      }),
-    ).toEqual({ PATH: "/bin" });
+    const env = workerEnvironment(grokProcess.environment, {
+      GROK_HOME: "/grok-home",
+      XAI_API_KEY: "xai-key",
+      GROK_CODE_XAI_API_KEY: "legacy-key",
+    });
+
+    expect(env.GROK_HOME).toBe("/grok-home");
+    expect(env.XAI_API_KEY).toBeUndefined();
+    expect(env.GROK_CODE_XAI_API_KEY).toBeUndefined();
   });
 });

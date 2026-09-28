@@ -11,7 +11,7 @@ export type HarnessProcess = {
   args(request: HarnessRequest): string[];
   resumeArgs(providerSessionId: string, request: HarnessRequest): string[];
   parser(): HarnessLineParser;
-  environment?(inherited: ProcessEnvironment): ProcessEnvironment;
+  environment: readonly string[];
 };
 
 export type HarnessLineParser = (line: string) => HarnessEvent | HarnessEvent[] | undefined;

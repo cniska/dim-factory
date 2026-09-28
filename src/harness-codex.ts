@@ -1,6 +1,7 @@
 import type { HarnessEvent, HarnessRequest } from "./harness";
-import type { HarnessLineParser, HarnessProcess, ProcessEnvironment } from "./harness-process";
+import type { HarnessLineParser, HarnessProcess } from "./harness-process";
 import { dataDir } from "./paths";
+import { NETWORK_VARS } from "./station-environment";
 
 type CodexEvent = {
   type?: string;
@@ -103,16 +104,12 @@ export function codexResumeArgs(providerSessionId: string, request: HarnessReque
   ];
 }
 
-const PER_TOKEN_VARS = ["CODEX_API_KEY", "OPENAI_API_KEY"];
-
-function withoutPerTokenCredentials(inherited: ProcessEnvironment): ProcessEnvironment {
-  return Object.fromEntries(Object.entries(inherited).filter(([name]) => !PER_TOKEN_VARS.includes(name)));
-}
+const SUBSCRIPTION_VARS = ["CODEX_HOME"];
 
 export const codexProcess: HarnessProcess = {
   command: "codex",
   args: codexArgs,
   resumeArgs: codexResumeArgs,
   parser: codexEventParser,
-  environment: withoutPerTokenCredentials,
+  environment: [...SUBSCRIPTION_VARS, ...NETWORK_VARS],
 };

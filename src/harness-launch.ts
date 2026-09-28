@@ -3,9 +3,9 @@ import { claudeProcess } from "./harness-claude";
 import { codexProcess } from "./harness-codex";
 import { grokProcess } from "./harness-grok";
 import type { HarnessName } from "./harness-name";
-import { type HarnessProcess, type ProcessEnvironment, processHarness } from "./harness-process";
+import { type HarnessProcess, processHarness } from "./harness-process";
 import { runHarness } from "./harness-runner";
-import { stationEnvironment } from "./station-environment";
+import { workerEnvironment } from "./station-environment";
 
 export type HarnessLaunch = HarnessRequest & { harness: HarnessName };
 
@@ -50,14 +50,9 @@ function workerOutput(events: HarnessEvent[]): string {
 
 export type HarnessStarted = (providerSessionId: string, pid: number, processStartedAt?: string) => void;
 
-function workerEnvironment(spec: HarnessProcess, request: HarnessRequest): ProcessEnvironment {
-  const inherited = stationEnvironment(request.env);
-  return spec.environment ? spec.environment(inherited) : inherited;
-}
-
 function harnessAdapter(harness: HarnessName): HarnessAdapter {
   const spec = HARNESS_PROCESSES[harness];
-  return processHarness(spec, (request) => workerEnvironment(spec, request));
+  return processHarness(spec, (request) => workerEnvironment(spec.environment, request.env));
 }
 
 export function harnessExecutable(harness: HarnessName): string {

@@ -5,6 +5,15 @@ import { join } from "node:path";
 import type { HarnessRequest } from "./harness";
 import { claudeArgs, claudeProcess } from "./harness-claude";
 import { commandLine, resumeCommandLine } from "./harness-process";
+import { workerEnvironment } from "./station-environment";
+
+const PER_TOKEN = [
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_AUTH_TOKEN",
+  "CLAUDE_CODE_USE_BEDROCK",
+  "CLAUDE_CODE_USE_VERTEX",
+  "CLAUDE_CODE_USE_FOUNDRY",
+];
 
 const request: HarnessRequest = {
   cwd: "/repo",
@@ -262,9 +271,9 @@ describe("the Claude harness adapter", () => {
   });
 
   test("keeps every per-token credential and provider out of a worker, from the shell and from settings", () => {
-    const env = claudeProcess.environment?.({
-      PATH: "/bin",
+    const env = workerEnvironment(claudeProcess.environment, {
       DIM_WORKER_NAME: "worker-1",
+      CLAUDE_CONFIG_DIR: "/claude-config",
       CLAUDE_CODE_OAUTH_TOKEN: "subscription",
       ANTHROPIC_API_KEY: "sk-ant",
       ANTHROPIC_AUTH_TOKEN: "bearer",
@@ -273,11 +282,12 @@ describe("the Claude harness adapter", () => {
       CLAUDE_CODE_USE_FOUNDRY: "1",
     });
 
-    expect(env).toEqual({
-      PATH: "/bin",
+    expect(env).toMatchObject({
       DIM_WORKER_NAME: "worker-1",
+      CLAUDE_CONFIG_DIR: "/claude-config",
       CLAUDE_CODE_OAUTH_TOKEN: "subscription",
     });
+    for (const name of PER_TOKEN) expect(env[name]).toBeUndefined();
     expect(settings(claudeArgs(request))).toMatchObject({
       env: {
         ANTHROPIC_API_KEY: "",

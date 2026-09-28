@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { checkoutGitPath } from "./git-checkout-dir";
 import type { HarnessEvent, HarnessRequest } from "./harness";
-import type { HarnessLineParser, HarnessProcess, ProcessEnvironment } from "./harness-process";
+import type { HarnessLineParser, HarnessProcess } from "./harness-process";
+import { NETWORK_VARS } from "./station-environment";
 
 type GrokBlock = {
   type?: string;
@@ -179,16 +180,12 @@ export function grokResumeArgs(providerSessionId: string, request: HarnessReques
   return ["--resume", providerSessionId, ...grokArgs(request)];
 }
 
-function withoutApiKey(inherited: ProcessEnvironment): ProcessEnvironment {
-  return Object.fromEntries(
-    Object.entries(inherited).filter(([name]) => name !== "XAI_API_KEY" && name !== "GROK_CODE_XAI_API_KEY"),
-  );
-}
+const SUBSCRIPTION_VARS = ["GROK_HOME"];
 
 export const grokProcess: HarnessProcess = {
   command: "grok",
   args: grokArgs,
   resumeArgs: grokResumeArgs,
   parser: grokEventParser,
-  environment: withoutApiKey,
+  environment: [...SUBSCRIPTION_VARS, ...NETWORK_VARS],
 };

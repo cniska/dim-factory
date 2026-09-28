@@ -73,7 +73,7 @@ A builder leaves its changes uncommitted and returns a build turn: a commit subj
 
 1. refuses a turn that leaves a handed finding unanswered or answers one it was not handed
 2. applies the comment gate over the staged tree, reading the ban from the local default branch's config so a builder cannot lift it
-3. runs the repo's check in the check sandbox, without the operator's identity
+3. runs the repo's check in the check sandbox, whose environment holds only what a process needs to run — `PATH`, `HOME`, the user, shell, temporary directory, locale and time zone — so no credential, factory name or proxy reaches it ([`src/station-environment.ts`](../src/station-environment.ts))
 4. commits with the repo's own identity and signing, and records the commit under the builder and the check at the commit it ran on — the new commit, or for a turn that failed or changed nothing the head it was built on ([`src/order-head-check.ts`](../src/order-head-check.ts))
 
 A refused commit or comment goes back to the same builder, at most twice per turn. A red check, a check that changed the tree, a nested repository, or HEAD moved off the order's branch fails the turn, and the reason is in the next turn's brief.
@@ -109,7 +109,7 @@ Around it:
 - **A usage limit moves the station to a harness with capacity.** An attempt a harness's usage limit stopped finishes `limited`, with the reset time the harness reports ([`src/station-worker.ts`](../src/station-worker.ts)). Without `--harness`, a station command runs on the first harness with capacity — the bound worker's, then the operator's own, then each one `routing.json` maps — releasing a worker bound to a limited harness, and moves on when a run is limited. A limit counts until its reset passes, or, with no reset reported, until a later attempt on that harness; with none left the command refuses with `harnesses_limited` ([`src/station-harness.ts`](../src/station-harness.ts)).
 - **Station attempts** start when a planner, builder, or reviewer run receives its worker identity. The runner records the outcome; if a worker stops without one, the next run records that attempt as failed before starting. A failure before assignment records the station and reason with no worker.
 - **A worker is over when its process stops answering** a signal ([`src/worker.ts`](../src/worker.ts)); nothing needs to be awake to notice.
-- **A worker is started without the operator's identity** or session, and without an API key, so it is never billed per token. A Claude worker cannot start background work.
+- **A worker's environment is an allowlist**, never the owner's: what the check gets, `dim`'s own data locations, the worker's factory name, and exactly the variables its harness adapter declares — its config directory, its subscription login where the harness takes one from a variable, and the network proxy and CA it reaches its model through ([`src/station-environment.ts`](../src/station-environment.ts)). So the operator's identity and session, API keys, forge tokens and agent sockets never reach it, and no worker is billed per token. A Claude worker cannot start background work.
 - **Sandboxes.** No worker gets the checkout's git metadata. Codex builders run `workspace-write`, everything else read-only. Claude workers run in its Bash sandbox with `.git` denied. Grok builders run the `workspace` sandbox and every other Grok worker `read-only`. A Grok worker that cannot edit is denied the edit tools, and every Grok worker is denied those tools on `.git`.
 
 ## Roles and tiers

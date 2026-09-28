@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { HarnessRequest } from "./harness";
 import { codexArgs, codexProcess } from "./harness-codex";
 import { commandLine, resumeCommandLine } from "./harness-process";
+import { workerEnvironment } from "./station-environment";
 
 const request: HarnessRequest = {
   cwd: "/repo",
@@ -101,14 +102,16 @@ describe("the Codex harness adapter", () => {
   });
 
   test("keeps every per-token API key out of a worker", () => {
-    expect(
-      codexProcess.environment?.({
-        PATH: "/bin",
-        DIM_WORKER_NAME: "worker-1",
-        CODEX_API_KEY: "codex-key",
-        OPENAI_API_KEY: "openai-key",
-      }),
-    ).toEqual({ PATH: "/bin", DIM_WORKER_NAME: "worker-1" });
+    const env = workerEnvironment(codexProcess.environment, {
+      DIM_WORKER_NAME: "worker-1",
+      CODEX_HOME: "/codex-home",
+      CODEX_API_KEY: "codex-key",
+      OPENAI_API_KEY: "openai-key",
+    });
+
+    expect(env).toMatchObject({ DIM_WORKER_NAME: "worker-1", CODEX_HOME: "/codex-home" });
+    expect(env.CODEX_API_KEY).toBeUndefined();
+    expect(env.OPENAI_API_KEY).toBeUndefined();
   });
 
   test("resumes a Codex session by its provider id", () => {

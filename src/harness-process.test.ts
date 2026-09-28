@@ -21,6 +21,7 @@ function command(script: string) {
       args: () => ["-e", script],
       resumeArgs: () => ["-e", script],
       parser: () => (line) => JSON.parse(line) as HarnessEvent,
+      environment: [],
     },
     inherited,
   );
@@ -204,6 +205,7 @@ describe("the external process harness", () => {
           parsers += 1;
           return (line) => JSON.parse(line) as HarnessEvent;
         },
+        environment: [],
       },
       inherited,
     );
@@ -224,6 +226,7 @@ describe("the external process harness", () => {
         args: () => [],
         resumeArgs: () => [],
         parser: () => () => undefined,
+        environment: [],
       },
       inherited,
     );

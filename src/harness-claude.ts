@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import { checkoutGitPath } from "./git-checkout-dir";
 import type { HarnessEvent, HarnessRequest, UsageLimit } from "./harness";
-import type { HarnessLineParser, HarnessProcess, ProcessEnvironment } from "./harness-process";
+import type { HarnessLineParser, HarnessProcess } from "./harness-process";
 import { dataDir } from "./paths";
+import { NETWORK_VARS } from "./station-environment";
 
 type ClaudeBlock = {
   type?: string;
@@ -170,14 +171,12 @@ const PER_TOKEN_VARS = [
   "CLAUDE_CODE_USE_FOUNDRY",
 ];
 
-function withoutPerTokenCredentials(inherited: ProcessEnvironment): ProcessEnvironment {
-  return Object.fromEntries(Object.entries(inherited).filter(([name]) => !PER_TOKEN_VARS.includes(name)));
-}
+const SUBSCRIPTION_VARS = ["CLAUDE_CONFIG_DIR", "CLAUDE_CODE_OAUTH_TOKEN"];
 
 export const claudeProcess: HarnessProcess = {
   command: "claude",
   args: claudeArgs,
   resumeArgs: claudeResumeArgs,
   parser: claudeEventParser,
-  environment: withoutPerTokenCredentials,
+  environment: [...SUBSCRIPTION_VARS, ...NETWORK_VARS],
 };

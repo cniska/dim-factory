@@ -258,7 +258,7 @@ printf '%s\\n' "{\\"type\\":\\"result\\",\\"subtype\\":\\"success\\",\\"is_error
     expect(result).toMatchObject({ exitCode: 0, output: '{"body":"resumed"}' });
   });
 
-  test("starts a worker of either harness with only the identity its request gives it", async () => {
+  test("starts a worker of either harness with its identity and only the credentials its harness declares", async () => {
     const reporting = mkdtempSync(join(tmpdir(), "dim-harness-bin-"));
     const seen = [
       "DIM_WORKER_NAME",
@@ -271,6 +271,12 @@ printf '%s\\n' "{\\"type\\":\\"result\\",\\"subtype\\":\\"success\\",\\"is_error
       "GROK_SESSION_ID",
       "CLAUDE_CODE_OAUTH_TOKEN",
       "ANTHROPIC_API_KEY",
+      "OPENAI_API_KEY",
+      "GH_TOKEN",
+      "SSH_AUTH_SOCK",
+      "AWS_SECRET_ACCESS_KEY",
+      "HOME",
+      "DIM_HOME",
     ]
       .map((name) => `\${${name}:-}`)
       .join("|");
@@ -302,6 +308,11 @@ echo '{"type":"turn.completed"}'
       GROK_SESSION_ID: "operator-grok-session",
       CLAUDE_CODE_OAUTH_TOKEN: "subscription",
       ANTHROPIC_API_KEY: "sk-ant",
+      OPENAI_API_KEY: "sk-openai",
+      GH_TOKEN: "gh-token",
+      SSH_AUTH_SOCK: "/tmp/agent.sock",
+      AWS_SECRET_ACCESS_KEY: "aws-secret",
+      HOME: "/owner",
     };
     const saved = Object.fromEntries(Object.keys(operator).map((name) => [name, process.env[name]]));
     Object.assign(process.env, operator);
@@ -316,7 +327,7 @@ echo '{"type":"turn.completed"}'
             DIM_WORKER_NAME: "builder-1",
           },
         };
-        const expected = `builder-1||||||||subscription|${harness === "codex" ? "sk-ant" : ""}`;
+        const expected = `builder-1||||||||${harness === "claude" ? "subscription" : ""}||||||/owner|${bin}`;
 
         expect((await launchHarnessLive(assigned, () => undefined)).output).toBe(expected);
       }

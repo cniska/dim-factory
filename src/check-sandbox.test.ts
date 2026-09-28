@@ -88,4 +88,41 @@ describe("running a repo's check in a sandbox", () => {
       else process.env.DIM_WORKER_NAME = saved;
     }
   });
+
+  test("gives the check no credential of the owner's, only the variables a process needs to run", () => {
+    const worktree = scratch("dim-check-worktree-");
+    const canary = join(scratch("dim-check-data-"), "canary");
+    const owner = {
+      GH_TOKEN: "gh-token",
+      SSH_AUTH_SOCK: "/tmp/agent.sock",
+      ANTHROPIC_API_KEY: "sk-ant",
+      CLAUDE_CODE_OAUTH_TOKEN: "subscription",
+      AWS_SECRET_ACCESS_KEY: "aws-secret",
+      HTTPS_PROXY: "http://user:pass@proxy:3128",
+      DIM_HOME: "/owner/dim",
+      LANG: "C.UTF-8",
+    };
+    const saved = Object.fromEntries(Object.keys(owner).map((name) => [name, process.env[name]]));
+    Object.assign(process.env, owner);
+    try {
+      const check = runSandboxedCheck({
+        worktree,
+        command: "env",
+        canary,
+        sandbox: confiningSandbox(canary),
+        env: { PATH: process.env.PATH ?? "" },
+      });
+      const names = check.output.split("\n").map((line) => line.split("=")[0]);
+      expect(names).toContain("PATH");
+      expect(names).toContain("HOME");
+      expect(names).toContain("LANG");
+      for (const name of Object.keys(owner).filter((name) => name !== "LANG"))
+        expect(names).not.toContain(name);
+    } finally {
+      for (const [name, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
 });

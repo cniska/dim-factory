@@ -21,6 +21,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 
 - **FR-8** — A `dim` command acts as the nearest registered process above it, matched on its pid and its start time. No file or variable a worker can read grants an identity.
 - **FR-9** — What a running station command spawns before its worker is registered acts as no one, never as the operator above it.
+- **FR-10** — A worker and a check start from an environment of named variables, never the owner's. The check gets no credential; a worker gets only the sign-in its own harness declares.
 
 ## 4. Hooks and reads
 
@@ -41,6 +42,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 - **AC-8** — Each station's brief for a given order and turn is exactly its header and its data sections, with no sentence of procedure. (FR-7)
 - **AC-9** — A command whose environment names the operator, under no registered ancestor, is refused; a process reusing a registered pid with another start time is refused; a process under a running station command, before its worker registers, is refused. (FR-8, FR-9)
 - **AC-10** — A query, `dim sql`, `dim stats`, `dim trace` and the wall, given a record stamped with an older or newer schema version, each refuse it with the error the writer raises, and leave it unchanged. (NF-3, NF-4)
+- **AC-11** — Under an owner environment holding API keys, a forge token and an agent socket, neither a worker nor the check sees any of them, and only a Claude worker sees the subscription token. (FR-10)
 
 ## 6. Open decisions
 
