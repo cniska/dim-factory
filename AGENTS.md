@@ -10,6 +10,7 @@ A software factory run by coding agents, with the owner at the gates that still 
 - Read what the record already answers instead of inferring it. A repo's check is the task its manifest declares ([`src/workspace-tasks.ts`](src/workspace-tasks.ts)).
 - An order that changes the schema runs with no other order in flight ([`docs/design.md`](docs/design.md#schema)).
 - The commit gate runs `bun run verify`. Run it by hand only to read a failure.
+- Cloud work runs on a branch and lands on `main` by fast-forward, `git push origin HEAD:main`, once `bun run verify` passes. Never force it.
 - How the factory is built and run is settled in the work. The wall's design answers to the owner.
 - Write a measurement into [`docs/findings.md`](docs/findings.md) when it is found.
 - One word per concept, settled in [`docs/glossary.md`](docs/glossary.md). Read it before naming a thing, add a new word there, and rename rather than keep a synonym.
