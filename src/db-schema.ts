@@ -5,7 +5,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { STATIONS_SQL } from "./station";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 76;
+export const SCHEMA_VERSION = 77;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
@@ -385,31 +385,50 @@ CREATE TABLE IF NOT EXISTS factory_schedule_invocation (
 CREATE INDEX IF NOT EXISTS factory_schedule_invocation_schedule
   ON factory_schedule_invocation(schedule_id, evaluated_at, id);
 
+-- One ship of an order, written under the ship lock whatever its outcome. It names no
+-- worker: the rebase and the landing are the factory's acts, and the operator's retry is
+-- its own \`ship_retried\` event. A red re-check or a changed patch is a \`refused\` run
+-- that keeps its rebase. The rebase columns are null for a run that never rebased.
+CREATE TABLE IF NOT EXISTS factory_order_ship_run (
+  id              INTEGER PRIMARY KEY,
+  order_id        TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
+  outcome         TEXT NOT NULL CHECK (outcome IN ('landed', 'refused', 'conflict')),
+  -- Null for a refusal git or the database raised rather than ship itself.
+  code            TEXT,
+  reason          TEXT,
+  conflict_paths  TEXT,
+  stopped_at      TEXT,
+  old_base        TEXT,
+  new_base        TEXT,
+  old_head        TEXT,
+  -- From \`git range-diff\`, for a rebase ship completed: 1 when every replayed commit
+  -- carries the patch it had.
+  patch_equal     INTEGER CHECK (patch_equal IN (0, 1)),
+  check_id        INTEGER REFERENCES factory_order_check(id),
+  head            TEXT NOT NULL,
+  worktree_kept   TEXT,
+  branch_kept     TEXT,
+  recorded_at     TEXT NOT NULL,
+  CHECK ((outcome = 'refused') = (reason IS NOT NULL)),
+  CHECK ((outcome = 'conflict') = (conflict_paths IS NOT NULL AND stopped_at IS NOT NULL)),
+  CHECK (outcome != 'conflict' OR (old_base IS NOT NULL AND new_base IS NOT NULL AND old_head IS NOT NULL)),
+  CHECK (outcome = 'landed' OR (worktree_kept IS NULL AND branch_kept IS NULL))
+);
+CREATE INDEX IF NOT EXISTS factory_order_ship_run_order ON factory_order_ship_run(order_id, id);
+
+-- Append-only, so row order is branch order and no recorded sha is changed in place. A
+-- commit a ship run's rebase replayed names that run and the sha it retires; a builder
+-- that resolves a conflict finishes the conflict run's rebase, so its commits name it.
 CREATE TABLE IF NOT EXISTS factory_order_commit (
+  id            INTEGER PRIMARY KEY,
   order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   sha           TEXT NOT NULL,
   subject       TEXT NOT NULL,
+  ship_run_id   INTEGER REFERENCES factory_order_ship_run(id) ON DELETE CASCADE,
+  retires       TEXT,
   recorded_at   TEXT NOT NULL,
-  PRIMARY KEY (order_id, sha)
-);
-
--- One rebase of an order's branch at ship. Append-only like the commits it rewrote: the
--- new commits get rows of their own, and each \`commit_rewritten\` event names the sha it
--- retires, so no recorded sha is ever changed in place. Written only once the re-check
--- at the new head passed, which is the check it names.
-CREATE TABLE IF NOT EXISTS factory_order_rewrite (
-  id            INTEGER PRIMARY KEY,
-  order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
-  old_base      TEXT NOT NULL,
-  new_base      TEXT NOT NULL,
-  old_head      TEXT NOT NULL,
-  new_head      TEXT NOT NULL,
-  -- From \`git range-diff\`: 1 when every replayed commit carries the patch it had. Always 0
-  -- where the builder resolved a conflict, since part of the rewrite is then its own.
-  patch_equal   INTEGER NOT NULL CHECK (patch_equal IN (0, 1)),
-  check_id      INTEGER NOT NULL REFERENCES factory_order_check(id),
-  worker        TEXT NOT NULL REFERENCES factory_worker(name),
-  recorded_at   TEXT NOT NULL
+  UNIQUE (order_id, sha),
+  CHECK ((ship_run_id IS NULL) = (retires IS NULL))
 );
 
 -- How much of each file the order changed, as the recorder counted it. Both

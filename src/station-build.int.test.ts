@@ -1843,7 +1843,14 @@ describe("a conflict at ship", () => {
     expect(git(worktree, ["show", "HEAD:built.txt"])).toBe("built\ntrunk");
     expect(git(worktree, ["show", "HEAD:other.txt"])).toBe("built\ntrunk");
     expect(git(worktree, ["rev-parse", "HEAD~2"])).toBe(trunkTip);
-    expect(db.query("SELECT patch_equal FROM factory_order_rewrite").all()).toEqual([{ patch_equal: 0 }]);
+    expect(
+      db
+        .query(
+          `SELECT r.outcome, r.patch_equal, count(c.id) AS commits FROM factory_order_ship_run r
+           JOIN factory_order_commit c ON c.ship_run_id = r.id GROUP BY r.id`,
+        )
+        .all(),
+    ).toEqual([{ outcome: "conflict", patch_equal: null, commits: 2 }]);
     expect(orderState(db, "conflict-order")).toEqual({ station: "review", next: "run" });
     expect(openAttempt(db, "conflict-order")).toBeNull();
     db.close();

@@ -9,7 +9,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 - **FR-1** — An order whose commits landed on the local default branch is recorded as shipped, whether or not its worktree and branch could be removed.
 - **FR-2** — An order is held only while one of its artifacts awaits approval. In every other state its next act is one the operator can run.
 - **FR-3** — An order's history holds only the acts its workers took, each naming its worker. A station that fails before its worker exists is the one act that names none.
-- **FR-4** — What the factory itself records about an order — its checks, its changed files, its worktree's setup — is evidence beside the history, never an act in it.
+- **FR-4** — What the factory itself records about an order — its checks, its changed files, its worktree's setup, and each ship's rebase, landing or refusal — is evidence beside the history, never an act in it.
 
 ## 2. Stations
 
@@ -26,7 +26,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 
 - **AC-1** — Shipping an order whose worktree cannot be removed lands its commits, records it shipped, and names the kept worktree and branch with their reasons. (FR-1)
 - **AC-2** — For each state an order can be in, its next act is `approve` exactly when an artifact awaits approval. (FR-2)
-- **AC-3** — Running an order from queue to ship leaves a history in which every event names a worker, and its checks, files and worktree setup appear only as evidence. (FR-3, FR-4)
+- **AC-3** — Running an order from queue to ship leaves a history in which every event names a worker, and its checks, files, worktree setup, rebase and landing appear only as evidence. The operator's last act in it is approving the Review artifact, or a retried ship. (FR-3, FR-4)
 - **AC-4** — A `fix` order's plan, build and review briefs each state the line, and each station skill directs a `fix` order through its `dim-fix` part. (FR-5, FR-6)
 - **AC-5** — A session hook whose `dim` command fails or is missing still exits 0. (NF-1)
 - **AC-6** — A git hook in a repo whose owner, config or check it cannot read exits 0; one that refuses a subject, check or push exits non-zero and says why. (NF-2)

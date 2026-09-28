@@ -80,7 +80,9 @@ A refused commit or comment goes back to the same builder, at most twice per tur
 
 ## Shipped
 
-Landing an order's commits on the local default branch ships it. Ship then removes its worktree, and deletes its branch if the branch tip reaches the local default branch. A worktree or branch that cannot be removed is kept; the `shipped` event records the reason under `worktreeKept` or `branchKept`, and `dim order ship` reports it. Nothing is pushed. Ship waits on an approved Build artifact, which the runner writes only with a check that passed at the head, and on an approved Review artifact at the head; the docs changing with the behavior rest on the stations. A failed branch landing attempt writes a `ship_failed` event with its reason. Approving the Review artifact ships; `dim order ship` retries, and writes a `ship_retried` event under the operator before the attempt.
+Landing an order's commits on the local default branch ships it. Ship then removes its worktree, and deletes its branch if the branch tip reaches the local default branch. A worktree or branch that cannot be removed is kept; the ship run records the reason under `worktree_kept` or `branch_kept`, and `dim order ship` reports it. Nothing is pushed. Ship waits on an approved Build artifact, which the runner writes only with a check that passed at the head, and on an approved Review artifact at the head; the docs changing with the behavior rest on the stations. Approving the Review artifact ships; `dim order ship` retries, and writes a `ship_retried` event under the operator before the attempt.
+
+Every ship writes one [ship run](glossary.md#the-record), whatever its outcome and before any refusal reaches the caller. The rebase and the landing are the factory's acts, so a ship run names no worker and the history shows neither; `dim q order` lists the runs and the commits they rewrote. The order is `shipped` once a run lands it.
 
 Ship lands the order the way the repo declares with `git config dim.ship`:
 
@@ -95,6 +97,7 @@ Around it:
 - A build approval carries through every rebase, since the rebase replays approved commits and re-checks them; a review approval carries only through one whose patches are equal. So a rebase that changed a patch puts the order back at review, reading the whole order from the new base, and a conflict puts it back at build: the builder resolves the paths in place, and the runner continues the rebase instead of committing ([`src/station-build-rebase.ts`](../src/station-build-rebase.ts)).
 - A red re-check keeps the rebase and puts the order back at build, where a build turn briefed with the check's output fixes the rebased head ([`src/order-head-check.ts`](../src/order-head-check.ts)). Its commit takes a new Build approval and a new review round before the order ships.
 - A rebase is recorded as a rewrite: each retired sha stays in the record and never counts as landed, reviewed or current.
+- A conflict stays pending while the latest ship run is a conflict and no commit names it.
 - When commits remain to land, ship refuses a dirty default branch checkout, an unrecorded branch tip, or an unsigned commit where the repo signs. Before a rebase, it also refuses a dirty or nested order worktree.
 
 ## Workers

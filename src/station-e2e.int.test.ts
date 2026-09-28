@@ -138,8 +138,10 @@ describe("headless factory loop", () => {
       "station_started",
       "artifact_submitted",
       "artifact_approved",
-      "shipped",
     ]);
+    expect(
+      db.query("SELECT outcome FROM factory_order_ship_run WHERE order_id = ?").all("headless-order"),
+    ).toEqual([{ outcome: "landed" }]);
     expect(
       db
         .query("SELECT body FROM factory_order_artifact WHERE order_id = ? AND kind = 'review' ORDER BY id")

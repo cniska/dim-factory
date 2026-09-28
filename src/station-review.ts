@@ -91,7 +91,8 @@ export function reviewRange(db: Database, orderId: string, dir: string): { base:
       return { base: carried, head: head.out };
     const rewrite = db
       .query<{ new_base: string }, [string]>(
-        "SELECT new_base FROM factory_order_rewrite WHERE order_id = ? ORDER BY id DESC LIMIT 1",
+        `SELECT r.new_base FROM factory_order_commit c JOIN factory_order_ship_run r ON r.id = c.ship_run_id
+         WHERE c.order_id = ? ORDER BY c.id DESC LIMIT 1`,
       )
       .get(orderId);
     if (!rewrite) {

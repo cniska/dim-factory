@@ -53,9 +53,7 @@ describe("factory analytics", () => {
               ('order-analytics', ?, 'artifact_returned', 1, '{}'),
               ('order-analytics', ?, 'artifact_submitted', 2, '{}'),
               ('order-analytics', ?, 'artifact_approved', 2, '{}'),
-              ('order-analytics', ?, 'artifact_approved', 3, '{}'),
-              ('order-analytics', ?, 'ship_failed', NULL, '{}'),
-              ('order-analytics', ?, 'shipped', NULL, '{}')`,
+              ('order-analytics', ?, 'artifact_approved', 3, '{}')`,
       [
         "2026-09-18T09:00:00.000Z",
         '{"source":"issue-123"}',
@@ -66,9 +64,15 @@ describe("factory analytics", () => {
         "2026-09-18T09:03:00.000Z",
         "2026-09-18T09:05:00.000Z",
         "2026-09-18T09:08:00.000Z",
-        "2026-09-18T09:09:00.000Z",
-        "2026-09-18T09:10:00.000Z",
       ],
+    );
+    db.run(
+      `INSERT INTO factory_order_ship_run (order_id, outcome, code, reason, conflict_paths, stopped_at,
+                                           old_base, new_base, old_head, head, recorded_at)
+       VALUES ('order-analytics', 'refused', 'ship_dirty_trunk', 'dirty', NULL, NULL, NULL, NULL, NULL, 'abc123', ?),
+              ('order-analytics', 'conflict', NULL, NULL, '["f.txt"]', 'abc123', 'b0', 'b1', 'abc123', 'abc123', ?),
+              ('order-analytics', 'landed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'abc123', ?)`,
+      ["2026-09-18T09:09:00.000Z", "2026-09-18T09:09:30.000Z", "2026-09-18T09:10:00.000Z"],
     );
     db.run(
       `INSERT INTO factory_worker (name, role, token_digest, started_at)
@@ -118,8 +122,9 @@ describe("factory analytics", () => {
     expect(metrics.get("attempt_outcome:succeeded")).toBe(1);
     expect(metrics.get("approval_wait_seconds")).toBe(180);
     expect(metrics.get("order_event:started")).toBe(1);
-    expect(metrics.get("order_event:shipped")).toBe(1);
-    expect(metrics.get("order_event:ship_failed")).toBe(1);
+    expect(metrics.get("ship_run:refused")).toBe(1);
+    expect(metrics.get("ship_run:conflict")).toBe(1);
+    expect(metrics.get("ship_run:landed")).toBe(1);
     expect(metrics.get("provenance_events")).toBe(1);
     expect(metrics.get("verdict:approved:plan")).toBe(1);
     expect(metrics.get("verdict:approved:build")).toBe(1);

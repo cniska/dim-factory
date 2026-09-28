@@ -7,12 +7,9 @@ export const ORDER_EVENT_KINDS = [
   "artifact_approved",
   "artifact_returned",
   "commit_created",
-  "commit_rewritten",
   "finding_raised",
   "finding_answered",
   "ship_retried",
-  "ship_failed",
-  "shipped",
   "dropped",
   "failed",
 ] as const;

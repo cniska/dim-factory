@@ -19,7 +19,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Station | One repeatable step of work on an order: `plan`, `build` or `review` ([`src/station.ts`](../src/station.ts)). Their skills are `dim-plan`, `dim-build` and `dim-review` |
 | Order | One piece of work: an id, a line, a title, a description and a priority. It exists before it is started and is worked in one worktree |
 | Queue | The orders not yet started, most urgent first, then oldest |
-| Status | The state an order is in, read from its events: `queued`, `running` once started, `shipped` once a shipped event is recorded, or `dropped`. The wall's columns are these words, and a dropped order leaves the board |
+| Status | The state an order is in, read from the record: `queued`, `running` once started, `shipped` once a ship run landed it, or `dropped`. The wall's columns are these words, and a dropped order leaves the board |
 | Next act | What an order waits on, read from the record by [`src/order-state.ts`](../src/order-state.ts) and never stored: at a station, `run` or `approve`; once every station's artifact is approved, `ship`. Every act checks it on entry |
 | Slice | One increment inside an order that verifies and commits on its own |
 | Ship | Landing an order's commits on the local default branch the way the repo declares in `dim.ship`, which ends the order and removes its worktree and branch. Approving the Review artifact ships; `dim order ship` retries a ship that failed and records a `ship_retried` event under the operator |
@@ -39,7 +39,8 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Artifact | A document a station worker writes for the owner — a plan, a Build artifact or a review — one row per revision in `factory_order_artifact`. The worker submits each revision, and the operator approves or returns it. It leads with the outcome and never lives in the worktree |
 | Build turn | What a builder returns after code work: the commit subject, an answer per finding it was handed, and on the last turn the Build artifact ([`src/station-build-turn.ts`](../src/station-build-turn.ts)). The runner commits; the builder does not |
 | Check sandbox | The confinement the runner runs a repo's check in: worktree writable, network and `dim`'s data refused ([`src/check-sandbox.ts`](../src/check-sandbox.ts)) |
-| Rewrite | One rebase of an order's branch onto a moved default branch, recorded with the sha each commit retires |
+| Ship run | One ship of an order, recorded by the factory with no worker in `factory_order_ship_run`: `landed`, `refused` with its code and reason, or `conflict` with the paths the rebase stopped on ([`src/order-ship-run.ts`](../src/order-ship-run.ts)) |
+| Rewrite | The commits a ship run's rebase replaced. Each new commit row names the run and the sha it retires; a builder resolving a conflict finishes the conflict run's rebase, so its commits name that run |
 | Finding | A problem a reviewer raised, with a file and line, the failure, a fix direction and a severity ([`src/order-finding-state.ts`](../src/order-finding-state.ts)) |
 | Severity | How much a finding costs if it ships: `critical`, `high` or `medium` |
 | Observation | A point in a review that blocks nothing |

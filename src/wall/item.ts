@@ -11,12 +11,9 @@ export const ITEM_KIND_LABELS: Record<OrderEventKind, string> = {
   artifact_approved: "Artifact approved",
   artifact_returned: "Artifact returned",
   commit_created: "Commit",
-  commit_rewritten: "Commit rebased",
   finding_raised: "Finding raised",
   finding_answered: "Finding answered",
   ship_retried: "Ship retried",
-  ship_failed: "Ship failed",
-  shipped: "Shipped",
   dropped: "Dropped",
   failed: "Failed",
 };

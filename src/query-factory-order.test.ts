@@ -15,6 +15,7 @@ import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { appendOrderEvent } from "./order-ledger";
 import { dropOrder, queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview } from "./order-review";
+import { recordShipRun } from "./order-ship-run";
 import { findQuery } from "./query-registry";
 import { approveFinalBuildAt, approveReviewAt } from "./station-approvals.test-support";
 
@@ -56,7 +57,7 @@ describe("factory order query", () => {
     approveFinalBuildAt(db, "queued", trunk.sha, worker, attemptOperator);
     approveReviewAt(db, "queued", trunk.sha, attemptOperator);
     expect(row("queued")).toEqual(["running", "ship", "cniska/dim-factory/queued", "unset"]);
-    appendOrderEvent(db, "queued", { worker, kind: "shipped" });
+    recordShipRun(db, "queued", { outcome: "landed" });
     expect(row("queued")).toEqual(["shipped", "(none)", "cniska/dim-factory/queued", "unset"]);
 
     queueOrder(db, { id: "dropped", project: "cniska/dim-factory", title: "Dropped" }, worker);
@@ -200,7 +201,7 @@ describe("factory order query", () => {
         "2026-09-18T10:04:00.000Z",
       );
     }
-    appendOrderEvent(db, "order-status", { worker, kind: "shipped" }, "2026-09-18T10:05:00.000Z");
+    recordShipRun(db, "order-status", { outcome: "landed" }, "2026-09-18T10:05:00.000Z");
 
     const before = [
       "factory_order",
@@ -231,8 +232,8 @@ describe("factory order query", () => {
         "order-status",
         "unset",
         "shipped",
-        "shipped",
-        "2026-09-18T10:05:00.000Z",
+        "finding_answered",
+        "2026-09-18T10:04:00.000Z",
         "(none)",
         "late-event feat: event order wins",
         "bun run focused (0, green)",

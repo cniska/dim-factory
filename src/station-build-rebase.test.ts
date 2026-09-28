@@ -90,7 +90,6 @@ function conflicted(check = "true", markerSize?: number) {
     continueRebaseTurn({
       db,
       orderId: "order-1",
-      operator,
       worktree: wt,
       conflict,
       paths,
@@ -108,9 +107,22 @@ describe("a conflict at ship", () => {
     expect(git(repo.dir, ["rev-parse", "HEAD"])).toBe(trunkTip);
     expect(recorded).toMatchObject({ paths: ["f.txt"], newBase: trunkTip, oldHead: second });
     expect(rebaseState(wt)).toMatchObject({ origHead: second, onto: trunkTip });
-    expect(db.query("SELECT kind, reason FROM factory_order_event WHERE kind = 'ship_failed'").all()).toEqual(
-      [{ kind: "ship_failed", reason: expect.stringContaining("f.txt") }],
-    );
+    expect(
+      db
+        .query(
+          "SELECT outcome, reason, conflict_paths, stopped_at, old_head, new_base FROM factory_order_ship_run",
+        )
+        .all(),
+    ).toEqual([
+      {
+        outcome: "conflict",
+        reason: null,
+        conflict_paths: '["f.txt"]',
+        stopped_at: recorded.stoppedAt,
+        old_head: second,
+        new_base: trunkTip,
+      },
+    ]);
     expect(orderState(db, "order-1")).toEqual({ station: "build", next: "run" });
   });
 
@@ -144,8 +156,8 @@ describe("a conflict at ship", () => {
 });
 
 describe("continueRebaseTurn", () => {
-  test("continues through each conflicting commit, records the rewrite as unequal and returns the order to review for the whole order", () => {
-    const { repo, wt, db, first, second, trunkTip, turn } = conflicted();
+  test("continues through each conflicting commit, names the conflict run in the rewritten commits and returns the order to review for the whole order", () => {
+    const { repo, wt, db, first, second, trunkTip, recorded, turn } = conflicted();
     writeFileSync(join(wt, "f.txt"), f("D X", true));
 
     expect(turn()).toEqual({ conflicts: ["g.txt"] });
@@ -161,7 +173,15 @@ describe("continueRebaseTurn", () => {
     expect(finished).toEqual({ sha: current[1] as string });
     expect(`${git(wt, ["show", `${current[1]}:f.txt`])}\n`).toBe(f("D X", true));
     expect(git(repo.dir, ["rev-parse", "HEAD"])).toBe(trunkTip);
-    expect(db.query("SELECT patch_equal FROM factory_order_rewrite").all()).toEqual([{ patch_equal: 0 }]);
+    expect(db.query("SELECT sha, ship_run_id, retires FROM factory_order_commit ORDER BY id").all()).toEqual([
+      { sha: first, ship_run_id: null, retires: null },
+      { sha: second, ship_run_id: null, retires: null },
+      { sha: current[0], ship_run_id: recorded.shipRun, retires: first },
+      { sha: current[1], ship_run_id: recorded.shipRun, retires: second },
+    ]);
+    expect(db.query("SELECT kind FROM factory_order_event WHERE kind = 'commit_created'").all()).toHaveLength(
+      2,
+    );
     expect(orderState(db, "order-1")).toEqual({ station: "review", next: "run" });
     expect(openAttempt(db, "order-1")).toBeNull();
     expect(
@@ -278,7 +298,11 @@ describe("continueRebaseTurn", () => {
 
     expect(rebaseState(wt)).toBeNull();
     expect(git(wt, ["rev-parse", "HEAD"])).toBe(second);
-    expect(db.query("SELECT count(*) AS n FROM factory_order_rewrite").get()).toEqual({ n: 0 });
+    expect(
+      db.query("SELECT count(*) AS n FROM factory_order_commit WHERE ship_run_id IS NOT NULL").get(),
+    ).toEqual({
+      n: 0,
+    });
     expect(db.query("SELECT exit_code FROM factory_order_check ORDER BY id").all()).toEqual([
       { exit_code: 0 },
       { exit_code: 5 },

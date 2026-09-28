@@ -10,7 +10,8 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export function orderStatusSql(orderId: string): string {
   const has = (kind: OrderEventKind) =>
     `EXISTS (SELECT 1 FROM factory_order_event s WHERE s.order_id = ${orderId} AND s.kind = '${kind}')`;
-  return `CASE WHEN ${has("dropped")} THEN 'dropped' WHEN ${has("shipped")} THEN 'shipped'
+  const landed = `EXISTS (SELECT 1 FROM factory_order_ship_run r WHERE r.order_id = ${orderId} AND r.outcome = 'landed')`;
+  return `CASE WHEN ${has("dropped")} THEN 'dropped' WHEN ${landed} THEN 'shipped'
                WHEN ${has("started")} THEN 'running' ELSE 'queued' END`;
 }
 

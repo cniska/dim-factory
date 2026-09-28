@@ -55,7 +55,7 @@ export type OrderCheck = {
   result: string;
 };
 
-function recordOrderCheckInTransaction(
+export function recordOrderCheckInTransaction(
   db: Database,
   orderId: string,
   check: OrderCheck,
@@ -82,51 +82,23 @@ export function recordOrderCheck(
   return recordOrderCheckInTransaction(db, orderId, check, headSha, at);
 }
 
-export function recordOrderRewrite(
+export function recordRewrittenCommits(
   db: Database,
   orderId: string,
-  rewrite: Rewrite,
-  check: OrderCheck,
-  worker: string,
-  at = now(),
+  shipRun: number,
+  rewrite: Pick<Rewrite, "commits">,
+  at: string,
 ): void {
-  assertOrderRunning(db, orderId);
-  writeTransaction(db, () => {
-    const current = currentOrderCommits(db, orderId);
-    for (const { from, to } of rewrite.commits) {
-      const recorded = current.find((row) => from.startsWith(row.sha.toLowerCase()));
-      if (!recorded) continue;
-      db.run("INSERT INTO factory_order_commit (order_id, sha, subject, recorded_at) VALUES (?, ?, ?, ?)", [
-        orderId,
-        to,
-        recorded.subject,
-        at,
-      ]);
-      appendOrderEventInTransaction(
-        db,
-        orderId,
-        { kind: "commit_rewritten", worker, commitSha: to, evidence: { from: recorded.sha } },
-        at,
-      );
-    }
-    const checkId = recordOrderCheckInTransaction(db, orderId, check, rewrite.newHead, at);
+  const current = currentOrderCommits(db, orderId);
+  for (const { from, to } of rewrite.commits) {
+    const recorded = current.find((row) => from.startsWith(row.sha.toLowerCase()));
+    if (!recorded) continue;
     db.run(
-      `INSERT INTO factory_order_rewrite
-         (order_id, old_base, new_base, old_head, new_head, patch_equal, check_id, worker, recorded_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        orderId,
-        rewrite.oldBase,
-        rewrite.newBase,
-        rewrite.oldHead,
-        rewrite.newHead,
-        rewrite.patchEqual ? 1 : 0,
-        checkId,
-        worker,
-        at,
-      ],
+      `INSERT INTO factory_order_commit (order_id, sha, subject, ship_run_id, retires, recorded_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [orderId, to, recorded.subject, shipRun, recorded.sha, at],
     );
-  });
+  }
 }
 
 export function recordOrderEnvironment(

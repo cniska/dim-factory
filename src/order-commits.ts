@@ -8,75 +8,64 @@ export function currentOrderCommits(db: Database, orderId: string): OrderCommit[
     .query<OrderCommit, [string]>(
       `SELECT c.sha, c.subject, c.recorded_at AS recordedAt
        FROM factory_order_commit c
-       JOIN factory_order_event e
-         ON e.order_id = c.order_id AND e.kind IN ('commit_created', 'commit_rewritten') AND e.commit_sha = c.sha
-       WHERE c.order_id = ? AND c.sha NOT IN (
-         SELECT json_extract(retired.evidence, '$.from') FROM factory_order_event retired
-         WHERE retired.order_id = c.order_id AND retired.kind = 'commit_rewritten'
+       WHERE c.order_id = ? AND NOT EXISTS (
+         SELECT 1 FROM factory_order_commit later WHERE later.order_id = c.order_id AND later.retires = c.sha
        )
-       ORDER BY e.id`,
+       ORDER BY c.id`,
     )
     .all(orderId);
 }
 
-export type RecordedConflict = Omit<Replay, "worktree"> & { paths: string[]; stoppedAt: string };
+export type RecordedConflict = Omit<Replay, "worktree"> & {
+  shipRun: number;
+  paths: string[];
+  stoppedAt: string;
+};
 
 export function pendingRebaseConflict(db: Database, orderId: string): RecordedConflict | null {
   const row = db
-    .query<{ evidence: string }, [string]>(
-      `SELECT e.evidence FROM factory_order_event e
-       WHERE e.order_id = ? AND e.kind = 'ship_failed'
-         AND json_extract(e.evidence, '$.code') = 'ship_rebase_conflict'
-         AND e.id > coalesce((
-           SELECT max(rewritten.id) FROM factory_order_event rewritten
-           WHERE rewritten.order_id = e.order_id AND rewritten.kind = 'commit_rewritten'
-         ), 0)
-       ORDER BY e.id DESC LIMIT 1`,
+    .query<Omit<RecordedConflict, "paths"> & { paths: string }, [string]>(
+      `SELECT r.id AS shipRun, r.old_base AS oldBase, r.new_base AS newBase, r.old_head AS oldHead,
+              r.stopped_at AS stoppedAt, r.conflict_paths AS paths
+       FROM factory_order_ship_run r
+       WHERE r.order_id = ? AND r.outcome = 'conflict'
+         AND r.id = (SELECT max(latest.id) FROM factory_order_ship_run latest WHERE latest.order_id = r.order_id)
+         AND NOT EXISTS (SELECT 1 FROM factory_order_commit c WHERE c.ship_run_id = r.id)`,
     )
     .get(orderId);
-  if (!row) return null;
-  const evidence = JSON.parse(row.evidence) as {
-    oldBase: string;
-    newBase: string;
-    oldHead: string;
-    stoppedAt: string;
-    paths: string;
-  };
-  return {
-    oldBase: evidence.oldBase,
-    newBase: evidence.newBase,
-    oldHead: evidence.oldHead,
-    stoppedAt: evidence.stoppedAt,
-    paths: JSON.parse(evidence.paths) as string[],
-  };
+  return row ? { ...row, paths: JSON.parse(row.paths) as string[] } : null;
 }
 
 export function latestOrderCommit(db: Database, orderId: string): OrderCommit | null {
   return currentOrderCommits(db, orderId).at(-1) ?? null;
 }
 
+type Replacement = { sha: string; retires: string; patchEqual: number | null };
+
+function headReplacements(db: Database, orderId: string): Replacement[] {
+  return db
+    .query<Replacement, [string]>(
+      `SELECT c.sha, c.retires, r.patch_equal AS patchEqual
+       FROM factory_order_commit c JOIN factory_order_ship_run r ON r.id = c.ship_run_id AND r.old_head = c.retires
+       WHERE c.order_id = ? ORDER BY c.id`,
+    )
+    .all(orderId);
+}
+
 export function rewrittenHead(db: Database, orderId: string, sha: string): string {
   let current = sha;
-  for (const rewrite of db
-    .query<{ old_head: string; new_head: string }, [string]>(
-      "SELECT old_head, new_head FROM factory_order_rewrite WHERE order_id = ? ORDER BY id",
-    )
-    .all(orderId)) {
-    if (rewrite.old_head === current) current = rewrite.new_head;
+  for (const replacement of headReplacements(db, orderId)) {
+    if (replacement.retires === current) current = replacement.sha;
   }
   return current;
 }
 
 export function carriedThroughRewrites(db: Database, orderId: string, sha: string): string | null {
   let current = sha;
-  for (const rewrite of db
-    .query<{ old_head: string; new_head: string; patch_equal: number }, [string]>(
-      "SELECT old_head, new_head, patch_equal FROM factory_order_rewrite WHERE order_id = ? ORDER BY id",
-    )
-    .all(orderId)) {
-    if (rewrite.old_head !== current) continue;
-    if (rewrite.patch_equal !== 1) return null;
-    current = rewrite.new_head;
+  for (const replacement of headReplacements(db, orderId)) {
+    if (replacement.retires !== current) continue;
+    if (replacement.patchEqual !== 1) return null;
+    current = replacement.sha;
   }
   return current;
 }

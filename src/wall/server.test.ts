@@ -19,6 +19,7 @@ import { answerOrderFindings, raiseOrderFinding } from "../order-finding";
 import { appendOrderEvent } from "../order-ledger";
 import { queueOrder, setOrderPriority, startOrder } from "../order-lifecycle";
 import { closeOrderReview, recordOrderReviewArtifact } from "../order-review";
+import { recordShipRun } from "../order-ship-run";
 import type { Station } from "../station";
 import { approveFinalBuildAt, approvePlan, approveReviewAt } from "../station-approvals.test-support";
 import { startWorkerRun } from "../worker";
@@ -167,7 +168,7 @@ describe("factory wall snapshot", () => {
     );
     closeOrderReview(db, review.review, "closed", "2026-09-18T08:01:37.000Z");
     approveOrder(db, "order-done", operator, undefined, "2026-09-18T08:01:38.000Z");
-    appendOrderEvent(db, "order-done", { worker: operator, kind: "shipped" }, "2026-09-18T08:02:00.000Z");
+    recordShipRun(db, "order-done", { outcome: "landed" }, "2026-09-18T08:02:00.000Z");
 
     const snapshot = assembleWallSnapshot(db);
 
@@ -411,8 +412,10 @@ describe("factory wall snapshot", () => {
           worker,
           "2026-09-18T09:00:47.000Z",
         );
+        recordShipRun(db, id, { outcome: "landed" }, "2026-09-18T09:01:00.000Z");
+      } else {
+        appendOrderEvent(db, id, { worker, kind, reason: `reason-${id}` }, "2026-09-18T09:01:00.000Z");
       }
-      appendOrderEvent(db, id, { worker, kind, reason: `reason-${id}` }, "2026-09-18T09:01:00.000Z");
     };
     for (let index = 0; index < 14; index += 1) seed(`failed-${index}`, "failed");
     for (let index = 0; index < 14; index += 1) seed(`done-${index}`, "shipped");
@@ -606,12 +609,7 @@ describe("factory wall item view", () => {
         "2026-09-18T10:09:30.000Z",
       );
     }
-    appendOrderEvent(
-      db,
-      "order-worked",
-      { worker, kind: "shipped", reason: "verified" },
-      "2026-09-18T10:10:00.000Z",
-    );
+    recordShipRun(db, "order-worked", { outcome: "landed" }, "2026-09-18T10:10:00.000Z");
     finishAttempt(db, "order-worked", "succeeded", undefined, "2026-09-18T10:10:00.000Z");
     return reviewer;
   };
@@ -633,7 +631,6 @@ describe("factory wall item view", () => {
       "finding_answered",
       "finding_raised",
       "finding_answered",
-      "shipped",
     ]);
     db.close();
   });
@@ -746,8 +743,8 @@ describe("factory wall item view", () => {
       const view = await found.json();
       expect(view.order.title).toBe("Work an item through");
       expect(view.entries.at(-1)).toEqual({
-        at: "2026-09-18T10:10:00.000Z",
-        kind: "shipped",
+        at: "2026-09-18T10:08:00.000Z",
+        kind: "finding_answered",
         station: null,
         worker: { name: worker, role: "builder" },
       });

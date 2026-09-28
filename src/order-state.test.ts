@@ -122,31 +122,25 @@ function record() {
       );
     },
     rewrite(oldHead: string, newHead: string, patchEqual: boolean): void {
-      db.run("INSERT INTO factory_order_commit (order_id, sha, subject, recorded_at) VALUES (?, ?, ?, ?)", [
-        ORDER,
-        newHead,
-        `feat: ${newHead}`,
-        at(),
-      ]);
-      event("commit_rewritten", { commit_sha: newHead, evidence: JSON.stringify({ from: oldHead }) });
+      const run = db.run(
+        `INSERT INTO factory_order_ship_run
+         (order_id, outcome, code, reason, old_base, new_base, old_head, patch_equal, check_id, head, recorded_at)
+         VALUES (?, 'refused', 'ship_not_fast_forward', 'the trunk moved', 'base', 'trunk', ?, ?, ?, ?, ?)`,
+        [ORDER, oldHead, patchEqual ? 1 : 0, check(newHead), newHead, at()],
+      ).lastInsertRowid;
       db.run(
-        `INSERT INTO factory_order_rewrite
-         (order_id, old_base, new_base, old_head, new_head, patch_equal, check_id, worker, recorded_at)
-         VALUES (?, 'base', 'trunk', ?, ?, ?, ?, ?, ?)`,
-        [ORDER, oldHead, newHead, patchEqual ? 1 : 0, check(newHead), worker, at()],
+        `INSERT INTO factory_order_commit (order_id, sha, subject, ship_run_id, retires, recorded_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [ORDER, newHead, `feat: ${newHead}`, run, oldHead, at()],
       );
     },
     conflict(): void {
-      event("ship_failed", {
-        evidence: JSON.stringify({
-          code: "ship_rebase_conflict",
-          oldBase: "base",
-          newBase: "trunk",
-          oldHead: "c1",
-          stoppedAt: "c1",
-          paths: JSON.stringify(["src/a.ts"]),
-        }),
-      });
+      db.run(
+        `INSERT INTO factory_order_ship_run
+         (order_id, outcome, conflict_paths, stopped_at, old_base, new_base, old_head, head, recorded_at)
+         VALUES (?, 'conflict', '["src/a.ts"]', 'c1', 'base', 'trunk', 'c1', 'c1', ?)`,
+        [ORDER, at()],
+      );
     },
   };
   return r;
@@ -451,7 +445,10 @@ describe("an act's entry", () => {
 
   test("admits nothing once the order shipped, and says so", () => {
     const r = shippable();
-    r.event("shipped");
+    r.db.run(
+      "INSERT INTO factory_order_ship_run (order_id, outcome, head, recorded_at) VALUES (?, 'landed', 'c1', ?)",
+      [ORDER, "2026-01-02T00:00:00.000Z"],
+    );
     expect(admitted(r)).toEqual([]);
     expect(() => assertNext(r.db, ORDER, "ship")).toThrow("order order-1 is shipped, so it cannot ship");
   });

@@ -105,9 +105,7 @@ export const order: Query = {
         db,
         `SELECT 'event' AS section, e.ts AS "when", e.kind, '' AS status,
                 coalesce(a.kind, e.station, '') AS subject,
-                coalesce(e.reason,
-                         json_extract(e.evidence, '$.from') || ' -> ' || e.commit_sha,
-                         e.commit_sha, cast(e.check_id AS TEXT),
+                coalesce(e.reason, e.commit_sha, cast(e.check_id AS TEXT),
                          cast(e.finding_id AS TEXT), cast(e.artifact_id AS TEXT),
                          cast(e.review_id AS TEXT), '') AS evidence
          FROM factory_order_event e
@@ -138,22 +136,24 @@ export const order: Query = {
       ),
       ...table(
         db,
-        `SELECT 'commit' AS section, c.recorded_at AS "when", e.kind, '' AS status,
-                c.sha AS subject, c.subject AS evidence
-         FROM factory_order_commit c
-         JOIN factory_order_event e
-           ON e.order_id = c.order_id AND e.commit_sha = c.sha
-          AND e.kind IN ('commit_created', 'commit_rewritten')
-         WHERE c.order_id = ?`,
+        `SELECT 'commit' AS section, recorded_at AS "when",
+                CASE WHEN ship_run_id IS NULL THEN 'commit_created' ELSE 'commit_rewritten' END AS kind,
+                coalesce('ship run ' || ship_run_id, '') AS status,
+                coalesce(retires || ' -> ', '') || sha AS subject, subject AS evidence
+         FROM factory_order_commit WHERE order_id = ? ORDER BY id`,
         [id],
       ),
       ...table(
         db,
-        `SELECT 'rewrite' AS section, recorded_at AS "when", 'rebased_at_ship' AS kind,
-                CASE patch_equal WHEN 1 THEN 'patch_equal' ELSE 'patch_changed' END AS status,
-                old_base || '..' || old_head || ' -> ' || new_base || '..' || new_head AS subject,
-                'check ' || check_id || ' | ' || worker AS evidence
-         FROM factory_order_rewrite WHERE order_id = ?`,
+        `SELECT 'ship_run' AS section, recorded_at AS "when", 'ship_run' AS kind,
+                outcome || CASE patch_equal WHEN 1 THEN ' patch_equal' WHEN 0 THEN ' patch_changed' ELSE '' END
+                  AS status,
+                'run ' || id || ' at ' || head AS subject,
+                concat_ws(' | ', code, reason, 'conflict in ' || conflict_paths, 'stopped at ' || stopped_at,
+                          'rebased ' || old_base || '..' || old_head || ' onto ' || new_base,
+                          'check ' || check_id, 'worktree kept: ' || worktree_kept,
+                          'branch kept: ' || branch_kept) AS evidence
+         FROM factory_order_ship_run WHERE order_id = ? ORDER BY id`,
         [id],
       ),
       ...table(
@@ -213,11 +213,8 @@ export const factory: Query = {
                WHERE e.order_id = o.id ORDER BY e.ts DESC, e.id DESC LIMIT 1) AS latest_event,
               (SELECT e.ts FROM factory_order_event e
                WHERE e.order_id = o.id ORDER BY e.ts DESC, e.id DESC LIMIT 1) AS latest_event_at,
-              coalesce((SELECT c.sha || coalesce(' ' || c.subject, '')
-                        FROM factory_order_event e
-                        JOIN factory_order_commit c ON c.order_id = e.order_id AND c.sha = e.commit_sha
-                        WHERE e.order_id = o.id AND e.kind IN ('commit_created', 'commit_rewritten')
-                        ORDER BY e.id DESC LIMIT 1), '(none recorded)') AS "commit",
+              coalesce((SELECT c.sha || ' ' || c.subject FROM factory_order_commit c
+                        WHERE c.order_id = o.id ORDER BY c.id DESC LIMIT 1), '(none recorded)') AS "commit",
               coalesce((SELECT c.command || ' (' || c.exit_code || ', ' || c.result || ')'
                         FROM factory_order_check c WHERE c.order_id = o.id
                         ORDER BY c.id DESC LIMIT 1), '(none recorded)') AS "check"
@@ -426,11 +423,19 @@ export const factoryAnalytics: Query = {
     for (const row of table(
       db,
       `SELECT kind, count(*) AS n FROM factory_order_event
-       WHERE kind IN ('started', 'shipped', 'ship_failed', 'dropped', 'failed')${arg ? " AND order_id LIKE ? || '%'" : ""}
+       WHERE kind IN ('started', 'dropped', 'failed')${arg ? " AND order_id LIKE ? || '%'" : ""}
        GROUP BY kind ORDER BY kind`,
       params,
     )) {
       rows.push(metric(`order_event:${row.kind}`, Number(row.n)));
+    }
+    for (const row of table(
+      db,
+      `SELECT outcome, count(*) AS n FROM factory_order_ship_run${orderFilter}
+       GROUP BY outcome ORDER BY outcome`,
+      params,
+    )) {
+      rows.push(metric(`ship_run:${row.outcome}`, Number(row.n)));
     }
     for (const row of table(
       db,
@@ -491,7 +496,7 @@ export const factoryAnalytics: Query = {
       denominator:
         `${ordersWithAttempts} order${ordersWithAttempts === 1 ? "" : "s"} with attempt history` +
         (arg ? ` matching ${arg}` : "") +
-        "; metrics are derived from factory_order_event, factory_order_artifact, factory_order_attempt, and factory_schedule_invocation",
+        "; metrics are derived from factory_order_event, factory_order_artifact, factory_order_attempt, factory_order_ship_run, and factory_schedule_invocation",
       columns: ["metric", "value"],
       rows: toRows(rows, ["metric", "value"]),
       note: rows.length === 0 ? "no first-party domain records are available for these metrics" : undefined,

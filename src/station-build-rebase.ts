@@ -3,7 +3,7 @@ import { CHECK_SANDBOX } from "./check-sandbox";
 import { writeTransaction } from "./db";
 import { finishAttempt } from "./order-attempt";
 import type { RecordedConflict } from "./order-commits";
-import { recordOrderCheck, recordOrderRewrite } from "./order-evidence";
+import { recordOrderCheck, recordRewrittenCommits } from "./order-evidence";
 import { BuildTurnRefused } from "./order-finding";
 import { now } from "./order-ledger";
 import { recheck } from "./order-ship";
@@ -75,14 +75,13 @@ export function reopenRebase(worktree: string, orderId: string, conflict: Record
 export function continueRebaseTurn(options: {
   db: Database;
   orderId: string;
-  operator: string;
   worktree: string;
   conflict: RecordedConflict;
   paths: readonly string[];
   env?: Env;
   checkSandbox?: string[];
 }): { conflicts: string[] } | { sha: string } {
-  const { db, orderId, operator, worktree, conflict } = options;
+  const { db, orderId, worktree, conflict } = options;
   const env = options.env ?? process.env;
   assertRecordedRebase(worktree, orderId, conflict);
   const nested = nestedRepository(worktree);
@@ -113,8 +112,13 @@ export function continueRebaseTurn(options: {
   const step = continueReplay(worktree);
   if ("conflicts" in step) return step;
 
-  const replay: Replay = { worktree, ...conflict };
-  const rewrite = { ...pairRewrite(replay), patchEqual: false };
+  const replay: Replay = {
+    worktree,
+    oldBase: conflict.oldBase,
+    newBase: conflict.newBase,
+    oldHead: conflict.oldHead,
+  };
+  const rewrite = pairRewrite(replay);
   let check: ReturnType<typeof recheck>;
   try {
     check = recheck(worktree, env, options.checkSandbox ?? CHECK_SANDBOX);
@@ -131,8 +135,10 @@ export function continueRebaseTurn(options: {
     );
   }
   writeTransaction(db, () => {
-    recordOrderRewrite(db, orderId, rewrite, check, operator);
-    finishAttempt(db, orderId, "succeeded", undefined, now());
+    const at = now();
+    recordRewrittenCommits(db, orderId, conflict.shipRun, rewrite, at);
+    recordOrderCheck(db, orderId, check, rewrite.newHead, at);
+    finishAttempt(db, orderId, "succeeded", undefined, at);
   });
   return { sha: rewrite.newHead };
 }

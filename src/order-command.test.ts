@@ -299,11 +299,11 @@ describe("order command", () => {
     );
     expect(
       database
-        .query("SELECT kind, worker FROM factory_order_event WHERE order_id = ? ORDER BY id DESC LIMIT 2")
+        .query("SELECT kind, worker FROM factory_order_event WHERE order_id = ? ORDER BY id DESC LIMIT 1")
         .all("order-1"),
-    ).toEqual([
-      { kind: "shipped", worker: operator },
-      { kind: "artifact_approved", worker: operator },
+    ).toEqual([{ kind: "artifact_approved", worker: operator }]);
+    expect(database.query("SELECT outcome FROM factory_order_ship_run").all()).toEqual([
+      { outcome: "landed" },
     ]);
     expect(() => runOrderCommand(database, ["approve", "order-1"])).toThrow(
       expect.objectContaining({
@@ -371,6 +371,18 @@ describe("order command", () => {
       .trim();
     recordOrderCommit(database, "order-1", sha, resolveWorker(database, env), "feat: ship-a");
     approvedAt(database, sha);
+    const operator = resolveWorker(database, env);
+    const stray = join(trunk.dir, "stray.txt");
+    writeFileSync(stray, "uncommitted");
+
+    expect(() => runOrderCommand(database, ["ship", "order-1"], null, wt)).toThrow(
+      expect.objectContaining({ code: "ship_dirty_trunk" }),
+    );
+    expect(database.query("SELECT outcome, code FROM factory_order_ship_run").all()).toEqual([
+      { outcome: "refused", code: "ship_dirty_trunk" },
+    ]);
+    expect(orderStatus(database, "order-1")).toBe("running");
+    rmSync(stray);
 
     expect(runOrderCommand(database, ["ship", "order-1"], null, wt)).toBe(
       "order-1 is fast-forwarded onto the default branch and shipped",
@@ -381,12 +393,18 @@ describe("order command", () => {
     );
     expect(
       database
-        .query("SELECT kind, worker FROM factory_order_event WHERE order_id = ? ORDER BY id DESC LIMIT 2")
+        .query("SELECT kind, worker FROM factory_order_event WHERE order_id = ? ORDER BY id DESC LIMIT 3")
         .all("order-1"),
     ).toEqual([
-      { kind: "shipped", worker: resolveWorker(database, env) },
-      { kind: "ship_retried", worker: resolveWorker(database, env) },
+      { kind: "ship_retried", worker: operator },
+      { kind: "ship_retried", worker: operator },
+      { kind: "artifact_approved", worker: operator },
     ]);
+    expect(database.query("SELECT outcome, code FROM factory_order_ship_run ORDER BY id").all()).toEqual([
+      { outcome: "refused", code: "ship_dirty_trunk" },
+      { outcome: "landed", code: null },
+    ]);
+    expect(orderStatus(database, "order-1")).toBe("shipped");
   });
 
   test("a ship run from the trunk checkout still lands the order's branch", () => {

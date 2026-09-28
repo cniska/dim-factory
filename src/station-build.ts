@@ -379,7 +379,6 @@ export async function runOrderBuildLive(
       const continued = continueRebaseTurn({
         db,
         orderId,
-        operator,
         worktree,
         conflict,
         paths,

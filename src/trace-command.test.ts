@@ -25,9 +25,11 @@ function shippedOrder(env: Env): void {
     at,
     at,
   ]);
-  for (const kind of ["started", "shipped"]) {
-    db.run("INSERT INTO factory_order_event (order_id, ts, kind) VALUES (?, ?, ?)", ["order-1", at, kind]);
-  }
+  db.run("INSERT INTO factory_order_event (order_id, ts, kind) VALUES (?, ?, 'started')", ["order-1", at]);
+  db.run(
+    "INSERT INTO factory_order_ship_run (order_id, outcome, head, recorded_at) VALUES (?, 'landed', 'abc123', ?)",
+    ["order-1", at],
+  );
   closeDb(db);
 }
 
