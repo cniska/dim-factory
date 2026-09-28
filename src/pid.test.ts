@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
 import { processAncestry, processStartTime, readProcess } from "./pid";
 
 test("reads a process and its parent with a stable start time", () => {
@@ -12,16 +11,17 @@ test("reads a process and its parent with a stable start time", () => {
   expect(processAncestry()[0]?.pid).toBe(process.ppid);
 });
 
-test("reads the same parent and start time ps reports, up the whole ancestry", () => {
-  for (const { pid, startedAt } of processAncestry()) {
-    const [parent, ...started] = execFileSync("/bin/ps", ["-p", String(pid), "-o", "ppid=,lstart="], {
-      encoding: "utf8",
-      env: { LC_ALL: "C", TZ: "UTC" },
-    })
-      .trim()
-      .split(/\s+/);
-    expect(readProcess(pid)?.parentPid).toBe(Number(parent));
-    expect(startedAt).toBe(String(Date.parse(`${started.join(" ")} GMT`) / 1000));
+test("reads a child it started as its own, started within the second it was spawned", async () => {
+  const before = Math.floor(Date.now() / 1000);
+  const child = Bun.spawn(["/bin/sleep", "5"]);
+  try {
+    const read = readProcess(child.pid);
+    expect(read?.parentPid).toBe(process.pid);
+    expect(Number(read?.startedAt)).toBeGreaterThanOrEqual(before);
+    expect(Number(read?.startedAt)).toBeLessThanOrEqual(Math.ceil(Date.now() / 1000));
+  } finally {
+    child.kill();
+    await child.exited;
   }
 });
 

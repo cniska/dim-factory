@@ -185,8 +185,10 @@ describe("the Claude harness adapter", () => {
   });
 
   test("denies a worker without edit-files the editing tools and every sandboxed write to the checkout", () => {
-    const cwd = process.cwd();
+    const cwd = realpathSync(mkdtempSync(join(tmpdir(), "dim-read-only-")));
+    Bun.spawnSync(["git", "-C", cwd, "init", "-q"]);
     const argv = claudeArgs({ ...request, cwd });
+    rmSync(cwd, { recursive: true, force: true });
 
     expect(argv[argv.indexOf("--permission-mode") + 1]).toBe("default");
     expect(settings(argv)).toEqual({
