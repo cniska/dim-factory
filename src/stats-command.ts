@@ -1,5 +1,5 @@
 import type { Command } from "./cli-contract";
-import { closeDb, openDb } from "./db";
+import { openReadOnly } from "./db-read";
 import { dbPath } from "./paths";
 
 export const statsCommand: Command = {
@@ -7,7 +7,7 @@ export const statsCommand: Command = {
   usage: "usage: dim stats",
   summary: "row counts and token totals per tool and model",
   run() {
-    const db = openDb(dbPath());
+    const db = openReadOnly(dbPath());
     try {
       const counts = db
         .prepare<{ files: number; sessions: number; messages: number; usage_rows: number }, []>(
@@ -37,7 +37,7 @@ export const statsCommand: Command = {
         .all();
       return { counts, models };
     } finally {
-      closeDb(db);
+      db.close();
     }
   },
 };

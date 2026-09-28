@@ -26,7 +26,8 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 
 - **NF-1** — A hook a coding-agent session runs exits 0 whatever happens.
 - **NF-2** — A git hook `dim` installs exits non-zero only to refuse a commit or push it has read and understood; anything it cannot read lets the commit or push through.
-- **NF-3** — A reader cannot change the record it reads: a query, `dim sql` and the wall fail on any write rather than make it.
+- **NF-3** — A reader cannot change the record it reads: a query, `dim sql`, `dim stats` and the wall fail on any write rather than make it.
+- **NF-4** — A reader refuses a record built by another schema version before it reads anything from it.
 
 ## 5. Acceptance criteria
 
@@ -39,6 +40,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 - **AC-7** — A write issued through a reader's connection fails and leaves the database unchanged. (NF-3)
 - **AC-8** — Each station's brief for a given order and turn is exactly its header and its data sections, with no sentence of procedure. (FR-7)
 - **AC-9** — A command whose environment names the operator, under no registered ancestor, is refused; a process reusing a registered pid with another start time is refused; a process under a running station command, before its worker registers, is refused. (FR-8, FR-9)
+- **AC-10** — A query, `dim sql`, `dim stats`, `dim trace` and the wall, given a record stamped with an older or newer schema version, each refuse it with the error the writer raises, and leave it unchanged. (NF-3, NF-4)
 
 ## 6. Open decisions
 

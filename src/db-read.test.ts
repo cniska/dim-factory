@@ -3,13 +3,16 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { closeDb, openDb } from "./db";
+import { closeDb, openDb, SchemaTooOldError } from "./db";
 import { NoDatabaseError, openReadOnly } from "./db-read";
+import { SCHEMA_VERSION } from "./db-schema";
 import { queueOrder } from "./order-lifecycle";
 import { dbPath } from "./paths";
 import { qCommand } from "./q-command";
 import { QUERIES } from "./query-registry";
 import { sqlCommand } from "./sql-command";
+import { statsCommand } from "./stats-command";
+import { runTraceCommand } from "./trace-command";
 import { wallHandler } from "./wall/server";
 import { mintWorker } from "./worker";
 
@@ -177,6 +180,69 @@ describe("each reader of the record", () => {
       expect(existsSync(missing)).toBe(false);
     } finally {
       rmSync(home, { recursive: true, force: true });
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+});
+
+function stampSchemaVersion(path: string, version: number): void {
+  const db = new Database(path);
+  db.run("UPDATE schema_version SET version = ?", [version]);
+  db.run("PRAGMA wal_checkpoint(TRUNCATE)");
+  db.close();
+}
+
+async function refusal(run: () => unknown): Promise<unknown> {
+  try {
+    await run();
+    return null;
+  } catch (error) {
+    return error;
+  }
+}
+
+describe("a reader of a record built by another schema version", () => {
+  for (const version of [SCHEMA_VERSION - 1, SCHEMA_VERSION + 1]) {
+    test(`refuses version ${version > SCHEMA_VERSION ? "newer" : "older"} than this one before any query, leaving it as it was`, async () => {
+      const { home, path } = recordWithOrder();
+      try {
+        stampSchemaVersion(path, version);
+        const before = fingerprint(path);
+        const readers: Record<string, () => unknown> = {
+          "dim q": () => qCommand.run(["order", "order-1"]),
+          "dim sql": () => sqlCommand.run(["SELECT 1"]),
+          "dim stats": () => statsCommand.run([]),
+          "dim trace": () => runTraceCommand("order-1", { DIM_HOME: home }, () => {}),
+        };
+        for (const [reader, run] of Object.entries(readers)) {
+          const error = await asDimHome(home, () => refusal(run));
+          expect({ reader, error }).toEqual({ reader, error: expect.any(SchemaTooOldError) });
+          expect({ reader, code: (error as SchemaTooOldError).code }).toEqual({
+            reader,
+            code: "SCHEMA_TOO_OLD",
+          });
+        }
+        const wall = wallHandler(path);
+        for (const route of ["/api/snapshot", "/api/order/order-1"]) {
+          const response = wall.fetch(new Request(`http://127.0.0.1${route}`), { upgrade: () => false });
+          expect({ route, status: response?.status }).toEqual({ route, status: 503 });
+          expect(await response?.json()).toEqual({ error: new SchemaTooOldError(version).message });
+        }
+        expect(fingerprint(path)).toBe(before);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    });
+  }
+
+  test("dim stats creates no database where there is none", async () => {
+    const empty = mkdtempSync(join(tmpdir(), "dim-db-read-"));
+    try {
+      expect(await asDimHome(empty, () => refusal(() => statsCommand.run([])))).toBeInstanceOf(
+        NoDatabaseError,
+      );
+      expect(existsSync(dbPath({ DIM_HOME: empty }))).toBe(false);
+    } finally {
       rmSync(empty, { recursive: true, force: true });
     }
   });

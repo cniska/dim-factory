@@ -12,38 +12,41 @@ export class SchemaTooOldError extends Error {
   }
 }
 
+export function storedSchemaVersion(db: Database): number | null {
+  const hasVersionTable = db
+    .query<{ present: number }, []>(
+      "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'schema_version'",
+    )
+    .get();
+  if (!hasVersionTable) return null;
+  return (
+    db.prepare<{ version: number }, []>("SELECT version FROM schema_version LIMIT 1").get()?.version ?? null
+  );
+}
+
+export function refuseOtherSchema(found: number | null): void {
+  if (found !== null && found !== SCHEMA_VERSION) throw new SchemaTooOldError(found);
+}
+
 export function openDb(path: string, opts: { forRebuild?: boolean; busyTimeoutMs?: number } = {}): Database {
   mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path, { create: true });
   let transactionOpen = false;
   try {
     db.run(`PRAGMA busy_timeout = ${opts.busyTimeoutMs ?? 5000}`);
-    const hasVersionTable = db
-      .query<{ present: number }, []>(
-        "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'schema_version'",
-      )
-      .get();
-    const row = hasVersionTable
-      ? db.prepare<{ version: number }, []>("SELECT version FROM schema_version LIMIT 1").get()
-      : null;
-    if (row && row.version !== SCHEMA_VERSION && !opts.forRebuild) {
-      throw new SchemaTooOldError(row.version);
-    }
+    const found = storedSchemaVersion(db);
+    if (!opts.forRebuild) refuseOtherSchema(found);
     db.run("PRAGMA journal_mode = WAL");
     db.run("PRAGMA foreign_keys = ON");
-    if (!row) {
+    if (found === null) {
       db.run("BEGIN IMMEDIATE");
       transactionOpen = true;
     }
     db.run(SCHEMA_SQL);
-    if (!row) {
-      const initialized = db
-        .prepare<{ version: number }, []>("SELECT version FROM schema_version LIMIT 1")
-        .get();
-      if (!initialized) db.run("INSERT INTO schema_version (version) VALUES (?)", [SCHEMA_VERSION]);
-      else if (initialized.version !== SCHEMA_VERSION && !opts.forRebuild) {
-        throw new SchemaTooOldError(initialized.version);
-      }
+    if (found === null) {
+      const initialized = storedSchemaVersion(db);
+      if (initialized === null) db.run("INSERT INTO schema_version (version) VALUES (?)", [SCHEMA_VERSION]);
+      else if (!opts.forRebuild) refuseOtherSchema(initialized);
       db.run("COMMIT");
       transactionOpen = false;
     }
