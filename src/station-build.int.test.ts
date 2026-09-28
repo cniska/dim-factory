@@ -40,7 +40,7 @@ import { approveReviewAt } from "./station-approvals.test-support";
 import { runOrderBuildLive } from "./station-build";
 import type { BuildTurn } from "./station-build-turn";
 import { endWorker, mintWorker, WORKER_NAME_VAR, WORKER_SESSION_VAR, WORKER_TOKEN_VAR } from "./worker";
-import { repoRoot } from "./wt-command";
+import { repoRoot } from "./worktree";
 
 const repos: string[] = [];
 const homes: string[] = [];

@@ -2,9 +2,10 @@ import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
 import { assertOperator } from "./factory-operator";
 import { FactoryStopError, liveStop } from "./factory-stop";
+import { recordOrderEnvironment } from "./order-evidence";
 import { appendOrderEvent, appendOrderEventInTransaction, now } from "./order-ledger";
 import { assertOrderQueued, type Order, type OrderPriority } from "./order-status";
-import { createWorktree, validateWorktreeBranch } from "./wt-command";
+import { createWorktree, validateWorktreeBranch } from "./worktree";
 
 export function queueOrder(db: Database, order: Order, worker: string, at = now()): number {
   validateWorktreeBranch(order.id);
@@ -51,8 +52,10 @@ export function startOrder(
     }
     assertOrderQueued(db, orderId, "started");
     assertOperator(db, operator, "start an order");
-    createWorktree(orderId, cwd);
-    return appendOrderEventInTransaction(db, orderId, { kind: "started", worker: operator }, at);
+    const { setup } = createWorktree(orderId, cwd);
+    const started = appendOrderEventInTransaction(db, orderId, { kind: "started", worker: operator }, at);
+    if (setup) recordOrderEnvironment(db, orderId, setup, at);
+    return started;
   });
 }
 

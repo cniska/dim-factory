@@ -1,7 +1,9 @@
 import { reachesTrunk } from "./git-trunk";
-import { removeWorktree, repoRoot, WtError } from "./wt-command";
+import type { WorkerHookReport } from "./worker-environment";
+import { removeWorktree, repoRoot, WtError } from "./worktree";
 
 export type ShipCleanup = { worktreeKept?: string; branchKept?: string };
+export type ShipTeardown = ShipCleanup & { teardown?: WorkerHookReport };
 
 function git(root: string, args: string[]): { ok: boolean; out: string } {
   const run = Bun.spawnSync(["git", "-C", root, ...args], { stdout: "pipe", stderr: "pipe" });
@@ -19,10 +21,11 @@ function branchKept(root: string, branch: string): string | undefined {
   return undefined;
 }
 
-export function removeShippedBranch(branch: string, cwd: string): ShipCleanup {
+export function removeShippedBranch(branch: string, cwd: string): ShipTeardown {
   const root = repoRoot(cwd);
+  let teardown: WorkerHookReport | undefined;
   try {
-    removeWorktree(branch, { cwd: root });
+    teardown = removeWorktree(branch, { cwd: root }).teardown ?? undefined;
   } catch (error) {
     if (!(error instanceof WtError)) throw error;
     if (error.failure?.code !== "worktree_missing") {
@@ -30,9 +33,9 @@ export function removeShippedBranch(branch: string, cwd: string): ShipCleanup {
         error.failure?.code === "teardown_failed"
           ? `its teardown hook exited ${error.failure.exitCode}`
           : error.message;
-      return { worktreeKept, branchKept: "its worktree still holds it" };
+      return { worktreeKept, branchKept: "its worktree still holds it", teardown: error.report };
     }
   }
   const kept = branchKept(root, branch);
-  return kept === undefined ? {} : { branchKept: kept };
+  return { ...(kept === undefined ? {} : { branchKept: kept }), teardown };
 }

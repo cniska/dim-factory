@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { repoRoot, worktreePath } from "./wt-command";
+import { repoRoot, worktreePath } from "./worktree";
 
 export function stationDirectory(dir: string, orderId: string): string {
   const root = repoRoot(dir);

@@ -34,6 +34,15 @@ describe("the command contract", () => {
     expect(writers.sort()).toEqual(["cli-output.ts", ...RAW_OUTPUT].sort());
   });
 
+  test("only the list of commands imports a command file", () => {
+    const importers = sources().filter(
+      (path) =>
+        path !== "cli-commands.ts" &&
+        /from "\.\/[a-z-]+-command"/.test(readFileSync(join(SRC, path), "utf8")),
+    );
+    expect(importers).toEqual([]);
+  });
+
   test("every command declared is on the list, once", () => {
     const declared = sources().flatMap((path) =>
       [...readFileSync(join(SRC, path), "utf8").matchAll(/export const (\w+): Command = \{/g)].map(

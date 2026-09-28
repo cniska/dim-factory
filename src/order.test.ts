@@ -59,7 +59,7 @@ import { reviewRange } from "./station-review";
 import { endWorker, mintWorker, newWorkerSession } from "./worker";
 import { bootstrapWorker, createWorkerAssignment } from "./worker-assignment";
 import type { WorkerHookReport } from "./worker-environment";
-import { worktreePath } from "./wt-command";
+import { worktreePath } from "./worktree";
 
 let worker = "";
 let attemptOperator = "";
@@ -656,6 +656,9 @@ describe("factory order report records", () => {
       true,
     );
     expect(orderStatus(database, "order-1")).toBe("shipped");
+    expect(database.query("SELECT phase, exit_code FROM factory_order_environment").all()).toEqual([
+      { phase: "teardown", exit_code: 0 },
+    ]);
     expect(
       database
         .query(
@@ -711,6 +714,9 @@ describe("factory order report records", () => {
       worktree_kept: "its teardown hook exited 3",
       branch_kept: "its worktree still holds it",
     });
+    expect(database.query("SELECT phase, exit_code FROM factory_order_environment").all()).toEqual([
+      { phase: "teardown", exit_code: 3 },
+    ]);
     expect(existsSync(wt)).toBe(true);
     expect(
       Bun.spawnSync(["git", "-C", repo.dir, "show-ref", "--verify", "--quiet", "refs/heads/order-1"]).success,
@@ -1525,6 +1531,38 @@ describe("factory order report records", () => {
       },
     ]);
     database.close();
+  });
+
+  test("starting an order records its worktree's setup report", () => {
+    const repo = integratedRepo();
+    mkdirSync(join(repo.dir, "scripts"));
+    writeFileSync(
+      join(repo.dir, "scripts", "worktree-setup.sh"),
+      `#!/bin/sh\necho '{"resources":[{"port":4100}]}'\n`,
+      { mode: 0o755 },
+    );
+    Bun.spawnSync(["git", "-C", repo.dir, "add", "scripts/worktree-setup.sh"]);
+    Bun.spawnSync(["git", "-C", repo.dir, "commit", "-q", "-m", "test: declare setup"]);
+    const database = db();
+    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+
+    startOrder(database, "order-1", attemptOperator, "2026-09-18T10:01:00.000Z", repo.dir);
+
+    expect(
+      database
+        .query("SELECT phase, argv, exit_code, resources, recorded_at FROM factory_order_environment")
+        .all(),
+    ).toEqual([
+      {
+        phase: "setup",
+        argv: JSON.stringify([join(worktreePath(repo.dir, "order-1"), "scripts", "worktree-setup.sh")]),
+        exit_code: 0,
+        resources: '[{"port":4100}]',
+        recorded_at: "2026-09-18T10:01:00.000Z",
+      },
+    ]);
+    database.close();
+    rmSync(repo.dir, { recursive: true, force: true });
   });
 
   test("rejects lifecycle events after an order reaches a terminal status", () => {

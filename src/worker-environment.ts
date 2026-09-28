@@ -9,7 +9,6 @@ export type WorkerHookReport = {
   stderr: string;
   resources: ResourceEvidence[];
 };
-export type WorkerEnvironmentReport = { setup: WorkerHookReport | null; teardown: WorkerHookReport | null };
 
 function resourcesFrom(stdout: string): ResourceEvidence[] {
   return stdout.split("\n").flatMap((line) => {

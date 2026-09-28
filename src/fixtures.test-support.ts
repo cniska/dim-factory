@@ -9,7 +9,7 @@ import { startStationAttempt } from "./station-attempt";
 import { REVIEW_DIMENSIONS, type ReviewFinding } from "./station-review-artifact";
 import { mintWorker, newWorkerSession, WORKER_NAME_VAR, WORKER_TOKEN_VAR } from "./worker";
 import type { Role } from "./worker-roles";
-import { worktreePath } from "./wt-command";
+import { worktreePath } from "./worktree";
 
 export function attemptIn(
   db: Database,

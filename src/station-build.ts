@@ -35,7 +35,7 @@ import {
 } from "./station-worker";
 import type { Capability } from "./worker-capabilities";
 import { workspaceContract } from "./workspace";
-import { repoRoot, worktreePath } from "./wt-command";
+import { repoRoot, worktreePath } from "./worktree";
 
 export const BUILDER_CAPABILITIES: Capability[] = [
   "bootstrap-worker",

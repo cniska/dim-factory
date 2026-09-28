@@ -5,7 +5,7 @@ import { CHECK_SANDBOX, runSandboxedCheck } from "./check-sandbox";
 import { withLock } from "./db-lock";
 import { assertOperator } from "./factory-operator";
 import { currentOrderCommits } from "./order-commits";
-import type { OrderCheck } from "./order-evidence";
+import { type OrderCheck, recordOrderEnvironment } from "./order-evidence";
 import { appendOrderEvent } from "./order-ledger";
 import { recordShipRun, type ShipRun } from "./order-ship-run";
 import { assertNext } from "./order-state";
@@ -103,7 +103,8 @@ export function shipOrder(
       recordShipRun(db, orderId, { rebased, ...refusal(error) });
       throw error;
     }
-    const kept = removeShippedBranch(orderId, cwd);
+    const { teardown, ...kept } = removeShippedBranch(orderId, cwd);
+    if (teardown) recordOrderEnvironment(db, orderId, teardown);
     recordShipRun(db, orderId, { rebased, outcome: "landed", ...kept });
     return { ...outcome, ...kept };
   }, env);
