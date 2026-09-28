@@ -6,6 +6,7 @@ import type { HarnessRequest } from "./harness";
 import { claudeArgs, claudeProcess } from "./harness-claude";
 import { commandLine, resumeCommandLine } from "./harness-process";
 import { workerEnvironment } from "./station-environment";
+import { worktreePath } from "./worktree";
 
 const PER_TOKEN = [
   "ANTHROPIC_API_KEY",
@@ -329,11 +330,19 @@ describe("the Claude harness adapter", () => {
     const argv = claudeArgs(request);
     const plugin = argv[argv.indexOf("--plugin-dir") + 1] ?? "";
 
-    expect(plugin).toBe(resolve(import.meta.dir, ".."));
+    expect(plugin).toBe(resolve(import.meta.dir, "..", "plugin"));
     expect(JSON.parse(readFileSync(join(plugin, ".claude-plugin", "plugin.json"), "utf8")).name).toBe("dim");
     for (const skill of ["dim-plan", "dim-build", "dim-review"]) {
       expect(existsSync(join(plugin, "skills", skill, "SKILL.md"))).toBe(true);
     }
+  });
+
+  test("keeps an order's worktree outside the plugin dir, where Claude refuses every edit", () => {
+    const argv = claudeArgs(request);
+    const plugin = argv[argv.indexOf("--plugin-dir") + 1] ?? "";
+    const worktree = worktreePath(resolve(import.meta.dir, ".."), "some-order");
+
+    expect(`${worktree}/`.startsWith(`${plugin}/`)).toBe(false);
   });
 
   test("gives no worker a way to leave work running past its answer", () => {
