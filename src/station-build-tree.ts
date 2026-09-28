@@ -1,9 +1,23 @@
 import { lstatSync, readdirSync } from "node:fs";
 import { dirname, isAbsolute, join, relative } from "node:path";
+import type { Env } from "./paths";
 
-function git(worktree: string, args: string[]) {
-  const run = Bun.spawnSync(["git", "-C", worktree, ...args], { stdout: "pipe", stderr: "pipe" });
+export function git(worktree: string, args: string[], options: { env?: Env; stdin?: string } = {}) {
+  const run = Bun.spawnSync(["git", "-C", worktree, ...args], {
+    env: options.env,
+    stdin: options.stdin === undefined ? "ignore" : Buffer.from(options.stdin),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   return { ok: run.success, out: run.stdout.toString().trim(), err: run.stderr.toString().trim() };
+}
+
+export function stagedTree(worktree: string): string {
+  const staged = git(worktree, ["add", "-A"]);
+  if (!staged.ok) throw new Error(`cannot stage ${worktree}: ${staged.err}`);
+  const tree = git(worktree, ["write-tree"]);
+  if (!tree.ok) throw new Error(`cannot read the staged tree of ${worktree}: ${tree.err}`);
+  return tree.out;
 }
 
 function containsGitDir(dir: string): string | null {

@@ -21,20 +21,10 @@ import { answerOrderFindings, assertFindingAnswersOwed, BuildTurnRefused } from 
 import { dataDir, type Env } from "./paths";
 import { rebaseInProgress } from "./ship-rebase";
 import { proveTests } from "./station-build-proof";
-import { hooksOutsideTree, nestedRepository } from "./station-build-tree";
+import { git, hooksOutsideTree, nestedRepository, stagedTree } from "./station-build-tree";
 import type { BuildTurn } from "./station-build-turn";
 import { writeTrace } from "./trace-store";
 import { trunkCheck } from "./workspace-tasks";
-
-function git(worktree: string, args: string[], options: { env?: Env; stdin?: string } = {}) {
-  const run = Bun.spawnSync(["git", "-C", worktree, ...args], {
-    env: options.env,
-    stdin: options.stdin === undefined ? "ignore" : Buffer.from(options.stdin),
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  return { ok: run.success, out: run.stdout.toString().trim(), err: run.stderr.toString().trim() };
-}
 
 function head(worktree: string): string {
   const read = git(worktree, ["rev-parse", "HEAD"]);
@@ -47,14 +37,6 @@ function trunkForkPoint(worktree: string): string {
   const base = git(worktree, ["merge-base", "HEAD", trunk]);
   if (!base.ok) throw new Error(`cannot place ${worktree} against ${trunk}: ${base.err}`);
   return base.out;
-}
-
-function stagedTree(worktree: string): string {
-  const staged = git(worktree, ["add", "-A"]);
-  if (!staged.ok) throw new Error(`cannot stage ${worktree}: ${staged.err}`);
-  const tree = git(worktree, ["write-tree"]);
-  if (!tree.ok) throw new Error(`cannot read the staged tree of ${worktree}: ${tree.err}`);
-  return tree.out;
 }
 
 function nestedMessage(nested: string): string {
