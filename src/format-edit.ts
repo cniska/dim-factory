@@ -5,7 +5,12 @@ import { formatTask } from "./workspace-tasks";
 
 export const FORMAT_TIMEOUT_MS = 30_000;
 
-const FILE_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+export const EDIT_TOOLS = {
+  claude: ["Edit", "Write", "MultiEdit", "NotebookEdit"],
+  codex: ["apply_patch"],
+} as const;
+
+const FILE_TOOLS = new Set<string>(EDIT_TOOLS.claude);
 const PATCH_TARGET = /^\*\*\* (?:Add File|Update File|Move to): (.+)$/gm;
 
 export type EditPayload = {
@@ -23,7 +28,7 @@ export function editedPaths(payload: EditPayload): string[] {
     const path = input.file_path ?? input.notebook_path;
     return typeof path === "string" ? [resolve(cwd, path)] : [];
   }
-  if (payload.tool_name === "apply_patch" && typeof input.command === "string") {
+  if (payload.tool_name === EDIT_TOOLS.codex[0] && typeof input.command === "string") {
     return [...input.command.matchAll(PATCH_TARGET)].map((match) =>
       resolve(cwd, (match[1] as string).trim()),
     );

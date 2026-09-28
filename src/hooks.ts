@@ -3,6 +3,7 @@ import type { JSONPath } from "jsonc-parser";
 import { ConfigError } from "./config-error";
 import { appendToJsoncArray, parseJsonc, setJsoncValue } from "./config-jsonc";
 import { readJsonc, readJsoncText, writeJsoncFile } from "./config-jsonc-file";
+import { EDIT_TOOLS } from "./format-edit";
 import { installedHarnesses } from "./harness-installed";
 import { toolSpoolDir } from "./ingest-spool";
 import type { Tool } from "./ingest-tools";
@@ -42,14 +43,18 @@ function hookKind(command: string, tool: Tool, env: Env): HookKind | null {
   return null;
 }
 
+export type HookRefresh = { at: JSONPath; value?: unknown; append?: HookEntry };
+
 export type HookPlan = {
   tool: Tool;
   configPath: string;
   event: string;
   kind: HookKind;
   command: string;
+  matcher?: string;
   state: "installed" | "stale" | "missing";
-  at?: JSONPath;
+  outdated?: "command" | "matcher";
+  refresh?: HookRefresh;
   installedVersion?: number | null;
 };
 
@@ -78,10 +83,11 @@ export function hookConfigPath(tool: Tool, env: Env = process.env): string {
   return join(codexDir(env), "hooks.json");
 }
 
-export type HookEntry = { matcher?: string; hooks?: { type?: string; command?: string; timeout?: number }[] };
+type HookHandler = { type?: string; command?: string; timeout?: number };
+export type HookEntry = { matcher?: string; hooks?: HookHandler[] };
 type HookConfig = { hooks?: Record<string, HookEntry[]> };
 
-export type WantedHook = { event: string; kind: HookKind; command: string };
+export type WantedHook = { event: string; kind: HookKind; command: string; matcher?: string };
 
 export function wantedHooks(tool: Tool, env: Env = process.env): WantedHook[] {
   const spool = (event: string): WantedHook => ({
@@ -95,7 +101,12 @@ export function wantedHooks(tool: Tool, env: Env = process.env): WantedHook[] {
     { event: "SessionStart", kind: "wake", command: wakeCommand(tool) },
     spool("SessionEnd"),
     spool("PostToolUse"),
-    { event: "PostToolUse", kind: "format", command: formatEditCommand() },
+    {
+      event: "PostToolUse",
+      kind: "format",
+      command: formatEditCommand(),
+      matcher: EDIT_TOOLS[tool].join("|"),
+    },
   ];
 }
 
@@ -103,24 +114,38 @@ function readConfig(path: string): HookConfig {
   return readJsonc<HookConfig>(path) ?? {};
 }
 
-function hasCommand(entries: HookEntry[], command: string): boolean {
-  return entries.some((e) => e.hooks?.some((h) => h.command === command));
+function hasCommand(entries: HookEntry[], command: string, matcher: string | undefined): boolean {
+  return entries.some((e) => e.matcher === matcher && e.hooks?.some((h) => h.command === command));
 }
 
-function findOwn(
-  entries: HookEntry[],
-  kind: HookKind,
-  tool: Tool,
-  env: Env,
-): { index: [number, number]; command: string } | null {
-  for (const [entry, e] of entries.entries()) {
-    for (const [hook, h] of (e.hooks ?? []).entries()) {
-      if (h.command && hookKind(h.command, tool, env) === kind) {
-        return { index: [entry, hook], command: h.command };
+type OwnHook = { entry: number; hook: number; within: HookEntry; handler: HookHandler; command: string };
+
+function findOwn(entries: HookEntry[], kind: HookKind, tool: Tool, env: Env): OwnHook | null {
+  for (const [entry, within] of entries.entries()) {
+    for (const [hook, handler] of (within.hooks ?? []).entries()) {
+      if (handler.command && hookKind(handler.command, tool, env) === kind) {
+        return { entry, hook, within, handler, command: handler.command };
       }
     }
   }
   return null;
+}
+
+function refreshOf(own: OwnHook, event: string, wanted: WantedHook): HookRefresh {
+  const entryAt = ["hooks", event, own.entry];
+  if (own.within.matcher === wanted.matcher) {
+    return { at: [...entryAt, "hooks", own.hook, "command"], value: wanted.command };
+  }
+  const handler = { ...own.handler, command: wanted.command };
+  if (own.within.hooks?.length === 1) {
+    const { matcher: _, ...rest } = own.within;
+    return { at: entryAt, value: { ...entryFor(wanted.matcher, handler), ...rest, hooks: [handler] } };
+  }
+  return { at: [...entryAt, "hooks", own.hook], append: entryFor(wanted.matcher, handler) };
+}
+
+function entryFor(matcher: string | undefined, handler: HookHandler): HookEntry {
+  return matcher === undefined ? { hooks: [handler] } : { matcher, hooks: [handler] };
 }
 
 export function planHooks(env: Env = process.env): HookPlan[] {
@@ -128,24 +153,22 @@ export function planHooks(env: Env = process.env): HookPlan[] {
   for (const tool of installedHarnesses(env)) {
     const configPath = hookConfigPath(tool, env);
     const config = readConfig(configPath);
-    for (const { event, kind, command } of wantedHooks(tool, env)) {
-      const entries = config.hooks?.[event] ?? [];
-      const own = findOwn(entries, kind, tool, env);
-      if (own?.command === command) {
-        plans.push({ tool, configPath, event, kind, command, state: "installed" });
-      } else if (own) {
+    for (const wanted of wantedHooks(tool, env)) {
+      const { event, kind, command, matcher } = wanted;
+      const planned = { tool, configPath, event, kind, command, matcher };
+      const own = findOwn(config.hooks?.[event] ?? [], kind, tool, env);
+      if (!own) {
+        plans.push({ ...planned, state: "missing" });
+      } else if (own.command === command && own.within.matcher === matcher) {
+        plans.push({ ...planned, state: "installed" });
+      } else {
         plans.push({
-          tool,
-          configPath,
-          event,
-          kind,
-          command,
+          ...planned,
           state: "stale",
-          at: ["hooks", event, own.index[0], "hooks", own.index[1], "command"],
+          outdated: own.command === command ? "matcher" : "command",
+          refresh: refreshOf(own, event, wanted),
           installedVersion: hookContractVersion(own.command),
         });
-      } else {
-        plans.push({ tool, configPath, event, kind, command, state: "missing" });
       }
     }
   }
@@ -160,6 +183,11 @@ export function hookGaps(env: Env = process.env): HookGaps {
     missing: plans.filter((p) => p.state === "missing"),
     stale: plans.filter((p) => p.state === "stale"),
   };
+}
+
+export function outdatedLabel(plan: HookPlan): string {
+  const what = plan.outdated === "matcher" ? "matcher" : (plan.installedVersion ?? "unmarked");
+  return `${plan.event}: ${what}`;
 }
 
 export type HooksNotCurrentCode = "hooks_missing" | "hooks_stale";
@@ -185,12 +213,10 @@ export function requireCurrentHooks(env: Env = process.env): void {
     );
   }
   if (gaps.stale.length > 0) {
-    const where = gaps.stale
-      .map((p) => `${p.tool} ${p.event}: ${p.installedVersion ?? "unmarked"}`)
-      .join(", ");
+    const where = gaps.stale.map((p) => `${p.tool} ${outdatedLabel(p)}`).join(", ");
     throw new HooksNotCurrent(
       "hooks_stale",
-      `${gaps.stale.length} session hooks are written against a contract older than ${HOOK_CONTRACT_VERSION} ` +
+      `${gaps.stale.length} session hooks differ from what contract ${HOOK_CONTRACT_VERSION} installs ` +
         `(${where}), so what they record is not what is read back; ${INSTALL}`,
     );
   }
@@ -199,7 +225,7 @@ export function requireCurrentHooks(env: Env = process.env): void {
 function refuseIneffective(text: string, configPath: string, plans: HookPlan[]): void {
   const config = parseJsonc<HookConfig>(text, configPath);
   for (const plan of plans) {
-    if (hasCommand(config.hooks?.[plan.event] ?? [], plan.command)) continue;
+    if (hasCommand(config.hooks?.[plan.event] ?? [], plan.command, plan.matcher)) continue;
     throw new ConfigError(
       "unwritable",
       configPath,
@@ -207,6 +233,12 @@ function refuseIneffective(text: string, configPath: string, plans: HookPlan[]):
       `hooks.${plan.event}`,
     );
   }
+}
+
+function removalsLast(a: HookRefresh, b: HookRefresh): number {
+  const removal = (r: HookRefresh) => (r.append ? 1 : 0);
+  if (removal(a) !== removal(b)) return removal(a) - removal(b);
+  return removal(a) === 1 ? Number(b.at.at(-1)) - Number(a.at.at(-1)) : 0;
 }
 
 export type InstallReport = {
@@ -233,11 +265,17 @@ export function installHooks(env: Env = process.env): InstallReport {
     if (stale.length === 0 && missing.length === 0) continue;
 
     let text = readJsoncText(configPath);
+    const refreshes = stale.map((plan) => plan.refresh as HookRefresh).sort(removalsLast);
+    for (const refresh of refreshes) {
+      text = setJsoncValue(text, refresh.at, refresh.value, configPath);
+    }
     for (const plan of stale) {
-      text = setJsoncValue(text, plan.at as JSONPath, plan.command, configPath);
+      if (plan.refresh?.append) {
+        text = appendToJsoncArray(text, ["hooks", plan.event], plan.refresh.append, configPath);
+      }
     }
     for (const plan of missing) {
-      const entry: HookEntry = { hooks: [{ type: "command", command: plan.command }] };
+      const entry = entryFor(plan.matcher, { type: "command", command: plan.command });
       text = appendToJsoncArray(text, ["hooks", plan.event], entry, configPath);
     }
     refuseIneffective(text, configPath, [...stale, ...missing]);

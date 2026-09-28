@@ -19,7 +19,7 @@ import { primaryCheckout } from "./git-primary-checkout";
 import { isHostQualified } from "./git-remote-slug";
 import { harnessInstalled, installedHarnesses } from "./harness-installed";
 import { HARNESSES } from "./harness-name";
-import { type HookPlan, hookGaps } from "./hooks";
+import { type HookPlan, hookGaps, outdatedLabel } from "./hooks";
 import { codexConfigPath, planCodexTrust, type TrustState } from "./hooks-codex-trust";
 import { AGENT_LABEL, planAgent } from "./ingest-launchd";
 import { TOOLS } from "./ingest-tools";
@@ -81,7 +81,7 @@ function sessionHooks(hooks: HookRead): Health {
     hooks.missing.length > 0 &&
       `${hooks.missing.length} missing (${hooks.missing.map((p) => p.event).join(", ")})`,
     hooks.stale.length > 0 &&
-      `${hooks.stale.length} written against an older contract (${hooks.stale.map((p) => `${p.event}: ${p.installedVersion ?? "unmarked"}`).join(", ")})`,
+      `${hooks.stale.length} out of date (${hooks.stale.map(outdatedLabel).join(", ")})`,
   ].filter((c): c is string => c !== false);
   return {
     name: "hooks",

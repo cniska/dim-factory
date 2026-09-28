@@ -55,7 +55,7 @@ dim sync: drain the spool → read changed files → derive session ends
 
 ## Hooks
 
-`dim install-hooks` installs a spool hook for each of Claude Code, Codex, and Grok Build whose executable is on `PATH` ([`src/hooks.ts`](../src/hooks.ts), [`src/harness-installed.ts`](../src/harness-installed.ts)). Claude Code and Codex also get `dim wake` on `SessionStart` and `dim format-edit` on `PostToolUse`.
+`dim install-hooks` installs a spool hook for each of Claude Code, Codex, and Grok Build whose executable is on `PATH` ([`src/hooks.ts`](../src/hooks.ts), [`src/harness-installed.ts`](../src/harness-installed.ts)). Claude Code and Codex also get `dim wake` on `SessionStart` and `dim format-edit` on `PostToolUse`, matched to their edit tools ([`src/format-edit.ts`](../src/format-edit.ts) `EDIT_TOOLS`) so no other tool call starts it. An installed hook whose command or matcher differs from the wanted one is stale and is rewritten in place.
 
 | Event | What it does |
 |---|---|

@@ -689,6 +689,95 @@ describe("installHooks", () => {
     expect(after.hooks.SessionEnd[1].hooks[0].command).toBe(hookCommand("claude", env));
     expect(readFileSync(configs(env).claude, "utf8")).not.toContain("dim-hook:0");
   });
+
+  test("the format hook runs only after an edit tool, and every other hook after anything", () => {
+    const env = hookEnv(newRoot());
+    installHooks(env);
+
+    const claude = JSON.parse(readFileSync(configs(env).claude, "utf8"));
+    const codex = JSON.parse(readFileSync(configs(env).codex, "utf8"));
+    const matchers = (config: { hooks: Record<string, { matcher?: string }[]> }) =>
+      Object.values(config.hooks)
+        .flat()
+        .map((entry) => entry.matcher ?? null);
+    expect(claude.hooks.PostToolUse).toContainEqual({
+      matcher: "Edit|Write|MultiEdit|NotebookEdit",
+      hooks: [{ type: "command", command: formatEditCommand() }],
+    });
+    expect(codex.hooks.PostToolUse).toContainEqual({
+      matcher: "apply_patch",
+      hooks: [{ type: "command", command: formatEditCommand() }],
+    });
+    expect(matchers(claude).filter((m) => m !== null)).toHaveLength(1);
+    expect(matchers(codex).filter((m) => m !== null)).toHaveLength(1);
+    expect(planHooks(env).every((p) => p.state === "installed")).toBe(true);
+    expect(installHooks(env).written).toEqual([]);
+  });
+
+  test("a format hook that runs after every tool is narrowed in place", () => {
+    const dir = newRoot();
+    const env = hookEnv(dir, ["claude"]);
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    writeFileSync(
+      configs(env).claude,
+      JSON.stringify({
+        hooks: {
+          PostToolUse: [
+            { hooks: [{ type: "command", command: hookCommand("claude", env) }] },
+            { hooks: [{ type: "command", command: formatEditCommand(), timeout: 40 }] },
+          ],
+        },
+      }),
+    );
+
+    expect(planHooks(env).find((p) => p.event === "PostToolUse" && p.kind === "format")).toMatchObject({
+      state: "stale",
+      outdated: "matcher",
+    });
+    expect(installHooks(env)).toMatchObject({ refreshed: 1 });
+    const after = JSON.parse(readFileSync(configs(env).claude, "utf8"));
+    expect(after.hooks.PostToolUse).toEqual([
+      { hooks: [{ type: "command", command: hookCommand("claude", env) }] },
+      {
+        matcher: "Edit|Write|MultiEdit|NotebookEdit",
+        hooks: [{ type: "command", command: formatEditCommand(), timeout: 40 }],
+      },
+    ]);
+    expect(installHooks(env).written).toEqual([]);
+  });
+
+  test("a format hook sharing an entry with the spool hook moves to its own", () => {
+    const dir = newRoot();
+    const env = hookEnv(dir, ["claude"]);
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    const oldSpool = `${hookCommand("claude", env).replace(/ # dim-hook:\d+$/, "")} # dim-hook:0`;
+    writeFileSync(
+      configs(env).claude,
+      JSON.stringify({
+        hooks: {
+          PostToolUse: [
+            {
+              hooks: [
+                { type: "command", command: formatEditCommand() },
+                { type: "command", command: oldSpool },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(installHooks(env)).toMatchObject({ refreshed: 2 });
+    const after = JSON.parse(readFileSync(configs(env).claude, "utf8"));
+    expect(after.hooks.PostToolUse).toEqual([
+      { hooks: [{ type: "command", command: hookCommand("claude", env) }] },
+      {
+        matcher: "Edit|Write|MultiEdit|NotebookEdit",
+        hooks: [{ type: "command", command: formatEditCommand() }],
+      },
+    ]);
+    expect(installHooks(env).written).toEqual([]);
+  });
 });
 
 describe("joining a worker to the session it ran in", () => {
