@@ -7,7 +7,7 @@ import { checkoutRoot } from "./git-checkout";
 import { labelFor } from "./git-remote";
 import { HARNESSES, type HarnessName, isHarness, parseHarness } from "./harness-name";
 import { requireCurrentHooks } from "./hooks";
-import { approveOrder, returnApprovedPlan, returnOrderArtifact, returnReviewToBuild } from "./order-approval";
+import { approveOrder, returnOrder } from "./order-approval";
 import { nextOrderSlice } from "./order-artifacts";
 import { latestOrderCommit } from "./order-commits";
 import { amendOrder, dropOrder, queueOrder, setOrderPriority } from "./order-lifecycle";
@@ -183,17 +183,12 @@ export function runOrderCommand(
     const given = flags(rest, ["--reason", "--to"]);
     const reason = required(given, "--reason");
     const destination = given.get("--to");
-    if (destination === "plan") {
-      returnApprovedPlan(db, orderId, worker, reason);
-      return `${orderId} approved plan returned to its planner`;
+    if (destination !== undefined && destination !== "plan" && destination !== "build") {
+      throw fail("--to must name plan or build");
     }
-    if (destination === "build") {
-      returnReviewToBuild(db, orderId, worker, reason);
-      return `${orderId} review returned to its builder`;
-    }
-    if (destination !== undefined) throw fail("--to must name plan or build");
-    const station = returnOrderArtifact(db, orderId, worker, reason);
-    return `${orderId} ${station} artifact returned to its worker`;
+    const returned = returnOrder(db, orderId, worker, reason, destination);
+    const artifacts = `${returned.join(" and ")} artifact${returned.length === 1 ? "" : "s"}`;
+    return `${orderId} ${artifacts} returned to ${returned.at(-1)}`;
   }
   if (command === "approve") {
     const station = approveOrder(db, orderId, worker, flags(rest, ["--reason"]).get("--reason"));
@@ -240,6 +235,8 @@ export async function runOrderCommandLive(
   if (!orderId) throw new UsageError("order takes a subcommand and an order id");
   const given = flags(rest, ["--harness"]);
   const operator = resolveWorker(db);
+  assertOperator(db, operator, `delegate ${args[0]}`);
+  requireCurrentHooks(env);
   registerRunnerBarrier(db);
   try {
     const named = namedHarness(given);
@@ -247,8 +244,6 @@ export async function runOrderCommandLive(
     const onCapacity = <T>(station: OrderStationName, run: (harness: HarnessName) => Promise<T>) =>
       onHarnessWithCapacity(db, orderId, station, candidates, named, run);
     if (args[0] === "plan") {
-      assertOperator(db, operator, "delegate planning");
-      requireCurrentHooks(env);
       const outcome = await onCapacity("plan", (harness) =>
         runOrderPlanLive(db, orderId, { dir: cwd, env, harness, parentWorker: operator }),
       );

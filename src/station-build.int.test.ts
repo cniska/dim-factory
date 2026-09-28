@@ -25,7 +25,7 @@ import {
 import { installCommitGate } from "./gate-commit";
 import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
 import { fakeHarness } from "./harness-fake";
-import { approveOrder, returnOrderArtifact } from "./order-approval";
+import { approveOrder, returnOrder } from "./order-approval";
 import { completeOrderBuildFollowup, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
 import { openAttempt } from "./order-attempt";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
@@ -246,7 +246,7 @@ describe("builder station", () => {
     expect(openAttempt(db, "builder-order")).toBeNull();
     expect(orderState(db, "builder-order")).toEqual({ station: "build", next: "approve" });
 
-    returnOrderArtifact(db, "builder-order", operator.name, "Explain what the build verified.");
+    returnOrder(db, "builder-order", operator.name, "Explain what the build verified.");
     const unavailable = unavailableHarness();
     await expect(
       runOrderBuildLive(db, "builder-order", operator.name, {
@@ -626,12 +626,7 @@ describe("builder station", () => {
       reason: "Artifact needs revision.",
     });
     expect(() =>
-      returnOrderArtifact(
-        db,
-        "returned-builder-order",
-        operator.name,
-        "Explain the verification for the owner.",
-      ),
+      returnOrder(db, "returned-builder-order", operator.name, "Explain the verification for the owner."),
     ).toThrow(
       expect.objectContaining({ code: "not_next", message: expect.stringContaining("run at build") }),
     );
@@ -676,7 +671,7 @@ describe("builder station", () => {
         )
         .get();
 
-    returnOrderArtifact(db, "returned-builder-order", operator.name, "Say what the check verified.");
+    returnOrder(db, "returned-builder-order", operator.name, "Say what the check verified.");
     let returnedBrief = "";
     await runOrderBuildLive(db, "returned-builder-order", operator.name, {
       ...options,
@@ -694,7 +689,7 @@ describe("builder station", () => {
     expect(openAttempt(db, "returned-builder-order")).toBeNull();
     expect(orderState(db, "returned-builder-order")).toEqual({ station: "build", next: "approve" });
 
-    returnOrderArtifact(db, "returned-builder-order", operator.name, "Rename the result file.");
+    returnOrder(db, "returned-builder-order", operator.name, "Rename the result file.");
     await runOrderBuildLive(db, "returned-builder-order", operator.name, {
       ...options,
       adapter: builderTurn((request) => {
@@ -707,7 +702,7 @@ describe("builder station", () => {
     expect(latestBuild()).toEqual({ revision: 4, head_sha: fixed });
     expect(orderState(db, "returned-builder-order")).toEqual({ station: "build", next: "approve" });
 
-    returnOrderArtifact(db, "returned-builder-order", operator.name, "Answer in the artifact.");
+    returnOrder(db, "returned-builder-order", operator.name, "Answer in the artifact.");
     await expect(
       runOrderBuildLive(db, "returned-builder-order", operator.name, {
         ...options,

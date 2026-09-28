@@ -287,7 +287,7 @@ describe("order command", () => {
       { title: "Build it", outcome: "It is verified." },
     ]);
     expect(runOrderCommand(database, ["return", "order-1", "--reason", "name the check"])).toBe(
-      "order-1 plan artifact returned to its worker",
+      "order-1 plan artifact returned to plan",
     );
     recordOrderPlan(database, "order-1", "## Outcome\n\nBuild it, checked.", operator, [
       { title: "Build it", outcome: "It is verified." },
@@ -335,7 +335,7 @@ describe("order command", () => {
 
     expect(
       runOrderCommand(database, ["return", "order-1", "--to", "plan", "--reason", "revise the slices"]),
-    ).toBe("order-1 approved plan returned to its planner");
+    ).toBe("order-1 plan artifact returned to plan");
     expect(orderState(database, "order-1")).toEqual({ station: "plan", next: "run" });
   });
 
@@ -358,7 +358,7 @@ describe("order command", () => {
 
     expect(
       runOrderCommand(database, ["return", "order-1", "--to", "build", "--reason", "fix the code"]),
-    ).toBe("order-1 review returned to its builder");
+    ).toBe("order-1 review and build artifacts returned to build");
     expect(orderState(database, "order-1")).toEqual({ station: "build", next: "run" });
     expect(
       database
@@ -706,6 +706,33 @@ describe("order command", () => {
     expect(assembleWallSnapshot(database).totals).toEqual({ queued: 1, running: 0, shipped: 0 });
     rmSync(bare, { recursive: true, force: true });
   });
+
+  for (const station of ["build", "review"] as const) {
+    test(`a ${station} is refused on a machine whose session hooks were never installed`, async () => {
+      const database = db();
+      queued(database);
+      started(database);
+      const operator = resolveWorker(database, env);
+      approvePlan(database, "order-1", operator);
+      if (station === "review") {
+        attemptIn(database, "order-1", operator, operator);
+        landed(database, "order-1");
+        approveFinalBuildAt(database, "order-1", trunk.sha, operator, operator);
+      }
+      expect(orderState(database, "order-1")).toEqual({ station, next: "run" });
+      const attempts = database.query("SELECT count(*) AS n FROM factory_order_attempt").get();
+      const bare = mkdtempSync(join(tmpdir(), "dim-bare-"));
+
+      await expect(
+        runOrderCommandLive(database, [station, "order-1", "--harness", "claude"], null, trunk.dir, {
+          ...env,
+          ...scratchEnv(bare),
+        }),
+      ).rejects.toThrow(expect.objectContaining({ code: "hooks_missing" }));
+      expect(database.query("SELECT count(*) AS n FROM factory_order_attempt").get()).toEqual(attempts);
+      rmSync(bare, { recursive: true, force: true });
+    });
+  }
 
   test("a plan is refused where a session hook is written against an older contract", async () => {
     const database = db();

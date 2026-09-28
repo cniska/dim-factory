@@ -111,31 +111,45 @@ export class OrderActRefused extends Error {
   readonly code = "not_next";
 }
 
-const ENTERS: Record<OrderAct, (state: OrderState) => boolean> = {
+const ENTERS: Record<Exclude<OrderAct, "return">, (state: OrderState) => boolean> = {
   plan: (state) => state.station === "plan" && state.next === "run",
   build: (state) => state.station === "build" && state.next === "run",
   review: (state) => state.station === "review" && state.next === "run",
   approve: (state) => state.next === "approve",
-  return: (state) => state.next === "approve",
   ship: (state) => state.next === "ship",
 };
+
+const RETURNS_TO: Record<Station, (state: OrderState) => boolean> = {
+  plan: (state) => state.station === "build" || (state.station === "plan" && state.next === "approve"),
+  build: (state) => (state.station === "build" || state.station === "review") && state.next === "approve",
+  review: (state) => state.station === "review" && state.next === "approve",
+};
+
+function admits(state: OrderState, act: OrderAct, to: Station | undefined): boolean {
+  if (act !== "return") return ENTERS[act](state);
+  const destination = to ?? state.station;
+  return destination !== null && RETURNS_TO[destination](state);
+}
 
 export function assertNext(
   db: Database,
   orderId: string,
-  act: "approve" | "return",
+  act: "approve",
 ): Extract<OrderState, { next: "approve" }>;
-export function assertNext(db: Database, orderId: string, act: OrderAct, to?: "plan" | "build"): OrderState;
-export function assertNext(db: Database, orderId: string, act: OrderAct, to?: "plan" | "build"): OrderState {
+export function assertNext(
+  db: Database,
+  orderId: string,
+  act: "return",
+  to?: Station,
+): Extract<OrderState, { station: Station }>;
+export function assertNext(db: Database, orderId: string, act: OrderAct, to?: Station): OrderState;
+export function assertNext(db: Database, orderId: string, act: OrderAct, to?: Station): OrderState {
   const status = orderStatus(db, orderId);
   if (isTerminalOrderStatus(status)) {
     throw new OrderActRefused(`order ${orderId} is ${status}, so it cannot ${act}`);
   }
   const state = orderState(db, orderId);
-  let admitted = ENTERS[act](state);
-  if (act === "return" && to === "plan") admitted = state.station === "build";
-  if (act === "return" && to === "build") admitted = state.station === "review" && state.next === "approve";
-  if (!admitted) {
+  if (!admits(state, act, to)) {
     throw new OrderActRefused(`order ${orderId} waits on ${describeState(state)}, so it cannot ${act}`);
   }
   return state;

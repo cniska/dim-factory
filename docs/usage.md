@@ -35,7 +35,7 @@ dim install-commit-gate --owner=<host>/<account>
 ```
 
 - A command that changes a shared installation needs `--write`.
-- Each hook command ends in `# dim-hook:<version>`, bumped whenever its text changes; an older version is stale.
+- Each hook command ends in `# dim-hook:<version>`, bumped whenever its text changes; an older version is stale. A station run — `dim order plan`, `build` or `review` — is refused while a hook is missing or stale, since its worker's session would go unrecorded.
 - Hooks, Codex rules, Codex hook trust and `~/.codex/skills` are installed and checked only for a harness whose executable is on `PATH`; `~/.agents/skills` is linked whatever is installed.
 - `dim doctor` reports missing or stale hooks, missing Codex trust, database drift, unloaded agents, a checkout with no usable ship method, a harness installed but not routed or routed but not installed, and whether the comment gate is on — each with its repair.
 

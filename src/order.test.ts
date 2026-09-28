@@ -20,7 +20,7 @@ import {
   workerIn,
 } from "./fixtures.test-support";
 import { rebuild } from "./ingest-sync";
-import { approveOrder, returnApprovedPlan, returnOrderArtifact } from "./order-approval";
+import { approveOrder, returnOrder } from "./order-approval";
 import {
   completeOrderSlice,
   nextOrderSlice,
@@ -249,7 +249,7 @@ describe("factory order report records", () => {
       { title: "Keep it concise", outcome: "The owner can review the result." },
     ]);
 
-    returnOrderArtifact(database, "returned-plan", operator, "Include the evidence behind the outcome.");
+    returnOrder(database, "returned-plan", operator, "Include the evidence behind the outcome.");
 
     expect(returnedOrderArtifact(database, "returned-plan", "plan")).toEqual({
       reason: "Include the evidence behind the outcome.",
@@ -270,7 +270,7 @@ describe("factory order report records", () => {
     ]);
     approveOrder(database, "replanned", operator, undefined);
 
-    returnApprovedPlan(database, "replanned", operator, "The approved approach cannot satisfy the request.");
+    returnOrder(database, "replanned", operator, "The approved approach cannot satisfy the request.", "plan");
 
     expect(orderState(database, "replanned")).toEqual({ station: "plan", next: "run" });
     expect(returnedOrderArtifact(database, "replanned", "plan")).toEqual({
@@ -278,7 +278,7 @@ describe("factory order report records", () => {
       artifactId: planId,
       body: "Build the first approach.",
     });
-    expect(() => returnApprovedPlan(database, "replanned", operator, "again")).toThrow(
+    expect(() => returnOrder(database, "replanned", operator, "again", "plan")).toThrow(
       expect.objectContaining({ code: "not_next" }),
     );
     database.close();
@@ -292,10 +292,27 @@ describe("factory order report records", () => {
     approvePlan(database, "busy-replan", operator);
     attemptIn(database, "busy-replan", runningBuilder(database), operator);
 
-    expect(() => returnApprovedPlan(database, "busy-replan", operator, "revise the plan")).toThrow(
+    expect(() => returnOrder(database, "busy-replan", operator, "revise the plan", "plan")).toThrow(
       expect.objectContaining({ code: "order_held_by_run" }),
     );
     expect(orderState(database, "busy-replan")).toEqual({ station: "build", next: "run" });
+    database.close();
+  });
+
+  test("refuses the return of a written plan while an attempt is running", () => {
+    const database = db();
+    const operator = attemptOperator;
+    queueOrder(database, { ...order, id: "busy-return" }, operator);
+    start(database, "busy-return", operator);
+    recordOrderPlan(database, "busy-return", "Build it.", workerIn(database, "planner"), [
+      { title: "Build it", outcome: "It works." },
+    ]);
+    attemptIn(database, "busy-return", runningBuilder(database), operator);
+
+    expect(() => returnOrder(database, "busy-return", operator, "cut the plan smaller")).toThrow(
+      expect.objectContaining({ code: "order_held_by_run" }),
+    );
+    expect(orderState(database, "busy-return")).toEqual({ station: "plan", next: "approve" });
     database.close();
   });
 

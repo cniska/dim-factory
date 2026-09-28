@@ -9,7 +9,7 @@ import { codexProcess } from "./harness-codex";
 import { fakeHarness } from "./harness-fake";
 import { commandLine } from "./harness-process";
 import { scriptedHarness } from "./harness-scripted.test-support";
-import { returnOrderArtifact } from "./order-approval";
+import { returnOrder } from "./order-approval";
 import { startAttempt } from "./order-attempt";
 import { dropOrder, queueOrder } from "./order-lifecycle";
 import { orderStatus } from "./order-status";
@@ -346,7 +346,7 @@ describe("planner station", () => {
       dir: repo.dir,
       harness: "codex",
     });
-    returnOrderArtifact(db, "planner-resume-order", operator.name, "cut the plan smaller");
+    returnOrder(db, "planner-resume-order", operator.name, "cut the plan smaller");
     startAttempt(
       db,
       "planner-resume-order",
