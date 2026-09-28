@@ -1058,7 +1058,9 @@ describe("factory order report records", () => {
     });
 
     test("a red check at the rebased head lands nothing, keeps the rebase and sends the order to build", () => {
-      const { repo, wt, database, first, second, trunkTip, ship } = scene(unrelatedMove, { check: "exit 3" });
+      const { repo, wt, database, first, second, trunkTip, ship } = scene(unrelatedMove, {
+        check: 'echo "three is red"; exit 3',
+      });
 
       expect(ship).toThrow(expect.objectContaining({ code: "ship_check_failed" }));
 
@@ -1075,8 +1077,25 @@ describe("factory order report records", () => {
           .all(),
       ).toEqual([{ exit_code: 0 }, { exit_code: 3 }]);
       expect(
-        database.query("SELECT outcome, code, head, patch_equal FROM factory_order_ship_run").all(),
-      ).toEqual([{ outcome: "refused", code: "ship_check_failed", head: current.at(-1), patch_equal: 1 }]);
+        database
+          .query(
+            `SELECT r.outcome, r.code, r.head, r.patch_equal, r.reason LIKE '%three is red%' AS reason_carries,
+                    r.reason LIKE '%; its output is on the ship run''s check' AS reason_points,
+                    c.result LIKE '%three is red%' AS check_carries
+             FROM factory_order_ship_run r JOIN factory_order_check c ON c.id = r.check_id`,
+          )
+          .all(),
+      ).toEqual([
+        {
+          outcome: "refused",
+          code: "ship_check_failed",
+          head: current.at(-1),
+          patch_equal: 1,
+          reason_carries: 0,
+          reason_points: 1,
+          check_carries: 1,
+        },
+      ]);
       expect(failedHeadCheck(database, "order-1")).toMatchObject({ exitCode: 3 });
       expect(orderState(database, "order-1")).toEqual({ station: "build", next: "run" });
     });

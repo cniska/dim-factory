@@ -5,7 +5,7 @@ import { CHECK_SANDBOX, runSandboxedCheck } from "./check-sandbox";
 import { withLock } from "./db-lock";
 import { assertOperator } from "./factory-operator";
 import { currentOrderCommits } from "./order-commits";
-import type { OrderCheck } from "./order-evidence";
+import { checkRowOf, type OrderCheck } from "./order-evidence";
 import { appendOrderEvent } from "./order-ledger";
 import { recordShipCleanup, recordShipRun, type ShipRun } from "./order-ship-run";
 import { assertNext } from "./order-state";
@@ -47,20 +47,15 @@ export function recheck(worktree: string, env: Env, sandbox: string[]): OrderChe
         );
   }
   const declared = governing.task;
-  const check = runSandboxedCheck({
-    worktree,
-    command: declared.commandLine,
-    canary: join(dataDir(env), `check-canary-${randomUUID()}`),
-    sandbox,
-    env: env.PATH === undefined ? {} : { PATH: env.PATH },
-  });
-  return {
-    command: check.command,
-    exitCode: check.exitCode,
-    startedAt: check.startedAt,
-    finishedAt: check.finishedAt,
-    result: check.output,
-  };
+  return checkRowOf(
+    runSandboxedCheck({
+      worktree,
+      command: declared.commandLine,
+      canary: join(dataDir(env), `check-canary-${randomUUID()}`),
+      sandbox,
+      env: env.PATH === undefined ? {} : { PATH: env.PATH },
+    }),
+  );
 }
 
 export function shipOrder(
@@ -84,7 +79,7 @@ export function shipOrder(
         return {
           hold: new ShipRefusal(
             "ship_check_failed",
-            `${check.command} exited ${check.exitCode} at the rebased head ${rewrite.newHead}; the rebase is kept and the order is back at build:\n${check.result}`,
+            `${check.command} exited ${check.exitCode} at the rebased head ${rewrite.newHead}; the rebase is kept and the order is back at build; its output is on the ship run's check`,
           ),
         };
       }

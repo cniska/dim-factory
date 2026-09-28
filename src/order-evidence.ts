@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import type { SandboxedCheck } from "./check-sandbox";
 import { writeTransaction } from "./db";
 import { currentOrderCommits } from "./order-commits";
 import { appendOrderEventInTransaction, now } from "./order-ledger";
@@ -54,6 +55,16 @@ export type OrderCheck = {
   finishedAt: string;
   result: string;
 };
+
+export function checkRowOf(check: SandboxedCheck): OrderCheck {
+  return {
+    command: check.command,
+    exitCode: check.exitCode,
+    startedAt: check.startedAt,
+    finishedAt: check.finishedAt,
+    result: check.output,
+  };
+}
 
 export function recordOrderCheckInTransaction(
   db: Database,

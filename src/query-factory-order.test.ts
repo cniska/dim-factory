@@ -577,11 +577,14 @@ describe("factory order query", () => {
     const evidence = rows.slice(1);
     const whens = evidence.map((row) => String(row[1]));
     expect(whens).toEqual([...whens].sort().reverse());
-    expect(evidence.slice(0, 2).map((row) => row[5])).toEqual(["tie second at abc", "tie first at abc"]);
+    expect(evidence.slice(0, 2).map((row) => row[5])).toEqual([
+      "check 47: tie second at abc",
+      "check 46: tie first at abc",
+    ]);
     expect(evidence.at(-1)?.[2]).toBe("queued");
     const capped = capRows(rows, DEFAULT_MAX_ROWS).rows;
     expect(capped[0]?.[0]).toBe("order");
-    expect(capped[1]?.[5]).toBe("tie second at abc");
+    expect(capped[1]?.[5]).toBe("check 47: tie second at abc");
     db.close();
   });
 

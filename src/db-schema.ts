@@ -455,6 +455,7 @@ CREATE TABLE IF NOT EXISTS factory_order_file (
 
 -- A check the runner ran, named by the commit it ran on: the new commit for a
 -- committed turn, and the head it was built on for a turn that failed or changed nothing.
+-- result is the tail of the check's stdout and stderr, which a red check's brief carries.
 CREATE TABLE IF NOT EXISTS factory_order_check (
   id            INTEGER PRIMARY KEY,
   order_id      TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,

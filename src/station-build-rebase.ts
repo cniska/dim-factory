@@ -128,10 +128,10 @@ export function continueRebaseTurn(options: {
   }
   if (check.exitCode !== 0) {
     restoreBranch(replay);
-    recordOrderCheck(db, orderId, check, rewrite.oldHead);
+    const checkId = recordOrderCheck(db, orderId, check, rewrite.oldHead);
     throw new BuildTurnRefused(
       "check_failed",
-      `${check.command} exited ${check.exitCode} at the rebased head ${rewrite.newHead}; the rebase was taken back and is reopened next turn:\n${check.result}`,
+      `${check.command} exited ${check.exitCode} at the rebased head ${rewrite.newHead}; the rebase was taken back and is reopened next turn; its output is on check ${checkId}`,
     );
   }
   writeTransaction(db, () => {

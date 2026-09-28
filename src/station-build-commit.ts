@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { CHECK_SANDBOX, runSandboxedCheck, type SandboxedCheck } from "./check-sandbox";
+import { CHECK_SANDBOX, runSandboxedCheck } from "./check-sandbox";
 import { stagedComments } from "./comments-staged";
 import { writeTransaction } from "./db";
 import { commentGateFor } from "./gate-commit";
@@ -10,7 +10,7 @@ import { trunkRef } from "./git-trunk";
 import { recordOrderBuild } from "./order-artifacts";
 import { latestOrderCommit } from "./order-commits";
 import {
-  type OrderCheck,
+  checkRowOf,
   type OrderProof,
   recordOrderCheck,
   recordOrderCommit,
@@ -98,16 +98,6 @@ function refuseUntouchedTests(worktree: string, tests: readonly string[], proofR
     "proof_missing",
     `the turn names test ${untouched.join(", ")}, which the slice does not add or change; name only test files the slice adds or changes`,
   );
-}
-
-function checkRowOf(check: SandboxedCheck): OrderCheck {
-  return {
-    command: check.command,
-    exitCode: check.exitCode,
-    startedAt: check.startedAt,
-    finishedAt: check.finishedAt,
-    result: check.output,
-  };
 }
 
 function lineCount(value: string | undefined): number | null {
@@ -231,10 +221,10 @@ export function commitBuildTurn(options: {
   const check = sandboxedCheck();
   const checkRow = checkRowOf(check);
   if (check.exitCode !== 0) {
-    recordOrderCheck(db, orderId, checkRow, before);
+    const checkId = recordOrderCheck(db, orderId, checkRow, before);
     throw refuse(
       "check_failed",
-      `${check.command} exited ${check.exitCode} in the check sandbox:\n${check.output}`,
+      `${check.command} exited ${check.exitCode} in the check sandbox; its output is on check ${checkId}`,
     );
   }
 

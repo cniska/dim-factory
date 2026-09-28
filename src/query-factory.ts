@@ -173,7 +173,8 @@ export const order: Query = {
       ...table(
         db,
         `SELECT 'check' AS section, finished_at AS "when", 'check_ran' AS kind,
-                cast(exit_code AS TEXT) AS status, command || ' at ' || head_sha AS subject, result AS evidence
+                cast(exit_code AS TEXT) AS status, 'check ' || id || ': ' || command || ' at ' || head_sha AS subject,
+                result AS evidence
          FROM factory_order_check WHERE order_id = ? ORDER BY id`,
         [id],
       ),

@@ -37,6 +37,7 @@ import { closeOrderReview } from "./order-review";
 import { recheck, shipOrder } from "./order-ship";
 import { orderState } from "./order-state";
 import { orderStatus } from "./order-status";
+import { findQuery } from "./query-registry";
 import { approveReviewAt } from "./station-approvals.test-support";
 import { runOrderBuildLive } from "./station-build";
 import type { BuildTurn } from "./station-build-turn";
@@ -380,17 +381,27 @@ describe("builder station", () => {
           return { subject: "feat: first slice", artifact: "" };
         }),
       }),
-    ).rejects.toThrow("ok.txt is missing");
+    ).rejects.toThrow("its output is on check");
     const worktree = realpathSync(join(repo.dir, ".claude", "worktrees", "red-order"));
     expect(git(worktree, ["rev-parse", "HEAD"])).toBe(repo.sha);
     expect(db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 0 });
-    expect(
-      db
-        .query(
-          "SELECT exit_code, result LIKE '%ok.txt is missing%' AS carries_output, head_sha FROM factory_order_check",
-        )
-        .all(),
-    ).toEqual([{ exit_code: 1, carries_output: 1, head_sha: repo.sha }]);
+    const red = db
+      .query<{ id: number; exit_code: number; carries_output: number; head_sha: string }, []>(
+        "SELECT id, exit_code, result LIKE '%ok.txt is missing%' AS carries_output, head_sha FROM factory_order_check",
+      )
+      .all();
+    expect(red).toEqual([{ id: expect.any(Number), exit_code: 1, carries_output: 1, head_sha: repo.sha }]);
+    const failed = db
+      .query<{ reason: string }, []>("SELECT reason FROM factory_order_event WHERE kind = 'failed'")
+      .get();
+    expect(failed?.reason).toContain(`its output is on check ${red[0]?.id}`);
+    expect(failed?.reason).not.toContain("ok.txt is missing");
+    const checkRows = findQuery("order")
+      ?.run(db, { arg: "red-order" })
+      .rows.filter((row) => row[0] === "check");
+    expect(checkRows?.map((row) => [String(row[5]).startsWith(`check ${red[0]?.id}: `), row[6]])).toEqual([
+      [true, expect.stringContaining("ok.txt is missing")],
+    ]);
 
     let retryBrief = "";
     const retry = await runOrderBuildLive(db, "red-order", operator.name, {

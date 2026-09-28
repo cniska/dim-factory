@@ -290,12 +290,27 @@ describe("continueRebaseTurn", () => {
   });
 
   test("a red check takes the finished rebase back, and the next turn reopens it where the ship stopped", () => {
-    const { wt, db, second, recorded, turn } = conflicted("exit 5");
+    const { wt, db, second, recorded, turn } = conflicted('echo "five is red"; exit 5');
     writeFileSync(join(wt, "f.txt"), f("D X", true));
     turn();
     writeFileSync(join(wt, "g.txt"), "trunk g\norder g\n");
 
-    expect(turn).toThrow(expect.objectContaining({ code: "check_failed" }));
+    let refusal: unknown;
+    try {
+      turn();
+    } catch (error) {
+      refusal = error;
+    }
+    const red = db
+      .query<{ id: number; carries: number }, []>(
+        "SELECT id, result LIKE '%five is red%' AS carries FROM factory_order_check WHERE exit_code = 5",
+      )
+      .get();
+    expect(red?.carries).toBe(1);
+    expect(refusal).toMatchObject({
+      code: "check_failed",
+      message: expect.stringMatching(new RegExp(`^[^\\n]*; its output is on check ${red?.id}$`)),
+    });
 
     expect(rebaseState(wt)).toBeNull();
     expect(git(wt, ["rev-parse", "HEAD"])).toBe(second);
