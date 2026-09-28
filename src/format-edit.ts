@@ -1,6 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { checkoutRoot } from "./git-checkout";
+import type { Env } from "./paths";
+import { WORKER_NAME_VAR } from "./worker-name";
 import { formatTask } from "./workspace-tasks";
 
 export const FORMAT_TIMEOUT_MS = 30_000;
@@ -36,7 +38,8 @@ export function editedPaths(payload: EditPayload): string[] {
   return [];
 }
 
-export function formatAfterEdit(payload: EditPayload): FormatRun[] {
+export function formatAfterEdit(payload: EditPayload, env: Env = process.env): FormatRun[] {
+  if (env[WORKER_NAME_VAR]) return [];
   const checkouts = new Set(
     editedPaths(payload)
       .map((path) => checkoutRoot(dirname(path)))

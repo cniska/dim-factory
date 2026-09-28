@@ -61,7 +61,7 @@ dim sync: drain the spool → read changed files → derive session ends
 |---|---|
 | `SessionStart` | spools the start source, model and harness pid from the hook's parent process. On Claude Code and Codex, `dim wake` prints declared repo commands and records the guidance in force |
 | `SessionEnd` | spools the end time and reason, which a transcript lacks |
-| `PostToolUse` | spools the tool call with its payload. On Claude Code and Codex, `dim format-edit` runs the repo's declared format task in the checkout an edit touched ([`src/format-edit.ts`](../src/format-edit.ts)), bounded and failing open |
+| `PostToolUse` | spools the tool call with its payload. On Claude Code and Codex, `dim format-edit` runs the repo's declared format task in the checkout an edit touched ([`src/format-edit.ts`](../src/format-edit.ts)), bounded and failing open. In a factory worker's session it runs nothing, since the worker wrote that manifest and the hook runs outside its sandbox; a builder formats inside its sandbox, and the runner's check holds the result |
 
 Grok's file is `~/.grok/hooks/dim.json`. `GROK_HOME` overrides `~/.grok`. A Grok event names the session as `sessionId` and the event as `hookEventName` (`session_start`, `session_end`, `post_tool_use`). The model, when the event carries one, is `modelId`. The reader uses those when the Claude field names are absent.
 
