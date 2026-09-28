@@ -7,6 +7,11 @@ import { ROLES_SQL } from "./worker-roles";
 
 export const SCHEMA_VERSION = 80;
 
+export const DISCARDED_COLUMNS: readonly string[] = [
+  "factory_worker.token_digest",
+  "factory_worker_assignment.token_digest",
+];
+
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
 -- returned; a drop would take the version with it.

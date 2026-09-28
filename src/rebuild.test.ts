@@ -75,6 +75,24 @@ describe("absorbing a schema change", () => {
     db.close();
   });
 
+  test("a database opened for rebuild takes a new indexed column and a new factory table", () => {
+    const { db, env } = scratch();
+    fill(db);
+    db.run("DROP INDEX tool_call_file");
+    db.run("ALTER TABLE tool_call DROP COLUMN file_path");
+    db.run("DROP TABLE factory_runner_barrier");
+    db.run("UPDATE schema_version SET version = ?", [SCHEMA_VERSION - 1]);
+    db.close();
+
+    const reopened = openDb(join(env.DIM_HOME, "sessions.db"), { forRebuild: true });
+    rebuild(reopened, env);
+
+    expect(columnsOf(reopened, "tool_call")).toContain("file_path");
+    expect(tablesOf(reopened)).toContain("factory_runner_barrier");
+    expect(reopened.query("SELECT version FROM schema_version").get()).toEqual({ version: SCHEMA_VERSION });
+    reopened.close();
+  });
+
   test("a row in every table that references another does not stop the drops", () => {
     const { db, env } = scratch();
     fill(db);
@@ -421,6 +439,22 @@ describe("rebuilding a database an older schema wrote", () => {
     expect(() => rebuild(db, env)).toThrow(/sqlite3/);
 
     expect(db.query("SELECT id FROM factory_order").all()).toEqual([{ id: "order-old" }]);
+    db.close();
+  });
+
+  test("a column a schema change discards is dropped with its values, and its rows come back", () => {
+    const { db, env } = scratch();
+    db.run("ALTER TABLE factory_worker ADD COLUMN token_digest TEXT");
+    db.run(
+      "INSERT INTO factory_worker (name, role, started_at, token_digest) VALUES ('bolt-1', 'operator', '2026-01-01T00:00:00Z', 'digest')",
+    );
+
+    rebuild(db, env);
+
+    expect(columnsOf(db, "factory_worker")).not.toContain("token_digest");
+    expect(db.query("SELECT name, role FROM factory_worker").all()).toEqual([
+      { name: "bolt-1", role: "operator" },
+    ]);
     db.close();
   });
 

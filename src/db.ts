@@ -44,7 +44,7 @@ export function openDb(path: string, opts: { forRebuild?: boolean; busyTimeoutMs
       db.run("BEGIN IMMEDIATE");
       transactionOpen = true;
     }
-    db.run(SCHEMA_SQL);
+    if (found === null || !opts.forRebuild) db.run(SCHEMA_SQL);
     if (found === null) {
       const initialized = storedSchemaVersion(db);
       if (initialized === null) db.run("INSERT INTO schema_version (version) VALUES (?)", [SCHEMA_VERSION]);

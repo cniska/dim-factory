@@ -1,6 +1,6 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { writeTransaction } from "./db";
-import { SCHEMA_SQL, SCHEMA_VERSION } from "./db-schema";
+import { DISCARDED_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./db-schema";
 import { type GuidanceReport, ingestGuidance } from "./guidance";
 import { drainWalk, type WalkReport } from "./guidance-walk";
 import { createIngester, type FileSpec } from "./ingest";
@@ -201,6 +201,7 @@ function assertCarriedColumnsFit(db: Database, tables: string[]): void {
     const wantedNames = new Set(wanted.map((column) => column.name));
     const lost = live
       .filter((column) => !wantedNames.has(column.name))
+      .filter((column) => !DISCARDED_COLUMNS.includes(`${table}.${column.name}`))
       .filter((column) =>
         db.query(`SELECT 1 FROM ${table} WHERE ${quoteIdentifier(column.name)} IS NOT NULL LIMIT 1`).get(),
       );
@@ -270,7 +271,10 @@ function carryThroughRebuild(
   assertCascadesCarried(db, tables);
   const saved = tables.map((table) => ({
     table,
-    rows: db.query(`SELECT * FROM ${table}`).all() as Record<string, SQLQueryBindings>[],
+    rows:
+      columnsOf(db, table).length === 0
+        ? []
+        : (db.query(`SELECT * FROM ${table}`).all() as Record<string, SQLQueryBindings>[]),
   }));
   const orphans = dropOrphans(db, saved);
   for (const table of [...tables].reverse()) db.run(`DROP TABLE IF EXISTS ${table}`);
