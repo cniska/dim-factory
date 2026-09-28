@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -15,9 +15,11 @@ import { ConfigError } from "./config-error";
 import { closeDb, openDb } from "./db";
 import { harnessesOnPath, scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
 import {
+  dimPath,
   formatEditCommand,
   HOOK_CONTRACT_VERSION,
   hookCommand,
+  hookConfigPath,
   hookContractVersion,
   installHooks,
   planHooks,
@@ -531,23 +533,47 @@ describe("installHooks", () => {
     expect(planHooks(env).every((p) => p.state === "installed")).toBe(true);
   });
 
-  test("the wake hook cannot fail a session either", () => {
-    const command = wakeCommand("claude");
-    expect(command).toMatch(/2>\/dev\/null \|\| true( # dim-hook:\d+)?$/);
-    expect(command).toContain("wake --tool=claude");
-  });
+  test("no installed hook can fail a session, whether dim fails, dies, is missing or has no spool", () => {
+    const dir = newRoot();
+    const env = hookEnv(dir);
+    installHooks(env);
+    const installed = (["claude", "codex", "grok"] as const).flatMap((tool) => {
+      const config = JSON.parse(readFileSync(hookConfigPath(tool, env), "utf8")) as {
+        hooks: Record<string, { hooks: { command: string }[] }[]>;
+      };
+      return Object.values(config.hooks).flatMap((entries) =>
+        entries.flatMap((entry) => entry.hooks.map((hook) => ({ tool, command: hook.command }))),
+      );
+    });
+    expect(installed.map(({ command }) => command).sort()).toEqual(
+      (["claude", "codex", "grok"] as const)
+        .flatMap((tool) => wantedHooks(tool, env).map((h) => h.command))
+        .sort(),
+    );
 
-  test("the format hook cannot fail a session either", () => {
-    const command = formatEditCommand();
-    expect(command).toMatch(/ format-edit 2>\/dev\/null \|\| true( # dim-hook:\d+)?$/);
-  });
-
-  test("the hook itself cannot fail a session", () => {
-    const env = hookEnv(newRoot());
-    const command = hookCommand("claude", env);
-    expect(command).toStartWith("cat > ");
-    expect(command).toMatch(/; exit 0( # dim-hook:\d+)?$/);
-    expect(command).not.toContain("|");
+    const bin = join(dir, "dim-bin");
+    const shim = join(bin, "dim");
+    mkdirSync(bin);
+    const installedDim = `${dimPath()} `;
+    const throughShim = (command: string) =>
+      command.startsWith(installedDim) ? `${shim} ${command.slice(installedDim.length)}` : command;
+    const dims: [string, string | null][] = [
+      ["fails", "#!/bin/sh\necho out\necho err >&2\nexit 1\n"],
+      ["dies", "#!/bin/sh\nkill -9 $$\n"],
+      ["is missing", null],
+    ];
+    rmSync(env.DIM_HOME as string, { recursive: true, force: true });
+    for (const [state, body] of dims) {
+      rmSync(shim, { force: true });
+      if (body !== null) writeFileSync(shim, body, { mode: 0o755 });
+      for (const { tool, command } of installed) {
+        const run = spawnSync("/bin/sh", ["-c", throughShim(command)], {
+          input: JSON.stringify(endEvent(SESSION, "exit")),
+          env: { PATH: `${bin}:/usr/bin:/bin` },
+        });
+        expect({ tool, command, state, status: run.status }).toEqual({ tool, command, state, status: 0 });
+      }
+    }
   });
 
   test("SessionStart names the harness parent pid in the spool file", () => {
