@@ -227,13 +227,33 @@ describe("the Claude harness adapter", () => {
     const inCheckout = denied(checkout);
     rmSync(repo, { recursive: true, force: true });
 
-    expect(inWorktree.sandbox.filesystem.denyWrite).toEqual([join(worktree, ".git")]);
+    expect(inWorktree.sandbox.filesystem.denyWrite).toEqual([join(worktree, ".git"), join(checkout, ".git")]);
     expect(inWorktree.permissions.deny).toEqual([
       `Edit(/${join(worktree, ".git")})`,
       `Edit(/${join(worktree, ".git")}/**)`,
+      `Edit(/${join(checkout, ".git")})`,
+      `Edit(/${join(checkout, ".git")}/**)`,
       ...SCHEDULING_TOOLS,
     ]);
     expect(inCheckout.sandbox.filesystem.denyWrite).toEqual([join(checkout, ".git")]);
+  });
+
+  test("denies a worker without edit-files the git dir its worktree shares with the checkout", () => {
+    const repo = mkdtempSync(join(tmpdir(), "dim-git-common-"));
+    const git = (cwd: string, ...args: string[]) =>
+      Bun.spawnSync(["git", "-C", cwd, ...args], { stdout: "pipe", stderr: "pipe" });
+    git(repo, "init", "-q", "-b", "main");
+    git(repo, "-c", "user.email=t@e", "-c", "user.name=T", "commit", "-q", "--allow-empty", "-m", "init");
+    git(repo, "worktree", "add", "-q", join(repo, "order"), "-b", "order");
+    const worktree = realpathSync(join(repo, "order"));
+    const checkout = realpathSync(repo);
+
+    const reviewer = settings(claudeArgs({ ...request, cwd: worktree })) as {
+      sandbox: { filesystem: { denyWrite: string[] } };
+    };
+    rmSync(repo, { recursive: true, force: true });
+
+    expect(reviewer.sandbox.filesystem.denyWrite).toEqual([worktree, join(checkout, ".git")]);
   });
 
   test("passes a station's response schema inline, as Claude reads it", () => {

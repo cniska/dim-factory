@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { checkoutGitPath } from "./git-checkout-dir";
+import { checkoutGitPaths } from "./git-checkout-dir";
 import type { HarnessEvent, HarnessRequest } from "./harness";
 import type { HarnessLineParser, HarnessProcess } from "./harness-process";
 import { NETWORK_VARS } from "./station-environment";
@@ -150,9 +150,9 @@ function editDenies(request: HarnessRequest): string[] {
   if (!request.capabilities.includes("edit-files")) {
     return EDIT_TOOLS.flatMap((tool) => deny(tool));
   }
-  const git = checkoutGitPath(request.cwd);
-  if (!git) return [];
-  return EDIT_TOOLS.flatMap((tool) => [...deny(`${tool}(/${git})`), ...deny(`${tool}(/${git}/**)`)]);
+  return checkoutGitPaths(request.cwd).flatMap((git) =>
+    EDIT_TOOLS.flatMap((tool) => [...deny(`${tool}(/${git})`), ...deny(`${tool}(/${git}/**)`)]),
+  );
 }
 
 function grokFlags(request: HarnessRequest): string[] {

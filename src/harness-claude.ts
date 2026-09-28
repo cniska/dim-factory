@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { checkoutGitPath } from "./git-checkout-dir";
+import { checkoutGitPaths } from "./git-checkout-dir";
 import type { HarnessEvent, HarnessRequest, UsageLimit } from "./harness";
 import type { HarnessLineParser, HarnessProcess } from "./harness-process";
 import { dataDir } from "./paths";
@@ -126,14 +126,13 @@ function claudeSettings(request: HarnessRequest, protectedGit: string[]): string
       failIfUnavailable: true,
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: false,
-      filesystem: { denyWrite: edits ? protectedGit : [request.cwd] },
+      filesystem: { denyWrite: edits ? protectedGit : [request.cwd, ...outside(request.cwd, protectedGit)] },
     },
   });
 }
 
-function builderDenials(cwd: string): string[] {
-  const pointer = checkoutGitPath(cwd);
-  return pointer ? [pointer] : [];
+function outside(cwd: string, paths: string[]): string[] {
+  return paths.filter((path) => path !== cwd && !path.startsWith(`${cwd}/`));
 }
 
 function claudeFlags(request: HarnessRequest): string[] {
@@ -147,7 +146,7 @@ function claudeFlags(request: HarnessRequest): string[] {
     "--permission-mode",
     edits ? "acceptEdits" : "default",
     "--settings",
-    claudeSettings(request, edits ? builderDenials(request.cwd) : []),
+    claudeSettings(request, checkoutGitPaths(request.cwd)),
     ...(request.outputSchema ? ["--json-schema", readFileSync(request.outputSchema, "utf8")] : []),
     ...dirs.flatMap((dir) => ["--add-dir", dir]),
     "--model",
