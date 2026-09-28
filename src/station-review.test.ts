@@ -361,6 +361,32 @@ describe("a review round", () => {
     expect((await review(db, operator, dir, answering(reviewOutput()))).outcome).toBe("closed");
   });
 
+  test("names both the harness failure and a cleanup that failed after it", async () => {
+    const { db, worker, operator, dir } = floor();
+    slice(db, dir, worker, "cleanup-review");
+    db.run(`CREATE TRIGGER hold_review BEFORE UPDATE OF outcome ON factory_order_review
+            BEGIN SELECT RAISE(ABORT, 'review row is held'); END`);
+    const adapter = {
+      ...fakeHarness("review"),
+      start: async () => {
+        throw new Error("harness unavailable");
+      },
+    };
+
+    const failure = await runOrderReviewLive(db, "order-1", operator, {
+      dir,
+      harness: "codex",
+      adapter,
+      env: machine,
+    }).then(
+      () => undefined,
+      (error: unknown) => error as Error,
+    );
+    expect(failure?.message).toContain("review row is held");
+    expect(failure?.message).toContain("harness unavailable");
+    expect((failure?.cause as Error | undefined)?.message).toBe("harness unavailable");
+  });
+
   test("a reviewer run that ends before assignment leaves review retryable", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "bootstrap-review");

@@ -287,8 +287,9 @@ export async function runOrderReviewLive(
       try {
         closeOrderReview(db, opened.id, "aborted");
         if (claimed) finishAttempt(db, orderId, "failed", reason, new Date().toISOString());
-      } catch {
-        throw error;
+      } catch (cleanup) {
+        const reason = cleanup instanceof Error ? cleanup.message : String(cleanup);
+        throw new Error(`${reason}; the review failed first: ${failure}`, { cause: error });
       }
     }
     if (!claimed) {
