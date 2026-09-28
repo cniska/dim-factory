@@ -8,7 +8,7 @@ import { openReadOnly } from "./db-read";
 import { diagnose } from "./doctor";
 import { harnessesOnPath, scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
 import { gateHooks, installCommitGate } from "./gate-commit";
-import { installHooks } from "./hooks";
+import { installHooks, wantedHooks } from "./hooks";
 import { codexConfigPath, planCodexTrust } from "./hooks-codex-trust";
 import { agentPlistPath } from "./ingest-launchd";
 import { sync } from "./ingest-sync";
@@ -249,10 +249,40 @@ describe("doctor", () => {
     expect(check(env, "ship method")?.state).toBe("ok");
   });
 
-  test("fails when hooks are installed but have never fired", () => {
+  test("fails the hooks while none are installed, and does not yet expect end reasons", () => {
     const env = seeded();
-    expect(check(env, "end reasons")?.state).toBe("warn");
     expect(check(env, "hooks")?.state).toBe("fail");
+    expect(check(env, "end reasons")).toMatchObject({
+      state: "warn",
+      detail: "not expected yet; the hooks are not installed",
+    });
+  });
+
+  test("fails when hooks are installed but have never fired, until one fires", () => {
+    const env = seeded();
+    installHooks(env);
+    expect(check(env, "hooks")?.state).toBe("ok");
+    expect(check(env, "end reasons")).toMatchObject({
+      state: "fail",
+      detail: "the hooks are installed but have never written an event",
+    });
+
+    const sessionEnd = wantedHooks("claude", env).find((hook) => hook.event === "SessionEnd");
+    execFileSync("/bin/sh", ["-c", sessionEnd?.command ?? "exit 1"], {
+      input: JSON.stringify({
+        session_id: "11111111-2222-3333-4444-555555555555",
+        hook_event_name: "SessionEnd",
+        reason: "exit",
+        cwd: "/Users/x/code/demo",
+      }),
+    });
+    const db = openDb(dbPath(env));
+    sync(db, env);
+    closeDb(db);
+    expect(check(env, "end reasons")).toMatchObject({
+      state: "ok",
+      detail: "no session has both started and finished since the hooks went in",
+    });
   });
 
   test("fails while a codex hook has no trust recorded for its position", () => {
