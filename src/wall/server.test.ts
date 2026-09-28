@@ -104,7 +104,7 @@ describe("factory wall snapshot", () => {
     queueOrder(
       db,
       { id: "order-running", project: "cniska/dim-factory", title: "Show the wall" },
-      worker,
+      attemptOperator,
       "2026-09-18T10:00:00.000Z",
     );
     started(db, "order-running", "2026-09-18T10:00:00.000Z");
@@ -114,7 +114,7 @@ describe("factory wall snapshot", () => {
     queueOrder(
       db,
       { id: "order-blocked", project: "cniska/dim-factory", title: "Unblock the queue" },
-      worker,
+      attemptOperator,
       "2026-09-18T09:00:00.000Z",
     );
     building(db, "order-blocked", "2026-09-18T09:00:00.000Z");
@@ -127,7 +127,7 @@ describe("factory wall snapshot", () => {
     queueOrder(
       db,
       { id: "order-done", project: "cniska/dim-factory", title: "Ship the board" },
-      worker,
+      attemptOperator,
       "2026-09-18T08:00:00.000Z",
     );
     started(db, "order-done", "2026-09-18T08:00:00.000Z");
@@ -202,7 +202,7 @@ describe("factory wall snapshot", () => {
         title: "Show the description",
         description: "A human-facing explanation of the requested outcome.",
       },
-      worker,
+      attemptOperator,
     );
     started(db, "order-described");
 
@@ -221,14 +221,14 @@ describe("factory wall snapshot", () => {
     queueOrder(
       db,
       { id: "order-started", project: "cniska/dim-factory", title: "Wait for a planner" },
-      worker,
+      attemptOperator,
       "2026-09-18T10:00:00.000Z",
     );
     started(db, "order-started", "2026-09-18T10:00:00.000Z");
     queueOrder(
       db,
       { id: "order-waiting", project: "cniska/dim-factory", title: "Wait to be started" },
-      worker,
+      attemptOperator,
       "2026-09-18T09:00:00.000Z",
     );
 
@@ -246,7 +246,7 @@ describe("factory wall snapshot", () => {
     queueOrder(
       db,
       { id: "order-gone", project: "cniska/dim-factory", title: "Stop this one" },
-      worker,
+      attemptOperator,
       "2026-09-18T10:00:00.000Z",
     );
     building(db, "order-gone", "2026-09-18T10:00:00.000Z");
@@ -271,11 +271,11 @@ describe("factory wall snapshot", () => {
     queueOrder(
       db,
       { id: "order-quiet", project: "cniska/dim-factory", title: "Go quiet after being started" },
-      worker,
+      attemptOperator,
       "2026-09-18T09:00:00.000Z",
     );
     started(db, "order-quiet", "2026-09-18T09:05:00.000Z");
-    setOrderPriority(db, "order-quiet", "high");
+    setOrderPriority(db, "order-quiet", "high", attemptOperator, "2026-09-18T09:01:00.000Z");
     db.run("UPDATE factory_order SET updated_at = ? WHERE id = ?", [
       "2026-09-18T10:04:00.000Z",
       "order-quiet",
@@ -292,7 +292,7 @@ describe("factory wall snapshot", () => {
     queueOrder(
       db,
       { id: "order-named", project: "cniska/dim-factory", title: "Name the hand that took it" },
-      worker,
+      attemptOperator,
       "2026-09-18T10:00:00.000Z",
     );
 
@@ -318,7 +318,12 @@ describe("factory wall snapshot", () => {
     const db = floor();
     const take = (id: string, called: Role, station: Station) => {
       const hand = workerIn(db, called);
-      queueOrder(db, { id, project: "cniska/dim-factory", title: id }, hand, "2026-09-18T10:00:00.000Z");
+      queueOrder(
+        db,
+        { id, project: "cniska/dim-factory", title: id },
+        attemptOperator,
+        "2026-09-18T10:00:00.000Z",
+      );
       started(db, id, "2026-09-18T10:00:00.000Z");
       startAttempt(
         db,
@@ -347,13 +352,13 @@ describe("factory wall snapshot", () => {
     queueOrder(
       db,
       { id: "order-waiting", project: "cniska/dim-factory", title: "Not started yet" },
-      worker,
+      attemptOperator,
       "2026-09-18T09:00:00.000Z",
     );
     queueOrder(
       db,
       { id: "order-shippable", project: "cniska/dim-factory", title: "Approved at every station" },
-      worker,
+      attemptOperator,
       "2026-09-18T09:00:00.000Z",
     );
     started(db, "order-shippable", "2026-09-18T09:00:00.000Z");
@@ -376,7 +381,7 @@ describe("factory wall snapshot", () => {
     queueOrder(
       db,
       { id: "order-planned", project: "cniska/dim-factory", title: "Plan written" },
-      worker,
+      attemptOperator,
       "2026-09-18T09:00:00.000Z",
     );
     started(db, "order-planned", "2026-09-18T09:00:00.000Z");
@@ -393,7 +398,12 @@ describe("factory wall snapshot", () => {
   test("bounds each status column so shipped work cannot crowd out current work", () => {
     const db = floor();
     const seed = (id: string, kind: "failed" | "shipped") => {
-      queueOrder(db, { id, project: "cniska/dim-factory", title: id }, worker, "2026-09-18T09:00:00.000Z");
+      queueOrder(
+        db,
+        { id, project: "cniska/dim-factory", title: id },
+        attemptOperator,
+        "2026-09-18T09:00:00.000Z",
+      );
       building(db, id, "2026-09-18T09:00:00.000Z");
       if (kind === "shipped") {
         recordOrderCommit(db, id, trunk.sha, worker, "feat: land it", "2026-09-18T09:00:40.000Z");
@@ -486,7 +496,7 @@ describe("factory wall item view", () => {
     queueOrder(
       db,
       { id: "order-worked", project: "cniska/dim-factory", title: "Work an item through" },
-      worker,
+      attemptOperator,
       "2026-09-18T10:00:00.000Z",
     );
     building(db, "order-worked", "2026-09-18T10:00:00.000Z");
@@ -673,7 +683,7 @@ describe("factory wall item view", () => {
     queueOrder(
       db,
       { id: "order-reviewed", project: "cniska/dim-factory", title: "Hand work to a reviewer" },
-      worker,
+      attemptOperator,
       "2026-09-18T10:00:00.000Z",
     );
     building(db, "order-reviewed", "2026-09-18T10:00:00.000Z");
@@ -716,7 +726,7 @@ describe("factory wall item view", () => {
     queueOrder(
       db,
       { id: "order-other", project: "cniska/dim-factory", title: "Work a second item" },
-      worker,
+      attemptOperator,
       "2026-09-18T10:00:00.000Z",
     );
     started(db, "order-other", "2026-09-18T10:01:00.000Z");

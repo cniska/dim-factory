@@ -40,7 +40,7 @@ import {
 import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { assertChecked, failedHeadCheck } from "./order-head-check";
 import { appendOrderEvent } from "./order-ledger";
-import { amendOrder, dropOrder, queueOrder, startOrder } from "./order-lifecycle";
+import { amendOrder, dropOrder, queueOrder, setOrderPriority, startOrder } from "./order-lifecycle";
 import {
   abortStrandedReview,
   closeOrderReview,
@@ -215,7 +215,7 @@ describe("factory order report records", () => {
 
   test("records a plan and leaves the order waiting on its approval", () => {
     const database = db();
-    queueOrder(database, { ...order, id: "order-planned" }, worker);
+    queueOrder(database, { ...order, id: "order-planned" }, attemptOperator);
     start(database, "order-planned");
 
     recordOrderPlan(database, "order-planned", "## outcome\n\nMove the order before building.", worker, [
@@ -635,7 +635,7 @@ describe("factory order report records", () => {
   test("refuses a second build attempt while the first attempt's worker is running", () => {
     const database = db();
     const builder = workerIn(database, "builder");
-    queueOrder(database, { ...order, id: "order-taken" }, worker);
+    queueOrder(database, { ...order, id: "order-taken" }, attemptOperator);
     start(database, "order-taken");
     attemptIn(database, "order-taken", runningBuilder(database), attemptOperator, "run-1");
 
@@ -647,7 +647,7 @@ describe("factory order report records", () => {
 
   test("rejects lifecycle events out of order", () => {
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
 
     expect(() => appendOrderEvent(database, "order-1", { worker, kind: "ship_retried" })).toThrow(
       "order order-1 is queued, so it cannot record ship_retried",
@@ -670,7 +670,7 @@ describe("factory order report records", () => {
     Bun.spawnSync(["git", "-C", repo.dir, "add", "scripts/worktree-teardown.sh"]);
     Bun.spawnSync(["git", "-C", repo.dir, "commit", "-q", "-m", "test: require ship lock through teardown"]);
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     startPlannedBuild(database);
     const wt = orderWorktree(repo.dir, "order-1");
     writeFileSync(join(wt, "ship-slice.txt"), "slice");
@@ -725,7 +725,7 @@ describe("factory order report records", () => {
     Bun.spawnSync(["git", "-C", repo.dir, "add", "scripts/worktree-teardown.sh"]);
     Bun.spawnSync(["git", "-C", repo.dir, "commit", "-q", "-m", "test: fail teardown"]);
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     startPlannedBuild(database);
     const wt = orderWorktree(repo.dir, "order-1");
     writeFileSync(join(wt, "ship-slice.txt"), "slice");
@@ -763,7 +763,7 @@ describe("factory order report records", () => {
     const home = mkdtempSync(join(tmpdir(), "dim-ship-"));
     const env = scratchEnv(home);
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     startPlannedBuild(database);
     const wt = orderWorktree(repo.dir, "order-1");
     writeFileSync(join(wt, "ship-slice.txt"), "slice");
@@ -798,7 +798,7 @@ describe("factory order report records", () => {
     const home = mkdtempSync(join(tmpdir(), "dim-ship-"));
     const env = scratchEnv(home);
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     startPlannedBuild(database);
     const wt = orderWorktree(repo.dir, "order-1");
     writeFileSync(join(wt, "ship-slice.txt"), "slice");
@@ -835,7 +835,7 @@ describe("factory order report records", () => {
     const home = mkdtempSync(join(tmpdir(), "dim-ship-"));
     const env = scratchEnv(home);
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     startPlannedBuild(database);
     const wt = orderWorktree(repo.dir, "order-1");
     const head = () =>
@@ -875,7 +875,7 @@ describe("factory order report records", () => {
     const home = mkdtempSync(join(tmpdir(), "dim-ship-"));
     const env = scratchEnv(home);
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     startPlannedBuild(database);
     completeOrderSlice(database, "order-1", nextOrderSlice(database, "order-1")?.id as number, worker);
 
@@ -922,7 +922,7 @@ describe("factory order report records", () => {
       if (check !== null) declareCheck(repo.dir, check);
       commit(repo.dir, "f.txt", "a\nb\nc\nd\ne\nf\ng\n", "feat: add f");
       const database = db();
-      queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+      queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
       startPlannedBuild(database);
       const wt = orderWorktree(repo.dir, "order-1");
       scenes.push(wt);
@@ -1220,7 +1220,7 @@ describe("factory order report records", () => {
 
     test("an approved review follows a chain of rewrites only while every one kept its patches", () => {
       const database = db();
-      queueOrder(database, order, worker);
+      queueOrder(database, order, attemptOperator);
       startPlannedBuild(database);
       recordOrderCommit(database, "order-1", "a0", worker, "feat: a");
       approveFinalBuildAt(database, "order-1", "a0", worker, attemptOperator);
@@ -1247,7 +1247,7 @@ describe("factory order report records", () => {
 
     test("a conflict run is pending until commits name it, and its resolution does not carry the review", () => {
       const database = db();
-      queueOrder(database, order, worker);
+      queueOrder(database, order, attemptOperator);
       startPlannedBuild(database);
       recordOrderCommit(database, "order-1", "a0", worker, "feat: a");
       approveFinalBuildAt(database, "order-1", "a0", worker, attemptOperator);
@@ -1295,7 +1295,7 @@ describe("factory order report records", () => {
 
   test("refuses an order with no passing check at its last commit", () => {
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     start(database, "order-1", attemptOperator, "2026-09-18T10:01:00.000Z");
     recordOrderCommit(database, "order-1", trunk.sha, worker, "feat: land it", "2026-09-18T10:02:30.000Z");
     recordOrderCheck(database, "order-1", ranCheck({ command: "bun run verify", exitCode: 1 }), trunk.sha);
@@ -1311,7 +1311,7 @@ describe("factory order report records", () => {
 
   test("refuses a check that passed at an earlier commit", () => {
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     start(database, "order-1", attemptOperator, "2026-09-18T10:01:00.000Z");
     recordOrderCheck(database, "order-1", ranCheck({ command: "bun run verify", exitCode: 0 }), "base0000");
     recordOrderCommit(database, "order-1", trunk.sha, worker, "feat: land it", "2026-09-18T10:03:00.000Z");
@@ -1324,7 +1324,7 @@ describe("factory order report records", () => {
 
   test("a later failing check at the last commit outweighs an earlier passing one", () => {
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     start(database, "order-1", attemptOperator, "2026-09-18T10:01:00.000Z");
     recordOrderCommit(database, "order-1", trunk.sha, worker, "feat: land it", "2026-09-18T10:03:00.000Z");
     recordOrderCheck(database, "order-1", ranCheck({ command: "bun run verify", exitCode: 0 }), trunk.sha);
@@ -1339,7 +1339,7 @@ describe("factory order report records", () => {
 
   test("a failure leaves the order started with its next act unchanged, and another attempt can start", () => {
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     startPlannedBuild(database);
     const before = orderState(database, "order-1");
 
@@ -1362,7 +1362,7 @@ describe("factory order report records", () => {
 
   test("refuses evidence for an order that has not started", () => {
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     expect(() =>
       recordOrderFile(database, "order-1", { path: "src/after-stop.ts", added: null, removed: null }, worker),
     ).toThrow("order order-1 is not started");
@@ -1378,7 +1378,7 @@ describe("factory order report records", () => {
 
   test("queues an order, then starting it records the operator who started it", () => {
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     expect(database.query("SELECT project FROM factory_order").get()).toEqual({
       project: "cniska/dim-factory",
     });
@@ -1394,7 +1394,7 @@ describe("factory order report records", () => {
         .all(),
     ).toEqual([]);
     expect(database.query("SELECT kind, worker FROM factory_order_event ORDER BY id").all()).toEqual([
-      { kind: "queued", worker },
+      { kind: "queued", worker: attemptOperator },
       { kind: "started", worker: attemptOperator },
     ]);
     expect(orderState(database, "order-1")).toEqual({ station: "plan", next: "run" });
@@ -1403,7 +1403,7 @@ describe("factory order report records", () => {
 
   test("refuses to start an order twice or after it shipped", () => {
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     start(database, "order-1");
 
     expect(() => start(database, "order-1")).toThrow(expect.objectContaining({ code: "order_not_queued" }));
@@ -1418,7 +1418,7 @@ describe("factory order report records", () => {
 
   test("a file changed by two slices is one row carrying both slices' lines", () => {
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     start(database, "order-1", attemptOperator, "2026-09-18T10:01:00.000Z");
     recordOrderFile(
       database,
@@ -1460,7 +1460,7 @@ describe("factory order report records", () => {
 
   test("stores normalized evidence and reads the shipped status from the landed run", () => {
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     start(database, "order-1", attemptOperator, "2026-09-18T10:01:00.000Z");
     recordOrderCommit(database, "order-1", trunk.sha, worker, "feat: order", "2026-09-18T10:02:00.000Z");
     recordOrderFile(
@@ -1527,7 +1527,7 @@ describe("factory order report records", () => {
 
   test("attaches a worktree's setup and teardown reports to the order", () => {
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     start(database, "order-1", attemptOperator, "2026-09-18T10:01:00.000Z");
     recordOrderEnvironment(database, "order-1", setupReport, "2026-09-18T10:02:00.000Z");
     recordOrderEnvironment(database, "order-1", teardownReport, "2026-09-18T10:07:00.000Z");
@@ -1575,7 +1575,7 @@ describe("factory order report records", () => {
     Bun.spawnSync(["git", "-C", repo.dir, "add", "scripts/worktree-setup.sh"]);
     Bun.spawnSync(["git", "-C", repo.dir, "commit", "-q", "-m", "test: declare setup"]);
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
 
     startOrder(database, "order-1", attemptOperator, "2026-09-18T10:01:00.000Z", repo.dir);
 
@@ -1600,7 +1600,7 @@ describe("factory order report records", () => {
 
   test("rejects lifecycle events after an order reaches a terminal status", () => {
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     start(database, "order-1", attemptOperator, "2026-09-18T10:00:30.000Z");
     landed(database, "order-1", "2026-09-18T10:00:40.000Z");
     recordShipRun(database, "order-1", { outcome: "landed" }, "2026-09-18T10:01:00.000Z");
@@ -1617,7 +1617,7 @@ describe("factory order report records", () => {
 
   test("rolls back an event when projecting it fails", () => {
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     database.run(
       `CREATE TRIGGER reject_order_projection BEFORE UPDATE ON factory_order
        BEGIN SELECT RAISE(ABORT, 'projection rejected'); END`,
@@ -1633,7 +1633,7 @@ describe("factory order report records", () => {
 
   test("rolls back evidence when its lifecycle event cannot project", () => {
     const database = db();
-    queueOrder(database, order, worker, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     start(database);
     database.run(
       `CREATE TRIGGER reject_order_evidence_projection BEFORE UPDATE ON factory_order
@@ -1656,12 +1656,11 @@ describe("factory order report records", () => {
     const home = mkdtempSync(join(tmpdir(), "dim-order-"));
     const environment = { HOME: home, DIM_HOME: home };
     const database = openDb(dbPath(environment));
-    const hand = workerIn(database);
     attemptOperator = mintWorker(database, {
       role: "operator",
       sessionId: newWorkerSession("rebuild-operator"),
     }).name;
-    queueOrder(database, order, hand, "2026-09-18T10:00:00.000Z");
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
     start(database, "order-1", attemptOperator, "2026-09-18T10:01:00.000Z");
     recordOrderEnvironment(database, "order-1", teardownReport, "2026-09-18T10:02:00.000Z");
     closeDb(database);
@@ -1680,7 +1679,7 @@ describe("factory order report records", () => {
 
   test("refuses to start an order while the floor is stopped, leaving it queued", () => {
     const database = db();
-    queueOrder(database, order, worker);
+    queueOrder(database, order, attemptOperator);
     pullStop(database, { reason: "the commit gate records nothing", by: attemptOperator });
 
     expect(() => start(database)).toThrow(FactoryStopError);
@@ -1691,7 +1690,7 @@ describe("factory order report records", () => {
 
   test("starts an order once the stop is cleared", () => {
     const database = db();
-    queueOrder(database, order, worker);
+    queueOrder(database, order, attemptOperator);
     pullStop(database, { reason: "the commit gate records nothing", by: attemptOperator });
     clearStop(database, attemptOperator);
 
@@ -1703,7 +1702,7 @@ describe("factory order report records", () => {
 
   test("lets an order already running record and ship while the floor is stopped", () => {
     const database = db();
-    queueOrder(database, order, worker);
+    queueOrder(database, order, attemptOperator);
     start(database);
     pullStop(database, { reason: "the commit gate records nothing", by: attemptOperator });
 
@@ -1716,9 +1715,9 @@ describe("factory order report records", () => {
 
   test("drops a queued order, leaving dropped as a terminal status with its reason", () => {
     const database = db();
-    queueOrder(database, order, worker);
+    queueOrder(database, order, attemptOperator);
 
-    dropOrder(database, "order-1", "superseded by other work", worker);
+    dropOrder(database, "order-1", "superseded by other work", attemptOperator);
 
     expect(orderStatus(database, "order-1")).toBe("dropped");
     expect(database.query("SELECT reason FROM factory_order_event WHERE kind = 'dropped'").get()).toEqual({
@@ -1733,11 +1732,11 @@ describe("factory order report records", () => {
 
   test("refuses to drop an order while its build attempt is running", () => {
     const database = db();
-    queueOrder(database, order, worker);
+    queueOrder(database, order, attemptOperator);
     start(database);
     attemptIn(database, "order-1", runningBuilder(database), attemptOperator);
 
-    expect(() => dropOrder(database, "order-1", "too late", worker)).toThrow(
+    expect(() => dropOrder(database, "order-1", "too late", attemptOperator)).toThrow(
       expect.objectContaining({ code: "order_held_by_run" }),
     );
     database.close();
@@ -1745,11 +1744,11 @@ describe("factory order report records", () => {
 
   test("drops a started order with no running attempt and keeps its worktree", () => {
     const database = db();
-    queueOrder(database, order, worker);
+    queueOrder(database, order, attemptOperator);
     start(database);
     attemptIn(database, "order-1", worker, attemptOperator);
 
-    dropOrder(database, "order-1", "already on trunk", worker);
+    dropOrder(database, "order-1", "already on trunk", attemptOperator);
 
     expect(orderStatus(database, "order-1")).toBe("dropped");
     expect(existsSync(worktreePath(trunk.dir, "order-1"))).toBe(true);
@@ -1759,7 +1758,7 @@ describe("factory order report records", () => {
   test("a new build attempt starts once the previous attempt's worker is over", () => {
     const database = db();
     const builder = workerIn(database, "builder");
-    queueOrder(database, { ...order, id: "order-stranded" }, worker);
+    queueOrder(database, { ...order, id: "order-stranded" }, attemptOperator);
     start(database, "order-stranded");
     const holder = runningBuilder(database);
     attemptIn(database, "order-stranded", holder, attemptOperator, "run-1");
@@ -1778,7 +1777,7 @@ describe("factory order report records", () => {
 
   test("an order whose attempt's worker is over can be dropped", () => {
     const database = db();
-    queueOrder(database, { ...order, id: "order-abandoned" }, worker);
+    queueOrder(database, { ...order, id: "order-abandoned" }, attemptOperator);
     start(database, "order-abandoned");
     const holder = runningBuilder(database);
     attemptIn(database, "order-abandoned", holder, attemptOperator);
@@ -1790,11 +1789,31 @@ describe("factory order report records", () => {
     database.close();
   });
 
+  test("refuses a worker that is not the operator the queue, priority, amendment and drop of an order", () => {
+    const database = db();
+    const refused = expect.objectContaining({ code: "worker_not_operator" });
+
+    expect(() => queueOrder(database, order, worker)).toThrow(refused);
+    queueOrder(database, order, attemptOperator);
+    expect(() => setOrderPriority(database, "order-1", "high", worker)).toThrow(refused);
+    expect(() => amendOrder(database, "order-1", { title: "rewritten by a builder" }, worker)).toThrow(
+      refused,
+    );
+    expect(() => dropOrder(database, "order-1", "a builder's reason", worker)).toThrow(refused);
+
+    expect(database.query("SELECT title, priority FROM factory_order WHERE id = 'order-1'").get()).toEqual({
+      title: order.title,
+      priority: "unset",
+    });
+    expect(database.query("SELECT kind FROM factory_order_event").all()).toEqual([{ kind: "queued" }]);
+    database.close();
+  });
+
   test("amends a queued order's title and description", () => {
     const database = db();
-    queueOrder(database, order, worker);
+    queueOrder(database, order, attemptOperator);
 
-    amendOrder(database, "order-1", { title: "A corrected title" });
+    amendOrder(database, "order-1", { title: "A corrected title" }, attemptOperator);
 
     expect(database.query("SELECT title, description FROM factory_order WHERE id = 'order-1'").get()).toEqual(
       { title: "A corrected title", description: null },
@@ -1804,10 +1823,10 @@ describe("factory order report records", () => {
 
   test("refuses to amend an order once it is started", () => {
     const database = db();
-    queueOrder(database, order, worker);
+    queueOrder(database, order, attemptOperator);
     start(database);
 
-    expect(() => amendOrder(database, "order-1", { title: "too late" })).toThrow(
+    expect(() => amendOrder(database, "order-1", { title: "too late" }, attemptOperator)).toThrow(
       expect.objectContaining({ code: "order_not_queued" }),
     );
     database.close();

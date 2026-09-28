@@ -132,19 +132,18 @@ function ship(db: Database, orderId: string, cwd: string, env: Env, worker: stri
 
 const AMEND_FLAGS = ["--title", "--description"];
 
-function amend(db: Database, orderId: string, args: string[]): string {
+function amend(db: Database, orderId: string, args: string[], worker: string): string {
   const given = flags(args, AMEND_FLAGS);
   const title = given.get("--title");
   const description = given.get("--description");
   if (title === undefined && description === undefined) {
     throw fail("amend needs --title or --description; nothing to change is not a call");
   }
-  amendOrder(db, orderId, { title, description });
+  amendOrder(db, orderId, { title, description }, worker);
   return `${orderId} amended`;
 }
 
 function drop(db: Database, orderId: string, args: string[], worker: string): string {
-  assertOperator(db, worker, "drop an order");
   const reason = required(flags(args, ["--reason"]), "--reason");
   dropOrder(db, orderId, reason, worker);
   return `${orderId} is dropped: ${reason}`;
@@ -200,7 +199,7 @@ export function runOrderCommand(
     flags(rest, []);
     return ship(db, orderId, cwd, env, worker, true);
   }
-  if (command === "amend") return amend(db, orderId, rest);
+  if (command === "amend") return amend(db, orderId, rest, worker);
   if (command === "drop") return drop(db, orderId, rest, worker);
   throw new UsageError(`${command} is not an order subcommand`);
 }
