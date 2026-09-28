@@ -18,10 +18,6 @@ export function Card({ className, stopped, ...props }: React.ComponentProps<"art
   return <article className={cn(card({ stopped }), className)} {...props} />;
 }
 
-export function CardContent({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("flex min-w-0 flex-col", className)} {...props} />;
-}
-
 export function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
   return <div className={cn("flex items-center", className)} {...props} />;
 }

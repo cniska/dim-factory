@@ -22,23 +22,15 @@
   --color-danger: #df806f;
   --color-good: #9fb99f;
 
-  /* A role's color is the only color a running card carries, so it is set brighter than the
-     station hues it sits beside: at 13px a desaturated mid-tone is indistinguishable from the
-     body grey, which is what these replaced. Held clear of the warn amber, which means
-     something else. */
+  /* A role's color is the only color a running card carries, so it is set bright: at 13px a
+     desaturated mid-tone is indistinguishable from the body grey, which is what these replaced.
+     Held clear of the warn amber, which means something else. */
   /* The operator is the one hand that runs the line rather than doing the work, so it takes
      the foreground white and every worked role takes a hue. */
   --color-role-operator: #f5f7f8;
   --color-role-planner: #c39fe0;
   --color-role-builder: #7fd7a4;
   --color-role-reviewer: #8ab6f5;
-
-  /* Station hues sit at one lightness so no station reads as louder than another; what
-     ranks a card is its column, not its color. */
-  --color-station-plan: #b49bc7;
-  --color-station-build: #9cb8a9;
-  --color-station-review: #9ba9d0;
-  --color-station-ship: #a9b5c0;
 
   --space-2xs: 2px;
   --space-xs: 4px;
