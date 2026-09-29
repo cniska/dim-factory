@@ -127,8 +127,8 @@ describe("the operator loop", () => {
     approveOrder(db, "loop-order", operator.name, undefined);
 
     const events = db
-      .query<{ kind: string; worker: string; review_id: number | null }, [string]>(
-        "SELECT kind, worker, review_id FROM factory_order_event WHERE order_id = ? ORDER BY id",
+      .query<{ kind: string; worker: string }, [string]>(
+        "SELECT kind, worker FROM factory_order_event WHERE order_id = ? ORDER BY id",
       )
       .all("loop-order");
     expect(

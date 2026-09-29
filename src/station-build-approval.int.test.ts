@@ -77,6 +77,7 @@ describe("build approval integration", () => {
     attemptIn(db, "failed-return-order", builder.name, operator.name, "failing-run");
     appendOrderEvent(db, "failed-return-order", {
       kind: "failed",
+      station: "build",
       worker: builder.name,
       reason: "runner could not complete the attempt",
     });

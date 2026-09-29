@@ -323,8 +323,6 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   session_id            TEXT,
   station               TEXT CHECK (station IN (${STATIONS_SQL})),
   commit_sha            TEXT,
-  check_id              INTEGER,
-  review_id             INTEGER,
   finding_id            INTEGER,
   answer_id             INTEGER REFERENCES factory_order_finding_answer(id) ON DELETE CASCADE,
   artifact_id           INTEGER REFERENCES factory_order_artifact(id) ON DELETE CASCADE,

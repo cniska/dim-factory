@@ -121,7 +121,7 @@ describe("factory wall snapshot", () => {
     appendOrderEvent(
       db,
       "order-blocked",
-      { worker, kind: "failed", reason: "scope unclear" },
+      { worker, kind: "failed", station: "build", reason: "scope unclear" },
       "2026-09-18T09:05:00.000Z",
     );
     queueOrder(
@@ -253,7 +253,7 @@ describe("factory wall snapshot", () => {
     appendOrderEvent(
       db,
       "order-gone",
-      { worker, kind: "failed", reason: "operator stopped" },
+      { worker, kind: "failed", station: "build", reason: "operator stopped" },
       "2026-09-18T10:02:00.000Z",
     );
 
@@ -424,7 +424,12 @@ describe("factory wall snapshot", () => {
         );
         recordShipRun(db, id, { outcome: "landed" }, "2026-09-18T09:01:00.000Z");
       } else {
-        appendOrderEvent(db, id, { worker, kind, reason: `reason-${id}` }, "2026-09-18T09:01:00.000Z");
+        appendOrderEvent(
+          db,
+          id,
+          { worker, kind, station: "build", reason: `reason-${id}` },
+          "2026-09-18T09:01:00.000Z",
+        );
       }
     };
     for (let index = 0; index < 14; index += 1) seed(`failed-${index}`, "failed");

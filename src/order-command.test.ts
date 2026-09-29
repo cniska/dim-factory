@@ -650,7 +650,11 @@ describe("order command", () => {
     queued(database);
     started(database);
 
-    appendOrderEvent(database, "order-1", { kind: "failed", reason: "the check never passed" });
+    appendOrderEvent(database, "order-1", {
+      kind: "failed",
+      station: "build",
+      reason: "the check never passed",
+    });
 
     const snapshot = assembleWallSnapshot(database);
     expect(snapshot.totals).toEqual({ queued: 0, running: 1, shipped: 0 });

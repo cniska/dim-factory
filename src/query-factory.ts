@@ -56,9 +56,8 @@ export const order: Query = {
         db,
         `SELECT 'event' AS section, e.ts AS "when", e.kind, '' AS status,
                 coalesce(a.kind, e.station, '') AS subject,
-                coalesce(e.reason, e.commit_sha, cast(e.check_id AS TEXT),
-                         cast(e.finding_id AS TEXT), cast(e.artifact_id AS TEXT),
-                         cast(e.review_id AS TEXT), '') AS evidence
+                coalesce(e.reason, e.commit_sha, cast(e.finding_id AS TEXT),
+                         cast(e.artifact_id AS TEXT), '') AS evidence
          FROM factory_order_event e
          LEFT JOIN factory_order_artifact a ON a.id = e.artifact_id
          WHERE e.order_id = ? ORDER BY e.id`,

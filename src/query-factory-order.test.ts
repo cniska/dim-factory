@@ -327,7 +327,12 @@ describe("factory order query", () => {
       attemptOperator,
     );
     building(db, "order-blocked");
-    appendOrderEvent(db, "order-blocked", { worker, kind: "failed" });
+    appendOrderEvent(db, "order-blocked", {
+      worker,
+      kind: "failed",
+      station: "build",
+      reason: "the check never passed",
+    });
 
     const result = findQuery("factory")?.run(db, ctx);
     const blocked = boardRow(db, "order-blocked");
@@ -350,6 +355,7 @@ describe("factory order query", () => {
     appendOrderEvent(db, "order-reasoned", {
       worker,
       kind: "failed",
+      station: "build",
       reason: "ambiguous scope",
     });
     expect(boardRow(db, "order-reasoned")).toHaveLength(10);

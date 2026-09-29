@@ -1035,6 +1035,7 @@ describe("builder station", () => {
     recordOrderBuild(db, "returned-builder-order", "The initial Build artifact.", repo.sha, builder.name);
     appendOrderEvent(db, "returned-builder-order", {
       kind: "failed",
+      station: "build",
       worker: builder.name,
       reason: "Artifact needs revision.",
     });

@@ -1,4 +1,5 @@
 import { CodedError } from "./coded-error";
+import type { EvidenceReference } from "./order-events";
 import type { OrderStatus } from "./order-status";
 import type { Station } from "./station";
 
@@ -28,6 +29,37 @@ export type OrderCheckRecord = { id: number; headSha: string | null; exitCode: n
 export type OrderReviewRecord = { id: number; headSha: string };
 
 export type OrderFindingRecord = { id: number; reviewId: number; answered: boolean };
+
+type Written = { ts?: string };
+
+export type OrderEvent = Written &
+  (
+    | { kind: "queued"; worker: string; evidence?: EvidenceReference }
+    | { kind: "started"; worker: string }
+    | { kind: "priority_changed"; worker: string; evidence: EvidenceReference }
+    | { kind: "dropped"; worker: string; reason: string }
+    | { kind: "station_started"; worker: string; station: Station; sessionId?: string }
+    | { kind: "artifact_submitted"; worker: string; artifactId: number }
+    | { kind: "artifact_approved"; worker: string; artifactId: number; reason?: string }
+    | { kind: "artifact_returned"; worker: string; station: Station; artifactId: number; reason: string }
+    | { kind: "commit_created"; worker: string; commitSha: string }
+    | { kind: "finding_raised"; worker: string; findingId: number }
+    | { kind: "finding_answered"; worker: string; findingId: number; answerId: number }
+    | { kind: "ship_retried"; worker: string }
+    | { kind: "failed"; worker?: string; station: Station; reason: string; evidence?: EvidenceReference }
+  );
+
+export type OrderEventColumns = {
+  worker?: string;
+  sessionId?: string;
+  station?: Station;
+  commitSha?: string;
+  findingId?: number;
+  answerId?: number;
+  artifactId?: number;
+  reason?: string;
+  evidence?: EvidenceReference;
+};
 
 export type Order = {
   id: string;

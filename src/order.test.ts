@@ -426,7 +426,7 @@ describe("factory order report records", () => {
     appendOrderEvent(
       database,
       "order-attempts",
-      { kind: "failed", worker: builder, reason: "the check failed" },
+      { kind: "failed", station: "build", worker: builder, reason: "the check failed" },
       "2026-09-22T10:03:00.000Z",
     );
     attemptIn(database, "order-attempts", builder, operator, "build-retry", "2026-09-22T10:04:00.000Z");
@@ -1405,7 +1405,12 @@ describe("factory order report records", () => {
     startPlannedBuild(database);
     const before = orderState(database, "order-1");
 
-    appendOrderEvent(database, "order-1", { worker, kind: "failed", reason: "the check never passed" });
+    appendOrderEvent(database, "order-1", {
+      worker,
+      kind: "failed",
+      station: "build",
+      reason: "the check never passed",
+    });
 
     expect(orderStatus(database, "order-1")).toBe("running");
     expect(orderState(database, "order-1")).toEqual(before);
@@ -1670,9 +1675,9 @@ describe("factory order report records", () => {
     expect(() => appendOrderEvent(database, "order-1", { worker, kind: "started" })).toThrow(
       "order order-1 is already shipped",
     );
-    expect(() => appendOrderEvent(database, "order-1", { worker, kind: "commit_created" })).toThrow(
-      "order order-1 is already shipped",
-    );
+    expect(() =>
+      appendOrderEvent(database, "order-1", { worker, kind: "commit_created", commitSha: "c1" }),
+    ).toThrow("order order-1 is already shipped");
     expect(orderStatus(database, "order-1")).toBe("shipped");
     database.close();
   });

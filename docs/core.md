@@ -65,11 +65,10 @@ The order is the aggregate root. Its events, artifacts, slices, attempts, findin
 ## Record and model
 
 - **Rows stay in the store.** The `*Row` types are private to `order-store.ts`, and one mapping turns rows into the model.
-- **Events: shared columns, references, and typed details.**
-  - **Table:** `factory_order_event` keeps `id`, `order_id`, `ts`, `kind` and `worker`; the two references with foreign keys, `artifact_id` (which the wall and `q order` join on) and `answer_id`, stay columns with their cascades; one `details` JSON holds the rest.
+- **Events keep their columns and take a typed union.**
+  - **Table:** `factory_order_event` keeps a column per field, so the fields stay queryable and `station` keeps its `CHECK`. The dead `check_id` and `review_id` go; `evidence` goes with `provenance` in the cuts.
   - **Actor:** a worker's act names its worker; the factory's own acts name none and read as `factory` in the log. The factory's acts are a station failure and the check, proof and ship run evidence, which stay visible beside the ledger. A commit is the builder's act (see Commits).
-  - **Type:** `OrderEvent` is a union keyed on `kind`, and each kind states whether a worker or the factory writes it. Each kind's details are parsed by one function in `order-contract.ts`, on write and on read. That is plain TypeScript: `zod` is not a dependency, and these small shapes do not need one. `failed` carries `{ reason, turn }`.
-  - **Columns that go:** `session_id`, `station`, `commit_sha`, `finding_id` and `reason` move into details; the dead `check_id` and `review_id`, and `evidence`, go.
+  - **Type:** `OrderEvent` in `order-contract.ts` is a union keyed on `kind`, and each kind states its fields and whether a worker writes it, so an event missing its worker, station or reason does not compile.
 - **Artifacts are a union.** `Plan { slices } | Build { headSha } | Review { reviewId, headSha }`, keyed on `kind`, matching the table's own CHECKs. The `as string` casts go.
 
 ## Errors
@@ -146,7 +145,7 @@ Each cut lands with the SPEC, doc, glossary, query and skill edits it carries.
   - the core's part of "one git runner, one clock".
 - **Features:**
   - order worker assignment cleanup;
-  - order table cleanup. The details JSON and the kept reference columns close it, and the entry is amended in the same commit.
+  - order table cleanup, in part: the dead event columns go, and the entry keeps the rest.
 
 ## Slices
 
@@ -154,7 +153,7 @@ Each slice runs on `main` and deletes the old mechanism in the same commit. `bun
 
 1. **Errors.** `coded-error.ts`, the order module's message map and `fail(code, meta)`, and coded errors printed with their facts by `cli-output.ts`, replacing `OrderNotDone` and `OrderActRefused`. Each later slice moves the throws on the paths it rewrites.
 2. **Admission.** The `Order` model, `loadOrder`, `next`, `admit` and the station's hold on its order replace `orderState`, `assertNext`, `ENTERS` and the `assert*` calls, with admission inside the write.
-3. **Events** [schema]. Shared columns, reference columns and details. The wall's projection and item view, `q order` and `q factory` move in the same slice, and so do the tests that read the dropped columns (`order-finding-state.test.ts`, `station-loop.int.test.ts`, `order-events.test.ts` and `rebuild.test.ts`'s retained rows).
+3. **Events** [schema]. `OrderEvent` as a union keyed on `kind`; the dead `check_id` and `review_id` columns go.
 4. **Commits.** Commit first, judge, reset on refusal; the proof pin and signing go.
 5. **Station run.** `runStation`, then plan, review and build in turn; review reads the whole order.
 6. **Worker binding** [schema].
