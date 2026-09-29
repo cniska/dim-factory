@@ -178,32 +178,6 @@ describe("read path", () => {
     }
   });
 
-  test("chain walks both ways from one session, across a task that was renamed", () => {
-    const db = new Database(":memory:");
-    try {
-      db.run(SCHEMA_SQL);
-      const link = (from: string, to: string, ts: string, title: string) =>
-        db.run(
-          `INSERT INTO handoff_link (to_message, to_session, to_ts, from_message, from_session, from_ts, title)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [`m-${to}`, to, ts, `m-${from}`, from, ts, title],
-        );
-      link("aaa", "bbb", "2026-09-01T10:00:00Z", "# Handoff — first name");
-      link("bbb", "ccc", "2026-09-01T12:00:00Z", "# Handoff — renamed midway");
-      link("ccc", "ddd", "2026-09-01T14:00:00Z", "# Handoff — renamed midway");
-      link("xxx", "yyy", "2026-09-02T10:00:00Z", "# Handoff — renamed midway");
-
-      const result = findQuery("chain")?.run(db, { ...ctx, arg: "ccc" });
-      expect(result?.rows.map((r) => r[1])).toEqual(["aaa → bbb", "bbb → ccc", "ccc → ddd"]);
-      expect(result?.rows[0]?.[4]).toBe("first name");
-
-      const all = findQuery("chain")?.run(db, ctx);
-      expect(all?.denominator).toContain("4 links joined");
-    } finally {
-      db.close();
-    }
-  });
-
   test("prior-art asks for a path rather than answering over everything", () => {
     const db = new Database(":memory:");
     try {
@@ -389,29 +363,6 @@ describe("read path", () => {
     }
   });
 
-  test("resume gives facts for a cold start and the stored next move", () => {
-    const env = seeded();
-    const write = openDb(dbPath(env));
-    write.run(
-      `INSERT INTO factory_handoff (message_id, session_id, role, ts, title, next)
-       VALUES ('handoff-1', ?, 'assistant', '2026-09-01T12:00:00Z', '# Handoff — test', 'Run the next check.')`,
-      [SESSION],
-    );
-    closeDb(write);
-    const db = openReadOnly(dbPath(env));
-    const r = findQuery("resume")?.run(db, { ...ctx, arg: SESSION.slice(0, 8) });
-    const what = (r?.rows ?? []).map((row) => String(row[0]));
-    expect(what).toContain("branch");
-    expect(what).toContain("said");
-    expect(what).toContain("next");
-    expect(r?.note).toContain("Facts only");
-
-    const missing = findQuery("resume")?.run(db, { ...ctx, arg: "zzzzzzzz" });
-    expect(missing?.rows).toEqual([]);
-    expect(missing?.note).toContain("no session starts with");
-    db.close();
-  });
-
   test("session resolves a prefix and says so when it matches nothing", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
@@ -477,10 +428,6 @@ describe("who stopped the agent", () => {
   test("only the owner's own refusal counts as the owner stopping the agent", () => {
     const db = stopped();
     try {
-      const resume = findQuery("resume")?.run(db, { ...ctx, arg: "s1" });
-      expect(resume?.rows.filter((r) => r[0] === "stopped")).toHaveLength(1);
-      expect(String(resume?.rows.find((r) => r[0] === "stopped")?.[1])).toContain("not like that");
-
       const skill = findQuery("skill")?.run(db, { ...ctx, arg: "dim-station-build" });
       expect(skill?.rows[0]?.[6]).toBe(1);
 
@@ -661,9 +608,9 @@ describe("what a query counts of each tool", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
     try {
-      const edits = ["rework", "resume", "exemplars", "fixes", "stale", "corrections", "skill"];
+      const edits = ["rework", "exemplars", "fixes", "stale", "corrections", "skill"];
       const silent = edits.filter((name) => {
-        const arg = name === "resume" ? SESSION.slice(0, 8) : name === "skill" ? "build" : undefined;
+        const arg = name === "skill" ? "build" : undefined;
         const note = findQuery(name)?.run(db, { ...ctx, arg }).note ?? "";
         return !note.includes("Codex");
       });

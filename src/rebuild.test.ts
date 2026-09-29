@@ -62,13 +62,11 @@ describe("absorbing a schema change", () => {
     const { db, env } = scratch();
     fill(db);
     db.run("ALTER TABLE tool_call DROP COLUMN duration_ms");
-    db.run("ALTER TABLE handoff_link DROP COLUMN title");
     expect(columnsOf(db, "tool_call")).not.toContain("duration_ms");
 
     rebuild(db, env);
 
     expect(columnsOf(db, "tool_call")).toContain("duration_ms");
-    expect(columnsOf(db, "handoff_link")).toContain("title");
     db.close();
   });
 

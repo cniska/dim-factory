@@ -14,7 +14,7 @@ I route work by capability: a powerful model for hard design and high-risk revie
 
 ### 1. Scope against what was already done
 
-Before deciding anything, ask the record: where this shape already exists (`dim q prior-art`), what was settled before (`dim q search`), and whether this continues earlier work (`dim q resume`, `dim q chain`).
+Before deciding anything, ask the record: where this shape already exists (`dim q prior-art`) and what was settled before (`dim q search`).
 
 - **Check:** nothing is re-derived that the record already holds.
 - **Factory:** the planner's brief (`dim-plan`).
@@ -49,10 +49,10 @@ The finished work is reviewed one agent per dimension — correctness, tests, ar
 
 ### 6. Hand off
 
-When context runs long, the session writes a handoff. The next one uses `dim q resume <id>` to read its `## Next`.
+When context runs long, the session writes a handoff, and the next session starts from it pasted in.
 
 - **Check:** the next session starts from committed state and a stated next move.
-- **Factory:** the order record and resumed worker sessions replace the handoff; `dim q resume <id>` retrieves a handoff when I need one.
+- **Factory:** the order record and resumed worker sessions replace the handoff.
 
 ### 7. Ship
 

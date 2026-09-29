@@ -1,24 +1,10 @@
 import type { Database } from "bun:sqlite";
-import {
-  CLAUDE_EDITS,
-  CLAUDE_STOPS,
-  claudeOnly,
-  type Query,
-  type QueryContext,
-  scalar,
-  stoppedByOwner,
-  table,
-  toRows,
-  window,
-  windowLine,
-} from "./query";
+import { type Query, type QueryContext, scalar, table, toRows, window, windowLine } from "./query";
 import { SAID } from "./query-search";
 
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/;
 
 const TRANSCRIPT_READING_CHARS = 240;
-const RESUME_STOP_GIST_CHARS = 160;
-const RESUME_RECENT_SAID_CHARS = 200;
 const RUNNING_GLANCE_CHARS = 140;
 
 function passageTime(ref: string): string | undefined {
@@ -219,100 +205,6 @@ export const thread: Query = {
   },
 };
 
-export const resume: Query = {
-  name: "resume",
-  summary: "the factual half of a handoff: branch, files in play, last pushback, last exchange",
-  usage: "dim q resume <id-prefix>",
-  window: "none",
-  run: (db, { arg }) => {
-    if (!arg) {
-      return { denominator: "", columns: ["error"], rows: [["usage: dim q resume <id-prefix>"]] };
-    }
-    const found = table(
-      db,
-      "SELECT id, project, git_branch, last_seen_at FROM session WHERE id LIKE ? || '%' LIMIT 2",
-      [arg],
-    );
-    if (found.length === 0) {
-      return { denominator: "", columns: ["what"], rows: [], note: `no session starts with ${arg}` };
-    }
-    if (found.length > 1) {
-      return { denominator: "", columns: ["what"], rows: [], note: `${arg} matches more than one session` };
-    }
-    const s = found[0] as Record<string, string | null>;
-    const id = s.id as string;
-    const rows: (string | number | null)[][] = [
-      ["branch", s.git_branch ?? "(none recorded)"],
-      ["project", s.project ?? "(none recorded)"],
-      ["last active", s.last_seen_at ?? null],
-    ];
-
-    const handoff = table(
-      db,
-      `SELECT next FROM factory_handoff
-       WHERE session_id = ? AND role = 'assistant'
-       ORDER BY ts DESC LIMIT 1`,
-      [id],
-    )[0];
-    if (handoff) rows.push(["next", handoff.next as string]);
-
-    for (const f of table(
-      db,
-      `SELECT file_path, count(*) AS edits, max(ts_call) AS last_edit
-       FROM tool_call
-       WHERE session_id = ? AND tool_name IN ('Edit','Write') AND file_path IS NOT NULL
-       GROUP BY file_path ORDER BY last_edit DESC LIMIT 8`,
-      [id],
-    )) {
-      rows.push(["edited", `${f.file_path} (${f.edits})`]);
-    }
-
-    for (const f of table(
-      db,
-      `SELECT tool_name, count(*) AS failures FROM tool_call
-       WHERE session_id = ? AND is_error = 1 GROUP BY tool_name ORDER BY failures DESC LIMIT 3`,
-      [id],
-    )) {
-      rows.push(["failed", `${f.tool_name} × ${f.failures}`]);
-    }
-
-    for (const p of table(
-      db,
-      `SELECT substr(ts, 1, 16) AS ts, replace(substr(coalesce(user_feedback, text, ''), 1, ${RESUME_STOP_GIST_CHARS}), char(10), ' ') AS said
-       FROM message
-       WHERE session_id = ? AND role = 'user' AND ${stoppedByOwner("")}
-       ORDER BY ts DESC LIMIT 3`,
-      [id],
-    )) {
-      rows.push(["stopped", `${p.ts} ${p.said}`]);
-    }
-
-    for (const m of table(
-      db,
-      `SELECT * FROM (
-         SELECT substr(ts, 1, 16) AS ts, role,
-                replace(substr(text, 1, ${RESUME_RECENT_SAID_CHARS}), char(10), ' ') AS said
-         FROM message
-         WHERE session_id = ? AND text IS NOT NULL AND is_skill_body = 0 AND is_meta = 0
-         ORDER BY ts DESC LIMIT 6
-       ) ORDER BY ts`,
-      [id],
-    )) {
-      rows.push(["said", `${m.ts} ${m.role}: ${m.said}`]);
-    }
-
-    return {
-      denominator: `session ${id}`,
-      columns: ["what", "detail"],
-      rows,
-      note:
-        "Facts only. The next move is the handoff text written in that session; no move is inferred here. " +
-        "Run `dim sync` first if the session is still open, since only written bytes are read. " +
-        claudeOnly(CLAUDE_EDITS, CLAUDE_STOPS),
-    };
-  },
-};
-
 export const running: Query = {
   name: "running",
   summary: "sessions and subagents active in the last few minutes, and what each is doing",
@@ -354,85 +246,6 @@ export const running: Query = {
           ? `nothing active in the last ${minutes} minutes — run \`dim sync\` first, since only bytes already read are here`
           : "A subagent's rows are its own transcript, not its report to the parent. This is as fresh as the " +
             "last `dim sync`: nothing here watches a file.",
-    };
-  },
-};
-
-export const chain: Query = {
-  name: "chain",
-  summary: "sessions that continued one another through a handoff, longest chain first",
-  usage: "dim q chain [id-prefix]",
-  window: "history",
-  run: (db, ctx) => {
-    const { arg } = ctx;
-    if (arg) {
-      const columns = ["step", "session", "ran", "gap_min", "title"];
-      const records = table(
-        db,
-        `WITH RECURSIVE back(from_session, to_session, to_ts, from_ts, title) AS (
-           SELECT from_session, to_session, to_ts, from_ts, title FROM handoff_link
-           WHERE to_session LIKE ? || '%'
-           UNION
-           SELECT l.from_session, l.to_session, l.to_ts, l.from_ts, l.title
-           FROM handoff_link l JOIN back b ON l.to_session = b.from_session
-         ),
-         forward(from_session, to_session, to_ts, from_ts, title) AS (
-           SELECT from_session, to_session, to_ts, from_ts, title FROM handoff_link
-           WHERE from_session LIKE ? || '%'
-           UNION
-           SELECT l.from_session, l.to_session, l.to_ts, l.from_ts, l.title
-           FROM handoff_link l JOIN forward f ON l.from_session = f.to_session
-         ),
-         edge AS (SELECT * FROM back UNION SELECT * FROM forward)
-         SELECT row_number() OVER (ORDER BY to_ts) AS step,
-                substr(from_session, 1, 8) || ' → ' || substr(to_session, 1, 8) AS session,
-                substr(to_ts, 1, 16) AS ran,
-                cast((julianday(to_ts) - julianday(from_ts)) * 1440 AS INTEGER) AS gap_min,
-                ltrim(replace(title, '# Handoff', ''), ' —') AS title
-         FROM edge ORDER BY to_ts`,
-        [arg, arg],
-      );
-      return {
-        denominator: `the chain ${arg} sits in: ${records.length} links`,
-        columns,
-        rows: toRows(records, columns),
-        note:
-          records.length === 0
-            ? `no handoff joins ${arg} to another session; \`dim q resume ${arg}\` has what it left`
-            : "`gap_min` is the wait between a handoff being printed and pasted, not work. The walk " +
-              "follows the edge, not the title, so it crosses a task that was renamed midway, and it " +
-              "branches where one handoff was pasted into two sessions. A chain breaks where the " +
-              "writing session's transcript was pruned before it was read.",
-      };
-    }
-
-    const columns = ["links", "first", "last", "title"];
-    const w = window("to_ts", ctx, "WHERE");
-    const records = table(
-      db,
-      `SELECT count(*) AS links,
-              substr(min(from_ts), 1, 10) AS first,
-              substr(max(to_ts), 1, 10) AS last,
-              ltrim(replace(title, '# Handoff', ''), ' —') AS title
-       FROM handoff_link${w.sql}
-       GROUP BY title ORDER BY links DESC, last DESC LIMIT 30`,
-      w.params,
-    );
-    const links = scalar(db, "SELECT count(*) AS n FROM handoff_link");
-    const pasted = scalar(
-      db,
-      `SELECT count(*) AS n FROM message WHERE role = 'user' AND text LIKE '%# Handoff%' AND text LIKE '%## Next%'`,
-    );
-    return {
-      denominator: `${links} links joined, of ${pasted} handoffs pasted into a session (${windowLine(ctx)})`,
-      columns,
-      rows: toRows(records, columns),
-      note:
-        links === 0
-          ? "nothing is joined; `dim sync` builds this table from the transcripts it has read"
-          : "Grouped by the handoff title, which is what the two sides share, so a task renamed midway " +
-            "reads as two chains. A paste with no link means the session that printed it was pruned " +
-            "before its transcript was read.",
     };
   },
 };

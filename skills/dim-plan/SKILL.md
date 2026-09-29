@@ -6,7 +6,7 @@ argument-hint: "<what you are about to build>"
 
 # Plan
 
-A plan written without reading the record re-derives what is already on disk. This machine holds every session it has run, every commit those sessions led to, and every file each commit touched. So the four questions below are queries rather than guesses, and each one can delete a branch of the plan before it is written.
+A plan written without reading the record re-derives what is already on disk. This machine holds every session it has run, every commit those sessions led to, and every file each commit touched. So the questions below are queries rather than guesses, and each one can delete a branch of the plan before it is written.
 
 This is what separates a station from a checklist: the checklist is the same everywhere, and these answers are about this machine.
 
@@ -14,25 +14,23 @@ In a factory order the brief carries only what this skill cannot know: the order
 
 ## Entry contract
 
-Answer all four before proposing an approach.
+Answer each before proposing an approach.
 
 1. **Has this shape been built here before?** `dim q prior-art "<path fragment>"` names every tracked file whose path matches, across the repos on disk, dated by the commits that touched it. Every path it prints opens, so the answer is a file to read rather than a memory. Read the repo column before the file — a repo that was only cloned ranks beside the owner's own — and treat recency and commit count as where to look, never as quality.
 
 2. **Was this already decided?** `dim q search "<words the decision would use>"` matches them over every message anyone said, and each hit names the exchange `dim q thread` reads. A decision already taken is not yours to re-take; find it and say what it settled. Where it comes back empty and only a file sweep will answer, the planner sweeps for itself: it reads the repo under the same fixed question, and a separate hand to search would return a conclusion whose grounds the planner then could not check.
 
-3. **Is this a continuation?** `dim q chain <id-prefix>` gives the sessions either side of one, joined by the handoff between them, and `dim q resume <id-prefix>` gives the branch, the files in play and the last pushback. Work that is mid-chain has a Next already written, and planning over it is how the same thing gets built twice.
-
-4. **Does the earlier conclusion still hold?** `dim q stale <id-prefix>` says how much the code a session touched has moved since it ran. High movement is evidence to re-read what that session concluded, never evidence it was wrong.
+3. **Does the earlier conclusion still hold?** `dim q stale <id-prefix>` says how much the code a session touched has moved since it ran. High movement is evidence to re-read what that session concluded, never evidence it was wrong.
 
 ## Design the change
 
-The four answers are evidence, not the design. Read the project's rules, affected code and owning docs. Define the requested outcome, boundary, invariants and independently verifiable slices from that context and the record's returned facts. Prefer the project's names and existing contracts; give a new concept one owner and one word.
+The answers are evidence, not the design. Read the project's rules, affected code and owning docs. Define the requested outcome, boundary, invariants and independently verifiable slices from that context and the record's returned facts. Prefer the project's names and existing contracts; give a new concept one owner and one word.
 
 Ask the owner only when the choice is genuinely theirs, which is narrower than it feels. It is theirs when the work is hard to reverse, when it is outward-facing, or when it spends something that lands on every session rather than this one. Everything else — which of two shapes, what to name it, what order to slice it in — is settled here and stated, not asked. A question that a query could have answered is a question that should have been a query.
 
 ## Check the plan before acting on it
 
-A plan is cheaper to fix than the code written from it, so it gets the same treatment a slice gets in `dim-build`: one agent at the tier `dim route <harness> reviewer` gives you for the harness you run in, working from a fixed brief, and not the agent that wrote the plan. Give it the plan and what the four queries returned — not the reasoning that got there, or what comes back is agreement.
+A plan is cheaper to fix than the code written from it, so it gets the same treatment a slice gets in `dim-build`: one agent at the tier `dim route <harness> reviewer` gives you for the harness you run in, working from a fixed brief, and not the agent that wrote the plan. Give it the plan and what the queries returned — not the reasoning that got there, or what comes back is agreement.
 
 The brief is these questions:
 
@@ -40,7 +38,7 @@ The brief is these questions:
 - does each slice name the repo's own task as its check, rather than a command assembled by hand
 - does the change imply an input or failure mode that no slice's test exercises
 - does the plan say what the record returned and what that removed, or does it read as though nothing was looked up
-- does anything here ask the owner a question one of the four queries could have answered
+- does anything here ask the owner a question one of the queries could have answered
 - does the design add a function, wrapper, file, column or term the outcome does not need, or give an existing name a second meaning; name the smaller design without it
 - does the plan set aside a defect of the same shape as the one it fixes, when fixing it is in reach of this order
 
@@ -71,7 +69,7 @@ The plan is this station's human-facing artifact. Submit the dimensions this cha
 
 The plan is done when it names the outcome and the dimensions this change needs for approval and execution. It does not repeat dimensions that add no decision or implementation value.
 
-If all four queries came back empty, say that in the plan. An empty record is a fact about the work being new, and it is worth more written down than silently skipped.
+If every query came back empty, say that in the plan. An empty record is a fact about the work being new, and it is worth more written down than silently skipped.
 
 ## See also
 

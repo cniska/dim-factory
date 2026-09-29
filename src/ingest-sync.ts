@@ -10,7 +10,6 @@ import { SESSION_SOURCES, type SessionSource } from "./ingest-sources";
 import { applyHookEvents, type DrainReport, drainSpool } from "./ingest-spool";
 import type { Tool } from "./ingest-tools";
 import type { Env } from "./paths";
-import { backfillHandoffs, type HandoffLinkReport, linkHandoffs } from "./recall-handoff";
 import { indexRepoFiles, type RepoFileReport } from "./repo-files";
 
 export type SyncReport = {
@@ -24,7 +23,6 @@ export type SyncReport = {
   git: GitReport;
   repoFiles: RepoFileReport;
   guidance: GuidanceReport;
-  chain: HandoffLinkReport;
   walk: WalkReport;
 };
 
@@ -48,7 +46,6 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     git: { repos: 0, commits: 0, files: 0 },
     repoFiles: { repos: 0, files: 0 },
     guidance: { files: 0, versions: 0 },
-    chain: { pasted: 0, linked: 0 },
     walk: drainWalk(db, env),
   };
 
@@ -97,8 +94,6 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
   report.git = ingestCommits(db);
   report.repoFiles = indexRepoFiles(db);
   report.guidance = ingestGuidance(db, env);
-  backfillHandoffs(db);
-  report.chain = linkHandoffs(db);
   return report;
 }
 
@@ -315,8 +310,6 @@ export function rebuild(db: Database, env: Env = process.env): RebuildReport {
     db.run("DROP TABLE IF EXISTS commit_file");
     db.run("DROP TABLE IF EXISTS repo_file");
     db.run("DROP TABLE IF EXISTS repo_commit");
-    db.run("DROP TABLE IF EXISTS handoff_link");
-    db.run("DROP TABLE IF EXISTS factory_handoff");
     db.run(SCHEMA_SQL);
     restoreFactoryOrders();
     const restoreHook = db.prepare<

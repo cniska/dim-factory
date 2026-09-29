@@ -90,7 +90,7 @@ describe("the diagnostic trace", () => {
     db.run("INSERT INTO schema_version (version) VALUES (?)", [SCHEMA_VERSION]);
     db.close();
 
-    trace({ event: "query.completed", command: "q", name: "chain" }, env);
+    trace({ event: "query.completed", command: "q", name: "thread" }, env);
     expect(rows(env)).toHaveLength(1);
   });
 
@@ -114,7 +114,7 @@ describe("the diagnostic trace", () => {
     const env = scratch();
     expect(() =>
       trace(
-        { event: "query.completed", command: "q", name: "chain" },
+        { event: "query.completed", command: "q", name: "thread" },
         { ...env, DIM_HOME: "/nowhere/at/all" },
       ),
     ).not.toThrow();

@@ -42,7 +42,6 @@ Each entry is one change. [schema] entries change the schema and run with nothin
 - Does an unattended run push, or commit locally?
 - Does the wall become where the owner reads artifacts and approves, rather than only watches?
 - Is `dim` for one owner, or for teams with several?
-- Sunset handoffs once the factory is live? An order and its resumed worker replace the next move a handoff carries.
 - Repo identity is `project`, `repo` and `label`, sometimes a path and sometimes owner/repo, and `finding.repo`'s comment prescribes a join that returns nothing. "Finding" names review findings, checking-agent findings and measurements; "trunk" and "default branch" name one thing; an attempt's `run_id` shadows the ship run; the glossary lacks repo, checkout, round, assignment, brief, runner and runner barrier. Which words?
 - Are `finding` and `factory_order_finding` one concept? `q findings` reads only the first.
 
