@@ -20,7 +20,7 @@ The factory aims to give each project the conditions that let its owner delegate
 - **Skills.** Shared, task-specific procedures guide planning, building, review and audit. [`dim-setup`](../.agents/skills/dim-setup/SKILL.md) installs them for use from other projects.
 - **Style guide.** The project's conventions and examples show what its code and docs should look like: names, file boundaries, API patterns and writing. Formatting is one enforceable part; reviewers judge conventions that tools cannot decide. [Google's style guide overview](https://github.com/google/styleguide/blob/gh-pages/README.md) uses the term for conventions ranging from names to design choices.
 
-Setup already installs the shared controls, while each project still supplies its declared check and local conventions. [`dim adopt`](todo.md) is planned to establish the project baseline in one step. An audit reports codebase quality problems; fixing them remains work with its own evidence and approvals.
+Setup installs the shared controls, while each project supplies its declared check and local conventions. An audit reports codebase quality problems; fixing them remains work with its own evidence and approvals.
 
 ## The line
 
@@ -126,7 +126,7 @@ A station asks for capabilities, never a harness's flags ([`src/worker-capabilit
 
 - The workspace profile ([`src/workspace.ts`](../src/workspace.ts)) names the checkout's languages, package managers, workspace members, tasks, compose services and the variable names a sample env file declares — never a value.
 - The repository's setup and teardown hooks own every side effect ([`worktrees.md`](worktrees.md)); `dim` records what they report against the order.
-- A repository states no isolation strategy today, so the profile reports none; how one would is the owner's call ([`todo.md`](todo.md)).
+- A repository states no isolation strategy, so the profile reports none.
 
 ## Record
 
@@ -136,7 +136,7 @@ While the factory is being built, `DIM_HOME=<dir> bun run factory:reset -- --con
 
 ## Scheduling
 
-`dim schedule define|pause|resume` and `dim q schedules` keep interval schedules. A host — launchd, cron, a harness — only invokes `dim`; starting work from a schedule is not built ([`todo.md`](todo.md)).
+`dim schedule define|pause|resume` and `dim q schedules` keep interval schedules. A host — launchd, cron, a harness — only invokes `dim`.
 
 ## Borrowed from the assembly line
 

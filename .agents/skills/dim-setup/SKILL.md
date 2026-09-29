@@ -27,7 +27,7 @@ Use the doctor's findings to choose only the needed installers. Preview each bef
 - `dim install-commit-gate --owner=<host>/<account>` for the owner's verified remote scope. Do not infer that scope from an unrelated clone.
 - `dim install-agent` on macOS when scheduled sync is wanted. Preview it even when doctor says the agent is loaded, because the plist names this checkout and the installed Bun path. Its written result gives the command to load the launchd agent.
 
-On Linux, run `dim sync` manually until [scheduled sync is built](../../../docs/todo.md); the launchd installer is macOS-specific.
+On Linux, run `dim sync` manually; the launchd installer is macOS-specific.
 
 Apply a previewed installer with `--write` when setup was requested and its scope is understood. Skip an installer that reports everything already installed or unchanged. An occupied skill link pointing to a previous dim checkout can be replaced after checking the target and backup in the preview; an unrelated occupied path or owner-specific choice goes to the owner with the exact proposed change. Keep configuration outside dim's planned change intact. If a loaded launchd job's plist changed, use the installer's returned remove command before its load command, then inspect the loaded job; writing the plist alone does not restart it.
 
