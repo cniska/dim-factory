@@ -26,7 +26,7 @@ Readiness: `scripts/verify-dim.sh <run> doctor` reports the schema, `hooks` inst
 The scripted harness answers each station the way a worker would: the planner returns two slices, the builder writes `built-by-scripted-harness-<n>.txt` and a commit subject per slice with the Build artifact on the last, and the reviewer raises no findings. One order from queue to ship:
 
 ```sh
-scripts/verify-dim.sh "$run" order add greet --title "Greet"
+scripts/verify-dim.sh "$run" order add greet --title "Greet" --line feat
 scripts/verify-dim.sh "$run" order plan greet --harness codex
 scripts/verify-dim.sh "$run" order approve greet
 scripts/verify-dim.sh "$run" order build greet --harness codex
