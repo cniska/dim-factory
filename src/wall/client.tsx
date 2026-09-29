@@ -2,8 +2,8 @@ import { CircleAlert, CircleCheck, CircleDot, CircleX, type LucideIcon, Radio, X
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { OrderLine } from "../order-line";
-import { age } from "../query-age";
 import type { Role } from "../worker-roles";
+import { age } from "./age";
 import { ordersByStatus, STATION_LABELS, WALL_COLUMNS } from "./board";
 import { Badge } from "./components/ui/badge";
 import { Card, CardFooter } from "./components/ui/card";

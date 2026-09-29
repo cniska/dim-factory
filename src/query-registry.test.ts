@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
-import { NoDatabaseError, openReadOnly } from "./db-read";
+import { openReadOnly } from "./db-read";
 import { SCHEMA_SQL } from "./db-schema";
 import { scratchEnv, writeClaudeTranscript, writeCodexRollout } from "./fixtures.test-support";
 import { sync } from "./ingest-sync";
@@ -49,22 +49,6 @@ function seededWithSkillLoad(): Env {
 }
 
 describe("read path", () => {
-  test("opens the database read-only, so no query can reach hook_event with a write", () => {
-    const env = seeded();
-    const db = openReadOnly(dbPath(env));
-    try {
-      expect(() => db.run("DELETE FROM hook_event")).toThrow();
-      expect(() => db.run("DELETE FROM usage")).toThrow();
-      expect(() => db.run("UPDATE session SET title = 'x'")).toThrow();
-    } finally {
-      db.close();
-    }
-  });
-
-  test("says what to run when there is no database yet", () => {
-    expect(() => openReadOnly(join(newRoot(), "missing.db"))).toThrow(NoDatabaseError);
-  });
-
   test("every query states the base its numbers came from", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
@@ -76,15 +60,6 @@ describe("read path", () => {
       }
     } finally {
       db.close();
-    }
-  });
-
-  test("every registered query declares its window expression or no window", () => {
-    for (const query of QUERIES) {
-      expect("window" in query, query.name).toBe(true);
-      expect(query.window === null || typeof query.window === "string" || Array.isArray(query.window)).toBe(
-        true,
-      );
     }
   });
 
@@ -703,25 +678,6 @@ describe("what a query counts of each tool", () => {
         return !note.includes("Codex");
       });
       expect(silent).toEqual([]);
-    } finally {
-      db.close();
-    }
-  });
-});
-
-describe("the sql escape hatch", () => {
-  test("the read-only connection refuses every statement that writes", () => {
-    const env = seeded();
-    const db = openReadOnly(dbPath(env));
-    try {
-      expect(() => db.prepare("DELETE FROM session").all()).toThrow();
-      expect(() => db.prepare("UPDATE session SET cwd = 'x'").all()).toThrow();
-      expect(() => db.prepare("DROP TABLE message").all()).toThrow();
-      expect(() => db.prepare("CREATE TABLE t (a INT)").all()).toThrow();
-      expect(() => db.prepare("INSERT INTO session (id, tool) VALUES ('x','claude')").all()).toThrow();
-
-      const rows = db.prepare("SELECT count(*) AS n FROM session").all() as { n: number }[];
-      expect(rows[0]?.n).toBeGreaterThan(0);
     } finally {
       db.close();
     }

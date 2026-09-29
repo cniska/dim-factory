@@ -130,7 +130,7 @@ A station asks for capabilities, never a harness's flags ([`src/worker-capabilit
 
 ## Record
 
-Orders, workers, attempts, artifacts, evidence and the ledger live in `factory_*` tables that `dim rebuild` carries through ([`design.md`](design.md#schema)), since nothing can recreate an attempt after the fact. `dim q factory-analytics` derives retries, approval waits, outcomes and verdicts from them.
+Orders, workers, attempts, artifacts, evidence and the ledger live in `factory_*` tables that `dim rebuild` carries through ([`design.md`](design.md#schema)), since nothing can recreate an attempt after the fact.
 
 While the factory is being built, `DIM_HOME=<dir> bun run factory:reset -- --confirm-factory-reset` clears its orders in a named data directory; it refuses the default one.
 
