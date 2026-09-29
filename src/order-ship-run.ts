@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
+import type { Replay, Rewrite } from "./git-rebase-contract";
 import { latestOrderCommit } from "./order-commits";
 import {
   insertOrderEnvironment,
@@ -10,7 +11,6 @@ import {
 import { now } from "./order-ledger";
 import { assertOrderRunning } from "./order-status";
 import type { ShipTeardown } from "./ship-cleanup";
-import type { Replay, Rewrite } from "./ship-rebase";
 
 export type ShipRun = { rebased?: { rewrite: Rewrite; check: OrderCheck } } & (
   | { outcome: "landed" }

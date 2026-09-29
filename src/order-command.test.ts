@@ -456,6 +456,46 @@ describe("order command", () => {
     expect(orderStatus(database, "order-1")).toBe("shipped");
   });
 
+  test("a ship whose rebase git refuses records the rebase's code on its ship run", () => {
+    const database = db();
+    queued(database);
+    atBuild(database);
+    const wt = join(trunk.dir, ".claude", "worktrees", "order-1");
+    writeFileSync(join(wt, "ship-vetoed.txt"), "v");
+    Bun.spawnSync(["git", "-C", wt, "add", "."]);
+    Bun.spawnSync(["git", "-C", wt, "commit", "-q", "-m", "feat: ship-vetoed"]);
+    const sha = Bun.spawnSync(["git", "-C", wt, "rev-parse", "HEAD"], { stdout: "pipe" })
+      .stdout.toString()
+      .trim();
+    recordOrderCommit(database, "order-1", sha, resolveWorker(database, env), "feat: ship-vetoed");
+    approvedAt(database, sha);
+    writeFileSync(join(trunk.dir, "trunk-moved.txt"), "moved");
+    Bun.spawnSync(["git", "-C", trunk.dir, "add", "."]);
+    Bun.spawnSync(["git", "-C", trunk.dir, "commit", "-q", "-m", "feat: move the trunk"]);
+    const hooks = Bun.spawnSync(
+      ["git", "-C", wt, "rev-parse", "--path-format=absolute", "--git-path", "hooks"],
+      {
+        stdout: "pipe",
+      },
+    )
+      .stdout.toString()
+      .trim();
+    mkdirSync(hooks, { recursive: true });
+    const veto = join(hooks, "pre-rebase");
+    writeFileSync(veto, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    try {
+      expect(() => runOrderCommand(database, ["ship", "order-1"], null, wt)).toThrow(
+        expect.objectContaining({ code: "rebase_failed" }),
+      );
+      expect(database.query("SELECT outcome, code FROM factory_order_ship_run").all()).toEqual([
+        { outcome: "refused", code: "rebase_failed" },
+      ]);
+    } finally {
+      rmSync(veto);
+      Bun.spawnSync(["git", "-C", trunk.dir, "reset", "-q", "--hard", "HEAD~1"]);
+    }
+  });
+
   test("a ship run from the trunk checkout still lands the order's branch", () => {
     const database = db();
     queued(database);

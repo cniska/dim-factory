@@ -1,27 +1,8 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { factoryCommitEnv, UNSIGNED } from "./git-identity";
-import { ShipRefusal } from "./ship-refusal";
-import { hooksOutsideTree, nestedRepository } from "./station-build-tree";
-
-export type Replay = { worktree: string; oldBase: string; newBase: string; oldHead: string };
-
-export type Rewrite = Replay & {
-  newHead: string;
-  commits: { from: string; to: string }[];
-  patchEqual: boolean;
-};
-
-export class RebaseConflict extends ShipRefusal {
-  constructor(
-    readonly replay: Replay,
-    readonly paths: string[],
-    readonly stoppedAt: string,
-    message: string,
-  ) {
-    super("ship_rebase_conflict", message);
-  }
-}
+import { fail, type Replay, type Rewrite } from "./git-rebase-contract";
+import { hooksOutsideTree } from "./git-tree";
 
 function git(dir: string, args: string[]): { ok: boolean; out: string; err: string } {
   const run = Bun.spawnSync(["git", "-C", dir, ...UNSIGNED, ...args], {
@@ -34,19 +15,8 @@ function git(dir: string, args: string[]): { ok: boolean; out: string; err: stri
 
 function read(dir: string, args: string[]): string {
   const run = git(dir, args);
-  if (!run.ok) throw new Error(`git ${args.join(" ")} failed in ${dir}: ${run.err}`);
+  if (!run.ok) throw fail("git_failed", { dir, args, stderr: run.err });
   return run.out;
-}
-
-function branchWorktree(root: string, branch: string): string | null {
-  const records = read(root, ["worktree", "list", "--porcelain", "-z"]).split("\0\0");
-  for (const record of records) {
-    const fields = record.split("\0");
-    if (fields.includes(`branch refs/heads/${branch}`)) {
-      return fields.find((field) => field.startsWith("worktree "))?.slice("worktree ".length) ?? null;
-    }
-  }
-  return null;
 }
 
 function commitsIn(dir: string, base: string, head: string): string[] {
@@ -66,9 +36,11 @@ export function patchesEqual(rangeDiff: string): boolean {
 export function restoreBranch(rewrite: Pick<Replay, "worktree" | "oldHead">): void {
   const reset = git(rewrite.worktree, ["reset", "-q", "--hard", rewrite.oldHead]);
   if (!reset.ok) {
-    throw new Error(
-      `the rebase could not be taken back, so ${rewrite.worktree} is not at ${rewrite.oldHead}: ${reset.err}`,
-    );
+    throw fail("rebase_unrestored", {
+      worktree: rewrite.worktree,
+      oldHead: rewrite.oldHead,
+      stderr: reset.err,
+    });
   }
 }
 
@@ -90,8 +62,7 @@ function pathsFrom(worktree: string, args: string[]): string[] {
     stdout: "pipe",
     stderr: "pipe",
   });
-  if (!run.success)
-    throw new Error(`git ${args.join(" ")} failed in ${worktree}: ${run.stderr.toString().trim()}`);
+  if (!run.success) throw fail("git_failed", { dir: worktree, args, stderr: run.stderr.toString().trim() });
   return run.stdout.toString().split("\0").filter(Boolean);
 }
 
@@ -120,12 +91,10 @@ function lines(text: string): string[] {
 
 function linesAt(worktree: string, revision: string, path: string): string[] {
   if (!git(worktree, ["rev-parse", "--verify", "--quiet", `${revision}:${path}`]).ok) return [];
-  const shown = Bun.spawnSync(["git", "-C", worktree, "show", `${revision}:${path}`], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  const args = ["show", `${revision}:${path}`];
+  const shown = Bun.spawnSync(["git", "-C", worktree, ...args], { stdout: "pipe", stderr: "pipe" });
   if (!shown.success)
-    throw new Error(`cannot read ${path} at ${revision}: ${shown.stderr.toString().trim()}`);
+    throw fail("git_failed", { dir: worktree, args, stderr: shown.stderr.toString().trim() });
   return lines(shown.stdout.toString());
 }
 
@@ -155,7 +124,7 @@ export function pathsAddingMarkers(worktree: string, paths: readonly string[]): 
 
 function abortRebase(worktree: string): void {
   const abort = git(worktree, ["rebase", "--abort"]);
-  if (!abort.ok) throw new Error(`the rebase in ${worktree} could not be aborted: ${abort.err}`);
+  if (!abort.ok) throw fail("rebase_unaborted", { worktree, stderr: abort.err });
 }
 
 function replayStep(worktree: string, args: string[]): { done: true } | { conflicts: string[] } {
@@ -176,7 +145,7 @@ function replayStep(worktree: string, args: string[]): { done: true } | { confli
   }
   if (conflicts.length > 0) return { conflicts };
   if (rebaseState(worktree) !== null) abortRebase(worktree);
-  throw new ShipRefusal("ship_rebase_failed", `git could not rebase in ${worktree}: ${run.err}`);
+  throw fail("rebase_failed", { worktree, stderr: run.err });
 }
 
 export function startReplay(worktree: string, onto: string): { done: true } | { conflicts: string[] } {
@@ -202,20 +171,13 @@ export function pairRewrite(replay: Replay): Rewrite {
   const to = commitsIn(worktree, newBase, newHead);
   if (from.length !== to.length) {
     restoreBranch(replay);
-    throw new ShipRefusal(
-      "ship_rebase_unpaired",
-      `the rebase in ${worktree} turned ${from.length} commits into ${to.length}, so no replayed commit can be paired with the one it replaced; the rebase was taken back`,
-    );
+    throw fail("rebase_unpaired", { worktree, from: from.length, to: to.length });
   }
-  const rangeDiff = git(worktree, [
-    "range-diff",
-    "--no-color",
-    `${oldBase}..${oldHead}`,
-    `${newBase}..${newHead}`,
-  ]);
+  const args = ["range-diff", "--no-color", `${oldBase}..${oldHead}`, `${newBase}..${newHead}`];
+  const rangeDiff = git(worktree, args);
   if (!rangeDiff.ok) {
     restoreBranch(replay);
-    throw new Error(`git range-diff could not compare the rebase in ${worktree}: ${rangeDiff.err}`);
+    throw fail("git_failed", { dir: worktree, args, stderr: rangeDiff.err });
   }
   return {
     ...replay,
@@ -225,41 +187,26 @@ export function pairRewrite(replay: Replay): Rewrite {
   };
 }
 
-export function rebaseOntoTrunk(root: string, branch: string, trunk: string, tip: string): Rewrite {
-  const worktree = branchWorktree(root, branch);
-  if (!worktree) {
-    throw new ShipRefusal(
-      "ship_no_worktree",
-      `${branch} is not checked out in any worktree of ${root}, so there is nowhere to rebase it`,
-    );
+export function branchWorktree(root: string, branch: string): string | null {
+  const records = read(root, ["worktree", "list", "--porcelain", "-z"]).split("\0\0");
+  for (const record of records) {
+    const fields = record.split("\0");
+    if (fields.includes(`branch refs/heads/${branch}`)) {
+      return fields.find((field) => field.startsWith("worktree "))?.slice("worktree ".length) ?? null;
+    }
   }
-  const nested = nestedRepository(worktree);
-  if (nested) {
-    throw new ShipRefusal(
-      "ship_nested_repository",
-      `${nested} is a git repository inside ${worktree}, which a rebase there would run git in`,
-    );
-  }
-  if (read(worktree, ["status", "--porcelain"]) !== "") {
-    throw new ShipRefusal(
-      "ship_dirty_worktree",
-      `${worktree} has uncommitted changes, which a rebase of ${branch} would have to carry`,
-    );
-  }
-  const replay: Replay = {
+  return null;
+}
+
+export function replayBase(worktree: string, trunk: string, tip: string): Replay {
+  return {
     worktree,
     oldBase: read(worktree, ["merge-base", `refs/heads/${trunk}`, tip]),
     newBase: read(worktree, ["rev-parse", `refs/heads/${trunk}^{commit}`]),
     oldHead: tip,
   };
-  const step = startReplay(worktree, replay.newBase);
-  if ("conflicts" in step) {
-    throw new RebaseConflict(
-      replay,
-      step.conflicts,
-      stoppedCommit(worktree),
-      `${branch} conflicts with ${trunk} in ${step.conflicts.join(", ")}; ${worktree} is left mid-rebase for the builder to resolve`,
-    );
-  }
-  return pairRewrite(replay);
+}
+
+export function worktreeClean(worktree: string): boolean {
+  return read(worktree, ["status", "--porcelain"]) === "";
 }

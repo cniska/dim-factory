@@ -12,8 +12,9 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { integratedRepo, orderWorktree, repoWithoutTrunk } from "./fixtures.test-support";
-import { type RebaseVerdict, shipBranch } from "./ship";
-import { patchesEqual, RebaseConflict, type Rewrite, rebaseState } from "./ship-rebase";
+import { rebaseState } from "./git-rebase";
+import type { Rewrite } from "./git-rebase-contract";
+import { RebaseConflict, type RebaseVerdict, shipBranch } from "./ship";
 import { ShipRefusal } from "./ship-refusal";
 
 const landRebased = (rewrite: Rewrite): RebaseVerdict => ({ land: rewrite.commits.map((c) => c.to) });
@@ -304,7 +305,7 @@ describe("shipBranch", () => {
     commitFile(dir, "trunk-moved.txt", "moved");
 
     expect(() => ship(wt, "feat-merged", [own, tip])).toThrow(
-      expect.objectContaining({ code: "ship_rebase_unpaired" } satisfies Partial<ShipRefusal>),
+      expect.objectContaining({ code: "rebase_unpaired" }),
     );
     expect(git(dir, ["rev-parse", "refs/heads/feat-merged"]).out).toBe(tip);
   });
@@ -351,9 +352,7 @@ describe("shipBranch", () => {
     const sha = commitFile(wt, "feat-vetoed.txt", "v");
     commitFile(dir, "trunk-moved.txt", "moved");
 
-    expect(() => ship(wt, "feat-vetoed", [sha])).toThrow(
-      expect.objectContaining({ code: "ship_rebase_failed" } satisfies Partial<ShipRefusal>),
-    );
+    expect(() => ship(wt, "feat-vetoed", [sha])).toThrow(expect.objectContaining({ code: "rebase_failed" }));
     expect(git(dir, ["rev-parse", "refs/heads/feat-vetoed"]).out).toBe(sha);
   });
 
@@ -537,41 +536,6 @@ describe("shipBranch", () => {
     expect(() => ship(wt, "feat-h", [strayShaOffBranch, alreadyLandedSha])).toThrow(
       expect.objectContaining({ code: "ship_not_landed" } satisfies Partial<ShipRefusal>),
     );
-  });
-});
-
-describe("patchesEqual", () => {
-  const changed = [
-    "1:  1880911 ! 1:  049c477 feat: change d",
-    "    @@ Commit message",
-    "     ",
-    "      ## f.txt ##",
-    "     @@",
-    "    - a",
-    "    + A",
-    "      b",
-    "      c",
-    "     -d",
-    "2:  1af8184 = 2:  10fe0c1 feat: add g",
-  ].join("\n");
-
-  test("a pair whose patch changed makes the rewrite unequal", () => {
-    expect(patchesEqual(changed)).toBe(false);
-  });
-
-  test("every pair carrying its patch makes the rewrite equal", () => {
-    expect(
-      patchesEqual("1:  1880911 = 1:  049c477 feat: change d\n2:  1af8184 = 2:  10fe0c1 feat: add g"),
-    ).toBe(true);
-  });
-
-  test("a commit dropped or added on one side makes the rewrite unequal", () => {
-    expect(patchesEqual("1:  1880911 < -:  ------- feat: change d")).toBe(false);
-    expect(patchesEqual("-:  ------- > 1:  049c477 feat: change d")).toBe(false);
-  });
-
-  test("output with no pair at all is not read as equal", () => {
-    expect(patchesEqual("")).toBe(false);
   });
 });
 

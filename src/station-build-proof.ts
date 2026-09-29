@@ -1,5 +1,6 @@
 import type { SandboxedCheck } from "./check-sandbox";
-import { checkedTreeRefusal, git, type TreeRefusal } from "./station-build-tree";
+import { git } from "./git-tree";
+import { checkedTreeRefusal, type TreeRefusal } from "./station-build-tree";
 
 function putBack(worktree: string): void {
   const restored = git(worktree, ["reset", "-q", "--hard", "HEAD"]);

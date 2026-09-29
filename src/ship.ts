@@ -1,8 +1,63 @@
 import { primaryCheckout } from "./git-primary-checkout";
+import {
+  branchWorktree,
+  pairRewrite,
+  replayBase,
+  restoreBranch,
+  startReplay,
+  stoppedCommit,
+  worktreeClean,
+} from "./git-rebase";
+import type { Replay, Rewrite } from "./git-rebase-contract";
+import { nestedRepository } from "./git-tree";
 import { reachesTrunk, trunkBranch } from "./git-trunk";
 import { shipMethod } from "./ship-method";
-import { type Rewrite, rebaseOntoTrunk, restoreBranch } from "./ship-rebase";
 import { ShipRefusal } from "./ship-refusal";
+
+export class RebaseConflict extends ShipRefusal {
+  constructor(
+    readonly replay: Replay,
+    readonly paths: string[],
+    readonly stoppedAt: string,
+    message: string,
+  ) {
+    super("ship_rebase_conflict", message);
+  }
+}
+
+function rebaseOntoTrunk(root: string, branch: string, trunk: string, tip: string): Rewrite {
+  const worktree = branchWorktree(root, branch);
+  if (!worktree) {
+    throw new ShipRefusal(
+      "ship_no_worktree",
+      `${branch} is not checked out in any worktree of ${root}, so there is nowhere to rebase it`,
+    );
+  }
+  const nested = nestedRepository(worktree);
+  if (nested) {
+    throw new ShipRefusal(
+      "ship_nested_repository",
+      `${nested} is a git repository inside ${worktree}, which a rebase there would run git in`,
+    );
+  }
+  if (!worktreeClean(worktree)) {
+    throw new ShipRefusal(
+      "ship_dirty_worktree",
+      `${worktree} has uncommitted changes, which a rebase of ${branch} would have to carry`,
+    );
+  }
+  const replay = replayBase(worktree, trunk, tip);
+  const step = startReplay(worktree, replay.newBase);
+  if ("conflicts" in step) {
+    throw new RebaseConflict(
+      replay,
+      step.conflicts,
+      stoppedCommit(worktree),
+      `${branch} conflicts with ${trunk} in ${step.conflicts.join(", ")}; ${worktree} is left mid-rebase for the builder to resolve`,
+    );
+  }
+  return pairRewrite(replay);
+}
 
 export type ShipOutcome = { landed: "already" | "fast_forward" | "rebased" };
 

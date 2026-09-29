@@ -1,10 +1,10 @@
 import type { Database } from "bun:sqlite";
 import type { SandboxedCheck } from "./check-sandbox";
 import { writeTransaction } from "./db";
+import type { Rewrite } from "./git-rebase-contract";
 import { currentOrderCommits } from "./order-commits";
 import { appendOrderEventInTransaction, now } from "./order-ledger";
 import { assertOrderRunning } from "./order-status";
-import type { Rewrite } from "./ship-rebase";
 import type { WorkerHookReport } from "./worker-environment";
 
 export function recordOrderCommit(

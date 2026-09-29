@@ -18,6 +18,7 @@ import {
   scratchEnv,
   workerIn,
 } from "./fixtures.test-support";
+import type { Rewrite } from "./git-rebase-contract";
 import { rebuild } from "./ingest-sync";
 import { admitAct, orderState } from "./order";
 import { approveOrder, returnOrder } from "./order-approval";
@@ -53,7 +54,6 @@ import { isTerminalOrderStatus, orderStatus } from "./order-status";
 import { dbPath } from "./paths";
 import { findQuery } from "./query-registry";
 import * as shipCleanup from "./ship-cleanup";
-import type { Rewrite } from "./ship-rebase";
 import { approveFinalBuildAt, approvePlan, approveReviewAt } from "./station-approvals.test-support";
 import { reviewRange } from "./station-review";
 import { endWorker, mintWorker, newWorkerSession } from "./worker";

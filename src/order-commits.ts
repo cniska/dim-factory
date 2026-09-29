@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { Replay } from "./ship-rebase";
+import type { Replay } from "./git-rebase-contract";
 
 export type OrderCommit = { sha: string; subject: string; recordedAt: string };
 

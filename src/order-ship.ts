@@ -2,16 +2,17 @@ import type { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { CHECK_SANDBOX, runSandboxedCheck } from "./check-sandbox";
+import { CodedError } from "./coded-error";
 import { withLock } from "./db-lock";
+import type { Rewrite } from "./git-rebase-contract";
 import { admitAct } from "./order";
 import { currentOrderCommits } from "./order-commits";
 import { checkRowOf, type OrderCheck } from "./order-evidence";
 import { appendOrderEvent } from "./order-ledger";
 import { recordShipCleanup, recordShipRun, type ShipRun } from "./order-ship-run";
 import { dataDir, type Env } from "./paths";
-import { type RebaseVerdict, type ShipOutcome, shipBranch } from "./ship";
+import { RebaseConflict, type RebaseVerdict, type ShipOutcome, shipBranch } from "./ship";
 import { removeShippedBranch, type ShipCleanup } from "./ship-cleanup";
-import { RebaseConflict, type Rewrite } from "./ship-rebase";
 import { ShipRefusal } from "./ship-refusal";
 import { trunkCheck } from "./workspace-tasks";
 
@@ -27,7 +28,7 @@ function refusal(error: unknown): Exclude<ShipRun, { outcome: "landed" }> {
   }
   return {
     outcome: "refused",
-    code: error instanceof ShipRefusal ? error.code : null,
+    code: error instanceof ShipRefusal || error instanceof CodedError ? error.code : null,
     reason: error instanceof Error ? error.message : String(error),
   };
 }

@@ -13,13 +13,13 @@ import {
   scratchEnv,
   workerIn,
 } from "./fixtures.test-support";
+import { rebaseState } from "./git-rebase";
 import { orderState } from "./order";
 import { finishAttempt, openAttempt } from "./order-attempt";
 import { currentOrderCommits, pendingRebaseConflict, type RecordedConflict } from "./order-commits";
 import { recordOrderCommit } from "./order-evidence";
 import { queueOrder, startOrder } from "./order-lifecycle";
 import { shipOrder } from "./order-ship";
-import { rebaseState } from "./ship-rebase";
 import { approveFinalBuildAt, approvePlan, approveReviewAt } from "./station-approvals.test-support";
 import { commitBuildTurn } from "./station-build-commit";
 import { continueRebaseTurn, reopenRebase } from "./station-build-rebase";
