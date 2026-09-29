@@ -1,42 +1,13 @@
 import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
 import { fail } from "./order-contract";
-import { findingStanding, type OrderFindingAnswer, owesAnswer } from "./order-finding-state";
+import { findingStanding, type OrderFindingAnswer } from "./order-finding-state";
 import { appendOrderEventInTransaction } from "./order-ledger";
 import { openReviewOf } from "./order-review";
 import { assertOrderRunning } from "./order-status";
 import type { ReviewFinding } from "./station-review-artifact";
 
 const now = (): string => new Date().toISOString();
-
-export class BuildTurnRefused extends Error {
-  constructor(
-    readonly code:
-      | "no_declared_check"
-      | "check_redefined"
-      | "empty_artifact"
-      | "builder_committed"
-      | "nested_repository"
-      | "check_failed"
-      | "check_changed_tree"
-      | "no_change"
-      | "commit_refused"
-      | "comment_added"
-      | "attributes_changed"
-      | "rebase_in_progress"
-      | "rebase_mismatch"
-      | "conflict_unresolved"
-      | "worker_not_builder"
-      | "finding_unknown"
-      | "finding_unanswered"
-      | "answer_not_owed"
-      | "proof_missing"
-      | "proof_green",
-    message: string,
-  ) {
-    super(message);
-  }
-}
 
 export function raiseOrderFinding(
   db: Database,
@@ -83,10 +54,10 @@ export function assertFindingAnswersOwed(
   for (const given of answers) {
     const finding = findingStanding(db, given.finding);
     if (finding?.orderId !== orderId) {
-      throw new BuildTurnRefused("finding_unknown", `order ${orderId} has no finding ${given.finding}`);
+      throw fail("finding_unknown", { orderId, finding: given.finding });
     }
-    if (!owesAnswer(finding)) {
-      throw new BuildTurnRefused("answer_not_owed", `finding ${given.finding} is answered ${finding.answer}`);
+    if (finding.answer !== null) {
+      throw fail("finding_answered", { finding: given.finding, answer: finding.answer });
     }
   }
 }
@@ -103,7 +74,7 @@ export function answerOrderFindings(
     .query<{ role: string }, [string]>("SELECT role FROM factory_worker WHERE name = ?")
     .get(worker)?.role;
   if (role !== "builder") {
-    throw new BuildTurnRefused("worker_not_builder", `worker ${worker} is not a builder`);
+    throw fail("worker_not_builder", { worker });
   }
   assertOrderRunning(db, orderId);
   writeTransaction(db, () => {

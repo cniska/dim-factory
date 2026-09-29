@@ -25,6 +25,7 @@ test("checks the commit's parent with only the named tests laid over it, then pu
   const { check, refusal } = proveTests({
     worktree: repo.dir,
     tests: ["fix.test.sh"],
+    base: "HEAD^",
     check: () => {
       seen = { fix: existsSync(join(repo.dir, "fix.ts")), test: existsSync(join(repo.dir, "fix.test.sh")) };
       const ran: SandboxedCheck = {

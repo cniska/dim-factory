@@ -30,7 +30,7 @@ import { approveOrder, returnOrder } from "./order-approval";
 import { completeOrderBuildFollowup, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
 import { openAttempt } from "./order-attempt";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
-import { BuildTurnRefused, raiseOrderFinding } from "./order-finding";
+import { raiseOrderFinding } from "./order-finding";
 import { appendOrderEvent } from "./order-ledger";
 import { queueOrder, startOrder } from "./order-lifecycle";
 import type { OrderLine } from "./order-line";
@@ -484,7 +484,7 @@ describe("builder station", () => {
     test("refuses a fix slice that names no test, committing and staging nothing", async () => {
       const { failure, moved, staged, commits, proofs } = await sliceTurn("unnamed-fix-order", "fix", []);
       expect(failure).toMatchObject({
-        code: "proof_missing",
+        code: "proof_unnamed",
         message: expect.stringContaining("names no test"),
       });
       expect({ moved, staged, commits, proofs }).toEqual({
@@ -503,7 +503,7 @@ describe("builder station", () => {
         { check: "touch checked.txt" },
       );
       expect(failure).toMatchObject({
-        code: "proof_missing",
+        code: "proof_untouched",
         message: expect.stringContaining("names test landed.txt,"),
       });
       expect({ moved, staged, checked, proofs }).toEqual({
@@ -518,7 +518,7 @@ describe("builder station", () => {
       const { failure, moved } = await sliceTurn("deleted-fix-order", "fix", ["proof.sh", "landed.txt"], {
         edit: (worktree) => rmSync(join(worktree, "landed.txt")),
       });
-      expect(failure).toMatchObject({ code: "proof_missing" });
+      expect(failure).toMatchObject({ code: "proof_untouched" });
       expect(moved).toBe(false);
     });
 
@@ -540,7 +540,7 @@ describe("builder station", () => {
 
     test("refuses a feat slice that names a test it did not add or change", async () => {
       const { failure, moved } = await sliceTurn("untouched-feat-order", "feat", ["landed.txt"]);
-      expect(failure).toMatchObject({ code: "proof_missing" });
+      expect(failure).toMatchObject({ code: "proof_untouched" });
       expect(moved).toBe(false);
     });
 
@@ -1995,9 +1995,7 @@ describe("a comment a builder adds", () => {
 
     const refusal =
       "the turn adds a code comment, which cniska/thing bans:\n  a.ts:2\n  built.ts:1\nput the why in a name, a test, or the doc that owns the subject";
-    const cause = error;
-    expect(cause).toBeInstanceOf(BuildTurnRefused);
-    expect(cause).toMatchObject({ code: "comment_added", message: refusal });
+    expect(error).toMatchObject({ code: "comment_added", message: refusal });
     expect(builder.calls.map((call) => call.kind)).toEqual(["start", "resume", "resume"]);
     expect(builder.calls[1]?.brief).toContain(refusal);
     expect(builder.calls[1]?.brief).toContain("before running its check");
@@ -2343,7 +2341,7 @@ describe("a conflict at ship", () => {
         ...options,
         adapter: scriptedBuilder([resolve(["built.txt"])]).adapter,
       }),
-    ).rejects.toMatchObject({ code: "check_failed" });
+    ).rejects.toMatchObject({ code: "rebase_check_failed" });
 
     const retry = scriptedBuilder([resolve(["built.txt", "antidote.txt"])]);
     await runStation(db, "red-conflict-order", buildStation, operator.name, {

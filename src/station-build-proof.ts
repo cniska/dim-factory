@@ -1,6 +1,7 @@
 import type { SandboxedCheck } from "./check-sandbox";
+import type { CodedError } from "./coded-error";
 import { git } from "./git-tree";
-import { checkedTreeRefusal, type TreeRefusal } from "./station-build-tree";
+import { checkedTreeRefusal } from "./station-build-tree";
 
 function putBack(worktree: string): void {
   const restored = git(worktree, ["reset", "-q", "--hard", "HEAD"]);
@@ -11,8 +12,9 @@ function putBack(worktree: string): void {
 export function proveTests(options: {
   worktree: string;
   tests: readonly string[];
+  base: string;
   check: () => SandboxedCheck;
-}): { check: SandboxedCheck; refusal: TreeRefusal | null } {
+}): { check: SandboxedCheck; refusal: CodedError | null } {
   const { worktree } = options;
   try {
     const based = git(worktree, [
@@ -40,7 +42,13 @@ export function proveTests(options: {
     if (!laidTree.ok)
       throw new Error(`the proof could not read the laid tree of ${worktree}: ${laidTree.err}`);
     const check = options.check();
-    return { check, refusal: checkedTreeRefusal(worktree, laidTree.out, check.command) };
+    return {
+      check,
+      refusal: checkedTreeRefusal(worktree, laidTree.out, check.command, {
+        tests: options.tests,
+        base: options.base,
+      }),
+    };
   } finally {
     putBack(worktree);
   }

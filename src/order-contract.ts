@@ -119,6 +119,12 @@ const MESSAGES = {
     `review ${m.reviewId} is closed, so nothing more is recorded against it; \`dim order review\` opens the next round`,
   review_not_its_reviewer: (m: { reviewId: number; reviewer: string | null; worker: string }) =>
     `review ${m.reviewId} belongs to ${m.reviewer}, not ${m.worker}; only the worker that read the diff records against it`,
+  finding_unknown: (m: { orderId: string; finding: number }) =>
+    `order ${m.orderId} has no finding ${m.finding}`,
+  finding_answered: (m: { finding: number; answer: string }) =>
+    `finding ${m.finding} is answered ${m.answer}; a later round raises it again if it still holds`,
+  worker_not_builder: (m: { worker: string }) =>
+    `worker ${m.worker} is not a builder; only the order's builder answers a finding`,
   attempt_not_open: (m: { orderId: string; outcome: string }) =>
     `order ${m.orderId} has no attempt running, so none can finish ${m.outcome}; a station run opens one when its worker starts`,
   order_held_by_run: (m: { orderId: string; worker: string; runId: string; act: string }) =>

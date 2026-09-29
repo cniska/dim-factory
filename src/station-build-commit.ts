@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { CHECK_SANDBOX, runSandboxedCheck, type SandboxedCheck } from "./check-sandbox";
+import type { CodedError } from "./coded-error";
 import { stagedComments } from "./comments-staged";
 import { writeTransaction } from "./db";
 import { commentGateFor } from "./gate-commit";
@@ -19,11 +20,12 @@ import {
   recordOrderFile,
   recordOrderProof,
 } from "./order-evidence";
-import { answerOrderFindings, assertFindingAnswersOwed, BuildTurnRefused } from "./order-finding";
+import { answerOrderFindings, assertFindingAnswersOwed } from "./order-finding";
 import { dataDir, type Env } from "./paths";
 import { proveTests } from "./station-build-proof";
 import { checkedTreeRefusal, nestedRefusal, stagedTree } from "./station-build-tree";
 import type { BuildTurn } from "./station-build-turn";
+import { fail } from "./station-contract";
 import { writeTrace } from "./trace-store";
 import { trunkCheck } from "./workspace-tasks";
 
@@ -40,7 +42,7 @@ function trunkForkPoint(worktree: string): string {
   return base.out;
 }
 
-function changedAttributes(worktree: string, trunk: string): BuildTurnRefused | null {
+function changedAttributes(worktree: string, trunk: string): CodedError | null {
   const listed = git(worktree, ["diff", "--cached", "--name-only", "-z", trunk, "--"]);
   if (!listed.ok) throw new Error(`cannot compare ${worktree} with ${trunk}: ${listed.err}`);
   const changed = listed.out
@@ -48,31 +50,15 @@ function changedAttributes(worktree: string, trunk: string): BuildTurnRefused | 
     .filter((path) => path === ".gitattributes" || path.endsWith("/.gitattributes"));
   if (changed.length === 0) return null;
   git(worktree, ["reset", "-q"]);
-  return new BuildTurnRefused(
-    "attributes_changed",
-    [
-      `the turn changes ${changed.join(", ")}, which decides the files the comment ban reads;`,
-      `restore it, since a change to it lands on ${trunk} before an order is held to it`,
-    ].join("\n"),
-  );
+  return fail("attributes_changed", { changed, trunk });
 }
 
-function addedComments(
-  worktree: string,
-  label: string,
-): { refused: BuildTurnRefused } | { unparsed: string[] } {
+function addedComments(worktree: string, label: string): { refused: CodedError } | { unparsed: string[] } {
   const { found, unparsed } = stagedComments(worktree);
   if (found.length === 0) return { unparsed };
   git(worktree, ["reset", "-q"]);
   return {
-    refused: new BuildTurnRefused(
-      "comment_added",
-      [
-        `the turn adds a code comment, which ${label} bans:`,
-        ...found.map(({ path, line }) => `  ${path}:${line}`),
-        "put the why in a name, a test, or the doc that owns the subject",
-      ].join("\n"),
-    ),
+    refused: fail("comment_added", { label, found }),
   };
 }
 
@@ -80,10 +66,7 @@ function refuseUntouchedTests(worktree: string, tests: readonly string[], proofR
   if (tests.length === 0) {
     if (!proofRequired) return;
     git(worktree, ["reset", "-q"]);
-    throw new BuildTurnRefused(
-      "proof_missing",
-      "a fix order's slice turn names no test; name in tests each test file the slice adds or changes to prove the defect",
-    );
+    throw fail("proof_unnamed", {});
   }
   const listed = git(worktree, [
     "diff",
@@ -100,10 +83,7 @@ function refuseUntouchedTests(worktree: string, tests: readonly string[], proofR
   const untouched = tests.filter((path) => !touched.has(path));
   if (untouched.length === 0) return;
   git(worktree, ["reset", "-q"]);
-  throw new BuildTurnRefused(
-    "proof_missing",
-    `the turn names test ${untouched.join(", ")}, which the slice does not add or change; name only test files the slice adds or changes`,
-  );
+  throw fail("proof_untouched", { tests: untouched });
 }
 
 function lineCount(value: string | undefined): number | null {
@@ -114,17 +94,11 @@ function assertTurnAnswersBrief(turn: BuildTurn, owed: readonly number[]): void 
   const answered = turn.answers.map((one) => one.finding);
   const extra = answered.filter((id, index) => !owed.includes(id) || answered.indexOf(id) !== index);
   if (extra.length > 0) {
-    throw new BuildTurnRefused(
-      "answer_not_owed",
-      `the turn answers finding ${extra.join(", ")}, which its brief did not hand over as work or answers twice`,
-    );
+    throw fail("answer_not_owed", { findings: extra });
   }
   const missing = owed.filter((id) => !answered.includes(id));
   if (missing.length > 0) {
-    throw new BuildTurnRefused(
-      "finding_unanswered",
-      `the turn leaves finding ${missing.join(", ")} unanswered; answer each finding the brief lists as work, fixed or refused`,
-    );
+    throw fail("finding_unanswered", { findings: missing });
   }
 }
 
@@ -140,46 +114,38 @@ export function commitBuildTurn(options: {
   proofRequired: boolean;
   env?: Env;
   checkSandbox?: string[];
-}): { sha: string } | { refused: BuildTurnRefused } {
+}): { sha: string } | { refused: CodedError } {
   const { db, orderId, builder, worktree, turn } = options;
   const env = options.env ?? process.env;
   const governing = trunkCheck(worktree);
   if ("refused" in governing) {
     throw governing.refused === "undeclared"
-      ? new BuildTurnRefused(
-          "no_declared_check",
-          `${governing.trunk} declares no check, so the builder's turn cannot be verified`,
-        )
-      : new BuildTurnRefused(
-          "check_redefined",
-          `the turn redefines ${governing.task.name} in ${governing.task.source}, the check ${governing.trunk} declares; restore it, since a change to the check lands on ${governing.trunk} before an order is checked by it`,
-        );
+      ? fail("no_declared_check", { trunk: governing.trunk })
+      : fail("check_redefined", {
+          task: governing.task.name,
+          source: governing.task.source,
+          trunk: governing.trunk,
+        });
   }
   const declared = governing.task;
   if (options.finalSlice && turn.artifact === "") {
-    throw new BuildTurnRefused("empty_artifact", "the final slice's turn returned an empty Build artifact");
+    throw fail("empty_artifact", {});
   }
   assertTurnAnswersBrief(turn, options.owed);
   assertFindingAnswersOwed(db, orderId, turn.answers);
   if (rebaseInProgress(worktree)) {
-    throw new BuildTurnRefused(
-      "rebase_in_progress",
-      `${worktree} is mid-rebase, and a commit made there would land inside the rebase rather than on the order's branch`,
-    );
+    throw fail("rebase_in_progress", { worktree });
   }
   const recorded = latestOrderCommit(db, orderId);
   const before = head(worktree);
   const base = recorded ? recorded.sha.toLowerCase() : trunkForkPoint(worktree);
   const branch = git(worktree, ["symbolic-ref", "-q", "HEAD"]).out;
   if (branch !== `refs/heads/${orderId}` || !before.startsWith(base)) {
-    throw new BuildTurnRefused(
-      "builder_committed",
-      `worktree HEAD is ${branch || "detached"} at ${before}, not refs/heads/${orderId} at ${base}; the runner commits a turn, so leave changes uncommitted`,
-    );
+    throw fail("builder_committed", { branch: branch || null, head: before, orderId, base });
   }
 
-  const nested = nestedRefusal(worktree);
-  if (nested) throw new BuildTurnRefused(nested.code, nested.message);
+  const nested = nestedRefusal(worktree, null);
+  if (nested) throw nested;
   const trunk = trunkRef(worktree);
   const commentGate = commentGateFor(worktree, trunk, env);
   const checked = stagedTree(worktree);
@@ -212,45 +178,38 @@ export function commitBuildTurn(options: {
   );
   if (!commit.ok) {
     git(worktree, ["reset", "-q"]);
-    return {
-      refused: new BuildTurnRefused("commit_refused", `git refused the commit: ${commit.err || commit.out}`),
-    };
+    return { refused: fail("commit_refused", { stderr: commit.err || commit.out }) };
   }
   let proof: OrderProof | null = null;
-  const refuse = (code: BuildTurnRefused["code"], message: string): BuildTurnRefused => {
+  const refuse = (refusal: CodedError): CodedError => {
     if (proof) recordOrderProof(db, orderId, proof, before);
-    return new BuildTurnRefused(code, message);
+    return refusal;
   };
   try {
     const proved =
-      turn.tests.length === 0 ? null : proveTests({ worktree, tests: turn.tests, check: sandboxedCheck });
+      turn.tests.length === 0
+        ? null
+        : proveTests({ worktree, tests: turn.tests, base: before, check: sandboxedCheck });
     proof = proved && { ...checkRowOf(proved.check), baseSha: before, paths: turn.tests };
-    if (proved?.refusal) {
-      throw refuse(
-        proved.refusal.code,
-        `the proof of ${turn.tests.join(", ")} at ${before} was refused: ${proved.refusal.message}`,
-      );
-    }
+    if (proved?.refusal) throw refuse(proved.refusal);
     if (proved && proved.check.exitCode === 0 && options.proofRequired) {
       throw refuse(
-        "proof_green",
-        [
-          `${proved.check.command} passed at ${before} with only ${turn.tests.join(", ")} laid over it, so the named tests do not fail without the fix:`,
-          proved.check.output,
-        ].join("\n"),
+        fail("proof_green", {
+          command: proved.check.command,
+          base: before,
+          tests: turn.tests,
+          output: proved.check.output,
+        }),
       );
     }
     const check = sandboxedCheck();
     const checkRow = checkRowOf(check);
     if (check.exitCode !== 0) {
       const checkId = recordOrderCheck(db, orderId, checkRow, before);
-      throw refuse(
-        "check_failed",
-        `${check.command} exited ${check.exitCode} in the check sandbox; its output is on check ${checkId}`,
-      );
+      throw refuse(fail("check_failed", { command: check.command, exitCode: check.exitCode, checkId }));
     }
-    const drifted = checkedTreeRefusal(worktree, checked, check.command);
-    if (drifted) throw refuse(drifted.code, drifted.message);
+    const drifted = checkedTreeRefusal(worktree, checked, check.command, null);
+    if (drifted) throw refuse(drifted);
     const sha = head(worktree);
     const numstat = git(worktree, [
       "-c",
@@ -321,27 +280,18 @@ function recordUnchangedTurn(options: {
   check: () => SandboxedCheck;
 }): { sha: string } {
   const { db, orderId, builder, worktree, turn, before } = options;
-  if (!options.recorded)
-    throw new BuildTurnRefused("no_change", "the turn left no change in the worktree to commit");
+  if (!options.recorded) throw fail("no_change", { fixed: [] });
   const fixed = turn.answers.filter((one) => one.answer === "fixed").map((one) => one.finding);
-  if (fixed.length > 0) {
-    throw new BuildTurnRefused(
-      "no_change",
-      `the turn answers finding ${fixed.join(", ")} fixed and left no change in the worktree; refuse a finding that needs no change, with the reason`,
-    );
-  }
+  if (fixed.length > 0) throw fail("no_change", { fixed });
   const check = options.check();
   const checkRow = checkRowOf(check);
   if (check.exitCode !== 0) {
     const checkId = recordOrderCheck(db, orderId, checkRow, before);
     git(worktree, ["reset", "-q"]);
-    throw new BuildTurnRefused(
-      "check_failed",
-      `${check.command} exited ${check.exitCode} in the check sandbox; its output is on check ${checkId}`,
-    );
+    throw fail("check_failed", { command: check.command, exitCode: check.exitCode, checkId });
   }
-  const drifted = checkedTreeRefusal(worktree, stagedTree(worktree), check.command);
-  if (drifted) throw new BuildTurnRefused(drifted.code, drifted.message);
+  const drifted = checkedTreeRefusal(worktree, stagedTree(worktree), check.command, null);
+  if (drifted) throw drifted;
   writeTransaction(db, () => {
     recordOrderCheck(db, orderId, checkRow, before);
     answerOrderFindings(db, orderId, options.runId, turn.answers, builder);

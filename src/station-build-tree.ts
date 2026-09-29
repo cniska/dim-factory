@@ -1,4 +1,6 @@
+import type { CodedError } from "./coded-error";
 import { git, nestedRepository } from "./git-tree";
+import { fail, type Proof } from "./station-contract";
 
 export function stagedTree(worktree: string): string {
   const staged = git(worktree, ["add", "-A"]);
@@ -8,23 +10,19 @@ export function stagedTree(worktree: string): string {
   return tree.out;
 }
 
-export type TreeRefusal = { code: "nested_repository" | "check_changed_tree"; message: string };
-
-export function nestedRefusal(worktree: string): TreeRefusal | null {
+export function nestedRefusal(worktree: string, proof: Proof | null): CodedError | null {
   const nested = nestedRepository(worktree);
-  if (nested === null) return null;
-  return {
-    code: "nested_repository",
-    message: `${nested} is a git repository inside the worktree, which the runner does not stage`,
-  };
+  return nested === null ? null : fail("nested_repository", { nested, act: "stage", proof });
 }
 
-export function checkedTreeRefusal(worktree: string, tree: string, command: string): TreeRefusal | null {
-  const nested = nestedRefusal(worktree);
+export function checkedTreeRefusal(
+  worktree: string,
+  tree: string,
+  command: string,
+  proof: Proof | null,
+): CodedError | null {
+  const nested = nestedRefusal(worktree, proof);
   if (nested) return nested;
   if (stagedTree(worktree) === tree) return null;
-  return {
-    code: "check_changed_tree",
-    message: `the check changed the worktree while it ran, so it did not run over the tree it was handed: ${command}`,
-  };
+  return fail("check_changed_tree", { command, proof });
 }

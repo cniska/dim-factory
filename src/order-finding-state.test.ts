@@ -113,7 +113,7 @@ describe("recording an answer", () => {
     const finding = raised(f);
     answer(f, finding, "fixed");
     expect(() => answer(f, finding, "refused", "build-2")).toThrow(
-      expect.objectContaining({ code: "answer_not_owed" }),
+      expect.objectContaining({ code: "finding_answered" }),
     );
   });
 

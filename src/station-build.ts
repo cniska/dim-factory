@@ -1,9 +1,9 @@
 import type { Database } from "bun:sqlite";
+import type { CodedError } from "./coded-error";
 import { readApprovedPlan } from "./order";
 import { completeOrderBuildFollowup, completeOrderSlice, latestArtifact } from "./order-artifacts";
 import { pendingRebaseConflict, type RecordedConflict } from "./order-commits";
 import type { PlannedSlice } from "./order-contract";
-import type { BuildTurnRefused } from "./order-finding";
 import { type FindingStanding, orderFindingStandings, owesAnswer } from "./order-finding-state";
 import { type FailedCheck, failedHeadCheck } from "./order-head-check";
 import type { Env } from "./paths";
@@ -101,7 +101,7 @@ export function builderBrief(order: BriefedOrder, briefing: BuildBriefing): stri
 
 const COMMIT_CORRECTIONS = 2;
 
-function commitCorrectionBrief(subject: string, refusal: BuildTurnRefused): string {
+function commitCorrectionBrief(subject: string, refusal: CodedError): string {
   return [
     "## Commit refused",
     refusal.code === "comment_added"

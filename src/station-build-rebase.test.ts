@@ -198,7 +198,7 @@ describe("continueRebaseTurn", () => {
   test("refuses a resolution that still carries conflict markers and leaves the rebase where it stopped", () => {
     const { wt, second, turn } = conflicted();
 
-    expect(turn).toThrow(expect.objectContaining({ code: "conflict_unresolved" }));
+    expect(turn).toThrow(expect.objectContaining({ code: "conflict_marked" }));
     expect(rebaseState(wt)).toMatchObject({ origHead: second });
   });
 
@@ -206,7 +206,7 @@ describe("continueRebaseTurn", () => {
     const { wt, recorded, turn } = conflicted();
     git(wt, ["add", "-A"]);
 
-    expect(() => turn()).toThrow(expect.objectContaining({ code: "conflict_unresolved" }));
+    expect(() => turn()).toThrow(expect.objectContaining({ code: "conflict_marked" }));
     expect(reopenRebase(wt, "order-1", recorded)).toEqual(["f.txt"]);
   });
 
@@ -215,14 +215,14 @@ describe("continueRebaseTurn", () => {
     const left = f("D", true).replace("D\n", "D\n=======\nX\n");
     writeFileSync(join(wt, "f.txt"), left);
 
-    expect(() => turn()).toThrow(expect.objectContaining({ code: "conflict_unresolved" }));
+    expect(() => turn()).toThrow(expect.objectContaining({ code: "conflict_marked" }));
   });
 
   test("refuses markers git wrote longer than seven where the repository sets conflict-marker-size", () => {
     const { wt, turn } = conflicted("true", 10);
 
     expect(git(wt, ["show", ":2:f.txt"])).not.toBe("");
-    expect(() => turn()).toThrow(expect.objectContaining({ code: "conflict_unresolved" }));
+    expect(() => turn()).toThrow(expect.objectContaining({ code: "conflict_marked" }));
   });
 
   test("names the stopped commit's paths when the unmerged ones were staged away", () => {
@@ -241,7 +241,7 @@ describe("continueRebaseTurn", () => {
     git(wt, ["add", "-A"]);
 
     expect(reopenRebase(wt, "order-1", recorded)).toEqual(["g.txt"]);
-    expect(() => turn(["g.txt"])).toThrow(expect.objectContaining({ code: "conflict_unresolved" }));
+    expect(() => turn(["g.txt"])).toThrow(expect.objectContaining({ code: "conflict_marked" }));
   });
 
   test("continues a resolution that keeps only the trunk's side but adds a file of its own", () => {
@@ -257,7 +257,7 @@ describe("continueRebaseTurn", () => {
     writeFileSync(join(wt, "f.txt"), f("X"));
 
     expect(() => turn()).toThrow(
-      expect.objectContaining({ code: "conflict_unresolved", message: expect.stringContaining("empty") }),
+      expect.objectContaining({ code: "conflict_emptied", message: expect.stringContaining("empty") }),
     );
     expect(git(wt, ["diff", "--name-only", "--diff-filter=U"])).toBe("f.txt");
   });
@@ -279,11 +279,11 @@ describe("continueRebaseTurn", () => {
     writeFileSync(join(wt, "f.txt"), f("D X", true));
     turn();
     writeFileSync(join(wt, "g.txt"), "trunk g\norder g\n");
-    expect(turn).toThrow(expect.objectContaining({ code: "check_failed" }));
+    expect(turn).toThrow(expect.objectContaining({ code: "rebase_check_failed" }));
     commit(wt, "h.txt", "h", "feat: add h outside the runner");
 
     expect(() => reopenRebase(wt, "order-1", recorded)).toThrow(
-      expect.objectContaining({ code: "rebase_mismatch" }),
+      expect.objectContaining({ code: "rebase_moved" }),
     );
     expect(rebaseState(wt)).toBeNull();
   });
@@ -307,7 +307,7 @@ describe("continueRebaseTurn", () => {
       .get();
     expect(red?.carries).toBe(1);
     expect(refusal).toMatchObject({
-      code: "check_failed",
+      code: "rebase_check_failed",
       message: expect.stringMatching(new RegExp(`^[^\\n]*; its output is on check ${red?.id}$`)),
     });
 
