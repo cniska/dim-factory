@@ -27,7 +27,7 @@ import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { queueOrder, startOrder } from "./order-lifecycle";
 import { runStation } from "./station";
 import { approvePlan } from "./station-approvals.test-support";
-import { ReviewRefused, reviewerBrief, reviewRange, reviewStation } from "./station-review";
+import { reviewerBrief, reviewRange, reviewStation } from "./station-review";
 import { mintWorker } from "./worker";
 import { WORKER_NAME_VAR } from "./worker-name";
 import { worktreePath } from "./worktree";
@@ -572,7 +572,9 @@ describe("a review round", () => {
     slice(db, dir, worker, "a");
     writeFileSync(join(dir, "uncommitted.txt"), "still moving");
 
-    await expect(review(db, operator, dir, answering(reviewOutput()))).rejects.toThrow(ReviewRefused);
+    await expect(review(db, operator, dir, answering(reviewOutput()))).rejects.toThrow(
+      expect.objectContaining({ code: "worktree_dirty" }),
+    );
     expect(db.query("SELECT count(*) AS n FROM factory_order_review").get()).toEqual({ n: 0 });
     expect(
       db.query("SELECT worker, station, reason FROM factory_order_event WHERE kind = 'failed'").get(),

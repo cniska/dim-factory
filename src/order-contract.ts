@@ -110,6 +110,15 @@ const MESSAGES = {
       : `order ${m.orderId} is already ${m.status}; nothing more runs on a ${m.status} order`,
   order_not_queued: (m: { orderId: string; status: string; act: string }) =>
     `order ${m.orderId} is ${m.status} and only a queued order can be ${m.act}; \`dim q order ${m.orderId}\` shows its next act`,
+  review_open: (m: { orderId: string; reviewId: number }) =>
+    `order ${m.orderId} already has review ${m.reviewId} open; a second round waits until it closes`,
+  review_missing: (m: { reviewId: number }) => `no review ${m.reviewId} is recorded`,
+  review_not_open: (m: { orderId: string }) =>
+    `order ${m.orderId} has no review open, and a finding or Review artifact belongs to the round that read the diff`,
+  review_closed: (m: { reviewId: number }) =>
+    `review ${m.reviewId} is closed, so nothing more is recorded against it; \`dim order review\` opens the next round`,
+  review_not_its_reviewer: (m: { reviewId: number; reviewer: string | null; worker: string }) =>
+    `review ${m.reviewId} belongs to ${m.reviewer}, not ${m.worker}; only the worker that read the diff records against it`,
   attempt_not_open: (m: { orderId: string; outcome: string }) =>
     `order ${m.orderId} has no attempt running, so none can finish ${m.outcome}; a station run opens one when its worker starts`,
   order_held_by_run: (m: { orderId: string; worker: string; runId: string; act: string }) =>

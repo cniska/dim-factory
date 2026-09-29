@@ -1,18 +1,10 @@
 import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
 import { writeArtifactInTransaction } from "./order-artifacts";
+import { fail } from "./order-contract";
 import { now } from "./order-ledger";
 import { assertOrderRunning } from "./order-status";
 import { workerIsOver } from "./worker";
-
-export class ReviewNotOpen extends Error {
-  constructor(
-    readonly code: "review_open" | "review_unknown" | "review_closed" | "review_not_its_reviewer",
-    message: string,
-  ) {
-    super(message);
-  }
-}
 
 export function openOrderReview(
   db: Database,
@@ -27,7 +19,7 @@ export function openOrderReview(
         "SELECT id FROM factory_order_review WHERE order_id = ? AND closed_at IS NULL",
       )
       .get(orderId);
-    if (live) throw new ReviewNotOpen("review_open", `order ${orderId} already has review ${live.id} open`);
+    if (live) throw fail("review_open", { orderId, reviewId: live.id });
     const next =
       (db
         .query<{ n: number }, [string]>(
@@ -53,9 +45,9 @@ export function closeOrderReview(
   const row = db
     .query<{ closed_at: string | null }, [number]>("SELECT closed_at FROM factory_order_review WHERE id = ?")
     .get(reviewId);
-  if (!row) throw new ReviewNotOpen("review_unknown", `no review ${reviewId}`);
+  if (!row) throw fail("review_missing", { reviewId });
   if (row.closed_at !== null) {
-    throw new ReviewNotOpen("review_closed", `review ${reviewId} closed at ${row.closed_at}`);
+    throw fail("review_closed", { reviewId });
   }
   db.run("UPDATE factory_order_review SET closed_at = ?, outcome = ? WHERE id = ?", [at, outcome, reviewId]);
 }
@@ -85,16 +77,13 @@ export function recordOrderReviewArtifact(
        WHERE r.order_id = ? ORDER BY r.round DESC LIMIT 1`,
     )
     .get(orderId);
-  if (!review) throw new ReviewNotOpen("review_unknown", `order ${orderId} has no review for an artifact`);
+  if (!review) throw fail("review_not_open", { orderId });
   if (review.reviewer !== worker) {
-    throw new ReviewNotOpen(
-      "review_not_its_reviewer",
-      `review ${review.id} belongs to ${review.reviewer}, not ${worker}`,
-    );
+    throw fail("review_not_its_reviewer", { reviewId: review.id, reviewer: review.reviewer, worker });
   }
   assertOrderRunning(db, orderId);
   if (review.closed_at !== null) {
-    throw new ReviewNotOpen("review_closed", `review ${review.id} is closed`);
+    throw fail("review_closed", { reviewId: review.id });
   }
   return writeTransaction(db, () =>
     writeArtifactInTransaction(

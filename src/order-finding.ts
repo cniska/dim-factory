@@ -1,8 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
+import { fail } from "./order-contract";
 import { findingStanding, type OrderFindingAnswer, owesAnswer } from "./order-finding-state";
 import { appendOrderEventInTransaction } from "./order-ledger";
-import { openReviewOf, ReviewNotOpen } from "./order-review";
+import { openReviewOf } from "./order-review";
 import { assertOrderRunning } from "./order-status";
 import type { ReviewFinding } from "./station-review-artifact";
 
@@ -46,17 +47,10 @@ export function raiseOrderFinding(
 ): number {
   const row = openReviewOf(db, orderId);
   if (!row) {
-    throw new ReviewNotOpen(
-      "review_unknown",
-      `order ${orderId} has no review open, and a finding belongs to the reading that raised it`,
-    );
+    throw fail("review_not_open", { orderId });
   }
   if (row.reviewer !== worker) {
-    throw new ReviewNotOpen(
-      "review_not_its_reviewer",
-      `review ${row.id} was opened for ${row.reviewer}, and a finding is worth only what the hand ` +
-        `that read the diff is worth; ${worker} did not read it`,
-    );
+    throw fail("review_not_its_reviewer", { reviewId: row.id, reviewer: row.reviewer, worker });
   }
   assertOrderRunning(db, orderId);
   return writeTransaction(db, () => {

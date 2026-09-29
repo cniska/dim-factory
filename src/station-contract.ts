@@ -34,6 +34,13 @@ const MESSAGES = {
     `order ${m.orderId} has no worktree at ${m.worktree}; the first \`dim order plan ${m.orderId}\` starts it and makes one`,
   worktree_not_checkout: (m: { orderId: string; worktree: string }) =>
     `order ${m.orderId}'s worktree at ${m.worktree} is not a git checkout, so the builder has no workspace to read; \`dim order drop ${m.orderId}\` ends the order`,
+  not_a_repo: (m: { dir: string }) => `${m.dir} is not a git repo that can be read`,
+  worktree_dirty: (m: { dir: string }) =>
+    `${m.dir} has uncommitted changes, and a round reads a commit: commit them or put them aside`,
+  no_commit: (m: { orderId: string }) =>
+    `order ${m.orderId} recorded no commit, so there is no slice to read; \`dim order build ${m.orderId}\` commits one`,
+  head_unrecorded: (m: { orderId: string; head: string }) =>
+    `${m.head} is not a commit order ${m.orderId} recorded; only a build turn's commit can be reviewed`,
   harness_bound: (m: { orderId: string; role: StationRole; harness: HarnessName }) =>
     `order ${m.orderId} ${m.role} runs under the ${m.harness} harness; delegate it with --harness ${m.harness}`,
 };

@@ -13,20 +13,12 @@ import {
 } from "./order-review";
 import type { StationRun } from "./station";
 import { type BriefedOrder, briefHeader } from "./station-brief";
+import { fail } from "./station-contract";
 import { stationDirectory } from "./station-directory";
 import type { PlanSlice } from "./station-plan-artifact";
 import { parseReviewReport, type ReviewFinding } from "./station-review-artifact";
 import { renderReviewReport } from "./station-review-report";
 import type { Capability } from "./worker-capabilities";
-
-export class ReviewRefused extends Error {
-  constructor(
-    readonly code: "not_a_repo" | "worktree_dirty" | "head_unrecorded" | "no_commit",
-    message: string,
-  ) {
-    super(message);
-  }
-}
 
 const REVIEWER_CAPABILITIES: Capability[] = ["bootstrap-worker", "read-files", "read-history", "ask-dim"];
 
@@ -38,22 +30,14 @@ function git(dir: string, args: string[]): { ok: boolean; out: string; raw: stri
 
 export function reviewRange(db: Database, orderId: string, dir: string): { base: string; head: string } {
   const head = git(dir, ["rev-parse", "HEAD"]);
-  if (!head.ok) throw new ReviewRefused("not_a_repo", `${dir} is not a git repo that can be read`);
+  if (!head.ok) throw fail("not_a_repo", { dir });
   if (git(dir, ["status", "--porcelain", "--ignore-submodules=dirty"]).out !== "") {
-    throw new ReviewRefused(
-      "worktree_dirty",
-      `${dir} has uncommitted changes, and a round reads a commit: commit them or put them aside`,
-    );
+    throw fail("worktree_dirty", { dir });
   }
   const current = currentOrderCommits(db, orderId);
-  if (current.length === 0) {
-    throw new ReviewRefused("no_commit", `order ${orderId} recorded no commit, so there is no slice to read`);
-  }
+  if (current.length === 0) throw fail("no_commit", { orderId });
   if (!current.some((row) => head.out.startsWith(row.sha))) {
-    throw new ReviewRefused(
-      "head_unrecorded",
-      `${head.out} is not a commit order ${orderId} recorded; only a build turn's commit can be reviewed`,
-    );
+    throw fail("head_unrecorded", { orderId, head: head.out });
   }
   const first = current[0] as { sha: string };
   const parent = git(dir, ["rev-parse", `${first.sha}^`]);
