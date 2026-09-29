@@ -6,7 +6,7 @@ import { type Attempt, startAttempt } from "./order-attempt";
 import { appendOrderEventInTransaction } from "./order-ledger";
 import { dataDir, type Env } from "./paths";
 
-export type OrderHold = { release(): void; [Symbol.dispose](): void };
+type OrderHold = { release(): void; [Symbol.dispose](): void };
 
 export function holdOrder(orderId: string, env?: Env): OrderHold {
   const release = claimPathLock(join(dataDir(env), `lock-order-${orderId}`));

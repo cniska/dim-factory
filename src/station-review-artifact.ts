@@ -9,10 +9,10 @@ export const REVIEW_DIMENSIONS = [
   "performance",
   "style",
 ] as const;
-export type ReviewDimension = (typeof REVIEW_DIMENSIONS)[number];
+type ReviewDimension = (typeof REVIEW_DIMENSIONS)[number];
 
-export const SEVERITIES = ["critical", "high", "medium"] as const;
-export type Severity = (typeof SEVERITIES)[number];
+const SEVERITIES = ["critical", "high", "medium"] as const;
+type Severity = (typeof SEVERITIES)[number];
 
 const CONFORMANCE_KINDS = ["missing", "extra", "misunderstood"] as const;
 const COVERAGE_STATUSES = ["clean", "findings", "not_applicable", "not_run"] as const;

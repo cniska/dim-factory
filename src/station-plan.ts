@@ -5,12 +5,7 @@ import { stationDirectory } from "./station-directory";
 import { type PlanSlice, parsePlanArtifact } from "./station-plan-artifact";
 import type { Capability } from "./worker-capabilities";
 
-export const PLANNER_CAPABILITIES: Capability[] = [
-  "bootstrap-worker",
-  "read-files",
-  "read-history",
-  "ask-dim",
-];
+const PLANNER_CAPABILITIES: Capability[] = ["bootstrap-worker", "read-files", "read-history", "ask-dim"];
 
 export function plannerBrief(order: BriefedOrder, revision?: { body: string; feedback: string }): string {
   return [
@@ -21,7 +16,7 @@ export function plannerBrief(order: BriefedOrder, revision?: { body: string; fee
   ].join("\n");
 }
 
-export type PlanOutcome = { planner: string; body: string; slices: readonly PlanSlice[] };
+type PlanOutcome = { planner: string; body: string; slices: readonly PlanSlice[] };
 
 export const planStation: StationRun<null, PlanOutcome> = {
   station: "plan",

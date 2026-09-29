@@ -24,7 +24,7 @@ import { writeTrace } from "./trace-store";
 import type { Capability } from "./worker-capabilities";
 import { type WorkspaceContract, workspaceContract } from "./workspace";
 
-export const BUILDER_CAPABILITIES: Capability[] = [
+const BUILDER_CAPABILITIES: Capability[] = [
   "bootstrap-worker",
   "read-files",
   "edit-files",
@@ -33,7 +33,7 @@ export const BUILDER_CAPABILITIES: Capability[] = [
   "run-check",
 ];
 
-export type BriefedWorkspace = Pick<
+type BriefedWorkspace = Pick<
   WorkspaceContract,
   "ecosystems" | "packageManagers" | "checkTask" | "formatTask" | "tasks"
 >;
@@ -56,7 +56,7 @@ function sliceLine(slice: PlanSlice, ordinal: number): string {
   return `${ordinal}. ${slice.title}: ${slice.outcome}`;
 }
 
-export type BuildBriefing = {
+type BuildBriefing = {
   plan: { body: string; slices: readonly PlanSlice[] };
   currentSlice: OrderSlice | null;
   workspace: BriefedWorkspace;
@@ -106,7 +106,7 @@ export function builderBrief(order: BriefedOrder, briefing: BuildBriefing): stri
 
 const COMMIT_CORRECTIONS = 2;
 
-export function commitCorrectionBrief(subject: string, refusal: BuildTurnRefused): string {
+function commitCorrectionBrief(subject: string, refusal: BuildTurnRefused): string {
   return [
     "## Commit refused",
     refusal.code === "comment_added"
@@ -117,7 +117,7 @@ export function commitCorrectionBrief(subject: string, refusal: BuildTurnRefused
   ].join("\n");
 }
 
-export type ReviewFindingsForBuild = { work: readonly { finding: number; brief: string }[] };
+type ReviewFindingsForBuild = { work: readonly { finding: number; brief: string }[] };
 
 const NO_REVIEW_FINDINGS: ReviewFindingsForBuild = { work: [] };
 
@@ -142,7 +142,7 @@ function describeFinding(finding: FindingStanding): string {
   return `Finding ${finding.id} (${finding.dimension}, ${finding.file}:${finding.line}): ${finding.failure}`;
 }
 
-export type BuildOutcome = { builder: string; runId: string; worktree: string };
+type BuildOutcome = { builder: string; runId: string; worktree: string };
 
 type Rebase = { conflict: RecordedConflict; paths: string[] };
 

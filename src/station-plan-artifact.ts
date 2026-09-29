@@ -3,7 +3,7 @@ export type PlanSlice = {
   outcome: string;
 };
 
-export type PlanArtifact = {
+type PlanArtifact = {
   body: string;
   slices: readonly PlanSlice[];
 };

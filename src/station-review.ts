@@ -28,12 +28,7 @@ export class ReviewRefused extends Error {
   }
 }
 
-export const REVIEWER_CAPABILITIES: Capability[] = [
-  "bootstrap-worker",
-  "read-files",
-  "read-history",
-  "ask-dim",
-];
+const REVIEWER_CAPABILITIES: Capability[] = ["bootstrap-worker", "read-files", "read-history", "ask-dim"];
 
 function git(dir: string, args: string[]): { ok: boolean; out: string; raw: string } {
   const run = Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe", stderr: "ignore" });
@@ -65,7 +60,7 @@ export function reviewRange(db: Database, orderId: string, dir: string): { base:
   return { base: parent.ok ? parent.out : first.sha, head: head.out };
 }
 
-export function earlierFindings(db: Database, orderId: string, reviewId: number): FindingStanding[] {
+function earlierFindings(db: Database, orderId: string, reviewId: number): FindingStanding[] {
   return orderFindingStandings(db, orderId).filter((finding) => finding.reviewId !== reviewId);
 }
 
@@ -109,7 +104,7 @@ export function reviewerBrief(
 
 type ReviewedRound = { id: number; base: string; head: string; dir: string };
 
-export type ReviewOutcome = { review: number; reviewer: string; findings: number };
+type ReviewOutcome = { review: number; reviewer: string; findings: number };
 
 function assertLocations(findings: ReviewFinding[], round: ReviewedRound): void {
   if (findings.length === 0) return;

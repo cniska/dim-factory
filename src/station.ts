@@ -24,12 +24,12 @@ export type StationOptions = {
   checkSandbox?: string[];
 };
 
-export type StationLaunch = StationOptions & {
+type StationLaunch = StationOptions & {
   returned: ReturnedOrderArtifact | null;
   assignmentId: string;
 };
 
-export type Prepared<Context> = { cwd: string; brief: string; abort?: () => void; context: Context };
+type Prepared<Context> = { cwd: string; brief: string; abort?: () => void; context: Context };
 
 export type StationTurn = {
   orderId: string;

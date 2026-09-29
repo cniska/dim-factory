@@ -16,9 +16,9 @@ import { endWorker, rebindWorkerSession, startWorkerRun, workerProcessEnv } from
 import { bootstrapWorker, createWorkerAssignment, type WorkerAssignment } from "./worker-assignment";
 import { route } from "./worker-routing";
 
-export type BoundWorker = { name: string; providerSessionId: string; harness: HarnessName };
+type BoundWorker = { name: string; providerSessionId: string; harness: HarnessName };
 
-export type OrderWorker = {
+type OrderWorker = {
   orderId: string;
   role: StationRole;
   assignment: WorkerAssignment;
@@ -27,7 +27,7 @@ export type OrderWorker = {
 
 export type ExecutionAttribution = { harness: HarnessLaunch["harness"]; model: string; tier: string };
 
-export type WorkerTurn = { output: string; worker: OrderWorker & { bound: BoundWorker } };
+type WorkerTurn = { output: string; worker: OrderWorker & { bound: BoundWorker } };
 
 export async function runWorkerTurn(
   db: Database,

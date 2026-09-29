@@ -2,7 +2,7 @@ import { CodedError } from "./coded-error";
 import { HARNESSES, type HarnessName } from "./harness-name";
 import type { Role } from "./worker-roles";
 
-export const STATIONS = ["plan", "build", "review"] as const;
+const STATIONS = ["plan", "build", "review"] as const;
 
 export type Station = (typeof STATIONS)[number];
 
@@ -38,8 +38,8 @@ const MESSAGES = {
     `order ${m.orderId} ${m.role} runs under the ${m.harness} harness; delegate it with --harness ${m.harness}`,
 };
 
-export type StationErrorCode = keyof typeof MESSAGES;
-export type StationErrorMeta<Code extends StationErrorCode> = Parameters<(typeof MESSAGES)[Code]>[0];
+type StationErrorCode = keyof typeof MESSAGES;
+type StationErrorMeta<Code extends StationErrorCode> = Parameters<(typeof MESSAGES)[Code]>[0];
 
 export function fail<Code extends StationErrorCode>(
   code: Code,
