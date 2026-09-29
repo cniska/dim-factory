@@ -17,6 +17,7 @@ import { codexProcess } from "./harness-codex";
 import { fakeHarness } from "./harness-fake";
 import { commandLine } from "./harness-process";
 import { type ScriptedAnswer, scriptedHarness } from "./harness-scripted.test-support";
+import { orderState } from "./order";
 import { approveOrder } from "./order-approval";
 import {
   completeOrderSlice,
@@ -29,7 +30,6 @@ import { runOrderCommand } from "./order-command";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
 import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { queueOrder, startOrder } from "./order-lifecycle";
-import { orderState } from "./order-state";
 import { approvePlan } from "./station-approvals.test-support";
 import { ReviewRefused, reviewerBrief, reviewRange, runOrderReviewLive } from "./station-review";
 import { UsageLimited } from "./station-worker";

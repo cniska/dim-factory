@@ -38,7 +38,7 @@ One piece of work, written down before anyone takes it ([`glossary.md`](glossary
 queued → plan → build → review → ship → shipped
 ```
 
-- **Where an order is, is read from the record** ([`src/order-state.ts`](../src/order-state.ts)): its station and the act that station waits on — run the station, or approve its artifact. Approving the Review artifact ships the order, so the next act is ship only after a ship that failed without sending the order back to a station. Nothing stores it and no command sets it, the status included: an order is `queued` until it starts, `running` until it ships or is dropped, then `shipped` or `dropped`.
+- **Where an order is, is read from the record** ([`src/order.ts`](../src/order.ts)): its station and the act that station waits on — run the station, or approve its artifact. Approving the Review artifact ships the order, so the next act is ship only after a ship that failed without sending the order back to a station. Nothing stores it and no command sets it, the status included: an order is `queued` until it starts, `running` until it ships or is dropped, then `shipped` or `dropped`.
 - **Every act checks on entry** that it is the act the record waits on, and a refusal names the one that is. `dim order plan` on a queued order starts it and makes its worktree.
 - **The operator** delegates each station to a worker, checks each artifact against the record, and approves it or returns it. It never does the work. Queuing, reprioritizing, amending, starting and dropping an order are its acts alone; a worker running `dim order add` is refused.
 - **Each station returns an artifact** — plan, Build artifact, Review artifact — that the operator approves (`dim order approve`) or sends back with a reason (`dim order return`).

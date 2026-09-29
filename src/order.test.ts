@@ -20,6 +20,7 @@ import {
   workerIn,
 } from "./fixtures.test-support";
 import { rebuild } from "./ingest-sync";
+import { orderState } from "./order";
 import { approveOrder, returnOrder } from "./order-approval";
 import {
   completeOrderSlice,
@@ -49,7 +50,6 @@ import {
 } from "./order-review";
 import { shipOrder } from "./order-ship";
 import { recordShipRun } from "./order-ship-run";
-import { orderState } from "./order-state";
 import { isTerminalOrderStatus, orderStatus } from "./order-status";
 import { dbPath } from "./paths";
 import { findQuery } from "./query-registry";

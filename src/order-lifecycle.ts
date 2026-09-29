@@ -4,10 +4,10 @@ import { assertOperator } from "./factory-operator";
 import { FactoryStopError, liveStop } from "./factory-stop";
 import { recordOrderEnvironment } from "./order-evidence";
 import { appendOrderEventInTransaction, now } from "./order-ledger";
-import { assertOrderQueued, type Order, type OrderPriority } from "./order-status";
+import { assertOrderQueued, type NewOrder, type OrderPriority } from "./order-status";
 import { createWorktree, validateWorktreeBranch } from "./worktree";
 
-export function queueOrder(db: Database, order: Order, worker: string, at = now()): number {
+export function queueOrder(db: Database, order: NewOrder, worker: string, at = now()): number {
   validateWorktreeBranch(order.id);
   return writeTransaction(db, () => {
     assertOperator(db, worker, "queue an order");

@@ -1,10 +1,10 @@
 import type { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
 import { openReadOnly } from "../db-read";
+import { type OrderState, orderState } from "../order";
 import { runningAttempt } from "../order-attempt";
 import type { OrderEventKind } from "../order-events";
 import type { OrderLine } from "../order-line";
-import { type NextAct, orderState } from "../order-state";
 import { type OrderStatus, orderStatusSql } from "../order-status";
 import { dbPath } from "../paths";
 import type { Station } from "../station";
@@ -25,7 +25,7 @@ export type WallOrder = {
   worker: WallWorker | null;
   status: BoardStatus;
   lastEventAt: string;
-  next: NextAct | null;
+  next: OrderState["next"] | null;
 };
 
 export type WallSnapshot = {

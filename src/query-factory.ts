@@ -1,11 +1,11 @@
 import { UsageError } from "./cli-contract";
+import { describeState, orderState } from "./order";
 import {
   displayedAnswer,
   findingStandingsOf,
   orderFindingStandings,
   owesAnswer,
 } from "./order-finding-state";
-import { describeState, orderState } from "./order-state";
 import { isTerminalOrderStatus, type OrderStatus, orderStatusSql } from "./order-status";
 import { type Query, requiredArg, table, toRows } from "./query";
 

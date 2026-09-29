@@ -7,6 +7,7 @@ import { checkoutRoot } from "./git-checkout";
 import { labelFor } from "./git-remote";
 import { HARNESSES, type HarnessName, isHarness, parseHarness } from "./harness-name";
 import { requireCurrentHooks } from "./hooks";
+import { orderState } from "./order";
 import { approveOrder, returnOrder } from "./order-approval";
 import { nextOrderSlice } from "./order-artifacts";
 import { latestOrderCommit } from "./order-commits";
@@ -14,7 +15,6 @@ import { amendOrder, dropOrder, queueOrder, setOrderPriority } from "./order-lif
 import { isOrderLine, ORDER_LINES } from "./order-line";
 import { readyOrders } from "./order-ready";
 import { shipOrder } from "./order-ship";
-import { orderState } from "./order-state";
 import { ORDER_PRIORITIES, type OrderPriority } from "./order-status";
 import { dbPath, type Env } from "./paths";
 import type { ShipOutcome } from "./ship";

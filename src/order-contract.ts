@@ -1,4 +1,45 @@
 import { CodedError } from "./coded-error";
+import type { OrderStatus } from "./order-status";
+import type { Station } from "./station";
+
+export type OrderArtifact = {
+  id: number;
+  kind: Station;
+  revision: number;
+  headSha: string | null;
+  reviewId: number | null;
+  approved: boolean;
+  returned: boolean;
+};
+
+export type OrderSliceRecord = { id: number; artifactId: number; ordinal: number; done: boolean };
+
+export type OrderCommitRecord = { id: number; sha: string; retires: string | null; shipRunId: number | null };
+
+export type OrderShipRunRecord = {
+  id: number;
+  outcome: string;
+  oldHead: string | null;
+  patchEqual: number | null;
+};
+
+export type OrderCheckRecord = { id: number; headSha: string | null; exitCode: number };
+
+export type OrderReviewRecord = { id: number; headSha: string };
+
+export type OrderFindingRecord = { id: number; reviewId: number; answered: boolean };
+
+export type Order = {
+  id: string;
+  status: OrderStatus;
+  artifacts: OrderArtifact[];
+  slices: OrderSliceRecord[];
+  commits: OrderCommitRecord[];
+  shipRuns: OrderShipRunRecord[];
+  checks: OrderCheckRecord[];
+  reviews: OrderReviewRecord[];
+  findings: OrderFindingRecord[];
+};
 
 const MESSAGES = {
   not_next: (m: { orderId: string; waitsOn: string; act: string }) =>

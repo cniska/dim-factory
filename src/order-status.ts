@@ -20,7 +20,7 @@ export const ORDER_PRIORITIES = ["urgent", "high", "medium", "low", "unset"] as 
 
 export type OrderPriority = (typeof ORDER_PRIORITIES)[number];
 
-export type Order = {
+export type NewOrder = {
   id: string;
   project: string;
   title: string;

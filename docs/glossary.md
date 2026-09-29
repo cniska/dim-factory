@@ -20,7 +20,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Order | One piece of work: an id, a line, a title, a description and a priority. It exists before it is started and is worked in one worktree |
 | Queue | The orders not yet started, most urgent first, then oldest |
 | Status | The state an order is in, read from the record: `queued`, `running` once started, `shipped` once a ship run landed it, or `dropped`. The wall's columns are these words, and a dropped order leaves the board |
-| Next act | What an order waits on, read from the record by [`src/order-state.ts`](../src/order-state.ts) and never stored: at a station, `run` or `approve`; once every station's artifact is approved, `ship`. Every act checks it on entry |
+| Next act | What an order waits on, read from the record by [`src/order.ts`](../src/order.ts) and never stored: at a station, `run` or `approve`; once every station's artifact is approved, `ship`. Every act checks it on entry |
 | Slice | One increment inside an order that verifies and commits on its own |
 | Ship | Landing an order's commits on the local default branch the way the repo declares in `dim.ship`, which ends the order and removes its worktree and branch. Approving the Review artifact ships; `dim order ship` retries a ship that failed and records a `ship_retried` event under the operator |
 | Command | One `dim` subcommand, in the `src/<name>-command.ts` named for it ([`src/cli-contract.ts`](../src/cli-contract.ts)) |

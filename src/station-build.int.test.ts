@@ -25,6 +25,7 @@ import {
 import { installCommitGate } from "./gate-commit";
 import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
 import { fakeHarness } from "./harness-fake";
+import { orderState } from "./order";
 import { approveOrder, returnOrder } from "./order-approval";
 import { completeOrderBuildFollowup, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
 import { openAttempt } from "./order-attempt";
@@ -35,7 +36,6 @@ import { queueOrder, startOrder } from "./order-lifecycle";
 import type { OrderLine } from "./order-line";
 import { closeOrderReview } from "./order-review";
 import { recheck, shipOrder } from "./order-ship";
-import { orderState } from "./order-state";
 import { orderStatus } from "./order-status";
 import { findQuery } from "./query-registry";
 import { approveReviewAt } from "./station-approvals.test-support";

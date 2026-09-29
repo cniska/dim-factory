@@ -3,8 +3,9 @@ import { describe, expect, test } from "bun:test";
 import type { CodedError } from "./coded-error";
 import { SCHEMA_SQL } from "./db-schema";
 import { workerIn } from "./fixtures.test-support";
+import { orderState } from "./order";
 import { nextOrderSlice, returnedOrderArtifact } from "./order-artifacts";
-import { assertNext, type OrderAct, orderState } from "./order-state";
+import { assertNext, type OrderAct } from "./order-state";
 
 const ORDER = "order-1";
 

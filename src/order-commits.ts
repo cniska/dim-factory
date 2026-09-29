@@ -52,14 +52,6 @@ function headReplacements(db: Database, orderId: string): Replacement[] {
     .all(orderId);
 }
 
-export function rewrittenHead(db: Database, orderId: string, sha: string): string {
-  let current = sha;
-  for (const replacement of headReplacements(db, orderId)) {
-    if (replacement.retires === current) current = replacement.sha;
-  }
-  return current;
-}
-
 export function carriedThroughRewrites(db: Database, orderId: string, sha: string): string | null {
   let current = sha;
   for (const replacement of headReplacements(db, orderId)) {

@@ -3,6 +3,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { SCHEMA_SQL } from "./db-schema";
 import { attemptIn, integratedRepo, ranCheck } from "./fixtures.test-support";
+import { orderState } from "./order";
 import {
   completeOrderSlice,
   nextOrderSlice,
@@ -14,7 +15,6 @@ import { runOrderCommand, runOrderCommandLive } from "./order-command";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
 import { appendOrderEvent } from "./order-ledger";
 import { queueOrder, startOrder } from "./order-lifecycle";
-import { orderState } from "./order-state";
 import { orderStatus } from "./order-status";
 import { processStartTime } from "./pid";
 import { approvePlan } from "./station-approvals.test-support";

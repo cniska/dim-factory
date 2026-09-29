@@ -7,12 +7,12 @@ import { closeDb, openDb } from "./db";
 import { SCHEMA_SQL } from "./db-schema";
 import { attemptIn, integratedRepo, located, reviewIn, workerIn } from "./fixtures.test-support";
 import { rebuild } from "./ingest-sync";
+import { describeState, orderState } from "./order";
 import { recordOrderCommit } from "./order-evidence";
 import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { displayedAnswer, type FindingStanding, findingStanding } from "./order-finding-state";
 import { queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview, recordOrderReviewArtifact } from "./order-review";
-import { describeState, orderState } from "./order-state";
 import { dbPath } from "./paths";
 import { approveFinalBuildAt, approvePlan } from "./station-approvals.test-support";
 

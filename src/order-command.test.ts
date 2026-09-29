@@ -16,13 +16,13 @@ import {
 } from "./fixtures.test-support";
 import { hookConfigPath } from "./hooks";
 import { TOOLS } from "./ingest-tools";
+import { orderState } from "./order";
 import { completeOrderSlice, nextOrderSlice, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
 import { runOrderCommand as runCommand, runOrderCommandLive, runRemainingBuilds } from "./order-command";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
 import { appendOrderEvent } from "./order-ledger";
 import { startOrder } from "./order-lifecycle";
 import { closeOrderReview, recordOrderReviewArtifact } from "./order-review";
-import { orderState } from "./order-state";
 import { orderStatus } from "./order-status";
 import type { Env } from "./paths";
 import { findQuery } from "./query-registry";
