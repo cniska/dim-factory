@@ -12,7 +12,7 @@ import { dbPath, type Env } from "./paths";
 import type { QueryContext } from "./query";
 import { findQuery } from "./query-registry";
 
-const ctx: QueryContext = { since: null, home: "/h" };
+const ctx: QueryContext = { home: "/h" };
 
 const SESSION = "11111111-2222-3333-4444-555555555555";
 const THREAD = "01a0a651-086e-7150-8650-cef0f4025a58";
@@ -128,26 +128,6 @@ describe("read path", () => {
       );
       expect(() => findQuery("thread")?.run(db, { ...ctx, arg: "" })).toThrow(
         expect.objectContaining({ code: "usage" }),
-      );
-    } finally {
-      db.close();
-    }
-  });
-
-  test("running says it is only as fresh as the last sync", () => {
-    const env = seeded();
-    const db = openReadOnly(dbPath(env));
-    try {
-      const quiet = findQuery("running")?.run(db, { ...ctx, arg: "1" });
-      expect(quiet?.rows).toEqual([]);
-      expect(quiet?.note).toContain("dim sync");
-      expect(quiet?.denominator).toContain("last 1 minutes");
-
-      expect(() => findQuery("running")?.run(db, { ...ctx, arg: "soon" })).toThrow(
-        expect.objectContaining({
-          code: "usage",
-          message: "soon is not a count; usage: dim q running [minutes]",
-        }),
       );
     } finally {
       db.close();

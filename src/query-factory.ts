@@ -13,7 +13,6 @@ export const order: Query = {
   name: "order",
   summary: "inspect one factory order report, its events, and evidence",
   usage: "dim q order <order-id>",
-  window: "none",
   run: (db, ctx) => {
     const arg = requiredArg(ctx, order.usage);
     const found = table(
@@ -166,10 +165,10 @@ export const order: Query = {
 export const factory: Query = {
   name: "factory",
   summary: "show current factory item and order status with lifecycle and evidence",
-  usage: "dim q factory [order-id]",
-  window: "none",
-  run: (db, { arg }) => {
-    const filter = arg ? "WHERE o.id LIKE ? || '%'" : "";
+  usage: "dim q factory",
+  run: (db, ctx) => {
+    if (ctx.arg !== undefined)
+      throw new UsageError(`usage: ${factory.usage}; dim q order <order-id> reads one order`);
     const orders = table(
       db,
       `SELECT o.project AS project, o.id AS order_id, o.priority, ${orderStatusSql("o.id")} AS status,
@@ -182,9 +181,8 @@ export const factory: Query = {
               coalesce((SELECT c.command || ' (' || c.exit_code || ', ' || c.result || ')'
                         FROM factory_order_check c WHERE c.order_id = o.id
                         ORDER BY c.id DESC LIMIT 1), '(none recorded)') AS "check"
-       FROM factory_order o ${filter}
+       FROM factory_order o
        ORDER BY o.updated_at DESC, o.id`,
-      arg ? [arg] : [],
     );
     const findings = new Map<string, string[]>();
     for (const finding of findingStandingsOf(
@@ -217,14 +215,6 @@ export const factory: Query = {
       "check",
       "findings",
     ];
-    if (found.length === 0) {
-      return {
-        denominator: "no factory order matched",
-        columns,
-        rows: [],
-        note: arg ? `no order starts with ${arg}` : "no factory orders are recorded",
-      };
-    }
     return {
       denominator: `${found.length} factory order${found.length === 1 ? "" : "s"} read from factory_order`,
       columns,

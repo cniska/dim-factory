@@ -29,7 +29,7 @@ function seeded(): Database {
   return db;
 }
 
-const ctx: QueryContext = { since: null, home: "/home" };
+const ctx: QueryContext = { home: "/home" };
 
 const ask = (db: Database, over: Partial<QueryContext>): QueryResult => search.run(db, { ...ctx, ...over });
 
@@ -67,7 +67,6 @@ describe("search", () => {
     );
     const result = ask(db, { arg: "settled" });
     expect(result.rows.map((r) => String(r[1]))).toEqual(["2024-03-04T09:00"]);
-    expect(result.denominator).toContain("all time");
     db.close();
   });
 
@@ -176,7 +175,7 @@ describe("search", () => {
   test("a term matching nothing anyone said is named, not just dropped from the rows", () => {
     const db = seeded();
     const result = ask(db, { arg: "checkout zzznoword" });
-    expect(result.denominator).toContain("This term matched nothing anyone said in this window: zzznoword");
+    expect(result.denominator).toContain("This term matched nothing anyone said: zzznoword");
     expect(result.rows.map((r) => String(r[0]))).toEqual(["s1"]);
     expect(result.rows[0]?.[5]).toBe("1/2");
     db.close();
@@ -189,7 +188,7 @@ describe("search", () => {
        VALUES ('m-injected', 's1', '2026-09-02T09:00:00Z', 'user', 'zzzmetaword', 1, '/f.jsonl', 12)`,
     );
     const result = ask(db, { arg: "checkout zzzmetaword" });
-    expect(result.denominator).toContain("This term matched nothing anyone said in this window: zzzmetaword");
+    expect(result.denominator).toContain("This term matched nothing anyone said: zzzmetaword");
     expect(result.rows.every((r) => !String(r[6]).includes("zzzmetaword"))).toBe(true);
     db.close();
   });

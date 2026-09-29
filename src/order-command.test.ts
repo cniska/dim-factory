@@ -553,7 +553,7 @@ describe("order command", () => {
           "worktree kept: its teardown hook exited 3; branch order-1 kept: its worktree still holds it",
       );
       expect(orderStatus(database, "order-1")).toBe("shipped");
-      const report = findQuery("order")?.run(database, { arg: "order-1", since: null, home: "/h" });
+      const report = findQuery("order")?.run(database, { arg: "order-1", home: "/h" });
       const shipRun = report?.rows.find((row) => row[0] === "ship_run");
       expect(shipRun?.[report?.columns.indexOf("evidence") ?? -1]).toBe(
         "worktree kept: its teardown hook exited 3 | branch kept: its worktree still holds it",

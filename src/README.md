@@ -11,7 +11,7 @@ Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` 
 | `db` | Open, lock and read the SQLite store, and its schema |
 | `ingest` | Read session sources, hook events and git history into the database, on a schedule |
 | `guidance` | Which rules files were in force, and the walk that loaded them |
-| `query` | The named queries and how they window and cap their rows |
+| `query` | The named queries, their arguments and the row cap |
 | `session-start`, `wake` | Repo commands passed to a new session |
 | `order` | An order: its lifecycle, ledger, evidence, findings, ship and queue |
 | `station` | The plan, build and review stations: briefs, turns, artifacts and the build runner |

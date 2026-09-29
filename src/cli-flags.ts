@@ -19,7 +19,8 @@ export function positionalArg(args: string[], valueFlags: string[], fail: FlagFa
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index] as string;
     if (valueFlags.includes(arg)) index += 1;
-    else if (!arg.startsWith("--")) positionals.push(arg);
+    else if (arg.startsWith("--")) throw fail(`does not take ${arg}`);
+    else positionals.push(arg);
   }
   if (positionals.length > 1)
     throw fail(`takes one argument, and got ${positionals.length}: ${positionals.join(" ")}`);

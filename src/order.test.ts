@@ -1016,7 +1016,7 @@ describe("factory order report records", () => {
           Bun.spawnSync(["git", "-C", repo.dir, "merge-base", "--is-ancestor", sha, "HEAD"]).success,
         ).toBe(true);
       }
-      const rows = findQuery("order")?.run(database, { arg: "order-1", since: null, home: "/h" }).rows ?? [];
+      const rows = findQuery("order")?.run(database, { arg: "order-1", home: "/h" }).rows ?? [];
       const rewritten = rows.filter((row) => row[0] === "commit" && row[2] === "commit_rewritten");
       expect(rewritten.map((row) => [row[3], row[5]])).toEqual([
         ["ship run 1", `${second} -> ${current[1]}`],
@@ -1269,16 +1269,17 @@ describe("factory order report records", () => {
       expect(
         database.query("SELECT head_sha, exit_code FROM factory_order_check ORDER BY id DESC LIMIT 1").get(),
       ).toEqual({ head_sha: current.at(-1), exit_code: 0 });
-      const rows = findQuery("order")?.run(database, { arg: "order-1", since: null, home: "/h" }).rows ?? [];
+      const rows = findQuery("order")?.run(database, { arg: "order-1", home: "/h" }).rows ?? [];
       expect(rows.filter((row) => row[0] === "commit").map((row) => row[2])).toEqual([
         "commit_rewritten",
         "commit_rewritten",
         "commit_created",
         "commit_created",
       ]);
-      const board = findQuery("factory")?.run(database, { arg: "order-1", since: null, home: "/h" });
+      const board = findQuery("factory")?.run(database, { home: "/h" });
       const column = board?.columns.indexOf("commit") ?? -1;
-      expect(String(board?.rows[0]?.[column])).toStartWith(current[1] as string);
+      const row = board?.rows.find((r) => r[board.columns.indexOf("order_id")] === "order-1");
+      expect(String(row?.[column])).toStartWith(current[1] as string);
     });
 
     test("an approved review follows a chain of rewrites only while every one kept its patches", () => {

@@ -80,7 +80,7 @@ Grok's file is `~/.grok/hooks/dim.json`. `GROK_HOME` overrides `~/.grok`. A Grok
 - **One output shape.** Every command prints one line of JSON: `{command, ok, result}` on stdout, or `{command, ok: false, error}` on stderr with a `code` that tells errors apart ([`src/cli-output.ts`](../src/cli-output.ts)). A `raw` command prints the format its consumer parses instead: `wake`, `format-edit`, `check-command`, `trace`, `wt` and `comments check`.
 - **A result states its base.** It carries `denominator`, `columns`, `rows` and `note`; an empty result says why, and a figure covering a subset names the subset.
 - **Capped rows.** A result longer than 40 rows says how many were cut and names `--rows`.
-- **A 30-day window** by default, moved with `--since` and removed with `--all`, and stated in the denominator. A query declares its `window`: `recent` takes the default, `history` reads all time unless `--since` is given, and `none`, a query with no time to narrow, refuses both flags.
+- **Arguments are refused, not guessed.** A missing or malformed argument, an ambiguous prefix, a second positional or an unknown flag is a usage error; a prefix that matches nothing is an empty result that says so.
 - **Read-only.** A query opens the database through `openReadOnly`, because `hook_event` has no source to restore it from. Its trace row goes through a separate connection.
 - **A repository is named by its remote** — `owner/repo`, lowercased, host dropped — so worktrees and checkouts of one project share a label.
 - **A scratch tree is not work.** [`src/ingest-scratch.ts`](../src/ingest-scratch.ts) excludes commits made under temp directories wherever session directories become repos.

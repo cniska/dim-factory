@@ -1,10 +1,10 @@
 import type { Query } from "./query";
-import { priorArt } from "./query-code";
 import { factory, order } from "./query-factory";
+import { priorArt } from "./query-prior-art";
 import { search } from "./query-search";
-import { running, thread } from "./query-session";
+import { thread } from "./query-thread";
 
-export const QUERIES: Query[] = [priorArt, search, thread, factory, order, running];
+export const QUERIES: Query[] = [priorArt, search, thread, factory, order];
 
 export function findQuery(name: string): Query | undefined {
   return QUERIES.find((q) => q.name === name);

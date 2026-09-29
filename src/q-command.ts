@@ -5,12 +5,11 @@ import { dbPath, resolveHomeDir } from "./paths";
 import type { QueryResult } from "./query";
 import { findQuery, QUERIES } from "./query-registry";
 import { capRows, DEFAULT_MAX_ROWS, rowsFromArgs } from "./query-row-cap";
-import { DEFAULT_WINDOW, windowFromArgs } from "./query-since";
 import { trace } from "./trace";
 
 export const qCommand: Command = {
   name: "q",
-  usage: `usage: dim q <name> [arg] [--since <n>d|YYYY-MM-DD | --all] [--rows <n>]; dim q list names them; the window is the last ${DEFAULT_WINDOW} and ${DEFAULT_MAX_ROWS} rows print unless widened`,
+  usage: `usage: dim q <name> [arg] [--rows <n>]; dim q list names them; ${DEFAULT_MAX_ROWS} rows print unless widened`,
   summary: "ask the database a named question",
   async run(args) {
     const name = args[0];
@@ -27,16 +26,15 @@ export const qCommand: Command = {
     if (!query) throw new UsageError(`no query named ${name}; dim q list names them`);
     const arg = positionalArg(
       args.slice(1),
-      ["--since", "--rows"],
+      ["--rows"],
       (message) => new UsageError(`dim q ${name} ${message}`),
     );
-    const since = windowFromArgs(args, query.window);
     const maxRows = rowsFromArgs(args);
     const db = openReadOnly(dbPath());
     const started = Date.now();
     let result: QueryResult | undefined;
     try {
-      result = query.run(db, { arg, since, home: resolveHomeDir() });
+      result = query.run(db, { arg, home: resolveHomeDir() });
       return { ...result, ...capRows(result.rows, maxRows) };
     } finally {
       trace({

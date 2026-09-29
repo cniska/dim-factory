@@ -1,15 +1,5 @@
 import type { Database } from "bun:sqlite";
-import {
-  type Query,
-  type QueryContext,
-  type QueryResult,
-  requiredArg,
-  scalar,
-  table,
-  toRows,
-  window,
-  windowLine,
-} from "./query";
+import { type Query, type QueryContext, type QueryResult, requiredArg, scalar, table, toRows } from "./query";
 
 const MAX_TERMS = 16;
 
@@ -29,7 +19,6 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryRes
   const columns = ["session", "when", "ref", "role", "project", "terms", "text"];
   const { raw, quoted, dropped } = quotedTerms(terms);
   const matchAny = quoted.join(" OR ");
-  const w = window("m.ts", ctx);
   const byWord = new Map(raw.map((word, i) => [word, quoted[i] as string]));
   const missing = [...byWord]
     .filter(
@@ -37,9 +26,8 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryRes
         scalar(
           db,
           `SELECT EXISTS (SELECT 1 FROM message_fts JOIN message m ON m.rowid = message_fts.rowid
-           WHERE message_fts MATCH ? AND ${SAID}${w.sql}) AS n`,
+           WHERE message_fts MATCH ? AND ${SAID}) AS n`,
           quote,
-          ...w.params,
         ) === 0,
     )
     .map(([word]) => word);
@@ -59,25 +47,19 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryRes
      JOIN message_fts ON message_fts.rowid = c.rowid
      JOIN message m ON m.rowid = c.rowid
      JOIN session s ON s.id = m.session_id
-     WHERE message_fts MATCH ? AND ${SAID}${w.sql}
+     WHERE message_fts MATCH ? AND ${SAID}
      ORDER BY c.matched DESC, bm25(message_fts) ASC, m.ts DESC LIMIT 40`,
-    [...quoted, ctx.home, String(quoted.length), matchAny, ...w.params],
+    [...quoted, ctx.home, String(quoted.length), matchAny],
   );
-  const searchable = window("m.ts", ctx);
-  const every = window("ts", ctx, "WHERE");
-  const said = scalar(
-    db,
-    `SELECT count(*) AS n FROM message m WHERE m.text IS NOT NULL AND ${SAID}${searchable.sql}`,
-    ...searchable.params,
-  );
-  const all = scalar(db, `SELECT count(*) AS n FROM message${every.sql}`, ...every.params);
+  const said = scalar(db, `SELECT count(*) AS n FROM message m WHERE m.text IS NOT NULL AND ${SAID}`);
+  const all = scalar(db, "SELECT count(*) AS n FROM message");
   return {
     denominator:
-      `keywords over ${said} of ${all} messages that carry text anyone said (${windowLine(ctx)}); ` +
+      `keywords over ${said} of ${all} messages that carry text anyone said; ` +
       `ranked by how many of the ${quoted.length} terms matched, ties broken by relevance then recency; ` +
       `top 40 shown.${dropped > 0 ? ` Only the first ${MAX_TERMS} words were searched; ${dropped} more were dropped.` : ""}` +
       (missing.length > 0
-        ? ` ${missing.length === 1 ? "This term matched" : "These terms matched"} nothing anyone said in this window: ${missing.join(", ")}.`
+        ? ` ${missing.length === 1 ? "This term matched" : "These terms matched"} nothing anyone said: ${missing.join(", ")}.`
         : "") +
       " `dim q thread <session>@<when>` reads the exchange a hit sits in.",
     columns,
@@ -94,6 +76,5 @@ export const search: Query = {
   name: "search",
   summary: "find a message by the words in it, across every session",
   usage: 'dim q search "<words>"',
-  window: "history",
   run: (db, ctx) => keywordSearch(db, ctx, requiredArg(ctx, search.usage)),
 };
