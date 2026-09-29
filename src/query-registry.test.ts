@@ -94,37 +94,12 @@ describe("read path", () => {
     closeDb(write);
     const db = openReadOnly(dbPath(env));
     try {
-      const cost = findQuery("cost")?.run(db, {});
-      expect(cost?.rows).toEqual([]);
-      expect(cost?.note).toBe("no session reported a cost");
+      const burn = findQuery("burn")?.run(db, {});
+      expect(burn?.rows).toEqual([]);
+      expect(burn?.note).toBe("no usage rows");
 
       const sessions = findQuery("sessions")?.run(db, {});
       expect(sessions?.note).toContain("hooks are not installed");
-    } finally {
-      db.close();
-    }
-  });
-
-  test("turns reports how many turns it could actually time", () => {
-    const env = seeded();
-    const db = openReadOnly(dbPath(env));
-    try {
-      const result = findQuery("turns")?.run(db, {});
-      expect(result?.denominator).toMatch(/\d+ of \d+ turns carry a duration/);
-      expect(result?.note).toContain("not measured, not zero");
-    } finally {
-      db.close();
-    }
-  });
-
-  test("tokens refuses to add the two tools together", () => {
-    const env = seeded();
-    const db = openReadOnly(dbPath(env));
-    try {
-      const result = findQuery("tokens")?.run(db, {});
-      const tools = new Set(result?.rows.map((r) => r[0]));
-      expect(tools).toEqual(new Set(["claude", "codex"]));
-      expect(result?.note).toContain("Not summed across tools");
     } finally {
       db.close();
     }
@@ -397,18 +372,6 @@ describe("read path", () => {
     }
   });
 
-  test("delegation counts a handoff without claiming the delegate's work was per-call", () => {
-    const env = seeded();
-    const db = openReadOnly(dbPath(env));
-    try {
-      const d = findQuery("delegation")?.run(db, {});
-      expect(d?.denominator).toMatch(/\d+ agents spawned and \d+ messages sent to a peer/);
-      if ((d?.rows.length ?? 0) > 0) expect(d?.note).toContain("rather than a per-call figure");
-    } finally {
-      db.close();
-    }
-  });
-
   test("running says it is only as fresh as the last sync", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
@@ -549,10 +512,6 @@ describe("who stopped the agent", () => {
   test("only the owner's own refusal counts as the owner stopping the agent", () => {
     const db = stopped();
     try {
-      const digest = findQuery("digest")?.run(db, {});
-      const stops = digest?.rows.find((r) => r[0] === "times you stopped the agent");
-      expect(stops?.[1]).toBe(1);
-
       const resume = findQuery("resume")?.run(db, { arg: "s1" });
       expect(resume?.rows.filter((r) => r[0] === "stopped")).toHaveLength(1);
       expect(String(resume?.rows.find((r) => r[0] === "stopped")?.[1])).toContain("not like that");
@@ -756,17 +715,7 @@ describe("what a query counts of each tool", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
     try {
-      const edits = [
-        "rework",
-        "resume",
-        "exemplars",
-        "fixes",
-        "digest",
-        "stale",
-        "corrections",
-        "candidates",
-        "skill",
-      ];
+      const edits = ["rework", "resume", "exemplars", "fixes", "stale", "corrections", "candidates", "skill"];
       const silent = edits.filter((name) => {
         const arg = name === "resume" ? SESSION.slice(0, 8) : name === "skill" ? "build" : undefined;
         const note = findQuery(name)?.run(db, arg ? { arg } : {}).note ?? "";

@@ -13,7 +13,6 @@ import {
   window,
   windowLine,
 } from "./query";
-import { repeats } from "./query-correction";
 import { SAID } from "./query-search";
 
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/;
@@ -318,67 +317,6 @@ export const resume: Query = {
   },
 };
 
-export const delegation: Query = {
-  name: "delegation",
-  summary: "work handed to a subagent or a peer, by the skill that handed it over",
-  window: "t.ts_call",
-  run: (db, ctx) => {
-    const columns = ["skill", "handoffs", "subagents", "subagent_output", "failed", "sessions"];
-    const w = window("t.ts_call", ctx, "WHERE");
-    const records = table(
-      db,
-      `WITH handoff AS (
-         SELECT t.session_id, coalesce(t.attribution_skill, '(no skill)') AS skill,
-                t.tool_name, t.is_error
-         FROM tool_call t
-         WHERE t.tool_name IN ('Agent', 'SendMessage')${window("t.ts_call", ctx).sql}
-       ),
-       parents AS (SELECT DISTINCT session_id, skill FROM handoff WHERE tool_name = 'Agent'),
-       kids AS (
-         SELECT p.skill, count(DISTINCT c.id) AS subagents,
-                coalesce(sum(u.output_tokens), 0) AS subagent_output
-         FROM parents p
-         JOIN session c ON c.parent_id = p.session_id
-         LEFT JOIN usage u ON u.session_id = c.id
-         GROUP BY p.skill
-       )
-       SELECT h.skill, count(*) AS handoffs,
-              coalesce(k.subagents, 0) AS subagents,
-              coalesce(k.subagent_output, 0) AS subagent_output,
-              sum(coalesce(h.is_error, 0)) AS failed,
-              count(DISTINCT h.session_id) AS sessions
-       FROM handoff h LEFT JOIN kids k ON k.skill = h.skill
-       GROUP BY h.skill ORDER BY handoffs DESC`,
-      w.params,
-    );
-    const spawned = scalar(
-      db,
-      `SELECT count(*) AS n FROM tool_call t WHERE t.tool_name = 'Agent'${window("t.ts_call", ctx).sql}`,
-      ...w.params,
-    );
-    const messaged = scalar(
-      db,
-      `SELECT count(*) AS n FROM tool_call t WHERE t.tool_name = 'SendMessage'${window("t.ts_call", ctx).sql}`,
-      ...w.params,
-    );
-    const children = scalar(db, "SELECT count(*) AS n FROM session WHERE parent_id IS NOT NULL");
-    return {
-      denominator:
-        `${spawned} agents spawned and ${messaged} messages sent to a peer in this window ` +
-        `(${windowLine(ctx)}); ${children} subagent sessions recorded in the corpus`,
-      columns,
-      rows: toRows(records, columns),
-      note:
-        records.length === 0
-          ? "nothing was handed to a subagent or a peer in this window"
-          : "`subagents` and `subagent_output` count every child of a session that skill ever delegated " +
-            "in, not only the children of these calls, so they are the scale of the delegation a skill " +
-            "sits alongside rather than a per-call figure. A peer's own session is not a child and its " +
-            "output is not counted here.",
-    };
-  },
-};
-
 export const running: Query = {
   name: "running",
   summary: "sessions and subagents active in the last few minutes, and what each is doing",
@@ -421,90 +359,6 @@ export const running: Query = {
           ? `nothing active in the last ${minutes} minutes — run \`dim sync\` first, since only bytes already read are here`
           : "A subagent's rows are its own transcript, not its report to the parent. This is as fresh as the " +
             "last `dim sync`: nothing here watches a file.",
-    };
-  },
-};
-
-export const digest: Query = {
-  name: "digest",
-  summary: "the whole week in one call: friction, where work happened, what you repeated",
-  window: ["last_seen_at", "ts_call", "m.ts", "ts", "first_seen"],
-  run: (db, ctx) => {
-    const w = (col: string) => window(col, ctx);
-    const rows: (string | number | null)[][] = [];
-    const add = (measure: string, value: string | number | null) => rows.push([measure, value]);
-
-    const sessions = scalar(
-      db,
-      `SELECT count(*) AS n FROM session WHERE parent_id IS NULL${window("last_seen_at", ctx).sql}`,
-      ...w("last_seen_at").params,
-    );
-    add("sessions", sessions);
-
-    const edited = scalar(
-      db,
-      `SELECT count(*) AS n FROM (SELECT DISTINCT session_id, file_path FROM tool_call
-        WHERE tool_name IN ('Edit','Write') AND file_path IS NOT NULL${w("ts_call").sql})`,
-      ...w("ts_call").params,
-    );
-    const unskilled = scalar(
-      db,
-      `SELECT count(*) AS n FROM (SELECT DISTINCT session_id, file_path FROM tool_call
-        WHERE tool_name IN ('Edit','Write') AND file_path IS NOT NULL
-          AND attribution_skill IS NULL${w("ts_call").sql})`,
-      ...w("ts_call").params,
-    );
-    add("files edited", edited);
-    add(
-      "edited under no skill",
-      edited === 0 ? "—" : `${unskilled} (${Math.round((100 * unskilled) / edited)}%)`,
-    );
-
-    const stops = scalar(
-      db,
-      `SELECT count(*) AS n FROM message m
-       WHERE m.role = 'user' AND ${stoppedByOwner()}${w("m.ts").sql}`,
-      ...w("m.ts").params,
-    );
-    add("times you stopped the agent", stops);
-    add("stops per file edited", edited === 0 ? "—" : (stops / edited).toFixed(2));
-
-    const handoffs = scalar(
-      db,
-      `SELECT count(*) AS n FROM tool_call
-       WHERE tool_name IN ('Agent','SendMessage')${w("ts_call").sql}`,
-      ...w("ts_call").params,
-    );
-    add("work handed to a subagent or peer", handoffs);
-
-    const skillVersions = scalar(
-      db,
-      `SELECT count(DISTINCT body_sha256) AS n FROM skill_load
-       WHERE body_sha256 IS NOT NULL${w("ts").sql}`,
-      ...w("ts").params,
-    );
-    const ruleVersions = scalar(
-      db,
-      `SELECT count(*) AS n FROM guidance_version${window("first_seen", ctx, "WHERE").sql}`,
-      ...w("first_seen").params,
-    );
-    add("skill versions loaded", skillVersions);
-    add("rules file versions written", ruleVersions);
-
-    for (const r of repeats.run(db, ctx).rows.slice(0, 5)) {
-      add("repeated", `"${r[0]}" — ${r[1]} sessions`);
-    }
-
-    return {
-      denominator: `${windowLine(ctx)}`,
-      columns: ["measure", "value"],
-      rows,
-      note:
-        (sessions === 0
-          ? "no session in this window. "
-          : "A repeated phrase is a candidate rule or a rule that is not reaching the tool that needs it. " +
-            "Nothing here is an effect of anything else here: read a change as where to look. ") +
-        claudeOnly(CLAUDE_EDITS, CLAUDE_STOPS),
     };
   },
 };

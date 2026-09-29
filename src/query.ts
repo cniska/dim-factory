@@ -59,8 +59,7 @@ export const CLAUDE_EDITS =
   "an edit is matched by the `Edit` and `Write` tool names, and Codex writes a `FileChange`";
 
 export const CLAUDE_STOPS =
-  "a stop is read from fields only Claude writes on a message, and Codex marks an interrupted turn " +
-  "instead, which `dim q turns` reports";
+  "a stop is read from fields only Claude writes on a message, and Codex marks an interrupted turn instead";
 
 export const claudeOnly = (...bases: string[]): string =>
   `These counts are Claude's alone: ${bases.join("; ")}. A session under another tool is absent from them rather than idle.`;

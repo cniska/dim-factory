@@ -3,9 +3,9 @@ import { convention, exemplars, fixes, priorArt, stale } from "./query-code";
 import { candidates, corrections, repeats, rework } from "./query-correction";
 import { factory, factoryAnalytics, findings, order, scheduleHistory, schedules } from "./query-factory";
 import { search } from "./query-search";
-import { chain, delegation, digest, resume, running, session, sessions, thread } from "./query-session";
+import { chain, resume, running, session, sessions, thread } from "./query-session";
 import { skill, skills, tools } from "./query-skill";
-import { burn, cost, models, tokens, turns } from "./query-usage";
+import { burn } from "./query-usage";
 
 const withDeclaredWindow = (query: Query): Query => ({
   ...query,
@@ -16,7 +16,6 @@ export const QUERIES: Query[] = [
   convention,
   priorArt,
   chain,
-  digest,
   stale,
   search,
   thread,
@@ -27,16 +26,11 @@ export const QUERIES: Query[] = [
   order,
   skill,
   resume,
-  delegation,
   running,
   fixes,
   exemplars,
   repeats,
   burn,
-  tokens,
-  models,
-  cost,
-  turns,
   tools,
   skills,
   corrections,
