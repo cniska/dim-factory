@@ -3,13 +3,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { SCHEMA_SQL } from "./db-schema";
 import { attemptIn, integratedRepo, ranCheck } from "./fixtures.test-support";
-import { orderState } from "./order";
-import {
-  completeOrderSlice,
-  nextOrderSlice,
-  recordOrderBuild,
-  returnedOrderArtifact,
-} from "./order-artifacts";
+import { nextOrderSlice, orderState } from "./order";
+import { completeOrderSlice, recordOrderBuild, returnedOrderArtifact } from "./order-artifacts";
 import { openAttempt } from "./order-attempt";
 import { runOrderCommand, runOrderCommandLive } from "./order-command";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";

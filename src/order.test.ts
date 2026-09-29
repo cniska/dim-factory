@@ -20,11 +20,10 @@ import {
 } from "./fixtures.test-support";
 import type { Rewrite } from "./git-rebase-contract";
 import { rebuild } from "./ingest-sync";
-import { admitAct, orderState, recordShipRun } from "./order";
+import { admitAct, nextOrderSlice, orderState, recordShipRun } from "./order";
 import { approveOrder, returnOrder } from "./order-approval";
 import {
   completeOrderSlice,
-  nextOrderSlice,
   recordOrderBuild,
   recordOrderPlan,
   returnedOrderArtifact,

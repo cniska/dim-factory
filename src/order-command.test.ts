@@ -15,8 +15,8 @@ import {
 } from "./fixtures.test-support";
 import { hookConfigPath } from "./hooks";
 import { TOOLS } from "./ingest-tools";
-import { orderState } from "./order";
-import { completeOrderSlice, nextOrderSlice, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
+import { nextOrderSlice, orderState } from "./order";
+import { completeOrderSlice, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
 import { runOrderCommand as runCommand, runOrderCommandLive, runRemainingBuilds } from "./order-command";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
 import { appendOrderEvent } from "./order-ledger";

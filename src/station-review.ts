@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
-import { latestApprovedPlan } from "./order-approved-plan";
+import { readApprovedPlan } from "./order";
 import { finishAttempt } from "./order-attempt";
 import { currentOrderCommits } from "./order-commits";
 import { raiseOrderFinding } from "./order-finding";
@@ -75,7 +75,7 @@ function earlierFindingLines(finding: FindingStanding): string[] {
 export function reviewerBrief(
   order: BriefedOrder,
   range: { base: string; head: string },
-  context: { plan: { body: string; slices: readonly PlanSlice[] } | null; earlier: FindingStanding[] },
+  context: { plan: { body: string; slices: readonly PlanSlice[] }; earlier: FindingStanding[] },
   returned: { body: string; feedback: string } | null = null,
 ): string {
   return [
@@ -85,8 +85,8 @@ export function reviewerBrief(
     `\`git diff ${range.base}..${range.head}\``,
     "",
     "## Approved plan",
-    context.plan?.body ?? "None is recorded for this order.",
-    ...(context.plan && context.plan.slices.length > 0
+    context.plan.body,
+    ...(context.plan.slices.length > 0
       ? [
           "",
           "## Plan slices",
@@ -137,6 +137,8 @@ export const reviewStation: StationRun<ReviewedRound, ReviewOutcome> = {
   capabilities: REVIEWER_CAPABILITIES,
   outputSchema: `${import.meta.dir}/station-review-artifact.schema.json`,
   prepare: (db, order, { dir, returned, assignmentId }) => {
+    const plan = readApprovedPlan(db, order.id);
+    if (!plan) throw new Error(`order ${order.id} has no approved plan to review against`);
     abortStrandedReview(db, order.id);
     const cwd = stationDirectory(dir, order.id);
     const range = reviewRange(db, order.id, cwd);
@@ -147,7 +149,7 @@ export const reviewStation: StationRun<ReviewedRound, ReviewOutcome> = {
       brief: reviewerBrief(
         order,
         round,
-        { plan: latestApprovedPlan(db, order.id), earlier: earlierFindings(db, order.id, round.id) },
+        { plan, earlier: earlierFindings(db, order.id, round.id) },
         returned ? { body: returned.body, feedback: returned.reason } : null,
       ),
       abort: () => closeOrderReview(db, round.id, "aborted"),

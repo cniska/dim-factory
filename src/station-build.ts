@@ -1,13 +1,8 @@
 import type { Database } from "bun:sqlite";
-import { latestApprovedPlan } from "./order-approved-plan";
-import {
-  completeOrderBuildFollowup,
-  completeOrderSlice,
-  latestArtifact,
-  nextOrderSlice,
-  type OrderSlice,
-} from "./order-artifacts";
+import { readApprovedPlan } from "./order";
+import { completeOrderBuildFollowup, completeOrderSlice, latestArtifact } from "./order-artifacts";
 import { pendingRebaseConflict, type RecordedConflict } from "./order-commits";
+import type { PlannedSlice } from "./order-contract";
 import type { BuildTurnRefused } from "./order-finding";
 import { type FindingStanding, orderFindingStandings, owesAnswer } from "./order-finding-state";
 import { type FailedCheck, failedHeadCheck } from "./order-head-check";
@@ -58,7 +53,7 @@ function sliceLine(slice: PlanSlice, ordinal: number): string {
 
 type BuildBriefing = {
   plan: { body: string; slices: readonly PlanSlice[] };
-  currentSlice: OrderSlice | null;
+  currentSlice: PlannedSlice | null;
   workspace: BriefedWorkspace;
   revision?: { body: string; feedback: string };
   previousFailure?: string;
@@ -149,7 +144,7 @@ type Rebase = { conflict: RecordedConflict; paths: string[] };
 type BuildContext = {
   line: BriefedOrder["line"];
   finalOrdinal: number;
-  currentSlice: OrderSlice | null;
+  currentSlice: PlannedSlice | null;
   rebase: Rebase | null;
   owed: readonly number[];
   priorBuild: number;
@@ -202,9 +197,9 @@ export const buildStation: StationRun<BuildContext, BuildOutcome> = {
   capabilities: BUILDER_CAPABILITIES,
   outputSchema: BUILD_TURN_SCHEMA,
   prepare: (db, order, { dir, env, checkSandbox, returned }) => {
-    const plan = latestApprovedPlan(db, order.id);
+    const plan = readApprovedPlan(db, order.id);
     if (!plan) throw new Error(`order ${order.id} has no approved plan to build`);
-    const currentSlice = nextOrderSlice(db, order.id);
+    const currentSlice = plan.next;
     const conflict = currentSlice ? null : pendingRebaseConflict(db, order.id);
     const reviewFindings =
       currentSlice || conflict ? NO_REVIEW_FINDINGS : reviewFindingsForBuild(db, order.id);

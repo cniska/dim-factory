@@ -22,6 +22,10 @@ export type OrderArtifact = {
 
 export type OrderSliceRecord = { id: number; artifactId: number; ordinal: number; done: boolean };
 
+export type PlannedSlice = { id: number; ordinal: number; title: string; outcome: string };
+
+export type ApprovedPlan = { id: number; body: string; slices: PlannedSlice[]; next: PlannedSlice | null };
+
 export type OrderCommitRecord = { id: number; sha: string; retires: string | null; shipRunId: number | null };
 
 export type OrderShipRunRecord = {

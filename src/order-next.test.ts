@@ -3,8 +3,8 @@ import { describe, expect, test } from "bun:test";
 import type { CodedError } from "./coded-error";
 import { SCHEMA_SQL } from "./db-schema";
 import { workerIn } from "./fixtures.test-support";
-import { admit, type OrderAct, orderState } from "./order";
-import { nextOrderSlice, returnedOrderArtifact } from "./order-artifacts";
+import { admit, nextOrderSlice, type OrderAct, orderState } from "./order";
+import { returnedOrderArtifact } from "./order-artifacts";
 import { loadOrder } from "./order-store";
 import type { Station } from "./station-contract";
 

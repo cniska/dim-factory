@@ -2,11 +2,19 @@ import type { Database } from "bun:sqlite";
 import { assertOperator } from "./factory-operator";
 import { runningAttempt } from "./order-attempt";
 import { currentOrderCommits } from "./order-commits";
-import { fail, type Order, type OrderArtifact, type ShipRun } from "./order-contract";
+import {
+  type ApprovedPlan,
+  fail,
+  type Order,
+  type OrderArtifact,
+  type OrderSliceRecord,
+  type PlannedSlice,
+  type ShipRun,
+} from "./order-contract";
 import { appendOrderEvent } from "./order-ledger";
 import { insertShipRun, updateShipCleanup } from "./order-ship-run";
 import { isTerminalOrderStatus } from "./order-status";
-import { loadOrder } from "./order-store";
+import { loadOrder, loadPlanContent } from "./order-store";
 import type { ShipTeardown } from "./ship-contract";
 import type { Station } from "./station-contract";
 
@@ -29,6 +37,38 @@ function approvedPlan(order: Order): OrderArtifact | null {
 
 function sliceLeft(order: Order, plan: OrderArtifact): boolean {
   return order.slices.some((slice) => slice.artifactId === plan.id && !slice.done);
+}
+
+export function nextSlice(order: Order): OrderSliceRecord | null {
+  const plan = approvedPlan(order);
+  if (plan === null) return null;
+  const left = order.slices.filter((slice) => slice.artifactId === plan.id && !slice.done);
+  return left.sort((a, b) => a.ordinal - b.ordinal)[0] ?? null;
+}
+
+export function lastSliceOrdinal(order: Order): number | null {
+  const plan = approvedPlan(order);
+  if (plan === null) return null;
+  const ordinals = order.slices.filter((slice) => slice.artifactId === plan.id).map((slice) => slice.ordinal);
+  return ordinals.length === 0 ? null : Math.max(...ordinals);
+}
+
+export function nextOrderSlice(db: Database, orderId: string): PlannedSlice | null {
+  const plan = readApprovedPlan(db, orderId);
+  return plan === null ? null : plan.next;
+}
+
+export function readApprovedPlan(db: Database, orderId: string): ApprovedPlan | null {
+  const order = loadOrder(db, orderId);
+  const plan = approvedPlan(order);
+  if (plan === null) return null;
+  const content = loadPlanContent(db, plan.id);
+  const next = nextSlice(order);
+  return {
+    id: plan.id,
+    ...content,
+    next: next === null ? null : (content.slices.find((slice) => slice.id === next.id) ?? null),
+  };
 }
 
 export function orderHead(order: Order): string | null {

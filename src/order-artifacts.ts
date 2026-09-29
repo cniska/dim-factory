@@ -1,11 +1,13 @@
 import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
+import { lastSliceOrdinal, nextSlice } from "./order";
 import { finishAttempt, openAttempt } from "./order-attempt";
 import { latestOrderCommit } from "./order-commits";
 import { fail } from "./order-contract";
 import { assertChecked } from "./order-head-check";
 import { appendOrderEventInTransaction, now } from "./order-ledger";
 import { assertOrderRunning } from "./order-status";
+import { loadOrder } from "./order-store";
 import type { Station } from "./station-contract";
 import type { PlanSlice } from "./station-plan-artifact";
 
@@ -117,16 +119,6 @@ export function recordOrderPlan(
   });
 }
 
-const APPROVED_PLAN = `EXISTS (
-  SELECT 1 FROM factory_order_event e WHERE e.kind = 'artifact_approved' AND e.artifact_id = p.id
-) AND NOT EXISTS (
-  SELECT 1 FROM factory_order_event e WHERE e.kind = 'artifact_returned' AND e.artifact_id = p.id
-) AND p.id = (
-  SELECT latest.id FROM factory_order_artifact latest
-  WHERE latest.order_id = p.order_id AND latest.kind = 'plan'
-  ORDER BY latest.revision DESC LIMIT 1
-)`;
-
 export function recordOrderBuild(
   db: Database,
   orderId: string,
@@ -137,40 +129,16 @@ export function recordOrderBuild(
 ): number {
   assertOrderRunning(db, orderId);
   if (!openAttempt(db, orderId)) throw fail("no_final_build_turn", { orderId });
-  const next = nextOrderSlice(db, orderId);
-  if (next) {
-    const last = db
-      .query<{ ordinal: number }, [string]>(
-        `SELECT max(s.ordinal) AS ordinal
-         FROM factory_order_slice s
-         JOIN factory_order_artifact p ON p.id = s.artifact_id
-         WHERE p.order_id = ? AND ${APPROVED_PLAN}`,
-      )
-      .get(orderId);
-    if (last?.ordinal !== next.ordinal) throw fail("build_artifact_before_final_slice", { orderId });
+  const order = loadOrder(db, orderId);
+  const next = nextSlice(order);
+  if (next !== null && next.ordinal !== lastSliceOrdinal(order)) {
+    throw fail("build_artifact_before_final_slice", { orderId });
   }
   if (body.trim() === "") throw new Error("build artifact body must not be empty");
   if (headSha.trim() === "") throw new Error("build artifact head must not be empty");
   return writeTransaction(db, () =>
     writeArtifactInTransaction(db, orderId, { kind: "build", body, headSha, reviewId: null }, worker, at),
   );
-}
-
-export type OrderSlice = PlanSlice & { id: number; ordinal: number };
-
-export function nextOrderSlice(db: Database, orderId: string): OrderSlice | null {
-  return db
-    .query<OrderSlice, [string]>(
-      `SELECT s.id, s.ordinal, s.title, s.outcome
-       FROM factory_order_slice s
-       JOIN factory_order_artifact p ON p.id = s.artifact_id
-       WHERE p.order_id = ? AND ${APPROVED_PLAN} AND NOT EXISTS (
-         SELECT 1 FROM factory_order_slice_completion c WHERE c.slice_id = s.id
-       )
-       ORDER BY p.revision DESC, s.ordinal
-       LIMIT 1`,
-    )
-    .get(orderId);
 }
 
 export function completeOrderSlice(
@@ -182,17 +150,9 @@ export function completeOrderSlice(
 ): void {
   writeTransaction(db, () => {
     assertOrderRunning(db, orderId);
-    const slice = db
-      .query<{ id: number }, [string, number]>(
-        `SELECT s.id FROM factory_order_slice s
-         JOIN factory_order_artifact p ON p.id = s.artifact_id
-         WHERE p.order_id = ? AND s.id = ? AND ${APPROVED_PLAN}`,
-      )
-      .get(orderId, sliceId);
-    if (!slice) throw new Error(`slice ${sliceId} does not belong to order ${orderId}'s approved plan`);
-    const next = nextOrderSlice(db, orderId);
-    if (!next || next.id !== sliceId)
-      throw new Error(`slice ${sliceId} is not the next slice for order ${orderId}`);
+    const next = nextSlice(loadOrder(db, orderId));
+    if (next?.id !== sliceId)
+      throw new Error(`slice ${sliceId} is not the next slice of order ${orderId}'s approved plan`);
     db.run("INSERT INTO factory_order_slice_completion (slice_id, worker, completed_at) VALUES (?, ?, ?)", [
       sliceId,
       worker,
@@ -210,7 +170,7 @@ export function completeOrderBuildFollowup(
 ): void {
   writeTransaction(db, () => {
     assertOrderRunning(db, orderId);
-    if (nextOrderSlice(db, orderId) !== null) {
+    if (nextSlice(loadOrder(db, orderId)) !== null) {
       throw new Error(`order ${orderId} still has an incomplete build slice`);
     }
     assertChecked(db, orderId);

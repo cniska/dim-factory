@@ -9,6 +9,7 @@ import {
   type OrderReviewRecord,
   type OrderShipRunRecord,
   type OrderSliceRecord,
+  type PlannedSlice,
 } from "./order-contract";
 import { type OrderStatus, orderStatusSql } from "./order-status";
 import type { Station } from "./station-contract";
@@ -89,4 +90,19 @@ export function loadOrder(db: Database, orderId: string): Order {
     .all(orderId)
     .map((f): OrderFindingRecord => ({ ...f, answered: f.answered === 1 }));
   return { id: orderId, status: row.status, artifacts, slices, commits, shipRuns, checks, reviews, findings };
+}
+
+export function loadPlanContent(db: Database, planId: number): { body: string; slices: PlannedSlice[] } {
+  const plan = db
+    .query<{ body: string }, [number]>(
+      "SELECT body FROM factory_order_artifact WHERE id = ? AND kind = 'plan'",
+    )
+    .get(planId);
+  if (!plan) throw new Error(`plan ${planId} is not recorded`);
+  const slices = db
+    .query<PlannedSlice, [number]>(
+      "SELECT id, ordinal, title, outcome FROM factory_order_slice WHERE artifact_id = ? ORDER BY ordinal",
+    )
+    .all(planId);
+  return { body: plan.body, slices };
 }

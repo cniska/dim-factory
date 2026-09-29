@@ -6,9 +6,9 @@ import { basename } from "node:path";
 import wallServeConfig from "../../bunfig.toml";
 import { SCHEMA_SQL } from "../db-schema";
 import { attemptIn, integratedRepo, located, ranCheck, reviewIn, workerIn } from "../fixtures.test-support";
-import { recordShipRun } from "../order";
+import { nextOrderSlice, recordShipRun } from "../order";
 import { approveOrder } from "../order-approval";
-import { completeOrderSlice, nextOrderSlice, recordOrderBuild, recordOrderPlan } from "../order-artifacts";
+import { completeOrderSlice, recordOrderBuild, recordOrderPlan } from "../order-artifacts";
 import { finishAttempt, startAttempt } from "../order-attempt";
 import {
   recordOrderCheck,

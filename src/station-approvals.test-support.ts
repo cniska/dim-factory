@@ -1,7 +1,8 @@
 import type { Database } from "bun:sqlite";
 import { attemptIn, ranCheck, reviewIn } from "./fixtures.test-support";
+import { nextOrderSlice } from "./order";
 import { approveOrder } from "./order-approval";
-import { completeOrderSlice, nextOrderSlice, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
+import { completeOrderSlice, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
 import { recordOrderCheck } from "./order-evidence";
 import { closeOrderReview, recordOrderReviewArtifact } from "./order-review";
 

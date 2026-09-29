@@ -17,14 +17,9 @@ import { codexProcess } from "./harness-codex";
 import { fakeHarness } from "./harness-fake";
 import { commandLine } from "./harness-process";
 import { type ScriptedAnswer, scriptedHarness } from "./harness-scripted.test-support";
-import { orderState } from "./order";
+import { nextOrderSlice, orderState } from "./order";
 import { approveOrder } from "./order-approval";
-import {
-  completeOrderSlice,
-  nextOrderSlice,
-  recordOrderBuild,
-  returnedOrderArtifact,
-} from "./order-artifacts";
+import { completeOrderSlice, recordOrderBuild, returnedOrderArtifact } from "./order-artifacts";
 import { finishAttempt } from "./order-attempt";
 import { runOrderCommand } from "./order-command";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
@@ -733,7 +728,7 @@ describe("a review round", () => {
       { id: "order-1", title: "Read a slice", description: null, line: "fix" },
       { base: "aaa", head: "bbb" },
       {
-        plan: null,
+        plan: { body: "## Outcome\n\nRead it.", slices: [] },
         earlier: [
           {
             id: 7,
@@ -760,7 +755,6 @@ describe("a review round", () => {
         "  - Builder's answer: refused: later slice",
       ].join("\n"),
     );
-    expect(brief).toContain("## Approved plan\nNone is recorded for this order.");
   });
 
   test("sends the order to build when the round after a return raises a finding", async () => {
