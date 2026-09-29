@@ -23,7 +23,6 @@ What is not built, highest priority first. `dim order ready` lists what is queue
 - **A copied Claude transcript counts its skill loads once per file** — `skill_load` is unique per session, so a transcript copied into a second session file loads each skill again, where `usage` and `tool_call` count the line once. `db-schema.ts` `skill_load`, `ingest.ts`. Key a load on its source line rather than its session.
 - **A plugin skill loads under two names** — a `Skill` call names it `dim:dim-plan`, while a typed `/dim:dim-plan`, which `COMMAND_NAME` rejects for its colon, takes `dim-plan` from its body path, so `q skills` splits one skill across two rows. `ingest-skill-load.ts` `COMMAND_NAME`, `ingest-parse-claude.ts`. Read the plugin name from the typed command.
 - **`q fixes` and `q stale` miss worktree edits** — they compare paths without folding worktrees, as `exemplars` does. `query-code.ts`. Apply `withoutWorktree` to both sides.
-- **`q slices` reads `verify && git commit` as unchecked** — `is_check` needs an exact command match. `query-factory.ts` `slices`.
 - **`format-edit.test.ts` fails inside a worker** — two tests call `formatAfterEdit` with the process environment, so under a worker's `DIM_WORKER_NAME` it formats nothing and `bun run verify` goes red in a build turn. `format-edit.test.ts`. Pass the tests an empty environment.
 - **`@~/` guidance imports resolve from the importing file**, not home. `guidance-walk.ts`.
 - **A moved data directory duplicates the SessionStart hook** — `hookKind` recognises a spool hook under an old data directory only without `-$PPID`, so after `DIM_HOME` moves the SessionStart hook reads as missing and `install-hooks` adds a second one. `hooks.ts` `hookKind`.
@@ -117,7 +116,7 @@ Each entry is one change. [schema] entries change the schema and run with nothin
 
 - Corrections as a source — no corrections are labeled yet.
 - `q repeats` by meaning rather than a word list, once labels exist.
-- Whether checked slices draw fewer later fixes, and whether the simplification pass pays.
+- Whether the simplification pass pays.
 - Picking code to simplify from what keeps drawing fixes.
 - Why files edited under `agents-md` draw more fixes afterward.
 - A record of which guidance cuts a measurement settled.

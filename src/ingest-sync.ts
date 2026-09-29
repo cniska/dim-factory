@@ -11,7 +11,6 @@ import { applyHookEvents, type DrainReport, drainSpool } from "./ingest-spool";
 import type { Tool } from "./ingest-tools";
 import type { Env } from "./paths";
 import { backfillHandoffs, type HandoffLinkReport, linkHandoffs } from "./recall-handoff";
-import { type RepoCheckReport, recordRepoChecks } from "./repo-check";
 import { indexRepoFiles, type RepoFileReport } from "./repo-files";
 
 export type SyncReport = {
@@ -24,7 +23,6 @@ export type SyncReport = {
   history: HistoryReport;
   git: GitReport;
   repoFiles: RepoFileReport;
-  repoChecks: RepoCheckReport;
   guidance: GuidanceReport;
   chain: HandoffLinkReport;
   walk: WalkReport;
@@ -49,7 +47,6 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     history: { read: 0, orphans: 0 },
     git: { repos: 0, commits: 0, files: 0 },
     repoFiles: { repos: 0, files: 0 },
-    repoChecks: { repos: 0 },
     guidance: { files: 0, versions: 0 },
     chain: { pasted: 0, linked: 0 },
     walk: drainWalk(db, env),
@@ -99,7 +96,6 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
   report.history = ingestHistory(db, env);
   report.git = ingestCommits(db);
   report.repoFiles = indexRepoFiles(db);
-  report.repoChecks = recordRepoChecks(db);
   report.guidance = ingestGuidance(db, env);
   backfillHandoffs(db);
   report.chain = linkHandoffs(db);
@@ -333,7 +329,6 @@ export function rebuild(db: Database, env: Env = process.env): RebuildReport {
     db.run("DROP TABLE IF EXISTS guidance_version");
     db.run("DROP TABLE IF EXISTS commit_file");
     db.run("DROP TABLE IF EXISTS repo_file");
-    db.run("DROP TABLE IF EXISTS repo_check");
     db.run("DROP TABLE IF EXISTS repo_commit");
     db.run("DROP TABLE IF EXISTS handoff_link");
     db.run("DROP TABLE IF EXISTS factory_handoff");
