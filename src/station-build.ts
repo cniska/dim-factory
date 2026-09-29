@@ -219,7 +219,7 @@ export const buildStation: StationRun<BuildContext, BuildOutcome> = {
     const undone = undoInterruptedJudgement(db, order.id, worktree);
     if (undone) writeTrace(db, { event: "order.judgement_undone", orderId: order.id, name: undone });
     const workspace = workspaceContract(worktree);
-    if (workspace === null) throw fail("worktree_missing", { orderId: order.id, worktree });
+    if (workspace === null) throw fail("worktree_not_checkout", { orderId: order.id, worktree });
     const rebase = conflict ? { conflict, paths: reopenRebase(worktree, order.id, conflict) } : null;
     return {
       cwd: worktree,
