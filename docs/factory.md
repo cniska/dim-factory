@@ -134,10 +134,6 @@ Orders, workers, attempts, artifacts, evidence and the ledger live in `factory_*
 
 While the factory is being built, `DIM_HOME=<dir> bun run factory:reset -- --confirm-factory-reset` clears its orders in a named data directory; it refuses the default one.
 
-## Scheduling
-
-`dim schedule define|pause|resume` and `dim q schedules` keep interval schedules. A host — launchd, cron, a harness — only invokes `dim`.
-
 ## Borrowed from the assembly line
 
 - **Stop on a defect, never on success** (*jidoka*). The commit gate halts a failing change; the operator halts on a second failure of one order.

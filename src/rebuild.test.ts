@@ -264,14 +264,6 @@ describe("rebuilding a database an older schema wrote", () => {
                '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'started', 'running')`,
     );
     db.run(
-      "INSERT INTO factory_schedule (id, queue_id, interval_seconds, created_at, updated_at) VALUES ('schedule-history', 'queue', 60, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
-    );
-    db.run(
-      `INSERT INTO factory_schedule_invocation
-         (schedule_id, evaluated_at, due, dispatched, selected_order_ids, worker, session_id, harness, model, tier, outcome)
-       VALUES ('schedule-history', '2026-01-01T00:01:00Z', 1, 1, '["order-history"]', 'copper-1', 'session-1', 'codex', 'gpt-test', 'standard', 'dispatched')`,
-    );
-    db.run(
       `INSERT INTO trace_event (ts, event, order_id, worker, session_id, fields)
        VALUES ('2026-01-01T00:03:00Z', 'ship.debug', 'order-history', 'copper-1', 'session-1', '{}')`,
     );
@@ -280,7 +272,6 @@ describe("rebuilding a database an older schema wrote", () => {
 
     expect(db.query("SELECT count(*) AS n FROM factory_order_event").get()).toEqual({ n: 1 });
     expect(db.query("SELECT count(*) AS n FROM factory_order_attempt").get()).toEqual({ n: 1 });
-    expect(db.query("SELECT count(*) AS n FROM factory_schedule_invocation").get()).toEqual({ n: 1 });
     expect(db.query("SELECT event FROM trace_event").all()).toEqual([{ event: "ship.debug" }]);
     db.close();
   });

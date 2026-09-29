@@ -298,89 +298,6 @@ export const factory: Query = {
   },
 };
 
-export const schedules: Query = {
-  name: "schedules",
-  summary: "show persisted schedules and which enabled schedules are due",
-  usage: "dim q schedules",
-  spansHistory: true,
-  window: null,
-  run: (db) => {
-    const columns = ["id", "queue", "interval_seconds", "state", "due", "last_evaluated_at", "last_due_at"];
-    const at = new Date().toISOString();
-    const rows = table(
-      db,
-      `SELECT id, queue_id AS queue, interval_seconds,
-              CASE WHEN enabled = 0 THEN 'disabled' WHEN paused = 1 THEN 'paused' ELSE 'enabled' END AS state,
-              CASE WHEN enabled = 1 AND paused = 0
-                    AND (last_evaluated_at IS NULL OR datetime(last_evaluated_at, '+' || interval_seconds || ' seconds') <= datetime(?) )
-                   THEN 'due' ELSE 'not due' END AS due,
-              last_evaluated_at, last_due_at
-       FROM factory_schedule ORDER BY id`,
-      [at],
-    );
-    return {
-      denominator: `${rows.length} persisted schedule${rows.length === 1 ? "" : "s"}; due is evaluated at ${at}`,
-      columns,
-      rows: toRows(rows, columns),
-      note:
-        rows.length === 0
-          ? "no schedules are recorded"
-          : "Due selection reads schedule state only; it does not claim queue work or create a factory order.",
-    };
-  },
-};
-
-export const scheduleHistory: Query = {
-  name: "schedule-history",
-  summary: "show every persisted schedule evaluation and dispatch outcome",
-  usage: "dim q schedule-history [schedule-id]",
-  spansHistory: true,
-  window: "evaluated_at",
-  run: (db, ctx) => {
-    const conditions: string[] = [];
-    const params: string[] = [];
-    if (ctx.arg) {
-      conditions.push("schedule_id = ?");
-      params.push(ctx.arg);
-    }
-    if (ctx.since) {
-      conditions.push("evaluated_at >= ?");
-      params.push(ctx.since);
-    }
-    const filter = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
-    const columns = [
-      "schedule_id",
-      "evaluated_at",
-      "due",
-      "dispatched",
-      "selected_order_ids",
-      "worker",
-      "session_id",
-      "harness",
-      "model",
-      "tier",
-      "outcome",
-      "reason",
-    ];
-    const rows = table(
-      db,
-      `SELECT schedule_id, evaluated_at,
-              CASE WHEN due = 1 THEN 'due' ELSE 'not due' END AS due,
-              CASE WHEN dispatched = 1 THEN 'dispatched' ELSE 'not dispatched' END AS dispatched,
-              selected_order_ids, worker, session_id, harness, model, tier, outcome, reason
-       FROM factory_schedule_invocation${filter}
-       ORDER BY evaluated_at, id`,
-      params,
-    );
-    return {
-      denominator: `${rows.length} schedule invocation${rows.length === 1 ? "" : "s"} read from factory_schedule_invocation${ctx.since ? ` since ${ctx.since}` : ""}`,
-      columns,
-      rows: toRows(rows, columns),
-      note: rows.length === 0 ? "no schedule invocations match this query" : undefined,
-    };
-  },
-};
-
 export const factoryAnalytics: Query = {
   name: "factory-analytics",
   summary: "derive factory lifecycle metrics from first-party domain records",
@@ -396,11 +313,6 @@ export const factoryAnalytics: Query = {
       return clauses.length === 0 ? "" : ` WHERE ${clauses.join(" AND ")}`;
     };
     const orderEventParams = (kind?: string): string[] => (kind ? [kind, ...(arg ? [arg] : [])] : params);
-    const scheduleScope = arg
-      ? " WHERE EXISTS (SELECT 1 FROM json_each(factory_schedule_invocation.selected_order_ids) selected WHERE selected.value LIKE ? || '%')"
-      : "";
-    const scheduleWhere = (predicate: string): string =>
-      `${scheduleScope ? `${scheduleScope} AND ` : " WHERE "}${predicate}`;
     const metric = (name: string, value: number): Record<string, unknown> => ({ metric: name, value });
     const rows: Record<string, unknown>[] = [];
     const attempts = scalar(
@@ -488,41 +400,11 @@ export const factoryAnalytics: Query = {
     )) {
       rows.push(metric(`worker_execution:${row.attribution}`, Number(row.n)));
     }
-    rows.push(
-      metric(
-        "schedule_evaluations",
-        scalar(db, `SELECT count(*) AS n FROM factory_schedule_invocation${scheduleScope}`, ...params),
-      ),
-      metric(
-        "schedule_due",
-        scalar(
-          db,
-          `SELECT count(*) AS n FROM factory_schedule_invocation${scheduleWhere("due = 1")}`,
-          ...params,
-        ),
-      ),
-      metric(
-        "schedule_dispatched",
-        scalar(
-          db,
-          `SELECT count(*) AS n FROM factory_schedule_invocation${scheduleWhere("dispatched = 1")}`,
-          ...params,
-        ),
-      ),
-      metric(
-        "schedule_dispatch_failures",
-        scalar(
-          db,
-          `SELECT count(*) AS n FROM factory_schedule_invocation${scheduleWhere("outcome = 'failed'")}`,
-          ...params,
-        ),
-      ),
-    );
     return {
       denominator:
         `${ordersWithAttempts} order${ordersWithAttempts === 1 ? "" : "s"} with attempt history` +
         (arg ? ` matching ${arg}` : "") +
-        "; metrics are derived from factory_order_event, factory_order_artifact, factory_order_attempt, factory_order_ship_run, and factory_schedule_invocation",
+        "; metrics are derived from factory_order_event, factory_order_artifact, factory_order_attempt and factory_order_ship_run",
       columns: ["metric", "value"],
       rows: toRows(rows, ["metric", "value"]),
       note: rows.length === 0 ? "no first-party domain records are available for these metrics" : undefined,

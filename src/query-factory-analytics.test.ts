@@ -100,20 +100,6 @@ describe("factory analytics", () => {
         "2026-09-18T09:10:00.000Z",
       ],
     );
-    db.run(
-      `INSERT INTO factory_schedule (id, queue_id, interval_seconds, created_at, updated_at)
-       VALUES ('schedule-analytics', 'queue', 60, '2026-09-18T09:00:00.000Z', '2026-09-18T09:00:00.000Z')`,
-    );
-    db.run(
-      `INSERT INTO factory_schedule_invocation
-         (schedule_id, evaluated_at, due, dispatched, selected_order_ids, outcome)
-       VALUES ('schedule-analytics', '2026-09-18T09:01:00.000Z', 1, 1, '["order-analytics"]', 'dispatched'),
-              ('schedule-analytics', '2026-09-18T09:02:00.000Z', 1, 0, '["order-analytics"]', 'failed'),
-              ('schedule-analytics', '2026-09-18T09:03:00.000Z', 1, 1, '["another-order"]', 'dispatched'),
-              ('schedule-analytics', '2026-09-18T09:04:00.000Z', 1, 0, '["another-order"]', 'failed'),
-              ('schedule-analytics', '2026-09-18T09:05:00.000Z', 0, 0, '[]', 'not_due')`,
-    );
-
     const result = findQuery("factory-analytics")?.run(db, { arg: "order-analytics" });
     const metrics = new Map(result?.rows.map(([name, value]) => [name, value]));
     expect(metrics.get("attempts")).toBe(2);
@@ -131,10 +117,6 @@ describe("factory analytics", () => {
     expect(metrics.get("verdict:returned:plan")).toBe(1);
     expect(metrics.get("verdict:dropped")).toBe(undefined);
     expect(metrics.get("worker_execution:codex/gpt-test/standard")).toBe(2);
-    expect(metrics.get("schedule_evaluations")).toBe(2);
-    expect(metrics.get("schedule_due")).toBe(2);
-    expect(metrics.get("schedule_dispatched")).toBe(1);
-    expect(metrics.get("schedule_dispatch_failures")).toBe(1);
 
     db.run("DELETE FROM factory_order_attempt WHERE run_id = 'run-2' AND kind = 'finished'");
     const afterRemoval = findQuery("factory-analytics")?.run(db, { arg: "order-analytics" });

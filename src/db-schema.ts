@@ -167,22 +167,6 @@ CREATE TABLE IF NOT EXISTS trace_event (
 CREATE INDEX IF NOT EXISTS trace_event_order_ts ON trace_event(order_id, ts, id);
 CREATE INDEX IF NOT EXISTS trace_event_name ON trace_event(event, name, ts);
 
--- Persisted scheduler definitions are operational control state, not source-derived
--- rows and not factory order execution reports. The latest evaluation fields let the
--- next invocation explain when a schedule was last considered without a second report store.
-CREATE TABLE IF NOT EXISTS factory_schedule (
-  id                  TEXT PRIMARY KEY,
-  queue_id            TEXT NOT NULL,
-  interval_seconds    INTEGER NOT NULL CHECK (interval_seconds > 0),
-  enabled             INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
-  paused              INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1)),
-  created_at          TEXT NOT NULL,
-  updated_at          TEXT NOT NULL,
-  last_evaluated_at   TEXT,
-  last_due_at         TEXT
-);
-CREATE INDEX IF NOT EXISTS factory_schedule_due ON factory_schedule(enabled, paused, last_evaluated_at);
-
 -- What stops the whole factory rather than one queue: a defect hit mid-slice is in
 -- the machinery every queue is run by, so the next claim is refused whichever repo
 -- it was going to come from. Running orders are left alone, because killing a
@@ -375,24 +359,6 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   evidence              TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS factory_order_event_order_ts ON factory_order_event(order_id, ts, id);
-
-CREATE TABLE IF NOT EXISTS factory_schedule_invocation (
-  id                    INTEGER PRIMARY KEY,
-  schedule_id           TEXT NOT NULL REFERENCES factory_schedule(id),
-  evaluated_at          TEXT NOT NULL,
-  due                   INTEGER NOT NULL CHECK (due IN (0, 1)),
-  dispatched            INTEGER NOT NULL CHECK (dispatched IN (0, 1)),
-  selected_order_ids    TEXT NOT NULL DEFAULT '[]',
-  worker                TEXT REFERENCES factory_worker(name),
-  session_id            TEXT,
-  harness               TEXT,
-  model                 TEXT,
-  tier                  TEXT,
-  outcome               TEXT NOT NULL CHECK (outcome IN ('not_due', 'dispatched', 'failed')),
-  reason                TEXT
-);
-CREATE INDEX IF NOT EXISTS factory_schedule_invocation_schedule
-  ON factory_schedule_invocation(schedule_id, evaluated_at, id);
 
 -- One ship of an order, written under the ship lock whatever its outcome. It names no
 -- worker: the rebase and the landing are the factory's acts, and the operator's retry is

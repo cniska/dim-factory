@@ -133,7 +133,6 @@ export const FACTORY_ORDER_TABLES = [
   PARENT_ORDER_TABLE,
   "factory_order_worker",
   "factory_order_attempt",
-  "factory_schedule_invocation",
   "factory_order_check",
   "factory_order_proof",
   "factory_order_ship_run",

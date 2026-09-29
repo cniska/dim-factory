@@ -31,18 +31,3 @@ export type AttemptOutcome = (typeof ATTEMPT_OUTCOMES)[number];
 export const ATTEMPT_OUTCOMES_SQL = ATTEMPT_OUTCOMES.map((outcome) => `'${outcome}'`).join(",");
 
 export type EvidenceReference = Record<string, string | number | boolean | null>;
-
-export type ScheduleInvocation = {
-  scheduleId: string;
-  evaluatedAt: string;
-  due: boolean;
-  dispatched: boolean;
-  selectedOrderIds: readonly string[];
-  worker?: string;
-  sessionId?: string;
-  harness?: string;
-  model?: string;
-  tier?: string;
-  outcome: "not_due" | "dispatched" | "failed";
-  reason?: string;
-};

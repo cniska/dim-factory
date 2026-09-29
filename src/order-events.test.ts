@@ -22,9 +22,6 @@ describe("factory domain event boundary", () => {
     expect(columns(db, "factory_order_attempt")).toEqual(
       expect.arrayContaining(["session_id", "provider_session_id", "harness", "model", "tier"]),
     );
-    expect(columns(db, "factory_schedule_invocation")).toEqual(
-      expect.arrayContaining(["evaluated_at", "due", "dispatched", "selected_order_ids", "outcome"]),
-    );
     expect(columns(db, "factory_order_artifact")).toEqual([
       "id",
       "order_id",
