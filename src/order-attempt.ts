@@ -58,7 +58,6 @@ export function startAttempt(db: Database, orderId: string, attempt: Attempt, at
   writeTransaction(db, () => {
     assertOrderRunning(db, orderId);
     finishStoppedAttempt(db, orderId, at);
-    assertNoRunningAttempt(db, orderId, "start another attempt");
     assertOperator(db, attempt.operatorWorker, "delegate an attempt");
     db.run(
       `INSERT INTO factory_order_attempt

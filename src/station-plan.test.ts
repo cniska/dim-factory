@@ -13,6 +13,7 @@ import { returnOrder } from "./order-approval";
 import { startAttempt } from "./order-attempt";
 import { dropOrder, queueOrder } from "./order-lifecycle";
 import { orderStatus } from "./order-status";
+import { holdOrder } from "./station-attempt";
 import { plannerBrief, runOrderPlanLive as runPlan } from "./station-plan";
 import { UsageLimited } from "./station-worker";
 import { mintWorker } from "./worker";
@@ -396,6 +397,30 @@ describe("planner station", () => {
     ).toEqual({ worker: first.planner, provider_session_id: "fake-session" });
 
     db.close();
+    rmSync(repo.dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  test("refuses to plan an order another station holds, before a planner exists or the order starts", async () => {
+    const db = new Database(":memory:");
+    db.run(SCHEMA_SQL);
+    const repo = integratedRepo();
+    const operator = mintWorker(db, { role: "operator", sessionId: "planner-held-operator" });
+    queueOrder(db, { id: "held-order", project: "cniska/dim-factory", title: "Plan me" }, operator.name);
+    const home = mkdtempSync(join(tmpdir(), "dim-held-"));
+    const env = { [WORKER_NAME_VAR]: operator.name, DIM_HOME: home };
+    using _hold = holdOrder("held-order", env);
+
+    await expect(
+      runOrderPlanLive(db, "held-order", {
+        adapter: fakeHarness("plan"),
+        env,
+        dir: repo.dir,
+        harness: "codex",
+      }),
+    ).rejects.toThrow(expect.objectContaining({ code: "LOCK_HELD" }));
+    expect(db.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 0 });
+    expect(orderStatus(db, "held-order")).toBe("queued");
     rmSync(repo.dir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
   });

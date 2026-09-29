@@ -19,7 +19,7 @@ import {
   workerIn,
 } from "./fixtures.test-support";
 import { rebuild } from "./ingest-sync";
-import { orderState } from "./order";
+import { admitAct, orderState } from "./order";
 import { approveOrder, returnOrder } from "./order-approval";
 import {
   completeOrderSlice,
@@ -632,14 +632,13 @@ describe("factory order report records", () => {
     database.close();
   });
 
-  test("refuses a second build attempt while the first attempt's worker is running", () => {
+  test("refuses a second station while the first attempt's worker is running", () => {
     const database = db();
-    const builder = workerIn(database, "builder");
     queueOrder(database, { ...order, id: "order-taken" }, attemptOperator);
     start(database, "order-taken");
     attemptIn(database, "order-taken", runningBuilder(database), attemptOperator, "run-1");
 
-    expect(() => attemptIn(database, "order-taken", builder, attemptOperator, "run-2")).toThrow(
+    expect(() => admitAct(database, "order-taken", "plan", attemptOperator)).toThrow(
       expect.objectContaining({ code: "order_held_by_run", message: expect.stringMatching(/under run-1/) }),
     );
     database.close();

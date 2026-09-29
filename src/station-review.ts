@@ -17,7 +17,7 @@ import {
   openOrderReview,
   recordOrderReviewArtifact,
 } from "./order-review";
-import { startStationAttempt } from "./station-attempt";
+import { holdOrder, startStationAttempt } from "./station-attempt";
 import { type BriefedOrder, briefHeader } from "./station-brief";
 import { stationDirectory } from "./station-directory";
 import type { PlanSlice } from "./station-plan-artifact";
@@ -239,6 +239,7 @@ export async function runOrderReviewLive(
     .query<BriefedOrder, [string]>("SELECT id, title, description, line FROM factory_order WHERE id = ?")
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
+  using hold = holdOrder(orderId, options.env);
   admitAct(db, orderId, "review", worker);
   abortStrandedReview(db, orderId);
   const dir = stationDirectory(options.dir, orderId);
@@ -272,6 +273,7 @@ export async function runOrderReviewLive(
           new Date().toISOString(),
         );
         claimed = true;
+        hold.release();
       },
       request: ({ orderWorker: assigned, returned }) => {
         opened = openRound(db, orderId, dir, assigned.assignment.id);

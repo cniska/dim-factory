@@ -75,21 +75,28 @@ function release(path: string): void {
   rmSync(dropped, { recursive: true, force: true });
 }
 
-export function withPathLock<T>(path: string, fn: () => T): T {
-  const pidFile = join(path, "pid");
+export function claimPathLock(path: string): () => void {
   mkdirSync(dirname(path), { recursive: true });
+  claim(path, join(path, "pid"));
+  let held = true;
+  return () => {
+    if (!held) return;
+    held = false;
+    release(path);
+  };
+}
 
-  claim(path, pidFile);
-
+export function withPathLock<T>(path: string, fn: () => T): T {
+  const released = claimPathLock(path);
   let result: T;
   try {
     result = fn();
   } catch (error) {
-    release(path);
+    released();
     throw error;
   }
-  if (result instanceof Promise) return result.finally(() => release(path)) as T;
-  release(path);
+  if (result instanceof Promise) return result.finally(released) as T;
+  released();
   return result;
 }
 

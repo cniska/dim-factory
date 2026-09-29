@@ -8,7 +8,7 @@ import { finishAttempt } from "./order-attempt";
 import { appendOrderEvent } from "./order-ledger";
 import { startOrder } from "./order-lifecycle";
 import { orderStatus } from "./order-status";
-import { startStationAttempt } from "./station-attempt";
+import { holdOrder, startStationAttempt } from "./station-attempt";
 import { type BriefedOrder, briefHeader } from "./station-brief";
 import { stationDirectory } from "./station-directory";
 import { type PlanSlice, parsePlanArtifact } from "./station-plan-artifact";
@@ -51,6 +51,7 @@ export async function runOrderPlanLive(
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
   const parentWorker = options.parentWorker;
+  using hold = holdOrder(orderId, options.env);
   admitAct(db, orderId, "plan", parentWorker);
   if (orderStatus(db, orderId) === "queued") startOrder(db, orderId, parentWorker, undefined, options.dir);
   const harness = options.harness;
@@ -86,6 +87,7 @@ export async function runOrderPlanLive(
           new Date().toISOString(),
         );
         claimed = true;
+        hold.release();
       },
       request: ({ returned }) => ({
         cwd: stationDirectory(options.dir, orderId),

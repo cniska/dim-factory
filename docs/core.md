@@ -55,7 +55,7 @@ The order is the aggregate root. Its events, artifacts, slices, attempts, findin
   - a pending rebase conflict.
 
   The store loads the order, `admit` decides, and the event is appended, all in one immediate transaction. `assertOrderRunning`, `assertOrderQueued`, `assertNoRunningAttempt`, `assertChecked`, `assertOperator` and `OrderNotDone` go.
-- **A station reserves before it launches.** A harness launch cannot run inside a transaction, so a station's command admits the act and records its attempt as started in one transaction before it launches the worker. A second `dim order build` then meets a running attempt and is refused, and a launch that fails finishes that attempt as failed. The attempt is the reservation; nothing is admitted a second time after the launch.
+- **A station holds its order from admission until its attempt is recorded.** A worker's name and session exist only once its process has started, so the attempt cannot be written before the launch. A station takes the order's lock in the data directory (`holdOrder` in `station-attempt.ts`), admits, launches, and lets go once the attempt is recorded or the launch ends. A second station on the order meets the lock while the first is starting and the running attempt once it has, and is refused either way. A command that dies holding the lock leaves a dead pid, and the next claim clears it. `admit` is the only place a running attempt refuses an act.
 - **The actor carries its role.** `admit` takes a `Worker { name, role }` from the worker store and refuses by role, per act:
   - the operator: queue, start, approve, return, drop, ship and delegation;
   - the builder: answers;
@@ -153,7 +153,7 @@ Each cut lands with the SPEC, doc, glossary, query and skill edits it carries.
 Each slice runs on `main` and deletes the old mechanism in the same commit. `bun run verify` gates every slice, and a slice that changes a behavior the tests pin names those tests and changes them in the same commit. The schema slices run with no order in flight.
 
 1. **Errors.** `coded-error.ts`, the order module's message map and `fail(code, meta)`, and coded errors printed with their facts by `cli-output.ts`, replacing `OrderNotDone` and `OrderActRefused`. Each later slice moves the throws on the paths it rewrites.
-2. **Admission.** The `Order` model, `loadOrder`, `next`, `admit` and the station reservation replace `orderState`, `assertNext`, `ENTERS` and the `assert*` calls, with admission inside the write.
+2. **Admission.** The `Order` model, `loadOrder`, `next`, `admit` and the station's hold on its order replace `orderState`, `assertNext`, `ENTERS` and the `assert*` calls, with admission inside the write.
 3. **Events** [schema]. Shared columns, reference columns and details. The wall's projection and item view, `q order` and `q factory` move in the same slice, and so do the tests that read the dropped columns (`order-finding-state.test.ts`, `station-loop.int.test.ts`, `order-events.test.ts` and `rebuild.test.ts`'s retained rows).
 4. **Commits.** Commit first, judge, reset on refusal; the proof pin and signing go.
 5. **Station run.** `runStation`, then plan, review and build in turn; review reads the whole order.

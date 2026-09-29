@@ -20,7 +20,7 @@ import { assertChecked, type FailedCheck, failedHeadCheck } from "./order-head-c
 import { appendOrderEvent } from "./order-ledger";
 import { orderStatus } from "./order-status";
 import type { Env } from "./paths";
-import { startStationAttempt } from "./station-attempt";
+import { holdOrder, startStationAttempt } from "./station-attempt";
 import { type BriefedOrder, briefHeader } from "./station-brief";
 import { commitBuildTurn } from "./station-build-commit";
 import { settlePinnedSlice } from "./station-build-proof";
@@ -203,6 +203,7 @@ export async function runOrderBuildLive(
     .query<BriefedOrder, [string]>("SELECT id, title, description, line FROM factory_order WHERE id = ?")
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
+  using hold = holdOrder(orderId, options.env);
   admitAct(db, orderId, "build", operator);
   const plan = latestApprovedPlan(db, orderId);
   if (!plan) throw new Error(`order ${orderId} has no approved plan to build`);
@@ -272,6 +273,7 @@ export async function runOrderBuildLive(
         new Date().toISOString(),
       );
       claimed = true;
+      hold.release();
     };
     const { run, worker: assigned } = await runOrderStationLive({
       db,
