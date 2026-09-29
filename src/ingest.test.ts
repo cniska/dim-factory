@@ -845,9 +845,8 @@ describe("skill loads", () => {
     }
   });
 
-  test("stores nothing for a body whose Skill call line was dropped and whose result was kept", () => {
+  test("stores nothing for a body whose Skill call row has no call time", () => {
     const env = scratchEnv(newRoot());
-    const { timestamp: _, ...untimedCall } = skillCall;
     const result = {
       ...base,
       type: "user",
@@ -858,9 +857,18 @@ describe("skill loads", () => {
         content: [{ type: "tool_result", tool_use_id: "toolu-skill", content: "Launching" }],
       },
     };
-    writeTranscript(env, SESSION, [untimedCall, result, skillBody]);
-    const db = openDb(dbPath(env));
+    const lines = [result, skillBody];
+    const path = writeTranscript(env, SESSION, lines);
+    writePrefix(path, lines, bytesThroughLine(lines, 0));
+    const db = run(env);
     try {
+      db.run(
+        "UPDATE tool_call SET tool_name = 'Skill', skill_name = 'dim:dim-plan' WHERE id = 'toolu-skill'",
+      );
+      expect(db.prepare("SELECT ts_call FROM tool_call WHERE id = 'toolu-skill'").get()).toEqual({
+        ts_call: null,
+      });
+      writePrefix(path, lines, fullBytes(lines));
       expect(sync(db, env).failures).toEqual([]);
       expect(skillLoads(db)).toEqual([]);
     } finally {
