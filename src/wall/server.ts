@@ -179,7 +179,8 @@ export function assembleItemView(db: Database, orderId: string): WallItemView | 
 function orderIdIn(pathname: string): string | null {
   const raw = pathname.slice("/api/order/".length);
   try {
-    return decodeURIComponent(raw);
+    const orderId = decodeURIComponent(raw);
+    return orderId === "" ? null : orderId;
   } catch {
     return null;
   }
@@ -239,10 +240,10 @@ export function wallHandler(path: string = dbPath()) {
       }
       if (url.pathname.startsWith("/api/order/")) {
         const orderId = orderIdIn(url.pathname);
-        if (orderId === null) return new Response("Not found", { status: 404 });
+        if (orderId === null) return Response.json({ error: "not an order id" }, { status: 404 });
         try {
           const view = item(orderId);
-          if (!view) return new Response("Not found", { status: 404 });
+          if (!view) return Response.json({ error: `no order ${orderId}` }, { status: 404 });
           return Response.json(view, { headers: { "cache-control": "no-store" } });
         } catch (error) {
           return Response.json(wallFailure(error), { status: 503 });

@@ -786,9 +786,16 @@ describe("factory wall item view", () => {
         worker: { name: worker, role: "builder" },
       });
 
-      expect(answer(wall, "/api/order/order-absent").status).toBe(404);
-      expect(answer(wall, "/api/order/").status).toBe(404);
-      expect(answer(wall, "/api/order/%E0%A4%A").status).toBe(404);
+      const refusal = async (path: string) => {
+        const res = answer(wall, path);
+        return { status: res.status, error: (await res.json()).error };
+      };
+      expect(await refusal("/api/order/order-absent")).toEqual({
+        status: 404,
+        error: "no order order-absent",
+      });
+      expect(await refusal("/api/order/")).toEqual({ status: 404, error: "not an order id" });
+      expect(await refusal("/api/order/%E0%A4%A")).toEqual({ status: 404, error: "not an order id" });
     } finally {
       rmSync(file, { force: true });
     }
