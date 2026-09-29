@@ -1,6 +1,6 @@
 # src/
 
-Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` belongs to `db`, `order-ship.ts` to `order`. A module that is one file carries its bare name (`doctor.ts`, `paths.ts`). Commands are the exception, named `<name>-command.ts` for the one `dim` command `<name>` each holds. A test sits beside its module as `<module>.test.ts`. The wall is the one directory, `wall/`, because it is a separate app that only reads the record; its files drop the prefix.
+Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` belongs to `db`, `order-store.ts` to `order`. A module that is one file carries its bare name (`doctor.ts`, `paths.ts`). Commands are the exception, named `<name>-command.ts` for the one `dim` command `<name>` each holds. A test sits beside its module as `<module>.test.ts`. The wall is the one directory, `wall/`, because it is a separate app that only reads the record; its files drop the prefix.
 
 ## Modules
 
@@ -13,15 +13,15 @@ Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` 
 | `guidance` | Which rules files were in force, and the walk that loaded them |
 | `query` | The named queries, their arguments and the row cap |
 | `session-start`, `wake` | Repo commands passed to a new session |
-| `order` | An order: its lifecycle, ledger, evidence, findings, ship and queue |
+| `order` | An order: its lifecycle, ledger, evidence, findings, ship runs and queue |
 | `station` | The plan, build and review stations: briefs, turns, artifacts and the build runner |
 | `worker` | Who a worker is: assignment, the process it is registered as, roles, routing and capabilities |
 | `harness` | Starting a worker under Claude Code, Codex, or Grok Build |
-| `factory` | The floor: stop and operator |
-| `ship` | Landing an order on the trunk, and its rebase |
+| `factory` | The operator role |
+| `ship` | Landing an order on the trunk: the rebase onto it, the re-check and the ship run it records |
 | `check` | The check sandbox |
 | `gate`, `comments`, `hooks`, `skill`, `rules`, `install` | Install and enforce the shared controls |
-| `git`, `repo`, `worktree`, `workspace` | Repositories, what they declare, and task worktrees |
+| `git`, `repo`, `worktree`, `workspace` | Repositories, what they declare, the rebase build and ship both replay, and task worktrees |
 | `wall/` | The read-only board; `components/` and `lib/` hold its UI primitives |
 | `trace` | Diagnostic events |
 

@@ -1,24 +1,18 @@
 import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
-import type { Replay, Rewrite } from "./git-rebase-contract";
 import { latestOrderCommit } from "./order-commits";
+import type { ShipRun } from "./order-contract";
 import {
+  checkRowOf,
   insertOrderEnvironment,
-  type OrderCheck,
   recordOrderCheckInTransaction,
   recordRewrittenCommits,
 } from "./order-evidence";
 import { now } from "./order-ledger";
 import { assertOrderRunning } from "./order-status";
-import type { ShipTeardown } from "./ship-cleanup";
+import type { ShipTeardown } from "./ship-contract";
 
-export type ShipRun = { rebased?: { rewrite: Rewrite; check: OrderCheck } } & (
-  | { outcome: "landed" }
-  | { outcome: "refused"; code: string | null; reason: string }
-  | { outcome: "conflict"; replay: Omit<Replay, "worktree">; paths: string[]; stoppedAt: string }
-);
-
-export function recordShipRun(db: Database, orderId: string, run: ShipRun, at = now()): number {
+export function insertShipRun(db: Database, orderId: string, run: ShipRun, at = now()): number {
   assertOrderRunning(db, orderId);
   return writeTransaction(db, () => {
     const { rebased } = run;
@@ -26,7 +20,7 @@ export function recordShipRun(db: Database, orderId: string, run: ShipRun, at = 
     if (!head) throw new Error(`order ${orderId} records no commit, so a ship run has no head`);
     const replay = run.outcome === "conflict" ? run.replay : rebased?.rewrite;
     const checkId = rebased
-      ? recordOrderCheckInTransaction(db, orderId, rebased.check, rebased.rewrite.newHead, at)
+      ? recordOrderCheckInTransaction(db, orderId, checkRowOf(rebased.check), rebased.rewrite.newHead, at)
       : null;
     const written = db.run(
       `INSERT INTO factory_order_ship_run
@@ -56,7 +50,7 @@ export function recordShipRun(db: Database, orderId: string, run: ShipRun, at = 
   });
 }
 
-export function recordShipCleanup(
+export function updateShipCleanup(
   db: Database,
   orderId: string,
   shipRunId: number,

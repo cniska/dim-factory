@@ -1,9 +1,13 @@
 import type { Database } from "bun:sqlite";
 import { assertOperator } from "./factory-operator";
 import { runningAttempt } from "./order-attempt";
-import { fail, type Order, type OrderArtifact } from "./order-contract";
+import { currentOrderCommits } from "./order-commits";
+import { fail, type Order, type OrderArtifact, type ShipRun } from "./order-contract";
+import { appendOrderEvent } from "./order-ledger";
+import { insertShipRun, updateShipCleanup } from "./order-ship-run";
 import { isTerminalOrderStatus } from "./order-status";
 import { loadOrder } from "./order-store";
+import type { ShipTeardown } from "./ship-contract";
 import type { Station } from "./station-contract";
 
 export type OrderState = { station: Station; next: "run" | "approve" } | { station: null; next: "ship" };
@@ -226,4 +230,23 @@ export function admitAct(
 ): OrderState {
   assertOperator(db, worker, DELEGATES[act]);
   return admit(loadOrder(db, orderId), act, runningAttempt(db, orderId), to);
+}
+
+export function beginShip(db: Database, orderId: string, worker: string, retry: boolean): string[] {
+  admitAct(db, orderId, "ship", worker);
+  if (retry) appendOrderEvent(db, orderId, { kind: "ship_retried", worker });
+  return currentOrderCommits(db, orderId).map((row) => row.sha);
+}
+
+export function recordShipRun(db: Database, orderId: string, run: ShipRun, at?: string): number {
+  return insertShipRun(db, orderId, run, at);
+}
+
+export function recordShipCleanup(
+  db: Database,
+  orderId: string,
+  shipRunId: number,
+  cleanup: ShipTeardown,
+): void {
+  updateShipCleanup(db, orderId, shipRunId, cleanup);
 }

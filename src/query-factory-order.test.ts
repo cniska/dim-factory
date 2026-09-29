@@ -3,6 +3,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { SCHEMA_SQL } from "./db-schema";
 import { attemptIn, integratedRepo, located, ranCheck, reviewIn, workerIn } from "./fixtures.test-support";
+import { recordShipRun } from "./order";
 import { approveOrder } from "./order-approval";
 import { recordOrderBuild, recordOrderPlan } from "./order-artifacts";
 import {
@@ -16,7 +17,6 @@ import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { appendOrderEvent } from "./order-ledger";
 import { dropOrder, queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview } from "./order-review";
-import { recordShipRun } from "./order-ship-run";
 import type { QueryContext } from "./query";
 import { findQuery } from "./query-registry";
 import { capRows, DEFAULT_MAX_ROWS } from "./query-row-cap";

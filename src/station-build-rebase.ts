@@ -17,11 +17,11 @@ import type { Replay } from "./git-rebase-contract";
 import { nestedRepository } from "./git-tree";
 import { finishAttempt } from "./order-attempt";
 import type { RecordedConflict } from "./order-commits";
-import { recordOrderCheck, recordRewrittenCommits } from "./order-evidence";
+import { checkRowOf, recordOrderCheck, recordRewrittenCommits } from "./order-evidence";
 import { BuildTurnRefused } from "./order-finding";
 import { now } from "./order-ledger";
-import { recheck } from "./order-ship";
 import type { Env } from "./paths";
+import { recheck } from "./ship";
 
 function git(worktree: string, args: string[]) {
   const run = Bun.spawnSync(["git", "-C", worktree, ...args], { stdout: "pipe", stderr: "pipe" });
@@ -128,7 +128,7 @@ export function continueRebaseTurn(options: {
   }
   if (check.exitCode !== 0) {
     restoreBranch(replay);
-    const checkId = recordOrderCheck(db, orderId, check, rewrite.oldHead);
+    const checkId = recordOrderCheck(db, orderId, checkRowOf(check), rewrite.oldHead);
     throw new BuildTurnRefused(
       "check_failed",
       `${check.command} exited ${check.exitCode} at the rebased head ${rewrite.newHead}; the rebase was taken back and is reopened next turn; its output is on check ${checkId}`,
@@ -137,7 +137,7 @@ export function continueRebaseTurn(options: {
   writeTransaction(db, () => {
     const at = now();
     recordRewrittenCommits(db, orderId, conflict.shipRun, rewrite, at);
-    recordOrderCheck(db, orderId, check, rewrite.newHead, at);
+    recordOrderCheck(db, orderId, checkRowOf(check), rewrite.newHead, at);
     finishAttempt(db, orderId, "succeeded", undefined, at);
   });
   return { sha: rewrite.newHead };

@@ -14,8 +14,8 @@ import { join } from "node:path";
 import { integratedRepo, orderWorktree, repoWithoutTrunk } from "./fixtures.test-support";
 import { rebaseState } from "./git-rebase";
 import type { Rewrite } from "./git-rebase-contract";
-import { RebaseConflict, type RebaseVerdict, shipBranch } from "./ship";
-import { ShipRefusal } from "./ship-refusal";
+import { type RebaseVerdict, shipBranch } from "./ship-branch";
+import { fail } from "./ship-contract";
 
 const landRebased = (rewrite: Rewrite): RebaseVerdict => ({ land: rewrite.commits.map((c) => c.to) });
 
@@ -87,7 +87,7 @@ describe("shipBranch", () => {
 
     for (const from of [dir, wt]) {
       expect(() => ship(from, "feat-undeclared", [sha])).toThrow(
-        expect.objectContaining({ code: "ship_no_method" } satisfies Partial<ShipRefusal>),
+        expect.objectContaining({ code: "ship_no_method" }),
       );
     }
     expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkBefore);
@@ -102,7 +102,7 @@ describe("shipBranch", () => {
 
     for (const from of [dir, wt]) {
       expect(() => ship(from, "feat-pr", [sha])).toThrow(
-        expect.objectContaining({ code: "ship_pull_request_unbuilt" } satisfies Partial<ShipRefusal>),
+        expect.objectContaining({ code: "ship_pull_request_unbuilt" }),
       );
     }
     expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkBefore);
@@ -113,18 +113,14 @@ describe("shipBranch", () => {
     git(dir, ["config", "--unset", "dim.ship"]);
     const sha = git(dir, ["rev-parse", "HEAD"]).out;
 
-    expect(() => ship(dir, "main", [sha])).toThrow(
-      expect.objectContaining({ code: "ship_no_method" } satisfies Partial<ShipRefusal>),
-    );
+    expect(() => ship(dir, "main", [sha])).toThrow(expect.objectContaining({ code: "ship_no_method" }));
   });
 
   test("a repo that declares no ship method is refused for that before its trunk is looked for", () => {
     const { dir, sha } = repoWithoutTrunk();
     cleanup.push(dir);
 
-    expect(() => ship(dir, "main", [sha])).toThrow(
-      expect.objectContaining({ code: "ship_no_method" } satisfies Partial<ShipRefusal>),
-    );
+    expect(() => ship(dir, "main", [sha])).toThrow(expect.objectContaining({ code: "ship_no_method" }));
   });
 
   test("a ship method outside the vocabulary is refused rather than read as trunk", () => {
@@ -135,7 +131,7 @@ describe("shipBranch", () => {
 
     for (const from of [dir, wt]) {
       expect(() => ship(from, "feat-typo", [sha])).toThrow(
-        expect.objectContaining({ code: "ship_invalid_method" } satisfies Partial<ShipRefusal>),
+        expect.objectContaining({ code: "ship_invalid_method" }),
       );
     }
     expect(reachesNow(dir, sha)).toBe(false);
@@ -149,9 +145,7 @@ describe("shipBranch", () => {
     git(wt, ["config", "--worktree", "dim.ship", "trunk"]);
     const sha = commitFile(wt, "feat-local.txt", "local");
 
-    expect(() => ship(wt, "feat-local", [sha])).toThrow(
-      expect.objectContaining({ code: "ship_no_method" } satisfies Partial<ShipRefusal>),
-    );
+    expect(() => ship(wt, "feat-local", [sha])).toThrow(expect.objectContaining({ code: "ship_no_method" }));
   });
 
   test("a ship method set only in the global config is not the repo's declaration", () => {
@@ -224,9 +218,9 @@ describe("shipBranch", () => {
 
     expect(() =>
       ship(wt, "feat-refused", [sha], () => {
-        throw new ShipRefusal("ship_check_failed", "red");
+        throw fail("ship_check_failed", { command: "red", exitCode: 1, head: "held" });
       }),
-    ).toThrow(expect.objectContaining({ code: "ship_check_failed" } satisfies Partial<ShipRefusal>));
+    ).toThrow(expect.objectContaining({ code: "ship_check_failed" }));
     expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkAhead);
     expect(git(dir, ["rev-parse", "refs/heads/feat-refused"]).out).toBe(sha);
     expect(git(wt, ["status", "--porcelain"]).out).toBe("");
@@ -242,9 +236,9 @@ describe("shipBranch", () => {
     expect(() =>
       ship(wt, "feat-held", [sha], (rewrite) => {
         seen = rewrite;
-        return { hold: new ShipRefusal("ship_patch_changed", "changed") };
+        return { hold: fail("ship_patch_changed", { orderId: "feat-held" }) };
       }),
-    ).toThrow(expect.objectContaining({ code: "ship_patch_changed" } satisfies Partial<ShipRefusal>));
+    ).toThrow(expect.objectContaining({ code: "ship_patch_changed" }));
     expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkAhead);
     expect(git(dir, ["rev-parse", "refs/heads/feat-held"]).out).toBe(seen?.newHead as string);
   });
@@ -263,11 +257,13 @@ describe("shipBranch", () => {
       refused = error;
     }
 
-    expect(refused).toBeInstanceOf(RebaseConflict);
     expect(refused).toMatchObject({
       code: "ship_rebase_conflict",
-      paths: ["clash.txt"],
-      replay: { worktree: realpathSync(wt), oldBase: base, newBase: trunkAhead, oldHead: sha },
+      meta: {
+        paths: ["clash.txt"],
+        worktree: realpathSync(wt),
+        replay: { oldBase: base, newBase: trunkAhead, oldHead: sha },
+      },
     });
     expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkAhead);
     expect(git(dir, ["rev-parse", "refs/heads/feat-clash"]).out).toBe(sha);
@@ -318,7 +314,7 @@ describe("shipBranch", () => {
     const trunkBefore = git(dir, ["rev-parse", "HEAD"]).out;
 
     expect(() => ship(wt, "feat-extra", [recorded])).toThrow(
-      expect.objectContaining({ code: "ship_unrecorded_head" } satisfies Partial<ShipRefusal>),
+      expect.objectContaining({ code: "ship_unrecorded_head" }),
     );
     expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkBefore);
   });
@@ -334,7 +330,7 @@ describe("shipBranch", () => {
       const trunkBefore = git(dir, ["rev-parse", "HEAD"]).out;
 
       expect(() => ship(wt, "feat-reset", [first, last])).toThrow(
-        expect.objectContaining({ code: "ship_unrecorded_head" } satisfies Partial<ShipRefusal>),
+        expect.objectContaining({ code: "ship_unrecorded_head" }),
       );
       expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkBefore);
       expect(git(dir, ["rev-parse", "refs/heads/feat-reset"]).out).toBe(first);
@@ -364,7 +360,7 @@ describe("shipBranch", () => {
     writeFileSync(join(wt, "unsaved.txt"), "unsaved");
 
     expect(() => ship(wt, "feat-unsaved", [sha])).toThrow(
-      expect.objectContaining({ code: "ship_dirty_worktree" } satisfies Partial<ShipRefusal>),
+      expect.objectContaining({ code: "ship_dirty_worktree" }),
     );
     expect(git(dir, ["rev-parse", "refs/heads/feat-unsaved"]).out).toBe(sha);
   });
@@ -379,7 +375,7 @@ describe("shipBranch", () => {
     commitFile(dir, "trunk-moved.txt", "moved");
 
     expect(() => ship(wt, "feat-nested", [sha])).toThrow(
-      expect.objectContaining({ code: "ship_nested_repository" } satisfies Partial<ShipRefusal>),
+      expect.objectContaining({ code: "ship_nested_repository" }),
     );
   });
 
@@ -391,7 +387,7 @@ describe("shipBranch", () => {
     commitFile(dir, "trunk-moved.txt", "moved");
 
     expect(() => ship(dir, "feat-loose", [sha])).toThrow(
-      expect.objectContaining({ code: "ship_no_worktree" } satisfies Partial<ShipRefusal>),
+      expect.objectContaining({ code: "ship_no_worktree" }),
     );
   });
 
@@ -422,9 +418,7 @@ describe("shipBranch", () => {
     cleanup.push(dir);
     git(dir, ["config", "dim.ship", "trunk"]);
 
-    expect(() => ship(dir, "main", [sha])).toThrow(
-      expect.objectContaining({ code: "ship_no_trunk" } satisfies Partial<ShipRefusal>),
-    );
+    expect(() => ship(dir, "main", [sha])).toThrow(expect.objectContaining({ code: "ship_no_trunk" }));
   });
 
   test("a branch the moved trunk already carries is refused for a recorded sha it never carried, with nothing rebased", () => {
@@ -435,7 +429,7 @@ describe("shipBranch", () => {
     commitFile(dir, "trunk-moved.txt", "moved");
 
     expect(() => ship(wt, "feat-behind", [stray, behind])).toThrow(
-      expect.objectContaining({ code: "ship_not_landed" } satisfies Partial<ShipRefusal>),
+      expect.objectContaining({ code: "ship_not_carried" }),
     );
     expect(git(dir, ["rev-parse", "refs/heads/feat-behind"]).out).toBe(behind);
   });
@@ -446,9 +440,7 @@ describe("shipBranch", () => {
     const sha = commitFile(wt, "feat-d.txt", "d");
     writeFileSync(join(dir, "dirty.txt"), "uncommitted");
 
-    expect(() => ship(wt, "feat-d", [sha])).toThrow(
-      expect.objectContaining({ code: "ship_dirty_trunk" } satisfies Partial<ShipRefusal>),
-    );
+    expect(() => ship(wt, "feat-d", [sha])).toThrow(expect.objectContaining({ code: "ship_dirty_trunk" }));
   });
 
   test("checking the trunk runs no command a repository nested at a gitlink configured", () => {
@@ -475,7 +467,7 @@ describe("shipBranch", () => {
     git(nested, ["commit", "-q", "--allow-empty", "-m", "moved"]);
 
     expect(() => ship(wt, "feat-moved", [sha])).toThrow(
-      expect.objectContaining({ code: "ship_dirty_trunk" } satisfies Partial<ShipRefusal>),
+      expect.objectContaining({ code: "ship_dirty_trunk" }),
     );
   });
 
@@ -485,9 +477,7 @@ describe("shipBranch", () => {
     const sha = commitFile(wt, "feat-f.txt", "f");
     git(dir, ["checkout", "-q", "-b", "not-trunk"]);
 
-    expect(() => ship(wt, "feat-f", [sha])).toThrow(
-      expect.objectContaining({ code: "ship_wrong_head" } satisfies Partial<ShipRefusal>),
-    );
+    expect(() => ship(wt, "feat-f", [sha])).toThrow(expect.objectContaining({ code: "ship_wrong_head" }));
   });
 
   test("a branch that names no ref cannot be shipped", () => {
@@ -496,7 +486,7 @@ describe("shipBranch", () => {
     const sha = commitFile(wt, "feat-e.txt", "e");
 
     expect(() => ship(wt, "no-such-branch", [sha])).toThrow(
-      expect.objectContaining({ code: "ship_no_branch" } satisfies Partial<ShipRefusal>),
+      expect.objectContaining({ code: "ship_no_branch" }),
     );
   });
 
@@ -509,7 +499,7 @@ describe("shipBranch", () => {
     const trunkBefore = git(dir, ["rev-parse", "HEAD"]).out;
 
     expect(() => ship(wt, "feat-g", [strayShaOffBranch, tipSha])).toThrow(
-      expect.objectContaining({ code: "ship_not_landed" } satisfies Partial<ShipRefusal>),
+      expect.objectContaining({ code: "ship_not_carried" }),
     );
     expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkBefore);
   });
@@ -534,7 +524,7 @@ describe("shipBranch", () => {
     const strayShaOffBranch = commitFile(strayWt, "stray-2.txt", "stray");
 
     expect(() => ship(wt, "feat-h", [strayShaOffBranch, alreadyLandedSha])).toThrow(
-      expect.objectContaining({ code: "ship_not_landed" } satisfies Partial<ShipRefusal>),
+      expect.objectContaining({ code: "ship_not_carried" }),
     );
   });
 });

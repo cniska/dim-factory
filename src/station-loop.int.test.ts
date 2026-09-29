@@ -12,7 +12,7 @@ import { finishAttempt } from "./order-attempt";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
 import { answerOrderFindings } from "./order-finding";
 import { queueOrder, startOrder } from "./order-lifecycle";
-import { shipOrder } from "./order-ship";
+import { shipOrder } from "./ship";
 import { runStation } from "./station";
 import { approvePlan } from "./station-approvals.test-support";
 import { builderBrief, reviewFindingsForBuild } from "./station-build";

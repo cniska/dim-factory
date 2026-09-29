@@ -1,9 +1,7 @@
 import { reachesTrunk } from "./git-trunk";
+import type { ShipTeardown } from "./ship-contract";
 import type { WorkerHookReport } from "./worker-environment";
 import { removeWorktree, repoRoot, WtError } from "./worktree";
-
-export type ShipCleanup = { worktreeKept?: string; branchKept?: string };
-export type ShipTeardown = ShipCleanup & { teardown?: WorkerHookReport };
 
 function git(root: string, args: string[]): { ok: boolean; out: string } {
   const run = Bun.spawnSync(["git", "-C", root, ...args], { stdout: "pipe", stderr: "pipe" });

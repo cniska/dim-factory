@@ -1,7 +1,15 @@
+import type { SandboxedCheck } from "./check-sandbox";
 import { CodedError } from "./coded-error";
+import type { Replay, Rewrite } from "./git-rebase-contract";
 import type { EvidenceReference } from "./order-events";
 import type { OrderStatus } from "./order-status";
 import type { Station } from "./station-contract";
+
+export type ShipRun = { rebased?: { rewrite: Rewrite; check: SandboxedCheck } } & (
+  | { outcome: "landed" }
+  | { outcome: "refused"; code: string; reason: string }
+  | { outcome: "conflict"; replay: Omit<Replay, "worktree">; paths: readonly string[]; stoppedAt: string }
+);
 
 export type OrderArtifact = {
   id: number;

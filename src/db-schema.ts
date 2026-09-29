@@ -5,7 +5,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { STATIONS_SQL } from "./station-contract";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 81;
+export const SCHEMA_VERSION = 82;
 
 export const DISCARDED_COLUMNS: readonly string[] = [
   "factory_worker.token_digest",
@@ -338,7 +338,6 @@ CREATE TABLE IF NOT EXISTS factory_order_ship_run (
   id              INTEGER PRIMARY KEY,
   order_id        TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   outcome         TEXT NOT NULL CHECK (outcome IN ('landed', 'refused', 'conflict')),
-  -- Null for a refusal git or the database raised rather than ship itself.
   code            TEXT,
   reason          TEXT,
   conflict_paths  TEXT,
@@ -355,6 +354,7 @@ CREATE TABLE IF NOT EXISTS factory_order_ship_run (
   branch_kept     TEXT,
   recorded_at     TEXT NOT NULL,
   CHECK ((outcome = 'refused') = (reason IS NOT NULL)),
+  CHECK ((outcome = 'refused') = (code IS NOT NULL)),
   CHECK ((outcome = 'conflict') = (conflict_paths IS NOT NULL AND stopped_at IS NOT NULL)),
   CHECK (outcome != 'conflict' OR (old_base IS NOT NULL AND new_base IS NOT NULL AND old_head IS NOT NULL)),
   CHECK (outcome = 'landed' OR (worktree_kept IS NULL AND branch_kept IS NULL))

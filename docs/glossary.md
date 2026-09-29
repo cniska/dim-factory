@@ -40,7 +40,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Build turn | What a builder returns after code work: the commit subject, an answer per finding it was handed, the test files the slice adds or changes, and on the last turn the Build artifact ([`src/station-build-turn.ts`](../src/station-build-turn.ts)). The runner commits; the builder does not |
 | Proof | The runner's run of the declared check at the head a slice was built on, with only the build turn's named tests laid over it. A `fix` order's slice commits only when its proof fails ([`src/station-build-proof.ts`](../src/station-build-proof.ts)) |
 | Check sandbox | The confinement the runner runs a repo's check in: worktree writable, network and `dim`'s data refused ([`src/check-sandbox.ts`](../src/check-sandbox.ts)) |
-| Ship run | One ship of an order, recorded by the factory with no worker in `factory_order_ship_run`: `landed`, `refused` with its code and reason, or `conflict` with the paths the rebase stopped on ([`src/order-ship-run.ts`](../src/order-ship-run.ts)) |
+| Ship run | One ship of an order, recorded by the factory with no worker in `factory_order_ship_run`: `landed`, `refused` with its code and reason, or `conflict` with the paths the rebase stopped on ([`src/ship.ts`](../src/ship.ts)) |
 | Rewrite | The commits a ship run's rebase replaced. Each new commit row names the run and the sha it retires; a builder resolving a conflict finishes the conflict run's rebase, so its commits name that run |
 | Finding | A problem a reviewer raised, with a file and line, the failure, a fix direction and a severity ([`src/order-finding-state.ts`](../src/order-finding-state.ts)) |
 | Severity | How much a finding costs if it ships: `critical`, `high` or `medium` |

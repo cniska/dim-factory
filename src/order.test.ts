@@ -20,7 +20,7 @@ import {
 } from "./fixtures.test-support";
 import type { Rewrite } from "./git-rebase-contract";
 import { rebuild } from "./ingest-sync";
-import { admitAct, orderState } from "./order";
+import { admitAct, orderState, recordShipRun } from "./order";
 import { approveOrder, returnOrder } from "./order-approval";
 import {
   completeOrderSlice,
@@ -48,11 +48,10 @@ import {
   openOrderReview,
   recordOrderReviewArtifact,
 } from "./order-review";
-import { shipOrder } from "./order-ship";
-import { recordShipRun } from "./order-ship-run";
 import { isTerminalOrderStatus, orderStatus } from "./order-status";
 import { dbPath } from "./paths";
 import { findQuery } from "./query-registry";
+import { shipOrder } from "./ship";
 import * as shipCleanup from "./ship-cleanup";
 import { approveFinalBuildAt, approvePlan, approveReviewAt } from "./station-approvals.test-support";
 import { reviewRange } from "./station-review";
@@ -985,7 +984,10 @@ describe("factory order report records", () => {
         outcome: "refused",
         code: "ship_not_fast_forward",
         reason: "the default branch moved again",
-        rebased: { rewrite, check: ranCheck({ command: "bun run verify", exitCode: 0 }) },
+        rebased: {
+          rewrite,
+          check: { command: "bun run verify", exitCode: 0, output: "", startedAt: "", finishedAt: "" },
+        },
       });
     }
 
@@ -1205,7 +1207,7 @@ describe("factory order report records", () => {
     test("a repository that declares no check cannot have its rebased branch landed", () => {
       const { repo, wt, second, trunkTip, ship } = scene(unrelatedMove, { check: null });
 
-      expect(ship).toThrow(expect.objectContaining({ code: "ship_check_failed" }));
+      expect(ship).toThrow(expect.objectContaining({ code: "ship_check_undeclared" }));
 
       expect(git(repo.dir, ["rev-parse", "HEAD"])).toBe(trunkTip);
       expect(git(wt, ["rev-parse", "HEAD"])).toBe(second);
@@ -1468,6 +1470,21 @@ describe("factory order report records", () => {
 
     expect(() => start(database, "order-1")).toThrow(expect.objectContaining({ code: "order_not_queued" }));
     expect(orderStatus(database, "order-1")).toBe("shipped");
+    database.close();
+  });
+
+  test("the record refuses a refused ship run with no code", () => {
+    const database = db();
+    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
+    start(database, "order-1");
+    landed(database, "order-1");
+
+    expect(() =>
+      database.run(
+        `INSERT INTO factory_order_ship_run (order_id, outcome, code, reason, head, recorded_at)
+         VALUES ('order-1', 'refused', NULL, 'it failed', 'abc123', '2026-09-18T10:02:00.000Z')`,
+      ),
+    ).toThrow(/CHECK constraint failed/);
     database.close();
   });
 
