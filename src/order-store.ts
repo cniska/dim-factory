@@ -24,6 +24,28 @@ type ArtifactRow = {
   returned: number;
 };
 
+function artifactOf(row: ArtifactRow): OrderArtifact {
+  const standing = {
+    id: row.id,
+    revision: row.revision,
+    approved: row.approved === 1,
+    returned: row.returned === 1,
+  };
+  switch (row.kind) {
+    case "plan":
+      return { ...standing, kind: "plan" };
+    case "build":
+      return { ...standing, kind: "build", headSha: row.head_sha as string };
+    case "review":
+      return {
+        ...standing,
+        kind: "review",
+        headSha: row.head_sha as string,
+        reviewId: row.review_id as number,
+      };
+  }
+}
+
 export function loadOrder(db: Database, orderId: string): Order {
   const row = db
     .query<{ status: OrderStatus }, [string]>(
@@ -39,17 +61,7 @@ export function loadOrder(db: Database, orderId: string): Order {
        FROM factory_order_artifact a WHERE a.order_id = ? ORDER BY a.id`,
     )
     .all(orderId)
-    .map(
-      (a): OrderArtifact => ({
-        id: a.id,
-        kind: a.kind,
-        revision: a.revision,
-        headSha: a.head_sha,
-        reviewId: a.review_id,
-        approved: a.approved === 1,
-        returned: a.returned === 1,
-      }),
-    );
+    .map(artifactOf);
   const slices = db
     .query<{ id: number; artifactId: number; ordinal: number; done: number }, [string]>(
       `SELECT s.id, s.artifact_id AS artifactId, s.ordinal,

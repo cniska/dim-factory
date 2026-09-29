@@ -4,6 +4,7 @@ import { runningAttempt } from "./order-attempt";
 import { currentOrderCommits } from "./order-commits";
 import {
   type ApprovedPlan,
+  type ArtifactOf,
   fail,
   type Order,
   type OrderArtifact,
@@ -20,22 +21,27 @@ import type { Station } from "./station-contract";
 
 export type OrderState = { station: Station; next: "run" | "approve" } | { station: null; next: "ship" };
 
-function latestOf(order: Order, kind: Station): OrderArtifact | null {
-  let latest: OrderArtifact | null = null;
-  for (const artifact of order.artifacts) {
-    if (artifact.kind === kind && (latest === null || artifact.revision > latest.revision)) latest = artifact;
+function latestOf<Artifact extends OrderArtifact>(artifacts: Artifact[]): Artifact | null {
+  let latest: Artifact | null = null;
+  for (const artifact of artifacts) {
+    if (latest === null || artifact.revision > latest.revision) latest = artifact;
   }
   return latest;
 }
 
+const plans = (order: Order) => order.artifacts.filter((a): a is ArtifactOf<"plan"> => a.kind === "plan");
+const builds = (order: Order) => order.artifacts.filter((a): a is ArtifactOf<"build"> => a.kind === "build");
+const reviews = (order: Order) =>
+  order.artifacts.filter((a): a is ArtifactOf<"review"> => a.kind === "review");
+
 const standing = (artifact: OrderArtifact): boolean => artifact.approved && !artifact.returned;
 
-function approvedPlan(order: Order): OrderArtifact | null {
-  const plan = latestOf(order, "plan");
+function approvedPlan(order: Order): ArtifactOf<"plan"> | null {
+  const plan = latestOf(plans(order));
   return plan && standing(plan) ? plan : null;
 }
 
-function sliceLeft(order: Order, plan: OrderArtifact): boolean {
+function sliceLeft(order: Order, plan: ArtifactOf<"plan">): boolean {
   return order.slices.some((slice) => slice.artifactId === plan.id && !slice.done);
 }
 
@@ -117,24 +123,25 @@ function owesAnswer(order: Order): boolean {
   return order.findings.some((finding) => !finding.answered);
 }
 
-function buildCovers(order: Order, build: OrderArtifact, head: string | null): boolean {
-  return rewrittenHead(order, build.headSha as string) === head;
+function buildCovers(order: Order, build: ArtifactOf<"build">, head: string | null): boolean {
+  return rewrittenHead(order, build.headSha) === head;
 }
 
-function reviewCovers(order: Order, review: OrderArtifact, head: string | null): boolean {
+function reviewCovers(order: Order, review: ArtifactOf<"review">, head: string | null): boolean {
   const round = order.reviews.find((r) => r.id === review.reviewId);
   if (!round || order.findings.some((finding) => finding.reviewId === round.id)) return false;
   return carriedThroughRewrites(order, round.headSha) === head;
 }
 
-function stationState(
+function stationState<Artifact extends ArtifactOf<"build"> | ArtifactOf<"review">>(
   order: Order,
   station: "build" | "review",
-  plan: OrderArtifact,
+  artifacts: Artifact[],
+  plan: ArtifactOf<"plan">,
   head: string | null,
-  covers: (order: Order, artifact: OrderArtifact, head: string | null) => boolean,
+  covers: (order: Order, artifact: Artifact, head: string | null) => boolean,
 ): OrderState | null {
-  const latest = latestOf(order, station);
+  const latest = latestOf(artifacts);
   const after = latest !== null && latest.id > plan.id;
   if (after && standing(latest) && covers(order, latest, head)) return null;
   const ready = after && covers(order, latest, head) && !latest.returned;
@@ -144,7 +151,7 @@ function stationState(
 export function next(order: Order): OrderState {
   const plan = approvedPlan(order);
   if (!plan) {
-    const written = latestOf(order, "plan");
+    const written = latestOf(plans(order));
     return { station: "plan", next: written && !written.returned ? "approve" : "run" };
   }
   const head = orderHead(order);
@@ -152,8 +159,8 @@ export function next(order: Order): OrderState {
     return { station: "build", next: "run" };
   }
   return (
-    stationState(order, "build", plan, head, buildCovers) ??
-    stationState(order, "review", plan, head, reviewCovers) ?? { station: null, next: "ship" }
+    stationState(order, "build", builds(order), plan, head, buildCovers) ??
+    stationState(order, "review", reviews(order), plan, head, reviewCovers) ?? { station: null, next: "ship" }
   );
 }
 

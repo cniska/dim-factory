@@ -10,15 +10,20 @@ export type ShipRun = { rebased?: { rewrite: Rewrite; check: SandboxedCheck } } 
   | { outcome: "conflict"; replay: Omit<Replay, "worktree">; paths: readonly string[]; stoppedAt: string }
 );
 
-export type OrderArtifact = {
+type ArtifactDetails = {
+  plan: { kind: "plan" };
+  build: { kind: "build"; headSha: string };
+  review: { kind: "review"; headSha: string; reviewId: number };
+};
+
+export type ArtifactOf<Kind extends Station> = {
   id: number;
-  kind: Station;
   revision: number;
-  headSha: string | null;
-  reviewId: number | null;
   approved: boolean;
   returned: boolean;
-};
+} & ArtifactDetails[Kind];
+
+export type OrderArtifact = ArtifactOf<"plan"> | ArtifactOf<"build"> | ArtifactOf<"review">;
 
 export type OrderSliceRecord = { id: number; artifactId: number; ordinal: number; done: boolean };
 
