@@ -30,7 +30,7 @@ export const qCommand: Command = {
       if (at !== -1 && args[at + 1]) flagValues.add(args[at + 1] as string);
     }
     const arg = args.find((a) => !a.startsWith("--") && a !== name && !flagValues.has(a));
-    const since = windowFromArgs(args, { spansHistory: query.spansHistory });
+    const since = windowFromArgs(args, query.window);
     const maxRows = rowsFromArgs(args);
     const db = openReadOnly(dbPath());
     const started = Date.now();

@@ -4,7 +4,7 @@ import { corpusLine } from "./query-session";
 export const burn: Query = {
   name: "burn",
   summary: "spend against edits per rolling five-hour block — how much a block turned into changes",
-  window: ["u.ts", "last_seen_at", "ts"],
+  window: "recent",
   run: (db, ctx) => {
     const columns = ["block", "tool", "sessions", "responses", "edits", "cache_read", "output"];
     const w = window("u.ts", ctx, "WHERE");

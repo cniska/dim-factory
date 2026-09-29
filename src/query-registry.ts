@@ -7,11 +7,6 @@ import { chain, resume, running, session, sessions, thread } from "./query-sessi
 import { skill, skills, tools } from "./query-skill";
 import { burn } from "./query-usage";
 
-const withDeclaredWindow = (query: Query): Query => ({
-  ...query,
-  run: (db, ctx) => query.run(db, { ...ctx, windowColumn: query.window }),
-});
-
 export const QUERIES: Query[] = [
   convention,
   priorArt,
@@ -35,7 +30,7 @@ export const QUERIES: Query[] = [
   rework,
   sessions,
   session,
-].map(withDeclaredWindow);
+];
 
 export function findQuery(name: string): Query | undefined {
   return QUERIES.find((q) => q.name === name);

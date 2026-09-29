@@ -9,19 +9,17 @@ export type QueryResult = {
 
 export type QueryContext = {
   arg?: string;
-  since?: string;
-  home?: string;
-  windowColumn?: string | string[] | null;
+  since: string | null;
+  home: string;
 };
 
-export const homeOf = (ctx: QueryContext): string => ctx.home ?? "";
+export type QueryWindow = "recent" | "history" | "none";
 
 export type Query = {
   name: string;
   summary: string;
   usage?: string;
-  window: string | string[] | null;
-  spansHistory?: boolean;
+  window: QueryWindow;
   run: (db: Database, ctx: QueryContext) => QueryResult;
 };
 
@@ -30,17 +28,12 @@ export function window(
   ctx: QueryContext,
   keyword: "WHERE" | "AND" = "AND",
 ): { sql: string; params: string[] } {
-  const declaration = ctx.windowColumn;
-  if (declaration === undefined) throw new Error("query window declaration was not resolved");
-  if (!ctx.since || declaration === null) return { sql: "", params: [] };
-  if (Array.isArray(declaration) && !declaration.includes(col)) return { sql: "", params: [] };
+  if (!ctx.since) return { sql: "", params: [] };
   return { sql: ` ${keyword} ${col} >= ?`, params: [ctx.since] };
 }
 
-export const windowLine = (ctx: QueryContext): string => {
-  if (ctx.windowColumn === undefined) throw new Error("query window declaration was not resolved");
-  return ctx.since && ctx.windowColumn !== null ? `since ${ctx.since.slice(0, 10)}` : "all time";
-};
+export const windowLine = (ctx: QueryContext): string =>
+  ctx.since ? `since ${ctx.since.slice(0, 10)}` : "all time";
 
 export function scalar(db: Database, sql: string, ...params: unknown[]): number {
   const row = db.prepare(sql).get(...(params as [])) as { n: number } | null;

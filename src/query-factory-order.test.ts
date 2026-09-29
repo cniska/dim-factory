@@ -17,7 +17,11 @@ import { appendOrderEvent } from "./order-ledger";
 import { dropOrder, queueOrder, startOrder } from "./order-lifecycle";
 import { closeOrderReview } from "./order-review";
 import { recordShipRun } from "./order-ship-run";
+import type { QueryContext } from "./query";
 import { findQuery } from "./query-registry";
+
+const ctx: QueryContext = { since: null, home: "/h" };
+
 import { capRows, DEFAULT_MAX_ROWS } from "./query-row-cap";
 import { approveFinalBuildAt, approveReviewAt } from "./station-approvals.test-support";
 
@@ -44,7 +48,10 @@ describe("factory order query", () => {
   test("shows the current next act for queued, running, and terminal orders", () => {
     const db = floor();
     queueOrder(db, { id: "queued", project: "cniska/dim-factory", title: "Queued" }, attemptOperator);
-    const row = (id: string) => findQuery("order")?.run(db, { arg: id }).rows[0]?.slice(3);
+    const row = (id: string) =>
+      findQuery("order")
+        ?.run(db, { ...ctx, arg: id })
+        .rows[0]?.slice(3);
     expect(row("queued")).toEqual([
       "queued",
       "run at plan",
@@ -115,7 +122,7 @@ describe("factory order query", () => {
     ]);
     expect(
       findQuery("order")
-        ?.run(db, { arg: "dropped" })
+        ?.run(db, { ...ctx, arg: "dropped" })
         .rows.find((item) => item[2] === "dropped")
         ?.slice(3),
     ).toEqual(["", null, "", "superseded", null, null, null]);
@@ -144,10 +151,10 @@ describe("factory order query", () => {
       );
     const reported = () => ({
       order: findQuery("order")
-        ?.run(db, { arg: "order-reopened" })
+        ?.run(db, { ...ctx, arg: "order-reopened" })
         .rows.filter((row) => row[0] === "finding")
         .map((row) => [row[2], row[3]]),
-      factory: findQuery("factory")?.run(db, { arg: "order-reopened" }).rows[0]?.[9],
+      factory: findQuery("factory")?.run(db, { ...ctx, arg: "order-reopened" }).rows[0]?.[9],
     });
     expect(reported()).toEqual({
       order: [["finding_raised", "unanswered"]],
@@ -175,7 +182,7 @@ describe("factory order query", () => {
     }
     queueOrder(db, { id: "order-clean", project: "cniska/dim-factory", title: "clean" }, attemptOperator);
 
-    const rows = findQuery("factory")?.run(db, {}).rows ?? [];
+    const rows = findQuery("factory")?.run(db, ctx).rows ?? [];
 
     expect(Object.fromEntries(rows.map((row) => [row[1], row[9]]))).toEqual({
       "order-left": "tests: fixed - order-left gap",
@@ -262,7 +269,7 @@ describe("factory order query", () => {
       "factory_order_finding",
       "factory_order_finding_answer",
     ].map((table) => db.query(`SELECT * FROM ${table} ORDER BY 1`).all());
-    const result = findQuery("factory")?.run(db, { arg: "order-st" });
+    const result = findQuery("factory")?.run(db, { ...ctx, arg: "order-st" });
 
     expect(result?.columns).toEqual([
       "project",
@@ -318,7 +325,7 @@ describe("factory order query", () => {
     building(db, "order-blocked");
     appendOrderEvent(db, "order-blocked", { worker, kind: "failed" });
 
-    const result = findQuery("factory")?.run(db, { arg: "order-blocked" });
+    const result = findQuery("factory")?.run(db, { ...ctx, arg: "order-blocked" });
 
     expect(result?.rows[0]?.[3]).toBe("running");
     expect(result?.rows[0]?.[4]).toBe("failed");
@@ -340,11 +347,11 @@ describe("factory order query", () => {
       kind: "failed",
       reason: "ambiguous scope",
     });
-    const reasoned = findQuery("factory")?.run(db, { arg: "order-reasoned" });
+    const reasoned = findQuery("factory")?.run(db, { ...ctx, arg: "order-reasoned" });
     expect(reasoned?.rows[0]).toHaveLength(10);
     expect(
       findQuery("order")
-        ?.run(db, { arg: "order-reasoned" })
+        ?.run(db, { ...ctx, arg: "order-reasoned" })
         .rows.find((row) => row[2] === "failed")?.[6],
     ).toBe("ambiguous scope");
     db.close();
@@ -426,7 +433,7 @@ describe("factory order query", () => {
       },
       "2026-09-18T10:05:00.000Z",
     );
-    const result = findQuery("order")?.run(db, { arg: "order-12" });
+    const result = findQuery("order")?.run(db, { ...ctx, arg: "order-12" });
     expect(result?.columns).toEqual([
       "section",
       "when",
@@ -534,17 +541,17 @@ describe("factory order query", () => {
     );
     queueOrder(db, { id: "order-bare", project: "cniska/dim-factory", title: "Bare" }, attemptOperator);
     building(db, "order-described");
-    const described = findQuery("order")?.run(db, { arg: "order-described" });
+    const described = findQuery("order")?.run(db, { ...ctx, arg: "order-described" });
     expect(described?.columns.slice(7)).toEqual(["line", "title", "description"]);
     expect(described?.rows[0]?.[2]).toBe("report");
     expect(described?.rows[0]?.slice(7)).toEqual(["fix", "Show the title", "The first row has no title."]);
     expect(described?.rows.length).toBeGreaterThan(1);
     expect(described?.rows.slice(1).every((row) => row.slice(7).every((cell) => cell === null))).toBe(true);
-    expect(findQuery("order")?.run(db, { arg: "order-bare" }).rows[0]?.slice(7)).toEqual([
-      "feat",
-      "Bare",
-      null,
-    ]);
+    expect(
+      findQuery("order")
+        ?.run(db, { ...ctx, arg: "order-bare" })
+        .rows[0]?.slice(7),
+    ).toEqual(["feat", "Bare", null]);
     db.close();
   });
 
@@ -571,7 +578,7 @@ describe("factory order query", () => {
     recordOrderCheck(db, "order-long", ranCheck({ command: "tie first", exitCode: 0 }, tie), "abc", tie);
     recordOrderCheck(db, "order-long", ranCheck({ command: "tie second", exitCode: 0 }, tie), "abc", tie);
 
-    const result = findQuery("order")?.run(db, { arg: "order-long" });
+    const result = findQuery("order")?.run(db, { ...ctx, arg: "order-long" });
     const rows = result?.rows ?? [];
     expect(rows[0]?.[0]).toBe("order");
     const evidence = rows.slice(1);
@@ -616,7 +623,7 @@ describe("factory order query", () => {
       "2026-09-18T10:05:00.000Z",
     );
 
-    const result = findQuery("order")?.run(db, { arg: "order-killed" });
+    const result = findQuery("order")?.run(db, { ...ctx, arg: "order-killed" });
 
     expect(result?.rows[1]).toEqual([
       "environment",
@@ -635,7 +642,7 @@ describe("factory order query", () => {
 
   test("does not turn an unknown order into an empty report", () => {
     const db = floor();
-    const result = findQuery("order")?.run(db, { arg: "missing" });
+    const result = findQuery("order")?.run(db, { ...ctx, arg: "missing" });
     expect(result?.rows).toEqual([]);
     expect(result?.note).toBe("no order starts with missing");
     db.close();
@@ -645,12 +652,12 @@ describe("factory order query", () => {
     const db = floor();
     queueOrder(db, { id: "overlap-one", project: "cniska/dim-factory", title: "One" }, attemptOperator);
     queueOrder(db, { id: "overlap-two", project: "cniska/dim-factory", title: "Two" }, attemptOperator);
-    expect(findQuery("order")?.run(db, {})).toEqual({
+    expect(findQuery("order")?.run(db, ctx)).toEqual({
       denominator: "",
       columns: ["error"],
       rows: [["usage: dim q order <order-id>"]],
     });
-    expect(findQuery("order")?.run(db, { arg: "overlap" })).toEqual({
+    expect(findQuery("order")?.run(db, { ...ctx, arg: "overlap" })).toEqual({
       denominator: "",
       columns: ["id"],
       rows: [],
@@ -662,7 +669,7 @@ describe("factory order query", () => {
   test("reports absent queue planning without inventing queue rows", () => {
     const db = floor();
 
-    const result = findQuery("factory")?.run(db, {});
+    const result = findQuery("factory")?.run(db, ctx);
 
     expect(result?.rows).toEqual([]);
     expect(result?.denominator).toContain("factory order");

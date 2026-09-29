@@ -1,6 +1,5 @@
 import type { Database } from "bun:sqlite";
 import {
-  homeOf,
   type Query,
   type QueryContext,
   type QueryResult,
@@ -64,7 +63,7 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryRes
      JOIN session s ON s.id = m.session_id
      WHERE message_fts MATCH ? AND ${SAID}${w.sql}
      ORDER BY c.matched DESC, bm25(message_fts) ASC, m.ts DESC LIMIT 40`,
-    [...quoted, homeOf(ctx), String(quoted.length), matchAny, ...w.params],
+    [...quoted, ctx.home, String(quoted.length), matchAny, ...w.params],
   );
   const searchable = window("m.ts", ctx);
   const every = window("ts", ctx, "WHERE");
@@ -97,8 +96,7 @@ export const search: Query = {
   name: "search",
   summary: "find a message by the words in it, across every session",
   usage: 'dim q search "<words>"',
-  spansHistory: true,
-  window: "m.ts",
+  window: "history",
   run: (db, ctx) => {
     const { arg } = ctx;
     if (!arg) {

@@ -5,7 +5,7 @@ import { type Finding, recordFinding } from "./finding";
 import type { QueryContext } from "./query";
 import { findQuery } from "./query-registry";
 
-const ctx: QueryContext = { home: "/h" };
+const ctx: QueryContext = { since: null, home: "/h" };
 
 const raised = (over: Partial<Finding> = {}): Finding => ({
   repo: "cniska/dim-factory",
@@ -33,10 +33,6 @@ const findings = () => {
 describe("reading findings back", () => {
   test("is a named question, so `q list` offers it", () => {
     expect(findings().name).toBe("findings");
-  });
-
-  test("spans history, because a window would hide a table that fills a slice at a time", () => {
-    expect(findings().spansHistory).toBe(true);
   });
 
   test("says nothing was recorded rather than printing a zero", () => {

@@ -6,23 +6,21 @@ import {
 } from "./order-finding-state";
 import { describeState, orderState } from "./order-state";
 import { isTerminalOrderStatus, type OrderStatus, orderStatusSql } from "./order-status";
-import { type Query, scalar, table, toRows, window, windowLine } from "./query";
+import { type Query, scalar, table, toRows, windowLine } from "./query";
 
 export const findings: Query = {
   name: "findings",
   summary: "what a checking agent raised on a slice, and how each was answered",
   usage: "dim q findings [repo-fragment]",
-  spansHistory: true,
-  window: "recorded_at",
+  window: "history",
   run: (db, ctx) => {
-    const { arg } = ctx;
+    const { arg, since } = ctx;
     const columns = ["dimension", "raised", "fixed", "refused", "slices", "repos"];
     const where: string[] = [];
     const params: string[] = [];
-    const w = window("recorded_at", ctx, "WHERE");
-    if (w.sql) {
-      where.push(w.sql.trim().replace(/^WHERE /, ""));
-      params.push(...w.params);
+    if (since) {
+      where.push("recorded_at >= ?");
+      params.push(since);
     }
     if (arg) {
       where.push("repo LIKE '%' || ? || '%'");
@@ -69,8 +67,7 @@ export const order: Query = {
   name: "order",
   summary: "inspect one factory order report, its events, and evidence",
   usage: "dim q order <order-id>",
-  spansHistory: true,
-  window: null,
+  window: "none",
   run: (db, { arg }) => {
     if (!arg) {
       return { denominator: "", columns: ["error"], rows: [["usage: dim q order <order-id>"]] };
@@ -228,8 +225,7 @@ export const factory: Query = {
   name: "factory",
   summary: "show current factory item and order status with lifecycle and evidence",
   usage: "dim q factory [order-id]",
-  spansHistory: true,
-  window: null,
+  window: "none",
   run: (db, { arg }) => {
     const filter = arg ? "WHERE o.id LIKE ? || '%'" : "";
     const orders = table(

@@ -25,7 +25,7 @@ const attributed = (ctx: QueryContext): string => `
 export const corrections: Query = {
   name: "corrections",
   summary: "the mechanical signals that the user stopped the agent, by skill",
-  window: "m.ts",
+  window: "recent",
   run: (db, ctx) => {
     const { arg } = ctx;
     const columns = ["skill", "rejected", "interrupted", "with_feedback", "sessions"];
@@ -59,7 +59,7 @@ export const corrections: Query = {
 export const rework: Query = {
   name: "rework",
   summary: "files the agent had to revisit after you pushed back, by skill",
-  window: "t.ts_call",
+  window: "recent",
   run: (db, ctx) => {
     const { arg } = ctx;
     const columns = ["skill", "files_touched", "revisited", "after_pushback", "pushback_rate"];
@@ -151,7 +151,7 @@ export const repeats: Query = {
   name: "repeats",
   summary: "phrases you have used in several sessions when stopping or correcting the agent",
   usage: "dim q repeats [words-per-phrase]",
-  window: "m.ts",
+  window: "recent",
   run: (db, ctx) => {
     const size = ctx.arg && /^\d+$/.test(ctx.arg) ? Number(ctx.arg) : 4;
     const w = window("m.ts", ctx);

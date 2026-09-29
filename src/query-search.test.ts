@@ -29,7 +29,9 @@ function seeded(): Database {
   return db;
 }
 
-const ask = (db: Database, ctx: QueryContext): QueryResult => search.run(db, { home: "/home", ...ctx });
+const ctx: QueryContext = { since: null, home: "/home" };
+
+const ask = (db: Database, over: Partial<QueryContext>): QueryResult => search.run(db, { ...ctx, ...over });
 
 describe("search", () => {
   test("finds the word that was typed", () => {
@@ -80,7 +82,7 @@ describe("search", () => {
     expect(result.rows.map((r) => String(r[0]))).toEqual(["s1"]);
     const ref = String(result.rows[0]?.[result.columns.indexOf("ref")]);
     expect(ref).toBe("s1@2026-09-01T10:33:00Z");
-    const thread = findQuery("thread")?.run(db, { arg: ref });
+    const thread = findQuery("thread")?.run(db, { ...ctx, arg: ref });
     expect(thread?.rows.some((row) => String(row[3]).includes("decided against"))).toBe(true);
     db.close();
   });
@@ -212,11 +214,11 @@ describe("thread", () => {
       [id],
     );
     const thread = findQuery("thread") as NonNullable<ReturnType<typeof findQuery>>;
-    const whole = thread.run(db, { arg: id });
+    const whole = thread.run(db, { ...ctx, arg: id });
     expect(whole.denominator).toContain("1 messages anyone said");
     expect(whole.denominator).not.toContain("centered on");
 
-    const passage = thread.run(db, { arg: `${id}@2026-09-01T10:45:00.000Z` });
+    const passage = thread.run(db, { ...ctx, arg: `${id}@2026-09-01T10:45:00.000Z` });
     expect(passage.denominator).toContain("centered on 2026-09-01T10:45:00.000Z");
     expect(passage.rows.length).toBe(1);
     db.close();

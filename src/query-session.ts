@@ -3,7 +3,6 @@ import {
   CLAUDE_EDITS,
   CLAUDE_STOPS,
   claudeOnly,
-  homeOf,
   type Query,
   type QueryContext,
   scalar,
@@ -46,7 +45,7 @@ export const corpusLine = (db: Database, ctx: QueryContext): string => {
 export const sessions: Query = {
   name: "sessions",
   summary: "most recently active sessions, newest first",
-  window: "s.last_seen_at",
+  window: "recent",
   run: (db, ctx) => {
     const columns = ["id", "tool", "project", "started", "turns", "responses", "output", "ended"];
     const records = table(
@@ -60,7 +59,7 @@ export const sessions: Query = {
               coalesce(s.end_reason, '') AS ended
        FROM session s WHERE s.parent_id IS NULL${window("s.last_seen_at", ctx).sql}
        ORDER BY s.last_seen_at DESC LIMIT 40`,
-      [homeOf(ctx), ...window("s.last_seen_at", ctx).params],
+      [ctx.home, ...window("s.last_seen_at", ctx).params],
     );
     const w = window("last_seen_at", ctx);
     const ended = scalar(
@@ -84,8 +83,7 @@ export const session: Query = {
   name: "session",
   summary: "one session in full",
   usage: "dim q session <id-prefix>",
-  spansHistory: true,
-  window: null,
+  window: "none",
   run: (db, { arg }) => {
     if (!arg) {
       return { denominator: "", columns: ["error"], rows: [["usage: dim q session <id-prefix>"]] };
@@ -178,8 +176,7 @@ export const thread: Query = {
   name: "thread",
   summary: "read one session's exchange, or the messages around a timestamp",
   usage: "dim q thread <id-prefix>[@<ts>]",
-  spansHistory: true,
-  window: null,
+  window: "none",
   run: (db, { arg }) => {
     if (!arg) {
       return { denominator: "", columns: ["error"], rows: [["usage: dim q thread <id-prefix>[@<ts>]"]] };
@@ -226,8 +223,7 @@ export const resume: Query = {
   name: "resume",
   summary: "the factual half of a handoff: branch, files in play, last pushback, last exchange",
   usage: "dim q resume <id-prefix>",
-  spansHistory: true,
-  window: null,
+  window: "none",
   run: (db, { arg }) => {
     if (!arg) {
       return { denominator: "", columns: ["error"], rows: [["usage: dim q resume <id-prefix>"]] };
@@ -321,8 +317,7 @@ export const running: Query = {
   name: "running",
   summary: "sessions and subagents active in the last few minutes, and what each is doing",
   usage: "dim q running [minutes]",
-  spansHistory: true,
-  window: "s.last_seen_at",
+  window: "none",
   run: (db, ctx) => {
     const { arg } = ctx;
     const minutes = arg && /^\d+$/.test(arg) ? Number(arg) : 30;
@@ -347,7 +342,7 @@ export const running: Query = {
        -- sorts below it and would put every row inside the window.
        WHERE s.last_seen_at >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?)
        ORDER BY s.last_seen_at DESC LIMIT 40`,
-      [homeOf(ctx), `-${minutes} minutes`],
+      [ctx.home, `-${minutes} minutes`],
     );
     const synced = scalar(db, "SELECT count(*) AS n FROM source_file");
     return {
@@ -367,8 +362,7 @@ export const chain: Query = {
   name: "chain",
   summary: "sessions that continued one another through a handoff, longest chain first",
   usage: "dim q chain [id-prefix]",
-  spansHistory: true,
-  window: "to_ts",
+  window: "history",
   run: (db, ctx) => {
     const { arg } = ctx;
     if (arg) {

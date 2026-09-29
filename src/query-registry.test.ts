@@ -9,8 +9,11 @@ import { SCHEMA_SQL } from "./db-schema";
 import { scratchEnv, writeClaudeTranscript, writeCodexRollout } from "./fixtures.test-support";
 import { sync } from "./ingest-sync";
 import { dbPath, type Env } from "./paths";
+import type { QueryContext } from "./query";
 import { findQuery, QUERIES } from "./query-registry";
 import { withoutWorktree } from "./worktree";
+
+const ctx: QueryContext = { since: null, home: "/h" };
 
 const SESSION = "11111111-2222-3333-4444-555555555555";
 const THREAD = "01a0a651-086e-7150-8650-cef0f4025a58";
@@ -55,7 +58,7 @@ describe("read path", () => {
     try {
       for (const q of QUERIES) {
         if (q.usage) continue;
-        const result = q.run(db, {});
+        const result = q.run(db, ctx);
         expect(result.denominator.length, `${q.name} has no denominator`).toBeGreaterThan(0);
       }
     } finally {
@@ -69,11 +72,11 @@ describe("read path", () => {
     closeDb(write);
     const db = openReadOnly(dbPath(env));
     try {
-      const burn = findQuery("burn")?.run(db, {});
+      const burn = findQuery("burn")?.run(db, ctx);
       expect(burn?.rows).toEqual([]);
       expect(burn?.note).toBe("no usage rows");
 
-      const sessions = findQuery("sessions")?.run(db, {});
+      const sessions = findQuery("sessions")?.run(db, ctx);
       expect(sessions?.note).toContain("hooks are not installed");
     } finally {
       db.close();
@@ -121,7 +124,7 @@ describe("read path", () => {
         addCommit(`t${n}`, "two", `.github/workflows/${n}.yml`, "2026-09-01T00:00:00Z");
       }
 
-      const result = findQuery("prior-art")?.run(db, { arg: ".github/workflows", home: "/h" });
+      const result = findQuery("prior-art")?.run(db, { ...ctx, arg: ".github/workflows", home: "/h" });
       const files = result?.rows.map((r) => r[0]);
       expect(files?.[0]).toBe("code/one/.github/workflows/ci.yml");
       expect(files?.filter((f) => String(f).includes("/two/"))).toHaveLength(3);
@@ -156,7 +159,7 @@ describe("read path", () => {
         add("/h/code/three/.claude/worktrees/wt", null, `d${i}`, "feat: a conforming subject", "feat");
       }
 
-      const result = findQuery("convention")?.run(db, { home: "/h" });
+      const result = findQuery("convention")?.run(db, { ...ctx, home: "/h" });
       expect(result?.rows).toHaveLength(2);
       expect(result?.rows.map((r) => r[0])).toContain("code/three");
 
@@ -190,11 +193,11 @@ describe("read path", () => {
       link("ccc", "ddd", "2026-09-01T14:00:00Z", "# Handoff — renamed midway");
       link("xxx", "yyy", "2026-09-02T10:00:00Z", "# Handoff — renamed midway");
 
-      const result = findQuery("chain")?.run(db, { arg: "ccc" });
+      const result = findQuery("chain")?.run(db, { ...ctx, arg: "ccc" });
       expect(result?.rows.map((r) => r[1])).toEqual(["aaa → bbb", "bbb → ccc", "ccc → ddd"]);
       expect(result?.rows[0]?.[4]).toBe("first name");
 
-      const all = findQuery("chain")?.run(db, {});
+      const all = findQuery("chain")?.run(db, ctx);
       expect(all?.denominator).toContain("4 links joined");
     } finally {
       db.close();
@@ -205,7 +208,7 @@ describe("read path", () => {
     const db = new Database(":memory:");
     try {
       db.run(SCHEMA_SQL);
-      const result = findQuery("prior-art")?.run(db, {});
+      const result = findQuery("prior-art")?.run(db, ctx);
       expect(result?.rows).toEqual([]);
       expect(result?.note).toContain("name part of a path");
     } finally {
@@ -233,7 +236,7 @@ describe("read path", () => {
 
     const db = openReadOnly(dbPath(env));
     try {
-      const result = findQuery("burn")?.run(db, {});
+      const result = findQuery("burn")?.run(db, ctx);
       const blocks = new Set(result?.rows.map((r) => r[0]));
       expect(blocks.has("2026-09-16 12:00:00")).toBe(true);
       expect(blocks.has("2026-09-16 17:00:00")).toBe(true);
@@ -247,33 +250,17 @@ describe("read path", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
     try {
-      const inside = findQuery("tools")?.run(db, { since: "2026-09-01T00:00:00.000Z" });
+      const inside = findQuery("tools")?.run(db, { ...ctx, since: "2026-09-01T00:00:00.000Z" });
       expect(inside?.rows.length).toBeGreaterThan(0);
       expect(inside?.denominator).toContain("since 2026-09-01");
 
-      const after = findQuery("tools")?.run(db, { since: "2026-09-17T00:00:00.000Z" });
+      const after = findQuery("tools")?.run(db, { ...ctx, since: "2026-09-17T00:00:00.000Z" });
       expect(after?.rows).toEqual([]);
       expect(after?.denominator).toContain("0 tool calls");
 
-      const all = findQuery("tools")?.run(db, {});
+      const all = findQuery("tools")?.run(db, ctx);
       expect(all?.denominator).toContain("all time");
       expect(all?.rows.length).toBeGreaterThan(0);
-    } finally {
-      db.close();
-    }
-  });
-
-  test("a query with no declared window does not claim an explicit bound", () => {
-    const env = seeded();
-    const db = openReadOnly(dbPath(env));
-    try {
-      const result = findQuery("session")?.run(db, {
-        arg: SESSION.slice(0, 8),
-        since: "2099-01-01T00:00:00.000Z",
-      });
-      expect(result?.rows.length).toBeGreaterThan(0);
-      expect(result?.denominator).toBe(`session ${SESSION}`);
-      expect(findQuery("session")?.window).toBeNull();
     } finally {
       db.close();
     }
@@ -283,12 +270,12 @@ describe("read path", () => {
     const env = seededWithSkillLoad();
     const db = openReadOnly(dbPath(env));
     try {
-      const empty = findQuery("corrections")?.run(db, { since: "2026-09-17T00:00:00.000Z" });
+      const empty = findQuery("corrections")?.run(db, { ...ctx, since: "2026-09-17T00:00:00.000Z" });
       expect(empty?.denominator).toContain("0 turns the user physically stopped");
-      expect(findQuery("skills")?.run(db, {})?.denominator).toMatch(/^1 loads /);
-      expect(findQuery("skills")?.run(db, { since: "2026-09-17T00:00:00.000Z" })?.denominator).toMatch(
-        /^0 loads /,
-      );
+      expect(findQuery("skills")?.run(db, ctx)?.denominator).toMatch(/^1 loads /);
+      expect(
+        findQuery("skills")?.run(db, { ...ctx, since: "2026-09-17T00:00:00.000Z" })?.denominator,
+      ).toMatch(/^0 loads /);
     } finally {
       db.close();
     }
@@ -298,11 +285,11 @@ describe("read path", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
     try {
-      const hit = findQuery("search")?.run(db, { arg: "parser" });
+      const hit = findQuery("search")?.run(db, { ...ctx, arg: "parser" });
       expect(hit?.rows.length).toBeGreaterThan(0);
       expect(String(hit?.rows[0]?.[hit.columns.indexOf("text")])).toContain("parser");
 
-      const miss = findQuery("search")?.run(db, { arg: "nothingmatchesthis" });
+      const miss = findQuery("search")?.run(db, { ...ctx, arg: "nothingmatchesthis" });
       expect(miss?.rows).toEqual([]);
       expect(miss?.note).toContain("nothing matches");
     } finally {
@@ -314,15 +301,18 @@ describe("read path", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
     try {
-      const whole = findQuery("thread")?.run(db, { arg: SESSION.slice(0, 8) });
+      const whole = findQuery("thread")?.run(db, { ...ctx, arg: SESSION.slice(0, 8) });
       expect(whole?.rows.length).toBeGreaterThan(0);
       const texts = whole?.rows.map((r) => String(r[3])) ?? [];
       expect(texts.every((t) => t.length > 0)).toBe(true);
 
-      const centered = findQuery("thread")?.run(db, { arg: `${SESSION.slice(0, 8)}@2026-09-16T10:04` });
+      const centered = findQuery("thread")?.run(db, {
+        ...ctx,
+        arg: `${SESSION.slice(0, 8)}@2026-09-16T10:04`,
+      });
       expect(centered?.denominator).toContain("centered on");
 
-      const missing = findQuery("thread")?.run(db, { arg: "zzzzzzzz" });
+      const missing = findQuery("thread")?.run(db, { ...ctx, arg: "zzzzzzzz" });
       expect(missing?.rows).toEqual([]);
       expect(missing?.note).toContain("no session starts with");
     } finally {
@@ -334,11 +324,11 @@ describe("read path", () => {
     const env = seededWithSkillLoad();
     const db = openReadOnly(dbPath(env));
     try {
-      const one = findQuery("skill")?.run(db, { arg: "build" });
+      const one = findQuery("skill")?.run(db, { ...ctx, arg: "build" });
       expect(one?.rows.length).toBeGreaterThan(0);
       expect(one?.denominator).toMatch(/\d+ of them were loaded in a single session/);
 
-      const never = findQuery("skill")?.run(db, { arg: "no-such-skill" });
+      const never = findQuery("skill")?.run(db, { ...ctx, arg: "no-such-skill" });
       expect(never?.rows).toEqual([]);
       expect(never?.note).toContain("no load of no-such-skill recorded");
       expect(never?.denominator).not.toContain("single session");
@@ -351,7 +341,7 @@ describe("read path", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
     try {
-      const quiet = findQuery("running")?.run(db, { arg: "1" });
+      const quiet = findQuery("running")?.run(db, { ...ctx, arg: "1" });
       expect(quiet?.rows).toEqual([]);
       expect(quiet?.note).toContain("dim sync");
       expect(quiet?.denominator).toContain("last 1 minutes");
@@ -364,7 +354,7 @@ describe("read path", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
     try {
-      const f = findQuery("fixes")?.run(db, {});
+      const f = findQuery("fixes")?.run(db, ctx);
       expect(f?.rows).toEqual([]);
       expect(f?.note).toContain("no commits read");
       expect(f?.denominator).toContain("fix commits");
@@ -377,7 +367,7 @@ describe("read path", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
     try {
-      const r = findQuery("repeats")?.run(db, {});
+      const r = findQuery("repeats")?.run(db, ctx);
       expect(r?.denominator).toContain("phrases of 4 words");
       expect(r?.rows).toEqual([]);
       expect(r?.note).toContain("nothing recurs");
@@ -390,7 +380,7 @@ describe("read path", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
     try {
-      const r = findQuery("stale")?.run(db, {});
+      const r = findQuery("stale")?.run(db, ctx);
       expect(r?.rows).toEqual([]);
       expect(r?.denominator).toContain("no commits read");
       expect(r?.note).toContain("no measure of movement");
@@ -409,14 +399,14 @@ describe("read path", () => {
     );
     closeDb(write);
     const db = openReadOnly(dbPath(env));
-    const r = findQuery("resume")?.run(db, { arg: SESSION.slice(0, 8) });
+    const r = findQuery("resume")?.run(db, { ...ctx, arg: SESSION.slice(0, 8) });
     const what = (r?.rows ?? []).map((row) => String(row[0]));
     expect(what).toContain("branch");
     expect(what).toContain("said");
     expect(what).toContain("next");
     expect(r?.note).toContain("Facts only");
 
-    const missing = findQuery("resume")?.run(db, { arg: "zzzzzzzz" });
+    const missing = findQuery("resume")?.run(db, { ...ctx, arg: "zzzzzzzz" });
     expect(missing?.rows).toEqual([]);
     expect(missing?.note).toContain("no session starts with");
     db.close();
@@ -426,13 +416,13 @@ describe("read path", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
     try {
-      const found = findQuery("session")?.run(db, { arg: SESSION.slice(0, 8) });
+      const found = findQuery("session")?.run(db, { ...ctx, arg: SESSION.slice(0, 8) });
       expect(found?.denominator).toContain(SESSION);
       const facts = new Map(found?.rows.map((r) => [r[0], r[1]]));
       expect(facts.get("tool")).toBe("claude");
       expect(facts.get("end reason")).toBe("not recorded (no hook)");
 
-      const missing = findQuery("session")?.run(db, { arg: "zzzzzzzz" });
+      const missing = findQuery("session")?.run(db, { ...ctx, arg: "zzzzzzzz" });
       expect(missing?.rows).toEqual([]);
       expect(missing?.note).toContain("no session starts with");
     } finally {
@@ -487,16 +477,16 @@ describe("who stopped the agent", () => {
   test("only the owner's own refusal counts as the owner stopping the agent", () => {
     const db = stopped();
     try {
-      const resume = findQuery("resume")?.run(db, { arg: "s1" });
+      const resume = findQuery("resume")?.run(db, { ...ctx, arg: "s1" });
       expect(resume?.rows.filter((r) => r[0] === "stopped")).toHaveLength(1);
       expect(String(resume?.rows.find((r) => r[0] === "stopped")?.[1])).toContain("not like that");
 
-      const skill = findQuery("skill")?.run(db, { arg: "dim-station-build" });
+      const skill = findQuery("skill")?.run(db, { ...ctx, arg: "dim-station-build" });
       expect(skill?.rows[0]?.[6]).toBe(1);
 
-      expect(findQuery("repeats")?.run(db, {})?.denominator).toContain("1 prompts");
+      expect(findQuery("repeats")?.run(db, ctx)?.denominator).toContain("1 prompts");
 
-      const rework = findQuery("rework")?.run(db, {});
+      const rework = findQuery("rework")?.run(db, ctx);
       expect(rework?.rows[0]?.[3]).toBe(0);
     } finally {
       db.close();
@@ -506,13 +496,13 @@ describe("who stopped the agent", () => {
   test("corrections reads the same stop as the rest", () => {
     const db = stopped();
     try {
-      expect(findQuery("corrections")?.run(db, {})?.denominator).toContain(
+      expect(findQuery("corrections")?.run(db, ctx)?.denominator).toContain(
         "1 turns the user physically stopped",
       );
 
       const facts = new Map(
         findQuery("session")
-          ?.run(db, { arg: "s1" })
+          ?.run(db, { ...ctx, arg: "s1" })
           ?.rows.map((r) => [r[0], r[1]]),
       );
       expect(facts.get("tool calls you rejected")).toBe(1);
@@ -550,7 +540,7 @@ describe("a thin sample is a row with its base, not a row withheld", () => {
   test("rework reports a skill that touched two files and names the base", () => {
     const db = twoFiles();
     try {
-      const r = findQuery("rework")?.run(db, {});
+      const r = findQuery("rework")?.run(db, ctx);
       expect(r?.rows.map((row) => [row[0], row[1]])).toEqual([["dim-station-build", 2]]);
       expect(r?.denominator).toContain("`files_touched` is the base each rate stands on");
     } finally {
@@ -561,7 +551,7 @@ describe("a thin sample is a row with its base, not a row withheld", () => {
   test("fixes reports the same two files and names the base", () => {
     const db = twoFiles();
     try {
-      const f = findQuery("fixes")?.run(db, {});
+      const f = findQuery("fixes")?.run(db, ctx);
       expect(f?.rows.map((row) => [row[0], row[1]])).toEqual([["dim-station-build", 2]]);
       expect(f?.denominator).toContain("every skill that edited one of 2 files is a row");
     } finally {
@@ -577,7 +567,7 @@ describe("a thin sample is a row with its base, not a row withheld", () => {
          VALUES ('sha1', '/w', '2026-09-02T10:00:00Z', 'feat', 'feat: one')`,
       );
       db.run("INSERT INTO commit_file (sha, path) VALUES ('sha1', '/w/one.ts')");
-      const x = findQuery("exemplars")?.run(db, { home: "/w" });
+      const x = findQuery("exemplars")?.run(db, { ...ctx, home: "/w" });
       expect(x?.rows.map((row) => [row[0], row[3]])).toEqual([["one.ts", 1]]);
       expect(x?.denominator).toContain("`edits` counts the agent edits behind it");
     } finally {
@@ -593,7 +583,7 @@ describe("a thin sample is a row with its base, not a row withheld", () => {
          VALUES ('sha1', '/w', '2026-09-02T10:00:00Z', 'fix', 'fix: one')`,
       );
       db.run("INSERT INTO commit_file (sha, path) VALUES ('sha1', '/w/one.ts')");
-      const x = findQuery("exemplars")?.run(db, { home: "/w" });
+      const x = findQuery("exemplars")?.run(db, { ...ctx, home: "/w" });
       expect(x?.rows).toEqual([]);
       expect(x?.note).toContain("shipped without a fix coming back to it");
     } finally {
@@ -604,7 +594,7 @@ describe("a thin sample is a row with its base, not a row withheld", () => {
   test("rework names the skill it was asked about when that skill has no edits", () => {
     const db = twoFiles();
     try {
-      const r = findQuery("rework")?.run(db, { arg: "no-such-skill" });
+      const r = findQuery("rework")?.run(db, { ...ctx, arg: "no-such-skill" });
       expect(r?.rows).toEqual([]);
       expect(r?.note).toContain("no file edit in this window is attributed to no-such-skill");
       expect(r?.denominator).toContain("0 file edits under no-such-skill; rows cover it alone");
@@ -620,7 +610,7 @@ describe("a thin sample is a row with its base, not a row withheld", () => {
         `INSERT INTO tool_call (id, session_id, tool_name, attribution_skill, file_path, src_file)
          VALUES ('c', 's1', 'Edit', 'dim-station-build', '/w/three.ts', '/f.jsonl')`,
       );
-      const r = findQuery("rework")?.run(db, {});
+      const r = findQuery("rework")?.run(db, ctx);
       expect(r?.denominator).toContain("2 file edits");
     } finally {
       db.close();
@@ -635,7 +625,7 @@ describe("a thin sample is a row with its base, not a row withheld", () => {
         `INSERT INTO repo_commit (sha, repo, ts, kind, subject)
          VALUES ('sha1', '/w', '2026-09-02T10:00:00Z', 'fix', 'fix: something')`,
       );
-      const f = findQuery("fixes")?.run(db, {});
+      const f = findQuery("fixes")?.run(db, ctx);
       expect(f?.rows).toEqual([]);
       expect(f?.note).toContain("file path, timestamp and session working directory");
     } finally {
@@ -655,7 +645,7 @@ describe("a thin sample is a row with its base, not a row withheld", () => {
          VALUES ('sha1', '/w', '2026-09-02T10:00:00Z', 'fix', 'fix: three')`,
       );
       db.run("INSERT INTO commit_file (sha, path) VALUES ('sha1', '/w/three.ts')");
-      const f = findQuery("fixes")?.run(db, {});
+      const f = findQuery("fixes")?.run(db, ctx);
       expect(f?.rows.map((row) => [row[0], row[1], row[3]])).toEqual([
         ["simplify", 1, 100],
         ["dim-station-build", 2, 0],
@@ -674,7 +664,7 @@ describe("what a query counts of each tool", () => {
       const edits = ["rework", "resume", "exemplars", "fixes", "stale", "corrections", "skill"];
       const silent = edits.filter((name) => {
         const arg = name === "resume" ? SESSION.slice(0, 8) : name === "skill" ? "build" : undefined;
-        const note = findQuery(name)?.run(db, arg ? { arg } : {}).note ?? "";
+        const note = findQuery(name)?.run(db, { ...ctx, arg }).note ?? "";
         return !note.includes("Codex");
       });
       expect(silent).toEqual([]);

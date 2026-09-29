@@ -397,7 +397,7 @@ describe("builder station", () => {
     expect(failed?.reason).toContain(`its output is on check ${red[0]?.id}`);
     expect(failed?.reason).not.toContain("ok.txt is missing");
     const checkRows = findQuery("order")
-      ?.run(db, { arg: "red-order" })
+      ?.run(db, { arg: "red-order", since: null, home: "/h" })
       .rows.filter((row) => row[0] === "check");
     expect(checkRows?.map((row) => [String(row[5]).startsWith(`check ${red[0]?.id}: `), row[6]])).toEqual([
       [true, expect.stringContaining("ok.txt is missing")],

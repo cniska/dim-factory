@@ -143,7 +143,8 @@ describe("each reader of the record", () => {
     try {
       const before = recordBesideTraces(path);
       for (const query of QUERIES) {
-        await asDimHome(home, () => qCommand.run([query.name, "order-1", "--all"]));
+        const widened = query.window === "none" ? [] : ["--all"];
+        await asDimHome(home, () => qCommand.run([query.name, "order-1", ...widened]));
       }
       expect(recordBesideTraces(path)).toEqual(before);
 

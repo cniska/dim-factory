@@ -1,21 +1,11 @@
 import { CONVENTION_FLOOR, conventionCommits, conventionRecords } from "./git-commit-convention";
-import {
-  CLAUDE_EDITS,
-  claudeOnly,
-  homeOf,
-  type Query,
-  scalar,
-  table,
-  toRows,
-  window,
-  windowLine,
-} from "./query";
+import { CLAUDE_EDITS, claudeOnly, type Query, scalar, table, toRows, window, windowLine } from "./query";
 import { withoutWorktree } from "./worktree";
 
 export const exemplars: Query = {
   name: "exemplars",
   summary: "code an agent wrote that shipped and no fix came back to — candidates, not verdicts",
-  window: "t.ts_call",
+  window: "recent",
   run: (db, ctx) => {
     const columns = ["file", "repo", "skill", "edits", "commits", "days_since"];
     const w = window("t.ts_call", ctx);
@@ -49,7 +39,7 @@ export const exemplars: Query = {
        WHERE r.path IS NULL
        ORDER BY e.edits DESC, days_since DESC, e.path
        LIMIT 25`,
-      [...w.params, homeOf(ctx)],
+      [...w.params, ctx.home],
     );
     return {
       denominator:
@@ -73,7 +63,7 @@ export const exemplars: Query = {
 export const fixes: Query = {
   name: "fixes",
   summary: "files an agent edited that a later fix commit had to come back to, by skill",
-  window: "t.ts_call",
+  window: "recent",
   run: (db, ctx) => {
     const columns = ["skill", "files", "later_fixed", "fixed_pct", "mean_days", "sessions"];
     const w = window("t.ts_call", ctx);
@@ -134,7 +124,7 @@ export const stale: Query = {
   name: "stale",
   summary: "how much the code a session touched has changed since it ran",
   usage: "dim q stale [id-prefix]",
-  window: "s.last_seen_at",
+  window: "recent",
   run: (db, ctx) => {
     const { arg } = ctx;
     const columns = ["session", "project", "ran", "files", "moved_pct", "commits_since", "days"];
@@ -165,7 +155,7 @@ export const stale: Query = {
        FROM scored
        GROUP BY id HAVING files >= 3
        ORDER BY moved_pct DESC, commits_since DESC LIMIT 30`,
-      [...(arg ? [arg] : []), ...w.params, homeOf(ctx)],
+      [...(arg ? [arg] : []), ...w.params, ctx.home],
     );
     const commits = scalar(db, "SELECT count(*) AS n FROM repo_commit");
     return {
@@ -194,8 +184,7 @@ export const priorArt: Query = {
   name: "prior-art",
   summary: "where a path like this one already exists across the repos on disk, newest first",
   usage: 'dim q prior-art "<path fragment>"',
-  spansHistory: true,
-  window: null,
+  window: "none",
   run: (db, ctx) => {
     const columns = ["file", "repo", "commits", "days_since", "authors"];
     const fragment = ctx.arg ?? "";
@@ -239,7 +228,7 @@ export const priorArt: Query = {
        WHERE rank_in_repo <= ${PER_REPO}
        ORDER BY days_since IS NULL, days_since ASC, commits DESC
        LIMIT 25`,
-      [fragment, homeOf(ctx), homeOf(ctx)],
+      [fragment, ctx.home, ctx.home],
     );
 
     const repos = new Set(records.map((r) => r.repo)).size;
@@ -266,8 +255,7 @@ export const convention: Query = {
   name: "convention",
   summary: "the commit convention each repo's own log holds",
   usage: "dim q convention [repo-fragment]",
-  spansHistory: true,
-  window: "ts",
+  window: "history",
   run: (db, ctx) => {
     const { arg } = ctx;
     const columns = [
@@ -285,12 +273,11 @@ export const convention: Query = {
       conds.push("repo_key LIKE '%' || ? || '%'");
       filter.push(arg);
     }
-    const w = window("ts", ctx, "WHERE");
-    if (w.sql) {
-      conds.push(w.sql.trim().replace(/^WHERE /, ""));
-      filter.push(...w.params);
+    if (ctx.since) {
+      conds.push("ts >= ?");
+      filter.push(ctx.since);
     }
-    const scope = { home: homeOf(ctx), conds, params: filter };
+    const scope = { home: ctx.home, conds, params: filter };
     const records = conventionRecords(db, scope, 30);
     const commits = conventionCommits(db, scope);
     return {

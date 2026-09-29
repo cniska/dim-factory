@@ -13,7 +13,7 @@ import {
 export const tools: Query = {
   name: "tools",
   summary: "tool call counts, failures and the read-to-edit ratio per tool",
-  window: "t.ts_call",
+  window: "recent",
   run: (db, ctx) => {
     const columns = ["tool", "tool_name", "calls", "failed", "failed_pct", "avg_result_bytes"];
     const records = table(
@@ -50,7 +50,7 @@ export const tools: Query = {
 export const skills: Query = {
   name: "skills",
   summary: "how often each skill loaded, by which path, and what its body cost",
-  window: "l.ts",
+  window: "recent",
   run: (db, ctx) => {
     const columns = [
       "skill",
@@ -118,8 +118,7 @@ export const skill: Query = {
   name: "skill",
   summary: "one skill, version by version: loads, size, and what got stopped under each",
   usage: "dim q skill <name>",
-  spansHistory: true,
-  window: "l.ts",
+  window: "history",
   run: (db, ctx) => {
     const { arg } = ctx;
     if (!arg) {

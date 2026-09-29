@@ -1016,7 +1016,7 @@ describe("factory order report records", () => {
           Bun.spawnSync(["git", "-C", repo.dir, "merge-base", "--is-ancestor", sha, "HEAD"]).success,
         ).toBe(true);
       }
-      const rows = findQuery("order")?.run(database, { arg: "order-1" }).rows ?? [];
+      const rows = findQuery("order")?.run(database, { arg: "order-1", since: null, home: "/h" }).rows ?? [];
       const rewritten = rows.filter((row) => row[0] === "commit" && row[2] === "commit_rewritten");
       expect(rewritten.map((row) => [row[3], row[5]])).toEqual([
         ["ship run 1", `${second} -> ${current[1]}`],
@@ -1269,14 +1269,14 @@ describe("factory order report records", () => {
       expect(
         database.query("SELECT head_sha, exit_code FROM factory_order_check ORDER BY id DESC LIMIT 1").get(),
       ).toEqual({ head_sha: current.at(-1), exit_code: 0 });
-      const rows = findQuery("order")?.run(database, { arg: "order-1" }).rows ?? [];
+      const rows = findQuery("order")?.run(database, { arg: "order-1", since: null, home: "/h" }).rows ?? [];
       expect(rows.filter((row) => row[0] === "commit").map((row) => row[2])).toEqual([
         "commit_rewritten",
         "commit_rewritten",
         "commit_created",
         "commit_created",
       ]);
-      const board = findQuery("factory")?.run(database, { arg: "order-1" });
+      const board = findQuery("factory")?.run(database, { arg: "order-1", since: null, home: "/h" });
       const column = board?.columns.indexOf("commit") ?? -1;
       expect(String(board?.rows[0]?.[column])).toStartWith(current[1] as string);
     });
