@@ -3,13 +3,8 @@ import { randomBytes } from "node:crypto";
 import { writeTransaction } from "./db";
 import type { HarnessName } from "./harness-name";
 import { type MintedWorker, mintWorkerForSession } from "./worker";
+import { fail } from "./worker-contract";
 import type { Role } from "./worker-roles";
-
-export class WorkerAssignmentError extends Error {
-  constructor(readonly code: "assignment_missing" | "assignment_used") {
-    super(code);
-  }
-}
 
 export type WorkerAssignment = {
   id: string;
@@ -63,7 +58,7 @@ export function bootstrapWorker(
          FROM factory_worker_assignment WHERE id = ?`,
       )
       .get(assignment.id);
-    if (!row) throw new WorkerAssignmentError("assignment_missing");
+    if (!row) throw fail("assignment_missing", { assignmentId: assignment.id });
     if (row.accepted_at !== null) {
       const accepted = row.accepted_worker
         ? db
@@ -78,7 +73,7 @@ export function bootstrapWorker(
         accepted.role !== row.role ||
         accepted.parent_worker !== row.parent_worker
       ) {
-        throw new WorkerAssignmentError("assignment_used");
+        throw fail("assignment_used", { assignmentId: assignment.id });
       }
     }
     const minted = mintWorkerForSession(db, {

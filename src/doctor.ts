@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { CodedError } from "./coded-error";
 import { PROJECT_CONFIG, projectConfigPath, userConfigPath } from "./config";
 import { ConfigError } from "./config-error";
 import { readJsonc } from "./config-jsonc-file";
@@ -27,7 +28,7 @@ import { dataDir, type Env, resolveHomeDir, tildePath } from "./paths";
 import { planRules } from "./rules";
 import { shipMethod } from "./ship-method";
 import { planSkill, retiredLinks } from "./skill";
-import { RoutingError, readHarnessMap } from "./worker-routing";
+import { findHarnessMap, harnessMapPath } from "./worker-routing";
 
 export type Health = { name: string; state: "ok" | "warn" | "fail"; detail: string; fix?: string };
 
@@ -215,20 +216,16 @@ function harnesses(env: Env): Health {
     const installed = harnessInstalled(harness, env);
     let mapped: boolean;
     try {
-      readHarnessMap(harness, env);
-      mapped = true;
+      mapped = "map" in findHarnessMap(harness, env);
     } catch (error) {
       if (error instanceof ConfigError) return unreadable("harnesses", error);
-      if (!(error instanceof RoutingError)) throw error;
-      if (error.kind !== "no-map") {
-        return {
-          name: "harnesses",
-          state: "fail",
-          detail: error.message,
-          fix: `repair ${error.path} by hand`,
-        };
-      }
-      mapped = false;
+      if (!(error instanceof CodedError)) throw error;
+      return {
+        name: "harnesses",
+        state: "fail",
+        detail: error.message,
+        fix: `repair ${harnessMapPath(env)} by hand`,
+      };
     }
     if (installed && mapped) ready.push(harness);
     else if (installed) {

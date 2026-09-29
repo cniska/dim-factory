@@ -3,23 +3,9 @@ import { randomBytes } from "node:crypto";
 import { writeTransaction } from "./db";
 import type { Env } from "./paths";
 import { type ProcessIdentity, processAncestry, processStartTime } from "./pid";
+import { fail } from "./worker-contract";
 import { randomWorkerName, WORKER_NAME_VAR } from "./worker-name";
 import type { Role } from "./worker-roles";
-
-export type WorkerUnknownCode = "worker_missing" | "worker_unissued" | "worker_over";
-
-export class WorkerSessionTaken extends Error {
-  readonly code = "worker_session_taken";
-}
-
-export class WorkerUnknown extends Error {
-  constructor(
-    readonly code: WorkerUnknownCode,
-    message: string,
-  ) {
-    super(message);
-  }
-}
 
 export type MintedWorker = { name: string; sessionId: string };
 
@@ -79,7 +65,7 @@ export function mintWorker(
           .query<{ name: string }, [string]>("SELECT name FROM factory_worker WHERE session_id = ?")
           .get(sessionId)
       ) {
-        throw new WorkerSessionTaken(`session ${sessionId} already has a factory identity`);
+        throw fail("worker_session_taken", { sessionId });
       }
       throw error;
     }
@@ -99,14 +85,14 @@ export function assertLiveWorker(
   observed?: ProcessIdentity,
 ): void {
   if (row.ended_at !== null) {
-    throw new WorkerUnknown("worker_over", `worker ${row.name} ended at ${row.ended_at}`);
+    throw fail("worker_over", { worker: row.name, endedAt: row.ended_at });
   }
   if (
     row.pid === null ||
     row.process_started_at === null ||
     (observed?.startedAt ?? processStartTime(row.pid)) !== row.process_started_at
   ) {
-    throw new WorkerUnknown("worker_over", `worker ${row.name}'s registered process is gone`);
+    throw fail("worker_over", { worker: row.name, endedAt: null });
   }
 }
 
@@ -140,7 +126,7 @@ export function resolveWorker(
 ): string {
   const registered = registeredCaller(db, ancestry);
   if (!registered || registered.kind === "barrier") {
-    throw new WorkerUnknown("worker_missing", "no live worker owns this process");
+    throw fail("worker_missing", {});
   }
   const process = ancestry.find((one) => one.pid === registered.worker.pid);
   assertLiveWorker(registered.worker, process);
@@ -171,7 +157,7 @@ export function mintWorkerForSession(
       throw new Error(`worker ${existing.name} does not belong to assignment parent ${worker.parentWorker}`);
     }
     if (existing.ended_at !== null)
-      throw new WorkerUnknown("worker_over", `worker ${existing.name} has ended`);
+      throw fail("worker_over", { worker: existing.name, endedAt: existing.ended_at });
     if (worker.pid !== undefined) startWorkerRun(db, existing.name, worker.pid, worker.processStartedAt);
     return { name: existing.name, sessionId: worker.sessionId };
   });

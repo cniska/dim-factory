@@ -158,14 +158,14 @@ describe("order command", () => {
     await expect(
       runOrderCommandLive(database, ["plan", "order-1", "--harness", "claude"], null, trunk.dir, env),
     ).rejects.toThrow(
-      expect.objectContaining({ kind: "no-map", message: expect.stringContaining('{ "claude": {') }),
+      expect.objectContaining({ code: "routing_no_map", message: expect.stringContaining('{ "claude": {') }),
     );
     expect(database.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 0 });
   });
 
   test("a build and a review resolve their models through the harness they name", async () => {
     const noClaudeMap = expect.objectContaining({
-      kind: "no-map",
+      code: "routing_no_map",
       message: expect.stringContaining('{ "claude": {'),
     });
     const database = db();
@@ -203,7 +203,7 @@ describe("order command", () => {
     database.run(recorded, ["claude", session ?? "", "session_start", "2026-01-01T00:00:00Z"]);
 
     await expect(runOrderCommandLive(database, ["plan", "order-1"], null, trunk.dir, env)).rejects.toThrow(
-      expect.objectContaining({ kind: "no-map", message: expect.stringContaining('{ "claude": {') }),
+      expect.objectContaining({ code: "routing_no_map", message: expect.stringContaining('{ "claude": {') }),
     );
     expect(database.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 0 });
   });
@@ -221,12 +221,12 @@ describe("order command", () => {
     bootstrapWorker(database, { harness: "codex", id: planner.assignment.id, sessionId: "codex-planner" });
 
     await expect(runOrderCommandLive(database, ["plan", "order-1"], null, trunk.dir, env)).rejects.toThrow(
-      expect.objectContaining({ kind: "no-map", message: expect.stringContaining('{ "codex": {') }),
+      expect.objectContaining({ code: "routing_no_map", message: expect.stringContaining('{ "codex": {') }),
     );
 
     releaseOrderWorker(database, "order-1", "planner");
     await expect(runOrderCommandLive(database, ["plan", "order-1"], null, trunk.dir, env)).rejects.toThrow(
-      expect.objectContaining({ kind: "no-map", message: expect.stringContaining('{ "claude": {') }),
+      expect.objectContaining({ code: "routing_no_map", message: expect.stringContaining('{ "claude": {') }),
     );
   });
 

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Glob } from "bun";
 import { HARNESSES } from "./harness-name";
 import { ROLES } from "./worker-roles";
-import { harnessMapPath, ROLE_TIERS, RoutingError, route, routeReport } from "./worker-routing";
+import { harnessMapPath, ROLE_TIERS, route, routeReport } from "./worker-routing";
 
 function machine(map?: string): { DIM_HOME: string } {
   const home = mkdtempSync(join(tmpdir(), "dim-routing-"));
@@ -32,13 +32,12 @@ describe("resolving a role", () => {
   test("refuses a role no station names", () => {
     const env = machine(COMPLETE);
 
-    expect(() => route("inspector", "codex", env)).toThrow(/no such factory role/);
-    try {
-      route("inspector", "codex", env);
-    } catch (e) {
-      expect(e).toBeInstanceOf(RoutingError);
-      expect((e as RoutingError).kind).toBe("unknown-role");
-    }
+    expect(() => route("inspector", "codex", env)).toThrow(
+      expect.objectContaining({
+        code: "routing_unknown_role",
+        message: expect.stringContaining("no such factory role"),
+      }),
+    );
   });
 
   test("the listing names every role and the map it read", () => {
@@ -67,15 +66,13 @@ describe("a map that cannot be trusted", () => {
   test("refuses to route where no map was written", () => {
     const env = machine();
 
-    try {
-      route("reviewer", "codex", env);
-      throw new Error("expected a throw");
-    } catch (e) {
-      expect(e).toBeInstanceOf(RoutingError);
-      expect((e as RoutingError).kind).toBe("no-map");
-      expect((e as RoutingError).path).toBe(harnessMapPath(env));
-      expect((e as Error).message).toContain('"standard"');
-    }
+    expect(() => route("reviewer", "codex", env)).toThrow(
+      expect.objectContaining({
+        code: "routing_no_map",
+        meta: expect.objectContaining({ path: harnessMapPath(env) }),
+        message: expect.stringContaining('"standard"'),
+      }),
+    );
   });
 
   test("refuses a map that is not an object of tiers", () => {
@@ -107,30 +104,40 @@ describe("a map that cannot be trusted", () => {
 });
 
 describe("what dim route reports for a map it refuses", () => {
-  for (const [what, map, name, message] of [
+  for (const [what, map, name, code, message] of [
     [
       "no map",
       undefined,
-      "RoutingError",
+      "CodedError",
+      "routing_no_map",
       ': no harness map, so no role resolves to a model; write { "codex": { "light": "<model>", "standard": "<model>", "deep": "<model>" } } naming what this harness calls each tier',
     ],
-    ["a map that does not parse", '{ "codex": ', "ConfigError", ": ValueExpected at offset 11"],
+    [
+      "a map that does not parse",
+      '{ "codex": ',
+      "ConfigError",
+      "command_failed",
+      ": ValueExpected at offset 11",
+    ],
     [
       "a harness named twice",
       '{ "codex": {}, "codex": {} }',
-      "RoutingError",
+      "CodedError",
+      "routing_duplicate_key",
       ": names codex twice, so one model silently replaced another",
     ],
     [
       "an unknown harness",
       '{ "gemini": {} }',
-      "RoutingError",
+      "CodedError",
+      "routing_unknown_harness",
       ": names gemini, which is no supported harness",
     ],
     [
       "a map that is not an object",
       '["codex"]',
-      "RoutingError",
+      "CodedError",
+      "routing_not_object",
       ': the harness map is not an object of { "codex": { "light": "<model>", "standard": "<model>", "deep": "<model>" } }',
     ],
   ] as const) {
@@ -148,11 +155,11 @@ describe("what dim route reports for a map it refuses", () => {
       expect(JSON.parse(new TextDecoder().decode(run.stderr))).toEqual({
         command: "route",
         ok: false,
-        error: {
+        error: expect.objectContaining({
           name,
-          code: "command_failed",
+          code,
           message: `${join(env.DIM_HOME, "routing.json")}${message}`,
-        },
+        }),
       });
     });
   }

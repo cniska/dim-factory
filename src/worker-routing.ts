@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { readSettingFile } from "./config-setting-file";
 import { type HarnessName, isHarness } from "./harness-name";
 import { dataDir, type Env } from "./paths";
+import { fail } from "./worker-contract";
 import { ROLES, type Role } from "./worker-roles";
 
 export type Tier = "light" | "standard" | "deep";
@@ -19,73 +20,61 @@ export type HarnessMap = Record<Tier, string>;
 export type RoutingMap = Record<HarnessName, HarnessMap>;
 export type RouteRecord = { harness: HarnessName; role: Role; tier: Tier; model: string };
 
-export class RoutingError extends Error {
-  constructor(
-    readonly kind: "unknown-role" | "no-map" | "malformed",
-    message: string,
-    readonly path?: string,
-  ) {
-    super(message);
-    this.name = "RoutingError";
-  }
-}
-
 export function harnessMapPath(env: Env = process.env): string {
   return join(dataDir(env), "routing.json");
 }
 
+const templateFor = (harness: HarnessName): string =>
+  `{ "${harness}": { "light": "<model>", "standard": "<model>", "deep": "<model>" } }`;
+
 export function readHarnessMap(harness: HarnessName, env: Env = process.env): HarnessMap {
-  const template = `{ "${harness}": { "light": "<model>", "standard": "<model>", "deep": "<model>" } }`;
+  const found = findHarnessMap(harness, env);
+  if ("missing" in found) {
+    throw fail("routing_no_map", {
+      path: harnessMapPath(env),
+      harness,
+      template: templateFor(harness),
+      missing: found.missing,
+    });
+  }
+  return found.map;
+}
+
+export function findHarnessMap(
+  harness: HarnessName,
+  env: Env = process.env,
+): { map: HarnessMap } | { missing: "file" | "harness" } {
+  const template = templateFor(harness);
   const path = harnessMapPath(env);
   const maps = readSettingFile(path, {
     isKey: isHarness,
     refuse: (defect) =>
-      new RoutingError(
-        "malformed",
-        defect.kind === "duplicate-key"
-          ? `${path}: names ${defect.keys.join(", ")} twice, so one model silently replaced another`
-          : defect.kind === "not-object"
-            ? `${path}: the harness map is not an object of ${template}`
-            : `${path}: names ${defect.keys.join(", ")}, which is no supported harness`,
-        path,
-      ),
+      defect.kind === "duplicate-key"
+        ? fail("routing_duplicate_key", { path, keys: defect.keys })
+        : defect.kind === "not-object"
+          ? fail("routing_not_object", { path, template })
+          : fail("routing_unknown_harness", { path, keys: defect.keys }),
   });
-  if (maps === null) {
-    throw new RoutingError(
-      "no-map",
-      `${path}: no harness map, so no role resolves to a model; write ${template} naming what this harness calls each tier`,
-      path,
-    );
-  }
+  if (maps === null) return { missing: "file" };
   const selected = maps[harness];
-  if (!(harness in maps)) {
-    throw new RoutingError("no-map", `${path}: no map for the ${harness} harness; add ${template}`, path);
-  }
+  if (!(harness in maps)) return { missing: "harness" };
   if (selected === null || typeof selected !== "object" || Array.isArray(selected)) {
-    throw new RoutingError(
-      "malformed",
-      `${path}: the ${harness} harness map is not an object of tiers`,
-      path,
-    );
+    throw fail("routing_harness_not_object", { path, harness });
   }
   const entries = selected as Record<string, unknown>;
   const unknown = Object.keys(entries).filter((key) => !TIERS.includes(key as Tier));
   if (unknown.length > 0) {
-    throw new RoutingError(
-      "malformed",
-      `${path}: names ${unknown.join(", ")}, which is no tier; the tiers are ${TIERS.join(", ")}`,
-      path,
-    );
+    throw fail("routing_unknown_tier", { path, unknown, tiers: TIERS });
   }
   const map = {} as HarnessMap;
   for (const tier of TIERS) {
     const name = entries[tier];
     if (typeof name !== "string" || name.trim().length === 0) {
-      throw new RoutingError("malformed", `${path}: the ${tier} tier names no model`, path);
+      throw fail("routing_tier_unnamed", { path, tier });
     }
     map[tier] = name.trim();
   }
-  return map;
+  return { map };
 }
 
 export function route(
@@ -94,10 +83,7 @@ export function route(
   env: Env = process.env,
 ): { tier: Tier; model: string } {
   if (!(role in ROLE_TIERS)) {
-    throw new RoutingError(
-      "unknown-role",
-      `${role}: no such factory role; the roles are ${ROLES.join(", ")}`,
-    );
+    throw fail("routing_unknown_role", { role, roles: ROLES });
   }
   const tier = ROLE_TIERS[role as Role];
   return { tier, model: readHarnessMap(harness, env)[tier] };
