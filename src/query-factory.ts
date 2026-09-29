@@ -46,7 +46,7 @@ export const order: Query = {
       status: report.status,
       next: state ? describeState(state) : "(none)",
       subject: `${report.project}/${report.id}`,
-      evidence: report.priority,
+      evidence: null,
       line: report.line,
       title: report.title,
       description: report.description,
@@ -170,7 +170,7 @@ export const factory: Query = {
       throw new UsageError(`usage: ${factory.usage}; dim q order <order-id> reads one order`);
     const orders = table(
       db,
-      `SELECT o.project AS project, o.id AS order_id, o.priority, ${orderStatusSql("o.id")} AS status,
+      `SELECT o.project AS project, o.id AS order_id, ${orderStatusSql("o.id")} AS status,
               (SELECT e.kind FROM factory_order_event e
                WHERE e.order_id = o.id ORDER BY e.ts DESC, e.id DESC LIMIT 1) AS latest_event,
               (SELECT e.ts FROM factory_order_event e
@@ -205,7 +205,6 @@ export const factory: Query = {
     const columns = [
       "project",
       "order_id",
-      "priority",
       "status",
       "latest_event",
       "latest_event_at",

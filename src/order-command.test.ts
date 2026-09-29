@@ -694,22 +694,6 @@ describe("order command", () => {
     expect([snapshot.orders[0]?.station, snapshot.orders[0]?.next]).toEqual(["plan", "run"]);
   });
 
-  test("ready lists the queued orders most urgent first", () => {
-    const database = db();
-    runOrderCommand(database, add);
-    runOrderCommand(database, ["add", "order-2", "--title", "Later", "--project", "cniska/dim-factory"]);
-    runOrderCommand(database, ["priority", "order-2", "urgent"]);
-    runOrderCommand(database, ["add", "order-3", "--title", "Taken", "--project", "cniska/dim-factory"]);
-    runOrderCommand(database, ["priority", "order-3", "urgent"]);
-    started(database, "order-3");
-
-    const read = runCommand(database, ["ready", "--project", "cniska/dim-factory"], null, trunk.dir, env) as {
-      id: string;
-    }[];
-
-    expect(read.map((one) => one.id)).toEqual(["order-2", "order-1"]);
-  });
-
   test("commits, files, checks, documents and artifacts are not written from the command line", () => {
     const database = db();
     queued(database);
@@ -830,12 +814,7 @@ describe("order command", () => {
     const namedOnly = { ...env };
     database.run("UPDATE factory_worker SET pid = NULL, process_started_at = NULL WHERE role = 'operator'");
 
-    for (const args of [
-      add,
-      ["priority", "order-1", "urgent"],
-      ["approve", "order-1"],
-      ["drop", "order-1", "--reason", "not needed"],
-    ]) {
+    for (const args of [add, ["approve", "order-1"], ["drop", "order-1", "--reason", "not needed"]]) {
       expect(() => runCommand(database, args, null, undefined, {})).toThrow(
         expect.objectContaining({ code: "worker_missing" }),
       );

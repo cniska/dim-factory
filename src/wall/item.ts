@@ -6,7 +6,6 @@ export const ITEM_KIND_LABELS: Record<OrderEventKind, string> = {
   queued: "Queued",
   started: "Order started",
   station_started: "Station started",
-  priority_changed: "Priority changed",
   artifact_submitted: "Artifact submitted",
   artifact_approved: "Artifact approved",
   artifact_returned: "Artifact returned",

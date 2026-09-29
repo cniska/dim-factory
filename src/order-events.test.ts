@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { SCHEMA_SQL } from "./db-schema";
 import { appendOrderEvent } from "./order-ledger";
-import { dropOrder, queueOrder, setOrderPriority } from "./order-lifecycle";
+import { dropOrder, queueOrder } from "./order-lifecycle";
 import { orderStatus } from "./order-status";
 import { mintWorker } from "./worker";
 
@@ -82,7 +82,6 @@ describe("factory domain event boundary", () => {
       worker,
       "2026-09-25T09:00:00.000Z",
     );
-    setOrderPriority(db, "queue-history", "urgent", worker, "2026-09-25T09:01:00.000Z");
     dropOrder(db, "queue-history", "superseded", worker, "2026-09-25T09:04:00.000Z");
 
     expect(
@@ -92,10 +91,7 @@ describe("factory domain event boundary", () => {
         )
         .all("queue-history")
         .map((row) => row.kind),
-    ).toEqual(["queued", "priority_changed", "dropped"]);
-    expect(db.query("SELECT priority FROM factory_order WHERE id = ?").get("queue-history")).toEqual({
-      priority: "urgent",
-    });
+    ).toEqual(["queued", "dropped"]);
     expect(orderStatus(db, "queue-history")).toBe("dropped");
     expect(
       db

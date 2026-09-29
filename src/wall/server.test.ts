@@ -18,7 +18,7 @@ import {
 } from "../order-evidence";
 import { answerOrderFindings, raiseOrderFinding } from "../order-finding";
 import { appendOrderEvent } from "../order-ledger";
-import { queueOrder, setOrderPriority, startOrder } from "../order-lifecycle";
+import { queueOrder, startOrder } from "../order-lifecycle";
 import { closeOrderReview, recordOrderReviewArtifact } from "../order-review";
 import { approveFinalBuildAt, approvePlan, approveReviewAt } from "../station-approvals.test-support";
 import type { Station } from "../station-contract";
@@ -275,7 +275,6 @@ describe("factory wall snapshot", () => {
       "2026-09-18T09:00:00.000Z",
     );
     started(db, "order-quiet", "2026-09-18T09:05:00.000Z");
-    setOrderPriority(db, "order-quiet", "high", attemptOperator, "2026-09-18T09:01:00.000Z");
     db.run("UPDATE factory_order SET updated_at = ? WHERE id = ?", [
       "2026-09-18T10:04:00.000Z",
       "order-quiet",

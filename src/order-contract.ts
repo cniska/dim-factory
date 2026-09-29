@@ -44,7 +44,6 @@ export type OrderEvent = Written &
   (
     | { kind: "queued"; worker: string; evidence?: EvidenceReference }
     | { kind: "started"; worker: string }
-    | { kind: "priority_changed"; worker: string; evidence: EvidenceReference }
     | { kind: "dropped"; worker: string; reason: string }
     | { kind: "station_started"; worker: string; station: Station; sessionId?: string }
     | { kind: "artifact_submitted"; worker: string; artifactId: number }

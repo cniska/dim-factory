@@ -41,7 +41,7 @@ import {
 import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { assertChecked, failedHeadCheck } from "./order-head-check";
 import { appendOrderEvent } from "./order-ledger";
-import { dropOrder, queueOrder, setOrderPriority, startOrder } from "./order-lifecycle";
+import { dropOrder, queueOrder, startOrder } from "./order-lifecycle";
 import {
   abortStrandedReview,
   closeOrderReview,
@@ -1825,18 +1825,16 @@ describe("factory order report records", () => {
     database.close();
   });
 
-  test("refuses a worker that is not the operator the queue, priority and drop of an order", () => {
+  test("refuses a worker that is not the operator the queue and drop of an order", () => {
     const database = db();
     const refused = expect.objectContaining({ code: "worker_not_operator" });
 
     expect(() => queueOrder(database, order, worker)).toThrow(refused);
     queueOrder(database, order, attemptOperator);
-    expect(() => setOrderPriority(database, "order-1", "high", worker)).toThrow(refused);
     expect(() => dropOrder(database, "order-1", "a builder's reason", worker)).toThrow(refused);
 
-    expect(database.query("SELECT title, priority FROM factory_order WHERE id = 'order-1'").get()).toEqual({
+    expect(database.query("SELECT title FROM factory_order WHERE id = 'order-1'").get()).toEqual({
       title: order.title,
-      priority: "unset",
     });
     expect(database.query("SELECT kind FROM factory_order_event").all()).toEqual([{ kind: "queued" }]);
     database.close();

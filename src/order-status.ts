@@ -15,17 +15,12 @@ export function orderStatusSql(orderId: string): string {
                WHEN ${has("started")} THEN 'running' ELSE 'queued' END`;
 }
 
-export const ORDER_PRIORITIES = ["urgent", "high", "medium", "low", "unset"] as const;
-
-export type OrderPriority = (typeof ORDER_PRIORITIES)[number];
-
 export type NewOrder = {
   id: string;
   project: string;
   title: string;
   line?: OrderLine;
   description?: string;
-  priority?: OrderPriority;
   provenance?: EvidenceReference;
 };
 

@@ -8,7 +8,7 @@ import { writeTrace } from "./trace-store";
 
 export const now = (): string => new Date().toISOString();
 
-const BEFORE_START: readonly OrderEventKind[] = ["queued", "started", "priority_changed", "dropped"];
+const BEFORE_START: readonly OrderEventKind[] = ["queued", "started", "dropped"];
 
 function eventValues(orderId: string, event: OrderEvent, ts: string): (string | number | null)[] {
   const columns: OrderEventColumns = event;

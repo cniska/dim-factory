@@ -17,7 +17,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Harness | The agent product that runs a worker session, such as Claude Code or Codex |
 | Line | The kind of work an order is: `feat` (shown as **feature**) or `fix`. `dim-feat` and `dim-fix` are its entry points |
 | Station | One repeatable step of work on an order: `plan`, `build` or `review` ([`src/station-contract.ts`](../src/station-contract.ts)), each run through [`src/station.ts`](../src/station.ts). Their skills are `dim-plan`, `dim-build` and `dim-review` |
-| Order | One piece of work: an id, a line, a title, a description and a priority. It exists before it is started and is worked in one worktree |
+| Order | One piece of work: an id, a line, a title and a description. It exists before it is started and is worked in one worktree |
 | Queue | The orders not yet started, most urgent first, then oldest |
 | Status | The state an order is in, read from the record: `queued`, `running` once started, `shipped` once a ship run landed it, or `dropped`. The wall's columns are these words, and a dropped order leaves the board |
 | Next act | What an order waits on, read from the record by [`src/order.ts`](../src/order.ts) and never stored: at a station, `run` or `approve`; once every station's artifact is approved, `ship`. Every act checks it on entry |

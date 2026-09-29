@@ -11,10 +11,8 @@ import { orderState } from "./order";
 import { approveOrder, returnOrder } from "./order-approval";
 import { nextOrderSlice } from "./order-artifacts";
 import { latestOrderCommit } from "./order-commits";
-import { dropOrder, queueOrder, setOrderPriority } from "./order-lifecycle";
+import { dropOrder, queueOrder } from "./order-lifecycle";
 import { isOrderLine, ORDER_LINES } from "./order-line";
-import { readyOrders } from "./order-ready";
-import { ORDER_PRIORITIES, type OrderPriority } from "./order-status";
 import { dbPath, type Env } from "./paths";
 import { shipOrder } from "./ship";
 import type { ShipOutcome } from "./ship-contract";
@@ -27,9 +25,7 @@ import { boundStationHarness } from "./station-worker";
 import { clearRunnerBarrier, registerRunnerBarrier, resolveWorker, withRunnerBarrier } from "./worker";
 
 export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--line <${ORDER_LINES.join("|")}>] [--description "..."]
-                     [--priority <${ORDER_PRIORITIES.join("|")}>] [--project <owner/repo>]
-       dim order ready [--limit <n>] [--project <owner/repo>]
-       dim order priority <order-id> <${ORDER_PRIORITIES.join("|")}>
+                     [--project <owner/repo>]
        dim order review <order-id> [--harness <${HARNESSES.join("|")}>]
        dim order plan <order-id> [--harness <${HARNESSES.join("|")}>]
        dim order build <order-id> [--harness <${HARNESSES.join("|")}>]
@@ -41,7 +37,7 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--lin
 An order defaults to this checkout's owner/repo, so work belongs to the project it
 is built in rather than to wherever the command was typed.`;
 
-const ADD_FLAGS = ["--title", "--line", "--description", "--priority", "--project"];
+const ADD_FLAGS = ["--title", "--line", "--description", "--project"];
 
 const fail = (message: string): Error => new UsageError(message);
 
@@ -84,14 +80,6 @@ function required(given: Map<string, string>, flag: string): string {
   return requiredFlag(given, flag, fail);
 }
 
-function priority(given: string | undefined): OrderPriority | undefined {
-  if (given === undefined) return undefined;
-  if (!(ORDER_PRIORITIES as readonly string[]).includes(given)) {
-    throw new UsageError(`${given} is not a priority; one of ${ORDER_PRIORITIES.join(", ")}`);
-  }
-  return given as OrderPriority;
-}
-
 function add(
   db: Database,
   orderId: string,
@@ -112,7 +100,6 @@ function add(
       title: required(given, "--title"),
       line,
       description: given.get("--description"),
-      priority: priority(given.get("--priority")),
     },
     worker,
   );
@@ -148,27 +135,9 @@ export function runOrderCommand(
   env: Env = process.env,
 ): unknown {
   const [command, orderId, ...rest] = args;
-  if (command === "ready") {
-    const given = flags(
-      [orderId, ...rest].filter((one) => one !== undefined),
-      ["--limit", "--project"],
-    );
-    const project = given.get("--project") ?? defaultProject;
-    if (!project) throw fail("--project is required outside a checkout with a remote");
-    const limit = given.get("--limit");
-    if (limit !== undefined && !/^[1-9]\d*$/.test(limit)) throw fail("--limit takes a positive whole number");
-    return readyOrders(db, project, limit === undefined ? undefined : Number(limit));
-  }
   if (!command || !orderId) throw new UsageError("order takes a subcommand and an order id");
   const worker = resolveWorker(db);
   if (command === "add") return add(db, orderId, rest, defaultProject, worker);
-  if (command === "priority") {
-    const [level] = rest;
-    const chosen = priority(level);
-    if (!chosen) throw fail("priority takes the level to set");
-    setOrderPriority(db, orderId, chosen, worker);
-    return `${orderId} is ${chosen}`;
-  }
   if (command === "return") {
     const given = flags(rest, ["--reason", "--to"]);
     const reason = required(given, "--reason");

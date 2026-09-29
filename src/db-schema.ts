@@ -5,7 +5,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { STATIONS_SQL } from "./station-contract";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 82;
+export const SCHEMA_VERSION = 83;
 
 export const DISCARDED_COLUMNS: readonly string[] = [
   "factory_worker.token_digest",
@@ -13,6 +13,7 @@ export const DISCARDED_COLUMNS: readonly string[] = [
   "factory_order_worker.worker",
   "factory_order_worker.provider_session_id",
   "factory_order_worker.harness",
+  "factory_order.priority",
 ];
 
 export const SCHEMA_SQL = `
@@ -202,11 +203,6 @@ CREATE TABLE IF NOT EXISTS factory_order (
   line            TEXT NOT NULL DEFAULT 'feat'
                   CHECK (line IN (${ORDER_LINES_SQL})),
   description     TEXT,
-  -- Ready orders come back most urgent first, unset last, then oldest, then id.
-  -- Named rather than numbered so a row reads without a key, and five levels
-  -- because a tracker feeding this queue has about that many to hand over.
-  priority        TEXT NOT NULL DEFAULT 'unset'
-                  CHECK (priority IN ('urgent', 'high', 'medium', 'low', 'unset')),
   -- The status and the station are read from the events and never stored.
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL

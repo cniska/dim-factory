@@ -60,7 +60,7 @@ describe("factory order query", () => {
       "queued",
       "run at plan",
       "cniska/dim-factory/queued",
-      "unset",
+      null,
       "feat",
       "Queued",
       null,
@@ -74,7 +74,7 @@ describe("factory order query", () => {
       "running",
       "approve at plan",
       "cniska/dim-factory/queued",
-      "unset",
+      null,
       "feat",
       "Queued",
       null,
@@ -84,7 +84,7 @@ describe("factory order query", () => {
       "running",
       "run at build",
       "cniska/dim-factory/queued",
-      "unset",
+      null,
       "feat",
       "Queued",
       null,
@@ -98,7 +98,7 @@ describe("factory order query", () => {
       "running",
       "ship",
       "cniska/dim-factory/queued",
-      "unset",
+      null,
       "feat",
       "Queued",
       null,
@@ -108,7 +108,7 @@ describe("factory order query", () => {
       "shipped",
       "(none)",
       "cniska/dim-factory/queued",
-      "unset",
+      null,
       "feat",
       "Queued",
       null,
@@ -120,7 +120,7 @@ describe("factory order query", () => {
       "dropped",
       "(none)",
       "cniska/dim-factory/dropped",
-      "unset",
+      null,
       "feat",
       "Dropped",
       null,
@@ -159,7 +159,7 @@ describe("factory order query", () => {
         ?.run(db, { ...ctx, arg: "order-reopened" })
         .rows.filter((row) => row[0] === "finding")
         .map((row) => [row[2], row[3]]),
-      factory: boardRow(db, "order-reopened")?.[9],
+      factory: boardRow(db, "order-reopened")?.[8],
     });
     expect(reported()).toEqual({
       order: [["finding_raised", "unanswered"]],
@@ -189,7 +189,7 @@ describe("factory order query", () => {
 
     const rows = findQuery("factory")?.run(db, ctx).rows ?? [];
 
-    expect(Object.fromEntries(rows.map((row) => [row[1], row[9]]))).toEqual({
+    expect(Object.fromEntries(rows.map((row) => [row[1], row[8]]))).toEqual({
       "order-left": "tests: fixed - order-left gap",
       "order-right": "docs: unanswered - order-right gap",
       "order-clean": "(none recorded)",
@@ -279,7 +279,6 @@ describe("factory order query", () => {
     expect(result?.columns).toEqual([
       "project",
       "order_id",
-      "priority",
       "status",
       "latest_event",
       "latest_event_at",
@@ -292,7 +291,6 @@ describe("factory order query", () => {
       [
         "cniska/dim-factory",
         "order-status",
-        "unset",
         "shipped",
         "finding_answered",
         "2026-09-18T10:04:00.000Z",
@@ -338,9 +336,9 @@ describe("factory order query", () => {
     const result = findQuery("factory")?.run(db, ctx);
     const blocked = boardRow(db, "order-blocked");
 
-    expect(blocked?.[3]).toBe("running");
-    expect(blocked?.[4]).toBe("failed");
-    expect(blocked?.[6]).toBe("run at plan");
+    expect(blocked?.[2]).toBe("running");
+    expect(blocked?.[3]).toBe("failed");
+    expect(blocked?.[5]).toBe("run at plan");
     expect(result?.columns).not.toContain("stop");
 
     queueOrder(
@@ -359,7 +357,7 @@ describe("factory order query", () => {
       station: "build",
       reason: "ambiguous scope",
     });
-    expect(boardRow(db, "order-reasoned")).toHaveLength(10);
+    expect(boardRow(db, "order-reasoned")).toHaveLength(9);
     expect(
       findQuery("order")
         ?.run(db, { ...ctx, arg: "order-reasoned" })
@@ -491,7 +489,7 @@ describe("factory order query", () => {
       "running",
       "run at plan",
       "cniska/dim-factory/order-123",
-      "unset",
+      null,
       "feat",
       "Read the detailed report",
       null,
