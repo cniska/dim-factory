@@ -17,7 +17,6 @@ export type ShipRefusalCode =
   | "ship_check_redefined"
   | "ship_patch_changed"
   | "ship_not_fast_forward"
-  | "ship_unsigned"
   | "ship_not_landed";
 
 export class ShipRefusal extends Error {

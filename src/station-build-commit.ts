@@ -5,7 +5,7 @@ import { CHECK_SANDBOX, runSandboxedCheck, type SandboxedCheck } from "./check-s
 import { stagedComments } from "./comments-staged";
 import { writeTransaction } from "./db";
 import { commentGateFor } from "./gate-commit";
-import { repoIdentityEnv } from "./git-identity";
+import { factoryCommitEnv, UNSIGNED } from "./git-identity";
 import { trunkRef } from "./git-trunk";
 import { recordOrderBuild } from "./order-artifacts";
 import { latestOrderCommit } from "./order-commits";
@@ -195,9 +195,9 @@ export function commitBuildTurn(options: {
 
   const commit = git(
     worktree,
-    ["-c", `core.hooksPath=${hooksOutsideTree(worktree)}`, "commit", "-q", "-F", "-"],
+    [...UNSIGNED, "-c", `core.hooksPath=${hooksOutsideTree(worktree)}`, "commit", "-q", "-F", "-"],
     {
-      env: { ...repoIdentityEnv(), DIM_SKIP_CHECK: "1" },
+      env: { ...factoryCommitEnv(), DIM_SKIP_CHECK: "1" },
       stdin: `${turn.subject}\n`,
     },
   );

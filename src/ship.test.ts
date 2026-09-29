@@ -210,7 +210,8 @@ describe("shipBranch", () => {
     for (const { from, to } of seen?.commits ?? []) {
       expect(reachesNow(dir, to)).toBe(true);
       expect(reachesNow(dir, from)).toBe(false);
-      expect(git(dir, ["verify-commit", to]).success).toBe(true);
+      expect(git(dir, ["verify-commit", to]).success).toBe(false);
+      expect(git(dir, ["log", "-1", "--format=%cn", to]).out).toBe("dim");
     }
   });
 
@@ -290,23 +291,6 @@ describe("shipBranch", () => {
 
     expect(ship(wt, "feat-hooked", [sha])).toEqual({ landed: "rebased" });
     expect(existsSync(marker) ? readFileSync(marker, "utf8") : "").toBe("");
-  });
-
-  test("in a repository that signs, a rebase whose commits do not verify is refused and taken back", () => {
-    const { dir } = repo();
-    const wt = worktree(dir, "feat-resigned");
-    const sha = commitFile(wt, "feat-resigned.txt", "s");
-    const trunkAhead = commitFile(dir, "trunk-moved.txt", "moved");
-    const stranger = join(mkdtempSync(join(tmpdir(), "dim-stranger-key-")), "id_ed25519");
-    cleanup.push(stranger);
-    Bun.spawnSync(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "s@example.com", "-f", stranger]);
-    git(dir, ["config", "user.signingkey", stranger]);
-
-    expect(() => ship(wt, "feat-resigned", [sha])).toThrow(
-      expect.objectContaining({ code: "ship_unsigned" } satisfies Partial<ShipRefusal>),
-    );
-    expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkAhead);
-    expect(git(dir, ["rev-parse", "refs/heads/feat-resigned"]).out).toBe(sha);
   });
 
   test("a branch whose rebase would drop a commit is refused rather than paired by guess", () => {
@@ -531,20 +515,16 @@ describe("shipBranch", () => {
     expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkBefore);
   });
 
-  test("in a repository that signs, a commit that does not verify is refused before anything lands", () => {
+  test("in a repository that signs, a factory commit lands unsigned", () => {
     const { dir } = repo();
     const wt = worktree(dir, "feat-unsigned");
-    const signed = commitFile(wt, "signed.txt", "signed");
     writeFileSync(join(wt, "unsigned.txt"), "unsigned");
     git(wt, ["add", "."]);
     git(wt, ["-c", "commit.gpgsign=false", "commit", "-q", "-m", "feat: add unsigned.txt"]);
     const unsigned = git(wt, ["rev-parse", "HEAD"]).out;
-    const trunkBefore = git(dir, ["rev-parse", "HEAD"]).out;
 
-    expect(() => ship(wt, "feat-unsigned", [signed, unsigned])).toThrow(
-      expect.objectContaining({ code: "ship_unsigned" } satisfies Partial<ShipRefusal>),
-    );
-    expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkBefore);
+    expect(ship(wt, "feat-unsigned", [unsigned])).toEqual({ landed: "fast_forward" });
+    expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(unsigned);
   });
 
   test("shipping is refused if only some of the recorded shas already reached the trunk", () => {

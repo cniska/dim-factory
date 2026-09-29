@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { repoIdentityEnv } from "./git-identity";
+import { factoryCommitEnv, UNSIGNED } from "./git-identity";
 import { ShipRefusal } from "./ship-refusal";
 import { hooksOutsideTree, nestedRepository } from "./station-build-tree";
 
@@ -24,8 +24,8 @@ export class RebaseConflict extends ShipRefusal {
 }
 
 function git(dir: string, args: string[]): { ok: boolean; out: string; err: string } {
-  const run = Bun.spawnSync(["git", "-C", dir, ...args], {
-    env: { ...repoIdentityEnv(), GIT_EDITOR: "true" },
+  const run = Bun.spawnSync(["git", "-C", dir, ...UNSIGNED, ...args], {
+    env: { ...factoryCommitEnv(), GIT_EDITOR: "true" },
     stdout: "pipe",
     stderr: "pipe",
   });

@@ -13,24 +13,6 @@ function git(dir: string, args: string[]): { success: boolean; out: string } {
   return { success: run.success, out: (run.success ? run.stdout : run.stderr).toString().trim() };
 }
 
-function refuseUnsigned(root: string, branch: string, trunk: string, head: string): void {
-  if (git(root, ["config", "--bool", "commit.gpgsign"]).out !== "true") return;
-  const landing = git(root, ["rev-list", `refs/heads/${trunk}..${head}`]);
-  if (!landing.success) {
-    throw new ShipRefusal("ship_unsigned", `cannot list what ${branch} would land: ${landing.out}`);
-  }
-  const unsigned = landing.out
-    .split("\n")
-    .filter(Boolean)
-    .filter((sha) => !git(root, ["verify-commit", sha]).success);
-  if (unsigned.length > 0) {
-    throw new ShipRefusal(
-      "ship_unsigned",
-      `${root} signs its commits, and ${branch} carries some that do not verify: ${unsigned.join(", ")}`,
-    );
-  }
-}
-
 export function shipBranch(
   cwd: string,
   branch: string,
@@ -93,13 +75,10 @@ export function shipBranch(
   let target = tip.out;
   let landing = shas;
   let landed: ShipOutcome["landed"] = "fast_forward";
-  if (git(root, ["merge-base", "--is-ancestor", `refs/heads/${trunk.name}`, tip.out]).success) {
-    refuseUnsigned(root, branch, trunk.name, target);
-  } else {
+  if (!git(root, ["merge-base", "--is-ancestor", `refs/heads/${trunk.name}`, tip.out]).success) {
     const rewrite = rebaseOntoTrunk(root, branch, trunk.name, tip.out);
     let verdict: RebaseVerdict;
     try {
-      refuseUnsigned(root, branch, trunk.name, rewrite.newHead);
       verdict = onRebased(rewrite);
     } catch (error) {
       try {

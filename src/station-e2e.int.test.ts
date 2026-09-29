@@ -215,9 +215,9 @@ describe("headless factory loop", () => {
     expect(landed).toHaveLength(2);
     expect(git(["rev-list", "--merges", "--count", "main"]).stdout.toString().trim()).toBe("0");
     for (const sha of landed) {
-      expect(git(["verify-commit", sha]).success).toBe(true);
-      expect(git(["log", "-1", "--format=%an <%ae>", sha]).stdout.toString().trim()).toBe(
-        "Test <t@example.com>",
+      expect(git(["verify-commit", sha]).success).toBe(false);
+      expect(git(["log", "-1", "--format=%an <%ae>|%cn", sha]).stdout.toString().trim()).toBe(
+        "Test <t@example.com>|dim",
       );
     }
     expect(

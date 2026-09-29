@@ -222,15 +222,15 @@ describe("builder station", () => {
     const head = git(outcome.worktree, ["rev-parse", "HEAD"]);
     expect(git(outcome.worktree, ["rev-parse", "HEAD~1"])).toBe(repo.sha);
     expect(git(outcome.worktree, ["status", "--porcelain"])).toBe("");
-    expect(git(outcome.worktree, ["log", "-1", "--format=%an <%ae>|%cn <%ce>|%s"])).toBe(
-      "Test <t@example.com>|Test <t@example.com>|feat: build it",
+    expect(git(outcome.worktree, ["log", "-1", "--format=%an <%ae>|%cn|%s"])).toBe(
+      "Test <t@example.com>|dim|feat: build it",
     );
     expect(
       Bun.spawnSync(["git", "-C", outcome.worktree, "verify-commit", head], {
         stdout: "pipe",
         stderr: "pipe",
       }).success,
-    ).toBe(true);
+    ).toBe(false);
     expect(db.query("SELECT sha, subject FROM factory_order_commit").all()).toEqual([
       { sha: head, subject: "feat: build it" },
     ]);
