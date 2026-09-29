@@ -8,7 +8,7 @@ import { type HarnessRunnerOptions, runHarness } from "./harness-runner";
 
 const request = { cwd: process.cwd(), brief: "run", model: "test", capabilities: [], env: {} } as const;
 
-const inherited = (started: HarnessRequest) => ({ ...process.env, ...started.env });
+const declared = (started: HarnessRequest) => started.env;
 
 async function runStarted(adapter: HarnessAdapter, started: HarnessRequest, options: HarnessRunnerOptions) {
   return runHarness(await adapter.start(started), options);
@@ -23,7 +23,7 @@ function command(script: string) {
       parser: () => (line) => JSON.parse(line) as HarnessEvent,
       environment: [],
     },
-    inherited,
+    declared,
   );
 }
 
@@ -207,7 +207,7 @@ describe("the external process harness", () => {
         },
         environment: [],
       },
-      inherited,
+      declared,
     );
 
     await runStarted(adapter, request, { timeoutMs: 1000 });
@@ -228,7 +228,7 @@ describe("the external process harness", () => {
         parser: () => () => undefined,
         environment: [],
       },
-      inherited,
+      declared,
     );
 
     await expect(adapter.start(request)).rejects.toThrow();
