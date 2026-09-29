@@ -56,6 +56,10 @@ const MESSAGES = {
     `order ${m.orderId} waits on ${waitsOn(m)}, so it cannot ${m.act}; its next act is \`${command(m)}\``,
   order_terminal: (m: { orderId: string; status: string; act: string }) =>
     `order ${m.orderId} is ${m.status}, so it cannot ${m.act}; nothing more runs on a ${m.status} order`,
+  order_not_running: (m: { orderId: string; status: OrderStatus }) =>
+    m.status === "queued"
+      ? `order ${m.orderId} is not started; \`dim order plan ${m.orderId}\` starts it`
+      : `order ${m.orderId} is already ${m.status}; nothing more runs on a ${m.status} order`,
   order_not_queued: (m: { orderId: string; status: string; act: string }) =>
     `order ${m.orderId} is ${m.status} and only a queued order can be ${m.act}; \`dim q order ${m.orderId}\` shows its next act`,
   order_held_by_run: (m: { orderId: string; worker: string; runId: string; act: string }) =>

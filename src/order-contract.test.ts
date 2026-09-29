@@ -40,6 +40,15 @@ describe("an order error", () => {
     );
   });
 
+  test("refuses work on an order that is not running, and says what starts it", () => {
+    expect(fail("order_not_running", { orderId: "o-1", status: "queued" }).message).toBe(
+      "order o-1 is not started; `dim order plan o-1` starts it",
+    );
+    expect(fail("order_not_running", { orderId: "o-1", status: "dropped" }).message).toBe(
+      "order o-1 is already dropped; nothing more runs on a dropped order",
+    );
+  });
+
   test("says when nothing resolves a refusal", () => {
     expect(fail("order_terminal", { orderId: "o-1", status: "shipped", act: "build" }).message).toBe(
       "order o-1 is shipped, so it cannot build; nothing more runs on a shipped order",

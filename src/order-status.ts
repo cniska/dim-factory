@@ -67,8 +67,5 @@ export function assertOrderQueued(db: Database, orderId: string, act: string): v
 
 export function assertOrderRunning(db: Database, orderId: string): void {
   const status = orderStatus(db, orderId);
-  if (status === "running") return;
-  throw new Error(
-    status === "queued" ? `order ${orderId} is not started` : `order ${orderId} is already ${status}`,
-  );
+  if (status !== "running") throw fail("order_not_running", { orderId, status });
 }
