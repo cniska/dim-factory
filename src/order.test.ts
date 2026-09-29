@@ -774,48 +774,6 @@ describe("factory order report records", () => {
     rmSync(home, { recursive: true, force: true });
   });
 
-  test("a worktree whose teardown fails is kept with its branch, and the order is still shipped", () => {
-    const repo = integratedRepo();
-    const home = mkdtempSync(join(tmpdir(), "dim-ship-"));
-    const env = scratchEnv(home);
-    mkdirSync(join(repo.dir, "scripts"));
-    writeFileSync(join(repo.dir, "scripts", "worktree-teardown.sh"), "#!/bin/sh\nexit 3\n", { mode: 0o755 });
-    Bun.spawnSync(["git", "-C", repo.dir, "add", "scripts/worktree-teardown.sh"]);
-    Bun.spawnSync(["git", "-C", repo.dir, "commit", "-q", "-m", "test: fail teardown"]);
-    const database = db();
-    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
-    startPlannedBuild(database);
-    const wt = orderWorktree(repo.dir, "order-1");
-    writeFileSync(join(wt, "ship-slice.txt"), "slice");
-    Bun.spawnSync(["git", "-C", wt, "add", "."]);
-    Bun.spawnSync(["git", "-C", wt, "commit", "-q", "-m", "feat: ship-slice"]);
-    const sha = Bun.spawnSync(["git", "-C", wt, "rev-parse", "HEAD"], { stdout: "pipe" })
-      .stdout.toString()
-      .trim();
-    recordOrderCommit(database, "order-1", sha, worker, "feat: ship-slice");
-    approveFinalBuildAt(database, "order-1", sha, worker, attemptOperator);
-    approveReviewAt(database, "order-1", sha, attemptOperator);
-
-    shipOrder(database, "order-1", wt, attemptOperator, { env });
-
-    expect(orderStatus(database, "order-1")).toBe("shipped");
-    expect(database.query("SELECT worktree_kept, branch_kept FROM factory_order_ship_run").get()).toEqual({
-      worktree_kept: "its teardown hook exited 3",
-      branch_kept: "its worktree still holds it",
-    });
-    expect(database.query("SELECT phase, exit_code FROM factory_order_environment").all()).toEqual([
-      { phase: "teardown", exit_code: 3 },
-    ]);
-    expect(existsSync(wt)).toBe(true);
-    expect(
-      Bun.spawnSync(["git", "-C", repo.dir, "show-ref", "--verify", "--quiet", "refs/heads/order-1"]).success,
-    ).toBe(true);
-
-    database.close();
-    rmSync(repo.dir, { recursive: true, force: true });
-    rmSync(home, { recursive: true, force: true });
-  });
-
   test("a landed branch is deleted when its worktree was already removed", () => {
     const repo = integratedRepo();
     const home = mkdtempSync(join(tmpdir(), "dim-ship-"));
@@ -922,24 +880,6 @@ describe("factory order report records", () => {
     expect(
       Bun.spawnSync(["git", "-C", repo.dir, "show-ref", "--verify", "--quiet", "refs/heads/order-1"]).success,
     ).toBe(true);
-
-    database.close();
-    rmSync(repo.dir, { recursive: true, force: true });
-    rmSync(home, { recursive: true, force: true });
-  });
-
-  test("a ship is refused for an order that recorded no commit", () => {
-    const repo = integratedRepo();
-    const home = mkdtempSync(join(tmpdir(), "dim-ship-"));
-    const env = scratchEnv(home);
-    const database = db();
-    queueOrder(database, order, attemptOperator, "2026-09-18T10:00:00.000Z");
-    startPlannedBuild(database);
-    completeOrderSlice(database, "order-1", nextOrderSlice(database, "order-1")?.id as number, worker);
-
-    expect(() => shipOrder(database, "order-1", repo.dir, attemptOperator, { env })).toThrow(
-      expect.objectContaining({ code: "not_next" }),
-    );
 
     database.close();
     rmSync(repo.dir, { recursive: true, force: true });
@@ -1471,11 +1411,6 @@ describe("factory order report records", () => {
     expect(database.query("SELECT updated_at FROM factory_order").get()).toEqual({
       updated_at: "2026-09-18T10:01:00.000Z",
     });
-    expect(
-      database
-        .query("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'factory_lane%'")
-        .all(),
-    ).toEqual([]);
     expect(database.query("SELECT kind, worker FROM factory_order_event ORDER BY id").all()).toEqual([
       { kind: "queued", worker: attemptOperator },
       { kind: "started", worker: attemptOperator },

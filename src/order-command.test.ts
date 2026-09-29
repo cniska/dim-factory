@@ -594,6 +594,9 @@ describe("order command", () => {
           "worktree kept: its teardown hook exited 3; branch order-1 kept: its worktree still holds it",
       );
       expect(orderStatus(database, "order-1")).toBe("shipped");
+      expect(database.query("SELECT phase, exit_code FROM factory_order_environment").all()).toEqual([
+        { phase: "teardown", exit_code: 3 },
+      ]);
       const report = findQuery("order")?.run(database, { arg: "order-1", home: "/h", maxRows: 40 });
       const shipRun = report?.rows.find((row) => row[0] === "ship_run");
       expect(shipRun?.[report?.columns.indexOf("evidence") ?? -1]).toBe(
