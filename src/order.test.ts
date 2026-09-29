@@ -1118,7 +1118,7 @@ describe("factory order report records", () => {
       ]);
     });
 
-    test("a review after a rebase that kept every patch reads on from the head it last read", () => {
+    test("a review after a rebase that kept every patch reads the whole rebased order", () => {
       const { wt, database, first, second, trunkTip } = scene(unrelatedMove, { reviewed: false });
       const read = reviewIn(database, "order-1", undefined, second);
       closeOrderReview(database, read.review, "closed");
@@ -1138,7 +1138,7 @@ describe("factory order report records", () => {
         patchEqual: true,
       });
 
-      expect(reviewRange(database, "order-1", wt)).toEqual({ base: head, head });
+      expect(reviewRange(database, "order-1", wt)).toEqual({ base: trunkTip, head });
     });
 
     test("a review after plan revision reads the whole order again", () => {
@@ -1199,14 +1199,6 @@ describe("factory order report records", () => {
         base: git(wt, ["rev-parse", `${first}^`]),
         head: second,
       });
-    });
-
-    test("a review whose last head the order no longer carries, with no rebase to explain it, is refused", () => {
-      const { wt, database } = scene(unrelatedMove);
-      const read = reviewIn(database, "order-1", undefined, "0000000000000000000000000000000000000000");
-      closeOrderReview(database, read.review, "closed");
-
-      expect(() => reviewRange(database, "order-1", wt)).toThrow(/no longer carries/);
     });
 
     test("a repository that declares no check cannot have its rebased branch landed", () => {

@@ -7,7 +7,7 @@ import { admitAct } from "./order";
 import { latestApprovedPlan } from "./order-approved-plan";
 import type { ReturnedOrderArtifact } from "./order-artifacts";
 import { finishAttempt } from "./order-attempt";
-import { carriedThroughRewrites, currentOrderCommits } from "./order-commits";
+import { currentOrderCommits } from "./order-commits";
 import { raiseOrderFinding } from "./order-finding";
 import { type FindingStanding, orderFindingStandings } from "./order-finding-state";
 import { appendOrderEvent } from "./order-ledger";
@@ -68,36 +68,6 @@ export function reviewRange(db: Database, orderId: string, dir: string): { base:
       "head_unrecorded",
       `${head.out} is not a commit order ${orderId} recorded; only a build turn's commit can be reviewed`,
     );
-  }
-  const last = db
-    .query<{ head_sha: string }, [string]>(
-      `SELECT r.head_sha FROM factory_order_review r
-       WHERE r.order_id = ? AND r.outcome = 'closed' AND NOT EXISTS (
-         SELECT 1 FROM factory_order_artifact a
-         JOIN factory_order_event e ON e.artifact_id = a.id AND e.kind = 'artifact_returned'
-         WHERE a.review_id = r.id
-       ) AND r.opened_at > (
-         SELECT coalesce(max(e.ts), '') FROM factory_order_event e
-         JOIN factory_order_artifact a ON a.id = e.artifact_id
-         WHERE e.order_id = r.order_id AND e.kind = 'artifact_approved' AND a.kind = 'plan'
-       )
-       ORDER BY r.round DESC LIMIT 1`,
-    )
-    .get(orderId);
-  if (last) {
-    const carried = carriedThroughRewrites(db, orderId, last.head_sha);
-    if (carried && current.some((row) => carried.startsWith(row.sha)))
-      return { base: carried, head: head.out };
-    const rewrite = db
-      .query<{ new_base: string }, [string]>(
-        `SELECT r.new_base FROM factory_order_commit c JOIN factory_order_ship_run r ON r.id = c.ship_run_id
-         WHERE c.order_id = ? ORDER BY c.id DESC LIMIT 1`,
-      )
-      .get(orderId);
-    if (!rewrite) {
-      throw new Error(`order ${orderId}'s last review read ${last.head_sha}, which it no longer carries`);
-    }
-    return { base: rewrite.new_base, head: head.out };
   }
   const first = current[0] as { sha: string };
   const parent = git(dir, ["rev-parse", `${first.sha}^`]);

@@ -572,7 +572,7 @@ describe("a review round", () => {
     expect(env[WORKER_NAME_VAR]).toBe(done.reviewer);
   });
 
-  test("a second round reads only what the first one did not", async () => {
+  test("a second round reads the whole order again, so a finding on an untouched file can be raised again", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     const first = await review(db, operator, dir, answering(reviewOutput()));
@@ -584,10 +584,10 @@ describe("a review round", () => {
       return { output: reviewOutput() };
     });
 
-    const firstHead = db
-      .query<{ head_sha: string }, [number]>("SELECT head_sha FROM factory_order_review WHERE id = ?")
+    const firstBase = db
+      .query<{ base_sha: string }, [number]>("SELECT base_sha FROM factory_order_review WHERE id = ?")
       .get(first.review);
-    expect(read).toContain(`${firstHead?.head_sha}..${fixed}`);
+    expect(read).toContain(`${firstBase?.base_sha}..${fixed}`);
   });
 
   test("a round is refused over a tree that can still move", async () => {

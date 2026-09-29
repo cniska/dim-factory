@@ -39,25 +39,3 @@ export function pendingRebaseConflict(db: Database, orderId: string): RecordedCo
 export function latestOrderCommit(db: Database, orderId: string): OrderCommit | null {
   return currentOrderCommits(db, orderId).at(-1) ?? null;
 }
-
-type Replacement = { sha: string; retires: string; patchEqual: number | null };
-
-function headReplacements(db: Database, orderId: string): Replacement[] {
-  return db
-    .query<Replacement, [string]>(
-      `SELECT c.sha, c.retires, r.patch_equal AS patchEqual
-       FROM factory_order_commit c JOIN factory_order_ship_run r ON r.id = c.ship_run_id AND r.old_head = c.retires
-       WHERE c.order_id = ? ORDER BY c.id`,
-    )
-    .all(orderId);
-}
-
-export function carriedThroughRewrites(db: Database, orderId: string, sha: string): string | null {
-  let current = sha;
-  for (const replacement of headReplacements(db, orderId)) {
-    if (replacement.retires !== current) continue;
-    if (replacement.patchEqual !== 1) return null;
-    current = replacement.sha;
-  }
-  return current;
-}
