@@ -25,7 +25,6 @@ const LOADERS: Record<string, () => Promise<Command>> = {
   route: () => import("./route-command").then((m) => m.routeCommand),
   trace: () => import("./trace-command").then((m) => m.traceCommand),
   wall: () => import("./wall-command").then((m) => m.wallCommand),
-  finding: () => import("./finding-command").then((m) => m.findingCommand),
 };
 
 export function findCommand(name: string | undefined): Promise<Command> | undefined {

@@ -6,62 +6,7 @@ import {
 } from "./order-finding-state";
 import { describeState, orderState } from "./order-state";
 import { isTerminalOrderStatus, type OrderStatus, orderStatusSql } from "./order-status";
-import { type Query, scalar, table, toRows, windowLine } from "./query";
-
-export const findings: Query = {
-  name: "findings",
-  summary: "what a checking agent raised on a slice, and how each was answered",
-  usage: "dim q findings [repo-fragment]",
-  window: "history",
-  run: (db, ctx) => {
-    const { arg, since } = ctx;
-    const columns = ["dimension", "raised", "fixed", "refused", "slices", "repos"];
-    const where: string[] = [];
-    const params: string[] = [];
-    if (since) {
-      where.push("recorded_at >= ?");
-      params.push(since);
-    }
-    if (arg) {
-      where.push("repo LIKE '%' || ? || '%'");
-      params.push(arg);
-    }
-    const sql = where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "";
-    const records = table(
-      db,
-      `SELECT dimension,
-              count(*) AS raised,
-              sum(answer = 'fixed') AS fixed,
-              sum(answer = 'refused') AS refused,
-              count(DISTINCT slice) AS slices,
-              count(DISTINCT repo) AS repos
-       FROM finding${sql}
-       GROUP BY dimension ORDER BY raised DESC, dimension`,
-      params,
-    );
-    const raised = scalar(db, `SELECT count(*) AS n FROM finding${sql}`, ...params);
-    const slices = scalar(db, `SELECT count(DISTINCT slice) AS n FROM finding${sql}`, ...params);
-    if (raised === 0) {
-      return {
-        denominator:
-          (arg ? `no finding recorded against a repo matching ${arg}` : "no finding has been recorded") +
-          (ctx.since ? ` ${windowLine(ctx)}` : ""),
-        columns,
-        rows: [],
-        note: "`dim-build` records one per finding as it is answered; nothing backfills a session that has ended.",
-      };
-    }
-    return {
-      denominator: `${raised} findings answered across ${slices} ${slices === 1 ? "slice" : "slices"} (${windowLine(ctx)})`,
-      columns,
-      rows: toRows(records, columns),
-      note:
-        "This grades the reviewer and never the builder: a builder scored down by a count writes duller " +
-        "slices and a reviewer scored up by one invents findings. A refusal ends a finding as completely " +
-        "as a fix does, so the two columns are answers and not a pass rate.",
-    };
-  },
-};
+import { type Query, table, toRows } from "./query";
 
 export const order: Query = {
   name: "order",

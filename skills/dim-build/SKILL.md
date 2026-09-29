@@ -105,7 +105,7 @@ Returning nothing is the expected result and not a sign the check was wasted: of
 
 Two answers that read as evasions and are not: a finding that is true and does not matter here, refused and said so; and a finding that is true and belongs to a different slice, written into [`todo.md`](../../docs/todo.md) rather than folded in, which is what keeps the diff one thing.
 
-**Record each answer as you make it.** A slice checking agent's findings are answered in the builder's pass and explained in the Build artifact; they do not go in the factory turn's `answers`. That field holds only the ids listed under Review findings in the factory brief, from a closed Review round; use `[]` when none were handed to this turn. The runner records those answers. Outside an order, record checking-agent answers with `dim finding --slice <name> --dimension <name> --answer fixed|refused --summary "..."`, plus `--file` where the finding names one and `--why` on a refusal. Write it when the finding is answered rather than at the end: the judgement exists only in this session, nothing re-reads it into the database afterward, and a round recalled later is a round summarized. `dim q findings` reads them back by dimension, which is what can eventually say whether checking pays — it grades the reviewer and never the builder, so a slice that drew several findings is not a worse slice.
+**Where answers go.** A slice checking agent's findings are answered in the builder's pass and explained in the Build artifact; they do not go in the factory turn's `answers`. That field holds only the ids listed under Review findings in the factory brief, from a closed Review round; use `[]` when none were handed to this turn. The runner records those answers.
 
 ## Exit check
 

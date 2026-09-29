@@ -652,25 +652,6 @@ CREATE TABLE IF NOT EXISTS skill_load (
 );
 CREATE INDEX IF NOT EXISTS skill_load_name ON skill_load(skill_name, ts);
 
--- No source to re-read — an answer exists only in the session that made it — so
--- \`rebuild\` never clears this, as it does not clear hook_event. Grades the
--- reviewer and never the builder: measures in docs/findings.md looked like grades
--- and turned out to track what was being worked on instead.
-CREATE TABLE IF NOT EXISTS finding (
-  id           INTEGER PRIMARY KEY,
-  repo         TEXT NOT NULL,        -- as repo_commit spells it, so a row reaches commit_file
-  slice        TEXT NOT NULL,
-  dimension    TEXT NOT NULL,        -- which of the reviewer's four questions raised it
-  file         TEXT,                 -- relative to the checkout
-  summary      TEXT NOT NULL,        -- the reviewer's words, not the builder's
-  answer       TEXT NOT NULL CHECK (answer IN ('fixed','refused')),
-  reason       TEXT,
-  recorded_at  TEXT NOT NULL,
-  -- A refusal with no reason is the cheap way out the loop exists to prevent.
-  CHECK (answer <> 'refused' OR (reason IS NOT NULL AND trim(reason) <> ''))
-);
-CREATE INDEX IF NOT EXISTS finding_repo ON finding(repo, file);
-
 -- The only outcome signal here. Everything else in this database is process — what
 -- was said, loaded, called, stopped — and process cannot say whether the work was
 -- right. A later commit that fixes a file is the repo's own verdict on an earlier
