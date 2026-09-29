@@ -1,10 +1,8 @@
 import type { Command } from "./cli-contract";
 
 const LOADERS: Record<string, () => Promise<Command>> = {
-  init: () => import("./init-command").then((m) => m.initCommand),
   sync: () => import("./sync-command").then((m) => m.syncCommand),
   rebuild: () => import("./rebuild-command").then((m) => m.rebuildCommand),
-  stats: () => import("./stats-command").then((m) => m.statsCommand),
   doctor: () => import("./doctor-command").then((m) => m.doctorCommand),
   q: () => import("./q-command").then((m) => m.qCommand),
   sql: () => import("./sql-command").then((m) => m.sqlCommand),

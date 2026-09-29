@@ -11,7 +11,6 @@ import { dbPath } from "./paths";
 import { qCommand } from "./q-command";
 import { QUERIES } from "./query-registry";
 import { sqlCommand } from "./sql-command";
-import { statsCommand } from "./stats-command";
 import { runTraceCommand } from "./trace-command";
 import { wallHandler } from "./wall/server";
 import { mintWorker } from "./worker";
@@ -211,7 +210,6 @@ describe("a reader of a record built by another schema version", () => {
         const readers: Record<string, () => unknown> = {
           "dim q": () => qCommand.run(["order", "order-1"]),
           "dim sql": () => sqlCommand.run(["SELECT 1"]),
-          "dim stats": () => statsCommand.run([]),
           "dim trace": () => runTraceCommand("order-1", { DIM_HOME: home }, () => {}),
         };
         for (const [reader, run] of Object.entries(readers)) {
@@ -235,10 +233,10 @@ describe("a reader of a record built by another schema version", () => {
     });
   }
 
-  test("dim stats creates no database where there is none", async () => {
+  test("dim sql creates no database where there is none", async () => {
     const empty = mkdtempSync(join(tmpdir(), "dim-db-read-"));
     try {
-      expect(await asDimHome(empty, () => refusal(() => statsCommand.run([])))).toBeInstanceOf(
+      expect(await asDimHome(empty, () => refusal(() => sqlCommand.run(["SELECT 1"])))).toBeInstanceOf(
         NoDatabaseError,
       );
       expect(existsSync(dbPath({ DIM_HOME: empty }))).toBe(false);

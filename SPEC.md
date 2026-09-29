@@ -29,7 +29,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 
 - **NF-1** — A hook a coding-agent session runs exits 0 whatever happens.
 - **NF-2** — A git hook `dim` installs exits non-zero only to refuse a commit or push it has read and understood; anything it cannot read lets the commit or push through.
-- **NF-3** — A reader cannot change the record it reads: a query, `dim sql`, `dim stats` and the wall fail on any write rather than make it.
+- **NF-3** — A reader cannot change the record it reads: a query, `dim sql` and the wall fail on any write rather than make it.
 - **NF-4** — A reader refuses a record built by another schema version before it reads anything from it, save `dim doctor`, which reports the drift and its repair.
 - **NF-5** — No hook runs a command from a factory worker's worktree outside that worker's sandbox.
 - **NF-6** — A factory worker cannot write the git directory its worktree shares with the checkout, so it cannot change what the runner's git does.
@@ -47,7 +47,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 - **AC-7** — A write issued through a reader's connection fails and leaves the database unchanged. (NF-3)
 - **AC-8** — Each station's brief for a given order and turn is exactly its header and its data sections, with no sentence of procedure. (FR-7)
 - **AC-9** — A command whose environment names the operator, under no registered ancestor, is refused; a process reusing a registered pid with another start time is refused; a process under a running station command, before its worker registers, is refused. (FR-8, FR-9)
-- **AC-10** — A query, `dim sql`, `dim stats`, `dim trace` and the wall, given a record stamped with an older or newer schema version, each refuse it with the error the writer raises, and leave it unchanged. (NF-3, NF-4)
+- **AC-10** — A query, `dim sql`, `dim trace` and the wall, given a record stamped with an older or newer schema version, each refuse it with the error the writer raises, and leave it unchanged. (NF-3, NF-4)
 - **AC-11** — Under an owner environment holding API keys, a forge token and an agent socket, neither a worker nor the check sees any of them, and only a Claude worker sees the subscription token. (FR-10)
 - **AC-12** — An edit in a factory worker's session whose worktree declares a format task runs nothing. (NF-5)
 - **AC-13** — A worker started in a linked worktree, with or without edit-files, is denied writes to both the worktree's `.git` and the checkout's shared git directory. (NF-6)

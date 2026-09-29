@@ -14,7 +14,6 @@ bun link       # puts dim on PATH
 
 ```sh
 dim sync       # read new session data
-dim stats      # stored row and usage counts
 dim doctor     # check the installation and name repairs
 dim rebuild    # rebuild tables from their sources
 dim q list     # the named queries
