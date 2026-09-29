@@ -856,39 +856,6 @@ describe("order command", () => {
     expect(() => runOrderCommand(database, [...add, "--title", "second"])).toThrow(UsageError);
   });
 
-  test("an amend corrects a queued order's own words", () => {
-    const database = db();
-    queued(database);
-
-    expect(runOrderCommand(database, ["amend", "order-1", "--title", "A corrected title"])).toBe(
-      "order-1 amended",
-    );
-
-    expect(database.query("SELECT title, description FROM factory_order WHERE id = 'order-1'").get()).toEqual(
-      {
-        title: "A corrected title",
-        description: "The record holds what an order is called and never what it says.",
-      },
-    );
-  });
-
-  test("an amend with neither flag is a refusal, not a no-op", () => {
-    const database = db();
-    queued(database);
-
-    expect(() => runOrderCommand(database, ["amend", "order-1"])).toThrow(UsageError);
-  });
-
-  test("an amend is refused once the order is started", () => {
-    const database = db();
-    queued(database);
-    started(database);
-
-    expect(() => runOrderCommand(database, ["amend", "order-1", "--title", "too late"])).toThrow(
-      expect.objectContaining({ code: "order_not_queued" }),
-    );
-  });
-
   test("a drop takes a queued order off the wall entirely, carrying the reason", () => {
     const database = db();
     queued(database);
@@ -954,7 +921,7 @@ describe("order command", () => {
     ).toThrow(expect.objectContaining({ code: "order_held_by_run" }));
   });
 
-  test("a dropped order cannot be started, amended or dropped again", () => {
+  test("a dropped order cannot be started or dropped again", () => {
     const database = db();
     queued(database);
     runOrderCommand(
@@ -966,9 +933,6 @@ describe("order command", () => {
     );
 
     expect(() => started(database)).toThrow(expect.objectContaining({ code: "order_not_queued" }));
-    expect(() => runOrderCommand(database, ["amend", "order-1", "--title", "too late"])).toThrow(
-      expect.objectContaining({ code: "order_not_queued" }),
-    );
     expect(() =>
       runOrderCommand(
         database,

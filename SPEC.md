@@ -23,7 +23,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 - **FR-8** — A `dim` command acts as the nearest registered process above it, matched on its pid and its start time. No file or variable a worker can read grants an identity.
 - **FR-9** — What a running station command spawns before its worker is registered acts as no one, never as the operator above it.
 - **FR-10** — A worker and a check start from an environment of named variables, never the owner's. The check gets no credential; a worker gets only the sign-in its own harness declares.
-- **FR-11** — Only the operator queues, prioritizes, amends or drops an order; each act checks it for itself.
+- **FR-11** — Only the operator queues, prioritizes or drops an order; each act checks it for itself.
 
 ## 4. Hooks and reads
 
@@ -51,7 +51,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 - **AC-11** — Under an owner environment holding API keys, a forge token and an agent socket, neither a worker nor the check sees any of them, and only a Claude worker sees the subscription token. (FR-10)
 - **AC-12** — An edit in a factory worker's session whose worktree declares a format task runs nothing. (NF-5)
 - **AC-13** — A worker started in a linked worktree, with or without edit-files, is denied writes to both the worktree's `.git` and the checkout's shared git directory. (NF-6)
-- **AC-14** — A worker that is not the operator is refused the queue, priority, amendment and drop of an order, and the order and its history are left as they were. (FR-11)
+- **AC-14** — A worker that is not the operator is refused the queue, priority and drop of an order, and the order and its history are left as they were. (FR-11)
 - **AC-15** — The wall refuses a request addressed to a host that is not loopback, and a WebSocket opened from another origin. (NF-7)
 - **AC-16** — An artifact holding an image and a link renders neither as something the browser fetches. (NF-8)
 - **AC-17** — A Claude worker whose worktree holds a settings file with a hook runs none of it. (NF-5)

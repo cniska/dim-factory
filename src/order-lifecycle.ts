@@ -83,21 +83,3 @@ export function dropOrder(db: Database, orderId: string, reason: string, worker:
     return appendOrderEventInTransaction(db, orderId, { kind: "dropped", worker, reason }, at);
   });
 }
-
-export function amendOrder(
-  db: Database,
-  orderId: string,
-  changes: { title?: string; description?: string },
-  worker: string,
-  at = now(),
-): void {
-  writeTransaction(db, () => {
-    assertOperator(db, worker, "amend an order");
-    assertOrderQueued(db, orderId, "amended");
-    db.run(
-      `UPDATE factory_order SET title = coalesce(?, title), description = coalesce(?, description),
-         updated_at = ? WHERE id = ?`,
-      [changes.title ?? null, changes.description ?? null, at, orderId],
-    );
-  });
-}

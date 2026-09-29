@@ -11,7 +11,7 @@ import { orderState } from "./order";
 import { approveOrder, returnOrder } from "./order-approval";
 import { nextOrderSlice } from "./order-artifacts";
 import { latestOrderCommit } from "./order-commits";
-import { amendOrder, dropOrder, queueOrder, setOrderPriority } from "./order-lifecycle";
+import { dropOrder, queueOrder, setOrderPriority } from "./order-lifecycle";
 import { isOrderLine, ORDER_LINES } from "./order-line";
 import { readyOrders } from "./order-ready";
 import { ORDER_PRIORITIES, type OrderPriority } from "./order-status";
@@ -36,7 +36,6 @@ export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--lin
        dim order approve <order-id> [--reason "..."]   --reason is required on a Build artifact
        dim order return <order-id> --reason "..." [--to plan|build]
        dim order ship <order-id>
-       dim order amend <order-id> [--title "..."] [--description "..."]
        dim order drop <order-id> --reason "..."
 
 An order defaults to this checkout's owner/repo, so work belongs to the project it
@@ -135,19 +134,6 @@ function ship(db: Database, orderId: string, cwd: string, env: Env, worker: stri
   return [`${orderId} is ${SHIP_OUTCOME_TEXT[outcome.landed]} and shipped`, ...kept].join("; ");
 }
 
-const AMEND_FLAGS = ["--title", "--description"];
-
-function amend(db: Database, orderId: string, args: string[], worker: string): string {
-  const given = flags(args, AMEND_FLAGS);
-  const title = given.get("--title");
-  const description = given.get("--description");
-  if (title === undefined && description === undefined) {
-    throw fail("amend needs --title or --description; nothing to change is not a call");
-  }
-  amendOrder(db, orderId, { title, description }, worker);
-  return `${orderId} amended`;
-}
-
 function drop(db: Database, orderId: string, args: string[], worker: string): string {
   const reason = required(flags(args, ["--reason"]), "--reason");
   dropOrder(db, orderId, reason, worker);
@@ -204,7 +190,6 @@ export function runOrderCommand(
     flags(rest, []);
     return ship(db, orderId, cwd, env, worker, true);
   }
-  if (command === "amend") return amend(db, orderId, rest, worker);
   if (command === "drop") return drop(db, orderId, rest, worker);
   throw new UsageError(`${command} is not an order subcommand`);
 }

@@ -41,7 +41,7 @@ import {
 import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { assertChecked, failedHeadCheck } from "./order-head-check";
 import { appendOrderEvent } from "./order-ledger";
-import { amendOrder, dropOrder, queueOrder, setOrderPriority, startOrder } from "./order-lifecycle";
+import { dropOrder, queueOrder, setOrderPriority, startOrder } from "./order-lifecycle";
 import {
   abortStrandedReview,
   closeOrderReview,
@@ -1825,16 +1825,13 @@ describe("factory order report records", () => {
     database.close();
   });
 
-  test("refuses a worker that is not the operator the queue, priority, amendment and drop of an order", () => {
+  test("refuses a worker that is not the operator the queue, priority and drop of an order", () => {
     const database = db();
     const refused = expect.objectContaining({ code: "worker_not_operator" });
 
     expect(() => queueOrder(database, order, worker)).toThrow(refused);
     queueOrder(database, order, attemptOperator);
     expect(() => setOrderPriority(database, "order-1", "high", worker)).toThrow(refused);
-    expect(() => amendOrder(database, "order-1", { title: "rewritten by a builder" }, worker)).toThrow(
-      refused,
-    );
     expect(() => dropOrder(database, "order-1", "a builder's reason", worker)).toThrow(refused);
 
     expect(database.query("SELECT title, priority FROM factory_order WHERE id = 'order-1'").get()).toEqual({
@@ -1842,29 +1839,6 @@ describe("factory order report records", () => {
       priority: "unset",
     });
     expect(database.query("SELECT kind FROM factory_order_event").all()).toEqual([{ kind: "queued" }]);
-    database.close();
-  });
-
-  test("amends a queued order's title and description", () => {
-    const database = db();
-    queueOrder(database, order, attemptOperator);
-
-    amendOrder(database, "order-1", { title: "A corrected title" }, attemptOperator);
-
-    expect(database.query("SELECT title, description FROM factory_order WHERE id = 'order-1'").get()).toEqual(
-      { title: "A corrected title", description: null },
-    );
-    database.close();
-  });
-
-  test("refuses to amend an order once it is started", () => {
-    const database = db();
-    queueOrder(database, order, attemptOperator);
-    start(database);
-
-    expect(() => amendOrder(database, "order-1", { title: "too late" }, attemptOperator)).toThrow(
-      expect.objectContaining({ code: "order_not_queued" }),
-    );
     database.close();
   });
 });

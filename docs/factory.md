@@ -40,7 +40,7 @@ queued → plan → build → review → ship → shipped
 
 - **Where an order is, is read from the record** ([`src/order.ts`](../src/order.ts)): its station and the act that station waits on — run the station, or approve its artifact. Approving the Review artifact ships the order, so the next act is ship only after a ship that failed without sending the order back to a station. Nothing stores it and no command sets it, the status included: an order is `queued` until it starts, `running` until it ships or is dropped, then `shipped` or `dropped`.
 - **Every act checks on entry** that it is the act the record waits on, and a refusal names the one that is. `dim order plan` on a queued order starts it and makes its worktree.
-- **The operator** delegates each station to a worker, checks each artifact against the record, and approves it or returns it. It never does the work. Queuing, reprioritizing, amending, starting and dropping an order are its acts alone; a worker running `dim order add` is refused.
+- **The operator** delegates each station to a worker, checks each artifact against the record, and approves it or returns it. It never does the work. Queuing, reprioritizing, starting and dropping an order are its acts alone; a worker running `dim order add` is refused.
 - **Each station returns an artifact** — plan, Build artifact, Review artifact — that the operator approves (`dim order approve`) or sends back with a reason (`dim order return`).
 - **Build runs slice by slice.** One `dim order build` runs each remaining slice, and the runner checks and commits that slice before the next starts. Review follows the last one, and every round reads the whole order, from its first commit's parent to its head ([`src/station-review.ts`](../src/station-review.ts) `reviewRange`). A round's findings send the order back to build, where the builder answers each one once, `fixed` or `refused` with a reason. The next round is briefed with those answers and raises a new finding for any that still holds; a round that raises nothing writes the Review artifact.
 - **An order returns to the station that can correct it.** During build, the operator uses `dim order return <id> --to plan --reason "..."` when the approved plan needs revision. During review approval, `--to build` sends a code correction to the builder. A return without `--to` sends the current artifact to its worker for revision. Every return sends back the artifact awaiting approval along with the destination's, and is refused while an attempt runs on the order or a rebase conflict waits on the builder. The revised plan needs approval before build resumes from its slices. A plan revision needs fresh Build and Review approvals, and Review reads the whole order again.
@@ -53,7 +53,7 @@ queued → plan → build → review → ship → shipped
 ```sh
 dim order add <id> --title "..." [--line feat|fix] [--description "..."]
 dim order ready                          # the queue
-dim order priority|amend|drop <id> ...
+dim order priority|drop <id> ...
 dim order plan|build|review <id> [--harness codex|claude|grok]
 dim order approve <id> [--reason "..."]  # a Build artifact's approval requires --reason; a Review artifact's ships
 dim order return <id> --reason "..." [--to plan|build]
