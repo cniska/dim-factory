@@ -1,5 +1,4 @@
 import type { Database } from "bun:sqlite";
-import { type CheckoutConvention, CONVENTION_FLOOR, checkoutConvention } from "./git-commit-convention";
 import { latestApprovedPlan } from "./order-approved-plan";
 import {
   completeOrderBuildFollowup,
@@ -18,12 +17,12 @@ import { type BriefedOrder, briefHeader } from "./station-brief";
 import { commitBuildTurn, undoInterruptedJudgement } from "./station-build-commit";
 import { continueRebaseTurn, reopenRebase } from "./station-build-rebase";
 import { BUILD_TURN_SCHEMA, parseBuildTurn } from "./station-build-turn";
+import { fail } from "./station-contract";
 import { stationDirectory } from "./station-directory";
 import type { PlanSlice } from "./station-plan-artifact";
 import { writeTrace } from "./trace-store";
 import type { Capability } from "./worker-capabilities";
-import { workspaceContract } from "./workspace";
-import { repoRoot } from "./worktree";
+import { type WorkspaceContract, workspaceContract } from "./workspace";
 
 export const BUILDER_CAPABILITIES: Capability[] = [
   "bootstrap-worker",
@@ -34,16 +33,12 @@ export const BUILDER_CAPABILITIES: Capability[] = [
   "run-check",
 ];
 
-function conventionContext({ repo, commits, observed }: CheckoutConvention): string {
-  if (!observed) {
-    return `The record holds ${commits} commits from ${repo}, fewer than the ${CONVENTION_FLOOR} it takes to read a convention from.`;
-  }
-  const kinds = observed.topKinds.length > 0 ? `, most often ${observed.topKinds.join(", ")}` : "";
-  return `The record holds ${commits} commits from ${repo}. ${observed.conventionalPct}% of their subjects carry a Conventional Commits type${kinds}; subjects average ${observed.meanLength} characters and ${observed.over50Pct}% run over 50.`;
-}
+export type BriefedWorkspace = Pick<
+  WorkspaceContract,
+  "ecosystems" | "packageManagers" | "checkTask" | "formatTask" | "tasks"
+>;
 
-function workspaceLines(workspace: ReturnType<typeof workspaceContract>): string[] {
-  if (!workspace) return ["The workspace profile could not be read."];
+function workspaceLines(workspace: BriefedWorkspace): string[] {
   return [
     `Ecosystem: ${workspace.ecosystems.join(", ") || "unknown"}.`,
     `Package managers: ${workspace.packageManagers.join(", ") || "none declared"}.`,
@@ -61,25 +56,26 @@ function sliceLine(slice: PlanSlice, ordinal: number): string {
   return `${ordinal}. ${slice.title}: ${slice.outcome}`;
 }
 
-export function builderBrief(
-  order: BriefedOrder,
-  plan: { body: string; slices: readonly PlanSlice[] },
-  currentSlice: OrderSlice | null,
-  workspace: ReturnType<typeof workspaceContract>,
-  revision?: { body: string; feedback: string },
-  previousFailure?: string,
-  reviewFindings: ReviewFindingsForBuild = NO_REVIEW_FINDINGS,
-  convention?: CheckoutConvention,
-  conflicts: readonly string[] | null = null,
-  redCheck: FailedCheck | null = null,
-): string {
-  const resolving = conflicts !== null;
+export type BuildBriefing = {
+  plan: { body: string; slices: readonly PlanSlice[] };
+  currentSlice: OrderSlice | null;
+  workspace: BriefedWorkspace;
+  revision?: { body: string; feedback: string };
+  previousFailure?: string;
+  reviewFindings?: ReviewFindingsForBuild;
+  conflicts?: readonly string[];
+  redCheck?: FailedCheck | null;
+};
+
+export function builderBrief(order: BriefedOrder, briefing: BuildBriefing): string {
+  const { plan, currentSlice, workspace, revision, previousFailure, conflicts, redCheck } = briefing;
+  const reviewFindings = briefing.reviewFindings ?? NO_REVIEW_FINDINGS;
+  const resolving = conflicts !== undefined;
   return [
     ...briefHeader("builder", "dim-build", order, !resolving),
     "",
     "## Workspace",
     ...workspaceLines(workspace),
-    ...(!resolving && convention ? ["", "## Commit convention", conventionContext(convention)] : []),
     "",
     "## Approved plan",
     plan.body,
@@ -219,26 +215,24 @@ export const buildStation: StationRun<BuildContext, BuildOutcome> = {
          ORDER BY id DESC LIMIT 1`,
       )
       .get(order.id);
-    const root = repoRoot(dir);
     const worktree = stationDirectory(dir, order.id);
     const undone = undoInterruptedJudgement(db, order.id, worktree);
     if (undone) writeTrace(db, { event: "order.judgement_undone", orderId: order.id, name: undone });
     const workspace = workspaceContract(worktree);
+    if (workspace === null) throw fail("worktree_missing", { orderId: order.id, worktree });
     const rebase = conflict ? { conflict, paths: reopenRebase(worktree, order.id, conflict) } : null;
     return {
       cwd: worktree,
-      brief: builderBrief(
-        order,
+      brief: builderBrief(order, {
         plan,
         currentSlice,
         workspace,
-        returned ? { body: returned.body, feedback: returned.reason } : undefined,
-        previousFailure?.reason ?? undefined,
+        revision: returned ? { body: returned.body, feedback: returned.reason } : undefined,
+        previousFailure: previousFailure?.reason ?? undefined,
         reviewFindings,
-        rebase ? undefined : checkoutConvention(db, root),
-        rebase?.paths ?? null,
-        failedHeadCheck(db, order.id),
-      ),
+        conflicts: rebase?.paths,
+        redCheck: failedHeadCheck(db, order.id),
+      }),
       context: {
         line: order.line,
         finalOrdinal: plan.slices.length,

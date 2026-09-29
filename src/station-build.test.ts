@@ -62,12 +62,12 @@ describe("the review findings a builder is handed", () => {
   const brief = (db: Database) =>
     builderBrief(
       { id: "order-1", title: "Brief", description: null, line: "feat" },
-      { body: "## Outcome\n\nBrief.", slices: [] },
-      null,
-      null,
-      undefined,
-      undefined,
-      reviewFindingsForBuild(db, "order-1"),
+      {
+        plan: { body: "## Outcome\n\nBrief.", slices: [] },
+        currentSlice: null,
+        workspace: { ecosystems: [], packageManagers: [], checkTask: null, formatTask: null, tasks: [] },
+        reviewFindings: reviewFindingsForBuild(db, "order-1"),
+      },
     );
 
   test("hands over each unanswered finding as work by id, and none the builder answered", () => {
@@ -151,9 +151,17 @@ describe("the builder's brief", () => {
   };
   const order = { id: "order-1", title: "Build it", description: null, line: "feat" } as const;
   const current = { id: 1, ordinal: 1, title: "First cut", outcome: "The cut is verified." };
+  const workspace = {
+    ecosystems: ["bun"],
+    packageManagers: ["bun"],
+    checkTask: null,
+    formatTask: null,
+    tasks: [],
+  };
+  const briefing = { plan, currentSlice: null, workspace };
 
   test("carries only the order, the workspace, the plan and the slice, and names dim-build", () => {
-    expect(builderBrief(order, plan, current, null)).toBe(
+    expect(builderBrief(order, { ...briefing, currentSlice: current })).toBe(
       [
         "You are the builder for factory order order-1 in this repository. Run dim-build.",
         "",
@@ -162,7 +170,11 @@ describe("the builder's brief", () => {
         "This order's line is feat.",
         "",
         "## Workspace",
-        "The workspace profile could not be read.",
+        "Ecosystem: bun.",
+        "Package managers: bun.",
+        "Check: none.",
+        "Format: none.",
+        "Tasks: none.",
         "",
         "## Approved plan",
         "## Outcome\n\nBuild it.",
@@ -178,9 +190,9 @@ describe("the builder's brief", () => {
   });
 
   test("hands a returned Build artifact and the owner's feedback to the builder", () => {
-    const brief = builderBrief(order, plan, null, null, {
-      body: "## Outcome\n\nThe artifact was a wall of text.",
-      feedback: "Make it readable.",
+    const brief = builderBrief(order, {
+      ...briefing,
+      revision: { body: "## Outcome\n\nThe artifact was a wall of text.", feedback: "Make it readable." },
     });
 
     expect(brief).toContain("## Returned Build artifact\n## Outcome\n\nThe artifact was a wall of text.");
@@ -188,16 +200,13 @@ describe("the builder's brief", () => {
   });
 
   test("carries a rebase conflict's paths and a red check's output as the turn's state", () => {
-    const resolving = builderBrief(order, plan, null, null, undefined, undefined, undefined, undefined, [
-      "src/a.ts",
-    ]);
+    const resolving = builderBrief(order, { ...briefing, conflicts: ["src/a.ts"] });
     expect(resolving).toContain("## Rebase conflict\n- src/a.ts");
     expect(resolving).not.toContain("This order's line is");
 
-    const red = builderBrief(order, plan, null, null, undefined, undefined, undefined, undefined, null, {
-      command: "bun run verify",
-      exitCode: 1,
-      result: "1 fail",
+    const red = builderBrief(order, {
+      ...briefing,
+      redCheck: { command: "bun run verify", exitCode: 1, result: "1 fail" },
     });
     expect(red).toContain("## Red check\n`bun run verify` exited 1:\n```\n1 fail\n```");
   });
@@ -209,24 +218,18 @@ describe("the builder's brief", () => {
     };
     const order = { id: "order-1", title: "Fix it", description: null, line: "fix" } as const;
 
-    expect(builderBrief(order, plan, null, null)).toContain("This order's line is fix.");
-    expect(
-      builderBrief(order, plan, null, null, undefined, undefined, undefined, undefined, ["src/a.ts"]),
-    ).not.toContain("This order's line is");
+    expect(builderBrief(order, { ...briefing, plan })).toContain("This order's line is fix.");
+    expect(builderBrief(order, { ...briefing, plan, conflicts: ["src/a.ts"] })).not.toContain(
+      "This order's line is",
+    );
   });
 
   test("includes the prior failed attempt when the builder resumes", () => {
-    const brief = builderBrief(
-      { id: "order-1", title: "Build it", description: null, line: "feat" },
-      {
-        body: "## Outcome\n\nBuild it.",
-        slices: [{ title: "Build it", outcome: "The result is verified." }],
-      },
-      { id: 1, ordinal: 1, title: "Build it", outcome: "The result is verified." },
-      null,
-      undefined,
-      "bun run verify exited 1 in the check sandbox.",
-    );
+    const brief = builderBrief(order, {
+      ...briefing,
+      currentSlice: current,
+      previousFailure: "bun run verify exited 1 in the check sandbox.",
+    });
 
     expect(brief).toContain(
       "## Previous failed Build attempt\nbun run verify exited 1 in the check sandbox.",

@@ -240,12 +240,12 @@ describe("the operator loop", () => {
       );
       const brief = builderBrief(
         { id: "raised-again-order", title: "Refuse", description: null, line: "feat" },
-        { body: "## Outcome\n\nRefuse.", slices: [] },
-        null,
-        null,
-        undefined,
-        undefined,
-        reviewFindingsForBuild(db, "raised-again-order"),
+        {
+          plan: { body: "## Outcome\n\nRefuse.", slices: [] },
+          currentSlice: null,
+          workspace: { ecosystems: [], packageManagers: [], checkTask: null, formatTask: null, tasks: [] },
+          reviewFindings: reviewFindingsForBuild(db, "raised-again-order"),
+        },
       );
       expect(brief).toContain(
         [

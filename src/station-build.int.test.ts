@@ -44,7 +44,6 @@ import { buildStation } from "./station-build";
 import type { BuildTurn } from "./station-build-turn";
 import { endWorker, mintWorker } from "./worker";
 import { WORKER_NAME_VAR } from "./worker-name";
-import { repoRoot } from "./worktree";
 
 const repos: string[] = [];
 const homes: string[] = [];
@@ -171,9 +170,6 @@ describe("builder station", () => {
 
     expect(request?.cwd).toBe(realpathSync(join(repo.dir, ".claude", "worktrees", "builder-order")));
     expect(request?.brief).toContain("## Approved plan\n## Outcome\n\nBuild the requested result.");
-    expect(request?.brief).toContain(
-      `The record holds 0 commits from ${repoRoot(repo.dir)}, fewer than the 20 it takes to read a convention from`,
-    );
     expect(request?.outputSchema).toEndWith("station-build-turn.schema.json");
     expect(outcome.worktree).toBe(request?.cwd ?? "");
     expect(
@@ -312,45 +308,6 @@ describe("builder station", () => {
         )
         .get("limited-order"),
     ).toEqual({ kind: "finished", outcome: "limited", resets_at: "2026-09-27T16:50:00.000Z" });
-    db.close();
-  });
-
-  test("tells the builder the convention its repository's recorded log shows", async () => {
-    const db = database();
-    const dimHome = home("dim-builder-convention-");
-    const { repo, operator } = orderAtBuild(db, "convention-order", [
-      { title: "Build the result", outcome: "The requested result is verified." },
-    ]);
-    const root = repoRoot(repo.dir);
-    for (let i = 0; i < 20; i++) {
-      db.run(
-        "INSERT INTO repo_commit (sha, repo, label, ts, author, subject, kind) VALUES (?, ?, NULL, '2026-01-01T00:00:00Z', 'a', ?, ?)",
-        [
-          `c${i}`,
-          `${root}/.claude/worktrees/earlier`,
-          i < 15 ? "fix: a short subject" : "a plain one",
-          i < 15 ? "fix" : null,
-        ],
-      );
-    }
-    let brief = "";
-
-    await runStation(db, "convention-order", buildStation, operator.name, {
-      dir: repo.dir,
-      harness: "codex",
-      env: { DIM_HOME: dimHome },
-      checkSandbox: confiningCheckSandbox(),
-      adapter: builderTurn((request) => {
-        brief = request.brief;
-        writeFileSync(join(request.cwd, "built.txt"), "built\n");
-        return { subject: "feat: build it", artifact: "Built." };
-      }),
-    });
-
-    expect(brief).toContain("## Commit convention");
-    expect(brief).toContain(
-      `The record holds 20 commits from ${root}. 75% of their subjects carry a Conventional Commits type, most often fix; subjects average 18 characters and 0% run over 50.`,
-    );
     db.close();
   });
 
@@ -2312,7 +2269,6 @@ describe("a conflict at ship", () => {
     expect(builder.calls).toHaveLength(2);
     expect(builder.calls[0]?.brief).toContain("## Rebase conflict");
     expect(builder.calls[0]?.brief).toContain("- built.txt");
-    expect(builder.calls[0]?.brief).not.toContain("## Commit convention");
     expect(builder.calls[1]?.brief).toContain("- other.txt");
     expect(git(worktree, ["show", "HEAD:built.txt"])).toBe("built\ntrunk");
     expect(git(worktree, ["show", "HEAD:other.txt"])).toBe("built\ntrunk");
