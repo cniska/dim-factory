@@ -36,6 +36,18 @@ function seeded(): Env {
   return env;
 }
 
+function seededWithSkillLoad(): Env {
+  const env = seeded();
+  const db = openDb(dbPath(env));
+  db.run(
+    `INSERT INTO skill_load (session_id, message_id, ts, skill_name, how, body_chars, body_sha256)
+     VALUES (?, 'msg-1', '2026-09-16T10:02:00.000Z', 'build', 'model', 7, 'abcdef0123')`,
+    [SESSION],
+  );
+  closeDb(db);
+  return env;
+}
+
 describe("read path", () => {
   test("opens the database read-only, so no query can reach hook_event with a write", () => {
     const env = seeded();
@@ -318,13 +330,14 @@ describe("read path", () => {
   });
 
   test("the window reaches the counts a rate is computed from, not just the rows", () => {
-    const env = seeded();
+    const env = seededWithSkillLoad();
     const db = openReadOnly(dbPath(env));
     try {
       const empty = findQuery("corrections")?.run(db, { since: "2026-09-17T00:00:00.000Z" });
       expect(empty?.denominator).toContain("0 turns the user physically stopped");
-      expect(findQuery("skills")?.run(db, { since: "2026-09-17T00:00:00.000Z" })?.denominator).toContain(
-        "0 loads",
+      expect(findQuery("skills")?.run(db, {})?.denominator).toMatch(/^1 loads /);
+      expect(findQuery("skills")?.run(db, { since: "2026-09-17T00:00:00.000Z" })?.denominator).toMatch(
+        /^0 loads /,
       );
     } finally {
       db.close();
@@ -368,14 +381,7 @@ describe("read path", () => {
   });
 
   test("skill splits one skill by version and says how thin each arm is", () => {
-    const env = seeded();
-    const writer = openDb(dbPath(env));
-    writer.run(
-      `INSERT INTO skill_load (session_id, message_id, ts, skill_name, how, body_chars, body_sha256)
-       VALUES (?, 'msg-1', '2026-09-16T10:02:00.000Z', 'build', 'model', 7, 'abcdef0123')`,
-      [SESSION],
-    );
-    closeDb(writer);
+    const env = seededWithSkillLoad();
     const db = openReadOnly(dbPath(env));
     try {
       const one = findQuery("skill")?.run(db, { arg: "build" });

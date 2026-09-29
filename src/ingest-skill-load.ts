@@ -3,14 +3,9 @@ import { createHash } from "node:crypto";
 type SkillBodyFields = { bodyChars: number; bodySha256: string; skillPath: string };
 
 export type SkillLoadRow =
-  | ({
-      messageId?: string;
-      ts: string;
-      model?: string;
-      skillName: string;
-      how: "model" | "user" | "read";
-    } & Partial<SkillBodyFields>)
-  | ({ toolUseId: string } & SkillBodyFields);
+  | { messageId?: string; ts: string; model?: string; skillName: string; how: "model" | "user" | "read" }
+  | ({ toolUseId: string } & SkillBodyFields)
+  | ({ parentUuid: string; skillName: string } & SkillBodyFields);
 
 const BODY_PREFIX = "Base directory for this skill:";
 const COMMAND_NAME = /<command-name>\/?([a-z0-9][a-z0-9-]*)<\/command-name>/i;

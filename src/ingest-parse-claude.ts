@@ -311,11 +311,9 @@ export function parseClaudeChunk(
       if (body) {
         const { name, ...fields } = body;
         const toolUseId = nonEmpty(line.sourceToolUseID);
-        skillLoads.push(
-          toolUseId
-            ? { toolUseId, ...fields }
-            : { messageId: nonEmpty(line.parentUuid), ts, skillName: name, how: "user", ...fields },
-        );
+        const parentUuid = nonEmpty(line.parentUuid);
+        if (toolUseId) skillLoads.push({ toolUseId, ...fields });
+        else if (parentUuid) skillLoads.push({ parentUuid, skillName: name, ...fields });
       }
       messages.push({
         id: line.uuid,

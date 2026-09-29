@@ -230,10 +230,17 @@ export function createIngester(db: Database) {
        skill_path  = coalesce(excluded.skill_path, skill_load.skill_path),
        model       = coalesce(excluded.model, skill_load.model)`;
   const insertSkillLoad = db.prepare(
+    `INSERT INTO skill_load (session_id, message_id, ts, model, skill_name, how)
+     VALUES ($sessionId, $messageId, $ts, $model, $skillName, $how)
+     ${skillLoadConflict}`,
+  );
+  const insertTypedSkillBody = db.prepare(
     `INSERT INTO skill_load (session_id, message_id, ts, model, skill_name, how,
        body_chars, body_sha256, skill_path)
-     VALUES ($sessionId, $messageId, $ts, $model, $skillName, $how,
-       $bodyChars, $bodySha256, $skillPath)
+     SELECT $sessionId, id, ts, model, $skillName, 'user',
+       $bodyChars, $bodySha256, $skillPath
+     FROM message
+     WHERE id = $parentUuid
      ${skillLoadConflict}`,
   );
   const insertCalledSkillBody = db.prepare(
@@ -404,6 +411,17 @@ export function createIngester(db: Database) {
         });
         continue;
       }
+      if ("parentUuid" in l) {
+        insertTypedSkillBody.run({
+          $sessionId: spec.sessionId,
+          $parentUuid: l.parentUuid,
+          $skillName: l.skillName,
+          $bodyChars: l.bodyChars,
+          $bodySha256: l.bodySha256,
+          $skillPath: l.skillPath,
+        });
+        continue;
+      }
       insertSkillLoad.run({
         $sessionId: spec.sessionId,
         $messageId: l.messageId ?? null,
@@ -411,9 +429,6 @@ export function createIngester(db: Database) {
         $model: l.model ?? null,
         $skillName: l.skillName,
         $how: l.how,
-        $bodyChars: l.bodyChars ?? null,
-        $bodySha256: l.bodySha256 ?? null,
-        $skillPath: l.skillPath ?? null,
       });
     }
 

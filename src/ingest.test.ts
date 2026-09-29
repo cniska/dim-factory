@@ -694,6 +694,36 @@ describe("skill loads", () => {
     }
   });
 
+  test("stores a typed skill whose body arrives in a later sync than its command", () => {
+    const env = scratchEnv(newRoot());
+    const lines = [
+      typed("u-plugin", "dim:dim-plan"),
+      typedBody("u-plugin-body", "u-plugin", "/Users/x/code/dim-factory/plugin/skills/dim-plan"),
+    ];
+    const path = writeTranscript(env, SESSION, lines);
+    writePrefix(path, lines, bytesThroughLine(lines, 0));
+    const db = run(env);
+    try {
+      expect(skillLoads(db)).toEqual([]);
+      writePrefix(path, lines, fullBytes(lines));
+      sync(db, env);
+      expect(skillLoads(db)).toEqual([
+        {
+          session_id: SESSION,
+          message_id: "u-plugin",
+          ts: at(3),
+          model: null,
+          skill_name: "dim-plan",
+          how: "user",
+          body_chars: 6,
+          skill_path: "/Users/x/code/dim-factory/plugin/skills/dim-plan",
+        },
+      ]);
+    } finally {
+      closeDb(db);
+    }
+  });
+
   test("stores a typed skill and its body as one load the user chose", () => {
     const root = newRoot();
     const env = scratchEnv(root);
@@ -734,7 +764,7 @@ describe("skill loads", () => {
         {
           session_id: SESSION,
           message_id: "u-plugin",
-          ts: at(4),
+          ts: at(3),
           model: null,
           skill_name: "dim-plan",
           how: "user",
@@ -762,6 +792,28 @@ describe("skill loads", () => {
   test("stores nothing for a body whose Skill call is missing", () => {
     const env = scratchEnv(newRoot());
     writeClaudeTranscript(env, "-Users-x-code-demo", SESSION);
+    const db = openDb(dbPath(env));
+    try {
+      expect(sync(db, env).failures).toEqual([]);
+      expect(skillLoads(db)).toEqual([]);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  test("stores nothing for a typed body whose command line was dropped or that names no parent", () => {
+    const env = scratchEnv(newRoot());
+    const { timestamp: _, ...untimed } = typed("u-untimed", "dim:dim-plan");
+    const { parentUuid: __, ...parentless } = typedBody(
+      "u-parentless-body",
+      "",
+      "/Users/x/.claude/skills/review",
+    );
+    writeTranscript(env, SESSION, [
+      untimed,
+      typedBody("u-untimed-body", "u-untimed", "/Users/x/code/dim-factory/plugin/skills/dim-plan"),
+      parentless,
+    ]);
     const db = openDb(dbPath(env));
     try {
       expect(sync(db, env).failures).toEqual([]);
