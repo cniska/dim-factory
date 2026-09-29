@@ -5,7 +5,7 @@ export type QueryResult = {
   denominator: string;
   columns: string[];
   rows: (string | number | null)[][];
-  note?: string;
+  note: string | null;
 };
 
 export type QueryContext = {
@@ -27,8 +27,8 @@ export function requiredArg(ctx: QueryContext, usage: string): string {
 }
 
 export function scalar(db: Database, sql: string, ...params: unknown[]): number {
-  const row = db.prepare(sql).get(...(params as [])) as { n: number } | null;
-  return row?.n ?? 0;
+  const row = db.prepare(sql).get(...(params as [])) as { n: number };
+  return row.n;
 }
 
 export function table(db: Database, sql: string, params: unknown[] = []): Record<string, unknown>[] {

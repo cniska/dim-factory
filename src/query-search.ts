@@ -68,7 +68,7 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryRes
       records.length === 0
         ? `nothing matches ${terms}; a message with no text is a tool call or its result, and a reminder ` +
           `the harness injected is nothing anyone said, so neither is searched`
-        : undefined,
+        : null,
   };
 }
 
