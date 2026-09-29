@@ -23,7 +23,7 @@ function floor() {
 const launch = {
   cwd: ".",
   brief: "build it",
-  capabilities: [],
+  edits: false,
   harness: "codex" as const,
   model: "m",
   env: {},

@@ -68,7 +68,7 @@ function codexEventParser(): HarnessLineParser {
 }
 
 function codexSandboxArgs(request: HarnessRequest): string[] {
-  const sandbox = request.capabilities.includes("edit-files") ? "workspace-write" : "read-only";
+  const sandbox = request.edits ? "workspace-write" : "read-only";
   return ["-s", sandbox, "--add-dir", dataDir(request.env)];
 }
 

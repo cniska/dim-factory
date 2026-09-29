@@ -6,7 +6,7 @@ import type { HarnessAdapter, HarnessEvent, HarnessRequest } from "./harness";
 import { processHarness } from "./harness-process";
 import { type HarnessRunnerOptions, runHarness } from "./harness-runner";
 
-const request = { cwd: process.cwd(), brief: "run", model: "test", capabilities: [], env: {} } as const;
+const request = { cwd: process.cwd(), brief: "run", model: "test", edits: false, env: {} } as const;
 
 const declared = (started: HarnessRequest) => started.env;
 

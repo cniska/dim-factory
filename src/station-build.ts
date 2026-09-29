@@ -16,17 +16,7 @@ import { fail } from "./station-contract";
 import { stationDirectory } from "./station-directory";
 import type { PlanSlice } from "./station-plan-artifact";
 import { writeTrace } from "./trace-store";
-import type { Capability } from "./worker-capabilities";
 import { type WorkspaceContract, workspaceContract } from "./workspace";
-
-const BUILDER_CAPABILITIES: Capability[] = [
-  "bootstrap-worker",
-  "read-files",
-  "edit-files",
-  "read-history",
-  "ask-dim",
-  "run-check",
-];
 
 type BriefedWorkspace = Pick<
   WorkspaceContract,
@@ -194,7 +184,7 @@ async function commitSlice(db: Database, output: string, turn: StationTurn, cont
 
 export const buildStation: StationRun<BuildContext, BuildOutcome> = {
   station: "build",
-  capabilities: BUILDER_CAPABILITIES,
+  edits: true,
   outputSchema: BUILD_TURN_SCHEMA,
   prepare: (db, order, { dir, env, checkSandbox, returned }) => {
     const plan = readApprovedPlan(db, order.id);

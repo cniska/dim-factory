@@ -11,7 +11,7 @@ const request: HarnessRequest = {
   cwd: "/repo",
   brief: "build it",
   model: "grok-model",
-  capabilities: [],
+  edits: false,
   env: { DIM_HOME: "/dim-home" },
 };
 
@@ -130,7 +130,7 @@ describe("the Grok harness adapter", () => {
   });
 
   test("runs builders in the workspace sandbox and readers in the read-only sandbox", () => {
-    const builder = commandLine(grokProcess, { ...request, capabilities: ["edit-files"] });
+    const builder = commandLine(grokProcess, { ...request, edits: true });
     const reader = commandLine(grokProcess, request);
 
     expect(builder.slice(0, 8)).toEqual([
@@ -155,7 +155,7 @@ describe("the Grok harness adapter", () => {
     git(repo, "init", "-q", "-b", "main");
     git(repo, "-c", "user.email=t@e", "-c", "user.name=T", "commit", "-q", "--allow-empty", "-m", "init");
     const checkout = realpathSync(repo);
-    const argv = grokArgs({ ...request, cwd: checkout, capabilities: ["edit-files"] });
+    const argv = grokArgs({ ...request, cwd: checkout, edits: true });
     rmSync(repo, { recursive: true, force: true });
     const gitPath = join(checkout, ".git");
 

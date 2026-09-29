@@ -15,7 +15,7 @@ Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` 
 | `session-start`, `wake` | Repo commands passed to a new session |
 | `order` | An order: its lifecycle, ledger, evidence, findings, ship runs and queue |
 | `station` | The plan, build and review stations: briefs, turns, artifacts and the build runner |
-| `worker` | Who a worker is: assignment, the process it is registered as, roles, routing and capabilities |
+| `worker` | Who a worker is: assignment, the process it is registered as, roles, routing and the process environment |
 | `harness` | Starting a worker under Claude Code, Codex, or Grok Build |
 | `factory` | The operator role |
 | `ship` | Landing an order on the trunk: the rebase onto it, the re-check and the ship run it records |

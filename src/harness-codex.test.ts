@@ -8,7 +8,7 @@ const request: HarnessRequest = {
   cwd: "/repo",
   brief: "build it",
   model: "gpt-5-codex",
-  capabilities: [],
+  edits: false,
   env: { DIM_HOME: "/dim-home" },
 };
 
@@ -64,7 +64,7 @@ describe("the Codex harness adapter", () => {
   });
 
   test("builds a writable Codex command for builders and a read-only one otherwise", () => {
-    const writable = commandLine(codexProcess, { ...request, capabilities: ["edit-files"] });
+    const writable = commandLine(codexProcess, { ...request, edits: true });
     const readOnly = commandLine(codexProcess, request);
 
     expect(writable).toEqual([
@@ -94,7 +94,7 @@ describe("the Codex harness adapter", () => {
   });
 
   test("gives a builder in a git worktree no writable repository metadata", () => {
-    const argv = codexArgs({ ...request, cwd: process.cwd(), capabilities: ["edit-files"] });
+    const argv = codexArgs({ ...request, cwd: process.cwd(), edits: true });
     const addDirs = argv.flatMap((arg, index) => (arg === "--add-dir" ? [argv[index + 1]] : []));
 
     expect(argv).toContain("workspace-write");
@@ -137,7 +137,7 @@ describe("the Codex harness adapter", () => {
     const argv = resumeCommandLine(codexProcess, "thread-1", {
       ...request,
       cwd: process.cwd(),
-      capabilities: ["edit-files"],
+      edits: true,
     });
     const addDirs = argv.flatMap((arg, index) => (arg === "--add-dir" ? [argv[index + 1]] : []));
 

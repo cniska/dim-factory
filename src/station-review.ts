@@ -18,9 +18,6 @@ import { stationDirectory } from "./station-directory";
 import type { PlanSlice } from "./station-plan-artifact";
 import { parseReviewReport, type ReviewFinding } from "./station-review-artifact";
 import { renderReviewReport } from "./station-review-report";
-import type { Capability } from "./worker-capabilities";
-
-const REVIEWER_CAPABILITIES: Capability[] = ["bootstrap-worker", "read-files", "read-history", "ask-dim"];
 
 function git(dir: string, args: string[]): { ok: boolean; out: string; raw: string } {
   const run = Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe", stderr: "ignore" });
@@ -118,7 +115,7 @@ function assertLocations(findings: ReviewFinding[], round: ReviewedRound): void 
 
 export const reviewStation: StationRun<ReviewedRound, ReviewOutcome> = {
   station: "review",
-  capabilities: REVIEWER_CAPABILITIES,
+  edits: false,
   outputSchema: `${import.meta.dir}/station-review-artifact.schema.json`,
   prepare: (db, order, { dir, returned, assignmentId }) => {
     const plan = readApprovedPlan(db, order.id);

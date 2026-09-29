@@ -12,8 +12,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Role | What a worker is called in as: `operator`, `planner`, `builder` or `reviewer` ([`src/worker-roles.ts`](../src/worker-roles.ts)) |
 | Read-only role | `planner` and `reviewer`, which may not change the tree they read |
 | Worker tree | The record of who delegated to whom: the operator, its station workers, and their children |
-| Tier | The capability a role needs — `light`, `standard` or `deep` — mapped to this machine's models in one file ([`src/worker-routing.ts`](../src/worker-routing.ts)) |
-| Capability | What a station's work needs, named for the work rather than a harness flag — `read-files`, `edit-files`, `run-check` and the rest ([`src/worker-capabilities.ts`](../src/worker-capabilities.ts)) |
+| Tier | The model strength a role needs — `light`, `standard` or `deep` — mapped to this machine's models in one file ([`src/worker-routing.ts`](../src/worker-routing.ts)) |
 | Harness | The agent product that runs a worker session, such as Claude Code or Codex |
 | Line | The kind of work an order is: `feat` (shown as **feature**) or `fix`. `dim-feat` and `dim-fix` are its entry points |
 | Station | One repeatable step of work on an order: `plan`, `build` or `review` ([`src/station-contract.ts`](../src/station-contract.ts)), each run through [`src/station.ts`](../src/station.ts). Their skills are `dim-plan`, `dim-build` and `dim-review` |

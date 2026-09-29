@@ -7,7 +7,7 @@ const REQUEST = {
   cwd: "/tmp/project",
   brief: "build it",
   model: "test",
-  capabilities: ["read-files"] as const,
+  edits: false,
   env: { DIM_WORKER_NAME: "fake-worker" },
 };
 

@@ -3,9 +3,6 @@ import type { StationRun } from "./station";
 import { type BriefedOrder, briefHeader } from "./station-brief";
 import { stationDirectory } from "./station-directory";
 import { type PlanSlice, parsePlanArtifact } from "./station-plan-artifact";
-import type { Capability } from "./worker-capabilities";
-
-const PLANNER_CAPABILITIES: Capability[] = ["bootstrap-worker", "read-files", "read-history", "ask-dim"];
 
 export function plannerBrief(order: BriefedOrder, revision?: { body: string; feedback: string }): string {
   return [
@@ -20,7 +17,7 @@ type PlanOutcome = { planner: string; body: string; slices: readonly PlanSlice[]
 
 export const planStation: StationRun<null, PlanOutcome> = {
   station: "plan",
-  capabilities: PLANNER_CAPABILITIES,
+  edits: false,
   outputSchema: `${import.meta.dir}/station-plan-artifact.schema.json`,
   prepare: (_db, order, { dir, returned }) => ({
     cwd: stationDirectory(dir, order.id),

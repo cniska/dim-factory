@@ -70,11 +70,10 @@ export function readApprovedPlan(db: Database, orderId: string): ApprovedPlan | 
   if (plan === null) return null;
   const content = loadPlanContent(db, plan.id);
   const next = nextSlice(order);
-  return {
-    id: plan.id,
-    ...content,
-    next: next === null ? null : (content.slices.find((slice) => slice.id === next.id) ?? null),
-  };
+  if (next === null) return { id: plan.id, ...content, next: null };
+  const planned = content.slices.find((slice) => slice.id === next.id);
+  if (planned === undefined) throw new Error(`slice ${next.id} is not in plan ${plan.id}'s recorded slices`);
+  return { id: plan.id, ...content, next: planned };
 }
 
 export function orderHead(order: Order): string | null {

@@ -147,7 +147,7 @@ function deny(rule: string): string[] {
 }
 
 function editDenies(request: HarnessRequest): string[] {
-  if (!request.capabilities.includes("edit-files")) {
+  if (!request.edits) {
     return EDIT_TOOLS.flatMap((tool) => deny(tool));
   }
   return checkoutGitPaths(request.cwd).flatMap((git) =>
@@ -156,7 +156,7 @@ function editDenies(request: HarnessRequest): string[] {
 }
 
 function grokFlags(request: HarnessRequest): string[] {
-  const edits = request.capabilities.includes("edit-files");
+  const edits = request.edits;
   return [
     "--no-auto-update",
     "--output-format",

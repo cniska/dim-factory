@@ -122,7 +122,7 @@ Around it:
 
 Each role runs at a tier declared in [`src/worker-routing.ts`](../src/worker-routing.ts): the planner, the reviewer and the operator at `deep`, the builder at `standard`. The machine's `routing.json` maps each harness's models to the tiers, and `dim route` refuses a map that does not say exactly one thing. No model name appears in this repo.
 
-A station asks for capabilities, never a harness's flags ([`src/worker-capabilities.ts`](../src/worker-capabilities.ts)); each harness adapter maps them ([`src/harness-codex.ts`](../src/harness-codex.ts), [`src/harness-claude.ts`](../src/harness-claude.ts), [`src/harness-grok.ts`](../src/harness-grok.ts)).
+A station says whether its worker edits files, never a harness's flags ([`src/harness.ts`](../src/harness.ts) `edits`); each harness adapter maps that ([`src/harness-codex.ts`](../src/harness-codex.ts), [`src/harness-claude.ts`](../src/harness-claude.ts), [`src/harness-grok.ts`](../src/harness-grok.ts)).
 
 ## Worker environments
 

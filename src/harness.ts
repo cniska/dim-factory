@@ -1,10 +1,8 @@
-import type { Capability } from "./worker-capabilities";
-
 export type HarnessRequest = {
   cwd: string;
   brief: string;
   model: string;
-  capabilities: readonly Capability[];
+  edits: boolean;
   env: Readonly<Record<string, string>>;
   outputSchema?: string;
 };

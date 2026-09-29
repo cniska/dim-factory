@@ -20,7 +20,7 @@ const request: HarnessRequest = {
   cwd: "/repo",
   brief: "build it",
   model: "claude-model",
-  capabilities: [],
+  edits: false,
   env: { DIM_HOME: "/dim-home" },
 };
 
@@ -159,7 +159,7 @@ describe("the Claude harness adapter", () => {
   });
 
   test("gives a builder edits inside a sandbox that cannot fall back to running unconfined", () => {
-    const argv = commandLine(claudeProcess, { ...request, capabilities: ["edit-files"] });
+    const argv = commandLine(claudeProcess, { ...request, edits: true });
 
     expect(argv.slice(0, 7)).toEqual([
       "claude",
@@ -208,7 +208,7 @@ describe("the Claude harness adapter", () => {
   });
 
   test("gives a builder the record and none of the repository metadata", () => {
-    const argv = claudeArgs({ ...request, cwd: process.cwd(), capabilities: ["edit-files"] });
+    const argv = claudeArgs({ ...request, cwd: process.cwd(), edits: true });
 
     expect(addDirs(argv)).toEqual(["/dim-home"]);
   });
@@ -221,7 +221,7 @@ describe("the Claude harness adapter", () => {
     git(repo, "-c", "user.email=t@e", "-c", "user.name=T", "commit", "-q", "--allow-empty", "-m", "init");
     git(repo, "worktree", "add", "-q", join(repo, "order"), "-b", "order");
     const denied = (cwd: string) =>
-      settings(claudeArgs({ ...request, cwd, capabilities: ["edit-files"] })) as {
+      settings(claudeArgs({ ...request, cwd, edits: true })) as {
         permissions: { deny: string[] };
         sandbox: { filesystem: { denyWrite: string[] } };
       };
@@ -272,7 +272,7 @@ describe("the Claude harness adapter", () => {
   });
 
   test("resumes a Claude session by its provider id with the same boundary", () => {
-    const builder: HarnessRequest = { ...request, capabilities: ["edit-files"] };
+    const builder: HarnessRequest = { ...request, edits: true };
 
     expect(resumeCommandLine(claudeProcess, "session-1", builder)).toEqual([
       "claude",
@@ -346,8 +346,8 @@ describe("the Claude harness adapter", () => {
   });
 
   test("gives no worker a way to leave work running past its answer", () => {
-    for (const capabilities of [["edit-files"], []] as const) {
-      const launched = settings(claudeArgs({ ...request, cwd: process.cwd(), capabilities })) as {
+    for (const edits of [true, false]) {
+      const launched = settings(claudeArgs({ ...request, cwd: process.cwd(), edits })) as {
         env: Record<string, string>;
         permissions: { deny: string[] };
       };

@@ -109,7 +109,7 @@ function claudeEventParser(): HarnessLineParser {
 const BACKGROUND_WORK_TOOLS = ["ScheduleWakeup", "CronCreate", "Monitor", "RemoteTrigger"];
 
 function claudeSettings(request: HarnessRequest, protectedGit: string[]): string {
-  const edits = request.capabilities.includes("edit-files");
+  const edits = request.edits;
   return JSON.stringify({
     env: {
       ...Object.fromEntries(PER_TOKEN_VARS.map((name) => [name, ""])),
@@ -139,7 +139,7 @@ function outside(cwd: string, paths: string[]): string[] {
 }
 
 function claudeFlags(request: HarnessRequest): string[] {
-  const edits = request.capabilities.includes("edit-files");
+  const edits = request.edits;
   const dirs = [dataDir(request.env)];
   return [
     "-p",

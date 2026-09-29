@@ -13,7 +13,6 @@ import { holdOrder, startStationAttempt } from "./station-attempt";
 import type { BriefedOrder } from "./station-brief";
 import { STATION_ROLES, type Station } from "./station-contract";
 import { type ExecutionAttribution, ensureOrderWorker, runWorkerTurn } from "./station-worker";
-import type { Capability } from "./worker-capabilities";
 import { route } from "./worker-routing";
 
 export type StationOptions = {
@@ -40,7 +39,7 @@ export type StationTurn = {
 
 export type StationRun<Context, Outcome> = {
   station: Station;
-  capabilities: Capability[];
+  edits: boolean;
   outputSchema: string;
   prepare(db: Database, order: BriefedOrder, launch: StationLaunch): Prepared<Context>;
   accept(db: Database, output: string, turn: StationTurn, context: Context): Outcome | Promise<Outcome>;
@@ -76,7 +75,7 @@ export async function runStation<Context, Outcome>(
     const request = (brief: string) => ({
       cwd: prepared.cwd,
       brief,
-      capabilities: station.capabilities,
+      edits: station.edits,
       outputSchema: station.outputSchema,
       harness: options.harness,
       model,
