@@ -3,6 +3,7 @@ import {
   type Query,
   type QueryContext,
   type QueryResult,
+  requiredArg,
   scalar,
   table,
   toRows,
@@ -27,9 +28,6 @@ export const SAID = "m.is_skill_body = 0 AND (m.is_meta = 0 OR m.origin_kind IN 
 function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryResult {
   const columns = ["session", "when", "ref", "role", "project", "terms", "text"];
   const { raw, quoted, dropped } = quotedTerms(terms);
-  if (quoted.length === 0) {
-    return { denominator: "", columns: ["error"], rows: [["nothing to search for but whitespace"]] };
-  }
   const matchAny = quoted.join(" OR ");
   const w = window("m.ts", ctx);
   const byWord = new Map(raw.map((word, i) => [word, quoted[i] as string]));
@@ -97,11 +95,5 @@ export const search: Query = {
   summary: "find a message by the words in it, across every session",
   usage: 'dim q search "<words>"',
   window: "history",
-  run: (db, ctx) => {
-    const { arg } = ctx;
-    if (!arg) {
-      return { denominator: "", columns: ["error"], rows: [['usage: dim q search "<words>"']] };
-    }
-    return keywordSearch(db, ctx, arg);
-  },
+  run: (db, ctx) => keywordSearch(db, ctx, requiredArg(ctx, search.usage)),
 };

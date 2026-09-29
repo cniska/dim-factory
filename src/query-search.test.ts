@@ -95,15 +95,11 @@ describe("search", () => {
     db.close();
   });
 
-  test("whitespace alone is not a search", () => {
+  test("refuses no words, or only whitespace, as a usage error", () => {
     const db = seeded();
-    expect(String(ask(db, { arg: "   " }).rows[0]?.[0])).toContain("nothing to search for");
-    db.close();
-  });
-
-  test("asks for words rather than searching for nothing", () => {
-    const db = seeded();
-    expect(String(ask(db, {}).rows[0]?.[0])).toContain("usage:");
+    const usage = expect.objectContaining({ code: "usage", message: 'usage: dim q search "<words>"' });
+    expect(() => ask(db, {})).toThrow(usage);
+    expect(() => ask(db, { arg: "   " })).toThrow(usage);
     db.close();
   });
 

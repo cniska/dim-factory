@@ -76,13 +76,13 @@ describe("read path", () => {
     }
   });
 
-  test("prior-art asks for a path rather than answering over everything", () => {
+  test("prior-art refuses a missing path as a usage error rather than answering over everything", () => {
     const db = new Database(":memory:");
     try {
       db.run(SCHEMA_SQL);
-      const result = findQuery("prior-art")?.run(db, ctx);
-      expect(result?.rows).toEqual([]);
-      expect(result?.note).toContain("name part of a path");
+      expect(() => findQuery("prior-art")?.run(db, ctx)).toThrow(
+        expect.objectContaining({ code: "usage", message: 'usage: dim q prior-art "<path fragment>"' }),
+      );
     } finally {
       db.close();
     }
@@ -122,6 +122,13 @@ describe("read path", () => {
       const missing = findQuery("thread")?.run(db, { ...ctx, arg: "zzzzzzzz" });
       expect(missing?.rows).toEqual([]);
       expect(missing?.note).toContain("no session starts with");
+
+      expect(() => findQuery("thread")?.run(db, ctx)).toThrow(
+        expect.objectContaining({ code: "usage", message: "usage: dim q thread <id-prefix>[@<ts>]" }),
+      );
+      expect(() => findQuery("thread")?.run(db, { ...ctx, arg: "" })).toThrow(
+        expect.objectContaining({ code: "usage" }),
+      );
     } finally {
       db.close();
     }
@@ -135,6 +142,13 @@ describe("read path", () => {
       expect(quiet?.rows).toEqual([]);
       expect(quiet?.note).toContain("dim sync");
       expect(quiet?.denominator).toContain("last 1 minutes");
+
+      expect(() => findQuery("running")?.run(db, { ...ctx, arg: "soon" })).toThrow(
+        expect.objectContaining({
+          code: "usage",
+          message: "soon is not a count; usage: dim q running [minutes]",
+        }),
+      );
     } finally {
       db.close();
     }

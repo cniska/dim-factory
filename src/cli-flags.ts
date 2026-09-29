@@ -14,6 +14,18 @@ export function readFlags(args: string[], allowed: string[], fail: FlagFail): Ma
   return given;
 }
 
+export function positionalArg(args: string[], valueFlags: string[], fail: FlagFail): string | undefined {
+  const positionals: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index] as string;
+    if (valueFlags.includes(arg)) index += 1;
+    else if (!arg.startsWith("--")) positionals.push(arg);
+  }
+  if (positionals.length > 1)
+    throw fail(`takes one argument, and got ${positionals.length}: ${positionals.join(" ")}`);
+  return positionals[0];
+}
+
 export function requiredFlag(given: Map<string, string>, flag: string, fail: FlagFail): string {
   const value = given.get(flag);
   if (value === undefined) throw fail(`${flag} is required`);

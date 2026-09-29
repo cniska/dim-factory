@@ -648,21 +648,16 @@ describe("factory order query", () => {
     db.close();
   });
 
-  test("preserves missing-argument and ambiguous-prefix responses", () => {
+  test("refuses a missing id and an ambiguous prefix as usage errors", () => {
     const db = floor();
     queueOrder(db, { id: "overlap-one", project: "cniska/dim-factory", title: "One" }, attemptOperator);
     queueOrder(db, { id: "overlap-two", project: "cniska/dim-factory", title: "Two" }, attemptOperator);
-    expect(findQuery("order")?.run(db, ctx)).toEqual({
-      denominator: "",
-      columns: ["error"],
-      rows: [["usage: dim q order <order-id>"]],
-    });
-    expect(findQuery("order")?.run(db, { ...ctx, arg: "overlap" })).toEqual({
-      denominator: "",
-      columns: ["id"],
-      rows: [],
-      note: "overlap matches more than one order",
-    });
+    expect(() => findQuery("order")?.run(db, ctx)).toThrow(
+      expect.objectContaining({ code: "usage", message: "usage: dim q order <order-id>" }),
+    );
+    expect(() => findQuery("order")?.run(db, { ...ctx, arg: "overlap" })).toThrow(
+      expect.objectContaining({ code: "usage", message: "overlap matches more than one order" }),
+    );
     db.close();
   });
 

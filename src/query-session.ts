@@ -1,4 +1,5 @@
-import { type Query, scalar, table, toRows } from "./query";
+import { UsageError } from "./cli-contract";
+import { type Query, requiredArg, scalar, table, toRows } from "./query";
 import { SAID } from "./query-search";
 
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/;
@@ -18,24 +19,25 @@ function parsePassageRef(ref: string): { id: string; at?: string } {
   return at === undefined ? { id: ref } : { id: ref.slice(0, ref.length - at.length - 1), at };
 }
 
+function minutesIn(arg: string): number {
+  if (!/^\d+$/.test(arg)) throw new UsageError(`${arg} is not a count; usage: ${running.usage}`);
+  return Number(arg);
+}
+
 export const thread: Query = {
   name: "thread",
   summary: "read one session's exchange, or the messages around a timestamp",
   usage: "dim q thread <id-prefix>[@<ts>]",
   window: "none",
-  run: (db, { arg }) => {
-    if (!arg) {
-      return { denominator: "", columns: ["error"], rows: [["usage: dim q thread <id-prefix>[@<ts>]"]] };
-    }
-    const { id: prefix, at } = parsePassageRef(arg);
+  run: (db, ctx) => {
+    const { id: prefix, at } = parsePassageRef(requiredArg(ctx, thread.usage));
     const found = table(db, "SELECT id FROM session WHERE id LIKE ? || '%' LIMIT 2", [prefix]);
-    if (found.length === 0) {
+    if (found.length > 1) throw new UsageError(`${prefix} matches more than one session`);
+    const [match] = found;
+    if (!match) {
       return { denominator: "", columns: ["id"], rows: [], note: `no session starts with ${prefix}` };
     }
-    if (found.length > 1) {
-      return { denominator: "", columns: ["id"], rows: [], note: `${prefix} matches more than one session` };
-    }
-    const id = found[0]?.id as string;
+    const id = match.id as string;
     const columns = ["when", "role", "skill", "text"];
     const said = `FROM message m WHERE m.session_id = ? AND m.text IS NOT NULL AND ${SAID}`;
     const select = `SELECT substr(ts, 1, 16) AS "when", role,
@@ -71,8 +73,7 @@ export const running: Query = {
   usage: "dim q running [minutes]",
   window: "none",
   run: (db, ctx) => {
-    const { arg } = ctx;
-    const minutes = arg && /^\d+$/.test(arg) ? Number(arg) : 30;
+    const minutes = ctx.arg === undefined ? 30 : minutesIn(ctx.arg);
     const columns = ["id", "kind", "project", "last_seen", "doing"];
     const records = table(
       db,

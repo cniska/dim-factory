@@ -1,3 +1,4 @@
+import { UsageError } from "./cli-contract";
 import {
   displayedAnswer,
   findingStandingsOf,
@@ -6,29 +7,25 @@ import {
 } from "./order-finding-state";
 import { describeState, orderState } from "./order-state";
 import { isTerminalOrderStatus, type OrderStatus, orderStatusSql } from "./order-status";
-import { type Query, table, toRows } from "./query";
+import { type Query, requiredArg, table, toRows } from "./query";
 
 export const order: Query = {
   name: "order",
   summary: "inspect one factory order report, its events, and evidence",
   usage: "dim q order <order-id>",
   window: "none",
-  run: (db, { arg }) => {
-    if (!arg) {
-      return { denominator: "", columns: ["error"], rows: [["usage: dim q order <order-id>"]] };
-    }
+  run: (db, ctx) => {
+    const arg = requiredArg(ctx, order.usage);
     const found = table(
       db,
       `SELECT o.*, ${orderStatusSql("o.id")} AS status FROM factory_order o WHERE o.id LIKE ? || '%' LIMIT 2`,
       [arg],
     );
-    if (found.length === 0) {
+    if (found.length > 1) throw new UsageError(`${arg} matches more than one order`);
+    const [report] = found;
+    if (!report) {
       return { denominator: "", columns: ["id"], rows: [], note: `no order starts with ${arg}` };
     }
-    if (found.length > 1) {
-      return { denominator: "", columns: ["id"], rows: [], note: `${arg} matches more than one order` };
-    }
-    const report = found[0] as Record<string, unknown>;
     const id = report.id as string;
     const state = isTerminalOrderStatus(report.status as OrderStatus) ? null : orderState(db, id);
     const columns = [

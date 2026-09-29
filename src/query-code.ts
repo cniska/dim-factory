@@ -1,4 +1,4 @@
-import { type Query, scalar, table, toRows } from "./query";
+import { type Query, requiredArg, scalar, table, toRows } from "./query";
 import { withoutWorktree } from "./worktree";
 
 const PER_REPO = 3;
@@ -10,16 +10,7 @@ export const priorArt: Query = {
   window: "none",
   run: (db, ctx) => {
     const columns = ["file", "repo", "commits", "days_since", "authors"];
-    const fragment = ctx.arg ?? "";
-    if (!fragment) {
-      return {
-        denominator: "no path given",
-        columns,
-        rows: [],
-        note: 'name part of a path, as in `dim q prior-art ".github/workflows"` or `dim q prior-art Dockerfile`',
-      };
-    }
-
+    const fragment = requiredArg(ctx, priorArt.usage);
     const records = table(
       db,
       `WITH matched AS (

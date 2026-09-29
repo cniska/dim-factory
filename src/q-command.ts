@@ -1,4 +1,5 @@
 import { type Command, UsageError } from "./cli-contract";
+import { positionalArg } from "./cli-flags";
 import { openReadOnly } from "./db-read";
 import { dbPath, resolveHomeDir } from "./paths";
 import type { QueryResult } from "./query";
@@ -17,19 +18,18 @@ export const qCommand: Command = {
       return {
         queries: QUERIES.map((q) => ({
           name: q.name,
-          usage: q.usage ?? `dim q ${q.name}`,
+          usage: q.usage,
           summary: q.summary,
         })),
       };
     }
     const query = findQuery(name);
     if (!query) throw new UsageError(`no query named ${name}; dim q list names them`);
-    const flagValues = new Set<string>();
-    for (const flag of ["--since", "--rows"]) {
-      const at = args.indexOf(flag);
-      if (at !== -1 && args[at + 1]) flagValues.add(args[at + 1] as string);
-    }
-    const arg = args.find((a) => !a.startsWith("--") && a !== name && !flagValues.has(a));
+    const arg = positionalArg(
+      args.slice(1),
+      ["--since", "--rows"],
+      (message) => new UsageError(`dim q ${name} ${message}`),
+    );
     const since = windowFromArgs(args, query.window);
     const maxRows = rowsFromArgs(args);
     const db = openReadOnly(dbPath());

@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { UsageError } from "./cli-contract";
 
 export type QueryResult = {
   denominator: string;
@@ -18,10 +19,15 @@ export type QueryWindow = "recent" | "history" | "none";
 export type Query = {
   name: string;
   summary: string;
-  usage?: string;
+  usage: string;
   window: QueryWindow;
   run: (db: Database, ctx: QueryContext) => QueryResult;
 };
+
+export function requiredArg(ctx: QueryContext, usage: string): string {
+  if (!ctx.arg?.trim()) throw new UsageError(`usage: ${usage}`);
+  return ctx.arg;
+}
 
 export function window(
   col: string,
