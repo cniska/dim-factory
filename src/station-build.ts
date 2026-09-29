@@ -18,11 +18,12 @@ import { type BriefedOrder, briefHeader } from "./station-brief";
 import { commitBuildTurn, undoInterruptedJudgement } from "./station-build-commit";
 import { continueRebaseTurn, reopenRebase } from "./station-build-rebase";
 import { BUILD_TURN_SCHEMA, parseBuildTurn } from "./station-build-turn";
+import { stationDirectory } from "./station-directory";
 import type { PlanSlice } from "./station-plan-artifact";
 import { writeTrace } from "./trace-store";
 import type { Capability } from "./worker-capabilities";
 import { workspaceContract } from "./workspace";
-import { repoRoot, worktreePath } from "./worktree";
+import { repoRoot } from "./worktree";
 
 export const BUILDER_CAPABILITIES: Capability[] = [
   "bootstrap-worker",
@@ -219,7 +220,7 @@ export const buildStation: StationRun<BuildContext, BuildOutcome> = {
       )
       .get(order.id);
     const root = repoRoot(dir);
-    const worktree = worktreePath(root, order.id);
+    const worktree = stationDirectory(dir, order.id);
     const undone = undoInterruptedJudgement(db, order.id, worktree);
     if (undone) writeTrace(db, { event: "order.judgement_undone", orderId: order.id, name: undone });
     const workspace = workspaceContract(worktree);

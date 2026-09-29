@@ -30,6 +30,8 @@ const MESSAGES = {
     `order ${m.orderId} ${STATION_ROLES[m.station]} did not start a turn; ${rerun(m)}`,
   worker_sessionless: (m: { orderId: string; role: StationRole; worker: string }) =>
     `order ${m.orderId} ${m.role} ${m.worker} accepted its assignment with no harness session, which a rebuild with the order in flight leaves; \`dim order drop ${m.orderId}\` ends the order`,
+  worktree_missing: (m: { orderId: string; worktree: string }) =>
+    `order ${m.orderId} has no worktree at ${m.worktree}; the first \`dim order plan ${m.orderId}\` starts it and makes one`,
   harness_bound: (m: { orderId: string; role: StationRole; harness: HarnessName }) =>
     `order ${m.orderId} ${m.role} runs under the ${m.harness} harness; delegate it with --harness ${m.harness}`,
 };

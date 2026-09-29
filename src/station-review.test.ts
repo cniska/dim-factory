@@ -35,6 +35,7 @@ import { approvePlan } from "./station-approvals.test-support";
 import { ReviewRefused, reviewerBrief, reviewRange, reviewStation } from "./station-review";
 import { mintWorker } from "./worker";
 import { WORKER_NAME_VAR } from "./worker-name";
+import { worktreePath } from "./worktree";
 
 const trunk = integratedRepo();
 const worktrees: string[] = [];
@@ -102,14 +103,15 @@ function floor(): {
   });
   opened.push(db);
   const builder = mintWorker(db, { role: "builder", sessionId: `builder-${opened.length}` });
-  const dir = orderWorktree(trunk.dir, `review-${opened.length}`);
-  worktrees.push(dir);
+  const repo = integratedRepo();
+  worktrees.push(repo.dir);
   queueOrder(
     db,
     { line: "feat", id: "order-1", project: "cniska/dim-factory", title: "Read a slice" },
     operator.name,
   );
-  startOrder(db, "order-1", operator.name, undefined, trunk.dir);
+  startOrder(db, "order-1", operator.name, undefined, repo.dir);
+  const dir = worktreePath(repo.dir, "order-1");
   approvePlan(db, "order-1", operator.name);
   return {
     db,
