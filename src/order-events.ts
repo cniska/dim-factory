@@ -28,5 +28,3 @@ export const ATTEMPT_OUTCOMES = [
 
 export type AttemptOutcome = (typeof ATTEMPT_OUTCOMES)[number];
 export const ATTEMPT_OUTCOMES_SQL = ATTEMPT_OUTCOMES.map((outcome) => `'${outcome}'`).join(",");
-
-export type EvidenceReference = Record<string, string | number | boolean | null>;

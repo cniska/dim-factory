@@ -1,7 +1,6 @@
 import type { SandboxedCheck } from "./check-sandbox";
 import { CodedError } from "./coded-error";
 import type { Replay, Rewrite } from "./git-rebase-contract";
-import type { EvidenceReference } from "./order-events";
 import type { OrderStatus } from "./order-status";
 import type { Station } from "./station-contract";
 
@@ -42,7 +41,7 @@ type Written = { ts?: string };
 
 export type OrderEvent = Written &
   (
-    | { kind: "queued"; worker: string; evidence?: EvidenceReference }
+    | { kind: "queued"; worker: string }
     | { kind: "started"; worker: string }
     | { kind: "dropped"; worker: string; reason: string }
     | { kind: "station_started"; worker: string; station: Station; sessionId?: string }
@@ -53,7 +52,7 @@ export type OrderEvent = Written &
     | { kind: "finding_raised"; worker: string; findingId: number }
     | { kind: "finding_answered"; worker: string; findingId: number; answerId: number }
     | { kind: "ship_retried"; worker: string }
-    | { kind: "failed"; worker?: string; station: Station; reason: string; evidence?: EvidenceReference }
+    | { kind: "failed"; worker?: string; station: Station; reason: string }
   );
 
 export type OrderEventColumns = {
@@ -65,7 +64,6 @@ export type OrderEventColumns = {
   answerId?: number;
   artifactId?: number;
   reason?: string;
-  evidence?: EvidenceReference;
 };
 
 export type Order = {

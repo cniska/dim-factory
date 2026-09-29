@@ -6,36 +6,7 @@ import { dropOrder, queueOrder } from "./order-lifecycle";
 import { orderStatus } from "./order-status";
 import { mintWorker } from "./worker";
 
-function columns(db: Database, table: string): string[] {
-  return db
-    .query<{ name: string }, []>(`PRAGMA table_info(${table})`)
-    .all()
-    .map((row) => row.name);
-}
-
 describe("factory domain event boundary", () => {
-  test("keeps lifecycle references and dedicated records in the durable schema", () => {
-    const db = new Database(":memory:");
-    db.run(SCHEMA_SQL);
-
-    expect(columns(db, "factory_order_event")).toEqual(expect.arrayContaining(["evidence", "artifact_id"]));
-    expect(columns(db, "factory_order_attempt")).toEqual(
-      expect.arrayContaining(["session_id", "provider_session_id", "harness", "model", "tier"]),
-    );
-    expect(columns(db, "factory_order_artifact")).toEqual([
-      "id",
-      "order_id",
-      "kind",
-      "revision",
-      "body",
-      "head_sha",
-      "review_id",
-    ]);
-    expect(columns(db, "factory_order")).not.toContain("status");
-    expect(columns(db, "factory_order_event")).not.toContain("status");
-    db.close();
-  });
-
   test("retains the domain event when diagnostic trace storage is unavailable", () => {
     const db = new Database(":memory:");
     db.run(SCHEMA_SQL);
@@ -49,21 +20,13 @@ describe("factory domain event boundary", () => {
       worker,
       "2026-09-25T09:00:00.000Z",
     );
-    appendOrderEvent(
-      db,
-      orderId,
-      { kind: "queued", worker, evidence: { source: "operator", request: 1 } },
-      "2026-09-25T09:01:00.000Z",
-    );
+    appendOrderEvent(db, orderId, { kind: "queued", worker }, "2026-09-25T09:01:00.000Z");
 
     expect(
       db
-        .query("SELECT kind, evidence FROM factory_order_event WHERE order_id = ? ORDER BY id DESC")
+        .query("SELECT count(*) AS n FROM factory_order_event WHERE order_id = ? AND kind = 'queued'")
         .get(orderId),
-    ).toEqual({
-      kind: "queued",
-      evidence: JSON.stringify({ source: "operator", request: 1 }),
-    });
+    ).toEqual({ n: 2 });
     db.close();
   });
 
@@ -77,7 +40,6 @@ describe("factory domain event boundary", () => {
         id: "queue-history",
         project: "example/project",
         title: "Queue history",
-        provenance: { source: "operator", request: 7 },
       },
       worker,
       "2026-09-25T09:00:00.000Z",

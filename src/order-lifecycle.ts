@@ -16,12 +16,7 @@ export function queueOrder(db: Database, order: NewOrder, worker: string, at = n
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [order.id, order.project, order.title, order.line ?? "feat", order.description ?? null, at, at],
     );
-    return appendOrderEventInTransaction(
-      db,
-      order.id,
-      { kind: "queued", worker, evidence: order.provenance },
-      at,
-    );
+    return appendOrderEventInTransaction(db, order.id, { kind: "queued", worker }, at);
   });
 }
 

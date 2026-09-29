@@ -24,7 +24,6 @@ function eventValues(orderId: string, event: OrderEvent, ts: string): (string | 
     columns.answerId ?? null,
     columns.artifactId ?? null,
     columns.reason ?? null,
-    JSON.stringify(columns.evidence ?? {}),
   ];
 }
 
@@ -58,8 +57,8 @@ export function appendOrderEventInTransaction(
   const written = db.run(
     `INSERT INTO factory_order_event
        (order_id, ts, kind, worker, session_id, station, commit_sha, finding_id,
-        answer_id, artifact_id, reason, evidence)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        answer_id, artifact_id, reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     eventValues(orderId, event, ts),
   );
   db.run("UPDATE factory_order SET updated_at = ? WHERE id = ?", [ts, orderId]);

@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { fail } from "./order-contract";
-import type { EvidenceReference, OrderEventKind } from "./order-events";
+import type { OrderEventKind } from "./order-events";
 import type { OrderLine } from "./order-line";
 
 export const ORDER_STATUSES = ["queued", "running", "shipped", "dropped"] as const;
@@ -21,7 +21,6 @@ export type NewOrder = {
   title: string;
   line?: OrderLine;
   description?: string;
-  provenance?: EvidenceReference;
 };
 
 export function isTerminalOrderStatus(status: OrderStatus): boolean {

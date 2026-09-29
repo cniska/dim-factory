@@ -211,8 +211,8 @@ describe("rebuilding a database an older schema wrote", () => {
       "INSERT INTO factory_worker (name, role, started_at, session_id) VALUES ('copper-1', 'builder', '2026-01-01T00:00:00Z', 'session-1')",
     );
     db.run(
-      `INSERT INTO factory_order_event (order_id, ts, kind, worker, evidence)
-       VALUES ('order-history', '2026-01-01T00:00:00Z', 'queued', 'copper-1', '{"provenance":"issue-1"}')`,
+      `INSERT INTO factory_order_event (order_id, ts, kind, worker)
+       VALUES ('order-history', '2026-01-01T00:00:00Z', 'queued', 'copper-1')`,
     );
     db.run(
       `INSERT INTO factory_order_attempt

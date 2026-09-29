@@ -5,7 +5,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { STATIONS_SQL } from "./station-contract";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 83;
+export const SCHEMA_VERSION = 84;
 
 export const DISCARDED_COLUMNS: readonly string[] = [
   "factory_worker.token_digest",
@@ -14,6 +14,7 @@ export const DISCARDED_COLUMNS: readonly string[] = [
   "factory_order_worker.provider_session_id",
   "factory_order_worker.harness",
   "factory_order.priority",
+  "factory_order_event.evidence",
 ];
 
 export const SCHEMA_SQL = `
@@ -321,8 +322,7 @@ CREATE TABLE IF NOT EXISTS factory_order_event (
   finding_id            INTEGER,
   answer_id             INTEGER REFERENCES factory_order_finding_answer(id) ON DELETE CASCADE,
   artifact_id           INTEGER REFERENCES factory_order_artifact(id) ON DELETE CASCADE,
-  reason                TEXT,
-  evidence              TEXT NOT NULL DEFAULT '{}'
+  reason                TEXT
 );
 CREATE INDEX IF NOT EXISTS factory_order_event_order_ts ON factory_order_event(order_id, ts, id);
 
