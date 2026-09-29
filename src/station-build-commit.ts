@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { CHECK_SANDBOX, runSandboxedCheck } from "./check-sandbox";
+import { CHECK_SANDBOX, runSandboxedCheck, type SandboxedCheck } from "./check-sandbox";
 import { stagedComments } from "./comments-staged";
 import { writeTransaction } from "./db";
 import { commentGateFor } from "./gate-commit";
@@ -189,66 +189,10 @@ export function commitBuildTurn(options: {
       sandbox: options.checkSandbox ?? CHECK_SANDBOX,
       env: env.PATH === undefined ? {} : { PATH: env.PATH },
     });
-  const proved =
-    turn.tests.length === 0
-      ? null
-      : proveTests({ worktree, orderId, tree: checked, tests: turn.tests, check: sandboxedCheck });
-  const proof: OrderProof | null = proved && {
-    ...checkRowOf(proved.check),
-    baseSha: before,
-    paths: turn.tests,
-  };
-  const refuse = (code: BuildTurnRefused["code"], message: string): BuildTurnRefused => {
-    git(worktree, ["reset", "-q"]);
-    if (proof) recordOrderProof(db, orderId, proof, before);
-    return new BuildTurnRefused(code, message);
-  };
-  if (proved?.refusal) {
-    throw refuse(
-      proved.refusal.code,
-      `the proof of ${turn.tests.join(", ")} at ${before} was refused: ${proved.refusal.message}`,
-    );
-  }
-  if (proved && proved.check.exitCode === 0 && options.proofRequired) {
-    throw refuse(
-      "proof_green",
-      [
-        `${proved.check.command} passed at ${before} with only ${turn.tests.join(", ")} laid over it, so the named tests do not fail without the fix:`,
-        proved.check.output,
-      ].join("\n"),
-    );
-  }
-  const check = sandboxedCheck();
-  const checkRow = checkRowOf(check);
-  if (check.exitCode !== 0) {
-    const checkId = recordOrderCheck(db, orderId, checkRow, before);
-    throw refuse(
-      "check_failed",
-      `${check.command} exited ${check.exitCode} in the check sandbox; its output is on check ${checkId}`,
-    );
-  }
-
-  const drifted = checkedTreeRefusal(worktree, checked, check.command);
-  if (drifted) throw refuse(drifted.code, drifted.message);
   const changed = !git(worktree, ["diff", "--cached", "--quiet"]).ok;
-  if (!changed && !recorded) {
-    throw new BuildTurnRefused("no_change", "the turn left no change in the worktree to commit");
-  }
-  const fixed = turn.answers.filter((one) => one.answer === "fixed").map((one) => one.finding);
-  if (!changed && fixed.length > 0) {
-    throw new BuildTurnRefused(
-      "no_change",
-      `the turn answers finding ${fixed.join(", ")} fixed and left no change in the worktree; refuse a finding that needs no change, with the reason`,
-    );
-  }
-  if (!changed) {
-    writeTransaction(db, () => {
-      recordOrderCheck(db, orderId, checkRow, before);
-      answerOrderFindings(db, orderId, options.runId, turn.answers, builder);
-      if (options.finalSlice) recordOrderBuild(db, orderId, turn.artifact, before, builder);
-    });
-    return { sha: before };
-  }
+  if (!changed)
+    return recordUnchangedTurn({ ...options, before, recorded: recorded !== null, check: sandboxedCheck });
+
   const commit = git(
     worktree,
     ["-c", `core.hooksPath=${hooksOutsideTree(worktree)}`, "commit", "-q", "-F", "-"],
@@ -257,8 +201,45 @@ export function commitBuildTurn(options: {
       stdin: `${turn.subject}\n`,
     },
   );
-  if (!commit.ok) throw refuse("commit_refused", `git refused the commit: ${commit.err || commit.out}`);
+  if (!commit.ok) {
+    git(worktree, ["reset", "-q"]);
+    throw new BuildTurnRefused("commit_refused", `git refused the commit: ${commit.err || commit.out}`);
+  }
+  let proof: OrderProof | null = null;
+  const refuse = (code: BuildTurnRefused["code"], message: string): BuildTurnRefused => {
+    if (proof) recordOrderProof(db, orderId, proof, before);
+    return new BuildTurnRefused(code, message);
+  };
   try {
+    const proved =
+      turn.tests.length === 0 ? null : proveTests({ worktree, tests: turn.tests, check: sandboxedCheck });
+    proof = proved && { ...checkRowOf(proved.check), baseSha: before, paths: turn.tests };
+    if (proved?.refusal) {
+      throw refuse(
+        proved.refusal.code,
+        `the proof of ${turn.tests.join(", ")} at ${before} was refused: ${proved.refusal.message}`,
+      );
+    }
+    if (proved && proved.check.exitCode === 0 && options.proofRequired) {
+      throw refuse(
+        "proof_green",
+        [
+          `${proved.check.command} passed at ${before} with only ${turn.tests.join(", ")} laid over it, so the named tests do not fail without the fix:`,
+          proved.check.output,
+        ].join("\n"),
+      );
+    }
+    const check = sandboxedCheck();
+    const checkRow = checkRowOf(check);
+    if (check.exitCode !== 0) {
+      const checkId = recordOrderCheck(db, orderId, checkRow, before);
+      throw refuse(
+        "check_failed",
+        `${check.command} exited ${check.exitCode} in the check sandbox; its output is on check ${checkId}`,
+      );
+    }
+    const drifted = checkedTreeRefusal(worktree, checked, check.command);
+    if (drifted) throw refuse(drifted.code, drifted.message);
     const sha = head(worktree);
     const numstat = git(worktree, [
       "-c",
@@ -290,12 +271,70 @@ export function commitBuildTurn(options: {
     for (const path of unparsed) writeTrace(db, { event: "order.file_unparsed", orderId, path });
     return { sha };
   } catch (error) {
-    const undone = git(worktree, ["reset", "-q", "--soft", before]);
-    if (!undone.ok) {
-      throw new Error(`the commit was not recorded and could not be taken back: ${undone.err}`, {
-        cause: error,
-      });
-    }
+    undoCommit(worktree, before, error);
     throw error;
   }
+}
+
+export function undoInterruptedJudgement(db: Database, orderId: string, worktree: string): string | null {
+  const recorded = latestOrderCommit(db, orderId);
+  const base = recorded ? recorded.sha.toLowerCase() : trunkForkPoint(worktree);
+  const current = head(worktree);
+  if (current === base) return null;
+  const parent = git(worktree, ["rev-parse", "-q", "--verify", "HEAD^"]);
+  if (!parent.ok || parent.out !== base) return null;
+  undoCommit(worktree, base);
+  return current;
+}
+
+function undoCommit(worktree: string, before: string, cause?: unknown): void {
+  const undone = git(worktree, ["reset", "-q", "--soft", before]);
+  const unstaged = undone.ok ? git(worktree, ["reset", "-q"]) : undone;
+  if (!unstaged.ok) {
+    throw new Error(`the commit was not kept and could not be taken back to ${before}: ${unstaged.err}`, {
+      cause,
+    });
+  }
+}
+
+function recordUnchangedTurn(options: {
+  db: Database;
+  orderId: string;
+  runId: string;
+  builder: string;
+  worktree: string;
+  turn: BuildTurn;
+  finalSlice: boolean;
+  before: string;
+  recorded: boolean;
+  check: () => SandboxedCheck;
+}): { sha: string } {
+  const { db, orderId, builder, worktree, turn, before } = options;
+  if (!options.recorded)
+    throw new BuildTurnRefused("no_change", "the turn left no change in the worktree to commit");
+  const fixed = turn.answers.filter((one) => one.answer === "fixed").map((one) => one.finding);
+  if (fixed.length > 0) {
+    throw new BuildTurnRefused(
+      "no_change",
+      `the turn answers finding ${fixed.join(", ")} fixed and left no change in the worktree; refuse a finding that needs no change, with the reason`,
+    );
+  }
+  const check = options.check();
+  const checkRow = checkRowOf(check);
+  if (check.exitCode !== 0) {
+    const checkId = recordOrderCheck(db, orderId, checkRow, before);
+    git(worktree, ["reset", "-q"]);
+    throw new BuildTurnRefused(
+      "check_failed",
+      `${check.command} exited ${check.exitCode} in the check sandbox; its output is on check ${checkId}`,
+    );
+  }
+  const drifted = checkedTreeRefusal(worktree, stagedTree(worktree), check.command);
+  if (drifted) throw new BuildTurnRefused(drifted.code, drifted.message);
+  writeTransaction(db, () => {
+    recordOrderCheck(db, orderId, checkRow, before);
+    answerOrderFindings(db, orderId, options.runId, turn.answers, builder);
+    if (options.finalSlice) recordOrderBuild(db, orderId, turn.artifact, before, builder);
+  });
+  return { sha: before };
 }

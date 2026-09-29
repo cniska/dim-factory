@@ -4,7 +4,6 @@ What is not built, highest priority first. An entry is here only for a need this
 
 ## Bugs
 
-- **A test added after its fix is proved against the fix** — a proof lays the named tests over the head the turn started from, so a follow-up turn that adds only a test for an earlier commit's fix is proved on a base that already holds the fix, and runs green whether or not the test catches the defect (`skill-load-once`, 2026-09-29: `b553745` proved on `88f16f9`). `station-build-proof.ts` `proveTests`. Prove a follow-up turn's tests against the order's fork point.
 - **`format-edit.test.ts` fails inside a worker** — two tests call `formatAfterEdit` with the process environment, so under a worker's `DIM_WORKER_NAME` it formats nothing and `bun run verify` goes red in a build turn. `format-edit.test.ts`. Pass the tests an empty environment.
 - **A plugin skill loads under two names** — a `Skill` call names it `dim:dim-plan`, while a typed `/dim:dim-plan`, which `COMMAND_NAME` rejects for its colon, takes `dim-plan` from its body path, so `skill_load` records one skill under two names. `ingest-skill-load.ts` `COMMAND_NAME`, `ingest-parse-claude.ts`. Read the plugin name from the typed command.
 - **Hook payloads are stored verbatim** — every PostToolUse stdin, with file contents, command output and edits, goes into `hook_event.payload`, which nothing reads, against [`design.md`](design.md) "Never stored". `ingest-spool.ts` `drainSpool`, `db-schema.ts` `hook_event`, `ingest-sync.ts`. Keep the parsed fields; drop the column.

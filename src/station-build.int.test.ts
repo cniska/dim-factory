@@ -690,25 +690,22 @@ describe("builder station", () => {
       expect(readFileSync(join(worktree, ".cache", "out"), "utf8")).toBe("from an earlier run\n");
     });
 
-    test("pins the slice as a commit on its base while it proves and drops the pin once the slice is back", async () => {
-      const { failure, worktree, base, head, outputs } = await sliceTurn(
-        "pinned-proof-order",
+    test("proves the slice's commit against its parent", async () => {
+      const { failure, worktree, base, outputs } = await sliceTurn(
+        "parent-proof-order",
         "fix",
         ["proof.sh"],
         {
-          check:
-            "git rev-parse refs/dim/proof/pinned-proof-order^ refs/dim/proof/pinned-proof-order^{tree}; sh proof.sh",
+          check: "git rev-parse HEAD^; sh proof.sh",
         },
       );
       expect(failure).toBeUndefined();
-      expect(outputs[0]?.result.split("\n").slice(0, 2)).toEqual([
-        base,
-        git(worktree, ["rev-parse", `${head}^{tree}`]),
-      ]);
-      expect(git(worktree, ["for-each-ref", "refs/dim/proof/"])).toBe("");
+      expect(outputs[0]?.result.split("\n")[0]).toBe(base);
+      expect(git(worktree, ["for-each-ref", "refs/dim/"])).toBe("");
     });
 
-    async function leftPinned(orderId: string, parentOf: (head: string) => string) {
+    test("undoes a slice commit a killed judgement left before the next builder starts", async () => {
+      const orderId = "killed-judgement-order";
       const db = database();
       const { repo, operator } = orderAtBuild(
         db,
@@ -721,23 +718,19 @@ describe("builder station", () => {
       writeFileSync(join(worktree, "proof.sh"), "test -f fixed.txt\n");
       writeFileSync(join(worktree, "fixed.txt"), "fixed\n");
       git(worktree, ["add", "-A"]);
-      const slice = git(worktree, ["write-tree"]);
-      const parent = parentOf(git(worktree, ["rev-parse", "HEAD"]));
-      const pin = git(worktree, [
+      git(worktree, [
         "-c",
         "user.name=t",
         "-c",
         "user.email=t@e",
-        "commit-tree",
-        "--no-gpg-sign",
-        "-p",
-        parent,
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-q",
         "-m",
-        "pin",
-        slice,
+        "fix: fix it",
       ]);
-      git(worktree, ["update-ref", `refs/dim/proof/${orderId}`, pin]);
-      git(worktree, ["restore", "--source=HEAD", "--staged", "--worktree", "--", ":/"]);
+      const left = git(worktree, ["rev-parse", "HEAD"]);
       let found = {};
       await runOrderBuildLive(db, orderId, operator.name, {
         dir: repo.dir,
@@ -746,32 +739,19 @@ describe("builder station", () => {
         checkSandbox: confiningCheckSandbox(),
         adapter: builderTurn((request) => {
           found = {
-            restored: existsSync(join(request.cwd, "fixed.txt")),
+            head: git(request.cwd, ["rev-parse", "HEAD"]),
+            kept: existsSync(join(request.cwd, "fixed.txt")),
             staged: git(request.cwd, ["diff", "--cached", "--name-only"]),
-            pins: git(request.cwd, ["for-each-ref", "refs/dim/proof/"]),
           };
-          writeFileSync(join(request.cwd, "proof.sh"), "test -f fixed.txt\n");
-          writeFileSync(join(request.cwd, "fixed.txt"), "fixed\n");
           return { subject: "fix: fix it", artifact: "Fixed.", tests: ["proof.sh"] };
         }),
       });
       const traced = db
-        .query("SELECT event, name FROM trace_event WHERE event LIKE 'order.proof_pin_%'")
+        .query("SELECT event, name FROM trace_event WHERE event = 'order.judgement_undone'")
         .all();
+      expect(found).toEqual({ head: repo.sha, kept: true, staged: "" });
+      expect(traced).toEqual([{ event: "order.judgement_undone", name: left }]);
       db.close();
-      return { found, pin, traced };
-    }
-
-    test("puts back a slice a killed proof left pinned before the next builder starts", async () => {
-      const { found, pin, traced } = await leftPinned("killed-proof-order", (head) => head);
-      expect(found).toEqual({ restored: true, staged: "", pins: "" });
-      expect(traced).toEqual([{ event: "order.proof_pin_restored", name: pin }]);
-    });
-
-    test("drops a pin built on another commit, leaving the worktree as it is", async () => {
-      const { found, pin, traced } = await leftPinned("stale-pin-order", (head) => `${head}~1`);
-      expect(found).toEqual({ restored: false, staged: "", pins: "" });
-      expect(traced).toEqual([{ event: "order.proof_pin_dropped", name: pin }]);
     });
 
     test("commits a feat slice whose named tests pass at its base, recording the proof", async () => {
@@ -825,8 +805,8 @@ describe("builder station", () => {
       expect(failure?.message).toContain("the check sandbox let a write through");
       expect({ moved, proofs }).toEqual({ moved: false, proofs: [] });
       expect(git(worktree, ["status", "--porcelain"]).split("\n").sort()).toEqual([
-        "A  fixed.txt",
-        "A  proof.sh",
+        "?? fixed.txt",
+        "?? proof.sh",
       ]);
     });
   });
@@ -1758,12 +1738,12 @@ describe("a commit git refuses", () => {
     expect(correction).toBe(
       [
         "## Commit refused",
-        `The runner's check passed, and its commit of your worktree with the subject \`${tooLong.subject}\` was refused:`,
+        `The runner's commit of your worktree with the subject \`${tooLong.subject}\` was refused before its check ran:`,
         "",
         "git refused the commit: subject is 38 characters, over the 20 allowed",
       ].join("\n"),
     );
-    expect(order.checksRun()).toBe(2);
+    expect(order.checksRun()).toBe(1);
     expect(git(order.worktree, ["rev-list", "--count", `${order.repo.sha}..HEAD`])).toBe("1");
     expect(git(order.worktree, ["log", "-1", "--format=%s"])).toBe("feat: build it");
     expect(order.db.query("SELECT subject FROM factory_order_commit").all()).toEqual([
@@ -1802,7 +1782,7 @@ describe("a commit git refuses", () => {
     ).rejects.toThrow("subject is 40 characters, over the 20 allowed");
 
     expect(builder.calls.map((call) => call.kind)).toEqual(["start", "resume", "resume"]);
-    expect(order.checksRun()).toBe(3);
+    expect(order.checksRun()).toBe(0);
     expect(git(order.worktree, ["rev-parse", "HEAD"])).toBe(order.repo.sha);
     expect(git(order.worktree, ["status", "--porcelain"])).toBe("?? built.txt");
     expect(order.db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 0 });

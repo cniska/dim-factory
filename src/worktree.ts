@@ -176,8 +176,6 @@ export function createWorktree(branch: string, cwd: string = process.cwd()): Cre
   }
 }
 
-export const proofPin = (branch: string): string => `refs/dim/proof/${branch}`;
-
 export function removeWorktree(
   branch: string,
   options: { force?: boolean; cwd?: string } = {},
@@ -194,13 +192,6 @@ export function removeWorktree(
     ? ["-C", root, "worktree", "remove", "--force", path]
     : ["-C", root, "worktree", "remove", path];
   if (!git(args).ok) die(`could not remove the worktree at ${path}`, undefined, report ?? undefined);
-  if (!git(["-C", root, "update-ref", "-d", proofPin(branch)]).ok) {
-    die(
-      `removed the worktree at ${path} but could not drop its proof pin ${proofPin(branch)}`,
-      undefined,
-      report ?? undefined,
-    );
-  }
   return { path, teardown: report };
 }
 

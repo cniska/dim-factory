@@ -22,8 +22,7 @@ import { orderStatus } from "./order-status";
 import type { Env } from "./paths";
 import { holdOrder, startStationAttempt } from "./station-attempt";
 import { type BriefedOrder, briefHeader } from "./station-brief";
-import { commitBuildTurn } from "./station-build-commit";
-import { settlePinnedSlice } from "./station-build-proof";
+import { commitBuildTurn, undoInterruptedJudgement } from "./station-build-commit";
 import { continueRebaseTurn, reopenRebase } from "./station-build-rebase";
 import { BUILD_TURN_SCHEMA, parseBuildTurn } from "./station-build-turn";
 import type { PlanSlice } from "./station-plan-artifact";
@@ -129,7 +128,7 @@ export function commitCorrectionBrief(subject: string, refusal: BuildTurnRefused
     "## Commit refused",
     refusal.code === "comment_added"
       ? `The runner refused to commit your worktree with the subject \`${subject}\` before running its check:`
-      : `The runner's check passed, and its commit of your worktree with the subject \`${subject}\` was refused:`,
+      : `The runner's commit of your worktree with the subject \`${subject}\` was refused before its check ran:`,
     "",
     refusal.message,
   ].join("\n");
@@ -225,11 +224,8 @@ export async function runOrderBuildLive(
   const runId = `build-${crypto.randomUUID()}`;
   const root = repoRoot(options.dir);
   const worktree = worktreePath(root, orderId);
-  const pinned = settlePinnedSlice(worktree, orderId);
-  if (pinned) {
-    const event = pinned.restored ? "order.proof_pin_restored" : "order.proof_pin_dropped";
-    writeTrace(db, { event, orderId, name: pinned.pin });
-  }
+  const undone = undoInterruptedJudgement(db, orderId, worktree);
+  if (undone) writeTrace(db, { event: "order.judgement_undone", orderId, name: undone });
   const workspace = workspaceContract(worktree);
   const convention = conflict ? undefined : checkoutConvention(db, root);
   let builder: string | undefined;

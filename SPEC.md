@@ -16,7 +16,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 - **FR-5** — Every station brief names the order's line, save a build turn that resolves a rebase conflict.
 - **FR-6** — A station skill routes on the line it is briefed with: a `fix` order's station runs `dim-fix`'s part for that station, and a `feat` order's never does.
 - **FR-7** — A station brief carries only what its station skill cannot know — the order's data and the turn's state — and names that skill. The station's procedure is the skill's.
-- **FR-12** — A `fix` order's slice commits only after the runner has seen the declared check fail at the commit the slice was built on, with only the tests the slice names laid over it.
+- **FR-12** — A `fix` order's slice is kept on the order's branch only after the runner has seen the declared check fail at the commit the slice was built on, with only the tests the slice names laid over it.
 
 ## 3. Workers
 
@@ -55,7 +55,7 @@ This document states what must hold, not how. [`docs/`](docs/) explains how each
 - **AC-15** — The wall refuses a request addressed to a host that is not loopback, and a WebSocket opened from another origin. (NF-7)
 - **AC-16** — An artifact holding an image and a link renders neither as something the browser fetches. (NF-8)
 - **AC-17** — A Claude worker whose worktree holds a settings file with a hook runs none of it. (NF-5)
-- **AC-18** — A `fix` slice whose named tests pass at its base is refused with nothing committed, one that names no test is refused, and one whose tests fail there commits; each proof run is recorded as evidence with its base, its head and the tests it ran. (FR-4, FR-12)
+- **AC-18** — A `fix` slice whose named tests pass at its base is refused with nothing kept on the order's branch, one that names no test is refused, and one whose tests fail there is kept; each proof run is recorded as evidence with its base, its head and the tests it ran. (FR-4, FR-12)
 
 ## 6. Open decisions
 
