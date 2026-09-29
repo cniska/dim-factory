@@ -4,7 +4,7 @@ import { withoutWorktree } from "./worktree";
 
 export const CONVENTION_FLOOR = 20;
 
-export type ConventionRecord = {
+type ConventionRecord = {
   repo: string;
   commits: number;
   conventional_pct: number;
@@ -14,7 +14,7 @@ export type ConventionRecord = {
   top_kinds: string | null;
 };
 
-export type ConventionScope = { home: string; conds: string[]; params: unknown[] };
+type ConventionScope = { home: string; conds: string[]; params: unknown[] };
 
 function scoped(scope: ConventionScope): { sql: string; params: unknown[] } {
   return {
@@ -28,7 +28,7 @@ function scoped(scope: ConventionScope): { sql: string; params: unknown[] } {
   };
 }
 
-export function conventionRecords(db: Database, scope: ConventionScope, limit: number): ConventionRecord[] {
+function conventionRecords(db: Database, scope: ConventionScope, limit: number): ConventionRecord[] {
   const { sql, params } = scoped(scope);
   return db
     .prepare(
@@ -54,7 +54,7 @@ export function conventionRecords(db: Database, scope: ConventionScope, limit: n
     .all(...(params as [])) as ConventionRecord[];
 }
 
-export function conventionCommits(db: Database, scope: ConventionScope): number {
+function conventionCommits(db: Database, scope: ConventionScope): number {
   const { sql, params } = scoped(scope);
   const row = db.prepare(`${sql} SELECT count(*) AS n FROM f`).get(...(params as [])) as { n: number };
   return row.n;

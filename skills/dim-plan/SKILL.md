@@ -1,6 +1,6 @@
 ---
 name: dim-plan
-description: Scope a change against what this machine already did — prior art on disk, decisions already taken, and whether an earlier conclusion still holds. Invoked by dim-feat where the cut is not obvious; use directly only to scope work that is not yet a feature or a fix.
+description: Scope a change against what this machine already did — prior art on disk and decisions already taken. Invoked by dim-feat where the cut is not obvious; use directly only to scope work that is not yet a feature or a fix.
 argument-hint: "<what you are about to build>"
 ---
 
@@ -19,9 +19,6 @@ Answer each before proposing an approach.
 1. **Has this shape been built here before?** `dim q prior-art "<path fragment>"` names every tracked file whose path matches, across the repos on disk, dated by the commits that touched it. Every path it prints opens, so the answer is a file to read rather than a memory. Read the repo column before the file — a repo that was only cloned ranks beside the owner's own — and treat recency and commit count as where to look, never as quality.
 
 2. **Was this already decided?** `dim q search "<words the decision would use>"` matches them over every message anyone said, and each hit names the exchange `dim q thread` reads. A decision already taken is not yours to re-take; find it and say what it settled. Where it comes back empty and only a file sweep will answer, the planner sweeps for itself: it reads the repo under the same fixed question, and a separate hand to search would return a conclusion whose grounds the planner then could not check.
-
-3. **Does the earlier conclusion still hold?** `dim q stale <id-prefix>` says how much the code a session touched has moved since it ran. High movement is evidence to re-read what that session concluded, never evidence it was wrong.
-
 ## Design the change
 
 The answers are evidence, not the design. Read the project's rules, affected code and owning docs. Define the requested outcome, boundary, invariants and independently verifiable slices from that context and the record's returned facts. Prefer the project's names and existing contracts; give a new concept one owner and one word.

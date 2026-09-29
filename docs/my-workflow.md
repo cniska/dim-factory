@@ -66,7 +66,7 @@ Verified slices are committed locally; a shared branch is pushed only on my go.
 The same friction met twice becomes a skill, a sharper repository rule, or a gate, so the workflow tightens instead of depending on memory.
 
 - **Check:** the friction does not come back.
-- **Factory:** `q repeats` and `q findings` name the candidates ([`goals.md`](goals.md)); turning one into a gate is still done by hand.
+- **Factory:** a gap; turning friction into a skill, a rule or a gate is done by hand ([`goals.md`](goals.md#cutting-guidance)).
 
 ## Where my attention goes
 

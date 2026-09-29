@@ -47,16 +47,3 @@ export function table(db: Database, sql: string, params: unknown[] = []): Record
 export function toRows(records: Record<string, unknown>[], columns: string[]): (string | number | null)[][] {
   return records.map((r) => columns.map((c) => (r[c] ?? null) as string | number | null));
 }
-
-export const CLAUDE_EDITS =
-  "an edit is matched by the `Edit` and `Write` tool names, and Codex writes a `FileChange`";
-
-export const CLAUDE_STOPS =
-  "a stop is read from fields only Claude writes on a message, and Codex marks an interrupted turn instead";
-
-export const claudeOnly = (...bases: string[]): string =>
-  `These counts are Claude's alone: ${bases.join("; ")}. A session under another tool is absent from them rather than idle.`;
-
-export const stoppedByOwner = (prefix = "m."): string =>
-  `(${prefix}denial_kind = 'user-rejected' OR ${prefix}interrupted_message_id IS NOT NULL ` +
-  `OR ${prefix}user_feedback IS NOT NULL)`;

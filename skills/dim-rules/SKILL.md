@@ -16,9 +16,9 @@ Answer these before writing a line.
 
 1. **Is this rule already settled?** `dim q search "<words the rule would use>"` finds where it was said, across every session. A rule re-litigated is a rule that will be re-litigated again; find what settled it and sharpen that instead.
 
-2. **Is it actually being broken?** `dim q corrections` gives the turns the user physically stopped, by skill, and `dim q rework` gives the files an agent had to revisit after a pushback. A rule nobody breaks is a line paid for on every session to prevent nothing. A rule broken repeatedly under one skill belongs in that skill, not in the file every session loads.
+2. **Is it actually being broken?** The same search finds each time the owner had to say it again. A rule nobody breaks is a line paid for on every session to prevent nothing. A rule broken repeatedly under one skill belongs in that skill, not in the file every session loads.
 
-3. **What does the repo already do?** `dim q convention <repo>` reads the commit format off that repo's own log rather than off anyone's memory of it. What a repo does is the rule; a file that states something else is the thing that is wrong.
+3. **What does the repo already do?** `git log` reads the commit format off that repo's own history rather than off anyone's memory of it. What a repo does is the rule; a file that states something else is the thing that is wrong.
 
 4. **Does the concept already have a word?** Read [`docs/glossary.md`](../../docs/glossary.md). A rule that introduces a second word for a thing already named costs more than it states, because from then on both words are searched and only one is found.
 
@@ -64,7 +64,7 @@ The change is done when:
 
 ## What the record cannot tell you
 
-The record is process: what was said, run, loaded and stopped. `dim q corrections` counts the turns a user stopped, not the ones they should have. A rule broken often may be a rule worth holding harder or a rule worth deleting, and nothing here can tell those apart — it tells you where to look, and the judgement is still yours.
+The record is process: what was said, run and loaded. A rule broken often may be a rule worth holding harder or a rule worth deleting, and nothing here can tell those apart — it tells you where to look, and the judgement is still yours.
 
 ## Red flags
 

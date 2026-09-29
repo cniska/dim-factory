@@ -30,8 +30,7 @@ In a factory order the brief carries only what this skill cannot know: the order
 ## Entry contract
 
 1. **Know what checks this.** Read the command the repo declares — a `package.json` script, a `mise` task, a `Makefile` target — and use it. `dim check-command` prints it. Running what the repo declares is what makes a local check the same check CI runs; an equivalent command assembled by hand is not that.
-2. **Read the rules actually in force.** The standing corrections live in the guidance files, not in a phrase counter — `dim q repeats` returns conversational filler and the corrections are not in it ([`findings.md`](../../docs/findings.md), "The repetition an n-gram counter cannot see"). Read the `CLAUDE.md` and `AGENTS.md` on the walk into this session, imports included, and treat a rule a session has already restated as one that is not taking hold rather than one the agent ignored.
-3. **Know which ground has broken.** `dim q fixes` gives the share of files edited under each skill that a later fix commit came back to, each row carrying the file count its rate stands on — a skill with one file reads as 0% or 100%, so that count is the column to look at first. It names no path, so it says which kind of work has been coming back rather than which file here did. `dim q exemplars` does name paths — the most-edited code that shipped with no fix returning to it — and those are candidates rather than verdicts, since a file nobody came back to may have been right or may have been abandoned. A front arriving here has already asked this; a change that came in directly asks it now.
+2. **Read the rules actually in force.** The standing corrections live in the guidance files. Read the `CLAUDE.md` and `AGENTS.md` on the walk into this session, imports included, and treat a rule a session has already restated as one that is not taking hold rather than one the agent ignored.
 
 ## Slices
 
@@ -129,9 +128,7 @@ Unattended, stop only where the choice is genuinely the owner's: work that is ha
 
 ## What the record cannot tell you
 
-`dim q fixes` says work done under a skill drew later fix commits at some rate. That is the repo's verdict on earlier changes, never on yours, and code nobody came back to may have been right or may have been abandoned.
-
-And effort is not a grade. Work that held took more turns per file than work that came back, more pushback, and more commands ([`findings.md`](../../docs/findings.md), "Effort does not grade the work"). A slice finished quickly is not a slice done well, and the check that was skipped is the usual reason it was quick.
+Effort is not a grade. Work that held took more turns per file than work that came back, more pushback, and more commands ([`findings.md`](../../docs/findings.md), "Effort does not grade the work"). A slice finished quickly is not a slice done well, and the check that was skipped is the usual reason it was quick.
 
 ## Red flags
 

@@ -1,14 +1,12 @@
 ---
 name: dim-review
-description: Review a diff dimension by dimension, one agent each, aimed by what this machine's record says about the ground the change stands on. Use before merging a change or handing it to someone else.
+description: Review a diff dimension by dimension, one agent each. Use before merging a change or handing it to someone else.
 argument-hint: "<diff, branch or path>"
 ---
 
 # Review
 
 One pass per dimension, each in its own agent. A single reader carrying every dimension's checklist applies whichever it read last, and the dimensions are cheap to run in parallel because none of them needs the others' findings.
-
-What makes this a station rather than a checklist is that the record says where to aim. This machine knows which kinds of work have been drawing later `fix:` commits and which code shipped with nothing coming back, so a dimension arrives knowing what it is reading against instead of sweeping.
 
 Review does not edit, commit or land the work it inspects.
 
@@ -36,21 +34,19 @@ Before spawning anything:
 
 1. **Size the diff**, and split it when it combines unrelated work or is too large to review as one logical change. A review that cannot hold the change is not evidence that the change is sound.
 2. **Read the tests first**, then get the intent behind the diff. Tests reveal the behavior the change claims and the failure paths the author considered; the intent explains what the tests cannot.
-3. `dim q fixes` — how often files edited under each skill drew a later fix commit. It counts by skill and names no path, so it says which kind of work has been coming back, never which file in this diff did.
-4. `dim q exemplars` — code that shipped with no fix coming back. These are candidates, not verdicts: a file nobody returned to may have been right or may have been abandoned.
 
 ## The passes
 
 Spawn one agent per dimension at the tier `dim route <harness> reviewer` gives you for the harness you run in, each given the diff, the intent, its brief from [quality dimensions](references/quality-dimensions.md), and only the grounding below, and each with read-only tools. Withhold your own read of the diff — hand over a conclusion and what comes back is agreement with it. A reviewer that can edit answers a finding by editing, and what it overwrites is work it was sent to read.
 
-| dimension | what the record gives it |
+| dimension | what it reads against |
 |---|---|
 | plan | whether the diff delivers the approved plan's slices, naming work that is missing, extra or misunderstood; read the plan in the brief |
-| correctness | use `dim q exemplars` as grounding |
-| tests | use `dim q rework` as grounding; a test claiming an invariant must fail when it is removed |
+| correctness | read the diff and the code it calls |
+| tests | a test claiming an invariant must fail when it is removed |
 | architecture | use `dim q prior-art "<path fragment>"` as grounding |
 | maintainability | use the glossary, project rules and nearby patterns |
-| docs | use `dim q stale <id-prefix>` as grounding |
+| docs | read the docs that describe the changed behavior |
 | security | read the diff and project rules |
 | performance | run only when the plan identifies a performance-sensitive path |
 | style | whether naming, structure and local patterns remain consistent without adding comments or abstraction noise; read the diff and project rules |
@@ -67,17 +63,11 @@ The review is done when:
 - no more than three observations, none of which blocks
 - findings that contradict each other are resolved here, not passed on as a list
 - every finding a dimension raised was checked at its source before it was passed on, cited to `file:line`
-- a path the record named as having held is read against that, and a finding against it is either addressed or explicitly cleared
-
 A dimension's finding is a claim, and a claim carried forward unchecked is how a wrong one becomes the standard. Checking it is this station's work whether or not the reviewer wrote the code — where the author is in the session, `dim-build` says what answering one looks like.
 
 ## See also
 
 - `dim-artifact`
-
-## What the record cannot tell you
-
-Every query here is process or history, never a verdict on this diff. `fixes` says how often work under a skill drew a later fix commit, which is the repo's own judgement on earlier changes, not on this one. Read all of it as where to look hardest, and let the reading decide.
 
 ## Red flags
 

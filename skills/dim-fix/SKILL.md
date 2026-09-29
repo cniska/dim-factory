@@ -24,7 +24,6 @@ A fix is also smaller than a feature and localized differently: 10 files to a fe
 
 Establish what is wrong before changing anything. The record aims this, because these files have a history.
 
-- **What broke here before.** `dim q fixes` gives the share of files edited under each skill that a later fix commit came back to. It names no path, so it says which kind of work has been returning rather than whether this file has; `dim q exemplars` names paths, and only the ones nothing came back to.
 - **What was already tried.** `dim q search "<words the symptom would use>"` finds an attempt that was only ever talked about, and `dim q thread` reads the exchange around a hit. A fix already attempted and abandoned is a fact worth having before attempting it again.
 - **What the trace says.** Where the defect arrived as a report rather than a description, read the report before the code. A stack, a log, or a fault body says which line ran; a description says what someone noticed.
 
@@ -58,10 +57,6 @@ The fix is done when:
 - the repo's own task passes, and its output was read rather than assumed
 - the cause is named — in the commit subject in plain words, and in a comment only where a reader would otherwise break the constraint again
 - the docs describing the changed behavior changed in the same commit
-
-## What the record cannot tell you
-
-`dim q fixes` says work done under a skill drew later fix commits at some rate. That is the repo's verdict on earlier changes, never on yours, and code nobody came back to may have been right or may have been abandoned. A `fix:` commit inside the session that wrote the file is ordinary iteration and not a defect at all.
 
 ## Red flags
 

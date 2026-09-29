@@ -1,34 +1,10 @@
 import type { Query } from "./query";
-import { convention, exemplars, fixes, priorArt, stale } from "./query-code";
-import { corrections, repeats, rework } from "./query-correction";
+import { priorArt } from "./query-code";
 import { factory, findings, order } from "./query-factory";
 import { search } from "./query-search";
-import { running, session, sessions, thread } from "./query-session";
-import { skill, skills, tools } from "./query-skill";
-import { burn } from "./query-usage";
+import { running, thread } from "./query-session";
 
-export const QUERIES: Query[] = [
-  convention,
-  priorArt,
-  stale,
-  search,
-  thread,
-  factory,
-  order,
-  skill,
-  running,
-  fixes,
-  exemplars,
-  repeats,
-  burn,
-  tools,
-  skills,
-  corrections,
-  findings,
-  rework,
-  sessions,
-  session,
-];
+export const QUERIES: Query[] = [priorArt, search, thread, factory, order, running, findings];
 
 export function findQuery(name: string): Query | undefined {
   return QUERIES.find((q) => q.name === name);
