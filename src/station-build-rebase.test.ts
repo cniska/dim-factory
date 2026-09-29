@@ -15,7 +15,7 @@ import {
 } from "./fixtures.test-support";
 import { rebaseState } from "./git-rebase";
 import { orderState } from "./order";
-import { finishAttempt, openAttempt } from "./order-attempt";
+import { openAttempt } from "./order-attempt";
 import { currentOrderCommits, pendingRebaseConflict, type RecordedConflict } from "./order-commits";
 import { recordOrderCommit } from "./order-evidence";
 import { queueOrder, startOrder } from "./order-lifecycle";
@@ -83,7 +83,6 @@ function conflicted(check = "true", markerSize?: number) {
   } catch (error) {
     refused = error;
   }
-  finishAttempt(db, "order-1", "succeeded", undefined, new Date().toISOString());
   attemptIn(db, "order-1", builder, operator, "run-2");
   const recorded = pendingRebaseConflict(db, "order-1") as RecordedConflict;
   const turn = (paths: string[] = ["f.txt"], conflict = recorded) =>

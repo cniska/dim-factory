@@ -87,6 +87,7 @@ function building(db: Database, orderId: string, at?: string): void {
 }
 
 function planned(db: Database, orderId: string, at: string): void {
+  attemptIn(db, orderId, worker, attemptOperator, `plan-${orderId}`, at, "plan");
   recordOrderPlan(
     db,
     orderId,
@@ -395,6 +396,15 @@ describe("factory wall snapshot", () => {
       "2026-09-18T09:00:00.000Z",
     );
     started(db, "order-planned", "2026-09-18T09:00:00.000Z");
+    attemptIn(
+      db,
+      "order-planned",
+      worker,
+      attemptOperator,
+      "plan-order-planned",
+      "2026-09-18T09:00:00.000Z",
+      "plan",
+    );
     recordOrderPlan(db, "order-planned", "## Outcome\n\nBuild it.", worker, [
       { title: "Build it", outcome: "It is verified." },
     ]);

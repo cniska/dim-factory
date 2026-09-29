@@ -128,6 +128,7 @@ function orderAtBuild(
     parentWorker: operator.name,
     sessionId: `${orderId}/planner`,
   });
+  attemptIn(db, orderId, planner.name, operator.name, `plan-${orderId}`, undefined, "plan");
   recordOrderPlan(db, orderId, "## Outcome\n\nBuild the requested result.", planner.name, slices);
   approveOrder(db, orderId, operator.name, undefined);
   return { repo, operator, planner: planner.name };
@@ -184,6 +185,7 @@ describe("builder station", () => {
     ).toEqual([
       { kind: "queued", worker: operator.name, station: null },
       { kind: "started", worker: operator.name, station: null },
+      { kind: "station_started", worker: planner, station: "plan" },
       { kind: "artifact_submitted", worker: planner, station: null },
       { kind: "artifact_approved", worker: operator.name, station: null },
       { kind: "station_started", worker: outcome.builder, station: "build" },
@@ -193,7 +195,7 @@ describe("builder station", () => {
     expect(
       db
         .query(
-          "SELECT run_id, worker, operator_worker, station, kind, outcome FROM factory_order_attempt ORDER BY id",
+          "SELECT run_id, worker, operator_worker, station, kind, outcome FROM factory_order_attempt WHERE station = 'build' ORDER BY id",
         )
         .all(),
     ).toEqual([
@@ -304,7 +306,7 @@ describe("builder station", () => {
     expect(
       db
         .query(
-          "SELECT kind, outcome, resets_at FROM factory_order_attempt WHERE order_id = ? ORDER BY id DESC LIMIT 1",
+          "SELECT kind, outcome, resets_at FROM factory_order_attempt WHERE order_id = ? AND station = 'build' ORDER BY id DESC LIMIT 1",
         )
         .get("limited-order"),
     ).toEqual({ kind: "finished", outcome: "limited", resets_at: "2026-09-27T16:50:00.000Z" });
@@ -1356,7 +1358,9 @@ describe("builder station", () => {
     ).toEqual({ n: 0 });
     expect(
       db
-        .query("SELECT worker, kind, outcome FROM factory_order_attempt WHERE order_id = ? ORDER BY id")
+        .query(
+          "SELECT worker, kind, outcome FROM factory_order_attempt WHERE order_id = ? AND station = 'build' ORDER BY id",
+        )
         .all("second-turn-order"),
     ).toEqual([
       { worker: outcome.builder, kind: "started", outcome: "running" },
@@ -1387,7 +1391,9 @@ describe("builder station", () => {
 
     expect(
       db
-        .query("SELECT kind, outcome FROM factory_order_attempt WHERE order_id = ? ORDER BY id")
+        .query(
+          "SELECT kind, outcome FROM factory_order_attempt WHERE order_id = ? AND station = 'build' ORDER BY id",
+        )
         .all("second-start-order"),
     ).toEqual([
       { kind: "started", outcome: "running" },
@@ -1739,7 +1745,9 @@ describe("a commit git refuses", () => {
       { subject: "feat: build it" },
     ]);
     expect(
-      order.db.query("SELECT worker, kind, outcome FROM factory_order_attempt ORDER BY id").all(),
+      order.db
+        .query("SELECT worker, kind, outcome FROM factory_order_attempt WHERE station = 'build' ORDER BY id")
+        .all(),
     ).toEqual([
       { worker: outcome.builder, kind: "started", outcome: "running" },
       { worker: outcome.builder, kind: "finished", outcome: "succeeded" },
@@ -2113,7 +2121,9 @@ describe("a comment a builder adds", () => {
     expect(git(order.worktree, ["show", "HEAD:built.ts"])).toBe(plain.trim());
     expect(
       order.db
-        .query("SELECT kind, outcome FROM factory_order_attempt WHERE order_id = ? ORDER BY id")
+        .query(
+          "SELECT kind, outcome FROM factory_order_attempt WHERE order_id = ? AND station = 'build' ORDER BY id",
+        )
         .all("comment-corrected-order"),
     ).toEqual([
       { kind: "started", outcome: "running" },

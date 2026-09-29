@@ -279,6 +279,7 @@ describe("build approval integration", () => {
     ).toEqual([
       { kind: "queued", worker: operator.name, commit_sha: null, artifact_head: null, reason: null },
       { kind: "started", worker: operator.name, commit_sha: null, artifact_head: null, reason: null },
+      { kind: "station_started", worker: operator.name, commit_sha: null, artifact_head: null, reason: null },
       {
         kind: "artifact_submitted",
         worker: operator.name,

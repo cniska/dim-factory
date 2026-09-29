@@ -6,6 +6,7 @@ import { installHooks } from "./hooks";
 import type { OrderCheck } from "./order-evidence";
 import type { Env } from "./paths";
 import { startStationAttempt } from "./station-attempt";
+import type { Station } from "./station-contract";
 import { REVIEW_DIMENSIONS, type ReviewFinding } from "./station-review-artifact";
 import { mintWorker, newWorkerSession } from "./worker";
 import type { Role } from "./worker-roles";
@@ -18,8 +19,9 @@ export function attemptIn(
   operatorWorker: string,
   runId = "run-1",
   at = new Date().toISOString(),
+  station: Station = "build",
 ): void {
-  startStationAttempt(db, orderId, { runId, worker, operatorWorker, station: "build" }, at);
+  startStationAttempt(db, orderId, { runId, worker, operatorWorker, station }, at);
 }
 
 export function workerIn(db: Database, role: Role = "builder"): string {

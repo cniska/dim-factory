@@ -1,11 +1,12 @@
 import type { Database } from "bun:sqlite";
-import { ranCheck, reviewIn } from "./fixtures.test-support";
+import { attemptIn, ranCheck, reviewIn } from "./fixtures.test-support";
 import { approveOrder } from "./order-approval";
 import { completeOrderSlice, nextOrderSlice, recordOrderBuild, recordOrderPlan } from "./order-artifacts";
 import { recordOrderCheck } from "./order-evidence";
 import { closeOrderReview, recordOrderReviewArtifact } from "./order-review";
 
 export function approvePlan(db: Database, orderId: string, operator: string): void {
+  attemptIn(db, orderId, operator, operator, `plan-${orderId}`, undefined, "plan");
   recordOrderPlan(db, orderId, "## Outcome\n\nBuild the requested result.", operator, [
     { title: "Build the requested result", outcome: "It is verified." },
   ]);

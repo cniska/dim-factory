@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SCHEMA_SQL } from "./db-schema";
-import { integratedRepo, scratchEnv } from "./fixtures.test-support";
+import { attemptIn, integratedRepo, scratchEnv } from "./fixtures.test-support";
 import { scriptedHarness } from "./harness-scripted.test-support";
 import { orderState } from "./order";
 import { recordOrderPlan } from "./order-artifacts";
@@ -105,6 +105,7 @@ describe("plan approval integration", () => {
       operator.name,
     );
     startOrder(db, "approval-order", operator.name, undefined, repo.dir);
+    attemptIn(db, "approval-order", planner.name, operator.name, "plan-approval-order", undefined, "plan");
     const planId = recordOrderPlan(
       db,
       "approval-order",
@@ -124,6 +125,7 @@ describe("plan approval integration", () => {
     ).toEqual([
       { kind: "queued", worker: operator.name },
       { kind: "started", worker: operator.name },
+      { kind: "station_started", worker: planner.name },
       { kind: "artifact_submitted", worker: planner.name },
       { kind: "artifact_approved", worker: operator.name },
     ]);
@@ -155,6 +157,15 @@ describe("plan approval integration", () => {
       operator.name,
     );
     startOrder(db, "approval-order-3", operator.name, undefined, repo.dir);
+    attemptIn(
+      db,
+      "approval-order-3",
+      planner.name,
+      operator.name,
+      "plan-approval-order-3-158",
+      undefined,
+      "plan",
+    );
     const first = recordOrderPlan(db, "approval-order-3", "## Build\n\nFirst path.", planner.name, slices);
     expect(
       runOrderCommand(
@@ -167,6 +178,15 @@ describe("plan approval integration", () => {
     ).toContain("returned");
     expect(() => runOrderCommand(db, ["approve", "approval-order-3"], null, repo.dir, env(operator))).toThrow(
       expect.objectContaining({ code: "not_next", message: expect.stringContaining("run at plan") }),
+    );
+    attemptIn(
+      db,
+      "approval-order-3",
+      planner.name,
+      operator.name,
+      "plan-approval-order-3-171",
+      undefined,
+      "plan",
     );
     const second = recordOrderPlan(db, "approval-order-3", "## Build\n\nRevised path.", planner.name, slices);
     expect(second).not.toBe(first);
@@ -211,6 +231,15 @@ describe("plan approval integration", () => {
       operator.name,
     );
     startOrder(db, "approval-order-2", operator.name, undefined, repo.dir);
+    attemptIn(
+      db,
+      "approval-order-2",
+      operator.name,
+      operator.name,
+      "plan-approval-order-2-214",
+      undefined,
+      "plan",
+    );
     recordOrderPlan(db, "approval-order-2", "## Build\n\nMake the smallest change.", operator.name, slices);
 
     expect(() => runOrderCommand(db, ["approve", "approval-order-2"], null, repo.dir, env(builder))).toThrow(

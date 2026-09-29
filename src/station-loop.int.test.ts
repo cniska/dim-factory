@@ -64,6 +64,7 @@ describe("the operator loop", () => {
       operator.name,
     );
     startOrder(db, "loop-order", operator.name, undefined, repo.dir);
+    attemptIn(db, "loop-order", operator.name, operator.name, "plan-loop-order", undefined, "plan");
     recordOrderPlan(db, "loop-order", "## Outcome\n\nRun the loop.", operator.name, [
       { title: "Run the loop", outcome: "the loop runs" },
     ]);

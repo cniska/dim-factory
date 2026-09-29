@@ -91,7 +91,7 @@ export function finishAttempt(
   resetsAt?: string,
 ): void {
   const open = openAttempt(db, orderId);
-  if (!open) return;
+  if (!open) throw fail("attempt_not_open", { orderId, outcome });
   db.run(
     `INSERT INTO factory_order_attempt
        (order_id, run_id, worker, operator_worker, session_id, provider_session_id, station, harness, model, tier,

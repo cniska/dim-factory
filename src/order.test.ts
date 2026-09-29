@@ -218,6 +218,7 @@ describe("factory order report records", () => {
     queueOrder(database, { ...order, id: "order-planned" }, attemptOperator);
     start(database, "order-planned");
 
+    attemptIn(database, "order-planned", worker, attemptOperator, "plan-order-planned", undefined, "plan");
     recordOrderPlan(database, "order-planned", "## outcome\n\nMove the order before building.", worker, [
       { title: "Move the order", outcome: "The order reaches build." },
     ]);
@@ -232,7 +233,12 @@ describe("factory order report records", () => {
     ).toEqual({ kind: "plan", body: "## outcome\n\nMove the order before building.", worker });
     expect(
       database.query("SELECT kind FROM factory_order_event WHERE order_id = 'order-planned'").all(),
-    ).toEqual([{ kind: "queued" }, { kind: "started" }, { kind: "artifact_submitted" }]);
+    ).toEqual([
+      { kind: "queued" },
+      { kind: "started" },
+      { kind: "station_started" },
+      { kind: "artifact_submitted" },
+    ]);
     expect(orderState(database, "order-planned")).toEqual({ station: "plan", next: "approve" });
     database.close();
   });
@@ -245,6 +251,7 @@ describe("factory order report records", () => {
     }).name;
     queueOrder(database, { ...order, id: "returned-plan" }, operator);
     start(database, "returned-plan", operator);
+    attemptIn(database, "returned-plan", worker, attemptOperator, "plan-returned-plan", undefined, "plan");
     recordOrderPlan(database, "returned-plan", "## Outcome\n\nKeep the artifact concise.", worker, [
       { title: "Keep it concise", outcome: "The owner can review the result." },
     ]);
@@ -265,6 +272,7 @@ describe("factory order report records", () => {
     const planner = workerIn(database, "planner");
     queueOrder(database, { ...order, id: "replanned" }, operator);
     start(database, "replanned", operator);
+    attemptIn(database, "replanned", worker, attemptOperator, "plan-replanned", undefined, "plan");
     const planId = recordOrderPlan(database, "replanned", "Build the first approach.", planner, [
       { title: "First approach", outcome: "It works." },
     ]);
@@ -304,6 +312,7 @@ describe("factory order report records", () => {
     const operator = attemptOperator;
     queueOrder(database, { ...order, id: "busy-return" }, operator);
     start(database, "busy-return", operator);
+    attemptIn(database, "busy-return", worker, attemptOperator, "plan-busy-return", undefined, "plan");
     recordOrderPlan(database, "busy-return", "Build it.", workerIn(database, "planner"), [
       { title: "Build it", outcome: "It works." },
     ]);
@@ -334,6 +343,7 @@ describe("factory order report records", () => {
     }).name;
     queueOrder(database, { ...order, id: "order-slices" }, operator);
     start(database, "order-slices", operator);
+    attemptIn(database, "order-slices", worker, attemptOperator, "plan-order-slices", undefined, "plan");
     const planId = recordOrderPlan(database, "order-slices", "## Outcome\n\nBuild both slices.", planner, [
       { title: "First slice", outcome: "The first slice is verified." },
       { title: "Second slice", outcome: "The second slice is verified." },
@@ -346,6 +356,7 @@ describe("factory order report records", () => {
     if (!first) throw new Error("the approved plan has no first slice");
     completeOrderSlice(database, "order-slices", first.id, builder);
     expect(nextOrderSlice(database, "order-slices")).toMatchObject({ ordinal: 2, title: "Second slice" });
+    attemptIn(database, "order-slices", builder, operator, "second-slice-run");
     completeOrderSlice(database, "order-slices", 2, builder);
     expect(nextOrderSlice(database, "order-slices")).toBeNull();
     expect(
@@ -390,6 +401,15 @@ describe("factory order report records", () => {
     }).name;
     queueOrder(database, { ...order, id: "order-early-artifact" }, operator);
     start(database, "order-early-artifact", operator);
+    attemptIn(
+      database,
+      "order-early-artifact",
+      worker,
+      attemptOperator,
+      "plan-order-early-artifact",
+      undefined,
+      "plan",
+    );
     recordOrderPlan(database, "order-early-artifact", "## Outcome\n\nBuild both slices.", planner, [
       { title: "First slice", outcome: "The first slice is verified." },
       { title: "Second slice", outcome: "The second slice is verified." },
@@ -435,7 +455,7 @@ describe("factory order report records", () => {
       database
         .query(
           `SELECT run_id, worker, operator_worker, station, recorded_at, kind, outcome, reason
-           FROM factory_order_attempt WHERE order_id = ? ORDER BY id`,
+           FROM factory_order_attempt WHERE order_id = ? AND station = 'build' ORDER BY id`,
         )
         .all("order-attempts"),
     ).toEqual([
@@ -1160,6 +1180,7 @@ describe("factory order report records", () => {
         artifactId: oldPlan.id,
         reason: "The plan missed the requested behavior.",
       });
+      attemptIn(database, "order-1", worker, attemptOperator, "revised-plan-run", undefined, "plan");
       recordOrderPlan(database, "order-1", "Build the requested behavior.", worker, [
         { title: "Correct the behavior", outcome: "The request is met." },
       ]);
@@ -1406,7 +1427,11 @@ describe("factory order report records", () => {
     expect(orderStatus(database, "order-1")).toBe("running");
     expect(orderState(database, "order-1")).toEqual(before);
     expect(
-      database.query("SELECT worker, outcome FROM factory_order_attempt WHERE kind = 'finished'").all(),
+      database
+        .query(
+          "SELECT worker, outcome FROM factory_order_attempt WHERE kind = 'finished' AND station = 'build'",
+        )
+        .all(),
     ).toEqual([{ worker, outcome: "failed" }]);
     attemptIn(database, "order-1", worker, attemptOperator, "run-2");
     expect(openAttempt(database, "order-1")).toEqual({
@@ -1471,6 +1496,20 @@ describe("factory order report records", () => {
 
     expect(() => start(database, "order-1")).toThrow(expect.objectContaining({ code: "order_not_queued" }));
     expect(orderStatus(database, "order-1")).toBe("shipped");
+    database.close();
+  });
+
+  test("refuses a plan written with no attempt open, since only a planner's attempt writes one", () => {
+    const database = db();
+    queueOrder(database, order, attemptOperator);
+    start(database);
+
+    expect(() =>
+      recordOrderPlan(database, "order-1", "## Outcome\n\nBuild it.", worker, [
+        { title: "Build it", outcome: "It is verified." },
+      ]),
+    ).toThrow(expect.objectContaining({ code: "attempt_not_open" }));
+    expect(database.query("SELECT count(*) AS n FROM factory_order_artifact").get()).toEqual({ n: 0 });
     database.close();
   });
 

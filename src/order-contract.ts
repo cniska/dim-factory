@@ -101,6 +101,8 @@ const MESSAGES = {
       : `order ${m.orderId} is already ${m.status}; nothing more runs on a ${m.status} order`,
   order_not_queued: (m: { orderId: string; status: string; act: string }) =>
     `order ${m.orderId} is ${m.status} and only a queued order can be ${m.act}; \`dim q order ${m.orderId}\` shows its next act`,
+  attempt_not_open: (m: { orderId: string; outcome: string }) =>
+    `order ${m.orderId} has no attempt running, so none can finish ${m.outcome}; a station run opens one when its worker starts`,
   order_held_by_run: (m: { orderId: string; worker: string; runId: string; act: string }) =>
     `order ${m.orderId} is being worked by ${m.worker} under ${m.runId}, so it cannot ${m.act}; wait for that run to finish, which \`dim q order ${m.orderId}\` shows`,
   rebase_conflict_pending: (m: { orderId: string; act: string }) =>

@@ -325,12 +325,14 @@ describe("order command", () => {
           "order order-1 waits on run at plan, so it cannot approve; its next act is `dim order plan order-1`",
       }),
     );
+    attemptIn(database, "order-1", operator, operator, "plan-328", undefined, "plan");
     recordOrderPlan(database, "order-1", "## Outcome\n\nBuild it.", operator, [
       { title: "Build it", outcome: "It is verified." },
     ]);
     expect(runOrderCommand(database, ["return", "order-1", "--reason", "name the check"])).toBe(
       "order-1 plan artifact returned to plan",
     );
+    attemptIn(database, "order-1", operator, operator, "plan-334", undefined, "plan");
     recordOrderPlan(database, "order-1", "## Outcome\n\nBuild it, checked.", operator, [
       { title: "Build it", outcome: "It is verified." },
     ]);
