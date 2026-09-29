@@ -49,6 +49,22 @@ describe("item history", () => {
     expect(source).toContain("[&_ul]:my-0");
   });
 
+  test("shows why an order's record could not be read, over any history", async () => {
+    const source = await Bun.file(new URL("./client.tsx", import.meta.url)).text();
+    const itemView = source.slice(source.indexOf("function useItemView"));
+    const log = source.slice(source.indexOf('aria-labelledby="item-log"'));
+    const notice = log.indexOf('{read.state === "unavailable" ? (');
+    const history = log.indexOf("{read.view && read.view.entries.length > 0");
+
+    expect(itemView).not.toContain("Promise.reject()");
+    expect(itemView).toContain(".then(wallJson<WallItemView>)");
+    expect(itemView).toContain('setRead({ state: "read", view: data })');
+    expect(notice).toBeGreaterThan(-1);
+    expect(log.slice(0, notice)).not.toContain("read.view");
+    expect(log.slice(notice, history)).toContain("{read.failure}");
+    expect(log.slice(notice, history)).not.toContain("read.view");
+  });
+
   test("labels the plan and audit log in the detail view", async () => {
     const source = await Bun.file(new URL("./client.tsx", import.meta.url)).text();
     const styles = await Bun.file(new URL("./styles.css", import.meta.url)).text();

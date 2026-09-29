@@ -23,6 +23,7 @@ import type {
   WallSnapshot,
   WallWorker,
 } from "./server";
+import { wallJson } from "./wall-json";
 import "./styles.css";
 
 const unavailableSnapshot: WallSnapshot = {
@@ -466,13 +467,18 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
             <h3 id="item-log" className="mb-[var(--space-lg)] text-xl font-medium text-foreground leading-7">
               Log
             </h3>
-            {read.view && read.view.entries.length > 0 ? (
-              <ItemHistory entries={read.view.entries} now={new Date()} />
-            ) : (
-              <p className={read.state === "unavailable" ? "text-warn-foreground" : undefined}>
-                {ITEM_READ_MESSAGE[read.state]}
-              </p>
-            )}
+            <div className="space-y-[var(--space-lg)]">
+              {read.state === "unavailable" ? (
+                <p className="text-warn-foreground">
+                  {ITEM_READ_MESSAGE.unavailable} {read.failure}
+                </p>
+              ) : null}
+              {read.view && read.view.entries.length > 0 ? (
+                <ItemHistory entries={read.view.entries} now={new Date()} />
+              ) : read.state === "unavailable" ? null : (
+                <p>{ITEM_READ_MESSAGE[read.state]}</p>
+              )}
+            </div>
           </section>
         </div>
       </div>
@@ -590,11 +596,7 @@ function useSnapshot() {
     };
 
     fetch("/api/snapshot")
-      .then(async (response) => {
-        const body: unknown = await response.json();
-        if (!response.ok) throw new Error((body as WallFailure).error);
-        return body as WallSnapshot;
-      })
+      .then(wallJson<WallSnapshot>)
       .then((data) => {
         if (!acceptedSocketSnapshot) accept(data);
       })
@@ -661,7 +663,9 @@ function useSnapshot() {
   return { snapshot, stale, unavailable, failure, answered, lastMessage, bumped };
 }
 
-type ItemRead = { state: "reading" | "read" | "unavailable"; view: WallItemView | null };
+type ItemRead =
+  | { state: "reading" | "read"; view: WallItemView | null }
+  | { state: "unavailable"; view: WallItemView | null; failure: string };
 
 const ITEM_READ_MESSAGE: Record<ItemRead["state"], string> = {
   reading: "Reading the record.",
@@ -679,12 +683,13 @@ function useItemView(orderId: string): ItemRead {
       if (inFlight) return;
       inFlight = true;
       fetch(`/api/order/${encodeURIComponent(orderId)}`)
-        .then((response) => (response.ok ? response.json() : Promise.reject()))
-        .then((data: WallItemView) => {
+        .then(wallJson<WallItemView>)
+        .then((data) => {
           if (current) setRead({ state: "read", view: data });
         })
-        .catch(() => {
-          if (current) setRead((last) => ({ state: "unavailable", view: last.view }));
+        .catch((error: unknown) => {
+          const failure = error instanceof Error ? error.message : String(error);
+          if (current) setRead((last) => ({ state: "unavailable", view: last.view, failure }));
         })
         .finally(() => {
           inFlight = false;

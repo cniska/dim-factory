@@ -34,7 +34,7 @@ Artifact Markdown renders tables with equal-width columns and alternating row sh
 - **Read-only.** The page never starts, ships, retries or changes anything. The server binds `127.0.0.1`, serves the snapshot (`/api/snapshot`), one order's record (`/api/order/<id>`) and a WebSocket of changed snapshots (`/ws`), and ignores anything a client sends. It answers only a request addressed to a loopback name and opens the WebSocket only to its own page, so another site the owner visits, or a name rebound to this machine, reads nothing ([`src/wall/server.ts`](../src/wall/server.ts)). A worker's artifact renders its links as code and its images as their alt text ([`src/wall/markdown.tsx`](../src/wall/markdown.tsx)), so opening an order fetches nothing a worker named. Controls wait until watching shows which decisions recur.
 - **Human words on the page, ids in the record.** Titles and descriptions lead; ids and shas stay available for agents.
 - **Shown, never inferred.** Every value comes from recorded attempts and events, not from a process name or a title.
-- **Honest when down.** An unavailable database is stated, never rendered as rows.
+- **Honest when down.** An unavailable database is stated, never rendered as rows. An unreadable order is stated with the server's reason, above any history already shown.
 
 ## Look
 
