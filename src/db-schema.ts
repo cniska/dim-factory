@@ -5,7 +5,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { STATIONS_SQL } from "./station-contract";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 84;
+export const SCHEMA_VERSION = 85;
 
 export const DISCARDED_COLUMNS: readonly string[] = [
   "factory_worker.token_digest",

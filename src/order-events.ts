@@ -16,15 +16,7 @@ export const ORDER_EVENT_KINDS = [
 export type OrderEventKind = (typeof ORDER_EVENT_KINDS)[number];
 export const ORDER_EVENT_KINDS_SQL = ORDER_EVENT_KINDS.map((kind) => `'${kind}'`).join(",");
 
-export const ATTEMPT_OUTCOMES = [
-  "running",
-  "succeeded",
-  "failed",
-  "timed_out",
-  "stalled",
-  "limited",
-  "cancelled",
-] as const;
+export const ATTEMPT_OUTCOMES = ["running", "succeeded", "failed", "limited"] as const;
 
 export type AttemptOutcome = (typeof ATTEMPT_OUTCOMES)[number];
 export const ATTEMPT_OUTCOMES_SQL = ATTEMPT_OUTCOMES.map((outcome) => `'${outcome}'`).join(",");
