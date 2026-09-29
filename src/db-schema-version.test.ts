@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { SCHEMA_SQL, SCHEMA_VERSION } from "./db-schema";
 
-const PINNED = "80 a919552e318d025a56c3b9bc0228ee720b1a31016fb739ab39883b4322f7dd0d";
+const PINNED = "80 7d6660793f1404055b3e2f040f34cb2c6433422b35fa1d3b0ef30ac587c055c4";
 
 test("the schema's version is pinned together with the schema it stands for", () => {
   const digest = new Bun.CryptoHasher("sha256").update(SCHEMA_SQL).digest("hex");

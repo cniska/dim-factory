@@ -102,14 +102,6 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
   return report;
 }
 
-type CorrectionLabel = {
-  message_id: string;
-  label: string;
-  skill_name: string | null;
-  rule: string | null;
-  labeled_at: string;
-};
-
 type HookEvent = {
   tool: string;
   session_id: string;
@@ -298,12 +290,6 @@ export function rebuild(db: Database, env: Env = process.env): RebuildReport {
     const carried = carryThroughRebuild(db, FACTORY_ORDER_TABLES);
     orphans = carried.orphans;
     const restoreFactoryOrders = carried.restore;
-    const labels = db
-      .query<CorrectionLabel, []>(
-        "SELECT message_id, label, skill_name, rule, labeled_at FROM correction_label",
-      )
-      .all();
-    db.run("DROP TABLE IF EXISTS correction_label");
     const hasHarnessPid = db
       .query<{ name: string }, []>("PRAGMA table_info(hook_event)")
       .all()
@@ -333,13 +319,6 @@ export function rebuild(db: Database, env: Env = process.env): RebuildReport {
     db.run("DROP TABLE IF EXISTS factory_handoff");
     db.run(SCHEMA_SQL);
     restoreFactoryOrders();
-    const restore = db.prepare<void, [string, string, string | null, string | null, string]>(
-      `INSERT INTO correction_label (message_id, label, skill_name, rule, labeled_at)
-       VALUES (?, ?, ?, ?, ?)`,
-    );
-    for (const row of labels) {
-      restore.run(row.message_id, row.label, row.skill_name, row.rule, row.labeled_at);
-    }
     const restoreHook = db.prepare<
       void,
       [

@@ -528,16 +528,12 @@ describe("who stopped the agent", () => {
     }
   });
 
-  test("corrections and candidates read the same stop as the rest", () => {
+  test("corrections reads the same stop as the rest", () => {
     const db = stopped();
     try {
       expect(findQuery("corrections")?.run(db, {})?.denominator).toContain(
         "1 turns the user physically stopped",
       );
-      const kinds = findQuery("candidates")
-        ?.run(db, {})
-        ?.rows.map((r) => r[3]);
-      expect(kinds).toEqual(["rejected"]);
 
       const facts = new Map(
         findQuery("session")
@@ -546,21 +542,6 @@ describe("who stopped the agent", () => {
       );
       expect(facts.get("tool calls you rejected")).toBe(1);
       expect(facts.get("tool calls auto mode blocked")).toBe(1);
-    } finally {
-      db.close();
-    }
-  });
-
-  test("label counts exclude a label whose message is gone", () => {
-    const db = stopped();
-    try {
-      db.run(
-        `INSERT INTO correction_label (message_id, label, labeled_at)
-         VALUES ('m-refused', 'correction', '2026-09-02T10:00:00Z'),
-                ('m-gone', 'clarification', '2026-09-02T10:00:00Z')`,
-      );
-      expect(findQuery("corrections")?.run(db, {})?.denominator).toContain("1 have been labeled by hand");
-      expect(findQuery("candidates")?.run(db, {})?.denominator).toContain("1 labeled so far");
     } finally {
       db.close();
     }
@@ -715,7 +696,7 @@ describe("what a query counts of each tool", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
     try {
-      const edits = ["rework", "resume", "exemplars", "fixes", "stale", "corrections", "candidates", "skill"];
+      const edits = ["rework", "resume", "exemplars", "fixes", "stale", "corrections", "skill"];
       const silent = edits.filter((name) => {
         const arg = name === "resume" ? SESSION.slice(0, 8) : name === "skill" ? "build" : undefined;
         const note = findQuery(name)?.run(db, arg ? { arg } : {}).note ?? "";

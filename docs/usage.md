@@ -20,7 +20,6 @@ dim rebuild    # rebuild tables from their sources
 dim q list     # the named queries
 dim q <name>
 dim sql "<read-only select>"
-dim label <message-id> <correction|clarification|not_correction> [--rule "..."]   # judge one candidate correction
 ```
 
 `dim` with no command lists every command with its usage. [Session database](design.md) covers sources, schema and output.

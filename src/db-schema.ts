@@ -652,22 +652,6 @@ CREATE TABLE IF NOT EXISTS skill_load (
 );
 CREATE INDEX IF NOT EXISTS skill_load_name ON skill_load(skill_name, ts);
 
--- The owner's judgement on a candidate correction. Nothing derives a correction
--- automatically: whether a prompt tells the agent it was wrong is semantic, and
--- no rule here decides it. Written by \`dim label\`, as \`finding\` is written by
--- \`dim finding\`; every other table is the ingester's.
---
--- No foreign key, because \`rebuild\` drops message and then writes the same ids
--- back, so a label keyed by one survives it. \`dim label\` refuses a message id
--- that is not in the table, which is where a typo is caught instead.
-CREATE TABLE IF NOT EXISTS correction_label (
-  message_id      TEXT PRIMARY KEY,
-  label           TEXT NOT NULL CHECK (label IN ('correction','clarification','not_correction')),
-  skill_name      TEXT,
-  rule            TEXT,                 -- which instruction was overridden, in the owner's words
-  labeled_at      TEXT NOT NULL
-);
-
 -- No source to re-read — an answer exists only in the session that made it — so
 -- \`rebuild\` never clears this, as it does not clear hook_event. Grades the
 -- reviewer and never the builder: measures in docs/findings.md looked like grades

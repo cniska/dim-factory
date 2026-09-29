@@ -1,6 +1,6 @@
 import type { Query } from "./query";
 import { convention, exemplars, fixes, priorArt, stale } from "./query-code";
-import { candidates, corrections, repeats, rework } from "./query-correction";
+import { corrections, repeats, rework } from "./query-correction";
 import { factory, factoryAnalytics, findings, order } from "./query-factory";
 import { search } from "./query-search";
 import { chain, resume, running, session, sessions, thread } from "./query-session";
@@ -33,7 +33,6 @@ export const QUERIES: Query[] = [
   skills,
   corrections,
   findings,
-  candidates,
   rework,
   sessions,
   session,

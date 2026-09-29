@@ -12,12 +12,6 @@ import {
   windowLine,
 } from "./query";
 
-const JUDGEABLE_TEXT_CHARS = 200;
-const CANDIDATES_SHOWN = 20;
-
-const LIVE_LABEL_COUNT =
-  "SELECT count(*) AS n FROM correction_label cl JOIN message m ON m.id = cl.message_id";
-
 const attributed = (ctx: QueryContext): string => `
   SELECT m.id, m.session_id, m.ts, m.model, m.text, m.denial_kind, m.user_feedback,
          m.interrupted_message_id,
@@ -34,7 +28,7 @@ export const corrections: Query = {
   window: "m.ts",
   run: (db, ctx) => {
     const { arg } = ctx;
-    const columns = ["skill", "rejected", "interrupted", "with_feedback", "labeled", "sessions"];
+    const columns = ["skill", "rejected", "interrupted", "with_feedback", "sessions"];
     const w = window("m.ts", ctx);
     const records = table(
       db,
@@ -43,72 +37,21 @@ export const corrections: Query = {
               sum(coalesce(c.denial_kind, '') = 'user-rejected') AS rejected,
               sum(c.interrupted_message_id IS NOT NULL) AS interrupted,
               sum(c.user_feedback IS NOT NULL) AS with_feedback,
-              (SELECT count(*) FROM correction_label cl
-               JOIN message m2 ON m2.id = cl.message_id
-               WHERE cl.label = 'correction'
-                 AND coalesce((SELECT p.attribution_skill FROM message p
-                               WHERE p.session_id = m2.session_id AND p.role = 'assistant'
-                                 AND p.ts <= m2.ts ORDER BY p.ts DESC LIMIT 1), '(unattributed)')
-                     = coalesce(c.skill, '(unattributed)')) AS labeled,
               count(DISTINCT c.session_id) AS sessions
        FROM c ${arg ? "WHERE c.skill = ?" : ""}
        GROUP BY c.skill ORDER BY rejected + interrupted DESC`,
       [...w.params, ...(arg ? [arg] : [])],
     );
-    const labeled = scalar(db, LIVE_LABEL_COUNT);
-    const candidates = scalar(db, `WITH c AS (${attributed(ctx)}) SELECT count(*) AS n FROM c`, ...w.params);
+    const stops = scalar(db, `WITH c AS (${attributed(ctx)}) SELECT count(*) AS n FROM c`, ...w.params);
     return {
-      denominator: `${candidates} turns the user physically stopped; ${labeled} have been labeled by hand (${windowLine(ctx)})`,
+      denominator: `${stops} turns the user physically stopped (${windowLine(ctx)})`,
       columns,
       rows: toRows(records, columns),
       note:
-        (candidates === 0
+        (stops === 0
           ? "no rejection, interruption or written feedback in the corpus. "
-          : "These are acts the tool recorded, not judgements. Whether a prompt told the agent it was " +
-            "wrong is semantic and nothing here decides it; `dim label` records the owner's call. " +
-            "An unlabeled candidate is never counted as a correction. ") + claudeOnly(CLAUDE_STOPS),
-    };
-  },
-};
-
-export const candidates: Query = {
-  name: "candidates",
-  summary: "unlabeled turns the user stopped, with enough text to judge them",
-  window: "m.ts",
-  usage: "dim q candidates [skill]",
-  run: (db, ctx) => {
-    const { arg } = ctx;
-    const columns = ["message_id", "when", "skill", "kind", "text"];
-    const w = window("m.ts", ctx);
-    const records = table(
-      db,
-      `WITH c AS (${attributed(ctx)})
-       SELECT c.id AS message_id, substr(c.ts, 1, 16) AS "when",
-              coalesce(c.skill, '(none)') AS skill,
-              CASE WHEN c.denial_kind = 'user-rejected' THEN 'rejected'
-                   WHEN c.interrupted_message_id IS NOT NULL THEN 'interrupted'
-                   ELSE 'feedback' END AS kind,
-              replace(substr(coalesce(c.user_feedback, c.text, ''), 1, ${JUDGEABLE_TEXT_CHARS}), char(10), ' ') AS text
-       FROM c
-       WHERE c.id NOT IN (SELECT message_id FROM correction_label)
-         ${arg ? "AND c.skill = ?" : ""}
-       ORDER BY c.ts DESC LIMIT ${CANDIDATES_SHOWN}`,
-      [...w.params, ...(arg ? [arg] : [])],
-    );
-    const labeled = scalar(db, LIVE_LABEL_COUNT);
-    const total = scalar(db, `WITH c AS (${attributed(ctx)}) SELECT count(*) AS n FROM c`, ...w.params);
-    return {
-      denominator: `${total} candidates in this window (${windowLine(ctx)}); ${labeled} labeled so far, newest ${CANDIDATES_SHOWN} unlabeled shown`,
-      columns,
-      rows: toRows(records, columns),
-      note:
-        (records.length === 0
-          ? total === 0
-            ? "no rejection, interruption or written feedback in this window. "
-            : "every candidate in this window has been labeled. "
-          : "A stop is an act, not a verdict: an interruption can be a correction, a change of mind, or " +
-            "a faster idea. Read the text, then `dim label <message_id> <correction|clarification|not_correction>`. " +
-            "Nothing here labels itself. ") + claudeOnly(CLAUDE_STOPS),
+          : "These are acts the tool recorded, not judgements: whether a prompt told the agent it was " +
+            "wrong is semantic, and nothing here decides it. ") + claudeOnly(CLAUDE_STOPS),
     };
   },
 };
