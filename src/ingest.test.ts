@@ -844,4 +844,27 @@ describe("skill loads", () => {
       closeDb(db);
     }
   });
+
+  test("stores nothing for a body whose Skill call line was dropped and whose result was kept", () => {
+    const env = scratchEnv(newRoot());
+    const { timestamp: _, ...untimedCall } = skillCall;
+    const result = {
+      ...base,
+      type: "user",
+      uuid: "u-skill-result",
+      timestamp: at(1),
+      message: {
+        role: "user",
+        content: [{ type: "tool_result", tool_use_id: "toolu-skill", content: "Launching" }],
+      },
+    };
+    writeTranscript(env, SESSION, [untimedCall, result, skillBody]);
+    const db = openDb(dbPath(env));
+    try {
+      expect(sync(db, env).failures).toEqual([]);
+      expect(skillLoads(db)).toEqual([]);
+    } finally {
+      closeDb(db);
+    }
+  });
 });

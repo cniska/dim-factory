@@ -249,7 +249,7 @@ export function createIngester(db: Database) {
      SELECT $sessionId, message_id, ts_call, model, skill_name, 'model',
        $bodyChars, $bodySha256, $skillPath
      FROM tool_call
-     WHERE id = $toolUseId AND tool_name = 'Skill' AND skill_name IS NOT NULL
+     WHERE id = $toolUseId AND tool_name = 'Skill' AND ts_call IS NOT NULL AND skill_name IS NOT NULL
      ${skillLoadConflict}`,
   );
 
