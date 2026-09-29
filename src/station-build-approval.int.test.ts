@@ -206,7 +206,7 @@ describe("build approval integration", () => {
     });
     expect(() =>
       recordOrderBuild(db, "build-approval-order", "## Outcome\n\nNo turn.", repo.sha, builder.name),
-    ).toThrow(expect.objectContaining({ code: "build_artifact_before_final_slice" }));
+    ).toThrow(expect.objectContaining({ code: "no_final_build_turn" }));
     expect(() =>
       runOrderCommand(
         db,

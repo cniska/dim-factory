@@ -1,10 +1,13 @@
 import { type Command, Ran } from "./cli-contract";
+import { CodedError } from "./coded-error";
 
-type ErrorRecord = { name: string; code: string; message: string; usage?: string };
+type ErrorRecord = { name: string; code: string; message: string; meta?: object; usage?: string };
 
 function errorRecord(error: unknown, usage: string | undefined): ErrorRecord {
   if (!(error instanceof Error))
     return { name: "UnknownError", code: "command_failed", message: String(error) };
+  if (error instanceof CodedError)
+    return { name: error.name, code: error.code, message: error.message, meta: error.meta };
   const code = "code" in error && typeof error.code === "string" ? error.code : "command_failed";
   const record = { name: error.name, code, message: error.message };
   return code === "usage" && usage !== undefined ? { ...record, usage } : record;

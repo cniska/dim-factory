@@ -418,7 +418,7 @@ describe("planner station", () => {
         dir: repo.dir,
         harness: "codex",
       }),
-    ).rejects.toThrow(expect.objectContaining({ code: "not_next" }));
+    ).rejects.toThrow(expect.objectContaining({ code: "order_terminal" }));
     expect(db.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 0 });
     expect(db.query("SELECT count(*) AS n FROM factory_order_event WHERE kind = 'started'").get()).toEqual({
       n: 0,

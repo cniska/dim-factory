@@ -20,7 +20,7 @@ Run the order named by the caller. The operator owns the request and the route; 
 ## Start or resume the order
 
 1. Read the next act from `dim q order <order-id>`: the station and whether it waits on a run or an approval, or that the order is ready to ship. The record sets it; no command moves an order.
-2. Run the command for that act. Each checks on entry that it is the act the record waits on and refuses with `not_next` otherwise, naming the act that is. `dim order plan` on a queued order starts it and makes its worktree.
+2. Run the command for that act. Each checks on entry that it is the act the record waits on and refuses with `not_next` otherwise, naming the act that is, or with `order_terminal` once the order is shipped or dropped. `dim order plan` on a queued order starts it and makes its worktree.
 3. A failed run leaves the order where it was: read the failure in `dim q order` and run the same command again. A run stopped at its usage limit fails with `usage_limited`: run it again after the reset, or name another harness with `--harness`. A build refuses while another build attempt on the order is still running.
 
 ## Delegate planning

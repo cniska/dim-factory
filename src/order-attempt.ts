@@ -1,8 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
 import { assertOperator } from "./factory-operator";
+import { fail } from "./order-contract";
 import type { AttemptOutcome } from "./order-events";
-import { assertOrderRunning, OrderNotDone } from "./order-status";
+import { assertOrderRunning } from "./order-status";
 import type { Station } from "./station";
 import { workerIsOver } from "./worker";
 import type { Role } from "./worker-roles";
@@ -42,12 +43,8 @@ export function runningAttempt(db: Database, orderId: string): OpenAttempt | nul
 
 export function assertNoRunningAttempt(db: Database, orderId: string, act: string): void {
   const running = runningAttempt(db, orderId);
-  if (running) {
-    throw new OrderNotDone(
-      "order_held_by_run",
-      `order ${orderId} is being worked by ${running.worker} under ${running.runId}, so it cannot ${act}`,
-    );
-  }
+  if (running)
+    throw fail("order_held_by_run", { orderId, worker: running.worker, runId: running.runId, act });
 }
 
 export function finishStoppedAttempt(db: Database, orderId: string, at: string): void {

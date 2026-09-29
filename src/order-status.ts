@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { fail } from "./order-contract";
 import type { EvidenceReference, OrderEventKind } from "./order-events";
 import type { OrderLine } from "./order-line";
 import type { Station } from "./station";
@@ -45,21 +46,6 @@ export type OrderEvent = {
   ts?: string;
 };
 
-export type OrderNotDoneCode =
-  | "order_not_checked"
-  | "order_not_queued"
-  | "order_held_by_run"
-  | "build_artifact_before_final_slice";
-
-export class OrderNotDone extends Error {
-  constructor(
-    readonly code: OrderNotDoneCode,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
 export function isTerminalOrderStatus(status: OrderStatus): boolean {
   return status === "shipped" || status === "dropped";
 }
@@ -76,12 +62,7 @@ export function orderStatus(db: Database, orderId: string): OrderStatus {
 
 export function assertOrderQueued(db: Database, orderId: string, act: string): void {
   const status = orderStatus(db, orderId);
-  if (status !== "queued") {
-    throw new OrderNotDone(
-      "order_not_queued",
-      `order ${orderId} is ${status} and only a queued order can be ${act}`,
-    );
-  }
+  if (status !== "queued") throw fail("order_not_queued", { orderId, status, act });
 }
 
 export function assertOrderRunning(db: Database, orderId: string): void {

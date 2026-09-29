@@ -364,7 +364,7 @@ describe("order command", () => {
     ]);
     expect(() => runOrderCommand(database, ["approve", "order-1"])).toThrow(
       expect.objectContaining({
-        code: "not_next",
+        code: "order_terminal",
         message: "order order-1 is shipped, so it cannot approve",
       }),
     );

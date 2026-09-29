@@ -7,6 +7,7 @@ import {
   pendingRebaseConflict,
   rewrittenHead,
 } from "./order-commits";
+import { fail } from "./order-contract";
 import { orderFindingStandings, owesAnswer } from "./order-finding-state";
 import { failedHeadCheck } from "./order-head-check";
 import { isTerminalOrderStatus, orderStatus } from "./order-status";
@@ -107,10 +108,6 @@ export function describeState(state: OrderState): string {
 
 export type OrderAct = "plan" | "build" | "review" | "approve" | "return" | "ship";
 
-export class OrderActRefused extends Error {
-  readonly code = "not_next";
-}
-
 const ENTERS: Record<Exclude<OrderAct, "return">, (state: OrderState) => boolean> = {
   plan: (state) => state.station === "plan" && state.next === "run",
   build: (state) => state.station === "build" && state.next === "run",
@@ -145,12 +142,8 @@ export function assertNext(
 export function assertNext(db: Database, orderId: string, act: OrderAct, to?: Station): OrderState;
 export function assertNext(db: Database, orderId: string, act: OrderAct, to?: Station): OrderState {
   const status = orderStatus(db, orderId);
-  if (isTerminalOrderStatus(status)) {
-    throw new OrderActRefused(`order ${orderId} is ${status}, so it cannot ${act}`);
-  }
+  if (isTerminalOrderStatus(status)) throw fail("order_terminal", { orderId, status, act });
   const state = orderState(db, orderId);
-  if (!admits(state, act, to)) {
-    throw new OrderActRefused(`order ${orderId} waits on ${describeState(state)}, so it cannot ${act}`);
-  }
+  if (!admits(state, act, to)) throw fail("not_next", { orderId, waitsOn: describeState(state), act });
   return state;
 }

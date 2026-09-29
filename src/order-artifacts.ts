@@ -2,9 +2,10 @@ import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
 import { finishAttempt, openAttempt } from "./order-attempt";
 import { latestOrderCommit } from "./order-commits";
+import { fail } from "./order-contract";
 import { assertChecked } from "./order-head-check";
 import { appendOrderEventInTransaction, now } from "./order-ledger";
-import { assertOrderRunning, OrderNotDone } from "./order-status";
+import { assertOrderRunning } from "./order-status";
 import type { Station } from "./station";
 import type { PlanSlice } from "./station-plan-artifact";
 
@@ -134,12 +135,7 @@ export function recordOrderBuild(
   at = now(),
 ): number {
   assertOrderRunning(db, orderId);
-  if (!openAttempt(db, orderId)) {
-    throw new OrderNotDone(
-      "build_artifact_before_final_slice",
-      `order ${orderId} has no active final build turn`,
-    );
-  }
+  if (!openAttempt(db, orderId)) throw fail("no_final_build_turn", { orderId });
   const next = nextOrderSlice(db, orderId);
   if (next) {
     const last = db
@@ -150,12 +146,7 @@ export function recordOrderBuild(
          WHERE p.order_id = ? AND ${APPROVED_PLAN}`,
       )
       .get(orderId);
-    if (last?.ordinal !== next.ordinal) {
-      throw new OrderNotDone(
-        "build_artifact_before_final_slice",
-        `order ${orderId} must finish its final slice before recording a Build artifact`,
-      );
-    }
+    if (last?.ordinal !== next.ordinal) throw fail("build_artifact_before_final_slice", { orderId });
   }
   if (body.trim() === "") throw new Error("build artifact body must not be empty");
   if (headSha.trim() === "") throw new Error("build artifact head must not be empty");

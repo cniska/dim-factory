@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { latestOrderCommit } from "./order-commits";
-import { OrderNotDone } from "./order-status";
+import { fail } from "./order-contract";
 
 export type FailedCheck = { command: string; exitCode: number; result: string };
 
@@ -21,5 +21,5 @@ export function failedHeadCheck(db: Database, orderId: string): FailedCheck | nu
 
 export function assertChecked(db: Database, orderId: string): void {
   if (headCheck(db, orderId)?.exitCode === 0) return;
-  throw new OrderNotDone("order_not_checked", `order ${orderId} has no check that passed at its last commit`);
+  throw fail("order_not_checked", { orderId });
 }

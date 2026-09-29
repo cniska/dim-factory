@@ -1,9 +1,10 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
+import type { CodedError } from "./coded-error";
 import { SCHEMA_SQL } from "./db-schema";
 import { workerIn } from "./fixtures.test-support";
 import { nextOrderSlice, returnedOrderArtifact } from "./order-artifacts";
-import { assertNext, type OrderAct, type OrderActRefused, orderState } from "./order-state";
+import { assertNext, type OrderAct, orderState } from "./order-state";
 
 const ORDER = "order-1";
 
@@ -394,13 +395,13 @@ describe("after the stations", () => {
 
 const ACTS: OrderAct[] = ["plan", "build", "review", "approve", "return", "ship"];
 
-function admitted(r: { db: Database }): OrderAct[] {
+function admitted(r: { db: Database }, refusal = "not_next"): OrderAct[] {
   return ACTS.filter((act) => {
     try {
       assertNext(r.db, ORDER, act);
       return true;
     } catch (error) {
-      expect((error as OrderActRefused).code).toBe("not_next");
+      expect((error as CodedError).code).toBe(refusal);
       return false;
     }
   });
@@ -449,7 +450,7 @@ describe("an act's entry", () => {
       "INSERT INTO factory_order_ship_run (order_id, outcome, head, recorded_at) VALUES (?, 'landed', 'c1', ?)",
       [ORDER, "2026-01-02T00:00:00.000Z"],
     );
-    expect(admitted(r)).toEqual([]);
+    expect(admitted(r, "order_terminal")).toEqual([]);
     expect(() => assertNext(r.db, ORDER, "ship")).toThrow("order order-1 is shipped, so it cannot ship");
   });
 

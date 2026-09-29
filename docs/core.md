@@ -79,7 +79,7 @@ The order is the aggregate root. Its events, artifacts, slices, attempts, findin
 - **One base.** `CodedError<Code, Meta>(code, message, { meta, cause })` in `coded-error.ts` keeps the original error as `cause`.
 - **Codes per module,** as an `as const` map in its contract, with a fact shape for each code. For example, `order.act_not_next` carries `{ orderId, act, next }`.
 - **One constructor per module,** `fail(code, meta)`, which builds the message from the code and its facts. A throw site passes facts, never a finished sentence.
-- **One exhaustive table at the boundary.** `cli-output.ts` is keyed by every domain code, so a new code does not compile until it says how it prints. An error that is not a domain code — a database, configuration or programming failure — keeps one explicit unexpected-failure path there.
+- **The message map is the code list.** A module's contract holds one map from each code to the function that words it from its facts, so a code cannot exist without its message. `cli-output.ts` prints every coded error the same way, with its code, message and facts. An error that is not a domain code — a database, configuration or programming failure — keeps one explicit unexpected-failure path there.
 - **What folds in:** the core's error classes (`OrderActRefused`, `OrderNotDone`, `OperatorActionRefused`, `ShipRefusal`, `RebaseConflict`, `FactoryStopError`, `UsageLimited`, `ReviewRefused`, `ReviewNotOpen`, `BuildTurnRefused`, `WorkerUnknown`, `WorkerSessionTaken`, `WorkerAssignmentError` and `RoutingError`) and its naked throws, each moved in the slice that rewrites the path it sits on.
 - **Where a catch is allowed.** Below the CLI, a catch may do only two things. It may undo a side effect on git, the worktree or a worker binding, or record evidence, and then rethrow the same error. Or, in a store, it may translate a SQLite constraint into its module's code. The compensations that do this stay: `restoreBranch`, `abortRebase`, the soft reset of a refused commit, the rebase recovery and the worker release.
 
@@ -153,7 +153,7 @@ Each cut lands with the SPEC, doc, glossary, query and skill edits it carries.
 
 Each slice runs on `main` and deletes the old mechanism in the same commit. `bun run verify` gates every slice, and a slice that changes a behavior the tests pin names those tests and changes them in the same commit. The schema slices run with no order in flight.
 
-1. **Errors.** `coded-error.ts`, the code maps, `fail(code, meta)` and the exhaustive table in `cli-output.ts`, used first by the paths slice 2 rewrites. Each later slice moves the throws on the paths it rewrites.
+1. **Errors.** `coded-error.ts`, the order module's message map and `fail(code, meta)`, and coded errors printed with their facts by `cli-output.ts`, replacing `OrderNotDone` and `OrderActRefused`. Each later slice moves the throws on the paths it rewrites.
 2. **Admission.** The `Order` model, `loadOrder`, `next`, `admit` and the station reservation replace `orderState`, `assertNext`, `ENTERS` and the `assert*` calls, with admission inside the write.
 3. **Events** [schema]. Shared columns, reference columns and details. The wall's projection and item view, `q order` and `q factory` move in the same slice, and so do the tests that read the dropped columns (`order-finding-state.test.ts`, `station-loop.int.test.ts`, `order-events.test.ts` and `rebuild.test.ts`'s retained rows).
 4. **Commits.** Commit first, judge, reset on refusal; the proof pin and signing go.
