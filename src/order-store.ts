@@ -1,16 +1,17 @@
 import type { Database } from "bun:sqlite";
-import type {
-  Order,
-  OrderArtifact,
-  OrderCheckRecord,
-  OrderCommitRecord,
-  OrderFindingRecord,
-  OrderReviewRecord,
-  OrderShipRunRecord,
-  OrderSliceRecord,
+import {
+  fail,
+  type Order,
+  type OrderArtifact,
+  type OrderCheckRecord,
+  type OrderCommitRecord,
+  type OrderFindingRecord,
+  type OrderReviewRecord,
+  type OrderShipRunRecord,
+  type OrderSliceRecord,
 } from "./order-contract";
 import { type OrderStatus, orderStatusSql } from "./order-status";
-import type { Station } from "./station";
+import type { Station } from "./station-contract";
 
 type ArtifactRow = {
   id: number;
@@ -28,7 +29,7 @@ export function loadOrder(db: Database, orderId: string): Order {
       `SELECT ${orderStatusSql("o.id")} AS status FROM factory_order o WHERE o.id = ?`,
     )
     .get(orderId);
-  if (!row) throw new Error(`order not found: ${orderId}`);
+  if (!row) throw fail("order_unknown", { orderId });
   const artifacts = db
     .query<ArtifactRow, [string]>(
       `SELECT a.id, a.kind, a.revision, a.head_sha, a.review_id,

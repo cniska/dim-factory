@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HarnessAdapter, HarnessEvent } from "./harness";
 import { fakeHarness } from "./harness-fake";
-import { launchHarnessLive, resumeHarnessLive, workerFailureReason } from "./harness-launch";
+import { launchHarnessLive, resumeHarnessLive, turnFailureDetail } from "./harness-launch";
 
 describe("selected harness commands", () => {
   test("runs a deterministic adapter through the live command boundary", async () => {
@@ -143,9 +143,10 @@ describe("selected harness commands", () => {
     );
 
     expect(failed).toMatchObject({ exitCode: 1, output: "tests fail because the fixture is missing" });
-    expect(workerFailureReason("builder did not finish", failed.output, failed.failureReason)).toBe(
-      "builder did not finish: turn failed; its last message: tests fail because the fixture is missing",
+    expect(turnFailureDetail(failed.output, failed.failureReason)).toBe(
+      "turn failed; its last message: tests fail because the fixture is missing",
     );
+    expect(turnFailureDetail("  ", undefined)).toBeNull();
     expect(completed).toMatchObject({ exitCode: 0, output: "" });
   });
 

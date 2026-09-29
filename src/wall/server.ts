@@ -7,7 +7,7 @@ import type { OrderEventKind } from "../order-events";
 import type { OrderLine } from "../order-line";
 import { type OrderStatus, orderStatusSql } from "../order-status";
 import { dbPath } from "../paths";
-import type { Station } from "../station";
+import type { Station } from "../station-contract";
 import type { Role } from "../worker-roles";
 import wallPage from "./index.html";
 import { RECORD_POLL_MS } from "./record-poll";

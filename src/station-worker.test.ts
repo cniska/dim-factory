@@ -7,14 +7,8 @@ import { SCHEMA_SQL } from "./db-schema";
 import type { HarnessAdapter, HarnessEvent, HarnessRun } from "./harness";
 import { fakeHarness } from "./harness-fake";
 import { queueOrder } from "./order-lifecycle";
-import {
-  bindOrderWorker,
-  ensureOrderWorker,
-  releaseOrderWorker,
-  resumeOrderStationLive,
-  runOrderStationLive,
-  UsageLimited,
-} from "./station-worker";
+import { fail } from "./station-contract";
+import { bindOrderWorker, ensureOrderWorker, releaseOrderWorker, runWorkerTurn } from "./station-worker";
 import { mintWorker } from "./worker";
 import { bootstrapWorker } from "./worker-assignment";
 
@@ -30,9 +24,24 @@ function harnessOf(db: Database): unknown {
   return db.query("SELECT harness FROM factory_order_worker WHERE order_id = 'order-1'").get();
 }
 
+const launch = {
+  cwd: ".",
+  brief: "build it",
+  capabilities: [],
+  harness: "codex" as const,
+  model: "m",
+  env: {},
+};
+
+function builderHome(prefix: string): string {
+  const home = mkdtempSync(join(tmpdir(), prefix));
+  writeFileSync(join(home, "routing.json"), '{ "codex": { "light": "s", "standard": "m", "deep": "l" } }');
+  return home;
+}
+
 describe("a usage limit", () => {
   test("names the harness and says so when it reported no reset", () => {
-    expect(new UsageLimited("grok", undefined).message).toBe(
+    expect(fail("usage_limited", { harness: "grok", resetsAt: null }).message).toBe(
       "grok stopped at its usage limit with no reset given; delegate again after the reset with --harness grok, or name another of <codex|claude|grok>",
     );
   });
@@ -84,41 +93,6 @@ describe("an order's station worker", () => {
     );
   });
 
-  test("releases a worker whose last failure recorded no turn, and keeps one whose turn came back", () => {
-    const { db, operator } = floor();
-    const bound = (evidence: string) => {
-      const created = ensureOrderWorker(db, "order-1", "builder", operator, "claude");
-      const minted = bootstrapWorker(db, {
-        id: created.assignment.id,
-        sessionId: "claude-session",
-      });
-      bindOrderWorker(db, "order-1", "builder", created.assignment.id, minted);
-      db.run(
-        `INSERT INTO factory_order_event (order_id, ts, kind, worker, station, reason, evidence)
-         VALUES ('order-1', '2026-09-27T00:00:00.000Z', 'failed', ?, 'build', 'the run ended', ?)`,
-        [minted.name, evidence],
-      );
-      return minted.name;
-    };
-
-    const kept = bound('{"turn":true}');
-    expect(() => ensureOrderWorker(db, "order-1", "builder", operator, "codex")).toThrow(
-      "order order-1 builder runs under the claude harness; delegate it with --harness claude",
-    );
-    expect(ensureOrderWorker(db, "order-1", "builder", operator, "claude").worker).toBe(kept);
-
-    db.run("DELETE FROM factory_order_event WHERE kind = 'failed'");
-    db.run(
-      `INSERT INTO factory_order_event (order_id, ts, kind, worker, station, reason, evidence)
-       VALUES ('order-1', '2026-09-27T00:00:01.000Z', 'failed', ?, 'build', 'the run ended', '{"turn":false}')`,
-      [kept],
-    );
-    const released = ensureOrderWorker(db, "order-1", "builder", operator, "codex");
-    expect(released.worker).toBeUndefined();
-    expect(released.harness).toBe("codex");
-    expect(harnessOf(db)).toEqual({ harness: "codex" });
-  });
-
   test("replaces an accepted assignment before its worker is bound to the order", () => {
     const { db, operator } = floor();
     const first = ensureOrderWorker(db, "order-1", "builder", operator, "codex");
@@ -136,19 +110,12 @@ describe("an order's station worker", () => {
 
   test("replaces a bound worker when its provider cannot resume before startup", async () => {
     const { db, operator } = floor();
-    const home = mkdtempSync(join(tmpdir(), "dim-worker-resume-"));
-    writeFileSync(join(home, "routing.json"), '{ "codex": { "light": "s", "standard": "m", "deep": "l" } }');
-    const common = {
-      db,
-      orderId: "order-1",
-      station: "build" as const,
-      parentWorker: operator,
-      harness: "codex" as const,
-      env: { DIM_HOME: home },
-      request: () => ({ cwd: ".", brief: "build it", capabilities: [] }),
-    };
+    const home = builderHome("dim-worker-resume-");
+    const env = { DIM_HOME: home };
+    const bound = () => ensureOrderWorker(db, "order-1", "builder", operator, "codex");
     try {
-      const first = await runOrderStationLive({ ...common, adapter: fakeHarness("success") });
+      const first = bound();
+      await runWorkerTurn(db, "build", launch, first, env, fakeHarness("success"));
       const missing: HarnessAdapter = {
         ...fakeHarness("success"),
         resume: async () => {
@@ -156,12 +123,12 @@ describe("an order's station worker", () => {
         },
       };
 
-      await expect(runOrderStationLive({ ...common, adapter: missing })).rejects.toThrow(
+      await expect(runWorkerTurn(db, "build", launch, bound(), env, missing)).rejects.toThrow(
         "provider session unavailable",
       );
 
-      const next = ensureOrderWorker(db, "order-1", "builder", operator, "codex");
-      expect(next.assignment.id).not.toBe(first.orderWorker.assignment.id);
+      const next = bound();
+      expect(next.assignment.id).not.toBe(first.assignment.id);
       expect(next.worker).toBeUndefined();
     } finally {
       rmSync(home, { recursive: true, force: true });
@@ -170,19 +137,12 @@ describe("an order's station worker", () => {
 
   test("refuses a completed response without a provider session id", async () => {
     const { db, operator } = floor();
-    const home = mkdtempSync(join(tmpdir(), "dim-worker-no-session-"));
-    writeFileSync(join(home, "routing.json"), '{ "codex": { "light": "s", "standard": "m", "deep": "l" } }');
-    const common = {
-      db,
-      orderId: "order-1",
-      station: "build" as const,
-      parentWorker: operator,
-      harness: "codex" as const,
-      env: { DIM_HOME: home },
-      request: () => ({ cwd: ".", brief: "build it", capabilities: [] }),
-    };
+    const home = builderHome("dim-worker-no-session-");
+    const env = { DIM_HOME: home };
+    const bound = () => ensureOrderWorker(db, "order-1", "builder", operator, "codex");
     try {
-      const first = await runOrderStationLive({ ...common, adapter: fakeHarness("success") });
+      const first = bound();
+      await runWorkerTurn(db, "build", launch, first, env, fakeHarness("success"));
       const noSession: HarnessAdapter = {
         ...fakeHarness("success"),
         resume: async (): Promise<HarnessRun> => ({
@@ -195,12 +155,10 @@ describe("an order's station worker", () => {
         }),
       };
 
-      await expect(runOrderStationLive({ ...common, adapter: noSession })).rejects.toThrow(
+      await expect(runWorkerTurn(db, "build", launch, bound(), env, noSession)).rejects.toThrow(
         "order order-1 builder did not start a turn",
       );
-      expect(ensureOrderWorker(db, "order-1", "builder", operator, "codex").assignment.id).not.toBe(
-        first.orderWorker.assignment.id,
-      );
+      expect(bound().assignment.id).not.toBe(first.assignment.id);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -222,9 +180,8 @@ describe("a station worker's run", () => {
 
   function builder(runs: { pid: number; end: RunEnd }[]) {
     const { db, operator } = floor();
-    const home = mkdtempSync(join(tmpdir(), "dim-order-worker-"));
+    const home = builderHome("dim-order-worker-");
     homes.push(home);
-    writeFileSync(join(home, "routing.json"), '{ "codex": { "light": "s", "standard": "m", "deep": "l" } }');
     const env = { DIM_HOME: home };
     const atFirstTurn: (WorkerRun | null)[] = [];
     const run = async (): Promise<HarnessRun> => {
@@ -249,47 +206,29 @@ describe("a station worker's run", () => {
       };
     };
     const adapter: HarnessAdapter = { start: run, resume: run };
-    const request = { cwd: ".", brief: "build it", capabilities: [] };
-    return {
-      db,
-      home,
-      atFirstTurn,
-      turn: () =>
-        runOrderStationLive({
-          db,
-          orderId: "order-1",
-          station: "build",
-          parentWorker: operator,
-          harness: "codex",
-          env,
-          request: () => request,
-          adapter,
-        }),
-      resume: () =>
-        resumeOrderStationLive({
-          db,
-          orderId: "order-1",
-          station: "build",
-          harness: "codex",
-          env,
-          adapter,
-          request,
-        }),
-    };
+    const turn = () =>
+      runWorkerTurn(
+        db,
+        "build",
+        launch,
+        ensureOrderWorker(db, "order-1", "builder", operator, "codex"),
+        env,
+        adapter,
+      );
+    return { db, home, atFirstTurn, turn };
   }
 
   test("carries the child's pid from its first turn and ends when the run completes", async () => {
     const { db, atFirstTurn, turn } = builder([{ pid: process.ppid, end: "completed" }]);
 
-    const { run } = await turn();
+    expect(await turn()).toMatchObject({ output: "done" });
 
-    expect(run.exitCode).toBe(0);
     expect(atFirstTurn).toEqual([{ pid: process.ppid, ended_at: null }]);
     expect(builderRun(db)).toEqual({ pid: process.ppid, ended_at: expect.any(String) });
   });
 
   test("ends a resumed run whose pid was recorded even when binding its session then fails", async () => {
-    const { db, turn, resume } = builder([
+    const { db, turn } = builder([
       { pid: process.pid, end: "completed" },
       { pid: process.ppid, end: "completed" },
     ]);
@@ -298,16 +237,15 @@ describe("a station worker's run", () => {
       "UPDATE factory_order_worker SET worker = NULL, provider_session_id = NULL WHERE order_id = 'order-1'",
     );
 
-    await expect(resume()).rejects.toThrow("order order-1 builder worker session was not writable");
+    await expect(turn()).rejects.toThrow("order order-1 builder worker session was not writable");
     expect(builderRun(db)).toEqual({ pid: process.ppid, ended_at: expect.any(String) });
   });
 
   test("ends when the run fails", async () => {
     const { db, turn } = builder([{ pid: process.pid, end: "failed" }]);
 
-    const { run } = await turn();
+    await expect(turn()).rejects.toThrow("builder did not finish: the worker crashed");
 
-    expect(run.exitCode).toBe(1);
     expect(builderRun(db)?.ended_at).toEqual(expect.any(String));
   });
 
@@ -319,9 +257,7 @@ describe("a station worker's run", () => {
       while (atFirstTurn.length === 0) await Promise.resolve();
       jest.advanceTimersByTime(10 * 60 * 1000);
 
-      const { run } = await running;
-
-      expect(run.failureReason).toContain("without an event");
+      await expect(running).rejects.toThrow("without an event");
       expect(builderRun(db)?.ended_at).toEqual(expect.any(String));
     } finally {
       jest.useRealTimers();
@@ -329,15 +265,14 @@ describe("a station worker's run", () => {
   });
 
   test("a resumed turn runs as its new child and ends again", async () => {
-    const { db, atFirstTurn, turn, resume } = builder([
+    const { db, atFirstTurn, turn } = builder([
       { pid: process.pid, end: "completed" },
       { pid: process.ppid, end: "completed" },
     ]);
     await turn();
 
-    const run = await resume();
+    expect(await turn()).toMatchObject({ output: "done" });
 
-    expect(run.exitCode).toBe(0);
     expect(atFirstTurn[1]).toEqual({ pid: process.ppid, ended_at: null });
     expect(builderRun(db)).toEqual({ pid: process.ppid, ended_at: expect.any(String) });
   });

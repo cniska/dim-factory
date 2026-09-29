@@ -18,10 +18,12 @@ import { shipOrder } from "./order-ship";
 import { ORDER_PRIORITIES, type OrderPriority } from "./order-status";
 import { dbPath, type Env } from "./paths";
 import type { ShipOutcome } from "./ship";
-import { runOrderBuildLive } from "./station-build";
-import { runOrderPlanLive } from "./station-plan";
-import { runOrderReviewLive } from "./station-review";
-import { boundStationHarness, type OrderStationName } from "./station-worker";
+import { runStation } from "./station";
+import { buildStation } from "./station-build";
+import type { Station } from "./station-contract";
+import { planStation } from "./station-plan";
+import { reviewStation } from "./station-review";
+import { boundStationHarness } from "./station-worker";
 import { clearRunnerBarrier, registerRunnerBarrier, resolveWorker, withRunnerBarrier } from "./worker";
 
 export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--line <${ORDER_LINES.join("|")}>] [--description "..."]
@@ -64,7 +66,7 @@ function recordedHarness(db: Database, worker: string): HarnessName | null {
 function stationHarness(
   db: Database,
   orderId: string,
-  station: OrderStationName,
+  station: Station,
   operator: string,
   named: HarnessName | null,
 ): HarnessName {
@@ -242,8 +244,9 @@ export async function runOrderCommandLive(
   registerRunnerBarrier(db);
   try {
     const harness = stationHarness(db, orderId, args[0], operator, namedHarness(given));
+    const options = { dir: cwd, env, harness };
     if (args[0] === "plan") {
-      const outcome = await runOrderPlanLive(db, orderId, { dir: cwd, env, harness, parentWorker: operator });
+      const outcome = await runStation(db, orderId, planStation, operator, options);
       return `${outcome.body}\n\n---\nPlanner: ${outcome.planner}`;
     }
     if (args[0] === "build") {
@@ -256,16 +259,14 @@ export async function runOrderCommandLive(
             progress: `${nextOrderSlice(db, orderId)?.id ?? "none"}:${latestOrderCommit(db, orderId)?.sha ?? ""}`,
           };
         },
-        () => runOrderBuildLive(db, orderId, operator, { dir: cwd, env, harness }),
+        () => runStation(db, orderId, buildStation, operator, options),
       );
       return `build completed by ${outcome.builder}`;
     }
-    const outcome = await runOrderReviewLive(db, orderId, operator, { dir: cwd, env, harness });
-    return outcome.outcome === "aborted"
-      ? `review aborted: ${outcome.reviewer} did not finish, so nothing it left is a clean reading; dim order review runs it again`
-      : outcome.findings === 0
-        ? "review raised no findings; approve the Review artifact to ship"
-        : `review raised ${outcome.findings} finding${outcome.findings === 1 ? "" : "s"}; dim order build answers them`;
+    const outcome = await runStation(db, orderId, reviewStation, operator, options);
+    return outcome.findings === 0
+      ? "review raised no findings; approve the Review artifact to ship"
+      : `review raised ${outcome.findings} finding${outcome.findings === 1 ? "" : "s"}; dim order build answers them`;
   } finally {
     clearRunnerBarrier(db);
   }

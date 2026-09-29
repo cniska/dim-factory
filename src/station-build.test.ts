@@ -3,7 +3,6 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { SCHEMA_SQL } from "./db-schema";
 import { attemptIn, integratedRepo, reviewIn, workerIn } from "./fixtures.test-support";
-import { workerFailureReason } from "./harness-launch";
 import { recordOrderCommit } from "./order-evidence";
 import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { queueOrder, startOrder } from "./order-lifecycle";
@@ -232,21 +231,5 @@ describe("the builder's brief", () => {
     expect(brief).toContain(
       "## Previous failed Build attempt\nbun run verify exited 1 in the check sandbox.",
     );
-  });
-
-  test("keeps the harness explanation beside the failure", () => {
-    expect(
-      workerFailureReason(
-        "worker did not finish",
-        "I stopped before committing because the check failed.",
-        "Codex turn failed",
-      ),
-    ).toBe(
-      "worker did not finish: Codex turn failed; its last message: I stopped before committing because the check failed.",
-    );
-  });
-
-  test("does not add empty explanations", () => {
-    expect(workerFailureReason("worker did not finish", "  ", undefined)).toBe("worker did not finish");
   });
 });

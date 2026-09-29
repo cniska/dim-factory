@@ -83,13 +83,13 @@ The order is the aggregate root. Its events, artifacts, slices, attempts, findin
 
 ## Stations
 
-- **One station run.** `runStation(order, station, deps)` in `station.ts` owns the attempt, the runner barrier, the failure event and the worker's release. A station supplies two things:
-  - `prepare(order)`, which returns its brief and any round it opens;
-  - `accept(output, turn)`, where `turn.resume(brief)` runs another turn of the same attempt. Build uses it for rebase-continue and commit corrections.
+- **One station run.** `runStation(db, orderId, station, operator, options)` in `station.ts` owns the order's hold, admission, the attempt's start and the failure event; the worker's turn (`runWorkerTurn` in `station-worker.ts`) releases the worker when it fails. A station supplies two things:
+  - `prepare(db, order, launch)`, which returns its brief, the context `accept` reads, and an `abort` that undoes what it opened, such as review's round, if the run fails;
+  - `accept(db, output, turn, context)`, where `turn.resume(brief)` runs another turn of the same attempt. Build uses it for rebase-continue and commit corrections, which come back from the commit as a value, not a throw.
 
-  This closes the three drifted copies of claim-and-fail.
+  Each `accept` ends in one store write that also finishes the attempt, so a kill never leaves recorded work under an open attempt. A usage limit finishes the attempt `limited` and writes no failure event.
 - **Worker binding in one place.** The worker row keeps its fixed `session_id`, its bound `harness`, and a `provider_session_id` that is rebound on every turn. The copy on the order side, the `coalesce` that reconciles the two, and the second release path go. A worker bound to one harness is still refused under another.
-- **Review reads the whole order,** from the order's fork point with the trunk to its head, on every round. This changes review's scope: today a later round reads from the last reviewed head. `factory.md` and the test that pins the incremental range change in the same slice.
+- **Review reads the whole order,** from the order's fork point with the trunk to its head, on every round.
 - **The build runner keeps its gates:** answers, comments, named tests, proof, the declared check, and the commit. It stops re-checking its own writes (`requireBuildEvidence` goes).
 
 ## Commits

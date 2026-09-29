@@ -1,4 +1,4 @@
-import type { Station } from "../station";
+import type { Station } from "../station-contract";
 import type { BoardStatus, WallOrder } from "./server";
 
 export const WALL_COLUMNS: ReadonlyArray<{ status: BoardStatus; label: string }> = [

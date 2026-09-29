@@ -20,14 +20,10 @@ export type HarnessLaunchResult = {
   termination?: "exited" | "cancelled";
 };
 
-export function workerFailureReason(
-  message: string,
-  output: string | undefined,
-  harnessReason: string | undefined,
-): string {
-  const lastWord = output?.trim() ? `its last message: ${output.trim()}` : undefined;
+export function turnFailureDetail(output: string, harnessReason: string | undefined): string | null {
+  const lastWord = output.trim() ? `its last message: ${output.trim()}` : undefined;
   const details = [harnessReason, lastWord].filter((value): value is string => Boolean(value));
-  return details.length === 0 ? message : `${message}: ${details.join("; ")}`;
+  return details.length === 0 ? null : details.join("; ");
 }
 
 const HARNESS_PROCESSES: Record<HarnessName, HarnessProcess> = {

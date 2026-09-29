@@ -13,20 +13,16 @@ import { returnOrder } from "./order-approval";
 import { startAttempt } from "./order-attempt";
 import { dropOrder, queueOrder } from "./order-lifecycle";
 import { orderStatus } from "./order-status";
+import { runStation, type StationOptions } from "./station";
 import { holdOrder } from "./station-attempt";
-import { plannerBrief, runOrderPlanLive as runPlan } from "./station-plan";
-import { UsageLimited } from "./station-worker";
+import { plannerBrief, planStation } from "./station-plan";
 import { mintWorker } from "./worker";
 import { WORKER_NAME_VAR } from "./worker-name";
 
-function runOrderPlanLive(
-  db: Database,
-  orderId: string,
-  options: Omit<Parameters<typeof runPlan>[2], "parentWorker">,
-) {
+function plan(db: Database, orderId: string, options: StationOptions) {
   const parentWorker = options.env?.[WORKER_NAME_VAR];
   if (!parentWorker) throw new Error("test needs a named parent worker");
-  return runPlan(db, orderId, { ...options, parentWorker });
+  return runStation(db, orderId, planStation, parentWorker, options);
 }
 
 describe("planner station", () => {
@@ -80,7 +76,7 @@ describe("planner station", () => {
     queueOrder(db, { id: "planner-order", project: "cniska/dim-factory", title: "Plan this" }, operator.name);
 
     await expect(
-      runOrderPlanLive(db, "planner-order", {
+      plan(db, "planner-order", {
         dir: repo.dir,
         harness: "codex",
         env: {
@@ -91,7 +87,7 @@ describe("planner station", () => {
     ).rejects.toThrow(expect.objectContaining({ code: "worker_not_operator" }));
 
     let argv: string[] = [];
-    const outcome = await runOrderPlanLive(db, "planner-order", {
+    const outcome = await plan(db, "planner-order", {
       dir: repo.dir,
       harness: "codex",
       env: {
@@ -177,7 +173,7 @@ describe("planner station", () => {
     );
 
     await expect(
-      runOrderPlanLive(db, "planner-crash-order", {
+      plan(db, "planner-crash-order", {
         dir: repo.dir,
         harness: "codex",
         adapter: fakeHarness("crash"),
@@ -235,7 +231,7 @@ describe("planner station", () => {
       operator.name,
     );
 
-    const failure = await runOrderPlanLive(db, "planner-limited-order", {
+    const failure = await plan(db, "planner-limited-order", {
       dir: repo.dir,
       harness: "codex",
       adapter: fakeHarness("limited"),
@@ -245,7 +241,7 @@ describe("planner station", () => {
       },
     }).catch((error: unknown) => error);
 
-    expect(failure).toBeInstanceOf(UsageLimited);
+    expect(failure).toMatchObject({ code: "usage_limited" });
     expect(failure).toMatchObject({
       code: "usage_limited",
       message:
@@ -255,6 +251,9 @@ describe("planner station", () => {
     expect(
       db.query("SELECT kind, outcome, resets_at FROM factory_order_attempt WHERE kind = 'finished'").all(),
     ).toEqual([{ kind: "finished", outcome: "limited", resets_at: "2026-09-27T16:50:00.000Z" }]);
+    expect(db.query("SELECT count(*) AS n FROM factory_order_event WHERE kind = 'failed'").get()).toEqual({
+      n: 0,
+    });
     expect(db.query("SELECT worker FROM factory_order_worker WHERE role = 'planner'").get()).toEqual({
       worker: null,
     });
@@ -287,7 +286,7 @@ describe("planner station", () => {
     };
 
     await expect(
-      runOrderPlanLive(db, "planner-unavailable", {
+      plan(db, "planner-unavailable", {
         dir: repo.dir,
         harness: "codex",
         adapter,
@@ -301,7 +300,7 @@ describe("planner station", () => {
       db.query("SELECT worker, station, reason FROM factory_order_event WHERE kind = 'failed'").get(),
     ).toEqual({ worker: null, station: "plan", reason: "harness unavailable" });
     expect(db.query("SELECT count(*) AS n FROM factory_order_attempt").get()).toEqual({ n: 0 });
-    const recovered = await runOrderPlanLive(db, "planner-unavailable", {
+    const recovered = await plan(db, "planner-unavailable", {
       dir: repo.dir,
       harness: "codex",
       adapter: fakeHarness("plan"),
@@ -351,7 +350,7 @@ describe("planner station", () => {
       [WORKER_NAME_VAR]: operator.name,
     };
 
-    const first = await runOrderPlanLive(db, "planner-resume-order", {
+    const first = await plan(db, "planner-resume-order", {
       adapter,
       env,
       dir: repo.dir,
@@ -369,7 +368,7 @@ describe("planner station", () => {
       },
       new Date().toISOString(),
     );
-    const second = await runOrderPlanLive(db, "planner-resume-order", {
+    const second = await plan(db, "planner-resume-order", {
       adapter,
       env,
       dir: repo.dir,
@@ -412,7 +411,7 @@ describe("planner station", () => {
     using _hold = holdOrder("held-order", env);
 
     await expect(
-      runOrderPlanLive(db, "held-order", {
+      plan(db, "held-order", {
         adapter: fakeHarness("plan"),
         env,
         dir: repo.dir,
@@ -437,7 +436,7 @@ describe("planner station", () => {
     };
 
     await expect(
-      runOrderPlanLive(db, "dropped-order", {
+      plan(db, "dropped-order", {
         adapter: fakeHarness("plan"),
         env,
         dir: repo.dir,
@@ -481,7 +480,7 @@ describe("planner station", () => {
       [WORKER_NAME_VAR]: operator.name,
     };
 
-    await runOrderPlanLive(db, "planner-cwd-order", { adapter, env, dir: repo.dir, harness: "codex" });
+    await plan(db, "planner-cwd-order", { adapter, env, dir: repo.dir, harness: "codex" });
 
     expect(plannedIn).toBe(join(realpathSync(repo.dir), ".claude", "worktrees", "planner-cwd-order"));
     db.close();

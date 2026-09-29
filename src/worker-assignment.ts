@@ -90,13 +90,3 @@ export function bootstrapWorker(
     return minted;
   });
 }
-
-export function assignedWorker(db: Database, assignmentId: string): string | undefined {
-  return (
-    db
-      .query<{ accepted_worker: string | null }, [string]>(
-        "SELECT accepted_worker FROM factory_worker_assignment WHERE id = ?",
-      )
-      .get(assignmentId)?.accepted_worker ?? undefined
-  );
-}

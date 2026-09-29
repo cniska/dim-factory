@@ -3,7 +3,7 @@ import { writeTransaction } from "./db";
 import { admitAct } from "./order";
 import { latestArtifact } from "./order-artifacts";
 import { appendOrderEventInTransaction, now } from "./order-ledger";
-import type { Station } from "./station";
+import type { Station } from "./station-contract";
 
 function artifactOf(db: Database, orderId: string, station: Station) {
   const artifact = latestArtifact(db, orderId, station);

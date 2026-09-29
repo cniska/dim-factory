@@ -16,7 +16,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Capability | What a station's work needs, named for the work rather than a harness flag — `read-files`, `edit-files`, `run-check` and the rest ([`src/worker-capabilities.ts`](../src/worker-capabilities.ts)) |
 | Harness | The agent product that runs a worker session, such as Claude Code or Codex |
 | Line | The kind of work an order is: `feat` (shown as **feature**) or `fix`. `dim-feat` and `dim-fix` are its entry points |
-| Station | One repeatable step of work on an order: `plan`, `build` or `review` ([`src/station.ts`](../src/station.ts)). Their skills are `dim-plan`, `dim-build` and `dim-review` |
+| Station | One repeatable step of work on an order: `plan`, `build` or `review` ([`src/station-contract.ts`](../src/station-contract.ts)), each run through [`src/station.ts`](../src/station.ts). Their skills are `dim-plan`, `dim-build` and `dim-review` |
 | Order | One piece of work: an id, a line, a title, a description and a priority. It exists before it is started and is worked in one worktree |
 | Queue | The orders not yet started, most urgent first, then oldest |
 | Status | The state an order is in, read from the record: `queued`, `running` once started, `shipped` once a ship run landed it, or `dropped`. The wall's columns are these words, and a dropped order leaves the board |
@@ -32,7 +32,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Term | Definition |
 |---|---|
 | Start | The first `dim order plan` on a queued order, which makes its worktree and moves it out of the queue |
-| Attempt | One station hand's run on an order, from start to finish, with its outcome. A build attempt that has not finished and whose worker is not over refuses a second one ([`src/order-attempt.ts`](../src/order-attempt.ts)) |
+| Attempt | One station hand's run on an order, from start to finish, with its outcome. An attempt that has not finished and whose worker is not over refuses a second station run on the order ([`src/order.ts`](../src/order.ts) `admit`) |
 | Drop | The owner's decision not to build an order, with the reason |
 | Ledger | An order's events in `factory_order_event`, appended and never changed ([`src/order-ledger.ts`](../src/order-ledger.ts)) |
 | Evidence | What an order produced: commits, changed files, checks, proofs, findings and answers |

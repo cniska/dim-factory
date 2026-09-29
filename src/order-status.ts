@@ -39,7 +39,7 @@ export function orderStatus(db: Database, orderId: string): OrderStatus {
       `SELECT ${orderStatusSql("o.id")} AS status FROM factory_order o WHERE o.id = ?`,
     )
     .get(orderId);
-  if (!order) throw new Error(`order not found: ${orderId}`);
+  if (!order) throw fail("order_unknown", { orderId });
   return order.status;
 }
 

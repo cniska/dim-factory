@@ -10,7 +10,8 @@ import { orderState } from "./order";
 import { recordOrderPlan } from "./order-artifacts";
 import { runOrderCommand, runOrderCommandLive } from "./order-command";
 import { queueOrder, startOrder } from "./order-lifecycle";
-import { runOrderPlanLive } from "./station-plan";
+import { runStation } from "./station";
+import { planStation } from "./station-plan";
 import type { PlanSlice } from "./station-plan-artifact";
 import { mintWorker } from "./worker";
 import { WORKER_NAME_VAR } from "./worker-name";
@@ -52,9 +53,8 @@ describe("plan approval integration", () => {
       operator.name,
     );
 
-    const outcome = await runOrderPlanLive(db, "operator-plan-order", {
+    const outcome = await runStation(db, "operator-plan-order", planStation, operator.name, {
       dir: repo.dir,
-      parentWorker: operator.name,
       env: { ...env(operator), DIM_HOME: home },
       harness: "codex",
       adapter: scriptedHarness(() => ({

@@ -6,7 +6,7 @@ import { workerIn } from "./fixtures.test-support";
 import { admit, type OrderAct, orderState } from "./order";
 import { nextOrderSlice, returnedOrderArtifact } from "./order-artifacts";
 import { loadOrder } from "./order-store";
-import type { Station } from "./station";
+import type { Station } from "./station-contract";
 
 const admitIn = (db: Database, act: OrderAct, to?: Station) => admit(loadOrder(db, ORDER), act, null, to);
 
@@ -350,6 +350,13 @@ describe("the review station", () => {
   });
   test("runs the reviewer once the build is approved", () => {
     expect(orderState(buildApproved().db, ORDER)).toEqual({ station: "review", next: "run" });
+  });
+
+  test("refuses a second reviewer while an attempt is running", () => {
+    const { db } = buildApproved();
+    expect(() => admit(loadOrder(db, ORDER), "review", { worker: "reviewer-1", runId: "review-1" })).toThrow(
+      expect.objectContaining({ code: "order_held_by_run" }),
+    );
   });
 
   test("runs the reviewer again once the builder answered every finding", () => {

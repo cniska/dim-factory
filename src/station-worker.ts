@@ -1,6 +1,5 @@
 import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
-import { assertOperator } from "./factory-operator";
 import type { HarnessAdapter } from "./harness";
 import {
   type HarnessLaunch,
@@ -8,21 +7,14 @@ import {
   type HarnessStarted,
   launchHarnessLive,
   resumeHarnessLive,
+  turnFailureDetail,
 } from "./harness-launch";
-import { HARNESSES, type HarnessName } from "./harness-name";
-import { type ReturnedOrderArtifact, returnedOrderArtifact } from "./order-artifacts";
+import type { HarnessName } from "./harness-name";
 import { finishAttempt, finishStoppedAttempt } from "./order-attempt";
+import { fail, STATION_ROLES, type Station, type StationRole } from "./station-contract";
 import { endWorker, type MintedWorker, startWorkerRun, workerProcessEnv } from "./worker";
-import {
-  assignedWorker,
-  bootstrapWorker,
-  createWorkerAssignment,
-  type WorkerAssignment,
-} from "./worker-assignment";
-import type { Role } from "./worker-roles";
+import { bootstrapWorker, createWorkerAssignment, type WorkerAssignment } from "./worker-assignment";
 import { route } from "./worker-routing";
-
-export type StationRole = Exclude<Role, "operator">;
 
 export type OrderWorker = {
   orderId: string;
@@ -33,122 +25,24 @@ export type OrderWorker = {
   harness: HarnessName;
 };
 
-export type OrderStationName = "plan" | "build" | "review";
 export type ExecutionAttribution = { harness: HarnessLaunch["harness"]; model: string; tier: string };
 
-export class UsageLimited extends Error {
-  readonly code = "usage_limited";
-  constructor(
-    readonly harness: HarnessName,
-    readonly resetsAt: string | undefined,
-  ) {
-    super(
-      `${harness} stopped at its usage limit ${resetsAt ? `until ${resetsAt}` : "with no reset given"}; delegate again after the reset with --harness ${harness}, or name another of <${HARNESSES.join("|")}>`,
-    );
-  }
-}
+export type WorkerTurn = { output: string; worker: string; bound: OrderWorker };
 
-const STATION_ROLES = {
-  plan: "planner",
-  build: "builder",
-  review: "reviewer",
-} as const satisfies Record<OrderStationName, StationRole>;
-type StationRequest = Omit<HarnessLaunch, "harness" | "model" | "env">;
-
-type OrderStationOptions = {
-  db: Database;
-  orderId: string;
-  station: OrderStationName;
-  parentWorker: string;
-  harness: HarnessLaunch["harness"];
-  env?: Record<string, string | undefined>;
-  request(context: { returned: ReturnedOrderArtifact | null; orderWorker: OrderWorker }): StationRequest;
-  onPrepared?(orderWorker: OrderWorker): void;
-};
-
-export type OrderStationTurn = {
-  orderWorker: OrderWorker;
-  returned: ReturnedOrderArtifact | null;
-  worker?: string;
-  run: Pick<HarnessLaunchResult, "exitCode" | "output" | "failureReason" | "harnessExitCode">;
-};
-
-function prepareOrderStation(options: OrderStationOptions) {
-  const role = STATION_ROLES[options.station];
-  assertOperator(options.db, options.parentWorker, `delegate ${role}`);
-  const returned = returnedOrderArtifact(options.db, options.orderId, options.station);
-  const orderWorker = ensureOrderWorker(
-    options.db,
-    options.orderId,
-    role,
-    options.parentWorker,
-    options.harness,
-  );
-  options.onPrepared?.(orderWorker);
-  const { model } = route(role, options.harness, options.env);
-  const request = {
-    ...options.request({ returned, orderWorker }),
-    harness: options.harness,
-    model,
-    env: {},
-  };
-  return { orderWorker, returned, request };
-}
-
-export async function runOrderStationLive(
-  options: OrderStationOptions & {
-    adapter?: HarnessAdapter;
-    onAssigned?: (worker: string, sessionId: string, attribution: ExecutionAttribution) => void;
-  },
-): Promise<OrderStationTurn> {
-  const { orderWorker, returned, request } = prepareOrderStation(options);
-  const run = await runOrderWorkerHarnessLive(
-    options.db,
-    request,
-    orderWorker,
-    options.env,
-    options.adapter,
-    options.onAssigned,
-  );
-  return { orderWorker, returned, worker: run.worker, run };
-}
-
-export async function resumeOrderStationLive(options: {
-  db: Database;
-  orderId: string;
-  station: OrderStationName;
-  harness: HarnessName;
-  env?: Record<string, string | undefined>;
-  adapter?: HarnessAdapter;
-  request: StationRequest;
-}): Promise<OrderStationTurn["run"]> {
-  const role = STATION_ROLES[options.station];
-  const orderWorker = readOrderWorker(options.db, options.orderId, role);
-  refuseHarnessSwitch(orderWorker, options.harness);
-  if (!orderWorker?.worker || !orderWorker.providerSessionId) {
-    throw new Error(`order ${options.orderId} ${role} has no bound session to resume`);
-  }
-  const { model } = route(role, options.harness, options.env);
-  return runOrderWorkerHarnessLive(
-    options.db,
-    { ...options.request, harness: options.harness, model, env: {} },
-    orderWorker,
-    options.env,
-    options.adapter,
-  );
-}
-
-export async function runOrderWorkerHarnessLive(
+export async function runWorkerTurn(
   db: Database,
+  station: Station,
   request: HarnessLaunch,
   worker: OrderWorker,
   machine: Record<string, string | undefined> | undefined,
   adapter?: HarnessAdapter,
   onAssigned?: (worker: string, sessionId: string, attribution: ExecutionAttribution) => void,
-): Promise<Awaited<ReturnType<typeof launchHarnessLive>> & { worker?: string }> {
+): Promise<WorkerTurn> {
   let name = worker.worker;
   let running: string | undefined;
+  let session: string | undefined;
   const onStarted: HarnessStarted = (sessionId, pid, processStartedAt) => {
+    session = sessionId;
     if (name) {
       if (onAssigned) finishStoppedAttempt(db, worker.orderId, new Date().toISOString());
       startWorkerRun(db, name, pid, processStartedAt);
@@ -168,39 +62,42 @@ export async function runOrderWorkerHarnessLive(
     const { tier, model } = route(worker.role, request.harness, machine);
     onAssigned?.(name, sessionId, { harness: request.harness, model, tier });
   };
+  let result: HarnessLaunchResult;
   try {
     const env = orderWorkerRequest(machine, worker);
-    const result = await (worker.providerSessionId
+    result = await (worker.providerSessionId
       ? resumeHarnessLive({ ...request, env }, worker.providerSessionId, onStarted, adapter)
       : launchHarnessLive({ ...request, env }, onStarted, adapter));
-    if (result.exitCode === 0 && !running) {
-      throw new Error(`order ${worker.orderId} ${worker.role} did not start a turn`);
-    }
-    if (result.usageLimit) {
-      finishAttempt(
-        db,
-        worker.orderId,
-        "limited",
-        result.failureReason,
-        new Date().toISOString(),
-        result.usageLimit.resetsAt,
-      );
-      throw new UsageLimited(request.harness, result.usageLimit.resetsAt);
-    }
-    if (result.exitCode !== 0) releaseOrderWorker(db, worker.orderId, worker.role);
-    return {
-      ...result,
-      worker: name ?? assignedWorker(db, worker.assignment.id) ?? undefined,
-    };
   } catch (error) {
     releaseOrderWorker(db, worker.orderId, worker.role);
     throw error;
   } finally {
     if (running) endWorker(db, running);
   }
+  if (!result.usageLimit && result.exitCode === 0 && running && session) {
+    return {
+      output: result.output,
+      worker: running,
+      bound: { ...worker, worker: running, providerSessionId: session },
+    };
+  }
+  releaseOrderWorker(db, worker.orderId, worker.role);
+  const turn = { orderId: worker.orderId, station };
+  if (result.usageLimit) {
+    const { resetsAt } = result.usageLimit;
+    finishAttempt(db, worker.orderId, "limited", result.failureReason, new Date().toISOString(), resetsAt);
+    throw fail("usage_limited", { harness: request.harness, resetsAt: resetsAt ?? null });
+  }
+  if (result.exitCode !== 0) {
+    throw fail("turn_unfinished", {
+      ...turn,
+      detail: turnFailureDetail(result.output, result.failureReason),
+    });
+  }
+  throw fail("turn_unstarted", turn);
 }
 
-function readOrderWorker(db: Database, orderId: string, role: StationRole): OrderWorker | undefined {
+export function readOrderWorker(db: Database, orderId: string, role: StationRole): OrderWorker | undefined {
   const row = db
     .query<
       {
@@ -247,26 +144,6 @@ function refuseHarnessSwitch(existing: OrderWorker | undefined, harness: Harness
   }
 }
 
-const ROLE_STATIONS = {
-  planner: "plan",
-  builder: "build",
-  reviewer: "review",
-} as const satisfies Record<StationRole, OrderStationName>;
-
-function sessionEndedWithoutTurn(db: Database, orderId: string, role: StationRole, worker: string): boolean {
-  const station = ROLE_STATIONS[role];
-  const failed = db
-    .query<{ evidence: string }, [string, string, string]>(
-      `SELECT evidence FROM factory_order_event
-       WHERE order_id = ? AND kind = 'failed' AND station = ? AND worker = ?
-       ORDER BY id DESC LIMIT 1`,
-    )
-    .get(orderId, station, worker);
-  if (!failed) return false;
-  const evidence = JSON.parse(failed.evidence) as { turn?: unknown };
-  return evidence.turn === false;
-}
-
 export function releaseOrderWorker(db: Database, orderId: string, role: StationRole): void {
   const existing = readOrderWorker(db, orderId, role);
   if (!existing?.worker) return;
@@ -288,35 +165,10 @@ export function releaseOrderWorker(db: Database, orderId: string, role: StationR
 export function boundStationHarness(
   db: Database,
   orderId: string,
-  station: OrderStationName,
+  station: Station,
 ): HarnessName | undefined {
   const bound = readOrderWorker(db, orderId, STATION_ROLES[station]);
   return bound?.worker ? bound.harness : undefined;
-}
-
-export function orderWorkerIsBound(
-  db: Database,
-  orderId: string,
-  role: StationRole,
-  worker?: string,
-): boolean {
-  return worker !== undefined && readOrderWorker(db, orderId, role)?.worker === worker;
-}
-
-function releaseUnavailableOrderWorker(db: Database, orderId: string, role: StationRole): void {
-  const existing = readOrderWorker(db, orderId, role);
-  if (!existing?.worker || !sessionEndedWithoutTurn(db, orderId, role, existing.worker)) return;
-  releaseOrderWorker(db, orderId, role);
-}
-
-export function assertOrderWorkerHarness(
-  db: Database,
-  orderId: string,
-  role: StationRole,
-  harness: HarnessName,
-): void {
-  releaseUnavailableOrderWorker(db, orderId, role);
-  refuseHarnessSwitch(readOrderWorker(db, orderId, role), harness);
 }
 
 export function ensureOrderWorker(
@@ -327,7 +179,6 @@ export function ensureOrderWorker(
   harness: HarnessName,
   at = new Date().toISOString(),
 ): OrderWorker {
-  releaseUnavailableOrderWorker(db, orderId, role);
   const existing = readOrderWorker(db, orderId, role);
   refuseHarnessSwitch(existing, harness);
   if (existing) {
@@ -374,31 +225,7 @@ export function bindOrderWorker(
   }
 }
 
-export function bindOrderWorkerName(
-  db: Database,
-  orderId: string,
-  role: StationRole,
-  assignmentId: string,
-  worker: string,
-): void {
-  const session = db
-    .query<{ session_id: string }, [string]>("SELECT session_id FROM factory_worker WHERE name = ?")
-    .get(worker);
-  if (!session) throw new Error(`worker ${worker} was not registered`);
-  const result = db.run(
-    `UPDATE factory_order_worker
-     SET worker = ?, provider_session_id = ?
-     WHERE order_id = ? AND role = ? AND assignment_id = ? AND worker IS NULL`,
-    [worker, session.session_id, orderId, role, assignmentId],
-  );
-  if (result.changes !== 1) {
-    const existing = readOrderWorker(db, orderId, role);
-    if (existing?.worker === worker && existing.providerSessionId === session.session_id) return;
-    throw new Error(`order ${orderId} ${role} worker binding was not writable`);
-  }
-}
-
-export function bindOrderWorkerSession(
+function bindOrderWorkerSession(
   db: Database,
   orderId: string,
   role: StationRole,
@@ -413,7 +240,7 @@ export function bindOrderWorkerSession(
   if (result.changes !== 1) throw new Error(`order ${orderId} ${role} worker session was not writable`);
 }
 
-export function orderWorkerRequest(
+function orderWorkerRequest(
   machine: Record<string, string | undefined> | undefined,
   orderWorker: OrderWorker,
 ): Record<string, string> {

@@ -90,6 +90,7 @@ describe("factory order query", () => {
       null,
     ]);
 
+    attemptIn(db, "queued", worker, attemptOperator, "run-2");
     recordOrderCommit(db, "queued", trunk.sha, worker, "feat: result");
     approveFinalBuildAt(db, "queued", trunk.sha, worker, attemptOperator);
     approveReviewAt(db, "queued", trunk.sha, attemptOperator);

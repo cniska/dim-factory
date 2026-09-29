@@ -4,7 +4,7 @@ import { runningAttempt } from "./order-attempt";
 import { fail, type Order, type OrderArtifact } from "./order-contract";
 import { isTerminalOrderStatus } from "./order-status";
 import { loadOrder } from "./order-store";
-import type { Station } from "./station";
+import type { Station } from "./station-contract";
 
 export type OrderState = { station: Station; next: "run" | "approve" } | { station: null; next: "ship" };
 
@@ -159,6 +159,8 @@ function heldAction(act: OrderAct, state: OrderState, to: Station | undefined): 
       return "start a planner";
     case "build":
       return "start a builder";
+    case "review":
+      return "start a reviewer";
     case "return":
       return `return to ${to ?? state.station}`;
     default:

@@ -39,15 +39,15 @@ function trunkForkPoint(worktree: string): string {
   return base.out;
 }
 
-function refuseChangedAttributes(worktree: string, trunk: string): void {
+function changedAttributes(worktree: string, trunk: string): BuildTurnRefused | null {
   const listed = git(worktree, ["diff", "--cached", "--name-only", "-z", trunk, "--"]);
   if (!listed.ok) throw new Error(`cannot compare ${worktree} with ${trunk}: ${listed.err}`);
   const changed = listed.out
     .split("\0")
     .filter((path) => path === ".gitattributes" || path.endsWith("/.gitattributes"));
-  if (changed.length === 0) return;
+  if (changed.length === 0) return null;
   git(worktree, ["reset", "-q"]);
-  throw new BuildTurnRefused(
+  return new BuildTurnRefused(
     "attributes_changed",
     [
       `the turn changes ${changed.join(", ")}, which decides the files the comment ban reads;`,
@@ -56,18 +56,23 @@ function refuseChangedAttributes(worktree: string, trunk: string): void {
   );
 }
 
-function refuseAddedComments(worktree: string, label: string): { unparsed: string[] } {
+function addedComments(
+  worktree: string,
+  label: string,
+): { refused: BuildTurnRefused } | { unparsed: string[] } {
   const { found, unparsed } = stagedComments(worktree);
   if (found.length === 0) return { unparsed };
   git(worktree, ["reset", "-q"]);
-  throw new BuildTurnRefused(
-    "comment_added",
-    [
-      `the turn adds a code comment, which ${label} bans:`,
-      ...found.map(({ path, line }) => `  ${path}:${line}`),
-      "put the why in a name, a test, or the doc that owns the subject",
-    ].join("\n"),
-  );
+  return {
+    refused: new BuildTurnRefused(
+      "comment_added",
+      [
+        `the turn adds a code comment, which ${label} bans:`,
+        ...found.map(({ path, line }) => `  ${path}:${line}`),
+        "put the why in a name, a test, or the doc that owns the subject",
+      ].join("\n"),
+    ),
+  };
 }
 
 function refuseUntouchedTests(worktree: string, tests: readonly string[], proofRequired: boolean): void {
@@ -134,7 +139,7 @@ export function commitBuildTurn(options: {
   proofRequired: boolean;
   env?: Env;
   checkSandbox?: string[];
-}): { sha: string } {
+}): { sha: string } | { refused: BuildTurnRefused } {
   const { db, orderId, builder, worktree, turn } = options;
   const env = options.env ?? process.env;
   const governing = trunkCheck(worktree);
@@ -177,9 +182,12 @@ export function commitBuildTurn(options: {
   const trunk = trunkRef(worktree);
   const commentGate = commentGateFor(worktree, trunk, env);
   const checked = stagedTree(worktree);
-  if (commentGate.state === "armed") refuseChangedAttributes(worktree, trunk);
-  const { unparsed } =
-    commentGate.state === "armed" ? refuseAddedComments(worktree, commentGate.label) : { unparsed: [] };
+  const attributes = commentGate.state === "armed" ? changedAttributes(worktree, trunk) : null;
+  if (attributes) return { refused: attributes };
+  const comments =
+    commentGate.state === "armed" ? addedComments(worktree, commentGate.label) : { unparsed: [] };
+  if ("refused" in comments) return comments;
+  const { unparsed } = comments;
   refuseUntouchedTests(worktree, turn.tests, options.proofRequired);
   const sandboxedCheck = () =>
     runSandboxedCheck({
@@ -203,7 +211,9 @@ export function commitBuildTurn(options: {
   );
   if (!commit.ok) {
     git(worktree, ["reset", "-q"]);
-    throw new BuildTurnRefused("commit_refused", `git refused the commit: ${commit.err || commit.out}`);
+    return {
+      refused: new BuildTurnRefused("commit_refused", `git refused the commit: ${commit.err || commit.out}`),
+    };
   }
   let proof: OrderProof | null = null;
   const refuse = (code: BuildTurnRefused["code"], message: string): BuildTurnRefused => {

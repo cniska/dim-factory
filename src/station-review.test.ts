@@ -30,9 +30,9 @@ import { runOrderCommand } from "./order-command";
 import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
 import { answerOrderFindings, raiseOrderFinding } from "./order-finding";
 import { queueOrder, startOrder } from "./order-lifecycle";
+import { runStation } from "./station";
 import { approvePlan } from "./station-approvals.test-support";
-import { ReviewRefused, reviewerBrief, reviewRange, runOrderReviewLive } from "./station-review";
-import { UsageLimited } from "./station-worker";
+import { ReviewRefused, reviewerBrief, reviewRange, reviewStation } from "./station-review";
 import { mintWorker } from "./worker";
 import { WORKER_NAME_VAR } from "./worker-name";
 
@@ -79,7 +79,7 @@ function review(
   answer: (request: HarnessRequest) => ScriptedAnswer,
   env: Record<string, string> = machine,
 ) {
-  return runOrderReviewLive(db, "order-1", operator, {
+  return runStation(db, "order-1", reviewStation, operator, {
     dir,
     env,
     harness: "codex",
@@ -241,7 +241,7 @@ describe("a review round", () => {
 
     const done = await review(db, operator, dir, answering(reviewOutput({ findings: [findingOn("a.txt")] })));
 
-    expect(done).toMatchObject({ findings: 1, outcome: "closed" });
+    expect(done).toMatchObject({ findings: 1 });
     expect(done.reviewer).toBeTruthy();
     expect(done.reviewer).not.toBe(worker);
     const row = db
@@ -280,12 +280,14 @@ describe("a review round", () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
 
-    const done = await review(db, operator, dir, () => ({ failure: "the reviewer exited 3" }));
+    await expect(review(db, operator, dir, () => ({ failure: "the reviewer exited 3" }))).rejects.toThrow(
+      "reviewer did not finish",
+    );
 
-    expect(done).toMatchObject({ findings: 0, outcome: "aborted" });
-    expect(db.query("SELECT outcome FROM factory_order_review WHERE id = ?").get(done.review)).toEqual({
-      outcome: "aborted",
-    });
+    expect(db.query("SELECT outcome FROM factory_order_review").all()).toEqual([{ outcome: "aborted" }]);
+    expect(db.query("SELECT station FROM factory_order_event WHERE kind = 'failed'").all()).toEqual([
+      { station: "review" },
+    ]);
     expect(
       db
         .query(
@@ -307,49 +309,40 @@ describe("a review round", () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "crashed-review");
 
-    const outcome = await runOrderReviewLive(db, "order-1", operator, {
-      dir,
-      harness: "codex",
-      adapter: fakeHarness("crash"),
-      env: {
-        ...machine,
-        [WORKER_NAME_VAR]: operator,
-      },
-    });
+    await expect(
+      runStation(db, "order-1", reviewStation, operator, {
+        dir,
+        harness: "codex",
+        adapter: fakeHarness("crash"),
+        env: {
+          ...machine,
+          [WORKER_NAME_VAR]: operator,
+        },
+      }),
+    ).rejects.toThrow("fake process crashed");
 
-    expect(outcome).toMatchObject({ findings: 0, outcome: "aborted" });
     expect(
       db
-        .query<{ reason: string | null }, []>(
-          "SELECT reason FROM factory_order_attempt WHERE station = 'review' AND kind = 'finished'",
+        .query(
+          `SELECT a.reason, w.role FROM factory_order_attempt a JOIN factory_worker w ON w.name = a.worker
+           WHERE a.station = 'review' AND a.kind = 'finished'`,
         )
         .get(),
-    ).toEqual({ reason: expect.stringContaining("fake process crashed") });
-    const reviewer = db
-      .query<{ reviewer: string }, [number]>("SELECT reviewer FROM factory_order_review WHERE id = ?")
-      .get(outcome.review);
-    if (!reviewer?.reviewer) throw new Error("reviewer was not recorded");
-    expect(
-      db
-        .query<{ role: string }, [string]>("SELECT role FROM factory_worker WHERE name = ?")
-        .get(reviewer.reviewer),
-    ).toEqual({
-      role: "reviewer",
-    });
+    ).toEqual({ reason: expect.stringContaining("fake process crashed"), role: "reviewer" });
   });
 
   test("fails a reviewer stopped by a usage limit with the limit, and records it limited with its reset", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "limited-review");
 
-    const failure = await runOrderReviewLive(db, "order-1", operator, {
+    const failure = await runStation(db, "order-1", reviewStation, operator, {
       dir,
       harness: "codex",
       adapter: fakeHarness("limited"),
       env: { ...machine, [WORKER_NAME_VAR]: operator },
     }).catch((error: unknown) => error);
 
-    expect(failure).toBeInstanceOf(UsageLimited);
+    expect(failure).toMatchObject({ code: "usage_limited" });
     expect(failure).toMatchObject({
       message:
         "codex stopped at its usage limit until 2026-09-27T16:50:00.000Z; delegate again after the reset with --harness codex, or name another of <codex|claude|grok>",
@@ -375,7 +368,7 @@ describe("a review round", () => {
     };
 
     await expect(
-      runOrderReviewLive(db, "order-1", operator, { dir, harness: "codex", adapter, env: machine }),
+      runStation(db, "order-1", reviewStation, operator, { dir, harness: "codex", adapter, env: machine }),
     ).rejects.toThrow("harness unavailable");
     expect(db.query("SELECT outcome FROM factory_order_review").get()).toEqual({ outcome: "aborted" });
     expect(
@@ -386,33 +379,7 @@ describe("a review round", () => {
     ).toEqual({
       n: 0,
     });
-    expect((await review(db, operator, dir, answering(reviewOutput()))).outcome).toBe("closed");
-  });
-
-  test("names both the harness failure and a cleanup that failed after it", async () => {
-    const { db, worker, operator, dir } = floor();
-    slice(db, dir, worker, "cleanup-review");
-    db.run(`CREATE TRIGGER hold_review BEFORE UPDATE OF outcome ON factory_order_review
-            BEGIN SELECT RAISE(ABORT, 'review row is held'); END`);
-    const adapter = {
-      ...fakeHarness("review"),
-      start: async () => {
-        throw new Error("harness unavailable");
-      },
-    };
-
-    const failure = await runOrderReviewLive(db, "order-1", operator, {
-      dir,
-      harness: "codex",
-      adapter,
-      env: machine,
-    }).then(
-      () => undefined,
-      (error: unknown) => error as Error,
-    );
-    expect(failure?.message).toContain("review row is held");
-    expect(failure?.message).toContain("harness unavailable");
-    expect((failure?.cause as Error | undefined)?.message).toBe("harness unavailable");
+    expect(await review(db, operator, dir, answering(reviewOutput()))).toMatchObject({ findings: 0 });
   });
 
   test("a reviewer run that ends before assignment leaves review retryable", async () => {
@@ -420,7 +387,7 @@ describe("a review round", () => {
     slice(db, dir, worker, "bootstrap-review");
 
     await expect(
-      runOrderReviewLive(db, "order-1", operator, {
+      runStation(db, "order-1", reviewStation, operator, {
         dir,
         harness: "codex",
         adapter: fakeHarness("bootstrap-failure"),
@@ -435,7 +402,7 @@ describe("a review round", () => {
       reason: expect.stringContaining("worker bootstrap failed"),
     });
     expect(db.query("SELECT outcome FROM factory_order_review").get()).toEqual({ outcome: "aborted" });
-    expect((await review(db, operator, dir, answering(reviewOutput()))).outcome).toBe("closed");
+    expect(await review(db, operator, dir, answering(reviewOutput()))).toMatchObject({ findings: 0 });
   });
 
   test("a resumed reviewer that ends before assignment leaves review retryable", async () => {
@@ -448,7 +415,7 @@ describe("a review round", () => {
     });
 
     await expect(
-      runOrderReviewLive(db, "order-1", operator, {
+      runStation(db, "order-1", reviewStation, operator, {
         dir,
         harness: "codex",
         adapter: fakeHarness("bootstrap-failure"),
@@ -459,13 +426,13 @@ describe("a review round", () => {
       worker: null,
       station: "review",
     });
-    expect((await review(db, operator, dir, answering(reviewOutput()))).outcome).toBe("closed");
+    expect(await review(db, operator, dir, answering(reviewOutput()))).toMatchObject({ findings: 0 });
   });
 
   test("records the reviewer's structured result through the factory", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "review-result");
-    const outcome = await runOrderReviewLive(db, "order-1", operator, {
+    const outcome = await runStation(db, "order-1", reviewStation, operator, {
       dir,
       harness: "codex",
       adapter: fakeHarness("review"),
@@ -475,7 +442,7 @@ describe("a review round", () => {
       },
     });
 
-    expect(outcome).toMatchObject({ findings: 0, outcome: "closed" });
+    expect(outcome).toMatchObject({ findings: 0 });
     expect(
       db
         .query(
@@ -523,11 +490,20 @@ describe("a review round", () => {
       [WORKER_NAME_VAR]: operator,
     };
 
-    const first = await runOrderReviewLive(db, "order-1", operator, { dir, adapter, env, harness: "codex" });
+    const options = { dir, adapter, env, harness: "codex" as const };
+    await expect(runStation(db, "order-1", reviewStation, operator, options)).rejects.toThrow(
+      "fake process crashed",
+    );
     slice(db, dir, worker, "review-second");
-    const second = await runOrderReviewLive(db, "order-1", operator, { dir, adapter, env, harness: "codex" });
+    await expect(runStation(db, "order-1", reviewStation, operator, options)).rejects.toThrow(
+      "fake process crashed",
+    );
 
-    expect(first.reviewer).not.toBe(second.reviewer);
+    expect(
+      db
+        .query("SELECT count(DISTINCT worker) AS n FROM factory_order_attempt WHERE station = 'review'")
+        .get(),
+    ).toEqual({ n: 2 });
     expect(starts).toBe(2);
     expect(resumes).toBe(0);
     expect(db.query("SELECT count(*) AS n FROM factory_worker WHERE role = 'reviewer'").get()).toEqual({
@@ -618,7 +594,7 @@ describe("a review round", () => {
     );
   });
 
-  test("two rounds cannot be open over one order", async () => {
+  test("a second reviewer is refused while the first runs", async () => {
     const { db, worker, operator, dir } = floor();
     slice(db, dir, worker, "a");
     let refusal: Promise<unknown> | undefined;
@@ -631,7 +607,7 @@ describe("a review round", () => {
       return { output: reviewOutput() };
     });
 
-    expect(await refusal).toMatchObject({ message: expect.stringMatching(/already has review/) });
+    expect(await refusal).toMatchObject({ code: "order_held_by_run" });
   });
 
   test("refuses a finding on a file the round did not change", async () => {
@@ -673,7 +649,7 @@ describe("a review round", () => {
     const run = () =>
       review(db, operator, dir, answering(reviewOutput({ findings: [findingOn(file, { line })] })));
     if (refusal) await expect(run()).rejects.toThrow(refusal);
-    else expect(await run()).toMatchObject({ findings: 1, outcome: "closed" });
+    else expect(await run()).toMatchObject({ findings: 1 });
   });
 
   test("briefs the reviewer with the order's approved plan", async () => {

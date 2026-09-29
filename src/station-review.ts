@@ -1,29 +1,22 @@
 import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
-import type { HarnessAdapter } from "./harness";
-import { workerFailureReason } from "./harness-launch";
-import type { HarnessName } from "./harness-name";
-import { admitAct } from "./order";
 import { latestApprovedPlan } from "./order-approved-plan";
-import type { ReturnedOrderArtifact } from "./order-artifacts";
 import { finishAttempt } from "./order-attempt";
 import { currentOrderCommits } from "./order-commits";
 import { raiseOrderFinding } from "./order-finding";
 import { type FindingStanding, orderFindingStandings } from "./order-finding-state";
-import { appendOrderEvent } from "./order-ledger";
 import {
   abortStrandedReview,
   closeOrderReview,
   openOrderReview,
   recordOrderReviewArtifact,
 } from "./order-review";
-import { holdOrder, startStationAttempt } from "./station-attempt";
+import type { StationRun } from "./station";
 import { type BriefedOrder, briefHeader } from "./station-brief";
 import { stationDirectory } from "./station-directory";
 import type { PlanSlice } from "./station-plan-artifact";
 import { parseReviewReport, type ReviewFinding } from "./station-review-artifact";
 import { renderReviewReport } from "./station-review-report";
-import { type OrderStationTurn, runOrderStationLive } from "./station-worker";
 import type { Capability } from "./worker-capabilities";
 
 export class ReviewRefused extends Error {
@@ -41,8 +34,6 @@ export const REVIEWER_CAPABILITIES: Capability[] = [
   "read-history",
   "ask-dim",
 ];
-
-const REVIEW_OUTPUT_SCHEMA = `${import.meta.dir}/station-review-artifact.schema.json`;
 
 function git(dir: string, args: string[]): { ok: boolean; out: string; raw: string } {
   const run = Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "pipe", stderr: "ignore" });
@@ -118,37 +109,7 @@ export function reviewerBrief(
 
 type ReviewedRound = { id: number; base: string; head: string; dir: string };
 
-function openRound(db: Database, orderId: string, dir: string, assignmentId: string): ReviewedRound {
-  const range = reviewRange(db, orderId, dir);
-  const round = openOrderReview(db, orderId, { assignmentId, baseSha: range.base, headSha: range.head });
-  return { id: round.id, ...range, dir };
-}
-
-function reviewerRequest(
-  db: Database,
-  order: BriefedOrder,
-  round: ReviewedRound,
-  returned: ReturnedOrderArtifact | null,
-) {
-  return {
-    cwd: round.dir,
-    brief: reviewerBrief(
-      order,
-      round,
-      { plan: latestApprovedPlan(db, order.id), earlier: earlierFindings(db, order.id, round.id) },
-      returned ? { body: returned.body, feedback: returned.reason } : null,
-    ),
-    capabilities: REVIEWER_CAPABILITIES,
-    outputSchema: REVIEW_OUTPUT_SCHEMA,
-  };
-}
-
-export type ReviewOutcome = {
-  review: number;
-  reviewer: string;
-  findings: number;
-  outcome: "closed" | "aborted";
-};
+export type ReviewOutcome = { review: number; reviewer: string; findings: number };
 
 function assertLocations(findings: ReviewFinding[], round: ReviewedRound): void {
   if (findings.length === 0) return;
@@ -176,131 +137,38 @@ function assertLocations(findings: ReviewFinding[], round: ReviewedRound): void 
   });
 }
 
-function recordReviewResult(
-  db: Database,
-  orderId: string,
-  reviewer: string,
-  raw: string,
-  round: ReviewedRound,
-): number {
-  const report = parseReviewReport(raw);
-  assertLocations(report.findings, round);
-  return writeTransaction(db, () => {
-    for (const finding of report.findings) {
-      raiseOrderFinding(db, orderId, finding, reviewer);
-    }
-    recordOrderReviewArtifact(db, orderId, renderReviewReport(db, round.id, report), reviewer);
-    return report.findings.length;
-  });
-}
-
-export async function runOrderReviewLive(
-  db: Database,
-  orderId: string,
-  worker: string,
-  options: {
-    dir: string;
-    env?: Record<string, string | undefined>;
-    harness: HarnessName;
-    adapter?: HarnessAdapter;
+export const reviewStation: StationRun<ReviewedRound, ReviewOutcome> = {
+  station: "review",
+  capabilities: REVIEWER_CAPABILITIES,
+  outputSchema: `${import.meta.dir}/station-review-artifact.schema.json`,
+  prepare: (db, order, { dir, returned, assignmentId }) => {
+    abortStrandedReview(db, order.id);
+    const cwd = stationDirectory(dir, order.id);
+    const range = reviewRange(db, order.id, cwd);
+    const opened = openOrderReview(db, order.id, { assignmentId, baseSha: range.base, headSha: range.head });
+    const round = { id: opened.id, ...range, dir: cwd };
+    return {
+      cwd,
+      brief: reviewerBrief(
+        order,
+        round,
+        { plan: latestApprovedPlan(db, order.id), earlier: earlierFindings(db, order.id, round.id) },
+        returned ? { body: returned.body, feedback: returned.reason } : null,
+      ),
+      abort: () => closeOrderReview(db, round.id, "aborted"),
+      context: round,
+    };
   },
-): Promise<ReviewOutcome> {
-  const order = db
-    .query<BriefedOrder, [string]>("SELECT id, title, description, line FROM factory_order WHERE id = ?")
-    .get(orderId);
-  if (!order) throw new Error(`order not found: ${orderId}`);
-  using hold = holdOrder(orderId, options.env);
-  admitAct(db, orderId, "review", worker);
-  abortStrandedReview(db, orderId);
-  const dir = stationDirectory(options.dir, orderId);
-  const harness = options.harness;
-  const runId = `review-${crypto.randomUUID()}`;
-  let opened: ReviewedRound | undefined;
-  let claimed = false;
-  let turn: OrderStationTurn;
-  try {
-    turn = await runOrderStationLive({
-      db,
-      orderId,
-      station: "review",
-      parentWorker: worker,
-      harness,
-      env: options.env,
-      adapter: options.adapter,
-      onAssigned: (assigned, providerSessionId, attribution) => {
-        startStationAttempt(
-          db,
-          orderId,
-          {
-            runId,
-            worker: assigned,
-            operatorWorker: worker,
-            station: "review",
-            sessionId: providerSessionId,
-            providerSessionId,
-            ...attribution,
-          },
-          new Date().toISOString(),
-        );
-        claimed = true;
-        hold.release();
-      },
-      request: ({ orderWorker: assigned, returned }) => {
-        opened = openRound(db, orderId, dir, assigned.assignment.id);
-        return reviewerRequest(db, order, opened, returned);
-      },
+  accept: (db, output, turn, round) => {
+    const report = parseReviewReport(output);
+    assertLocations(report.findings, round);
+    writeTransaction(db, () => {
+      for (const finding of report.findings) raiseOrderFinding(db, turn.orderId, finding, turn.worker);
+      recordOrderReviewArtifact(db, turn.orderId, renderReviewReport(db, round.id, report), turn.worker);
+      db.run("UPDATE factory_order_review SET reviewer = ? WHERE id = ?", [turn.worker, round.id]);
+      closeOrderReview(db, round.id, "closed");
+      finishAttempt(db, turn.orderId, "succeeded", undefined, new Date().toISOString());
     });
-  } catch (error) {
-    const failure = error instanceof Error ? error.message : String(error);
-    if (opened) {
-      const reason = workerFailureReason("reviewer did not finish reviewing", failure, undefined);
-      try {
-        closeOrderReview(db, opened.id, "aborted");
-        if (claimed) finishAttempt(db, orderId, "failed", reason, new Date().toISOString());
-      } catch (cleanup) {
-        const reason = cleanup instanceof Error ? cleanup.message : String(cleanup);
-        throw new Error(`${reason}; the review failed first: ${failure}`, { cause: error });
-      }
-    }
-    if (!claimed) {
-      appendOrderEvent(db, orderId, { kind: "failed", station: "review", reason: failure });
-    }
-    throw error;
-  }
-  if (!opened) throw new Error("review round was not opened");
-  if (!claimed || !turn.worker) {
-    const failure = workerFailureReason(
-      "reviewer did not bootstrap its worker assignment",
-      turn.run.output,
-      turn.run.failureReason,
-    );
-    closeOrderReview(db, opened.id, "aborted");
-    if (claimed) finishAttempt(db, orderId, "failed", failure, new Date().toISOString());
-    else appendOrderEvent(db, orderId, { kind: "failed", station: "review", reason: failure });
-    throw new Error(failure);
-  }
-  const reviewer = turn.worker;
-  db.run("UPDATE factory_order_review SET reviewer = ? WHERE id = ?", [reviewer, opened.id]);
-  const outcome = turn.run.exitCode === 0 ? "closed" : "aborted";
-  const reason =
-    outcome === "aborted"
-      ? workerFailureReason("reviewer did not finish reviewing", turn.run.output, turn.run.failureReason)
-      : undefined;
-  if (outcome === "aborted") {
-    closeOrderReview(db, opened.id, outcome);
-    finishAttempt(db, orderId, "failed", reason, new Date().toISOString());
-    return { review: opened.id, reviewer, findings: 0, outcome };
-  }
-  let findings: number;
-  try {
-    findings = recordReviewResult(db, orderId, reviewer, turn.run.output, opened);
-  } catch (error) {
-    const failure = error instanceof Error ? error.message : String(error);
-    closeOrderReview(db, opened.id, "aborted");
-    finishAttempt(db, orderId, "failed", failure, new Date().toISOString());
-    throw error;
-  }
-  closeOrderReview(db, opened.id, outcome);
-  finishAttempt(db, orderId, "succeeded", undefined, new Date().toISOString());
-  return { review: opened.id, reviewer, findings, outcome };
-}
+    return { review: round.id, reviewer: turn.worker, findings: report.findings.length };
+  },
+};

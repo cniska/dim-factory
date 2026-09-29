@@ -38,10 +38,10 @@ import { closeOrderReview } from "./order-review";
 import { recheck, shipOrder } from "./order-ship";
 import { orderStatus } from "./order-status";
 import { findQuery } from "./query-registry";
+import { runStation } from "./station";
 import { approveReviewAt } from "./station-approvals.test-support";
-import { runOrderBuildLive } from "./station-build";
+import { buildStation } from "./station-build";
 import type { BuildTurn } from "./station-build-turn";
-import { UsageLimited } from "./station-worker";
 import { endWorker, mintWorker } from "./worker";
 import { WORKER_NAME_VAR } from "./worker-name";
 import { repoRoot } from "./worktree";
@@ -157,7 +157,7 @@ describe("builder station", () => {
     };
 
     let request: HarnessRequest | undefined;
-    const outcome = await runOrderBuildLive(db, "builder-order", operator.name, {
+    const outcome = await runStation(db, "builder-order", buildStation, operator.name, {
       dir: repo.dir,
       harness: "codex",
       env,
@@ -260,7 +260,7 @@ describe("builder station", () => {
     returnOrder(db, "builder-order", operator.name, "Explain what the build verified.");
     const unavailable = unavailableHarness();
     await expect(
-      runOrderBuildLive(db, "builder-order", operator.name, {
+      runStation(db, "builder-order", buildStation, operator.name, {
         dir: repo.dir,
         env,
         harness: "codex",
@@ -270,7 +270,7 @@ describe("builder station", () => {
     expect(unavailable.brief()).toContain("## Returned Build artifact");
     expect(unavailable.brief()).toContain("Explain what the build verified.");
     await expect(
-      runOrderBuildLive(db, "builder-order", operator.name, {
+      runStation(db, "builder-order", buildStation, operator.name, {
         dir: repo.dir,
         env,
         harness: "codex",
@@ -293,14 +293,14 @@ describe("builder station", () => {
       { title: "Build the result", outcome: "The requested result is verified." },
     ]);
 
-    const failure = await runOrderBuildLive(db, "limited-order", operator.name, {
+    const failure = await runStation(db, "limited-order", buildStation, operator.name, {
       dir: repo.dir,
       harness: "codex",
       env: { DIM_HOME: home("dim-builder-limited-"), [WORKER_NAME_VAR]: operator.name },
       adapter: fakeHarness("limited"),
     }).catch((error: unknown) => error);
 
-    expect(failure).toBeInstanceOf(UsageLimited);
+    expect(failure).toMatchObject({ code: "usage_limited" });
     expect(failure).toMatchObject({
       message:
         "codex stopped at its usage limit until 2026-09-27T16:50:00.000Z; delegate again after the reset with --harness codex, or name another of <codex|claude|grok>",
@@ -335,7 +335,7 @@ describe("builder station", () => {
     }
     let brief = "";
 
-    await runOrderBuildLive(db, "convention-order", operator.name, {
+    await runStation(db, "convention-order", buildStation, operator.name, {
       dir: repo.dir,
       harness: "codex",
       env: { DIM_HOME: dimHome },
@@ -374,7 +374,7 @@ describe("builder station", () => {
     };
 
     await expect(
-      runOrderBuildLive(db, "red-order", operator.name, {
+      runStation(db, "red-order", buildStation, operator.name, {
         ...options,
         adapter: builderTurn((request) => {
           writeFileSync(join(request.cwd, "partial.txt"), "partial\n");
@@ -404,7 +404,7 @@ describe("builder station", () => {
     ]);
 
     let retryBrief = "";
-    const retry = await runOrderBuildLive(db, "red-order", operator.name, {
+    const retry = await runStation(db, "red-order", buildStation, operator.name, {
       ...options,
       adapter: builderTurn((request) => {
         retryBrief = request.brief;
@@ -424,7 +424,7 @@ describe("builder station", () => {
     });
 
     await expect(
-      runOrderBuildLive(db, "red-order", operator.name, {
+      runStation(db, "red-order", buildStation, operator.name, {
         ...options,
         adapter: builderTurn((request) => {
           writeFileSync(join(request.cwd, "second.txt"), "second\n");
@@ -450,7 +450,7 @@ describe("builder station", () => {
     );
 
     await expect(
-      runOrderBuildLive(db, "drift-order", operator.name, {
+      runStation(db, "drift-order", buildStation, operator.name, {
         dir: repo.dir,
         harness: "codex",
         env: { DIM_HOME: dimHome },
@@ -486,7 +486,7 @@ describe("builder station", () => {
         check,
         line,
       );
-      const failure = await runOrderBuildLive(db, orderId, operator.name, {
+      const failure = await runStation(db, orderId, buildStation, operator.name, {
         dir: repo.dir,
         harness: "codex",
         env: { DIM_HOME: home(`dim-builder-${orderId}-`) },
@@ -524,7 +524,7 @@ describe("builder station", () => {
 
     test("refuses a fix slice that names no test, committing and staging nothing", async () => {
       const { failure, moved, staged, commits, proofs } = await sliceTurn("unnamed-fix-order", "fix", []);
-      expect(failure?.cause).toMatchObject({
+      expect(failure).toMatchObject({
         code: "proof_missing",
         message: expect.stringContaining("names no test"),
       });
@@ -543,7 +543,7 @@ describe("builder station", () => {
         ["proof.sh", "landed.txt"],
         { check: "touch checked.txt" },
       );
-      expect(failure?.cause).toMatchObject({
+      expect(failure).toMatchObject({
         code: "proof_missing",
         message: expect.stringContaining("names test landed.txt,"),
       });
@@ -559,7 +559,7 @@ describe("builder station", () => {
       const { failure, moved } = await sliceTurn("deleted-fix-order", "fix", ["proof.sh", "landed.txt"], {
         edit: (worktree) => rmSync(join(worktree, "landed.txt")),
       });
-      expect(failure?.cause).toMatchObject({ code: "proof_missing" });
+      expect(failure).toMatchObject({ code: "proof_missing" });
       expect(moved).toBe(false);
     });
 
@@ -581,7 +581,7 @@ describe("builder station", () => {
 
     test("refuses a feat slice that names a test it did not add or change", async () => {
       const { failure, moved } = await sliceTurn("untouched-feat-order", "feat", ["landed.txt"]);
-      expect(failure?.cause).toMatchObject({ code: "proof_missing" });
+      expect(failure).toMatchObject({ code: "proof_missing" });
       expect(moved).toBe(false);
     });
 
@@ -631,7 +631,7 @@ describe("builder station", () => {
         ["proof.sh"],
         { check: "true" },
       );
-      expect(failure?.cause).toMatchObject({ code: "proof_green" });
+      expect(failure).toMatchObject({ code: "proof_green" });
       expect({ moved, staged, checks }).toEqual({ moved: false, staged: "", checks: [] });
       expect(proofs).toEqual([{ head_sha: base, base_sha: base, paths: '["proof.sh"]', exit_code: 0 }]);
       expect(git(worktree, ["status", "--porcelain"]).split("\n").sort()).toEqual([
@@ -649,7 +649,7 @@ describe("builder station", () => {
           check: "sh proof.sh && test -f never.txt",
         },
       );
-      expect(failure?.cause).toMatchObject({ code: "check_failed" });
+      expect(failure).toMatchObject({ code: "check_failed" });
       expect({ moved, checks }).toEqual({ moved: false, checks: [{ head_sha: base }] });
       expect(proofs).toEqual([{ head_sha: base, base_sha: base, paths: '["proof.sh"]', exit_code: 1 }]);
     });
@@ -662,7 +662,7 @@ describe("builder station", () => {
         const { failure, base, moved, staged, proofs } = await sliceTurn(orderId, "fix", ["proof.sh"], {
           check: `sh proof.sh && ${plant}`,
         });
-        expect(failure?.cause).toMatchObject({ code });
+        expect(failure).toMatchObject({ code });
         expect({ moved, staged }).toEqual({ moved: false, staged: "" });
         expect(proofs).toEqual([{ head_sha: base, base_sha: base, paths: '["proof.sh"]', exit_code: 1 }]);
       }
@@ -672,7 +672,7 @@ describe("builder station", () => {
       const { failure, base, moved, proofs } = await sliceTurn("nested-proof-order", "fix", ["proof.sh"], {
         check: "if test -f fixed.txt; then rm -rf vendor; else git init -q vendor/planted; fi; sh proof.sh",
       });
-      expect(failure?.cause).toMatchObject({ code: "nested_repository" });
+      expect(failure).toMatchObject({ code: "nested_repository" });
       expect(moved).toBe(false);
       expect(proofs).toEqual([{ head_sha: base, base_sha: base, paths: '["proof.sh"]', exit_code: 1 }]);
     });
@@ -732,7 +732,7 @@ describe("builder station", () => {
       ]);
       const left = git(worktree, ["rev-parse", "HEAD"]);
       let found = {};
-      await runOrderBuildLive(db, orderId, operator.name, {
+      await runStation(db, orderId, buildStation, operator.name, {
         dir: repo.dir,
         harness: "codex",
         env: { DIM_HOME: home(`dim-builder-${orderId}-`) },
@@ -769,7 +769,7 @@ describe("builder station", () => {
         ["proof.sh"],
         { check: "test -f fixed.txt || touch planted.txt; sh proof.sh" },
       );
-      expect(failure?.cause).toMatchObject({
+      expect(failure).toMatchObject({
         code: "check_changed_tree",
         message: expect.stringMatching(
           /^the proof of proof\.sh at \w+ was refused: the check changed the worktree/,
@@ -787,7 +787,7 @@ describe("builder station", () => {
       const { failure, worktree, moved } = await sliceTurn("edited-proof-order", "fix", ["proof.sh"], {
         check: "test -f fixed.txt || echo edited >> landed.txt; sh proof.sh",
       });
-      expect(failure?.cause).toMatchObject({ code: "check_changed_tree" });
+      expect(failure).toMatchObject({ code: "check_changed_tree" });
       expect(moved).toBe(false);
       expect(readFileSync(join(worktree, "landed.txt"), "utf8")).toBe("landed");
       expect(existsSync(join(worktree, "fixed.txt"))).toBe(true);
@@ -820,7 +820,7 @@ describe("builder station", () => {
     const fired = join(dimHome, "fired");
 
     await expect(
-      runOrderBuildLive(db, "nested-order", operator.name, {
+      runStation(db, "nested-order", buildStation, operator.name, {
         dir: repo.dir,
         harness: "codex",
         env: { DIM_HOME: dimHome },
@@ -858,7 +858,7 @@ describe("builder station", () => {
     ]);
 
     await expect(
-      runOrderBuildLive(db, "detached-order", operator.name, {
+      runStation(db, "detached-order", buildStation, operator.name, {
         dir: repo.dir,
         harness: "codex",
         env: { DIM_HOME: dimHome },
@@ -890,7 +890,7 @@ describe("builder station", () => {
     git(repo.dir, ["config", "core.hooksPath", ".husky"]);
     git(join(repo.dir, ".claude", "worktrees", "hooks-order"), ["merge", "-q", "--ff-only", "main"]);
 
-    await runOrderBuildLive(db, "hooks-order", operator.name, {
+    await runStation(db, "hooks-order", buildStation, operator.name, {
       dir: repo.dir,
       harness: "codex",
       env: { DIM_HOME: dimHome },
@@ -919,7 +919,7 @@ describe("builder station", () => {
     git(repo.dir, ["commit", "-q", "-m", "chore: add old.txt"]);
     git(join(repo.dir, ".claude", "worktrees", "rename-order"), ["merge", "-q", "--ff-only", "main"]);
 
-    await runOrderBuildLive(db, "rename-order", operator.name, {
+    await runStation(db, "rename-order", buildStation, operator.name, {
       dir: repo.dir,
       harness: "codex",
       env: { DIM_HOME: dimHome },
@@ -947,7 +947,7 @@ describe("builder station", () => {
     ]);
 
     await expect(
-      runOrderBuildLive(db, "subject-order", operator.name, {
+      runStation(db, "subject-order", buildStation, operator.name, {
         dir: repo.dir,
         harness: "codex",
         env: { DIM_HOME: dimHome },
@@ -970,7 +970,7 @@ describe("builder station", () => {
     ]);
 
     await expect(
-      runOrderBuildLive(db, "first-order", operator.name, {
+      runStation(db, "first-order", buildStation, operator.name, {
         dir: repo.dir,
         harness: "codex",
         env: { DIM_HOME: dimHome },
@@ -1027,7 +1027,7 @@ describe("builder station", () => {
 
     const unavailable = unavailableHarness();
     await expect(
-      runOrderBuildLive(db, "returned-builder-order", operator.name, {
+      runStation(db, "returned-builder-order", buildStation, operator.name, {
         ...options,
         adapter: unavailable.adapter,
       }),
@@ -1038,7 +1038,7 @@ describe("builder station", () => {
     expect(brief).not.toContain("## Returned Build artifact");
     expect(db.query("SELECT count(*) AS n FROM factory_order_slice_completion").get()).toEqual({ n: 0 });
 
-    const outcome = await runOrderBuildLive(db, "returned-builder-order", operator.name, {
+    const outcome = await runStation(db, "returned-builder-order", buildStation, operator.name, {
       ...options,
       adapter: builderTurn(() => ({
         subject: "feat: build it",
@@ -1067,7 +1067,7 @@ describe("builder station", () => {
 
     returnOrder(db, "returned-builder-order", operator.name, "Say what the check verified.");
     let returnedBrief = "";
-    await runOrderBuildLive(db, "returned-builder-order", operator.name, {
+    await runStation(db, "returned-builder-order", buildStation, operator.name, {
       ...options,
       adapter: builderTurn((request) => {
         returnedBrief = request.brief;
@@ -1084,7 +1084,7 @@ describe("builder station", () => {
     expect(orderState(db, "returned-builder-order")).toEqual({ station: "build", next: "approve" });
 
     returnOrder(db, "returned-builder-order", operator.name, "Rename the result file.");
-    await runOrderBuildLive(db, "returned-builder-order", operator.name, {
+    await runStation(db, "returned-builder-order", buildStation, operator.name, {
       ...options,
       adapter: builderTurn((request) => {
         writeFileSync(join(request.cwd, "result.txt"), "result\n");
@@ -1098,7 +1098,7 @@ describe("builder station", () => {
 
     returnOrder(db, "returned-builder-order", operator.name, "Answer in the artifact.");
     await expect(
-      runOrderBuildLive(db, "returned-builder-order", operator.name, {
+      runStation(db, "returned-builder-order", buildStation, operator.name, {
         ...options,
         adapter: builderTurn(() => ({ subject: "docs: nothing", artifact: "" })),
       }),
@@ -1125,7 +1125,7 @@ describe("builder station", () => {
         harness: "codex" as const,
         checkSandbox: confiningCheckSandbox(),
       };
-      const firstBuild = await runOrderBuildLive(db, orderId, operator.name, {
+      const firstBuild = await runStation(db, orderId, buildStation, operator.name, {
         ...options,
         adapter: builderTurn((request) => {
           writeFileSync(join(request.cwd, "first.txt"), "first\n");
@@ -1165,7 +1165,7 @@ describe("builder station", () => {
       const { db, operator, options, firstBuild, first, finding } =
         await reviewedAtBuild("review-rework-order");
       let brief = "";
-      const followup = await runOrderBuildLive(db, "review-rework-order", operator.name, {
+      const followup = await runStation(db, "review-rework-order", buildStation, operator.name, {
         ...options,
         adapter: builderTurn((request) => {
           brief = request.brief;
@@ -1215,7 +1215,7 @@ describe("builder station", () => {
         "sh proof.sh",
         "fix",
       );
-      const followup = await runOrderBuildLive(db, "fix-rework-order", operator.name, {
+      const followup = await runStation(db, "fix-rework-order", buildStation, operator.name, {
         ...options,
         adapter: builderTurn((request) => {
           writeFileSync(join(request.cwd, "fix.txt"), "fix\n");
@@ -1234,7 +1234,7 @@ describe("builder station", () => {
     test("records a refuse-only turn's answers and makes no commit", async () => {
       const { db, operator, options, first, finding } = await reviewedAtBuild("refused-rework-order");
       const before = commits(db, "refused-rework-order");
-      const followup = await runOrderBuildLive(db, "refused-rework-order", operator.name, {
+      const followup = await runStation(db, "refused-rework-order", buildStation, operator.name, {
         ...options,
         adapter: builderTurn(() => ({
           subject: "docs: answer the review",
@@ -1266,7 +1266,7 @@ describe("builder station", () => {
       const { db, operator, options, first, finding } = await reviewedAtBuild(orderId, given.check);
       const recorded = commits(db, orderId);
       given.prepare?.(db);
-      const failure = await runOrderBuildLive(db, orderId, operator.name, {
+      const failure = await runStation(db, orderId, buildStation, operator.name, {
         ...options,
         adapter: builderTurn((request) => {
           if (given.change !== "") writeFileSync(join(request.cwd, given.change ?? "fix.txt"), "fix\n");
@@ -1293,7 +1293,7 @@ describe("builder station", () => {
         change: "red.txt",
         check: "test ! -f red.txt",
       });
-      expect(failure?.cause).toMatchObject({ code: "check_failed" });
+      expect(failure).toMatchObject({ code: "check_failed" });
     });
 
     test("briefs the red check of a turn that answered the finding to the next turn", async () => {
@@ -1306,16 +1306,19 @@ describe("builder station", () => {
         return { subject: "fix: review finding", artifact: "Revised Build artifact.", ...fixed(finding) };
       };
       await expect(
-        runOrderBuildLive(db, "red-answer-order", operator.name, {
+        runStation(db, "red-answer-order", buildStation, operator.name, {
           ...options,
           adapter: scriptedBuilder([answer("red.txt")]).adapter,
         }),
-      ).rejects.toMatchObject({ cause: { code: "check_failed" } });
+      ).rejects.toMatchObject({ code: "check_failed" });
       const worktree = join(options.dir, ".claude", "worktrees", "red-answer-order");
       rmSync(join(worktree, "red.txt"));
 
       const retry = scriptedBuilder([answer("fix.txt")]);
-      await runOrderBuildLive(db, "red-answer-order", operator.name, { ...options, adapter: retry.adapter });
+      await runStation(db, "red-answer-order", buildStation, operator.name, {
+        ...options,
+        adapter: retry.adapter,
+      });
 
       expect(retry.calls[0]?.brief).toContain("## Review findings");
       expect(redCheckOutput(retry.calls[0]?.brief ?? "")).toContain("red.txt is there");
@@ -1340,30 +1343,28 @@ describe("builder station", () => {
           { finding, answer: "fixed", resolution: null },
         ],
       }));
-      expect(failure?.cause).toMatchObject({ code: "answer_not_owed" });
+      expect(failure).toMatchObject({ code: "answer_not_owed" });
     });
 
     test("refuses a turn that leaves a briefed finding unanswered", async () => {
-      expect((await refusedTurn("unanswered-rework-order", () => ({ answers: [] })))?.cause).toMatchObject({
+      expect(await refusedTurn("unanswered-rework-order", () => ({ answers: [] }))).toMatchObject({
         code: "finding_unanswered",
       });
     });
 
     test("refuses an answer to a finding the brief did not hand over as work", async () => {
       expect(
-        (
-          await refusedTurn("unowed-rework-order", (finding) => ({
-            answers: [
-              { finding, answer: "fixed", resolution: null },
-              { finding: finding + 1, answer: "fixed", resolution: null },
-            ],
-          }))
-        )?.cause,
+        await refusedTurn("unowed-rework-order", (finding) => ({
+          answers: [
+            { finding, answer: "fixed", resolution: null },
+            { finding: finding + 1, answer: "fixed", resolution: null },
+          ],
+        })),
       ).toMatchObject({ code: "answer_not_owed" });
     });
 
     test("refuses a fixed answer from a turn that changed nothing", async () => {
-      expect((await refusedTurn("unchanged-rework-order", fixed, { change: "" }))?.cause).toMatchObject({
+      expect(await refusedTurn("unchanged-rework-order", fixed, { change: "" })).toMatchObject({
         code: "no_change",
       });
     });
@@ -1383,7 +1384,7 @@ describe("builder station", () => {
       [{ type: "run.started", providerSessionId: "fake-session" }, { type: "turn.started" }],
     );
 
-    const outcome = await runOrderBuildLive(db, "second-turn-order", operator.name, {
+    const outcome = await runStation(db, "second-turn-order", buildStation, operator.name, {
       dir: repo.dir,
       harness: "codex",
       env: { DIM_HOME: dimHome },
@@ -1419,7 +1420,7 @@ describe("builder station", () => {
     ]);
 
     await expect(
-      runOrderBuildLive(db, "second-start-order", operator.name, {
+      runStation(db, "second-start-order", buildStation, operator.name, {
         dir: repo.dir,
         harness: "codex",
         env: { DIM_HOME: dimHome },
@@ -1446,7 +1447,7 @@ describe("builder station", () => {
     ]);
 
     await expect(
-      runOrderBuildLive(db, "failed-builder-order", operator.name, {
+      runStation(db, "failed-builder-order", buildStation, operator.name, {
         dir: repo.dir,
         harness: "codex",
         env: { DIM_HOME: dimHome },
@@ -1498,7 +1499,7 @@ describe("builder station", () => {
     });
 
     await expect(
-      runOrderBuildLive(db, "builder-resume-order", operator.name, {
+      runStation(db, "builder-resume-order", buildStation, operator.name, {
         dir: repo.dir,
         harness: "codex",
         env: env(operator),
@@ -1510,7 +1511,7 @@ describe("builder station", () => {
     });
     endWorker(db, operator.name);
     await expect(
-      runOrderBuildLive(db, "builder-resume-order", nextOperator.name, {
+      runStation(db, "builder-resume-order", buildStation, nextOperator.name, {
         dir: repo.dir,
         harness: "codex",
         env: env(nextOperator),
@@ -1518,7 +1519,7 @@ describe("builder station", () => {
       }),
     ).rejects.toThrow("fake process crashed");
     await expect(
-      runOrderBuildLive(db, "builder-resume-order", laterOperator.name, {
+      runStation(db, "builder-resume-order", buildStation, laterOperator.name, {
         dir: repo.dir,
         harness: "codex",
         env: env(laterOperator),
@@ -1587,7 +1588,7 @@ describe("builder station", () => {
         .get("harness-order");
 
     await expect(
-      runOrderBuildLive(db, "harness-order", operator.name, {
+      runStation(db, "harness-order", buildStation, operator.name, {
         dir: repo.dir,
         env,
         harness: "claude",
@@ -1609,7 +1610,7 @@ describe("builder station", () => {
     expect(working()).toEqual({ status: "running", attempt: null });
 
     await expect(
-      runOrderBuildLive(db, "harness-order", operator.name, {
+      runStation(db, "harness-order", buildStation, operator.name, {
         dir: repo.dir,
         env,
         harness: "codex",
@@ -1624,18 +1625,22 @@ describe("builder station", () => {
 
 type BuilderCall = { kind: "start" | "resume"; sessionId?: string; brief: string };
 
-function scriptedBuilder(answers: ((request: HarnessRequest) => ScriptedTurn | string | Error)[]): {
+function scriptedBuilder(
+  answers: ((request: HarnessRequest) => ScriptedTurn | string | Error)[],
+  sessionOf: (turn: number) => string = () => "fake-session",
+): {
   adapter: HarnessAdapter;
   calls: BuilderCall[];
 } {
   const calls: BuilderCall[] = [];
   const run = async (request: HarnessRequest, call: BuilderCall): Promise<HarnessRun> => {
     calls.push(call);
-    const answer = answers[calls.length - 1]?.(request) ?? new Error("no turn scripted");
+    const turn = calls.length;
+    const answer = answers[turn - 1]?.(request) ?? new Error("no turn scripted");
     return {
       pid: process.pid,
       events: (async function* (): AsyncGenerator<HarnessEvent> {
-        yield { type: "run.started", providerSessionId: "fake-session" };
+        yield { type: "run.started", providerSessionId: sessionOf(turn) };
         yield { type: "turn.started" };
         if (answer instanceof Error) yield { type: "run.failed", reason: answer.message };
         else yield { type: "run.completed", output: turnOutput(answer) };
@@ -1714,6 +1719,28 @@ describe("a commit git refuses", () => {
 
   const build = (request: HarnessRequest) => writeFileSync(join(request.cwd, "built.txt"), "built\n");
 
+  test("resumes each correction from the session the turn before it reported", async () => {
+    const order = refusingOrder("rebound-order");
+    const builder = scriptedBuilder(
+      [
+        (request) => {
+          build(request);
+          return tooLong;
+        },
+        () => tooLong,
+        () => corrected,
+      ],
+      (turn) => `session-${turn}`,
+    );
+
+    await runStation(order.db, "rebound-order", buildStation, order.operator.name, {
+      ...order.options,
+      adapter: builder.adapter,
+    });
+
+    expect(builder.calls.map((call) => call.sessionId)).toEqual([undefined, "session-1", "session-2"]);
+  });
+
   test("resumes the same builder with git's refusal and commits its corrected subject in the same attempt", async () => {
     const order = refusingOrder("refused-order");
     const builder = scriptedBuilder([
@@ -1724,7 +1751,7 @@ describe("a commit git refuses", () => {
       () => corrected,
     ]);
 
-    const outcome = await runOrderBuildLive(order.db, "refused-order", order.operator.name, {
+    const outcome = await runStation(order.db, "refused-order", buildStation, order.operator.name, {
       ...order.options,
       adapter: builder.adapter,
     });
@@ -1775,7 +1802,7 @@ describe("a commit git refuses", () => {
     ]);
 
     await expect(
-      runOrderBuildLive(order.db, "still-refused-order", order.operator.name, {
+      runStation(order.db, "still-refused-order", buildStation, order.operator.name, {
         ...order.options,
         adapter: builder.adapter,
       }),
@@ -1807,7 +1834,7 @@ describe("a commit git refuses", () => {
     ]);
 
     await expect(
-      runOrderBuildLive(order.db, "malformed-order", order.operator.name, {
+      runStation(order.db, "malformed-order", buildStation, order.operator.name, {
         ...order.options,
         adapter: builder.adapter,
       }),
@@ -1831,7 +1858,7 @@ describe("a commit git refuses", () => {
     ]);
 
     await expect(
-      runOrderBuildLive(order.db, "correction-crash-order", order.operator.name, {
+      runStation(order.db, "correction-crash-order", buildStation, order.operator.name, {
         ...order.options,
         adapter: builder.adapter,
       }),
@@ -1839,12 +1866,6 @@ describe("a commit git refuses", () => {
 
     expect(builder.calls.map((call) => call.kind)).toEqual(["start", "resume"]);
     expect(order.events("failed")).toHaveLength(1);
-    const failed = order.db
-      .query<{ evidence: string }, [string]>(
-        "SELECT evidence FROM factory_order_event WHERE order_id = ? AND kind = 'failed'",
-      )
-      .get("correction-crash-order");
-    expect(JSON.parse(failed?.evidence ?? "null")).toEqual({ turn: false });
     expect(
       order.db
         .query("SELECT worker FROM factory_order_worker WHERE order_id = 'correction-crash-order'")
@@ -1870,18 +1891,12 @@ describe("a commit git refuses", () => {
     };
 
     await expect(
-      runOrderBuildLive(order.db, "correction-unavailable-order", order.operator.name, {
+      runStation(order.db, "correction-unavailable-order", buildStation, order.operator.name, {
         ...order.options,
         adapter: unavailable,
       }),
     ).rejects.toThrow("provider session unavailable");
 
-    const failed = order.db
-      .query<{ evidence: string }, [string]>(
-        "SELECT evidence FROM factory_order_event WHERE order_id = ? AND kind = 'failed'",
-      )
-      .get("correction-unavailable-order");
-    expect(JSON.parse(failed?.evidence ?? "null")).toEqual({ turn: false });
     expect(
       order.db
         .query("SELECT worker FROM factory_order_worker WHERE order_id = 'correction-unavailable-order'")
@@ -1901,7 +1916,7 @@ describe("a commit git refuses", () => {
       },
     };
     await expect(
-      runOrderBuildLive(order.db, "correction-unavailable-order", order.operator.name, {
+      runStation(order.db, "correction-unavailable-order", buildStation, order.operator.name, {
         ...order.options,
         adapter: retry,
       }),
@@ -1926,7 +1941,7 @@ describe("a commit git refuses", () => {
     ]);
 
     await expect(
-      runOrderBuildLive(order.db, "correction-red-order", order.operator.name, {
+      runStation(order.db, "correction-red-order", buildStation, order.operator.name, {
         ...order.options,
         adapter: builder.adapter,
       }),
@@ -1999,14 +2014,14 @@ describe("a comment a builder adds", () => {
     const both = write(commented, { "a.ts": "const a = 1;\n// why\n", "c.ts": "const = ;\n" });
     const builder = scriptedBuilder([both, both, both]);
 
-    const error = await runOrderBuildLive(order.db, "comment-order", order.operator.name, {
+    const error = await runStation(order.db, "comment-order", buildStation, order.operator.name, {
       ...order.options,
       adapter: builder.adapter,
     }).catch((caught: unknown) => caught);
 
     const refusal =
       "the turn adds a code comment, which cniska/thing bans:\n  a.ts:2\n  built.ts:1\nput the why in a name, a test, or the doc that owns the subject";
-    const cause = (error as Error).cause;
+    const cause = error;
     expect(cause).toBeInstanceOf(BuildTurnRefused);
     expect(cause).toMatchObject({ code: "comment_added", message: refusal });
     expect(builder.calls.map((call) => call.kind)).toEqual(["start", "resume", "resume"]);
@@ -2037,12 +2052,12 @@ describe("a comment a builder adds", () => {
     };
     const builder = scriptedBuilder([lifted, lifted, lifted]);
 
-    const error = await runOrderBuildLive(order.db, "comment-trunk-ban-order", order.operator.name, {
+    const error = await runStation(order.db, "comment-trunk-ban-order", buildStation, order.operator.name, {
       ...order.options,
       adapter: builder.adapter,
     }).catch((caught: unknown) => caught);
 
-    expect((error as Error).cause).toMatchObject({ code: "comment_added" });
+    expect(error).toMatchObject({ code: "comment_added" });
     expect(order.checksRun()).toBe(0);
     order.db.close();
   });
@@ -2052,12 +2067,12 @@ describe("a comment a builder adds", () => {
     const hidden = write(commented, { ".gitattributes": "* linguist-generated\n" });
     const builder = scriptedBuilder([hidden, hidden, hidden]);
 
-    const error = await runOrderBuildLive(order.db, "comment-attributes-order", order.operator.name, {
+    const error = await runStation(order.db, "comment-attributes-order", buildStation, order.operator.name, {
       ...order.options,
       adapter: builder.adapter,
     }).catch((caught: unknown) => caught);
 
-    expect((error as Error).cause).toMatchObject({ code: "attributes_changed" });
+    expect(error).toMatchObject({ code: "attributes_changed" });
     expect(builder.calls.map((call) => call.kind)).toEqual(["start", "resume", "resume"]);
     expect(builder.calls[1]?.brief).toContain("the turn changes .gitattributes");
     expect(order.checksRun()).toBe(0);
@@ -2072,7 +2087,7 @@ describe("a comment a builder adds", () => {
     const builder = scriptedBuilder([write(commented)]);
 
     await expect(
-      runOrderBuildLive(order.db, "comment-git-config-order", order.operator.name, {
+      runStation(order.db, "comment-git-config-order", buildStation, order.operator.name, {
         ...order.options,
         adapter: builder.adapter,
       }),
@@ -2090,7 +2105,7 @@ describe("a comment a builder adds", () => {
     const builder = scriptedBuilder([write(commented)]);
 
     await expect(
-      runOrderBuildLive(order.db, "comment-malformed-order", order.operator.name, {
+      runStation(order.db, "comment-malformed-order", buildStation, order.operator.name, {
         ...order.options,
         adapter: builder.adapter,
       }),
@@ -2107,7 +2122,7 @@ describe("a comment a builder adds", () => {
     const order = commentOrder("comment-unparsed-order", '{ "comments": "banned" }');
     const builder = scriptedBuilder([write(plain, { "a.ts": "const = ;\n// why\n" })]);
 
-    await runOrderBuildLive(order.db, "comment-unparsed-order", order.operator.name, {
+    await runStation(order.db, "comment-unparsed-order", buildStation, order.operator.name, {
       ...order.options,
       adapter: builder.adapter,
     });
@@ -2123,7 +2138,7 @@ describe("a comment a builder adds", () => {
     const order = commentOrder("comment-corrected-order", '{ "comments": "banned" }');
     const builder = scriptedBuilder([write(commented), write(plain)]);
 
-    await runOrderBuildLive(order.db, "comment-corrected-order", order.operator.name, {
+    await runStation(order.db, "comment-corrected-order", buildStation, order.operator.name, {
       ...order.options,
       adapter: builder.adapter,
     });
@@ -2145,7 +2160,7 @@ describe("a comment a builder adds", () => {
     const order = commentOrder("comment-allowed-order", '{ "comments": "allowed" }');
     const builder = scriptedBuilder([write(commented)]);
 
-    await runOrderBuildLive(order.db, "comment-allowed-order", order.operator.name, {
+    await runStation(order.db, "comment-allowed-order", buildStation, order.operator.name, {
       ...order.options,
       adapter: builder.adapter,
     });
@@ -2204,7 +2219,7 @@ describe("a comment a builder adds", () => {
       const order = prepare();
       const builder = scriptedBuilder([write(commented)]);
 
-      await runOrderBuildLive(order.db, orderId, order.operator.name, {
+      await runStation(order.db, orderId, buildStation, order.operator.name, {
         ...order.options,
         adapter: builder.adapter,
       });
@@ -2222,7 +2237,7 @@ describe("a comment a builder adds", () => {
     git(order.worktree, ["merge", "-q", "--ff-only", "main"]);
     const builder = scriptedBuilder([write(`${commented}export const more = 2;\n`)]);
 
-    await runOrderBuildLive(order.db, "comment-kept-order", order.operator.name, {
+    await runStation(order.db, "comment-kept-order", buildStation, order.operator.name, {
       ...order.options,
       adapter: builder.adapter,
     });
@@ -2251,7 +2266,7 @@ describe("a conflict at ship", () => {
       ["built.txt", ""],
       ["other.txt", "## Outcome\n\nBuilt."],
     ] as const) {
-      await runOrderBuildLive(db, "conflict-order", operator.name, {
+      await runStation(db, "conflict-order", buildStation, operator.name, {
         ...options,
         adapter: scriptedBuilder([
           (request) => {
@@ -2280,7 +2295,10 @@ describe("a conflict at ship", () => {
       return { subject: "fix: resolve", artifact: "" };
     };
     const builder = scriptedBuilder([resolve("built.txt"), resolve("other.txt")]);
-    await runOrderBuildLive(db, "conflict-order", operator.name, { ...options, adapter: builder.adapter });
+    await runStation(db, "conflict-order", buildStation, operator.name, {
+      ...options,
+      adapter: builder.adapter,
+    });
 
     expect(builder.calls).toHaveLength(2);
     expect(builder.calls[0]?.brief).toContain("## Rebase conflict");
@@ -2319,7 +2337,7 @@ describe("a conflict at ship", () => {
       checkSandbox: confiningCheckSandbox(),
     };
     const worktree = realpathSync(join(repo.dir, ".claude", "worktrees", "red-conflict-order"));
-    await runOrderBuildLive(db, "red-conflict-order", operator.name, {
+    await runStation(db, "red-conflict-order", buildStation, operator.name, {
       ...options,
       adapter: scriptedBuilder([
         (request) => {
@@ -2346,14 +2364,17 @@ describe("a conflict at ship", () => {
       return { subject: "fix: resolve", artifact: "" };
     };
     await expect(
-      runOrderBuildLive(db, "red-conflict-order", operator.name, {
+      runStation(db, "red-conflict-order", buildStation, operator.name, {
         ...options,
         adapter: scriptedBuilder([resolve(["built.txt"])]).adapter,
       }),
-    ).rejects.toMatchObject({ cause: { code: "check_failed" } });
+    ).rejects.toMatchObject({ code: "check_failed" });
 
     const retry = scriptedBuilder([resolve(["built.txt", "antidote.txt"])]);
-    await runOrderBuildLive(db, "red-conflict-order", operator.name, { ...options, adapter: retry.adapter });
+    await runStation(db, "red-conflict-order", buildStation, operator.name, {
+      ...options,
+      adapter: retry.adapter,
+    });
 
     expect(retry.calls[0]?.brief).toContain("## Rebase conflict\n- built.txt");
     expect(redCheckOutput(retry.calls[0]?.brief ?? "")).toContain("antidote.txt is missing");
@@ -2378,7 +2399,7 @@ describe("a red check at ship", () => {
       checkSandbox: confiningCheckSandbox(),
     };
     const worktree = realpathSync(join(repo.dir, ".claude", "worktrees", "red-ship-order"));
-    await runOrderBuildLive(db, "red-ship-order", operator.name, {
+    await runStation(db, "red-ship-order", buildStation, operator.name, {
       ...options,
       adapter: scriptedBuilder([
         (request) => {
@@ -2409,7 +2430,10 @@ describe("a red check at ship", () => {
         return { subject: "fix: pass the check on the trunk", artifact: "## Outcome\n\nFixed." };
       },
     ]);
-    await runOrderBuildLive(db, "red-ship-order", operator.name, { ...options, adapter: builder.adapter });
+    await runStation(db, "red-ship-order", buildStation, operator.name, {
+      ...options,
+      adapter: builder.adapter,
+    });
 
     expect(builder.calls[0]?.brief).toContain("## Red check\n");
     expect(builder.calls[0]?.brief).toContain("exited 1");
@@ -2452,7 +2476,7 @@ describe("a check the builder redefines", () => {
       "false",
     );
     const worktree = realpathSync(join(repo.dir, ".claude", "worktrees", "redefined-order"));
-    const error = await runOrderBuildLive(db, "redefined-order", operator.name, {
+    const error = await runStation(db, "redefined-order", buildStation, operator.name, {
       dir: repo.dir,
       env: { DIM_HOME: dimHome },
       harness: "codex",
@@ -2460,7 +2484,7 @@ describe("a check the builder redefines", () => {
       adapter: scriptedBuilder([redefine]).adapter,
     }).catch((caught: unknown) => caught);
 
-    expect((error as Error).cause).toMatchObject({ code: "check_redefined" });
+    expect(error).toMatchObject({ code: "check_redefined" });
     expect(git(worktree, ["rev-parse", "HEAD"])).toBe(repo.sha);
     expect(db.query("SELECT exit_code FROM factory_order_check WHERE exit_code = 0").all()).toEqual([]);
     expect(db.query("SELECT sha FROM factory_order_commit").all()).toEqual([]);
@@ -2476,7 +2500,7 @@ describe("a check the builder redefines", () => {
       [{ title: "Build it", outcome: "It is verified." }],
       "test -f built.txt",
     );
-    await runOrderBuildLive(db, "added-script-order", operator.name, {
+    await runStation(db, "added-script-order", buildStation, operator.name, {
       dir: repo.dir,
       env: { DIM_HOME: dimHome },
       harness: "codex",

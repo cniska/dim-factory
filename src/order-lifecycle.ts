@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
 import { assertOperator } from "./factory-operator";
+import { fail } from "./order-contract";
 import { recordOrderEnvironment } from "./order-evidence";
 import { appendOrderEventInTransaction, now } from "./order-ledger";
 import { assertOrderQueued, type NewOrder, type OrderPriority } from "./order-status";
@@ -65,7 +66,7 @@ export function setOrderPriority(
       at,
       orderId,
     ]);
-    if (result.changes !== 1) throw new Error(`order not found: ${orderId}`);
+    if (result.changes !== 1) throw fail("order_unknown", { orderId });
     appendOrderEventInTransaction(
       db,
       orderId,

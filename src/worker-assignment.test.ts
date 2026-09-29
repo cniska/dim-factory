@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { SCHEMA_SQL } from "./db-schema";
 import { processStartTime } from "./pid";
 import { endWorker, mintWorker } from "./worker";
-import { assignedWorker, assignWorker, bootstrapWorker } from "./worker-assignment";
+import { assignWorker, bootstrapWorker } from "./worker-assignment";
 
 function floor(): Database {
   const db = new Database(":memory:");
@@ -92,7 +92,9 @@ describe("worker assignments", () => {
     const assignment = assignWorker(db, { parentWorker: parent.name, role: "reviewer" });
     const child = bootstrapWorker(db, { id: assignment.id, sessionId: "reviewer-session" });
 
-    expect(assignedWorker(db, assignment.id)).toBe(child.name);
+    expect(
+      db.query("SELECT accepted_worker FROM factory_worker_assignment WHERE id = ?").get(assignment.id),
+    ).toEqual({ accepted_worker: child.name });
     db.close();
   });
 

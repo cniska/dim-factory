@@ -1,7 +1,7 @@
 import { CodedError } from "./coded-error";
 import type { EvidenceReference } from "./order-events";
 import type { OrderStatus } from "./order-status";
-import type { Station } from "./station";
+import type { Station } from "./station-contract";
 
 export type OrderArtifact = {
   id: number;
@@ -84,6 +84,8 @@ function command(w: Waiting): string {
 }
 
 const MESSAGES = {
+  order_unknown: (m: { orderId: string }) =>
+    `no order ${m.orderId} is recorded; \`dim q factory\` lists the orders`,
   not_next: (m: Waiting & { act: string }) =>
     `order ${m.orderId} waits on ${waitsOn(m)}, so it cannot ${m.act}; its next act is \`${command(m)}\``,
   order_terminal: (m: { orderId: string; status: string; act: string }) =>

@@ -1,9 +1,5 @@
 import type { Database } from "bun:sqlite";
 import { type CheckoutConvention, CONVENTION_FLOOR, checkoutConvention } from "./git-commit-convention";
-import type { HarnessAdapter } from "./harness";
-import { workerFailureReason } from "./harness-launch";
-import type { HarnessName } from "./harness-name";
-import { admitAct } from "./order";
 import { latestApprovedPlan } from "./order-approved-plan";
 import {
   completeOrderBuildFollowup,
@@ -12,27 +8,17 @@ import {
   nextOrderSlice,
   type OrderSlice,
 } from "./order-artifacts";
-import { openAttempt } from "./order-attempt";
-import { latestOrderCommit, pendingRebaseConflict } from "./order-commits";
-import { BuildTurnRefused } from "./order-finding";
+import { pendingRebaseConflict, type RecordedConflict } from "./order-commits";
+import type { BuildTurnRefused } from "./order-finding";
 import { type FindingStanding, orderFindingStandings, owesAnswer } from "./order-finding-state";
-import { assertChecked, type FailedCheck, failedHeadCheck } from "./order-head-check";
-import { appendOrderEvent } from "./order-ledger";
-import { orderStatus } from "./order-status";
+import { type FailedCheck, failedHeadCheck } from "./order-head-check";
 import type { Env } from "./paths";
-import { holdOrder, startStationAttempt } from "./station-attempt";
+import type { StationRun, StationTurn } from "./station";
 import { type BriefedOrder, briefHeader } from "./station-brief";
 import { commitBuildTurn, undoInterruptedJudgement } from "./station-build-commit";
 import { continueRebaseTurn, reopenRebase } from "./station-build-rebase";
 import { BUILD_TURN_SCHEMA, parseBuildTurn } from "./station-build-turn";
 import type { PlanSlice } from "./station-plan-artifact";
-import {
-  assertOrderWorkerHarness,
-  orderWorkerIsBound,
-  resumeOrderStationLive,
-  runOrderStationLive,
-  UsageLimited,
-} from "./station-worker";
 import { writeTrace } from "./trace-store";
 import type { Capability } from "./worker-capabilities";
 import { workspaceContract } from "./workspace";
@@ -159,253 +145,120 @@ function describeFinding(finding: FindingStanding): string {
   return `Finding ${finding.id} (${finding.dimension}, ${finding.file}:${finding.line}): ${finding.failure}`;
 }
 
-export type BuildOutcome = { builder: string; runId: string; worktree: string; exitCode: number };
+export type BuildOutcome = { builder: string; runId: string; worktree: string };
 
-function requireBuildEvidence(db: Database, orderId: string, finalSlice: boolean, worktree: string): void {
-  const commit = latestOrderCommit(db, orderId);
-  if (!commit) throw new Error("builder did not record a commit");
-  if (!/^[0-9a-fA-F]{7,64}$/.test(commit.sha)) {
-    throw new Error(`builder did not record an immutable commit ID for ${orderId}`);
-  }
-  const head = Bun.spawnSync(["git", "-C", worktree, "rev-parse", "HEAD"], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  if (!head.success) throw new Error(`cannot read worktree HEAD for ${orderId}`);
-  if (!head.stdout.toString().trim().startsWith(commit.sha.toLowerCase())) {
-    throw new Error(`builder did not record worktree HEAD for ${orderId}`);
-  }
-  assertChecked(db, orderId);
-  if (finalSlice) {
-    const build = db
-      .query<{ id: number }, [string, string]>(
-        "SELECT id FROM factory_order_artifact WHERE order_id = ? AND kind = 'build' AND head_sha = ? ORDER BY revision DESC LIMIT 1",
-      )
-      .get(orderId, commit.sha);
-    if (!build) throw new Error("builder did not record a Build artifact for the completed order");
-  }
-}
+type Rebase = { conflict: RecordedConflict; paths: string[] };
 
-export async function runOrderBuildLive(
-  db: Database,
-  orderId: string,
-  operator: string,
-  options: {
-    dir: string;
-    env?: Env;
-    harness: HarnessName;
-    adapter?: HarnessAdapter;
-    checkSandbox?: string[];
-  },
-): Promise<BuildOutcome> {
-  const order = db
-    .query<BriefedOrder, [string]>("SELECT id, title, description, line FROM factory_order WHERE id = ?")
-    .get(orderId);
-  if (!order) throw new Error(`order not found: ${orderId}`);
-  using hold = holdOrder(orderId, options.env);
-  admitAct(db, orderId, "build", operator);
-  const plan = latestApprovedPlan(db, orderId);
-  if (!plan) throw new Error(`order ${orderId} has no approved plan to build`);
-  const { harness } = options;
-  assertOrderWorkerHarness(db, orderId, "builder", harness);
-  const { slices } = plan;
-  const currentSlice = nextOrderSlice(db, orderId);
-  const conflict = currentSlice ? null : pendingRebaseConflict(db, orderId);
-  const reviewFindings = currentSlice || conflict ? NO_REVIEW_FINDINGS : reviewFindingsForBuild(db, orderId);
-  const redCheck = failedHeadCheck(db, orderId);
-  const priorBuild = latestArtifact(db, orderId, "build")?.id ?? 0;
-  const previousFailure = db
-    .query<{ reason: string | null }, [string]>(
-      `SELECT reason FROM factory_order_attempt
-       WHERE order_id = ? AND station = 'build' AND kind = 'finished'
-       ORDER BY id DESC LIMIT 1`,
-    )
-    .get(orderId);
-  const runId = `build-${crypto.randomUUID()}`;
-  const root = repoRoot(options.dir);
-  const worktree = worktreePath(root, orderId);
-  const undone = undoInterruptedJudgement(db, orderId, worktree);
-  if (undone) writeTrace(db, { event: "order.judgement_undone", orderId, name: undone });
-  const workspace = workspaceContract(worktree);
-  const convention = conflict ? undefined : checkoutConvention(db, root);
-  let builder: string | undefined;
-  let harnessOutput = "";
-  let harnessFailureReason: string | undefined;
-  let failureRecorded = false;
-  let claimed = false;
-  const recordFailure = (reason: string): void => {
-    if (failureRecorded || orderStatus(db, orderId) !== "running") return;
-    if (claimed && openAttempt(db, orderId)?.runId !== runId) return;
-    failureRecorded = true;
-    const turn = orderWorkerIsBound(db, orderId, "builder", builder);
-    appendOrderEvent(db, orderId, {
-      kind: "failed",
-      station: "build",
-      worker: claimed ? builder : undefined,
-      reason,
-      evidence: { turn },
-    });
-  };
-  try {
-    const conflicts = conflict ? reopenRebase(worktree, orderId, conflict) : null;
-    const onAssigned = (
-      assigned: string,
-      providerSessionId: string,
-      attribution: { harness: string; model: string; tier: string },
-    ): void => {
-      builder = assigned;
-      startStationAttempt(
-        db,
-        orderId,
-        {
-          runId,
-          worker: assigned,
-          sessionId: providerSessionId,
-          providerSessionId,
-          station: "build",
-          operatorWorker: operator,
-          ...attribution,
-        },
-        new Date().toISOString(),
-      );
-      claimed = true;
-      hold.release();
-    };
-    const { run, worker: assigned } = await runOrderStationLive({
+type BuildContext = {
+  line: BriefedOrder["line"];
+  finalOrdinal: number;
+  currentSlice: OrderSlice | null;
+  rebase: Rebase | null;
+  owed: readonly number[];
+  priorBuild: number;
+  worktree: string;
+  env?: Env;
+  checkSandbox?: string[];
+};
+
+async function resolveRebase(db: Database, turn: StationTurn, context: BuildContext, rebase: Rebase) {
+  for (let paths = rebase.paths; ; ) {
+    const continued = continueRebaseTurn({
       db,
-      orderId,
-      station: "build",
-      parentWorker: operator,
-      harness,
-      env: options.env,
-      adapter: options.adapter,
-      onPrepared: (orderWorker) => {
-        builder = orderWorker.worker;
-      },
-      onAssigned,
-      request: ({ returned: artifact }) => ({
-        cwd: worktree,
-        brief: builderBrief(
-          order,
-          plan,
-          currentSlice,
-          workspace,
-          artifact ? { body: artifact.body, feedback: artifact.reason } : undefined,
-          previousFailure?.reason ?? undefined,
-          reviewFindings,
-          convention,
-          conflicts,
-          redCheck,
-        ),
-        capabilities: BUILDER_CAPABILITIES,
-        outputSchema: BUILD_TURN_SCHEMA,
-      }),
+      orderId: turn.orderId,
+      worktree: context.worktree,
+      conflict: rebase.conflict,
+      paths,
+      env: context.env,
+      checkSandbox: context.checkSandbox,
     });
-    const finished = (turn: typeof run): string => {
-      harnessOutput = turn.output;
-      harnessFailureReason = turn.failureReason;
-      if (turn.exitCode !== 0) {
-        throw new Error(
-          turn.harnessExitCode === undefined
-            ? `${builder} did not finish`
-            : `${builder} exited with code ${turn.harnessExitCode}`,
-        );
-      }
-      return turn.output;
-    };
-    harnessOutput = run.output;
-    harnessFailureReason = run.failureReason;
-    builder = assigned;
-    if (!builder) throw new Error("builder did not bootstrap its worker assignment");
-    let output = finished(run);
-    for (let paths = conflicts; conflict && paths; ) {
-      const continued = continueRebaseTurn({
-        db,
-        orderId,
-        worktree,
-        conflict,
-        paths,
-        env: options.env,
-        checkSandbox: options.checkSandbox,
-      });
-      if ("sha" in continued) break;
-      paths = continued.conflicts;
-      finished(
-        await resumeOrderStationLive({
-          db,
-          orderId,
-          station: "build",
-          harness,
-          env: options.env,
-          adapter: options.adapter,
-          request: {
-            cwd: worktree,
-            brief: conflictLines(paths).join("\n"),
-            capabilities: BUILDER_CAPABILITIES,
-            outputSchema: BUILD_TURN_SCHEMA,
-          },
-        }),
-      );
-    }
-    for (let corrections = 0; !conflict; corrections++) {
-      const turn = parseBuildTurn(output.trim());
-      try {
-        commitBuildTurn({
-          db,
-          orderId,
-          runId,
-          builder,
-          worktree,
-          turn,
-          owed: reviewFindings.work.map((one) => one.finding),
-          finalSlice: currentSlice === null || currentSlice.ordinal === slices.length,
-          proofRequired: order.line === "fix" && currentSlice !== null,
-          env: options.env,
-          checkSandbox: options.checkSandbox,
-        });
-        break;
-      } catch (error) {
-        if (
-          !(error instanceof BuildTurnRefused) ||
-          !["commit_refused", "comment_added", "attributes_changed"].includes(error.code) ||
-          corrections === COMMIT_CORRECTIONS
-        ) {
-          throw error;
-        }
-        output = finished(
-          await resumeOrderStationLive({
-            db,
-            orderId,
-            station: "build",
-            harness,
-            env: options.env,
-            adapter: options.adapter,
-            request: {
-              cwd: worktree,
-              brief: commitCorrectionBrief(turn.subject, error),
-              capabilities: BUILDER_CAPABILITIES,
-              outputSchema: BUILD_TURN_SCHEMA,
-            },
-          }),
-        );
-      }
-    }
-    if (currentSlice) {
-      requireBuildEvidence(db, orderId, currentSlice.ordinal === slices.length, worktree);
-      completeOrderSlice(db, orderId, currentSlice.id, builder);
-    } else if (!conflict) {
-      requireBuildEvidence(db, orderId, true, worktree);
-      completeOrderBuildFollowup(db, orderId, priorBuild);
-    }
-    return { builder, runId, worktree, exitCode: run.exitCode };
-  } catch (error) {
-    const reason = workerFailureReason(
-      error instanceof Error ? error.message : String(error),
-      harnessOutput,
-      harnessFailureReason,
-    );
-    recordFailure(reason);
-    if (error instanceof UsageLimited) throw error;
-    throw new Error(reason, { cause: error });
+    if ("sha" in continued) return;
+    paths = continued.conflicts;
+    await turn.resume(conflictLines(paths).join("\n"));
   }
 }
+
+async function commitSlice(db: Database, output: string, turn: StationTurn, context: BuildContext) {
+  for (let corrections = 0; ; corrections++) {
+    const parsed = parseBuildTurn(output.trim());
+    const committed = commitBuildTurn({
+      db,
+      orderId: turn.orderId,
+      runId: turn.runId,
+      builder: turn.worker,
+      worktree: context.worktree,
+      turn: parsed,
+      owed: context.owed,
+      finalSlice: context.currentSlice === null || context.currentSlice.ordinal === context.finalOrdinal,
+      proofRequired: context.line === "fix" && context.currentSlice !== null,
+      env: context.env,
+      checkSandbox: context.checkSandbox,
+    });
+    if (!("refused" in committed)) return;
+    if (corrections === COMMIT_CORRECTIONS) throw committed.refused;
+    output = await turn.resume(commitCorrectionBrief(parsed.subject, committed.refused));
+  }
+}
+
+export const buildStation: StationRun<BuildContext, BuildOutcome> = {
+  station: "build",
+  capabilities: BUILDER_CAPABILITIES,
+  outputSchema: BUILD_TURN_SCHEMA,
+  prepare: (db, order, { dir, env, checkSandbox, returned }) => {
+    const plan = latestApprovedPlan(db, order.id);
+    if (!plan) throw new Error(`order ${order.id} has no approved plan to build`);
+    const currentSlice = nextOrderSlice(db, order.id);
+    const conflict = currentSlice ? null : pendingRebaseConflict(db, order.id);
+    const reviewFindings =
+      currentSlice || conflict ? NO_REVIEW_FINDINGS : reviewFindingsForBuild(db, order.id);
+    const previousFailure = db
+      .query<{ reason: string | null }, [string]>(
+        `SELECT reason FROM factory_order_attempt
+         WHERE order_id = ? AND station = 'build' AND kind = 'finished'
+         ORDER BY id DESC LIMIT 1`,
+      )
+      .get(order.id);
+    const root = repoRoot(dir);
+    const worktree = worktreePath(root, order.id);
+    const undone = undoInterruptedJudgement(db, order.id, worktree);
+    if (undone) writeTrace(db, { event: "order.judgement_undone", orderId: order.id, name: undone });
+    const workspace = workspaceContract(worktree);
+    const rebase = conflict ? { conflict, paths: reopenRebase(worktree, order.id, conflict) } : null;
+    return {
+      cwd: worktree,
+      brief: builderBrief(
+        order,
+        plan,
+        currentSlice,
+        workspace,
+        returned ? { body: returned.body, feedback: returned.reason } : undefined,
+        previousFailure?.reason ?? undefined,
+        reviewFindings,
+        rebase ? undefined : checkoutConvention(db, root),
+        rebase?.paths ?? null,
+        failedHeadCheck(db, order.id),
+      ),
+      context: {
+        line: order.line,
+        finalOrdinal: plan.slices.length,
+        currentSlice,
+        rebase,
+        owed: reviewFindings.work.map((one) => one.finding),
+        priorBuild: latestArtifact(db, order.id, "build")?.id ?? 0,
+        worktree,
+        env,
+        checkSandbox,
+      },
+    };
+  },
+  accept: async (db, output, turn, context) => {
+    if (context.rebase) {
+      await resolveRebase(db, turn, context, context.rebase);
+    } else {
+      await commitSlice(db, output, turn, context);
+      if (context.currentSlice) completeOrderSlice(db, turn.orderId, context.currentSlice.id, turn.worker);
+      else completeOrderBuildFollowup(db, turn.orderId, context.priorBuild);
+    }
+    return { builder: turn.worker, runId: turn.runId, worktree: context.worktree };
+  },
+};

@@ -4,7 +4,7 @@ import { assertOperator } from "./factory-operator";
 import { fail } from "./order-contract";
 import type { AttemptOutcome } from "./order-events";
 import { assertOrderRunning } from "./order-status";
-import type { Station } from "./station";
+import type { Station } from "./station-contract";
 import { workerIsOver } from "./worker";
 import type { Role } from "./worker-roles";
 

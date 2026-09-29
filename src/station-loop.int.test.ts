@@ -13,9 +13,10 @@ import { recordOrderCheck, recordOrderCommit } from "./order-evidence";
 import { answerOrderFindings } from "./order-finding";
 import { queueOrder, startOrder } from "./order-lifecycle";
 import { shipOrder } from "./order-ship";
+import { runStation } from "./station";
 import { approvePlan } from "./station-approvals.test-support";
 import { builderBrief, reviewFindingsForBuild } from "./station-build";
-import { runOrderReviewLive } from "./station-review";
+import { reviewStation } from "./station-review";
 import { mintWorker } from "./worker";
 import { WORKER_NAME_VAR } from "./worker-name";
 
@@ -72,7 +73,7 @@ describe("the operator loop", () => {
     completeOrderSlice(db, "loop-order", nextOrderSlice(db, "loop-order")?.id as number, builder.name);
     approveOrder(db, "loop-order", operator.name, "the requested behavior is present");
 
-    const firstReview = await runOrderReviewLive(db, "loop-order", operator.name, {
+    const firstReview = await runStation(db, "loop-order", reviewStation, operator.name, {
       dir: worktree,
       env: workerEnv(operator),
       harness: "codex",
@@ -112,7 +113,7 @@ describe("the operator loop", () => {
     recordOrderBuild(db, "loop-order", "The finding is fixed and verified.", second, builder.name);
     finishAttempt(db, "loop-order", "succeeded", undefined, new Date().toISOString());
     approveOrder(db, "loop-order", operator.name, "the finding is answered");
-    const secondReview = await runOrderReviewLive(db, "loop-order", operator.name, {
+    const secondReview = await runStation(db, "loop-order", reviewStation, operator.name, {
       dir: worktree,
       env: workerEnv(operator),
       harness: "codex",
@@ -187,7 +188,7 @@ describe("the operator loop", () => {
         approveOrder(db, orderId, operator.name, "built");
       };
       const review = (output: string) =>
-        runOrderReviewLive(db, orderId, operator.name, {
+        runStation(db, orderId, reviewStation, operator.name, {
           dir: worktree,
           env: workerEnv(operator),
           harness: "codex",

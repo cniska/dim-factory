@@ -6,7 +6,7 @@ import { fail } from "./order-contract";
 import { assertChecked } from "./order-head-check";
 import { appendOrderEventInTransaction, now } from "./order-ledger";
 import { assertOrderRunning } from "./order-status";
-import type { Station } from "./station";
+import type { Station } from "./station-contract";
 import type { PlanSlice } from "./station-plan-artifact";
 
 export type StoredArtifact = {
@@ -112,6 +112,7 @@ export function recordOrderPlan(
         slice.outcome,
       ]);
     }
+    finishAttempt(db, orderId, "succeeded", undefined, at);
     return artifactId;
   });
 }

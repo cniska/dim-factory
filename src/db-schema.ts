@@ -2,7 +2,7 @@ import { HARNESSES_SQL } from "./harness-name";
 import { TOOLS_SQL } from "./ingest-tools";
 import { ATTEMPT_OUTCOMES_SQL, ORDER_EVENT_KINDS_SQL } from "./order-events";
 import { ORDER_LINES_SQL } from "./order-line";
-import { STATIONS_SQL } from "./station";
+import { STATIONS_SQL } from "./station-contract";
 import { ROLES_SQL } from "./worker-roles";
 
 export const SCHEMA_VERSION = 80;
