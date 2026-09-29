@@ -2,7 +2,6 @@ import type { Database } from "bun:sqlite";
 import { type Command, UsageError } from "./cli-contract";
 import { readFlags, requiredFlag } from "./cli-flags";
 import { closeDb, openDb } from "./db";
-import { assertOperator } from "./factory-operator";
 import { checkoutRoot } from "./git-checkout";
 import { labelFor } from "./git-remote";
 import { HARNESSES, type HarnessName, isHarness, parseHarness } from "./harness-name";
@@ -21,7 +20,13 @@ import type { Station } from "./station-contract";
 import { planStation } from "./station-plan";
 import { reviewStation } from "./station-review";
 import { boundStationHarness } from "./station-worker";
-import { clearRunnerBarrier, registerRunnerBarrier, resolveWorker, withRunnerBarrier } from "./worker";
+import {
+  assertOperator,
+  clearRunnerBarrier,
+  registerRunnerBarrier,
+  resolveWorker,
+  withRunnerBarrier,
+} from "./worker";
 
 export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." --line <${ORDER_LINES.join("|")}> [--description "..."]
                      [--project <owner/repo>]

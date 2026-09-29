@@ -1,5 +1,4 @@
 import type { Database } from "bun:sqlite";
-import { assertOperator } from "./factory-operator";
 import { runningAttempt } from "./order-attempt";
 import { currentOrderCommits } from "./order-commits";
 import {
@@ -18,6 +17,7 @@ import { isTerminalOrderStatus } from "./order-status";
 import { loadOrder, loadPlanContent } from "./order-store";
 import type { ShipTeardown } from "./ship-contract";
 import type { Station } from "./station-contract";
+import { assertOperator } from "./worker";
 
 export type OrderState = { station: Station; next: "run" | "approve" } | { station: null; next: "ship" };
 

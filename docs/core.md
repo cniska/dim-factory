@@ -113,7 +113,7 @@ These modules keep what they do, and take the layout above only where they hold 
 
 - **`worker`:** identity from the process tree and the runner barrier, both unchanged; assignment, routing and the process environment (`worker-process-environment.ts`). A station says only whether its worker edits files (`edits: boolean`).
 - **`ship`:** the rebase and the landing, under the factory lock and the runner barrier. Every ship still writes one ship run, whatever its outcome, through an `order.ts` command. An unclassified failure is recorded with its code, not as a `refused` run with no code.
-- **`factory`:** the operator role check, until `admit` holds every order act and `factory-operator.ts` folds into the worker contract.
+- **`factory`:** folded into `worker`. The operator role check is `assertOperator` in `worker.ts`, coded `worker_not_operator`, until `admit` takes the actor's role.
 - **Disposable processes.** A killed worker loses nothing the record does not hold, and that is the test for every piece of recovery machinery.
 
 ## Cuts

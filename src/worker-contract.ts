@@ -10,6 +10,8 @@ const MESSAGES = {
       ? `worker ${m.worker}'s registered process is gone; a new session registers a new worker`
       : `worker ${m.worker} ended at ${m.endedAt}; a new session registers a new worker`,
   worker_session_taken: (m: { sessionId: string }) => `session ${m.sessionId} already has a factory identity`,
+  worker_not_operator: (m: { worker: string; action: string }) =>
+    `${m.worker} cannot ${m.action}; the operator delegates it`,
   assignment_missing: (m: { assignmentId: string }) => `no worker assignment ${m.assignmentId} is recorded`,
   assignment_used: (m: { assignmentId: string }) =>
     `assignment ${m.assignmentId} was accepted by another session; a station run issues a new one`,

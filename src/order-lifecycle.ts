@@ -1,9 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
-import { assertOperator } from "./factory-operator";
 import { recordOrderEnvironment } from "./order-evidence";
 import { appendOrderEventInTransaction, now } from "./order-ledger";
 import { assertOrderQueued, type NewOrder } from "./order-status";
+import { assertOperator } from "./worker";
 import { createWorktree, validateWorktreeBranch } from "./worktree";
 
 export function queueOrder(db: Database, order: NewOrder, worker: string, at = now()): number {

@@ -163,6 +163,13 @@ export function mintWorkerForSession(
   });
 }
 
+export function assertOperator(db: Database, worker: string, action: string): void {
+  const role = db
+    .query<{ role: string }, [string]>("SELECT role FROM factory_worker WHERE name = ?")
+    .get(worker)?.role;
+  if (role !== "operator") throw fail("worker_not_operator", { worker, action });
+}
+
 export function workerIsOver(db: Database, name: string): boolean {
   const row = db
     .query<{ pid: number | null; process_started_at: string | null; ended_at: string | null }, [string]>(
