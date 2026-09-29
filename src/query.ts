@@ -11,6 +11,7 @@ export type QueryResult = {
 export type QueryContext = {
   arg?: string;
   home: string;
+  maxRows: number;
 };
 
 export type Query = {

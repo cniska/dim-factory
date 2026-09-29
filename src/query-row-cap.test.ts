@@ -17,7 +17,7 @@ describe("--rows", () => {
 describe("capping the rows an agent is handed", () => {
   test("names the flag that widens it when rows were cut", () => {
     const capped = capRows([1, 2, 3, 4, 5], 2);
-    expect(capped).toEqual({ rows: [1, 2], more: "3 more rows; --rows <n> to widen" });
+    expect(capped).toEqual({ rows: [1, 2], more: "more rows than 2; --rows <n> to widen" });
   });
 
   test("says nothing about more rows when every row fit", () => {

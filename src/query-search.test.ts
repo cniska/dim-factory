@@ -29,11 +29,25 @@ function seeded(): Database {
   return db;
 }
 
-const ctx: QueryContext = { home: "/home" };
+const ctx: QueryContext = { home: "/home", maxRows: 40 };
 
 const ask = (db: Database, over: Partial<QueryContext>): QueryResult => search.run(db, { ...ctx, ...over });
 
 describe("search", () => {
+  test("reads one row past the cap, so --rows widens it and a cut shows", () => {
+    const db = seeded();
+    for (let i = 0; i < 45; i += 1) {
+      db.run(
+        `INSERT INTO message (id, session_id, ts, role, text, src_file, src_line)
+         VALUES (?, 's1', ?, 'user', 'the widget again', '/f.jsonl', ?)`,
+        [`m-${i}`, `2026-09-02T10:${String(i).padStart(2, "0")}:00Z`, 10 + i],
+      );
+    }
+    expect(ask(db, { arg: "widget", maxRows: 40 }).rows).toHaveLength(41);
+    expect(ask(db, { arg: "widget", maxRows: 100 }).rows).toHaveLength(45);
+    db.close();
+  });
+
   test("finds the word that was typed", () => {
     const db = seeded();
     const result = ask(db, { arg: "checkout" });

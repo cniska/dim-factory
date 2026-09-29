@@ -34,7 +34,7 @@ export const qCommand: Command = {
     const started = Date.now();
     let result: QueryResult | undefined;
     try {
-      result = query.run(db, { arg, home: resolveHomeDir() });
+      result = query.run(db, { arg, home: resolveHomeDir(), maxRows });
       return { ...result, ...capRows(result.rows, maxRows) };
     } finally {
       trace({

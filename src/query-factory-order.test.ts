@@ -22,7 +22,7 @@ import { findQuery } from "./query-registry";
 import { capRows, DEFAULT_MAX_ROWS } from "./query-row-cap";
 import { approveFinalBuildAt, approveReviewAt } from "./station-approvals.test-support";
 
-const ctx: QueryContext = { home: "/h" };
+const ctx: QueryContext = { home: "/h", maxRows: 40 };
 
 const boardRow = (db: Database, id: string) =>
   findQuery("factory")

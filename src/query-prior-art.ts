@@ -39,8 +39,7 @@ export const priorArt: Query = {
        SELECT replace(path, ? || '/', '') AS file, repo, commits, days_since, authors
        FROM ranked
        WHERE rank_in_repo <= ${PER_REPO}
-       ORDER BY days_since IS NULL, days_since ASC, commits DESC
-       LIMIT 25`,
+       ORDER BY days_since IS NULL, days_since ASC, commits DESC`,
       [fragment, ctx.home, ctx.home],
     );
 
@@ -50,7 +49,7 @@ export const priorArt: Query = {
       denominator:
         `${total} tracked files match "${fragment}", in ${repos} of ` +
         `${scalar(db, "SELECT count(DISTINCT repo) AS n FROM repo_file")} repos indexed` +
-        (records.length < total ? `; the ${records.length} most recently touched are shown` : ""),
+        (records.length < total ? `; the ${PER_REPO} most recently touched in each repo are ranked` : ""),
       columns,
       rows: toRows(records, columns),
       note:

@@ -16,6 +16,6 @@ export function capRows<Row>(rows: Row[], maxRows: number): { rows: Row[]; more:
   const shown = rows.slice(0, maxRows);
   return {
     rows: shown,
-    more: rows.length > shown.length ? `${rows.length - shown.length} more rows; --rows <n> to widen` : null,
+    more: rows.length > shown.length ? `more rows than ${maxRows}; --rows <n> to widen` : null,
   };
 }

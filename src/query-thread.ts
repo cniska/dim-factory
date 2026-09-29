@@ -46,7 +46,7 @@ export const thread: Query = {
            ) ORDER BY ts`,
           [id, at, id, at],
         )
-      : table(db, `${select} ${said} ORDER BY ts LIMIT 40`, [id]);
+      : table(db, `${select} ${said} ORDER BY ts`, [id]);
     const all = scalar(db, `SELECT count(*) AS n ${said}`, id);
     return {
       denominator: `session ${id}: ${all} messages anyone said${at ? `, centered on ${at}` : ""}`,

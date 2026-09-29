@@ -48,16 +48,16 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryRes
      JOIN message m ON m.rowid = c.rowid
      JOIN session s ON s.id = m.session_id
      WHERE message_fts MATCH ? AND ${SAID}
-     ORDER BY c.matched DESC, bm25(message_fts) ASC, m.ts DESC LIMIT 40`,
-    [...quoted, ctx.home, String(quoted.length), matchAny],
+     ORDER BY c.matched DESC, bm25(message_fts) ASC, m.ts DESC LIMIT ?`,
+    [...quoted, ctx.home, String(quoted.length), matchAny, ctx.maxRows + 1],
   );
   const said = scalar(db, `SELECT count(*) AS n FROM message m WHERE m.text IS NOT NULL AND ${SAID}`);
   const all = scalar(db, "SELECT count(*) AS n FROM message");
   return {
     denominator:
       `keywords over ${said} of ${all} messages that carry text anyone said; ` +
-      `ranked by how many of the ${quoted.length} terms matched, ties broken by relevance then recency; ` +
-      `top 40 shown.${dropped > 0 ? ` Only the first ${MAX_TERMS} words were searched; ${dropped} more were dropped.` : ""}` +
+      `ranked by how many of the ${quoted.length} terms matched, ties broken by relevance then recency.` +
+      `${dropped > 0 ? ` Only the first ${MAX_TERMS} words were searched; ${dropped} more were dropped.` : ""}` +
       (missing.length > 0
         ? ` ${missing.length === 1 ? "This term matched" : "These terms matched"} nothing anyone said: ${missing.join(", ")}.`
         : "") +
