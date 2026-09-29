@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { UsageError } from "./cli-contract";
 import { SCHEMA_SQL } from "./db-schema";
-import { pullStop } from "./factory-stop";
 import {
   attemptIn,
   collectingMachine,
@@ -726,17 +725,6 @@ describe("order command", () => {
     expect(() =>
       runOrderCommand(database, ["add", "@{-1}", "--title", "Unsafe", "--project", "cniska/dim-factory"]),
     ).toThrow(/invalid branch name/);
-  });
-
-  test("a plan onto a stopped floor is refused with the reason the floor was stopped for", async () => {
-    const database = db();
-    queued(database);
-    pullStop(database, { reason: "the commit gate records nothing", by: "operator" });
-
-    await expect(
-      runOrderCommandLive(database, ["plan", "order-1", "--harness", "claude"], null, trunk.dir, env),
-    ).rejects.toThrow(/the commit gate records nothing/);
-    expect(assembleWallSnapshot(database).totals).toEqual({ queued: 1, running: 0, shipped: 0 });
   });
 
   test("a plan is refused on a machine whose session hooks were never installed", async () => {

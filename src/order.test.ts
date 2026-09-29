@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
 import { SCHEMA_SQL } from "./db-schema";
-import { clearStop, FactoryStopError, pullStop } from "./factory-stop";
 import {
   attemptIn,
   confiningCheckSandbox,
@@ -1739,42 +1738,6 @@ describe("factory order report records", () => {
     });
     closeDb(rebuilt);
     rmSync(home, { recursive: true, force: true });
-  });
-
-  test("refuses to start an order while the floor is stopped, leaving it queued", () => {
-    const database = db();
-    queueOrder(database, order, attemptOperator);
-    pullStop(database, { reason: "the commit gate records nothing", by: attemptOperator });
-
-    expect(() => start(database)).toThrow(FactoryStopError);
-    expect(orderStatus(database, "order-1")).toBe("queued");
-
-    database.close();
-  });
-
-  test("starts an order once the stop is cleared", () => {
-    const database = db();
-    queueOrder(database, order, attemptOperator);
-    pullStop(database, { reason: "the commit gate records nothing", by: attemptOperator });
-    clearStop(database, attemptOperator);
-
-    start(database);
-
-    expect(orderStatus(database, "order-1")).toBe("running");
-    database.close();
-  });
-
-  test("lets an order already running record and ship while the floor is stopped", () => {
-    const database = db();
-    queueOrder(database, order, attemptOperator);
-    start(database);
-    pullStop(database, { reason: "the commit gate records nothing", by: attemptOperator });
-
-    landed(database, "order-1");
-    recordShipRun(database, "order-1", { outcome: "landed" });
-
-    expect(orderStatus(database, "order-1")).toBe("shipped");
-    database.close();
   });
 
   test("drops a queued order, leaving dropped as a terminal status with its reason", () => {

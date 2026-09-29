@@ -137,7 +137,7 @@ While the factory is being built, `DIM_HOME=<dir> bun run factory:reset -- --con
 ## Borrowed from the assembly line
 
 - **Stop on a defect, never on success** (*jidoka*). The commit gate halts a failing change; the operator halts on a second failure of one order.
-- **Anyone may halt the line** (*andon*). A finding stops its slice until answered. A worker uses `dim factory stop --reason "..."` to stop the floor; the operator uses `dim factory clear` after resolving the defect.
+- **A defect halts its own work** (*andon*). A finding stops its slice until it is answered, and a red check fails the turn it ran on.
 - **Fix the process, not the part.** A defect found repeatedly is a gate that does not exist yet.
 - **Make the error impossible** (*poka-yoke*). Whatever is mechanical is a gate; judgement goes to an agent with a fixed brief.
 - **One piece at a time.** A slice is verified and committed before the next begins.

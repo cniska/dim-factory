@@ -167,33 +167,6 @@ CREATE TABLE IF NOT EXISTS trace_event (
 CREATE INDEX IF NOT EXISTS trace_event_order_ts ON trace_event(order_id, ts, id);
 CREATE INDEX IF NOT EXISTS trace_event_name ON trace_event(event, name, ts);
 
--- What stops the whole factory rather than one queue: a defect hit mid-slice is in
--- the machinery every queue is run by, so the next claim is refused whichever repo
--- it was going to come from. Running orders are left alone, because killing a
--- worker mid-write leaves a worktree nobody owns and a commit half made.
---
--- An authenticated worker may stop the factory after finding a defect. The
--- operator clears the stop after resolving it. The command authenticates both
--- actions before writing this table.
---
--- A live stop is a row with no cleared_at rather than a flag, so there is no second
--- copy of the state to go stale, and the index is what holds the floor to one stop
--- at a time. The reason is required: a stopped factory nobody can explain is one
--- the next operator clears to get moving.
-CREATE TABLE IF NOT EXISTS factory_stop (
-  id              INTEGER PRIMARY KEY,
-  reason          TEXT NOT NULL CHECK (trim(reason) <> ''),
-  pulled_by       TEXT NOT NULL,
-  pulled_at       TEXT NOT NULL,
-  -- Where the defect surfaced, where it surfaced under an order at all.
-  order_id        TEXT,
-  cleared_at      TEXT,
-  cleared_by      TEXT,
-  CHECK ((cleared_at IS NULL) = (cleared_by IS NULL))
-);
-CREATE UNIQUE INDEX IF NOT EXISTS factory_stop_live
-  ON factory_stop((cleared_at IS NULL)) WHERE cleared_at IS NULL;
-
 -- Every piece of work, waiting or worked, and the evidence of what it produced.
 -- Nothing on disk holds it and no source could reproduce a claim, event or report
 -- after the fact, so rebuild writes these rows back rather than re-reading them.

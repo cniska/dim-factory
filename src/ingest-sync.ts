@@ -133,7 +133,6 @@ export const FACTORY_ORDER_TABLES = [
   "factory_order_environment",
   "factory_order_slice",
   "factory_order_slice_completion",
-  "factory_stop",
 ];
 
 function assertCascadesCarried(db: Database, tables: string[]): void {

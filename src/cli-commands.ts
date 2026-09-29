@@ -21,7 +21,6 @@ const LOADERS: Record<string, () => Promise<Command>> = {
   wt: () => import("./wt-command").then((m) => m.wtCommand),
   order: () => import("./order-command").then((m) => m.orderCommand),
   operator: () => import("./operator-command").then((m) => m.operatorCommand),
-  factory: () => import("./factory-command").then((m) => m.factoryCommand),
   route: () => import("./route-command").then((m) => m.routeCommand),
   trace: () => import("./trace-command").then((m) => m.traceCommand),
   wall: () => import("./wall-command").then((m) => m.wallCommand),

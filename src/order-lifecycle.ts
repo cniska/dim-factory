@@ -1,7 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
 import { assertOperator } from "./factory-operator";
-import { FactoryStopError, liveStop } from "./factory-stop";
 import { recordOrderEnvironment } from "./order-evidence";
 import { appendOrderEventInTransaction, now } from "./order-ledger";
 import { assertOrderQueued, type NewOrder, type OrderPriority } from "./order-status";
@@ -43,14 +42,6 @@ export function startOrder(
   cwd: string = process.cwd(),
 ): number {
   return writeTransaction(db, () => {
-    const stop = liveStop(db);
-    if (stop) {
-      throw new FactoryStopError(
-        "floor_stopped",
-        `the factory is stopped and takes no new order: ${stop.reason} ` +
-          `(${stop.pulledBy}, ${stop.pulledAt}); clear it with \`dim factory clear\``,
-      );
-    }
     assertOrderQueued(db, orderId, "started");
     assertOperator(db, operator, "start an order");
     const { setup } = createWorktree(orderId, cwd);

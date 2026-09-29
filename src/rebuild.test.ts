@@ -315,23 +315,6 @@ describe("rebuilding a database an older schema wrote", () => {
     db.close();
   });
 
-  test("a stopped floor is still stopped after a rebuild", () => {
-    const { db, env } = scratch();
-    db.run("ALTER TABLE factory_stop DROP COLUMN order_id");
-    db.run(
-      `INSERT INTO factory_stop (reason, pulled_by, pulled_at)
-       VALUES ('the commit gate records nothing', 'operator', '2026-09-19T09:00:00.000Z')`,
-    );
-
-    rebuild(db, env);
-
-    expect(columnsOf(db, "factory_stop")).toContain("order_id");
-    expect(db.query("SELECT reason FROM factory_stop WHERE cleared_at IS NULL").all()).toEqual([
-      { reason: "the commit gate records nothing" },
-    ]);
-    db.close();
-  });
-
   test("evidence left behind by an order deleted outside the code goes with the order", () => {
     const { db, env } = scratch();
     db.run("PRAGMA foreign_keys = OFF");
@@ -424,14 +407,11 @@ describe("rebuilding a database an older schema wrote", () => {
        VALUES ('order-1', 'cniska/dim-factory', 'Keep the summary', 'held only here', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
     db.run("UPDATE factory_order SET \"retired note\" = 'keep this too'");
-    db.run("ALTER TABLE factory_stop DROP COLUMN pulled_by");
-    db.run("INSERT INTO factory_stop (reason, pulled_at) VALUES ('line down', '2026-01-01T00:00:00Z')");
     db.run("CREATE TABLE queue_item (id TEXT PRIMARY KEY)");
     db.run("INSERT INTO queue_item (id) VALUES ('item-1')");
     const snapshot = () => ({
       schema: db.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all(),
       orders: db.query("SELECT * FROM factory_order").all(),
-      stops: db.query("SELECT * FROM factory_stop").all(),
       items: db.query("SELECT * FROM queue_item").all(),
     });
     const before = snapshot();
@@ -446,7 +426,6 @@ describe("rebuilding a database an older schema wrote", () => {
 
     expect(message).toContain("factory_order.summary");
     expect(message).toContain("factory_order.retired note");
-    expect(message).toContain("factory_stop.pulled_by");
     expect(message).toContain("sqlite3");
     expect(run.mock.calls.some(([sql]) => /^DROP TABLE/.test(sql))).toBe(false);
     expect(snapshot()).toEqual(before);

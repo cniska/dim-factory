@@ -60,8 +60,6 @@ The order is the aggregate root. Its events, artifacts, slices, attempts, findin
   - the operator: queue, start, approve, return, drop, ship and delegation;
   - the builder: answers;
   - the round's reviewer: findings.
-
-  `factory clear`, which has no order, checks the role through the same worker contract.
 - **Commands return the model.** `queue`, `start`, `approve`, `return`, `drop`, `ship` and the evidence writers append through the store, which reloads the order inside the same transaction and returns the updated `Order`.
 
 ## Record and model
@@ -116,7 +114,7 @@ These modules keep what they do, and take the layout above only where they hold 
 
 - **`worker`:** identity from the process tree and the runner barrier, both unchanged; assignment, routing and environment. `station-environment.ts` moves here. Capabilities shrink to the one that is read, `edits: boolean`.
 - **`ship`:** the rebase and the landing, under the factory lock and the runner barrier. Every ship still writes one ship run, whatever its outcome, through an `order.ts` command. An unclassified failure is recorded with its code, not as a `refused` run with no code.
-- **`factory`:** stop and schedule.
+- **`factory`:** the operator role check, until `admit` holds every order act and `factory-operator.ts` folds into the worker contract.
 - **Disposable processes.** A killed worker loses nothing the record does not hold, and that is the test for every piece of recovery machinery.
 
 ## Cuts
