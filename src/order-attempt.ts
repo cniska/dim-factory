@@ -4,7 +4,7 @@ import { fail } from "./order-contract";
 import type { AttemptOutcome } from "./order-events";
 import { assertOrderRunning } from "./order-status";
 import type { Station } from "./station-contract";
-import { assertOperator, workerIsOver } from "./worker";
+import { workerIsOver } from "./worker";
 import type { Role } from "./worker-roles";
 
 export type Attempt = {
@@ -57,7 +57,6 @@ export function startAttempt(db: Database, orderId: string, attempt: Attempt, at
   writeTransaction(db, () => {
     assertOrderRunning(db, orderId);
     finishStoppedAttempt(db, orderId, at);
-    assertOperator(db, attempt.operatorWorker, "delegate an attempt");
     db.run(
       `INSERT INTO factory_order_attempt
          (order_id, run_id, worker, operator_worker, session_id, provider_session_id, station, harness, model, tier,
