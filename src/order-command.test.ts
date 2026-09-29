@@ -136,6 +136,13 @@ describe("order command", () => {
     expect(snapshot.orders[0]?.status).toBe("queued");
   });
 
+  test("an order queued with no line is refused, since no line is right for every order", () => {
+    const database = db();
+
+    expect(() => runOrderCommand(database, [...add.slice(0, 6), ...add.slice(8)])).toThrow(/--line/);
+    expect(database.query("SELECT count(*) AS n FROM factory_order").get()).toEqual({ n: 0 });
+  });
+
   test("an unknown order line is refused", () => {
     const database = db();
 
@@ -737,13 +744,24 @@ describe("order command", () => {
         "../outside",
         "--title",
         "Unsafe",
+        "--line",
+        "feat",
         "--project",
         "cniska/dim-factory",
       ]),
     ).toThrow(/invalid branch name/);
     expect(assembleWallSnapshot(database).orders).toEqual([]);
     expect(() =>
-      runOrderCommand(database, ["add", "@{-1}", "--title", "Unsafe", "--project", "cniska/dim-factory"]),
+      runOrderCommand(database, [
+        "add",
+        "@{-1}",
+        "--title",
+        "Unsafe",
+        "--line",
+        "feat",
+        "--project",
+        "cniska/dim-factory",
+      ]),
     ).toThrow(/invalid branch name/);
   });
 

@@ -14,7 +14,7 @@ export function queueOrder(db: Database, order: NewOrder, worker: string, at = n
       `INSERT INTO factory_order
        (id, project, title, line, description, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [order.id, order.project, order.title, order.line ?? "feat", order.description ?? null, at, at],
+      [order.id, order.project, order.title, order.line, order.description ?? null, at, at],
     );
     return appendOrderEventInTransaction(db, order.id, { kind: "queued", worker }, at);
   });

@@ -16,7 +16,7 @@ describe("factory domain event boundary", () => {
     const orderId = "trace-is-optional";
     queueOrder(
       db,
-      { id: orderId, project: "example/project", title: "Domain fact" },
+      { line: "feat", id: orderId, project: "example/project", title: "Domain fact" },
       worker,
       "2026-09-25T09:00:00.000Z",
     );
@@ -36,11 +36,7 @@ describe("factory domain event boundary", () => {
     const worker = mintWorker(db, { role: "operator", sessionId: "queue-history" }).name;
     queueOrder(
       db,
-      {
-        id: "queue-history",
-        project: "example/project",
-        title: "Queue history",
-      },
+      { line: "feat", id: "queue-history", project: "example/project", title: "Queue history" },
       worker,
       "2026-09-25T09:00:00.000Z",
     );

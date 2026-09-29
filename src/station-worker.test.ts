@@ -16,7 +16,7 @@ function floor() {
   const db = new Database(":memory:");
   db.run(SCHEMA_SQL);
   const operator = mintWorker(db, { role: "operator", sessionId: "operator-session" });
-  queueOrder(db, { id: "order-1", project: "owner/repo", title: "Work" }, operator.name);
+  queueOrder(db, { line: "feat", id: "order-1", project: "owner/repo", title: "Work" }, operator.name);
   return { db, operator: operator.name };
 }
 

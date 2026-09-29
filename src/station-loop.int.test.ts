@@ -58,7 +58,11 @@ describe("the operator loop", () => {
       sessionId: "loop-operator/builder",
     });
     const worktree = join(repo.dir, ".claude", "worktrees", "loop-order");
-    queueOrder(db, { id: "loop-order", project: "cniska/dim-factory", title: "Run the loop" }, operator.name);
+    queueOrder(
+      db,
+      { line: "feat", id: "loop-order", project: "cniska/dim-factory", title: "Run the loop" },
+      operator.name,
+    );
     startOrder(db, "loop-order", operator.name, undefined, repo.dir);
     recordOrderPlan(db, "loop-order", "## Outcome\n\nRun the loop.", operator.name, [
       { title: "Run the loop", outcome: "the loop runs" },
@@ -173,7 +177,11 @@ describe("the operator loop", () => {
         sessionId: `${orderId}-operator/builder`,
       });
       const worktree = join(repo.dir, ".claude", "worktrees", orderId);
-      queueOrder(db, { id: orderId, project: "cniska/dim-factory", title: "Refuse" }, operator.name);
+      queueOrder(
+        db,
+        { line: "feat", id: orderId, project: "cniska/dim-factory", title: "Refuse" },
+        operator.name,
+      );
       startOrder(db, orderId, operator.name, undefined, repo.dir);
       approvePlan(db, orderId, operator.name);
       const build = (run: string, name: string) => {

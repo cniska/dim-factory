@@ -21,7 +21,7 @@ describe("the review findings a builder is handed", () => {
     db.run(SCHEMA_SQL);
     const builder = workerIn(db);
     const operator = workerIn(db, "operator");
-    queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Brief" }, operator);
+    queueOrder(db, { line: "feat", id: "order-1", project: "cniska/dim-factory", title: "Brief" }, operator);
     startOrder(db, "order-1", operator, undefined, trunk.dir);
     approvePlan(db, "order-1", operator);
     attemptIn(db, "order-1", builder, operator);

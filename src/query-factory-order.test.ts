@@ -51,7 +51,11 @@ function building(db: Database, orderId: string, at?: string): void {
 describe("factory order query", () => {
   test("shows the current next act for queued, running, and terminal orders", () => {
     const db = floor();
-    queueOrder(db, { id: "queued", project: "cniska/dim-factory", title: "Queued" }, attemptOperator);
+    queueOrder(
+      db,
+      { line: "feat", id: "queued", project: "cniska/dim-factory", title: "Queued" },
+      attemptOperator,
+    );
     const row = (id: string) =>
       findQuery("order")
         ?.run(db, { ...ctx, arg: id })
@@ -114,7 +118,11 @@ describe("factory order query", () => {
       null,
     ]);
 
-    queueOrder(db, { id: "dropped", project: "cniska/dim-factory", title: "Dropped" }, attemptOperator);
+    queueOrder(
+      db,
+      { line: "feat", id: "dropped", project: "cniska/dim-factory", title: "Dropped" },
+      attemptOperator,
+    );
     dropOrder(db, "dropped", "superseded", attemptOperator);
     expect(row("dropped")).toEqual([
       "dropped",
@@ -136,7 +144,11 @@ describe("factory order query", () => {
 
   test("reports a finding unanswered until the builder answers it", () => {
     const db = floor();
-    queueOrder(db, { id: "order-reopened", project: "cniska/dim-factory", title: "Reopen" }, attemptOperator);
+    queueOrder(
+      db,
+      { line: "feat", id: "order-reopened", project: "cniska/dim-factory", title: "Reopen" },
+      attemptOperator,
+    );
     building(db, "order-reopened");
     const first = reviewIn(db, "order-reopened");
     const finding = raiseOrderFinding(
@@ -176,7 +188,7 @@ describe("factory order query", () => {
       ["order-left", "tests", true],
       ["order-right", "docs", false],
     ] as const) {
-      queueOrder(db, { id, project: "cniska/dim-factory", title: id }, attemptOperator);
+      queueOrder(db, { line: "feat", id, project: "cniska/dim-factory", title: id }, attemptOperator);
       building(db, id);
       const round = reviewIn(db, id);
       const finding = raiseOrderFinding(db, id, located({ dimension, failure: `${id} gap` }), round.reviewer);
@@ -185,7 +197,11 @@ describe("factory order query", () => {
         answerOrderFindings(db, id, `build-${id}`, [{ finding, answer: "fixed", resolution: null }], worker);
       }
     }
-    queueOrder(db, { id: "order-clean", project: "cniska/dim-factory", title: "clean" }, attemptOperator);
+    queueOrder(
+      db,
+      { line: "feat", id: "order-clean", project: "cniska/dim-factory", title: "clean" },
+      attemptOperator,
+    );
 
     const rows = findQuery("factory")?.run(db, ctx).rows ?? [];
 
@@ -201,11 +217,7 @@ describe("factory order query", () => {
     const db = floor();
     queueOrder(
       db,
-      {
-        id: "order-status",
-        project: "cniska/dim-factory",
-        title: "Report one order's status",
-      },
+      { line: "feat", id: "order-status", project: "cniska/dim-factory", title: "Report one order's status" },
       attemptOperator,
       "2026-09-18T10:00:00.000Z",
     );
@@ -318,11 +330,7 @@ describe("factory order query", () => {
     const db = floor();
     queueOrder(
       db,
-      {
-        id: "order-blocked",
-        project: "cniska/dim-factory",
-        title: "Block on another order",
-      },
+      { line: "feat", id: "order-blocked", project: "cniska/dim-factory", title: "Block on another order" },
       attemptOperator,
     );
     building(db, "order-blocked");
@@ -343,11 +351,7 @@ describe("factory order query", () => {
 
     queueOrder(
       db,
-      {
-        id: "order-reasoned",
-        project: "cniska/dim-factory",
-        title: "Fail with a reason",
-      },
+      { line: "feat", id: "order-reasoned", project: "cniska/dim-factory", title: "Fail with a reason" },
       attemptOperator,
     );
     building(db, "order-reasoned");
@@ -370,11 +374,7 @@ describe("factory order query", () => {
     const db = floor();
     queueOrder(
       db,
-      {
-        id: "order-123",
-        project: "cniska/dim-factory",
-        title: "Read the detailed report",
-      },
+      { line: "feat", id: "order-123", project: "cniska/dim-factory", title: "Read the detailed report" },
       attemptOperator,
       "2026-09-18T10:00:00.000Z",
     );
@@ -548,7 +548,11 @@ describe("factory order query", () => {
       },
       attemptOperator,
     );
-    queueOrder(db, { id: "order-bare", project: "cniska/dim-factory", title: "Bare" }, attemptOperator);
+    queueOrder(
+      db,
+      { line: "feat", id: "order-bare", project: "cniska/dim-factory", title: "Bare" },
+      attemptOperator,
+    );
     building(db, "order-described");
     const described = findQuery("order")?.run(db, { ...ctx, arg: "order-described" });
     expect(described?.columns.slice(7)).toEqual(["line", "title", "description"]);
@@ -568,7 +572,7 @@ describe("factory order query", () => {
     const db = floor();
     queueOrder(
       db,
-      { id: "order-long", project: "cniska/dim-factory", title: "Long" },
+      { line: "feat", id: "order-long", project: "cniska/dim-factory", title: "Long" },
       attemptOperator,
       "2026-09-18T09:00:00.000Z",
     );
@@ -608,11 +612,7 @@ describe("factory order query", () => {
     const db = floor();
     queueOrder(
       db,
-      {
-        id: "order-killed",
-        project: "cniska/dim-factory",
-        title: "Teardown hook killed",
-      },
+      { line: "feat", id: "order-killed", project: "cniska/dim-factory", title: "Teardown hook killed" },
       attemptOperator,
       "2026-09-18T10:00:00.000Z",
     );
@@ -659,8 +659,16 @@ describe("factory order query", () => {
 
   test("refuses a missing id and an ambiguous prefix as usage errors", () => {
     const db = floor();
-    queueOrder(db, { id: "overlap-one", project: "cniska/dim-factory", title: "One" }, attemptOperator);
-    queueOrder(db, { id: "overlap-two", project: "cniska/dim-factory", title: "Two" }, attemptOperator);
+    queueOrder(
+      db,
+      { line: "feat", id: "overlap-one", project: "cniska/dim-factory", title: "One" },
+      attemptOperator,
+    );
+    queueOrder(
+      db,
+      { line: "feat", id: "overlap-two", project: "cniska/dim-factory", title: "Two" },
+      attemptOperator,
+    );
     expect(() => findQuery("order")?.run(db, ctx)).toThrow(
       expect.objectContaining({ code: "usage", message: "usage: dim q order <order-id>" }),
     );

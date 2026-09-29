@@ -73,7 +73,11 @@ describe("planner station", () => {
     const repo = integratedRepo();
     const operator = mintWorker(db, { role: "operator", sessionId: "operator-session" });
     const builder = mintWorker(db, { role: "builder", sessionId: "builder-session" });
-    queueOrder(db, { id: "planner-order", project: "cniska/dim-factory", title: "Plan this" }, operator.name);
+    queueOrder(
+      db,
+      { line: "feat", id: "planner-order", project: "cniska/dim-factory", title: "Plan this" },
+      operator.name,
+    );
 
     await expect(
       plan(db, "planner-order", {
@@ -168,7 +172,7 @@ describe("planner station", () => {
     const operator = mintWorker(db, { role: "operator", sessionId: "planner-crash-operator" });
     queueOrder(
       db,
-      { id: "planner-crash-order", project: "cniska/dim-factory", title: "Plan this" },
+      { line: "feat", id: "planner-crash-order", project: "cniska/dim-factory", title: "Plan this" },
       operator.name,
     );
 
@@ -227,7 +231,7 @@ describe("planner station", () => {
     const operator = mintWorker(db, { role: "operator", sessionId: "planner-limited-operator" });
     queueOrder(
       db,
-      { id: "planner-limited-order", project: "cniska/dim-factory", title: "Plan this" },
+      { line: "feat", id: "planner-limited-order", project: "cniska/dim-factory", title: "Plan this" },
       operator.name,
     );
 
@@ -281,7 +285,7 @@ describe("planner station", () => {
     const operator = mintWorker(db, { role: "operator", sessionId: "planner-unavailable-operator" });
     queueOrder(
       db,
-      { id: "planner-unavailable", project: "cniska/dim-factory", title: "Plan this" },
+      { line: "feat", id: "planner-unavailable", project: "cniska/dim-factory", title: "Plan this" },
       operator.name,
     );
     const adapter = {
@@ -333,7 +337,7 @@ describe("planner station", () => {
     const operator = mintWorker(db, { role: "operator", sessionId: "planner-resume-operator" });
     queueOrder(
       db,
-      { id: "planner-resume-order", project: "cniska/dim-factory", title: "Plan this" },
+      { line: "feat", id: "planner-resume-order", project: "cniska/dim-factory", title: "Plan this" },
       operator.name,
     );
     const base = fakeHarness("plan");
@@ -413,7 +417,11 @@ describe("planner station", () => {
     db.run(SCHEMA_SQL);
     const repo = integratedRepo();
     const operator = mintWorker(db, { role: "operator", sessionId: "planner-held-operator" });
-    queueOrder(db, { id: "held-order", project: "cniska/dim-factory", title: "Plan me" }, operator.name);
+    queueOrder(
+      db,
+      { line: "feat", id: "held-order", project: "cniska/dim-factory", title: "Plan me" },
+      operator.name,
+    );
     const home = mkdtempSync(join(tmpdir(), "dim-held-"));
     const env = { [WORKER_NAME_VAR]: operator.name, DIM_HOME: home };
     using _hold = holdOrder("held-order", env);
@@ -437,7 +445,11 @@ describe("planner station", () => {
     db.run(SCHEMA_SQL);
     const repo = integratedRepo();
     const operator = mintWorker(db, { role: "operator", sessionId: "planner-dropped-operator" });
-    queueOrder(db, { id: "dropped-order", project: "cniska/dim-factory", title: "Plan me" }, operator.name);
+    queueOrder(
+      db,
+      { line: "feat", id: "dropped-order", project: "cniska/dim-factory", title: "Plan me" },
+      operator.name,
+    );
     dropOrder(db, "dropped-order", "not wanted", operator.name);
     const env = {
       [WORKER_NAME_VAR]: operator.name,
@@ -471,7 +483,7 @@ describe("planner station", () => {
     const operator = mintWorker(db, { role: "operator", sessionId: "planner-cwd-operator" });
     queueOrder(
       db,
-      { id: "planner-cwd-order", project: "cniska/dim-factory", title: "Plan here" },
+      { line: "feat", id: "planner-cwd-order", project: "cniska/dim-factory", title: "Plan here" },
       operator.name,
     );
     const base = fakeHarness("plan");

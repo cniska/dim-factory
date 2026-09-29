@@ -51,7 +51,7 @@ queued → plan → build → review → ship → shipped
 ### Commands
 
 ```sh
-dim order add <id> --title "..." [--line feat|fix] [--description "..."]
+dim order add <id> --title "..." --line feat|fix [--description "..."]
 dim order drop <id> --reason "..."
 dim order plan|build|review <id> [--harness codex|claude|grok]
 dim order approve <id> [--reason "..."]  # a Build artifact's approval requires --reason; a Review artifact's ships

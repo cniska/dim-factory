@@ -61,7 +61,7 @@ function conflicted(check = "true", markerSize?: number) {
   db.run(SCHEMA_SQL);
   const builder = workerIn(db);
   const operator = mintWorker(db, { role: "operator", sessionId: newWorkerSession("test-operator") }).name;
-  queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Collide" }, operator);
+  queueOrder(db, { line: "feat", id: "order-1", project: "cniska/dim-factory", title: "Collide" }, operator);
   startOrder(db, "order-1", operator, undefined, starts.dir);
   approvePlan(db, "order-1", operator);
   attemptIn(db, "order-1", builder, operator, "run-1");

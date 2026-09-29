@@ -19,8 +19,8 @@ function record() {
   let tick = 0;
   const at = () => new Date(Date.UTC(2026, 0, 1, 0, 0, tick++)).toISOString();
   db.run(
-    `INSERT INTO factory_order (id, project, title, created_at, updated_at)
-     VALUES (?, 'cniska/dim-factory', 'Read the state', ?, ?)`,
+    `INSERT INTO factory_order (id, project, line, title, created_at, updated_at)
+     VALUES (?, 'cniska/dim-factory', 'feat', 'Read the state', ?, ?)`,
     [ORDER, at(), at()],
   );
   const event = (kind: string, fields: Record<string, string | number> = {}): void => {

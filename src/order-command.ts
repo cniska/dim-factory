@@ -24,7 +24,7 @@ import { reviewStation } from "./station-review";
 import { boundStationHarness } from "./station-worker";
 import { clearRunnerBarrier, registerRunnerBarrier, resolveWorker, withRunnerBarrier } from "./worker";
 
-export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." [--line <${ORDER_LINES.join("|")}>] [--description "..."]
+export const ORDER_USAGE = `usage: dim order add <order-id> --title "..." --line <${ORDER_LINES.join("|")}> [--description "..."]
                      [--project <owner/repo>]
        dim order review <order-id> [--harness <${HARNESSES.join("|")}>]
        dim order plan <order-id> [--harness <${HARNESSES.join("|")}>]
@@ -90,7 +90,7 @@ function add(
   const given = flags(args, ADD_FLAGS);
   const project = given.get("--project") ?? defaultProject;
   if (!project) throw fail("--project is required outside a checkout with a remote");
-  const line = given.get("--line") ?? "feat";
+  const line = required(given, "--line");
   if (!isOrderLine(line)) throw fail(`${line} is not a line; one of ${ORDER_LINES.join(", ")}`);
   queueOrder(
     db,

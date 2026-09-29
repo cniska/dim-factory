@@ -19,7 +19,7 @@ export type NewOrder = {
   id: string;
   project: string;
   title: string;
-  line?: OrderLine;
+  line: OrderLine;
   description?: string;
 };
 

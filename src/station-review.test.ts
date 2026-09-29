@@ -104,7 +104,11 @@ function floor(): {
   const builder = mintWorker(db, { role: "builder", sessionId: `builder-${opened.length}` });
   const dir = orderWorktree(trunk.dir, `review-${opened.length}`);
   worktrees.push(dir);
-  queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Read a slice" }, operator.name);
+  queueOrder(
+    db,
+    { line: "feat", id: "order-1", project: "cniska/dim-factory", title: "Read a slice" },
+    operator.name,
+  );
   startOrder(db, "order-1", operator.name, undefined, trunk.dir);
   approvePlan(db, "order-1", operator.name);
   return {

@@ -5,7 +5,7 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { STATIONS_SQL } from "./station-contract";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 85;
+export const SCHEMA_VERSION = 86;
 
 export const DISCARDED_COLUMNS: readonly string[] = [
   "factory_worker.token_digest",
@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS factory_order (
   -- What the order is called, so a card can be read across a room. The id beside
   -- it is what a query joins on and never what a person is shown.
   title           TEXT NOT NULL,
-  line            TEXT NOT NULL DEFAULT 'feat'
+  line            TEXT NOT NULL
                   CHECK (line IN (${ORDER_LINES_SQL})),
   description     TEXT,
   -- The status and the station are read from the events and never stored.

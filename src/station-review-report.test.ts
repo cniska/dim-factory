@@ -29,7 +29,7 @@ function refused(): { db: Database; review: number; finding: number } {
   db.run(SCHEMA_SQL);
   const builder = workerIn(db);
   const operator = workerIn(db, "operator");
-  queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Render" }, operator);
+  queueOrder(db, { line: "feat", id: "order-1", project: "cniska/dim-factory", title: "Render" }, operator);
   startOrder(db, "order-1", operator, undefined, trunk.dir);
   const first = reviewIn(db, "order-1");
   const finding = raiseOrderFinding(db, "order-1", GATE, first.reviewer);

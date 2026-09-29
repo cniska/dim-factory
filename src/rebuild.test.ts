@@ -161,8 +161,8 @@ describe("rebuilding a database an older schema wrote", () => {
     const { db, env } = scratch();
     db.run("ALTER TABLE factory_order DROP COLUMN description");
     db.run(
-      `INSERT INTO factory_order (id, project, title, created_at, updated_at)
-       VALUES ('order-1', 'cniska/dim-factory', 'Survive a rebuild', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+      `INSERT INTO factory_order (id, project, line, title, created_at, updated_at)
+       VALUES ('order-1', 'cniska/dim-factory', 'feat', 'Survive a rebuild', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
     db.run(
       "INSERT INTO factory_worker (name, role, started_at) VALUES ('copper-1', 'builder', '2026-01-01T00:00:00Z')",
@@ -203,8 +203,8 @@ describe("rebuilding a database an older schema wrote", () => {
   test("first-party lifecycle records and diagnostics survive a rebuild together", () => {
     const { db, env } = scratch();
     db.run(
-      `INSERT INTO factory_order (id, project, title, created_at, updated_at)
-       VALUES ('order-history', 'cniska/dim-factory', 'Keep lifecycle history',
+      `INSERT INTO factory_order (id, project, line, title, created_at, updated_at)
+       VALUES ('order-history', 'cniska/dim-factory', 'feat', 'Keep lifecycle history',
                '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
     db.run(
@@ -236,8 +236,8 @@ describe("rebuilding a database an older schema wrote", () => {
   test("a factory order keeps the words it was queued with", () => {
     const { db, env } = scratch();
     db.run(
-      `INSERT INTO factory_order (id, project, title, description, created_at, updated_at)
-       VALUES ('order-1', 'cniska/dim-factory', 'Survive a rebuild',
+      `INSERT INTO factory_order (id, project, line, title, description, created_at, updated_at)
+       VALUES ('order-1', 'cniska/dim-factory', 'feat', 'Survive a rebuild',
                'No surface can tell a reader what an order is about.',
                '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
@@ -253,8 +253,8 @@ describe("rebuilding a database an older schema wrote", () => {
   test("a plan an order was built from is still readable after a rebuild", () => {
     const { db, env } = scratch();
     db.run(
-      `INSERT INTO factory_order (id, project, title, created_at, updated_at)
-       VALUES ('order-1', 'cniska/dim-factory', 'Keep the plan', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+      `INSERT INTO factory_order (id, project, line, title, created_at, updated_at)
+       VALUES ('order-1', 'cniska/dim-factory', 'feat', 'Keep the plan', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
     db.run(
       "INSERT INTO factory_worker (name, role, started_at) VALUES ('copper-1', 'planner', '2026-01-01T00:00:00Z')",
@@ -292,8 +292,8 @@ describe("rebuilding a database an older schema wrote", () => {
     const { db, env } = scratch();
     db.run("PRAGMA foreign_keys = OFF");
     db.run(
-      `INSERT INTO factory_order (id, project, title, created_at, updated_at)
-       VALUES ('order-kept', 'cniska/dim-factory', 'Survive a rebuild', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+      `INSERT INTO factory_order (id, project, line, title, created_at, updated_at)
+       VALUES ('order-kept', 'cniska/dim-factory', 'feat', 'Survive a rebuild', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
     db.run(
       "INSERT INTO factory_worker (name, role, started_at) VALUES ('copper-1', 'builder', '2026-01-01T00:00:00Z')",
@@ -344,8 +344,8 @@ describe("rebuilding a database an older schema wrote", () => {
     const { db, env } = scratch();
     db.run("ALTER TABLE factory_order DROP COLUMN title");
     db.run(
-      `INSERT INTO factory_order (id, project, created_at, updated_at)
-       VALUES ('order-old', 'cniska/dim-factory', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+      `INSERT INTO factory_order (id, project, line, created_at, updated_at)
+       VALUES ('order-old', 'cniska/dim-factory', 'feat', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
 
     expect(() => rebuild(db, env)).toThrow(/factory_order\.title/);
@@ -376,8 +376,8 @@ describe("rebuilding a database an older schema wrote", () => {
     db.run("ALTER TABLE factory_order RENAME COLUMN description TO summary");
     db.run('ALTER TABLE factory_order ADD COLUMN "retired note" TEXT');
     db.run(
-      `INSERT INTO factory_order (id, project, title, summary, created_at, updated_at)
-       VALUES ('order-1', 'cniska/dim-factory', 'Keep the summary', 'held only here', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+      `INSERT INTO factory_order (id, project, line, title, summary, created_at, updated_at)
+       VALUES ('order-1', 'cniska/dim-factory', 'feat', 'Keep the summary', 'held only here', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
     db.run("UPDATE factory_order SET \"retired note\" = 'keep this too'");
     db.run("CREATE TABLE queue_item (id TEXT PRIMARY KEY)");
@@ -410,8 +410,8 @@ describe("rebuilding a database an older schema wrote", () => {
     const { db, env } = scratch();
     db.run("ALTER TABLE factory_order ADD COLUMN retired_note TEXT");
     db.run(
-      `INSERT INTO factory_order (id, project, title, created_at, updated_at)
-       VALUES ('order-1', 'cniska/dim-factory', 'Drop an empty column', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+      `INSERT INTO factory_order (id, project, line, title, created_at, updated_at)
+       VALUES ('order-1', 'cniska/dim-factory', 'feat', 'Drop an empty column', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
 
     rebuild(db, env);
@@ -430,8 +430,8 @@ describe("rebuilding a database an older schema wrote", () => {
        )`,
     );
     db.run(
-      `INSERT INTO factory_order (id, project, title, created_at, updated_at)
-       VALUES ('order-1', 'cniska/dim-factory', 'Retire an old table', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+      `INSERT INTO factory_order (id, project, line, title, created_at, updated_at)
+       VALUES ('order-1', 'cniska/dim-factory', 'feat', 'Retire an old table', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
     db.run("INSERT INTO factory_order_account (order_id, body) VALUES ('order-1', 'old artifact')");
 
@@ -452,8 +452,8 @@ describe("rebuilding a database an older schema wrote", () => {
       "INSERT INTO factory_worker (name, role, started_at) VALUES ('copper-1', 'reviewer', '2026-01-01T00:00:00Z')",
     );
     db.run(
-      `INSERT INTO factory_order (id, project, title, created_at, updated_at)
-       VALUES ('order-1', 'cniska/dim-factory', 'Retire a review table', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+      `INSERT INTO factory_order (id, project, line, title, created_at, updated_at)
+       VALUES ('order-1', 'cniska/dim-factory', 'feat', 'Retire a review table', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
     );
     db.run(
       `INSERT INTO factory_order_review (order_id, round, reviewer, base_sha, head_sha, opened_at)

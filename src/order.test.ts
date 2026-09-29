@@ -89,6 +89,7 @@ const order = {
   id: "order-1",
   project: "cniska/dim-factory",
   title: "Record a factory order",
+  line: "feat" as const,
 };
 
 function start(database: Database, orderId = "order-1", operator = attemptOperator, at?: string): number {

@@ -75,7 +75,11 @@ function recordWithOrder(): { home: string; path: string } {
   const path = dbPath({ DIM_HOME: home });
   const db = openDb(path);
   const operator = mintWorker(db, { role: "operator", pid: process.ppid, sessionId: "reader-test" });
-  queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Stay as written" }, operator.name);
+  queueOrder(
+    db,
+    { line: "feat", id: "order-1", project: "cniska/dim-factory", title: "Stay as written" },
+    operator.name,
+  );
   closeDb(db);
   return { home, path };
 }

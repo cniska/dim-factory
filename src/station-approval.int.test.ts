@@ -49,7 +49,7 @@ describe("plan approval integration", () => {
     });
     queueOrder(
       db,
-      { id: "operator-plan-order", project: "cniska/dim-factory", title: "Delegate planning" },
+      { line: "feat", id: "operator-plan-order", project: "cniska/dim-factory", title: "Delegate planning" },
       operator.name,
     );
 
@@ -101,7 +101,7 @@ describe("plan approval integration", () => {
     });
     queueOrder(
       db,
-      { id: "approval-order", project: "cniska/dim-factory", title: "Approve this" },
+      { line: "feat", id: "approval-order", project: "cniska/dim-factory", title: "Approve this" },
       operator.name,
     );
     startOrder(db, "approval-order", operator.name, undefined, repo.dir);
@@ -151,7 +151,7 @@ describe("plan approval integration", () => {
     });
     queueOrder(
       db,
-      { id: "approval-order-3", project: "cniska/dim-factory", title: "Revise this" },
+      { line: "feat", id: "approval-order-3", project: "cniska/dim-factory", title: "Revise this" },
       operator.name,
     );
     startOrder(db, "approval-order-3", operator.name, undefined, repo.dir);
@@ -207,7 +207,7 @@ describe("plan approval integration", () => {
     db.run("UPDATE factory_worker SET pid = NULL, process_started_at = NULL WHERE name = ?", [operator.name]);
     queueOrder(
       db,
-      { id: "approval-order-2", project: "cniska/dim-factory", title: "Approve this" },
+      { line: "feat", id: "approval-order-2", project: "cniska/dim-factory", title: "Approve this" },
       operator.name,
     );
     startOrder(db, "approval-order-2", operator.name, undefined, repo.dir);
@@ -241,7 +241,7 @@ describe("plan approval integration", () => {
     db.run("UPDATE factory_worker SET pid = NULL, process_started_at = NULL WHERE name = ?", [operator.name]);
     queueOrder(
       db,
-      { id: "delegation-order", project: "cniska/dim-factory", title: "Delegate this" },
+      { line: "feat", id: "delegation-order", project: "cniska/dim-factory", title: "Delegate this" },
       operator.name,
     );
 

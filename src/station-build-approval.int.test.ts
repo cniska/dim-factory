@@ -48,7 +48,7 @@ describe("build approval integration", () => {
     });
     queueOrder(
       db,
-      { id: "failed-return-order", project: "cniska/dim-factory", title: "Return the Build" },
+      { line: "feat", id: "failed-return-order", project: "cniska/dim-factory", title: "Return the Build" },
       operator.name,
     );
     startOrder(db, "failed-return-order", operator.name, undefined, repo.dir);
@@ -123,7 +123,7 @@ describe("build approval integration", () => {
     });
     queueOrder(
       db,
-      { id: "build-approval-order", project: "cniska/dim-factory", title: "Approve the build" },
+      { line: "feat", id: "build-approval-order", project: "cniska/dim-factory", title: "Approve the build" },
       operator.name,
     );
     startOrder(db, "build-approval-order", operator.name, undefined, repo.dir);

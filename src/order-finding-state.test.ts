@@ -25,7 +25,11 @@ function floor(db = new Database(":memory:"), schema = true): Floor {
   if (schema) db.run(SCHEMA_SQL);
   const builder = workerIn(db);
   const operator = workerIn(db, "operator");
-  queueOrder(db, { id: "order-1", project: "cniska/dim-factory", title: "Answer findings" }, operator);
+  queueOrder(
+    db,
+    { line: "feat", id: "order-1", project: "cniska/dim-factory", title: "Answer findings" },
+    operator,
+  );
   startOrder(db, "order-1", operator, undefined, trunk.dir);
   approvePlan(db, "order-1", operator);
   recordOrderCommit(db, "order-1", "base0000", builder, "feat: base");

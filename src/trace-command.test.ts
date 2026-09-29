@@ -18,13 +18,10 @@ function scratch(): Env {
 function shippedOrder(env: Env): void {
   const db = openDb(dbPath(env));
   const at = new Date().toISOString();
-  db.run("INSERT INTO factory_order (id, project, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)", [
-    "order-1",
-    "test/project",
-    "Trace order",
-    at,
-    at,
-  ]);
+  db.run(
+    "INSERT INTO factory_order (id, project, line, title, created_at, updated_at) VALUES (?, ?, 'feat', ?, ?, ?)",
+    ["order-1", "test/project", "Trace order", at, at],
+  );
   db.run("INSERT INTO factory_order_event (order_id, ts, kind) VALUES (?, ?, 'started')", ["order-1", at]);
   db.run(
     "INSERT INTO factory_order_ship_run (order_id, outcome, head, recorded_at) VALUES (?, 'landed', 'abc123', ?)",
