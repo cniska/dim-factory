@@ -440,7 +440,8 @@ describe("an act's entry", () => {
     expect(() => admitIn(r.db, "return", "plan")).toThrow(
       expect.objectContaining({
         code: "rebase_conflict_pending",
-        message: "order order-1 has a rebase conflict the builder must resolve, so it cannot return",
+        message:
+          "order order-1 has a rebase conflict the builder must resolve, so it cannot return; `dim order build order-1` resolves it first",
       }),
     );
   });

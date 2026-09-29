@@ -41,22 +41,33 @@ export type Order = {
   findings: OrderFindingRecord[];
 };
 
+type Waiting = { orderId: string; station: Station | null; next: "run" | "approve" | "ship" };
+
+const waitsOn = (w: Waiting): string => (w.station === null ? w.next : `${w.next} at ${w.station}`);
+
+function command(w: Waiting): string {
+  if (w.next === "run") return `dim order ${w.station} ${w.orderId}`;
+  if (w.next === "approve" && w.station === "build") return `dim order approve ${w.orderId} --reason "..."`;
+  return `dim order ${w.next} ${w.orderId}`;
+}
+
 const MESSAGES = {
-  not_next: (m: { orderId: string; waitsOn: string; act: string }) =>
-    `order ${m.orderId} waits on ${m.waitsOn}, so it cannot ${m.act}`,
+  not_next: (m: Waiting & { act: string }) =>
+    `order ${m.orderId} waits on ${waitsOn(m)}, so it cannot ${m.act}; its next act is \`${command(m)}\``,
   order_terminal: (m: { orderId: string; status: string; act: string }) =>
-    `order ${m.orderId} is ${m.status}, so it cannot ${m.act}`,
+    `order ${m.orderId} is ${m.status}, so it cannot ${m.act}; nothing more runs on a ${m.status} order`,
   order_not_queued: (m: { orderId: string; status: string; act: string }) =>
-    `order ${m.orderId} is ${m.status} and only a queued order can be ${m.act}`,
+    `order ${m.orderId} is ${m.status} and only a queued order can be ${m.act}; \`dim q order ${m.orderId}\` shows its next act`,
   order_held_by_run: (m: { orderId: string; worker: string; runId: string; act: string }) =>
-    `order ${m.orderId} is being worked by ${m.worker} under ${m.runId}, so it cannot ${m.act}`,
+    `order ${m.orderId} is being worked by ${m.worker} under ${m.runId}, so it cannot ${m.act}; wait for that run to finish, which \`dim q order ${m.orderId}\` shows`,
   rebase_conflict_pending: (m: { orderId: string; act: string }) =>
-    `order ${m.orderId} has a rebase conflict the builder must resolve, so it cannot ${m.act}`,
+    `order ${m.orderId} has a rebase conflict the builder must resolve, so it cannot ${m.act}; \`dim order build ${m.orderId}\` resolves it first`,
   order_not_checked: (m: { orderId: string }) =>
-    `order ${m.orderId} has no check that passed at its last commit`,
-  no_final_build_turn: (m: { orderId: string }) => `order ${m.orderId} has no active final build turn`,
+    `order ${m.orderId} has no check that passed at its last commit; the build turn that commits runs the check`,
+  no_final_build_turn: (m: { orderId: string }) =>
+    `order ${m.orderId} has no active final build turn; a Build artifact is recorded on the turn that finishes the last slice`,
   build_artifact_before_final_slice: (m: { orderId: string }) =>
-    `order ${m.orderId} must finish its final slice before recording a Build artifact`,
+    `order ${m.orderId} must finish its final slice before recording a Build artifact; a Build artifact is recorded on the turn that finishes the last slice`,
 };
 
 export type OrderErrorCode = keyof typeof MESSAGES;

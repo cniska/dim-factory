@@ -171,7 +171,7 @@ export function admit(order: Order, act: OrderAct, running: RunningAttempt | nul
     throw fail("order_terminal", { orderId: order.id, status: order.status, act });
   const state = next(order);
   if (!admits(state, act, to))
-    throw fail("not_next", { orderId: order.id, waitsOn: describeState(state), act });
+    throw fail("not_next", { orderId: order.id, station: state.station, next: state.next, act });
   if (act === "return" && conflictPending(order))
     throw fail("rebase_conflict_pending", { orderId: order.id, act });
   const held = heldAction(act, state, to);

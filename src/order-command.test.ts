@@ -323,7 +323,8 @@ describe("order command", () => {
     expect(() => runOrderCommand(database, ["approve", "order-1"])).toThrow(
       expect.objectContaining({
         code: "not_next",
-        message: "order order-1 waits on run at plan, so it cannot approve",
+        message:
+          "order order-1 waits on run at plan, so it cannot approve; its next act is `dim order plan order-1`",
       }),
     );
     recordOrderPlan(database, "order-1", "## Outcome\n\nBuild it.", operator, [
@@ -365,7 +366,7 @@ describe("order command", () => {
     expect(() => runOrderCommand(database, ["approve", "order-1"])).toThrow(
       expect.objectContaining({
         code: "order_terminal",
-        message: "order order-1 is shipped, so it cannot approve",
+        message: "order order-1 is shipped, so it cannot approve; nothing more runs on a shipped order",
       }),
     );
   });
@@ -573,7 +574,8 @@ describe("order command", () => {
     expect(() => runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toThrow(
       expect.objectContaining({
         code: "not_next",
-        message: "order order-1 waits on run at build, so it cannot ship",
+        message:
+          "order order-1 waits on run at build, so it cannot ship; its next act is `dim order build order-1`",
       }),
     );
     expect(database.query("SELECT kind FROM factory_order_event WHERE kind = 'ship_retried'").all()).toEqual(
@@ -590,7 +592,8 @@ describe("order command", () => {
     expect(() => runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toThrow(
       expect.objectContaining({
         code: "not_next",
-        message: "order order-1 waits on run at plan, so it cannot ship",
+        message:
+          "order order-1 waits on run at plan, so it cannot ship; its next act is `dim order plan order-1`",
       }),
     );
   });
@@ -606,7 +609,8 @@ describe("order command", () => {
     expect(() => runOrderCommand(database, ["ship", "order-1"], null, trunk.dir)).toThrow(
       expect.objectContaining({
         code: "not_next",
-        message: "order order-1 waits on run at review, so it cannot ship",
+        message:
+          "order order-1 waits on run at review, so it cannot ship; its next act is `dim order review order-1`",
       }),
     );
   });

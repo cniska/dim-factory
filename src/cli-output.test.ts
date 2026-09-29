@@ -24,7 +24,8 @@ describe("an error on stderr", () => {
       error: {
         name: "CodedError",
         code: "order_not_checked",
-        message: "order o-1 has no check that passed at its last commit",
+        message:
+          "order o-1 has no check that passed at its last commit; the build turn that commits runs the check",
         meta: { orderId: "o-1" },
       },
     });
