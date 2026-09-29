@@ -102,7 +102,7 @@ Around it:
 - A red re-check keeps the rebase and puts the order back at build, where a build turn briefed with the check's output fixes the rebased head ([`src/order-head-check.ts`](../src/order-head-check.ts)). Its commit takes a new Build approval and a new review round before the order ships.
 - A rebase is recorded as a rewrite: each retired sha stays in the record and never counts as landed, reviewed or current.
 - A conflict stays pending while the latest ship run is a conflict and no commit names it.
-- When commits remain to land, ship refuses a dirty default branch checkout, an unrecorded branch tip, or an unsigned commit where the repo signs. Before a rebase, it also refuses a dirty or nested order worktree.
+- When commits remain to land, ship refuses a dirty default branch checkout, a branch tip other than the order's last recorded commit, a branch missing a recorded commit, or an unsigned commit where the repo signs. Before a rebase, it also refuses a dirty or nested order worktree.
 
 ## Workers
 

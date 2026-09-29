@@ -75,10 +75,18 @@ export function shipBranch(
   if (!tip.success) {
     throw new ShipRefusal("ship_no_branch", `${root} has no branch named ${branch} to ship`);
   }
-  if (!shas.some((sha) => tip.out.startsWith(sha.toLowerCase()))) {
+  const last = shas.at(-1) as string;
+  if (!tip.out.startsWith(last.toLowerCase())) {
     throw new ShipRefusal(
       "ship_unrecorded_head",
-      `${branch} is at ${tip.out}, which is none of the commits the order recorded; reset it to the order's last recorded commit or record it first`,
+      `${branch} is at ${tip.out}, not the order's last recorded commit ${last}; reset it there or record it first`,
+    );
+  }
+  const missing = shas.filter((sha) => !git(root, ["merge-base", "--is-ancestor", sha, tip.out]).success);
+  if (missing.length > 0) {
+    throw new ShipRefusal(
+      "ship_not_landed",
+      `${branch} does not carry: ${missing.join(", ")}; nothing landed on ${trunk.name}`,
     );
   }
 
@@ -88,13 +96,6 @@ export function shipBranch(
   if (git(root, ["merge-base", "--is-ancestor", `refs/heads/${trunk.name}`, tip.out]).success) {
     refuseUnsigned(root, branch, trunk.name, target);
   } else {
-    if (git(root, ["merge-base", "--is-ancestor", tip.out, `refs/heads/${trunk.name}`]).success) {
-      const unreached = shas.filter((sha) => reachesTrunk(root, sha).reach !== "reached");
-      throw new ShipRefusal(
-        "ship_not_landed",
-        `${trunk.name} already carries ${branch}, which does not reach: ${unreached.join(", ")}`,
-      );
-    }
     const rewrite = rebaseOntoTrunk(root, branch, trunk.name, tip.out);
     let verdict: RebaseVerdict;
     try {

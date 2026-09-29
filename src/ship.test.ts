@@ -338,6 +338,24 @@ describe("shipBranch", () => {
     expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkBefore);
   });
 
+  for (const trunk of ["behind", "moved on"] as const) {
+    test(`a branch reset to an earlier recorded commit is refused before the trunk moves, with the trunk ${trunk}`, () => {
+      const { dir } = repo();
+      const wt = worktree(dir, "feat-reset");
+      const first = commitFile(wt, "feat-reset.txt", "first");
+      const last = commitFile(wt, "feat-reset2.txt", "last");
+      git(wt, ["reset", "-q", "--hard", first]);
+      if (trunk === "moved on") commitFile(dir, "trunk-moved.txt", "moved");
+      const trunkBefore = git(dir, ["rev-parse", "HEAD"]).out;
+
+      expect(() => ship(wt, "feat-reset", [first, last])).toThrow(
+        expect.objectContaining({ code: "ship_unrecorded_head" } satisfies Partial<ShipRefusal>),
+      );
+      expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkBefore);
+      expect(git(dir, ["rev-parse", "refs/heads/feat-reset"]).out).toBe(first);
+    });
+  }
+
   test("a rebase git refuses without a conflict is refused as failed, leaving the branch where it was", () => {
     const { dir } = repo();
     const hooks = mkdtempSync(join(tmpdir(), "dim-outside-hooks-"));
@@ -433,7 +451,7 @@ describe("shipBranch", () => {
     const stray = commitFile(worktree(dir, "stray-3"), "stray-3.txt", "stray");
     commitFile(dir, "trunk-moved.txt", "moved");
 
-    expect(() => ship(wt, "feat-behind", [behind, stray])).toThrow(
+    expect(() => ship(wt, "feat-behind", [stray, behind])).toThrow(
       expect.objectContaining({ code: "ship_not_landed" } satisfies Partial<ShipRefusal>),
     );
     expect(git(dir, ["rev-parse", "refs/heads/feat-behind"]).out).toBe(behind);
@@ -499,17 +517,18 @@ describe("shipBranch", () => {
     );
   });
 
-  test("a recorded sha the shipped branch never carried is refused after the branch lands", () => {
+  test("a recorded sha the shipped branch never carried is refused before the trunk moves", () => {
     const { dir } = repo();
     const wt = worktree(dir, "feat-g");
-    const landedSha = commitFile(wt, "feat-g.txt", "g");
+    const tipSha = commitFile(wt, "feat-g.txt", "g");
     const strayWt = worktree(dir, "stray");
     const strayShaOffBranch = commitFile(strayWt, "stray.txt", "stray");
+    const trunkBefore = git(dir, ["rev-parse", "HEAD"]).out;
 
-    expect(() => ship(wt, "feat-g", [landedSha, strayShaOffBranch])).toThrow(
+    expect(() => ship(wt, "feat-g", [strayShaOffBranch, tipSha])).toThrow(
       expect.objectContaining({ code: "ship_not_landed" } satisfies Partial<ShipRefusal>),
     );
-    expect(reachesNow(dir, landedSha)).toBe(true);
+    expect(git(dir, ["rev-parse", "HEAD"]).out).toBe(trunkBefore);
   });
 
   test("in a repository that signs, a commit that does not verify is refused before anything lands", () => {
@@ -535,7 +554,7 @@ describe("shipBranch", () => {
     const strayWt = worktree(dir, "stray-2");
     const strayShaOffBranch = commitFile(strayWt, "stray-2.txt", "stray");
 
-    expect(() => ship(wt, "feat-h", [alreadyLandedSha, strayShaOffBranch])).toThrow(
+    expect(() => ship(wt, "feat-h", [strayShaOffBranch, alreadyLandedSha])).toThrow(
       expect.objectContaining({ code: "ship_not_landed" } satisfies Partial<ShipRefusal>),
     );
   });
