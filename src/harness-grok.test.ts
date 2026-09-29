@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { HarnessRequest } from "./harness";
 import { grokArgs, grokProcess } from "./harness-grok";
 import { commandLine, resumeCommandLine } from "./harness-process";
-import { workerEnvironment } from "./station-environment";
+import { workerEnvironment } from "./worker-process-environment";
 
 const request: HarnessRequest = {
   cwd: "/repo",

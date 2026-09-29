@@ -5,7 +5,7 @@ import type { HarnessLineParser, HarnessProcess } from "./harness-process";
 import { hookSettings } from "./hook-commands";
 import { dataDir } from "./paths";
 import { SKILL_PLUGIN_DIR } from "./skill-plugin";
-import { NETWORK_VARS } from "./station-environment";
+import { NETWORK_VARS } from "./worker-process-environment";
 
 type ClaudeBlock = {
   type?: string;

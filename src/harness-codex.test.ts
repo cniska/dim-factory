@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { HarnessRequest } from "./harness";
 import { codexArgs, codexProcess } from "./harness-codex";
 import { commandLine, resumeCommandLine } from "./harness-process";
-import { workerEnvironment } from "./station-environment";
+import { workerEnvironment } from "./worker-process-environment";
 
 const request: HarnessRequest = {
   cwd: "/repo",

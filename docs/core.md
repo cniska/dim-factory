@@ -111,7 +111,7 @@ A fix order's failing test lands in the same slice as its fix, so its proof is t
 
 These modules keep what they do, and take the layout above only where they hold the concern.
 
-- **`worker`:** identity from the process tree and the runner barrier, both unchanged; assignment, routing and environment. `station-environment.ts` moves here. Capabilities shrink to the one that is read, `edits: boolean`.
+- **`worker`:** identity from the process tree and the runner barrier, both unchanged; assignment, routing and the process environment (`worker-process-environment.ts`). Capabilities shrink to the one that is read, `edits: boolean`.
 - **`ship`:** the rebase and the landing, under the factory lock and the runner barrier. Every ship still writes one ship run, whatever its outcome, through an `order.ts` command. An unclassified failure is recorded with its code, not as a `refused` run with no code.
 - **`factory`:** the operator role check, until `admit` holds every order act and `factory-operator.ts` folds into the worker contract.
 - **Disposable processes.** A killed worker loses nothing the record does not hold, and that is the test for every piece of recovery machinery.

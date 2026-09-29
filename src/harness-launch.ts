@@ -5,7 +5,7 @@ import { grokProcess } from "./harness-grok";
 import type { HarnessName } from "./harness-name";
 import { type HarnessProcess, processHarness } from "./harness-process";
 import { runHarness } from "./harness-runner";
-import { workerEnvironment } from "./station-environment";
+import { workerEnvironment } from "./worker-process-environment";
 
 export type HarnessLaunch = HarnessRequest & { harness: HarnessName };
 

@@ -1,7 +1,7 @@
 import type { HarnessEvent, HarnessRequest } from "./harness";
 import type { HarnessLineParser, HarnessProcess } from "./harness-process";
 import { dataDir } from "./paths";
-import { NETWORK_VARS } from "./station-environment";
+import { NETWORK_VARS } from "./worker-process-environment";
 
 type CodexEvent = {
   type?: string;

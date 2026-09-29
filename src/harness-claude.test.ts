@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import type { HarnessRequest } from "./harness";
 import { claudeArgs, claudeProcess } from "./harness-claude";
 import { commandLine, resumeCommandLine } from "./harness-process";
-import { workerEnvironment } from "./station-environment";
+import { workerEnvironment } from "./worker-process-environment";
 import { worktreePath } from "./worktree";
 
 const PER_TOKEN = [

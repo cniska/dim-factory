@@ -1,6 +1,6 @@
 import { existsSync, rmSync } from "node:fs";
 import type { ProcessEnvironment } from "./harness-process";
-import { checkEnvironment } from "./station-environment";
+import { checkEnvironment } from "./worker-process-environment";
 
 export const CHECK_SANDBOX = ["codex", "sandbox", "-c", 'sandbox_mode="workspace-write"', "--"];
 

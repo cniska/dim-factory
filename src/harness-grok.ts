@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { checkoutGitPaths } from "./git-checkout-dir";
 import type { HarnessEvent, HarnessRequest } from "./harness";
 import type { HarnessLineParser, HarnessProcess } from "./harness-process";
-import { NETWORK_VARS } from "./station-environment";
+import { NETWORK_VARS } from "./worker-process-environment";
 
 type GrokBlock = {
   type?: string;
