@@ -49,6 +49,16 @@ describe("a repository's recorded commit convention", () => {
     db.close();
   });
 
+  test("counts a squash merge only by a numbered suffix closing the subject", () => {
+    const db = database();
+    for (let i = 0; i < 10; i++) add(db, "/h/code/one", "owner/one", `s${i}`, `fix: landed (#${i})`, "fix");
+    for (let i = 0; i < 5; i++) add(db, "/h/code/one", "owner/one", `r${i}`, "fix: closes #12 now", "fix");
+    for (let i = 0; i < 5; i++) add(db, "/h/code/one", "owner/one", `t${i}`, "fix: uses (#tag)", "fix");
+
+    expect(repoConvention(db, { label: "owner/one", root: "/h/code/one" }).observed?.squashedPct).toBe(50);
+    db.close();
+  });
+
   test("keys a repository with no remote by its folded checkout path", () => {
     const db = database();
     for (let i = 0; i < 10; i++) {
