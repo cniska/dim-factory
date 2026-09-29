@@ -1,5 +1,8 @@
 import type { Database } from "bun:sqlite";
-import type { Order, OrderArtifact } from "./order-contract";
+import { assertOperator } from "./factory-operator";
+import { runningAttempt } from "./order-attempt";
+import { fail, type Order, type OrderArtifact } from "./order-contract";
+import { isTerminalOrderStatus } from "./order-status";
 import { loadOrder } from "./order-store";
 import type { Station } from "./station";
 
@@ -116,4 +119,109 @@ export function orderState(db: Database, orderId: string): OrderState {
 
 export function describeState(state: OrderState): string {
   return state.station === null ? state.next : `${state.next} at ${state.station}`;
+}
+
+export type OrderAct = "plan" | "build" | "review" | "approve" | "return" | "ship";
+
+export type RunningAttempt = { worker: string; runId: string };
+
+function returnsTo(state: OrderState, destination: Station): boolean {
+  switch (destination) {
+    case "plan":
+      return state.station === "build" || (state.station === "plan" && state.next === "approve");
+    case "build":
+      return (state.station === "build" || state.station === "review") && state.next === "approve";
+    case "review":
+      return state.station === "review" && state.next === "approve";
+  }
+}
+
+function admits(state: OrderState, act: OrderAct, to: Station | undefined): boolean {
+  switch (act) {
+    case "plan":
+    case "build":
+    case "review":
+      return state.station === act && state.next === "run";
+    case "approve":
+      return state.next === "approve";
+    case "ship":
+      return state.next === "ship";
+    case "return": {
+      const destination = to ?? state.station;
+      return destination !== null && returnsTo(state, destination);
+    }
+  }
+}
+
+function heldAction(act: OrderAct, state: OrderState, to: Station | undefined): string | null {
+  switch (act) {
+    case "plan":
+      return "start a planner";
+    case "build":
+      return "start a builder";
+    case "return":
+      return `return to ${to ?? state.station}`;
+    default:
+      return null;
+  }
+}
+
+export function admit(order: Order, act: OrderAct, running: RunningAttempt | null, to?: Station): OrderState {
+  if (isTerminalOrderStatus(order.status))
+    throw fail("order_terminal", { orderId: order.id, status: order.status, act });
+  const state = next(order);
+  if (!admits(state, act, to))
+    throw fail("not_next", { orderId: order.id, waitsOn: describeState(state), act });
+  if (act === "return" && conflictPending(order))
+    throw fail("rebase_conflict_pending", { orderId: order.id, act });
+  const held = heldAction(act, state, to);
+  if (held !== null && running !== null) {
+    throw fail("order_held_by_run", {
+      orderId: order.id,
+      worker: running.worker,
+      runId: running.runId,
+      act: held,
+    });
+  }
+  return state;
+}
+
+const DELEGATES: Record<OrderAct, string> = {
+  plan: "delegate planning",
+  build: "delegate build",
+  review: "delegate review",
+  approve: "approve an artifact",
+  return: "return an artifact",
+  ship: "ship an order",
+};
+
+export function admitAct(
+  db: Database,
+  orderId: string,
+  act: "approve",
+  worker: string,
+): Extract<OrderState, { next: "approve" }>;
+export function admitAct(
+  db: Database,
+  orderId: string,
+  act: "return",
+  worker: string,
+  to?: Station,
+): Extract<OrderState, { station: Station }>;
+export function admitAct(
+  db: Database,
+  orderId: string,
+  act: OrderAct,
+  worker: string,
+  to?: Station,
+): OrderState;
+export function admitAct(
+  db: Database,
+  orderId: string,
+  act: OrderAct,
+  worker: string,
+  to?: Station,
+): OrderState {
+  assertOperator(db, worker, DELEGATES[act]);
+  return admit(loadOrder(db, orderId), act, runningAttempt(db, orderId), to);
 }

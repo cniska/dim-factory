@@ -1,9 +1,9 @@
 import type { Database } from "bun:sqlite";
-import { assertOperator } from "./factory-operator";
 import { type CheckoutConvention, CONVENTION_FLOOR, checkoutConvention } from "./git-commit-convention";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-launch";
 import type { HarnessName } from "./harness-name";
+import { admitAct } from "./order";
 import { latestApprovedPlan } from "./order-approved-plan";
 import {
   completeOrderBuildFollowup,
@@ -12,13 +12,12 @@ import {
   nextOrderSlice,
   type OrderSlice,
 } from "./order-artifacts";
-import { assertNoRunningAttempt, openAttempt } from "./order-attempt";
+import { openAttempt } from "./order-attempt";
 import { latestOrderCommit, pendingRebaseConflict } from "./order-commits";
 import { BuildTurnRefused } from "./order-finding";
 import { type FindingStanding, orderFindingStandings, owesAnswer } from "./order-finding-state";
 import { assertChecked, type FailedCheck, failedHeadCheck } from "./order-head-check";
 import { appendOrderEvent } from "./order-ledger";
-import { assertNext } from "./order-state";
 import { orderStatus } from "./order-status";
 import type { Env } from "./paths";
 import { startStationAttempt } from "./station-attempt";
@@ -204,9 +203,7 @@ export async function runOrderBuildLive(
     .query<BriefedOrder, [string]>("SELECT id, title, description, line FROM factory_order WHERE id = ?")
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
-  assertOperator(db, operator, "delegate build");
-  assertNext(db, orderId, "build");
-  assertNoRunningAttempt(db, orderId, "start a builder");
+  admitAct(db, orderId, "build", operator);
   const plan = latestApprovedPlan(db, orderId);
   if (!plan) throw new Error(`order ${orderId} has no approved plan to build`);
   const { harness } = options;

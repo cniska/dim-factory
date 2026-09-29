@@ -1,9 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
-import { assertOperator } from "./factory-operator";
 import type { HarnessAdapter } from "./harness";
 import { workerFailureReason } from "./harness-launch";
 import type { HarnessName } from "./harness-name";
+import { admitAct } from "./order";
 import { latestApprovedPlan } from "./order-approved-plan";
 import type { ReturnedOrderArtifact } from "./order-artifacts";
 import { finishAttempt } from "./order-attempt";
@@ -17,7 +17,6 @@ import {
   openOrderReview,
   recordOrderReviewArtifact,
 } from "./order-review";
-import { assertNext } from "./order-state";
 import { startStationAttempt } from "./station-attempt";
 import { type BriefedOrder, briefHeader } from "./station-brief";
 import { stationDirectory } from "./station-directory";
@@ -240,8 +239,7 @@ export async function runOrderReviewLive(
     .query<BriefedOrder, [string]>("SELECT id, title, description, line FROM factory_order WHERE id = ?")
     .get(orderId);
   if (!order) throw new Error(`order not found: ${orderId}`);
-  assertOperator(db, worker, "delegate review");
-  assertNext(db, orderId, "review");
+  admitAct(db, orderId, "review", worker);
   abortStrandedReview(db, orderId);
   const dir = stationDirectory(options.dir, orderId);
   const harness = options.harness;

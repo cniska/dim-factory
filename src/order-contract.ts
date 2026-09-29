@@ -50,6 +50,8 @@ const MESSAGES = {
     `order ${m.orderId} is ${m.status} and only a queued order can be ${m.act}`,
   order_held_by_run: (m: { orderId: string; worker: string; runId: string; act: string }) =>
     `order ${m.orderId} is being worked by ${m.worker} under ${m.runId}, so it cannot ${m.act}`,
+  rebase_conflict_pending: (m: { orderId: string; act: string }) =>
+    `order ${m.orderId} has a rebase conflict the builder must resolve, so it cannot ${m.act}`,
   order_not_checked: (m: { orderId: string }) =>
     `order ${m.orderId} has no check that passed at its last commit`,
   no_final_build_turn: (m: { orderId: string }) => `order ${m.orderId} has no active final build turn`,

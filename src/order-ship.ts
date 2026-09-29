@@ -3,12 +3,11 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { CHECK_SANDBOX, runSandboxedCheck } from "./check-sandbox";
 import { withLock } from "./db-lock";
-import { assertOperator } from "./factory-operator";
+import { admitAct } from "./order";
 import { currentOrderCommits } from "./order-commits";
 import { checkRowOf, type OrderCheck } from "./order-evidence";
 import { appendOrderEvent } from "./order-ledger";
 import { recordShipCleanup, recordShipRun, type ShipRun } from "./order-ship-run";
-import { assertNext } from "./order-state";
 import { dataDir, type Env } from "./paths";
 import { type RebaseVerdict, type ShipOutcome, shipBranch } from "./ship";
 import { removeShippedBranch, type ShipCleanup } from "./ship-cleanup";
@@ -67,8 +66,7 @@ export function shipOrder(
 ): ShipOutcome & ShipCleanup {
   const env = options.env ?? process.env;
   return withLock(() => {
-    assertOperator(db, worker, "ship an order");
-    assertNext(db, orderId, "ship");
+    admitAct(db, orderId, "ship", worker);
     if (options.retry) appendOrderEvent(db, orderId, { kind: "ship_retried", worker });
     const shas = currentOrderCommits(db, orderId).map((row) => row.sha);
     let rebased: ShipRun["rebased"];

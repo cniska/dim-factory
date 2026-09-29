@@ -3,9 +3,12 @@ import { describe, expect, test } from "bun:test";
 import type { CodedError } from "./coded-error";
 import { SCHEMA_SQL } from "./db-schema";
 import { workerIn } from "./fixtures.test-support";
-import { orderState } from "./order";
+import { admit, type OrderAct, orderState } from "./order";
 import { nextOrderSlice, returnedOrderArtifact } from "./order-artifacts";
-import { assertNext, type OrderAct } from "./order-state";
+import { loadOrder } from "./order-store";
+import type { Station } from "./station";
+
+const admitIn = (db: Database, act: OrderAct, to?: Station) => admit(loadOrder(db, ORDER), act, null, to);
 
 const ORDER = "order-1";
 
@@ -399,7 +402,7 @@ const ACTS: OrderAct[] = ["plan", "build", "review", "approve", "return", "ship"
 function admitted(r: { db: Database }, refusal = "not_next"): OrderAct[] {
   return ACTS.filter((act) => {
     try {
-      assertNext(r.db, ORDER, act);
+      admitIn(r.db, act);
       return true;
     } catch (error) {
       expect((error as CodedError).code).toBe(refusal);
@@ -423,22 +426,29 @@ describe("an act's entry", () => {
     const r = record();
     r.approve(r.plan().id);
     expect(admitted(r)).toEqual(["build"]);
-    expect(() => assertNext(r.db, ORDER, "return", "plan")).not.toThrow();
-    expect(() => assertNext(r.db, ORDER, "return", "build")).toThrow(
-      expect.objectContaining({ code: "not_next" }),
-    );
+    expect(() => admitIn(r.db, "return", "plan")).not.toThrow();
+    expect(() => admitIn(r.db, "return", "build")).toThrow(expect.objectContaining({ code: "not_next" }));
   });
 
   test("admits only reviewing once the build is approved", () => {
     expect(admitted(buildApproved())).toEqual(["review"]);
   });
 
+  test("refuses a return while a rebase conflict is pending, since the builder must resolve it", () => {
+    const r = shippable();
+    r.conflict();
+    expect(() => admitIn(r.db, "return", "plan")).toThrow(
+      expect.objectContaining({
+        code: "rebase_conflict_pending",
+        message: "order order-1 has a rebase conflict the builder must resolve, so it cannot return",
+      }),
+    );
+  });
+
   test("admits a return to build while a Review artifact awaits approval", () => {
     const r = reviewed();
-    expect(() => assertNext(r.db, ORDER, "return", "build")).not.toThrow();
-    expect(() => assertNext(r.db, ORDER, "return", "plan")).toThrow(
-      expect.objectContaining({ code: "not_next" }),
-    );
+    expect(() => admitIn(r.db, "return", "build")).not.toThrow();
+    expect(() => admitIn(r.db, "return", "plan")).toThrow(expect.objectContaining({ code: "not_next" }));
   });
 
   test("admits only shipping once every station's artifact is approved", () => {
@@ -452,13 +462,13 @@ describe("an act's entry", () => {
       [ORDER, "2026-01-02T00:00:00.000Z"],
     );
     expect(admitted(r, "order_terminal")).toEqual([]);
-    expect(() => assertNext(r.db, ORDER, "ship")).toThrow("order order-1 is shipped, so it cannot ship");
+    expect(() => admitIn(r.db, "ship")).toThrow("order order-1 is shipped, so it cannot ship");
   });
 
   test("names the act the order waits on when it refuses another", () => {
     const r = built();
     r.build("c1");
-    expect(() => assertNext(r.db, ORDER, "review")).toThrow(
+    expect(() => admitIn(r.db, "review")).toThrow(
       "order order-1 waits on approve at build, so it cannot review",
     );
   });
