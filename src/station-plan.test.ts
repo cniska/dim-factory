@@ -254,7 +254,13 @@ describe("planner station", () => {
     expect(db.query("SELECT count(*) AS n FROM factory_order_event WHERE kind = 'failed'").get()).toEqual({
       n: 0,
     });
-    expect(db.query("SELECT worker FROM factory_order_worker WHERE role = 'planner'").get()).toEqual({
+    expect(
+      db
+        .query(
+          "SELECT a.accepted_worker AS worker FROM factory_order_worker ow JOIN factory_worker_assignment a ON a.id = ow.assignment_id WHERE ow.role = 'planner'",
+        )
+        .get(),
+    ).toEqual({
       worker: null,
     });
 
@@ -391,7 +397,9 @@ describe("planner station", () => {
     ).toEqual({ outcome: "failed", reason: "worker stopped without finishing" });
     expect(
       db
-        .query("SELECT worker, provider_session_id FROM factory_order_worker WHERE order_id = ?")
+        .query(`SELECT w.name AS worker, w.provider_session_id FROM factory_order_worker ow
+           JOIN factory_worker_assignment a ON a.id = ow.assignment_id
+           JOIN factory_worker w ON w.name = a.accepted_worker WHERE ow.order_id = ?`)
         .get("planner-resume-order"),
     ).toEqual({ worker: first.planner, provider_session_id: "fake-session" });
 

@@ -8,7 +8,7 @@ import type { HarnessAdapter, HarnessEvent, HarnessRun } from "./harness";
 import { fakeHarness } from "./harness-fake";
 import { queueOrder } from "./order-lifecycle";
 import { fail } from "./station-contract";
-import { bindOrderWorker, ensureOrderWorker, releaseOrderWorker, runWorkerTurn } from "./station-worker";
+import { ensureOrderWorker, releaseOrderWorker, runWorkerTurn } from "./station-worker";
 import { mintWorker } from "./worker";
 import { bootstrapWorker } from "./worker-assignment";
 
@@ -18,10 +18,6 @@ function floor() {
   const operator = mintWorker(db, { role: "operator", sessionId: "operator-session" });
   queueOrder(db, { id: "order-1", project: "owner/repo", title: "Work" }, operator.name);
   return { db, operator: operator.name };
-}
-
-function harnessOf(db: Database): unknown {
-  return db.query("SELECT harness FROM factory_order_worker WHERE order_id = 'order-1'").get();
 }
 
 const launch = {
@@ -48,64 +44,72 @@ describe("a usage limit", () => {
 });
 
 describe("an order's station worker", () => {
-  test("records the harness its first delegation named", () => {
-    const { db, operator } = floor();
-
-    ensureOrderWorker(db, "order-1", "builder", operator, "claude");
-
-    expect(harnessOf(db)).toEqual({ harness: "claude" });
-  });
-
-  test("moves to another harness while no provider session is bound to it", () => {
-    const { db, operator } = floor();
-    ensureOrderWorker(db, "order-1", "builder", operator, "codex");
-
-    ensureOrderWorker(db, "order-1", "builder", operator, "claude");
-
-    expect(harnessOf(db)).toEqual({ harness: "claude" });
-  });
-
-  test("refuses another harness once its provider session is bound, since only its own harness can resume it", () => {
+  test("binds the worker that accepted its assignment, with the harness and session it started under", () => {
     const { db, operator } = floor();
     const first = ensureOrderWorker(db, "order-1", "builder", operator, "claude");
     const minted = bootstrapWorker(db, {
       id: first.assignment.id,
       sessionId: "claude-session",
+      harness: "claude",
     });
-    bindOrderWorker(db, "order-1", "builder", first.assignment.id, minted);
 
-    expect(() => ensureOrderWorker(db, "order-1", "builder", operator, "codex")).toThrow(
-      "order order-1 builder runs under the claude harness; delegate it with --harness claude",
-    );
-    expect(ensureOrderWorker(db, "order-1", "builder", operator, "claude").worker).toBe(minted.name);
+    expect(ensureOrderWorker(db, "order-1", "builder", operator, "claude").bound).toEqual({
+      name: minted.name,
+      providerSessionId: "claude-session",
+      harness: "claude",
+    });
   });
 
-  test("refuses another harness once its worker bootstrapped, before the order row is bound", () => {
+  test("refuses a worker that accepted its assignment with no harness session", () => {
     const { db, operator } = floor();
     const first = ensureOrderWorker(db, "order-1", "builder", operator, "claude");
-    bootstrapWorker(db, {
+    const minted = bootstrapWorker(db, {
       id: first.assignment.id,
       sessionId: "claude-session",
+      harness: "claude",
     });
+    db.run("UPDATE factory_worker SET harness = NULL, provider_session_id = NULL WHERE name = ?", [
+      minted.name,
+    ]);
 
-    expect(() => ensureOrderWorker(db, "order-1", "builder", operator, "codex")).toThrow(
-      "order order-1 builder runs under the claude harness; delegate it with --harness claude",
+    expect(() => ensureOrderWorker(db, "order-1", "builder", operator, "claude")).toThrow(
+      expect.objectContaining({
+        code: "worker_sessionless",
+        message: `order order-1 builder ${minted.name} accepted its assignment with no harness session, which a rebuild with the order in flight leaves; \`dim order drop order-1\` ends the order`,
+      }),
     );
   });
 
-  test("replaces an accepted assignment before its worker is bound to the order", () => {
+  test("takes any harness while no worker has accepted its assignment", () => {
     const { db, operator } = floor();
-    const first = ensureOrderWorker(db, "order-1", "builder", operator, "codex");
-    bootstrapWorker(db, {
-      id: first.assignment.id,
-      sessionId: "first-session",
-    });
+    ensureOrderWorker(db, "order-1", "builder", operator, "codex");
+
+    expect(ensureOrderWorker(db, "order-1", "builder", operator, "claude").bound).toBeNull();
+  });
+
+  test("refuses another harness once its worker is bound, since only its own harness can resume it", () => {
+    const { db, operator } = floor();
+    const first = ensureOrderWorker(db, "order-1", "builder", operator, "claude");
+    bootstrapWorker(db, { id: first.assignment.id, sessionId: "claude-session", harness: "claude" });
+
+    expect(() => ensureOrderWorker(db, "order-1", "builder", operator, "codex")).toThrow(
+      expect.objectContaining({
+        code: "harness_bound",
+        message: "order order-1 builder runs under the claude harness; delegate it with --harness claude",
+      }),
+    );
+  });
+
+  test("a released worker leaves a fresh assignment that any harness may take", () => {
+    const { db, operator } = floor();
+    const first = ensureOrderWorker(db, "order-1", "builder", operator, "claude");
+    bootstrapWorker(db, { id: first.assignment.id, sessionId: "first-session", harness: "claude" });
 
     releaseOrderWorker(db, "order-1", "builder");
 
     const next = ensureOrderWorker(db, "order-1", "builder", operator, "codex");
     expect(next.assignment.id).not.toBe(first.assignment.id);
-    expect(next.worker).toBeUndefined();
+    expect(next.bound).toBeNull();
   });
 
   test("replaces a bound worker when its provider cannot resume before startup", async () => {
@@ -129,7 +133,7 @@ describe("an order's station worker", () => {
 
       const next = bound();
       expect(next.assignment.id).not.toBe(first.assignment.id);
-      expect(next.worker).toBeUndefined();
+      expect(next.bound).toBeNull();
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -233,11 +237,10 @@ describe("a station worker's run", () => {
       { pid: process.ppid, end: "completed" },
     ]);
     await turn();
-    db.run(
-      "UPDATE factory_order_worker SET worker = NULL, provider_session_id = NULL WHERE order_id = 'order-1'",
-    );
+    db.run(`CREATE TRIGGER hold_session BEFORE UPDATE OF provider_session_id ON factory_worker
+            BEGIN SELECT RAISE(ABORT, 'session is held'); END`);
 
-    await expect(turn()).rejects.toThrow("order order-1 builder worker session was not writable");
+    await expect(turn()).rejects.toThrow("session is held");
     expect(builderRun(db)).toEqual({ pid: process.ppid, ended_at: expect.any(String) });
   });
 

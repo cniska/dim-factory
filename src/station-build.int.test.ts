@@ -1739,6 +1739,11 @@ describe("a commit git refuses", () => {
     });
 
     expect(builder.calls.map((call) => call.sessionId)).toEqual([undefined, "session-1", "session-2"]);
+    expect(
+      order.db
+        .query("SELECT session_id, provider_session_id FROM factory_worker WHERE role = 'builder'")
+        .get(),
+    ).toEqual({ session_id: "session-1", provider_session_id: "session-3" });
   });
 
   test("resumes the same builder with git's refusal and commits its corrected subject in the same attempt", async () => {
@@ -1868,7 +1873,9 @@ describe("a commit git refuses", () => {
     expect(order.events("failed")).toHaveLength(1);
     expect(
       order.db
-        .query("SELECT worker FROM factory_order_worker WHERE order_id = 'correction-crash-order'")
+        .query(
+          "SELECT a.accepted_worker AS worker FROM factory_order_worker ow JOIN factory_worker_assignment a ON a.id = ow.assignment_id WHERE ow.order_id = 'correction-crash-order'",
+        )
         .get(),
     ).toEqual({ worker: null });
     expect(order.db.query("SELECT count(*) AS n FROM factory_order_commit").get()).toEqual({ n: 0 });
@@ -1899,7 +1906,9 @@ describe("a commit git refuses", () => {
 
     expect(
       order.db
-        .query("SELECT worker FROM factory_order_worker WHERE order_id = 'correction-unavailable-order'")
+        .query(
+          "SELECT a.accepted_worker AS worker FROM factory_order_worker ow JOIN factory_worker_assignment a ON a.id = ow.assignment_id WHERE ow.order_id = 'correction-unavailable-order'",
+        )
         .get(),
     ).toEqual({ worker: null });
 

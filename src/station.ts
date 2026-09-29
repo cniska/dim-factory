@@ -59,11 +59,11 @@ export async function runStation<Context, Outcome>(
   if (!order) throw fail("order_unknown", { orderId });
   using hold = holdOrder(orderId, options.env);
   admitAct(db, orderId, station.station, operator);
-  if (orderStatus(db, orderId) === "queued") startOrder(db, orderId, operator, undefined, options.dir);
   const role = STATION_ROLES[station.station];
+  const { model } = route(role, options.harness, options.env);
+  if (orderStatus(db, orderId) === "queued") startOrder(db, orderId, operator, undefined, options.dir);
   const runId = `${station.station}-${crypto.randomUUID()}`;
   const orderWorker = ensureOrderWorker(db, orderId, role, operator, options.harness);
-  const { model } = route(role, options.harness, options.env);
   let claimed: string | undefined;
   let abort: (() => void) | undefined;
   try {
@@ -109,23 +109,23 @@ export async function runStation<Context, Outcome>(
       options.adapter,
       claim,
     );
-    let bound = first.bound;
+    let latest = first.worker;
     const resume = async (brief: string): Promise<string> => {
       const next = await runWorkerTurn(
         db,
         station.station,
         request(brief),
-        bound,
+        latest,
         options.env,
         options.adapter,
       );
-      bound = next.bound;
+      latest = next.worker;
       return next.output;
     };
     return await station.accept(
       db,
       first.output,
-      { orderId, worker: first.worker, runId, resume },
+      { orderId, worker: first.worker.bound.name, runId, resume },
       prepared.context,
     );
   } catch (error) {

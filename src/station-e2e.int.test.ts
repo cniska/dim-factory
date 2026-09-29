@@ -171,9 +171,10 @@ describe("headless factory loop", () => {
     expect(
       db
         .query<{ role: string; worker: string; provider_session_id: string }, [string]>(
-          `SELECT w.role, ow.worker, ow.provider_session_id
+          `SELECT w.role, w.name AS worker, w.provider_session_id
            FROM factory_order_worker ow
-           JOIN factory_worker w ON w.name = ow.worker
+           JOIN factory_worker_assignment a ON a.id = ow.assignment_id
+           JOIN factory_worker w ON w.name = a.accepted_worker
            WHERE ow.order_id = ? ORDER BY w.role`,
         )
         .all("headless-order"),
@@ -191,7 +192,8 @@ describe("headless factory loop", () => {
         .query<{ role: string; n: number; pids: number; ended: number }, [string]>(
           `SELECT w.role, count(*) AS n, count(w.pid) AS pids, count(w.ended_at) AS ended
            FROM factory_order_worker ow
-           JOIN factory_worker w ON w.name = ow.worker
+           JOIN factory_worker_assignment a ON a.id = ow.assignment_id
+           JOIN factory_worker w ON w.name = a.accepted_worker
            WHERE ow.order_id = ? GROUP BY w.role ORDER BY w.role`,
         )
         .all("headless-order"),
@@ -203,7 +205,7 @@ describe("headless factory loop", () => {
 
     const builder = db
       .query<{ worker: string }, [string]>(
-        "SELECT worker FROM factory_order_worker WHERE order_id = ? AND role = 'builder'",
+        "SELECT a.accepted_worker AS worker FROM factory_order_worker ow JOIN factory_worker_assignment a ON a.id = ow.assignment_id WHERE ow.order_id = ? AND ow.role = 'builder'",
       )
       .get("headless-order")?.worker;
     const git = (args: string[]) =>

@@ -18,7 +18,7 @@ describe("worker assignments", () => {
     const assignment = assignWorker(db, { parentWorker: parent.name, role: "planner" });
 
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 1 });
-    const child = bootstrapWorker(db, { id: assignment.id, sessionId: "planner-session" });
+    const child = bootstrapWorker(db, { harness: "codex", id: assignment.id, sessionId: "planner-session" });
 
     expect(db.query("SELECT role, parent_worker FROM factory_worker WHERE name = ?").get(child.name)).toEqual(
       {
@@ -38,8 +38,9 @@ describe("worker assignments", () => {
     const db = floor();
     const parent = mintWorker(db, { role: "operator", sessionId: "operator-session" });
     const assignment = assignWorker(db, { parentWorker: parent.name, role: "builder" });
-    const first = bootstrapWorker(db, { id: assignment.id, sessionId: "builder-session" });
+    const first = bootstrapWorker(db, { harness: "codex", id: assignment.id, sessionId: "builder-session" });
     const retried = bootstrapWorker(db, {
+      harness: "codex",
       id: assignment.id,
       sessionId: "builder-session",
       pid: process.pid,
@@ -50,9 +51,9 @@ describe("worker assignments", () => {
       db.query("SELECT pid, process_started_at FROM factory_worker WHERE name = ?").get(first.name),
     ).toEqual({ pid: process.pid, process_started_at: processStartTime(process.pid) });
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 2 });
-    expect(() => bootstrapWorker(db, { id: assignment.id, sessionId: "other-session" })).toThrow(
-      expect.objectContaining({ code: "assignment_used" }),
-    );
+    expect(() =>
+      bootstrapWorker(db, { harness: "codex", id: assignment.id, sessionId: "other-session" }),
+    ).toThrow(expect.objectContaining({ code: "assignment_used" }));
     db.close();
   });
 
@@ -60,12 +61,12 @@ describe("worker assignments", () => {
     const db = floor();
     const parent = mintWorker(db, { role: "operator", sessionId: "operator-session" });
     const assignment = assignWorker(db, { role: "builder", parentWorker: parent.name });
-    const child = bootstrapWorker(db, { id: assignment.id, sessionId: "builder-session" });
+    const child = bootstrapWorker(db, { harness: "codex", id: assignment.id, sessionId: "builder-session" });
     endWorker(db, child.name);
 
-    expect(() => bootstrapWorker(db, { id: assignment.id, sessionId: "builder-session" })).toThrow(
-      expect.objectContaining({ code: "worker_over" }),
-    );
+    expect(() =>
+      bootstrapWorker(db, { harness: "codex", id: assignment.id, sessionId: "builder-session" }),
+    ).toThrow(expect.objectContaining({ code: "worker_over" }));
     db.close();
   });
 
@@ -75,7 +76,11 @@ describe("worker assignments", () => {
     const assignment = assignWorker(db, { parentWorker: parent.name, role: "builder" });
     endWorker(db, parent.name);
 
-    const builder = bootstrapWorker(db, { id: assignment.id, sessionId: "takeover-builder-session" });
+    const builder = bootstrapWorker(db, {
+      harness: "codex",
+      id: assignment.id,
+      sessionId: "takeover-builder-session",
+    });
 
     expect(
       db.query("SELECT role, parent_worker FROM factory_worker WHERE name = ?").get(builder.name),
@@ -90,7 +95,7 @@ describe("worker assignments", () => {
     const db = floor();
     const parent = mintWorker(db, { role: "operator", sessionId: "operator-session" });
     const assignment = assignWorker(db, { parentWorker: parent.name, role: "reviewer" });
-    const child = bootstrapWorker(db, { id: assignment.id, sessionId: "reviewer-session" });
+    const child = bootstrapWorker(db, { harness: "codex", id: assignment.id, sessionId: "reviewer-session" });
 
     expect(
       db.query("SELECT accepted_worker FROM factory_worker_assignment WHERE id = ?").get(assignment.id),
@@ -100,9 +105,9 @@ describe("worker assignments", () => {
 
   test("refuses an assignment the factory never made", () => {
     const db = floor();
-    expect(() => bootstrapWorker(db, { id: "assignment-unknown", sessionId: "reviewer-session" })).toThrow(
-      expect.objectContaining({ code: "assignment_missing" }),
-    );
+    expect(() =>
+      bootstrapWorker(db, { harness: "codex", id: "assignment-unknown", sessionId: "reviewer-session" }),
+    ).toThrow(expect.objectContaining({ code: "assignment_missing" }));
     expect(db.query("SELECT count(*) AS n FROM factory_worker").get()).toEqual({ n: 0 });
     db.close();
   });

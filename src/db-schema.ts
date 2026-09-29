@@ -5,11 +5,14 @@ import { ORDER_LINES_SQL } from "./order-line";
 import { STATIONS_SQL } from "./station-contract";
 import { ROLES_SQL } from "./worker-roles";
 
-export const SCHEMA_VERSION = 80;
+export const SCHEMA_VERSION = 81;
 
 export const DISCARDED_COLUMNS: readonly string[] = [
   "factory_worker.token_digest",
   "factory_worker_assignment.token_digest",
+  "factory_order_worker.worker",
+  "factory_order_worker.provider_session_id",
+  "factory_order_worker.harness",
 ];
 
 export const SCHEMA_SQL = `
@@ -267,7 +270,10 @@ CREATE TABLE IF NOT EXISTS factory_worker (
   started_at    TEXT NOT NULL,
   -- The runner writes this when a station worker's run ends and clears it when the
   -- next run starts. A stopped process is over whether or not this row was written.
-  ended_at      TEXT
+  ended_at      TEXT,
+  harness       TEXT CHECK (harness IN (${HARNESSES_SQL})),
+  provider_session_id TEXT,
+  CHECK ((harness IS NULL) = (provider_session_id IS NULL))
 );
 
 -- A running station command's own process. Everything it spawns before a worker is
@@ -299,15 +305,8 @@ CREATE TABLE IF NOT EXISTS factory_order_worker (
   order_id             TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
   role                 TEXT NOT NULL CHECK (role IN ('planner', 'builder', 'reviewer')),
   assignment_id        TEXT NOT NULL UNIQUE REFERENCES factory_worker_assignment(id),
-  worker               TEXT UNIQUE REFERENCES factory_worker(name),
-  provider_session_id  TEXT,
-  -- A provider session resumes only under the harness that started it. The default is
-  -- what a rebuild gives a row written before the column existed, when codex was the
-  -- only harness; every insert names its harness.
-  harness              TEXT NOT NULL DEFAULT 'codex' CHECK (harness IN (${HARNESSES_SQL})),
   created_at           TEXT NOT NULL,
-  PRIMARY KEY (order_id, role),
-  CHECK ((worker IS NULL) = (provider_session_id IS NULL))
+  PRIMARY KEY (order_id, role)
 );
 CREATE INDEX IF NOT EXISTS factory_order_worker_order ON factory_order_worker(order_id);
 

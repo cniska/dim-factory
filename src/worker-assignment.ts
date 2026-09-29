@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { randomBytes } from "node:crypto";
 import { writeTransaction } from "./db";
+import type { HarnessName } from "./harness-name";
 import { type MintedWorker, mintWorkerForSession } from "./worker";
 import type { Role } from "./worker-roles";
 
@@ -43,7 +44,13 @@ export function assignWorker(
 
 export function bootstrapWorker(
   db: Database,
-  assignment: { id: string; sessionId: string; pid?: number; processStartedAt?: string },
+  assignment: {
+    id: string;
+    sessionId: string;
+    harness: HarnessName;
+    pid?: number;
+    processStartedAt?: string;
+  },
   at = now(),
 ): MintedWorker {
   return writeTransaction(db, () => {
@@ -87,6 +94,11 @@ export function bootstrapWorker(
        WHERE id = ? AND accepted_at IS NULL`,
       [at, minted.name, assignment.id],
     );
+    db.run("UPDATE factory_worker SET harness = ?, provider_session_id = ? WHERE name = ?", [
+      assignment.harness,
+      assignment.sessionId,
+      minted.name,
+    ]);
     return minted;
   });
 }

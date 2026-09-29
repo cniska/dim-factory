@@ -544,6 +544,7 @@ describe("factory order report records", () => {
       headSha: "base0000",
     });
     const reviewer = bootstrapWorker(database, {
+      harness: "codex",
       id: assignment.id,
       sessionId: newWorkerSession("accepted-reviewer"),
       pid: pid ?? undefined,

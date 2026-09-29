@@ -26,7 +26,7 @@ import { orderStatus } from "./order-status";
 import type { Env } from "./paths";
 import { findQuery } from "./query-registry";
 import { approveFinalBuildAt, approvePlan, approveReviewAt } from "./station-approvals.test-support";
-import { bindOrderWorker, ensureOrderWorker, releaseOrderWorker } from "./station-worker";
+import { ensureOrderWorker, releaseOrderWorker } from "./station-worker";
 import { assembleWallSnapshot } from "./wall/server";
 import { mintWorker, newWorkerSession, resolveWorker as resolveFromAncestry } from "./worker";
 import { bootstrapWorker } from "./worker-assignment";
@@ -153,9 +153,7 @@ describe("order command", () => {
     ).rejects.toThrow(
       expect.objectContaining({ kind: "no-map", message: expect.stringContaining('{ "claude": {') }),
     );
-    expect(database.query("SELECT role, harness FROM factory_order_worker").all()).toEqual([
-      { role: "planner", harness: "claude" },
-    ]);
+    expect(database.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 0 });
   });
 
   test("a build and a review resolve their models through the harness they name", async () => {
@@ -180,10 +178,7 @@ describe("order command", () => {
     await expect(
       runOrderCommandLive(database, ["review", "order-1", "--harness", "claude"], null, trunk.dir, env),
     ).rejects.toThrow(noClaudeMap);
-    expect(database.query("SELECT role, harness FROM factory_order_worker ORDER BY role").all()).toEqual([
-      { role: "builder", harness: "claude" },
-      { role: "reviewer", harness: "claude" },
-    ]);
+    expect(database.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 0 });
   });
 
   test("a delegation that names no harness runs under the one its operator is recorded in", async () => {
@@ -203,9 +198,7 @@ describe("order command", () => {
     await expect(runOrderCommandLive(database, ["plan", "order-1"], null, trunk.dir, env)).rejects.toThrow(
       expect.objectContaining({ kind: "no-map", message: expect.stringContaining('{ "claude": {') }),
     );
-    expect(database.query("SELECT role, harness FROM factory_order_worker").all()).toEqual([
-      { role: "planner", harness: "claude" },
-    ]);
+    expect(database.query("SELECT count(*) AS n FROM factory_order_worker").get()).toEqual({ n: 0 });
   });
 
   test("a delegation that names no harness runs under its bound worker's harness before the operator's, and a released one's not at all", async () => {
@@ -218,8 +211,7 @@ describe("order command", () => {
       [operator],
     );
     const planner = ensureOrderWorker(database, "order-1", "planner", operator, "codex");
-    const minted = bootstrapWorker(database, { id: planner.assignment.id, sessionId: "codex-planner" });
-    bindOrderWorker(database, "order-1", "planner", planner.assignment.id, minted);
+    bootstrapWorker(database, { harness: "codex", id: planner.assignment.id, sessionId: "codex-planner" });
 
     await expect(runOrderCommandLive(database, ["plan", "order-1"], null, trunk.dir, env)).rejects.toThrow(
       expect.objectContaining({ kind: "no-map", message: expect.stringContaining('{ "codex": {') }),

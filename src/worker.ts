@@ -199,6 +199,14 @@ export function startWorkerRun(db: Database, name: string, pid: number, processS
   if (done.changes !== 1) throw new Error(`worker ${name} was not registered`);
 }
 
+export function rebindWorkerSession(db: Database, name: string, providerSessionId: string): void {
+  const done = db.run(
+    "UPDATE factory_worker SET provider_session_id = ? WHERE name = ? AND harness IS NOT NULL",
+    [providerSessionId, name],
+  );
+  if (done.changes !== 1) throw new Error(`worker ${name} has no provider session to rebind`);
+}
+
 export function registerRunnerBarrier(db: Database, pid = process.pid): void {
   const startedAt = processStartTime(pid);
   if (!startedAt) throw new Error(`cannot read start time for runner pid ${pid}`);
