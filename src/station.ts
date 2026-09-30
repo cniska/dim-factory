@@ -75,7 +75,7 @@ export function policyAt(station: Station, { workspace, checkout, turn }: Places
   return {
     kind: "edit",
     writable: [turn.tmp],
-    denied: [join(workspaceGit, "config"), join(workspaceGit, "hooks"), checkoutGit],
+    denied: [join(workspaceGit, "hooks"), checkoutGit],
     editDenied: [workspaceGit, checkoutGit],
   };
 }

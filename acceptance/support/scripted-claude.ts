@@ -223,7 +223,7 @@ const tmp = env.TMPDIR ?? tmpdir();
 const scratch = mkdtempSync(`${tmp}/scripted-claude-`);
 const sessionTmp = mkdtempSync(`${tmp}/scripted-claude-tmp-`);
 const shell = (command: string) =>
-  Bun.spawnSync(sandboxed(flags.settings, [cwd, sessionTmp], command), {
+  Bun.spawnSync(sandboxed(flags.settings, cwd, [sessionTmp], command), {
     cwd,
     env: { ...env, TMPDIR: sessionTmp },
     stdout: "pipe",

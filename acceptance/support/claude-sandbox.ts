@@ -1,5 +1,5 @@
-import { existsSync, realpathSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, realpathSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 
 export type ClaudeSettings = {
   readonly permissions?: { readonly deny?: readonly string[] };
@@ -58,22 +58,31 @@ export function bashAllowed(settings: ClaudeSettings, mode: PermissionMode): boo
 
 const quoted = (path: string) => JSON.stringify(path);
 
+const isFile = (path: string) => existsSync(path) && statSync(path).isFile();
+
+function deniedRoot(path: string): string {
+  const resolved = real(path);
+  return isFile(resolved) ? dirname(resolved) : resolved;
+}
+
 export function sandboxed(
   settings: ClaudeSettings,
+  cwd: string,
   writableDirs: readonly string[],
   command: string,
 ): string[] {
   if (!settings.sandbox?.enabled) return ["sh", "-c", command];
-  const writable = [...writableDirs, ...(settings.sandbox.filesystem?.allowWrite ?? [])].map(real);
-  const denied = (settings.sandbox.filesystem?.denyWrite ?? []).map(real);
+  const writable = [cwd, ...writableDirs, ...(settings.sandbox.filesystem?.allowWrite ?? [])].map(real);
+  const denied = [join(cwd, ".git", "hooks"), ...(settings.sandbox.filesystem?.denyWrite ?? [])].map(
+    deniedRoot,
+  );
+  const gitConfig = join(real(cwd), ".git", "config");
   const profile = [
     "(version 1)",
     "(allow default)",
     "(deny file-write*)",
     `(allow file-write* (literal "/dev/null") (literal "/dev/tty") ${writable.map((path) => `(subpath ${quoted(path)})`).join(" ")})`,
-    ...(denied.length > 0
-      ? [`(deny file-write* ${denied.map((path) => `(subpath ${quoted(path)})`).join(" ")})`]
-      : []),
+    `(deny file-write* (literal ${quoted(gitConfig)}) (literal ${quoted(`${gitConfig}.lock`)}) ${denied.map((path) => `(subpath ${quoted(path)})`).join(" ")})`,
   ].join("\n");
   return ["sandbox-exec", "-p", profile, "sh", "-c", command];
 }
