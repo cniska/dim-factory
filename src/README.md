@@ -18,6 +18,7 @@ Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` 
 | `git`, `repo`, `worktree`, `declared` | Repositories, what they declare, and folding worktree paths onto their checkout |
 | `wall/` | The read-only board's UI; `components/` and `lib/` hold its primitives |
 | `trace` | Diagnostic events |
+| `assert` | `unreachable` ends a switch over a closed union; `invariant` fails on a fault no type can carry |
 
 ## Where to start
 
