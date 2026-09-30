@@ -1,5 +1,6 @@
 import { join, resolve } from "node:path";
 import type { Adapter, SessionStart, Start } from "./harness-contract";
+import type { Policy } from "./station";
 
 const DIM_PLUGIN = resolve(import.meta.dir, "..");
 
@@ -14,6 +15,19 @@ function sessionFlags(session: SessionStart): readonly string[] {
   }
 }
 
+const EDIT_TOOLS = ["Write", "Edit", "NotebookEdit"];
+
+function deniedTools(policy: Policy): readonly string[] {
+  switch (policy.kind) {
+    case "read":
+      return EDIT_TOOLS;
+    case "edit":
+      return policy.editDenied.map((path) => `Edit(/${path}/**)`);
+  }
+}
+
+const PERMISSION_MODE: Readonly<Record<Policy["kind"], string>> = { read: "default", edit: "acceptEdits" };
+
 function settings({ policy, socket }: Start): string {
   return JSON.stringify({
     sandbox: {
@@ -22,7 +36,7 @@ function settings({ policy, socket }: Start): string {
       filesystem: { allowWrite: policy.writable, denyWrite: policy.denied },
       network: { allowUnixSockets: [socket] },
     },
-    permissions: { deny: ["Write", "Edit", "NotebookEdit"] },
+    permissions: { deny: deniedTools(policy) },
   });
 }
 
@@ -37,7 +51,7 @@ export const claude: Adapter = {
     "--model",
     start.model,
     "--permission-mode",
-    "default",
+    PERMISSION_MODE[start.policy.kind],
     "--settings",
     settings(start),
     "--setting-sources",

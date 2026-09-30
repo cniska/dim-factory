@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import { invariant } from "./assert";
 import { git } from "./git-tree";
 import { refuseWorkspace } from "./workspace-contract";
@@ -31,6 +30,12 @@ export function cloneWorkspace(root: string, dir: string, branch: string, base: 
   }
 }
 
-export function gitDirOf(dir: string): string {
-  return join(dir, ".git");
+export function publishHead(root: string, dir: string, branch: string, head: string): void {
+  for (const args of [
+    ["fetch", "-q", "--no-tags", dir, head],
+    ["update-ref", `refs/heads/${branch}`, head],
+  ]) {
+    const ran = git(root, args);
+    invariant(ran.ok, `git ${args.join(" ")} in the checkout ${root}: ${ran.err}`);
+  }
 }

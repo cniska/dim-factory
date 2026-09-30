@@ -1,4 +1,4 @@
-import { nextOf, type OrderState, stationOf } from "./order";
+import { nextOf, type OrderState, type SliceView, slicesOf, stationOf } from "./order";
 import type { Answer, LogEntry, Next, Severity, Station, Status } from "./order-contract";
 import type { Role, WorkerRecord } from "./worker-contract";
 import { branchOf } from "./workspace";
@@ -16,8 +16,6 @@ type WorkerView = {
   readonly createdBy?: string;
   readonly sessions: readonly SessionView[];
 };
-
-type SliceView = { readonly title: string; readonly outcome: string; readonly commit?: string };
 
 type FindingView = {
   readonly id: string;
@@ -73,15 +71,6 @@ function workerView({ worker, sessions }: WorkerRecord, died: ReadonlyMap<string
   return worker.role === "operator" ? base : { ...base, createdBy: worker.createdBy };
 }
 
-function sliceViews(state: OrderState): readonly SliceView[] {
-  if (state.plan === null) return [];
-  const { base, slices } = state.plan;
-  return slices.map((slice, index) => {
-    const commit = state.commits[base + index];
-    return commit === undefined ? { ...slice } : { ...slice, commit };
-  });
-}
-
 export function orderView(
   state: OrderState,
   log: readonly LogEntry[],
@@ -101,7 +90,7 @@ export function orderView(
     workspace,
     log,
     workers: workers.map((worker) => workerView(worker, died)),
-    slices: sliceViews(state),
+    slices: slicesOf(state),
     findings: state.findings.map(({ answer, ...finding }) =>
       answer === null ? finding : { ...finding, answer },
     ),

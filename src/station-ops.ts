@@ -19,11 +19,13 @@ import {
   startRun,
 } from "./order-ops";
 import { type Env, workerHomeDir, workerSessionsDir } from "./paths";
+import { alignBranch, branchFacts, submitSlice } from "./slice-ops";
 import {
+  briefAt,
   modelOf,
-  planBrief,
-  readPolicy,
+  policyAt,
   requestOf,
+  sliceSubmitAllowed,
   TURN_SOCKET_ENV,
   type TurnEnd,
   turnEnd,
@@ -48,6 +50,7 @@ type TurnOf = {
   readonly cause: number;
   readonly model: string;
   readonly newSessionHarness: HarnessName;
+  readonly checkout: string;
 };
 
 const MISSES_TO_FAIL = 2;
@@ -56,10 +59,26 @@ type Ended =
   | { readonly end: TurnEnd; readonly session: string }
   | { readonly end: "missed"; readonly session: string; readonly missed: string };
 
-function serve(db: Database, turn: TurnOf, acting: Acting, request: TurnRequest): unknown {
-  if (request.act === "order_show") return showOrder(db, turn.order);
-  recordWork(db, turn.order, acting, turn.station, workEntry(request, turn.station));
-  return { recorded: request.act };
+function serve(db: Database, turn: TurnOf, workspace: string, acting: Acting, request: TurnRequest): unknown {
+  const { order, station } = turn;
+  switch (request.act) {
+    case "order_show":
+      return showOrder(db, order);
+    case "slice_submit":
+      sliceSubmitAllowed(station);
+      return submitSlice(db, {
+        order,
+        project: acting.worker.project,
+        workspace,
+        checkout: turn.checkout,
+        acting,
+      });
+    default: {
+      const branch = branchFacts(workspace, order);
+      recordWork(db, order, acting, station, (state) => workEntry(request, { station, state, branch }));
+      return { recorded: request.act };
+    }
+  }
 }
 
 function replyTo(error: unknown): TurnReply {
@@ -83,15 +102,20 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
   const harness = current?.harness ?? turn.newSessionHarness;
   const adapter = adapterFor(harness);
   const workspace = workspaceOf(state.project, turn.order);
+  const { station } = turn;
+  invariant(station !== "review", "the review station's brief is not built");
+  invariant(state.head !== null, `order ${turn.order} has a recorded head once its workspace is made`);
+  alignBranch(workspace, turn.order, state.head);
   const opened = openTurn(workerHomeDir(worker.name));
   try {
     const argv = adapter.argv({
       session,
       model: turn.model,
-      policy: readPolicy(workspace, opened),
+      policy: policyAt(station, { workspace, checkout: turn.checkout, turn: opened }),
       socket: opened.socket,
     });
-    const spawned = startHarness(argv, workspace, workerEnv(process.env, opened, adapter.signIn));
+    const env = workerEnv(process.env, opened, worker.name, adapter.signIn);
+    const spawned = startHarness(argv, workspace, env);
     const harnessProcess = processOf(spawned.pid);
     const registered: WorkerSession = current ?? {
       id: session.id,
@@ -115,7 +139,7 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
     const answer = (line: string): unknown => {
       if (stopped()) throw refuseStation("turn_stopped", { order: turn.order, station: turn.station });
       try {
-        return serve(db, turn, acting, requestOf(line));
+        return serve(db, turn, workspace, acting, requestOf(line));
       } catch (error) {
         if (error instanceof CodedError && error.code === "not_done") {
           misses.push(error.message);
@@ -138,7 +162,7 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
       }
     });
     try {
-      spawned.prompt(planBrief(state, workspace));
+      spawned.prompt(briefAt(station, state, workspace));
       await spawned.ended;
     } finally {
       listening.stop();
@@ -218,7 +242,7 @@ export async function advanceOrder(
       `order ${order} runs a station after ${leading.kind}; shipping is not built`,
     );
     invariant(prepared !== null, `order ${order} was prepared for the ${phase.station} station`);
-    await turnAt(db, { order, station: phase.station, by, cause, ...prepared });
+    await turnAt(db, { order, station: phase.station, by, cause, checkout: setup.root, ...prepared });
   } finally {
     endRun(db, order);
   }

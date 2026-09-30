@@ -13,6 +13,7 @@ import { callerOf } from "./worker-ops";
 const USAGE = [
   "usage: dim order add --title <title> --description <description> [--project <owner>/<repo>]",
   "dim order run <order>",
+  "dim order approve <order> --reason <reason> --decided owner|operator",
   "dim order show [<order>]",
   "dim order return <order> --reason <reason> --decided owner|operator",
   "dim order return --reason <reason>",
@@ -57,6 +58,18 @@ function decisionOf(verb: string, flags: { readonly reason?: string; readonly de
   return { reason: flags.reason, decidedBy: decidedBy.data };
 }
 
+async function approve(db: Database, args: readonly string[]): Promise<OrderView> {
+  const { positionals, flags } = parseArgs(
+    args,
+    { positionals: [1, 1], flags: ["reason", "decided"] },
+    usage,
+  );
+  const order = orderArg(positionals);
+  const decision = decisionOf("approve", flags);
+  await advanceOrder(db, order, callerOf(db, process.cwd()), { kind: "approve", decision });
+  return showOrder(db, order);
+}
+
 async function returnArtifact(db: Database, args: readonly string[]): Promise<OrderView> {
   const { positionals, flags } = parseArgs(
     args,
@@ -98,7 +111,15 @@ function show(db: Database, args: readonly string[]): OrderView {
 
 type Verb = (db: Database, args: readonly string[]) => OrderView | Promise<OrderView>;
 
-const VERBS: Readonly<Record<string, Verb>> = { add, run, return: returnArtifact, show, update, cancel };
+const VERBS: Readonly<Record<string, Verb>> = {
+  add,
+  run,
+  approve,
+  return: returnArtifact,
+  show,
+  update,
+  cancel,
+};
 
 type TurnVerb = (args: readonly string[]) => Promise<unknown>;
 

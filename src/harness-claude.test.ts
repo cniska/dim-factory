@@ -11,6 +11,8 @@ const START: Start = {
   socket: "/t/s",
 };
 
+const argvMode = (argv: readonly string[]) => argv[argv.indexOf("--permission-mode") + 1];
+
 const settingsOf = (argv: readonly string[]) => JSON.parse(argv[argv.indexOf("--settings") + 1] ?? "");
 
 describe("starting Claude Code", () => {
@@ -43,5 +45,25 @@ describe("starting Claude Code", () => {
       network: { allowUnixSockets: ["/t/s"] },
     });
     expect(settings.permissions.deny).toEqual(["Write", "Edit", "NotebookEdit"]);
+    expect(argvMode(claude.argv(START))).toBe("default");
+  });
+
+  test("turns an edit policy into acceptEdits, with the edit tool denied the git paths the policy names", () => {
+    const edit: Start = {
+      ...START,
+      policy: {
+        kind: "edit",
+        writable: ["/t"],
+        denied: ["/w/.git/config"],
+        editDenied: ["/w/.git", "/c/.git"],
+      },
+    };
+    const argv = claude.argv(edit);
+    expect(argvMode(argv)).toBe("acceptEdits");
+    expect(settingsOf(argv).permissions.deny).toEqual(["Edit(//w/.git/**)", "Edit(//c/.git/**)"]);
+    expect(settingsOf(argv).sandbox.filesystem).toEqual({
+      allowWrite: ["/t"],
+      denyWrite: ["/w/.git/config"],
+    });
   });
 });

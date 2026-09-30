@@ -5,7 +5,7 @@ import { Glob } from "bun";
 
 const SRC = import.meta.dir;
 
-const FACTORY_MODULES = ["order", "worker", "station", "harness", "workspace", "check"];
+const FACTORY_MODULES = ["order", "worker", "station", "harness", "workspace", "check", "slice"];
 
 const COMMAND_IMPORTS = /^\.\/([a-z-]+-(ops|contract)|cli-[a-z-]+|db|factory-db)$/;
 
@@ -21,7 +21,9 @@ const moduleFiles = () =>
   FACTORY_MODULES.flatMap((name) => [...sources(`${name}.ts`), ...sources(`${name}-*.ts`)]);
 
 const factoryCommands = () =>
-  [...FACTORY_MODULES, "plan", "session"].flatMap((name) => sources(`${name}-command.ts`));
+  [...FACTORY_MODULES, "plan", "session", "finding", "build"].flatMap((name) =>
+    sources(`${name}-command.ts`),
+  );
 
 export function commandBreaches(file: string, text: string): readonly string[] {
   return transpiler
@@ -84,7 +86,14 @@ describe("the module checks", () => {
       factoryCommands()
         .map(({ file }) => file)
         .sort(),
-    ).toEqual(["order-command.ts", "plan-command.ts", "session-command.ts"]);
+    ).toEqual([
+      "build-command.ts",
+      "finding-command.ts",
+      "order-command.ts",
+      "plan-command.ts",
+      "session-command.ts",
+      "slice-command.ts",
+    ]);
   });
 
   test("catch a command importing a store, rules or effects", () => {

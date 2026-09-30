@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { RefusalRecord, refuser } from "./coded-error";
+import { Answer } from "./order-contract";
 
 export const PlanReturn = z.object({ act: z.literal("plan_return"), plan: z.string() });
 export type PlanReturn = z.infer<typeof PlanReturn>;
@@ -7,9 +8,29 @@ export type PlanReturn = z.infer<typeof PlanReturn>;
 export const OrderReturn = z.object({ act: z.literal("order_return"), reason: z.string() });
 export type OrderReturn = z.infer<typeof OrderReturn>;
 
+export const FindingAnswer = z.object({
+  act: z.literal("finding_answer"),
+  finding: z.string(),
+  answer: Answer,
+  reason: z.string(),
+});
+export type FindingAnswer = z.infer<typeof FindingAnswer>;
+
+export const BuildReturn = z.object({ act: z.literal("build_return"), artifact: z.string() });
+export type BuildReturn = z.infer<typeof BuildReturn>;
+
+export const SliceSubmit = z.object({ act: z.literal("slice_submit") });
+
 export const OrderShow = z.object({ act: z.literal("order_show") });
 
-export const TurnRequest = z.discriminatedUnion("act", [PlanReturn, OrderReturn, OrderShow]);
+export const TurnRequest = z.discriminatedUnion("act", [
+  PlanReturn,
+  OrderReturn,
+  FindingAnswer,
+  BuildReturn,
+  SliceSubmit,
+  OrderShow,
+]);
 export type TurnRequest = z.infer<typeof TurnRequest>;
 
 export const TurnReply = z.discriminatedUnion("ok", [
@@ -23,6 +44,8 @@ type StationRefusalMeta = {
   readonly bad_request: { readonly issues: string };
   readonly no_reason: { readonly command: string };
   readonly wrong_station: { readonly act: string; readonly station: string };
+  readonly no_finding: { readonly finding: string };
+  readonly finding_answered: { readonly finding: string };
   readonly not_done: { readonly station: string; readonly missed: string; readonly command: string };
   readonly no_return: { readonly order: string; readonly station: string; readonly session: string };
   readonly return_missed: { readonly order: string; readonly station: string; readonly missed: string };
@@ -47,6 +70,14 @@ export const refuseStation = refuser<StationRefusalMeta>({
   },
   wrong_station: {
     message: ({ act, station }) => `${act} is no act of the ${station} station`,
+    resolve: () => "dim order show",
+  },
+  no_finding: {
+    message: ({ finding }) => `no open finding ${finding} was given to this build`,
+    resolve: () => "dim order show",
+  },
+  finding_answered: {
+    message: ({ finding }) => `finding ${finding} is answered already, and each finding is answered once`,
     resolve: () => "dim order show",
   },
   not_done: {

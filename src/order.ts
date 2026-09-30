@@ -36,6 +36,8 @@ export type FindingState = RecordedFinding & { readonly answer: Answer | null };
 
 export type Returned = { readonly from: Decider | Station; readonly reason: string };
 
+export type SliceView = { readonly title: string; readonly outcome: string; readonly commit?: string };
+
 export type OrderState = {
   readonly id: string;
   readonly title: string;
@@ -63,6 +65,19 @@ const STATION_BEFORE: Readonly<Record<Station, Station | null>> = {
   build: "plan",
   review: "build",
 };
+
+export function slicesOf(state: OrderState): readonly SliceView[] {
+  if (state.plan === null) return [];
+  const { base, slices } = state.plan;
+  return slices.map((slice, index) => {
+    const commit = state.commits[base + index];
+    return commit === undefined ? { ...slice } : { ...slice, commit };
+  });
+}
+
+export function openFindings(state: OrderState): readonly FindingState[] {
+  return state.findings.filter((finding) => finding.answer === null);
+}
 
 export function stationOf(state: OrderState): Station | null {
   return state.status === "queued" ? null : phaseStation(state.phase);

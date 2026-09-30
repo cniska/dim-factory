@@ -9,6 +9,7 @@ import {
   fold,
   type LeadingAct,
   leadingEntry,
+  nextOf,
   type OperatorAct,
   type OrderState,
   operatorOf,
@@ -173,13 +174,30 @@ export function recordWork(
   order: string,
   acting: Acting,
   station: Station,
+  later: (state: OrderState) => Later,
+): number {
+  return writeTransaction(db, () => {
+    const { state } = loadOrder(db, order);
+    const admission = admitWork(state, acting, station);
+    if (admission.kind === "refused") throw admission.refusal;
+    return append(db, order, state.lastSeq + 1, actorOf(admission.by), later(state));
+  });
+}
+
+export function recordVerdict(
+  db: Database,
+  order: string,
+  cause: number,
+  station: Station,
   later: Later,
 ): void {
   writeTransaction(db, () => {
     const { state } = loadOrder(db, order);
-    const admission = admitWork(state, acting, station);
-    if (admission.kind === "refused") throw admission.refusal;
-    append(db, order, state.lastSeq + 1, actorOf(admission.by), later);
+    const { phase } = state;
+    if (state.status !== "running" || phase.kind !== "run" || phase.station !== station) {
+      throw refuseOrder("not_next_step", { order, next: nextOf(phase) });
+    }
+    append(db, order, state.lastSeq + 1, { kind: "factory", version, cause }, later);
   });
 }
 
