@@ -39,17 +39,20 @@ dim install-commit-gate --owner=<host>/<account>
 
 ### Commit gate
 
-Runs the repository's declared check before a commit. `DIM_SKIP_CHECK=1` skips it for one commit.
+Each git hook the gate installs calls `dim gate`, and each hook's rules are one entry in [`src/gate-registry.ts`](../src/gate-registry.ts). A hook that cannot find or run `dim` lets the commit or push through and says it was not judged.
+
+- A commit's subject is a Conventional Commit of at most 50 ASCII characters, with no body. A `fixup!` subject is judged by the subject it names, so `git commit --fixup` makes a commit that `git rebase --autosquash` folds in; `dim check-commits` still refuses one that is left in a range.
+- The repository's declared check runs before the commit. `DIM_SKIP_CHECK=1` skips it and the comment gate for one commit.
 
 ### Comment gate
 
 Part of the commit gate, on where the [config](#configuration) resolves `comments` to `banned`. The project layer is read as `HEAD` commits it, so one commit cannot both lift the ban and add a comment.
 
-- `dim comments check` parses each staged JS or TS file with `@babel/parser` and prints `path:line` for every comment on an added or edited line, exiting 3 when it finds one.
+- Each staged JS or TS file is parsed with `@babel/parser`, and the refusal names `path:line` for every comment on an added or edited line.
 - Only added lines count, so a repo with existing comments can turn the ban on without a sweep. In a merge a line counts only where it is added against every parent.
 - A file rewritten past git's rename detection is a new file.
 - **Not judged:** tool contracts (`/// <reference …>`, `@ts-`, `eslint-`, `biome-ignore`, `prettier-ignore`, `#__PURE__`, `@__PURE__`, a `/*!` license header, and in plain JS a JSDoc of only `@type`, `@typedef` or `@param`), a `#!` line, files git marks `linguist-generated` or `linguist-vendored`, files that do not parse (named on stderr), and other languages.
-- A config that cannot be read lets the commit through and says why.
+- A config it cannot read lets the commit through, says why, and still runs the check.
 - A factory builder's commit is judged by the runner instead, by the same rules ([`factory.md`](factory.md)).
 
 `dim comments purge [<path>...]` reports the comments tracked JS and TS files hold. `--write` removes them, sets `comments` to `banned` in the project config and runs the declared format command; then run the check and commit. Languages are adapters in [`src/comments-language.ts`](../src/comments-language.ts).

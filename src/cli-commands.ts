@@ -8,6 +8,7 @@ const LOADERS: Record<string, () => Promise<Command>> = {
   sql: () => import("./sql-command").then((m) => m.sqlCommand),
   config: () => import("./config-command").then((m) => m.configCommand),
   comments: () => import("./comments-command").then((m) => m.commentsCommand),
+  gate: () => import("./gate-command").then((m) => m.gateCommand),
   "check-command": () => import("./check-command-command").then((m) => m.checkCommandCommand),
   "check-commits": () => import("./check-commits-command").then((m) => m.checkCommitsCommand),
   "install-hooks": () => import("./install-hooks-command").then((m) => m.installHooksCommand),

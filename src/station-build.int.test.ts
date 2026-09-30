@@ -22,7 +22,7 @@ import {
   openReviewBy,
   ranCheck,
 } from "./fixtures.test-support";
-import { installCommitGate } from "./gate-commit";
+import { installCommitGate } from "./gate-install";
 import type { HarnessAdapter, HarnessEvent, HarnessRequest, HarnessRun } from "./harness";
 import { fakeHarness } from "./harness-fake";
 import { orderState } from "./order";

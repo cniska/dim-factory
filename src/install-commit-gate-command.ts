@@ -1,18 +1,25 @@
-import { type Command, Ran, UsageError } from "./cli-contract";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { type Command, UsageError } from "./cli-contract";
 import { openReadOnly } from "./db-read";
-import { checkoutDirs, installCommitGate, planCommitGate, sharedHooksDir } from "./gate-commit";
+import { installCommitGate, planCommitGate, sharedHooksDir } from "./gate-install";
 import { checkoutSlug } from "./git-remote";
 import { isHostQualified } from "./git-remote-slug";
 import { WRITE_NEXT } from "./install-write";
-import { dbPath } from "./paths";
+import { dbPath, resolveHomeDir } from "./paths";
 
-function checkouts(): { repo: string; owner: string }[] {
+function checkoutDirs(repos: readonly string[]): string[] {
+  const code = join(resolveHomeDir(process.env), "code");
+  return repos.filter((repo) => repo.startsWith(code) && existsSync(join(repo, ".git")));
+}
+
+function checkouts(): { readonly repo: string; readonly owner: string | null }[] {
   const db = openReadOnly(dbPath());
   try {
     return db
       .query<{ repo: string }, []>("SELECT DISTINCT repo FROM repo_commit ORDER BY repo")
       .all()
-      .map((row) => ({ repo: row.repo, owner: checkoutSlug(row.repo) ?? "" }));
+      .map((row) => ({ repo: row.repo, owner: checkoutSlug(row.repo) }));
   } finally {
     db.close();
   }
@@ -34,23 +41,16 @@ export const installCommitGateCommand: Command = {
     const seen = checkouts();
     if (owners.length === 0) {
       const counts = new Map<string, number>();
-      for (const { owner } of seen) if (owner) counts.set(owner, (counts.get(owner) ?? 0) + 1);
+      for (const { owner } of seen) if (owner !== null) counts.set(owner, (counts.get(owner) ?? 0) + 1);
       throw new UsageError(
         `name the owners whose commits to gate with --owner=<host>/<account>, so a clone of someone else's project keeps its own rules; the record has ${[...counts].map(([owner, n]) => `${owner} (${n} checkouts)`).join(", ") || "no checkouts"}`,
       );
     }
-    const stranded = checkoutDirs(seen);
-    const plan = { ...planCommitGate(owners, stranded), owners, hooksDir: sharedHooksDir() };
-    if (plan.globalHooksPath !== null && plan.globalHooksPath !== sharedHooksDir()) {
-      return new Ran(
-        {
-          ...plan,
-          refused: `${plan.globalHooksPath} already holds the one hooks directory git reads; point it at ${sharedHooksDir()}, or git config --global --unset core.hooksPath`,
-        },
-        1,
-      );
+    const stranded = checkoutDirs(seen.map(({ repo }) => repo));
+    const hooksDir = sharedHooksDir(process.env);
+    if (!args.includes("--write")) {
+      return { ...planCommitGate(owners, stranded, process.env), owners, hooksDir, next: WRITE_NEXT };
     }
-    if (!args.includes("--write")) return { ...plan, next: WRITE_NEXT };
-    return { ...installCommitGate(owners, stranded), owners, hooksDir: sharedHooksDir(), written: true };
+    return { ...installCommitGate(owners, stranded, process.env), owners, hooksDir, written: true };
   },
 };

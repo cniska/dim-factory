@@ -6,14 +6,9 @@ import { PROJECT_CONFIG, projectConfigPath, userConfigPath } from "./config";
 import { ConfigError } from "./config-error";
 import { readJsonc } from "./config-jsonc-file";
 import { SCHEMA_VERSION } from "./db-schema";
-import {
-  type CommentGate,
-  commentGateFor,
-  GitConfigUnreadable,
-  installedOwners,
-  planCommitGate,
-  sharedHooksDir,
-} from "./gate-commit";
+import { type CommentGate, commentGateFor } from "./gate-comment";
+import { GATE_ERROR } from "./gate-contract";
+import { type GatePlan, installedOwners, planCommitGate, sharedHooksDir } from "./gate-install";
 import { unarmedCheckouts } from "./gate-push";
 import { checkoutRoot } from "./git-checkout";
 import { primaryCheckout } from "./git-primary-checkout";
@@ -41,11 +36,11 @@ const RETENTION_WANTED_DAYS = 365;
 const SPOOL_BEHIND_EVENTS = 200;
 
 function scalar(db: Database, sql: string): number {
-  return (db.prepare(sql).get() as { n: number } | null)?.n ?? 0;
+  return db.query<{ n: number }, []>(sql).get()?.n ?? 0;
 }
 
 function text(db: Database, sql: string): string | null {
-  return (db.prepare(sql).get() as { v: string | null } | null)?.v ?? null;
+  return db.query<{ v: string | null }, []>(sql).get()?.v ?? null;
 }
 
 function unreadable(name: string, error: ConfigError): Health {
@@ -260,6 +255,17 @@ function harnesses(env: Env): Health {
   };
 }
 
+const REINSTALL_GATE = "dim install-commit-gate --owner=<host>/<account> --write";
+
+function gateFailure(name: string, error: unknown): Health | null {
+  if (!(error instanceof CodedError)) return null;
+  if (error.code === GATE_ERROR.gitConfigUnreadable) return { name, state: "fail", detail: error.message };
+  if (error.code === GATE_ERROR.unreadableOwners) {
+    return { name, state: "fail", detail: error.message, fix: REINSTALL_GATE };
+  }
+  return null;
+}
+
 function commentGate(env: Env, cwd: string, commitGate: Health): Health {
   const name = "comment gate";
   const root = checkoutRoot(cwd);
@@ -267,7 +273,8 @@ function commentGate(env: Env, cwd: string, commitGate: Health): Health {
   try {
     gate = root === null ? { state: "unlabeled" } : commentGateFor(root, "HEAD", env);
   } catch (error) {
-    if (error instanceof GitConfigUnreadable) return { name, state: "fail", detail: error.message };
+    const failed = gateFailure(name, error);
+    if (failed !== null) return failed;
     if (!(error instanceof ConfigError)) throw error;
     if (root !== null && error.path.startsWith(projectConfigPath(root))) {
       return { name, state: "fail", detail: error.message, fix: `repair ${PROJECT_CONFIG} and commit it` };
@@ -339,17 +346,12 @@ function schema(db: Database): Health {
 
 function freshness(db: Database): Health {
   const last = text(db, "SELECT max(ingested_at) AS v FROM source_file");
-  const age = last ? Date.now() - Date.parse(last) : Number.POSITIVE_INFINITY;
-  return !last
-    ? { name: "freshness", state: "fail", detail: "nothing has ever been read", fix: "dim sync" }
-    : age > SYNC_STOPPED_AFTER_MS
-      ? {
-          name: "freshness",
-          state: "warn",
-          detail: `last read ${Math.round(age / HOUR_MS)} hours ago`,
-          fix: "dim sync",
-        }
-      : { name: "freshness", state: "ok", detail: `last read ${Math.round(age / HOUR_MS)} hours ago` };
+  if (last === null)
+    return { name: "freshness", state: "fail", detail: "nothing has ever been read", fix: "dim sync" };
+  const age = Date.now() - Date.parse(last);
+  const detail = `last read ${Math.round(age / HOUR_MS)} hours ago`;
+  if (age > SYNC_STOPPED_AFTER_MS) return { name: "freshness", state: "warn", detail, fix: "dim sync" };
+  return { name: "freshness", state: "ok", detail };
 }
 
 function endReasons(db: Database, hooks: HookRead): Health {
@@ -393,8 +395,16 @@ function skill(env: Env): Health {
 }
 
 function commitGate(env: Env): Health {
-  const plan = planCommitGate(installedOwners(env) ?? [], [], env);
-  const dir = sharedHooksDir(env);
+  try {
+    return commitGateHealth(planCommitGate(installedOwners(env) ?? [], [], env), sharedHooksDir(env));
+  } catch (error) {
+    const failed = gateFailure("commit gate", error);
+    if (failed === null) throw error;
+    return failed;
+  }
+}
+
+function commitGateHealth(plan: GatePlan, dir: string): Health {
   const gaps = plan.hooks
     .filter((h) => h.state !== "installed")
     .map((h) => `${h.name} is ${h.state}`)
@@ -414,28 +424,42 @@ function commitGate(env: Env): Health {
 }
 
 function gateOwners(env: Env): Health[] {
-  const owners = installedOwners(env);
-  if (owners === null) return [];
-  const bareOwners = owners.filter((o) => !isHostQualified(o));
+  try {
+    const owners = installedOwners(env);
+    return owners === null ? [] : ownersHealth(owners);
+  } catch (error) {
+    const failed = gateFailure("gate owners", error);
+    if (failed === null) throw error;
+    return [failed];
+  }
+}
+
+function ownersHealth(owners: readonly string[]): Health[] {
+  const bareOwners = owners.filter((owner) => !isHostQualified(owner));
+  if (bareOwners.length === 0) {
+    return [
+      {
+        name: "gate owners",
+        state: "ok",
+        detail: `${owners.length} owners, each naming a host and an account`,
+      },
+    ];
+  }
   return [
-    bareOwners.length === 0
-      ? {
-          name: "gate owners",
-          state: "ok",
-          detail: `${owners.length} owners, each naming a host and an account`,
-        }
-      : {
-          name: "gate owners",
-          state: "fail",
-          detail: `${bareOwners.length} owners name an account but no host (${bareOwners.join(", ")}), so the gate arms nowhere`,
-          fix: "dim install-commit-gate --owner=<host>/<account> --write",
-        },
+    {
+      name: "gate owners",
+      state: "fail",
+      detail: `${bareOwners.length} owners name an account but no host (${bareOwners.join(", ")}), so the gate arms nowhere`,
+      fix: REINSTALL_GATE,
+    },
   ];
 }
 
 function pushGate(db: Database, env: Env): Health {
   const unarmed = unarmedCheckouts(
-    (db.query("SELECT DISTINCT repo FROM repo_commit ORDER BY repo").all() as { repo: string }[])
+    db
+      .query<{ repo: string }, []>("SELECT DISTINCT repo FROM repo_commit ORDER BY repo")
+      .all()
       .map((r) => r.repo)
       .filter((repo) => existsSync(join(repo, ".git"))),
   );
@@ -453,11 +477,11 @@ function pushGate(db: Database, env: Env): Health {
 
 function shipMethods(db: Database, env: Env): Health {
   const shippedFrom = new Set(
-    (
-      db
-        .query("SELECT DISTINCT repo FROM repo_commit WHERE label IN (SELECT project FROM factory_order)")
-        .all() as { repo: string }[]
-    )
+    db
+      .query<{ repo: string }, []>(
+        "SELECT DISTINCT repo FROM repo_commit WHERE label IN (SELECT project FROM factory_order)",
+      )
+      .all()
       .map((r) => primaryCheckout(r.repo))
       .filter((root) => root !== null),
   );
@@ -484,47 +508,45 @@ function shipMethods(db: Database, env: Env): Health {
 function agent(env: Env): Health {
   const plan = planAgent(env);
   const plist = plan.path;
-  return !existsSync(plist)
-    ? {
-        name: "agent",
-        state: "warn",
-        detail: "no launchd agent, so syncing is manual",
-        fix: "dim install-agent --write",
-      }
-    : !plan.unchanged
-      ? {
-          name: "agent",
-          state: "warn",
-          detail: "launchd agent points to a different checkout or Bun path",
-          fix: "dim install-agent --write, then reload the launchd agent",
-        }
-      : launchdLoaded()
-        ? { name: "agent", state: "ok", detail: "launchd agent loaded" }
-        : {
-            name: "agent",
-            state: "warn",
-            detail: "launchd agent is written but not loaded",
-            fix: `launchctl bootstrap gui/$(id -u) ${plist}`,
-          };
+  if (!existsSync(plist)) {
+    return {
+      name: "agent",
+      state: "warn",
+      detail: "no launchd agent, so syncing is manual",
+      fix: "dim install-agent --write",
+    };
+  }
+  if (!plan.unchanged) {
+    return {
+      name: "agent",
+      state: "warn",
+      detail: "launchd agent points to a different checkout or Bun path",
+      fix: "dim install-agent --write, then reload the launchd agent",
+    };
+  }
+  if (launchdLoaded()) return { name: "agent", state: "ok", detail: "launchd agent loaded" };
+  return {
+    name: "agent",
+    state: "warn",
+    detail: "launchd agent is written but not loaded",
+    fix: `launchctl bootstrap gui/$(id -u) ${plist}`,
+  };
 }
 
 function rules(env: Env): Health {
   const plan = planRules(env);
-  return plan.state === "not-installed"
-    ? { name: "rules", state: "ok", detail: "codex is not installed, so it needs no rules file" }
-    : plan.state === "missing-source"
-      ? { name: "rules", state: "warn", detail: `no ${plan.source} to flatten` }
-      : plan.state === "unchanged"
-        ? { name: "rules", state: "ok", detail: "codex rules match the canonical file" }
-        : {
-            name: "rules",
-            state: "fail",
-            detail:
-              plan.state === "absent"
-                ? "codex has no rules file, so none of the conventions reach it"
-                : "codex rules differ from the canonical file",
-            fix: "dim install-rules --write",
-          };
+  if (plan.state === "not-installed") {
+    return { name: "rules", state: "ok", detail: "codex is not installed, so it needs no rules file" };
+  }
+  if (plan.state === "missing-source")
+    return { name: "rules", state: "warn", detail: `no ${plan.source} to flatten` };
+  if (plan.state === "unchanged")
+    return { name: "rules", state: "ok", detail: "codex rules match the canonical file" };
+  const detail =
+    plan.state === "absent"
+      ? "codex has no rules file, so none of the conventions reach it"
+      : "codex rules differ from the canonical file";
+  return { name: "rules", state: "fail", detail, fix: "dim install-rules --write" };
 }
 
 function outcomes(db: Database): Health {
@@ -539,7 +561,7 @@ function outcomes(db: Database): Health {
     : { name: "outcomes", state: "ok", detail: `${commits} commits read from the repos on disk` };
 }
 
-export function diagnose(db: Database, env: Env = process.env, cwd: string = process.cwd()): Health[] {
+export function diagnose(db: Database, env: Env, cwd: string): Health[] {
   const hooks = readHooks(env);
   const commit = commitGate(env);
   return [

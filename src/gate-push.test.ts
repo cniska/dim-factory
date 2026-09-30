@@ -1,14 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { devNull, tmpdir } from "node:os";
 import { join } from "node:path";
-import { prePushScript, URL_NORMALIZER, unarmedCheckouts } from "./gate-push";
+import { installHook, pathWithDim } from "./gate.test-support";
+import { unarmedCheckouts } from "./gate-push";
 
 type Repo = { root: string; work: string };
 
 const ISOLATED = {
   ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_"))),
+  PATH: pathWithDim(),
   GIT_CONFIG_GLOBAL: devNull,
   GIT_CONFIG_SYSTEM: devNull,
 } as NodeJS.ProcessEnv;
@@ -36,10 +38,7 @@ function clonedRepo(owner: string): Repo {
   git(work, "remote", "set-head", "origin", "-a");
 
   const hooks = join(root, "hooks");
-  mkdirSync(hooks, { recursive: true });
-  const path = join(hooks, "pre-push");
-  writeFileSync(path, prePushScript([join(root, "gated-owner"), "other-org"]));
-  execFileSync("chmod", ["755", path]);
+  installHook(hooks, "pre-push", [join(root, "gated-owner"), "other-org"]);
   git(work, "config", "core.hooksPath", hooks);
   return { root, work };
 }
@@ -230,6 +229,26 @@ describe("the push gate", () => {
     }
   });
 
+  test("lets a rewrite through where dim is missing, and says it was not judged", () => {
+    const { root, work } = clonedRepo("gated-owner");
+    try {
+      commit(work, "second");
+      git(work, "push", "-q", "origin", "main");
+      git(work, "reset", "--hard", "-q", "HEAD~1");
+      commit(work, "rewritten");
+
+      const withoutDim = { ...ISOLATED, PATH: "/usr/bin:/bin" };
+      const forced = spawnSync("git", ["-C", work, "push", "-q", "--force", "origin", "main"], {
+        env: withoutDim,
+        encoding: "utf8",
+      });
+      expect(forced.status).toBe(0);
+      expect(forced.stderr).toContain("pre-push: dim is not on PATH, so this is not judged.");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("lets everything through where the remote names no HEAD", () => {
     const { root, work } = clonedRepo("gated-owner");
     try {
@@ -243,25 +262,5 @@ describe("the push gate", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
-});
-
-describe("dim_url", () => {
-  function norm(url: string): string {
-    return execFileSync("bash", ["-c", `${URL_NORMALIZER}\ndim_url "$1"`, "_", url], {
-      encoding: "utf8",
-    });
-  }
-
-  test("drops a trailing slash from a remote URL", () => {
-    expect(norm("https://github.com/an-owner/thing.git/")).toBe("https://github.com/an-owner/thing.git");
-  });
-
-  test("drops a file scheme from a local path", () => {
-    expect(norm("file:///nowhere/thing.git")).toBe("/nowhere/thing.git");
-  });
-
-  test("leaves a remote URL otherwise untouched", () => {
-    expect(norm("https://github.com/an-owner/thing.git")).toBe("https://github.com/an-owner/thing.git");
   });
 });

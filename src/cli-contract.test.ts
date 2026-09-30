@@ -6,13 +6,7 @@ import { allCommands, findCommand } from "./cli-commands";
 const COMMANDS = await allCommands();
 
 const SRC = import.meta.dir;
-const RAW_OUTPUT = [
-  "check-command-command.ts",
-  "comments-command.ts",
-  "trace-command.ts",
-  "wake-command.ts",
-  "wt-command.ts",
-];
+const RAW_OUTPUT = ["check-command-command.ts", "trace-command.ts", "wake-command.ts", "wt-command.ts"];
 
 function sources(): string[] {
   return readdirSync(SRC, { recursive: true })

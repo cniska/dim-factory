@@ -10,7 +10,11 @@ import { SCHEMA_VERSION } from "./db-schema";
 import { diagnose } from "./doctor";
 import { doctorCommand } from "./doctor-command";
 import { harnessesOnPath, scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
-import { gateHooks, installCommitGate } from "./gate-commit";
+import { hookBody } from "./gate-hooks";
+import { installCommitGate } from "./gate-install";
+
+const GATE_HOOK_NAMES = ["commit-msg", "pre-commit", "pre-push"];
+
 import { wantedHooks } from "./hook-commands";
 import { installHooks } from "./hooks";
 import { codexConfigPath, planCodexTrust } from "./hooks-codex-trust";
@@ -50,7 +54,7 @@ function pointGitAt(env: Env, dir: string): void {
 function check(env: Env, name: string) {
   const db = openReadOnly(dbPath(env));
   try {
-    return diagnose(db, env).find((c) => c.name === name);
+    return diagnose(db, env, process.cwd()).find((c) => c.name === name);
   } finally {
     db.close();
   }
@@ -126,15 +130,14 @@ describe("doctor", () => {
     const hooks = join(env.HOME as string, ".config", "dim", "hooks");
     mkdirSync(hooks, { recursive: true });
     pointGitAt(env, hooks);
-    const bodies = gateHooks(["github.com/an-account"]);
-    const bodyOf = (name: string) => bodies.find((h) => h.name === name)?.body ?? "";
-    writeFileSync(join(hooks, "commit-msg"), bodyOf("commit-msg"));
-    writeFileSync(join(hooks, "pre-commit"), bodyOf("pre-commit"));
+    const shim = hookBody(["github.com/an-account"]);
+    writeFileSync(join(hooks, "commit-msg"), shim);
+    writeFileSync(join(hooks, "pre-commit"), shim);
     const partial = check(env, "commit gate");
     expect(partial?.state).toBe("warn");
     expect(partial?.detail).toContain("pre-push");
 
-    writeFileSync(join(hooks, "pre-push"), bodyOf("pre-push"));
+    writeFileSync(join(hooks, "pre-push"), shim);
     expect(check(env, "commit gate")?.state).toBe("ok");
   });
 
@@ -143,9 +146,7 @@ describe("doctor", () => {
     const hooks = join(env.HOME as string, ".config", "dim", "hooks");
     mkdirSync(hooks, { recursive: true });
     pointGitAt(env, hooks);
-    for (const { name, body } of gateHooks(["github.com/an-account"])) {
-      writeFileSync(join(hooks, name), body);
-    }
+    for (const name of GATE_HOOK_NAMES) writeFileSync(join(hooks, name), hookBody(["github.com/an-account"]));
     expect(check(env, "commit gate")?.state).toBe("ok");
 
     writeFileSync(join(hooks, "pre-push"), "#!/usr/bin/env bash\nexit 0\n");
@@ -159,9 +160,7 @@ describe("doctor", () => {
     const env = seeded();
     const hooks = join(env.HOME as string, ".config", "dim", "hooks");
     mkdirSync(hooks, { recursive: true });
-    for (const { name, body } of gateHooks(["github.com/an-account"])) {
-      writeFileSync(join(hooks, name), body);
-    }
+    for (const name of GATE_HOOK_NAMES) writeFileSync(join(hooks, name), hookBody(["github.com/an-account"]));
     const unset = check(env, "commit gate");
     expect(unset?.state).toBe("warn");
     expect(unset?.detail).toContain("core.hooksPath is unset");
@@ -182,12 +181,12 @@ describe("doctor", () => {
     const hooks = join(env.HOME as string, ".config", "dim", "hooks");
     mkdirSync(hooks, { recursive: true });
 
-    writeFileSync(join(hooks, "commit-msg"), gateHooks(["github.com/an-account"])[0]?.body ?? "");
+    writeFileSync(join(hooks, "commit-msg"), hookBody(["github.com/an-account"]));
     const clean = check(env, "gate owners");
     expect(clean?.state).toBe("ok");
     expect(clean?.detail).toContain("1 owners");
 
-    writeFileSync(join(hooks, "commit-msg"), gateHooks(["an-account"])[0]?.body ?? "");
+    writeFileSync(join(hooks, "commit-msg"), hookBody(["an-account"]));
     const bare = check(env, "gate owners");
     expect(bare?.state).toBe("fail");
     expect(bare?.detail).toContain("an-account");
@@ -353,7 +352,7 @@ describe("doctor", () => {
 
     const db = openReadOnly(dbPath(env));
     try {
-      const checks = diagnose(db, env);
+      const checks = diagnose(db, env, process.cwd());
       const by = (name: string) => checks.find((c) => c.name === name);
       expect(by("codex trust")?.state).toBe("fail");
       expect(by("hooks")?.state).toBe("fail");
@@ -381,7 +380,7 @@ describe("doctor", () => {
     const env = seeded();
     const db = openReadOnly(dbPath(env));
     try {
-      const checks = diagnose(db, env);
+      const checks = diagnose(db, env, process.cwd());
       expect(checks.length).toBeGreaterThan(5);
       for (const c of checks) {
         expect(c.detail.length, `${c.name} has no detail`).toBeGreaterThan(0);

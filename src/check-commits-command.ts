@@ -9,7 +9,7 @@ export const checkCommitsCommand: Command = {
   run(args) {
     const [range] = args;
     if (!range) throw new UsageError("check-commits needs a revision range, e.g. main..HEAD");
-    const offenses = checkRange(range);
+    const offenses = checkRange(range, process.cwd());
     return new Ran({ range, offenses }, offenses.length === 0 ? 0 : 1);
   },
 };

@@ -5,7 +5,8 @@ import { CHECK_SANDBOX, runSandboxedCheck, type SandboxedCheck } from "./check-s
 import type { CodedError } from "./coded-error";
 import { stagedComments } from "./comments-staged";
 import { writeTransaction } from "./db";
-import { commentGateFor } from "./gate-commit";
+import { commentGateFor } from "./gate-comment";
+import { SKIP_CHECK_ENV } from "./gate-contract";
 import { factoryCommitEnv, UNSIGNED } from "./git-identity";
 import { rebaseInProgress } from "./git-rebase";
 import { git, hooksOutsideTree } from "./git-tree";
@@ -172,7 +173,7 @@ export function commitBuildTurn(options: {
     worktree,
     [...UNSIGNED, "-c", `core.hooksPath=${hooksOutsideTree(worktree)}`, "commit", "-q", "-F", "-"],
     {
-      env: { ...factoryCommitEnv(), DIM_SKIP_CHECK: "1" },
+      env: { ...factoryCommitEnv(), [SKIP_CHECK_ENV]: "1" },
       stdin: `${turn.subject}\n`,
     },
   );

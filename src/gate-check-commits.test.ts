@@ -30,9 +30,15 @@ describe("checking a pushed range", () => {
       commit(dir, "made some changes");
       commit(dir, `feat: ${"a".repeat(60)}`);
       commit(dir, "feat: a subject\n\nand a body explaining it");
+      commit(dir, "fixup! feat: a conforming subject");
 
       const offenses = checkRange(`${base}..HEAD`, dir);
-      expect(offenses.map((o) => o.violation)).toEqual(["body", "too-long", "not-conventional"]);
+      expect(offenses.map((o) => o.violation)).toEqual([
+        "not-conventional",
+        "body",
+        "too-long",
+        "not-conventional",
+      ]);
       expect(offenses.map((o) => o.subject)).toContain("made some changes");
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -55,7 +61,12 @@ describe("checking a pushed range", () => {
     const dir = repo();
     try {
       commit(dir, "feat: the first commit");
-      expect(() => checkRange("0000000..HEAD", dir)).toThrow("cannot enumerate commits");
+      expect(() => checkRange("0000000..HEAD", dir)).toThrow(
+        expect.objectContaining({
+          code: "gate_commits_unenumerable",
+          meta: expect.objectContaining({ range: "0000000..HEAD" }),
+        }),
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

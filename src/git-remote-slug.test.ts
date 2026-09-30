@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
-import { isHostQualified, remoteSlug, SLUG_SED } from "./git-remote-slug";
+import { isHostQualified, remoteSlug } from "./git-remote-slug";
 
 const URLS: [string, string | null][] = [
   ["https://github.com/cniska/dim-factory.git", "github.com/cniska"],
@@ -31,15 +30,6 @@ describe("remoteSlug", () => {
       expect(remoteSlug(url)).toBe(slug);
     });
   }
-
-  test("the sed in the hook agrees with it on every row", () => {
-    for (const [url, slug] of URLS) {
-      const out = execFileSync("bash", ["-c", `printf '%s' "$1" | sed -nE '${SLUG_SED}'`, "_", url], {
-        encoding: "utf8",
-      });
-      expect(out.replace(/\n$/, "")).toBe(slug ?? "");
-    }
-  });
 });
 
 describe("isHostQualified", () => {

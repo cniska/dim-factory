@@ -1,109 +1,127 @@
-import { ownerCasePatterns, ownerDeclaration, SLUG_SED } from "./git-remote-slug";
+import { existsSync, statSync } from "node:fs";
+import { resolve } from "node:path";
+import { fail, GATE_ERROR, type Gate, type GateInput } from "./gate-contract";
+import { remoteSlug } from "./git-remote-slug";
+import { git } from "./git-tree";
 
-export function unarmedCheckouts(dirs: string[]): string[] {
-  return dirs.filter((dir) => {
-    const has = (args: string[]) =>
-      Bun.spawnSync(["git", "-C", dir, ...args], { stdout: "ignore", stderr: "ignore" }).success;
-    return (
-      has(["config", "--get", "remote.origin.url"]) &&
-      !has(["symbolic-ref", "-q", "refs/remotes/origin/HEAD"])
+const PREFIX = "pre-push: ";
+
+export function unarmedCheckouts(dirs: readonly string[]): readonly string[] {
+  return dirs.filter(
+    (dir) =>
+      git(dir, ["config", "--get", "remote.origin.url"]).ok &&
+      !git(dir, ["symbolic-ref", "-q", "refs/remotes/origin/HEAD"]).ok,
+  );
+}
+
+type Target = { readonly remote: string; readonly url: string };
+
+type Update = {
+  readonly local: string;
+  readonly remoteRef: string;
+  readonly remoteOid: string;
+  readonly fetched: boolean;
+  readonly reverts: readonly string[];
+  readonly fastForward: boolean;
+};
+
+const ABSENT = /^0+$/;
+
+function normalizedUrl(url: string, cwd: string): string {
+  const trimmed = (url.startsWith("file://") ? url.slice("file://".length) : url).replace(/\/$/, "");
+  const local = resolve(cwd, trimmed);
+  return existsSync(local) && statSync(local).isDirectory() ? local : trimmed;
+}
+
+function target({ args, cwd }: GateInput): Target | null {
+  const [remote, url] = args;
+  if (remote === undefined || url === undefined || url === "") return null;
+  return { remote, url: normalizedUrl(url, cwd) };
+}
+
+function pushedRemote({ remote, url }: Target, cwd: string): string | null {
+  if (git(cwd, ["config", "--get", `remote.${remote}.url`]).ok) return remote;
+  const matches = git(cwd, ["remote"])
+    .out.split("\n")
+    .filter(
+      (name) =>
+        name !== "" && normalizedUrl(git(cwd, ["remote", "get-url", "--push", name]).out, cwd) === url,
     );
-  });
+  const named = matches.find((name) => git(cwd, ["symbolic-ref", "-q", `refs/remotes/${name}/HEAD`]).ok);
+  return named ?? matches.at(-1) ?? null;
 }
 
-export const URL_NORMALIZER = `dim_url() {
-  u=\${1#file://}
-  u=\${u%/}
-  if [ -d "$u" ]; then (cd "$u" 2>/dev/null && pwd) || printf '%s' "$u"; else printf '%s' "$u"; fi
-}`;
-
-export function prePushScript(owners: string[]): string {
-  return `#!/usr/bin/env bash
-# Installed by \`dim install-commit-gate\`. One copy for every repo; see dim-factory.
-${ownerDeclaration(owners)}
-set -u
-
-remote="\${1:-}"
-${URL_NORMALIZER}
-
-# Git names the remote being pushed to and its URL. Reading the owner off that
-# URL rather than off origin is what makes a push to a fork's upstream, or to a
-# second remote, judged against the account it is actually integrating into.
-url=$(dim_url "\${2:-}")
-owner=$(printf '%s' "$url" | sed -nE '${SLUG_SED}')
-[ -n "$owner" ] || exit 0
-case "$owner" in
-  ${ownerCasePatterns(owners)}) ;;
-  *) exit 0 ;;
-esac
-
-# Git names the remote by its name when the push named one and by its URL when it
-# did not, and only a name has a refs/remotes/<name>/HEAD to read the shared
-# branch from.
-if ! git config --get "remote.$remote.url" >/dev/null 2>&1; then
-  # get-url --push resolves insteadOf and a separate pushurl, neither of which
-  # reading remote.<name>.url out of the config would see.
-  match=""
-  for name in $(git remote 2>/dev/null); do
-    [ "$(dim_url "$(git remote get-url --push "$name" 2>/dev/null)")" = "$url" ] || continue
-    match=$name
-    # Several remotes may share a URL and only one of them name a shared branch.
-    git symbolic-ref -q "refs/remotes/$name/HEAD" >/dev/null 2>&1 && break
-  done
-  remote=$match
-  [ -n "$remote" ] || exit 0
-fi
-
-head=$(git symbolic-ref --short "refs/remotes/$remote/HEAD" 2>/dev/null || true)
-[ -n "$head" ] || exit 0
-protected="refs/heads/\${head#"$remote"/}"
-
-status=0
-while read -r _local_ref local_oid remote_ref remote_oid; do
-  # A revert is judged on every branch, not only the shared one: git's sequencer
-  # commits one without running commit-msg, so this is the first gate that sees it.
-  if [ -n "\${local_oid//0/}" ]; then
-    if [ -n "\${remote_oid//0/}" ] && git cat-file -e "$remote_oid" 2>/dev/null; then
-      span="$remote_oid..$local_oid"
-    else
-      span="$local_oid --not --remotes=$remote"
-    fi
-    reverts=$(git log --no-merges --format='  %h %s' --grep='^Revert "' $span 2>/dev/null || true)
-    if [ -n "$reverts" ]; then
-      echo "pre-push: this pushes a revert." >&2
-      echo "$reverts" >&2
-      echo "  drop the commit instead: reset or rebase it out." >&2
-      status=1
-    fi
-  fi
-
-  [ "$remote_ref" = "$protected" ] || continue
-
-  # An all-zero oid is git's way of saying the ref is absent on one side.
-  if [ -z "\${local_oid//0/}" ]; then
-    echo "pre-push: this deletes $protected on $remote." >&2
-    status=1
-    continue
-  fi
-  [ -n "\${remote_oid//0/}" ] || continue
-
-  # The tip is missing locally exactly when it is a commit this checkout has
-  # never fetched, which is the push that loses work rather than the one that
-  # cannot be judged.
-  if ! git cat-file -e "$remote_oid" 2>/dev/null; then
-    echo "pre-push: $protected on $remote is at $remote_oid, which is not in this checkout." >&2
-    echo "  fetch before deciding what to do with it." >&2
-    status=1
-    continue
-  fi
-
-  git merge-base --is-ancestor "$remote_oid" "$local_oid" 2>/dev/null && continue
-  echo "pre-push: this rewrites $protected on $remote." >&2
-  echo "  its tip $remote_oid is not in the history being pushed." >&2
-  status=1
-done
-
-[ "$status" -eq 0 ] || echo "  rebase onto it, push a branch, or --no-verify to push anyway." >&2
-exit $status
-`;
+function sharedBranch(remote: string, cwd: string): string | null {
+  const head = git(cwd, ["symbolic-ref", "--short", `refs/remotes/${remote}/HEAD`]).out;
+  if (head === "") return null;
+  const branch = head.startsWith(`${remote}/`) ? head.slice(remote.length + 1) : head;
+  return `refs/heads/${branch}`;
 }
+
+function updateOf(line: string, remote: string, cwd: string): Update {
+  const fields = line.split(" ");
+  const [, local, remoteRef, remoteOid] = fields;
+  if (fields.length !== 4 || local === undefined || remoteRef === undefined || remoteOid === undefined) {
+    throw fail(GATE_ERROR.unreadableUpdate, { line });
+  }
+  const fetched = !ABSENT.test(remoteOid) && git(cwd, ["cat-file", "-e", remoteOid]).ok;
+  const span = fetched ? [`${remoteOid}..${local}`] : [local, "--not", `--remotes=${remote}`];
+  const reverts = ABSENT.test(local)
+    ? []
+    : git(cwd, ["log", "--no-merges", "--format=%h %s", '--grep=^Revert "', ...span])
+        .out.split("\n")
+        .filter(Boolean);
+  const fastForward = fetched && git(cwd, ["merge-base", "--is-ancestor", remoteOid, local]).ok;
+  return { local, remoteRef, remoteOid, fetched, reverts, fastForward };
+}
+
+function updateRefusal(update: Update, shared: string, remote: string): readonly string[] {
+  const reverts =
+    update.reverts.length === 0
+      ? []
+      : [
+          `${PREFIX}this pushes a revert.`,
+          ...update.reverts.map((revert) => `  ${revert}`),
+          "  drop the commit instead: reset or rebase it out.",
+        ];
+  if (update.remoteRef !== shared) return reverts;
+  if (ABSENT.test(update.local)) return [...reverts, `${PREFIX}this deletes ${shared} on ${remote}.`];
+  if (ABSENT.test(update.remoteOid) || update.fastForward) return reverts;
+  if (!update.fetched) {
+    return [
+      ...reverts,
+      `${PREFIX}${shared} on ${remote} is at ${update.remoteOid}, which is not in this checkout.`,
+      "  fetch before deciding what to do with it.",
+    ];
+  }
+  return [
+    ...reverts,
+    `${PREFIX}this rewrites ${shared} on ${remote}.`,
+    `  its tip ${update.remoteOid} is not in the history being pushed.`,
+  ];
+}
+
+function refusal(input: GateInput): readonly string[] {
+  const pushed = target(input);
+  if (pushed === null) return [];
+  const remote = pushedRemote(pushed, input.cwd);
+  if (remote === null) return [];
+  const shared = sharedBranch(remote, input.cwd);
+  if (shared === null) return [];
+  const lines = input
+    .stdin()
+    .split("\n")
+    .filter(Boolean)
+    .flatMap((line) => updateRefusal(updateOf(line, remote, input.cwd), shared, remote));
+  return lines.length === 0
+    ? []
+    : [...lines, "  rebase onto it, push a branch, or --no-verify to push anyway."];
+}
+
+export const prePushGate: Gate = {
+  owner: (input) => {
+    const pushed = target(input);
+    return pushed === null ? null : remoteSlug(pushed.url);
+  },
+  refusal,
+};

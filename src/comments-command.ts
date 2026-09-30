@@ -1,23 +1,11 @@
 import { relative, resolve } from "node:path";
 import { type Command, Ran, UsageError } from "./cli-contract";
-import { warn } from "./cli-warn";
 import { purgeCheckout } from "./comments-purge";
-import { stagedComments } from "./comments-staged";
 import { PROJECT_CONFIG, projectConfigPath, readProjectConfig, writeConfigValue } from "./config";
-import { COMMENTS_FOUND_EXIT, commentsBanned } from "./gate-commit";
 import { checkoutRoot } from "./git-checkout";
 import { checkTask, formatTask } from "./workspace-tasks";
 
-const USAGE = "usage: dim comments check | dim comments purge [--write] [<path>...]";
-
-function check(cwd: string): void {
-  const root = checkoutRoot(cwd);
-  if (root === null || !commentsBanned(root, "HEAD")) return;
-  const { found, unparsed } = stagedComments(root);
-  for (const path of unparsed) warn(`dim: ${path} does not parse, so its comments are not judged`);
-  for (const { path, line } of found) console.log(`${path}:${line}`);
-  if (found.length > 0) process.exit(COMMENTS_FOUND_EXIT);
-}
+const USAGE = "usage: dim comments purge [--write] [<path>...]";
 
 type Formatted = { command: string; exitCode: number | null; signal: string | null; output: string };
 
@@ -34,7 +22,7 @@ function formatted(root: string, command: string): Formatted {
 
 function purge(cwd: string, args: string[]): unknown {
   const root = checkoutRoot(cwd);
-  if (root === null) throw new Error(`${cwd} is not inside a git checkout`);
+  if (root === null) throw new UsageError(`${cwd} is not inside a git checkout`);
   const write = args.includes("--write");
   const paths = args
     .filter((arg) => arg !== "--write")
@@ -73,14 +61,10 @@ function purge(cwd: string, args: string[]): unknown {
 export const commentsCommand: Command = {
   name: "comments",
   usage: USAGE,
-  summary: "check staged lines for comments the config bans, or purge the comments a repo holds",
-  raw: (args) => args[0] === "check",
+  summary: "purge the comments a repo holds and ban new ones",
   run(args) {
     const [verb, ...rest] = args;
-    if (verb === "check") return check(process.cwd());
     if (verb === "purge") return purge(process.cwd(), rest);
-    throw new UsageError(
-      verb === undefined ? "comments takes check or purge" : `${verb} is not a comments verb`,
-    );
+    throw new UsageError(verb === undefined ? "comments takes purge" : `${verb} is not a comments verb`);
   },
 };
