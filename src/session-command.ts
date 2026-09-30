@@ -1,6 +1,5 @@
 import { type Command, UsageError } from "./cli-contract";
-import { closeDb } from "./db";
-import { openFactory } from "./factory-db";
+import { openFactoryReadOnly } from "./factory-db";
 import { showSession } from "./worker-ops";
 
 const USAGE = "usage: dim session show <session>";
@@ -12,11 +11,11 @@ export const sessionCommand: Command = {
   run(args) {
     const [verb, session, ...rest] = args;
     if (verb !== "show" || session === undefined || rest.length > 0) throw new UsageError(USAGE);
-    const db = openFactory();
+    const db = openFactoryReadOnly();
     try {
       return showSession(db, session);
     } finally {
-      closeDb(db);
+      db.close();
     }
   },
 };

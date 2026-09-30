@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { refuser } from "./coded-error";
+import { HarnessName } from "./harness-name";
 
 export const STATIONS = ["plan", "build", "review"] as const;
 export const Station = z.enum(STATIONS);
@@ -174,7 +175,7 @@ export const Later = z.union([
   }),
   entry("message_sent", message),
   entry("message_refused", message),
-  entry("session_started", { worker: z.string(), session: z.string(), harness: z.string() }),
+  entry("session_started", { worker: z.string(), session: z.string(), harness: HarnessName }),
   z.discriminatedUnion("code", [
     stop("session_died", "usage_limit", { ...session, resetsAt: z.string().nullable() }),
     stop("session_died", "killed", session),

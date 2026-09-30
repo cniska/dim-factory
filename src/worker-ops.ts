@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { join } from "node:path";
 import { invariant } from "./assert";
 import { writeTransaction } from "./db";
+import { HarnessName } from "./harness-name";
 import { openSessionsUnder } from "./hooks-sessions";
 import { drainSpool } from "./ingest-spool";
 import { workerSessionsDir } from "./paths";
@@ -51,12 +52,10 @@ function above(db: Database): Above {
   return { table, chain, open };
 }
 
-function actingOf(db: Database, cwd: string, { chain, open }: Above): Acting | null {
+function actingOf(db: Database, chain: readonly ProcessId[]): Acting | null {
   const session = actingSession(chain, sessions(db));
   const worker = session === null ? null : workerNamed(db, session.worker);
-  if (session !== null && worker !== null) return { worker, session };
-  if (open.length === 0) throw refuseWorker("no_session", { cwd });
-  return null;
+  return session !== null && worker !== null ? { worker, session } : null;
 }
 
 export function callerOf(db: Database, cwd: string): Caller {
@@ -64,7 +63,7 @@ export function callerOf(db: Database, cwd: string): Caller {
   const [self] = seen.chain;
   invariant(self !== undefined, `the process table lists this process, ${process.pid}`);
   return {
-    acting: actingOf(db, cwd, seen),
+    acting: actingOf(db, seen.chain),
     cwd,
     self,
     running: seen.table,
@@ -85,7 +84,7 @@ export function stationWorker(db: Database, created: StationWorker): WorkerRecor
 
 export function processOf(pid: number): ProcessId {
   const row = processTable().find((candidate) => candidate.pid === pid);
-  invariant(row !== undefined, `process ${pid}, held until it is registered, is running`);
+  invariant(row !== undefined, `process ${pid}, waiting for its prompt, is running`);
   return { pid: row.pid, startedAt: row.startedAt };
 }
 
@@ -141,7 +140,7 @@ export function actingOperator(db: Database, caller: Caller, project: string): A
     const session = {
       id: found.session.id,
       worker: worker.name,
-      harness: found.session.tool,
+      harness: HarnessName.parse(found.session.tool),
       process: found.harness,
     };
     insertSession(db, session, new Date().toISOString());

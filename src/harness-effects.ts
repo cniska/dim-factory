@@ -1,33 +1,40 @@
-export type Held = {
-  readonly pid: number;
-  release(prompt: string): void;
-  readonly ended: Promise<{ readonly lines: readonly string[]; readonly exitCode: number | null }>;
+export type Ended = {
+  readonly lines: readonly string[];
+  readonly stderr: string;
+  readonly exitCode: number | null;
 };
 
-const WAIT_FOR_RELEASE = 'read -r _ && exec "$0" "$@"';
+export type Spawned = {
+  readonly pid: number;
+  prompt(text: string): void;
+  kill(): void;
+  readonly ended: Promise<Ended>;
+};
 
 async function linesOf(stream: ReadableStream<Uint8Array>): Promise<readonly string[]> {
   return (await new Response(stream).text()).split("\n").filter((line) => line.trim() !== "");
 }
 
-export function holdHarness(argv: readonly string[], cwd: string, env: Record<string, string>): Held {
-  const child = Bun.spawn(["sh", "-c", WAIT_FOR_RELEASE, ...argv], {
+export function spawnHarness(argv: readonly string[], cwd: string, env: Record<string, string>): Spawned {
+  const child = Bun.spawn([...argv], {
     cwd,
     env,
     stdin: "pipe",
     stdout: "pipe",
-    stderr: "ignore",
+    stderr: "pipe",
     detached: true,
   });
   return {
     pid: child.pid,
-    release(prompt) {
-      child.stdin.write(`\n${prompt}`);
+    prompt(text) {
+      child.stdin.write(text);
       child.stdin.end();
     },
-    ended: Promise.all([linesOf(child.stdout), child.exited]).then(([lines]) => ({
-      lines,
-      exitCode: child.exitCode,
-    })),
+    kill() {
+      process.kill(-child.pid, "SIGKILL");
+    },
+    ended: Promise.all([linesOf(child.stdout), new Response(child.stderr).text(), child.exited]).then(
+      ([lines, stderr]) => ({ lines, stderr, exitCode: child.exitCode }),
+    ),
   };
 }

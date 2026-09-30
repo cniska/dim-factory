@@ -249,35 +249,29 @@ function busyRefusal(state: OrderState, act: OperatorAct, live: RunKind | null):
   return refuseOrder("order_busy", { order: state.id, run: live });
 }
 
-export type WorkAct = { readonly kind: "work"; readonly station: Station };
-
 export const ROLE_AT: Readonly<Record<Station, StationRole>> = {
   plan: "planner",
   build: "builder",
   review: "reviewer",
 };
 
-function admitWork(state: OrderState, by: Acting | null, act: WorkAct): Admission {
-  const worker = by?.worker;
-  if (by === null || worker?.role !== ROLE_AT[act.station] || worker.order !== state.id) {
-    return {
-      kind: "refused",
-      refusal: refuseWorker("not_station_worker", { order: state.id, station: act.station }),
-    };
+export function admitWork(state: OrderState, by: Acting, station: Station): Admission {
+  const { worker } = by;
+  if (worker.role !== ROLE_AT[station] || worker.order !== state.id) {
+    return { kind: "refused", refusal: refuseWorker("not_station_worker", { order: state.id, station }) };
   }
   const { phase } = state;
-  return phase.kind === "run" && phase.station === act.station && state.status === "running"
+  return phase.kind === "run" && phase.station === station && state.status === "running"
     ? { kind: "admitted", by }
     : { kind: "refused", refusal: refuseOrder("not_next_step", { order: state.id, next: nextOf(phase) }) };
 }
 
-export function admit(
+export function admitOperator(
   state: OrderState,
   by: Acting | null,
-  act: OperatorAct | WorkAct,
+  act: OperatorAct,
   live: RunKind | null,
 ): Admission {
-  if (act.kind === "work") return admitWork(state, by, act);
   const operator = operatorOf(by, state.project);
   if (operator.kind === "refused") return operator;
   const refusal = busyRefusal(state, act, live) ?? stepRefusal(state, act);

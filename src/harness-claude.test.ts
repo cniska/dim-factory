@@ -2,60 +2,31 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { claude } from "./harness-claude";
+import type { Start } from "./harness-contract";
 
-const line = (event: Readonly<Record<string, unknown>>) => JSON.stringify(event);
+const START: Start = {
+  session: { kind: "new", id: "s1" },
+  model: "opus",
+  policy: { kind: "read", writable: ["/t"], denied: ["/w"] },
+  socket: "/t/s",
+};
 
-const INIT = line({ type: "system", subtype: "init", session_id: "s1" });
-
-describe("the Claude Code stream", () => {
-  test("finishes with the text of its successful result", () => {
-    const lines = [INIT, line({ type: "result", subtype: "success", is_error: false, result: "planned" })];
-    expect(claude.outcome(lines)).toEqual({ kind: "finished", text: "planned" });
-  });
-
-  test("is limited when a rate limit was rejected, with the time it resets", () => {
-    const lines = [
-      INIT,
-      line({ type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt: 1790000000 } }),
-      line({
-        type: "result",
-        subtype: "error_during_execution",
-        is_error: true,
-        result: "usage limit reached",
-      }),
-    ];
-    expect(claude.outcome(lines)).toEqual({ kind: "limited", resetsAt: "2026-09-21T14:13:20.000Z" });
-  });
-
-  test("is unfinished when it ends with no result, or with an error", () => {
-    expect(claude.outcome([INIT])).toEqual({ kind: "unfinished" });
-    const errored = line({ type: "result", subtype: "error_during_execution", is_error: true });
-    expect(claude.outcome([INIT, errored])).toEqual({ kind: "unfinished" });
-  });
-});
+const settingsOf = (argv: readonly string[]) => JSON.parse(argv[argv.indexOf("--settings") + 1] ?? "");
 
 describe("starting Claude Code", () => {
-  const start = {
-    session: { kind: "new", id: "s1" },
-    model: "opus",
-    workspace: "/w",
-    tmp: "/t",
-    socket: "/t/s",
-  } as const;
-
-  test("starts a new session under its id, reading no project settings", () => {
-    const argv = claude.argv(start);
+  test("starts a new session under its id and resumes one by its id, reading no project settings", () => {
+    const argv = claude.argv(START);
     expect(argv.slice(0, 5)).toEqual(["claude", "-p", "--output-format", "stream-json", "--verbose"]);
     expect(argv[argv.indexOf("--setting-sources") + 1]).toBe("user");
     expect(argv.slice(-2)).toEqual(["--session-id", "s1"]);
-    expect(claude.argv({ ...start, session: { kind: "resume", id: "s1" } }).slice(-2)).toEqual([
+    expect(claude.argv({ ...START, session: { kind: "resume", id: "s1" } }).slice(-2)).toEqual([
       "--resume",
       "s1",
     ]);
   });
 
   test("loads dim's station skills as the dim plugin, since a worker's HOME holds none", () => {
-    const argv = claude.argv(start);
+    const argv = claude.argv(START);
     const plugin = argv[argv.indexOf("--plugin-dir") + 1] ?? "";
     expect(JSON.parse(readFileSync(join(plugin, ".claude-plugin", "plugin.json"), "utf8")).name).toBe("dim");
     for (const skill of ["dim-plan", "dim-build", "dim-review"]) {
@@ -63,9 +34,8 @@ describe("starting Claude Code", () => {
     }
   });
 
-  test("sandboxes the worker so it writes only its turn's temp directory and reaches only its socket", () => {
-    const argv = claude.argv(start);
-    const settings = JSON.parse(argv[argv.indexOf("--settings") + 1] ?? "");
+  test("turns a read policy into Claude's sandbox, with every edit tool denied and only the turn's socket reachable", () => {
+    const settings = settingsOf(claude.argv(START));
     expect(settings.sandbox).toEqual({
       enabled: true,
       autoAllowBashIfSandboxed: true,

@@ -57,12 +57,13 @@ export function insertRun(db: Database, order: string, kind: RunKind, process: P
   ]);
 }
 
-export function setRunHarness(db: Database, order: string, harness: ProcessId): void {
-  db.run("UPDATE run SET harness_pid = ?, harness_started_at = ? WHERE order_id = ?", [
+export function setRunHarness(db: Database, order: string, harness: ProcessId): boolean {
+  const { changes } = db.run("UPDATE run SET harness_pid = ?, harness_started_at = ? WHERE order_id = ?", [
     harness.pid,
     harness.startedAt,
     order,
   ]);
+  return changes === 1;
 }
 
 export function deleteRun(db: Database, order: string): void {

@@ -1,9 +1,17 @@
 import type { Database } from "bun:sqlite";
 import { version } from "../package.json";
 import { invariant } from "./assert";
-import { readConfig } from "./config";
+import { readConfig, type UserConfig } from "./config";
 import { writeTransaction } from "./db";
-import { admit, fold, type OperatorAct, type OrderState, operatorOf, orderIdOf } from "./order";
+import {
+  admitOperator,
+  admitWork,
+  fold,
+  type OperatorAct,
+  type OrderState,
+  operatorOf,
+  orderIdOf,
+} from "./order";
 import {
   type Actor,
   type Detailed,
@@ -51,6 +59,8 @@ function append(db: Database, order: string, seq: number, by: Actor, detailed: D
   return seq;
 }
 
+type Acted = { readonly seq: number; readonly by: Acting; readonly admitted: OrderState };
+
 function act(
   db: Database,
   order: string,
@@ -61,32 +71,37 @@ function act(
   return writeTransaction(db, () => {
     const { state } = loadOrder(db, order);
     const by = actingOperator(db, caller, state.project);
-    const admission = admit(state, by, operatorAct, liveRun(db, order, caller.running));
+    const admission = admitOperator(state, by, operatorAct, liveRun(db, order, caller.running));
     if (admission.kind === "refused") throw admission.refusal;
-    return {
-      seq: append(db, order, state.lastSeq + 1, actorOf(admission.by), later(state)),
-      by: admission.by,
-    };
+    const seq = append(db, order, state.lastSeq + 1, actorOf(admission.by), later(state));
+    return { seq, by: admission.by, admitted: state };
   });
 }
 
-type Acted = { readonly seq: number; readonly by: Acting };
+export type ProjectSetup = {
+  readonly root: string;
+  readonly branch: string;
+  readonly config: UserConfig;
+};
+
+export function projectSetup(db: Database, project: string, cwd: string): ProjectSetup {
+  const checkout = checkoutOf(db, project, cwd);
+  if (checkout === null) throw refuseOrder("no_checkout", { project });
+  const branch = defaultBranch(checkout.root);
+  if (branch === null) throw refuseOrder("no_default_branch", { checkout: checkout.root });
+  return { root: checkout.root, branch, config: readConfig({ root: checkout.root, at: branch }) };
+}
 
 export type NewOrder = {
   readonly title: string;
   readonly description: string;
   readonly project: string | undefined;
-  readonly cwd: string;
 };
 
 export function addOrder(db: Database, caller: Caller, fields: NewOrder): string {
-  const project = fields.project ?? checkoutAt(fields.cwd)?.project;
-  if (project === undefined) throw refuseWorker("no_project", { cwd: fields.cwd });
-  const checkout = checkoutOf(db, project, fields.cwd);
-  if (checkout === null) throw refuseOrder("no_checkout", { project });
-  const branch = defaultBranch(checkout.root);
-  if (branch === null) throw refuseOrder("no_default_branch", { checkout: checkout.root });
-  readConfig({ root: checkout.root, at: branch });
+  const project = fields.project ?? checkoutAt(caller.cwd)?.project;
+  if (project === undefined) throw refuseWorker("no_project", { cwd: caller.cwd });
+  projectSetup(db, project, caller.cwd);
   return writeTransaction(db, () => {
     const admission = operatorOf(actingOperator(db, caller, project), project);
     if (admission.kind === "refused") throw admission.refusal;
@@ -119,28 +134,27 @@ export function orderState(db: Database, order: string): OrderState {
   return loadOrder(db, order).state;
 }
 
-export type StartedRun = {
-  readonly state: OrderState;
-  readonly by: Acting;
-  readonly cause: number;
-  readonly created: boolean;
-};
+export type StartedRun = { readonly by: Acting; readonly cause: number; readonly created: boolean };
 
 export function startRun(db: Database, order: string, caller: Caller, base: string): StartedRun {
   return writeTransaction(db, () => {
-    const { seq: cause, by } = act(db, order, caller, { kind: "run" }, () => ({
+    const {
+      seq: cause,
+      by,
+      admitted,
+    } = act(db, order, caller, { kind: "run" }, () => ({
       action: "order_run",
       details: {},
     }));
     insertRun(db, order, "station", caller.self);
-    const created = loadOrder(db, order).state.head === null;
+    const created = admitted.head === null;
     if (created) recordFactory(db, order, cause, { action: "workspace_created", details: { base } });
-    return { state: loadOrder(db, order).state, by, cause, created };
+    return { by, cause, created };
   });
 }
 
 export function markHarness(db: Database, order: string, harness: ProcessId): void {
-  setRunHarness(db, order, harness);
+  invariant(setRunHarness(db, order, harness), `order ${order}'s run is on record while its turn starts`);
 }
 
 export function endRun(db: Database, order: string): void {
@@ -156,7 +170,7 @@ export function recordWork(
 ): void {
   writeTransaction(db, () => {
     const { state } = loadOrder(db, order);
-    const admission = admit(state, acting, { kind: "work", station }, null);
+    const admission = admitWork(state, acting, station);
     if (admission.kind === "refused") throw admission.refusal;
     append(db, order, state.lastSeq + 1, actorOf(admission.by), later);
   });

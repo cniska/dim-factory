@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { invariant } from "./assert";
+import { HarnessName } from "./harness-name";
 import { ROLES, type Role, type Worker, type WorkerSession } from "./worker-contract";
 
 export const WORKER_SQL = `
@@ -56,7 +57,7 @@ function workerOf(row: WorkerRow): Worker {
 const sessionOf = (row: SessionRow): WorkerSession => ({
   id: row.id,
   worker: row.worker,
-  harness: row.harness,
+  harness: HarnessName.parse(row.harness),
   process: { pid: row.pid, startedAt: row.pid_started_at },
 });
 

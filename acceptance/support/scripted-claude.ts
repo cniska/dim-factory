@@ -128,6 +128,21 @@ function briefedRole(prompt: string): StationRole | null {
   return brief === null ? null : roleOfSkill(brief.skill);
 }
 
+const STDIN_WAIT_MS = 3000;
+
+async function promptOnStdin(): Promise<string> {
+  const reader = Bun.stdin.stream().getReader();
+  const first = await Promise.race([reader.read(), Bun.sleep(STDIN_WAIT_MS).then(() => null)]);
+  if (first === null || first.done) {
+    refuse(
+      "Warning: no stdin data received in 3s, proceeding without it.\nError: Input must be provided either through stdin or as a prompt argument when using --print",
+    );
+  }
+  const chunks = [first.value];
+  for (let next = await reader.read(); !next.done; next = await reader.read()) chunks.push(next.value);
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 const emit = (event: Readonly<Record<string, unknown>>) => process.stdout.write(`${JSON.stringify(event)}\n`);
 
 const [stateArg, ...argv] = Bun.argv.slice(2);
@@ -137,7 +152,7 @@ const home = process.env.HOME;
 if (home === undefined) refuse("scripted claude: HOME is not set");
 const parsed = parseFlags(argv);
 const flags =
-  parsed.prompt || process.stdin.isTTY ? parsed : { ...parsed, prompt: (await Bun.stdin.text()).trim() };
+  parsed.prompt || process.stdin.isTTY ? parsed : { ...parsed, prompt: (await promptOnStdin()).trim() };
 const cwd = process.cwd();
 const env: Readonly<Record<string, string>> = Object.fromEntries(
   Object.entries(process.env).flatMap(([name, value]) => (value === undefined ? [] : [[name, value]])),

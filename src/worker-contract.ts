@@ -1,4 +1,5 @@
 import { refuser } from "./coded-error";
+import type { HarnessName } from "./harness-name";
 import type { OpenSession } from "./hooks-sessions";
 
 type WorkerRefusalMeta = {
@@ -63,7 +64,7 @@ export type Worker =
 export type WorkerSession = {
   readonly id: string;
   readonly worker: string;
-  readonly harness: string;
+  readonly harness: HarnessName;
   readonly process: ProcessId;
 };
 

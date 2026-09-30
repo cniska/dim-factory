@@ -62,11 +62,17 @@ function refuseValue(file: string, name: Setting, value: unknown): void {
   }
 }
 
-function parseConfig(text: string, file: string): Config {
-  if (text.trim() === "") return {};
-  const raw = parseSetting(text, file, { isKey: isSetting, refuse: (defect) => refusal(file, defect) });
+function settingsOf(raw: Record<string, unknown>, file: string): Config {
   for (const [name, value] of Object.entries(raw)) refuseValue(file, name as Setting, value);
   return raw as Config;
+}
+
+function parseConfig(text: string, file: string): Config {
+  if (text.trim() === "") return {};
+  return settingsOf(
+    parseSetting(text, file, { isKey: isSetting, refuse: (defect) => refusal(file, defect) }),
+    file,
+  );
 }
 
 function parseModels(value: unknown, file: string): Models {
@@ -82,8 +88,7 @@ function parseUserConfig(text: string, file: string): UserConfig {
     isKey: (key) => isSetting(key) || key === "models",
     refuse: (defect) => refusal(file, defect),
   });
-  for (const [name, value] of Object.entries(settings)) refuseValue(file, name as Setting, value);
-  const config = settings as Config;
+  const config = settingsOf(settings, file);
   return models === undefined ? config : { ...config, models: parseModels(models, file) };
 }
 

@@ -21,31 +21,10 @@
         "noReExportAll": "error"
       },
       "style": {
-        "noExportedImports": "error",
-        "noRestrictedImports": {
-          "level": "error",
-          "options": {
-            "patterns": [
-              {
-                "group": ["./*-store", "./*-effects"],
-                "message": "A module's store and effects are its own; import its ops, rules or contract instead."
-              }
-            ]
-          }
-        }
+        "noExportedImports": "error"
       }
     }
   },
-  "overrides": [
-    { "includes": ["src/order.ts", "src/order-*.ts"], "linter": { "rules": { "style": { "noRestrictedImports": { "level": "error", "options": { "patterns": [{ "group": ["./*-store", "./*-effects", "!./order-store", "!./order-effects"], "message": "A module's store and effects are its own; import its ops, rules or contract instead." }] } } } } } },
-    { "includes": ["src/worker.ts", "src/worker-*.ts"], "linter": { "rules": { "style": { "noRestrictedImports": { "level": "error", "options": { "patterns": [{ "group": ["./*-store", "./*-effects", "!./worker-store", "!./worker-effects"], "message": "A module's store and effects are its own; import its ops, rules or contract instead." }] } } } } } },
-    { "includes": ["src/station.ts", "src/station-*.ts"], "linter": { "rules": { "style": { "noRestrictedImports": { "level": "error", "options": { "patterns": [{ "group": ["./*-store", "./*-effects", "!./station-store", "!./station-effects"], "message": "A module's store and effects are its own; import its ops, rules or contract instead." }] } } } } } },
-    { "includes": ["src/harness.ts", "src/harness-*.ts"], "linter": { "rules": { "style": { "noRestrictedImports": { "level": "error", "options": { "patterns": [{ "group": ["./*-store", "./*-effects", "!./harness-store", "!./harness-effects"], "message": "A module's store and effects are its own; import its ops, rules or contract instead." }] } } } } } },
-    { "includes": ["src/workspace.ts", "src/workspace-*.ts"], "linter": { "rules": { "style": { "noRestrictedImports": { "level": "error", "options": { "patterns": [{ "group": ["./*-store", "./*-effects", "!./workspace-store", "!./workspace-effects"], "message": "A module's store and effects are its own; import its ops, rules or contract instead." }] } } } } } },
-    { "includes": ["src/check.ts", "src/check-*.ts"], "linter": { "rules": { "style": { "noRestrictedImports": { "level": "error", "options": { "patterns": [{ "group": ["./*-store", "./*-effects", "!./check-store", "!./check-effects"], "message": "A module's store and effects are its own; import its ops, rules or contract instead." }] } } } } } },
-    { "includes": ["src/trace.ts", "src/trace-*.ts"], "linter": { "rules": { "style": { "noRestrictedImports": { "level": "error", "options": { "patterns": [{ "group": ["./*-store", "./*-effects", "!./trace-store", "!./trace-effects"], "message": "A module's store and effects are its own; import its ops, rules or contract instead." }] } } } } } },
-    { "includes": ["src/factory-db.ts"], "linter": { "rules": { "style": { "noRestrictedImports": { "level": "error", "options": { "patterns": [{ "group": ["./*-store", "./*-effects", "!./order-store", "!./worker-store"], "message": "factory-db joins each store's DDL and imports nothing else of a store." }] } } } } } }
-  ],
   "assist": {
     "actions": {
       "source": {

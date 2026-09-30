@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
-  admit,
+  admitOperator,
+  admitWork,
   fold,
   nextOf,
   type OperatorAct,
   type OrderState,
   orderIdOf,
   stationOf,
-  type WorkAct,
 } from "./order";
 import { type Actor, type Later, type LaterEntry, OrderId, type RunKind } from "./order-contract";
 import type { Acting } from "./worker-contract";
@@ -228,16 +228,21 @@ describe("an order id", () => {
 describe("which act an order admits", () => {
   const refusedCode = (
     order: OrderState,
-    act: OperatorAct | WorkAct,
+    act: OperatorAct,
     by: Acting | null = OPERATOR,
     live: RunKind | null = null,
   ) => {
-    const admission = admit(order, by, act, live);
+    const admission = admitOperator(order, by, act, live);
+    return admission.kind === "refused" ? admission.refusal.code : null;
+  };
+
+  const workRefused = (order: OrderState, by: Acting) => {
+    const admission = admitWork(order, by, "plan");
     return admission.kind === "refused" ? admission.refusal.code : null;
   };
 
   test("refuses an act that is not the next step, naming the next step", () => {
-    const admission = admit(state(), OPERATOR, { kind: "approve" }, null);
+    const admission = admitOperator(state(), OPERATOR, { kind: "approve" }, null);
     expect(admission.kind === "refused" && admission.refusal.meta).toEqual({
       order: "k7m2qx4d",
       next: "run",
@@ -251,7 +256,10 @@ describe("which act an order admits", () => {
     const elsewhere: Acting = { ...OPERATOR, worker: { ...OPERATOR.worker, project: "acme/gadgets" } };
     expect(refusedCode(state(), { kind: "run" }, elsewhere)).toBe("not_operator");
     expect(refusedCode(state(), { kind: "run" }, null)).toBe("not_operator");
-    expect(admit(state(), OPERATOR, { kind: "run" }, null)).toEqual({ kind: "admitted", by: OPERATOR });
+    expect(admitOperator(state(), OPERATOR, { kind: "run" }, null)).toEqual({
+      kind: "admitted",
+      by: OPERATOR,
+    });
   });
 
   test("admits an update until the plan is approved, and refuses one after", () => {
@@ -283,14 +291,13 @@ describe("which act an order admits", () => {
     });
     const planner = plannerOf("k7m2qx4d");
     const otherOrder = plannerOf("zzzzzzzz");
-    const work: WorkAct = { kind: "work", station: "plan" };
     const running = state(RUN, BASE);
-    expect(refusedCode(running, work, planner, "station")).toBeNull();
-    expect(refusedCode(running, work, OPERATOR, "station")).toBe("not_station_worker");
-    expect(refusedCode(running, work, otherOrder, "station")).toBe("not_station_worker");
-    expect(refusedCode(state(...planned), work, planner, "station")).toBe("not_next_step");
+    expect(workRefused(running, planner)).toBeNull();
+    expect(workRefused(running, OPERATOR)).toBe("not_station_worker");
+    expect(workRefused(running, otherOrder)).toBe("not_station_worker");
+    expect(workRefused(state(...planned), planner)).toBe("not_next_step");
     const cancelled = state(RUN, BASE, { action: "order_cancelled", details: { reason: "x" } });
-    expect(refusedCode(cancelled, work, planner, "station")).toBe("not_next_step");
+    expect(workRefused(cancelled, planner)).toBe("not_next_step");
   });
 
   test("refuses a cancel while the order ships", () => {

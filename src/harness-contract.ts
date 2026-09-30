@@ -1,4 +1,5 @@
 import { refuser } from "./coded-error";
+import type { Policy } from "./station";
 
 export type SessionStart =
   | { readonly kind: "new"; readonly id: string }
@@ -7,20 +8,13 @@ export type SessionStart =
 export type Start = {
   readonly session: SessionStart;
   readonly model: string;
-  readonly workspace: string;
-  readonly tmp: string;
+  readonly policy: Policy;
   readonly socket: string;
 };
-
-export type Outcome =
-  | { readonly kind: "finished"; readonly text: string }
-  | { readonly kind: "limited"; readonly resetsAt: string | null }
-  | { readonly kind: "unfinished" };
 
 export type Adapter = {
   readonly signIn: readonly string[];
   argv(start: Start): readonly string[];
-  outcome(lines: readonly string[]): Outcome;
   transcript(home: string, workspace: string, session: string): string;
 };
 

@@ -31,6 +31,23 @@ export function commandBreaches(file: string, text: string): readonly string[] {
     .map((path) => `${file} imports ${path}`);
 }
 
+const PRIVATE_FILE = /^\.\/([a-z]+)-(store|effects)$/;
+
+const DDL_JOIN = "factory-db.ts";
+
+export function boundaryBreaches(file: string, text: string): readonly string[] {
+  const importer = file.split("-")[0]?.replace(/\.tsx?$/, "");
+  return transpiler
+    .scanImports(text.replace(/^#!.*\n/, ""))
+    .map((imported) => imported.path)
+    .filter((path) => {
+      const owner = PRIVATE_FILE.exec(path);
+      if (owner === null || owner[1] === importer) return false;
+      return !(file === DDL_JOIN && owner[2] === "store");
+    })
+    .map((path) => `${file} imports ${path}, another module's own file`);
+}
+
 export function sqlBreaches(file: string, text: string): readonly string[] {
   return !file.endsWith("-store.ts") && /\.(query|prepare)\(|\bdb\.run\(/.test(text)
     ? [`${file} runs SQL`]
@@ -42,6 +59,10 @@ export function throwBreaches(file: string, text: string): readonly string[] {
 }
 
 describe("the factory's modules", () => {
+  test("a module's store and effects are imported only by that module", () => {
+    expect(sources("*.ts").flatMap(({ file, text }) => boundaryBreaches(file, text))).toEqual([]);
+  });
+
   test("a factory command imports only ops, contracts and the CLI's own files", () => {
     expect(factoryCommands().flatMap(({ file, text }) => commandBreaches(file, text))).toEqual([]);
   });
@@ -72,6 +93,17 @@ describe("the module checks", () => {
     expect(commandBreaches("order-command.ts", `${text}export const x = [a, b, c];\n`)).toEqual([
       "order-command.ts imports ./order-store",
       "order-command.ts imports ./order",
+    ]);
+  });
+
+  test("catch an import of another module's store or effects, but not of its own", () => {
+    const text = 'import { a } from "./worker-store";\nimport { b } from "./order-store";\n';
+    expect(boundaryBreaches("order-ops.ts", text)).toEqual([
+      "order-ops.ts imports ./worker-store, another module's own file",
+    ]);
+    expect(boundaryBreaches("factory-db.ts", text)).toEqual([]);
+    expect(boundaryBreaches("factory-db.ts", 'import { c } from "./worker-effects";\n')).toEqual([
+      "factory-db.ts imports ./worker-effects, another module's own file",
     ]);
   });
 

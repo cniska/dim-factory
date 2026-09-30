@@ -35,16 +35,14 @@ function add(db: Database, args: readonly string[]): OrderView {
   if (flags.title === undefined || flags.description === undefined) {
     throw usage("add needs --title and --description");
   }
-  const cwd = process.cwd();
-  const fields = { title: flags.title, description: flags.description, project: flags.project, cwd };
-  return showOrder(db, addOrder(db, callerOf(db, cwd), fields));
+  const fields = { title: flags.title, description: flags.description, project: flags.project };
+  return showOrder(db, addOrder(db, callerOf(db, process.cwd()), fields));
 }
 
 async function run(db: Database, args: readonly string[]): Promise<OrderView> {
   const { positionals } = parseArgs(args, { positionals: [1, 1], flags: [] }, usage);
   const order = orderArg(positionals);
-  const cwd = process.cwd();
-  await runOrder(db, order, callerOf(db, cwd), cwd);
+  await runOrder(db, order, callerOf(db, process.cwd()));
   return showOrder(db, order);
 }
 

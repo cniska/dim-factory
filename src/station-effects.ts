@@ -4,21 +4,15 @@ import type { Turn } from "./station";
 
 const SOCKET_ROOT = "/tmp";
 
-export type TurnDir = Omit<Turn, "home"> & { readonly dir: string };
-
-export function openTurnDir(): TurnDir {
+export function openTurn(home: string): Turn {
+  mkdirSync(home, { recursive: true });
   const dir = realpathSync(mkdtempSync(join(SOCKET_ROOT, "dim-")));
   const tmp = join(dir, "tmp");
   mkdirSync(tmp);
-  return { dir, tmp, socket: join(dir, "s") };
+  return { dir, home, tmp, socket: join(dir, "s") };
 }
 
-export function makeHome(home: string): string {
-  mkdirSync(home, { recursive: true });
-  return home;
-}
-
-export function removeTurnDir(turn: TurnDir): void {
+export function closeTurn(turn: Turn): void {
   rmSync(turn.dir, { recursive: true, force: true });
 }
 

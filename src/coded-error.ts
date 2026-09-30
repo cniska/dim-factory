@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export class CodedError<Code extends string = string, Meta extends object = object> extends Error {
   override readonly name = "CodedError";
 
@@ -12,12 +14,17 @@ export class CodedError<Code extends string = string, Meta extends object = obje
   }
 }
 
-export type RefusalRecord = {
-  readonly code: string;
-  readonly message: string;
-  readonly meta: object;
-  readonly resolve: string;
-};
+export const RefusalRecord = z.object({
+  code: z.string(),
+  message: z.string(),
+  meta: z.record(z.string(), z.unknown()),
+  resolve: z.string(),
+});
+export type RefusalRecord = z.infer<typeof RefusalRecord>;
+
+export function recordOf(error: CodedError): RefusalRecord {
+  return { code: error.code, message: error.message, meta: { ...error.meta }, resolve: error.resolve };
+}
 
 export function refusalOf({ code, message, meta, resolve }: RefusalRecord): CodedError {
   return new CodedError(code, message, meta, resolve);
