@@ -277,24 +277,25 @@ describe("hooks", () => {
     expect(existsSync(join(workspace, "project-hook.marker"))).toBe(false);
   });
 
-  test("a station worker cannot write the checkout's shared git data beyond its own branch, nor its workspace's git config, and a planner no git data at all", async () => {
-    const sharedProbe: HarnessTurn = [
-      { act: "sh", command: 'touch "$(git rev-parse --git-common-dir)/probe-$$"' },
-      { act: "sh", command: "git branch probe-$$" },
-      { act: "sh", command: "git update-ref refs/heads/main HEAD" },
-      { act: "sh", command: "git config --worktree core.hooksPath hooks" },
+  test("a station worker cannot write the checkout's git data, nor its workspace's git config or hooks, and a planner no git data at all", async () => {
+    const checkoutGit = (m: Machine) => join(m.repo, ".git");
+    const sharedProbe = (m: Machine): HarnessTurn => [
+      { act: "sh", command: `touch "${checkoutGit(m)}/probe-$$"` },
+      { act: "sh", command: `git -C "${m.repo}" branch probe-$$` },
+      { act: "sh", command: `git -C "${m.repo}" update-ref refs/heads/main HEAD` },
+      { act: "sh", command: "git config core.hooksPath hooks" },
+      { act: "sh", command: 'touch "$(git rev-parse --git-dir)/hooks/probe-$$"' },
     ];
-    const m = await start({
-      script: {
-        planner: [
-          [
-            { act: "sh", command: 'touch "$(git rev-parse --git-dir)/probe-$$"' },
-            ...sharedProbe,
-            ...planTurn([{ title: "One", outcome: "One file." }]),
-          ],
+    const m = await start({ script: {} });
+    m.script({
+      planner: [
+        [
+          { act: "sh", command: 'touch "$(git rev-parse --git-dir)/probe-$$"' },
+          ...sharedProbe(m),
+          ...planTurn([{ title: "One", outcome: "One file." }]),
         ],
-        builder: [[...sliceActs(1), ...sharedProbe, { act: "build-return", artifact: BUILD_ARTIFACT }]],
-      },
+      ],
+      builder: [[...sliceActs(1), ...sharedProbe(m), { act: "build-return", artifact: BUILD_ARTIFACT }]],
     });
     const main = m.git(["rev-parse", "main"]);
     const id = await built(m.operator);
@@ -304,11 +305,13 @@ describe("hooks", () => {
       Bun.spawnSync(["sh", "-c", `ls "${dir}" | grep -c '^probe-' || true`], { stdout: "pipe" })
         .stdout.toString()
         .trim();
-    expect(probes(m.git(["rev-parse", "--absolute-git-dir"], workspace))).toBe("0");
-    expect(probes(join(m.repo, ".git"))).toBe("0");
+    const workspaceGit = m.git(["rev-parse", "--absolute-git-dir"], workspace);
+    expect(probes(workspaceGit)).toBe("0");
+    expect(probes(join(workspaceGit, "hooks"))).toBe("0");
+    expect(probes(checkoutGit(m))).toBe("0");
     expect(m.git(["branch", "--list", "probe-*"])).toBe("");
     expect(m.git(["rev-parse", "main"])).toBe(main);
-    expect(m.git(["config", "--worktree", "--get", "core.hooksPath"], workspace)).toBe("");
+    expect(m.git(["config", "--get", "core.hooksPath"], workspace)).toBe("");
   });
 });
 

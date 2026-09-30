@@ -1,14 +1,14 @@
 import { realpathSync } from "node:fs";
 import { workspaceDir } from "./paths";
 import { branchOf } from "./workspace";
-import { addWorktree, tipOf } from "./workspace-effects";
+import { cloneWorkspace, tipOf } from "./workspace-effects";
 
 export function baseOf(root: string, defaultBranch: string): string {
   return tipOf(root, defaultBranch);
 }
 
 export function createWorkspace(root: string, project: string, order: string, base: string): void {
-  addWorktree(root, workspaceDir(project, order), branchOf(order), base);
+  cloneWorkspace(root, workspaceDir(project, order), branchOf(order), base);
 }
 
 export function workspaceOf(project: string, order: string): string {

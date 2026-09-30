@@ -28,15 +28,17 @@ describe("the check task", () => {
       name: "verify",
       commandLine: "bun run verify",
       source: "package.json",
-      body: '"biome check && bun test"',
+      body: '{"verify":"biome check && bun test"}',
     });
   });
 
-  test("carries the check's own declaration, so a change to it shows and a change beside it does not", () => {
-    const makefile = "lint:\n\tbiome check\nverify:\n\tbun test\n\tbiome check\n";
-    expect(checkTask(repo({ Makefile: makefile }))?.body).toBe("verify:\n\tbun test\n\tbiome check");
-    const beside = checkTask(repo({ Makefile: makefile.replace("biome check\nverify", "eslint\nverify") }));
-    expect(beside?.body).toBe("verify:\n\tbun test\n\tbiome check");
+  test("carries the whole section that declares the check, so a change to a task it calls shows too", () => {
+    const scripts = { lint: "biome check", verify: "bun run lint && bun test" };
+    const before = checkTask(repo({ "package.json": JSON.stringify({ scripts }), "bun.lock": "" }));
+    const lintChanged = { scripts: { ...scripts, lint: "true" } };
+    const after = checkTask(repo({ "package.json": JSON.stringify(lintChanged), "bun.lock": "" }));
+    expect(before?.body).not.toBe(after?.body);
+    expect(checkTask(repo({ Makefile: "verify:\n\tbun test\n" }))?.body).toBe("verify:\n\tbun test\n");
   });
 
   test("reads a revision's declaration from git, not the working tree", () => {
@@ -60,8 +62,8 @@ describe("the check task", () => {
     ]);
     writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { verify: "true" } }));
     const at = manifestsAt(root, "HEAD");
-    expect(at === null ? null : checkDeclared(at)?.body).toBe('"bun test"');
-    expect(checkTask(root)?.body).toBe('"true"');
+    expect(at === null ? null : checkDeclared(at)?.body).toBe('{"verify":"bun test"}');
+    expect(checkTask(root)?.body).toBe('{"verify":"true"}');
   });
 
   test("runs through the package manager the lock file names", () => {

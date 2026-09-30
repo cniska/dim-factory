@@ -132,15 +132,15 @@ On `dim slice submit`, the station:
 
 1. Records `slice_submitted`, the builder's act.
 2. Refuses `head_moved` unless the tip is exactly one new commit on the recorded head.
-3. Refuses `check_changed` if the declared check's definition at the tip differs from the default branch's.
+3. Refuses `check_changed` if the declared check's definition at the tip differs from the recorded head's: the check's command line and the whole manifest section that declares it (every `package.json` script, every mise task, the whole `Makefile`). The recorded head holds the default branch's definition as of the order's base or its last rebase, so a slice can never change what judges it.
 4. Refuses `workspace_dirty` unless the workspace is clean, so the files on disk are exactly the committed code. Then it runs the check there, and refuses `check_failed` with the output attached, or `check_rewrote` if the workspace is not clean afterwards.
 5. Records `slice_committed` with the commit and the check's output, or `slice_refused` with its code, and then moves the branch back to the recorded head. A refused slice's files stay in the workspace as uncommitted changes.
 
 A kill anywhere in this leaves the branch ahead of the record, and the next turn moves it back. A `git commit` after the turn closes lands on the branch but not in the record, and the next run takes it off.
 
-**No hooks run in a workspace.** When it creates the workspace, the factory turns on `extensions.worktreeConfig` and writes the worktree's own config: an empty `core.hooksPath` (so neither the repo's hooks nor the user's global commit gate judge a builder's commit), `commit.gpgsign=false` (no signing with the owner's key), `gc.auto=0`, and the builder's name as the author.
+**No hooks run in a workspace.** When it creates the workspace, the factory writes the workspace repository's config: an empty `core.hooksPath` (so neither the repo's hooks nor the user's global commit gate judge a builder's commit), `commit.gpgsign=false` (no signing with the owner's key) and `gc.auto=0`. The builder is the author and committer of its commits through `GIT_AUTHOR_*` and `GIT_COMMITTER_*` in its environment, as `<name>` at `<name>@dim.local`.
 
-**The builder's git writes** are the shared `objects/`, its own branch's ref, ref lock and reflog, `packed-refs.lock`, and the worktree's own git directory apart from its `config.worktree`. Nothing else under the shared git directory is writable, including `config`, `hooks`, `packed-refs`, `main` and every other ref. Git takes `packed-refs.lock` on every ref update and never writes `packed-refs` for a commit. The same paths are denied to the harness's edit tool. The planner and reviewer write no git data.
+**The builder's git writes** stay in its workspace's own repository. The checkout's git directory lies outside what any worker may write, so no worker can create a branch there, move the default branch or change the checkout's config or hooks. In its own repository, the builder may not write `.git/config` or `.git/hooks`, so what the factory's git runs there stays the factory's. The same paths are denied to the harness's edit tool. The planner and reviewer write no git data. Claude's sandbox lets a deny win over a nested allow and opens a linked worktree's shared git directory to Bash ([`findings.md`](findings.md#harness-behavior)), which is why a workspace is a repository of its own and not a linked worktree.
 
 ## Ship
 
@@ -162,7 +162,7 @@ The check runs the declared check task ([`src/declared-tasks.ts`](../src/declare
 
 ## Workspaces
 
-A workspace is `workspaces/<owner>/<repo>/<order>/`: a git worktree of the project's checkout on the branch `dim/<order>`, made when the order first runs. It lives outside the project, so no harness sees it as nested in another checkout. A session in a workspace belongs to its project through git's common directory, not through a path segment. A project named with `--project` from outside its checkout is found through the checkout the record last saw for it.
+A workspace is `workspaces/<owner>/<repo>/<order>/`: a clone of the project's checkout that borrows its objects (`git clone --shared`), on the branch `dim/<order>`, made when the order first runs. Its one remote, `origin`, has the checkout's `origin` URL, so a session in a workspace belongs to its project as a session in the checkout does. It lives outside the project, so no harness sees it as nested in another checkout. Ship fetches the order's recorded head from the workspace into the checkout. A project named with `--project` from outside its checkout is found through the checkout the record last saw for it.
 
 ## The trace
 

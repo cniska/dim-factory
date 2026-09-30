@@ -1,7 +1,7 @@
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { CodedError } from "./coded-error";
-import { committedTree } from "./git-committed";
+import { type CommittedTree, committedTree } from "./git-committed";
 
 const LONGEST_MANIFEST = 1024 * 1024;
 
@@ -32,10 +32,11 @@ export function readManifest(path: string): string | null {
   return read.kind === "text" ? read.text : null;
 }
 
-export type Manifests = { read(file: string): string | null };
+export type Manifests = CommittedTree;
 
 export function manifestsIn(repo: string): Manifests {
   return {
+    has: (file) => existsSync(join(repo, file)),
     read(file) {
       const path = join(repo, file);
       const read = readRegularFile(path);
@@ -63,9 +64,7 @@ const LOCKS: readonly (readonly [string, string])[] = [
 const MANIFESTS = ["package.json", "mise.toml", "Makefile", ...LOCKS.map(([lock]) => lock)];
 
 export function manifestsAt(root: string, at: string): Manifests | null {
-  const tree = committedTree(root, at, MANIFESTS);
-  if (tree === null) return null;
-  return { read: (file) => (tree.has(file) ? (tree.read(file, LONGEST_MANIFEST) ?? "") : null) };
+  return committedTree(root, at, MANIFESTS);
 }
 
 export type DeclaredTask = {
@@ -76,12 +75,14 @@ export type DeclaredTask = {
 };
 
 function managerOf(manifests: Manifests): string | null {
-  for (const [lock, pm] of LOCKS) if (manifests.read(lock) !== null) return pm;
+  for (const [lock, pm] of LOCKS) if (manifests.has(lock)) return pm;
   return null;
 }
 
+const readText = (manifests: Manifests, file: string) => manifests.read(file, LONGEST_MANIFEST);
+
 function fromPackageJson(manifests: Manifests): DeclaredTask[] {
-  const text = manifests.read("package.json");
+  const text = readText(manifests, "package.json");
   if (text === null) return [];
   let scripts: Record<string, unknown>;
   try {
@@ -91,16 +92,17 @@ function fromPackageJson(manifests: Manifests): DeclaredTask[] {
   }
   const pm = managerOf(manifests);
   if (pm === null) return [];
-  return Object.entries(scripts).map(([name, body]) => ({
+  const body = JSON.stringify(scripts);
+  return Object.keys(scripts).map((name) => ({
     name,
     commandLine: `${pm} run ${name}`,
     source: "package.json",
-    body: JSON.stringify(body),
+    body,
   }));
 }
 
 function fromMise(manifests: Manifests): DeclaredTask[] {
-  const text = manifests.read("mise.toml");
+  const text = readText(manifests, "mise.toml");
   if (text === null) return [];
   let parsed: { tasks?: Record<string, unknown> };
   try {
@@ -108,39 +110,27 @@ function fromMise(manifests: Manifests): DeclaredTask[] {
   } catch {
     return [];
   }
-  return Object.entries(parsed.tasks ?? {}).map(([name, body]) => ({
+  const tasks = parsed.tasks ?? {};
+  const body = JSON.stringify(tasks);
+  return Object.keys(tasks).map((name) => ({
     name,
     commandLine: `mise run ${name}`,
     source: "mise.toml",
-    body: JSON.stringify(body),
+    body,
   }));
 }
 
 const MAKE_TARGET = /^([A-Za-z][\w-]*)\s*:(?!=)/;
 
 function fromMakefile(manifests: Manifests): DeclaredTask[] {
-  const text = manifests.read("Makefile");
+  const text = readText(manifests, "Makefile");
   if (text === null) return [];
-  const bodies = new Map<string, string[]>();
-  let current: string[] | null = null;
+  const names = new Set<string>();
   for (const line of text.split("\n")) {
     const name = MAKE_TARGET.exec(line)?.[1];
-    if (name !== undefined) {
-      current = bodies.get(name) ?? [];
-      bodies.set(name, current);
-      current.push(line);
-    } else if (current !== null && line.startsWith("\t")) {
-      current.push(line);
-    } else {
-      current = null;
-    }
+    if (name) names.add(name);
   }
-  return [...bodies].map(([name, lines]) => ({
-    name,
-    commandLine: `make ${name}`,
-    source: "Makefile",
-    body: lines.join("\n"),
-  }));
+  return [...names].map((name) => ({ name, commandLine: `make ${name}`, source: "Makefile", body: text }));
 }
 
 const CHECK_ORDER = ["verify", "check", "ci", "validate", "test"];

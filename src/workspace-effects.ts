@@ -1,8 +1,9 @@
+import { join } from "node:path";
 import { invariant } from "./assert";
 import { git } from "./git-tree";
 import { refuseWorkspace } from "./workspace-contract";
 
-const WORKTREE_CONFIG = [
+const WORKSPACE_CONFIG = [
   ["core.hooksPath", ""],
   ["commit.gpgsign", "false"],
   ["gc.auto", "0"],
@@ -14,13 +15,22 @@ export function tipOf(root: string, branch: string): string {
   return tip.out;
 }
 
-export function addWorktree(root: string, dir: string, branch: string, base: string): void {
-  for (const [cwd, args] of [
-    [root, ["config", "extensions.worktreeConfig", "true"]],
-    [root, ["worktree", "add", "-q", "-b", branch, dir, base]],
-    ...WORKTREE_CONFIG.map(([name, value]) => [dir, ["config", "--worktree", name, value]] as const),
-  ] as const) {
+export function cloneWorkspace(root: string, dir: string, branch: string, base: string): void {
+  const origin = git(root, ["remote", "get-url", "origin"]);
+  invariant(origin.ok, `the checkout ${root} names its project through an origin remote: ${origin.err}`);
+  const steps: readonly (readonly [string, readonly string[]])[] = [
+    [root, ["clone", "-q", "--shared", "--no-checkout", "--origin", "checkout", root, dir]],
+    [dir, ["remote", "remove", "checkout"]],
+    [dir, ["remote", "add", "origin", origin.out]],
+    ...WORKSPACE_CONFIG.map(([name, value]) => [dir, ["config", name, value]] as const),
+    [dir, ["checkout", "-q", "-b", branch, base]],
+  ];
+  for (const [cwd, args] of steps) {
     const ran = git(cwd, [...args]);
     if (!ran.ok) throw refuseWorkspace("workspace_failed", { dir, detail: ran.err });
   }
+}
+
+export function gitDirOf(dir: string): string {
+  return join(dir, ".git");
 }
