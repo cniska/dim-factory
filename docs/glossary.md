@@ -18,7 +18,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Station | One repeatable step of work on an order: `plan`, `build` or `review` ([`src/station-contract.ts`](../src/station-contract.ts)), each run through [`src/station.ts`](../src/station.ts). Their skills are `dim-plan`, `dim-build` and `dim-review` |
 | Order | One piece of work: an id, a line, a title and a description. It exists before it is started and is worked in one worktree |
 | Queue | The orders not yet started |
-| Status | The state an order is in, read from the record: `queued`, `running` once started, `shipped` once a ship run landed it, or `dropped`. The wall's columns are these words, and a dropped order leaves the board |
+| Status | The state an order is in, read from the record: `queued`, `running` once started, `shipped` once a ship run landed it, or `cancelled`. The wall's columns are these words, and a cancelled order leaves the board |
 | Next act | What an order waits on, read from the record by [`src/order.ts`](../src/order.ts) and never stored: at a station, `run` or `approve`; once every station's artifact is approved, `ship`. Every act checks it on entry |
 | Slice | One increment inside an order that verifies and commits on its own |
 | Ship | Landing an order's commits on the local default branch the way the repo declares in `dim.ship`, which ends the order and removes its worktree and branch. Approving the Review artifact ships; `dim order ship` retries a ship that failed and records a `ship_retried` event under the operator |
@@ -32,7 +32,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 |---|---|
 | Start | The first `dim order plan` on a queued order, which makes its worktree and moves it out of the queue |
 | Attempt | One station hand's run on an order, from start to finish, with its outcome. An attempt that has not finished and whose worker is not over refuses a second station run on the order ([`src/order.ts`](../src/order.ts) `admit`) |
-| Drop | The owner's decision not to build an order, with the reason |
+| Cancel | The owner's decision to stop an order before it ships, with the reason |
 | Ledger | An order's events in `factory_order_event`, appended and never changed ([`src/order-ledger.ts`](../src/order-ledger.ts)) |
 | Evidence | What an order produced: commits, changed files, checks, proofs, findings and answers |
 | Artifact | A document a station worker writes for the owner — a plan, a Build artifact or a review — one row per revision in `factory_order_artifact`. The worker submits each revision, and the operator approves or returns it. It leads with the outcome and never lives in the worktree |
