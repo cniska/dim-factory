@@ -1,23 +1,47 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { CodedError } from "./coded-error";
 
 const LONGEST_MANIFEST = 1024 * 1024;
 
-export function readManifest(path: string): string | null {
+type Read =
+  | { readonly kind: "absent" }
+  | { readonly kind: "unreadable" }
+  | { readonly kind: "text"; readonly text: string };
+
+function readRegularFile(path: string): Read {
   let size: number;
   try {
     const stat = statSync(path);
-    if (!stat.isFile()) return null;
+    if (!stat.isFile()) return { kind: "absent" };
     size = stat.size;
   } catch {
-    return null;
+    return { kind: "absent" };
   }
-  if (size > LONGEST_MANIFEST) return null;
+  if (size > LONGEST_MANIFEST) return { kind: "absent" };
   try {
-    return readFileSync(path, "utf8");
+    return { kind: "text", text: readFileSync(path, "utf8") };
   } catch {
-    return null;
+    return { kind: "unreadable" };
   }
+}
+
+export function readManifest(path: string): string | null {
+  const read = readRegularFile(path);
+  return read.kind === "text" ? read.text : null;
+}
+
+function readDeclared(path: string): string | null {
+  const read = readRegularFile(path);
+  if (read.kind === "unreadable") {
+    throw new CodedError(
+      "manifest_unreadable",
+      `${path} is there but cannot be read, so what the repo declares is unknown`,
+      { path },
+      "dim doctor",
+    );
+  }
+  return read.kind === "text" ? read.text : null;
 }
 
 type DeclaredTask = { name: string; commandLine: string; source: string };
@@ -36,7 +60,7 @@ function managerOf(repo: string): string | null {
 }
 
 function fromPackageJson(repo: string): DeclaredTask[] {
-  const text = readManifest(join(repo, "package.json"));
+  const text = readDeclared(join(repo, "package.json"));
   if (text === null) return [];
   let scripts: Record<string, unknown>;
   try {
@@ -54,7 +78,7 @@ function fromPackageJson(repo: string): DeclaredTask[] {
 }
 
 function fromMise(repo: string): DeclaredTask[] {
-  const text = readManifest(join(repo, "mise.toml"));
+  const text = readDeclared(join(repo, "mise.toml"));
   if (text === null) return [];
   let parsed: { tasks?: Record<string, unknown> };
   try {
@@ -72,7 +96,7 @@ function fromMise(repo: string): DeclaredTask[] {
 const MAKE_TARGET = /^([A-Za-z][\w-]*)\s*:(?!=)/;
 
 function fromMakefile(repo: string): DeclaredTask[] {
-  const text = readManifest(join(repo, "Makefile"));
+  const text = readDeclared(join(repo, "Makefile"));
   if (text === null) return [];
   const names = new Set<string>();
   for (const line of text.split("\n")) {

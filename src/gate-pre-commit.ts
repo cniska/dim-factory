@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { CodedError } from "./coded-error";
 import { stagedComments } from "./comments-staged";
 import { ConfigError } from "./config-error";
 import { checkTask } from "./declared-tasks";
@@ -43,8 +44,18 @@ function commentRefusal(root: string, input: GateInput): readonly string[] {
   ];
 }
 
+function declaredCheck(root: string, say: GateInput["say"]) {
+  try {
+    return checkTask(root);
+  } catch (error) {
+    if (!(error instanceof CodedError) || error.code !== "manifest_unreadable") throw error;
+    say(`${PREFIX}${error.message}, so the check is not judged.`);
+    return null;
+  }
+}
+
 function checkRefusal(root: string, { env, say }: GateInput): readonly string[] {
-  const declared = checkTask(root);
+  const declared = declaredCheck(root, say);
   if (!declared) return [];
   say(`${PREFIX}${declared.commandLine}`);
   const checkEnv = Object.fromEntries(

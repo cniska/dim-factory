@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkTask, formatTask } from "./declared-tasks";
@@ -72,6 +72,18 @@ describe("the check task", () => {
 
   test("survives a manifest that does not parse", () => {
     expect(checkTask(repo({ "package.json": "{ not json", "bun.lock": "" }))).toBeNull();
+  });
+
+  test("names a manifest it cannot read, rather than reading it as a repo that declares nothing", () => {
+    const root = repo({ "package.json": JSON.stringify({ scripts: { verify: "true" } }), "bun.lock": "" });
+    chmodSync(join(root, "package.json"), 0o000);
+    try {
+      expect(() => checkTask(root)).toThrow(
+        expect.objectContaining({ code: "manifest_unreadable", meta: { path: join(root, "package.json") } }),
+      );
+    } finally {
+      chmodSync(join(root, "package.json"), 0o644);
+    }
   });
 
   test("finds this repo's own check task", () => {
