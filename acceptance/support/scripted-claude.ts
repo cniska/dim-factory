@@ -3,6 +3,7 @@ import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, write
 import { tmpdir } from "node:os";
 import { dirname } from "node:path";
 import { type ClaudeHooks, fireHooksSync, mergeHooks, userHooks } from "./claude-hooks";
+import { type ClaudeSettings, sandboxed, writeRefused } from "./claude-sandbox";
 import {
   claudeLine,
   type HarnessAct,
@@ -25,8 +26,9 @@ type Flags = {
   fork: boolean;
   sessionId: string | null;
   model: string | null;
-  settings: { hooks?: ClaudeHooks } | null;
+  settings: (ClaudeSettings & { hooks?: ClaudeHooks }) | null;
   settingSources: string | null;
+  addDirs: string[];
   prompt: string;
 };
 
@@ -51,6 +53,7 @@ function parseFlags(argv: string[]): Flags {
     model: null,
     settings: null,
     settingSources: null,
+    addDirs: [],
     prompt: "",
   };
   const positional: string[] = [];
@@ -68,6 +71,7 @@ function parseFlags(argv: string[]): Flags {
       if (arg === "--model") flags.model = value;
       if (arg === "--settings") flags.settings = JSON.parse(value);
       if (arg === "--setting-sources") flags.settingSources = value;
+      if (arg === "--add-dir") flags.addDirs.push(value);
     } else if (!arg.startsWith("-")) positional.push(arg);
   }
   flags.prompt = positional.join(" ");
@@ -140,8 +144,18 @@ fire("SessionStart", { source: flags.resume ? "resume" : "startup" });
 record({ type: "user", text: flags.prompt });
 
 const scratch = mkdtempSync(`${env.TMPDIR ?? tmpdir()}/scripted-claude-`);
+const settings = flags.settings ?? {};
+const sessionTmp = mkdtempSync(`${env.TMPDIR ?? tmpdir()}/scripted-claude-tmp-`);
+const shell = (command: string) =>
+  Bun.spawnSync(sandboxed(settings, [cwd, ...flags.addDirs, sessionTmp], command), {
+    cwd,
+    env: { ...env, TMPDIR: sessionTmp },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+const quote = (arg: string) => `'${arg.replaceAll("'", `'\\''`)}'`;
 const dim: Dim = (args) => {
-  const ran = Bun.spawnSync(["dim", ...args], { cwd, env, stdout: "pipe", stderr: "pipe" });
+  const ran = shell(["dim", ...args].map(quote).join(" "));
   return { exitCode: ran.exitCode ?? 1, stdout: ran.stdout.toString(), stderr: ran.stderr.toString() };
 };
 
@@ -170,7 +184,7 @@ function ownOrder(): string {
 }
 
 function bash(command: string): string {
-  const ran = Bun.spawnSync(["sh", "-c", command], { cwd, env, stdout: "pipe", stderr: "pipe" });
+  const ran = shell(command);
   return `${ran.stdout.toString()}${ran.stderr.toString()}exit ${ran.exitCode}`;
 }
 
@@ -182,6 +196,7 @@ async function perform(act: HarnessAct): Promise<string | undefined> {
     case "write": {
       const path = act.path.includes("{order}") ? act.path.replace("{order}", ownOrder()) : act.path;
       tool("Write", { file_path: path, content: act.content }, () => {
+        if (writeRefused(settings, path)) return `Permission to write ${path} has been denied.`;
         writeFileSync(path, act.content);
         return `wrote ${path}`;
       });
@@ -221,8 +236,7 @@ async function perform(act: HarnessAct): Promise<string | undefined> {
       process.exit(1);
       return;
     default: {
-      const args = dimArgs(act, dim, scratch);
-      const command = ["dim", ...args].map((arg) => `'${arg.replaceAll("'", `'\\''`)}'`).join(" ");
+      const command = ["dim", ...dimArgs(act, dim, scratch)].map(quote).join(" ");
       tool("Bash", { command }, () => bash(command));
       return;
     }

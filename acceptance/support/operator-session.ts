@@ -43,12 +43,14 @@ export class OperatorSession {
     return this.shell.pid;
   }
 
-  async sh(command: string, stdin = ""): Promise<Ran> {
+  async sh(command: string, stdin = "", { alongside = true } = {}): Promise<Ran> {
     const call = join(this.scratch, String(++this.calls));
     await Bun.write(`${call}.in`, stdin);
-    this.shell.stdin.write(
-      `{ ${command}; } < ${quote(`${call}.in`)} > ${quote(`${call}.out`)} 2> ${quote(`${call}.err`)}; echo $? > ${quote(`${call}.tmp`)}; mv ${quote(`${call}.tmp`)} ${quote(`${call}.done`)}\n`,
+    const [input, out, err, tmp, done] = ["in", "out", "err", "tmp", "done"].map((part) =>
+      quote(`${call}.${part}`),
     );
+    const ran = `{ ${command}; } < ${input} > ${out} 2> ${err}; echo $? > ${tmp}; mv ${tmp} ${done}`;
+    this.shell.stdin.write(alongside ? `{ ${ran}; } &\n` : `${ran}\n`);
     this.shell.stdin.flush();
     while (!existsSync(`${call}.done`)) await Bun.sleep(10);
     return {
@@ -80,7 +82,7 @@ export class OperatorSession {
       cwd: this.cwd,
     });
     for (const command of hookCommands(userHooks(this.env.HOME as string), event)) {
-      await this.sh(`sh -c ${quote(command)}`, payload);
+      await this.sh(`sh -c ${quote(command)}`, payload, { alongside: false });
     }
   }
 
