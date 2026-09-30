@@ -1,6 +1,6 @@
 # src/
 
-Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` belongs to `db`, `ingest-spool.ts` to `ingest`. A module that is one file carries its bare name (`doctor.ts`, `paths.ts`). Commands are the exception, named `<name>-command.ts` for the one `dim` command `<name>` each holds. A test sits beside its module as `<module>.test.ts`. The wall is the one directory, `wall/`, because it is a separate app that only reads the record; its files drop the prefix.
+Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` belongs to `db`, `ingest-spool.ts` to `ingest`. A module that is one file carries its bare name (`doctor.ts`, `paths.ts`). Commands are the exception, named `<name>-command.ts` for the one `dim` command `<name>` each holds. A command parses its arguments and calls its module's `<module>-ops.ts`, which holds the operations commands and other modules call; a command that only calls one function needs none. A test sits beside its module as `<module>.test.ts`. The wall is the one directory, `wall/`, because it is a separate app that only reads the record; its files drop the prefix.
 
 ## Modules
 
