@@ -9,6 +9,8 @@ Two bounded contexts share one SQLite file and own disjoint tables.
 - **The session record** reads every harness session on the machine: ingestion, hooks, queries ([`design.md`](design.md)). The core reads it only through its published functions, such as the session that ran above a process.
 - **The factory** owns orders, workers, their sessions and runs. Everything below is the factory.
 
+The factory opens the file through `src/factory-db.ts`, which calls the record's `openDb` or `openReadOnly` and then runs each factory store's DDL. No record module names a factory table.
+
 Each factory module has a rules file of pure functions, a `-contract.ts` of types and schemas, a `-store.ts` holding its SQL, and `-effects.ts` where it touches git, processes or files. A command file parses arguments, calls the rules and effects, and prints the result.
 
 | Module | Holds |
@@ -46,7 +48,11 @@ Each order has one log: an append-only table of entries, each with a per-order `
 - **A decision** records its reason. An approval or return also records whether the owner decided it or handed it to the operator (`--decided owner|operator`). A stop records its cause as a code with its details.
 - The actions are the acceptance suite's vocabulary ([`acceptance/support/vocabulary.ts`](../acceptance/support/vocabulary.ts)). The operator's decision on an artifact is `artifact_approved` or `artifact_returned`; a worker handing the order back is `order_returned`.
 
-Order ids and worker names are made by the domain before they are written. A store never mints them.
+- `workspace_created` records the commit an order's branch starts from. The factory records it, caused by the order's first `order_run`, before it makes the workspace.
+
+Order ids and worker names are made by the domain before they are written. A store never mints them. An order id is eight characters of Crockford base32, such as `k7m2qx4d`: a legal branch component and path segment on a case-insensitive filesystem, with no `-`, so it never reads as a worker name.
+
+The factory's tables are `worker`, `worker_session`, `order_log` and `run`. Everything else, such as an order's title, plan, findings and dead sessions, is read from the log.
 
 ## Working out what comes next
 
@@ -120,7 +126,7 @@ The Claude Code adapter starts `claude -p --output-format stream-json --verbose`
 
 The builder commits with plain `git commit` in its workspace, then hands the commit in with `dim slice submit`. The factory never makes a builder's commit.
 
-**The record holds the branch's head, and the record wins.** Whenever the branch and the record disagree, the factory moves the branch back to the recorded head with `update-ref <branch> <recorded head> <tip>` and leaves the files alone. That one rule refuses a slice, repairs after a kill, and undoes a builder's `--amend`, `reset` or `rebase`. A git hook can't be the gate, because the builder can skip one with `--no-verify` or `-c core.hooksPath`.
+**The record holds the branch's head, and the record wins.** The recorded head starts at `workspace_created`'s commit and moves with each `slice_committed` and `branch_rebased`. Whenever the branch and the record disagree, the factory moves the branch back to the recorded head with `update-ref <branch> <recorded head> <tip>` and leaves the files alone. That one rule refuses a slice, repairs after a kill, and undoes a builder's `--amend`, `reset` or `rebase`. A git hook can't be the gate, because the builder can skip one with `--no-verify` or `-c core.hooksPath`.
 
 On `dim slice submit`, the station:
 
@@ -146,7 +152,7 @@ Approving the Review artifact ships the order in the same process. Ships of one 
    - **A conflict** at a commit keeps the commits before it as the new head, puts the merge of the rest into the workspace with its conflict markers, records `ship_stopped` with the paths, sends the order to build, and refuses with `ship_conflict`. The builder resolves it with an ordinary commit and `slice submit`, and nothing is replayed after it.
 4. Runs the check on the rebased workspace. A failing check sends the order to build with the output, and refuses with `ship_check_failed`.
 5. **Lands:** `git merge --ff-only` in the checkout if the default branch is checked out there, otherwise `update-ref` against its expected old value. Either one is the single moment the default branch moves, so it holds all of the order's commits or none.
-6. Records `ship_landed` with the rebase and the check as evidence. It then removes the workspace and branch and records `cleaned_up`. What it could not remove is named in `ship_landed`'s details.
+6. Removes the workspace and branch, then records `ship_landed` with the rebase and the check as evidence and what it could not remove in its details. When nothing was kept it records `cleaned_up`; otherwise `order clean` records it once the rest is removed.
 
 The check an order is judged by until it ships is the default branch's definition of the declared check, run on the order's code, together with the gates of the installed `dim`. A slice that changes that definition is refused. The code the check runs is the order's to change: tests are code.
 
@@ -160,15 +166,15 @@ A workspace is `workspaces/<owner>/<repo>/<order>/`: a git worktree of the proje
 
 ## The trace
 
-`trace.jsonl` in the state directory holds one line per factory step, keyed by order. `dim trace <order>` prints the order's lines and follows the file as it grows. `dim trace clear` empties it. No order state reads it.
+`trace.jsonl` in the state directory holds one line per factory step, keyed by order. `dim trace <order>` prints the order's lines and follows the file as it grows. `dim trace clear` empties it. No order state reads it. `dim trace <order>` first finds the order in the record, so it refuses a record of another version like every reader. The record's `trace_event` table goes with the move to this file.
 
 ## Record versions
 
-The record carries its schema version as `PRAGMA user_version`. Every writer and reader refuses another version, naming the repair. `dim doctor` reads any version so it can report the mismatch, and `dim rebuild`, the repair it names, is the one writer that opens an older version: it re-derives the session tables and carries the factory's tables across.
+The record carries one schema version for the whole file, the session record's tables and the factory's, as `PRAGMA user_version`; it replaces the `schema_version` table. A fresh file gets its tables and its version in one transaction. Every writer and reader refuses another version with `record_version`, naming the repair. `dim doctor` reads any version so it can report the mismatch, and `dim rebuild`, the repair it names, is the one writer that opens an older version: it drops and re-derives only the session tables it names, so the factory's tables carry across untouched. A change to a factory table's shape is a one-off carry in `rebuild-command.ts`, deleted once it has run; while orders are disposable, it resets the factory instead.
 
 ## Commands and output
 
-The command names are whole words with subcommands (`dim order approve`, `dim hooks install`, `dim query search`), hooks included, and that rename lands first. Bare `dim` lists the commands. The operator's: `order add|run|approve|return|update|cancel|show|clean`, `operator register`, `message send`, `session show`, `trace`. `order clean` succeeds on an order already cleaned up.
+The command names are whole words with subcommands (`dim order approve`, `dim hooks install`, `dim query search`), hooks included. Bare `dim` lists the commands. The operator's: `order add|run|approve|return|update|cancel|show|clean`, `operator register`, `message send`, `session show`, `trace`. `order clean` succeeds on an order already cleaned up.
 
 Each command prints one line of JSON. A refusal carries `code`, `message`, `meta` and `resolve`, the `dim` command that resolves it, looked up in a table keyed by every code, so a new code does not compile until it says how it is resolved.
 

@@ -200,6 +200,7 @@ describe("decisions", () => {
     const order = await showOrder(m.operator, id);
     expect(order.station).toBe("build");
     expect(actions(order)).not.toContain(ACTION.orderReturned);
+    expect(actions(order)).not.toContain(ACTION.artifactReturned);
   });
 
   test("each decision shows who decided it and why", async () => {

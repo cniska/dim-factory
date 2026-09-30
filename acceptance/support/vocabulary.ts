@@ -2,6 +2,7 @@ export const ACTION = {
   added: "order_added",
   updated: "order_updated",
   run: "order_run",
+  workspaceCreated: "workspace_created",
   cancelled: "order_cancelled",
   approved: "artifact_approved",
   artifactReturned: "artifact_returned",
