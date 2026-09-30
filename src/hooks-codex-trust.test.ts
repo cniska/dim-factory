@@ -22,7 +22,6 @@ function codexEnv(hooksJson: (env: Env) => string): Env {
   const env: Env = {
     DIM_HOME: join(root, "home"),
     DIM_CODEX_DIR: codexDir,
-    GROK_HOME: join(root, ".grok"),
     PATH: harnessesOnPath(root, ["codex"]),
   };
   mkdirSync(codexDir, { recursive: true });

@@ -302,39 +302,6 @@ describe("spool", () => {
       closeDb(db);
     }
   });
-
-  test("reads a session id and model named the way Grok names them", () => {
-    const root = newRoot();
-    const env = scratchEnv(root);
-    spool(env, "grok", "1789000000000000000", {
-      sessionId: SESSION,
-      hookEventName: "session_end",
-      reason: "shutdown",
-      modelId: "grok-4",
-      cwd: "/Users/x/code/demo",
-    });
-    writeFileSync(
-      join(toolSpoolDir("grok", env), "1789000000000000001-hBc.json"),
-      JSON.stringify({
-        sessionId: SESSION,
-        hookEventName: "post_tool_use",
-        cwd: "/Users/x/code/demo",
-      }),
-    );
-    const db = openDb(dbPath(env));
-    try {
-      expect(drainSpool(db, env)).toMatchObject({ applied: 2, unreadable: 0 });
-      expect(db.prepare("SELECT event, model FROM hook_event WHERE event = 'session_end'").get()).toEqual({
-        event: "session_end",
-        model: "grok-4",
-      });
-      expect(db.prepare("SELECT event FROM hook_event WHERE event = 'post_tool_use'").get()).toEqual({
-        event: "post_tool_use",
-      });
-    } finally {
-      closeDb(db);
-    }
-  });
 });
 
 describe("installHooks", () => {
@@ -347,12 +314,11 @@ describe("installHooks", () => {
   function root(env: Env): string {
     return (env.DIM_CLAUDE_PROJECTS as string).replace("/.claude/projects", "");
   }
-  function hookEnv(dir: string, onPath: readonly string[] = ["claude", "codex", "grok"]): Env {
+  function hookEnv(dir: string, onPath: readonly string[] = ["claude", "codex"]): Env {
     return {
       DIM_HOME: join(dir, "home"),
       DIM_CLAUDE_PROJECTS: join(dir, ".claude", "projects"),
       DIM_CODEX_DIR: join(dir, ".codex"),
-      GROK_HOME: join(dir, ".grok"),
       PATH: harnessesOnPath(dir, onPath),
     };
   }
@@ -365,7 +331,6 @@ describe("installHooks", () => {
 
     expect(existsSync(configs(env).claude)).toBe(true);
     expect(existsSync(configs(env).codex)).toBe(false);
-    expect(existsSync(join(dir, ".grok", "hooks", "dim.json"))).toBe(false);
     expect(new Set(planHooks(env).map((plan) => plan.tool))).toEqual(new Set(["claude"]));
   });
 
@@ -538,30 +503,12 @@ describe("installHooks", () => {
     expect(existsSync(paths.claude)).toBe(false);
   });
 
-  test("installs grok spool hooks and not the hooks that speak into the session", () => {
-    const dir = newRoot();
-    const env = hookEnv(dir);
-    installHooks(env);
-    const after = JSON.parse(readFileSync(join(dir, ".grok", "hooks", "dim.json"), "utf8")) as {
-      hooks: Record<string, { hooks: { command: string }[] }[]>;
-    };
-    expect(Object.keys(after.hooks).sort()).toEqual(["PostToolUse", "SessionEnd", "SessionStart"]);
-    expect(after.hooks.SessionStart).toHaveLength(1);
-    expect(after.hooks.SessionEnd).toHaveLength(1);
-    expect(after.hooks.PostToolUse).toHaveLength(1);
-    expect(after.hooks.SessionStart?.[0]?.hooks[0]?.command).toBe(hookCommand("grok", env, "SessionStart"));
-    expect(after.hooks.SessionEnd?.[0]?.hooks[0]?.command).toBe(hookCommand("grok", env));
-    expect(after.hooks.PostToolUse?.[0]?.hooks[0]?.command).toBe(hookCommand("grok", env));
-    expect(JSON.stringify(after)).not.toContain("wake");
-    expect(JSON.stringify(after)).not.toContain("format-edit");
-  });
-
   test("installing twice adds one hook", () => {
     const dir = newRoot();
     const env = hookEnv(dir);
     installHooks(env);
     const first = readFileSync(configs(env).claude, "utf8");
-    expect(installHooks(env)).toMatchObject({ written: [], alreadyPresent: 13 });
+    expect(installHooks(env)).toMatchObject({ written: [], alreadyPresent: 10 });
     expect(readFileSync(configs(env).claude, "utf8")).toBe(first);
     expect(planHooks(env).every((p) => p.state === "installed")).toBe(true);
   });
@@ -570,7 +517,7 @@ describe("installHooks", () => {
     const dir = newRoot();
     const env = hookEnv(dir);
     installHooks(env);
-    const installed = (["claude", "codex", "grok"] as const).flatMap((tool) => {
+    const installed = (["claude", "codex"] as const).flatMap((tool) => {
       const config = JSON.parse(readFileSync(hookConfigPath(tool, env), "utf8")) as {
         hooks: Record<string, { hooks: { command: string }[] }[]>;
       };
@@ -579,9 +526,7 @@ describe("installHooks", () => {
       );
     });
     expect(installed.map(({ command }) => command).sort()).toEqual(
-      (["claude", "codex", "grok"] as const)
-        .flatMap((tool) => wantedHooks(tool, env).map((h) => h.command))
-        .sort(),
+      (["claude", "codex"] as const).flatMap((tool) => wantedHooks(tool, env).map((h) => h.command)).sort(),
     );
 
     const bin = join(dir, "dim-bin");

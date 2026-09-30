@@ -15,7 +15,7 @@ From this repository's root:
 scripts/verify-dim.sh new
 ```
 
-It prints the run's directory; name it in every later call. [`scripts/verify-dim.sh`](../../../scripts/verify-dim.sh) points `DIM_HOME`, `DIM_CLAUDE_PROJECTS`, `DIM_CODEX_DIR` and `GROK_HOME` into that directory, so the run never reads or writes the machine's record or harness configs. It puts this checkout's `dim` first on `PATH`, installs the session hooks into the scratch configs, and creates a repository at `<run>/repo`.
+It prints the run's directory; name it in every later call. [`scripts/verify-dim.sh`](../../../scripts/verify-dim.sh) points `DIM_HOME`, `DIM_CLAUDE_PROJECTS` and `DIM_CODEX_DIR` into that directory, so the run never reads or writes the machine's record or harness configs. It puts this checkout's `dim` first on `PATH`, installs the session hooks into the scratch configs, and creates a repository at `<run>/repo`.
 
 Readiness: `scripts/verify-dim.sh <run> doctor` reports the schema and `hooks` installed. Its skill, commit gate and rules checks read the real home and do not bear on the run.
 

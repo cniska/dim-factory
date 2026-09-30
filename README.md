@@ -14,7 +14,6 @@ Sessions are read from:
 
 - Claude Code
 - Codex
-- Grok Build
 
 Where those files live, and what adding another source takes, is in [the session database](docs/design.md#sources).
 

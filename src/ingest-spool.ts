@@ -35,14 +35,11 @@ export function ensureSpoolDirs(env: Env = process.env): void {
 
 type HookPayload = {
   session_id?: string;
-  sessionId?: string;
   hook_event_name?: string;
-  hookEventName?: string;
   cwd?: string;
   source?: string;
   reason?: string;
   model?: string;
-  modelId?: string;
 };
 
 function text(value: string | undefined): string | undefined {
@@ -52,10 +49,10 @@ function text(value: string | undefined): string | undefined {
 function eventOf(
   payload: HookPayload | undefined,
 ): "session_start" | "session_end" | "post_tool_use" | undefined {
-  const name = payload?.hook_event_name ?? payload?.hookEventName;
-  if (name === "SessionStart" || name === "session_start") return "session_start";
-  if (name === "SessionEnd" || name === "session_end") return "session_end";
-  if (name === "PostToolUse" || name === "post_tool_use") return "post_tool_use";
+  const name = payload?.hook_event_name;
+  if (name === "SessionStart") return "session_start";
+  if (name === "SessionEnd") return "session_end";
+  if (name === "PostToolUse") return "post_tool_use";
   return undefined;
 }
 
@@ -86,7 +83,7 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
           }
         }
         const event = eventOf(payload);
-        const sessionId = text(payload?.session_id) ?? text(payload?.sessionId);
+        const sessionId = text(payload?.session_id);
         if (!match || !sessionId || !event) {
           setAsideUnreadable(path, env);
           report.unreadable += 1;
@@ -101,7 +98,7 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
           $harnessPid: event === "session_start" && match[3] ? Number(match[3]) : null,
           $source: payload?.source ?? null,
           $reason: payload?.reason ?? null,
-          $model: text(payload?.model) ?? text(payload?.modelId) ?? null,
+          $model: text(payload?.model) ?? null,
           $cwd: payload?.cwd ?? null,
           $payload: raw,
         });

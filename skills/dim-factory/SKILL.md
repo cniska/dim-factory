@@ -27,7 +27,7 @@ Run the order named by the caller. The operator owns the request and the route; 
 
 For an order without an approved current plan:
 
-1. Run `dim order plan <order-id>`. A station command runs its worker under the harness of the station's bound worker, or else your own; add `--harness <codex|claude|grok>` to run it under another, and a station worker stays on the harness it started under. The command assigns one planner under the operator, and the planner bootstraps that assignment under its own harness session before its plan is recorded under the planner identity. Later planning turns reuse that same planner identity.
+1. Run `dim order plan <order-id>`. A station command runs its worker under the harness of the station's bound worker, or else your own; add `--harness <codex|claude>` to run it under another, and a station worker stays on the harness it started under. The command assigns one planner under the operator, and the planner bootstraps that assignment under its own harness session before its plan is recorded under the planner identity. Later planning turns reuse that same planner identity.
 2. Read the returned Plan artifact and `dim q order <order-id>`.
 3. Check that it answers the order, names independently verifiable slices, uses the repository's own check, and states risks, owner decisions, and non-goals.
 4. Approve the exact current Plan artifact with `dim order approve <order-id>`, or return it to the same planner with `dim order return <order-id> --reason "..."`.

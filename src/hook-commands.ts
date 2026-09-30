@@ -52,7 +52,6 @@ export function wantedHooks(tool: Tool, env: Env = process.env): WantedHook[] {
     kind: "spool",
     command: hookCommand(tool, env, event),
   });
-  if (tool === "grok") return [spool("SessionStart"), spool("SessionEnd"), spool("PostToolUse")];
   return [
     spool("SessionStart"),
     { event: "SessionStart", kind: "wake", command: wakeCommand(tool) },

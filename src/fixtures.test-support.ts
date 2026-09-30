@@ -113,8 +113,7 @@ export function scratchEnv(root: string): Env {
     DIM_HOME: join(root, "home"),
     DIM_CLAUDE_PROJECTS: join(root, "claude-projects"),
     DIM_CODEX_DIR: join(root, "codex"),
-    GROK_HOME: join(root, "grok"),
-    PATH: `${harnessesOnPath(root, ["claude", "codex", "grok"])}:${process.env.PATH}`,
+    PATH: `${harnessesOnPath(root, ["claude", "codex"])}:${process.env.PATH}`,
   };
 }
 

@@ -63,7 +63,7 @@ function sessionHooks(hooks: HookRead): Health {
       name: "hooks",
       state: "warn",
       detail: "no harness is installed, so no session hook is written and nothing is recorded",
-      fix: "install codex, claude, or grok, then dim install-hooks --write",
+      fix: "install codex or claude, then dim install-hooks --write",
     };
   }
   if (hooks.missing.length === 0 && hooks.stale.length === 0) {

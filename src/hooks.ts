@@ -17,7 +17,7 @@ import {
 } from "./hook-commands";
 import { toolSpoolDir } from "./ingest-spool";
 import type { Tool } from "./ingest-tools";
-import { claudeProjectsDir, codexDir, type Env, grokDir } from "./paths";
+import { claudeProjectsDir, codexDir, type Env } from "./paths";
 
 function hookKind(command: string, tool: Tool, env: Env): HookKind | null {
   const bare = unmarked(command);
@@ -55,7 +55,6 @@ export type HookPlan = {
 
 export function hookConfigPath(tool: Tool, env: Env = process.env): string {
   if (tool === "claude") return join(dirname(claudeProjectsDir(env)), "settings.json");
-  if (tool === "grok") return join(grokDir(env), "hooks", "dim.json");
   return join(codexDir(env), "hooks.json");
 }
 

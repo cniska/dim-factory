@@ -8,15 +8,14 @@ Sessions are read from these files. Each one lands in the same tables.
 
 - **Claude Code.** `~/.claude/projects/<slug>/<session-id>.jsonl`, one JSON object per line. Subagents are under `<session-id>/subagents/`. A subagent's session is `<agent id>@<parent session id>`, because an agent id repeats across parents.
 - **Codex.** `~/.codex/sessions/**/rollout-*.jsonl` and `~/.codex/archived_sessions/`. The rollout is the source of record. Codex's own SQLite files are a projection of it, and only the rollout holds token usage.
-- **Grok Build.** `~/.grok/sessions/<encoded-cwd>/<session-id>/updates.jsonl`. `summary.json` in that directory holds the title, working directory, branch, model, and parent. `GROK_HOME` overrides `~/.grok`. A child session is an ordinary session whose summary names its parent.
 
 These are read too.
 
-- **Prompt history.** `~/.claude/history.jsonl`, `~/.codex/history.jsonl`, and each Grok directory's `prompt_history.jsonl`. This is what remains when the transcript was deleted.
+- **Prompt history.** `~/.claude/history.jsonl` and `~/.codex/history.jsonl`. This is what remains when the transcript was deleted.
 - **Hooks.** Events spooled by the hooks `dim` installs (see [Hooks](#hooks)).
 - **Git.** `git log` of the repos the session rows name, into `repo_commit` and `commit_file`, and `git ls-files` into `repo_file`.
 
-Claude Code deletes transcripts after 30 days unless `cleanupPeriodDays` is raised. This machine sets it to 3650. Codex does not prune. Grok removes a session when it is deleted. The database stores pointers into these files rather than archiving them, so a deleted source file loses whatever the database did not extract.
+Claude Code deletes transcripts after 30 days unless `cleanupPeriodDays` is raised. This machine sets it to 3650. Codex does not prune. The database stores pointers into these files rather than archiving them, so a deleted source file loses whatever the database did not extract.
 
 ## What is stored
 
@@ -42,27 +41,24 @@ dim sync: drain the spool → read changed files → derive session ends
 ```
 
 - **No network, credential or per-token cost, and no model reads a transcript.** Nothing is filtered or scored at ingest; deciding at read time is the only policy that is reversible.
-- **Per-tool parsers** ([`src/ingest-parse-claude.ts`](../src/ingest-parse-claude.ts), [`src/ingest-parse-codex.ts`](../src/ingest-parse-codex.ts), [`src/ingest-parse-grok.ts`](../src/ingest-parse-grok.ts)) turn lines into rows and know nothing of the database; [`src/ingest.ts`](../src/ingest.ts) writes their rows and knows nothing of any format.
-- **Another session source is one entry in [`src/ingest-sources.ts`](../src/ingest-sources.ts).** It lists session files and parses each into the same rows. Listing names the session and where it lives. Claude Code, Codex, and Grok Build are files, so each one is a [`FileSpec`](../src/ingest.ts) and a byte cursor. A source whose sessions are not files implements the same two steps without a path. The name is added to the vocabulary in [`src/ingest-tools.ts`](../src/ingest-tools.ts), which is what the schema checks. Prompt history, when the tool keeps one, is a path and a function that picks the session id, the time, and the text. A source does not require hooks or a harness.
+- **Per-tool parsers** ([`src/ingest-parse-claude.ts`](../src/ingest-parse-claude.ts), [`src/ingest-parse-codex.ts`](../src/ingest-parse-codex.ts)) turn lines into rows and know nothing of the database; [`src/ingest.ts`](../src/ingest.ts) writes their rows and knows nothing of any format.
+- **Another session source is one entry in [`src/ingest-sources.ts`](../src/ingest-sources.ts).** It lists session files and parses each into the same rows. Listing names the session and where it lives. Claude Code and Codex are files, so each one is a [`FileSpec`](../src/ingest.ts) and a byte cursor. A source whose sessions are not files implements the same two steps without a path. The name is added to the vocabulary in [`src/ingest-tools.ts`](../src/ingest-tools.ts), which is what the schema checks. Prompt history, when the tool keeps one, is a path and a function that picks the session id, the time, and the text. A source does not require hooks or a harness.
 - **Incremental.** `source_file.bytes_ingested` is each file's cursor, and a changed file is read from it. A file shorter than its cursor is re-ingested from zero in one transaction with the removal of what it wrote: its session row stays, so a subagent's link to it holds, and only the fields the transcript supplies are cleared and read again.
 - **The cursor follows the session, not the path.** Codex archives a rollout by moving it, so the cursor is keyed by `(session_id, kind)` and `message.src_file` follows the new path through `ON UPDATE CASCADE`.
-- **Idempotent.** Natural keys make a re-run a no-op: Claude `message.id` and `uuid`, tool-use ids, `response_id`, Codex item ids and `(thread_id, turn_id)`, Grok event ids and tool-call ids.
+- **Idempotent.** Natural keys make a re-run a no-op: Claude `message.id` and `uuid`, tool-use ids, `response_id`, Codex item ids and `(thread_id, turn_id)`.
 - **Claude usage is deduplicated and the largest kept.** One API response is written as one line per content block, each repeating `message.id` and a `usage` that accumulates as the response streams, so the line with the most output tokens holds the total.
 - **Schedule.** `dim install-agent` writes a `launchd` agent that runs `dim sync` every 15 minutes, naming `bun` by absolute path because launchd starts with almost no environment. `dim rebuild` is `sync` with every cursor reset.
 - **The lock** is a directory under the data directory that records its holder's pid, since macOS has no `flock` and a killed run would otherwise leave it held forever.
 
 ## Hooks
 
-`dim install-hooks` installs a spool hook for each of Claude Code, Codex, and Grok Build whose executable is on `PATH` ([`src/hook-commands.ts`](../src/hook-commands.ts), [`src/hooks.ts`](../src/hooks.ts), [`src/harness-installed.ts`](../src/harness-installed.ts)). Claude Code and Codex also get `dim wake` on `SessionStart` and `dim format-edit` on `PostToolUse`, matched to their edit tools ([`src/format-edit.ts`](../src/format-edit.ts) `EDIT_TOOLS`) so no other tool call starts it. An installed hook whose command or matcher differs from the wanted one is stale and is rewritten in place.
+`dim install-hooks` installs its hooks for each of Claude Code and Codex whose executable is on `PATH` ([`src/hook-commands.ts`](../src/hook-commands.ts), [`src/hooks.ts`](../src/hooks.ts), [`src/harness-installed.ts`](../src/harness-installed.ts)): a spool hook on each event below, `dim wake` on `SessionStart` and `dim format-edit` on `PostToolUse`, matched to their edit tools ([`src/format-edit.ts`](../src/format-edit.ts) `EDIT_TOOLS`) so no other tool call starts it. An installed hook whose command or matcher differs from the wanted one is stale and is rewritten in place.
 
 | Event | What it does |
 |---|---|
-| `SessionStart` | spools the start source, model and harness pid from the hook's parent process. On Claude Code and Codex, `dim wake` prints declared repo commands and records the guidance in force |
+| `SessionStart` | spools the start source, model and harness pid from the hook's parent process. `dim wake` prints declared repo commands and records the guidance in force |
 | `SessionEnd` | spools the end time and reason, which a transcript lacks |
-| `PostToolUse` | spools the tool call with its payload. On Claude Code and Codex, `dim format-edit` runs the repo's declared format task in the checkout an edit touched ([`src/format-edit.ts`](../src/format-edit.ts)), bounded and failing open. In a factory worker's session it runs nothing, since the worker wrote that manifest and the hook runs outside its sandbox; a builder formats inside its sandbox, and the runner's check holds the result |
-
-Grok's file is `~/.grok/hooks/dim.json`. `GROK_HOME` overrides `~/.grok`. A Grok event names the session as `sessionId` and the event as `hookEventName` (`session_start`, `session_end`, `post_tool_use`). The model, when the event carries one, is `modelId`. The reader uses those when the Claude field names are absent.
-
+| `PostToolUse` | spools the tool call with its payload. `dim format-edit` runs the repo's declared format task in the checkout an edit touched ([`src/format-edit.ts`](../src/format-edit.ts)), bounded and failing open. In a factory worker's session it runs nothing, since the worker wrote that manifest and the hook runs outside its sandbox; a builder formats inside its sandbox, and the runner's check holds the result |
 - **The spool hook never opens the database.** It writes one file per event, so a session never waits on `sessions.db`; `sync` drains the spool into `hook_event`.
 - **`hook_event` is never re-derived**, because a hook fires once. It has no foreign key to `session`, so an event that arrives before its transcript waits for it. A spool file that cannot be placed moves to `spool/unreadable/`, since it is the only copy. A drain is one transaction, and a file is deleted only once it has committed.
 - **One source per column.** `session.ended_at` and `end_reason` come from `hook_event` alone, never from a transcript.
@@ -101,6 +97,6 @@ Grok's file is `~/.grok/hooks/dim.json`. `GROK_HOME` overrides `~/.grok`. A Grok
 - `src/db-schema.ts` — tables, and the reason for each shape
 - `src/ingest-sync.ts` — sync, rebuild and the tables carried through it
 - `src/db.ts`, `src/db-read.ts`, `src/db-lock.ts` — opening the database, and the lock
-- `src/ingest.ts`, `src/ingest-parse-claude.ts`, `src/ingest-parse-codex.ts`, `src/ingest-parse-grok.ts` — ingestion
+- `src/ingest.ts`, `src/ingest-parse-claude.ts`, `src/ingest-parse-codex.ts` — ingestion
 - `src/ingest-spool.ts`, `src/hooks.ts` — hook spool and install
 - `src/query-registry.ts`, `src/query-*.ts` — named queries

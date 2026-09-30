@@ -54,7 +54,7 @@ test("install-hooks preview leaves the data directory untouched", () => {
         ...process.env,
         HOME: root,
         DIM_HOME: data,
-        PATH: `${harnessesOnPath(root, ["claude", "codex", "grok"])}:${process.env.PATH}`,
+        PATH: `${harnessesOnPath(root, ["claude", "codex"])}:${process.env.PATH}`,
       },
     });
     expect(run.exitCode).toBe(0);

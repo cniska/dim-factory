@@ -1,6 +1,6 @@
 import { TOOLS_SQL } from "./ingest-tools";
 
-export const SCHEMA_VERSION = 87;
+export const SCHEMA_VERSION = 88;
 
 export const SCHEMA_SQL = `
 -- Not dropped by \`rebuild\`, which writes this row itself once the re-read has

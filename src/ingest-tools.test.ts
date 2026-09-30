@@ -5,12 +5,12 @@ import { TOOLS, TOOLS_SQL } from "./ingest-tools";
 
 describe("the tool vocabulary", () => {
   test("is the tools, spelled as the database spells them", () => {
-    expect([...TOOLS]).toEqual(["claude", "codex", "grok"]);
-    expect(TOOLS_SQL).toBe("'claude','codex','grok'");
+    expect([...TOOLS]).toEqual(["claude", "codex"]);
+    expect(TOOLS_SQL).toBe("'claude','codex'");
   });
 
   test("reaches every tool column, so the code and the constraint cannot disagree", () => {
-    const constrained = SCHEMA_SQL.match(/CHECK \(tool IN \('claude','codex','grok'\)\)/g) ?? [];
+    const constrained = SCHEMA_SQL.match(/CHECK \(tool IN \('claude','codex'\)\)/g) ?? [];
     expect(constrained.length).toBe(4);
   });
 

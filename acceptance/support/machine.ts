@@ -111,7 +111,6 @@ async function createMachine(options: MachineOptions): Promise<Machine> {
     DIM_HOME: dimHome,
     DIM_CLAUDE_PROJECTS: join(home, ".claude", "projects"),
     DIM_CODEX_DIR: join(home, ".codex"),
-    GROK_HOME: join(home, ".grok"),
   };
   const routing = (harnesses: Readonly<Record<string, typeof MODELS>>) =>
     writeFileSync(join(dimHome, "routing.json"), JSON.stringify(harnesses));

@@ -11,7 +11,6 @@ enter() {
   export DIM_HOME="$scratch/dim"
   export DIM_CLAUDE_PROJECTS="$scratch/claude/projects"
   export DIM_CODEX_DIR="$scratch/codex"
-  export GROK_HOME="$scratch/grok"
   export PATH="$scratch/bin:$PATH"
 }
 
