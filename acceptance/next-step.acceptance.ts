@@ -40,7 +40,6 @@ const ALLOWED_BY_NEXT: Readonly<Record<Next, readonly OperatorAction[]>> = {
   run: ["run"],
   approve: ["approve", "return"],
   revise: ["revise"],
-  decide: [],
 };
 
 async function expectOnlyNextAllowed(m: Machine, id: string): Promise<void> {

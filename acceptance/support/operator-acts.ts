@@ -69,7 +69,6 @@ export const STEP_ARGS_BY_NEXT: Readonly<Record<Next, ((id: string) => readonly 
   run: runArgs,
   approve: (id) => approveArgs(id),
   revise: null,
-  decide: null,
 };
 
 export async function planned(operator: OperatorSession, fields: OrderFields = {}): Promise<string> {

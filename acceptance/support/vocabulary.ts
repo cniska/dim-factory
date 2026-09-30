@@ -28,7 +28,6 @@ export const NEXT = {
   run: "run",
   approve: "approve",
   revise: "revise",
-  decide: "decide",
 } as const;
 
 export type Next = (typeof NEXT)[keyof typeof NEXT];

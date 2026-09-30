@@ -17,7 +17,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Order | One piece of work: a title, the owner's request and a project. It waits until the operator runs it, and is built in its own workspace and branch |
 | Workspace | The isolated checkout an order is built in, with its own branch, apart from the project's checkout and every other order's. A git worktree is how one is made |
 | Status | The state an order is in, read from its log: `queued`, `running`, `shipped` or `cancelled`. The wall's columns are these words, and a cancelled order leaves the board |
-| Next step | What an order waits on, worked out from its log alone: `run`, `approve`, `revise` or `decide`. An action that is not the next step is refused |
+| Next step | What an order waits on, worked out from its log alone: `run`, `approve` or `revise`. An action that is not the next step is refused |
 | Slice | One increment of a plan, with a title and its outcome, that the builder commits on its own |
 | Ship | Landing an order's commits on the project's default branch, which ends the order |
 | Command | One `dim` subcommand, in the `src/<name>-command.ts` named for it ([`src/cli-contract.ts`](../src/cli-contract.ts)) |

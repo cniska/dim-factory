@@ -459,32 +459,6 @@ describe("review findings", () => {
     expect(order.findings[0]?.answer).toBe("refused");
     expect(actions(order).filter((action) => action === ACTION.findingAnswered)).toHaveLength(1);
   });
-
-  test("a finding the builder refused and the next review raised again stops the order for the operator", async () => {
-    const m = await start({
-      script: reviewedWithFinding(
-        [
-          {
-            act: "answer",
-            file: "slice-1.txt",
-            line: 1,
-            answer: "refused",
-            reason: "the file name is the point",
-          },
-          { act: "build-return", artifact: BUILD_ARTIFACT },
-        ],
-        findingsTurn([finding()]),
-      ),
-    });
-    const id = await atFindings(m);
-    await runOrder(m.operator, id);
-    await approve(m.operator, id);
-    await approve(m.operator, id);
-
-    const order = await showOrder(m.operator, id);
-    expect(order.next).toBe(NEXT.decide);
-    expect(refusal(await runOrder(m.operator, id)).code).toBeString();
-  });
 });
 
 describe("going back to plan", () => {
