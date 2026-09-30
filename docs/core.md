@@ -94,14 +94,14 @@ The order is the aggregate root. Its events, artifacts, slices, attempts, findin
 
 ## Commits
 
-The runner is the only committer, because NF-6 keeps every worker out of the git directory, and the commit's hooks and identity are the runner's to control. It commits first and judges the commit, rather than judging an uncommitted tree:
+The runner is the only committer, because no worker may write the git directory, and the commit's hooks and identity are the runner's to control. It commits first and judges the commit, rather than judging an uncommitted tree:
 
 1. stage the slice; refuse a `.gitattributes` change, an added comment, and a missing or untouched named test;
 2. commit it on the order's branch, with hooks outside the tree, so the subject gate runs before anything expensive;
 3. run the proof against that commit's parent, then the declared check in the sandbox;
 4. on any refusal, reset the order's branch to where it was and leave the slice uncommitted in the worktree. Nothing is recorded until every gate passes.
 
-A build that finds the order's branch one commit past its recorded head, with that commit's parent recorded, resets it the same way before the builder starts: a judgement was interrupted. The proof pin, `settlePinnedSlice`, its trace events and its cleanup in `wt` and ship go. FR-12 and AC-18 say "kept on the order's branch" where they say "committed".
+A build that finds the order's branch one commit past its recorded head, with that commit's parent recorded, resets it the same way before the builder starts: a judgement was interrupted. The proof pin, `settlePinnedSlice`, its trace events and its cleanup in `wt` and ship go.
 
 A fix order's failing test lands in the same slice as its fix, so its proof is taken at that slice's base. A later turn that adds only a test for an earlier fix is refused like any fix slice whose tests pass at its base.
 
@@ -120,8 +120,8 @@ These modules keep what they do, and take the layout above only where they hold 
 
 Each cut lands with the SPEC, doc, glossary, query and skill edits it carries.
 
-- **`amend`,** which writes no event. This edits FR-11, AC-14 and the `factory.md` command list.
-- **`ready` with `--limit`, `priority`, and the `priority` column.** This edits FR-11, AC-14, `factory.md`'s commands, the glossary, `q order`'s evidence column and `q factory`'s `priority` column, and removes `order-ready.ts`.
+- **`amend`,** which writes no event. This edits the `factory.md` command list.
+- **`ready` with `--limit`, `priority`, and the `priority` column.** This edits `factory.md`'s commands, the glossary, `q order`'s evidence column and `q factory`'s `priority` column, and removes `order-ready.ts`.
 - **`provenance`:** `queueOrder` writes it into the queued event, but no caller supplies one. Its field, its write and its test go.
 - **Fields nothing writes:** the dead event columns, and the attempt outcomes `timed_out`, `stalled` and `cancelled`.
 - **The `feat` default for `line`,** which makes `--line` required. This edits `factory.md`'s `add` line.
