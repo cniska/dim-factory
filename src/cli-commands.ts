@@ -19,6 +19,7 @@ const LOADERS: Record<string, () => Promise<Command>> = {
   slice: () => import("./slice-command").then((m) => m.sliceCommand),
   finding: () => import("./finding-command").then((m) => m.findingCommand),
   build: () => import("./build-command").then((m) => m.buildCommand),
+  review: () => import("./review-command").then((m) => m.reviewCommand),
   session: () => import("./session-command").then((m) => m.sessionCommand),
 };
 

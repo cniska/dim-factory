@@ -31,7 +31,7 @@ const moduleFiles = () =>
   FACTORY_MODULES.flatMap((name) => [...sources(`${name}.ts`), ...sources(`${name}-*.ts`)]);
 
 const factoryCommands = () =>
-  [...FACTORY_MODULES, "plan", "session", "finding", "build"].flatMap((name) =>
+  [...FACTORY_MODULES, "plan", "session", "finding", "build", "review"].flatMap((name) =>
     sources(`${name}-command.ts`),
   );
 
@@ -97,6 +97,7 @@ describe("the module checks", () => {
       "finding-command.ts",
       "order-command.ts",
       "plan-command.ts",
+      "review-command.ts",
       "session-command.ts",
       "slice-command.ts",
     ]);

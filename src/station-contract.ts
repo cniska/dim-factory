@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { RefusalRecord, refuser } from "./coded-error";
-import { Answer } from "./order-contract";
+import { Answer, Finding } from "./order-contract";
 
 export const PlanReturn = z.object({ act: z.literal("plan_return"), plan: z.string() });
 export type PlanReturn = z.infer<typeof PlanReturn>;
@@ -19,6 +19,17 @@ export type FindingAnswer = z.infer<typeof FindingAnswer>;
 export const BuildReturn = z.object({ act: z.literal("build_return"), artifact: z.string() });
 export type BuildReturn = z.infer<typeof BuildReturn>;
 
+export const ReviewFindings = z.array(Finding).min(1);
+
+export const ReviewReturn = z.object({
+  act: z.literal("review_return"),
+  returned: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("findings"), text: z.string() }),
+    z.object({ kind: z.literal("artifact"), text: z.string() }),
+  ]),
+});
+export type ReviewReturn = z.infer<typeof ReviewReturn>;
+
 export const SliceSubmit = z.object({ act: z.literal("slice_submit") });
 
 export const OrderShow = z.object({ act: z.literal("order_show") });
@@ -28,6 +39,7 @@ export const TurnRequest = z.discriminatedUnion("act", [
   OrderReturn,
   FindingAnswer,
   BuildReturn,
+  ReviewReturn,
   SliceSubmit,
   OrderShow,
 ]);

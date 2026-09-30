@@ -30,6 +30,12 @@ export function cloneWorkspace(root: string, dir: string, branch: string, base: 
   }
 }
 
+export function diffSince(root: string, defaultBranch: string, head: string): string {
+  const diff = git(root, ["diff", "--no-ext-diff", "--no-color", `refs/heads/${defaultBranch}...${head}`]);
+  invariant(diff.ok, `git diff of ${head} against ${defaultBranch} in ${root}: ${diff.err}`);
+  return diff.out;
+}
+
 export function publishHead(root: string, dir: string, branch: string, head: string): void {
   for (const args of [
     ["fetch", "-q", "--no-tags", dir, head],

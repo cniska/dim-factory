@@ -33,7 +33,7 @@ export type Phase =
 
 export type Plan = { readonly body: string; readonly slices: readonly Slice[]; readonly base: number };
 
-type FindingState = RecordedFinding & { readonly answer: Answer | null };
+type FindingState = RecordedFinding & { readonly answer: Answer | null; readonly reason: string | null };
 
 type Returned =
   | { readonly kind: "decision"; readonly decidedBy: Decider; readonly reason: string }
@@ -54,6 +54,7 @@ export type OrderState = {
   readonly head: string | null;
   readonly findings: readonly FindingState[];
   readonly returned: Returned | null;
+  readonly buildArtifact: string | null;
   readonly lastSeq: number;
 };
 
@@ -127,8 +128,13 @@ function returnedByWorker(state: OrderState, station: Station): OrderState {
   return { ...state, phase: before === null ? { kind: "update" } : run(before) };
 }
 
-function answered(findings: readonly FindingState[], id: string, answer: Answer): readonly FindingState[] {
-  return findings.map((finding) => (finding.id === id ? { ...finding, answer } : finding));
+function answered(
+  findings: readonly FindingState[],
+  id: string,
+  answer: Answer,
+  reason: string,
+): readonly FindingState[] {
+  return findings.map((finding) => (finding.id === id ? { ...finding, answer, reason } : finding));
 }
 
 function apply(state: OrderState, entry: Later): OrderState {
@@ -176,10 +182,15 @@ function apply(state: OrderState, entry: Later): OrderState {
     case "finding_answered":
       return {
         ...state,
-        findings: answered(state.findings, entry.details.finding, entry.details.answer),
+        findings: answered(state.findings, entry.details.finding, entry.details.answer, entry.details.reason),
       };
     case "build_returned":
-      return { ...state, returned: null, phase: { kind: "approve", station: "build" } };
+      return {
+        ...state,
+        returned: null,
+        buildArtifact: entry.details.artifact,
+        phase: { kind: "approve", station: "build" },
+      };
     case "review_returned": {
       const { returned } = entry.details;
       if (returned.kind === "artifact") {
@@ -189,7 +200,7 @@ function apply(state: OrderState, entry: Later): OrderState {
         ...state,
         returned: null,
         phase: run("build"),
-        findings: returned.findings.map((finding) => ({ ...finding, answer: null })),
+        findings: returned.findings.map((finding) => ({ ...finding, answer: null, reason: null })),
       };
     }
     case "branch_rebased":
@@ -285,6 +296,7 @@ export function fold(id: string, added: AddedEntry, later: readonly LaterEntry[]
     head: null,
     findings: [],
     returned: null,
+    buildArtifact: null,
     lastSeq: added.seq,
   };
   return later.reduce((state, entry) => ({ ...apply(state, entry), lastSeq: entry.seq }), start);

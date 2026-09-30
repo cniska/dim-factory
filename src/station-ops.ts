@@ -23,7 +23,6 @@ import { type Env, workerHomeDir, workerSessionsDir } from "./paths";
 import { alignBranch, branchFacts, submitSlice } from "./slice-ops";
 import {
   actAllowed,
-  type BriefedStation,
   briefAt,
   modelOf,
   policyAt,
@@ -40,7 +39,7 @@ import { refuseStation, TurnReply, type TurnRequest } from "./station-contract";
 import { closeTurn, copySession, listen, openTurn, send } from "./station-effects";
 import type { Acting, Caller, Worker, WorkerSession } from "./worker-contract";
 import { processOf, registerSession, stationWorker } from "./worker-ops";
-import { baseOf, createWorkspace, workspaceOf } from "./workspace-ops";
+import { baseOf, createWorkspace, orderDiff, workspaceOf } from "./workspace-ops";
 
 type TurnOf = {
   readonly order: string;
@@ -50,6 +49,7 @@ type TurnOf = {
   readonly model: string;
   readonly newSessionHarness: HarnessName;
   readonly checkout: string;
+  readonly defaultBranch: string;
   readonly env: Env;
 };
 
@@ -169,8 +169,7 @@ async function serveTurn(
 
 async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
   const state = orderState(db, turn.order);
-  const station: BriefedStation | "review" = turn.station;
-  invariant(station !== "review", "the review station's brief is not built");
+  const { station } = turn;
   invariant(state.head !== null, `order ${turn.order} has a recorded head once its workspace is made`);
   const { worker, sessions } = stationWorker(db, {
     role: ROLE_AT[station],
@@ -190,7 +189,7 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
       { db, turn, workspace, acting },
       spawned,
       opened.socket,
-      briefAt(station, state, workspace),
+      briefAt(station, { state, workspace, diff: orderDiff(turn.checkout, turn.defaultBranch, state.head) }),
     );
     if (served.fault !== null) throw served.fault;
     const id = idOf(session);
@@ -278,7 +277,16 @@ export async function advanceOrder(
     const { phase } = state;
     invariant(phase.kind === "run", `order ${order} runs a station after ${act.kind}; shipping is not built`);
     invariant(prepared !== null, `order ${order} was prepared for the ${phase.station} station`);
-    await turnAt(db, { order, station: phase.station, by, cause, checkout: setup.root, env, ...prepared });
+    await turnAt(db, {
+      order,
+      station: phase.station,
+      by,
+      cause,
+      checkout: setup.root,
+      defaultBranch: setup.branch,
+      env,
+      ...prepared,
+    });
   } finally {
     endRun(db, order);
   }

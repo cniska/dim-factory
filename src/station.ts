@@ -1,17 +1,20 @@
 import { join } from "node:path";
+import type { z } from "zod";
 import { unreachable } from "./assert";
 import { listedEnv, PASSED_THROUGH } from "./check";
 import { type CodedError, recordOf } from "./coded-error";
 import type { Models } from "./config";
 import type { Policy } from "./harness-contract";
 import { atStation, type OrderState, openFindings, slicesOf } from "./order";
-import { type Later, Plan, STATIONS, type Station } from "./order-contract";
+import { type Later, Plan, ReviewArtifact, STATIONS, type Station } from "./order-contract";
 import type { Env } from "./paths";
 import {
   type BuildReturn,
   type FindingAnswer,
   type OrderReturn,
   type PlanReturn,
+  ReviewFindings,
+  type ReviewReturn,
   refuseStation,
   type TurnReply,
   TurnRequest,
@@ -73,9 +76,9 @@ const orderFacts = (state: OrderState) => ({
   description: state.description,
 });
 
-export type BriefedStation = Exclude<Station, "review">;
+export type BriefFacts = { readonly state: OrderState; readonly workspace: string; readonly diff: string };
 
-export function briefAt(station: BriefedStation, state: OrderState, workspace: string): string {
+export function briefAt(station: Station, { state, workspace, diff }: BriefFacts): string {
   switch (station) {
     case "plan":
       return JSON.stringify({
@@ -103,6 +106,18 @@ export function briefAt(station: BriefedStation, state: OrderState, workspace: s
         })),
         conflict: null,
       });
+    case "review":
+      return JSON.stringify({
+        skill: SKILLS.review,
+        order: orderFacts(state),
+        workspace,
+        build: state.buildArtifact,
+        diff,
+        answers: state.findings.flatMap(({ id, file, line, answer, reason }) =>
+          answer === null ? [] : [{ finding: id, file, line, answer, reason }],
+        ),
+        returned: state.returned,
+      });
     default:
       return unreachable(station);
   }
@@ -115,6 +130,7 @@ const STATIONS_OF: Readonly<Record<TurnRequest["act"], readonly Station[]>> = {
   slice_submit: ["build"],
   finding_answer: ["build"],
   build_return: ["build"],
+  review_return: ["review"],
 };
 
 export function actAllowed(request: TurnRequest, station: Station): void {
@@ -191,6 +207,39 @@ function buildReturned(request: BuildReturn, { state, branch }: WorkContext): La
   return { action: "build_returned", details: { artifact: request.artifact } };
 }
 
+const REVIEW_RETURN = "dim review return --findings <file> | --artifact <file>";
+
+function parsedAs<T>(text: string, schema: z.ZodType<T>, what: string): T {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch (error) {
+    throw refuseStation("not_done", {
+      station: "review",
+      missed: `the ${what} is not JSON: ${error}`,
+      command: REVIEW_RETURN,
+    });
+  }
+  const parsed = schema.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  const missed = parsed.error.issues.map((issue) => `${what}.${issue.path.join(".")}: ${issue.message}`);
+  throw refuseStation("not_done", { station: "review", missed: missed.join("; "), command: REVIEW_RETURN });
+}
+
+function reviewReturned(request: ReviewReturn, { state }: WorkContext): Later {
+  const { returned } = request;
+  if (returned.kind === "artifact") {
+    const artifact = parsedAs(returned.text, ReviewArtifact, "Review artifact");
+    return { action: "review_returned", details: { returned: { kind: "artifact", artifact } } };
+  }
+  const round = state.lastSeq + 1;
+  const findings = parsedAs(returned.text, ReviewFindings, "findings").map((finding, index) => ({
+    ...finding,
+    id: `f${round}-${index + 1}`,
+  }));
+  return { action: "review_returned", details: { returned: { kind: "findings", findings } } };
+}
+
 export type WorkRequest = Exclude<TurnRequest, { readonly act: "order_show" | "slice_submit" }>;
 
 export function workEntry(request: WorkRequest, context: WorkContext): Later {
@@ -203,6 +252,8 @@ export function workEntry(request: WorkRequest, context: WorkContext): Later {
       return findingAnswered(request, context);
     case "build_return":
       return buildReturned(request, context);
+    case "review_return":
+      return reviewReturned(request, context);
     default:
       return unreachable(request);
   }
