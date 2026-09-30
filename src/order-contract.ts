@@ -29,6 +29,7 @@ type OrderRefusalMeta = {
   readonly not_next_step: { readonly order: string; readonly next: Next | null };
   readonly order_busy: { readonly order: string; readonly run: RunKind };
   readonly plan_approved: { readonly order: string };
+  readonly no_reason: { readonly order: string; readonly act: string };
   readonly no_checkout: { readonly project: string };
   readonly no_default_branch: { readonly checkout: string };
 };
@@ -56,6 +57,11 @@ export const refuseOrder = refuser<OrderRefusalMeta>({
         ? `order ${order} is shipping, and nothing else happens to it until the ship ends`
         : `a station is working on order ${order}, and nothing else happens to it until its worker ends`,
     resolve: ({ order }) => `dim order show ${order}`,
+  },
+  no_reason: {
+    message: ({ order, act }) =>
+      `a decision records why it was taken, and this ${act} of order ${order} gives no reason`,
+    resolve: ({ order, act }) => `dim order ${act} ${order} --reason <reason> --decided owner|operator`,
   },
   plan_approved: {
     message: ({ order }) =>

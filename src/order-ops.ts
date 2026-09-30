@@ -7,6 +7,8 @@ import {
   admitOperator,
   admitWork,
   fold,
+  type LeadingAct,
+  leadingEntry,
   type OperatorAct,
   type OrderState,
   operatorOf,
@@ -134,22 +136,27 @@ export function orderState(db: Database, order: string): OrderState {
   return loadOrder(db, order).state;
 }
 
-export type StartedRun = { readonly by: Acting; readonly cause: number; readonly created: boolean };
+export type StartedRun = {
+  readonly by: Acting;
+  readonly cause: number;
+  readonly created: boolean;
+  readonly state: OrderState;
+};
 
-export function startRun(db: Database, order: string, caller: Caller, base: string): StartedRun {
+export function startRun(
+  db: Database,
+  order: string,
+  caller: Caller,
+  base: string,
+  leading: LeadingAct,
+): StartedRun {
   return writeTransaction(db, () => {
-    const {
-      seq: cause,
-      by,
-      admitted,
-    } = act(db, order, caller, { kind: "run" }, () => ({
-      action: "order_run",
-      details: {},
-    }));
-    insertRun(db, order, "station", caller.self);
-    const created = admitted.head === null;
-    if (created) recordFactory(db, order, cause, { action: "workspace_created", details: { base } });
-    return { by, cause, created };
+    const acted = act(db, order, caller, { kind: leading.kind }, (state) => leadingEntry(state, leading));
+    const created = acted.admitted.head === null;
+    if (created) recordFactory(db, order, acted.seq, { action: "workspace_created", details: { base } });
+    const { state } = loadOrder(db, order);
+    insertRun(db, order, state.phase.kind === "ship" ? "ship" : "station", caller.self);
+    return { by: acted.by, cause: acted.seq, created, state };
   });
 }
 

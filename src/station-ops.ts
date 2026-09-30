@@ -5,12 +5,13 @@ import { userConfigPath } from "./config";
 import { writeTransaction } from "./db";
 import type { HarnessName } from "./harness-name";
 import { adapterFor, startHarness } from "./harness-ops";
-import { ROLE_AT } from "./order";
+import { type LeadingAct, phaseAfter, ROLE_AT } from "./order";
 import type { Station } from "./order-contract";
 import {
   endRun,
   markHarness,
   orderState,
+  type ProjectSetup,
   projectSetup,
   recordFactory,
   recordWork,
@@ -176,26 +177,48 @@ function closeTurnRecord(db: Database, turn: TurnOf, session: string, missed: st
   });
 }
 
-export async function runOrder(db: Database, order: string, caller: Caller): Promise<void> {
-  const { project, phase } = orderState(db, order);
-  invariant(phase.kind === "run", `order ${order} runs a station; shipping is not built`);
-  const setup = projectSetup(db, project, caller.cwd);
-  const role = ROLE_AT[phase.station];
+type Prepared = { readonly model: string; readonly newSessionHarness: HarnessName };
+
+function prepareTurn(setup: ProjectSetup, project: string, station: Station): Prepared {
+  const role = ROLE_AT[station];
   const model = modelOf(setup.config.models, role);
   if (model === null) throw refuseStation("no_model", { role, file: userConfigPath() });
   const newSessionHarness = setup.config.harness;
   if (newSessionHarness === undefined) throw refuseStation("harness_unset", { project });
+  return { model, newSessionHarness };
+}
+
+async function turnAt(db: Database, turn: TurnOf): Promise<void> {
+  const ended = await runTurn(db, turn);
+  if (ended.end === "no_return") {
+    throw refuseStation("no_return", { order: turn.order, station: turn.station, session: ended.session });
+  }
+  if (ended.end === "missed") {
+    throw refuseStation("return_missed", { order: turn.order, station: turn.station, missed: ended.missed });
+  }
+}
+
+export async function advanceOrder(
+  db: Database,
+  order: string,
+  caller: Caller,
+  leading: LeadingAct,
+): Promise<void> {
+  const before = orderState(db, order);
+  const expected = phaseAfter(before, leading);
+  const setup = projectSetup(db, before.project, caller.cwd);
+  const prepared = expected.kind === "run" ? prepareTurn(setup, before.project, expected.station) : null;
   const base = baseOf(setup.root, setup.branch);
-  const { by, cause, created } = startRun(db, order, caller, base);
+  const { by, cause, created, state } = startRun(db, order, caller, base, leading);
   try {
-    if (created) createWorkspace(setup.root, project, order, base);
-    const ended = await runTurn(db, { order, station: phase.station, by, cause, model, newSessionHarness });
-    if (ended.end === "no_return") {
-      throw refuseStation("no_return", { order, station: phase.station, session: ended.session });
-    }
-    if (ended.end === "missed") {
-      throw refuseStation("return_missed", { order, station: phase.station, missed: ended.missed });
-    }
+    if (created) createWorkspace(setup.root, before.project, order, base);
+    const { phase } = state;
+    invariant(
+      phase.kind === "run",
+      `order ${order} runs a station after ${leading.kind}; shipping is not built`,
+    );
+    invariant(prepared !== null, `order ${order} was prepared for the ${phase.station} station`);
+    await turnAt(db, { order, station: phase.station, by, cause, ...prepared });
   } finally {
     endRun(db, order);
   }

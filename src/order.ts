@@ -4,6 +4,7 @@ import {
   type Answer,
   CROCKFORD,
   type Decider,
+  type Later,
   type LaterEntry,
   type Next,
   ORDER_ID_LENGTH,
@@ -115,7 +116,7 @@ function answered(findings: readonly FindingState[], id: string, answer: Answer)
   return findings.map((finding) => (finding.id === id ? { ...finding, answer } : finding));
 }
 
-function apply(state: OrderState, entry: LaterEntry): OrderState {
+function apply(state: OrderState, entry: Later): OrderState {
   switch (entry.action) {
     case "order_updated":
       return {
@@ -202,6 +203,33 @@ function apply(state: OrderState, entry: LaterEntry): OrderState {
     default:
       return unreachable(entry);
   }
+}
+
+export type Decision = { readonly reason: string; readonly decidedBy: Decider };
+
+export type LeadingAct =
+  | { readonly kind: "run" }
+  | { readonly kind: "approve"; readonly decision: Decision }
+  | { readonly kind: "return"; readonly decision: Decision };
+
+export function leadingEntry(state: OrderState, act: LeadingAct): Later {
+  if (act.kind === "run") return { action: "order_run", details: {} };
+  const { phase } = state;
+  invariant(
+    phase.kind === "approve",
+    `order ${state.id} is admitted to ${act.kind} only while it waits on approval`,
+  );
+  const { reason, decidedBy } = act.decision;
+  if (reason.trim() === "") throw refuseOrder("no_reason", { order: state.id, act: act.kind });
+  const details = { station: phase.station, reason, decidedBy };
+  return act.kind === "approve"
+    ? { action: "artifact_approved", details }
+    : { action: "artifact_returned", details };
+}
+
+export function phaseAfter(state: OrderState, act: LeadingAct): Phase {
+  if (act.kind !== "run" && state.phase.kind !== "approve") return state.phase;
+  return apply(state, leadingEntry(state, act)).phase;
 }
 
 export type AddedEntry = OrderAdded & { readonly seq: number };

@@ -3,16 +3,18 @@ import { type Command, UsageError } from "./cli-contract";
 import { parseArgs } from "./cli-flags";
 import { closeDb } from "./db";
 import { openFactory } from "./factory-db";
-import { OrderId } from "./order-contract";
+import type { Decision } from "./order";
+import { Decider, OrderId } from "./order-contract";
 import { addOrder, cancelOrder, showOrder, updateOrder } from "./order-ops";
 import type { OrderView } from "./order-view";
-import { runOrder, sendAct } from "./station-ops";
+import { advanceOrder, sendAct } from "./station-ops";
 import { callerOf } from "./worker-ops";
 
 const USAGE = [
   "usage: dim order add --title <title> --description <description> [--project <owner>/<repo>]",
   "dim order run <order>",
   "dim order show [<order>]",
+  "dim order return <order> --reason <reason> --decided owner|operator",
   "dim order return --reason <reason>",
   "dim order update <order> [--title <title>] [--description <description>]",
   "dim order cancel <order> --reason <reason>",
@@ -43,7 +45,27 @@ function add(db: Database, args: readonly string[]): OrderView {
 async function run(db: Database, args: readonly string[]): Promise<OrderView> {
   const { positionals } = parseArgs(args, { positionals: [1, 1], flags: [] }, usage);
   const order = orderArg(positionals);
-  await runOrder(db, order, callerOf(db, process.cwd()));
+  await advanceOrder(db, order, callerOf(db, process.cwd()), { kind: "run" });
+  return showOrder(db, order);
+}
+
+function decisionOf(verb: string, flags: { readonly reason?: string; readonly decided?: string }): Decision {
+  const decidedBy = Decider.safeParse(flags.decided);
+  if (flags.reason === undefined || !decidedBy.success) {
+    throw usage(`${verb} needs --reason and --decided owner|operator`);
+  }
+  return { reason: flags.reason, decidedBy: decidedBy.data };
+}
+
+async function returnArtifact(db: Database, args: readonly string[]): Promise<OrderView> {
+  const { positionals, flags } = parseArgs(
+    args,
+    { positionals: [1, 1], flags: ["reason", "decided"] },
+    usage,
+  );
+  const order = orderArg(positionals);
+  const decision = decisionOf("return", flags);
+  await advanceOrder(db, order, callerOf(db, process.cwd()), { kind: "return", decision });
   return showOrder(db, order);
 }
 
@@ -76,7 +98,7 @@ function show(db: Database, args: readonly string[]): OrderView {
 
 type Verb = (db: Database, args: readonly string[]) => OrderView | Promise<OrderView>;
 
-const VERBS: Readonly<Record<string, Verb>> = { add, run, show, update, cancel };
+const VERBS: Readonly<Record<string, Verb>> = { add, run, return: returnArtifact, show, update, cancel };
 
 type TurnVerb = (args: readonly string[]) => Promise<unknown>;
 
