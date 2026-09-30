@@ -2,10 +2,10 @@ import type { Database } from "bun:sqlite";
 import { mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { writeTransaction } from "./db";
+import { readManifest } from "./declared-tasks";
 import { ensureSpoolDirs, setAsideUnreadable, walkSpoolDir } from "./ingest-spool";
 import { TOOLS, type Tool } from "./ingest-tools";
 import { codexDir, type Env, resolveHomeDir } from "./paths";
-import { readManifest } from "./workspace-tasks";
 
 const NAMES = ["CLAUDE.md", "AGENTS.md"];
 

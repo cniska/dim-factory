@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkTask, formatTask } from "./workspace-tasks";
+import { checkTask, formatTask } from "./declared-tasks";
 
 const roots: string[] = [];
 
@@ -106,7 +106,7 @@ describe("a manifest that is not a manifest", () => {
       [
         "bun",
         "-e",
-        `import {checkTask} from "${join(import.meta.dir, "workspace-tasks.ts")}"; checkTask("${root}")`,
+        `import {checkTask} from "${join(import.meta.dir, "declared-tasks.ts")}"; checkTask("${root}")`,
       ],
       { stdout: "ignore", stderr: "ignore" },
     );

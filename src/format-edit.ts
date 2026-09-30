@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
+import { formatTask } from "./declared-tasks";
 import { checkoutRoot } from "./git-checkout";
-import { formatTask } from "./workspace-tasks";
 
 export const FORMAT_TIMEOUT_MS = 30_000;
 

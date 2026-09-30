@@ -20,7 +20,7 @@ export function readManifest(path: string): string | null {
   }
 }
 
-type WorkspaceTask = { name: string; commandLine: string; source: string };
+type DeclaredTask = { name: string; commandLine: string; source: string };
 
 const LOCKS: [string, string][] = [
   ["bun.lock", "bun"],
@@ -35,7 +35,7 @@ function managerOf(repo: string): string | null {
   return null;
 }
 
-function fromPackageJson(repo: string): WorkspaceTask[] {
+function fromPackageJson(repo: string): DeclaredTask[] {
   const text = readManifest(join(repo, "package.json"));
   if (text === null) return [];
   let scripts: Record<string, unknown>;
@@ -53,7 +53,7 @@ function fromPackageJson(repo: string): WorkspaceTask[] {
   }));
 }
 
-function fromMise(repo: string): WorkspaceTask[] {
+function fromMise(repo: string): DeclaredTask[] {
   const text = readManifest(join(repo, "mise.toml"));
   if (text === null) return [];
   let parsed: { tasks?: Record<string, unknown> };
@@ -71,7 +71,7 @@ function fromMise(repo: string): WorkspaceTask[] {
 
 const MAKE_TARGET = /^([A-Za-z][\w-]*)\s*:(?!=)/;
 
-function fromMakefile(repo: string): WorkspaceTask[] {
+function fromMakefile(repo: string): DeclaredTask[] {
   const text = readManifest(join(repo, "Makefile"));
   if (text === null) return [];
   const names = new Set<string>();
@@ -86,7 +86,7 @@ const CHECK_ORDER = ["verify", "check", "ci", "validate", "test"];
 
 const FORMAT_ORDER = ["format", "fmt"];
 
-function firstDeclared(repo: string, order: string[]): WorkspaceTask | null {
+function firstDeclared(repo: string, order: string[]): DeclaredTask | null {
   const tasks = [...fromPackageJson(repo), ...fromMise(repo), ...fromMakefile(repo)];
   for (const name of order) {
     const found = tasks.find((one) => one.name === name);
@@ -95,10 +95,10 @@ function firstDeclared(repo: string, order: string[]): WorkspaceTask | null {
   return null;
 }
 
-export function checkTask(repo: string): WorkspaceTask | null {
+export function checkTask(repo: string): DeclaredTask | null {
   return firstDeclared(repo, CHECK_ORDER);
 }
 
-export function formatTask(repo: string): WorkspaceTask | null {
+export function formatTask(repo: string): DeclaredTask | null {
   return firstDeclared(repo, FORMAT_ORDER);
 }

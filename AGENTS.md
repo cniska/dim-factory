@@ -7,7 +7,7 @@ A software factory run by coding agents, with the owner at the gates that still 
 - [`SPEC.md`](SPEC.md) holds the requirements, so a changed requirement shows as a change to that one file. Update it in the same commit as the behavior. Only `docs/README.md` links it; no other doc, commit, code or test names it or its IDs.
 - Fix the cause, never work around it, and add no debt. Debt you find is fixed where it is found, or written into [`docs/todo.md`](docs/todo.md) when it needs work of its own.
 - A check that needs judgement gets an agent with a fixed brief, never a regex or a word list ([`docs/findings.md`](docs/findings.md)). What is mechanical is a gate.
-- Read what the record already answers instead of inferring it. A repo's check is the task its manifest declares ([`src/workspace-tasks.ts`](src/workspace-tasks.ts)).
+- Read what the record already answers instead of inferring it. A repo's check is the task its manifest declares ([`src/declared-tasks.ts`](src/declared-tasks.ts)).
 - An order that changes the schema runs with no other order in flight ([`docs/design.md`](docs/design.md#schema)).
 - The commit gate runs `bun run verify`. Run it by hand only to read a failure.
 - A change to how `dim` behaves is seen working through [`dim-verify`](.agents/skills/dim-verify/SKILL.md) before it lands.

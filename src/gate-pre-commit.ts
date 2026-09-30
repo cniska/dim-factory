@@ -1,10 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { stagedComments } from "./comments-staged";
 import { ConfigError } from "./config-error";
+import { checkTask } from "./declared-tasks";
 import { commentsBanned } from "./gate-comment";
 import { type Gate, type GateInput, SKIP_CHECK_ENV } from "./gate-contract";
 import { checkoutSlug } from "./git-remote";
-import { checkTask } from "./workspace-tasks";
 
 const PREFIX = "pre-commit: ";
 

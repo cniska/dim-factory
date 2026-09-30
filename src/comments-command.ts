@@ -2,8 +2,8 @@ import { relative, resolve } from "node:path";
 import { type Command, Ran, UsageError } from "./cli-contract";
 import { purgeCheckout } from "./comments-purge";
 import { PROJECT_CONFIG, projectConfigPath, readProjectConfig, writeConfigValue } from "./config";
+import { checkTask, formatTask } from "./declared-tasks";
 import { checkoutRoot } from "./git-checkout";
-import { checkTask, formatTask } from "./workspace-tasks";
 
 const USAGE = "usage: dim comments purge [--write] [<path>...]";
 

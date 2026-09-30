@@ -1,6 +1,6 @@
+import { checkTask, formatTask } from "./declared-tasks";
 import { checkoutRoot } from "./git-checkout";
 import type { Tool } from "./ingest-tools";
-import { checkTask, formatTask } from "./workspace-tasks";
 
 export function wireFor(tool: Tool, block: string): string {
   if (block === "") return "";

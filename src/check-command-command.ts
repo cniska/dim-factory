@@ -1,6 +1,6 @@
 import type { Command } from "./cli-contract";
+import { checkTask } from "./declared-tasks";
 import { checkoutRoot } from "./git-checkout";
-import { checkTask } from "./workspace-tasks";
 
 export const checkCommandCommand: Command = {
   name: "check-command",
