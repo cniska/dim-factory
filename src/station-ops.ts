@@ -1,0 +1,159 @@
+import type { Database } from "bun:sqlite";
+import { invariant } from "./assert";
+import { CodedError, refusalOf } from "./coded-error";
+import { readConfig } from "./config";
+import { writeTransaction } from "./db";
+import { adapterFor, modelFor, startHarness } from "./harness-ops";
+import { ROLE_AT } from "./order";
+import { Plan, refuseOrder, type Station } from "./order-contract";
+import { endRun, markHarness, orderState, recordFactory, recordWork, startRun } from "./order-ops";
+import { type Env, workerHomeDir, workerSessionsDir } from "./paths";
+import { checkoutOf, defaultBranch } from "./project";
+import { planBrief, STATIONS, TURN_SOCKET_ENV, workerEnv } from "./station";
+import { refuseStation, TurnReply, TurnRequest } from "./station-contract";
+import { copySession, listen, makeHome, openTurnDir, removeTurnDir, send } from "./station-effects";
+import type { Acting, Caller, WorkerSession } from "./worker-contract";
+import { processOf, registerSession, stationWorker } from "./worker-ops";
+import { baseOf, createWorkspace, workspaceOf } from "./workspace-ops";
+
+type Setup = { readonly root: string; readonly branch: string };
+
+function setupOf(db: Database, project: string, cwd: string): Setup {
+  const checkout = checkoutOf(db, project, cwd);
+  if (checkout === null) throw refuseOrder("no_checkout", { project });
+  const branch = defaultBranch(checkout.root);
+  if (branch === null) throw refuseOrder("no_default_branch", { checkout: checkout.root });
+  return { root: checkout.root, branch };
+}
+
+type TurnOf = {
+  readonly order: string;
+  readonly station: Station;
+  readonly by: Acting;
+  readonly cause: number;
+  readonly newSessionHarness: string;
+};
+
+function refusalReply(error: unknown): TurnReply {
+  if (!(error instanceof CodedError)) throw error;
+  const { code, message, meta, resolve } = error;
+  return { ok: false, error: { code, message, meta: { ...meta }, resolve } };
+}
+
+function planReturned(text: string) {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch (error) {
+    throw refuseStation("not_done", { station: "plan", missed: `the plan is not JSON: ${String(error)}` });
+  }
+  const plan = Plan.safeParse(raw);
+  if (!plan.success) {
+    const missed = plan.error.issues.map((issue) => `${issue.path.join(".") || "plan"}: ${issue.message}`);
+    throw refuseStation("not_done", { station: "plan", missed: missed.join("; ") });
+  }
+  return plan.data;
+}
+
+async function runTurn(db: Database, turn: TurnOf): Promise<void> {
+  const state = orderState(db, turn.order);
+  const { worker, sessions } = stationWorker(db, {
+    role: ROLE_AT[turn.station],
+    project: state.project,
+    order: turn.order,
+    createdBy: turn.by.worker.name,
+  });
+  const current = sessions.at(-1);
+  const session =
+    current === undefined
+      ? { kind: "new" as const, id: crypto.randomUUID() }
+      : { kind: "resume" as const, id: current.id };
+  const harness = current?.harness ?? turn.newSessionHarness;
+  const adapter = adapterFor(harness);
+  const model = modelFor(harness, STATIONS[turn.station].strength);
+  const workspace = workspaceOf(state.project, turn.order);
+  const home = makeHome(workerHomeDir(worker.name));
+  const dir = openTurnDir();
+  let acting: Acting | null = null;
+  let returned = false;
+  const listening = listen(dir.socket, async (line) => {
+    try {
+      invariant(acting !== null, "a turn serves acts only once its session is registered");
+      const request = TurnRequest.parse(JSON.parse(line));
+      recordWork(db, turn.order, acting, turn.station, {
+        action: "plan_returned",
+        details: planReturned(request.plan),
+      });
+      returned = true;
+      return JSON.stringify({ ok: true, result: { recorded: "plan_returned" } });
+    } catch (error) {
+      return JSON.stringify(refusalReply(error));
+    }
+  });
+  try {
+    const argv = adapter.argv({ session, model, workspace, tmp: dir.tmp, socket: dir.socket });
+    const held = startHarness(argv, workspace, workerEnv(process.env, { home, ...dir }, adapter.signIn));
+    const harnessProcess = processOf(held.pid);
+    const registered: WorkerSession = current ?? {
+      id: session.id,
+      worker: worker.name,
+      harness,
+      process: harnessProcess,
+    };
+    writeTransaction(db, () => {
+      markHarness(db, turn.order, harnessProcess);
+      if (current !== undefined) return;
+      registerSession(db, registered);
+      recordFactory(db, turn.order, turn.cause, {
+        action: "session_started",
+        details: { worker: worker.name, session: session.id, harness },
+      });
+    });
+    acting = { worker, session: registered };
+    held.release(planBrief(state, workspace));
+    await held.ended;
+    if (!returned) {
+      recordFactory(db, turn.order, turn.cause, {
+        action: "station_failed",
+        code: "no_return",
+        details: { session: session.id },
+      });
+    }
+    copySession(adapter.transcript(home, workspace, session.id), workerSessionsDir(worker.name), session.id);
+  } finally {
+    listening.stop();
+    removeTurnDir(dir);
+  }
+}
+
+export async function runOrder(db: Database, order: string, caller: Caller, cwd: string): Promise<void> {
+  const { project } = orderState(db, order);
+  const setup = setupOf(db, project, cwd);
+  const base = baseOf(setup.root, setup.branch);
+  const started = startRun(db, order, caller, base);
+  try {
+    const { state, by, cause, created } = started;
+    if (created) createWorkspace(setup.root, project, order, base);
+    const { phase } = state;
+    invariant(phase.kind === "run", `order ${order} runs a station; shipping is not built`);
+    const newSessionHarness = readConfig({ root: setup.root, at: setup.branch }).harness;
+    if (newSessionHarness === undefined) throw refuseStation("harness_unset", { project });
+    await runTurn(db, { order, station: phase.station, by, cause, newSessionHarness });
+  } finally {
+    endRun(db, order);
+  }
+}
+
+export async function sendAct(request: TurnRequest, env: Env = process.env): Promise<unknown> {
+  const socket = env[TURN_SOCKET_ENV];
+  if (socket === undefined) throw refuseStation("no_turn", { detail: `${TURN_SOCKET_ENV} is not set` });
+  let line: string;
+  try {
+    line = await send(socket, JSON.stringify(request));
+  } catch (error) {
+    throw refuseStation("no_turn", { detail: String(error) });
+  }
+  const reply = TurnReply.parse(JSON.parse(line));
+  if (reply.ok) return reply.result;
+  throw refusalOf(reply.error);
+}

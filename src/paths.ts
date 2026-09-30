@@ -55,6 +55,18 @@ export function workspaceDir(project: string, order: string, env: Env = process.
   return join(dataDir(env), "workspaces", ...project.split("/"), order);
 }
 
+export function workerHomeDir(worker: string, env: Env = process.env): string {
+  return join(dataDir(env), "workers", worker, "home");
+}
+
+export function workerSessionsDir(worker: string, env: Env = process.env): string {
+  return join(dataDir(env), "workers", worker, "sessions");
+}
+
+export function modelsPath(env: Env = process.env): string {
+  return join(configDir(env), "models.json");
+}
+
 export function claudeProjectsDir(env: Env = process.env): string {
   return join(resolveHomeDir(env), ".claude", "projects");
 }

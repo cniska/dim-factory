@@ -90,6 +90,15 @@ export function workerNamed(db: Database, name: string): Worker | null {
   return row === null ? null : workerOf(row);
 }
 
+export function stationWorkerOf(db: Database, order: string, role: Role): Worker | null {
+  const row = db
+    .query<WorkerRow, [string, string]>(
+      "SELECT name, role, project, order_id, created_by FROM worker WHERE order_id = ? AND role = ?",
+    )
+    .get(order, role);
+  return row === null ? null : workerOf(row);
+}
+
 export function sessionNamed(db: Database, id: string): WorkerSession | null {
   const row = db
     .query<SessionRow, [string]>(

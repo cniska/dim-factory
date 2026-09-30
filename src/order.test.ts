@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { admit, fold, nextOf, type OrderState, orderIdOf, stationOf } from "./order";
-import { type Actor, type Later, type LaterEntry, OrderId } from "./order-contract";
+import {
+  admit,
+  fold,
+  nextOf,
+  type OperatorAct,
+  type OrderState,
+  orderIdOf,
+  stationOf,
+  type WorkAct,
+} from "./order";
+import { type Actor, type Later, type LaterEntry, OrderId, type RunKind } from "./order-contract";
 import type { Acting } from "./worker-contract";
 
 const OPERATOR_ACTOR: Actor = { kind: "worker", worker: "nut-1", session: "s-operator" };
@@ -217,13 +226,18 @@ describe("an order id", () => {
 });
 
 describe("which act an order admits", () => {
-  const refusedCode = (order: OrderState, act: Parameters<typeof admit>[2], by: Acting | null = OPERATOR) => {
-    const admission = admit(order, by, act);
+  const refusedCode = (
+    order: OrderState,
+    act: OperatorAct | WorkAct,
+    by: Acting | null = OPERATOR,
+    live: RunKind | null = null,
+  ) => {
+    const admission = admit(order, by, act, live);
     return admission.kind === "refused" ? admission.refusal.code : null;
   };
 
   test("refuses an act that is not the next step, naming the next step", () => {
-    const admission = admit(state(), OPERATOR, { kind: "approve" });
+    const admission = admit(state(), OPERATOR, { kind: "approve" }, null);
     expect(admission.kind === "refused" && admission.refusal.meta).toEqual({
       order: "k7m2qx4d",
       next: "run",
@@ -237,7 +251,7 @@ describe("which act an order admits", () => {
     const elsewhere: Acting = { ...OPERATOR, worker: { ...OPERATOR.worker, project: "acme/gadgets" } };
     expect(refusedCode(state(), { kind: "run" }, elsewhere)).toBe("not_operator");
     expect(refusedCode(state(), { kind: "run" }, null)).toBe("not_operator");
-    expect(admit(state(), OPERATOR, { kind: "run" })).toEqual({ kind: "admitted", by: OPERATOR });
+    expect(admit(state(), OPERATOR, { kind: "run" }, null)).toEqual({ kind: "admitted", by: OPERATOR });
   });
 
   test("admits an update until the plan is approved, and refuses one after", () => {
@@ -252,5 +266,36 @@ describe("which act an order admits", () => {
     for (const kind of ["run", "approve", "return", "update", "cancel"] as const) {
       expect(refusedCode(cancelled, { kind })).toBe("not_next_step");
     }
+  });
+
+  test("refuses every step and an update while a station turn is alive, but admits a cancel", () => {
+    const running = state(RUN, BASE);
+    for (const kind of ["run", "approve", "return", "update"] as const) {
+      expect(refusedCode(running, { kind }, OPERATOR, "station")).toBe("order_busy");
+    }
+    expect(refusedCode(running, { kind: "cancel" }, OPERATOR, "station")).toBeNull();
+  });
+
+  test("admits a station's work only from the order's worker at that station, while the order is there", () => {
+    const plannerOf = (order: string): Acting => ({
+      worker: { role: "planner", name: "cog-2", project: "acme/widgets", order, createdBy: "nut-1" },
+      session: { id: "s-planner", worker: "cog-2", harness: "claude", process: { pid: 8, startedAt: "t" } },
+    });
+    const planner = plannerOf("k7m2qx4d");
+    const otherOrder = plannerOf("zzzzzzzz");
+    const work: WorkAct = { kind: "work", station: "plan" };
+    const running = state(RUN, BASE);
+    expect(refusedCode(running, work, planner, "station")).toBeNull();
+    expect(refusedCode(running, work, OPERATOR, "station")).toBe("not_station_worker");
+    expect(refusedCode(running, work, otherOrder, "station")).toBe("not_station_worker");
+    expect(refusedCode(state(...planned), work, planner, "station")).toBe("not_next_step");
+    const cancelled = state(RUN, BASE, { action: "order_cancelled", details: { reason: "x" } });
+    expect(refusedCode(cancelled, work, planner, "station")).toBe("not_next_step");
+  });
+
+  test("refuses a cancel while the order ships", () => {
+    const shipping = state(...reviewed, approve("review"), SHIP_STARTED);
+    expect(refusedCode(shipping, { kind: "cancel" }, OPERATOR, "ship")).toBe("order_busy");
+    expect(refusedCode(shipping, { kind: "run" }, OPERATOR, "ship")).toBe("order_busy");
   });
 });

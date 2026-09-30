@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { closeDb } from "./db";
 import { openFactory } from "./factory-db";
 import type { LogEntry } from "./order-contract";
-import { appendEntries, readLog } from "./order-store";
+import { appendEntries, deleteRun, insertRun, readLog, runOf, setRunHarness } from "./order-store";
 
 const roots: string[] = [];
 const opened: Database[] = [];
@@ -70,6 +70,18 @@ test("refuses an entry naming the factory with a cause the log does not hold", (
       { ...(ENTRIES[1] as LogEntry), by: { kind: "factory", version: "0.1.0", cause: 9 } },
     ]),
   ).toThrow();
+});
+
+test("holds one run per order, with the harness process once it is set, until it is deleted", () => {
+  const db = factory();
+  const process = { pid: 41, startedAt: "t41" };
+  insertRun(db, "k7m2qx4d", "station", process);
+  expect(runOf(db, "k7m2qx4d")).toEqual({ kind: "station", process, harness: null });
+  expect(() => insertRun(db, "k7m2qx4d", "ship", process)).toThrow();
+  setRunHarness(db, "k7m2qx4d", { pid: 42, startedAt: "t42" });
+  expect(runOf(db, "k7m2qx4d")?.harness).toEqual({ pid: 42, startedAt: "t42" });
+  deleteRun(db, "k7m2qx4d");
+  expect(runOf(db, "k7m2qx4d")).toBeNull();
 });
 
 test("keeps the factory's tables when the record is reopened", () => {

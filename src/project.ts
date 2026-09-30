@@ -21,6 +21,11 @@ export function lastCheckoutOf(db: Database, project: string): Checkout | null {
   return null;
 }
 
+export function checkoutOf(db: Database, project: string, cwd: string): Checkout | null {
+  const here = checkoutAt(cwd);
+  return here?.project === project ? here : lastCheckoutOf(db, project);
+}
+
 export function defaultBranch(root: string): string | null {
   return remoteHeadBranch(root, "origin");
 }

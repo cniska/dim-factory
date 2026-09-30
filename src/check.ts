@@ -2,7 +2,16 @@ import type { Env } from "./paths";
 
 export const CHECK_OUTPUT_TAIL_BYTES = 64 * 1024;
 
-const PASSED_THROUGH = ["PATH", "USER", "LANG"] as const;
+export const PASSED_THROUGH = ["PATH", "USER", "LANG"] as const;
+
+export function listedEnv(owner: Env, names: readonly string[]): Record<string, string> {
+  return Object.fromEntries(
+    names.flatMap((name) => {
+      const value = owner[name];
+      return value === undefined ? [] : [[name, value]];
+    }),
+  );
+}
 
 const quoted = (path: string) => JSON.stringify(path);
 
@@ -16,13 +25,7 @@ export function sandboxProfile(writable: readonly string[]): string {
 }
 
 export function checkEnv(owner: Env, tmp: string): Record<string, string> {
-  const listed = Object.fromEntries(
-    PASSED_THROUGH.flatMap((name) => {
-      const value = owner[name];
-      return value === undefined ? [] : [[name, value]];
-    }),
-  );
-  return { ...listed, HOME: tmp, TMPDIR: tmp, XDG_CACHE_HOME: `${tmp}/cache` };
+  return { ...listedEnv(owner, PASSED_THROUGH), HOME: tmp, TMPDIR: tmp, XDG_CACHE_HOME: `${tmp}/cache` };
 }
 
 export function outputTail(output: string): string {

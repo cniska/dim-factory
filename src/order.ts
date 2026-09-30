@@ -8,12 +8,13 @@ import {
   ORDER_ID_LENGTH,
   type OrderAdded,
   type RecordedFinding,
+  type RunKind,
   refuseOrder,
   type Slice,
   type Station,
   type Status,
 } from "./order-contract";
-import { type Acting, refuseWorker } from "./worker-contract";
+import { type Acting, refuseWorker, type StationRole } from "./worker-contract";
 
 export function orderIdOf(random: Uint8Array): string {
   invariant(random.length === ORDER_ID_LENGTH, `an order id takes ${ORDER_ID_LENGTH} random bytes`);
@@ -243,9 +244,42 @@ function stepRefusal(state: OrderState, act: OperatorAct): CodedError | null {
   }
 }
 
-export function admit(state: OrderState, by: Acting | null, act: OperatorAct): Admission {
+function busyRefusal(state: OrderState, act: OperatorAct, live: RunKind | null): CodedError | null {
+  if (live === null || (act.kind === "cancel" && live === "station")) return null;
+  return refuseOrder("order_busy", { order: state.id, run: live });
+}
+
+export type WorkAct = { readonly kind: "work"; readonly station: Station };
+
+export const ROLE_AT: Readonly<Record<Station, StationRole>> = {
+  plan: "planner",
+  build: "builder",
+  review: "reviewer",
+};
+
+function admitWork(state: OrderState, by: Acting | null, act: WorkAct): Admission {
+  const worker = by?.worker;
+  if (by === null || worker?.role !== ROLE_AT[act.station] || worker.order !== state.id) {
+    return {
+      kind: "refused",
+      refusal: refuseWorker("not_station_worker", { order: state.id, station: act.station }),
+    };
+  }
+  const { phase } = state;
+  return phase.kind === "run" && phase.station === act.station && state.status === "running"
+    ? { kind: "admitted", by }
+    : { kind: "refused", refusal: refuseOrder("not_next_step", { order: state.id, next: nextOf(phase) }) };
+}
+
+export function admit(
+  state: OrderState,
+  by: Acting | null,
+  act: OperatorAct | WorkAct,
+  live: RunKind | null,
+): Admission {
+  if (act.kind === "work") return admitWork(state, by, act);
   const operator = operatorOf(by, state.project);
   if (operator.kind === "refused") return operator;
-  const refusal = stepRefusal(state, act);
+  const refusal = busyRefusal(state, act, live) ?? stepRefusal(state, act);
   return refusal === null ? operator : { kind: "refused", refusal };
 }

@@ -20,9 +20,13 @@ export type Status = z.infer<typeof Status>;
 export const Next = z.enum(["run", "approve", "update"]);
 export type Next = z.infer<typeof Next>;
 
+export const RunKind = z.enum(["station", "ship"]);
+export type RunKind = z.infer<typeof RunKind>;
+
 type OrderRefusalMeta = {
   readonly no_order: { readonly order: string };
   readonly not_next_step: { readonly order: string; readonly next: Next | null };
+  readonly order_busy: { readonly order: string; readonly run: RunKind };
   readonly plan_approved: { readonly order: string };
   readonly no_checkout: { readonly project: string };
   readonly no_default_branch: { readonly checkout: string };
@@ -44,6 +48,13 @@ export const refuseOrder = refuser<OrderRefusalMeta>({
         ? `order ${order} has ended, so nothing more happens to it`
         : `order ${order} waits on ${next}, and that is the only step it takes now`,
     resolve: ({ order, next }) => (next === null ? `dim order show ${order}` : STEP[next](order)),
+  },
+  order_busy: {
+    message: ({ order, run }) =>
+      run === "ship"
+        ? `order ${order} is shipping, and nothing else happens to it until the ship ends`
+        : `a station is working on order ${order}, and nothing else happens to it until its worker ends`,
+    resolve: ({ order }) => `dim order show ${order}`,
   },
   plan_approved: {
     message: ({ order }) =>
@@ -129,6 +140,9 @@ const tip = { tip: z.string() };
 const decision = { station: Station, reason: text, decidedBy: Decider };
 const message = { to: z.string(), text };
 
+export const Plan = z.object({ body: text, slices: z.array(Slice).min(1) });
+export type Plan = z.infer<typeof Plan>;
+
 export const OrderAdded = entry("order_added", { title: text, description: text, project: text });
 export type OrderAdded = z.infer<typeof OrderAdded>;
 
@@ -140,7 +154,7 @@ export const Later = z.union([
   entry("artifact_approved", decision),
   entry("artifact_returned", decision),
   entry("order_returned", { station: Station, reason: text }),
-  entry("plan_returned", { body: text, slices: z.array(Slice).min(1) }),
+  entry("plan_returned", Plan.shape),
   entry("slice_submitted", tip),
   entry("slice_committed", { commit: z.string() }).extend({ evidence }),
   z.discriminatedUnion("code", [

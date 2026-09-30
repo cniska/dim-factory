@@ -5,6 +5,7 @@ type WorkerRefusalMeta = {
   readonly no_project: { readonly cwd: string };
   readonly operator_live: { readonly project: string; readonly operator: string };
   readonly not_operator: { readonly project: string };
+  readonly not_station_worker: { readonly order: string; readonly station: string };
   readonly no_process_table: { readonly detail: string };
 };
 
@@ -29,6 +30,11 @@ export const refuseWorker = refuser<WorkerRefusalMeta>({
     message: ({ project }) =>
       `this process runs under no registered operator session of ${project}, and only the operator takes order actions`,
     resolve: REGISTER,
+  },
+  not_station_worker: {
+    message: ({ order, station }) =>
+      `only order ${order}'s worker at ${station} does that station's work, from inside its turn`,
+    resolve: ({ order }) => `dim order show ${order}`,
   },
   no_process_table: {
     message: ({ detail }) =>
@@ -64,5 +70,11 @@ export type WorkerSession = {
 };
 
 export type Acting = { readonly worker: Worker; readonly session: WorkerSession };
+
+export type Caller = {
+  readonly acting: Acting | null;
+  readonly self: ProcessId;
+  readonly running: readonly ProcessId[];
+};
 
 export type WorkerRecord = { readonly worker: Worker; readonly sessions: readonly WorkerSession[] };

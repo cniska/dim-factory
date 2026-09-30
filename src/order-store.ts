@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { invariant, unreachable } from "./assert";
-import { type Actor, Detailed, type LogEntry } from "./order-contract";
+import { type Actor, Detailed, type LogEntry, RunKind } from "./order-contract";
+import type { ProcessId } from "./worker-contract";
 
 export const ORDER_SQL = `
 CREATE TABLE IF NOT EXISTS order_log (
@@ -22,7 +23,65 @@ CREATE TRIGGER IF NOT EXISTS order_log_no_update BEFORE UPDATE ON order_log
 BEGIN SELECT RAISE(ABORT, 'order_log is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS order_log_no_delete BEFORE DELETE ON order_log
 BEGIN SELECT RAISE(ABORT, 'order_log is append-only'); END;
+CREATE TABLE IF NOT EXISTS run (
+  order_id            TEXT PRIMARY KEY,
+  kind                TEXT NOT NULL CHECK (kind IN ('station','ship')),
+  pid                 INTEGER NOT NULL,
+  pid_started_at      TEXT NOT NULL,
+  harness_pid         INTEGER,
+  harness_started_at  TEXT,
+  CHECK ((harness_pid IS NULL) = (harness_started_at IS NULL))
+);
 `;
+
+export type Run = {
+  readonly kind: RunKind;
+  readonly process: ProcessId;
+  readonly harness: ProcessId | null;
+};
+
+type RunRow = {
+  readonly kind: string;
+  readonly pid: number;
+  readonly pid_started_at: string;
+  readonly harness_pid: number | null;
+  readonly harness_started_at: string | null;
+};
+
+export function insertRun(db: Database, order: string, kind: RunKind, process: ProcessId): void {
+  db.run("INSERT INTO run (order_id, kind, pid, pid_started_at) VALUES (?, ?, ?, ?)", [
+    order,
+    kind,
+    process.pid,
+    process.startedAt,
+  ]);
+}
+
+export function setRunHarness(db: Database, order: string, harness: ProcessId): void {
+  db.run("UPDATE run SET harness_pid = ?, harness_started_at = ? WHERE order_id = ?", [
+    harness.pid,
+    harness.startedAt,
+    order,
+  ]);
+}
+
+export function deleteRun(db: Database, order: string): void {
+  db.run("DELETE FROM run WHERE order_id = ?", [order]);
+}
+
+export function runOf(db: Database, order: string): Run | null {
+  const row = db
+    .query<RunRow, [string]>(
+      "SELECT kind, pid, pid_started_at, harness_pid, harness_started_at FROM run WHERE order_id = ?",
+    )
+    .get(order);
+  if (row === null) return null;
+  const harness =
+    row.harness_pid === null || row.harness_started_at === null
+      ? null
+      : { pid: row.harness_pid, startedAt: row.harness_started_at };
+  return { kind: RunKind.parse(row.kind), process: { pid: row.pid, startedAt: row.pid_started_at }, harness };
+}
 
 type LogRow = {
   readonly seq: number;

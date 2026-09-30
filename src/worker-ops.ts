@@ -7,10 +7,13 @@ import { checkoutAt } from "./project";
 import { actingSession, ancestry, isRunning, nearestHarnessSession, workerNameOf } from "./worker";
 import {
   type Acting,
+  type Caller,
   type ProcessId,
   type ProcessRow,
   refuseWorker,
+  type StationRole,
   type WorkerRecord,
+  type WorkerSession,
 } from "./worker-contract";
 import { processTable } from "./worker-effects";
 import {
@@ -20,9 +23,17 @@ import {
   sessionNamed,
   sessions,
   sessionsOf,
+  stationWorkerOf,
   workerNamed,
   workerNames,
 } from "./worker-store";
+
+type StationWorker = {
+  readonly role: StationRole;
+  readonly project: string;
+  readonly order: string;
+  readonly createdBy: string;
+};
 
 type Above = {
   readonly table: readonly ProcessRow[];
@@ -41,13 +52,39 @@ function above(db: Database): Above {
   return { table, chain, open };
 }
 
-export function actingWorker(db: Database, cwd: string): Acting | null {
-  const { chain, open } = above(db);
+function actingOf(db: Database, cwd: string, { chain, open }: Above): Acting | null {
   const session = actingSession(chain, sessions(db));
   const worker = session === null ? null : workerNamed(db, session.worker);
   if (session !== null && worker !== null) return { worker, session };
   if (open.length === 0) throw refuseWorker("no_session", { cwd });
   return null;
+}
+
+export function callerOf(db: Database, cwd: string): Caller {
+  const seen = above(db);
+  const [self] = seen.chain;
+  invariant(self !== undefined, `the process table lists this process, ${process.pid}`);
+  return { acting: actingOf(db, cwd, seen), self, running: seen.table };
+}
+
+export function stationWorker(db: Database, created: StationWorker): WorkerRecord {
+  return writeTransaction(db, () => {
+    const found = stationWorkerOf(db, created.order, created.role);
+    if (found !== null) return { worker: found, sessions: sessionsOf(db, found.name) };
+    const worker = { ...created, name: mintedName(db) };
+    insertWorker(db, worker, new Date().toISOString());
+    return { worker, sessions: [] };
+  });
+}
+
+export function processOf(pid: number): ProcessId {
+  const row = processTable().find((candidate) => candidate.pid === pid);
+  invariant(row !== undefined, `process ${pid}, held until it is registered, is running`);
+  return { pid: row.pid, startedAt: row.startedAt };
+}
+
+export function registerSession(db: Database, session: WorkerSession): void {
+  insertSession(db, session, new Date().toISOString());
 }
 
 export function workersNamed(db: Database, names: readonly string[]): readonly WorkerRecord[] {

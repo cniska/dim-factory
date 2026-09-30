@@ -12,6 +12,17 @@ export class CodedError<Code extends string = string, Meta extends object = obje
   }
 }
 
+export type RefusalRecord = {
+  readonly code: string;
+  readonly message: string;
+  readonly meta: object;
+  readonly resolve: string;
+};
+
+export function refusalOf({ code, message, meta, resolve }: RefusalRecord): CodedError {
+  return new CodedError(code, message, meta, resolve);
+}
+
 export type RefusalTable<Metas extends Record<string, object>> = {
   readonly [Code in keyof Metas]: {
     readonly message: (meta: Metas[Code]) => string;
