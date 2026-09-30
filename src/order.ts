@@ -1,13 +1,15 @@
 import { invariant, unreachable } from "./assert";
-import type {
-  Answer,
-  Detailed,
-  LogEntry,
-  Next,
-  RecordedFinding,
-  Slice,
-  Station,
-  Status,
+import type { CodedError } from "./coded-error";
+import {
+  type Answer,
+  type Detailed,
+  type LogEntry,
+  type Next,
+  type RecordedFinding,
+  refuse,
+  type Slice,
+  type Station,
+  type Status,
 } from "./order-contract";
 
 const CROCKFORD = "0123456789abcdefghjkmnpqrstvwxyz";
@@ -179,29 +181,25 @@ export function nextOf(phase: Phase): Next | null {
 
 export type OperatorAct = "run" | "approve" | "return" | "update" | "cancel";
 
-export type Refusal =
-  | { readonly code: "not_next_step"; readonly meta: { readonly next: Next | null } }
-  | { readonly code: "plan_approved"; readonly meta: Record<string, never> };
-
 const STEP_OF: Readonly<Record<Exclude<OperatorAct, "update" | "cancel">, Next>> = {
   run: "run",
   approve: "approve",
   return: "approve",
 };
 
-export function admit(state: OrderState, act: OperatorAct): Refusal | null {
+export function admit(state: OrderState, act: OperatorAct): CodedError | null {
   const next = nextOf(state.phase);
-  const notNext: Refusal = { code: "not_next_step", meta: { next } };
+  const notNext = () => refuse("not_next_step", { order: state.id, next });
   switch (act) {
     case "run":
     case "approve":
     case "return":
-      return next === STEP_OF[act] ? null : notNext;
+      return next === STEP_OF[act] ? null : notNext();
     case "update":
-      if (next === null) return notNext;
-      return state.planApproved ? { code: "plan_approved", meta: {} } : null;
+      if (next === null) return notNext();
+      return state.planApproved ? refuse("plan_approved", { order: state.id }) : null;
     case "cancel":
-      return next === null ? notNext : null;
+      return next === null ? notNext() : null;
     default:
       return unreachable(act);
   }

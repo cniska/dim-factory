@@ -16,6 +16,16 @@ type OpenSessionRow = {
   readonly ts: string;
 };
 
+export function sessionDirs(db: Database): readonly string[] {
+  return db
+    .query<{ cwd: string }, []>(
+      `SELECT cwd FROM hook_event WHERE event = 'session_start' AND cwd IS NOT NULL
+       GROUP BY cwd ORDER BY max(ts) DESC`,
+    )
+    .all()
+    .map((row) => row.cwd);
+}
+
 export function openSessionsUnder(db: Database, harnessPids: readonly number[]): readonly OpenSession[] {
   if (harnessPids.length === 0) return [];
   return db

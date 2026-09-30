@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { refuser } from "./coded-error";
 
 export const STATIONS = ["plan", "build", "review"] as const;
 export const Station = z.enum(STATIONS);
@@ -10,6 +11,30 @@ export type Decider = z.infer<typeof Decider>;
 export type Status = "queued" | "running" | "shipped" | "cancelled";
 
 export type Next = "run" | "approve" | "update";
+
+export type OrderRefusalMeta = {
+  readonly no_order: { readonly order: string };
+  readonly not_next_step: { readonly order: string; readonly next: Next | null };
+  readonly plan_approved: { readonly order: string };
+  readonly no_checkout: { readonly project: string };
+  readonly no_default_branch: { readonly checkout: string };
+};
+
+export type OrderRefusalCode = keyof OrderRefusalMeta;
+
+export const refuse = refuser<OrderRefusalMeta>({
+  no_order: ({ order }) => `no order ${order} is on record`,
+  not_next_step: ({ order, next }) =>
+    next === null
+      ? `order ${order} has ended, so nothing more happens to it`
+      : `order ${order} waits on ${next}, and that is the only step it takes now`,
+  plan_approved: ({ order }) =>
+    `order ${order}'s plan is approved, so its title and description stay; cancel it and add a new order instead`,
+  no_checkout: ({ project }) =>
+    `no session on record ran in a checkout of ${project}, so its settings cannot be read; add the order from inside that checkout`,
+  no_default_branch: ({ checkout }) =>
+    `${checkout} names no default branch; set it with \`git remote set-head origin --auto\``,
+});
 
 export const Actor = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("worker"), worker: z.string(), session: z.string() }),

@@ -1,4 +1,4 @@
-import { CodedError } from "./coded-error";
+import { refuser } from "./coded-error";
 import type { Env } from "./paths";
 
 export const REFUSED_EXIT = 3;
@@ -30,7 +30,7 @@ export const GATE_ERROR = {
   commitsUnenumerable: "gate_commits_unenumerable",
 } as const;
 
-type GateErrorMeta = {
+export type GateErrorMeta = {
   [GATE_ERROR.unreadableUpdate]: { readonly line: string };
   [GATE_ERROR.unreadableOwners]: { readonly path: string };
   [GATE_ERROR.gitConfigUnreadable]: { readonly args: string; readonly root: string; readonly detail: string };
@@ -40,7 +40,7 @@ type GateErrorMeta = {
 
 export type GateErrorCode = keyof GateErrorMeta;
 
-const MESSAGES: { readonly [Code in GateErrorCode]: (meta: GateErrorMeta[Code]) => string } = {
+export const fail = refuser<GateErrorMeta>({
   [GATE_ERROR.unreadableUpdate]: ({ line }) =>
     `git passed pre-push an update line that does not hold four fields, so the push is not judged: ${line}`,
   [GATE_ERROR.unreadableOwners]: ({ path }) =>
@@ -51,11 +51,4 @@ const MESSAGES: { readonly [Code in GateErrorCode]: (meta: GateErrorMeta[Code]) 
     `git's global core.hooksPath is already ${existing}; git honors one hooks directory and there is no merge, so installing here would disable it. Point that directory at this hook, or unset it with \`git config --global --unset core.hooksPath\`.`,
   [GATE_ERROR.commitsUnenumerable]: ({ range, detail }) =>
     `cannot enumerate the commits of ${range}: ${detail}`,
-};
-
-export function fail<Code extends GateErrorCode>(
-  code: Code,
-  meta: GateErrorMeta[Code],
-): CodedError<Code, GateErrorMeta[Code]> {
-  return new CodedError(code, MESSAGES[code](meta), meta);
-}
+});

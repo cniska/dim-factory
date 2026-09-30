@@ -224,8 +224,14 @@ describe("an order id", () => {
 
 describe("which act an order admits", () => {
   test("refuses an act that is not the next step, naming the next step", () => {
-    expect(admit(state(ADDED), "approve")).toEqual({ code: "not_next_step", meta: { next: "run" } });
-    expect(admit(state(...planned), "run")).toEqual({ code: "not_next_step", meta: { next: "approve" } });
+    expect(admit(state(ADDED), "approve")).toMatchObject({
+      code: "not_next_step",
+      meta: { order: "k7m2qx4d", next: "run" },
+    });
+    expect(admit(state(...planned), "run")).toMatchObject({
+      code: "not_next_step",
+      meta: { next: "approve" },
+    });
     expect(admit(state(...planned), "approve")).toBeNull();
     expect(admit(state(...planned), "return")).toBeNull();
   });
@@ -233,14 +239,14 @@ describe("which act an order admits", () => {
   test("admits an update until the plan is approved, and refuses one after", () => {
     expect(admit(state(ADDED), "update")).toBeNull();
     expect(admit(state(...planned), "update")).toBeNull();
-    expect(admit(state(...planned, approve("plan")), "update")).toEqual({ code: "plan_approved", meta: {} });
+    expect(admit(state(...planned, approve("plan")), "update")).toMatchObject({ code: "plan_approved" });
   });
 
   test("admits a cancel at any point until the order ends", () => {
     expect(admit(state(...built), "cancel")).toBeNull();
     const cancelled = state(...planned, { action: "order_cancelled", reason: "x" });
     for (const act of ["run", "approve", "return", "update", "cancel"] as const) {
-      expect(admit(cancelled, act)).toEqual({ code: "not_next_step", meta: { next: null } });
+      expect(admit(cancelled, act)).toMatchObject({ code: "not_next_step", meta: { next: null } });
     }
   });
 });

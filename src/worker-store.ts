@@ -90,6 +90,24 @@ export function workerNamed(db: Database, name: string): Worker | null {
   return row === null ? null : workerOf(row);
 }
 
+export function stationWorkersOf(db: Database, order: string): readonly Worker[] {
+  return db
+    .query<WorkerRow, [string]>(
+      "SELECT name, role, project, order_id, created_by FROM worker WHERE order_id = ? ORDER BY rowid",
+    )
+    .all(order)
+    .map(workerOf);
+}
+
+export function sessionsOf(db: Database, worker: string): readonly WorkerSession[] {
+  return db
+    .query<SessionRow, [string]>(
+      "SELECT id, worker, harness, pid, pid_started_at FROM worker_session WHERE worker = ? ORDER BY rowid",
+    )
+    .all(worker)
+    .map(sessionOf);
+}
+
 export function sessions(db: Database): readonly WorkerSession[] {
   return db
     .query<SessionRow, []>(

@@ -10,3 +10,12 @@ export class CodedError<Code extends string = string, Meta extends object = obje
     super(message, options);
   }
 }
+
+export type MessageTable<Metas extends Record<string, object>> = {
+  readonly [Code in keyof Metas]: (meta: Metas[Code]) => string;
+};
+
+export function refuser<Metas extends Record<string, object>>(messages: MessageTable<Metas>) {
+  return <Code extends keyof Metas & string>(code: Code, meta: Metas[Code]): CodedError<Code, Metas[Code]> =>
+    new CodedError(code, messages[code](meta), meta);
+}

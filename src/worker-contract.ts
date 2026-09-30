@@ -1,7 +1,7 @@
-import { CodedError } from "./coded-error";
+import { refuser } from "./coded-error";
 import type { Station } from "./order-contract";
 
-type WorkerRefusalMeta = {
+export type WorkerRefusalMeta = {
   readonly no_session: { readonly cwd: string };
   readonly no_project: { readonly cwd: string };
   readonly operator_live: { readonly project: string; readonly operator: string };
@@ -10,7 +10,7 @@ type WorkerRefusalMeta = {
 
 export type WorkerRefusalCode = keyof WorkerRefusalMeta;
 
-const MESSAGES: { readonly [Code in WorkerRefusalCode]: (meta: WorkerRefusalMeta[Code]) => string } = {
+export const refuse = refuser<WorkerRefusalMeta>({
   no_session: ({ cwd }) =>
     `no live harness session of this project runs above this process in ${cwd}; register from inside the operator's session`,
   no_project: ({ cwd }) => `${cwd} is not inside a checkout whose origin remote names an owner/repo project`,
@@ -18,14 +18,7 @@ const MESSAGES: { readonly [Code in WorkerRefusalCode]: (meta: WorkerRefusalMeta
     `${operator} is the live operator of ${project}; a second one waits until that session ends`,
   not_operator: ({ project }) =>
     `this process runs under no registered operator session of ${project}, and only the operator takes order actions`,
-};
-
-export function refuse<Code extends WorkerRefusalCode>(
-  code: Code,
-  meta: WorkerRefusalMeta[Code],
-): CodedError<Code, WorkerRefusalMeta[Code]> {
-  return new CodedError(code, MESSAGES[code](meta), meta);
-}
+});
 
 export const ROLES = ["operator", "planner", "builder", "reviewer"] as const;
 export type Role = (typeof ROLES)[number];

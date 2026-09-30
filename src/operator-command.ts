@@ -2,10 +2,9 @@ import type { Database } from "bun:sqlite";
 import { type Command, UsageError } from "./cli-contract";
 import { closeDb, writeTransaction } from "./db";
 import { openFactory } from "./factory-db";
-import { checkoutRoot } from "./git-checkout";
-import { originLabel } from "./git-remote";
 import { openSessionsUnder } from "./hooks-sessions";
 import { drainSpool } from "./ingest-spool";
+import { checkoutAt } from "./project";
 import { ancestry, isRunning, nearestHarnessSession, workerNameOf } from "./worker";
 import { refuse } from "./worker-contract";
 import { processTable } from "./worker-effects";
@@ -13,10 +12,7 @@ import { insertSession, insertWorker, operatorSessions, sessions, workerNames } 
 
 const USAGE = "usage: dim operator register";
 
-function projectAt(dir: string): string | null {
-  const root = checkoutRoot(dir);
-  return root === null ? null : originLabel(root);
-}
+const projectAt = (dir: string) => checkoutAt(dir)?.project ?? null;
 
 function mintedName(db: Database): string {
   const taken = workerNames(db);

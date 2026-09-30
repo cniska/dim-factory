@@ -16,14 +16,14 @@ function errorRecord(error: unknown, command: string, usage: string): ErrorRecor
       code: error.code,
       message: error.message,
       meta: error.meta,
-      resolve: resolveOf(error.code, context),
+      resolve: resolveOf(error.code, context, error.meta),
     };
   }
   return {
     code: "command_failed",
     message: error instanceof Error ? error.message : String(error),
     meta: {},
-    resolve: resolveOf("command_failed", context),
+    resolve: resolveOf("command_failed", context, {}),
   };
 }
 

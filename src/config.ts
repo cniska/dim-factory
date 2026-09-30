@@ -5,10 +5,13 @@ import { ConfigError } from "./config-error";
 import { readJsoncText } from "./config-jsonc-file";
 import { parseSetting, type SettingDefect } from "./config-setting-file";
 import { committedTree } from "./git-committed";
+import { HARNESSES } from "./harness-name";
 import { configDir, type Env } from "./paths";
 
 export const SETTINGS = {
   comments: ["banned", "allowed"],
+  ship: ["default-branch"],
+  harness: HARNESSES,
 } as const satisfies Record<string, readonly string[]>;
 
 export type Setting = keyof typeof SETTINGS;
