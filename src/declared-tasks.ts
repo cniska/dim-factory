@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { CodedError } from "./coded-error";
+import { committedTree } from "./git-committed";
 
 const LONGEST_MANIFEST = 1024 * 1024;
 
@@ -31,22 +32,27 @@ export function readManifest(path: string): string | null {
   return read.kind === "text" ? read.text : null;
 }
 
-function readDeclared(path: string): string | null {
-  const read = readRegularFile(path);
-  if (read.kind === "unreadable") {
-    throw new CodedError(
-      "manifest_unreadable",
-      `${path} is there but cannot be read, so what the repo declares is unknown`,
-      { path },
-      "dim doctor",
-    );
-  }
-  return read.kind === "text" ? read.text : null;
+export type Manifests = { read(file: string): string | null };
+
+export function manifestsIn(repo: string): Manifests {
+  return {
+    read(file) {
+      const path = join(repo, file);
+      const read = readRegularFile(path);
+      if (read.kind === "unreadable") {
+        throw new CodedError(
+          "manifest_unreadable",
+          `${path} is there but cannot be read, so what the repo declares is unknown`,
+          { path },
+          "dim doctor",
+        );
+      }
+      return read.kind === "text" ? read.text : null;
+    },
+  };
 }
 
-type DeclaredTask = { name: string; commandLine: string; source: string };
-
-const LOCKS: [string, string][] = [
+const LOCKS: readonly (readonly [string, string])[] = [
   ["bun.lock", "bun"],
   ["bun.lockb", "bun"],
   ["pnpm-lock.yaml", "pnpm"],
@@ -54,13 +60,28 @@ const LOCKS: [string, string][] = [
   ["package-lock.json", "npm"],
 ];
 
-function managerOf(repo: string): string | null {
-  for (const [lock, pm] of LOCKS) if (existsSync(join(repo, lock))) return pm;
+const MANIFESTS = ["package.json", "mise.toml", "Makefile", ...LOCKS.map(([lock]) => lock)];
+
+export function manifestsAt(root: string, at: string): Manifests | null {
+  const tree = committedTree(root, at, MANIFESTS);
+  if (tree === null) return null;
+  return { read: (file) => (tree.has(file) ? (tree.read(file, LONGEST_MANIFEST) ?? "") : null) };
+}
+
+export type DeclaredTask = {
+  readonly name: string;
+  readonly commandLine: string;
+  readonly source: string;
+  readonly body: string;
+};
+
+function managerOf(manifests: Manifests): string | null {
+  for (const [lock, pm] of LOCKS) if (manifests.read(lock) !== null) return pm;
   return null;
 }
 
-function fromPackageJson(repo: string): DeclaredTask[] {
-  const text = readDeclared(join(repo, "package.json"));
+function fromPackageJson(manifests: Manifests): DeclaredTask[] {
+  const text = manifests.read("package.json");
   if (text === null) return [];
   let scripts: Record<string, unknown>;
   try {
@@ -68,17 +89,18 @@ function fromPackageJson(repo: string): DeclaredTask[] {
   } catch {
     return [];
   }
-  const pm = managerOf(repo);
+  const pm = managerOf(manifests);
   if (pm === null) return [];
-  return Object.keys(scripts).map((name) => ({
+  return Object.entries(scripts).map(([name, body]) => ({
     name,
     commandLine: `${pm} run ${name}`,
     source: "package.json",
+    body: JSON.stringify(body),
   }));
 }
 
-function fromMise(repo: string): DeclaredTask[] {
-  const text = readDeclared(join(repo, "mise.toml"));
+function fromMise(manifests: Manifests): DeclaredTask[] {
+  const text = manifests.read("mise.toml");
   if (text === null) return [];
   let parsed: { tasks?: Record<string, unknown> };
   try {
@@ -86,32 +108,47 @@ function fromMise(repo: string): DeclaredTask[] {
   } catch {
     return [];
   }
-  return Object.keys(parsed.tasks ?? {}).map((name) => ({
+  return Object.entries(parsed.tasks ?? {}).map(([name, body]) => ({
     name,
     commandLine: `mise run ${name}`,
     source: "mise.toml",
+    body: JSON.stringify(body),
   }));
 }
 
 const MAKE_TARGET = /^([A-Za-z][\w-]*)\s*:(?!=)/;
 
-function fromMakefile(repo: string): DeclaredTask[] {
-  const text = readDeclared(join(repo, "Makefile"));
+function fromMakefile(manifests: Manifests): DeclaredTask[] {
+  const text = manifests.read("Makefile");
   if (text === null) return [];
-  const names = new Set<string>();
+  const bodies = new Map<string, string[]>();
+  let current: string[] | null = null;
   for (const line of text.split("\n")) {
     const name = MAKE_TARGET.exec(line)?.[1];
-    if (name) names.add(name);
+    if (name !== undefined) {
+      current = bodies.get(name) ?? [];
+      bodies.set(name, current);
+      current.push(line);
+    } else if (current !== null && line.startsWith("\t")) {
+      current.push(line);
+    } else {
+      current = null;
+    }
   }
-  return [...names].map((name) => ({ name, commandLine: `make ${name}`, source: "Makefile" }));
+  return [...bodies].map(([name, lines]) => ({
+    name,
+    commandLine: `make ${name}`,
+    source: "Makefile",
+    body: lines.join("\n"),
+  }));
 }
 
 const CHECK_ORDER = ["verify", "check", "ci", "validate", "test"];
 
 const FORMAT_ORDER = ["format", "fmt"];
 
-function firstDeclared(repo: string, order: string[]): DeclaredTask | null {
-  const tasks = [...fromPackageJson(repo), ...fromMise(repo), ...fromMakefile(repo)];
+function firstDeclared(manifests: Manifests, order: readonly string[]): DeclaredTask | null {
+  const tasks = [...fromPackageJson(manifests), ...fromMise(manifests), ...fromMakefile(manifests)];
   for (const name of order) {
     const found = tasks.find((one) => one.name === name);
     if (found) return found;
@@ -119,10 +156,14 @@ function firstDeclared(repo: string, order: string[]): DeclaredTask | null {
   return null;
 }
 
+export function checkDeclared(manifests: Manifests): DeclaredTask | null {
+  return firstDeclared(manifests, CHECK_ORDER);
+}
+
 export function checkTask(repo: string): DeclaredTask | null {
-  return firstDeclared(repo, CHECK_ORDER);
+  return checkDeclared(manifestsIn(repo));
 }
 
 export function formatTask(repo: string): DeclaredTask | null {
-  return firstDeclared(repo, FORMAT_ORDER);
+  return firstDeclared(manifestsIn(repo), FORMAT_ORDER);
 }

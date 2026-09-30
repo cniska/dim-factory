@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkTask, formatTask } from "./declared-tasks";
+import { checkDeclared, checkTask, formatTask, manifestsAt } from "./declared-tasks";
 
 const roots: string[] = [];
 
@@ -28,7 +28,40 @@ describe("the check task", () => {
       name: "verify",
       commandLine: "bun run verify",
       source: "package.json",
+      body: '"biome check && bun test"',
     });
+  });
+
+  test("carries the check's own declaration, so a change to it shows and a change beside it does not", () => {
+    const makefile = "lint:\n\tbiome check\nverify:\n\tbun test\n\tbiome check\n";
+    expect(checkTask(repo({ Makefile: makefile }))?.body).toBe("verify:\n\tbun test\n\tbiome check");
+    const beside = checkTask(repo({ Makefile: makefile.replace("biome check\nverify", "eslint\nverify") }));
+    expect(beside?.body).toBe("verify:\n\tbun test\n\tbiome check");
+  });
+
+  test("reads a revision's declaration from git, not the working tree", () => {
+    const root = repo({
+      "package.json": JSON.stringify({ scripts: { verify: "bun test" } }),
+      "bun.lock": "",
+    });
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", ["-C", root, "add", "-A"]);
+    execFileSync("git", [
+      "-C",
+      root,
+      "-c",
+      "user.name=T",
+      "-c",
+      "user.email=t@e",
+      "commit",
+      "-qm",
+      "x",
+      "--no-verify",
+    ]);
+    writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { verify: "true" } }));
+    const at = manifestsAt(root, "HEAD");
+    expect(at === null ? null : checkDeclared(at)?.body).toBe('"bun test"');
+    expect(checkTask(root)?.body).toBe('"true"');
   });
 
   test("runs through the package manager the lock file names", () => {
