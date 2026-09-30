@@ -1,14 +1,7 @@
 import { type Command, Ran, UsageError } from "./cli-contract";
-import { CodedError } from "./coded-error";
+import { CodedError, type RefusalRecord } from "./coded-error";
 
-type ErrorRecord = {
-  readonly code: string;
-  readonly message: string;
-  readonly meta: object;
-  readonly resolve: string;
-};
-
-function errorRecord(error: unknown, usage: string): ErrorRecord {
+export function errorRecord(error: unknown, usage: string): RefusalRecord {
   if (error instanceof CodedError) {
     return { code: error.code, message: error.message, meta: error.meta, resolve: error.resolve };
   }

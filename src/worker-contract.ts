@@ -7,6 +7,7 @@ type WorkerRefusalMeta = {
   readonly not_operator: { readonly project: string };
   readonly not_station_worker: { readonly order: string; readonly station: string };
   readonly no_process_table: { readonly detail: string };
+  readonly unknown_session: { readonly session: string };
 };
 
 const REGISTER = () => "dim operator register";
@@ -35,6 +36,10 @@ export const refuseWorker = refuser<WorkerRefusalMeta>({
     message: ({ order, station }) =>
       `only order ${order}'s worker at ${station} does that station's work, from inside its turn`,
     resolve: ({ order }) => `dim order show ${order}`,
+  },
+  unknown_session: {
+    message: ({ session }) => `no station worker's session ${session} is on record with a transcript`,
+    resolve: () => "dim order show <order>",
   },
   no_process_table: {
     message: ({ detail }) =>

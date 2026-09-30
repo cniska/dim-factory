@@ -1,6 +1,8 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { z } from "zod";
 import type { Adapter, Outcome, SessionStart, Start } from "./harness-contract";
+
+const DIM_PLUGIN = resolve(import.meta.dir, "..");
 
 const Result = z.object({ type: z.literal("result"), subtype: z.string(), result: z.string().optional() });
 
@@ -63,6 +65,8 @@ export const claude: Adapter = {
     settings(start),
     "--setting-sources",
     "user",
+    "--plugin-dir",
+    DIM_PLUGIN,
     ...sessionFlags(start.session),
   ],
   outcome(lines) {

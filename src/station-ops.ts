@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { invariant } from "./assert";
-import { CodedError, refusalOf } from "./coded-error";
+import { errorRecord } from "./cli-output";
+import { refusalOf } from "./coded-error";
 import { readConfig } from "./config";
 import { writeTransaction } from "./db";
 import { adapterFor, modelFor, startHarness } from "./harness-ops";
@@ -33,12 +34,6 @@ type TurnOf = {
   readonly cause: number;
   readonly newSessionHarness: string;
 };
-
-function refusalReply(error: unknown): TurnReply {
-  if (!(error instanceof CodedError)) throw error;
-  const { code, message, meta, resolve } = error;
-  return { ok: false, error: { code, message, meta: { ...meta }, resolve } };
-}
 
 function planReturned(text: string) {
   let raw: unknown;
@@ -76,18 +71,20 @@ async function runTurn(db: Database, turn: TurnOf): Promise<void> {
   const dir = openTurnDir();
   let acting: Acting | null = null;
   let returned = false;
+  const serve = (request: TurnRequest): unknown => {
+    invariant(acting !== null, "a turn serves acts only once its session is registered");
+    recordWork(db, turn.order, acting, turn.station, {
+      action: "plan_returned",
+      details: planReturned(request.plan),
+    });
+    returned = true;
+    return { recorded: "plan_returned" };
+  };
   const listening = listen(dir.socket, async (line) => {
     try {
-      invariant(acting !== null, "a turn serves acts only once its session is registered");
-      const request = TurnRequest.parse(JSON.parse(line));
-      recordWork(db, turn.order, acting, turn.station, {
-        action: "plan_returned",
-        details: planReturned(request.plan),
-      });
-      returned = true;
-      return JSON.stringify({ ok: true, result: { recorded: "plan_returned" } });
+      return JSON.stringify({ ok: true, result: serve(TurnRequest.parse(JSON.parse(line))) });
     } catch (error) {
-      return JSON.stringify(refusalReply(error));
+      return JSON.stringify({ ok: false, error: errorRecord(error, "usage: dim plan return <file>") });
     }
   });
   try {

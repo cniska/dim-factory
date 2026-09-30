@@ -1,9 +1,7 @@
 import { z } from "zod";
 import { refuser } from "./coded-error";
 
-export const TurnRequest = z.discriminatedUnion("act", [
-  z.object({ act: z.literal("plan_return"), plan: z.string() }),
-]);
+export const TurnRequest = z.object({ act: z.literal("plan_return"), plan: z.string() });
 export type TurnRequest = z.infer<typeof TurnRequest>;
 
 const Refusal = z.object({

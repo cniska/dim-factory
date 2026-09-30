@@ -80,7 +80,8 @@ type Valued =
   | "--settings"
   | "--model"
   | "--resume"
-  | "--session-id";
+  | "--session-id"
+  | "--plugin-dir";
 
 const VALUED: Readonly<Record<Valued, (flags: Flags, value: string) => Flags>> = {
   "--output-format": (flags) => flags,
@@ -90,6 +91,7 @@ const VALUED: Readonly<Record<Valued, (flags: Flags, value: string) => Flags>> =
   "--model": (flags, value) => ({ ...flags, model: value }),
   "--resume": (flags, value) => ({ ...flags, resume: value }),
   "--session-id": (flags, value) => ({ ...flags, sessionId: value }),
+  "--plugin-dir": (flags) => flags,
 };
 
 const isSwitch = (arg: string): arg is Switch => Object.hasOwn(SWITCHES, arg);

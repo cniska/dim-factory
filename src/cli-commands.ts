@@ -17,6 +17,7 @@ const LOADERS: Record<string, () => Promise<Command>> = {
   operator: () => import("./operator-command").then((m) => m.operatorCommand),
   order: () => import("./order-command").then((m) => m.orderCommand),
   plan: () => import("./plan-command").then((m) => m.planCommand),
+  session: () => import("./session-command").then((m) => m.sessionCommand),
 };
 
 export const COMMAND_NAMES: readonly string[] = Object.keys(LOADERS);

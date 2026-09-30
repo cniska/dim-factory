@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { claude } from "./harness-claude";
 
 const line = (event: Readonly<Record<string, unknown>>) => JSON.stringify(event);
@@ -44,11 +46,21 @@ describe("starting Claude Code", () => {
   test("starts a new session under its id, reading no project settings", () => {
     const argv = claude.argv(start);
     expect(argv.slice(0, 5)).toEqual(["claude", "-p", "--output-format", "stream-json", "--verbose"]);
-    expect(argv.slice(-4)).toEqual(["--setting-sources", "user", "--session-id", "s1"]);
+    expect(argv[argv.indexOf("--setting-sources") + 1]).toBe("user");
+    expect(argv.slice(-2)).toEqual(["--session-id", "s1"]);
     expect(claude.argv({ ...start, session: { kind: "resume", id: "s1" } }).slice(-2)).toEqual([
       "--resume",
       "s1",
     ]);
+  });
+
+  test("loads dim's station skills as the dim plugin, since a worker's HOME holds none", () => {
+    const argv = claude.argv(start);
+    const plugin = argv[argv.indexOf("--plugin-dir") + 1] ?? "";
+    expect(JSON.parse(readFileSync(join(plugin, ".claude-plugin", "plugin.json"), "utf8")).name).toBe("dim");
+    for (const skill of ["dim-plan", "dim-build", "dim-review"]) {
+      expect(existsSync(join(plugin, "skills", skill, "SKILL.md"))).toBe(true);
+    }
   });
 
   test("sandboxes the worker so it writes only its turn's temp directory and reaches only its socket", () => {

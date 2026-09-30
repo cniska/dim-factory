@@ -14,9 +14,10 @@ import {
   runOrder,
   shipThrough,
   showOrder,
+  transcriptOf,
   updateOrder,
 } from "./support/operator-acts";
-import { actions, entryOf } from "./support/order-view";
+import { actions, entryOf, sessionOf, workerOf } from "./support/order-view";
 import {
   BUILD_ARTIFACT,
   buildTurn,
@@ -148,6 +149,18 @@ describe("what a station worker may change", () => {
     expect(existsSync(join(order.workspace, "planted-by-shell.txt"))).toBe(false);
     expect(existsSync(join(m.record, "planted"))).toBe(false);
     expect(actions(order).filter((action) => action === ACTION.planReturned)).toHaveLength(1);
+  });
+
+  test("a planner that may not write the record still reads it, through its turn", async () => {
+    const m = await start({
+      script: { planner: [[{ act: "dim", args: ["query", "search", "greeting"] }, ...planTurn()]] },
+    });
+    const order = await showOrder(m.operator, await planned(m.operator));
+
+    const results = (await transcriptOf(m.operator, sessionOf(workerOf(order, "planner"), 0).id)).flatMap(
+      (entry) => (entry.type === "tool_result" ? [entry.output] : []),
+    );
+    expect(results[0]).toContain('"command":"query","ok":true');
   });
 
   test("a reviewer's writes to the workspace and the record are refused", async () => {

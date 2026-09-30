@@ -1,8 +1,10 @@
 import type { Database } from "bun:sqlite";
+import { join } from "node:path";
 import { invariant } from "./assert";
 import { writeTransaction } from "./db";
 import { type OpenSession, openSessionsUnder } from "./hooks-sessions";
 import { drainSpool } from "./ingest-spool";
+import { workerSessionsDir } from "./paths";
 import { checkoutAt } from "./project";
 import { actingSession, ancestry, isRunning, nearestHarnessSession, workerNameOf } from "./worker";
 import {
@@ -15,7 +17,7 @@ import {
   type WorkerRecord,
   type WorkerSession,
 } from "./worker-contract";
-import { processTable } from "./worker-effects";
+import { processTable, transcriptLines } from "./worker-effects";
 import {
   insertSession,
   insertWorker,
@@ -81,6 +83,14 @@ export function processOf(pid: number): ProcessId {
   const row = processTable().find((candidate) => candidate.pid === pid);
   invariant(row !== undefined, `process ${pid}, held until it is registered, is running`);
   return { pid: row.pid, startedAt: row.startedAt };
+}
+
+export function showSession(db: Database, id: string): { readonly lines: readonly unknown[] } {
+  const session = sessionNamed(db, id);
+  const lines =
+    session === null ? null : transcriptLines(join(workerSessionsDir(session.worker), `${id}.jsonl`));
+  if (lines === null) throw refuseWorker("unknown_session", { session: id });
+  return { lines };
 }
 
 export function registerSession(db: Database, session: WorkerSession): void {
