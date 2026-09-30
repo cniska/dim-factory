@@ -1,118 +1,173 @@
 #!/usr/bin/env bun
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
+import { briefOf } from "./brief";
 import { type ClaudeHooks, fireHooksSync, mergeHooks, settingsHooks } from "./claude-hooks";
-import { type ClaudeSettings, sandboxed, writeRefused } from "./claude-sandbox";
 import {
-  claudeLine,
-  type HarnessAct,
+  bashAllowed,
+  type ClaudeSettings,
+  type PermissionMode,
+  sandboxed,
+  writeAllowed,
+} from "./claude-sandbox";
+import { claudeLine, readTranscript, type TranscriptEntry, transcriptPath } from "./claude-transcript";
+import { commandLine, parseDim } from "./dim-output";
+import { type HarnessAct, ORDER_PLACEHOLDER } from "./harness-script";
+import { orderShown } from "./order-view";
+import {
   type Invocation,
-  type Role,
-  readTranscript,
   recordInvocation,
   releasePath,
   rememberRole,
   roleOf,
   signalPath,
-  type TranscriptEntry,
   takeTurn,
-  transcriptPath,
 } from "./scripted-harness-state";
-import { type Dim, dimArgs } from "./worker-acts";
+import { sliceActs } from "./scripts";
+import { unreachable } from "./unreachable";
+import { roleOfSkill, type StationRole } from "./vocabulary";
+import { waitFor } from "./wait";
+import { type Dim, dimArgs, isWorkerAct } from "./worker-acts";
 
 type Flags = {
-  resume: string | null;
-  fork: boolean;
-  sessionId: string | null;
-  model: string | null;
-  settings: (ClaudeSettings & { hooks?: ClaudeHooks }) | null;
-  settingSources: string | null;
-  addDirs: string[];
-  prompt: string;
+  readonly resume: string | null;
+  readonly fork: boolean;
+  readonly sessionId: string | null;
+  readonly model: string | null;
+  readonly permissionMode: PermissionMode;
+  readonly settings: ClaudeSettings & { readonly hooks?: ClaudeHooks };
+  readonly settingSources: string | null;
+  readonly addDirs: readonly string[];
+  readonly prompt: string;
 };
 
-const VALUED = new Set([
-  "--output-format",
-  "--permission-mode",
-  "--setting-sources",
-  "--plugin-dir",
-  "--settings",
-  "--json-schema",
-  "--add-dir",
-  "--model",
-  "--resume",
-  "--session-id",
-]);
+const NO_FLAGS: Flags = {
+  resume: null,
+  fork: false,
+  sessionId: null,
+  model: null,
+  permissionMode: "default",
+  settings: {},
+  settingSources: null,
+  addDirs: [],
+  prompt: "",
+};
 
-function parseFlags(argv: string[]): Flags {
-  const flags: Flags = {
-    resume: null,
-    fork: false,
-    sessionId: null,
-    model: null,
-    settings: null,
-    settingSources: null,
-    addDirs: [],
-    prompt: "",
-  };
-  const positional: string[] = [];
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i] as string;
-    if (arg === "--") {
-      positional.push(...argv.slice(i + 1));
-      break;
-    }
-    if (arg === "--fork-session") flags.fork = true;
-    else if (VALUED.has(arg)) {
-      const value = argv[++i] ?? "";
-      if (arg === "--resume") flags.resume = value;
-      if (arg === "--session-id") flags.sessionId = value;
-      if (arg === "--model") flags.model = value;
-      if (arg === "--settings") flags.settings = JSON.parse(value);
-      if (arg === "--setting-sources") flags.settingSources = value;
-      if (arg === "--add-dir") flags.addDirs.push(value);
-    } else if (!arg.startsWith("-")) positional.push(arg);
-  }
-  flags.prompt = positional.join(" ");
-  return flags;
-}
+const PERMISSION_MODES: readonly PermissionMode[] = ["default", "acceptEdits", "bypassPermissions", "plan"];
 
-const SKILL_ROLES: [string, Role][] = [
-  ["dim-plan", "planner"],
-  ["dim-build", "builder"],
-  ["dim-review", "reviewer"],
-];
-
-function roleNamedIn(prompt: string): Role | undefined {
-  return SKILL_ROLES.find(([skill]) => prompt.includes(skill))?.[1];
-}
-
-const emit = (event: Record<string, unknown>) => process.stdout.write(`${JSON.stringify(event)}\n`);
-
-const [state, ...argv] = Bun.argv.slice(2) as [string, ...string[]];
-const flags = parseFlags(argv);
-const cwd = process.cwd();
-const home = process.env.HOME as string;
-const env = { ...process.env } as Record<string, string>;
-
-if (!flags.prompt && !process.stdin.isTTY) flags.prompt = (await Bun.stdin.text()).trim();
-
-if (flags.resume && !existsSync(transcriptPath(home, cwd, flags.resume))) {
-  process.stderr.write(`No conversation found with session ID: ${flags.resume}\n`);
+function refuse(message: string): never {
+  process.stderr.write(`${message}\n`);
   process.exit(1);
 }
 
-const sessionId = flags.resume && !flags.fork ? flags.resume : (flags.sessionId ?? crypto.randomUUID());
+function permissionMode(value: string): PermissionMode {
+  const mode = PERMISSION_MODES.find((known) => known === value);
+  if (mode === undefined) refuse(`error: option '--permission-mode' argument '${value}' is invalid`);
+  return mode;
+}
+
+type Switch = "-p" | "--print" | "--verbose" | "--fork-session";
+
+const SWITCHES: Readonly<Record<Switch, (flags: Flags) => Flags>> = {
+  "-p": (flags) => flags,
+  "--print": (flags) => flags,
+  "--verbose": (flags) => flags,
+  "--fork-session": (flags) => ({ ...flags, fork: true }),
+};
+
+type Valued =
+  | "--output-format"
+  | "--permission-mode"
+  | "--setting-sources"
+  | "--plugin-dir"
+  | "--settings"
+  | "--json-schema"
+  | "--add-dir"
+  | "--model"
+  | "--resume"
+  | "--session-id";
+
+const VALUED: Readonly<Record<Valued, (flags: Flags, value: string) => Flags>> = {
+  "--output-format": (flags) => flags,
+  "--permission-mode": (flags, value) => ({ ...flags, permissionMode: permissionMode(value) }),
+  "--setting-sources": (flags, value) => ({ ...flags, settingSources: value }),
+  "--plugin-dir": (flags) => flags,
+  "--settings": (flags, value) => ({ ...flags, settings: JSON.parse(value) }),
+  "--json-schema": (flags) => flags,
+  "--add-dir": (flags, value) => ({ ...flags, addDirs: [...flags.addDirs, value] }),
+  "--model": (flags, value) => ({ ...flags, model: value }),
+  "--resume": (flags, value) => ({ ...flags, resume: value }),
+  "--session-id": (flags, value) => ({ ...flags, sessionId: value }),
+};
+
+const isSwitch = (arg: string): arg is Switch => Object.hasOwn(SWITCHES, arg);
+
+const isValued = (arg: string): arg is Valued => Object.hasOwn(VALUED, arg);
+
+function parseFlags(argv: readonly string[]): Flags {
+  let flags = NO_FLAGS;
+  const positional: string[] = [];
+  let pending: Valued | null = null;
+  for (const [index, arg] of argv.entries()) {
+    if (pending !== null) {
+      flags = VALUED[pending](flags, arg);
+      pending = null;
+    } else if (arg === "--") {
+      positional.push(...argv.slice(index + 1));
+      break;
+    } else if (isSwitch(arg)) {
+      flags = SWITCHES[arg](flags);
+    } else if (!arg.startsWith("-")) {
+      positional.push(arg);
+    } else if (isValued(arg)) {
+      pending = arg;
+    } else {
+      refuse(`error: unknown option '${arg}'`);
+    }
+  }
+  if (pending !== null) refuse(`error: option '${pending}' argument missing`);
+  return { ...flags, prompt: positional.join(" ") };
+}
+
+function briefedRole(prompt: string): StationRole | null {
+  const brief = briefOf(prompt);
+  return brief === null ? null : roleOfSkill(brief.skill);
+}
+
+const emit = (event: Readonly<Record<string, unknown>>) => process.stdout.write(`${JSON.stringify(event)}\n`);
+
+const [stateArg, ...argv] = Bun.argv.slice(2);
+if (stateArg === undefined) refuse("scripted claude: no state directory");
+const state: string = stateArg;
+const home = process.env.HOME;
+if (home === undefined) refuse("scripted claude: HOME is not set");
+const parsed = parseFlags(argv);
+const flags =
+  parsed.prompt || process.stdin.isTTY ? parsed : { ...parsed, prompt: (await Bun.stdin.text()).trim() };
+const cwd = process.cwd();
+const env: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(process.env).flatMap(([name, value]) => (value === undefined ? [] : [[name, value]])),
+);
+
+if (flags.resume !== null && !existsSync(transcriptPath(home, cwd, flags.resume))) {
+  refuse(`No conversation found with session ID: ${flags.resume}`);
+}
+
+const sessionId =
+  flags.resume !== null && !flags.fork ? flags.resume : (flags.sessionId ?? crypto.randomUUID());
 const transcript = transcriptPath(home, cwd, sessionId);
 mkdirSync(dirname(transcript), { recursive: true });
-if (flags.resume && flags.fork) copyFileSync(transcriptPath(home, cwd, flags.resume), transcript);
+if (flags.resume !== null && flags.fork) copyFileSync(transcriptPath(home, cwd, flags.resume), transcript);
 const history = readTranscript(transcript);
 
-const role = (flags.resume && roleOf(state, flags.resume)) || roleNamedIn(flags.prompt);
-if (!role) {
-  process.stderr.write("scripted claude: the brief names no station skill\n");
-  process.exit(3);
+const role = flags.resume === null ? briefedRole(flags.prompt) : roleOf(state, flags.resume);
+if (role === null) {
+  refuse(
+    flags.resume === null
+      ? "scripted claude: the brief names no station skill"
+      : `scripted claude: session ${flags.resume} was never started by this harness`,
+  );
 }
 rememberRole(state, sessionId, role);
 
@@ -120,10 +175,17 @@ const sources = flags.settingSources === null ? ["user", "project"] : flags.sett
 const hooks = mergeHooks(
   sources.includes("user") ? settingsHooks(home) : {},
   sources.includes("project") ? settingsHooks(cwd) : {},
-  flags.settings?.hooks ?? {},
+  flags.settings.hooks ?? {},
 );
-const fire = (event: string, payload: Record<string, unknown> = {}, tool?: string) =>
-  fireHooksSync(hooks, event, { session_id: sessionId, ...payload }, env, cwd, tool);
+const fire = (event: string, payload: Readonly<Record<string, unknown>> = {}, tool?: string) =>
+  fireHooksSync(
+    hooks,
+    event,
+    { session_id: sessionId, transcript_path: transcript, ...payload },
+    env,
+    cwd,
+    tool,
+  );
 
 const { turn, acts } = takeTurn(state, role);
 const invocation: Invocation = {
@@ -145,26 +207,36 @@ const record = (entry: TranscriptEntry) =>
   appendFileSync(transcript, `${JSON.stringify(claudeLine(sessionId, cwd, entry))}\n`);
 
 emit({ type: "system", subtype: "init", session_id: sessionId, apiKeySource: "none", model: flags.model });
-fire("SessionStart", { source: flags.resume ? "resume" : "startup" });
+fire("SessionStart", { source: flags.resume === null ? "startup" : "resume" });
 record({ type: "user", text: flags.prompt });
 
-const scratch = mkdtempSync(`${env.TMPDIR ?? tmpdir()}/scripted-claude-`);
-const settings = flags.settings ?? {};
-const sessionTmp = mkdtempSync(`${env.TMPDIR ?? tmpdir()}/scripted-claude-tmp-`);
+const tmp = env.TMPDIR ?? tmpdir();
+const scratch = mkdtempSync(`${tmp}/scripted-claude-`);
+const sessionTmp = mkdtempSync(`${tmp}/scripted-claude-tmp-`);
+const commonGitDir = Bun.spawnSync(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], {
+  cwd,
+  stdout: "pipe",
+})
+  .stdout.toString()
+  .trim();
+const writable = [cwd, ...flags.addDirs, sessionTmp, ...(commonGitDir === "" ? [] : [commonGitDir])];
 const shell = (command: string) =>
-  Bun.spawnSync(sandboxed(settings, [cwd, ...flags.addDirs, sessionTmp], command), {
+  Bun.spawnSync(sandboxed(flags.settings, writable, command), {
     cwd,
     env: { ...env, TMPDIR: sessionTmp },
     stdout: "pipe",
     stderr: "pipe",
   });
-const quote = (arg: string) => `'${arg.replaceAll("'", `'\\''`)}'`;
 const dim: Dim = (args) => {
-  const ran = shell(["dim", ...args].map(quote).join(" "));
-  return { exitCode: ran.exitCode ?? 1, stdout: ran.stdout.toString(), stderr: ran.stderr.toString() };
+  const ran = shell(commandLine(args));
+  if (ran.signalCode) refuse(`scripted claude: \`dim ${args.join(" ")}\` was killed by ${ran.signalCode}`);
+  return parseDim({ exitCode: ran.exitCode, stdout: ran.stdout.toString(), stderr: ran.stderr.toString() });
 };
 
-function tool(name: string, input: Record<string, unknown>, run: () => string): void {
+const withOrder = (text: string) =>
+  text.replaceAll(ORDER_PLACEHOLDER, () => orderShown(dim(["order", "show"])).id);
+
+function tool(name: string, input: Readonly<Record<string, unknown>>, run: () => string): void {
   const id = `toolu_${crypto.randomUUID()}`;
   record({ type: "tool_use", id, name, input });
   emit({
@@ -182,30 +254,34 @@ function tool(name: string, input: Record<string, unknown>, run: () => string): 
   fire("PostToolUse", { tool_name: name, tool_input: input, tool_response: output }, name);
 }
 
-function ownOrder(): string {
-  const shown = JSON.parse(dim(["order", "show"]).stdout) as { result?: { id?: string } };
-  if (!shown.result?.id) throw new Error("dim order show names no order for this worker");
-  return shown.result.id;
-}
-
 function bash(command: string): string {
+  if (!bashAllowed(flags.settings, flags.permissionMode)) return "Permission to use Bash has been denied.";
   const ran = shell(command);
-  return `${ran.stdout.toString()}${ran.stderr.toString()}exit ${ran.exitCode}`;
+  const ended = ran.signalCode ? `killed by ${ran.signalCode}` : `exit ${ran.exitCode}`;
+  return `${ran.stdout.toString()}${ran.stderr.toString()}${ended}`;
 }
 
-async function perform(act: HarnessAct): Promise<string | undefined> {
+async function perform(act: HarnessAct): Promise<string | null> {
+  if (isWorkerAct(act)) {
+    const command = commandLine(dimArgs(act, dim, scratch).map(withOrder));
+    tool("Bash", { command }, () => bash(command));
+    return null;
+  }
   switch (act.act) {
-    case "sh":
-      tool("Bash", { command: act.command }, () => bash(act.command));
-      return;
+    case "sh": {
+      const command = withOrder(act.command);
+      tool("Bash", { command }, () => bash(command));
+      return null;
+    }
     case "write": {
-      const path = act.path.includes("{order}") ? act.path.replace("{order}", ownOrder()) : act.path;
+      const path = resolve(cwd, withOrder(act.path));
       tool("Write", { file_path: path, content: act.content }, () => {
-        if (writeRefused(settings, path)) return `Permission to write ${path} has been denied.`;
+        if (!writeAllowed(flags.settings, flags.permissionMode, cwd, path))
+          return `Permission to write ${path} has been denied.`;
         writeFileSync(path, act.content);
         return `wrote ${path}`;
       });
-      return;
+      return null;
     }
     case "say":
       record({ type: "assistant", text: act.text });
@@ -218,27 +294,20 @@ async function perform(act: HarnessAct): Promise<string | undefined> {
     case "signal":
       mkdirSync(dirname(signalPath(state, act.name)), { recursive: true });
       writeFileSync(signalPath(state, act.name), String(process.pid));
-      return;
+      return null;
     case "wait":
-      while (!existsSync(releasePath(state, act.name))) await Bun.sleep(20);
-      return;
+      await waitFor(`the release of ${act.name}`, () => existsSync(releasePath(state, act.name)));
+      return null;
     case "build-remaining": {
-      const shown = JSON.parse(dim(["order", "show"]).stdout) as {
-        result?: { slices?: { commit?: string }[] };
-      };
-      const slices = shown.result?.slices ?? [];
-      for (const [index, slice] of slices.entries()) {
-        if (slice.commit) continue;
-        await perform({ act: "write", path: `slice-${index + 1}.txt`, content: `slice ${index + 1}\n` });
-        await perform({ act: "commit", subject: `feat: add slice ${index + 1}` });
+      for (const [index, slice] of orderShown(dim(["order", "show"])).slices.entries()) {
+        if (slice.commit !== undefined) continue;
+        for (const step of sliceActs(index + 1)) await perform(step);
       }
-      await perform({ act: "build-return", artifact: act.artifact });
-      return;
+      return perform({ act: "build-return", artifact: act.artifact });
     }
     case "die":
       process.kill(process.pid, "SIGKILL");
-      await Bun.sleep(60_000);
-      return;
+      return null;
     case "limit":
       emit({
         type: "rate_limit_event",
@@ -251,13 +320,9 @@ async function perform(act: HarnessAct): Promise<string | undefined> {
         result: "usage limit reached",
         session_id: sessionId,
       });
-      process.exit(1);
-      return;
-    default: {
-      const command = ["dim", ...dimArgs(act, dim, scratch)].map(quote).join(" ");
-      tool("Bash", { command }, () => bash(command));
-      return;
-    }
+      return process.exit(1);
+    default:
+      return unreachable(act);
   }
 }
 

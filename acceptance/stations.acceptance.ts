@@ -1,18 +1,22 @@
-import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { type Machine, type MachineOptions, newMachine } from "./support/machine";
+import { briefFrom } from "./support/brief";
+import { refusal, resultOf } from "./support/dim-output";
+import type { HarnessScript, HarnessTurn } from "./support/harness-script";
+import { type Machine, type MachineOptions, machines } from "./support/machine";
 import {
   addOrder,
   approve,
+  built,
+  planned,
   returnArtifact,
   reviseOrder,
   runOrder,
   shipThrough,
   showOrder,
 } from "./support/operator-acts";
-import { actions, type OrderView } from "./support/order-view";
-import type { HarnessScript, HarnessTurn, Invocation } from "./support/scripted-harness-state";
+import { actions, entryOf } from "./support/order-view";
 import {
   BUILD_ARTIFACT,
   buildTurn,
@@ -25,157 +29,146 @@ import {
   SLICES,
   sliceActs,
 } from "./support/scripts";
-import { ACTION, NEXT } from "./support/vocabulary";
+import {
+  ACTION,
+  type Action,
+  NEXT,
+  STATION_NAMES,
+  STATION_ROLES,
+  STATIONS,
+  type StationRole,
+} from "./support/vocabulary";
+import type { Slice } from "./support/worker-acts";
 
-setDefaultTimeout(180_000);
+const start = machines();
 
-let machine: Machine;
-afterEach(() => machine?.close());
+const MIN_SENTENCE_LENGTH = 20;
 
-async function scripted(script: HarnessScript, options: MachineOptions = {}): Promise<Machine> {
-  machine = await newMachine(options);
-  machine.script(script);
-  return machine;
+const briefsOf = (m: Machine, role: StationRole) => m.invocations(role).map((call) => call.prompt);
+
+const FAREWELL_SLICES: readonly Slice[] = [
+  { title: "Write the farewell", outcome: "farewell.txt holds the farewell." },
+  { title: "Link the farewell", outcome: "The README names farewell.txt." },
+];
+
+async function twoShippedOrders(): Promise<Machine> {
+  const m = await start({
+    script: {
+      planner: [planTurn(), planTurn(FAREWELL_SLICES, "## Outcome\n\nA farewell under the greeting.")],
+      builder: [buildTurn(), buildTurn(2, "## Outcome\n\nThe README ends with a farewell.")],
+      reviewer: [reviewTurn(), reviewTurn()],
+    },
+  });
+  await shipThrough(m.operator, await addOrder(m.operator, { title: "Greet" }));
+  await shipThrough(
+    m.operator,
+    await addOrder(m.operator, { title: "Farewell", request: "End the README with a farewell." }),
+  );
+  return m;
 }
-
-const briefsOf = (m: Machine, role: Invocation["role"]) =>
-  m
-    .invocations()
-    .filter((call) => call.role === role)
-    .map((call) => call.prompt);
-
-async function planned(m: Machine, fields: Parameters<typeof addOrder>[1] = {}): Promise<string> {
-  const id = await addOrder(m.operator, fields);
-  await runOrder(m.operator, id);
-  return id;
-}
-
-async function built(m: Machine): Promise<string> {
-  const id = await planned(m);
-  await approve(m.operator, id);
-  return id;
-}
-
-const branchSubjects = (m: Machine, order: OrderView) =>
-  m
-    .git(["log", "--reverse", "--format=%s", `main..${order.branch}`])
-    .split("\n")
-    .filter(Boolean);
 
 describe("briefs", () => {
   test("each station's brief is a fixed set of fields that names its skill", async () => {
-    const m = await scripted({
-      planner: [planTurn(), planTurn()],
-      builder: [buildTurn(), buildTurn()],
-      reviewer: [reviewTurn(), reviewTurn()],
-    });
-    await shipThrough(m.operator, await addOrder(m.operator, { title: "First" }));
-    await shipThrough(
-      m.operator,
-      await addOrder(m.operator, { title: "Second", request: "Add a farewell to the README." }),
-    );
+    const m = await twoShippedOrders();
 
-    for (const [role, skill] of [
-      ["planner", "dim-plan"],
-      ["builder", "dim-build"],
-      ["reviewer", "dim-review"],
-    ] as const) {
-      const [first, second] = briefsOf(m, role).map((brief) => JSON.parse(brief) as Record<string, unknown>);
-      expect(first?.skill).toBe(skill);
-      expect(Object.keys(first ?? {}).sort()).toEqual(Object.keys(second ?? {}).sort());
+    for (const { role, skill } of Object.values(STATIONS)) {
+      const first = briefFrom(m.invocation(role, 0).prompt);
+      const second = briefFrom(m.invocation(role, 1).prompt);
+      expect(first.skill).toBe(skill);
+      expect(Object.keys(first).sort()).toEqual(Object.keys(second).sort());
     }
   });
 
-  test("no sentence of a brief repeats in every order's brief", async () => {
-    const m = await scripted({
-      planner: [planTurn(), planTurn()],
-      builder: [buildTurn(), buildTurn()],
-      reviewer: [reviewTurn(), reviewTurn()],
-    });
-    await shipThrough(m.operator, await addOrder(m.operator, { title: "First" }));
-    await shipThrough(
-      m.operator,
-      await addOrder(m.operator, { title: "Second", request: "Add a farewell to the README." }),
-    );
+  test("no sentence of a brief repeats in the brief of an order with a different request", async () => {
+    const m = await twoShippedOrders();
 
     const sentences = (brief: string) =>
-      Object.entries(JSON.parse(brief) as Record<string, unknown>)
+      Object.entries(briefFrom(brief))
         .filter(([field]) => field !== "skill")
         .flatMap(([, value]) => JSON.stringify(value).split(/(?<=[.!?])\s+/))
-        .filter((sentence) => sentence.length > 20);
-    for (const role of ["planner", "builder", "reviewer"] as const) {
-      const [first, second] = briefsOf(m, role).map(sentences);
-      expect((first ?? []).filter((sentence) => second?.includes(sentence))).toEqual([]);
+        .filter((sentence) => sentence.length > MIN_SENTENCE_LENGTH);
+    for (const role of STATION_ROLES) {
+      const first = sentences(m.invocation(role, 0).prompt);
+      const second = sentences(m.invocation(role, 1).prompt);
+      expect(first.filter((sentence) => second.includes(sentence))).toEqual([]);
     }
   });
 
   test("the planner is briefed with the request, the builder with the approved plan, the reviewer with the Build artifact and the diff", async () => {
-    const m = await scripted(happyPath());
-    const id = await addOrder(m.operator, { request: "Add a greeting to the README, please." });
-    await shipThrough(m.operator, id);
+    const m = await start({ script: happyPath() });
+    await shipThrough(
+      m.operator,
+      await addOrder(m.operator, { request: "Add a greeting to the README, please." }),
+    );
 
-    expect(briefsOf(m, "planner")[0]).toContain("Add a greeting to the README, please.");
-    for (const slice of SLICES) expect(briefsOf(m, "builder")[0]).toContain(slice.title);
-    expect(briefsOf(m, "reviewer")[0]).toContain("The README links a greeting.");
-    expect(briefsOf(m, "reviewer")[0]).toContain("slice-2.txt");
+    expect(m.invocation("planner", 0).prompt).toContain("Add a greeting to the README, please.");
+    for (const slice of SLICES) expect(m.invocation("builder", 0).prompt).toContain(slice.title);
+    expect(m.invocation("reviewer", 0).prompt).toContain("The README links a greeting.");
+    expect(m.invocation("reviewer", 0).prompt).toContain("slice-2.txt");
   });
 
   test("each recorded slice of a plan has a title and an outcome", async () => {
-    const m = await scripted(happyPath());
-    const order = await showOrder(m.operator, await planned(m));
-    expect(order.slices.map(({ title, outcome }) => ({ title, outcome }))).toEqual(SLICES);
+    const m = await start({ script: happyPath() });
+    const order = await showOrder(m.operator, await planned(m.operator));
+    expect(order.slices.map(({ title, outcome }) => ({ title, outcome }))).toEqual([...SLICES]);
   });
 
   test("a revised request briefs the next plan", async () => {
-    const m = await scripted({ planner: [[{ act: "cannot-plan", reason: "which README?" }], planTurn()] });
-    const id = await planned(m);
+    const m = await start({
+      script: { planner: [[{ act: "order-return", reason: "which README?" }], planTurn()] },
+    });
+    const id = await planned(m.operator);
 
-    expect((await reviseOrder(m.operator, id, "Add a greeting to the top-level README.")).ok).toBe(true);
-    await runOrder(m.operator, id);
+    resultOf(await reviseOrder(m.operator, id, "Add a greeting to the top-level README."));
+    resultOf(await runOrder(m.operator, id));
 
-    expect(briefsOf(m, "planner")[1]).toContain("Add a greeting to the top-level README.");
+    expect(m.invocation("planner", 1).prompt).toContain("Add a greeting to the top-level README.");
     expect((await showOrder(m.operator, id)).next).toBe(NEXT.approve);
   });
 });
 
 describe("what a station worker may change", () => {
   test("a planner's writes to the worktree and the record are refused and its plan comes only from its return", async () => {
-    const m = await scripted({
-      planner: [
-        [
-          { act: "write", path: "planted-by-write.txt", content: "x\n" },
-          { act: "sh", command: "echo x > planted-by-shell.txt" },
-          { act: "sh", command: 'touch "$DIM_HOME/planted"' },
-          ...planTurn(),
+    const m = await start({
+      script: {
+        planner: [
+          [
+            { act: "write", path: "planted-by-write.txt", content: "x\n" },
+            { act: "sh", command: "echo x > planted-by-shell.txt" },
+            { act: "sh", command: 'touch "$DIM_HOME/planted"' },
+            ...planTurn(),
+          ],
         ],
-      ],
+      },
     });
-    const order = await showOrder(m.operator, await planned(m));
+    const order = await showOrder(m.operator, await planned(m.operator));
 
     expect(existsSync(join(order.worktree, "planted-by-write.txt"))).toBe(false);
     expect(existsSync(join(order.worktree, "planted-by-shell.txt"))).toBe(false);
-    expect(existsSync(join(m.env.DIM_HOME as string, "planted"))).toBe(false);
+    expect(existsSync(join(m.dimHome, "planted"))).toBe(false);
     expect(actions(order).filter((action) => action === ACTION.planReturned)).toHaveLength(1);
   });
 
   test("a reviewer's writes to the worktree and the record are refused", async () => {
-    const m = await scripted({
-      ...happyPath(),
-      reviewer: [
-        [
-          { act: "write", path: "planted.txt", content: "x\n" },
-          { act: "sh", command: 'echo x > planted-by-shell.txt; touch "$DIM_HOME/planted"' },
-          ...reviewTurn(),
+    const m = await start({
+      script: {
+        ...happyPath(),
+        reviewer: [
+          [
+            { act: "write", path: "planted.txt", content: "x\n" },
+            { act: "sh", command: 'echo x > planted-by-shell.txt; touch "$DIM_HOME/planted"' },
+            ...reviewTurn(),
+          ],
         ],
-      ],
+      },
     });
-    const id = await built(m);
+    const id = await built(m.operator);
     await approve(m.operator, id);
 
     const order = await showOrder(m.operator, id);
     expect(existsSync(join(order.worktree, "planted.txt"))).toBe(false);
     expect(existsSync(join(order.worktree, "planted-by-shell.txt"))).toBe(false);
-    expect(existsSync(join(m.env.DIM_HOME as string, "planted"))).toBe(false);
+    expect(existsSync(join(m.dimHome, "planted"))).toBe(false);
   });
 });
 
@@ -186,100 +179,112 @@ describe("slice gates", () => {
   });
 
   test("a slice with a comment, an unchanged test and an unusual subject is kept when the check passes", async () => {
-    const m = await scripted(
-      oneSlice([
+    const m = await start({
+      script: oneSlice([
         { act: "write", path: "greet.ts", content: "// says hello\nexport const greet = 'hello';\n" },
         { act: "commit", subject: "wip!! greeting, see thread" },
       ]),
-    );
-    const order = await showOrder(m.operator, await built(m));
+    });
+    const order = await showOrder(m.operator, await built(m.operator));
 
-    expect(branchSubjects(m, order)).toEqual(["wip!! greeting, see thread"]);
+    expect(m.commitsOn(order.branch)).toEqual(["wip!! greeting, see thread"]);
     expect(order.next).toBe(NEXT.approve);
   });
 
-  const refusedCases: [string, MachineOptions, HarnessTurn][] = [
-    [
-      "whose check fails",
-      { check: "echo RED-CHECK-OUTPUT; [ ! -e red.txt ]" },
-      [{ act: "write", path: "red.txt", content: "x\n" }],
-    ],
-    [
-      "whose check rewrote files",
-      { check: "[ ! -e rewrite-me.txt ] || echo rewritten >> rewrite-me.txt" },
-      [{ act: "write", path: "rewrite-me.txt", content: "x\n" }],
-    ],
-    [
-      "that changed the check's definition",
-      { check: "[ ! -e red.txt ]" },
-      [
+  type RefusedCase = {
+    readonly name: string;
+    readonly options: MachineOptions;
+    readonly acts: HarnessTurn;
+    readonly during?: (m: Machine, id: string) => Promise<void>;
+  };
+
+  const refusedCases: readonly RefusedCase[] = [
+    {
+      name: "whose check fails",
+      options: { check: "echo RED-CHECK-OUTPUT; [ ! -e red.txt ]" },
+      acts: [{ act: "write", path: "red.txt", content: "x\n" }],
+    },
+    {
+      name: "whose check rewrote files",
+      options: { check: "[ ! -e rewrite-me.txt ] || echo rewritten >> rewrite-me.txt" },
+      acts: [{ act: "write", path: "rewrite-me.txt", content: "x\n" }],
+    },
+    {
+      name: "that changed the check's definition",
+      options: { check: "[ ! -e red.txt ]" },
+      acts: [
         { act: "write", path: "red.txt", content: "x\n" },
         { act: "write", path: "package.json", content: '{"scripts":{"verify":"true"}}\n' },
       ],
-    ],
-    [
-      "whose commit is not on the recorded head of the order's branch",
-      {},
-      [
+    },
+    {
+      name: "whose commit is not on the recorded head of the order's branch",
+      options: {},
+      acts: [
         { act: "write", path: "one.txt", content: "x\n" },
         { act: "signal", name: "before-commit" },
         { act: "wait", name: "branch-moved" },
       ],
-    ],
-  ];
-
-  for (const [name, options, acts] of refusedCases) {
-    test(`a slice ${name} is refused and leaves the order's branch as it was`, async () => {
-      const m = await scripted(oneSlice([...acts, { act: "commit", subject: "feat: add one" }]), options);
-      const id = await planned(m);
-      const building = approve(m.operator, id);
-      if (name.includes("recorded head")) {
+      async during(m, id) {
         await m.reached("before-commit");
         const { worktree } = await showOrder(m.operator, id);
         m.git(["commit", "-q", "--allow-empty", "-m", "chore: the owner moves the branch"], worktree);
         m.release("branch-moved");
-      }
+      },
+    },
+  ];
+
+  for (const { name, options, acts, during } of refusedCases) {
+    test(`a slice ${name} is refused and leaves the order's branch as it was`, async () => {
+      const m = await start({
+        ...options,
+        script: oneSlice([...acts, { act: "commit", subject: "feat: add one" }]),
+      });
+      const id = await planned(m.operator);
+      const building = approve(m.operator, id);
+      await during?.(m, id);
       await building;
 
       const order = await showOrder(m.operator, id);
       expect(actions(order)).toContain(ACTION.sliceRefused);
       expect(actions(order)).not.toContain(ACTION.sliceCommitted);
-      expect(branchSubjects(m, order)).not.toContain("feat: add one");
+      expect(m.commitsOn(order.branch)).not.toContain("feat: add one");
     });
   }
 
   test("a refused slice's log entry carries the check's output", async () => {
-    const m = await scripted(
-      oneSlice([
+    const m = await start({
+      check: "echo RED-CHECK-OUTPUT; [ ! -e red.txt ]",
+      script: oneSlice([
         { act: "write", path: "red.txt", content: "x\n" },
         { act: "commit", subject: "feat: add red" },
       ]),
-      { check: "echo RED-CHECK-OUTPUT; [ ! -e red.txt ]" },
-    );
-    const order = await showOrder(m.operator, await built(m));
+    });
+    const id = await planned(m.operator);
+    expect(refusal(await approve(m.operator, id)).code).toBeString();
+    const order = await showOrder(m.operator, id);
 
-    const refused = order.log.find((entry) => entry.action === ACTION.sliceRefused);
-    expect(refused?.code).toBeString();
-    expect(JSON.stringify(refused?.evidence)).toContain("RED-CHECK-OUTPUT");
+    const refused = entryOf(order, ACTION.sliceRefused);
+    expect(refused.code).toBeString();
+    expect(JSON.stringify(refused.evidence)).toContain("RED-CHECK-OUTPUT");
   });
 
   test("one build commits each slice in order through the gates and returns once", async () => {
-    const m = await scripted(happyPath());
-    const order = await showOrder(m.operator, await built(m));
+    const m = await start({ script: happyPath() });
+    const order = await showOrder(m.operator, await built(m.operator));
 
     expect(briefsOf(m, "builder")).toHaveLength(1);
-    expect(branchSubjects(m, order)).toEqual(["feat: add slice 1", "feat: add slice 2"]);
-    const build = actions(order).filter((action) =>
-      [ACTION.sliceCommitted, ACTION.buildReturned].includes(action as never),
-    );
+    expect(m.commitsOn(order.branch)).toEqual(["feat: add slice 1", "feat: add slice 2"]);
+    const buildActions: readonly Action[] = [ACTION.sliceCommitted, ACTION.buildReturned];
+    const build = actions(order).filter((action) => buildActions.includes(action));
     expect(build).toEqual([ACTION.sliceCommitted, ACTION.sliceCommitted, ACTION.buildReturned]);
   });
 });
 
 describe("definitions of done", () => {
   test("a plan with no slice records nothing and goes back to the planner, whose corrected plan is accepted", async () => {
-    const m = await scripted({ planner: [[...planTurn([]), ...planTurn()]] });
-    const order = await showOrder(m.operator, await planned(m));
+    const m = await start({ script: { planner: [[...planTurn([]), ...planTurn()]] } });
+    const order = await showOrder(m.operator, await planned(m.operator));
 
     expect(briefsOf(m, "planner")).toHaveLength(1);
     expect(actions(order).filter((action) => action === ACTION.planReturned)).toHaveLength(1);
@@ -287,42 +292,47 @@ describe("definitions of done", () => {
     expect(order.next).toBe(NEXT.approve);
   });
 
-  test("a second return that misses the definition of done fails the station for the operator", async () => {
-    const m = await scripted({ planner: [[...planTurn([]), ...planTurn([])]] });
+  test("a second return that misses the definition of done fails the station, and a later return is not taken", async () => {
+    const m = await start({ script: { planner: [[...planTurn([]), ...planTurn([]), ...planTurn()]] } });
     const id = await addOrder(m.operator);
 
     const ran = await runOrder(m.operator, id);
 
-    expect(ran.ok).toBe(false);
+    expect(refusal(ran).code).toBeString();
     const order = await showOrder(m.operator, id);
     expect(actions(order)).not.toContain(ACTION.planReturned);
     expect(actions(order)).toContain(ACTION.stationFailed);
+    expect(order.slices).toHaveLength(0);
   });
 
   test("a slice commit with no subject line records nothing and the builder's corrected commit is kept", async () => {
-    const m = await scripted({
-      planner: [planTurn([{ title: "One", outcome: "One file." }])],
-      builder: [
-        [
-          { act: "write", path: "one.txt", content: "x\n" },
-          { act: "commit", subject: "" },
-          { act: "commit", subject: "feat: add one" },
-          { act: "build-return", artifact: BUILD_ARTIFACT },
+    const m = await start({
+      script: {
+        planner: [planTurn([{ title: "One", outcome: "One file." }])],
+        builder: [
+          [
+            { act: "write", path: "one.txt", content: "x\n" },
+            { act: "commit", subject: "" },
+            { act: "commit", subject: "feat: add one" },
+            { act: "build-return", artifact: BUILD_ARTIFACT },
+          ],
         ],
-      ],
+      },
     });
-    const order = await showOrder(m.operator, await built(m));
+    const order = await showOrder(m.operator, await built(m.operator));
 
-    expect(branchSubjects(m, order)).toEqual(["feat: add one"]);
+    expect(m.commitsOn(order.branch)).toEqual(["feat: add one"]);
     expect(order.next).toBe(NEXT.approve);
   });
 
   test("a review finding with no file records nothing and the reviewer's corrected findings are accepted", async () => {
-    const m = await scripted({
-      ...happyPath(),
-      reviewer: [[...findingsTurn([{ ...finding(), file: "" }]), ...findingsTurn([finding()])]],
+    const m = await start({
+      script: {
+        ...happyPath(),
+        reviewer: [[...findingsTurn([{ ...finding(), file: "" }]), ...findingsTurn([finding()])]],
+      },
     });
-    const id = await built(m);
+    const id = await built(m.operator);
     await approve(m.operator, id);
 
     const order = await showOrder(m.operator, id);
@@ -333,46 +343,50 @@ describe("definitions of done", () => {
   });
 
   test("a build with an uncommitted slice does not hand over", async () => {
-    const m = await scripted({
-      planner: [planTurn()],
-      builder: [[...sliceActs(1), { act: "build-return", artifact: BUILD_ARTIFACT }]],
+    const m = await start({
+      script: {
+        planner: [planTurn()],
+        builder: [[...sliceActs(1), { act: "build-return", artifact: BUILD_ARTIFACT }]],
+      },
     });
-    const id = await planned(m);
+    const id = await planned(m.operator);
 
     const ran = await approve(m.operator, id);
 
     const order = await showOrder(m.operator, id);
-    expect(ran.ok).toBe(false);
+    expect(refusal(ran).code).toBeString();
     expect(actions(order)).not.toContain(ACTION.buildReturned);
     expect(order.next).toBe(NEXT.run);
   });
 
   test("every artifact a station hands over waits for approval", async () => {
-    const m = await scripted(happyPath());
+    const m = await start({ script: happyPath() });
     const id = await addOrder(m.operator);
-    for (const station of ["plan", "build", "review"] as const) {
+    for (const station of STATION_NAMES) {
       const ran = station === "plan" ? await runOrder(m.operator, id) : await approve(m.operator, id);
-      expect(ran.ok).toBe(true);
+      resultOf(ran);
       const order = await showOrder(m.operator, id);
       expect([order.station, order.next]).toEqual([station, NEXT.approve]);
     }
   });
 
   test("a Review artifact that does not say which areas it covered is refused", async () => {
-    const m = await scripted({
-      ...happyPath(),
-      reviewer: [
-        [
-          { act: "review-return", artifact: { ...REVIEW_ARTIFACT, covered: [] } },
-          { act: "review-return", artifact: { ...REVIEW_ARTIFACT, covered: [] } },
+    const m = await start({
+      script: {
+        ...happyPath(),
+        reviewer: [
+          [
+            { act: "review-return", artifact: { ...REVIEW_ARTIFACT, covered: [] } },
+            { act: "review-return", artifact: { ...REVIEW_ARTIFACT, covered: [] } },
+          ],
         ],
-      ],
+      },
     });
-    const id = await built(m);
+    const id = await built(m.operator);
 
     const ran = await approve(m.operator, id);
 
-    expect(ran.ok).toBe(false);
+    expect(refusal(ran).code).toBeString();
     expect(actions(await showOrder(m.operator, id))).not.toContain(ACTION.reviewReturned);
   });
 });
@@ -388,20 +402,20 @@ describe("review findings", () => {
   });
 
   async function atFindings(m: Machine): Promise<string> {
-    const id = await built(m);
+    const id = await built(m.operator);
     await approve(m.operator, id);
     return id;
   }
 
   test("findings put the order at build, where the builder's fix passes the slice gates and answers each finding once", async () => {
-    const m = await scripted(
-      reviewedWithFinding([
+    const m = await start({
+      script: reviewedWithFinding([
         { act: "write", path: "slice-1.txt", content: "hello\n" },
         { act: "commit", subject: "fix: say hello" },
         { act: "answer", file: "slice-1.txt", line: 1, answer: "fixed", reason: "it says hello now" },
         { act: "build-return", artifact: BUILD_ARTIFACT },
       ]),
-    );
+    });
     const id = await atFindings(m);
     expect((await showOrder(m.operator, id)).station).toBe("build");
 
@@ -409,32 +423,35 @@ describe("review findings", () => {
 
     const order = await showOrder(m.operator, id);
     expect(order.findings[0]?.answer).toBe("fixed");
-    expect(branchSubjects(m, order).at(-1)).toBe("fix: say hello");
+    expect(m.commitsOn(order.branch).at(-1)).toBe("fix: say hello");
     expect(order.next).toBe(NEXT.approve);
-    await approve(m.operator, id);
-    expect(briefsOf(m, "reviewer")[1]).toContain("it says hello now");
+    resultOf(await approve(m.operator, id));
+    expect(m.invocation("reviewer", 1).prompt).toContain("it says hello now");
   });
 
   test("a build turn that leaves a finding unanswered is refused", async () => {
-    const m = await scripted(reviewedWithFinding([{ act: "build-return", artifact: BUILD_ARTIFACT }]));
+    const m = await start({
+      script: reviewedWithFinding([{ act: "build-return", artifact: BUILD_ARTIFACT }]),
+    });
     const id = await atFindings(m);
 
     await runOrder(m.operator, id);
 
     const order = await showOrder(m.operator, id);
-    expect(order.findings[0]?.answer).toBeUndefined();
+    expect(order.findings).toHaveLength(1);
+    expect(order.findings[0]).not.toHaveProperty("answer");
     expect(actions(order).filter((action) => action === ACTION.buildReturned)).toHaveLength(1);
   });
 
   test("a finding answered twice is refused the second time", async () => {
     const answer = { act: "answer", file: "slice-1.txt", line: 1, reason: "it holds" } as const;
-    const m = await scripted(
-      reviewedWithFinding([
+    const m = await start({
+      script: reviewedWithFinding([
         { ...answer, answer: "refused" },
         { ...answer, answer: "fixed" },
         { act: "build-return", artifact: BUILD_ARTIFACT },
       ]),
-    );
+    });
     const id = await atFindings(m);
     await runOrder(m.operator, id);
 
@@ -444,8 +461,8 @@ describe("review findings", () => {
   });
 
   test("a finding the builder refused and the next review raised again stops the order for the operator", async () => {
-    const m = await scripted(
-      reviewedWithFinding(
+    const m = await start({
+      script: reviewedWithFinding(
         [
           {
             act: "answer",
@@ -458,7 +475,7 @@ describe("review findings", () => {
         ],
         findingsTurn([finding()]),
       ),
-    );
+    });
     const id = await atFindings(m);
     await runOrder(m.operator, id);
     await approve(m.operator, id);
@@ -466,39 +483,41 @@ describe("review findings", () => {
 
     const order = await showOrder(m.operator, id);
     expect(order.next).toBe(NEXT.decide);
-    expect((await runOrder(m.operator, id)).ok).toBe(false);
+    expect(refusal(await runOrder(m.operator, id)).code).toBeString();
   });
 });
 
 describe("going back to plan", () => {
   test("slices committed before a builder's return to plan stay, and the revised plan decides which stay", async () => {
-    const m = await scripted({
-      planner: [
-        planTurn([...SLICES, { title: "Third", outcome: "A third file." }]),
-        planTurn([
-          { title: "Keep the first, drop the second", outcome: "slice-2.txt is gone." },
-          { title: "Third", outcome: "A third file." },
-        ]),
-      ],
-      builder: [
-        [
-          ...sliceActs(1),
-          ...sliceActs(2),
-          { act: "send-back", reason: "the third slice needs the second gone" },
+    const m = await start({
+      script: {
+        planner: [
+          planTurn([...SLICES, { title: "Third", outcome: "A third file." }]),
+          planTurn([
+            { title: "Keep the first, drop the second", outcome: "slice-2.txt is gone." },
+            { title: "Third", outcome: "A third file." },
+          ]),
         ],
-        [
-          { act: "sh", command: "rm slice-2.txt" },
-          { act: "commit", subject: "refactor: drop slice 2" },
-          ...sliceActs(3),
-          { act: "build-return", artifact: BUILD_ARTIFACT },
+        builder: [
+          [
+            ...sliceActs(1),
+            ...sliceActs(2),
+            { act: "order-return", reason: "the third slice needs the second gone" },
+          ],
+          [
+            { act: "sh", command: "rm slice-2.txt" },
+            { act: "commit", subject: "refactor: drop slice 2" },
+            ...sliceActs(3),
+            { act: "build-return", artifact: BUILD_ARTIFACT },
+          ],
         ],
-      ],
-      reviewer: [reviewTurn()],
+        reviewer: [reviewTurn()],
+      },
     });
-    const id = await built(m);
-    const sentBack = await showOrder(m.operator, id);
-    expect(sentBack.station).toBe("plan");
-    expect(branchSubjects(m, sentBack)).toEqual(["feat: add slice 1", "feat: add slice 2"]);
+    const id = await built(m.operator);
+    const returned = await showOrder(m.operator, id);
+    expect(returned.station).toBe("plan");
+    expect(m.commitsOn(returned.branch)).toEqual(["feat: add slice 1", "feat: add slice 2"]);
 
     await runOrder(m.operator, id);
     await approve(m.operator, id);
@@ -506,25 +525,25 @@ describe("going back to plan", () => {
     await approve(m.operator, id);
 
     expect((await showOrder(m.operator, id)).status).toBe("shipped");
-    const onMain = m.git(["ls-tree", "--name-only", "main"]).split("\n");
-    expect(onMain).toContain("slice-1.txt");
-    expect(onMain).toContain("slice-3.txt");
-    expect(onMain).not.toContain("slice-2.txt");
+    expect(m.onMain("slice-1.txt")).toBe(true);
+    expect(m.onMain("slice-3.txt")).toBe(true);
+    expect(m.onMain("slice-2.txt")).toBe(false);
   });
 });
 
 describe("the operator's decisions", () => {
   test("a returned Build artifact runs the same builder again, briefed with the reason", async () => {
-    const m = await scripted({
-      planner: [planTurn()],
-      builder: [buildTurn(), [{ act: "build-return", artifact: `${BUILD_ARTIFACT}\n\nRevised.` }]],
+    const m = await start({
+      script: {
+        planner: [planTurn()],
+        builder: [buildTurn(), [{ act: "build-return", artifact: `${BUILD_ARTIFACT}\n\nRevised.` }]],
+      },
     });
-    const id = await built(m);
+    const id = await built(m.operator);
 
-    await returnArtifact(m.operator, id, "say which check ran");
+    resultOf(await returnArtifact(m.operator, id, "say which check ran"));
 
-    const builders = m.invocations().filter((call) => call.role === "builder");
-    expect(builders[1]?.resumed).toBe(builders[0]?.sessionId as string);
-    expect(builders[1]?.prompt).toContain("say which check ran");
+    expect(m.invocation("builder", 1).resumed).toBe(m.invocation("builder", 0).sessionId);
+    expect(m.invocation("builder", 1).prompt).toContain("say which check ran");
   });
 });

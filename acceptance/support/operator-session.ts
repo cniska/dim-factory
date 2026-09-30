@@ -2,39 +2,23 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
 import { hookCommands, settingsHooks } from "./claude-hooks";
-
-export type Ran = { exitCode: number; stdout: string; stderr: string };
-
-export type Refusal = { code: string; message: string; meta?: Record<string, unknown> };
-
-export type DimResult = { ok: boolean; result: unknown; error?: Refusal; ran: Ran };
-
-const quote = (arg: string): string => `'${arg.replaceAll("'", `'\\''`)}'`;
-
-export function parseDim(ran: Ran): DimResult {
-  const line = (ran.exitCode === 0 ? ran.stdout : ran.stderr || ran.stdout).trim().split("\n").at(-1) ?? "";
-  let parsed: { ok?: boolean; result?: unknown; error?: Refusal };
-  try {
-    parsed = JSON.parse(line);
-  } catch {
-    throw new Error(`dim printed no structured result (exit ${ran.exitCode}):\n${ran.stdout}\n${ran.stderr}`);
-  }
-  return { ok: parsed.ok === true, result: parsed.result, error: parsed.error, ran };
-}
+import { commandLine, type DimResult, parseDim, quote, type Ran } from "./dim-output";
+import type { MachineEnv } from "./machine";
+import { waitFor } from "./wait";
 
 export class OperatorSession {
-  readonly sessionId = `operator-${crypto.randomUUID()}`;
+  readonly sessionId = crypto.randomUUID();
   private calls = 0;
 
   private constructor(
     private readonly shell: Subprocess<"pipe", "ignore", "ignore">,
     private readonly scratch: string,
-    readonly env: Record<string, string>,
+    readonly env: MachineEnv,
     readonly cwd: string,
   ) {}
 
-  static async open(env: Record<string, string>, cwd: string): Promise<OperatorSession> {
-    const scratch = mkdtempSync(join(env.TMPDIR as string, "dim-operator-"));
+  static open(env: MachineEnv, cwd: string): OperatorSession {
+    const scratch = mkdtempSync(join(env.TMPDIR, "dim-operator-"));
     const shell = Bun.spawn(["sh"], { cwd, env, stdin: "pipe", stdout: "ignore", stderr: "ignore" });
     return new OperatorSession(shell, scratch, env, cwd);
   }
@@ -52,7 +36,7 @@ export class OperatorSession {
     const ran = `{ ${command}; } < ${input} > ${out} 2> ${err}; echo $? > ${tmp}; mv ${tmp} ${done}`;
     this.shell.stdin.write(alongside ? `{ ${ran}; } &\n` : `${ran}\n`);
     this.shell.stdin.flush();
-    while (!existsSync(`${call}.done`)) await Bun.sleep(10);
+    await waitFor(`\`${command}\` to finish`, () => existsSync(`${call}.done`));
     return {
       exitCode: Number(readFileSync(`${call}.done`, "utf8").trim()),
       stdout: readFileSync(`${call}.out`, "utf8"),
@@ -60,18 +44,12 @@ export class OperatorSession {
     };
   }
 
-  async dim(args: string[]): Promise<DimResult> {
-    return parseDim(await this.sh(["dim", ...args].map(quote).join(" ")));
+  async dim(args: readonly string[]): Promise<DimResult> {
+    return parseDim(await this.sh(commandLine(args)));
   }
 
-  async dimIn(cwd: string, args: string[]): Promise<DimResult> {
-    return parseDim(await this.sh(`(cd ${quote(cwd)} && exec ${["dim", ...args].map(quote).join(" ")})`));
-  }
-
-  async dimOk(args: string[]): Promise<unknown> {
-    const ran = await this.dim(args);
-    if (!ran.ok) throw new Error(`dim ${args.join(" ")} refused: ${JSON.stringify(ran.error)}`);
-    return ran.result;
+  async dimIn(cwd: string, args: readonly string[]): Promise<DimResult> {
+    return parseDim(await this.sh(`(cd ${quote(cwd)} && exec ${commandLine(args)})`));
   }
 
   async fire(event: "SessionStart" | "SessionEnd"): Promise<void> {
@@ -81,7 +59,7 @@ export class OperatorSession {
       source: "startup",
       cwd: this.cwd,
     });
-    for (const command of hookCommands(settingsHooks(this.env.HOME as string), event)) {
+    for (const command of hookCommands(settingsHooks(this.env.HOME), event)) {
       await this.sh(`sh -c ${quote(command)}`, payload, { alongside: false });
     }
   }

@@ -1,33 +1,42 @@
-import type { DimResult, OperatorSession } from "./operator-session";
-import type { OrderView } from "./order-view";
+import { type DimResult, resultOf } from "./dim-output";
+import type { OperatorSession } from "./operator-session";
+import { type OrderView, orderShown } from "./order-view";
+import type { Decider, Next, Station } from "./vocabulary";
 
-export type Decider = "owner" | "operator";
+type OrderFields = { readonly title?: string; readonly request?: string; readonly project?: string };
 
-export async function addOrder(
-  operator: OperatorSession,
-  fields: { title?: string; request?: string; project?: string } = {},
-): Promise<string> {
-  const added = (await operator.dimOk([
-    "order",
-    "add",
-    "--title",
-    fields.title ?? "Greet the reader",
-    "--request",
-    fields.request ?? "Add a greeting to the README.",
-    ...(fields.project ? ["--project", fields.project] : []),
-  ])) as { id: string };
+export async function addOrder(operator: OperatorSession, fields: OrderFields = {}): Promise<string> {
+  const added = resultOf(
+    await operator.dim([
+      "order",
+      "add",
+      "--title",
+      fields.title ?? "Greet the reader",
+      "--request",
+      fields.request ?? "Add a greeting to the README.",
+      ...(fields.project === undefined ? [] : ["--project", fields.project]),
+    ]),
+  ) as { readonly id: string };
   return added.id;
 }
 
+const runArgs = (id: string): readonly string[] => ["order", "run", id];
+
 export const runOrder = (operator: OperatorSession, id: string): Promise<DimResult> =>
-  operator.dim(["order", "run", id]);
+  operator.dim(runArgs(id));
+
+export const approveArgs = (
+  id: string,
+  reason = "it does what the request asked",
+  decided: Decider = "owner",
+): readonly string[] => ["order", "approve", id, "--reason", reason, "--decided", decided];
 
 export const approve = (
   operator: OperatorSession,
   id: string,
-  reason = "it does what the request asked",
-  decided: Decider = "owner",
-): Promise<DimResult> => operator.dim(["order", "approve", id, "--reason", reason, "--decided", decided]);
+  reason?: string,
+  decided?: Decider,
+): Promise<DimResult> => operator.dim(approveArgs(id, reason, decided));
 
 export const returnArtifact = (
   operator: OperatorSession,
@@ -48,20 +57,43 @@ export const cancelOrder = (
 export const messageWorker = (
   operator: OperatorSession,
   id: string,
-  station: string,
+  station: Station,
   text: string,
 ): Promise<DimResult> => operator.dim(["message", "send", text, "--order", id, "--to", station]);
 
 export async function showOrder(operator: OperatorSession, id: string): Promise<OrderView> {
-  return (await operator.dimOk(["order", "show", id])) as OrderView;
+  return orderShown(await operator.dim(["order", "show", id]));
+}
+
+export const STEP_ARGS_BY_NEXT: Readonly<Record<Next, ((id: string) => readonly string[]) | null>> = {
+  run: runArgs,
+  approve: (id) => approveArgs(id),
+  revise: null,
+  decide: null,
+};
+
+export async function planned(operator: OperatorSession, fields: OrderFields = {}): Promise<string> {
+  const id = await addOrder(operator, fields);
+  resultOf(await runOrder(operator, id));
+  return id;
+}
+
+export async function built(operator: OperatorSession, fields: OrderFields = {}): Promise<string> {
+  const id = await planned(operator, fields);
+  resultOf(await approve(operator, id));
+  return id;
+}
+
+export async function reviewed(operator: OperatorSession, fields: OrderFields = {}): Promise<string> {
+  const id = await built(operator, fields);
+  resultOf(await approve(operator, id));
+  return id;
 }
 
 export async function shipThrough(operator: OperatorSession, id: string): Promise<OrderView> {
-  for (const station of ["plan", "build", "review"]) {
-    const ran = station === "plan" ? await runOrder(operator, id) : await approve(operator, id);
-    if (!ran.ok) throw new Error(`${station} did not finish: ${JSON.stringify(ran.error)}`);
+  resultOf(await runOrder(operator, id));
+  for (const artifact of ["plan", "Build artifact", "Review artifact"]) {
+    resultOf(await approve(operator, id, `the ${artifact} does what the request asked`));
   }
-  const shipped = await approve(operator, id);
-  if (!shipped.ok) throw new Error(`the Review approval did not ship: ${JSON.stringify(shipped.error)}`);
   return showOrder(operator, id);
 }

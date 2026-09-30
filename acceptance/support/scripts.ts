@@ -1,7 +1,7 @@
-import type { HarnessScript, HarnessTurn } from "./scripted-harness-state";
+import type { HarnessScript, HarnessTurn } from "./harness-script";
 import type { Finding, ReviewArtifact, Slice } from "./worker-acts";
 
-export const AREAS = [
+const AREAS = [
   "conformance",
   "correctness",
   "tests",
@@ -11,9 +11,9 @@ export const AREAS = [
   "security",
   "performance",
   "style",
-];
+] as const;
 
-export const SLICES: Slice[] = [
+export const SLICES: readonly Slice[] = [
   { title: "Write the greeting", outcome: "greeting.txt holds the greeting." },
   { title: "Link it from the README", outcome: "The README names greeting.txt." },
 ];
@@ -28,23 +28,24 @@ export const REVIEW_ARTIFACT: ReviewArtifact = {
   unverified: [],
 };
 
-export const planTurn = (slices: Slice[] = SLICES): HarnessTurn => [
-  { act: "plan", body: "## Outcome\n\nA greeting the README links to.", slices },
-];
+export const planTurn = (
+  slices: readonly Slice[] = SLICES,
+  body = "## Outcome\n\nA greeting the README links to.",
+): HarnessTurn => [{ act: "plan", body, slices }];
 
 export const sliceActs = (n: number): HarnessTurn => [
   { act: "write", path: `slice-${n}.txt`, content: `slice ${n}\n` },
   { act: "commit", subject: `feat: add slice ${n}` },
 ];
 
-export const buildTurn = (slices = SLICES.length): HarnessTurn => [
+export const buildTurn = (slices = SLICES.length, artifact = BUILD_ARTIFACT): HarnessTurn => [
   ...Array.from({ length: slices }, (_, i) => sliceActs(i + 1)).flat(),
-  { act: "build-return", artifact: BUILD_ARTIFACT },
+  { act: "build-return", artifact },
 ];
 
 export const reviewTurn = (): HarnessTurn => [{ act: "review-return", artifact: REVIEW_ARTIFACT }];
 
-export const findingsTurn = (findings: Finding[]): HarnessTurn => [{ act: "findings", findings }];
+export const findingsTurn = (findings: readonly Finding[]): HarnessTurn => [{ act: "findings", findings }];
 
 export const finding = (fields: Partial<Finding> = {}): Finding => ({
   area: "maintainability",

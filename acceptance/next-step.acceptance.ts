@@ -1,63 +1,68 @@
-import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { checkHeld, holdCheck, holdingCheck, releaseCheck } from "./support/interrupt";
-import { type Machine, newMachine } from "./support/machine";
+import { type DimResult, refusal, resultOf } from "./support/dim-output";
+import { checkHeld, holdCheck, holdingCheck, releaseCheck } from "./support/holds";
+import { type Machine, machines } from "./support/machine";
 import {
   addOrder,
   approve,
   cancelOrder,
+  planned,
   returnArtifact,
+  reviewed,
   reviseOrder,
   runOrder,
   showOrder,
 } from "./support/operator-acts";
-import type { DimResult, OperatorSession } from "./support/operator-session";
+import type { OperatorSession } from "./support/operator-session";
 import { actions, workerOf } from "./support/order-view";
-import { buildTurn, happyPath, planTurn, reviewTurn } from "./support/scripts";
-import { ACTION, NEXT, REFUSAL } from "./support/vocabulary";
+import { alive } from "./support/processes";
+import { buildTurn, happyPath, planTurn, reviewTurn, sliceActs } from "./support/scripts";
+import { ACTION, NEXT, type Next, REFUSAL } from "./support/vocabulary";
 
-setDefaultTimeout(180_000);
+const start = machines();
 
-let machine: Machine;
-afterEach(() => machine?.close());
+const OPERATOR_ACTIONS = ["run", "approve", "return", "revise"] as const;
 
-type Action = "run" | "approve" | "return" | "revise";
+type OperatorAction = (typeof OPERATOR_ACTIONS)[number];
 
-const perform: Record<Action, (operator: OperatorSession, id: string) => Promise<DimResult>> = {
-  run: (operator, id) => runOrder(operator, id),
-  approve: (operator, id) => approve(operator, id),
+const perform: Readonly<
+  Record<OperatorAction, (operator: OperatorSession, id: string) => Promise<DimResult>>
+> = {
+  run: runOrder,
+  approve,
   return: (operator, id) => returnArtifact(operator, id, "try again"),
   revise: (operator, id) => reviseOrder(operator, id, "Add a greeting to the README, in English."),
 };
 
-const allowedBy: Record<string, Action[]> = {
-  [NEXT.run]: ["run"],
-  [NEXT.approve]: ["approve", "return"],
-  [NEXT.revise]: ["revise"],
+const ALLOWED_BY_NEXT: Readonly<Record<Next, readonly OperatorAction[]>> = {
+  run: ["run"],
+  approve: ["approve", "return"],
+  revise: ["revise"],
+  decide: [],
 };
 
 async function expectOnlyNextAllowed(m: Machine, id: string): Promise<void> {
   const before = await showOrder(m.operator, id);
-  const allowed = before.next ? (allowedBy[before.next] ?? []) : [];
-  for (const action of Object.keys(perform) as Action[]) {
+  const allowed = before.next === null ? [] : ALLOWED_BY_NEXT[before.next];
+  for (const action of OPERATOR_ACTIONS) {
     if (allowed.includes(action)) continue;
-    const refused = await perform[action](m.operator, id);
-    expect(refused.ok).toBe(false);
-    expect(refused.error?.code).toBe(REFUSAL.notNext);
-    expect(refused.error?.meta?.next ?? null).toBe(before.next);
+    const { code, meta } = refusal(await perform[action](m.operator, id));
+    expect(code).toBe(REFUSAL.notNext);
+    expect(meta).toHaveProperty("next", before.next);
     expect(await showOrder(m.operator, id)).toEqual(before);
   }
 }
 
 describe("an order's next step", () => {
   test("in every state, only the next step is allowed and every other action is refused naming it", async () => {
-    machine = await newMachine();
-    const m = machine;
-    m.script({
-      planner: [[{ act: "cannot-plan", reason: "the request names no language" }], planTurn()],
-      builder: [buildTurn()],
-      reviewer: [reviewTurn()],
+    const m = await start({
+      script: {
+        planner: [[{ act: "order-return", reason: "the request names no language" }], planTurn()],
+        builder: [buildTurn()],
+        reviewer: [reviewTurn()],
+      },
     });
     const id = await addOrder(m.operator);
     await expectOnlyNextAllowed(m, id);
@@ -77,16 +82,13 @@ describe("an order's next step", () => {
     expect(shipped.status).toBe("shipped");
     expect(shipped.next).toBeNull();
     await expectOnlyNextAllowed(m, id);
-    expect((await cancelOrder(m.operator, id)).ok).toBe(false);
+    expect(refusal(await cancelOrder(m.operator, id)).code).toBeString();
   });
 
   test("a cancelled order refuses every action", async () => {
-    machine = await newMachine();
-    const m = machine;
-    m.script(happyPath());
-    const id = await addOrder(m.operator);
-    await runOrder(m.operator, id);
-    expect((await cancelOrder(m.operator, id)).ok).toBe(true);
+    const m = await start({ script: happyPath() });
+    const id = await planned(m.operator);
+    resultOf(await cancelOrder(m.operator, id));
 
     const cancelled = await showOrder(m.operator, id);
     expect(cancelled.status).toBe("cancelled");
@@ -97,10 +99,10 @@ describe("an order's next step", () => {
 
 describe("an order that is busy", () => {
   test("while a station's worker runs, a second run, an approval and a return are refused until its process ends", async () => {
-    machine = await newMachine();
-    const m = machine;
-    m.script({
-      planner: [[{ act: "signal", name: "planning" }, { act: "wait", name: "plan" }, ...planTurn()]],
+    const m = await start({
+      script: {
+        planner: [[{ act: "signal", name: "planning" }, { act: "wait", name: "plan" }, ...planTurn()]],
+      },
     });
     const id = await addOrder(m.operator);
 
@@ -111,37 +113,30 @@ describe("an order that is busy", () => {
       await approve(m.operator, id),
       await returnArtifact(m.operator, id, "early"),
     ]) {
-      expect(refused.ok).toBe(false);
-      expect(refused.error?.code).toBe(REFUSAL.busy);
+      expect(refusal(refused).code).toBe(REFUSAL.busy);
     }
     m.release("plan");
     await running;
 
-    expect(() => process.kill(pid, 0)).toThrow();
-    expect((await approve(m.operator, id)).ok).toBe(true);
+    expect(alive(pid)).toBe(false);
+    resultOf(await approve(m.operator, id));
   });
 
-  test("while an order ships, a run, an approval and a return are refused", async () => {
-    machine = await newMachine({ check: holdingCheck });
-    const m = machine;
-    m.script(happyPath());
-    const id = await addOrder(m.operator);
-    await runOrder(m.operator, id);
-    await approve(m.operator, id);
-    await approve(m.operator, id);
-    m.git(["commit", "-q", "--allow-empty", "-m", "chore: move main"]);
+  test("while an order ships, a run, an approval, a return and a cancel are refused", async () => {
+    const m = await start({ script: happyPath(), check: holdingCheck });
+    const id = await reviewed(m.operator);
+    m.ownerCommits("CHANGELOG.md", "moved on\n");
     holdCheck(m);
 
     const shipping = approve(m.operator, id);
-    await checkHeld();
+    await checkHeld(m);
     for (const refused of [
       await runOrder(m.operator, id),
       await approve(m.operator, id),
       await returnArtifact(m.operator, id, "wait"),
       await cancelOrder(m.operator, id),
     ]) {
-      expect(refused.ok).toBe(false);
-      expect(refused.error?.code).toBe(REFUSAL.busy);
+      expect(refusal(refused).code).toBe(REFUSAL.busy);
     }
     releaseCheck(m);
     await shipping;
@@ -151,66 +146,58 @@ describe("an order that is busy", () => {
 
 describe("cancelling and failing", () => {
   test("cancelling mid-build stops the builder, records nothing of its turn and keeps its commits and worktree", async () => {
-    machine = await newMachine();
-    const m = machine;
-    m.script({
-      planner: [planTurn()],
-      builder: [
-        [
-          { act: "write", path: "slice-1.txt", content: "slice 1\n" },
-          { act: "commit", subject: "feat: add slice 1" },
-          { act: "write", path: "unfinished.txt", content: "half\n" },
-          { act: "signal", name: "mid-build" },
-          { act: "wait", name: "never" },
-          { act: "commit", subject: "feat: add the unfinished slice" },
-          { act: "build-return", artifact: "## Outcome\n\nToo late." },
+    const m = await start({
+      script: {
+        planner: [planTurn()],
+        builder: [
+          [
+            ...sliceActs(1),
+            { act: "write", path: "unfinished.txt", content: "half\n" },
+            { act: "signal", name: "mid-build" },
+            { act: "wait", name: "never" },
+          ],
         ],
-      ],
+      },
     });
-    const id = await addOrder(m.operator);
-    await runOrder(m.operator, id);
+    const id = await planned(m.operator);
     const building = approve(m.operator, id);
     const pid = await m.reached("mid-build");
     const before = await showOrder(m.operator, id);
 
-    const cancelled = await m.operator.sh(`dim order cancel ${id} --reason "the owner changed their mind"`);
-    m.release("never");
+    const cancelled = await cancelOrder(m.operator, id, "the owner changed their mind");
+    const builderAliveAfterCancel = alive(pid);
     await building;
 
-    expect(cancelled.exitCode).toBe(0);
-    expect(() => process.kill(pid, 0)).toThrow();
+    resultOf(cancelled);
+    expect(builderAliveAfterCancel).toBe(false);
     const order = await showOrder(m.operator, id);
     expect(order.status).toBe("cancelled");
-    expect(order.log.slice(0, before.log.length)).toEqual(before.log);
+    expect(order.log.slice(0, before.log.length)).toEqual([...before.log]);
     expect(actions(order).slice(before.log.length)).toEqual([ACTION.cancelled]);
-    expect(m.git(["log", "--format=%s", `main..${order.branch}`])).toBe("feat: add slice 1");
+    expect(m.commitsOn(order.branch)).toEqual(["feat: add slice 1"]);
     expect(existsSync(join(order.worktree, "unfinished.txt"))).toBe(true);
   });
 
   test("after a failed station, running the order again resumes the same worker where the record puts it", async () => {
-    machine = await newMachine();
-    const m = machine;
-    m.script({
-      planner: [planTurn()],
-      builder: [
-        [...buildTurn(1).slice(0, 2), { act: "say", text: "I stopped without returning." }],
-        [...buildTurn(2).slice(2)],
-      ],
-      reviewer: [reviewTurn()],
+    const m = await start({
+      script: {
+        planner: [planTurn()],
+        builder: [
+          [...sliceActs(1), { act: "say", text: "I stopped without returning." }],
+          [...sliceActs(2), { act: "build-return", artifact: "## Outcome\n\nBoth slices." }],
+        ],
+        reviewer: [reviewTurn()],
+      },
     });
-    const id = await addOrder(m.operator);
-    await runOrder(m.operator, id);
+    const id = await planned(m.operator);
 
-    const failed = await approve(m.operator, id);
-    expect(failed.ok).toBe(false);
-    expect(failed.error?.code).toBeString();
+    expect(refusal(await approve(m.operator, id)).code).toBeString();
     const after = await showOrder(m.operator, id);
     expect(after.station).toBe("build");
     expect(after.next).toBe(NEXT.run);
 
-    expect((await runOrder(m.operator, id)).ok).toBe(true);
-    const builders = m.invocations().filter((call) => call.role === "builder");
-    expect(builders[1]?.resumed).toBe(builders[0]?.sessionId as string);
+    resultOf(await runOrder(m.operator, id));
+    expect(m.invocation("builder", 1).resumed).toBe(m.invocation("builder", 0).sessionId);
     const order = await showOrder(m.operator, id);
     expect(workerOf(order, "builder").sessions).toHaveLength(1);
     expect(order.next).toBe(NEXT.approve);
