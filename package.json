@@ -9,7 +9,6 @@
   },
   "scripts": {
     "dim": "bun run src/cli.ts",
-    "factory:reset": "bun run scripts/reset-factory.ts",
     "format": "bunx biome check --write src acceptance",
     "lint": "bunx biome check --error-on-warnings src acceptance",
     "typecheck": "bunx tsc --noEmit",

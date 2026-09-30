@@ -15,7 +15,7 @@ import {
   writePrefix,
 } from "./fixtures.test-support";
 import { sync } from "./ingest-sync";
-import { dbPath, type Env } from "./paths";
+import { claudeProjectsDir, codexDir, dbPath, type Env } from "./paths";
 
 const SESSION = "11111111-2222-3333-4444-555555555555";
 const THREAD = "01a0a651-086e-7150-8650-cef0f4025a58";
@@ -274,7 +274,7 @@ describe("ingest", () => {
 
     const incRoot = newRoot();
     const incEnv = scratchEnv(incRoot);
-    const path = join(incEnv.DIM_CLAUDE_PROJECTS as string, "-Users-x-code-demo", `${SESSION}.jsonl`);
+    const path = join(claudeProjectsDir(incEnv), "-Users-x-code-demo", `${SESSION}.jsonl`);
     writePrefix(path, lines, cut);
     const incDb = run(incEnv);
     writePrefix(path, lines, fullBytes(lines));
@@ -299,7 +299,7 @@ describe("ingest", () => {
 
     const incRoot = newRoot();
     const incEnv = scratchEnv(incRoot);
-    const path = join(incEnv.DIM_CLAUDE_PROJECTS as string, "-Users-x-code-demo", `${SESSION}.jsonl`);
+    const path = join(claudeProjectsDir(incEnv), "-Users-x-code-demo", `${SESSION}.jsonl`);
     writePrefix(path, lines, cut);
     const incDb = run(incEnv);
     expect(
@@ -326,7 +326,7 @@ describe("ingest", () => {
 
     const root = newRoot();
     const env = scratchEnv(root);
-    const path = join(env.DIM_CLAUDE_PROJECTS as string, "-Users-x-code-demo", `${SESSION}.jsonl`);
+    const path = join(claudeProjectsDir(env), "-Users-x-code-demo", `${SESSION}.jsonl`);
     writePrefix(path, lines, fullBytes(lines));
     const db = run(env);
     writePrefix(path, lines, bytesThroughLine(lines, 1));
@@ -348,7 +348,7 @@ describe("ingest", () => {
     try {
       const before = snapshot(db, root);
 
-      const to = join(env.DIM_CODEX_DIR as string, "archived_sessions", from.split("/").pop() as string);
+      const to = join(codexDir(env), "archived_sessions", from.split("/").pop() as string);
       mkdirSync(dirname(to), { recursive: true });
       renameSync(from, to);
       expect(sync(db, env).failures).toEqual([]);
@@ -367,7 +367,7 @@ describe("ingest", () => {
     const root = newRoot();
     const env = scratchEnv(root);
     writeCodexRollout(env, "sessions", THREAD);
-    const state = new Database(join(env.DIM_CODEX_DIR as string, "state_5.sqlite"));
+    const state = new Database(join(codexDir(env), "state_5.sqlite"));
     state.run("CREATE TABLE threads (id TEXT, title TEXT)");
     state.run("INSERT INTO threads VALUES (?, ?)", [THREAD, "Read the slice"]);
     state.close();
@@ -387,7 +387,7 @@ describe("ingest", () => {
     const root = newRoot();
     const env = scratchEnv(root);
     writeCodexRollout(env, "sessions", THREAD);
-    const statePath = join(env.DIM_CODEX_DIR as string, "state_5.sqlite");
+    const statePath = join(codexDir(env), "state_5.sqlite");
     const state = new Database(statePath);
     state.run("CREATE TABLE threads (id TEXT, name TEXT)");
     state.close();
@@ -406,7 +406,7 @@ describe("ingest", () => {
   test("reads past a line that is not JSON and names it in the report", () => {
     const root = newRoot();
     const env = scratchEnv(root);
-    const path = join(env.DIM_CLAUDE_PROJECTS as string, "-Users-x-code-demo", `${SESSION}.jsonl`);
+    const path = join(claudeProjectsDir(env), "-Users-x-code-demo", `${SESSION}.jsonl`);
     const good = claudeTranscriptLines(SESSION).map((l) => JSON.stringify(l));
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, `${[good[0], "{ truncated", ...good.slice(1)].join("\n")}\n`);
@@ -426,7 +426,7 @@ describe("ingest", () => {
   test("refuses a transcript line with no timestamp, keeping the message's real time", () => {
     const root = newRoot();
     const env = scratchEnv(root);
-    const path = join(env.DIM_CLAUDE_PROJECTS as string, "-Users-x-code-demo", `${SESSION}.jsonl`);
+    const path = join(claudeProjectsDir(env), "-Users-x-code-demo", `${SESSION}.jsonl`);
     const lines = claudeTranscriptLines(SESSION).map((line, index) => {
       if (index !== 3) return JSON.stringify(line);
       const { timestamp: _, ...untimed } = line as Record<string, unknown>;
@@ -452,7 +452,7 @@ describe("ingest", () => {
     const root = newRoot();
     const env = scratchEnv(root);
     const legacy = codexRolloutLines(THREAD, { withIds: false });
-    const path = join(env.DIM_CODEX_DIR as string, "sessions", `rollout-2026-02-05T19-43-37-${THREAD}.jsonl`);
+    const path = join(codexDir(env), "sessions", `rollout-2026-02-05T19-43-37-${THREAD}.jsonl`);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, `${legacy.map((l) => JSON.stringify(l)).join("\n")}\n`);
     const db = run(env);
@@ -467,7 +467,7 @@ describe("ingest", () => {
     const root = newRoot();
     const env = scratchEnv(root);
     writeClaudeTranscript(env, "-Users-x-code-demo", SESSION);
-    const agentDir = join(env.DIM_CLAUDE_PROJECTS as string, "-Users-x-code-demo", SESSION, "subagents");
+    const agentDir = join(claudeProjectsDir(env), "-Users-x-code-demo", SESSION, "subagents");
     mkdirSync(agentDir, { recursive: true });
     const agentId = "a07d010a033dbe536";
     writeFileSync(
@@ -494,7 +494,7 @@ describe("ingest", () => {
     const root = newRoot();
     const env = scratchEnv(root);
     const path = writeClaudeTranscript(env, "-Users-x-code-demo", SESSION);
-    const agentDir = join(env.DIM_CLAUDE_PROJECTS as string, "-Users-x-code-demo", SESSION, "subagents");
+    const agentDir = join(claudeProjectsDir(env), "-Users-x-code-demo", SESSION, "subagents");
     mkdirSync(agentDir, { recursive: true });
     writeFileSync(
       join(agentDir, "agent-a07d010a033dbe536.jsonl"),
@@ -541,7 +541,7 @@ describe("ingest", () => {
     const other = "99999999-8888-7777-6666-555555555555";
     for (const parent of [SESSION, other]) {
       writeClaudeTranscript(env, "-Users-x-code-demo", parent);
-      const dir = join(env.DIM_CLAUDE_PROJECTS as string, "-Users-x-code-demo", parent, "subagents");
+      const dir = join(claudeProjectsDir(env), "-Users-x-code-demo", parent, "subagents");
       mkdirSync(dir, { recursive: true });
       writeFileSync(
         join(dir, "agent-shared.jsonl"),
@@ -573,7 +573,7 @@ describe("ingest", () => {
   test("records a subagent whose parent transcript is gone, unlinked", () => {
     const root = newRoot();
     const env = scratchEnv(root);
-    const agentDir = join(env.DIM_CLAUDE_PROJECTS as string, "-Users-x-code-demo", SESSION, "subagents");
+    const agentDir = join(claudeProjectsDir(env), "-Users-x-code-demo", SESSION, "subagents");
     mkdirSync(agentDir, { recursive: true });
     writeFileSync(
       join(agentDir, "agent-orphan1.jsonl"),
@@ -642,7 +642,7 @@ describe("skill loads", () => {
   });
 
   function writeTranscript(env: Env, sessionId: string, lines: unknown[]): string {
-    const path = join(env.DIM_CLAUDE_PROJECTS as string, "-Users-x-code-demo", `${sessionId}.jsonl`);
+    const path = join(claudeProjectsDir(env), "-Users-x-code-demo", `${sessionId}.jsonl`);
     writePrefix(path, lines, fullBytes(lines));
     return path;
   }

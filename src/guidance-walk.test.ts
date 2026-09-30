@@ -6,8 +6,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { SCHEMA_SQL } from "./db-schema";
 import { drainWalk, resolveWalk, spoolWalk } from "./guidance-walk";
-import { spoolDir, walkSpoolDir } from "./ingest-spool";
-import type { Env } from "./paths";
+import { walkSpoolDir } from "./ingest-spool";
+import { type Env, spoolDir } from "./paths";
 
 const roots: string[] = [];
 
@@ -24,7 +24,7 @@ afterEach(() => {
 function home(root: string): Env {
   const dir = join(root, "home");
   mkdirSync(join(dir, ".claude"), { recursive: true });
-  return { HOME: dir, DIM_HOME: join(root, "data") };
+  return { HOME: dir, XDG_DATA_HOME: join(root, "data") };
 }
 
 describe("the walk a session starts with", () => {

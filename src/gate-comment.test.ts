@@ -13,9 +13,7 @@ describe("whether a checkout's commit is judged for comments", () => {
       const env = {
         HOME: join(dir, "home"),
         GIT_CONFIG_GLOBAL: join(dir, "gitconfig"),
-        DIM_HOME: join(dir, "machine"),
       };
-      mkdirSync(env.DIM_HOME, { recursive: true });
       mkdirSync(join(env.HOME, ".config", "dim"), { recursive: true });
       writeFileSync(join(env.HOME, ".config", "dim", "config.json"), '{ "comments": "banned" }');
       installCommitGate(["github.com/cniska"], [], env);

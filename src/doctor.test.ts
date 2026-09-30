@@ -20,7 +20,7 @@ import { installHooks } from "./hooks";
 import { codexConfigPath, planCodexTrust } from "./hooks-codex-trust";
 import { agentPlistPath } from "./ingest-launchd";
 import { sync } from "./ingest-sync";
-import { dbPath, type Env } from "./paths";
+import { configDir, dbPath, type Env } from "./paths";
 import { installSkill } from "./skill";
 
 const roots: string[] = [];
@@ -66,16 +66,16 @@ describe("doctor", () => {
     const db = openDb(dbPath(env));
     db.run("UPDATE schema_version SET version = ?", [SCHEMA_VERSION - 1]);
     closeDb(db);
-    const home = process.env.DIM_HOME;
-    process.env.DIM_HOME = env.DIM_HOME;
+    const dataHome = process.env.XDG_DATA_HOME;
+    process.env.XDG_DATA_HOME = env.XDG_DATA_HOME;
     try {
       const ran = doctorCommand.run([]);
       expect(ran).toBeInstanceOf(Ran);
       const { checks } = (ran as Ran).result as { checks: { name: string; state: string; fix?: string }[] };
       expect(checks.find((c) => c.name === "schema")).toMatchObject({ state: "fail", fix: "dim rebuild" });
     } finally {
-      if (home === undefined) delete process.env.DIM_HOME;
-      else process.env.DIM_HOME = home;
+      if (dataHome === undefined) delete process.env.XDG_DATA_HOME;
+      else process.env.XDG_DATA_HOME = dataHome;
     }
   });
 
@@ -127,7 +127,7 @@ describe("doctor", () => {
     expect(missing?.state).toBe("warn");
     expect(missing?.fix).toContain("dim gate install");
 
-    const hooks = join(env.HOME as string, ".config", "dim", "hooks");
+    const hooks = join(configDir(env), "hooks");
     mkdirSync(hooks, { recursive: true });
     pointGitAt(env, hooks);
     const shim = hookBody(["github.com/an-account"]);
@@ -143,7 +143,7 @@ describe("doctor", () => {
 
   test("names a hook whose body is not the one the gate now writes", () => {
     const env = seeded();
-    const hooks = join(env.HOME as string, ".config", "dim", "hooks");
+    const hooks = join(configDir(env), "hooks");
     mkdirSync(hooks, { recursive: true });
     pointGitAt(env, hooks);
     for (const name of GATE_HOOK_NAMES) writeFileSync(join(hooks, name), hookBody(["github.com/an-account"]));
@@ -158,7 +158,7 @@ describe("doctor", () => {
 
   test("names a gate git is not pointed at", () => {
     const env = seeded();
-    const hooks = join(env.HOME as string, ".config", "dim", "hooks");
+    const hooks = join(configDir(env), "hooks");
     mkdirSync(hooks, { recursive: true });
     for (const name of GATE_HOOK_NAMES) writeFileSync(join(hooks, name), hookBody(["github.com/an-account"]));
     const unset = check(env, "commit gate");
@@ -178,7 +178,7 @@ describe("doctor", () => {
 
   test("names an owner that would arm the gate nowhere", () => {
     const env = seeded();
-    const hooks = join(env.HOME as string, ".config", "dim", "hooks");
+    const hooks = join(configDir(env), "hooks");
     mkdirSync(hooks, { recursive: true });
 
     writeFileSync(join(hooks, "commit-msg"), hookBody(["github.com/an-account"]));
@@ -344,8 +344,8 @@ describe("the comment gate for the current repo", () => {
     const cwd = join(newRoot(), "work");
     execFileSync("git", ["init", "-q", cwd]);
     execFileSync("git", ["-C", cwd, "remote", "add", "origin", "git@github.com:cniska/thing.git"]);
-    mkdirSync(join(env.HOME as string, ".config", "dim"), { recursive: true });
-    if (setting !== null) writeFileSync(join(env.HOME as string, ".config", "dim", "config.json"), setting);
+    mkdirSync(join(configDir(env)), { recursive: true });
+    if (setting !== null) writeFileSync(join(configDir(env), "config.json"), setting);
     return { env, cwd };
   }
 
@@ -425,10 +425,7 @@ describe("the comment gate for the current repo", () => {
   test("warns where the installed pre-commit hook is not the one that carries the comment step", () => {
     const { env, cwd } = inRepo('{ "comments": "banned" }');
     installCommitGate(["github.com/cniska"], [], env);
-    writeFileSync(
-      join(env.HOME as string, ".config", "dim", "hooks", "pre-commit"),
-      "#!/usr/bin/env bash\nexit 0\n",
-    );
+    writeFileSync(join(configDir(env), "hooks", "pre-commit"), "#!/usr/bin/env bash\nexit 0\n");
     const checks = diagnoseIn(env, cwd);
     expect(checks.find((c) => c.name === "commit gate")).toMatchObject({
       state: "warn",
@@ -449,7 +446,7 @@ describe("the comment gate for the current repo", () => {
       const { env, cwd } = inRepo(setting as string);
       expect(commentGate(env, cwd)).toMatchObject({
         state: "fail",
-        fix: `repair ${join(env.HOME as string, ".config", "dim", "config.json")} by hand`,
+        fix: `repair ${join(configDir(env), "config.json")} by hand`,
       });
     });
   }

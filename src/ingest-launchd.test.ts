@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 function env(dir: string): Env {
-  return { HOME: dir, DIM_HOME: join(dir, "data") };
+  return { HOME: dir, XDG_STATE_HOME: join(dir, "state") };
 }
 
 describe("launchd agent", () => {
@@ -39,7 +39,7 @@ describe("launchd agent", () => {
   test("captures output, since nobody is watching an unattended run", () => {
     const dir = newRoot();
     const plist = agentPlist("/bin/bun", "/repo", env(dir));
-    expect(plist).toContain(`<string>${join(dir, "data", "sync.log")}</string>`);
+    expect(plist).toContain(`<string>${join(dir, "state", "dim-factory", "sync.log")}</string>`);
   });
 
   test("picks a bun path that survives an upgrade", () => {

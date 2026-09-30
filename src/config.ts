@@ -5,7 +5,7 @@ import { ConfigError } from "./config-error";
 import { readJsoncText } from "./config-jsonc-file";
 import { parseSetting, type SettingDefect } from "./config-setting-file";
 import { committedTree } from "./git-committed";
-import { type Env, resolveHomeDir } from "./paths";
+import { configDir, type Env } from "./paths";
 
 export const SETTINGS = {
   comments: ["banned", "allowed"],
@@ -21,7 +21,7 @@ export function isSetting(name: string): name is Setting {
 }
 
 export function userConfigPath(env: Env = process.env): string {
-  return join(resolveHomeDir(env), ".config", "dim", "config.json");
+  return join(configDir(env), "config.json");
 }
 
 export function projectConfigPath(root: string): string {

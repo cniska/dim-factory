@@ -41,7 +41,7 @@ function repoWithCommentGate(
   execFileSync("git", ["-C", work, "config", "core.hooksPath", hooks]);
   execFileSync("git", ["-C", work, "remote", "add", "origin", "git@github.com:cniska/thing.git"]);
 
-  const env = { PATH: `${bin}:${process.env.PATH}`, DIM_HOME: machine, HOME: home };
+  const env = { PATH: `${bin}:${process.env.PATH}`, XDG_DATA_HOME: machine, HOME: home };
   const commit = (files: Record<string, string>, extra: Record<string, string> = {}) => {
     for (const [path, text] of Object.entries(files)) writeFileSync(join(work, path), text);
     execFileSync("git", ["-C", work, "add", "-A"]);

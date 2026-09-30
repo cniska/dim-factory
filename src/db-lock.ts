@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { dataDir, type Env } from "./paths";
+import { type Env, locksDir } from "./paths";
 import { pidIsAlive } from "./pid";
 
 export class LockHeldError extends Error {
@@ -101,5 +101,5 @@ export function withPathLock<T>(path: string, fn: () => T): T {
 }
 
 export function withLock<T>(fn: () => T, env: Env = process.env): T {
-  return withPathLock(join(dataDir(env), "lock"), fn);
+  return withPathLock(join(locksDir(env), "record"), fn);
 }

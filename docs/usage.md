@@ -62,7 +62,7 @@ Refuses a rewrite or deletion of the remote default branch, and any push carryin
 
 ## Configuration
 
-Two layers of JSON: the user's `~/.config/dim/config.json` and the project's committed `.dim/config.json`, which overrides it setting by setting. [`src/config.ts`](../src/config.ts) holds the settings and their values; an unknown one is refused.
+Two layers of JSON: the user's `config.json` in the [config directory](core.md#paths) and the project's committed `.dim/config.json`, which overrides it setting by setting. [`src/config.ts`](../src/config.ts) holds the settings and their values; an unknown one is refused.
 
 ```sh
 dim config

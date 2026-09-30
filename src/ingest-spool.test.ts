@@ -27,7 +27,7 @@ import { hookConfigPath, installHooks, planHooks } from "./hooks";
 import { drainSpool, ensureSpoolDirs, toolSpoolDir } from "./ingest-spool";
 import { rebuild, sync } from "./ingest-sync";
 import type { Tool } from "./ingest-tools";
-import { dbPath, type Env } from "./paths";
+import { dbPath, type Env, resolveHomeDir, spoolDir } from "./paths";
 
 const SESSION = "11111111-2222-3333-4444-555555555555";
 const roots: string[] = [];
@@ -245,7 +245,7 @@ describe("spool", () => {
       expect(() => drainSpool(db, env)).toThrow("refused");
       expect(db.prepare("SELECT count(*) AS n FROM hook_event").get()).toEqual({ n: 0 });
       expect([existsSync(first), existsSync(second)]).toEqual([true, true]);
-      expect(readdirSync(join(root, "home", "spool", "unreadable"))).toEqual(["1789000000000000000-1.json"]);
+      expect(readdirSync(join(spoolDir(env), "unreadable"))).toEqual(["1789000000000000000-1.json"]);
 
       db.run("DROP TRIGGER refuse");
       expect(drainSpool(db, env)).toMatchObject({ applied: 2, unreadable: 0 });
@@ -264,7 +264,7 @@ describe("spool", () => {
     try {
       expect(drainSpool(db, env)).toMatchObject({ applied: 0, unreadable: 2 });
       expect(existsSync(path)).toBe(false);
-      expect(readdirSync(join(root, "home", "spool", "unreadable")).length).toBe(2);
+      expect(readdirSync(join(spoolDir(env), "unreadable")).length).toBe(2);
     } finally {
       closeDb(db);
     }
@@ -312,13 +312,12 @@ describe("installHooks", () => {
     };
   }
   function root(env: Env): string {
-    return (env.DIM_CLAUDE_PROJECTS as string).replace("/.claude/projects", "");
+    return resolveHomeDir(env);
   }
   function hookEnv(dir: string, onPath: readonly string[] = ["claude", "codex"]): Env {
     return {
-      DIM_HOME: join(dir, "home"),
-      DIM_CLAUDE_PROJECTS: join(dir, ".claude", "projects"),
-      DIM_CODEX_DIR: join(dir, ".codex"),
+      HOME: dir,
+      XDG_DATA_HOME: join(dir, "data"),
       PATH: harnessesOnPath(dir, onPath),
     };
   }
@@ -441,8 +440,8 @@ describe("installHooks", () => {
 
   test("a moved spool directory refreshes the installed hook", () => {
     const dir = newRoot();
-    const oldEnv = { ...hookEnv(dir), DIM_HOME: join(dir, "old-data") };
-    const newEnv = { ...oldEnv, DIM_HOME: join(dir, "new-data") };
+    const oldEnv = { ...hookEnv(dir), XDG_DATA_HOME: join(dir, "old-data") };
+    const newEnv = { ...oldEnv, XDG_DATA_HOME: join(dir, "new-data") };
     installHooks(oldEnv);
 
     expect(
@@ -540,7 +539,7 @@ describe("installHooks", () => {
       ["dies", "#!/bin/sh\nkill -9 $$\n"],
       ["is missing", null],
     ];
-    rmSync(env.DIM_HOME as string, { recursive: true, force: true });
+    rmSync(spoolDir(env), { recursive: true, force: true });
     for (const [state, body] of dims) {
       rmSync(shim, { force: true });
       if (body !== null) writeFileSync(shim, body, { mode: 0o755 });

@@ -15,9 +15,9 @@ From this repository's root:
 scripts/verify-dim.sh new
 ```
 
-It prints the run's directory; name it in every later call. [`scripts/verify-dim.sh`](../../../scripts/verify-dim.sh) points `DIM_HOME`, `DIM_CLAUDE_PROJECTS` and `DIM_CODEX_DIR` into that directory, so the run never reads or writes the machine's record or harness configs. It puts this checkout's `dim` first on `PATH`, installs the session hooks into the scratch configs, and creates a repository at `<run>/repo`.
+It prints the run's directory; name it in every later call. [`scripts/verify-dim.sh`](../../../scripts/verify-dim.sh) points `HOME` and the three XDG variables into that directory, so the run never reads or writes the machine's record or harness configs. It puts this checkout's `dim` first on `PATH`, installs the session hooks into the scratch configs, and creates a repository at `<run>/repo`.
 
-Readiness: `scripts/verify-dim.sh <run> doctor` reports the schema and `hooks` installed. Its skill, commit gate and rules checks read the real home and do not bear on the run.
+Readiness: `scripts/verify-dim.sh <run> doctor` reports the schema and `hooks` installed. Its skill, commit gate and rules checks read the run's home, where nothing else is installed, and do not bear on the run.
 
 ## Drive
 
@@ -28,7 +28,7 @@ Each command prints one JSON line; read `ok` and `result`, never the exit code a
 ## Observe
 
 - `scripts/verify-dim.sh <run> sql "<select>"` — any table of the record, read-only.
-- `scripts/verify-dim.sh <run> q search "<words>"` — what the record holds of a session's text.
+- `scripts/verify-dim.sh <run> query search "<words>"` — what the record holds of a session's text.
 - `git -C <run>/repo log --format='%an | %s' main` — what was committed, and under whose identity.
 
 Name the behavior the change was for, run the commands that reach it, and quote the output that shows it. A result read from the record beats one inferred from a message.

@@ -27,7 +27,7 @@ test("hooks install reports a refreshed matcher as installed", () => {
   const root = mkdtempSync(join(tmpdir(), "dim-hooks-refresh-"));
   try {
     installHooks(root);
-    const settings = join(root, "settings.json");
+    const settings = join(root, ".claude", "settings.json");
     const config = JSON.parse(readFileSync(settings, "utf8"));
     config.hooks.PostToolUse.find((entry: { matcher?: string }) => entry.matcher).matcher = "Stale";
     writeFileSync(settings, JSON.stringify(config));

@@ -21,7 +21,7 @@ Claude Code deletes transcripts after 30 days unless `cleanupPeriodDays` is rais
 
 - **Stored as text** — user prompts, assistant text, rejection feedback, Bash command strings, the paths of edited files, and each skill body's hash and size.
 - **Never stored** — tool results, file contents, diffs, stdout and stderr, thinking blocks, attachments and MCP results. A `message` row carries `src_file` and `src_line`, and a `tool_call` the lines of its call and result, so a question that needs the full record re-reads that line from the source.
-- **Location** — `~/.local/share/dim-factory/`, holding `sessions.db`, the hook spool and the lock. Never inside a repository. Keep it out of cloud sync.
+- **Location** — `record/` in the data directory ([paths](core.md#paths)), holding `sessions.db` and the hook spool. Never inside a repository. Keep it out of cloud sync.
 
 ## Schema
 
@@ -48,7 +48,7 @@ dim sync: drain the spool → read changed files → derive session ends
 - **Idempotent.** Natural keys make a re-run a no-op: Claude `message.id` and `uuid`, tool-use ids, `response_id`, Codex item ids and `(thread_id, turn_id)`.
 - **Claude usage is deduplicated and the largest kept.** One API response is written as one line per content block, each repeating `message.id` and a `usage` that accumulates as the response streams, so the line with the most output tokens holds the total.
 - **Schedule.** `dim agent install` writes a `launchd` agent that runs `dim sync` every 15 minutes, naming `bun` by absolute path because launchd starts with almost no environment. `dim rebuild` is `sync` with every cursor reset.
-- **The lock** is a directory under the data directory that records its holder's pid, since macOS has no `flock` and a killed run would otherwise leave it held forever.
+- **The lock** is a directory under the state directory's `locks/` that records its holder's pid, since macOS has no `flock` and a killed run would otherwise leave it held forever.
 
 ## Hooks
 

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { copyBackup } from "./file-backup";
-import { dataDir, type Env, resolveHomeDir } from "./paths";
+import { type Env, resolveHomeDir, stateDir } from "./paths";
 
 export const AGENT_LABEL = "dev.dimfactory.sync";
 const INTERVAL_SECONDS = 900;
@@ -11,7 +11,7 @@ export function agentPlistPath(env: Env = process.env): string {
 }
 
 export function syncLogPath(env: Env = process.env): string {
-  return join(dataDir(env), "sync.log");
+  return join(stateDir(env), "sync.log");
 }
 
 function xmlText(value: string): string {
@@ -62,6 +62,7 @@ export function installAgent(env: Env = process.env): AgentPlan {
   const plan = planAgent(env);
   if (plan.unchanged) return plan;
   mkdirSync(dirname(plan.path), { recursive: true });
+  mkdirSync(dirname(syncLogPath(env)), { recursive: true });
   if (existsSync(plan.path)) copyBackup(plan.path);
   writeFileSync(plan.path, plan.contents);
   return plan;

@@ -18,7 +18,7 @@ const roots: string[] = [];
 function newRoot(): { env: Env; lock: string } {
   const root = mkdtempSync(join(tmpdir(), "dim-lock-"));
   roots.push(root);
-  return { env: { DIM_HOME: root }, lock: join(root, "lock") };
+  return { env: { XDG_STATE_HOME: root }, lock: join(root, "dim-factory", "locks", "record") };
 }
 
 afterEach(() => {
@@ -111,6 +111,6 @@ describe("the write lock", () => {
     mkdirSync(lock, { recursive: true });
     writeFileSync(join(lock, "pid"), String(process.pid));
     expect(() => withLock(() => "ran", env)).toThrow(LockHeldError);
-    expect(readdirSync(dirname(lock))).toEqual(["lock"]);
+    expect(readdirSync(dirname(lock))).toEqual(["record"]);
   });
 });

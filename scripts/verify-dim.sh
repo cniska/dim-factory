@@ -8,15 +8,16 @@ checkout=$(cd "$(dirname "$0")/.." && pwd)
 enter() {
   scratch="$1"
   repo="$scratch/repo"
-  export DIM_HOME="$scratch/dim"
-  export DIM_CLAUDE_PROJECTS="$scratch/claude/projects"
-  export DIM_CODEX_DIR="$scratch/codex"
+  export HOME="$scratch/home"
+  export XDG_CONFIG_HOME="$scratch/config"
+  export XDG_DATA_HOME="$scratch/data"
+  export XDG_STATE_HOME="$scratch/state"
   export PATH="$scratch/bin:$PATH"
 }
 
 if [ "$1" = new ]; then
   enter "$(mktemp -d "${TMPDIR:-/tmp}/dim-verify-XXXXXX")"
-  mkdir -p "$scratch/bin" "$DIM_HOME"
+  mkdir -p "$scratch/bin" "$HOME"
   printf '#!/bin/sh\nexec bun "%s" "$@"\n' "$checkout/src/cli.ts" > "$scratch/bin/dim"
   chmod +x "$scratch/bin/dim"
   dim hooks install > /dev/null
@@ -39,14 +40,14 @@ if [ "$1" = new ]; then
   exit 0
 fi
 
-[ -d "$1/dim" ] || { echo "verify-dim: $1 holds no verify run" >&2; exit 1; }
+[ -d "$1/home" ] || { echo "verify-dim: $1 holds no verify run" >&2; exit 1; }
 enter "$1"
 shift
 spool_hook=$(bun -e '
 const config = await Bun.file(process.argv[1]).json();
 const hook = config.hooks.SessionStart.flatMap((entry) => entry.hooks).find((h) => h.command.startsWith("cat >"));
 console.log(hook.command);
-' "$scratch/claude/settings.json")
+' "$HOME/.claude/settings.json")
 printf '{"session_id":"verify-session-%s","hook_event_name":"SessionStart","source":"startup","cwd":"%s"}' \
   "$(date +%s%N)" "$repo" | sh -c "$spool_hook"
 cd "$repo"

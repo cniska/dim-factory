@@ -31,9 +31,9 @@ One layout, resolved in `src/paths.ts`, like acolyte's. A relative XDG value is 
 
 | Category | Default | Holds |
 |---|---|---|
-| Config | `$XDG_CONFIG_HOME/dim` | `config.json` (the user's settings) and `models.json` (which model is which strength, per harness) |
+| Config | `$XDG_CONFIG_HOME/dim` | `config.json` (the user's settings), `models.json` (which model is which strength, per harness) and `hooks/` (the commit gate's git hooks) |
 | Data | `$XDG_DATA_HOME/dim-factory` | `record/` (the SQLite record and the hook spool), `workspaces/<owner>/<repo>/<order>/`, `workers/<name>/home/` (each station worker's `HOME`), `workers/<name>/sessions/<session>.jsonl` (the factory's copy of each of its transcripts) |
-| State | `$XDG_STATE_HOME/dim-factory` | `trace.jsonl` and `locks/` |
+| State | `$XDG_STATE_HOME/dim-factory` | `trace.jsonl`, `locks/` and `sync.log` (the scheduled sync's output) |
 
 The record sits in its own directory so a worker's sandbox can deny writes to it without also denying the workspaces beside it. A project's settings are its committed `.dim/config.json`. Settings: `ship` (one value, `default-branch`), `harness` (which harness a new session starts under; required, since no harness is right for everyone), `comments`.
 

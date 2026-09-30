@@ -17,7 +17,7 @@ import { type HookPlan, hookGaps, outdatedLabel } from "./hooks";
 import { codexConfigPath, planCodexTrust, type TrustState } from "./hooks-codex-trust";
 import { AGENT_LABEL, planAgent } from "./ingest-launchd";
 import { TOOLS } from "./ingest-tools";
-import { dataDir, type Env, resolveHomeDir, tildePath } from "./paths";
+import { type Env, resolveHomeDir, spoolDir, tildePath } from "./paths";
 import { planRules } from "./rules";
 import { planSkill, retiredLinks } from "./skill";
 
@@ -184,7 +184,7 @@ function retention(env: Env): Health {
 }
 
 function spool(env: Env): Health {
-  const root = join(dataDir(env), "spool");
+  const root = spoolDir(env);
   let waiting = 0;
   for (const tool of TOOLS) {
     const dir = join(root, tool);

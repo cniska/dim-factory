@@ -11,7 +11,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { withPathLock } from "./db-lock";
 import { harnessInstalled } from "./harness-installed";
-import { defaultDataDir, type Env, resolveHomeDir } from "./paths";
+import { type Env, locksDir, resolveHomeDir } from "./paths";
 
 const SKILLS_DIR = join(resolve(import.meta.dir, ".."), "skills");
 
@@ -103,7 +103,7 @@ export function retiredLinks(env: Env = process.env): string[] {
 }
 
 export function installSkill(env: Env = process.env): SkillPlan[] {
-  return withPathLock(join(defaultDataDir(env), "skill-install.lock"), () => {
+  return withPathLock(join(locksDir(env), "skill-install"), () => {
     const plans = planSkill(env);
     for (const plan of plans) {
       if (plan.state === "linked") continue;

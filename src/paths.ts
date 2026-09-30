@@ -3,7 +3,8 @@ import { isAbsolute, join } from "node:path";
 
 export type Env = Record<string, string | undefined>;
 
-const APP_NAME = "dim-factory";
+const CONFIG_NAME = "dim";
+const DATA_NAME = "dim-factory";
 
 export function resolveHomeDir(env: Env = process.env): string {
   const envHome = env.HOME;
@@ -17,26 +18,43 @@ export function tildePath(path: string, env: Env = process.env): string {
   return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
 }
 
-export function defaultDataDir(env: Env = process.env): string {
-  return join(resolveHomeDir(env), ".local", "share", APP_NAME);
+function xdgBase(env: Env, variable: string, fallback: readonly string[]): string {
+  const value = env[variable];
+  return value && isAbsolute(value) ? value : join(resolveHomeDir(env), ...fallback);
 }
 
-export function dataDir(env: Env = process.env): string {
-  const home = env.DIM_HOME;
-  if (home && home.trim().length > 0) return home;
-  const xdg = env.XDG_DATA_HOME;
-  if (xdg && xdg.trim().length > 0 && isAbsolute(xdg)) return join(xdg, APP_NAME);
-  return defaultDataDir(env);
+export function configDir(env: Env = process.env): string {
+  return join(xdgBase(env, "XDG_CONFIG_HOME", [".config"]), CONFIG_NAME);
+}
+
+function dataDir(env: Env): string {
+  return join(xdgBase(env, "XDG_DATA_HOME", [".local", "share"]), DATA_NAME);
+}
+
+export function stateDir(env: Env = process.env): string {
+  return join(xdgBase(env, "XDG_STATE_HOME", [".local", "state"]), DATA_NAME);
+}
+
+function recordDir(env: Env): string {
+  return join(dataDir(env), "record");
 }
 
 export function dbPath(env: Env = process.env): string {
-  return join(dataDir(env), "sessions.db");
+  return join(recordDir(env), "sessions.db");
+}
+
+export function spoolDir(env: Env = process.env): string {
+  return join(recordDir(env), "spool");
+}
+
+export function locksDir(env: Env = process.env): string {
+  return join(stateDir(env), "locks");
 }
 
 export function claudeProjectsDir(env: Env = process.env): string {
-  return env.DIM_CLAUDE_PROJECTS ?? join(resolveHomeDir(env), ".claude", "projects");
+  return join(resolveHomeDir(env), ".claude", "projects");
 }
 
 export function codexDir(env: Env = process.env): string {
-  return env.DIM_CODEX_DIR ?? join(resolveHomeDir(env), ".codex");
+  return join(resolveHomeDir(env), ".codex");
 }

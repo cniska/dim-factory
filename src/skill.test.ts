@@ -181,12 +181,12 @@ describe("skill install", () => {
 
   test("leaves an occupied skill untouched while another installer holds the lock", async () => {
     const home = newHome();
-    const env = { HOME: home, DIM_HOME: join(home, "another-data-dir") };
+    const env = { HOME: home };
     const link = join(home, ".agents", "skills", SKILL_NAMES[0]);
     try {
       mkdirSync(link, { recursive: true });
       writeFileSync(join(link, "SKILL.md"), "owner skill");
-      withPathLock(join(home, ".local", "share", "dim-factory", "skill-install.lock"), () => {
+      withPathLock(join(home, ".local", "state", "dim-factory", "locks", "skill-install"), () => {
         expect(() => installSkill(env)).toThrow(LockHeldError);
       });
       await expect(Bun.file(join(link, "SKILL.md")).text()).resolves.toBe("owner skill");

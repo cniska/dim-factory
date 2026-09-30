@@ -3,15 +3,11 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync } from "no
 import { basename, join } from "node:path";
 import { writeTransaction } from "./db";
 import { TOOLS, type Tool } from "./ingest-tools";
-import { dataDir, type Env } from "./paths";
+import { type Env, spoolDir } from "./paths";
 
 export type DrainReport = { applied: number; duplicate: number; unreadable: number };
 
 const SPOOL_NAME = /^(\d{10,})-([A-Za-z0-9]+)(?:-(\d+)-([A-Za-z0-9-]*))?(?:-([A-Za-z0-9-]*))?\.json$/;
-
-export function spoolDir(env: Env = process.env): string {
-  return join(dataDir(env), "spool");
-}
 
 export function toolSpoolDir(tool: Tool, env: Env = process.env): string {
   return join(spoolDir(env), tool);

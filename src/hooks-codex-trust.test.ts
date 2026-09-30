@@ -20,8 +20,8 @@ function codexEnv(hooksJson: (env: Env) => string): Env {
   roots.push(root);
   const codexDir = join(root, ".codex");
   const env: Env = {
-    DIM_HOME: join(root, "home"),
-    DIM_CODEX_DIR: codexDir,
+    HOME: root,
+    XDG_DATA_HOME: join(root, "data"),
     PATH: harnessesOnPath(root, ["codex"]),
   };
   mkdirSync(codexDir, { recursive: true });

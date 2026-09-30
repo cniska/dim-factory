@@ -69,7 +69,7 @@ const WRITES = [
 
 function recordWithCommit(): { home: string; path: string } {
   const home = mkdtempSync(join(tmpdir(), "dim-db-read-"));
-  const path = dbPath({ DIM_HOME: home });
+  const path = dbPath({ XDG_DATA_HOME: home });
   const db = openDb(path);
   db.run(
     "INSERT INTO repo_commit (sha, repo, label, ts, subject) VALUES ('abc123', '/repo', 'cniska/dim-factory', '2026-01-01T00:00:00Z', 'feat: stay as written')",
@@ -102,14 +102,14 @@ function recordBesideTraces(path: string): unknown {
   }
 }
 
-async function asDimHome<T>(home: string, run: () => T | Promise<T>): Promise<T> {
-  const before = process.env.DIM_HOME;
-  process.env.DIM_HOME = home;
+async function asDataHome<T>(home: string, run: () => T | Promise<T>): Promise<T> {
+  const before = process.env.XDG_DATA_HOME;
+  process.env.XDG_DATA_HOME = home;
   try {
     return await run();
   } finally {
-    if (before === undefined) delete process.env.DIM_HOME;
-    else process.env.DIM_HOME = before;
+    if (before === undefined) delete process.env.XDG_DATA_HOME;
+    else process.env.XDG_DATA_HOME = before;
   }
 }
 
@@ -119,7 +119,7 @@ describe("each reader of the record", () => {
     try {
       const before = fingerprint(path);
       for (const statement of WRITES) {
-        const refused = await asDimHome(home, async () => {
+        const refused = await asDataHome(home, async () => {
           try {
             await sqlCommand.run([statement]);
             return null;
@@ -140,13 +140,13 @@ describe("each reader of the record", () => {
     const empty = mkdtempSync(join(tmpdir(), "dim-db-read-"));
     try {
       const before = recordBesideTraces(path);
-      for (const query of QUERIES) await asDimHome(home, () => queryCommand.run([query.name, "stay"]));
+      for (const query of QUERIES) await asDataHome(home, () => queryCommand.run([query.name, "stay"]));
       expect(recordBesideTraces(path)).toEqual(before);
 
-      await expect(asDimHome(empty, () => queryCommand.run(["search", "stay"]))).rejects.toBeInstanceOf(
+      await expect(asDataHome(empty, () => queryCommand.run(["search", "stay"]))).rejects.toBeInstanceOf(
         NoDatabaseError,
       );
-      expect(existsSync(dbPath({ DIM_HOME: empty }))).toBe(false);
+      expect(existsSync(dbPath({ XDG_DATA_HOME: empty }))).toBe(false);
     } finally {
       rmSync(home, { recursive: true, force: true });
       rmSync(empty, { recursive: true, force: true });
@@ -180,10 +180,10 @@ describe("a reader of a record built by another schema version", () => {
         const readers: Record<string, () => unknown> = {
           "dim query": () => queryCommand.run(["search", "stay"]),
           "dim sql": () => sqlCommand.run(["SELECT 1"]),
-          "dim trace": () => runTraceCommand("order-1", { DIM_HOME: home }, () => {}),
+          "dim trace": () => runTraceCommand("order-1", { XDG_DATA_HOME: home }, () => {}),
         };
         for (const [reader, run] of Object.entries(readers)) {
-          const error = await asDimHome(home, () => refusal(run));
+          const error = await asDataHome(home, () => refusal(run));
           expect({ reader, error }).toEqual({ reader, error: expect.any(SchemaTooOldError) });
           expect({ reader, code: (error as SchemaTooOldError).code }).toEqual({
             reader,
@@ -200,10 +200,10 @@ describe("a reader of a record built by another schema version", () => {
   test("dim sql creates no database where there is none", async () => {
     const empty = mkdtempSync(join(tmpdir(), "dim-db-read-"));
     try {
-      expect(await asDimHome(empty, () => refusal(() => sqlCommand.run(["SELECT 1"])))).toBeInstanceOf(
+      expect(await asDataHome(empty, () => refusal(() => sqlCommand.run(["SELECT 1"])))).toBeInstanceOf(
         NoDatabaseError,
       );
-      expect(existsSync(dbPath({ DIM_HOME: empty }))).toBe(false);
+      expect(existsSync(dbPath({ XDG_DATA_HOME: empty }))).toBe(false);
     } finally {
       rmSync(empty, { recursive: true, force: true });
     }

@@ -212,7 +212,7 @@ describe("the lock wait a connection is opened with", () => {
   test("is a quarter second for a trace", () => {
     const root = mkdtempSync(join(tmpdir(), "dim-db-"));
     roots.push(root);
-    const env = { DIM_HOME: root };
+    const env = { XDG_DATA_HOME: root };
     const opened = spyOn(db, "openDb");
     try {
       trace({ event: "query.completed", command: "query", name: "search" }, env);

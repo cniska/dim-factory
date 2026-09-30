@@ -1,6 +1,6 @@
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { Env } from "./paths";
+import { claudeProjectsDir, codexDir, type Env } from "./paths";
 
 export function harnessesOnPath(root: string, executables: readonly string[]): string {
   const bin = join(root, "harness-bin");
@@ -14,9 +14,10 @@ export function harnessesOnPath(root: string, executables: readonly string[]): s
 
 export function scratchEnv(root: string): Env {
   return {
-    DIM_HOME: join(root, "home"),
-    DIM_CLAUDE_PROJECTS: join(root, "claude-projects"),
-    DIM_CODEX_DIR: join(root, "codex"),
+    HOME: root,
+    XDG_CONFIG_HOME: join(root, "config"),
+    XDG_DATA_HOME: join(root, "data"),
+    XDG_STATE_HOME: join(root, "state"),
     PATH: `${harnessesOnPath(root, ["claude", "codex"])}:${process.env.PATH}`,
   };
 }
@@ -183,7 +184,7 @@ export function claudeTranscriptLines(sessionId: string): unknown[] {
 }
 
 export function writeClaudeTranscript(env: Env, slug: string, sessionId: string): string {
-  const path = join(env.DIM_CLAUDE_PROJECTS as string, slug, `${sessionId}.jsonl`);
+  const path = join(claudeProjectsDir(env), slug, `${sessionId}.jsonl`);
   writeLines(path, claudeTranscriptLines(sessionId));
   return path;
 }
@@ -304,8 +305,8 @@ export function writeCodexRollout(env: Env, dir: "sessions" | "archived_sessions
   const name = `rollout-2026-09-16T10-00-00-${threadId}.jsonl`;
   const path =
     dir === "sessions"
-      ? join(env.DIM_CODEX_DIR as string, "sessions", "2026", "09", "16", name)
-      : join(env.DIM_CODEX_DIR as string, "archived_sessions", name);
+      ? join(codexDir(env), "sessions", "2026", "09", "16", name)
+      : join(codexDir(env), "archived_sessions", name);
   writeLines(path, codexRolloutLines(threadId, { withIds: true }));
   return path;
 }

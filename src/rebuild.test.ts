@@ -6,12 +6,14 @@ import { join } from "node:path";
 import { openDb } from "./db";
 import { SCHEMA_VERSION } from "./db-schema";
 import { rebuild } from "./ingest-sync";
+import { dbPath } from "./paths";
 
-type Scratch = { db: Database; env: { HOME: string; DIM_HOME: string } };
+type Scratch = { db: Database; env: { HOME: string; XDG_DATA_HOME: string } };
 
 function scratch(): Scratch {
   const home = mkdtempSync(join(tmpdir(), "dim-rebuild-"));
-  return { db: openDb(join(home, "sessions.db")), env: { HOME: home, DIM_HOME: home } };
+  const env = { HOME: home, XDG_DATA_HOME: home };
+  return { db: openDb(dbPath(env)), env };
 }
 
 function fill(db: Database): void {
@@ -79,7 +81,7 @@ describe("absorbing a schema change", () => {
     db.run("UPDATE schema_version SET version = ?", [SCHEMA_VERSION - 1]);
     db.close();
 
-    const reopened = openDb(join(env.DIM_HOME, "sessions.db"), { forRebuild: true });
+    const reopened = openDb(dbPath(env), { forRebuild: true });
     rebuild(reopened, env);
 
     expect(columnsOf(reopened, "tool_call")).toContain("file_path");
@@ -104,7 +106,7 @@ describe("absorbing a schema change", () => {
     const blocked = join(env.HOME, "not-a-directory");
     writeFileSync(blocked, "");
 
-    expect(() => rebuild(db, { HOME: blocked, DIM_HOME: blocked })).toThrow();
+    expect(() => rebuild(db, { HOME: blocked, XDG_DATA_HOME: blocked })).toThrow();
     expect(db.query("SELECT version FROM schema_version").get()).toEqual({ version: 1 });
 
     rebuild(db, env);

@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync }
 import { join } from "node:path";
 import { fail, GATE_ERROR, GATE_HOOKS } from "./gate-contract";
 import { hookBody, hookOwners } from "./gate-hooks";
-import { type Env, resolveHomeDir } from "./paths";
+import { configDir, type Env } from "./paths";
 
 type InstalledHook = {
   readonly name: string;
@@ -20,7 +20,7 @@ export type GatePlan = {
 const KEY_UNSET = 1;
 
 export function sharedHooksDir(env: Env): string {
-  return join(resolveHomeDir(env), ".config", "dim", "hooks");
+  return join(configDir(env), "hooks");
 }
 
 function gitConfig(args: readonly string[], cwd: string | undefined, env: Env) {

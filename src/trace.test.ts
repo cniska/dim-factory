@@ -1,8 +1,8 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { closeDb, openDb } from "./db";
 import { SCHEMA_VERSION } from "./db-schema";
 import { dbPath, type Env } from "./paths";
@@ -13,7 +13,7 @@ const roots: string[] = [];
 function scratch(): Env {
   const root = mkdtempSync(join(tmpdir(), "dim-trace-"));
   roots.push(root);
-  return { DIM_HOME: root };
+  return { XDG_DATA_HOME: root };
 }
 
 afterEach(() => {
@@ -85,6 +85,7 @@ describe("the diagnostic trace", () => {
 
   test("writes into a database that predates the table", () => {
     const env = scratch();
+    mkdirSync(dirname(dbPath(env)), { recursive: true });
     const db = new Database(dbPath(env), { create: true });
     db.run("CREATE TABLE schema_version (version INTEGER NOT NULL)");
     db.run("INSERT INTO schema_version (version) VALUES (?)", [SCHEMA_VERSION]);
@@ -115,7 +116,7 @@ describe("the diagnostic trace", () => {
     expect(() =>
       trace(
         { event: "query.completed", command: "query", name: "thread" },
-        { ...env, DIM_HOME: "/nowhere/at/all" },
+        { ...env, XDG_DATA_HOME: "/nowhere/at/all" },
       ),
     ).not.toThrow();
   });
