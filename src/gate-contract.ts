@@ -38,7 +38,7 @@ type GateErrorMeta = {
   [GATE_ERROR.commitsUnenumerable]: { readonly range: string; readonly detail: string };
 };
 
-type GateErrorCode = keyof GateErrorMeta;
+export type GateErrorCode = keyof GateErrorMeta;
 
 const MESSAGES: { readonly [Code in GateErrorCode]: (meta: GateErrorMeta[Code]) => string } = {
   [GATE_ERROR.unreadableUpdate]: ({ line }) =>

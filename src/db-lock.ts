@@ -1,12 +1,15 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { CodedError } from "./coded-error";
 import { type Env, locksDir } from "./paths";
 import { pidIsAlive } from "./pid";
 
-export class LockHeldError extends Error {
-  readonly code = "LOCK_HELD";
+export class LockHeldError extends CodedError<"lock_held", { readonly path: string; readonly pid: number }> {
   constructor(path: string, pid: number) {
-    super(`another dim run holds ${path} (pid ${pid})`);
+    super("lock_held", `another dim run holds ${path} (pid ${pid}); run this again once it ends`, {
+      path,
+      pid,
+    });
   }
 }
 

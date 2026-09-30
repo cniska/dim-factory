@@ -1,16 +1,30 @@
 import { type Command, Ran } from "./cli-contract";
+import { isRefusalCode, resolveOf } from "./cli-refusals";
 import { CodedError } from "./coded-error";
 
-type ErrorRecord = { name: string; code: string; message: string; meta?: object; usage?: string };
+type ErrorRecord = {
+  readonly code: string;
+  readonly message: string;
+  readonly meta: object;
+  readonly resolve: string;
+};
 
-function errorRecord(error: unknown, usage: string | undefined): ErrorRecord {
-  if (!(error instanceof Error))
-    return { name: "UnknownError", code: "command_failed", message: String(error) };
-  if (error instanceof CodedError)
-    return { name: error.name, code: error.code, message: error.message, meta: error.meta };
-  const code = "code" in error && typeof error.code === "string" ? error.code : "command_failed";
-  const record = { name: error.name, code, message: error.message };
-  return code === "usage" && usage !== undefined ? { ...record, usage } : record;
+function errorRecord(error: unknown, command: string, usage: string): ErrorRecord {
+  const context = { command, usage: usage.replace(/^usage: /, "") };
+  if (error instanceof CodedError && isRefusalCode(error.code)) {
+    return {
+      code: error.code,
+      message: error.message,
+      meta: error.meta,
+      resolve: resolveOf(error.code, context),
+    };
+  }
+  return {
+    code: "command_failed",
+    message: error instanceof Error ? error.message : String(error),
+    meta: {},
+    resolve: resolveOf("command_failed", context),
+  };
 }
 
 export function writeResult(command: string, value: unknown): number {
@@ -19,8 +33,10 @@ export function writeResult(command: string, value: unknown): number {
   return exitCode;
 }
 
-export function writeError(command: string, error: unknown, usage?: string): number {
-  process.stderr.write(`${JSON.stringify({ command, ok: false, error: errorRecord(error, usage) })}\n`);
+export function writeError(command: string, error: unknown, usage: string): number {
+  process.stderr.write(
+    `${JSON.stringify({ command, ok: false, error: errorRecord(error, command, usage) })}\n`,
+  );
   return 1;
 }
 

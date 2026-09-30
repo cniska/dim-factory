@@ -9,8 +9,8 @@ import { trace } from "./trace";
 
 export const queryCommand: Command = {
   name: "query",
-  usage: `usage: dim query <name> [arg] [--rows <n>]; dim query list names them; ${DEFAULT_MAX_ROWS} rows print unless widened`,
-  summary: "ask the database a named question",
+  usage: "usage: dim query <name> [arg] [--rows <n>] | dim query list",
+  summary: `ask the database a named question; ${DEFAULT_MAX_ROWS} rows print unless --rows widens them`,
   async run(args) {
     const name = args[0];
     if (!name || name === "list") {

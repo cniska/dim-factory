@@ -16,6 +16,8 @@ const LOADERS: Record<string, () => Promise<Command>> = {
   trace: () => import("./trace-command").then((m) => m.traceCommand),
 };
 
+export const COMMAND_NAMES: readonly string[] = Object.keys(LOADERS);
+
 export function findCommand(name: string | undefined): Promise<Command> | undefined {
   return name !== undefined && Object.hasOwn(LOADERS, name) ? LOADERS[name]?.() : undefined;
 }

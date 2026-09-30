@@ -1,3 +1,5 @@
+import { CodedError } from "./coded-error";
+
 export type Command = {
   name: string;
   usage: string;
@@ -13,10 +15,8 @@ export class Ran {
   ) {}
 }
 
-export class UsageError extends Error {
-  readonly code = "usage";
+export class UsageError extends CodedError<"usage", Record<string, never>> {
   constructor(message: string) {
-    super(message);
-    this.name = "UsageError";
+    super("usage", message, {});
   }
 }
