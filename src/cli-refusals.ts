@@ -1,5 +1,6 @@
 import type { ConfigErrorCode } from "./config-error";
 import type { GateErrorCode } from "./gate-contract";
+import type { WorkerRefusalCode } from "./worker-contract";
 
 export type RefusalCode =
   | "usage"
@@ -8,12 +9,14 @@ export type RefusalCode =
   | "no_database"
   | "lock_held"
   | GateErrorCode
-  | ConfigErrorCode;
+  | ConfigErrorCode
+  | WorkerRefusalCode;
 
 export type ResolveContext = { readonly command: string; readonly usage: string };
 
 const SHOW_CONFIG = () => "dim config";
 const INSTALL_GATE = () => "dim gate install --owner <host>/<account>";
+const REGISTER = () => "dim operator register";
 
 const RESOLVE: { readonly [Code in RefusalCode]: (context: ResolveContext) => string } = {
   usage: ({ usage }) => usage,
@@ -32,6 +35,10 @@ const RESOLVE: { readonly [Code in RefusalCode]: (context: ResolveContext) => st
   config_not_an_object: SHOW_CONFIG,
   config_unwritable: SHOW_CONFIG,
   config_absent: SHOW_CONFIG,
+  no_session: REGISTER,
+  no_project: REGISTER,
+  operator_live: REGISTER,
+  not_operator: REGISTER,
 };
 
 export function isRefusalCode(code: string): code is RefusalCode {

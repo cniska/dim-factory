@@ -14,6 +14,7 @@ const LOADERS: Record<string, () => Promise<Command>> = {
   rules: () => import("./rules-command").then((m) => m.rulesCommand),
   agent: () => import("./agent-command").then((m) => m.agentCommand),
   trace: () => import("./trace-command").then((m) => m.traceCommand),
+  operator: () => import("./operator-command").then((m) => m.operatorCommand),
 };
 
 export const COMMAND_NAMES: readonly string[] = Object.keys(LOADERS);

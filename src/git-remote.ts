@@ -39,6 +39,11 @@ function isMissingPath(error: unknown): boolean {
   return error instanceof Error && "code" in error && (error.code === "ENOENT" || error.code === "ENOTDIR");
 }
 
+export function originLabel(repoRoot: string): string | null {
+  const url = git(["config", "--get", "remote.origin.url"], repoRoot);
+  return url ? repositoryLabel(url) : null;
+}
+
 export function labelFor(repoRoot: string): string | null {
   const url =
     git(["config", "--get", "remote.origin.url"], repoRoot) ??
