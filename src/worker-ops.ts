@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { join } from "node:path";
 import { invariant } from "./assert";
 import { writeTransaction } from "./db";
-import { type OpenSession, openSessionsUnder } from "./hooks-sessions";
+import { openSessionsUnder } from "./hooks-sessions";
 import { drainSpool } from "./ingest-spool";
 import { workerSessionsDir } from "./paths";
 import { checkoutAt } from "./project";
@@ -14,6 +14,7 @@ import {
   type ProcessRow,
   refuseWorker,
   type StationRole,
+  type Worker,
   type WorkerRecord,
   type WorkerSession,
 } from "./worker-contract";
@@ -21,7 +22,7 @@ import { processTable, transcriptLines } from "./worker-effects";
 import {
   insertSession,
   insertWorker,
-  operatorSessions,
+  operatorOf,
   sessionNamed,
   sessions,
   sessionsOf,
@@ -37,11 +38,7 @@ type StationWorker = {
   readonly createdBy: string;
 };
 
-type Above = {
-  readonly table: readonly ProcessRow[];
-  readonly chain: readonly ProcessId[];
-  readonly open: readonly OpenSession[];
-};
+type Above = Pick<Caller, "chain" | "open"> & { readonly table: readonly ProcessRow[] };
 
 function above(db: Database): Above {
   drainSpool(db);
@@ -66,7 +63,14 @@ export function callerOf(db: Database, cwd: string): Caller {
   const seen = above(db);
   const [self] = seen.chain;
   invariant(self !== undefined, `the process table lists this process, ${process.pid}`);
-  return { acting: actingOf(db, cwd, seen), self, running: seen.table };
+  return {
+    acting: actingOf(db, cwd, seen),
+    cwd,
+    self,
+    running: seen.table,
+    chain: seen.chain,
+    open: seen.open,
+  };
 }
 
 export function stationWorker(db: Database, created: StationWorker): WorkerRecord {
@@ -113,30 +117,34 @@ function mintedName(db: Database): string {
   }
 }
 
-export type Registered = { readonly operator: string; readonly session: string; readonly project: string };
+function operatorWorker(db: Database, project: string): Worker {
+  const found = operatorOf(db, project);
+  if (found !== null) return found;
+  const worker: Worker = { role: "operator", name: mintedName(db), project };
+  insertWorker(db, worker, new Date().toISOString());
+  return worker;
+}
 
-export function registerOperator(db: Database, cwd: string): Registered {
-  const project = checkoutAt(cwd)?.project;
-  if (project === undefined) throw refuseWorker("no_project", { cwd });
-  const { table, chain, open } = above(db);
-  const inProject = open.filter(
+export function actingOperator(db: Database, caller: Caller, project: string): Acting {
+  if (caller.acting !== null) return caller.acting;
+  const inProject = caller.open.filter(
     (session) => session.cwd !== null && checkoutAt(session.cwd)?.project === project,
   );
-  const found = nearestHarnessSession(chain, inProject);
-  if (found === null) throw refuseWorker("no_session", { cwd });
+  const found = nearestHarnessSession(caller.chain, inProject);
+  if (found === null) throw refuseWorker("no_session", { cwd: caller.cwd });
   return writeTransaction(db, () => {
-    const registered = sessionNamed(db, found.session.id);
-    if (registered !== null) return { operator: registered.worker, session: registered.id, project };
-    const live = operatorSessions(db, project).find((session) => isRunning(session.process, table));
-    if (live) throw refuseWorker("operator_live", { project, operator: live.worker });
-    const name = mintedName(db);
-    const at = new Date().toISOString();
-    insertWorker(db, { role: "operator", name, project }, at);
-    insertSession(
-      db,
-      { id: found.session.id, worker: name, harness: found.session.tool, process: found.harness },
-      at,
-    );
-    return { operator: name, session: found.session.id, project };
+    const worker = operatorWorker(db, project);
+    const known = sessionNamed(db, found.session.id);
+    if (known !== null && known.worker === worker.name) return { worker, session: known };
+    const live = sessionsOf(db, worker.name).find((session) => isRunning(session.process, caller.running));
+    if (live !== undefined) throw refuseWorker("not_operator", { project });
+    const session = {
+      id: found.session.id,
+      worker: worker.name,
+      harness: found.session.tool,
+      process: found.harness,
+    };
+    insertSession(db, session, new Date().toISOString());
+    return { worker, session };
   });
 }

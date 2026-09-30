@@ -21,7 +21,7 @@ const moduleFiles = () =>
   FACTORY_MODULES.flatMap((name) => [...sources(`${name}.ts`), ...sources(`${name}-*.ts`)]);
 
 const factoryCommands = () =>
-  [...FACTORY_MODULES, "operator", "plan", "session"].flatMap((name) => sources(`${name}-command.ts`));
+  [...FACTORY_MODULES, "plan", "session"].flatMap((name) => sources(`${name}-command.ts`));
 
 export function commandBreaches(file: string, text: string): readonly string[] {
   return transpiler
@@ -63,7 +63,7 @@ describe("the module checks", () => {
       factoryCommands()
         .map(({ file }) => file)
         .sort(),
-    ).toEqual(["operator-command.ts", "order-command.ts", "plan-command.ts", "session-command.ts"]);
+    ).toEqual(["order-command.ts", "plan-command.ts", "session-command.ts"]);
   });
 
   test("catch a command importing a store, rules or effects", () => {

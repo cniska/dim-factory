@@ -1,10 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
-import { Models } from "./harness-contract";
-
-export function readModels(path: string): Models {
-  return existsSync(path) ? Models.parse(JSON.parse(readFileSync(path, "utf8"))) : {};
-}
-
 export type Held = {
   readonly pid: number;
   release(prompt: string): void;

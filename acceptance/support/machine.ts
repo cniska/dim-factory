@@ -17,7 +17,13 @@ import { MACHINE_TEST_LIMIT_MS, waitFor } from "./wait";
 
 export const CHECKOUT = join(import.meta.dir, "..", "..");
 
-export const MODELS = { standard: "scripted-standard", deep: "scripted-deep" } as const;
+export const MODELS = {
+  planner: "scripted-planner",
+  builder: "scripted-builder",
+  reviewer: "scripted-reviewer",
+} as const;
+
+export type Models = Readonly<Partial<Record<"default" | StationRole, string>>>;
 
 export type MachineEnv = Readonly<Record<string, string>> & {
   readonly HOME: string;
@@ -49,7 +55,7 @@ export type Machine = {
   ownerCommits(path: string, content: string): void;
   userSettings(settings: Readonly<Record<string, unknown>>): void;
   projectSettings(settings: Readonly<Record<string, unknown>>): void;
-  models(harnesses: Readonly<Record<string, typeof MODELS>>): void;
+  models(models: Models): void;
   createOperator(): OperatorSession;
   close(): void;
 };
@@ -124,9 +130,8 @@ async function createMachine(options: MachineOptions): Promise<Machine> {
     XDG_DATA_HOME: xdg.data,
     XDG_STATE_HOME: xdg.state,
   };
-  const models = (harnesses: Readonly<Record<string, typeof MODELS>>) =>
-    writeFileSync(join(config, "models.json"), JSON.stringify(harnesses));
-  models({ claude: MODELS });
+  const models = (named: Models) => writeFileSync(join(config, "models.json"), JSON.stringify(named));
+  models(MODELS);
   const check =
     typeof options.check === "function" ? options.check({ root, state }) : (options.check ?? "true");
   initRepo(repo, options.project ?? "acme/widgets", check);
@@ -140,7 +145,7 @@ async function createMachine(options: MachineOptions): Promise<Machine> {
   };
   const operator = createOperator();
   resultOf(await operator.dim(["hooks", "install"]));
-  resultOf(await operator.register());
+  await operator.fire("SessionStart");
 
   const inRepo = (args: readonly string[], cwd = repo) => git(args, cwd);
   const ownerCommits = (path: string, content: string) => {

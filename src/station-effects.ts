@@ -1,6 +1,19 @@
-import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { Turn } from "./station";
+import { Models } from "./station-contract";
+
+export function readModels(path: string): Models {
+  return existsSync(path) ? Models.parse(JSON.parse(readFileSync(path, "utf8"))) : {};
+}
 
 const SOCKET_ROOT = "/tmp";
 

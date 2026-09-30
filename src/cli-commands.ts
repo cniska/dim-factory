@@ -14,7 +14,6 @@ const LOADERS: Record<string, () => Promise<Command>> = {
   rules: () => import("./rules-command").then((m) => m.rulesCommand),
   agent: () => import("./agent-command").then((m) => m.agentCommand),
   trace: () => import("./trace-command").then((m) => m.traceCommand),
-  operator: () => import("./operator-command").then((m) => m.operatorCommand),
   order: () => import("./order-command").then((m) => m.orderCommand),
   plan: () => import("./plan-command").then((m) => m.planCommand),
   session: () => import("./session-command").then((m) => m.sessionCommand),

@@ -1,11 +1,4 @@
-import { z } from "zod";
 import { refuser } from "./coded-error";
-
-export const Strength = z.enum(["standard", "deep"]);
-export type Strength = z.infer<typeof Strength>;
-
-export const Models = z.record(z.string(), z.object({ standard: z.string(), deep: z.string() }));
-export type Models = z.infer<typeof Models>;
 
 export type SessionStart =
   | { readonly kind: "new"; readonly id: string }
@@ -32,16 +25,10 @@ export type Adapter = {
 };
 
 type HarnessRefusalMeta = {
-  readonly no_model: { readonly harness: string; readonly strength: Strength; readonly file: string };
   readonly no_adapter: { readonly harness: string };
 };
 
 export const refuseHarness = refuser<HarnessRefusalMeta>({
-  no_model: {
-    message: ({ harness, strength, file }) =>
-      `${file} names no ${strength} model for ${harness}, so no worker of that strength can start`,
-    resolve: () => "dim doctor",
-  },
   no_adapter: {
     message: ({ harness }) =>
       `dim cannot start a station worker under ${harness}; Claude Code is the harness built`,

@@ -1,36 +1,29 @@
 import { refuser } from "./coded-error";
+import type { OpenSession } from "./hooks-sessions";
 
 type WorkerRefusalMeta = {
   readonly no_session: { readonly cwd: string };
   readonly no_project: { readonly cwd: string };
-  readonly operator_live: { readonly project: string; readonly operator: string };
   readonly not_operator: { readonly project: string };
   readonly not_station_worker: { readonly order: string; readonly station: string };
   readonly no_process_table: { readonly detail: string };
   readonly unknown_session: { readonly session: string };
 };
 
-const REGISTER = () => "dim operator register";
-
 export const refuseWorker = refuser<WorkerRefusalMeta>({
   no_session: {
     message: ({ cwd }) =>
-      `no live harness session of this project runs above this process in ${cwd}; register from inside the operator's session`,
-    resolve: REGISTER,
+      `no live harness session of this project runs above this process in ${cwd}, so it cannot act as the project's operator; act from inside a harness session whose hooks dim installed`,
+    resolve: () => "dim hooks install",
   },
   no_project: {
     message: ({ cwd }) => `${cwd} is not inside a checkout whose origin remote names an owner/repo project`,
     resolve: () => "dim order add --title <title> --description <description> --project <owner>/<repo>",
   },
-  operator_live: {
-    message: ({ project, operator }) =>
-      `${operator} is the live operator of ${project}; a second one waits until that session ends`,
-    resolve: REGISTER,
-  },
   not_operator: {
     message: ({ project }) =>
-      `this process runs under no registered operator session of ${project}, and only the operator takes order actions`,
-    resolve: REGISTER,
+      `this process runs under no session of ${project}'s operator, whose live session is another one or who is a station worker, and only the operator takes order actions`,
+    resolve: () => "dim doctor",
   },
   not_station_worker: {
     message: ({ order, station }) =>
@@ -78,8 +71,11 @@ export type Acting = { readonly worker: Worker; readonly session: WorkerSession 
 
 export type Caller = {
   readonly acting: Acting | null;
+  readonly cwd: string;
   readonly self: ProcessId;
   readonly running: readonly ProcessId[];
+  readonly chain: readonly ProcessId[];
+  readonly open: readonly OpenSession[];
 };
 
 export type WorkerRecord = { readonly worker: Worker; readonly sessions: readonly WorkerSession[] };

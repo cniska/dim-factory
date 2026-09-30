@@ -11,7 +11,6 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Worker | A lasting identity the factory records, named like `nut-7`, with one role. Every action on an order names the worker that took it |
 | Session | The harness process that currently carries a worker's context. A worker's session can die and be replaced; the worker stays |
 | Role | What a worker is: `operator`, `planner`, `builder` or `reviewer` |
-| Model strength | The strength of model a role runs on, `standard` or `deep`, mapped to this machine's models per harness |
 | Harness | The agent product that runs a session, such as Claude Code or Codex |
 | Station | One step of work on an order: `plan`, `build` or `review`. Their skills are `dim-plan`, `dim-build` and `dim-review` |
 | Order | One piece of work: a title, a description and a project. It waits until the operator runs it, and is built in its own workspace and branch |

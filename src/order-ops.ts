@@ -21,7 +21,7 @@ import { workspaceDir } from "./paths";
 import { checkoutAt, checkoutOf, defaultBranch } from "./project";
 import { isRunning } from "./worker";
 import { type Acting, type Caller, type ProcessId, refuseWorker } from "./worker-contract";
-import { workersNamed } from "./worker-ops";
+import { actingOperator, workersNamed } from "./worker-ops";
 
 type LoadedOrder = { readonly state: OrderState; readonly log: readonly LogEntry[] };
 
@@ -57,14 +57,20 @@ function act(
   caller: Caller,
   operatorAct: OperatorAct,
   later: (state: OrderState) => Later,
-): number {
+): Acted {
   return writeTransaction(db, () => {
     const { state } = loadOrder(db, order);
-    const admission = admit(state, caller.acting, operatorAct, liveRun(db, order, caller.running));
+    const by = actingOperator(db, caller, state.project);
+    const admission = admit(state, by, operatorAct, liveRun(db, order, caller.running));
     if (admission.kind === "refused") throw admission.refusal;
-    return append(db, order, state.lastSeq + 1, actorOf(admission.by), later(state));
+    return {
+      seq: append(db, order, state.lastSeq + 1, actorOf(admission.by), later(state)),
+      by: admission.by,
+    };
   });
 }
+
+type Acted = { readonly seq: number; readonly by: Acting };
 
 export type NewOrder = {
   readonly title: string;
@@ -81,14 +87,16 @@ export function addOrder(db: Database, caller: Caller, fields: NewOrder): string
   const branch = defaultBranch(checkout.root);
   if (branch === null) throw refuseOrder("no_default_branch", { checkout: checkout.root });
   readConfig({ root: checkout.root, at: branch });
-  const admission = operatorOf(caller.acting, project);
-  if (admission.kind === "refused") throw admission.refusal;
-  const order = orderIdOf(crypto.getRandomValues(new Uint8Array(ORDER_ID_LENGTH)));
-  append(db, order, 1, actorOf(admission.by), {
-    action: "order_added",
-    details: { title: fields.title, description: fields.description, project },
+  return writeTransaction(db, () => {
+    const admission = operatorOf(actingOperator(db, caller, project), project);
+    if (admission.kind === "refused") throw admission.refusal;
+    const order = orderIdOf(crypto.getRandomValues(new Uint8Array(ORDER_ID_LENGTH)));
+    append(db, order, 1, actorOf(admission.by), {
+      action: "order_added",
+      details: { title: fields.title, description: fields.description, project },
+    });
+    return order;
   });
-  return order;
 }
 
 export function updateOrder(
@@ -120,13 +128,14 @@ export type StartedRun = {
 
 export function startRun(db: Database, order: string, caller: Caller, base: string): StartedRun {
   return writeTransaction(db, () => {
-    const { acting } = caller;
-    const cause = act(db, order, caller, { kind: "run" }, () => ({ action: "order_run", details: {} }));
-    invariant(acting !== null, "a run is admitted only from the operator");
+    const { seq: cause, by } = act(db, order, caller, { kind: "run" }, () => ({
+      action: "order_run",
+      details: {},
+    }));
     insertRun(db, order, "station", caller.self);
     const created = loadOrder(db, order).state.head === null;
     if (created) recordFactory(db, order, cause, { action: "workspace_created", details: { base } });
-    return { state: loadOrder(db, order).state, by: acting, cause, created };
+    return { state: loadOrder(db, order).state, by, cause, created };
   });
 }
 

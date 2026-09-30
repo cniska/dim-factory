@@ -4,15 +4,23 @@ import { errorRecord } from "./cli-output";
 import { refusalOf } from "./coded-error";
 import { readConfig } from "./config";
 import { writeTransaction } from "./db";
-import { adapterFor, modelFor, startHarness } from "./harness-ops";
+import { adapterFor, startHarness } from "./harness-ops";
 import { ROLE_AT } from "./order";
 import { Plan, refuseOrder, type Station } from "./order-contract";
 import { endRun, markHarness, orderState, recordFactory, recordWork, startRun } from "./order-ops";
-import { type Env, workerHomeDir, workerSessionsDir } from "./paths";
+import { type Env, modelsPath, workerHomeDir, workerSessionsDir } from "./paths";
 import { checkoutOf, defaultBranch } from "./project";
-import { planBrief, STATIONS, TURN_SOCKET_ENV, workerEnv } from "./station";
+import { modelOf, planBrief, TURN_SOCKET_ENV, workerEnv } from "./station";
 import { refuseStation, TurnReply, TurnRequest } from "./station-contract";
-import { copySession, listen, makeHome, openTurnDir, removeTurnDir, send } from "./station-effects";
+import {
+  copySession,
+  listen,
+  makeHome,
+  openTurnDir,
+  readModels,
+  removeTurnDir,
+  send,
+} from "./station-effects";
 import type { Acting, Caller, WorkerSession } from "./worker-contract";
 import { processOf, registerSession, stationWorker } from "./worker-ops";
 import { baseOf, createWorkspace, workspaceOf } from "./workspace-ops";
@@ -32,6 +40,7 @@ type TurnOf = {
   readonly station: Station;
   readonly by: Acting;
   readonly cause: number;
+  readonly model: string;
   readonly newSessionHarness: string;
 };
 
@@ -52,6 +61,7 @@ function planReturned(text: string) {
 
 async function runTurn(db: Database, turn: TurnOf): Promise<void> {
   const state = orderState(db, turn.order);
+  const { model } = turn;
   const { worker, sessions } = stationWorker(db, {
     role: ROLE_AT[turn.station],
     project: state.project,
@@ -65,7 +75,6 @@ async function runTurn(db: Database, turn: TurnOf): Promise<void> {
       : { kind: "resume" as const, id: current.id };
   const harness = current?.harness ?? turn.newSessionHarness;
   const adapter = adapterFor(harness);
-  const model = modelFor(harness, STATIONS[turn.station].strength);
   const workspace = workspaceOf(state.project, turn.order);
   const home = makeHome(workerHomeDir(worker.name));
   const dir = openTurnDir();
@@ -123,19 +132,26 @@ async function runTurn(db: Database, turn: TurnOf): Promise<void> {
   }
 }
 
+function modelFor(station: Station): string {
+  const role = ROLE_AT[station];
+  const file = modelsPath();
+  const model = modelOf(readModels(file), role);
+  if (model === null) throw refuseStation("no_model", { role, file });
+  return model;
+}
+
 export async function runOrder(db: Database, order: string, caller: Caller, cwd: string): Promise<void> {
-  const { project } = orderState(db, order);
+  const { project, phase } = orderState(db, order);
+  invariant(phase.kind === "run", `order ${order} runs a station; shipping is not built`);
   const setup = setupOf(db, project, cwd);
+  const model = modelFor(phase.station);
+  const newSessionHarness = readConfig({ root: setup.root, at: setup.branch }).harness;
+  if (newSessionHarness === undefined) throw refuseStation("harness_unset", { project });
   const base = baseOf(setup.root, setup.branch);
-  const started = startRun(db, order, caller, base);
+  const { by, cause, created } = startRun(db, order, caller, base);
   try {
-    const { state, by, cause, created } = started;
     if (created) createWorkspace(setup.root, project, order, base);
-    const { phase } = state;
-    invariant(phase.kind === "run", `order ${order} runs a station; shipping is not built`);
-    const newSessionHarness = readConfig({ root: setup.root, at: setup.branch }).harness;
-    if (newSessionHarness === undefined) throw refuseStation("harness_unset", { project });
-    await runTurn(db, { order, station: phase.station, by, cause, newSessionHarness });
+    await runTurn(db, { order, station: phase.station, by, cause, model, newSessionHarness });
   } finally {
     endRun(db, order);
   }

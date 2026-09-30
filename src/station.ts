@@ -1,18 +1,21 @@
 import { listedEnv, PASSED_THROUGH } from "./check";
-import type { Strength } from "./harness-contract";
 import type { OrderState } from "./order";
 import type { Station } from "./order-contract";
 import type { Env } from "./paths";
+import type { Models } from "./station-contract";
+import type { StationRole } from "./worker-contract";
 
 export const TURN_SOCKET_ENV = "DIM_TURN_SOCKET";
 
-type StationDefinition = { readonly skill: string; readonly strength: Strength };
-
-export const STATIONS: Readonly<Record<Station, StationDefinition>> = {
-  plan: { skill: "dim-plan", strength: "deep" },
-  build: { skill: "dim-build", strength: "standard" },
-  review: { skill: "dim-review", strength: "deep" },
+export const SKILLS: Readonly<Record<Station, string>> = {
+  plan: "dim-plan",
+  build: "dim-build",
+  review: "dim-review",
 };
+
+export function modelOf(models: Models, role: StationRole): string | null {
+  return models[role] ?? models.default ?? null;
+}
 
 const XDG = ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"] as const;
 
@@ -29,7 +32,7 @@ export function workerEnv(owner: Env, turn: Turn, signIn: readonly string[]): Re
 
 export function planBrief(state: OrderState, workspace: string): string {
   return JSON.stringify({
-    skill: STATIONS.plan.skill,
+    skill: SKILLS.plan,
     order: { id: state.id, title: state.title, project: state.project, description: state.description },
     workspace,
     returned: null,

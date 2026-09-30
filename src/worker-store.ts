@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS worker (
   CHECK ((role = 'operator') = (order_id IS NULL AND created_by IS NULL))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS worker_station ON worker(order_id, role) WHERE order_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS worker_operator ON worker(project) WHERE role = 'operator';
 CREATE TABLE IF NOT EXISTS worker_session (
   id              TEXT PRIMARY KEY,
   worker          TEXT NOT NULL REFERENCES worker(name),
@@ -126,13 +127,11 @@ export function sessions(db: Database): readonly WorkerSession[] {
     .map(sessionOf);
 }
 
-export function operatorSessions(db: Database, project: string): readonly WorkerSession[] {
-  return db
-    .query<SessionRow, [string]>(
-      `SELECT s.id, s.worker, s.harness, s.pid, s.pid_started_at FROM worker_session s
-       JOIN worker w ON w.name = s.worker
-       WHERE w.role = 'operator' AND w.project = ? ORDER BY s.rowid`,
+export function operatorOf(db: Database, project: string): Worker | null {
+  const row = db
+    .query<WorkerRow, [string]>(
+      "SELECT name, role, project, order_id, created_by FROM worker WHERE role = 'operator' AND project = ?",
     )
-    .all(project)
-    .map(sessionOf);
+    .get(project);
+  return row === null ? null : workerOf(row);
 }

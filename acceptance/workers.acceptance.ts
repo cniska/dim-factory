@@ -17,6 +17,7 @@ import {
   shipThrough,
   showOrder,
   transcriptOf,
+  updateOrder,
 } from "./support/operator-acts";
 import { actions, entriesOf, entryOf, sessionOf, workerOf } from "./support/order-view";
 import { BUILD_ARTIFACT, buildTurn, happyPath, planTurn, reviewTurn, sliceActs } from "./support/scripts";
@@ -25,7 +26,7 @@ import { ACTION, NEXT, REFUSAL, STATION_ROLES, WORKER_ROLES } from "./support/vo
 const start = machines();
 
 describe("the operator", () => {
-  test("a new operator session takes over the orders and replies of an operator session that is gone", async () => {
+  test("the operator's next session carries on with the orders and replies of its session that is gone", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -38,30 +39,31 @@ describe("the operator", () => {
     m.operator.close();
 
     const next = m.createOperator();
-    resultOf(await next.register());
+    await next.fire("SessionStart");
     resultOf(await approve(next, id));
 
     const order = await showOrder(next, id);
-    const operators = order.workers.filter((worker) => worker.role === "operator");
-    expect(operators.map((worker) => worker.name)).toEqual([
-      expect.any(String),
-      entryOf(order, ACTION.messageSent).details.to,
-    ]);
+    expect(order.workers.filter((worker) => worker.role === "operator")).toHaveLength(1);
+    const operator = workerOf(order, "operator");
+    expect(operator.sessions.map((session) => session.id)).toEqual([m.operator.sessionId, next.sessionId]);
+    expect(entryOf(order, ACTION.messageSent).details.to).toBe(operator.name);
     expect(order.next).toBe(NEXT.approve);
   });
 
   test("a second live operator session in a project is refused", async () => {
     const m = await start({ script: happyPath() });
+    await addOrder(m.operator);
     const second = m.createOperator();
+    await second.fire("SessionStart");
 
-    const refused = await second.register();
+    const refused = await second.dim(["order", "add", "--title", "Mine", "--description", "Do my thing."]);
 
-    expect(refusal(refused).code).toBeString();
+    expect(refusal(refused).code).toBe(REFUSAL.notOperator);
   });
 
-  test("registering refuses a process with no active session of the project above it", async () => {
+  test("an operator action from a process with no active session of the project above it is refused", async () => {
     const m = await start({ script: happyPath() });
-    const ran = Bun.spawnSync(["dim", "operator", "register"], {
+    const ran = Bun.spawnSync(["dim", "order", "add", "--title", "Mine", "--description", "Do my thing."], {
       cwd: m.repo,
       env: m.env,
       stdout: "pipe",
@@ -222,12 +224,26 @@ describe("station workers", () => {
     for (const role of STATION_ROLES) expect(workerOf(order, role).sessions).toHaveLength(1);
   });
 
-  test("each station's worker starts on its role's model strength", async () => {
+  test("each station's worker starts on the model named for its role", async () => {
     const m = await start({ script: happyPath() });
     await shipThrough(m.operator, await addOrder(m.operator));
 
     const models = Object.fromEntries(m.invocations().map((call) => [call.role, call.model]));
-    expect(models).toEqual({ planner: MODELS.deep, builder: MODELS.standard, reviewer: MODELS.deep });
+    expect(models).toEqual(MODELS);
+  });
+
+  test("a role with no model named starts on the default, and with no default is refused", async () => {
+    const m = await start({ script: { planner: [planTurn(), planTurn()] } });
+    m.models({ default: "scripted-default" });
+    const id = await planned(m.operator);
+    expect(m.invocation("planner", 0).model).toBe("scripted-default");
+
+    m.models({ builder: "scripted-builder" });
+    resultOf(await updateOrder(m.operator, id, "In Finnish."));
+    const before = await showOrder(m.operator, id);
+    const refused = await runOrder(m.operator, id);
+    expect(refusal(refused).code).toBe("no_model");
+    expect(await showOrder(m.operator, id)).toEqual(before);
   });
 
   test("a session stays with the harness it started under when the harness setting changes", async () => {
@@ -235,7 +251,6 @@ describe("station workers", () => {
     const id = await planned(m.operator);
     writeFileSync(join(m.bin, "codex"), "#!/bin/sh\nexit 1\n");
     chmodSync(join(m.bin, "codex"), 0o755);
-    m.models({ claude: MODELS, codex: MODELS });
     m.projectSettings({ ...PROJECT_SETTINGS, harness: "codex" });
 
     resultOf(await returnArtifact(m.operator, id, "again"));

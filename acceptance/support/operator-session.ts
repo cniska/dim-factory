@@ -64,11 +64,6 @@ export class OperatorSession {
     }
   }
 
-  async register(): Promise<DimResult> {
-    await this.fire("SessionStart");
-    return this.dim(["operator", "register"]);
-  }
-
   close(): void {
     this.shell.kill("SIGKILL");
     rmSync(this.scratch, { recursive: true, force: true });

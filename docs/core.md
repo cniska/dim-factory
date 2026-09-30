@@ -33,7 +33,7 @@ One layout, resolved in `src/paths.ts`, like acolyte's. A relative XDG value is 
 
 | Category | Default | Holds |
 |---|---|---|
-| Config | `$XDG_CONFIG_HOME/dim` | `config.json` (the user's settings), `models.json` (which model is which strength, per harness) and `hooks/` (the commit gate's git hooks) |
+| Config | `$XDG_CONFIG_HOME/dim` | `config.json` (the user's settings), `models.json` (the model each role runs on) and `hooks/` (the commit gate's git hooks) |
 | Data | `$XDG_DATA_HOME/dim-factory` | `record/` (the SQLite record and the hook spool), `workspaces/<owner>/<repo>/<order>/`, `workers/<name>/home/` (each station worker's `HOME`), `workers/<name>/sessions/<session>.jsonl` (the factory's copy of each of its transcripts) |
 | State | `$XDG_STATE_HOME/dim-factory` | `trace.jsonl`, `locks/` and `sync.log` (the scheduled sync's output) |
 
@@ -73,7 +73,7 @@ An order's state is a fold over its log, a pure function: status, station, next 
 
 A command acts as the worker whose registered session is the nearest ancestor of the process running it. A session is registered with its process id and start time. Nothing a worker sets, such as an environment variable or a flag, changes the answer, and no command takes a `--by`.
 
-- **The operator** registers with `dim operator register`. It finds the nearest ancestor that the session record shows as a live harness session in the project, and refuses with `no_session` when there is none. A second live operator session in the project is refused. A new session, once the old one has ended, becomes a new operator worker that takes over the project's orders and receives its workers' messages.
+- **The operator** is one worker per project. An operator act from a process no registered session runs above registers the nearest ancestor that the session record shows as a live harness session in the project as the operator's next session, creating the operator on the project's first act, and refuses with `no_session` when there is none. While another of the operator's sessions is alive, the act is refused `not_operator`. A refused act registers nothing.
 - **A station worker's session** is registered by the station that starts it, at spawn.
 - The same answer serves every surface. The session-start and edit hooks do nothing in a station worker's session. That is also why the hook spool needs no worker segment in its file names.
 
@@ -85,7 +85,7 @@ A station turn:
 
 1. Writes its run row, then gives the worker a session: resumes the current one, or replaces a dead one.
 2. Opens a Unix socket in a fresh `0700` directory under `/tmp`, short enough for macOS's socket path limit, and passes its path to the worker in the environment.
-3. Spawns the harness in its own process group, with the brief, the model for the role's strength and the worker's sandbox.
+3. Spawns the harness in its own process group, with the brief, the role's model and the worker's sandbox.
 4. Serves each act the worker sends over the socket: admits it, carries it out, records it, and replies with the result or a coded refusal.
 5. Reads the stream until the process ends, copies the session's transcript into `workers/<name>/sessions/`, closes the socket and deletes the run row. Repair takes the same copy when it closes a lost turn.
 
@@ -117,7 +117,7 @@ The Claude Code adapter starts `claude -p --output-format stream-json --verbose`
 - **Environment:** a listed set only: `HOME` (the worker's), `PATH`, `USER`, `LANG`, `TMPDIR` (the turn's), the three XDG variables, the turn socket, and the sign-in the harness needs (`CLAUDE_CODE_OAUTH_TOKEN` for Claude). No other key, token or agent socket of the owner's.
 - **Settings:** `--setting-sources user` leaves out the project's `.claude/settings.json`, so no hook from a workspace runs. The worker's own `HOME` holds no settings, so the factory's hooks, the sandbox and the permissions all come in the `--settings` JSON.
 - **Sandbox:** the sandbox is on, Bash is allowed only inside it, and it writes only where it is allowed to. The builder, in `acceptEdits`, may write its workspace, its turn's temp directory and the git paths listed under slice commits. The planner and reviewer, in `default`, may write only their turn's temp directory, so they change nothing. The record, the factory's code, its skills and every harness config lie outside what any worker may write, in every project, dim-factory included.
-- **Model:** the role's strength (planner and reviewer `deep`, builder `standard`) looked up in `models.json` for the harness. A missing entry refuses the turn and names what is missing.
+- **Model:** `models.json` names one model per role, `{"default": …, "planner": …, "builder": …, "reviewer": …}`, in the harness's own names. A role it leaves out runs on `default`. With neither, the run is refused `no_model` before anything is recorded.
 - **Harness:** a new session starts under the `harness` setting. A session stays on the harness it started under, and resuming it under another is refused.
 - **A replacement session** is the dead session's transcript under a new id. The factory writes its byte copy back to the harness's session file if the harness lost it, then resumes it with `--fork-session`. The copy is verbatim, not rebuilt from the session record's rows, because a resume needs every line as written: tool results, thinking and the links between lines, which the record does not store. The new session holds what the dead one held as of its last closed turn, whether it hit a usage limit or its file was deleted.
 - **Ingestion** reads each worker's `HOME` beside the owner's, so the owner's queries see worker sessions. Their rows stay pointers, like every other session's.
@@ -174,7 +174,7 @@ The record carries one schema version for the whole file, the session record's t
 
 ## Commands and output
 
-The command names are whole words with subcommands (`dim order approve`, `dim hooks install`, `dim query search`), hooks included. Bare `dim` lists the commands. The operator's: `order add|run|approve|return|update|cancel|show|clean`, `operator register`, `message send`, `session show`, `trace`. `order clean` succeeds on an order already cleaned up.
+The command names are whole words with subcommands (`dim order approve`, `dim hooks install`, `dim query search`), hooks included. Bare `dim` lists the commands. The operator's: `order add|run|approve|return|update|cancel|show|clean`, `message send`, `session show`, `trace`. `order clean` succeeds on an order already cleaned up.
 
 Each command prints one line of JSON. A refusal carries `code`, `message`, `meta` and `resolve`, the `dim` command that resolves it. Each module's contract builds its refusals from one table keyed by every code, holding each code's message and resolve, so a new code does not compile until it says how it is resolved.
 
