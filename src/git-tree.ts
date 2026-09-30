@@ -9,3 +9,9 @@ export function git(worktree: string, args: string[], options: { env?: Env; stdi
   });
   return { ok: run.success, out: run.stdout.toString().trim(), err: run.stderr.toString().trim() };
 }
+
+export function remoteHeadBranch(worktree: string, remote: string): string | null {
+  const head = git(worktree, ["symbolic-ref", "--short", "-q", `refs/remotes/${remote}/HEAD`]).out;
+  if (head === "") return null;
+  return head.startsWith(`${remote}/`) ? head.slice(remote.length + 1) : head;
+}

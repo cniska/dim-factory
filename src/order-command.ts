@@ -2,20 +2,14 @@ import type { Database } from "bun:sqlite";
 import { type Command, UsageError } from "./cli-contract";
 import { parseArgs } from "./cli-flags";
 import { readConfig } from "./config";
-import { closeDb, writeTransaction } from "./db";
+import { closeDb } from "./db";
 import { openFactory } from "./factory-db";
-import { openSessionsUnder, sessionDirs } from "./hooks-sessions";
-import { drainSpool } from "./ingest-spool";
-import { admit, fold, type OperatorAct, type OrderState, orderIdOf } from "./order";
-import { type Actor, type Detailed, type LogEntry, OrderId, refuse } from "./order-contract";
-import { appendEntries, readLog } from "./order-store";
-import { type OrderView, type OrderWorker, orderView, workerNamesOf } from "./order-view";
-import { workspaceDir } from "./paths";
-import { type Checkout, checkoutAt, defaultBranch } from "./project";
-import { actingSession, ancestry } from "./worker";
-import { refuse as refuseWorker } from "./worker-contract";
-import { processTable } from "./worker-effects";
-import { sessions, sessionsOf, stationWorkersOf, workerNamed } from "./worker-store";
+import { OrderId, refuseOrder } from "./order-contract";
+import { addOrder, takeAct, viewOf } from "./order-ops";
+import type { OrderView } from "./order-view";
+import { checkoutAt, defaultBranch, lastCheckoutOf } from "./project";
+import { refuseWorker } from "./worker-contract";
+import { actingWorker } from "./worker-ops";
 
 const USAGE = [
   "usage: dim order add --title <title> --description <description> [--project <owner>/<repo>]",
@@ -33,119 +27,63 @@ function orderArg(positionals: readonly string[]): string {
   return parsed.data;
 }
 
-function actingOperator(db: Database, project: string): Actor {
-  drainSpool(db);
-  const chain = ancestry(processTable(), process.pid);
-  const session = actingSession(chain, sessions(db));
-  const worker = session === null ? null : workerNamed(db, session.worker);
-  if (session !== null && worker?.role === "operator" && worker.project === project) {
-    return { kind: "worker", worker: worker.name, session: session.id };
-  }
-  if (
-    openSessionsUnder(
-      db,
-      chain.map((ancestor) => ancestor.pid),
-    ).length === 0
-  ) {
-    throw refuseWorker("no_session", { cwd: process.cwd() });
-  }
-  throw refuseWorker("not_operator", { project });
-}
-
-function logOf(db: Database, order: string): readonly LogEntry[] {
-  const log = readLog(db, order);
-  if (log.length === 0) throw refuse("no_order", { order });
-  return log;
-}
-
-function viewOf(db: Database, order: string): OrderView {
-  const log = logOf(db, order);
-  const state = fold(order, log);
-  const named = new Set([...workerNamesOf(log), ...stationWorkersOf(db, order).map((worker) => worker.name)]);
-  const workers = [...named].flatMap((name): OrderWorker[] => {
-    const worker = workerNamed(db, name);
-    return worker === null ? [] : [{ worker, sessions: sessionsOf(db, name) }];
-  });
-  return orderView(state, log, workers, workspaceDir(state.project, order));
-}
-
-function entry(state: OrderState, by: Actor, detailed: Detailed): LogEntry {
-  return { seq: state.lastSeq + 1, at: new Date().toISOString(), by, ...detailed };
-}
-
-function checkoutOf(db: Database, project: string, here: Checkout | null): Checkout {
-  if (here?.project === project) return here;
-  for (const dir of sessionDirs(db)) {
-    const seen = checkoutAt(dir);
-    if (seen?.project === project) return seen;
-  }
-  throw refuse("no_checkout", { project });
-}
-
 function add(db: Database, args: readonly string[]): OrderView {
-  const { flags } = parseArgs(args, { positionals: 0, flags: ["title", "description", "project"] }, usage);
-  if (flags.title === undefined || flags.description === undefined)
+  const { flags } = parseArgs(
+    args,
+    { positionals: [0, 0], flags: ["title", "description", "project"] },
+    usage,
+  );
+  if (flags.title === undefined || flags.description === undefined) {
     throw usage("add needs --title and --description");
-  const here = checkoutAt(process.cwd());
+  }
+  const cwd = process.cwd();
+  const here = checkoutAt(cwd);
   const project = flags.project ?? here?.project;
-  if (project === undefined) throw refuseWorker("no_project", { cwd: process.cwd() });
-  const checkout = checkoutOf(db, project, here);
+  if (project === undefined) throw refuseWorker("no_project", { cwd });
+  const checkout = here?.project === project ? here : lastCheckoutOf(db, project);
+  if (checkout === null) throw refuseOrder("no_checkout", { project });
   const branch = defaultBranch(checkout.root);
-  if (branch === null) throw refuse("no_default_branch", { checkout: checkout.root });
+  if (branch === null) throw refuseOrder("no_default_branch", { checkout: checkout.root });
   readConfig({ root: checkout.root, at: branch });
-  const by = actingOperator(db, project);
-  const order = orderIdOf(crypto.getRandomValues(new Uint8Array(8)));
-  appendEntries(db, order, [
-    {
-      seq: 1,
-      at: new Date().toISOString(),
-      by,
-      action: "order_added",
-      title: flags.title,
-      description: flags.description,
-      project,
-    },
-  ]);
+  const order = addOrder(db, actingWorker(db, cwd), {
+    title: flags.title,
+    description: flags.description,
+    project,
+  });
   return viewOf(db, order);
 }
 
-function act(
-  db: Database,
-  order: string,
-  operatorAct: OperatorAct,
-  detailed: (state: OrderState) => Detailed,
-) {
-  return writeTransaction(db, () => {
-    const state = fold(order, logOf(db, order));
-    const by = actingOperator(db, state.project);
-    const refusal = admit(state, operatorAct);
-    if (refusal !== null) throw refusal;
-    appendEntries(db, order, [entry(state, by, detailed(state))]);
-    return viewOf(db, order);
-  });
-}
-
 function update(db: Database, args: readonly string[]): OrderView {
-  const { positionals, flags } = parseArgs(args, { positionals: 1, flags: ["title", "description"] }, usage);
+  const { positionals, flags } = parseArgs(
+    args,
+    { positionals: [1, 1], flags: ["title", "description"] },
+    usage,
+  );
   if (flags.title === undefined && flags.description === undefined) {
     throw usage("update needs --title, --description or both");
   }
-  return act(db, orderArg(positionals), "update", (state) => ({
+  const order = orderArg(positionals);
+  takeAct(db, order, actingWorker(db, process.cwd()), { kind: "update" }, (state) => ({
     action: "order_updated",
-    title: flags.title ?? state.title,
-    description: flags.description ?? state.description,
+    details: { title: flags.title ?? state.title, description: flags.description ?? state.description },
   }));
+  return viewOf(db, order);
 }
 
 function cancel(db: Database, args: readonly string[]): OrderView {
-  const { positionals, flags } = parseArgs(args, { positionals: 1, flags: ["reason"] }, usage);
-  if (flags.reason === undefined) throw usage("cancel needs --reason");
+  const { positionals, flags } = parseArgs(args, { positionals: [1, 1], flags: ["reason"] }, usage);
   const reason = flags.reason;
-  return act(db, orderArg(positionals), "cancel", () => ({ action: "order_cancelled", reason }));
+  if (reason === undefined) throw usage("cancel needs --reason");
+  const order = orderArg(positionals);
+  takeAct(db, order, actingWorker(db, process.cwd()), { kind: "cancel" }, () => ({
+    action: "order_cancelled",
+    details: { reason },
+  }));
+  return viewOf(db, order);
 }
 
 function show(db: Database, args: readonly string[]): OrderView {
-  const { positionals } = parseArgs(args, { positionals: 1, flags: [] }, usage);
+  const { positionals } = parseArgs(args, { positionals: [1, 1], flags: [] }, usage);
   return viewOf(db, orderArg(positionals));
 }
 

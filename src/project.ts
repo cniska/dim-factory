@@ -1,5 +1,8 @@
+import type { Database } from "bun:sqlite";
 import { checkoutRoot } from "./git-checkout";
 import { originLabel } from "./git-remote";
+import { remoteHeadBranch } from "./git-tree";
+import { sessionDirs } from "./hooks-sessions";
 
 export type Checkout = { readonly root: string; readonly project: string };
 
@@ -10,12 +13,14 @@ export function checkoutAt(dir: string): Checkout | null {
   return project === null ? null : { root, project };
 }
 
+export function lastCheckoutOf(db: Database, project: string): Checkout | null {
+  for (const dir of sessionDirs(db)) {
+    const seen = checkoutAt(dir);
+    if (seen?.project === project) return seen;
+  }
+  return null;
+}
+
 export function defaultBranch(root: string): string | null {
-  const ran = Bun.spawnSync(["git", "symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD"], {
-    cwd: root,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const head = ran.exitCode === 0 ? ran.stdout.toString().trim() : "";
-  return head.startsWith("origin/") ? head.slice("origin/".length) : null;
+  return remoteHeadBranch(root, "origin");
 }

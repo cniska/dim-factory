@@ -11,7 +11,7 @@ Two bounded contexts share one SQLite file and own disjoint tables.
 
 The factory opens the file through `src/factory-db.ts`, which calls the record's `openDb` or `openReadOnly` and then runs each factory store's DDL. No record module names a factory table.
 
-Each factory module has a rules file of pure functions, a `-contract.ts` of types and schemas, a `-store.ts` holding its SQL, and `-effects.ts` where it touches git, processes or files. A command file parses arguments, calls the rules and effects, and prints the result.
+Each factory module has a rules file of pure functions, a `-contract.ts` of types, schemas and its refusals, a `-store.ts` holding its SQL, `-effects.ts` where it touches git, processes or files, and `-ops.ts`: the operations other modules and commands call, composed from the rest. The rules, the contract and the ops are the module's public API; `-ops.ts` holds only what has a caller outside the module. A command file parses arguments, calls the ops, and prints the result.
 
 | Module | Holds |
 |---|---|
@@ -176,7 +176,7 @@ The record carries one schema version for the whole file, the session record's t
 
 The command names are whole words with subcommands (`dim order approve`, `dim hooks install`, `dim query search`), hooks included. Bare `dim` lists the commands. The operator's: `order add|run|approve|return|update|cancel|show|clean`, `operator register`, `message send`, `session show`, `trace`. `order clean` succeeds on an order already cleaned up.
 
-Each command prints one line of JSON. A refusal carries `code`, `message`, `meta` and `resolve`, the `dim` command that resolves it, looked up in a table keyed by every code, so a new code does not compile until it says how it is resolved.
+Each command prints one line of JSON. A refusal carries `code`, `message`, `meta` and `resolve`, the `dim` command that resolves it. Each module's contract builds its refusals from one table keyed by every code, holding each code's message and resolve, so a new code does not compile until it says how it is resolved.
 
 ## The wall
 

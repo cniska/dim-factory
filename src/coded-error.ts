@@ -5,17 +5,21 @@ export class CodedError<Code extends string = string, Meta extends object = obje
     readonly code: Code,
     message: string,
     readonly meta: Meta,
+    readonly resolve: string,
     options?: { cause?: unknown },
   ) {
     super(message, options);
   }
 }
 
-export type MessageTable<Metas extends Record<string, object>> = {
-  readonly [Code in keyof Metas]: (meta: Metas[Code]) => string;
+export type RefusalTable<Metas extends Record<string, object>> = {
+  readonly [Code in keyof Metas]: {
+    readonly message: (meta: Metas[Code]) => string;
+    readonly resolve: (meta: Metas[Code]) => string;
+  };
 };
 
-export function refuser<Metas extends Record<string, object>>(messages: MessageTable<Metas>) {
+export function refuser<Metas extends Record<string, object>>(table: RefusalTable<Metas>) {
   return <Code extends keyof Metas & string>(code: Code, meta: Metas[Code]): CodedError<Code, Metas[Code]> =>
-    new CodedError(code, messages[code](meta), meta);
+    new CodedError(code, table[code].message(meta), meta, table[code].resolve(meta));
 }

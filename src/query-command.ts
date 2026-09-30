@@ -1,10 +1,10 @@
 import { type Command, UsageError } from "./cli-contract";
-import { positionalArg } from "./cli-flags";
+import { parseArgs } from "./cli-flags";
 import { openReadOnly } from "./db-read";
 import { dbPath, resolveHomeDir } from "./paths";
 import type { QueryResult } from "./query";
 import { findQuery, QUERIES } from "./query-registry";
-import { capRows, DEFAULT_MAX_ROWS, rowsFromArgs } from "./query-row-cap";
+import { capRows, DEFAULT_MAX_ROWS, rowsOf } from "./query-row-cap";
 import { trace } from "./trace";
 
 export const queryCommand: Command = {
@@ -24,12 +24,13 @@ export const queryCommand: Command = {
     }
     const query = findQuery(name);
     if (!query) throw new UsageError(`no query named ${name}; dim query list names them`);
-    const arg = positionalArg(
+    const { positionals, flags } = parseArgs(
       args.slice(1),
-      ["--rows"],
+      { positionals: [0, 1], flags: ["rows"] },
       (message) => new UsageError(`dim query ${name} ${message}`),
     );
-    const maxRows = rowsFromArgs(args);
+    const [arg] = positionals;
+    const maxRows = rowsOf(flags.rows);
     const db = openReadOnly(dbPath());
     const started = Date.now();
     let result: QueryResult | undefined;

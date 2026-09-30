@@ -30,9 +30,7 @@ const ENTRIES: readonly LogEntry[] = [
     at: "2026-09-30T10:00:00Z",
     by: { kind: "worker", worker: "nut-1", session: "s1" },
     action: "order_added",
-    title: "Greet",
-    description: "Add a greeting.",
-    project: "acme/widgets",
+    details: { title: "Greet", description: "Add a greeting.", project: "acme/widgets" },
   },
   {
     seq: 2,

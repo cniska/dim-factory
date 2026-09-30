@@ -1,5 +1,4 @@
-import { type Command, Ran } from "./cli-contract";
-import { isRefusalCode, resolveOf } from "./cli-refusals";
+import { type Command, Ran, UsageError } from "./cli-contract";
 import { CodedError } from "./coded-error";
 
 type ErrorRecord = {
@@ -9,21 +8,18 @@ type ErrorRecord = {
   readonly resolve: string;
 };
 
-function errorRecord(error: unknown, command: string, usage: string): ErrorRecord {
-  const context = { command, usage: usage.replace(/^usage: /, "") };
-  if (error instanceof CodedError && isRefusalCode(error.code)) {
-    return {
-      code: error.code,
-      message: error.message,
-      meta: error.meta,
-      resolve: resolveOf(error.code, context, error.meta),
-    };
+function errorRecord(error: unknown, usage: string): ErrorRecord {
+  if (error instanceof CodedError) {
+    return { code: error.code, message: error.message, meta: error.meta, resolve: error.resolve };
+  }
+  if (error instanceof UsageError) {
+    return { code: "usage", message: error.message, meta: {}, resolve: usage.replace(/^usage: /, "") };
   }
   return {
     code: "command_failed",
     message: error instanceof Error ? error.message : String(error),
     meta: {},
-    resolve: resolveOf("command_failed", context, {}),
+    resolve: "dim doctor",
   };
 }
 
@@ -34,9 +30,7 @@ export function writeResult(command: string, value: unknown): number {
 }
 
 export function writeError(command: string, error: unknown, usage: string): number {
-  process.stderr.write(
-    `${JSON.stringify({ command, ok: false, error: errorRecord(error, command, usage) })}\n`,
-  );
+  process.stderr.write(`${JSON.stringify({ command, ok: false, error: errorRecord(error, usage) })}\n`);
   return 1;
 }
 

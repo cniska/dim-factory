@@ -2,7 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { fail, GATE_ERROR, type Gate, type GateInput } from "./gate-contract";
 import { remoteSlug } from "./git-remote-slug";
-import { git } from "./git-tree";
+import { git, remoteHeadBranch } from "./git-tree";
 
 const PREFIX = "pre-push: ";
 
@@ -52,10 +52,8 @@ function pushedRemote({ remote, url }: Target, cwd: string): string | null {
 }
 
 function sharedBranch(remote: string, cwd: string): string | null {
-  const head = git(cwd, ["symbolic-ref", "--short", `refs/remotes/${remote}/HEAD`]).out;
-  if (head === "") return null;
-  const branch = head.startsWith(`${remote}/`) ? head.slice(remote.length + 1) : head;
-  return `refs/heads/${branch}`;
+  const branch = remoteHeadBranch(cwd, remote);
+  return branch === null ? null : `refs/heads/${branch}`;
 }
 
 function updateOf(line: string, remote: string, cwd: string): Update {

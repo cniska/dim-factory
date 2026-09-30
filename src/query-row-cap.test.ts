@@ -1,16 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { capRows, DEFAULT_MAX_ROWS, rowsFromArgs } from "./query-row-cap";
+import { capRows, DEFAULT_MAX_ROWS, rowsOf } from "./query-row-cap";
 
 describe("--rows", () => {
   test("defaults to the cap, and takes a count", () => {
-    expect(rowsFromArgs(["sessions"])).toBe(DEFAULT_MAX_ROWS);
-    expect(rowsFromArgs(["sessions", "--rows", "200"])).toBe(200);
+    expect(rowsOf(undefined)).toBe(DEFAULT_MAX_ROWS);
+    expect(rowsOf("200")).toBe(200);
   });
 
   test("refuses a count that is not one", () => {
-    expect(() => rowsFromArgs(["--rows", "many"])).toThrow("not a count");
-    expect(() => rowsFromArgs(["--rows", "0"])).toThrow("not a count");
-    expect(() => rowsFromArgs(["--rows"])).toThrow("not a count");
+    expect(() => rowsOf("many")).toThrow("not a count");
+    expect(() => rowsOf("0")).toThrow("not a count");
+    expect(() => rowsOf("")).toThrow("not a count");
   });
 });
 

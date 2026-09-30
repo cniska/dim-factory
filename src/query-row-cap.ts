@@ -2,13 +2,10 @@ import { UsageError } from "./cli-contract";
 
 export const DEFAULT_MAX_ROWS = 40;
 
-export function rowsFromArgs(args: string[]): number {
-  const at = args.indexOf("--rows");
-  if (at === -1) return DEFAULT_MAX_ROWS;
-  const spec = args[at + 1];
+export function rowsOf(spec: string | undefined): number {
+  if (spec === undefined) return DEFAULT_MAX_ROWS;
   const n = Number(spec);
-  if (!spec || !Number.isInteger(n) || n < 1)
-    throw new UsageError(`--rows ${spec ?? "(missing)"} is not a count`);
+  if (!Number.isInteger(n) || n < 1) throw new UsageError(`--rows ${spec} is not a count`);
   return n;
 }
 

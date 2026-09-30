@@ -40,15 +40,30 @@ export type GateErrorMeta = {
 
 export type GateErrorCode = keyof GateErrorMeta;
 
+const INSTALL_GATE = () => "dim gate install --owner <host>/<account>";
+
 export const fail = refuser<GateErrorMeta>({
-  [GATE_ERROR.unreadableUpdate]: ({ line }) =>
-    `git passed pre-push an update line that does not hold four fields, so the push is not judged: ${line}`,
-  [GATE_ERROR.unreadableOwners]: ({ path }) =>
-    `${path} names no readable owners, so this is not judged; dim gate install --owner <host>/<account> rewrites it`,
-  [GATE_ERROR.gitConfigUnreadable]: ({ args, root, detail }) =>
-    `git config ${args} failed in ${root}: ${detail}`,
-  [GATE_ERROR.hooksPathTaken]: ({ existing }) =>
-    `git's global core.hooksPath is already ${existing}; git honors one hooks directory and there is no merge, so installing here would disable it. Point that directory at this hook, or unset it with \`git config --global --unset core.hooksPath\`.`,
-  [GATE_ERROR.commitsUnenumerable]: ({ range, detail }) =>
-    `cannot enumerate the commits of ${range}: ${detail}`,
+  [GATE_ERROR.unreadableUpdate]: {
+    message: ({ line }) =>
+      `git passed pre-push an update line that does not hold four fields, so the push is not judged: ${line}`,
+    resolve: () => "dim doctor",
+  },
+  [GATE_ERROR.unreadableOwners]: {
+    message: ({ path }) =>
+      `${path} names no readable owners, so this is not judged; dim gate install --owner <host>/<account> rewrites it`,
+    resolve: INSTALL_GATE,
+  },
+  [GATE_ERROR.gitConfigUnreadable]: {
+    message: ({ args, root, detail }) => `git config ${args} failed in ${root}: ${detail}`,
+    resolve: () => "dim doctor",
+  },
+  [GATE_ERROR.hooksPathTaken]: {
+    message: ({ existing }) =>
+      `git's global core.hooksPath is already ${existing}; git honors one hooks directory and there is no merge, so installing here would disable it. Point that directory at this hook, or unset it with \`git config --global --unset core.hooksPath\`.`,
+    resolve: INSTALL_GATE,
+  },
+  [GATE_ERROR.commitsUnenumerable]: {
+    message: ({ range, detail }) => `cannot enumerate the commits of ${range}: ${detail}`,
+    resolve: ({ range }) => `dim gate check ${range}`,
+  },
 });

@@ -6,10 +6,12 @@ import { pidIsAlive } from "./pid";
 
 export class LockHeldError extends CodedError<"lock_held", { readonly path: string; readonly pid: number }> {
   constructor(path: string, pid: number) {
-    super("lock_held", `another dim run holds ${path} (pid ${pid}); run this again once it ends`, {
-      path,
-      pid,
-    });
+    super(
+      "lock_held",
+      `another dim run holds ${path} (pid ${pid}); run this again once it ends`,
+      { path, pid },
+      "dim doctor",
+    );
   }
 }
 

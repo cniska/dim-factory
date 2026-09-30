@@ -197,7 +197,7 @@ describe("returns and approvals", () => {
 
     const order = await showOrder(m.operator, id);
     expect(order.next).toBe(NEXT.update);
-    expect(entryOf(order, ACTION.orderReturned).reason).toBe("the description names no file");
+    expect(entryOf(order, ACTION.orderReturned).details.reason).toBe("the description names no file");
   });
 
   test("the command that starts a station returns once the station has finished", async () => {

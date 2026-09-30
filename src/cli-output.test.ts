@@ -19,9 +19,12 @@ function printed(error: unknown, usage = "usage: dim gate check <range>"): unkno
 
 describe("an error on stderr", () => {
   test("carries a refusal's code, facts and the command that resolves it beside its message", () => {
-    const refused = new CodedError("gate_commits_unenumerable", "cannot enumerate main..HEAD", {
-      range: "main..HEAD",
-    });
+    const refused = new CodedError(
+      "gate_commits_unenumerable",
+      "cannot enumerate main..HEAD",
+      { range: "main..HEAD" },
+      "dim gate check main..HEAD",
+    );
     expect(printed(refused)).toEqual({
       command: "gate",
       ok: false,
@@ -29,7 +32,7 @@ describe("an error on stderr", () => {
         code: "gate_commits_unenumerable",
         message: "cannot enumerate main..HEAD",
         meta: { range: "main..HEAD" },
-        resolve: "dim gate check <range>",
+        resolve: "dim gate check main..HEAD",
       },
     });
   });
@@ -41,10 +44,8 @@ describe("an error on stderr", () => {
   });
 
   test("names an error that is not a refusal as an unexpected failure, resolved by the doctor", () => {
-    for (const error of [new Error("disk full"), new CodedError("not_a_refusal", "odd", {})]) {
-      expect(printed(error)).toMatchObject({
-        error: { code: "command_failed", meta: {}, resolve: "dim doctor" },
-      });
-    }
+    expect(printed(new Error("disk full"))).toMatchObject({
+      error: { code: "command_failed", message: "disk full", meta: {}, resolve: "dim doctor" },
+    });
   });
 });

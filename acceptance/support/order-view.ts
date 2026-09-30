@@ -11,21 +11,16 @@ type Evidence = { readonly kind: "check"; readonly output: string } | { readonly
 
 type Details = Readonly<Record<string, unknown>>;
 
+type Decision = { readonly station: Station; readonly reason: string; readonly decidedBy: Decider };
+
 type Detailed =
+  | { readonly action: "artifact_approved"; readonly details: Decision }
+  | { readonly action: "artifact_returned"; readonly details: Decision }
   | {
-      readonly action: "artifact_approved";
-      readonly station: Station;
-      readonly reason: string;
-      readonly decidedBy: Decider;
+      readonly action: "order_returned";
+      readonly details: { readonly station: Station; readonly reason: string };
     }
-  | {
-      readonly action: "artifact_returned";
-      readonly station: Station;
-      readonly reason: string;
-      readonly decidedBy: Decider;
-    }
-  | { readonly action: "order_returned"; readonly station: Station; readonly reason: string }
-  | { readonly action: "order_cancelled"; readonly reason: string }
+  | { readonly action: "order_cancelled"; readonly details: { readonly reason: string } }
   | { readonly action: "message_sent"; readonly details: { readonly to: string } }
   | { readonly action: "session_died"; readonly code: string; readonly details: { readonly session: string } }
   | { readonly action: "station_failed"; readonly code: string; readonly details: Details }
@@ -45,7 +40,7 @@ type Detailed =
 
 type PlainAction = Exclude<Action, Detailed["action"]>;
 
-type Plain = { readonly [A in PlainAction]: { readonly action: A } }[PlainAction];
+type Plain = { readonly [A in PlainAction]: { readonly action: A; readonly details: Details } }[PlainAction];
 
 export type LogEntry = Shared & (Detailed | Plain);
 

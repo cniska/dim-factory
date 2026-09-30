@@ -1,6 +1,6 @@
-import { nextOf, type OrderState } from "./order";
-import type { LogEntry, Next, Station, Status } from "./order-contract";
-import type { Role, Worker, WorkerSession } from "./worker-contract";
+import { nextOf, type OrderState, stationOf } from "./order";
+import type { Answer, LogEntry, Next, Severity, Station, Status } from "./order-contract";
+import type { Role, WorkerRecord } from "./worker-contract";
 import { branchOf } from "./workspace";
 
 type SessionView = {
@@ -26,8 +26,8 @@ type FindingView = {
   readonly line: number;
   readonly failure: string;
   readonly fix: string;
-  readonly severity: string;
-  readonly answer?: string;
+  readonly severity: Severity;
+  readonly answer?: Answer;
 };
 
 export type OrderView = {
@@ -46,12 +46,11 @@ export type OrderView = {
   readonly findings: readonly FindingView[];
 };
 
-export type OrderWorker = { readonly worker: Worker; readonly sessions: readonly WorkerSession[] };
-
 export function workerNamesOf(log: readonly LogEntry[]): readonly string[] {
   const names = log.flatMap((entry) => [
     ...(entry.by.kind === "worker" ? [entry.by.worker] : []),
     ...(entry.action === "message_sent" ? [entry.details.to] : []),
+    ...(entry.action === "session_started" ? [entry.details.worker] : []),
   ]);
   return [...new Set(names)];
 }
@@ -64,7 +63,7 @@ function deaths(log: readonly LogEntry[]): ReadonlyMap<string, string> {
   );
 }
 
-function workerView({ worker, sessions }: OrderWorker, died: ReadonlyMap<string, string>): WorkerView {
+function workerView({ worker, sessions }: WorkerRecord, died: ReadonlyMap<string, string>): WorkerView {
   const views = sessions.map((session): SessionView => {
     const code = died.get(session.id);
     const view = { id: session.id, harness: session.harness, pid: session.process.pid };
@@ -86,7 +85,7 @@ function sliceViews(state: OrderState): readonly SliceView[] {
 export function orderView(
   state: OrderState,
   log: readonly LogEntry[],
-  workers: readonly OrderWorker[],
+  workers: readonly WorkerRecord[],
   workspace: string,
 ): OrderView {
   const died = deaths(log);
@@ -96,7 +95,7 @@ export function orderView(
     project: state.project,
     description: state.description,
     status: state.status,
-    station: state.station,
+    station: state.status === "queued" ? null : stationOf(state.phase),
     next: nextOf(state.phase),
     branch: branchOf(state.id),
     workspace,

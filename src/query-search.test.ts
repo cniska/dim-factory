@@ -110,7 +110,10 @@ describe("search", () => {
 
   test("refuses no words, or only whitespace, as a usage error", () => {
     const db = seeded();
-    const usage = expect.objectContaining({ code: "usage", message: 'usage: dim query search "<words>"' });
+    const usage = expect.objectContaining({
+      name: "UsageError",
+      message: 'usage: dim query search "<words>"',
+    });
     expect(() => ask(db, {})).toThrow(usage);
     expect(() => ask(db, { arg: "   " })).toThrow(usage);
     db.close();

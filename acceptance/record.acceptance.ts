@@ -210,7 +210,7 @@ describe("decisions", () => {
     await approve(m.operator, id, "both slices are there", "operator");
 
     const approvals = entriesOf(await showOrder(m.operator, id), ACTION.approved);
-    expect(approvals.map(({ decidedBy, reason }) => ({ decidedBy, reason }))).toEqual([
+    expect(approvals.map(({ details: { decidedBy, reason } }) => ({ decidedBy, reason }))).toEqual([
       { decidedBy: "owner", reason: "the plan covers the description" },
       { decidedBy: "operator", reason: "both slices are there" },
     ]);

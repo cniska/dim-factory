@@ -13,6 +13,7 @@ export class RecordVersionError extends CodedError<"record_version", RecordVersi
       "record_version",
       `the record is schema version ${found} and this dim reads version ${SCHEMA_VERSION}; run \`dim rebuild\``,
       { found, expected: SCHEMA_VERSION },
+      "dim rebuild",
     );
   }
 }

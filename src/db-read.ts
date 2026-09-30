@@ -5,7 +5,7 @@ import { refuseOtherVersion } from "./db";
 
 export class NoDatabaseError extends CodedError<"no_database", { readonly path: string }> {
   constructor(path: string) {
-    super("no_database", `no database at ${path}; run \`dim sync\` first`, { path });
+    super("no_database", `no database at ${path}; run \`dim sync\` first`, { path }, "dim sync");
   }
 }
 

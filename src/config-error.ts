@@ -22,6 +22,6 @@ export class ConfigError extends CodedError<ConfigErrorCode, ConfigErrorMeta> {
     message: string,
     readonly at?: string,
   ) {
-    super(CONFIG_CODES[kind], message, { path, at: at ?? null });
+    super(CONFIG_CODES[kind], message, { path, at: at ?? null }, "dim config");
   }
 }

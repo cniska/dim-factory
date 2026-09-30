@@ -1,35 +1,46 @@
 import { refuser } from "./coded-error";
-import type { Station } from "./order-contract";
 
-export type WorkerRefusalMeta = {
+type WorkerRefusalMeta = {
   readonly no_session: { readonly cwd: string };
   readonly no_project: { readonly cwd: string };
   readonly operator_live: { readonly project: string; readonly operator: string };
   readonly not_operator: { readonly project: string };
+  readonly no_process_table: { readonly detail: string };
 };
 
-export type WorkerRefusalCode = keyof WorkerRefusalMeta;
+const REGISTER = () => "dim operator register";
 
-export const refuse = refuser<WorkerRefusalMeta>({
-  no_session: ({ cwd }) =>
-    `no live harness session of this project runs above this process in ${cwd}; register from inside the operator's session`,
-  no_project: ({ cwd }) => `${cwd} is not inside a checkout whose origin remote names an owner/repo project`,
-  operator_live: ({ project, operator }) =>
-    `${operator} is the live operator of ${project}; a second one waits until that session ends`,
-  not_operator: ({ project }) =>
-    `this process runs under no registered operator session of ${project}, and only the operator takes order actions`,
+export const refuseWorker = refuser<WorkerRefusalMeta>({
+  no_session: {
+    message: ({ cwd }) =>
+      `no live harness session of this project runs above this process in ${cwd}; register from inside the operator's session`,
+    resolve: REGISTER,
+  },
+  no_project: {
+    message: ({ cwd }) => `${cwd} is not inside a checkout whose origin remote names an owner/repo project`,
+    resolve: () => "dim order add --title <title> --description <description> --project <owner>/<repo>",
+  },
+  operator_live: {
+    message: ({ project, operator }) =>
+      `${operator} is the live operator of ${project}; a second one waits until that session ends`,
+    resolve: REGISTER,
+  },
+  not_operator: {
+    message: ({ project }) =>
+      `this process runs under no registered operator session of ${project}, and only the operator takes order actions`,
+    resolve: REGISTER,
+  },
+  no_process_table: {
+    message: ({ detail }) =>
+      `ps could not list this machine's processes, so who acts cannot be read: ${detail}`,
+    resolve: () => "dim doctor",
+  },
 });
 
 export const ROLES = ["operator", "planner", "builder", "reviewer"] as const;
 export type Role = (typeof ROLES)[number];
 
 export type StationRole = Exclude<Role, "operator">;
-
-export const ROLE_OF_STATION: Readonly<Record<Station, StationRole>> = {
-  plan: "planner",
-  build: "builder",
-  review: "reviewer",
-};
 
 export type ProcessId = { readonly pid: number; readonly startedAt: string };
 
@@ -51,3 +62,7 @@ export type WorkerSession = {
   readonly harness: string;
   readonly process: ProcessId;
 };
+
+export type Acting = { readonly worker: Worker; readonly session: WorkerSession };
+
+export type WorkerRecord = { readonly worker: Worker; readonly sessions: readonly WorkerSession[] };

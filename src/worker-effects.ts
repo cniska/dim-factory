@@ -1,6 +1,14 @@
 import type { ProcessRow } from "./worker-contract";
+import { refuseWorker } from "./worker-contract";
 
 const PS_LINE = /^\s*(\d+)\s+(\d+)\s+(.+?)\s*$/;
+
+function startedAt(lstart: string): string {
+  const time = Date.parse(lstart);
+  if (Number.isNaN(time))
+    throw refuseWorker("no_process_table", { detail: `unreadable start time ${lstart}` });
+  return new Date(time).toISOString();
+}
 
 export function processTable(): readonly ProcessRow[] {
   const ran = Bun.spawnSync(["ps", "-A", "-o", "pid=,ppid=,lstart="], {
@@ -8,14 +16,14 @@ export function processTable(): readonly ProcessRow[] {
     stderr: "pipe",
     env: { ...process.env, LC_ALL: "C" },
   });
-  if (ran.exitCode !== 0) throw new Error(`ps failed: ${ran.stderr.toString().trim()}`);
+  if (ran.exitCode !== 0) throw refuseWorker("no_process_table", { detail: ran.stderr.toString().trim() });
   return ran.stdout
     .toString()
     .split("\n")
     .flatMap((line) => {
       const matched = PS_LINE.exec(line);
-      return matched
-        ? [{ pid: Number(matched[1]), ppid: Number(matched[2]), startedAt: matched[3] as string }]
-        : [];
+      if (matched === null) return [];
+      const [, pid = "", ppid = "", lstart = ""] = matched;
+      return [{ pid: Number(pid), ppid: Number(ppid), startedAt: startedAt(lstart) }];
     });
 }

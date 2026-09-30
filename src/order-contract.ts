@@ -8,13 +8,19 @@ export type Station = z.infer<typeof Station>;
 export const Decider = z.enum(["owner", "operator"]);
 export type Decider = z.infer<typeof Decider>;
 
-export const OrderId = z.string().regex(/^[0-9a-hjkmnp-tv-z]{8}$/);
+export const CROCKFORD = "0123456789abcdefghjkmnpqrstvwxyz";
 
-export type Status = "queued" | "running" | "shipped" | "cancelled";
+export const ORDER_ID_LENGTH = 8;
 
-export type Next = "run" | "approve" | "update";
+export const OrderId = z.string().regex(new RegExp(`^[${CROCKFORD}]{${ORDER_ID_LENGTH}}$`));
 
-export type OrderRefusalMeta = {
+export const Status = z.enum(["queued", "running", "shipped", "cancelled"]);
+export type Status = z.infer<typeof Status>;
+
+export const Next = z.enum(["run", "approve", "update"]);
+export type Next = z.infer<typeof Next>;
+
+type OrderRefusalMeta = {
   readonly no_order: { readonly order: string };
   readonly not_next_step: { readonly order: string; readonly next: Next | null };
   readonly plan_approved: { readonly order: string };
@@ -22,20 +28,38 @@ export type OrderRefusalMeta = {
   readonly no_default_branch: { readonly checkout: string };
 };
 
-export type OrderRefusalCode = keyof OrderRefusalMeta;
+const ADD_ORDER = "dim order add --title <title> --description <description>";
 
-export const refuse = refuser<OrderRefusalMeta>({
-  no_order: ({ order }) => `no order ${order} is on record`,
-  not_next_step: ({ order, next }) =>
-    next === null
-      ? `order ${order} has ended, so nothing more happens to it`
-      : `order ${order} waits on ${next}, and that is the only step it takes now`,
-  plan_approved: ({ order }) =>
-    `order ${order}'s plan is approved, so its title and description stay; cancel it and add a new order instead`,
-  no_checkout: ({ project }) =>
-    `no session on record ran in a checkout of ${project}, so its settings cannot be read; add the order from inside that checkout`,
-  no_default_branch: ({ checkout }) =>
-    `${checkout} names no default branch; set it with \`git remote set-head origin --auto\``,
+const STEP: Readonly<Record<Next, (order: string) => string>> = {
+  run: (order) => `dim order run ${order}`,
+  approve: (order) => `dim order approve ${order} --reason <reason> --decided owner|operator`,
+  update: (order) => `dim order update ${order} --description <description>`,
+};
+
+export const refuseOrder = refuser<OrderRefusalMeta>({
+  no_order: { message: ({ order }) => `no order ${order} is on record`, resolve: () => ADD_ORDER },
+  not_next_step: {
+    message: ({ order, next }) =>
+      next === null
+        ? `order ${order} has ended, so nothing more happens to it`
+        : `order ${order} waits on ${next}, and that is the only step it takes now`,
+    resolve: ({ order, next }) => (next === null ? `dim order show ${order}` : STEP[next](order)),
+  },
+  plan_approved: {
+    message: ({ order }) =>
+      `order ${order}'s plan is approved, so its title and description stay; cancel it and add a new order instead`,
+    resolve: ({ order }) => `dim order cancel ${order} --reason <reason>`,
+  },
+  no_checkout: {
+    message: ({ project }) =>
+      `no session on record ran in a checkout of ${project}, so its settings cannot be read; add the order from inside that checkout`,
+    resolve: () => ADD_ORDER,
+  },
+  no_default_branch: {
+    message: ({ checkout }) =>
+      `${checkout} names no default branch; set it with \`git remote set-head origin --auto\``,
+    resolve: () => "dim doctor",
+  },
 });
 
 export const Actor = z.discriminatedUnion("kind", [
@@ -50,6 +74,7 @@ export const Slice = z.object({ title: text, outcome: text });
 export type Slice = z.infer<typeof Slice>;
 
 export const Severity = z.enum(["critical", "high", "medium"]);
+export type Severity = z.infer<typeof Severity>;
 
 export const Finding = z.object({
   area: text,
@@ -91,113 +116,83 @@ const RebaseEvidence = z.object({
 export const Evidence = z.discriminatedUnion("kind", [CheckEvidence, RebaseEvidence]);
 export type Evidence = z.infer<typeof Evidence>;
 
-const session = z.object({ session: z.string() });
+const evidence = z.array(Evidence);
 
-const StationFailed = z.discriminatedUnion("code", [
-  z.object({ action: z.literal("station_failed"), code: z.literal("no_return"), details: session }),
-  z.object({
-    action: z.literal("station_failed"),
-    code: z.literal("return_missed"),
-    details: session.extend({ missed: text }),
-  }),
-  z.object({ action: z.literal("station_failed"), code: z.literal("session_died"), details: session }),
-]);
+const entry = <A extends string, D extends z.ZodRawShape>(action: A, details: D) =>
+  z.object({ action: z.literal(action), details: z.object(details) });
 
-const SessionDied = z.discriminatedUnion("code", [
-  z.object({
-    action: z.literal("session_died"),
-    code: z.literal("usage_limit"),
-    details: session.extend({ resetsAt: z.string().nullable() }),
-  }),
-  z.object({ action: z.literal("session_died"), code: z.literal("killed"), details: session }),
-  z.object({ action: z.literal("session_died"), code: z.literal("resume_failed"), details: session }),
-]);
+const stop = <A extends string, C extends string, D extends z.ZodRawShape>(action: A, code: C, details: D) =>
+  z.object({ action: z.literal(action), code: z.literal(code), details: z.object(details) });
 
-export const SLICE_REFUSALS = [
-  "head_moved",
-  "check_changed",
-  "workspace_dirty",
-  "check_failed",
-  "check_rewrote",
-] as const;
+const session = { session: z.string() };
+const tip = { tip: z.string() };
+const decision = { station: Station, reason: text, decidedBy: Decider };
+const message = { to: z.string(), text };
 
-const ShipStopped = z.discriminatedUnion("code", [
-  z.object({ action: z.literal("ship_stopped"), code: z.literal("ship_unset"), details: z.object({}) }),
-  z.object({
-    action: z.literal("ship_stopped"),
-    code: z.literal("checkout_dirty"),
-    details: z.object({ checkout: z.string() }),
-  }),
-  z.object({
-    action: z.literal("ship_stopped"),
-    code: z.literal("ship_conflict"),
-    details: z.object({ commit: z.string(), paths: z.array(z.string()).min(1) }),
-  }),
-  z.object({
-    action: z.literal("ship_stopped"),
-    code: z.literal("ship_check_failed"),
-    details: z.object({ head: z.string() }),
-    evidence: z.array(Evidence),
-  }),
-]);
+export const OrderAdded = entry("order_added", { title: text, description: text, project: text });
+export type OrderAdded = z.infer<typeof OrderAdded>;
 
-const ReviewReturned = z.object({
-  action: z.literal("review_returned"),
-  returned: z.discriminatedUnion("kind", [
-    z.object({ kind: z.literal("findings"), findings: z.array(RecordedFinding).min(1) }),
-    z.object({ kind: z.literal("artifact"), artifact: ReviewArtifact }),
+export const Later = z.union([
+  entry("order_updated", { title: text, description: text }),
+  entry("order_run", {}),
+  entry("workspace_created", { base: z.string() }),
+  entry("order_cancelled", { reason: text }),
+  entry("artifact_approved", decision),
+  entry("artifact_returned", decision),
+  entry("order_returned", { station: Station, reason: text }),
+  entry("plan_returned", { body: text, slices: z.array(Slice).min(1) }),
+  entry("slice_submitted", tip),
+  entry("slice_committed", { commit: z.string() }).extend({ evidence }),
+  z.discriminatedUnion("code", [
+    stop("slice_refused", "head_moved", tip).extend({ evidence }),
+    stop("slice_refused", "check_changed", tip).extend({ evidence }),
+    stop("slice_refused", "workspace_dirty", tip).extend({ evidence }),
+    stop("slice_refused", "check_failed", tip).extend({ evidence }),
+    stop("slice_refused", "check_rewrote", tip).extend({ evidence }),
   ]),
-});
-
-const message = z.object({ to: z.string(), text });
-
-export const Detailed = z.union([
-  z.object({ action: z.literal("order_added"), title: text, description: text, project: text }),
-  z.object({ action: z.literal("order_updated"), title: text, description: text }),
-  z.object({ action: z.literal("order_run") }),
-  z.object({ action: z.literal("workspace_created"), details: z.object({ base: z.string() }) }),
-  z.object({ action: z.literal("order_cancelled"), reason: text }),
-  z.object({ action: z.literal("artifact_approved"), station: Station, reason: text, decidedBy: Decider }),
-  z.object({ action: z.literal("artifact_returned"), station: Station, reason: text, decidedBy: Decider }),
-  z.object({ action: z.literal("order_returned"), station: Station, reason: text }),
-  z.object({ action: z.literal("plan_returned"), body: text, slices: z.array(Slice).min(1) }),
-  z.object({ action: z.literal("slice_submitted"), details: z.object({ tip: z.string() }) }),
-  z.object({
-    action: z.literal("slice_committed"),
-    details: z.object({ commit: z.string() }),
-    evidence: z.array(Evidence),
+  entry("finding_answered", { finding: z.string(), answer: Answer, reason: text }),
+  entry("build_returned", { artifact: text }),
+  entry("review_returned", {
+    returned: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("findings"), findings: z.array(RecordedFinding).min(1) }),
+      z.object({ kind: z.literal("artifact"), artifact: ReviewArtifact }),
+    ]),
   }),
-  z.object({
-    action: z.literal("slice_refused"),
-    code: z.enum(SLICE_REFUSALS),
-    details: z.object({ tip: z.string() }),
-    evidence: z.array(Evidence),
-  }),
-  z.object({ action: z.literal("finding_answered"), finding: z.string(), answer: Answer, reason: text }),
-  z.object({ action: z.literal("build_returned"), artifact: text }),
-  ReviewReturned,
-  z.object({ action: z.literal("message_sent"), details: message }),
-  z.object({ action: z.literal("message_refused"), details: message }),
-  z.object({
-    action: z.literal("session_started"),
-    details: z.object({ session: z.string(), harness: z.string() }),
-  }),
-  SessionDied,
-  StationFailed,
-  z.object({ action: z.literal("ship_started") }),
-  z.object({ action: z.literal("branch_rebased"), details: z.object({ head: z.string() }) }),
-  ShipStopped,
-  z.object({
-    action: z.literal("ship_landed"),
-    details: z.object({ head: z.string(), kept: z.array(z.string()) }),
-    evidence: z.array(Evidence),
-  }),
-  z.object({ action: z.literal("cleaned_up") }),
+  entry("message_sent", message),
+  entry("message_refused", message),
+  entry("session_started", { worker: z.string(), session: z.string(), harness: z.string() }),
+  z.discriminatedUnion("code", [
+    stop("session_died", "usage_limit", { ...session, resetsAt: z.string().nullable() }),
+    stop("session_died", "killed", session),
+    stop("session_died", "resume_failed", session),
+  ]),
+  z.discriminatedUnion("code", [
+    stop("station_failed", "no_return", session),
+    stop("station_failed", "return_missed", { ...session, missed: text }),
+    stop("station_failed", "session_died", session),
+  ]),
+  entry("ship_started", {}),
+  entry("branch_rebased", { head: z.string() }),
+  z.discriminatedUnion("code", [
+    stop("ship_stopped", "ship_unset", {}),
+    stop("ship_stopped", "checkout_dirty", { checkout: z.string() }),
+    stop("ship_stopped", "ship_conflict", { commit: z.string(), paths: z.array(z.string()).min(1) }),
+    stop("ship_stopped", "ship_check_failed", { head: z.string() }).extend({ evidence }),
+  ]),
+  entry("ship_landed", { head: z.string(), kept: z.array(z.string()) }).extend({ evidence }),
+  entry("cleaned_up", {}),
 ]);
+export type Later = z.infer<typeof Later>;
+
+export const Detailed = z.union([OrderAdded, Later]);
 export type Detailed = z.infer<typeof Detailed>;
 
 export type Action = Detailed["action"];
 
-export type LogEntry = { readonly seq: number; readonly at: string; readonly by: Actor } & Detailed;
+type Shared = { readonly seq: number; readonly at: string; readonly by: Actor };
+
+export type LogEntry = Shared & Detailed;
+
+export type LaterEntry = Shared & Later;
 
 export type EntryOf<A extends Action> = Extract<LogEntry, { readonly action: A }>;
