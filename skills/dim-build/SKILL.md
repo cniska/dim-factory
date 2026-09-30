@@ -1,12 +1,10 @@
 ---
 name: dim-build
-description: Run the slice loop — the repo's own check, a simplification pass, a checking agent on the diff, an answer to every finding, then the commit boundary, one slice at a time. Invoked by dim-feat and dim-fix after their own first phase; use directly only for a change that is neither.
+description: Build an approved plan slice by slice — the repo's own check, a simplification pass, a checking agent on the diff, an answer to every finding, then the commit handed to the slice gates. Use as the builder, when a brief names dim-build.
 argument-hint: "<what to build>"
 ---
 
 # Build
-
-The shared half of both fronts. `dim-feat` arrives here having cut the work into slices; `dim-fix` arrives with a failing test and a named cause. What follows is the same either way.
 
 One agent, in one session. The work is edits, and edits need the context that produced them to stay coherent across slices; a subagent returns a conclusion and keeps its evidence. That is a good trade for a review, where findings are the product, and a bad one here.
 
@@ -16,20 +14,20 @@ What makes this a station is that the record aims it. This machine knows which f
 
 ## A factory turn
 
-In a factory order the brief carries only what this skill cannot know: the order and its line, the workspace profile, the commit subjects the record has seen in the repo, the approved plan and its slices, the slice this turn builds, and whatever the turn answers — a returned Build artifact with the owner's feedback, review findings by id, a rebase conflict, a red check at the order's head, a refused commit, or the last failed attempt. A turn that resolves a rebase conflict carries neither the line nor the commit subjects, since it builds nothing new.
+The brief carries only what this skill cannot know: the `order`, the `workspace`, the approved `plan` with each slice's `commit` once it has one, `returned` (why the order came back), the open review `findings` by id, and a `conflict` from a rebase. Build every slice without a commit, in order, in this one turn.
 
-- **Scope.** Build the current slice of the approved plan. Do not edit or test a surface the order or the plan excludes. For a `fix` order, run `dim-fix`'s Prove it before the first slice.
-- **Tasks.** Use the workspace's declared tasks, not a tool you infer; a task naming `$FILES` takes the changed paths. When the profile could not be read, stop and say so before editing.
-- **Commits, a refused commit and a rebase conflict.** Follow `dim-git`.
-- **A returned Build artifact.** Change the code where the feedback asks for a change; the revision itself follows `dim-artifact`.
-- **Review findings.** Answer each listed finding by its id: `fixed` when this turn's change fixes it, or `refused` with a resolution saying why not. The runner refuses a `fixed` answer from a turn that changed nothing.
-- **A red check.** Fix its cause. A fix after the Build was approved takes a new Build approval and a new review.
-- **The last failed attempt.** Continue from it.
-- **The result.** `subject` follows `dim-git`. `artifact` is the Build artifact for the whole order, empty only when the turn finishes a slice before the last. `answers` holds one answer per listed finding. `tests` names each test file the slice adds or changes, and nothing else; a `fix` order's slice turn names at least the test that proves the defect, and a turn that answers findings, a returned Build artifact or a red check may return `[]`. A result returned again after a refused commit carries the same artifact, answers and tests.
+- **Scope.** Build the approved plan. Do not edit or test a surface the order or the plan excludes. When a slice fixes a defect, write the test that fails on it before the fix.
+- **A slice's commit.** When a slice passes the loop below, commit it with `git add -A && git commit -m "<subject>"` and hand it in with `dim slice submit`. Your nth commit is the plan's nth slice; a commit after the last slice is a fix. The subject follows `dim-git`.
+- **A refused slice.** The reply names what the gate saw — the check's failure, a moved head, uncommitted changes, a changed check. The branch is back where it was and your changes are still in the workspace: fix the cause, commit again and submit again.
+- **Review findings.** Answer each one once, by its id, after its fix is submitted: `dim finding answer <id> fixed --reason "<what changed>"`, or `refused --reason "<why not>"`.
+- **A returned Build artifact.** Change the code where the reason asks for a change; the revision itself follows `dim-artifact`.
+- **A problem in the plan.** When the plan cannot be built as approved, run `dim order return --reason "<the problem>"`; slices already committed stay on the branch.
+- **The return.** When every slice is committed, every finding answered and the workspace clean, write the Build artifact to a file under `$TMPDIR` and run `dim build return <file>`. A reply naming what is missing records nothing: finish it and return again.
+- **Reading the order.** `dim order show` prints it, and `dim query` reads the record.
 
 ## Entry contract
 
-1. **Know what checks this.** Read the command the repo declares — a `package.json` script, a `mise` task, a `Makefile` target — and use it. `dim check-command` prints it. Running what the repo declares is what makes a local check the same check CI runs; an equivalent command assembled by hand is not that.
+1. **Know what checks this.** Read the command the repo declares — a `package.json` script, a `mise` task, a `Makefile` target — and use it; `verify` comes first, then `check`, `ci`, `validate` and `test`. It is what `dim slice submit` runs on your commit. Running what the repo declares is what makes a local check the same check the gate runs; an equivalent command assembled by hand is not that.
 2. **Read the rules actually in force.** The standing corrections live in the guidance files. Read the `CLAUDE.md` and `AGENTS.md` on the walk into this session, imports included, and treat a rule a session has already restated as one that is not taking hold rather than one the agent ignored.
 
 ## Slices
@@ -40,7 +38,7 @@ A red check is feedback to the builder. Diagnose and fix its cause, rerun the ch
 
 Finish a slice in the same order every time: the task passes, the slice is simplified, the task passes again, the reviewer reads what will land, every finding it raises is answered and the task passes over the answers, then the commit boundary, then the next slice.
 
-Use `dim-git` at the commit boundary. It owns repository status and worktree ownership; the factory runner records the order's check and commit evidence. This station owns the slice loop.
+Use `dim-git` at the commit boundary. The factory records the check and the commit when `dim slice submit` accepts them. This station owns the slice loop.
 
 Use `dim-tdd` for behavior-changing slices and `dim-simplify` for the simplification pass. Their methods remain shared; this station supplies the slice boundary, repository evidence and finding loop.
 
@@ -72,7 +70,7 @@ Read the slice's own diff and nothing else. Scope is the cut: a file the slice d
 
 What earns an edit is a reader's cost — a name that has to be held in the head, a nesting level that carries no case, a block written twice, an abstraction with one caller. What does not is taste: shorter is not simpler, and a line that reads plainly stays.
 
-**Behavior is preserved exactly, and the test for that is mechanical: the repo's task passes again, and this pass's own diff touches no test file.** A test edited to accommodate a simplification means the behavior moved, which makes it a different change and not this one. The comparison is this pass's diff rather than the slice's, because a `dim-fix` slice carries the failing test that proved the defect and that edit is the point of it. Run the task after this pass, before the reviewer, or the reviewer judges code that is about to change.
+**Behavior is preserved exactly, and the test for that is mechanical: the repo's task passes again, and this pass's own diff touches no test file.** A test edited to accommodate a simplification means the behavior moved, which makes it a different change and not this one. The comparison is this pass's diff rather than the slice's, because a defect's slice carries the failing test that proved it and that edit is the point of it. Run the task after this pass, before the reviewer, or the reviewer judges code that is about to change.
 
 **An edit lands only by lowering one of the costs named above, and the pass names which.** A pass that can name none is the fixpoint, and that is the expected result on a slice that was already plain. This is what makes the loop finite: the costs are a list, each edit spends one off it, and a rename that trades one name for another lowers nothing and so is not an edit this pass may make. Judging instead whether anything *could* still be improved is not the test; asked that, there is always something.
 
@@ -80,7 +78,7 @@ What earns an edit is a reader's cost — a name that has to be held in the head
 
 ## Check the slice before the next one
 
-Between the simplification pass and the commit, hand the slice's diff to one agent working from a fixed brief, at the tier `dim route <harness> reviewer` gives you for the harness you run in. This is not the fan-out the top of this file argues against: that objection is about delegating the edits, which need the context that produced them. A reviewer returns findings and keeps nothing, which is the trade `dim-review` makes and the one the corpus measured as costing nothing.
+Between the simplification pass and the commit, hand the slice's diff to one agent working from a fixed brief. This is not the fan-out the top of this file argues against: that objection is about delegating the edits, which need the context that produced them. A reviewer returns findings and keeps nothing, which is the trade `dim-review` makes and the one the corpus measured as costing nothing.
 
 **Give the reviewer read-only tools.** An agent that can edit answers a finding by editing, and what it overwrites is the fix the builder already made — one was reverted that way on 2026-09-18, caught only because the file tools report an on-disk change.
 
@@ -105,7 +103,7 @@ Returning nothing is the expected result and not a sign the check was wasted: of
 
 Two answers that read as evasions and are not: a finding that is true and does not matter here, refused and said so; and a finding that is true and belongs to a different slice, written into [`todo.md`](../../docs/todo.md) rather than folded in, which is what keeps the diff one thing.
 
-**Where answers go.** A slice checking agent's findings are answered in the builder's pass and explained in the Build artifact; they do not go in the factory turn's `answers`. That field holds only the ids listed under Review findings in the factory brief, from a closed Review round; use `[]` when none were handed to this turn. The runner records those answers.
+**Where answers go.** A slice checking agent's findings are answered in the builder's pass and explained in the Build artifact. Only the review findings the brief lists are answered through `dim finding answer`.
 
 ## Exit check
 
