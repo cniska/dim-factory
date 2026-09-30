@@ -48,7 +48,7 @@ describe("settings", () => {
       "add",
       "--title",
       "Greet",
-      "--request",
+      "--description",
       "Add a greeting.",
     ]);
 

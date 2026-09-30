@@ -11,9 +11,9 @@ import {
   planned,
   returnArtifact,
   reviewed,
-  reviseOrder,
   runOrder,
   showOrder,
+  updateOrder,
 } from "./support/operator-acts";
 import type { OperatorSession } from "./support/operator-session";
 import { actions, workerOf } from "./support/order-view";
@@ -23,7 +23,7 @@ import { ACTION, NEXT, type Next, REFUSAL } from "./support/vocabulary";
 
 const start = machines();
 
-const OPERATOR_ACTIONS = ["run", "approve", "return", "revise"] as const;
+const OPERATOR_ACTIONS = ["run", "approve", "return"] as const;
 
 type OperatorAction = (typeof OPERATOR_ACTIONS)[number];
 
@@ -33,14 +33,15 @@ const perform: Readonly<
   run: runOrder,
   approve,
   return: (operator, id) => returnArtifact(operator, id, "try again"),
-  revise: (operator, id) => reviseOrder(operator, id, "Add a greeting to the README, in English."),
 };
 
 const ALLOWED_BY_NEXT: Readonly<Record<Next, readonly OperatorAction[]>> = {
   run: ["run"],
   approve: ["approve", "return"],
-  revise: ["revise"],
+  update: [],
 };
+
+const IN_ENGLISH = "Add a greeting to the README, in English.";
 
 async function expectOnlyNextAllowed(m: Machine, id: string): Promise<void> {
   const before = await showOrder(m.operator, id);
@@ -58,7 +59,7 @@ describe("an order's next step", () => {
   test("in every state, only the next step is allowed and every other action is refused naming it", async () => {
     const m = await start({
       script: {
-        planner: [[{ act: "order-return", reason: "the request names no language" }], planTurn()],
+        planner: [[{ act: "order-return", reason: "the description names no language" }], planTurn()],
         builder: [buildTurn()],
         reviewer: [reviewTurn()],
       },
@@ -66,9 +67,9 @@ describe("an order's next step", () => {
     const id = await addOrder(m.operator);
     await expectOnlyNextAllowed(m, id);
     await runOrder(m.operator, id);
-    expect((await showOrder(m.operator, id)).next).toBe(NEXT.revise);
+    expect((await showOrder(m.operator, id)).next).toBe(NEXT.update);
     await expectOnlyNextAllowed(m, id);
-    await reviseOrder(m.operator, id, "Add a greeting to the README, in English.");
+    await updateOrder(m.operator, id, IN_ENGLISH);
     await expectOnlyNextAllowed(m, id);
     await runOrder(m.operator, id);
     await expectOnlyNextAllowed(m, id);
@@ -82,6 +83,26 @@ describe("an order's next step", () => {
     expect(shipped.next).toBeNull();
     await expectOnlyNextAllowed(m, id);
     expect(refusal(await cancelOrder(m.operator, id)).code).toBeString();
+  });
+
+  test("an update is accepted until the plan is approved, replans the order, and is refused after", async () => {
+    const m = await start({
+      script: { planner: [planTurn(), planTurn()], builder: [buildTurn()] },
+    });
+    const id = await addOrder(m.operator);
+    resultOf(await updateOrder(m.operator, id, IN_ENGLISH));
+    resultOf(await runOrder(m.operator, id));
+    expect(m.invocation("planner", 0).prompt).toContain(IN_ENGLISH);
+
+    resultOf(await updateOrder(m.operator, id, "Add a greeting to the README, in Finnish."));
+    expect((await showOrder(m.operator, id)).next).toBe(NEXT.run);
+    resultOf(await runOrder(m.operator, id));
+    expect(m.invocation("planner", 1).prompt).toContain("in Finnish");
+
+    resultOf(await approve(m.operator, id));
+    const building = await showOrder(m.operator, id);
+    expect(refusal(await updateOrder(m.operator, id, "Something else entirely.")).code).toBeString();
+    expect(await showOrder(m.operator, id)).toEqual(building);
   });
 
   test("a cancelled order refuses every action", async () => {

@@ -73,7 +73,7 @@ export type OrderView = {
   readonly id: string;
   readonly title: string;
   readonly project: string;
-  readonly request: string;
+  readonly description: string;
   readonly status: "queued" | "running" | "shipped" | "cancelled";
   readonly station: Station | null;
   readonly next: Next | null;

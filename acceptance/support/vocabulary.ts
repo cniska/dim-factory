@@ -27,7 +27,7 @@ export type Action = (typeof ACTION)[keyof typeof ACTION];
 export const NEXT = {
   run: "run",
   approve: "approve",
-  revise: "revise",
+  update: "update",
 } as const;
 
 export type Next = (typeof NEXT)[keyof typeof NEXT];

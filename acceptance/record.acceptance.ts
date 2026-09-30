@@ -205,12 +205,12 @@ describe("decisions", () => {
   test("each decision shows who decided it and why", async () => {
     const m = await start({ script: happyPath() });
     const id = await planned(m.operator);
-    await approve(m.operator, id, "the plan covers the request", "owner");
+    await approve(m.operator, id, "the plan covers the description", "owner");
     await approve(m.operator, id, "both slices are there", "operator");
 
     const approvals = entriesOf(await showOrder(m.operator, id), ACTION.approved);
     expect(approvals.map(({ decidedBy, reason }) => ({ decidedBy, reason }))).toEqual([
-      { decidedBy: "owner", reason: "the plan covers the request" },
+      { decidedBy: "owner", reason: "the plan covers the description" },
       { decidedBy: "operator", reason: "both slices are there" },
     ]);
   });

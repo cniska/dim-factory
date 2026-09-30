@@ -33,7 +33,7 @@ const killApproval = (m: Machine, id: string) =>
 const shipping = (order: OrderView) =>
   actions(order).includes(ACTION.shipStarted) && !actions(order).includes(ACTION.shipLanded);
 
-describe("an order from request to ship", () => {
+describe("an order from added to shipped", () => {
   test("an order approved at every station lands on the default branch and is recorded as shipped", async () => {
     const m = await start({ script: happyPath() });
     const id = await addOrder(m.operator);
@@ -74,7 +74,7 @@ describe("an order from request to ship", () => {
   test("an order added outside any checkout is refused unless it names its project", async () => {
     const m = await start();
     const elsewhere = mkdtempSync(join(m.root, "elsewhere-"));
-    const args = ["order", "add", "--title", "Greet", "--request", "Add a greeting."];
+    const args = ["order", "add", "--title", "Greet", "--description", "Add a greeting."];
 
     const unnamed = await m.operator.dimIn(elsewhere, args);
     const named = await m.operator.dimIn(elsewhere, [...args, "--project", "acme/widgets"]);
@@ -189,15 +189,15 @@ describe("returns and approvals", () => {
 
   test("a planner that cannot plan the order hands it back to the operator", async () => {
     const m = await start({
-      script: { planner: [[{ act: "order-return", reason: "the request names no file" }]] },
+      script: { planner: [[{ act: "order-return", reason: "the description names no file" }]] },
     });
     const id = await addOrder(m.operator);
 
     await runOrder(m.operator, id);
 
     const order = await showOrder(m.operator, id);
-    expect(order.next).toBe(NEXT.revise);
-    expect(entryOf(order, ACTION.orderReturned).reason).toBe("the request names no file");
+    expect(order.next).toBe(NEXT.update);
+    expect(entryOf(order, ACTION.orderReturned).reason).toBe("the description names no file");
   });
 
   test("the command that starts a station returns once the station has finished", async () => {

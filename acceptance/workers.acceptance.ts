@@ -84,7 +84,7 @@ describe("the operator", () => {
     for (const args of [
       ["order", "run", id],
       ["order", "cancel", id, "--reason", "not mine"],
-      ["order", "add", "--title", "Mine", "--request", "Do my thing."],
+      ["order", "add", "--title", "Mine", "--description", "Do my thing."],
     ]) {
       expect(refusal(await bystander.dim(args)).code).toBe(REFUSAL.notOperator);
     }
@@ -115,10 +115,10 @@ describe("the operator", () => {
 describe("station workers", () => {
   test("a station worker is refused every operator action and leaves the order unchanged", async () => {
     const operatorActs: HarnessTurn = [
-      ["order", "add", "--title", "Mine", "--request", "Do my thing."],
+      ["order", "add", "--title", "Mine", "--description", "Do my thing."],
       ["order", "approve", ORDER_PLACEHOLDER, "--reason", "self", "--decided", "owner"],
       ["order", "cancel", ORDER_PLACEHOLDER, "--reason", "self"],
-      ["order", "revise", ORDER_PLACEHOLDER, "--request", "self"],
+      ["order", "update", ORDER_PLACEHOLDER, "--description", "self"],
       ["order", "run", ORDER_PLACEHOLDER],
     ].map((args) => ({ act: "dim", args }));
     const m = await start({ script: { planner: [[...operatorActs, ...planTurn()]] } });

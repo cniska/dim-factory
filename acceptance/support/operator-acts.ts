@@ -3,7 +3,7 @@ import type { OperatorSession } from "./operator-session";
 import { type OrderView, orderShown } from "./order-view";
 import type { Decider, Next, Station } from "./vocabulary";
 
-type OrderFields = { readonly title?: string; readonly request?: string; readonly project?: string };
+type OrderFields = { readonly title?: string; readonly description?: string; readonly project?: string };
 
 export async function addOrder(operator: OperatorSession, fields: OrderFields = {}): Promise<string> {
   const added = resultOf(
@@ -12,8 +12,8 @@ export async function addOrder(operator: OperatorSession, fields: OrderFields = 
       "add",
       "--title",
       fields.title ?? "Greet the reader",
-      "--request",
-      fields.request ?? "Add a greeting to the README.",
+      "--description",
+      fields.description ?? "Add a greeting to the README.",
       ...(fields.project === undefined ? [] : ["--project", fields.project]),
     ]),
   ) as { readonly id: string };
@@ -27,7 +27,7 @@ export const runOrder = (operator: OperatorSession, id: string): Promise<DimResu
 
 export const approveArgs = (
   id: string,
-  reason = "it does what the request asked",
+  reason = "it does what the order asked",
   decided: Decider = "owner",
 ): readonly string[] => ["order", "approve", id, "--reason", reason, "--decided", decided];
 
@@ -45,8 +45,8 @@ export const returnArtifact = (
   decided: Decider = "owner",
 ): Promise<DimResult> => operator.dim(["order", "return", id, "--reason", reason, "--decided", decided]);
 
-export const reviseOrder = (operator: OperatorSession, id: string, request: string): Promise<DimResult> =>
-  operator.dim(["order", "revise", id, "--request", request]);
+export const updateOrder = (operator: OperatorSession, id: string, description: string): Promise<DimResult> =>
+  operator.dim(["order", "update", id, "--description", description]);
 
 export const cancelOrder = (
   operator: OperatorSession,
@@ -68,7 +68,7 @@ export async function showOrder(operator: OperatorSession, id: string): Promise<
 export const STEP_ARGS_BY_NEXT: Readonly<Record<Next, ((id: string) => readonly string[]) | null>> = {
   run: runArgs,
   approve: (id) => approveArgs(id),
-  revise: null,
+  update: null,
 };
 
 export async function planned(operator: OperatorSession, fields: OrderFields = {}): Promise<string> {
@@ -92,7 +92,7 @@ export async function reviewed(operator: OperatorSession, fields: OrderFields = 
 export async function shipThrough(operator: OperatorSession, id: string): Promise<OrderView> {
   resultOf(await runOrder(operator, id));
   for (const artifact of ["plan", "Build artifact", "Review artifact"]) {
-    resultOf(await approve(operator, id, `the ${artifact} does what the request asked`));
+    resultOf(await approve(operator, id, `the ${artifact} does what the order asked`));
   }
   return showOrder(operator, id);
 }

@@ -14,10 +14,11 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Model strength | The strength of model a role runs on, `standard` or `deep`, mapped to this machine's models per harness |
 | Harness | The agent product that runs a session, such as Claude Code or Codex |
 | Station | One step of work on an order: `plan`, `build` or `review`. Their skills are `dim-plan`, `dim-build` and `dim-review` |
-| Order | One piece of work: a title, the owner's request and a project. It waits until the operator runs it, and is built in its own workspace and branch |
+| Order | One piece of work: a title, a description and a project. It waits until the operator runs it, and is built in its own workspace and branch |
 | Workspace | The isolated checkout an order is built in, with its own branch, apart from the project's checkout and every other order's. A git worktree is how one is made |
 | Status | The state an order is in, read from its log: `queued`, `running`, `shipped` or `cancelled`. The wall's columns are these words, and a cancelled order leaves the board |
-| Next step | What an order waits on, worked out from its log alone: `run`, `approve` or `revise`. An action that is not the next step is refused |
+| Next step | What an order waits on, worked out from its log alone: `run`, `approve` or `update`. An action that is not the next step is refused |
+| Update | The operator's change to an order's title or description, allowed until its plan is approved. The next run plans the order again |
 | Slice | One increment of a plan, with a title and its outcome, that the builder commits on its own |
 | Ship | Landing an order's commits on the project's default branch, which ends the order |
 | Command | One `dim` subcommand, in the `src/<name>-command.ts` named for it ([`src/cli-contract.ts`](../src/cli-contract.ts)) |

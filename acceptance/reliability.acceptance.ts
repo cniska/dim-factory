@@ -338,7 +338,9 @@ describe("reading the record", () => {
     bumpRecordVersionPastTheWriters(m);
     const bumped = recordVersion(m);
 
-    const writer = refusal(await m.operator.dim(["order", "add", "--title", "Two", "--request", "Another."]));
+    const writer = refusal(
+      await m.operator.dim(["order", "add", "--title", "Two", "--description", "Another."]),
+    );
     for (const args of [
       ["query", "search", "greeting"],
       ["sql", "select 1"],

@@ -11,10 +11,10 @@ import {
   built,
   planned,
   returnArtifact,
-  reviseOrder,
   runOrder,
   shipThrough,
   showOrder,
+  updateOrder,
 } from "./support/operator-acts";
 import { actions, entryOf } from "./support/order-view";
 import {
@@ -62,7 +62,7 @@ async function twoShippedOrders(): Promise<Machine> {
   await shipThrough(m.operator, await addOrder(m.operator, { title: "Greet" }));
   await shipThrough(
     m.operator,
-    await addOrder(m.operator, { title: "Farewell", request: "End the README with a farewell." }),
+    await addOrder(m.operator, { title: "Farewell", description: "End the README with a farewell." }),
   );
   return m;
 }
@@ -79,7 +79,7 @@ describe("briefs", () => {
     }
   });
 
-  test("no sentence of a brief repeats in the brief of an order with a different request", async () => {
+  test("no sentence of a brief repeats in the brief of an order with a different description", async () => {
     const m = await twoShippedOrders();
 
     const sentences = (brief: string) =>
@@ -94,11 +94,11 @@ describe("briefs", () => {
     }
   });
 
-  test("the planner is briefed with the request, the builder with the approved plan, the reviewer with the Build artifact and the diff", async () => {
+  test("the planner is briefed with the description, the builder with the approved plan, the reviewer with the Build artifact and the diff", async () => {
     const m = await start({ script: happyPath() });
     await shipThrough(
       m.operator,
-      await addOrder(m.operator, { request: "Add a greeting to the README, please." }),
+      await addOrder(m.operator, { description: "Add a greeting to the README, please." }),
     );
 
     expect(m.invocation("planner", 0).prompt).toContain("Add a greeting to the README, please.");
@@ -113,13 +113,13 @@ describe("briefs", () => {
     expect(order.slices.map(({ title, outcome }) => ({ title, outcome }))).toEqual([...SLICES]);
   });
 
-  test("a revised request briefs the next plan", async () => {
+  test("an updated description briefs the next plan", async () => {
     const m = await start({
       script: { planner: [[{ act: "order-return", reason: "which README?" }], planTurn()] },
     });
     const id = await planned(m.operator);
 
-    resultOf(await reviseOrder(m.operator, id, "Add a greeting to the top-level README."));
+    resultOf(await updateOrder(m.operator, id, "Add a greeting to the top-level README."));
     resultOf(await runOrder(m.operator, id));
 
     expect(m.invocation("planner", 1).prompt).toContain("Add a greeting to the top-level README.");
