@@ -22,7 +22,7 @@ function deniedTools(policy: Policy): readonly string[] {
     case "read":
       return EDIT_TOOLS;
     case "edit":
-      return policy.editDenied.map((path) => `Edit(/${path}/**)`);
+      return policy.denied.map((path) => `Edit(/${path}/**)`);
   }
 }
 

@@ -57,27 +57,18 @@ export function workerEnv(
   };
 }
 
-export type Policy =
-  | { readonly kind: "read"; readonly writable: readonly string[]; readonly denied: readonly string[] }
-  | {
-      readonly kind: "edit";
-      readonly writable: readonly string[];
-      readonly denied: readonly string[];
-      readonly editDenied: readonly string[];
-    };
+export type Policy = {
+  readonly kind: "read" | "edit";
+  readonly writable: readonly string[];
+  readonly denied: readonly string[];
+};
 
 export type Places = { readonly workspace: string; readonly checkout: string; readonly turn: Turn };
 
 export function policyAt(station: Station, { workspace, checkout, turn }: Places): Policy {
   const checkoutGit = join(checkout, ".git");
   if (station !== "build") return { kind: "read", writable: [turn.tmp], denied: [workspace, checkoutGit] };
-  const workspaceGit = join(workspace, ".git");
-  return {
-    kind: "edit",
-    writable: [turn.tmp],
-    denied: [join(workspaceGit, "hooks"), checkoutGit],
-    editDenied: [workspaceGit, checkoutGit],
-  };
+  return { kind: "edit", writable: [turn.tmp], denied: [join(workspace, ".git", "hooks"), checkoutGit] };
 }
 
 const orderFacts = (state: OrderState) => ({

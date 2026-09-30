@@ -48,22 +48,17 @@ describe("starting Claude Code", () => {
     expect(argvMode(claude.argv(START))).toBe("default");
   });
 
-  test("turns an edit policy into acceptEdits, with the edit tool denied the git paths the policy names", () => {
+  test("turns an edit policy into acceptEdits, with Bash and the edit tool both denied the policy's directories", () => {
     const edit: Start = {
       ...START,
-      policy: {
-        kind: "edit",
-        writable: ["/t"],
-        denied: ["/w/.git/config"],
-        editDenied: ["/w/.git", "/c/.git"],
-      },
+      policy: { kind: "edit", writable: ["/t"], denied: ["/w/.git/hooks", "/c/.git"] },
     };
     const argv = claude.argv(edit);
     expect(argvMode(argv)).toBe("acceptEdits");
-    expect(settingsOf(argv).permissions.deny).toEqual(["Edit(//w/.git/**)", "Edit(//c/.git/**)"]);
+    expect(settingsOf(argv).permissions.deny).toEqual(["Edit(//w/.git/hooks/**)", "Edit(//c/.git/**)"]);
     expect(settingsOf(argv).sandbox.filesystem).toEqual({
       allowWrite: ["/t"],
-      denyWrite: ["/w/.git/config"],
+      denyWrite: ["/w/.git/hooks", "/c/.git"],
     });
   });
 });

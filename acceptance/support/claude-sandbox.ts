@@ -73,9 +73,12 @@ export function sandboxed(
 ): string[] {
   if (!settings.sandbox?.enabled) return ["sh", "-c", command];
   const writable = [cwd, ...writableDirs, ...(settings.sandbox.filesystem?.allowWrite ?? [])].map(real);
-  const denied = [join(cwd, ".git", "hooks"), ...(settings.sandbox.filesystem?.denyWrite ?? [])].map(
-    deniedRoot,
-  );
+  const edits = deniedEdits(settings, cwd);
+  const denied = [
+    join(cwd, ".git", "hooks"),
+    ...(settings.sandbox.filesystem?.denyWrite ?? []),
+    ...(edits === "all" ? [] : edits),
+  ].map(deniedRoot);
   const gitConfig = join(real(cwd), ".git", "config");
   const profile = [
     "(version 1)",
