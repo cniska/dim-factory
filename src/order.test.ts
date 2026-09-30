@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { admit, fold, nextOf, type OrderState, orderIdOf } from "./order";
-import type { Actor, Detailed, LogEntry } from "./order-contract";
+import { type Actor, type Detailed, type LogEntry, OrderId } from "./order-contract";
 
 const OPERATOR: Actor = { kind: "worker", worker: "nut-1", session: "s-operator" };
 
@@ -218,7 +218,8 @@ describe("an order id", () => {
   test("is eight lowercase Crockford base32 characters, with no letter it reads as a digit", () => {
     const id = orderIdOf(new Uint8Array([0, 1, 10, 17, 18, 31, 32, 255]));
     expect(id).toBe("01ahjz0z");
-    expect(orderIdOf(crypto.getRandomValues(new Uint8Array(8)))).toMatch(/^[0-9a-hjkmnp-tv-z]{8}$/);
+    expect(OrderId.safeParse(orderIdOf(crypto.getRandomValues(new Uint8Array(8)))).success).toBe(true);
+    expect(OrderId.safeParse("k7m2qx4i").success).toBe(false);
   });
 });
 

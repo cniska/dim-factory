@@ -8,6 +8,8 @@ export type Station = z.infer<typeof Station>;
 export const Decider = z.enum(["owner", "operator"]);
 export type Decider = z.infer<typeof Decider>;
 
+export const OrderId = z.string().regex(/^[0-9a-hjkmnp-tv-z]{8}$/);
+
 export type Status = "queued" | "running" | "shipped" | "cancelled";
 
 export type Next = "run" | "approve" | "update";

@@ -7,7 +7,7 @@ import { openFactory } from "./factory-db";
 import { openSessionsUnder, sessionDirs } from "./hooks-sessions";
 import { drainSpool } from "./ingest-spool";
 import { admit, fold, type OperatorAct, type OrderState, orderIdOf } from "./order";
-import { type Actor, type Detailed, type LogEntry, refuse } from "./order-contract";
+import { type Actor, type Detailed, type LogEntry, OrderId, refuse } from "./order-contract";
 import { appendEntries, readLog } from "./order-store";
 import { type OrderView, type OrderWorker, orderView, workerNamesOf } from "./order-view";
 import { workspaceDir } from "./paths";
@@ -25,6 +25,13 @@ const USAGE = [
 ].join(" | ");
 
 const usage = (message: string) => new UsageError(`dim order ${message}`);
+
+function orderArg(positionals: readonly string[]): string {
+  const parsed = OrderId.safeParse(positionals[0]);
+  if (!parsed.success)
+    throw usage(`takes an order id, eight characters such as k7m2qx4d, not ${positionals[0]}`);
+  return parsed.data;
+}
 
 function actingOperator(db: Database, project: string): Actor {
   drainSpool(db);
@@ -123,7 +130,7 @@ function update(db: Database, args: readonly string[]): OrderView {
   if (flags.title === undefined && flags.description === undefined) {
     throw usage("update needs --title, --description or both");
   }
-  return act(db, positionals[0] as string, "update", (state) => ({
+  return act(db, orderArg(positionals), "update", (state) => ({
     action: "order_updated",
     title: flags.title ?? state.title,
     description: flags.description ?? state.description,
@@ -134,12 +141,12 @@ function cancel(db: Database, args: readonly string[]): OrderView {
   const { positionals, flags } = parseArgs(args, { positionals: 1, flags: ["reason"] }, usage);
   if (flags.reason === undefined) throw usage("cancel needs --reason");
   const reason = flags.reason;
-  return act(db, positionals[0] as string, "cancel", () => ({ action: "order_cancelled", reason }));
+  return act(db, orderArg(positionals), "cancel", () => ({ action: "order_cancelled", reason }));
 }
 
 function show(db: Database, args: readonly string[]): OrderView {
   const { positionals } = parseArgs(args, { positionals: 1, flags: [] }, usage);
-  return viewOf(db, positionals[0] as string);
+  return viewOf(db, orderArg(positionals));
 }
 
 const VERBS: Readonly<Record<string, (db: Database, args: readonly string[]) => OrderView>> = {
