@@ -28,7 +28,7 @@ import { sliceActs } from "./scripts";
 import { unreachable } from "./unreachable";
 import { roleOfSkill, type StationRole } from "./vocabulary";
 import { waitFor } from "./wait";
-import { type Dim, dimArgs, isWorkerAct } from "./worker-acts";
+import { type Dim, isWorkerAct, workerCommand } from "./worker-acts";
 
 type Flags = {
   readonly resume: string | null;
@@ -38,7 +38,6 @@ type Flags = {
   readonly permissionMode: PermissionMode;
   readonly settings: ClaudeSettings & { readonly hooks?: ClaudeHooks };
   readonly settingSources: string | null;
-  readonly addDirs: readonly string[];
   readonly prompt: string;
 };
 
@@ -50,7 +49,6 @@ const NO_FLAGS: Flags = {
   permissionMode: "default",
   settings: {},
   settingSources: null,
-  addDirs: [],
   prompt: "",
 };
 
@@ -67,11 +65,10 @@ function permissionMode(value: string): PermissionMode {
   return mode;
 }
 
-type Switch = "-p" | "--print" | "--verbose" | "--fork-session";
+type Switch = "-p" | "--verbose" | "--fork-session";
 
 const SWITCHES: Readonly<Record<Switch, (flags: Flags) => Flags>> = {
   "-p": (flags) => flags,
-  "--print": (flags) => flags,
   "--verbose": (flags) => flags,
   "--fork-session": (flags) => ({ ...flags, fork: true }),
 };
@@ -80,10 +77,7 @@ type Valued =
   | "--output-format"
   | "--permission-mode"
   | "--setting-sources"
-  | "--plugin-dir"
   | "--settings"
-  | "--json-schema"
-  | "--add-dir"
   | "--model"
   | "--resume"
   | "--session-id";
@@ -92,10 +86,7 @@ const VALUED: Readonly<Record<Valued, (flags: Flags, value: string) => Flags>> =
   "--output-format": (flags) => flags,
   "--permission-mode": (flags, value) => ({ ...flags, permissionMode: permissionMode(value) }),
   "--setting-sources": (flags, value) => ({ ...flags, settingSources: value }),
-  "--plugin-dir": (flags) => flags,
   "--settings": (flags, value) => ({ ...flags, settings: JSON.parse(value) }),
-  "--json-schema": (flags) => flags,
-  "--add-dir": (flags, value) => ({ ...flags, addDirs: [...flags.addDirs, value] }),
   "--model": (flags, value) => ({ ...flags, model: value }),
   "--resume": (flags, value) => ({ ...flags, resume: value }),
   "--session-id": (flags, value) => ({ ...flags, sessionId: value }),
@@ -197,6 +188,7 @@ const invocation: Invocation = {
   model: flags.model,
   prompt: flags.prompt,
   cwd,
+  home,
   pid: process.pid,
   env,
   history,
@@ -213,15 +205,8 @@ record({ type: "user", text: flags.prompt });
 const tmp = env.TMPDIR ?? tmpdir();
 const scratch = mkdtempSync(`${tmp}/scripted-claude-`);
 const sessionTmp = mkdtempSync(`${tmp}/scripted-claude-tmp-`);
-const commonGitDir = Bun.spawnSync(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], {
-  cwd,
-  stdout: "pipe",
-})
-  .stdout.toString()
-  .trim();
-const writable = [cwd, ...flags.addDirs, sessionTmp, ...(commonGitDir === "" ? [] : [commonGitDir])];
 const shell = (command: string) =>
-  Bun.spawnSync(sandboxed(flags.settings, writable, command), {
+  Bun.spawnSync(sandboxed(flags.settings, [cwd, sessionTmp], command), {
     cwd,
     env: { ...env, TMPDIR: sessionTmp },
     stdout: "pipe",
@@ -263,7 +248,7 @@ function bash(command: string): string {
 
 async function perform(act: HarnessAct): Promise<string | null> {
   if (isWorkerAct(act)) {
-    const command = commandLine(dimArgs(act, dim, scratch).map(withOrder));
+    const command = withOrder(workerCommand(act, dim, scratch));
     tool("Bash", { command }, () => bash(command));
     return null;
   }

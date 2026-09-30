@@ -22,7 +22,7 @@ type ClaudeBlock = {
   readonly content?: string | readonly { readonly type: string; readonly text?: string }[];
 };
 
-type ClaudeLine = {
+export type ClaudeLine = {
   readonly type: string;
   readonly message?: { readonly role: string; readonly content: string | readonly ClaudeBlock[] };
 };
@@ -93,11 +93,17 @@ export function claudeLine(
   }
 }
 
+export function transcriptEntries(lines: readonly ClaudeLine[]): readonly TranscriptEntry[] {
+  return lines.flatMap(entriesOf);
+}
+
 export function readTranscript(path: string): readonly TranscriptEntry[] {
   if (!existsSync(path)) return [];
-  return readFileSync(path, "utf8")
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .flatMap((line) => entriesOf(JSON.parse(line) as ClaudeLine));
+  return transcriptEntries(
+    readFileSync(path, "utf8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as ClaudeLine),
+  );
 }

@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { settingsPath } from "./support/claude-hooks";
-import { readTranscript, transcriptPath } from "./support/claude-transcript";
+import { transcriptPath } from "./support/claude-transcript";
 import { parseDim, refusal, resultOf } from "./support/dim-output";
 import { type HarnessTurn, ORDER_PLACEHOLDER } from "./support/harness-script";
-import { CHECKOUT, MODELS, machines } from "./support/machine";
+import { CHECKOUT, MODELS, machines, PROJECT_SETTINGS, RECORD_PROBE } from "./support/machine";
 import {
   addOrder,
   approve,
@@ -16,6 +16,7 @@ import {
   runOrder,
   shipThrough,
   showOrder,
+  transcriptOf,
 } from "./support/operator-acts";
 import { actions, entriesOf, entryOf, sessionOf, workerOf } from "./support/order-view";
 import { BUILD_ARTIFACT, buildTurn, happyPath, planTurn, reviewTurn, sliceActs } from "./support/scripts";
@@ -102,7 +103,7 @@ describe("the operator", () => {
 
     for (const args of [
       ["plan", "return", plan],
-      ["slice", "commit", "--subject", "feat: mine"],
+      ["slice", "submit"],
       ["review", "return", "--findings", findings],
       ["build", "return", plan],
     ]) {
@@ -194,12 +195,7 @@ describe("station workers", () => {
     const intruder = m.createOperator();
     await intruder.fire("SessionStart");
 
-    const refused = await intruder.dimIn(workspace, [
-      "slice",
-      "commit",
-      "--subject",
-      "feat: not the builder's",
-    ]);
+    const refused = await intruder.dimIn(workspace, ["slice", "submit"]);
     m.release("build");
     await building;
 
@@ -239,8 +235,8 @@ describe("station workers", () => {
     const id = await planned(m.operator);
     writeFileSync(join(m.bin, "codex"), "#!/bin/sh\nexit 1\n");
     chmodSync(join(m.bin, "codex"), 0o755);
-    m.routing({ claude: MODELS, codex: MODELS });
-    m.userSettings({ harness: "codex" });
+    m.models({ claude: MODELS, codex: MODELS });
+    m.projectSettings({ ...PROJECT_SETTINGS, harness: "codex" });
 
     resultOf(await returnArtifact(m.operator, id, "again"));
 
@@ -269,7 +265,7 @@ describe("a session that dies", () => {
     const id = await planned(m.operator);
     expect(refusal(await approve(m.operator, id)).code).toBeString();
     const dead = m.invocation("builder", 0);
-    const heldWhenItDied = readTranscript(transcriptPath(m.home, dead.cwd, dead.sessionId));
+    const heldWhenItDied = await transcriptOf(m.operator, dead.sessionId);
 
     resultOf(await runOrder(m.operator, id));
 
@@ -287,7 +283,7 @@ describe("a session that dies", () => {
     expect(order.next).toBe(NEXT.approve);
   });
 
-  test("a builder whose session cannot be resumed carries on in a new session holding its context from the record", async () => {
+  test("a builder whose session file is lost carries on in a new session holding the lost one's context", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -301,9 +297,8 @@ describe("a session that dies", () => {
     const id = await planned(m.operator);
     expect(refusal(await approve(m.operator, id)).code).toBeString();
     const first = m.invocation("builder", 0);
-    const firstTranscript = transcriptPath(m.home, first.cwd, first.sessionId);
-    const heldBeforeItWasLost = readTranscript(firstTranscript);
-    rmSync(firstTranscript);
+    const heldBeforeItWasLost = await transcriptOf(m.operator, first.sessionId);
+    rmSync(transcriptPath(first.home, first.cwd, first.sessionId));
 
     resultOf(await runOrder(m.operator, id));
 
@@ -352,7 +347,7 @@ describe("what a station worker can reach", () => {
         planner: [planTurn()],
         builder: [
           [
-            { act: "sh", command: 'touch "$DIM_HOME/planted"' },
+            { act: "sh", command: `touch "${RECORD_PROBE}"` },
             { act: "sh", command: `touch "${probe}"` },
             {
               act: "sh",
@@ -365,14 +360,14 @@ describe("what a station worker can reach", () => {
         ],
       },
     });
-    const settings = readFileSync(settingsPath(m.home), "utf8");
     try {
       await built(m.operator);
 
-      expect(existsSync(join(m.dimHome, "planted"))).toBe(false);
+      const { home } = m.invocation("builder", 0);
+      expect(existsSync(join(m.record, "planted"))).toBe(false);
       expect(existsSync(probe)).toBe(false);
-      expect(existsSync(join(m.home, ".claude", "skills", "planted"))).toBe(false);
-      expect(readFileSync(settingsPath(m.home), "utf8")).toBe(settings);
+      expect(existsSync(join(home, ".claude", "skills", "planted"))).toBe(false);
+      expect(existsSync(settingsPath(home))).toBe(false);
     } finally {
       rmSync(probe, { force: true });
     }

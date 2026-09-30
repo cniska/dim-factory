@@ -16,7 +16,7 @@ import {
   updateOrder,
 } from "./support/operator-acts";
 import type { OperatorSession } from "./support/operator-session";
-import { actions, workerOf } from "./support/order-view";
+import { actions, entriesOf, workerOf } from "./support/order-view";
 import { alive } from "./support/processes";
 import { buildTurn, happyPath, planTurn, reviewTurn, sliceActs } from "./support/scripts";
 import { ACTION, NEXT, type Next, REFUSAL } from "./support/vocabulary";
@@ -95,7 +95,9 @@ describe("an order's next step", () => {
     expect(m.invocation("planner", 0).prompt).toContain(IN_ENGLISH);
 
     resultOf(await updateOrder(m.operator, id, "Add a greeting to the README, in Finnish."));
-    expect((await showOrder(m.operator, id)).next).toBe(NEXT.run);
+    const updated = await showOrder(m.operator, id);
+    expect(updated.next).toBe(NEXT.run);
+    expect(entriesOf(updated, ACTION.updated)).toHaveLength(2);
     resultOf(await runOrder(m.operator, id));
     expect(m.invocation("planner", 1).prompt).toContain("in Finnish");
 

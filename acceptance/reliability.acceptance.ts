@@ -111,6 +111,8 @@ describe("random kills", () => {
     ),
   };
   const DISTURBANCE: readonly Action[] = [
+    ACTION.shipStarted,
+    ACTION.branchRebased,
     ACTION.sessionDied,
     ACTION.sessionStarted,
     ACTION.stationFailed,
@@ -275,17 +277,26 @@ describe("hooks", () => {
     expect(existsSync(join(workspace, "project-hook.marker"))).toBe(false);
   });
 
-  test("a station worker, whether or not it may edit, cannot write the workspace's git data or the checkout's shared git data", async () => {
-    const probe: HarnessTurn = [
-      { act: "sh", command: 'touch "$(git rev-parse --git-dir)/probe-$$"' },
+  test("a station worker cannot write the checkout's shared git data beyond its own branch, nor its workspace's git config, and a planner no git data at all", async () => {
+    const sharedProbe: HarnessTurn = [
       { act: "sh", command: 'touch "$(git rev-parse --git-common-dir)/probe-$$"' },
+      { act: "sh", command: "git branch probe-$$" },
+      { act: "sh", command: "git update-ref refs/heads/main HEAD" },
+      { act: "sh", command: "git config --worktree core.hooksPath hooks" },
     ];
     const m = await start({
       script: {
-        planner: [[...probe, ...planTurn([{ title: "One", outcome: "One file." }])]],
-        builder: [[...probe, ...sliceActs(1), { act: "build-return", artifact: BUILD_ARTIFACT }]],
+        planner: [
+          [
+            { act: "sh", command: 'touch "$(git rev-parse --git-dir)/probe-$$"' },
+            ...sharedProbe,
+            ...planTurn([{ title: "One", outcome: "One file." }]),
+          ],
+        ],
+        builder: [[...sliceActs(1), ...sharedProbe, { act: "build-return", artifact: BUILD_ARTIFACT }]],
       },
     });
+    const main = m.git(["rev-parse", "main"]);
     const id = await built(m.operator);
 
     const { workspace } = await showOrder(m.operator, id);
@@ -295,13 +306,16 @@ describe("hooks", () => {
         .trim();
     expect(probes(m.git(["rev-parse", "--absolute-git-dir"], workspace))).toBe("0");
     expect(probes(join(m.repo, ".git"))).toBe("0");
+    expect(m.git(["branch", "--list", "probe-*"])).toBe("");
+    expect(m.git(["rev-parse", "main"])).toBe(main);
+    expect(m.git(["config", "--worktree", "--get", "core.hooksPath"], workspace)).toBe("");
   });
 });
 
 describe("reading the record", () => {
   const recordVersion = (m: Machine) => sqlite(m, "PRAGMA user_version");
   const sqlite = (m: Machine, sql: string) =>
-    Bun.spawnSync(["sqlite3", join(m.dimHome, "sessions.db"), sql], { stdout: "pipe" })
+    Bun.spawnSync(["sqlite3", join(m.record, "sessions.db"), sql], { stdout: "pipe" })
       .stdout.toString()
       .trim();
   const bumpRecordVersionPastTheWriters = (m: Machine) =>

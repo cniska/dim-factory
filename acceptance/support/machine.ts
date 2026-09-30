@@ -21,7 +21,9 @@ export const MODELS = { standard: "scripted-standard", deep: "scripted-deep" } a
 
 export type MachineEnv = Readonly<Record<string, string>> & {
   readonly HOME: string;
-  readonly DIM_HOME: string;
+  readonly XDG_CONFIG_HOME: string;
+  readonly XDG_DATA_HOME: string;
+  readonly XDG_STATE_HOME: string;
   readonly TMPDIR: string;
   readonly PATH: string;
 };
@@ -30,7 +32,8 @@ export type Machine = {
   readonly root: string;
   readonly env: MachineEnv;
   readonly home: string;
-  readonly dimHome: string;
+  readonly config: string;
+  readonly record: string;
   readonly bin: string;
   readonly repo: string;
   readonly state: string;
@@ -45,12 +48,19 @@ export type Machine = {
   commitsOn(branch: string): readonly string[];
   ownerCommits(path: string, content: string): void;
   userSettings(settings: Readonly<Record<string, unknown>>): void;
-  routing(harnesses: Readonly<Record<string, typeof MODELS>>): void;
+  projectSettings(settings: Readonly<Record<string, unknown>>): void;
+  models(harnesses: Readonly<Record<string, typeof MODELS>>): void;
   createOperator(): OperatorSession;
   close(): void;
 };
 
 export type MachinePaths = { readonly root: string; readonly state: string };
+
+const RECORD = ["dim-factory", "record"] as const;
+
+export const RECORD_PROBE = `$XDG_DATA_HOME/${RECORD.join("/")}/planted`;
+
+export const PROJECT_SETTINGS = { ship: "default-branch", harness: "claude" } as const;
 
 export type MachineOptions = {
   readonly script?: HarnessScript;
@@ -77,7 +87,7 @@ function initRepo(repo: string, project: string, check: string): void {
   git(["config", "user.email", "owner@example.com"], repo);
   git(["config", "commit.gpgsign", "false"], repo);
   git(["remote", "add", "origin", `git@github.com:${project}.git`], repo);
-  writeFileSync(join(repo, ".dim", "config.json"), `${JSON.stringify({ ship: "default-branch" })}\n`);
+  writeFileSync(join(repo, ".dim", "config.json"), `${JSON.stringify(PROJECT_SETTINGS)}\n`);
   writeFileSync(join(repo, "package.json"), `${JSON.stringify({ scripts: { verify: check } })}\n`);
   writeFileSync(join(repo, "bun.lock"), "");
   writeFileSync(join(repo, ".gitignore"), ".claude/\n");
@@ -92,10 +102,12 @@ async function createMachine(options: MachineOptions): Promise<Machine> {
   const root = mkdtempSync(join(tmpdir(), "dim-acceptance-"));
   const bin = join(root, "bin");
   const home = join(root, "home");
-  const dimHome = join(root, "dim");
+  const xdg = { config: join(root, "config"), data: join(root, "data"), state: join(root, "state") };
+  const config = join(xdg.config, "dim");
+  const record = join(xdg.data, ...RECORD);
   const state = join(root, "harness");
   const repo = join(root, "repo");
-  for (const dir of [bin, home, dimHome, state]) mkdirSync(dir, { recursive: true });
+  for (const dir of [bin, home, config, state]) mkdirSync(dir, { recursive: true });
 
   executable(join(bin, "dim"), `#!/bin/sh\nexec bun "${join(CHECKOUT, "src", "cli.ts")}" "$@"\n`);
   executable(
@@ -108,13 +120,13 @@ async function createMachine(options: MachineOptions): Promise<Machine> {
     HOME: home,
     PATH: `${bin}:${process.env.PATH ?? ""}`,
     TMPDIR: process.env.TMPDIR ?? tmpdir(),
-    DIM_HOME: dimHome,
-    DIM_CLAUDE_PROJECTS: join(home, ".claude", "projects"),
-    DIM_CODEX_DIR: join(home, ".codex"),
+    XDG_CONFIG_HOME: xdg.config,
+    XDG_DATA_HOME: xdg.data,
+    XDG_STATE_HOME: xdg.state,
   };
-  const routing = (harnesses: Readonly<Record<string, typeof MODELS>>) =>
-    writeFileSync(join(dimHome, "routing.json"), JSON.stringify(harnesses));
-  routing({ claude: MODELS });
+  const models = (harnesses: Readonly<Record<string, typeof MODELS>>) =>
+    writeFileSync(join(config, "models.json"), JSON.stringify(harnesses));
+  models({ claude: MODELS });
   const check =
     typeof options.check === "function" ? options.check({ root, state }) : (options.check ?? "true");
   initRepo(repo, options.project ?? "acme/widgets", check);
@@ -131,13 +143,20 @@ async function createMachine(options: MachineOptions): Promise<Machine> {
   resultOf(await operator.register());
 
   const inRepo = (args: readonly string[], cwd = repo) => git(args, cwd);
+  const ownerCommits = (path: string, content: string) => {
+    mkdirSync(dirname(join(repo, path)), { recursive: true });
+    writeFileSync(join(repo, path), content);
+    inRepo(["add", path]);
+    inRepo(["commit", "-q", "-m", `chore: owner edits ${path}`]);
+  };
   const ofRole = (role?: StationRole) =>
     invocations(state).filter((call) => role === undefined || call.role === role);
   return {
     root,
     env,
     home,
-    dimHome,
+    config,
+    record,
     bin,
     repo,
     state,
@@ -163,17 +182,14 @@ async function createMachine(options: MachineOptions): Promise<Machine> {
       inRepo(["log", "--reverse", "--format=%s", `main..${branch}`])
         .split("\n")
         .filter(Boolean),
-    ownerCommits(path, content) {
-      mkdirSync(dirname(join(repo, path)), { recursive: true });
-      writeFileSync(join(repo, path), content);
-      inRepo(["add", path]);
-      inRepo(["commit", "-q", "-m", `chore: owner edits ${path}`]);
-    },
+    ownerCommits,
     userSettings(settings) {
-      mkdirSync(join(home, ".config", "dim"), { recursive: true });
-      writeFileSync(join(home, ".config", "dim", "config.json"), `${JSON.stringify(settings)}\n`);
+      writeFileSync(join(config, "config.json"), `${JSON.stringify(settings)}\n`);
     },
-    routing,
+    projectSettings(settings) {
+      ownerCommits(".dim/config.json", `${JSON.stringify(settings)}\n`);
+    },
+    models,
     createOperator,
     close() {
       for (const session of operators) session.close();

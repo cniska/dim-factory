@@ -250,7 +250,7 @@ describe("decisions", () => {
 });
 
 describe("turns", () => {
-  test("work returned after its worker's turn closed records nothing", async () => {
+  test("a commit made after its worker's turn closed is not recorded, and the next run takes it off the branch", async () => {
     const m = await start();
     const late = "feat: late";
     const turnClosed = quote(releasePath(m.state, "turn-closed"));
@@ -261,9 +261,13 @@ describe("turns", () => {
           { act: "write", path: "one.txt", content: "x\n" },
           {
             act: "sh",
-            command: `(while [ ! -e ${turnClosed} ]; do sleep 0.05; done; dim slice commit --subject ${quote(late)}) > /dev/null 2>&1 &`,
+            command: `(while [ ! -e ${turnClosed} ]; do sleep 0.05; done; git add -A && git commit -q -m ${quote(late)} && dim slice submit) > /dev/null 2>&1 &`,
           },
           { act: "say", text: "done for now" },
+        ],
+        [
+          { act: "commit", subject: "feat: one" },
+          { act: "build-return", artifact: BUILD_ARTIFACT },
         ],
       ],
     });
@@ -275,9 +279,15 @@ describe("turns", () => {
       () => Bun.spawnSync(["pgrep", "-f", releasePath(m.state, "turn-closed")]).exitCode !== 0,
     );
 
+    const closed = await showOrder(m.operator, id);
+    expect(m.commitsOn(closed.branch)).toEqual([late]);
+    expect(actions(closed)).not.toContain(ACTION.sliceSubmitted);
+
+    resultOf(await runOrder(m.operator, id));
+
     const order = await showOrder(m.operator, id);
-    expect(actions(order)).not.toContain(ACTION.sliceCommitted);
-    expect(m.commitsOn(order.branch)).toEqual([]);
+    expect(m.commitsOn(order.branch)).toEqual(["feat: one"]);
+    expect(entriesOf(order, ACTION.sliceCommitted)).toHaveLength(1);
   });
 });
 

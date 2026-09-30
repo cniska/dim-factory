@@ -1,5 +1,6 @@
 export const ACTION = {
   added: "order_added",
+  updated: "order_updated",
   run: "order_run",
   cancelled: "order_cancelled",
   approved: "artifact_approved",
@@ -17,6 +18,7 @@ export const ACTION = {
   sessionDied: "session_died",
   sessionStarted: "session_started",
   shipStarted: "ship_started",
+  branchRebased: "branch_rebased",
   shipLanded: "ship_landed",
   shipStopped: "ship_stopped",
   cleanedUp: "cleaned_up",
@@ -37,6 +39,7 @@ export const REFUSAL = {
   busy: "order_busy",
   notOperator: "not_operator",
   noSession: "no_session",
+  headMoved: "head_moved",
   usage: "usage",
 } as const;
 

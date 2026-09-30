@@ -1,3 +1,4 @@
+import { type ClaudeLine, type TranscriptEntry, transcriptEntries } from "./claude-transcript";
 import { type DimResult, resultOf } from "./dim-output";
 import type { OperatorSession } from "./operator-session";
 import { type OrderView, orderShown } from "./order-view";
@@ -63,6 +64,16 @@ export const messageWorker = (
 
 export async function showOrder(operator: OperatorSession, id: string): Promise<OrderView> {
   return orderShown(await operator.dim(["order", "show", id]));
+}
+
+export async function transcriptOf(
+  operator: OperatorSession,
+  session: string,
+): Promise<readonly TranscriptEntry[]> {
+  const shown = resultOf(await operator.dim(["session", "show", session])) as {
+    readonly lines: readonly ClaudeLine[];
+  };
+  return transcriptEntries(shown.lines);
 }
 
 export const STEP_ARGS_BY_NEXT: Readonly<Record<Next, ((id: string) => readonly string[]) | null>> = {

@@ -107,7 +107,7 @@ A brief is JSON with a fixed set of keys per station. A key with no value is `nu
 
 The Claude Code adapter starts `claude -p --output-format stream-json --verbose` with `--model`, `--permission-mode`, `--settings`, `--setting-sources user`, and `--session-id`, or `--resume`, or `--resume <dead> --fork-session`. It reads the stream for the session id, the final result and a rejected rate limit. The fake in [`acceptance/support/scripted-claude.ts`](../acceptance/support/scripted-claude.ts) refuses any other flag.
 
-- **`HOME`:** each station worker has its own, `workers/<name>/home/`, so it reads nothing of the owner's home. The harness keeps its transcripts there, with its own pruning turned off in the `--settings` JSON. Workers and tests read a transcript through `dim session show`, which reads the factory's copy. That a fresh `HOME` signs in with only `CLAUDE_CODE_OAUTH_TOKEN` in `-p` mode is checked against a real `claude` before this lands.
+- **`HOME`:** each station worker has its own, `workers/<name>/home/`, so it reads nothing of the owner's home. The harness keeps its transcripts there, with its own pruning turned off in the `--settings` JSON. Workers and tests read a transcript through `dim session show`, which prints the factory's copy as its `lines`, each as written. That a fresh `HOME` signs in with only `CLAUDE_CODE_OAUTH_TOKEN` in `-p` mode is checked against a real `claude` before this lands.
 - **Environment:** a listed set only: `HOME` (the worker's), `PATH`, `USER`, `LANG`, `TMPDIR` (the turn's), the three XDG variables, the turn socket, and the sign-in the harness needs (`CLAUDE_CODE_OAUTH_TOKEN` for Claude). No other key, token or agent socket of the owner's.
 - **Settings:** `--setting-sources user` leaves out the project's `.claude/settings.json`, so no hook from a workspace runs. The worker's own `HOME` holds no settings, so the factory's hooks, the sandbox and the permissions all come in the `--settings` JSON.
 - **Sandbox:** the sandbox is on, Bash is allowed only inside it, and it writes only where it is allowed to. The builder, in `acceptEdits`, may write its workspace, its turn's temp directory and the git paths listed under slice commits. The planner and reviewer, in `default`, may write only their turn's temp directory, so they change nothing. The record, the factory's code, its skills and every harness config lie outside what any worker may write, in every project, dim-factory included.
@@ -175,16 +175,3 @@ Each command prints one line of JSON. A refusal carries `code`, `message`, `meta
 ## The wall
 
 The wall reads the same fold through a read-only connection and shows each order's title, project, station and worker in its status column. The UI stays on [`src/wall/wall-contract.ts`](../src/wall/wall-contract.ts) until the owner asks for the wall to be adapted.
-
-## Changes this design makes to the acceptance harness
-
-- The harness sets the three XDG variables in place of `DIM_HOME`, writes `models.json` to the config directory in place of `routing.json`, sets `harness: claude` in the project's settings, and reads the record at `record/sessions.db`.
-- The probes that plant `$DIM_HOME/planted` name the record's directory, so they still test a real path. The probe on harness config and skills targets the worker's own `HOME`.
-- Tests read worker transcripts through `dim session show` instead of the owner's `~/.claude`.
-- `ship` has one value: the project-over-user test uses `harness`, and the settings-from-the-default-branch test has the builder write `{}`.
-- The random-kill test tolerates a second `ship_started`, since a killed ship that runs again starts again.
-- The fake builder's commit act runs `git add -A && git commit -m <subject>` in its sandboxed shell, then `dim slice submit`. The fake's sandbox takes allowed paths as well as denied ones, and no longer allows the whole shared git directory.
-- A slice with no subject is git's own refusal and records nothing.
-- The late-work test asserts that the late commit is not recorded and that the next run takes it off the branch.
-- A new test: a builder's `--amend` before submitting is refused `head_moved`, and the branch is back at the recorded head.
-- `order_updated` and `branch_rebased` join the vocabulary.

@@ -13,6 +13,7 @@ export type Invocation = {
   readonly model: string | null;
   readonly prompt: string;
   readonly cwd: string;
+  readonly home: string;
   readonly pid: number;
   readonly env: Readonly<Record<string, string>>;
   readonly history: readonly TranscriptEntry[];

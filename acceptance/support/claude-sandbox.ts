@@ -6,7 +6,7 @@ export type ClaudeSettings = {
   readonly sandbox?: {
     readonly enabled?: boolean;
     readonly autoAllowBashIfSandboxed?: boolean;
-    readonly filesystem?: { readonly denyWrite?: readonly string[] };
+    readonly filesystem?: { readonly allowWrite?: readonly string[]; readonly denyWrite?: readonly string[] };
   };
 };
 
@@ -64,7 +64,7 @@ export function sandboxed(
   command: string,
 ): string[] {
   if (!settings.sandbox?.enabled) return ["sh", "-c", command];
-  const writable = writableDirs.map(real);
+  const writable = [...writableDirs, ...(settings.sandbox.filesystem?.allowWrite ?? [])].map(real);
   const denied = (settings.sandbox.filesystem?.denyWrite ?? []).map(real);
   const profile = [
     "(version 1)",

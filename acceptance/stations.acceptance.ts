@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { briefFrom } from "./support/brief";
 import { refusal, resultOf } from "./support/dim-output";
 import type { HarnessScript, HarnessTurn } from "./support/harness-script";
-import { type Machine, type MachineOptions, machines } from "./support/machine";
+import { type Machine, type MachineOptions, machines, RECORD_PROBE } from "./support/machine";
 import {
   addOrder,
   approve,
@@ -33,6 +33,7 @@ import {
   ACTION,
   type Action,
   NEXT,
+  REFUSAL,
   STATION_NAMES,
   STATION_ROLES,
   STATIONS,
@@ -135,7 +136,7 @@ describe("what a station worker may change", () => {
           [
             { act: "write", path: "planted-by-write.txt", content: "x\n" },
             { act: "sh", command: "echo x > planted-by-shell.txt" },
-            { act: "sh", command: 'touch "$DIM_HOME/planted"' },
+            { act: "sh", command: `touch "${RECORD_PROBE}"` },
             ...planTurn(),
           ],
         ],
@@ -145,7 +146,7 @@ describe("what a station worker may change", () => {
 
     expect(existsSync(join(order.workspace, "planted-by-write.txt"))).toBe(false);
     expect(existsSync(join(order.workspace, "planted-by-shell.txt"))).toBe(false);
-    expect(existsSync(join(m.dimHome, "planted"))).toBe(false);
+    expect(existsSync(join(m.record, "planted"))).toBe(false);
     expect(actions(order).filter((action) => action === ACTION.planReturned)).toHaveLength(1);
   });
 
@@ -156,7 +157,7 @@ describe("what a station worker may change", () => {
         reviewer: [
           [
             { act: "write", path: "planted.txt", content: "x\n" },
-            { act: "sh", command: 'echo x > planted-by-shell.txt; touch "$DIM_HOME/planted"' },
+            { act: "sh", command: `echo x > planted-by-shell.txt; touch "${RECORD_PROBE}"` },
             ...reviewTurn(),
           ],
         ],
@@ -168,7 +169,7 @@ describe("what a station worker may change", () => {
     const order = await showOrder(m.operator, id);
     expect(existsSync(join(order.workspace, "planted.txt"))).toBe(false);
     expect(existsSync(join(order.workspace, "planted-by-shell.txt"))).toBe(false);
-    expect(existsSync(join(m.dimHome, "planted"))).toBe(false);
+    expect(existsSync(join(m.record, "planted"))).toBe(false);
   });
 });
 
@@ -252,6 +253,29 @@ describe("slice gates", () => {
     });
   }
 
+  test("a builder's amended commit is refused as a moved head and the branch is put back at the recorded head", async () => {
+    const m = await start({
+      script: {
+        planner: [planTurn()],
+        builder: [
+          [
+            ...sliceActs(1),
+            { act: "write", path: "slice-1.txt", content: "amended\n" },
+            { act: "sh", command: "git add -A && git commit -q --amend -m 'feat: amend slice 1'" },
+            { act: "dim", args: ["slice", "submit"] },
+          ],
+        ],
+      },
+    });
+    const id = await planned(m.operator);
+    expect(refusal(await approve(m.operator, id)).code).toBeString();
+
+    const order = await showOrder(m.operator, id);
+    expect(entryOf(order, ACTION.sliceRefused).code).toBe(REFUSAL.headMoved);
+    expect(m.git(["rev-parse", order.branch])).toBe(entryOf(order, ACTION.sliceCommitted).details.commit);
+    expect(m.commitsOn(order.branch)).toEqual(["feat: add slice 1"]);
+  });
+
   test("a refused slice's log entry carries the check's output", async () => {
     const m = await start({
       check: "echo RED-CHECK-OUTPUT; [ ! -e red.txt ]",
@@ -305,7 +329,7 @@ describe("definitions of done", () => {
     expect(order.slices).toHaveLength(0);
   });
 
-  test("a slice commit with no subject line records nothing and the builder's corrected commit is kept", async () => {
+  test("a slice commit with no subject line is refused by git, records nothing, and the builder's corrected commit is kept", async () => {
     const m = await start({
       script: {
         planner: [planTurn([{ title: "One", outcome: "One file." }])],
@@ -322,6 +346,8 @@ describe("definitions of done", () => {
     const order = await showOrder(m.operator, await built(m.operator));
 
     expect(m.commitsOn(order.branch)).toEqual(["feat: add one"]);
+    expect(actions(order).filter((action) => action === ACTION.sliceSubmitted)).toHaveLength(1);
+    expect(actions(order)).not.toContain(ACTION.sliceRefused);
     expect(order.next).toBe(NEXT.approve);
   });
 

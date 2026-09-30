@@ -1,6 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { DimResult } from "./dim-output";
+import { commandLine, type DimResult, quote } from "./dim-output";
 import { orderShown } from "./order-view";
 import { unreachable } from "./unreachable";
 
@@ -71,7 +71,18 @@ function findingId(dim: Dim, file: string, line: number): string {
   return found.id;
 }
 
-export function dimArgs(act: WorkerAct, dim: Dim, scratch: string): readonly string[] {
+export function workerCommand(act: WorkerAct, dim: Dim, scratch: string): string {
+  if (act.act === "commit") {
+    return `git add -A && git commit -q -m ${quote(act.subject)} && ${commandLine(["slice", "submit"])}`;
+  }
+  return commandLine(dimArgs(act, dim, scratch));
+}
+
+function dimArgs(
+  act: Exclude<WorkerAct, { readonly act: "commit" }>,
+  dim: Dim,
+  scratch: string,
+): readonly string[] {
   switch (act.act) {
     case "plan":
       return [
@@ -81,8 +92,6 @@ export function dimArgs(act: WorkerAct, dim: Dim, scratch: string): readonly str
       ];
     case "order-return":
       return ["order", "return", "--reason", act.reason];
-    case "commit":
-      return ["slice", "commit", "--subject", act.subject];
     case "answer":
       return ["finding", "answer", findingId(dim, act.file, act.line), act.answer, "--reason", act.reason];
     case "build-return":

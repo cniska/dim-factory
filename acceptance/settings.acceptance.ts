@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { refusal } from "./support/dim-output";
-import { type Machine, machines } from "./support/machine";
+import { machines, PROJECT_SETTINGS } from "./support/machine";
 import { approve, reviewed, showOrder } from "./support/operator-acts";
 import { actions, entryOf } from "./support/order-view";
 import { BUILD_ARTIFACT, happyPath, sliceActs } from "./support/scripts";
@@ -8,25 +8,24 @@ import { ACTION } from "./support/vocabulary";
 
 const start = machines();
 
-function projectSettings(m: Machine, settings: Readonly<Record<string, unknown>>): void {
-  m.ownerCommits(".dim/config.json", `${JSON.stringify(settings)}\n`);
-}
-
 describe("settings", () => {
   test("an order follows the project's setting over the user's", async () => {
     const m = await start({ script: happyPath() });
-    m.userSettings({ ship: "pull-request" });
+    m.userSettings({ harness: "codex" });
     const id = await reviewed(m.operator);
 
     await approve(m.operator, id);
 
-    expect((await showOrder(m.operator, id)).status).toBe("shipped");
-    expect(m.onMain("slice-1.txt")).toBe(true);
+    const order = await showOrder(m.operator, id);
+    expect(order.status).toBe("shipped");
+    for (const worker of order.workers) {
+      for (const session of worker.sessions) expect(session.harness).toBe("claude");
+    }
   });
 
   test("a project whose settings do not say how it ships is not shipped", async () => {
     const m = await start({ script: happyPath() });
-    projectSettings(m, {});
+    m.projectSettings({ harness: PROJECT_SETTINGS.harness });
     const id = await reviewed(m.operator);
     const main = m.git(["rev-parse", "main"]);
 
@@ -41,7 +40,7 @@ describe("settings", () => {
 
   test("a setting the factory does not know is refused", async () => {
     const m = await start({ script: happyPath() });
-    projectSettings(m, { ship: "default-branch", shipping: "default-branch" });
+    m.projectSettings({ ...PROJECT_SETTINGS, shipping: "default-branch" });
 
     const refused = await m.operator.dim([
       "order",
@@ -62,7 +61,7 @@ describe("settings", () => {
         ...happyPath(),
         builder: [
           [
-            { act: "write", path: ".dim/config.json", content: '{"ship":"pull-request"}\n' },
+            { act: "write", path: ".dim/config.json", content: "{}\n" },
             ...sliceActs(1),
             ...sliceActs(2),
             { act: "build-return", artifact: BUILD_ARTIFACT },
