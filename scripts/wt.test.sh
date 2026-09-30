@@ -117,23 +117,23 @@ commit_worker_hook(){
   chmod +x "$tree/scripts/worktree-teardown.sh"
   ( cd "$tree" && git add scripts/worktree-teardown.sh && git commit -qm worker-hook )
 }
-write_hook worktree-teardown.sh "pwd -P > $TMP/trunk-teardown-cwd"
+write_hook worktree-teardown.sh "pwd -P > $TMP/default-branch-teardown-cwd"
 run task-f > /dev/null
 commit_worker_hook task-f "printf ran > $TMP/worker-teardown-ran"
-trunk_torn=$(run rm task-f 2>&1)
-assert "teardown runs the trunk's hook inside the worktree" \
-  "$(cat "$TMP/trunk-teardown-cwd" 2>/dev/null)" "$REPO/.claude/worktrees/task-f"
+default_branch_torn=$(run rm task-f 2>&1)
+assert "teardown runs the default branch's hook inside the worktree" \
+  "$(cat "$TMP/default-branch-teardown-cwd" 2>/dev/null)" "$REPO/.claude/worktrees/task-f"
 assert "teardown ignores the worktree's hook" "$([ -e "$TMP/worker-teardown-ran" ] && echo yes || echo no)" no
-contains "the teardown report names the trunk's hook" "$trunk_torn" "\"argv\":[\"$REPO/scripts/worktree-teardown.sh\"]"
+contains "the teardown report names the default branch's hook" "$default_branch_torn" "\"argv\":[\"$REPO/scripts/worktree-teardown.sh\"]"
 
 rm -f "$TMP/worker-teardown-ran"
 ( cd "$REPO" && git rm -q scripts/worktree-teardown.sh && git commit -qm "no teardown" )
 run task-g > /dev/null
 commit_worker_hook task-g "printf ran > $TMP/worker-teardown-ran"
 untorn=$(run rm task-g 2>&1)
-assert "a worktree's hook does not run when the trunk has none" \
+assert "a worktree's hook does not run when the default branch has none" \
   "$([ -e "$TMP/worker-teardown-ran" ] && echo yes || echo no)" no
-assert "no trunk hook means no teardown" "$(grep -c "tearing down" <<< "$untorn")" 0
+assert "no default branch hook means no teardown" "$(grep -c "tearing down" <<< "$untorn")" 0
 write_hook worktree-teardown.sh 'exit 0'
 
 mkdir -p "$REPO/.claude/worktrees"

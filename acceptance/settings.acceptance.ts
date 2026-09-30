@@ -41,7 +41,7 @@ describe("settings", () => {
 
   test("a setting the factory does not know is refused", async () => {
     const m = await start({ script: happyPath() });
-    projectSettings(m, { ship: "trunk", shipping: "trunk" });
+    projectSettings(m, { ship: "default-branch", shipping: "default-branch" });
 
     const refused = await m.operator.dim([
       "order",

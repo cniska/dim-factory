@@ -244,13 +244,15 @@ describe("what is not a comment", () => {
 describe("a merge", () => {
   function conflicted(): string {
     const dir = repo({ "a.ts": "const a = 1;\n" });
-    const trunk = execFileSync("git", ["-C", dir, "branch", "--show-current"], { encoding: "utf8" }).trim();
+    const defaultBranch = execFileSync("git", ["-C", dir, "branch", "--show-current"], {
+      encoding: "utf8",
+    }).trim();
     git(dir, ["checkout", "-q", "-b", "side"]);
     stage(dir, { "a.ts": "// theirs\nconst a = 2;\n" });
     git(dir, ["commit", "-q", "-m", "feat: side"]);
-    git(dir, ["checkout", "-q", trunk]);
+    git(dir, ["checkout", "-q", defaultBranch]);
     stage(dir, { "a.ts": "const a = 3;\n" });
-    git(dir, ["commit", "-q", "-m", "feat: trunk"]);
+    git(dir, ["commit", "-q", "-m", "feat: default branch"]);
     expect(spawnSync("git", ["-C", dir, "merge", "-q", "side"], { stdio: "pipe" }).status).not.toBe(0);
     return dir;
   }
@@ -264,14 +266,16 @@ describe("a merge", () => {
   test("passes the other branch's comments in a file our branch renamed", () => {
     const body = "const a = 1;\nconst b = 2;\nconst c = 3;\nconst d = 4;\nconst e = 5;\n";
     const dir = repo({ "a.ts": body });
-    const trunk = execFileSync("git", ["-C", dir, "branch", "--show-current"], { encoding: "utf8" }).trim();
+    const defaultBranch = execFileSync("git", ["-C", dir, "branch", "--show-current"], {
+      encoding: "utf8",
+    }).trim();
     git(dir, ["checkout", "-q", "-b", "side"]);
     stage(dir, { "a.ts": `// theirs\n${body.replace("const a = 1;", "const a = 2;")}` });
     git(dir, ["commit", "-q", "-m", "feat: side"]);
-    git(dir, ["checkout", "-q", trunk]);
+    git(dir, ["checkout", "-q", defaultBranch]);
     git(dir, ["mv", "a.ts", "b.ts"]);
     stage(dir, { "b.ts": body.replace("const a = 1;", "const a = 3;") });
-    git(dir, ["commit", "-q", "-m", "feat: trunk"]);
+    git(dir, ["commit", "-q", "-m", "feat: default branch"]);
     expect(spawnSync("git", ["-C", dir, "merge", "-q", "side"], { stdio: "pipe" }).status).not.toBe(0);
     stage(dir, { "b.ts": `// theirs\n${body.replace("const a = 1;", "const a = 4;")}` });
     expect(stagedComments(dir).found).toEqual([]);
@@ -279,13 +283,15 @@ describe("a merge", () => {
 
   test("judges an octopus merge against every branch it brings in", () => {
     const dir = repo({ "base.ts": "const a = 1;\n" });
-    const trunk = execFileSync("git", ["-C", dir, "branch", "--show-current"], { encoding: "utf8" }).trim();
+    const defaultBranch = execFileSync("git", ["-C", dir, "branch", "--show-current"], {
+      encoding: "utf8",
+    }).trim();
     for (const branch of ["one", "two"]) {
-      git(dir, ["checkout", "-q", "-b", branch, trunk]);
+      git(dir, ["checkout", "-q", "-b", branch, defaultBranch]);
       stage(dir, { [`${branch}.ts`]: `// from ${branch}\nconst x = 1;\n` });
       git(dir, ["commit", "-q", "-m", `feat: ${branch}`]);
     }
-    git(dir, ["checkout", "-q", trunk]);
+    git(dir, ["checkout", "-q", defaultBranch]);
     git(dir, ["merge", "-q", "--no-commit", "one", "two"]);
     stage(dir, { "mine.ts": "// mine\n" });
     expect(stagedComments(dir).found).toEqual([{ path: "mine.ts", line: 1 }]);

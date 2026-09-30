@@ -29,7 +29,7 @@ Outside a factory order, record the commit SHA, changed files, check command and
 
 ## Resolve a rebase conflict
 
-Shipping rebases an order onto the moved default branch, and a conflict comes back to the builder with the worktree mid-rebase. Resolve only the listed files, so each carries both the order's change and the trunk's with no conflict markers, and change nothing else. Leave the resolution unstaged and run no git command that stages, continues, aborts or commits; the runner continues the rebase, re-checks it and sends the order back to review. A later commit that conflicts comes back in the same turn. The turn's subject is not used, since the rebase keeps each commit's own message, and its `tests` is `[]`.
+Shipping rebases an order onto the moved default branch, and a conflict comes back to the builder with the worktree mid-rebase. Resolve only the listed files, so each carries both the order's change and the default branch's with no conflict markers, and change nothing else. Leave the resolution unstaged and run no git command that stages, continues, aborts or commits; the runner continues the rebase, re-checks it and sends the order back to review. A later commit that conflicts comes back in the same turn. The turn's subject is not used, since the rebase keeps each commit's own message, and its `tests` is `[]`.
 
 ## Land work
 
