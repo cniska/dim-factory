@@ -20,6 +20,7 @@ import {
   startRun,
 } from "./order-ops";
 import { type Env, workerHomeDir, workerSessionsDir } from "./paths";
+import { shipOrder } from "./ship-ops";
 import { alignBranch, branchFacts, submitSlice } from "./slice-ops";
 import {
   actAllowed,
@@ -275,7 +276,19 @@ export async function advanceOrder(
   try {
     if (created) createWorkspace(setup.root, before.project, order, base);
     const { phase } = state;
-    invariant(phase.kind === "run", `order ${order} runs a station after ${act.kind}; shipping is not built`);
+    if (phase.kind === "ship") {
+      await shipOrder(db, {
+        order,
+        project: before.project,
+        checkout: setup.root,
+        defaultBranch: setup.branch,
+        config: setup.config,
+        cause,
+        env,
+      });
+      return;
+    }
+    invariant(phase.kind === "run", `order ${order} runs a station or ships after ${act.kind}`);
     invariant(prepared !== null, `order ${order} was prepared for the ${phase.station} station`);
     await turnAt(db, {
       order,

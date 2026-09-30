@@ -55,6 +55,7 @@ export type OrderState = {
   readonly findings: readonly FindingState[];
   readonly returned: Returned | null;
   readonly buildArtifact: string | null;
+  readonly conflict: readonly string[] | null;
   readonly lastSeq: number;
 };
 
@@ -178,6 +179,7 @@ function apply(state: OrderState, entry: Later): OrderState {
         ...state,
         commits: [...state.commits, entry.details.commit],
         head: entry.details.commit,
+        conflict: null,
       };
     case "finding_answered":
       return {
@@ -206,9 +208,17 @@ function apply(state: OrderState, entry: Later): OrderState {
     case "branch_rebased":
       return { ...state, head: entry.details.head };
     case "ship_stopped":
-      return entry.code === "ship_conflict" || entry.code === "ship_check_failed"
-        ? { ...state, phase: run("build") }
-        : { ...state, phase: { kind: "ship" } };
+      switch (entry.code) {
+        case "ship_conflict":
+          return { ...state, phase: run("build"), conflict: entry.details.paths };
+        case "ship_check_failed":
+          return { ...state, phase: run("build") };
+        case "ship_unset":
+        case "checkout_dirty":
+          return { ...state, phase: { kind: "ship" } };
+        default:
+          return unreachable(entry);
+      }
     case "ship_landed":
       return {
         ...state,
@@ -297,6 +307,7 @@ export function fold(id: string, added: AddedEntry, later: readonly LaterEntry[]
     findings: [],
     returned: null,
     buildArtifact: null,
+    conflict: null,
     lastSeq: added.seq,
   };
   return later.reduce((state, entry) => ({ ...apply(state, entry), lastSeq: entry.seq }), start);

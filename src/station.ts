@@ -104,7 +104,7 @@ export function briefAt(station: Station, { state, workspace, diff }: BriefFacts
           fix,
           severity,
         })),
-        conflict: null,
+        conflict: state.conflict,
       });
     case "review":
       return JSON.stringify({

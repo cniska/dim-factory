@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { commandLine, refusal, resultOf } from "./support/dim-output";
 import { type HarnessTurn, ORDER_PLACEHOLDER } from "./support/harness-script";
@@ -365,10 +365,14 @@ describe("shipping", () => {
     const m = await start({ script: happyPath() });
     const id = await reviewed(m.operator);
     const { workspace, branch } = await showOrder(m.operator, id);
-    m.git(["worktree", "lock", workspace, "--reason", "the owner is reading it"]);
+    const held = join(workspace, "held-by-the-owner");
+    mkdirSync(held);
+    writeFileSync(join(held, "notes.txt"), "the owner is reading it\n");
+    chmodSync(held, 0o555);
 
     await approve(m.operator, id);
 
+    chmodSync(held, 0o755);
     const order = await showOrder(m.operator, id);
     expect(order.status).toBe("shipped");
     expect(existsSync(workspace)).toBe(true);

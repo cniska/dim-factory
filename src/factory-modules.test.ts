@@ -5,7 +5,7 @@ import { Glob } from "bun";
 
 const SRC = import.meta.dir;
 
-const FACTORY_MODULES = ["order", "worker", "station", "harness", "workspace", "check", "slice"];
+const FACTORY_MODULES = ["order", "worker", "station", "harness", "workspace", "check", "slice", "ship"];
 
 const COMMAND_IMPORTS = /^\.\/([a-z-]+-(ops|contract)|cli-[a-z-]+|db|factory-db)$/;
 
