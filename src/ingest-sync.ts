@@ -26,8 +26,6 @@ export type SyncReport = {
   walk: WalkReport;
 };
 
-export type RebuildReport = SyncReport & { retired: string[] };
-
 export function sync(db: Database, env: Env = process.env): SyncReport {
   const ingester = createIngester(db);
   const sessionExists = db.prepare<{ one: number }, [string]>("SELECT 1 AS one FROM session WHERE id = ?");
@@ -110,27 +108,8 @@ type HookEvent = {
   payload: string;
 };
 
-function dropRetiredTables(db: Database): string[] {
-  const named = (pattern: RegExp): string[] =>
-    [...SCHEMA_SQL.matchAll(pattern)].map((match) => match[1] as string);
-  const defined = new Set(named(/CREATE (?:VIRTUAL )?TABLE IF NOT EXISTS (\w+)/g));
-  const virtual = named(/CREATE VIRTUAL TABLE IF NOT EXISTS (\w+)/g);
-  const retired = db
-    .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table'")
-    .all()
-    .map((row) => row.name)
-    .filter((name) => !defined.has(name) && !name.startsWith("sqlite_"))
-    .filter((name) => !virtual.some((table) => name.startsWith(`${table}_`)));
-  db.run("PRAGMA defer_foreign_keys = ON");
-  for (const name of retired) db.run(`DROP TABLE IF EXISTS ${name}`);
-  db.run("PRAGMA defer_foreign_keys = OFF");
-  return retired;
-}
-
-export function rebuild(db: Database, env: Env = process.env): RebuildReport {
-  let retired: string[] = [];
+export function rebuild(db: Database, env: Env = process.env): SyncReport {
   writeTransaction(db, () => {
-    retired = dropRetiredTables(db);
     const hasHarnessPid = db
       .query<{ name: string }, []>("PRAGMA table_info(hook_event)")
       .all()
@@ -191,6 +170,6 @@ export function rebuild(db: Database, env: Env = process.env): RebuildReport {
     }
   });
   const report = sync(db, env);
-  db.run("UPDATE schema_version SET version = ?", [SCHEMA_VERSION]);
-  return { ...report, retired };
+  db.run(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+  return report;
 }

@@ -87,8 +87,8 @@ describe("the diagnostic trace", () => {
     const env = scratch();
     mkdirSync(dirname(dbPath(env)), { recursive: true });
     const db = new Database(dbPath(env), { create: true });
-    db.run("CREATE TABLE schema_version (version INTEGER NOT NULL)");
-    db.run("INSERT INTO schema_version (version) VALUES (?)", [SCHEMA_VERSION]);
+    db.run("CREATE TABLE note (body TEXT)");
+    db.run(`PRAGMA user_version = ${SCHEMA_VERSION}`);
     db.close();
 
     trace({ event: "query.completed", command: "query", name: "thread" }, env);
@@ -100,7 +100,7 @@ describe("the diagnostic trace", () => {
     const path = dbPath(env);
     closeDb(openDb(path));
     const writer = new Database(path);
-    writer.run("INSERT INTO schema_version (version) VALUES (0)");
+    writer.run("INSERT INTO trace_event (ts, event, fields) VALUES ('2026-01-01T00:00:00Z', 'held', '{}')");
     const files = [path, `${path}-wal`, `${path}-shm`];
     for (const file of files) chmodSync(file, 0o444);
     try {

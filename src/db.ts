@@ -1,31 +1,38 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { invariant } from "./assert";
+import { CodedError } from "./coded-error";
 import { SCHEMA_SQL, SCHEMA_VERSION } from "./db-schema";
 
-export class SchemaTooOldError extends Error {
-  readonly code = "SCHEMA_TOO_OLD";
-  constructor(readonly found: number) {
+export type RecordVersionMeta = { readonly found: number; readonly expected: number };
+
+export class RecordVersionError extends CodedError<"record_version", RecordVersionMeta> {
+  constructor(found: number) {
     super(
-      `database was built by schema version ${found}, this is version ${SCHEMA_VERSION}; run \`dim rebuild\``,
+      "record_version",
+      `the record is schema version ${found} and this dim reads version ${SCHEMA_VERSION}; run \`dim rebuild\``,
+      { found, expected: SCHEMA_VERSION },
     );
   }
 }
 
-export function storedSchemaVersion(db: Database): number | null {
-  const hasVersionTable = db
-    .query<{ present: number }, []>(
-      "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'schema_version'",
-    )
-    .get();
-  if (!hasVersionTable) return null;
+export function recordVersion(db: Database): number {
+  const row = db.query<{ user_version: number }, []>("PRAGMA user_version").get();
+  invariant(row !== null, "PRAGMA user_version returns one row");
+  return row.user_version;
+}
+
+function isFresh(db: Database): boolean {
   return (
-    db.prepare<{ version: number }, []>("SELECT version FROM schema_version LIMIT 1").get()?.version ?? null
+    recordVersion(db) === 0 &&
+    db.query<{ n: number }, []>("SELECT count(*) AS n FROM sqlite_master").get()?.n === 0
   );
 }
 
-export function refuseOtherSchema(found: number | null): void {
-  if (found !== null && found !== SCHEMA_VERSION) throw new SchemaTooOldError(found);
+export function refuseOtherVersion(db: Database): void {
+  const found = recordVersion(db);
+  if (found !== SCHEMA_VERSION) throw new RecordVersionError(found);
 }
 
 const CONCURRENT_WRITER_WAIT_MS = 5000;
@@ -33,32 +40,25 @@ const CONCURRENT_WRITER_WAIT_MS = 5000;
 export function openDb(path: string, opts: { forRebuild?: boolean; busyTimeoutMs?: number } = {}): Database {
   mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path, { create: true });
-  let transactionOpen = false;
   try {
     db.run(`PRAGMA busy_timeout = ${opts.busyTimeoutMs ?? CONCURRENT_WRITER_WAIT_MS}`);
-    const found = storedSchemaVersion(db);
-    if (!opts.forRebuild) refuseOtherSchema(found);
+    const fresh = isFresh(db);
+    if (!fresh && !opts.forRebuild) refuseOtherVersion(db);
     db.run("PRAGMA journal_mode = WAL");
     db.run("PRAGMA foreign_keys = ON");
-    if (found === null) {
-      db.run("BEGIN IMMEDIATE");
-      transactionOpen = true;
+    if (fresh) {
+      writeTransaction(db, () => {
+        if (!isFresh(db)) return;
+        db.run(SCHEMA_SQL);
+        db.run(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+      });
     }
-    if (found === null || !opts.forRebuild) db.run(SCHEMA_SQL);
-    if (found === null) {
-      const initialized = storedSchemaVersion(db);
-      if (initialized === null) db.run("INSERT INTO schema_version (version) VALUES (?)", [SCHEMA_VERSION]);
-      else if (!opts.forRebuild) refuseOtherSchema(initialized);
-      db.run("COMMIT");
-      transactionOpen = false;
-    }
+    if (opts.forRebuild) return db;
+    refuseOtherVersion(db);
+    db.run(SCHEMA_SQL);
     return db;
   } catch (error) {
-    try {
-      if (transactionOpen) db.run("ROLLBACK");
-    } finally {
-      db.close();
-    }
+    db.close();
     throw error;
   }
 }

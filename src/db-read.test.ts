@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { closeDb, openDb, SchemaTooOldError } from "./db";
+import { closeDb, openDb, RecordVersionError } from "./db";
 import { NoDatabaseError, openReadOnly } from "./db-read";
 import { SCHEMA_VERSION } from "./db-schema";
 import { dbPath } from "./paths";
@@ -18,6 +18,7 @@ function writtenDatabase(): string {
   db.run("PRAGMA journal_mode = WAL");
   db.run("CREATE TABLE note (body TEXT)");
   db.run("INSERT INTO note VALUES ('kept')");
+  db.run(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   db.close();
   return path;
 }
@@ -56,8 +57,8 @@ describe("opening the database to read", () => {
 });
 
 const WRITES = [
-  "INSERT INTO schema_version (version) VALUES (0)",
-  "UPDATE schema_version SET version = 0",
+  "INSERT INTO repo_commit (sha, repo, label, ts, subject) VALUES ('def456', '/repo', 'x', '2026-01-01T00:00:00Z', 'x')",
+  "UPDATE repo_commit SET subject = 'changed'",
   "DELETE FROM repo_commit",
   "CREATE TABLE note (body TEXT)",
   "DROP TABLE hook_event",
@@ -156,7 +157,7 @@ describe("each reader of the record", () => {
 
 function stampSchemaVersion(path: string, version: number): void {
   const db = new Database(path);
-  db.run("UPDATE schema_version SET version = ?", [version]);
+  db.run(`PRAGMA user_version = ${version}`);
   db.run("PRAGMA wal_checkpoint(TRUNCATE)");
   db.close();
 }
@@ -184,10 +185,10 @@ describe("a reader of a record built by another schema version", () => {
         };
         for (const [reader, run] of Object.entries(readers)) {
           const error = await asDataHome(home, () => refusal(run));
-          expect({ reader, error }).toEqual({ reader, error: expect.any(SchemaTooOldError) });
-          expect({ reader, code: (error as SchemaTooOldError).code }).toEqual({
+          expect({ reader, error }).toEqual({ reader, error: expect.any(RecordVersionError) });
+          expect({ reader, code: (error as RecordVersionError).code }).toEqual({
             reader,
-            code: "SCHEMA_TOO_OLD",
+            code: "record_version",
           });
         }
         expect(fingerprint(path)).toBe(before);

@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
-import { refuseOtherSchema, storedSchemaVersion } from "./db";
+import { refuseOtherVersion } from "./db";
 
 export class NoDatabaseError extends Error {
   readonly code = "NO_DATABASE";
@@ -14,7 +14,7 @@ export function openReadOnly(path: string, options: { forDiagnosis?: boolean } =
   const db = new Database(path, { readwrite: true, create: false });
   try {
     db.run("PRAGMA query_only = ON");
-    if (!options.forDiagnosis) refuseOtherSchema(storedSchemaVersion(db));
+    if (!options.forDiagnosis) refuseOtherVersion(db);
   } catch (error) {
     db.close();
     throw error;

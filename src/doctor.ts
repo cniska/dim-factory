@@ -5,6 +5,7 @@ import { CodedError } from "./coded-error";
 import { PROJECT_CONFIG, projectConfigPath, userConfigPath } from "./config";
 import { ConfigError } from "./config-error";
 import { readJsonc } from "./config-jsonc-file";
+import { recordVersion } from "./db";
 import { SCHEMA_VERSION } from "./db-schema";
 import { type CommentGate, commentGateFor } from "./gate-comment";
 import { GATE_ERROR } from "./gate-contract";
@@ -277,7 +278,7 @@ function dimOnPath(): Health {
 }
 
 function schema(db: Database): Health {
-  const version = scalar(db, "SELECT version AS n FROM schema_version LIMIT 1");
+  const version = recordVersion(db);
   return version === SCHEMA_VERSION
     ? { name: "schema", state: "ok", detail: `version ${version}` }
     : {

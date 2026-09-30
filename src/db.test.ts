@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as db from "./db";
 import { closeDb, openDb } from "./db";
+import { SCHEMA_VERSION } from "./db-schema";
 import { dbPath } from "./paths";
 import { trace } from "./trace";
 
@@ -78,7 +79,7 @@ function committed(path: string): string[] {
 }
 
 describe("concurrent writers", () => {
-  test("two first opens create one version row", async () => {
+  test("two first opens both succeed and stamp the version", async () => {
     const path = scratchPath();
     const empty = new Database(path, { create: true });
     empty.run("PRAGMA journal_mode = WAL");
@@ -92,7 +93,7 @@ describe("concurrent writers", () => {
     expect(await exited(first)).toEqual({ code: 0, stderr: "" });
     expect(await exited(second)).toEqual({ code: 0, stderr: "" });
     const initialized = new Database(path, { readonly: true });
-    expect(initialized.query("SELECT count(*) AS n FROM schema_version").get()).toEqual({ n: 1 });
+    expect(initialized.query("PRAGMA user_version").get()).toEqual({ user_version: SCHEMA_VERSION });
     initialized.close();
   });
 
@@ -110,16 +111,15 @@ describe("concurrent writers", () => {
       holder.close();
     }
     const reopened = openDb(path);
-    expect(reopened.query("SELECT count(*) AS n FROM schema_version").get()).toEqual({ n: 1 });
+    expect(reopened.query("PRAGMA user_version").get()).toEqual({ user_version: SCHEMA_VERSION });
     closeDb(reopened);
   });
 
   test("a writer opening while another holds the write lock waits for it and both commit", async () => {
     const path = scratchPath();
-    const setup = new Database(path, { create: true });
-    setup.run("PRAGMA journal_mode = WAL");
+    const setup = openDb(path);
     setup.run("CREATE TABLE probe (who TEXT NOT NULL)");
-    setup.close();
+    closeDb(setup);
 
     const holder = spawnWriter("hold", path, "holder");
     await holder.expectLine("held");
@@ -223,20 +223,25 @@ describe("the lock wait a connection is opened with", () => {
   });
 });
 
-test("opening an older schema leaves its tables unchanged", () => {
-  const path = scratchPath();
-  const old = new Database(path, { create: true });
-  old.run("CREATE TABLE schema_version (version INTEGER NOT NULL)");
-  old.run("INSERT INTO schema_version (version) VALUES (1)");
-  old.run("CREATE TABLE legacy (value TEXT)");
-  old.close();
+describe("a record of another version", () => {
+  for (const found of [0, 1, SCHEMA_VERSION + 1]) {
+    test(`is refused at version ${found} and left unchanged`, () => {
+      const path = scratchPath();
+      const old = new Database(path, { create: true });
+      old.run("CREATE TABLE legacy (value TEXT)");
+      old.run(`PRAGMA user_version = ${found}`);
+      old.close();
 
-  expect(() => openDb(path)).toThrow(expect.objectContaining({ code: "SCHEMA_TOO_OLD", found: 1 }));
+      expect(() => openDb(path)).toThrow(
+        expect.objectContaining({ code: "record_version", meta: { found, expected: SCHEMA_VERSION } }),
+      );
 
-  const after = new Database(path, { readonly: true });
-  expect(after.query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all()).toEqual([
-    { name: "legacy" },
-    { name: "schema_version" },
-  ]);
-  after.close();
+      const after = new Database(path, { readonly: true });
+      expect(after.query("SELECT name FROM sqlite_master WHERE type = 'table'").all()).toEqual([
+        { name: "legacy" },
+      ]);
+      expect(after.query("PRAGMA user_version").get()).toEqual({ user_version: found });
+      after.close();
+    });
+  }
 });

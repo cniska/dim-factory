@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openDb } from "./db";
+import { openDb, recordVersion } from "./db";
 import { SCHEMA_VERSION } from "./db-schema";
 import { rebuild } from "./ingest-sync";
 import { dbPath } from "./paths";
@@ -78,7 +78,7 @@ describe("absorbing a schema change", () => {
     db.run("DROP INDEX tool_call_file");
     db.run("ALTER TABLE tool_call DROP COLUMN file_path");
     db.run("DROP TABLE guidance_walk");
-    db.run("UPDATE schema_version SET version = ?", [SCHEMA_VERSION - 1]);
+    db.run(`PRAGMA user_version = ${SCHEMA_VERSION - 1}`);
     db.close();
 
     const reopened = openDb(dbPath(env), { forRebuild: true });
@@ -86,7 +86,7 @@ describe("absorbing a schema change", () => {
 
     expect(columnsOf(reopened, "tool_call")).toContain("file_path");
     expect(tablesOf(reopened)).toContain("guidance_walk");
-    expect(reopened.query("SELECT version FROM schema_version").get()).toEqual({ version: SCHEMA_VERSION });
+    expect(recordVersion(reopened)).toBe(SCHEMA_VERSION);
     reopened.close();
   });
 
@@ -102,17 +102,15 @@ describe("absorbing a schema change", () => {
 
   test("a rebuild that throws leaves the old version stamped", () => {
     const { db, env } = scratch();
-    db.run("UPDATE schema_version SET version = 1");
+    db.run("PRAGMA user_version = 1");
     const blocked = join(env.HOME, "not-a-directory");
     writeFileSync(blocked, "");
 
     expect(() => rebuild(db, { HOME: blocked, XDG_DATA_HOME: blocked })).toThrow();
-    expect(db.query("SELECT version FROM schema_version").get()).toEqual({ version: 1 });
+    expect(recordVersion(db)).toBe(1);
 
     rebuild(db, env);
-    expect(db.query("SELECT version FROM schema_version").get()).toEqual({
-      version: SCHEMA_VERSION,
-    });
+    expect(recordVersion(db)).toBe(SCHEMA_VERSION);
     db.close();
   });
 });
@@ -172,23 +170,22 @@ describe("rebuilding a database an older schema wrote", () => {
     db.close();
   });
 
-  test("a table the schema has stopped defining is gone, and the search index is not", () => {
+  test("a table the schema does not define survives a rebuild with its shape and rows", () => {
     const { db, env } = scratch();
-    db.run("CREATE TABLE queue_item (queue_id TEXT, id TEXT, PRIMARY KEY (queue_id, id))");
-    db.run(
-      `CREATE TABLE queue_item_transition (
-         queue_id TEXT NOT NULL, item_id TEXT NOT NULL,
-         FOREIGN KEY (queue_id, item_id) REFERENCES queue_item(queue_id, id) ON DELETE CASCADE)`,
-    );
-    db.run("INSERT INTO queue_item (queue_id, id) VALUES ('build-order', 'item-1')");
-    db.run("INSERT INTO queue_item_transition (queue_id, item_id) VALUES ('build-order', 'item-1')");
+    db.run("CREATE TABLE order_log (order_id TEXT, seq INTEGER, action TEXT, PRIMARY KEY (order_id, seq))");
+    db.run("INSERT INTO order_log VALUES ('k7m2qx4d', 1, 'order_added'), ('k7m2qx4d', 2, 'order_run')");
+    const shape = () =>
+      db.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'order_log'").get();
+    const before = shape();
 
     rebuild(db, env);
 
-    expect(tablesOf(db)).not.toContain("queue_item");
-    expect(tablesOf(db)).not.toContain("queue_item_transition");
+    expect(shape()).toEqual(before);
+    expect(db.query("SELECT order_id, seq, action FROM order_log ORDER BY seq").all()).toEqual([
+      { order_id: "k7m2qx4d", seq: 1, action: "order_added" },
+      { order_id: "k7m2qx4d", seq: 2, action: "order_run" },
+    ]);
     expect(tablesOf(db)).toContain("message_fts");
-    expect(tablesOf(db)).toContain("message_fts_data");
     db.close();
   });
 });
@@ -197,7 +194,7 @@ describe("opening a database an older schema wrote", () => {
   function stampedOld(): string {
     const path = join(mkdtempSync(join(tmpdir(), "dim-rebuild-")), "sessions.db");
     const db = openDb(path);
-    db.run("UPDATE schema_version SET version = 1");
+    db.run("PRAGMA user_version = 1");
     db.close();
     return path;
   }
@@ -205,13 +202,13 @@ describe("opening a database an older schema wrote", () => {
   test("opening for a rebuild leaves the old version in place", () => {
     const db = openDb(stampedOld(), { forRebuild: true });
 
-    expect(db.query("SELECT version FROM schema_version").get()).toEqual({ version: 1 });
+    expect(recordVersion(db)).toBe(1);
     db.close();
   });
 
   test("opening for anything else refuses it", () => {
     const path = stampedOld();
 
-    expect(() => openDb(path)).toThrow(/schema version 1/);
+    expect(() => openDb(path)).toThrow(expect.objectContaining({ code: "record_version" }));
   });
 });

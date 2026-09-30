@@ -1,12 +1,8 @@
 import { TOOLS_SQL } from "./ingest-tools";
 
-export const SCHEMA_VERSION = 88;
+export const SCHEMA_VERSION = 89;
 
 export const SCHEMA_SQL = `
--- Not dropped by \`rebuild\`, which writes this row itself once the re-read has
--- returned; a drop would take the version with it.
-CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
-
 -- One row per source file on disk. The cursor is keyed by session, not by path:
 -- Codex moves rollouts into archived_sessions/, and re-reading a moved file from
 -- byte zero would append its assistant text a second time.

@@ -64,7 +64,7 @@ describe("doctor", () => {
   test("diagnoses a record built by another schema version rather than refusing it", () => {
     const env = seeded();
     const db = openDb(dbPath(env));
-    db.run("UPDATE schema_version SET version = ?", [SCHEMA_VERSION - 1]);
+    db.run(`PRAGMA user_version = ${SCHEMA_VERSION - 1}`);
     closeDb(db);
     const dataHome = process.env.XDG_DATA_HOME;
     process.env.XDG_DATA_HOME = env.XDG_DATA_HOME;
