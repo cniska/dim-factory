@@ -8,6 +8,13 @@ export type GitReport = { repos: number; commits: number; files: number };
 
 const OVERLAP_DAYS = 7;
 
+export function recordedRepos(db: Database): readonly string[] {
+  return db
+    .prepare<{ repo: string }, []>("SELECT DISTINCT repo FROM repo_commit ORDER BY repo")
+    .all()
+    .map((row) => row.repo);
+}
+
 export function ingestCommits(db: Database): GitReport {
   const cwds = db
     .prepare<{ cwd: string }, []>("SELECT DISTINCT cwd FROM session WHERE cwd IS NOT NULL")

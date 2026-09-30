@@ -16,6 +16,7 @@ import { isHostQualified } from "./git-remote-slug";
 import { harnessInstalled, installedHarnesses } from "./harness-installed";
 import { type HookPlan, hookGaps, outdatedLabel } from "./hooks";
 import { codexConfigPath, planCodexTrust, type TrustState } from "./hooks-codex-trust";
+import { recordedRepos } from "./ingest-git";
 import { AGENT_LABEL, planAgent } from "./ingest-launchd";
 import { TOOLS } from "./ingest-tools";
 import { type Env, resolveHomeDir, spoolDir, tildePath } from "./paths";
@@ -401,13 +402,7 @@ function ownersHealth(owners: readonly string[]): Health[] {
 }
 
 function pushGate(db: Database, env: Env): Health {
-  const unarmed = unarmedCheckouts(
-    db
-      .query<{ repo: string }, []>("SELECT DISTINCT repo FROM repo_commit ORDER BY repo")
-      .all()
-      .map((r) => r.repo)
-      .filter((repo) => existsSync(join(repo, ".git"))),
-  );
+  const unarmed = unarmedCheckouts(recordedRepos(db).filter((repo) => existsSync(join(repo, ".git"))));
   return unarmed.length === 0
     ? { name: "push gate", state: "ok", detail: "every checkout names the branch the gate protects" }
     : {

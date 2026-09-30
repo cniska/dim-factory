@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { writeTransaction } from "./db";
+import { recordedRepos } from "./ingest-git";
 import { type Env, resolveHomeDir } from "./paths";
 
 const NAMES = ["AGENTS.md", "CLAUDE.md"];
@@ -37,11 +38,7 @@ export function versionsFromGit(repo: string, name: string): { sha: string; ts: 
 }
 
 export function ingestGuidance(db: Database, env: Env = process.env): GuidanceReport {
-  const repos = db
-    .prepare<{ repo: string }, []>("SELECT DISTINCT repo FROM repo_commit")
-    .all()
-    .map((r) => r.repo)
-    .filter((repo) => existsSync(repo));
+  const repos = recordedRepos(db).filter((repo) => existsSync(repo));
 
   const now = new Date().toISOString();
   const upsert = db.prepare(
