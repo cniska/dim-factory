@@ -105,8 +105,17 @@ describe("the check task", () => {
     expect(checkTask(repo({}))).toBeNull();
   });
 
-  test("survives a manifest that does not parse", () => {
-    expect(checkTask(repo({ "package.json": "{ not json", "bun.lock": "" }))).toBeNull();
+  test("names a manifest that does not parse, rather than reading it as a repo that declares nothing", () => {
+    const root = repo({ "package.json": "{ not json", "bun.lock": "" });
+    expect(() => checkTask(root)).toThrow(
+      expect.objectContaining({
+        code: "manifest_unparseable",
+        meta: expect.objectContaining({ file: "package.json" }),
+      }),
+    );
+    expect(() => checkTask(repo({ "mise.toml": "[tasks\nverify" }))).toThrow(
+      expect.objectContaining({ code: "manifest_unparseable" }),
+    );
   });
 
   test("names a manifest it cannot read, rather than reading it as a repo that declares nothing", () => {

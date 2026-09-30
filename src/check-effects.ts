@@ -7,7 +7,7 @@ import type { Env } from "./paths";
 
 export type CheckEvidence = Extract<Evidence, { readonly kind: "check" }>;
 
-export function runCheck(tree: string, commandLine: string, owner: Env = process.env): CheckEvidence {
+export function runCheck(tree: string, commandLine: string, owner: Env): CheckEvidence {
   const tmp = realpathSync(mkdtempSync(join(tmpdir(), "dim-check-")));
   try {
     const profile = sandboxProfile([realpathSync(tree), tmp]);

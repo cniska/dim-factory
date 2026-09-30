@@ -1,13 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import {
   admitOperator,
-  admitWork,
   fold,
   nextOf,
   type OperatorAct,
   type OrderState,
+  operatorEntry,
   orderIdOf,
+  phaseAfter,
   stationOf,
+  workRefusal,
 } from "./order";
 import { type Actor, type Later, type LaterEntry, OrderId, type RunKind } from "./order-contract";
 import type { Acting } from "./worker-contract";
@@ -135,13 +137,21 @@ describe("an order's state, folded from its log", () => {
       action: "artifact_returned",
       details: { station: "plan", reason: "name the file", decidedBy: "owner" },
     });
-    expect(returnedArtifact.returned).toEqual({ from: "owner", reason: "name the file" });
+    expect(returnedArtifact.returned).toEqual({
+      kind: "decision",
+      decidedBy: "owner",
+      reason: "name the file",
+    });
     expect(state(...planned, approve("plan")).returned).toBeNull();
     const fromBuild = state(...planned, approve("plan"), {
       action: "order_returned",
       details: { station: "build", reason: "the second slice contradicts the first" },
     });
-    expect(fromBuild.returned).toEqual({ from: "build", reason: "the second slice contradicts the first" });
+    expect(fromBuild.returned).toEqual({
+      kind: "worker",
+      station: "build",
+      reason: "the second slice contradicts the first",
+    });
     expect(state(...planned, approve("plan"), fromBuildEntry, PLAN).returned).toBeNull();
     const updated = state(
       RUN,
@@ -257,21 +267,19 @@ describe("an order id", () => {
 describe("which act an order admits", () => {
   const refusedCode = (
     order: OrderState,
-    act: OperatorAct,
+    act: { readonly kind: OperatorAct["kind"] },
     by: Acting | null = OPERATOR,
     live: RunKind | null = null,
   ) => {
-    const admission = admitOperator(order, by, act, live);
+    const admission = admitOperator(order, by, act.kind, live);
     return admission.kind === "refused" ? admission.refusal.code : null;
   };
 
-  const workRefused = (order: OrderState, by: Acting) => {
-    const admission = admitWork(order, by, "plan");
-    return admission.kind === "refused" ? admission.refusal.code : null;
-  };
+  const workRefused = (order: OrderState, acting: Acting) =>
+    workRefusal(order, "plan", { kind: "worker", acting })?.code ?? null;
 
   test("refuses an act that is not the next step, naming the next step", () => {
-    const admission = admitOperator(state(), OPERATOR, { kind: "approve" }, null);
+    const admission = admitOperator(state(), OPERATOR, "approve", null);
     expect(admission.kind === "refused" && admission.refusal.meta).toEqual({
       order: "k7m2qx4d",
       next: "run",
@@ -285,7 +293,7 @@ describe("which act an order admits", () => {
     const elsewhere: Acting = { ...OPERATOR, worker: { ...OPERATOR.worker, project: "acme/gadgets" } };
     expect(refusedCode(state(), { kind: "run" }, elsewhere)).toBe("not_operator");
     expect(refusedCode(state(), { kind: "run" }, null)).toBe("not_operator");
-    expect(admitOperator(state(), OPERATOR, { kind: "run" }, null)).toEqual({
+    expect(admitOperator(state(), OPERATOR, "run", null)).toEqual({
       kind: "admitted",
       by: OPERATOR,
     });
@@ -327,6 +335,26 @@ describe("which act an order admits", () => {
     expect(workRefused(state(...planned), planner)).toBe("not_next_step");
     const cancelled = state(RUN, BASE, { action: "order_cancelled", details: { reason: "x" } });
     expect(workRefused(cancelled, planner)).toBe("not_next_step");
+    expect(workRefusal(running, "plan", { kind: "factory", cause: 2 })).toBeNull();
+    expect(workRefusal(cancelled, "plan", { kind: "factory", cause: 2 })?.code).toBe("not_next_step");
+  });
+
+  test("builds what an admitted act records, and refuses a decision or cancel without a reason", () => {
+    const decision = { reason: "it does", decidedBy: "owner" } as const;
+    expect(operatorEntry(state(...planned), { kind: "approve", decision })).toEqual({
+      action: "artifact_approved",
+      details: { station: "plan", reason: "it does", decidedBy: "owner" },
+    });
+    const noReason = { reason: " ", decidedBy: "owner" } as const;
+    expect(() => operatorEntry(state(...planned), { kind: "return", decision: noReason })).toThrow(
+      "no reason",
+    );
+    expect(() => operatorEntry(state(), { kind: "cancel", reason: "" })).toThrow("no reason");
+    expect(phaseAfter(state(...planned), { kind: "approve", decision })).toEqual({
+      kind: "run",
+      station: "build",
+    });
+    expect(phaseAfter(state(), { kind: "approve", decision })).toBeNull();
   });
 
   test("refuses a cancel while the order ships", () => {

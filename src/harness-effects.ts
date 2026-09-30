@@ -1,15 +1,4 @@
-export type Ended = {
-  readonly lines: readonly string[];
-  readonly stderr: string;
-  readonly exitCode: number | null;
-};
-
-export type Spawned = {
-  readonly pid: number;
-  prompt(text: string): void;
-  kill(): void;
-  readonly ended: Promise<Ended>;
-};
+import type { Spawned } from "./harness-contract";
 
 async function linesOf(stream: ReadableStream<Uint8Array>): Promise<readonly string[]> {
   return (await new Response(stream).text()).split("\n").filter((line) => line.trim() !== "");

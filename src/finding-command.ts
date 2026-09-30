@@ -20,6 +20,9 @@ export const findingCommand: Command = {
     const [finding, answer] = positionals;
     const parsed = Answer.safeParse(answer);
     if (finding === undefined || !parsed.success || flags.reason === undefined) throw new UsageError(USAGE);
-    return sendAct({ act: "finding_answer", finding, answer: parsed.data, reason: flags.reason });
+    return sendAct(
+      { act: "finding_answer", finding, answer: parsed.data, reason: flags.reason },
+      process.env,
+    );
   },
 };

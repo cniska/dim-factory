@@ -11,6 +11,16 @@ const COMMAND_IMPORTS = /^\.\/([a-z-]+-(ops|contract)|cli-[a-z-]+|db|factory-db)
 
 const transpiler = new Bun.Transpiler({ loader: "ts" });
 
+const TYPE_IMPORT = /^import\s+type\s[^;]*?from\s+"([^"]+)"/gm;
+
+function importsOf(text: string): readonly string[] {
+  const code = text.replace(/^#!.*\n/, "");
+  const typeOnly = [...code.matchAll(TYPE_IMPORT)].flatMap((match) =>
+    match[1] === undefined ? [] : [match[1]],
+  );
+  return [...new Set([...transpiler.scanImports(code).map((imported) => imported.path), ...typeOnly])];
+}
+
 function sources(pattern: string): readonly { readonly file: string; readonly text: string }[] {
   return [...new Glob(pattern).scanSync(SRC)]
     .filter((file) => !file.endsWith(".test.ts"))
@@ -26,9 +36,7 @@ const factoryCommands = () =>
   );
 
 export function commandBreaches(file: string, text: string): readonly string[] {
-  return transpiler
-    .scanImports(text)
-    .map((imported) => imported.path)
+  return importsOf(text)
     .filter((path) => path.startsWith("./") && !COMMAND_IMPORTS.test(path))
     .map((path) => `${file} imports ${path}`);
 }
@@ -39,9 +47,7 @@ const DDL_JOIN = "factory-db.ts";
 
 export function boundaryBreaches(file: string, text: string): readonly string[] {
   const importer = file.split("-")[0]?.replace(/\.tsx?$/, "");
-  return transpiler
-    .scanImports(text.replace(/^#!.*\n/, ""))
-    .map((imported) => imported.path)
+  return importsOf(text)
     .filter((path) => {
       const owner = PRIVATE_FILE.exec(path);
       if (owner === null || owner[1] === importer) return false;
@@ -102,6 +108,12 @@ describe("the module checks", () => {
     expect(commandBreaches("order-command.ts", `${text}export const x = [a, b, c];\n`)).toEqual([
       "order-command.ts imports ./order-store",
       "order-command.ts imports ./order",
+    ]);
+  });
+
+  test("catch a type-only import as well as a value import", () => {
+    expect(commandBreaches("order-command.ts", 'import type { OrderView } from "./order-view";\n')).toEqual([
+      "order-command.ts imports ./order-view",
     ]);
   });
 

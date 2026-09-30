@@ -4,6 +4,7 @@ import {
   type Answer,
   CROCKFORD,
   type Decider,
+  type Decision,
   type Later,
   type LaterEntry,
   type Next,
@@ -32,11 +33,13 @@ export type Phase =
 
 export type Plan = { readonly body: string; readonly slices: readonly Slice[]; readonly base: number };
 
-export type FindingState = RecordedFinding & { readonly answer: Answer | null };
+type FindingState = RecordedFinding & { readonly answer: Answer | null };
 
-export type Returned = { readonly from: Decider | Station; readonly reason: string };
+type Returned =
+  | { readonly kind: "decision"; readonly decidedBy: Decider; readonly reason: string }
+  | { readonly kind: "worker"; readonly station: Station; readonly reason: string };
 
-export type SliceView = { readonly title: string; readonly outcome: string; readonly commit?: string };
+export type SliceView = { readonly title: string; readonly outcome: string; readonly commit: string | null };
 
 export type OrderState = {
   readonly id: string;
@@ -69,10 +72,7 @@ const STATION_BEFORE: Readonly<Record<Station, Station | null>> = {
 export function slicesOf(state: OrderState): readonly SliceView[] {
   if (state.plan === null) return [];
   const { base, slices } = state.plan;
-  return slices.map((slice, index) => {
-    const commit = state.commits[base + index];
-    return commit === undefined ? { ...slice } : { ...slice, commit };
-  });
+  return slices.map((slice, index) => ({ ...slice, commit: state.commits[base + index] ?? null }));
 }
 
 export function openFindings(state: OrderState): readonly FindingState[] {
@@ -153,12 +153,12 @@ function apply(state: OrderState, entry: Later): OrderState {
       return {
         ...state,
         phase: run(entry.details.station),
-        returned: { from: entry.details.decidedBy, reason: entry.details.reason },
+        returned: { kind: "decision", decidedBy: entry.details.decidedBy, reason: entry.details.reason },
       };
     case "order_returned":
       return {
         ...returnedByWorker(state, entry.details.station),
-        returned: { from: entry.details.station, reason: entry.details.reason },
+        returned: { kind: "worker", station: entry.details.station, reason: entry.details.reason },
       };
     case "plan_returned":
       return {
@@ -220,31 +220,53 @@ function apply(state: OrderState, entry: Later): OrderState {
   }
 }
 
-export type Decision = { readonly reason: string; readonly decidedBy: Decider };
-
-export type LeadingAct =
+export type OperatorAct =
   | { readonly kind: "run" }
   | { readonly kind: "approve"; readonly decision: Decision }
-  | { readonly kind: "return"; readonly decision: Decision };
+  | { readonly kind: "return"; readonly decision: Decision }
+  | { readonly kind: "update"; readonly title?: string; readonly description?: string }
+  | { readonly kind: "cancel"; readonly reason: string };
 
-export function leadingEntry(state: OrderState, act: LeadingAct): Later {
-  if (act.kind === "run") return { action: "order_run", details: {} };
-  const { phase } = state;
-  invariant(
-    phase.kind === "approve",
-    `order ${state.id} is admitted to ${act.kind} only while it waits on approval`,
-  );
-  const { reason, decidedBy } = act.decision;
-  if (reason.trim() === "") throw refuseOrder("no_reason", { order: state.id, act: act.kind });
-  const details = { station: phase.station, reason, decidedBy };
-  return act.kind === "approve"
-    ? { action: "artifact_approved", details }
-    : { action: "artifact_returned", details };
+function reasonOf(state: OrderState, act: OperatorAct["kind"], reason: string): string {
+  if (reason.trim() === "") throw refuseOrder("no_reason", { order: state.id, act });
+  return reason;
 }
 
-export function phaseAfter(state: OrderState, act: LeadingAct): Phase {
-  if (act.kind !== "run" && state.phase.kind !== "approve") return state.phase;
-  return apply(state, leadingEntry(state, act)).phase;
+export function operatorEntry(state: OrderState, act: OperatorAct): Later {
+  switch (act.kind) {
+    case "run":
+      return { action: "order_run", details: {} };
+    case "approve":
+    case "return": {
+      const { phase } = state;
+      invariant(phase.kind === "approve", `order ${state.id} is admitted to ${act.kind} only at approval`);
+      const details = {
+        station: phase.station,
+        reason: reasonOf(state, act.kind, act.decision.reason),
+        decidedBy: act.decision.decidedBy,
+      };
+      return act.kind === "approve"
+        ? { action: "artifact_approved", details }
+        : { action: "artifact_returned", details };
+    }
+    case "update":
+      return {
+        action: "order_updated",
+        details: { title: act.title ?? state.title, description: act.description ?? state.description },
+      };
+    case "cancel":
+      return { action: "order_cancelled", details: { reason: reasonOf(state, act.kind, act.reason) } };
+    default:
+      return unreachable(act);
+  }
+}
+
+export function phaseAfter(state: OrderState, act: OperatorAct): Phase | null {
+  return stepRefusal(state, act.kind) === null ? apply(state, operatorEntry(state, act)).phase : null;
+}
+
+export function runKindOf(phase: Phase): RunKind {
+  return phase.kind === "ship" ? "ship" : "station";
 }
 
 export type AddedEntry = OrderAdded & { readonly seq: number };
@@ -268,27 +290,20 @@ export function fold(id: string, added: AddedEntry, later: readonly LaterEntry[]
   return later.reduce((state, entry) => ({ ...apply(state, entry), lastSeq: entry.seq }), start);
 }
 
-export type OperatorAct =
-  | { readonly kind: "run" }
-  | { readonly kind: "approve" }
-  | { readonly kind: "return" }
-  | { readonly kind: "update" }
-  | { readonly kind: "cancel" };
-
-export type Admission =
+type Admission =
   | { readonly kind: "admitted"; readonly by: Acting }
   | { readonly kind: "refused"; readonly refusal: CodedError };
 
-export function operatorOf(by: Acting | null, project: string): Admission {
+export function asOperator(by: Acting | null, project: string): Admission {
   return by?.worker.role === "operator" && by.worker.project === project
     ? { kind: "admitted", by }
     : { kind: "refused", refusal: refuseWorker("not_operator", { project }) };
 }
 
-function stepRefusal(state: OrderState, act: OperatorAct): CodedError | null {
+function stepRefusal(state: OrderState, act: OperatorAct["kind"]): CodedError | null {
   const next = nextOf(state.phase);
   const notNext = () => refuseOrder("not_next_step", { order: state.id, next });
-  switch (act.kind) {
+  switch (act) {
     case "run":
       return next === "run" ? null : notNext();
     case "approve":
@@ -304,8 +319,8 @@ function stepRefusal(state: OrderState, act: OperatorAct): CodedError | null {
   }
 }
 
-function busyRefusal(state: OrderState, act: OperatorAct, live: RunKind | null): CodedError | null {
-  if (live === null || (act.kind === "cancel" && live === "station")) return null;
+function busyRefusal(state: OrderState, act: OperatorAct["kind"], live: RunKind | null): CodedError | null {
+  if (live === null || (act === "cancel" && live === "station")) return null;
   return refuseOrder("order_busy", { order: state.id, run: live });
 }
 
@@ -315,24 +330,34 @@ export const ROLE_AT: Readonly<Record<Station, StationRole>> = {
   review: "reviewer",
 };
 
-export function admitWork(state: OrderState, by: Acting, station: Station): Admission {
-  const { worker } = by;
-  if (worker.role !== ROLE_AT[station] || worker.order !== state.id) {
-    return { kind: "refused", refusal: refuseWorker("not_station_worker", { order: state.id, station }) };
-  }
+export function atStation(state: OrderState, station: Station): boolean {
   const { phase } = state;
-  return phase.kind === "run" && phase.station === station && state.status === "running"
-    ? { kind: "admitted", by }
-    : { kind: "refused", refusal: refuseOrder("not_next_step", { order: state.id, next: nextOf(phase) }) };
+  return state.status === "running" && phase.kind === "run" && phase.station === station;
+}
+
+export type WorkBy =
+  | { readonly kind: "worker"; readonly acting: Acting }
+  | { readonly kind: "factory"; readonly cause: number };
+
+export function workRefusal(state: OrderState, station: Station, by: WorkBy): CodedError | null {
+  if (by.kind === "worker") {
+    const { worker } = by.acting;
+    if (worker.role !== ROLE_AT[station] || worker.order !== state.id) {
+      return refuseWorker("not_station_worker", { order: state.id, station });
+    }
+  }
+  return atStation(state, station)
+    ? null
+    : refuseOrder("not_next_step", { order: state.id, next: nextOf(state.phase) });
 }
 
 export function admitOperator(
   state: OrderState,
   by: Acting | null,
-  act: OperatorAct,
+  act: OperatorAct["kind"],
   live: RunKind | null,
 ): Admission {
-  const operator = operatorOf(by, state.project);
+  const operator = asOperator(by, state.project);
   if (operator.kind === "refused") return operator;
   const refusal = busyRefusal(state, act, live) ?? stepRefusal(state, act);
   return refusal === null ? operator : { kind: "refused", refusal };

@@ -9,6 +9,8 @@ import { checkoutSlug } from "./git-remote";
 
 const PREFIX = "pre-commit: ";
 
+const MANIFEST_CODES: readonly string[] = ["manifest_unreadable", "manifest_unparseable"];
+
 const COMMITTING_REPO_GIT_ENV: readonly string[] = [
   "GIT_DIR",
   "GIT_INDEX_FILE",
@@ -48,7 +50,8 @@ function declaredCheck(root: string, say: GateInput["say"]) {
   try {
     return checkTask(root);
   } catch (error) {
-    if (!(error instanceof CodedError) || error.code !== "manifest_unreadable") throw error;
+    const unknown = error instanceof CodedError && MANIFEST_CODES.includes(error.code);
+    if (!unknown) throw error;
     say(`${PREFIX}${error.message}, so the check is not judged.`);
     return null;
   }

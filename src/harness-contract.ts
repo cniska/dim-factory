@@ -1,5 +1,10 @@
 import { refuser } from "./coded-error";
-import type { Policy } from "./station";
+
+export type Policy = {
+  readonly kind: "read" | "edit";
+  readonly writable: readonly string[];
+  readonly denied: readonly string[];
+};
 
 export type SessionStart =
   | { readonly kind: "new"; readonly id: string }
@@ -10,6 +15,19 @@ export type Start = {
   readonly model: string;
   readonly policy: Policy;
   readonly socket: string;
+};
+
+type Ended = {
+  readonly lines: readonly string[];
+  readonly stderr: string;
+  readonly exitCode: number | null;
+};
+
+export type Spawned = {
+  readonly pid: number;
+  prompt(text: string): void;
+  kill(): void;
+  readonly ended: Promise<Ended>;
 };
 
 export type Adapter = {

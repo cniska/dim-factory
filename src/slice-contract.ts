@@ -1,15 +1,29 @@
 import { refuser } from "./coded-error";
 
+export const SLICE_CODES = [
+  "head_moved",
+  "check_changed",
+  "workspace_dirty",
+  "no_check",
+  "check_failed",
+  "check_rewrote",
+] as const;
+
+export type SliceCode = (typeof SLICE_CODES)[number];
+
+export type SliceVerdict =
+  | { readonly code: "head_moved"; readonly head: string }
+  | { readonly code: "check_changed" }
+  | { readonly code: "workspace_dirty" }
+  | { readonly code: "no_check" }
+  | { readonly code: "check_failed"; readonly command: string; readonly exitCode: number | null }
+  | { readonly code: "check_rewrote"; readonly command: string };
+
 type Tip = { readonly order: string; readonly tip: string };
 
-type SliceRefusalMeta = {
-  readonly head_moved: Tip & { readonly head: string };
-  readonly check_changed: Tip;
-  readonly workspace_dirty: Tip;
-  readonly check_failed: Tip & { readonly command: string; readonly exitCode: number | null };
-  readonly check_rewrote: Tip & { readonly command: string };
-  readonly no_check: { readonly order: string };
-};
+type Meta<C extends SliceCode> = Tip & Omit<Extract<SliceVerdict, { readonly code: C }>, "code">;
+
+type SliceRefusalMeta = { readonly [C in SliceCode]: Meta<C> };
 
 const SUBMIT = () => "git add -A && git commit && dim slice submit";
 
@@ -40,10 +54,8 @@ export const refuseSlice = refuser<SliceRefusalMeta>({
     resolve: SUBMIT,
   },
   no_check: {
-    message: ({ order }) =>
-      `the project of order ${order} declares no check task, so no slice can be judged; declare one such as a verify script`,
+    message: ({ order, tip }) =>
+      `${tip} declares no check task, so no slice of order ${order} can be judged; the project needs one such as a verify script`,
     resolve: () => "dim doctor",
   },
 });
-
-export type SliceCode = Exclude<keyof SliceRefusalMeta, "no_check">;

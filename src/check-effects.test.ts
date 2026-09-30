@@ -21,10 +21,12 @@ function scratch(): { tree: string; outside: string } {
   return { tree, outside };
 }
 
+const OWNER = { PATH: process.env.PATH };
+
 describe("a check run", () => {
   test("records its command, exit code and output", () => {
     const { tree } = scratch();
-    expect(runCheck(tree, "echo RED; exit 3")).toEqual({
+    expect(runCheck(tree, "echo RED; exit 3", OWNER)).toEqual({
       kind: "check",
       command: "echo RED; exit 3",
       exitCode: 3,
@@ -37,6 +39,7 @@ describe("a check run", () => {
     const ran = runCheck(
       tree,
       `touch "${tree}/inside" && touch "$TMPDIR/tmp" && touch "${outside}/escaped"; echo done`,
+      OWNER,
     );
     expect(ran.output).toContain("done");
     expect(existsSync(join(tree, "inside"))).toBe(true);

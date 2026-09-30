@@ -18,18 +18,19 @@ export function closeTurn(turn: Turn): void {
 
 export type Listening = { stop(): void };
 
-export function listen(socket: string, serve: (line: string) => Promise<string>): Listening {
+export function listen(socket: string, serve: (line: string) => string | null): Listening {
   const server = Bun.listen<{ buffer: string }>({
     unix: socket,
     socket: {
       open(client) {
         client.data = { buffer: "" };
       },
-      async data(client, chunk) {
+      data(client, chunk) {
         client.data.buffer += chunk.toString();
         const end = client.data.buffer.indexOf("\n");
         if (end === -1) return;
-        client.write(`${await serve(client.data.buffer.slice(0, end))}\n`);
+        const reply = serve(client.data.buffer.slice(0, end));
+        if (reply !== null) client.write(`${reply}\n`);
         client.end();
       },
     },

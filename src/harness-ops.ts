@@ -1,6 +1,6 @@
 import { claude } from "./harness-claude";
-import { type Adapter, refuseHarness } from "./harness-contract";
-import { type Spawned, spawnHarness } from "./harness-effects";
+import { type Adapter, refuseHarness, type Spawned } from "./harness-contract";
+import { spawnHarness } from "./harness-effects";
 import type { HarnessName } from "./harness-name";
 
 const ADAPTERS: Readonly<Partial<Record<HarnessName, Adapter>>> = { claude };

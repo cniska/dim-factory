@@ -1,11 +1,12 @@
 import type { Database } from "bun:sqlite";
 import { invariant } from "./assert";
-import { CodedError, recordOf, refusalOf } from "./coded-error";
+import { CodedError, refusalOf } from "./coded-error";
 import { userConfigPath } from "./config";
 import { writeTransaction } from "./db";
+import type { Adapter, SessionStart, Spawned } from "./harness-contract";
 import type { HarnessName } from "./harness-name";
 import { adapterFor, startHarness } from "./harness-ops";
-import { type LeadingAct, phaseAfter, ROLE_AT } from "./order";
+import { type OperatorAct, phaseAfter, ROLE_AT } from "./order";
 import type { Station } from "./order-contract";
 import {
   endRun,
@@ -21,25 +22,23 @@ import {
 import { type Env, workerHomeDir, workerSessionsDir } from "./paths";
 import { alignBranch, branchFacts, submitSlice } from "./slice-ops";
 import {
+  actAllowed,
+  type BriefedStation,
   briefAt,
   modelOf,
   policyAt,
+  replyTo,
   requestOf,
-  sliceSubmitAllowed,
   TURN_SOCKET_ENV,
+  type Turn,
   type TurnEnd,
   turnEnd,
   workEntry,
   workerEnv,
 } from "./station";
-import {
-  refuseStation,
-  type TurnReply,
-  TurnReply as TurnReplySchema,
-  type TurnRequest,
-} from "./station-contract";
+import { refuseStation, TurnReply, type TurnRequest } from "./station-contract";
 import { closeTurn, copySession, listen, openTurn, send } from "./station-effects";
-import type { Acting, Caller, WorkerSession } from "./worker-contract";
+import type { Acting, Caller, Worker, WorkerSession } from "./worker-contract";
 import { processOf, registerSession, stationWorker } from "./worker-ops";
 import { baseOf, createWorkspace, workspaceOf } from "./workspace-ops";
 
@@ -51,27 +50,72 @@ type TurnOf = {
   readonly model: string;
   readonly newSessionHarness: HarnessName;
   readonly checkout: string;
+  readonly env: Env;
 };
-
-const MISSES_TO_FAIL = 2;
 
 type Ended =
   | { readonly end: TurnEnd; readonly session: string }
   | { readonly end: "missed"; readonly session: string; readonly missed: string };
 
-function serve(db: Database, turn: TurnOf, workspace: string, acting: Acting, request: TurnRequest): unknown {
+type SessionOf =
+  | { readonly kind: "new"; readonly id: string; readonly harness: HarnessName }
+  | { readonly kind: "resume"; readonly record: WorkerSession };
+
+function sessionOf(sessions: readonly WorkerSession[], newSessionHarness: HarnessName): SessionOf {
+  const current = sessions.at(-1);
+  return current === undefined
+    ? { kind: "new", id: crypto.randomUUID(), harness: newSessionHarness }
+    : { kind: "resume", record: current };
+}
+
+const idOf = (session: SessionOf) => (session.kind === "new" ? session.id : session.record.id);
+
+const harnessOf = (session: SessionOf) => (session.kind === "new" ? session.harness : session.record.harness);
+
+const startOf = (session: SessionOf): SessionStart => ({ kind: session.kind, id: idOf(session) });
+
+function openSession(
+  db: Database,
+  turn: TurnOf,
+  worker: Worker,
+  session: SessionOf,
+  pid: number,
+): WorkerSession {
+  const process = processOf(pid);
+  return writeTransaction(db, () => {
+    markHarness(db, turn.order, process);
+    if (session.kind === "resume") return session.record;
+    const registered = { id: session.id, worker: worker.name, harness: session.harness, process };
+    registerSession(db, registered);
+    recordFactory(db, turn.order, turn.cause, {
+      action: "session_started",
+      details: { worker: worker.name, session: session.id, harness: session.harness },
+    });
+    return registered;
+  });
+}
+
+type Served = {
+  readonly db: Database;
+  readonly turn: TurnOf;
+  readonly workspace: string;
+  readonly acting: Acting;
+};
+
+function serve({ db, turn, workspace, acting }: Served, request: TurnRequest): unknown {
   const { order, station } = turn;
+  actAllowed(request, station);
   switch (request.act) {
     case "order_show":
       return showOrder(db, order);
     case "slice_submit":
-      sliceSubmitAllowed(station);
       return submitSlice(db, {
         order,
         project: acting.worker.project,
         workspace,
         checkout: turn.checkout,
         acting,
+        env: turn.env,
       });
     default: {
       const branch = branchFacts(workspace, order);
@@ -81,103 +125,97 @@ function serve(db: Database, turn: TurnOf, workspace: string, acting: Acting, re
   }
 }
 
-function replyTo(error: unknown): TurnReply {
-  if (error instanceof CodedError) return { ok: false, error: recordOf(error) };
-  throw error;
+type TurnServed = { readonly missed: string | null; readonly fault: unknown };
+
+async function serveTurn(
+  served: Served,
+  spawned: Spawned,
+  socket: string,
+  brief: string,
+): Promise<TurnServed> {
+  const { order, station } = served.turn;
+  let misses: readonly string[] = [];
+  let stopped = false;
+  let fault: unknown = null;
+  const answer = (line: string): string | null => {
+    if (stopped)
+      return JSON.stringify(replyTo(refuseStation("turn_stopped", { order, station }), misses).reply);
+    try {
+      return JSON.stringify({ ok: true, result: serve(served, requestOf(line)) });
+    } catch (error) {
+      if (!(error instanceof CodedError)) {
+        fault = error;
+        spawned.kill();
+        return null;
+      }
+      const refused = replyTo(error, misses);
+      misses = refused.misses;
+      if (refused.stop) {
+        stopped = true;
+        spawned.kill();
+      }
+      return JSON.stringify(refused.reply);
+    }
+  };
+  const listening = listen(socket, answer);
+  try {
+    spawned.prompt(brief);
+    await spawned.ended;
+  } finally {
+    listening.stop();
+  }
+  return { missed: stopped ? misses.join("; ") : null, fault };
 }
 
 async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
   const state = orderState(db, turn.order);
+  const station: BriefedStation | "review" = turn.station;
+  invariant(station !== "review", "the review station's brief is not built");
+  invariant(state.head !== null, `order ${turn.order} has a recorded head once its workspace is made`);
   const { worker, sessions } = stationWorker(db, {
-    role: ROLE_AT[turn.station],
+    role: ROLE_AT[station],
     project: state.project,
     order: turn.order,
     createdBy: turn.by.worker.name,
   });
-  const current = sessions.at(-1);
-  const session =
-    current === undefined
-      ? { kind: "new" as const, id: crypto.randomUUID() }
-      : { kind: "resume" as const, id: current.id };
-  const harness = current?.harness ?? turn.newSessionHarness;
-  const adapter = adapterFor(harness);
+  const session = sessionOf(sessions, turn.newSessionHarness);
+  const adapter = adapterFor(harnessOf(session));
   const workspace = workspaceOf(state.project, turn.order);
-  const { station } = turn;
-  invariant(station !== "review", "the review station's brief is not built");
-  invariant(state.head !== null, `order ${turn.order} has a recorded head once its workspace is made`);
   alignBranch(workspace, turn.order, state.head);
   const opened = openTurn(workerHomeDir(worker.name));
   try {
-    const argv = adapter.argv({
-      session,
-      model: turn.model,
-      policy: policyAt(station, { workspace, checkout: turn.checkout, turn: opened }),
-      socket: opened.socket,
-    });
-    const env = workerEnv(process.env, opened, worker.name, adapter.signIn);
-    const spawned = startHarness(argv, workspace, env);
-    const harnessProcess = processOf(spawned.pid);
-    const registered: WorkerSession = current ?? {
-      id: session.id,
-      worker: worker.name,
-      harness,
-      process: harnessProcess,
-    };
-    writeTransaction(db, () => {
-      markHarness(db, turn.order, harnessProcess);
-      if (current !== undefined) return;
-      registerSession(db, registered);
-      recordFactory(db, turn.order, turn.cause, {
-        action: "session_started",
-        details: { worker: worker.name, session: session.id, harness },
-      });
-    });
-    const acting: Acting = { worker, session: registered };
-    const misses: string[] = [];
-    const faults: unknown[] = [];
-    const stopped = () => misses.length >= MISSES_TO_FAIL;
-    const answer = (line: string): unknown => {
-      if (stopped()) throw refuseStation("turn_stopped", { order: turn.order, station: turn.station });
-      try {
-        return serve(db, turn, workspace, acting, requestOf(line));
-      } catch (error) {
-        if (error instanceof CodedError && error.code === "not_done") {
-          misses.push(error.message);
-          if (stopped()) spawned.kill();
-        }
-        throw error;
-      }
-    };
-    const listening = listen(opened.socket, async (line) => {
-      try {
-        return JSON.stringify({ ok: true, result: answer(line) });
-      } catch (error) {
-        try {
-          return JSON.stringify(replyTo(error));
-        } catch (fault) {
-          faults.push(fault);
-          spawned.kill();
-          throw fault;
-        }
-      }
-    });
-    try {
-      spawned.prompt(briefAt(station, state, workspace));
-      await spawned.ended;
-    } finally {
-      listening.stop();
-    }
-    const [fault] = faults;
-    if (fault !== undefined) throw fault;
-    copySession(
-      adapter.transcript(opened.home, workspace, session.id),
-      workerSessionsDir(worker.name),
-      session.id,
+    const spawned = spawnFor(adapter, turn, session, workspace, opened, worker);
+    const acting: Acting = { worker, session: openSession(db, turn, worker, session, spawned.pid) };
+    const served = await serveTurn(
+      { db, turn, workspace, acting },
+      spawned,
+      opened.socket,
+      briefAt(station, state, workspace),
     );
-    return closeTurnRecord(db, turn, session.id, stopped() ? misses.join("; ") : null);
+    if (served.fault !== null) throw served.fault;
+    const id = idOf(session);
+    copySession(adapter.transcript(opened.home, workspace, id), workerSessionsDir(worker.name), id);
+    return closeTurnRecord(db, turn, id, served.missed);
   } finally {
     closeTurn(opened);
   }
+}
+
+function spawnFor(
+  adapter: Adapter,
+  turn: TurnOf,
+  session: SessionOf,
+  workspace: string,
+  opened: Turn,
+  worker: Worker,
+): Spawned {
+  const argv = adapter.argv({
+    session: startOf(session),
+    model: turn.model,
+    policy: policyAt(turn.station, { workspace, checkout: turn.checkout, turn: opened }),
+    socket: opened.socket,
+  });
+  return startHarness(argv, workspace, workerEnv(turn.env, opened, worker.name, adapter.signIn));
 }
 
 function closeTurnRecord(db: Database, turn: TurnOf, session: string, missed: string | null): Ended {
@@ -226,29 +264,31 @@ export async function advanceOrder(
   db: Database,
   order: string,
   caller: Caller,
-  leading: LeadingAct,
+  act: OperatorAct,
+  env: Env,
 ): Promise<void> {
   const before = orderState(db, order);
-  const expected = phaseAfter(before, leading);
+  const expected = phaseAfter(before, act);
   const setup = projectSetup(db, before.project, caller.cwd);
-  const prepared = expected.kind === "run" ? prepareTurn(setup, before.project, expected.station) : null;
+  const prepared = expected?.kind === "run" ? prepareTurn(setup, before.project, expected.station) : null;
   const base = baseOf(setup.root, setup.branch);
-  const { by, cause, created, state } = startRun(db, order, caller, base, leading);
+  const { by, cause, created, state } = startRun(db, order, caller, base, act);
   try {
     if (created) createWorkspace(setup.root, before.project, order, base);
     const { phase } = state;
-    invariant(
-      phase.kind === "run",
-      `order ${order} runs a station after ${leading.kind}; shipping is not built`,
-    );
+    invariant(phase.kind === "run", `order ${order} runs a station after ${act.kind}; shipping is not built`);
     invariant(prepared !== null, `order ${order} was prepared for the ${phase.station} station`);
-    await turnAt(db, { order, station: phase.station, by, cause, checkout: setup.root, ...prepared });
+    await turnAt(db, { order, station: phase.station, by, cause, checkout: setup.root, env, ...prepared });
   } finally {
     endRun(db, order);
   }
 }
 
-export async function sendAct(request: TurnRequest, env: Env = process.env): Promise<unknown> {
+export function inTurn(env: Env): boolean {
+  return env[TURN_SOCKET_ENV] !== undefined;
+}
+
+export async function sendAct(request: TurnRequest, env: Env): Promise<unknown> {
   const socket = env[TURN_SOCKET_ENV];
   if (socket === undefined) throw refuseStation("no_turn", { detail: `${TURN_SOCKET_ENV} is not set` });
   let line: string;
@@ -257,7 +297,7 @@ export async function sendAct(request: TurnRequest, env: Env = process.env): Pro
   } catch (error) {
     throw refuseStation("no_turn", { detail: String(error) });
   }
-  const reply = TurnReplySchema.parse(JSON.parse(line));
+  const reply = TurnReply.parse(JSON.parse(line));
   if (reply.ok) return reply.result;
   throw refusalOf(reply.error);
 }

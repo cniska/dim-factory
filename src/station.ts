@@ -1,9 +1,11 @@
 import { join } from "node:path";
 import { unreachable } from "./assert";
 import { listedEnv, PASSED_THROUGH } from "./check";
+import { type CodedError, recordOf } from "./coded-error";
 import type { Models } from "./config";
-import { type OrderState, openFindings, slicesOf } from "./order";
-import { type Later, Plan, type Station } from "./order-contract";
+import type { Policy } from "./harness-contract";
+import { atStation, type OrderState, openFindings, slicesOf } from "./order";
+import { type Later, Plan, STATIONS, type Station } from "./order-contract";
 import type { Env } from "./paths";
 import {
   type BuildReturn,
@@ -11,15 +13,14 @@ import {
   type OrderReturn,
   type PlanReturn,
   refuseStation,
+  type TurnReply,
   TurnRequest,
 } from "./station-contract";
 import type { StationRole } from "./worker-contract";
 
 export const TURN_SOCKET_ENV = "DIM_TURN_SOCKET";
 
-export const STATIONS: readonly Station[] = ["plan", "build", "review"];
-
-export const SKILLS: Readonly<Record<Station, string>> = {
+const SKILLS: Readonly<Record<Station, string>> = {
   plan: "dim-plan",
   build: "dim-build",
   review: "dim-review",
@@ -57,13 +58,7 @@ export function workerEnv(
   };
 }
 
-export type Policy = {
-  readonly kind: "read" | "edit";
-  readonly writable: readonly string[];
-  readonly denied: readonly string[];
-};
-
-export type Places = { readonly workspace: string; readonly checkout: string; readonly turn: Turn };
+type Places = { readonly workspace: string; readonly checkout: string; readonly turn: Turn };
 
 export function policyAt(station: Station, { workspace, checkout, turn }: Places): Policy {
   const checkoutGit = join(checkout, ".git");
@@ -113,21 +108,24 @@ export function briefAt(station: BriefedStation, state: OrderState, workspace: s
   }
 }
 
-export type WorkRequest = Exclude<TurnRequest, { readonly act: "order_show" | "slice_submit" }>;
-
-export type BranchFacts = { readonly tip: string; readonly clean: boolean };
-
-export type WorkContext = {
-  readonly station: Station;
-  readonly state: OrderState;
-  readonly branch: BranchFacts;
+const STATIONS_OF: Readonly<Record<TurnRequest["act"], readonly Station[]>> = {
+  order_show: STATIONS,
+  order_return: STATIONS,
+  plan_return: ["plan"],
+  slice_submit: ["build"],
+  finding_answer: ["build"],
+  build_return: ["build"],
 };
 
-type Work<R> = {
-  readonly stations: readonly Station[];
-  readonly command: string;
-  entry(request: R, context: WorkContext): Later;
-};
+export function actAllowed(request: TurnRequest, station: Station): void {
+  if (!STATIONS_OF[request.act].includes(station)) {
+    throw refuseStation("wrong_station", { act: request.act, station });
+  }
+}
+
+type BranchFacts = { readonly tip: string; readonly clean: boolean };
+
+type WorkContext = { readonly station: Station; readonly state: OrderState; readonly branch: BranchFacts };
 
 function planOf(text: string, command: string): Plan {
   let raw: unknown;
@@ -147,14 +145,13 @@ function reasonOf(reason: string, command: string): string {
   return reason;
 }
 
-export function buildMissing(state: OrderState, branch: BranchFacts, artifact: string): readonly string[] {
-  const unbuilt = slicesOf(state).filter((slice) => slice.commit === undefined);
-  const open = openFindings(state);
+function buildMissing(state: OrderState, branch: BranchFacts, artifact: string): readonly string[] {
+  const unbuilt = slicesOf(state).filter((slice) => slice.commit === null);
   return [
     ...unbuilt.map((slice) => `slice "${slice.title}" has no commit`),
     ...(branch.tip === state.head ? [] : ["the branch holds a commit the gates have not taken"]),
     ...(branch.clean ? [] : ["the workspace holds changes no slice commits"]),
-    ...open.map((finding) => `finding ${finding.id} is not answered`),
+    ...openFindings(state).map((finding) => `finding ${finding.id} is not answered`),
     ...(artifact.trim() === "" ? ["the Build artifact is empty"] : []),
   ];
 }
@@ -164,53 +161,52 @@ const ORDER_RETURN = "dim order return --reason <reason>";
 const FINDING_ANSWER = "dim finding answer <finding> fixed|refused --reason <reason>";
 const BUILD_RETURN = "dim build return <file>";
 
-export const WORK: { readonly [A in WorkRequest["act"]]: Work<Extract<WorkRequest, { readonly act: A }>> } = {
-  plan_return: {
-    stations: ["plan"],
-    command: PLAN_RETURN,
-    entry: (request: PlanReturn) => ({ action: "plan_returned", details: planOf(request.plan, PLAN_RETURN) }),
-  },
-  order_return: {
-    stations: STATIONS,
-    command: ORDER_RETURN,
-    entry: (request: OrderReturn, { station }) => ({
-      action: "order_returned",
-      details: { station, reason: reasonOf(request.reason, ORDER_RETURN) },
-    }),
-  },
-  finding_answer: {
-    stations: ["build"],
-    command: FINDING_ANSWER,
-    entry: (request: FindingAnswer, { state }) => {
-      const finding = state.findings.find((one) => one.id === request.finding);
-      if (finding === undefined) throw refuseStation("no_finding", { finding: request.finding });
-      if (finding.answer !== null) throw refuseStation("finding_answered", { finding: request.finding });
-      return {
-        action: "finding_answered",
-        details: {
-          finding: finding.id,
-          answer: request.answer,
-          reason: reasonOf(request.reason, FINDING_ANSWER),
-        },
-      };
+function planReturned(request: PlanReturn): Later {
+  return { action: "plan_returned", details: planOf(request.plan, PLAN_RETURN) };
+}
+
+function orderReturned(request: OrderReturn, { station }: WorkContext): Later {
+  return { action: "order_returned", details: { station, reason: reasonOf(request.reason, ORDER_RETURN) } };
+}
+
+function findingAnswered(request: FindingAnswer, { state }: WorkContext): Later {
+  const finding = state.findings.find((one) => one.id === request.finding);
+  if (finding === undefined) throw refuseStation("no_finding", { finding: request.finding });
+  if (finding.answer !== null) throw refuseStation("finding_answered", { finding: request.finding });
+  return {
+    action: "finding_answered",
+    details: {
+      finding: finding.id,
+      answer: request.answer,
+      reason: reasonOf(request.reason, FINDING_ANSWER),
     },
-  },
-  build_return: {
-    stations: ["build"],
-    command: BUILD_RETURN,
-    entry: (request: BuildReturn, { state, branch }) => {
-      const missed = buildMissing(state, branch, request.artifact);
-      if (missed.length > 0) {
-        throw refuseStation("not_done", {
-          station: "build",
-          missed: missed.join("; "),
-          command: BUILD_RETURN,
-        });
-      }
-      return { action: "build_returned", details: { artifact: request.artifact } };
-    },
-  },
-};
+  };
+}
+
+function buildReturned(request: BuildReturn, { state, branch }: WorkContext): Later {
+  const missed = buildMissing(state, branch, request.artifact);
+  if (missed.length > 0) {
+    throw refuseStation("not_done", { station: "build", missed: missed.join("; "), command: BUILD_RETURN });
+  }
+  return { action: "build_returned", details: { artifact: request.artifact } };
+}
+
+export type WorkRequest = Exclude<TurnRequest, { readonly act: "order_show" | "slice_submit" }>;
+
+export function workEntry(request: WorkRequest, context: WorkContext): Later {
+  switch (request.act) {
+    case "plan_return":
+      return planReturned(request);
+    case "order_return":
+      return orderReturned(request, context);
+    case "finding_answer":
+      return findingAnswered(request, context);
+    case "build_return":
+      return buildReturned(request, context);
+    default:
+      return unreachable(request);
+  }
+}
 
 export function requestOf(line: string): TurnRequest {
   let raw: unknown;
@@ -226,36 +222,26 @@ export function requestOf(line: string): TurnRequest {
   });
 }
 
-function entryAt<R>(work: Work<R>, request: R, context: WorkContext): Later {
-  if (!work.stations.includes(context.station)) {
-    throw refuseStation("wrong_station", { act: work.command, station: context.station });
-  }
-  return work.entry(request, context);
-}
+export const MISSES_TO_FAIL = 2;
 
-export function workEntry(request: WorkRequest, context: WorkContext): Later {
-  switch (request.act) {
-    case "plan_return":
-      return entryAt(WORK.plan_return, request, context);
-    case "order_return":
-      return entryAt(WORK.order_return, request, context);
-    case "finding_answer":
-      return entryAt(WORK.finding_answer, request, context);
-    case "build_return":
-      return entryAt(WORK.build_return, request, context);
-    default:
-      return unreachable(request);
-  }
-}
+export type Refused = {
+  readonly reply: TurnReply;
+  readonly misses: readonly string[];
+  readonly stop: boolean;
+};
 
-export function sliceSubmitAllowed(station: Station): void {
-  if (station !== "build") throw refuseStation("wrong_station", { act: "dim slice submit", station });
+export function replyTo(refusal: CodedError, misses: readonly string[]): Refused {
+  const counted = refusal.code === "not_done" ? [...misses, refusal.message] : misses;
+  return {
+    reply: { ok: false, error: recordOf(refusal) },
+    misses: counted,
+    stop: counted.length >= MISSES_TO_FAIL,
+  };
 }
 
 export type TurnEnd = "returned" | "no_return" | "closed";
 
 export function turnEnd(state: OrderState, station: Station): TurnEnd {
   if (state.status !== "running") return "closed";
-  const { phase } = state;
-  return phase.kind === "run" && phase.station === station ? "no_return" : "returned";
+  return atStation(state, station) ? "no_return" : "returned";
 }

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { refuser } from "./coded-error";
 import { HarnessName } from "./harness-name";
+import { SLICE_CODES } from "./slice-contract";
 
 export const STATIONS = ["plan", "build", "review"] as const;
 export const Station = z.enum(STATIONS);
@@ -145,6 +146,9 @@ const stop = <A extends string, C extends string, D extends z.ZodRawShape>(actio
 const session = { session: z.string() };
 const tip = { tip: z.string() };
 const decision = { station: Station, reason: text, decidedBy: Decider };
+
+export const Decision = z.object({ reason: z.string(), decidedBy: Decider });
+export type Decision = z.infer<typeof Decision>;
 const message = { to: z.string(), text };
 
 export const Plan = z.object({ body: text, slices: z.array(Slice).min(1) });
@@ -164,13 +168,12 @@ export const Later = z.union([
   entry("plan_returned", Plan.shape),
   entry("slice_submitted", tip),
   entry("slice_committed", { commit: z.string() }).extend({ evidence }),
-  z.discriminatedUnion("code", [
-    stop("slice_refused", "head_moved", tip).extend({ evidence }),
-    stop("slice_refused", "check_changed", tip).extend({ evidence }),
-    stop("slice_refused", "workspace_dirty", tip).extend({ evidence }),
-    stop("slice_refused", "check_failed", tip).extend({ evidence }),
-    stop("slice_refused", "check_rewrote", tip).extend({ evidence }),
-  ]),
+  z.object({
+    action: z.literal("slice_refused"),
+    code: z.enum(SLICE_CODES),
+    details: z.object(tip),
+    evidence,
+  }),
   entry("finding_answered", { finding: z.string(), answer: Answer, reason: text }),
   entry("build_returned", { artifact: text }),
   entry("review_returned", {

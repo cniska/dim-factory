@@ -5,15 +5,15 @@ import { readConfig, type UserConfig } from "./config";
 import { writeTransaction } from "./db";
 import {
   admitOperator,
-  admitWork,
+  asOperator,
   fold,
-  type LeadingAct,
-  leadingEntry,
-  nextOf,
   type OperatorAct,
   type OrderState,
-  operatorOf,
+  operatorEntry,
   orderIdOf,
+  runKindOf,
+  type WorkBy,
+  workRefusal,
 } from "./order";
 import {
   type Actor,
@@ -57,27 +57,24 @@ const actorOf = (acting: Acting): Actor => ({
   session: acting.session.id,
 });
 
-function append(db: Database, order: string, seq: number, by: Actor, detailed: Detailed): number {
+type Appended = { readonly seq: number; readonly state: OrderState };
+
+function append(db: Database, order: string, by: Actor, detailed: Detailed): Appended {
+  const seq = loadOrder(db, order).state.lastSeq + 1;
   appendEntries(db, order, [{ seq, at: new Date().toISOString(), by, ...Detailed.parse(detailed) }]);
-  return seq;
+  return { seq, state: loadOrder(db, order).state };
 }
 
-type Acted = { readonly seq: number; readonly by: Acting; readonly admitted: OrderState };
+type Acted = Appended & { readonly by: Acting; readonly admitted: OrderState };
 
-function act(
-  db: Database,
-  order: string,
-  caller: Caller,
-  operatorAct: OperatorAct,
-  later: (state: OrderState) => Later,
-): Acted {
+function act(db: Database, order: string, caller: Caller, operatorAct: OperatorAct): Acted {
   return writeTransaction(db, () => {
     const { state } = loadOrder(db, order);
     const by = actingOperator(db, caller, state.project);
-    const admission = admitOperator(state, by, operatorAct, liveRun(db, order, caller.running));
+    const admission = admitOperator(state, by, operatorAct.kind, liveRun(db, order, caller.running));
     if (admission.kind === "refused") throw admission.refusal;
-    const seq = append(db, order, state.lastSeq + 1, actorOf(admission.by), later(state));
-    return { seq, by: admission.by, admitted: state };
+    const appended = append(db, order, actorOf(admission.by), operatorEntry(state, operatorAct));
+    return { ...appended, by: admission.by, admitted: state };
   });
 }
 
@@ -106,13 +103,18 @@ export function addOrder(db: Database, caller: Caller, fields: NewOrder): string
   if (project === undefined) throw refuseWorker("no_project", { cwd: caller.cwd });
   projectSetup(db, project, caller.cwd);
   return writeTransaction(db, () => {
-    const admission = operatorOf(actingOperator(db, caller, project), project);
+    const admission = asOperator(actingOperator(db, caller, project), project);
     if (admission.kind === "refused") throw admission.refusal;
     const order = orderIdOf(crypto.getRandomValues(new Uint8Array(ORDER_ID_LENGTH)));
-    append(db, order, 1, actorOf(admission.by), {
-      action: "order_added",
-      details: { title: fields.title, description: fields.description, project },
-    });
+    appendEntries(db, order, [
+      {
+        seq: 1,
+        at: new Date().toISOString(),
+        by: actorOf(admission.by),
+        action: "order_added",
+        details: { title: fields.title, description: fields.description, project },
+      },
+    ]);
     return order;
   });
 }
@@ -123,14 +125,11 @@ export function updateOrder(
   caller: Caller,
   fields: { readonly title?: string; readonly description?: string },
 ): void {
-  act(db, order, caller, { kind: "update" }, (state) => ({
-    action: "order_updated",
-    details: { title: fields.title ?? state.title, description: fields.description ?? state.description },
-  }));
+  act(db, order, caller, { kind: "update", ...fields });
 }
 
 export function cancelOrder(db: Database, order: string, caller: Caller, reason: string): void {
-  act(db, order, caller, { kind: "cancel" }, () => ({ action: "order_cancelled", details: { reason } }));
+  act(db, order, caller, { kind: "cancel", reason });
 }
 
 export function orderState(db: Database, order: string): OrderState {
@@ -149,14 +148,23 @@ export function startRun(
   order: string,
   caller: Caller,
   base: string,
-  leading: LeadingAct,
+  leading: OperatorAct,
 ): StartedRun {
   return writeTransaction(db, () => {
-    const acted = act(db, order, caller, { kind: leading.kind }, (state) => leadingEntry(state, leading));
+    const acted = act(db, order, caller, leading);
     const created = acted.admitted.head === null;
-    if (created) recordFactory(db, order, acted.seq, { action: "workspace_created", details: { base } });
-    const { state } = loadOrder(db, order);
-    insertRun(db, order, state.phase.kind === "ship" ? "ship" : "station", caller.self);
+    const state = created
+      ? append(
+          db,
+          order,
+          { kind: "factory", version, cause: acted.seq },
+          {
+            action: "workspace_created",
+            details: { base },
+          },
+        ).state
+      : acted.state;
+    insertRun(db, order, runKindOf(state.phase), caller.self);
     return { by: acted.by, cause: acted.seq, created, state };
   });
 }
@@ -169,19 +177,36 @@ export function endRun(db: Database, order: string): void {
   deleteRun(db, order);
 }
 
+function recordAt(
+  db: Database,
+  order: string,
+  station: Station,
+  by: WorkBy,
+  later: (state: OrderState) => Later,
+) {
+  return writeTransaction(db, () => {
+    const { state } = loadOrder(db, order);
+    const refusal = workRefusal(state, station, by);
+    if (refusal !== null) throw refusal;
+    return append(
+      db,
+      order,
+      by.kind === "worker" ? actorOf(by.acting) : factoryActor(by.cause),
+      later(state),
+    );
+  });
+}
+
+const factoryActor = (cause: number): Actor => ({ kind: "factory", version, cause });
+
 export function recordWork(
   db: Database,
   order: string,
   acting: Acting,
   station: Station,
   later: (state: OrderState) => Later,
-): number {
-  return writeTransaction(db, () => {
-    const { state } = loadOrder(db, order);
-    const admission = admitWork(state, acting, station);
-    if (admission.kind === "refused") throw admission.refusal;
-    return append(db, order, state.lastSeq + 1, actorOf(admission.by), later(state));
-  });
+): Appended {
+  return recordAt(db, order, station, { kind: "worker", acting }, later);
 }
 
 export function recordVerdict(
@@ -190,22 +215,12 @@ export function recordVerdict(
   cause: number,
   station: Station,
   later: Later,
-): void {
-  writeTransaction(db, () => {
-    const { state } = loadOrder(db, order);
-    const { phase } = state;
-    if (state.status !== "running" || phase.kind !== "run" || phase.station !== station) {
-      throw refuseOrder("not_next_step", { order, next: nextOf(phase) });
-    }
-    append(db, order, state.lastSeq + 1, { kind: "factory", version, cause }, later);
-  });
+): Appended {
+  return recordAt(db, order, station, { kind: "factory", cause }, () => later);
 }
 
-export function recordFactory(db: Database, order: string, cause: number, later: Later): void {
-  writeTransaction(db, () => {
-    const { state } = loadOrder(db, order);
-    append(db, order, state.lastSeq + 1, { kind: "factory", version, cause }, later);
-  });
+export function recordFactory(db: Database, order: string, cause: number, later: Later): Appended {
+  return writeTransaction(db, () => append(db, order, factoryActor(cause), later));
 }
 
 export function showOrder(db: Database, order: string): OrderView {

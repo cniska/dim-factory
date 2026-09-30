@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { CodedError } from "./coded-error";
+import { refuser } from "./coded-error";
 import { type CommittedTree, committedTree } from "./git-committed";
 
 const LONGEST_MANIFEST = 1024 * 1024;
@@ -32,6 +32,20 @@ export function readManifest(path: string): string | null {
   return read.kind === "text" ? read.text : null;
 }
 
+export const refuseManifest = refuser<{
+  readonly manifest_unreadable: { readonly path: string };
+  readonly manifest_unparseable: { readonly file: string; readonly detail: string };
+}>({
+  manifest_unreadable: {
+    message: ({ path }) => `${path} is there but cannot be read, so what the repo declares is unknown`,
+    resolve: () => "dim doctor",
+  },
+  manifest_unparseable: {
+    message: ({ file, detail }) => `${file} does not parse, so what the repo declares is unknown: ${detail}`,
+    resolve: () => "dim doctor",
+  },
+});
+
 export type Manifests = CommittedTree;
 
 export function manifestsIn(repo: string): Manifests {
@@ -40,14 +54,7 @@ export function manifestsIn(repo: string): Manifests {
     read(file) {
       const path = join(repo, file);
       const read = readRegularFile(path);
-      if (read.kind === "unreadable") {
-        throw new CodedError(
-          "manifest_unreadable",
-          `${path} is there but cannot be read, so what the repo declares is unknown`,
-          { path },
-          "dim doctor",
-        );
-      }
+      if (read.kind === "unreadable") throw refuseManifest("manifest_unreadable", { path });
       return read.kind === "text" ? read.text : null;
     },
   };
@@ -87,8 +94,8 @@ function fromPackageJson(manifests: Manifests): DeclaredTask[] {
   let scripts: Record<string, unknown>;
   try {
     scripts = (JSON.parse(text) as { scripts?: Record<string, unknown> }).scripts ?? {};
-  } catch {
-    return [];
+  } catch (error) {
+    throw refuseManifest("manifest_unparseable", { file: "package.json", detail: String(error) });
   }
   const pm = managerOf(manifests);
   if (pm === null) return [];
@@ -107,8 +114,8 @@ function fromMise(manifests: Manifests): DeclaredTask[] {
   let parsed: { tasks?: Record<string, unknown> };
   try {
     parsed = Bun.TOML.parse(text) as typeof parsed;
-  } catch {
-    return [];
+  } catch (error) {
+    throw refuseManifest("manifest_unparseable", { file: "mise.toml", detail: String(error) });
   }
   const tasks = parsed.tasks ?? {};
   const body = JSON.stringify(tasks);

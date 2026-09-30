@@ -1,10 +1,11 @@
 import { join, resolve } from "node:path";
-import type { Adapter, SessionStart, Start } from "./harness-contract";
-import type { Policy } from "./station";
+import type { Adapter, Policy, SessionStart, Start } from "./harness-contract";
 
 const DIM_PLUGIN = resolve(import.meta.dir, "..");
 
 const NOT_ALPHANUMERIC = /[^A-Za-z0-9]/g;
+
+const absoluteRule = (path: string) => `/${path}`;
 
 function sessionFlags(session: SessionStart): readonly string[] {
   switch (session.kind) {
@@ -22,7 +23,7 @@ function deniedTools(policy: Policy): readonly string[] {
     case "read":
       return EDIT_TOOLS;
     case "edit":
-      return policy.denied.map((path) => `Edit(/${path}/**)`);
+      return policy.denied.map((path) => `Edit(${absoluteRule(path)}/**)`);
   }
 }
 
