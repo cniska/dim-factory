@@ -17,5 +17,5 @@
     // its import of this repo's own `cn` instead of reaching for a package that spells it.
     "paths": { "@/*": ["./src/wall/*"] }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "acceptance/**/*.ts"]
 }
