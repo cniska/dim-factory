@@ -6,13 +6,13 @@ import { openFactory } from "./factory-db";
 import { OrderId } from "./order-contract";
 import { addOrder, cancelOrder, showOrder, updateOrder } from "./order-ops";
 import type { OrderView } from "./order-view";
-import { runOrder } from "./station-ops";
+import { runOrder, sendAct } from "./station-ops";
 import { callerOf } from "./worker-ops";
 
 const USAGE = [
   "usage: dim order add --title <title> --description <description> [--project <owner>/<repo>]",
   "dim order run <order>",
-  "dim order show <order>",
+  "dim order show [<order>]",
   "dim order update <order> [--title <title>] [--description <description>]",
   "dim order cancel <order> --reason <reason>",
 ].join(" | ");
@@ -74,7 +74,6 @@ function show(db: Database, args: readonly string[]): OrderView {
   const { positionals } = parseArgs(args, { positionals: [1, 1], flags: [] }, usage);
   return showOrder(db, orderArg(positionals));
 }
-
 type Verb = (db: Database, args: readonly string[]) => OrderView | Promise<OrderView>;
 
 const VERBS: Readonly<Record<string, Verb>> = { add, run, show, update, cancel };
@@ -85,6 +84,7 @@ export const orderCommand: Command = {
   summary: "add, run, show, update or cancel an order",
   async run(args) {
     const [verb, ...rest] = args;
+    if (verb === "show" && rest.length === 0) return sendAct({ act: "order_show" });
     const act = verb === undefined ? undefined : VERBS[verb];
     if (act === undefined) throw new UsageError(USAGE);
     const db = openFactory();

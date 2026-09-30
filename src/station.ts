@@ -1,8 +1,8 @@
 import { listedEnv, PASSED_THROUGH } from "./check";
+import type { Models } from "./config";
 import type { OrderState } from "./order";
 import type { Station } from "./order-contract";
 import type { Env } from "./paths";
-import type { Models } from "./station-contract";
 import type { StationRole } from "./worker-contract";
 
 export const TURN_SOCKET_ENV = "DIM_TURN_SOCKET";
@@ -13,8 +13,8 @@ export const SKILLS: Readonly<Record<Station, string>> = {
   review: "dim-review",
 };
 
-export function modelOf(models: Models, role: StationRole): string | null {
-  return models[role] ?? models.default ?? null;
+export function modelOf(models: Models | undefined, role: StationRole): string | null {
+  return models?.[role] ?? models?.default ?? null;
 }
 
 const XDG = ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"] as const;

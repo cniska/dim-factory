@@ -33,11 +33,11 @@ One layout, resolved in `src/paths.ts`, like acolyte's. A relative XDG value is 
 
 | Category | Default | Holds |
 |---|---|---|
-| Config | `$XDG_CONFIG_HOME/dim` | `config.json` (the user's settings), `models.json` (the model each role runs on) and `hooks/` (the commit gate's git hooks) |
+| Config | `$XDG_CONFIG_HOME/dim` | `config.json` (the user's settings) and `hooks/` (the commit gate's git hooks) |
 | Data | `$XDG_DATA_HOME/dim-factory` | `record/` (the SQLite record and the hook spool), `workspaces/<owner>/<repo>/<order>/`, `workers/<name>/home/` (each station worker's `HOME`), `workers/<name>/sessions/<session>.jsonl` (the factory's copy of each of its transcripts) |
 | State | `$XDG_STATE_HOME/dim-factory` | `trace.jsonl`, `locks/` and `sync.log` (the scheduled sync's output) |
 
-The record sits in its own directory so a worker's sandbox can deny writes to it without also denying the workspaces beside it. A project's settings are its committed `.dim/config.json`. Settings: `ship` (one value, `default-branch`), `harness` (which harness a new session starts under; required, since no harness is right for everyone), `comments`.
+The record sits in its own directory so a worker's sandbox can deny writes to it without also denying the workspaces beside it. A project's settings are its committed `.dim/config.json`. Settings: `ship` (one value, `default-branch`), `harness` (which harness a new session starts under; required, since no harness is right for everyone), `comments`, and in the user's layer only, `models`.
 
 ## The log
 
@@ -117,7 +117,7 @@ The Claude Code adapter starts `claude -p --output-format stream-json --verbose`
 - **Environment:** a listed set only: `HOME` (the worker's), `PATH`, `USER`, `LANG`, `TMPDIR` (the turn's), the three XDG variables, the turn socket, and the sign-in the harness needs (`CLAUDE_CODE_OAUTH_TOKEN` for Claude). No other key, token or agent socket of the owner's.
 - **Settings:** `--setting-sources user` leaves out the project's `.claude/settings.json`, so no hook from a workspace runs. The worker's own `HOME` holds no settings, so the factory's hooks, the sandbox and the permissions all come in the `--settings` JSON.
 - **Sandbox:** the sandbox is on, Bash is allowed only inside it, and it writes only where it is allowed to. The builder, in `acceptEdits`, may write its workspace, its turn's temp directory and the git paths listed under slice commits. The planner and reviewer, in `default`, may write only their turn's temp directory, so they change nothing. The record, the factory's code, its skills and every harness config lie outside what any worker may write, in every project, dim-factory included.
-- **Model:** `models.json` names one model per role, `{"default": …, "planner": …, "builder": …, "reviewer": …}`, in the harness's own names. A role it leaves out runs on `default`. With neither, the run is refused `no_model` before anything is recorded.
+- **Model:** the user's `config.json` names one model per role in its `models` setting, `{"default": …, "planner": …, "builder": …, "reviewer": …}`, in the harness's own names. It is read from the user's layer only, and a project's settings that name it are refused. A role it leaves out runs on `default`. With neither, the run is refused `no_model` before anything is recorded.
 - **Harness:** a new session starts under the `harness` setting. A session stays on the harness it started under, and resuming it under another is refused.
 - **A replacement session** is the dead session's transcript under a new id. The factory writes its byte copy back to the harness's session file if the harness lost it, then resumes it with `--fork-session`. The copy is verbatim, not rebuilt from the session record's rows, because a resume needs every line as written: tool results, thinking and the links between lines, which the record does not store. The new session holds what the dead one held as of its last closed turn, whether it hit a usage limit or its file was deleted.
 - **Ingestion** reads each worker's `HOME` beside the owner's, so the owner's queries see worker sessions. Their rows stay pointers, like every other session's.

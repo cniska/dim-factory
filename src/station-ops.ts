@@ -2,25 +2,17 @@ import type { Database } from "bun:sqlite";
 import { invariant } from "./assert";
 import { errorRecord } from "./cli-output";
 import { refusalOf } from "./coded-error";
-import { readConfig } from "./config";
+import { readConfig, userConfigPath } from "./config";
 import { writeTransaction } from "./db";
 import { adapterFor, startHarness } from "./harness-ops";
 import { ROLE_AT } from "./order";
 import { Plan, refuseOrder, type Station } from "./order-contract";
-import { endRun, markHarness, orderState, recordFactory, recordWork, startRun } from "./order-ops";
-import { type Env, modelsPath, workerHomeDir, workerSessionsDir } from "./paths";
+import { endRun, markHarness, orderState, recordFactory, recordWork, showOrder, startRun } from "./order-ops";
+import { type Env, workerHomeDir, workerSessionsDir } from "./paths";
 import { checkoutOf, defaultBranch } from "./project";
 import { modelOf, planBrief, TURN_SOCKET_ENV, workerEnv } from "./station";
 import { refuseStation, TurnReply, TurnRequest } from "./station-contract";
-import {
-  copySession,
-  listen,
-  makeHome,
-  openTurnDir,
-  readModels,
-  removeTurnDir,
-  send,
-} from "./station-effects";
+import { copySession, listen, makeHome, openTurnDir, removeTurnDir, send } from "./station-effects";
 import type { Acting, Caller, WorkerSession } from "./worker-contract";
 import { processOf, registerSession, stationWorker } from "./worker-ops";
 import { baseOf, createWorkspace, workspaceOf } from "./workspace-ops";
@@ -82,6 +74,7 @@ async function runTurn(db: Database, turn: TurnOf): Promise<void> {
   let returned = false;
   const serve = (request: TurnRequest): unknown => {
     invariant(acting !== null, "a turn serves acts only once its session is registered");
+    if (request.act === "order_show") return showOrder(db, turn.order);
     recordWork(db, turn.order, acting, turn.station, {
       action: "plan_returned",
       details: planReturned(request.plan),
@@ -132,20 +125,15 @@ async function runTurn(db: Database, turn: TurnOf): Promise<void> {
   }
 }
 
-function modelFor(station: Station): string {
-  const role = ROLE_AT[station];
-  const file = modelsPath();
-  const model = modelOf(readModels(file), role);
-  if (model === null) throw refuseStation("no_model", { role, file });
-  return model;
-}
-
 export async function runOrder(db: Database, order: string, caller: Caller, cwd: string): Promise<void> {
   const { project, phase } = orderState(db, order);
   invariant(phase.kind === "run", `order ${order} runs a station; shipping is not built`);
   const setup = setupOf(db, project, cwd);
-  const model = modelFor(phase.station);
-  const newSessionHarness = readConfig({ root: setup.root, at: setup.branch }).harness;
+  const config = readConfig({ root: setup.root, at: setup.branch });
+  const role = ROLE_AT[phase.station];
+  const model = modelOf(config.models, role);
+  if (model === null) throw refuseStation("no_model", { role, file: userConfigPath() });
+  const newSessionHarness = config.harness;
   if (newSessionHarness === undefined) throw refuseStation("harness_unset", { project });
   const base = baseOf(setup.root, setup.branch);
   const { by, cause, created } = startRun(db, order, caller, base);

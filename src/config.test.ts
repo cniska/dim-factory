@@ -52,6 +52,27 @@ describe("the layers a setting is read from", () => {
     expect(readConfig({ env: { HOME: home }, root, at: "HEAD" })).toEqual({ comments: "allowed" });
   });
 
+  test("reads the model each role runs on from the user layer", () => {
+    const home = scratch();
+    put(
+      join(home, ".config", "dim", "config.json"),
+      '{ "models": { "default": "sonnet", "planner": "opus" } }',
+    );
+    const root = repo('{ "comments": "allowed" }');
+    expect(readConfig({ env: { HOME: home }, root, at: "HEAD" })).toEqual({
+      comments: "allowed",
+      models: { default: "sonnet", planner: "opus" },
+    });
+  });
+
+  test("refuses models that name no station role, and models in a project's layer", () => {
+    const home = scratch();
+    put(join(home, ".config", "dim", "config.json"), '{ "models": { "operator": "opus" } }');
+    expect(() => readConfig({ env: { HOME: home } })).toThrow("models");
+    const root = repo('{ "models": { "planner": "opus" } }');
+    expect(() => readConfig({ env: { HOME: scratch() }, root, at: "HEAD" })).toThrow("models");
+  });
+
   test("reads the project layer as a revision holds it, not as the working tree does", () => {
     const root = repo('{ "comments": "banned" }');
     writeFileSync(projectConfigPath(root), '{ "comments": "allowed" }');

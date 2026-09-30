@@ -1,12 +1,10 @@
 import { z } from "zod";
 import { refuser } from "./coded-error";
 
-const model = z.string().trim().min(1).optional();
-
-export const Models = z.strictObject({ default: model, planner: model, builder: model, reviewer: model });
-export type Models = z.infer<typeof Models>;
-
-export const TurnRequest = z.object({ act: z.literal("plan_return"), plan: z.string() });
+export const TurnRequest = z.discriminatedUnion("act", [
+  z.object({ act: z.literal("plan_return"), plan: z.string() }),
+  z.object({ act: z.literal("order_show") }),
+]);
 export type TurnRequest = z.infer<typeof TurnRequest>;
 
 const Refusal = z.object({
@@ -46,7 +44,7 @@ export const refuseStation = refuser<StationRefusalMeta>({
   },
   no_model: {
     message: ({ role, file }) =>
-      `${file} names no model for the ${role} and no default, so no ${role} can start; it maps each role, or default, to a model`,
-    resolve: () => "dim doctor",
+      `${file} names no model for the ${role} and no default, so no ${role} can start; its models setting maps each role, or default, to a model`,
+    resolve: () => "dim config",
   },
 });

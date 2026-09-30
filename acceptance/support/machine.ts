@@ -130,8 +130,18 @@ async function createMachine(options: MachineOptions): Promise<Machine> {
     XDG_DATA_HOME: xdg.data,
     XDG_STATE_HOME: xdg.state,
   };
-  const models = (named: Models) => writeFileSync(join(config, "models.json"), JSON.stringify(named));
-  models(MODELS);
+  let user: { readonly settings: Readonly<Record<string, unknown>>; readonly models: Models } = {
+    settings: {},
+    models: MODELS,
+  };
+  const writeUser = (next: typeof user) => {
+    user = next;
+    writeFileSync(
+      join(config, "config.json"),
+      `${JSON.stringify({ ...user.settings, models: user.models })}\n`,
+    );
+  };
+  writeUser(user);
   const check =
     typeof options.check === "function" ? options.check({ root, state }) : (options.check ?? "true");
   initRepo(repo, options.project ?? "acme/widgets", check);
@@ -188,13 +198,11 @@ async function createMachine(options: MachineOptions): Promise<Machine> {
         .split("\n")
         .filter(Boolean),
     ownerCommits,
-    userSettings(settings) {
-      writeFileSync(join(config, "config.json"), `${JSON.stringify(settings)}\n`);
-    },
+    userSettings: (settings) => writeUser({ ...user, settings }),
     projectSettings(settings) {
       ownerCommits(".dim/config.json", `${JSON.stringify(settings)}\n`);
     },
-    models,
+    models: (models) => writeUser({ ...user, models }),
     createOperator,
     close() {
       for (const session of operators) session.close();

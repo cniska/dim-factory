@@ -8,7 +8,7 @@ Sources: my [My Workflow](https://gist.github.com/cniska/e3081dc2b47de82fe2ae04f
 design → build → review → ship
 ```
 
-I route work by capability: a powerful model for hard design and high-risk review, a balanced one to drive and implement, a fast one for bounded edits. The factory holds the same split as one model per role, set in the user's `models.json` ([`core.md`](core.md#starting-a-worker)).
+I route work by capability: a powerful model for hard design and high-risk review, a balanced one to drive and implement, a fast one for bounded edits. The factory holds the same split as one model per role, set in the user's `models` setting ([`core.md`](core.md#starting-a-worker)).
 
 ## The steps
 
