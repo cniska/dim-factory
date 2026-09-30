@@ -4,8 +4,8 @@ import { join } from "node:path";
 type HookEntry = { matcher?: string; hooks?: { type?: string; command?: string }[] };
 export type ClaudeHooks = Record<string, HookEntry[]>;
 
-export function userHooks(home: string): ClaudeHooks {
-  const path = join(home, ".claude", "settings.json");
+export function settingsHooks(root: string): ClaudeHooks {
+  const path = join(root, ".claude", "settings.json");
   if (!existsSync(path)) return {};
   return (JSON.parse(readFileSync(path, "utf8")) as { hooks?: ClaudeHooks }).hooks ?? {};
 }

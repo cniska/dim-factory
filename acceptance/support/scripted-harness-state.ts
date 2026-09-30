@@ -11,6 +11,7 @@ export type HarnessAct =
   | { act: "say"; text: string }
   | { act: "signal"; name: string }
   | { act: "wait"; name: string }
+  | { act: "build-remaining"; artifact: string }
   | { act: "die" }
   | { act: "limit"; resetsAt: string };
 

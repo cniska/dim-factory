@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
-import { hookCommands, userHooks } from "./claude-hooks";
+import { hookCommands, settingsHooks } from "./claude-hooks";
 
 export type Ran = { exitCode: number; stdout: string; stderr: string };
 
@@ -81,7 +81,7 @@ export class OperatorSession {
       source: "startup",
       cwd: this.cwd,
     });
-    for (const command of hookCommands(userHooks(this.env.HOME as string), event)) {
+    for (const command of hookCommands(settingsHooks(this.env.HOME as string), event)) {
       await this.sh(`sh -c ${quote(command)}`, payload, { alongside: false });
     }
   }

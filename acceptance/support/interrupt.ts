@@ -6,6 +6,22 @@ export function killMatching(pattern: string): void {
   Bun.spawnSync(["pkill", "-9", "-f", pattern]);
 }
 
+export function descendants(pid: number): number[] {
+  const children = Bun.spawnSync(["pgrep", "-P", String(pid)], { stdout: "pipe" })
+    .stdout.toString()
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map(Number);
+  return children.flatMap((child) => [child, ...descendants(child)]);
+}
+
+export function commandOf(pid: number): string {
+  return Bun.spawnSync(["ps", "-o", "command=", "-p", String(pid)], { stdout: "pipe" })
+    .stdout.toString()
+    .trim();
+}
+
 export function killPid(pid: number): void {
   try {
     process.kill(pid, "SIGKILL");

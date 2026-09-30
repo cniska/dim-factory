@@ -2,7 +2,7 @@
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname } from "node:path";
-import { type ClaudeHooks, fireHooksSync, mergeHooks, userHooks } from "./claude-hooks";
+import { type ClaudeHooks, fireHooksSync, mergeHooks, settingsHooks } from "./claude-hooks";
 import { type ClaudeSettings, sandboxed, writeRefused } from "./claude-sandbox";
 import {
   claudeLine,
@@ -116,7 +116,12 @@ if (!role) {
 }
 rememberRole(state, sessionId, role);
 
-const hooks = mergeHooks(flags.settingSources === "" ? {} : userHooks(home), flags.settings?.hooks ?? {});
+const sources = flags.settingSources === null ? ["user", "project"] : flags.settingSources.split(",");
+const hooks = mergeHooks(
+  sources.includes("user") ? settingsHooks(home) : {},
+  sources.includes("project") ? settingsHooks(cwd) : {},
+  flags.settings?.hooks ?? {},
+);
 const fire = (event: string, payload: Record<string, unknown> = {}, tool?: string) =>
   fireHooksSync(hooks, event, { session_id: sessionId, ...payload }, env, cwd, tool);
 
@@ -217,6 +222,19 @@ async function perform(act: HarnessAct): Promise<string | undefined> {
     case "wait":
       while (!existsSync(releasePath(state, act.name))) await Bun.sleep(20);
       return;
+    case "build-remaining": {
+      const shown = JSON.parse(dim(["order", "show"]).stdout) as {
+        result?: { slices?: { commit?: string }[] };
+      };
+      const slices = shown.result?.slices ?? [];
+      for (const [index, slice] of slices.entries()) {
+        if (slice.commit) continue;
+        await perform({ act: "write", path: `slice-${index + 1}.txt`, content: `slice ${index + 1}\n` });
+        await perform({ act: "commit", subject: `feat: add slice ${index + 1}` });
+      }
+      await perform({ act: "build-return", artifact: act.artifact });
+      return;
+    }
     case "die":
       process.kill(process.pid, "SIGKILL");
       await Bun.sleep(60_000);

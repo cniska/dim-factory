@@ -53,8 +53,9 @@ function initRepo(repo: string, project: string, check: string): void {
   git(["config", "user.name", "Owner"], repo);
   git(["config", "user.email", "owner@example.com"], repo);
   git(["config", "commit.gpgsign", "false"], repo);
-  git(["config", "dim.ship", "trunk"], repo);
   git(["remote", "add", "origin", `git@github.com:${project}.git`], repo);
+  mkdirSync(join(repo, ".dim"));
+  writeFileSync(join(repo, ".dim", "config.json"), `${JSON.stringify({ ship: "trunk" })}\n`);
   writeFileSync(join(repo, "package.json"), `${JSON.stringify({ scripts: { verify: check } })}\n`);
   writeFileSync(join(repo, "bun.lock"), "");
   writeFileSync(join(repo, ".gitignore"), ".claude/\n");
