@@ -16,7 +16,6 @@ Each fact lives on one page and is linked from the others.
 - [The wall](wall.md) — the read-only board the owner watches
 - [Agent command reference](usage.md) — install, collect, query, gates and config
 - [Session database](design.md) — sources, schema, ingestion, hooks and read path
-- [Worktrees](worktrees.md) — task checkouts and their environments
 - [Glossary](glossary.md) — one word per thing
 - [Source layout](../src/README.md) — where to start reading the code
 

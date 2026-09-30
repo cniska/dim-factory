@@ -74,22 +74,10 @@ dim config unset comments
 |---|---|
 | `comments` | `banned` turns on the comment gate; `allowed` turns it off |
 
-## Worktrees
-
-```sh
-dim wt <branch>
-dim wt ls
-dim wt path <branch>
-dim wt rm [--force] <branch>
-dim wt prune   # prune stale worktree admin entries
-```
-
-See [Worktrees](worktrees.md). `dim-audit` reads existing code across quality dimensions without changing the project.
-
 ## Session start
 
 The `SessionStart` hook runs `dim wake` to print the repo's declared check and format commands and record which guidance files were in force.
 
 ## Verification
 
-`bun run verify` runs lint, typecheck, tests and the worktree checks. `bun run format` formats.
+`bun run verify` runs lint, typecheck and tests. `bun run format` formats.

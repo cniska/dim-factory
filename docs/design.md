@@ -73,12 +73,12 @@ dim sync: drain the spool → read changed files → derive session ends
 ## Read path
 
 - **`dim q <name>`** runs a named query; `dim q list` names them. Each is a `Query` in one of the modules [`src/query-registry.ts`](../src/query-registry.ts) imports.
-- **One output shape.** Every command prints one line of JSON: `{command, ok, result}` on stdout, or `{command, ok: false, error}` on stderr ([`src/cli-output.ts`](../src/cli-output.ts)). An agent reads the error, so a coded error carries a `code` to branch on, its facts as `meta` fields, and a message that names the act that resolves it, or says nothing does. A `raw` command prints the format its consumer parses instead: `wake`, `format-edit`, `check-command`, `trace`, `wt`, and `gate`, which speaks to git through its exit code and stderr.
+- **One output shape.** Every command prints one line of JSON: `{command, ok, result}` on stdout, or `{command, ok: false, error}` on stderr ([`src/cli-output.ts`](../src/cli-output.ts)). An agent reads the error, so a coded error carries a `code` to branch on, its facts as `meta` fields, and a message that names the act that resolves it, or says nothing does. A `raw` command prints the format its consumer parses instead: `wake`, `format-edit`, `check-command`, `trace`, and `gate`, which speaks to git through its exit code and stderr.
 - **A result states its base.** It carries `denominator`, `columns`, `rows` and `note`; an empty result says why, and a figure covering a subset names the subset.
 - **Capped rows.** A result longer than 40 rows says so and names `--rows`, the one cap on what a query returns. `search` reads one row past the cap and no further, since a common word matches most of the record.
 - **Arguments are refused, not guessed.** A missing or malformed argument, an ambiguous prefix, a second positional or an unknown flag is a usage error; a prefix that matches nothing is an empty result that says so.
 - **Read-only.** A query opens the database through `openReadOnly`, because `hook_event` has no source to restore it from. Its trace row goes through a separate connection.
-- **A repository is named by its remote** — `owner/repo`, lowercased, host dropped — so worktrees and checkouts of one project share a label.
+- **A repository is named by its remote** — `owner/repo`, lowercased, host dropped — so worktrees and checkouts of one project share a label. A path under `<repo>/.claude/worktrees/<name>/` folds onto the checkout it copies ([`src/worktree.ts`](../src/worktree.ts)).
 - **A scratch tree is not work.** [`src/ingest-scratch.ts`](../src/ingest-scratch.ts) excludes commits made under temp directories wherever session directories become repos.
 
 ## Search

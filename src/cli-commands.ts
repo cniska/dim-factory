@@ -19,7 +19,6 @@ const LOADERS: Record<string, () => Promise<Command>> = {
     import("./install-commit-gate-command").then((m) => m.installCommitGateCommand),
   wake: () => import("./wake-command").then((m) => m.wakeCommand),
   "format-edit": () => import("./format-edit-command").then((m) => m.formatEditCommand),
-  wt: () => import("./wt-command").then((m) => m.wtCommand),
   trace: () => import("./trace-command").then((m) => m.traceCommand),
 };
 

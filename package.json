@@ -15,8 +15,7 @@
     "typecheck": "bunx tsc --noEmit",
     "test": "bun test",
     "test:acceptance": "bun test ./acceptance/*.acceptance.ts",
-    "verify": "bun run lint && bun run typecheck && bun test && bun run test:wt",
-    "test:wt": "WT_CMD=\"bun run $PWD/src/cli.ts wt\" ./scripts/wt.test.sh"
+    "verify": "bun run lint && bun run typecheck && bun test"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
