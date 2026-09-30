@@ -18,6 +18,12 @@ type Detailed =
       readonly reason: string;
       readonly decidedBy: Decider;
     }
+  | {
+      readonly action: "artifact_returned";
+      readonly station: Station;
+      readonly reason: string;
+      readonly decidedBy: Decider;
+    }
   | { readonly action: "order_returned"; readonly station: Station; readonly reason: string }
   | { readonly action: "order_cancelled"; readonly reason: string }
   | { readonly action: "message_sent"; readonly details: { readonly to: string } }

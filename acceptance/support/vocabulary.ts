@@ -4,6 +4,7 @@ export const ACTION = {
   run: "order_run",
   cancelled: "order_cancelled",
   approved: "artifact_approved",
+  artifactReturned: "artifact_returned",
   stationFailed: "station_failed",
   planReturned: "plan_returned",
   sliceSubmitted: "slice_submitted",

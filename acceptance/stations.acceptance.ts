@@ -545,5 +545,11 @@ describe("the operator's decisions", () => {
 
     expect(m.invocation("builder", 1).resumed).toBe(m.invocation("builder", 0).sessionId);
     expect(m.invocation("builder", 1).prompt).toContain("say which check ran");
+    const returned = entryOf(await showOrder(m.operator, id), ACTION.artifactReturned);
+    expect({ station: returned.station, reason: returned.reason, decidedBy: returned.decidedBy }).toEqual({
+      station: "build",
+      reason: "say which check ran",
+      decidedBy: "owner",
+    });
   });
 });

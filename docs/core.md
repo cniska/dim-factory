@@ -44,7 +44,7 @@ Each order has one log: an append-only table of entries, each with a per-order `
 - **Who took it** is either a worker and its session, or the factory with its version and the `seq` of the entry that caused it. A factory landing names the approval it followed from.
 - **Evidence** sits on the entry that produced it: the check's output on a committed or refused slice, and the check and the rebase on a landing.
 - **A decision** records its reason. An approval or return also records whether the owner decided it or handed it to the operator (`--decided owner|operator`). A stop records its cause as a code with its details.
-- The actions are the acceptance suite's vocabulary ([`acceptance/support/vocabulary.ts`](../acceptance/support/vocabulary.ts)), plus `order_updated` and `branch_rebased`.
+- The actions are the acceptance suite's vocabulary ([`acceptance/support/vocabulary.ts`](../acceptance/support/vocabulary.ts)). The operator's decision on an artifact is `artifact_approved` or `artifact_returned`; a worker handing the order back is `order_returned`.
 
 Order ids and worker names are made by the domain before they are written. A store never mints them.
 
