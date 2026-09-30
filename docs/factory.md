@@ -1,6 +1,6 @@
 # The factory
 
-The argument this repo executes, and how the factory works today. [`my-workflow.md`](my-workflow.md) is the workflow it replaces; [`goals.md`](goals.md) is what it is measured against.
+The argument this repo executes. [`my-workflow.md`](my-workflow.md) is the workflow it replaces; [`goals.md`](goals.md) is what it is measured against.
 
 ## Dim, not dark
 
@@ -15,126 +15,12 @@ A factory with no human reading the work ships whatever the checks miss, and the
 The factory aims to give each project the conditions that let its owner delegate work with evidence:
 
 - **Codebase quality.** Clear boundaries, current docs and tests give a worker a reliable starting point. [`dim-audit`](../skills/dim-audit/SKILL.md) inspects an existing project and reports debt for the owner to turn into work.
-- **Static analysis and tests.** The project declares the check it needs; the commit gate and factory runner execute it before accepting code ([`usage.md`](usage.md#commit-gate)).
+- **Static analysis and tests.** The project declares the check it needs; the commit gate executes it before accepting code ([`usage.md`](usage.md#commit-gate)).
 - **Rules.** Standing instructions tell agents what holds throughout a project. Mechanical rules become gates, which still run when an agent misses an instruction ([`usage.md`](usage.md#install-the-shared-controls)).
 - **Skills.** Shared, task-specific procedures guide planning, building, review and audit. [`dim-setup`](../.agents/skills/dim-setup/SKILL.md) installs them for use from other projects.
 - **Style guide.** The project's conventions and examples show what its code and docs should look like: names, file boundaries, API patterns and writing. Formatting is one enforceable part; reviewers judge conventions that tools cannot decide. [Google's style guide overview](https://github.com/google/styleguide/blob/gh-pages/README.md) uses the term for conventions ranging from names to design choices.
 
 Setup installs the shared controls, while each project supplies its declared check and local conventions. An audit reports codebase quality problems; fixing them remains work with its own evidence and approvals.
-
-## The line
-
-- **Skills are the stations.** `dim-feat` and `dim-fix` are the entry points; `dim-plan`, `dim-build` and `dim-review` are the stations.
-- **The same three stations serve every line**, each routing on the line its brief names.
-- **Coding agents are the floor.** Each station runs as a worker in Claude Code, Codex or Grok Build.
-- **The repo's `AGENTS.md` sets the tolerances.**
-- **Checks, review and gates are QC.**
-
-## An order
-
-One piece of work, written down before anyone takes it ([`glossary.md`](glossary.md)). Its id is also its branch and its worktree, `<repo>/.claude/worktrees/<order-id>`.
-
-```text
-queued → plan → build → review → ship → shipped
-```
-
-- **Where an order is, is read from the record** ([`src/order.ts`](../src/order.ts)): its station and the act that station waits on — run the station, or approve its artifact. Approving the Review artifact ships the order, so the next act is ship only after a ship that failed without sending the order back to a station. Nothing stores it and no command sets it, the status included: an order is `queued` until it starts, `running` until it ships or is dropped, then `shipped` or `dropped`.
-- **Every act checks on entry** that it is the act the record waits on, and a refusal names the one that is. `dim order plan` on a queued order starts it and makes its worktree.
-- **The operator** delegates each station to a worker, checks each artifact against the record, and approves it or returns it. It never does the work. Queuing, starting and dropping an order are its acts alone; a worker running `dim order add` is refused.
-- **Each station returns an artifact** — plan, Build artifact, Review artifact — that the operator approves (`dim order approve`) or sends back with a reason (`dim order return`).
-- **Build runs slice by slice.** One `dim order build` runs each remaining slice, and the runner checks and commits that slice before the next starts. Review follows the last one, and every round reads the whole order, from its first commit's parent to its head ([`src/station-review.ts`](../src/station-review.ts) `reviewRange`). A round's findings send the order back to build, where the builder answers each one once, `fixed` or `refused` with a reason. The next round is briefed with those answers and raises a new finding for any that still holds; a round that raises nothing writes the Review artifact.
-- **An order returns to the station that can correct it.** During build, the operator uses `dim order return <id> --to plan --reason "..."` when the approved plan needs revision. During review approval, `--to build` sends a code correction to the builder. A return without `--to` sends the current artifact to its worker for revision. Every return sends back the artifact awaiting approval along with the destination's, and is refused while an attempt runs on the order or a rebase conflict waits on the builder. The revised plan needs approval before build resumes from its slices. A plan revision needs fresh Build and Review approvals, and Review reads the whole order again.
-- **Ship** follows the Review approval and ends the order (see [Shipped](#shipped)).
-- **A failed attempt** leaves the order where its evidence puts it, and the same command runs the station again. A station starting or running on an order refuses a second one: the starting station holds the order until its attempt is recorded ([`src/station-attempt.ts`](../src/station-attempt.ts)). **A drop** is the owner deciding it will not be built. A started order's worktree stays available for inspection; `dim wt rm <id>` removes it after its work is saved.
-- **One act, one path.** Findings arrive only in the reviewer's report and answers only in the builder's build turn. Commits, files, checks and Build artifacts are written by the build runner and by ship, and Review artifacts by the review station; no command writes them.
-
-### Commands
-
-```sh
-dim order add <id> --title "..." --line feat|fix [--description "..."]
-dim order drop <id> --reason "..."
-dim order plan|build|review <id> [--harness codex|claude|grok]
-dim order approve <id> [--reason "..."]  # a Build artifact's approval requires --reason; a Review artifact's ships
-dim order return <id> --reason "..." [--to plan|build]
-dim order ship <id>                      # retries a ship that failed with no station's work to do
-dim q order <id>                         # one order's full record and its next act
-dim q factory                            # every order's current state
-dim trace <id>                           # diagnostic events, followed live
-```
-
-`dim q order <id>` places the order's current `status` and `next` act in adjacent columns of its first row. Terminal orders show `(none)` in `next`. Its last three columns carry the order's `line`, `title` and `description`. Lifecycle and evidence rows keep their own `status`, `subject`, and `evidence`, with empty `next`, `line`, `title` and `description` cells. They follow the first row newest first, so the row cap drops the oldest evidence; rows that share a timestamp keep a fixed order.
-
-A command with no `--harness` runs the worker under the harness of the station's bound worker, or else the one the operator's own session is in.
-
-## The build turn
-
-A builder leaves its changes uncommitted and returns a build turn: a commit subject, an answer per finding, the test files the slice adds or changes, and the Build artifact on every turn but one that finishes an earlier slice. A returned Build artifact runs a build turn too, briefed with the owner's feedback, and it may change code. The runner then ([`src/station-build-commit.ts`](../src/station-build-commit.ts)):
-
-1. refuses a turn that leaves a handed finding unanswered or answers one it was not handed
-2. applies the comment gate over the staged tree, reading the ban from the local default branch's config so a builder cannot lift it, and refusing a turn that changes a `.gitattributes`, which decides the files the ban reads
-3. refuses a turn that names a test the slice deletes or leaves as it was, where a moved test counts as added, and a `fix` order's slice turn that names none; a turn answering findings, a returned Build artifact or a red check needs none
-4. commits the staged slice on the order's branch, unsigned, with the repo's identity as author and `dim` as committer ([`src/git-identity.ts`](../src/git-identity.ts)), running the commit hooks from outside the tree, so the subject is judged before anything expensive runs
-5. runs a proof when the turn names tests: it puts the tracked files at the commit's parent, keeping the slice's `.gitignore` files so its ignore rules hold, lays only the named tests from the commit over them, runs the declared check there, and puts the commit back ([`src/station-build-proof.ts`](../src/station-build-proof.ts)). A proof that passes refuses a `fix` order's slice turn, since its tests do not fail without the fix; on any other turn it is only recorded. So a fix's test lands in the slice that carries the fix: a later turn's base already holds it. A proof whose check changes the tree or nests a repository is refused like the check below. Each proof is recorded as evidence with its base, the commit it ended at, and the tests it ran
-6. runs the check the local default branch declares, in the worktree's check sandbox; a turn that redefines that task in its manifest fails before it runs, so a builder cannot redefine the check its own code is held to ([`src/workspace-tasks.ts`](../src/workspace-tasks.ts) `trunkCheck`). The sandbox's environment holds only what a process needs to run — `PATH`, `HOME`, the user, shell, temporary directory, locale and time zone — so no credential, factory name or proxy reaches it ([`src/worker-process-environment.ts`](../src/worker-process-environment.ts))
-7. keeps the commit and records it under the builder, with the check at the commit it ran on — or, for a turn that changed nothing, the check at the head it was built on ([`src/order-head-check.ts`](../src/order-head-check.ts))
-
-Any refusal or failure after the commit resets the order's branch to where it was and leaves the slice uncommitted in the worktree, so nothing is kept that the gates did not pass. A build that finds the branch one commit past its recorded head, with that commit's parent recorded, undoes it the same way before its builder starts: a judgement was interrupted.
-
-The default branch's declaration governs until a change to it lands there. An order may add tasks, and a task it adds above the declared one in the check order is not the check until it ships. An order may not change the declared task's definition, its script, recipe or package manager: that change is the owner's, made on the default branch, and the order's next turn is checked by it.
-
-A refused commit or comment goes back to the same builder, at most twice per turn. A red check, a redefined check, a check that changed the tree, a named test the slice deletes or leaves as it was, a `fix` slice turn that names no test or whose proof passes, a nested repository, or HEAD moved off the order's branch fails the turn, and the reason is in the next turn's brief. Every build turn's brief also carries the latest check at the order's head, its last commit or else its base, while that check is red, with its command, exit code and output.
-
-## Shipped
-
-Landing an order's commits on the local default branch ships it. Ship then removes its worktree, and deletes its branch if the branch tip reaches the local default branch. A worktree or branch that cannot be removed is kept; the ship run records the reason under `worktree_kept` or `branch_kept`, and `dim order ship` reports it. Nothing is pushed. Ship waits on an approved Build artifact, which the runner writes only with a check that passed at the head, and on an approved Review artifact at the head; the docs changing with the behavior rest on the stations. Approving the Review artifact ships; `dim order ship` retries, and writes a `ship_retried` event under the operator before the attempt.
-
-Every ship writes one [ship run](glossary.md#the-record) before its refusal reaches the caller: it landed, stopped on a conflict, or was refused with the code of the refusal ([`src/ship.ts`](../src/ship.ts)). An error with no code is a fault, not a refusal, and writes no run. The rebase and the landing are the factory's acts, so a ship run names no worker and the history shows neither; a rebased commit keeps its author and takes `dim` as committer, unsigned; `dim q order` lists the runs and the commits they rewrote. The order is `shipped` once a run lands it. A landed run is recorded, with the commits it rewrote, as soon as the default branch moves and before the worktree comes down, so a cleanup that dies cannot leave landed commits unrecorded; the teardown's report and what it kept are then written to that run.
-
-Ship lands the order the way the repo declares with `git config dim.ship`:
-
-- **`trunk`** fast-forwards the local default branch to the order's branch. If the default branch has moved ahead, the order's branch is first rebased in its worktree and re-checked with the check the default branch declares, as the build runner does.
-- **`pull-request`** is declared but not built, and refused.
-- A repo that declares nothing, or an unknown value, is refused, so no agent guesses how a repo ships.
-
-Around it:
-
-- `refs/remotes/origin/HEAD` identifies the default branch; ship lands on the local branch of that name.
-- Ship runs under the factory lock, since two ships would race on one checkout.
-- A build approval carries through every rebase, since the rebase replays approved commits and re-checks them; a review approval carries only through one whose patches are equal. So a rebase that changed a patch puts the order back at review, reading the whole order from the new base, and a conflict puts it back at build: the builder resolves the paths in place, and the runner continues the rebase instead of committing ([`src/station-build-rebase.ts`](../src/station-build-rebase.ts)).
-- A red re-check keeps the rebase and puts the order back at build, where a build turn briefed with the check's output fixes the rebased head ([`src/order-head-check.ts`](../src/order-head-check.ts)). Its commit takes a new Build approval and a new review round before the order ships.
-- A rebase is recorded as a rewrite: each retired sha stays in the record and never counts as landed, reviewed or current.
-- A conflict stays pending while the latest ship run is a conflict and no commit names it.
-- When commits remain to land, ship refuses a dirty default branch checkout, a branch tip other than the order's last recorded commit, or a branch missing a recorded commit. Before a rebase, it also refuses a dirty or nested order worktree.
-
-## Workers
-
-- **An act's worker is written with the act**, never attributed afterwards.
-- **Identity is the process tree.** Every worker is registered as a process, a pid and its start time, and a `dim` command resolves to the nearest registered process above it; no file or variable a worker can read grants an identity ([`src/worker.ts`](../src/worker.ts)). A running station command registers itself as a barrier, so what it spawns before a worker is registered resolves to no one rather than to the operator above it.
-- **The operator** is registered by `dim operator`, which takes the active session in this checkout's `owner/repo` and registers that session's harness process when it is an ancestor of the caller.
-- **Station workers** are issued through assignments. One worker per station per order keeps its provider session, so a later turn resumes it with its context. A failed harness run releases that worker, and the next command briefs a new one from the record. A returned turn whose artifact or check fails keeps its worker for correction. A worker bound to one harness is refused under a `--harness` that names another.
-- **A usage limit stops the station.** An attempt a harness's usage limit stopped finishes `limited`, with the reset time the harness reports, and releases its worker; it records no station failure. The command fails with `usage_limited`, naming the harness, the reset and `--harness` ([`src/station-worker.ts`](../src/station-worker.ts)).
-- **Station attempts** start when a planner, builder, or reviewer run receives its worker identity. The runner records the outcome; if a worker stops without one, the next run records that attempt as failed before starting. Every station runs through one runner ([`src/station.ts`](../src/station.ts)): a station that fails records one failure with its station and reason, naming its worker once one is assigned, and aborts the review round it opened.
-- **A worker is over when its process stops answering** a signal ([`src/worker.ts`](../src/worker.ts)); nothing needs to be awake to notice.
-- **A worker's environment is an allowlist**, never the owner's: what the check gets, `dim`'s own data locations, the worker's factory name, and exactly the variables its harness adapter declares — its config directory, its subscription login where the harness takes one from a variable, and the network proxy and CA it reaches its model through ([`src/worker-process-environment.ts`](../src/worker-process-environment.ts)). So the operator's identity and session, API keys, forge tokens and agent sockets never reach it, and no worker is billed per token. A Claude worker cannot start background work.
-- **Sandboxes.** No worker gets the checkout's git metadata. Codex builders run `workspace-write`, everything else read-only. Claude workers run in its Bash sandbox with the worktree's `.git` and the git directory it shares with the checkout denied ([`src/git-checkout-dir.ts`](../src/git-checkout-dir.ts)). A Claude worker loads no settings file, neither the owner's nor the worktree's, and carries `dim`'s session hooks in its own settings, built from its data directory, so it keeps the owner's sign-in and records into the record of the runner that started it ([`src/hook-commands.ts`](../src/hook-commands.ts) `hookSettings`). Loading no settings file also loads no user skills, so the worker gets `dim`'s station skills as the `dim` plugin, [`plugin/`](../plugin/.claude-plugin/plugin.json) with its `skills` linked to [`skills/`](../skills), and a brief's `dim-review` resolves to `dim:dim-review`. The plugin is a directory of its own because Claude refuses every edit under a plugin directory, and order worktrees sit under the checkout. Grok builders run the `workspace` sandbox and every other Grok worker `read-only`. A Grok worker that cannot edit is denied the edit tools, and every Grok worker is denied those tools on both git paths.
-
-## Roles and tiers
-
-Each role runs at a tier declared in [`src/worker-routing.ts`](../src/worker-routing.ts): the planner, the reviewer and the operator at `deep`, the builder at `standard`. The machine's `routing.json` maps each harness's models to the tiers, and `dim route` refuses a map that does not say exactly one thing. No model name appears in this repo.
-
-A station says whether its worker edits files, never a harness's flags ([`src/harness.ts`](../src/harness.ts) `edits`); each harness adapter maps that ([`src/harness-codex.ts`](../src/harness-codex.ts), [`src/harness-claude.ts`](../src/harness-claude.ts), [`src/harness-grok.ts`](../src/harness-grok.ts)).
-
-## Worker environments
-
-- The workspace profile ([`src/workspace.ts`](../src/workspace.ts)) names the checkout's languages, package managers, workspace members, tasks, compose services and the variable names a sample env file declares — never a value.
-- The repository's setup and teardown hooks own every side effect ([`worktrees.md`](worktrees.md)); `dim` records what they report against the order.
-- A repository states no isolation strategy, so the profile reports none.
-
-## Record
-
-Orders, workers, attempts, artifacts, evidence and the ledger live in `factory_*` tables that `dim rebuild` carries through ([`design.md`](design.md#schema)), since nothing can recreate an attempt after the fact.
-
-While the factory is being built, `DIM_HOME=<dir> bun run factory:reset -- --confirm-factory-reset` clears its orders in a named data directory; it refuses the default one.
 
 ## Borrowed from the assembly line
 

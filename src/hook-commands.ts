@@ -70,11 +70,3 @@ export function wantedHooks(tool: Tool, env: Env = process.env): WantedHook[] {
 export function entryFor(matcher: string | undefined, handler: HookHandler): HookEntry {
   return matcher === undefined ? { hooks: [handler] } : { matcher, hooks: [handler] };
 }
-
-export function hookSettings(tool: Tool, env: Env): Record<string, HookEntry[]> {
-  const byEvent: Record<string, HookEntry[]> = {};
-  for (const { event, command, matcher } of wantedHooks(tool, env)) {
-    byEvent[event] = [...(byEvent[event] ?? []), entryFor(matcher, { type: "command", command })];
-  }
-  return byEvent;
-}

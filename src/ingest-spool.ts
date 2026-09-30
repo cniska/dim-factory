@@ -68,12 +68,6 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
      VALUES ($tool, $sessionId, $event, $ts, $harnessPid, $source, $reason, $model, $cwd, $payload)
      ON CONFLICT(session_id, event, ts) DO NOTHING`,
   );
-  const sighting = db.prepare(
-    `INSERT INTO factory_worker_session (worker, session_id, seen_at)
-     SELECT $worker, $sessionId, $seenAt FROM factory_worker WHERE name = $worker
-     ON CONFLICT DO NOTHING`,
-  );
-
   const drained: string[] = [];
   writeTransaction(db, () => {
     for (const tool of TOOLS) {
@@ -99,10 +93,6 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
           continue;
         }
         const ts = new Date(Number(match[1]) / 1e6).toISOString();
-        const worker = match[4] ?? match[5];
-        if (worker) {
-          sighting.run({ $worker: worker, $sessionId: sessionId, $seenAt: ts });
-        }
         const changes = insert.run({
           $tool: tool,
           $sessionId: sessionId,

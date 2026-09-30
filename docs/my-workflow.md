@@ -8,7 +8,7 @@ Sources: my [My Workflow](https://gist.github.com/cniska/e3081dc2b47de82fe2ae04f
 design → build → review → ship
 ```
 
-I route work by capability: a powerful model for hard design and high-risk review, a balanced one to drive and implement, a fast one for bounded edits. The factory holds the same split as tiers per role ([`src/worker-routing.ts`](../src/worker-routing.ts)).
+I route work by capability: a powerful model for hard design and high-risk review, a balanced one to drive and implement, a fast one for bounded edits. The factory holds the same split as a model strength per role ([`glossary.md`](glossary.md)).
 
 ## The steps
 
@@ -59,7 +59,7 @@ When context runs long, the session writes a handoff, and the next session start
 Verified slices are committed locally; a shared branch is pushed only on my go.
 
 - **Check:** the work is on the default branch.
-- **Factory:** approving the Review artifact (`dim order approve`) ships the order; `dim order ship` retries a ship that failed.
+- **Factory:** approving the Review artifact (`dim order approve`) ships the order.
 
 ### 8. Close the gap
 

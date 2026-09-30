@@ -1,4 +1,0 @@
-{
-  "name": "dim",
-  "description": "The factory's station skills, loaded into each Claude worker with --plugin-dir"
-}

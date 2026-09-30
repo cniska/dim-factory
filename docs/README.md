@@ -8,12 +8,11 @@ Each fact lives on one page and is linked from the others.
 
 - [My workflow](my-workflow.md) — how I build with agents by hand, and what the factory replaces
 - [Goals](goals.md) — what the factory is for, in order
+- [The factory](factory.md) — the argument the factory executes
 - [The landscape](landscape.md) — what else exists, what was borrowed, and what was refused
 
 ## How it works
 
-- [The factory](factory.md) — orders, stations, workers, and ship
-- [Factory core design](core.md) — the shape the order, station, worker and ship modules are rebuilt to
 - [The wall](wall.md) — the read-only board the owner watches
 - [Agent command reference](usage.md) — install, collect, query, gates and config
 - [Session database](design.md) — sources, schema, ingestion, hooks and read path

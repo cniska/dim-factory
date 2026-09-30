@@ -6,14 +6,11 @@ import { join } from "node:path";
 import { closeDb, openDb, SchemaTooOldError } from "./db";
 import { NoDatabaseError, openReadOnly } from "./db-read";
 import { SCHEMA_VERSION } from "./db-schema";
-import { queueOrder } from "./order-lifecycle";
 import { dbPath } from "./paths";
 import { qCommand } from "./q-command";
 import { QUERIES } from "./query-registry";
 import { sqlCommand } from "./sql-command";
 import { runTraceCommand } from "./trace-command";
-import { wallHandler } from "./wall/server";
-import { mintWorker } from "./worker";
 
 function writtenDatabase(): string {
   const path = join(mkdtempSync(join(tmpdir(), "dim-db-read-")), "sessions.db");
@@ -61,24 +58,21 @@ describe("opening the database to read", () => {
 const WRITES = [
   "INSERT INTO schema_version (version) VALUES (0)",
   "UPDATE schema_version SET version = 0",
-  "DELETE FROM factory_order",
+  "DELETE FROM repo_commit",
   "CREATE TABLE note (body TEXT)",
-  "DROP TABLE factory_order_event",
+  "DROP TABLE hook_event",
   "PRAGMA user_version = 7",
   "VACUUM",
   "REINDEX",
   "ANALYZE",
 ];
 
-function recordWithOrder(): { home: string; path: string } {
+function recordWithCommit(): { home: string; path: string } {
   const home = mkdtempSync(join(tmpdir(), "dim-db-read-"));
   const path = dbPath({ DIM_HOME: home });
   const db = openDb(path);
-  const operator = mintWorker(db, { role: "operator", pid: process.ppid, sessionId: "reader-test" });
-  queueOrder(
-    db,
-    { line: "feat", id: "order-1", project: "cniska/dim-factory", title: "Stay as written" },
-    operator.name,
+  db.run(
+    "INSERT INTO repo_commit (sha, repo, label, ts, subject) VALUES ('abc123', '/repo', 'cniska/dim-factory', '2026-01-01T00:00:00Z', 'feat: stay as written')",
   );
   closeDb(db);
   return { home, path };
@@ -121,7 +115,7 @@ async function asDimHome<T>(home: string, run: () => T | Promise<T>): Promise<T>
 
 describe("each reader of the record", () => {
   test("dim sql fails on every write and leaves the database as it was", async () => {
-    const { home, path } = recordWithOrder();
+    const { home, path } = recordWithCommit();
     try {
       const before = fingerprint(path);
       for (const statement of WRITES) {
@@ -142,46 +136,17 @@ describe("each reader of the record", () => {
   });
 
   test("dim q answers every query without changing the record beside its own trace, and creates none", async () => {
-    const { home, path } = recordWithOrder();
+    const { home, path } = recordWithCommit();
     const empty = mkdtempSync(join(tmpdir(), "dim-db-read-"));
     try {
       const before = recordBesideTraces(path);
-      for (const query of QUERIES) {
-        const args = query.name === "factory" ? [query.name] : [query.name, "order-1"];
-        await asDimHome(home, () => qCommand.run(args));
-      }
+      for (const query of QUERIES) await asDimHome(home, () => qCommand.run([query.name, "stay"]));
       expect(recordBesideTraces(path)).toEqual(before);
 
-      await expect(asDimHome(empty, () => qCommand.run(["order", "order-1"]))).rejects.toBeInstanceOf(
+      await expect(asDimHome(empty, () => qCommand.run(["search", "stay"]))).rejects.toBeInstanceOf(
         NoDatabaseError,
       );
       expect(existsSync(dbPath({ DIM_HOME: empty }))).toBe(false);
-    } finally {
-      rmSync(home, { recursive: true, force: true });
-      rmSync(empty, { recursive: true, force: true });
-    }
-  });
-
-  test("the wall serves the board and an order without changing the database, and creates none", async () => {
-    const { home, path } = recordWithOrder();
-    const empty = mkdtempSync(join(tmpdir(), "dim-db-read-"));
-    const answer = (wall: ReturnType<typeof wallHandler>, route: string): Response => {
-      const response = wall.fetch(new Request(`http://127.0.0.1${route}`), { upgrade: () => false });
-      if (!response) throw new Error(`${route} was answered with an upgrade`);
-      return response;
-    };
-    try {
-      const before = fingerprint(path);
-      const wall = wallHandler(path);
-      const board = answer(wall, "/api/snapshot");
-      expect(board.status).toBe(200);
-      expect(((await board.json()) as { orders: unknown[] }).orders).toHaveLength(1);
-      expect(answer(wall, "/api/order/order-1").status).toBe(200);
-      expect(fingerprint(path)).toBe(before);
-
-      const missing = dbPath({ DIM_HOME: empty });
-      expect(answer(wallHandler(missing), "/api/snapshot")?.status).toBe(503);
-      expect(existsSync(missing)).toBe(false);
     } finally {
       rmSync(home, { recursive: true, force: true });
       rmSync(empty, { recursive: true, force: true });
@@ -208,12 +173,12 @@ async function refusal(run: () => unknown): Promise<unknown> {
 describe("a reader of a record built by another schema version", () => {
   for (const version of [SCHEMA_VERSION - 1, SCHEMA_VERSION + 1]) {
     test(`refuses version ${version > SCHEMA_VERSION ? "newer" : "older"} than this one before any query, leaving it as it was`, async () => {
-      const { home, path } = recordWithOrder();
+      const { home, path } = recordWithCommit();
       try {
         stampSchemaVersion(path, version);
         const before = fingerprint(path);
         const readers: Record<string, () => unknown> = {
-          "dim q": () => qCommand.run(["order", "order-1"]),
+          "dim q": () => qCommand.run(["search", "stay"]),
           "dim sql": () => sqlCommand.run(["SELECT 1"]),
           "dim trace": () => runTraceCommand("order-1", { DIM_HOME: home }, () => {}),
         };
@@ -224,12 +189,6 @@ describe("a reader of a record built by another schema version", () => {
             reader,
             code: "SCHEMA_TOO_OLD",
           });
-        }
-        const wall = wallHandler(path);
-        for (const route of ["/api/snapshot", "/api/order/order-1"]) {
-          const response = wall.fetch(new Request(`http://127.0.0.1${route}`), { upgrade: () => false });
-          expect({ route, status: response?.status }).toEqual({ route, status: 503 });
-          expect(await response?.json()).toEqual({ error: new SchemaTooOldError(version).message });
         }
         expect(fingerprint(path)).toBe(before);
       } finally {

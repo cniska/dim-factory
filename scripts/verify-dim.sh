@@ -19,16 +19,13 @@ if [ "$1" = new ]; then
   enter "$(mktemp -d "${TMPDIR:-/tmp}/dim-verify-XXXXXX")"
   mkdir -p "$scratch/bin" "$DIM_HOME"
   printf '#!/bin/sh\nexec bun "%s" "$@"\n' "$checkout/src/cli.ts" > "$scratch/bin/dim"
-  printf '#!/bin/sh\nexec bun "%s" "$@"\n' "$checkout/scripts/verify-harness.ts" > "$scratch/bin/codex"
-  chmod +x "$scratch/bin/dim" "$scratch/bin/codex"
-  printf '{ "codex": { "light": "small", "standard": "middling", "deep": "large" } }\n' > "$DIM_HOME/routing.json"
+  chmod +x "$scratch/bin/dim"
   dim install-hooks --write > /dev/null
 
   git init -q -b main "$repo"
   git -C "$repo" config user.name Verify
   git -C "$repo" config user.email verify@example.com
   git -C "$repo" config commit.gpgsign false
-  git -C "$repo" config dim.ship trunk
   git -C "$repo" remote add origin https://github.com/example/verify.git
   printf '{"scripts":{"verify":"true"}}\n' > "$repo/package.json"
   : > "$repo/bun.lock"
@@ -51,8 +48,7 @@ const config = await Bun.file(process.argv[1]).json();
 const hook = config.hooks.SessionStart.flatMap((entry) => entry.hooks).find((h) => h.command.startsWith("cat >"));
 console.log(hook.command);
 ' "$scratch/claude/settings.json")
-printf '{"session_id":"verify-operator-%s","hook_event_name":"SessionStart","source":"startup","cwd":"%s"}' \
+printf '{"session_id":"verify-session-%s","hook_event_name":"SessionStart","source":"startup","cwd":"%s"}' \
   "$(date +%s%N)" "$repo" | sh -c "$spool_hook"
 cd "$repo"
-dim operator > /dev/null
 dim "$@"

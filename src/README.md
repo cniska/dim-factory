@@ -1,6 +1,6 @@
 # src/
 
-Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` belongs to `db`, `order-store.ts` to `order`. A module that is one file carries its bare name (`doctor.ts`, `paths.ts`). Commands are the exception, named `<name>-command.ts` for the one `dim` command `<name>` each holds. A test sits beside its module as `<module>.test.ts`. The wall is the one directory, `wall/`, because it is a separate app that only reads the record; its files drop the prefix.
+Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` belongs to `db`, `ingest-spool.ts` to `ingest`. A module that is one file carries its bare name (`doctor.ts`, `paths.ts`). Commands are the exception, named `<name>-command.ts` for the one `dim` command `<name>` each holds. A test sits beside its module as `<module>.test.ts`. The wall is the one directory, `wall/`, because it is a separate app that only reads the record; its files drop the prefix.
 
 ## Modules
 
@@ -13,15 +13,10 @@ Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` 
 | `guidance` | Which rules files were in force, and the walk that loaded them |
 | `query` | The named queries, their arguments and the row cap |
 | `session-start`, `wake` | Repo commands passed to a new session |
-| `order` | An order: its lifecycle, ledger, evidence, findings, ship runs and queue |
-| `station` | The plan, build and review stations: briefs, turns, artifacts and the build runner |
-| `worker` | Who a worker is: assignment, the process it is registered as, roles, routing and the process environment |
-| `harness` | Starting a worker under Claude Code, Codex, or Grok Build |
-| `ship` | Landing an order on the trunk: the rebase onto it, the re-check and the ship run it records |
-| `check` | The check sandbox |
+| `harness` | Which harnesses are installed |
 | `gate`, `comments`, `hooks`, `skill`, `rules`, `install` | Install and enforce the shared controls |
-| `git`, `repo`, `worktree`, `workspace` | Repositories, what they declare, the rebase build and ship both replay, and task worktrees |
-| `wall/` | The read-only board; `components/` and `lib/` hold its UI primitives |
+| `git`, `repo`, `worktree`, `workspace` | Repositories, what they declare, and task worktrees |
+| `wall/` | The read-only board's UI; `components/` and `lib/` hold its primitives |
 | `trace` | Diagnostic events |
 
 ## Where to start
@@ -29,5 +24,4 @@ Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` 
 - `cli-commands.ts` lists the commands, each loaded only when it runs, so a hook pays for one; `cli-contract.ts` is what one is.
 - `db-schema.ts` holds every table and the reason for its shape.
 - `query-registry.ts` lists the named queries.
-- `order-lifecycle.ts`, `order-ledger.ts` and `order-status.ts` hold what an order is and how it moves; `order-store.ts` loads an order and `order.ts` folds its next act and admits each act.
 - Read a module's `.test.ts` before changing its contract.

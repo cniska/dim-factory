@@ -6,7 +6,6 @@ import { readJsonc, readJsoncText, writeJsoncFile } from "./config-jsonc-file";
 import { installedHarnesses } from "./harness-installed";
 import {
   entryFor,
-  HOOK_CONTRACT_VERSION,
   type HookEntry,
   type HookHandler,
   type HookKind,
@@ -136,38 +135,6 @@ export function hookGaps(env: Env = process.env): HookGaps {
 export function outdatedLabel(plan: HookPlan): string {
   const what = plan.outdated === "matcher" ? "matcher" : (plan.installedVersion ?? "unmarked");
   return `${plan.event}: ${what}`;
-}
-
-export type HooksNotCurrentCode = "hooks_missing" | "hooks_stale";
-
-export class HooksNotCurrent extends Error {
-  constructor(
-    readonly code: HooksNotCurrentCode,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-const INSTALL = "the owner installs them with `dim install-hooks --write`";
-
-export function requireCurrentHooks(env: Env = process.env): void {
-  const gaps = hookGaps(env);
-  if (gaps.missing.length > 0) {
-    const where = gaps.missing.map((p) => `${p.tool} ${p.event}`).join(", ");
-    throw new HooksNotCurrent(
-      "hooks_missing",
-      `${gaps.missing.length} session hooks are not installed (${where}), so nothing would be recorded; ${INSTALL}`,
-    );
-  }
-  if (gaps.stale.length > 0) {
-    const where = gaps.stale.map((p) => `${p.tool} ${outdatedLabel(p)}`).join(", ");
-    throw new HooksNotCurrent(
-      "hooks_stale",
-      `${gaps.stale.length} session hooks differ from what contract ${HOOK_CONTRACT_VERSION} installs ` +
-        `(${where}), so what they record is not what is read back; ${INSTALL}`,
-    );
-  }
 }
 
 function refuseIneffective(text: string, configPath: string, plans: HookPlan[]): void {

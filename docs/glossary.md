@@ -7,21 +7,18 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Term | Definition |
 |---|---|
 | Owner | The person the factory runs for. They approve artifacts and read the wall |
-| Operator | The hand that runs the line: reads the queue, delegates each station and checks what comes back. It decides which work starts and when to stop, never how the work is done |
-| Worker | A hand the factory issues before any work starts, named like `nut-7` and carrying one role. Every act on an order names its worker when it is written |
-| Role | What a worker is called in as: `operator`, `planner`, `builder` or `reviewer` ([`src/worker-roles.ts`](../src/worker-roles.ts)) |
-| Read-only role | `planner` and `reviewer`, which may not change the tree they read |
-| Worker tree | The record of who delegated to whom: the operator, its station workers, and their children |
-| Tier | The model strength a role needs — `light`, `standard` or `deep` — mapped to this machine's models in one file ([`src/worker-routing.ts`](../src/worker-routing.ts)) |
-| Harness | The agent product that runs a worker session, such as Claude Code or Codex |
-| Line | The kind of work an order is: `feat` (shown as **feature**) or `fix`. `dim-feat` and `dim-fix` are its entry points |
-| Station | One repeatable step of work on an order: `plan`, `build` or `review` ([`src/station-contract.ts`](../src/station-contract.ts)), each run through [`src/station.ts`](../src/station.ts). Their skills are `dim-plan`, `dim-build` and `dim-review` |
-| Order | One piece of work: an id, a line, a title and a description. It exists before it is started and is worked in one worktree |
-| Queue | The orders not yet started |
-| Status | The state an order is in, read from the record: `queued`, `running` once started, `shipped` once a ship run landed it, or `cancelled`. The wall's columns are these words, and a cancelled order leaves the board |
-| Next act | What an order waits on, read from the record by [`src/order.ts`](../src/order.ts) and never stored: at a station, `run` or `approve`; once every station's artifact is approved, `ship`. Every act checks it on entry |
-| Slice | One increment inside an order that verifies and commits on its own |
-| Ship | Landing an order's commits on the local default branch the way the repo declares in `dim.ship`, which ends the order and removes its worktree and branch. Approving the Review artifact ships; `dim order ship` retries a ship that failed and records a `ship_retried` event under the operator |
+| Operator | The worker that runs the line: adds and runs orders and carries out the owner's decisions. It never does a station's work |
+| Worker | A lasting identity the factory records, named like `nut-7`, with one role. Every action on an order names the worker that took it |
+| Session | The harness process that currently carries a worker's context. A worker's session can die and be replaced; the worker stays |
+| Role | What a worker is: `operator`, `planner`, `builder` or `reviewer` |
+| Model strength | The strength of model a role runs on, `standard` or `deep`, mapped to this machine's models per harness |
+| Harness | The agent product that runs a session, such as Claude Code or Codex |
+| Station | One step of work on an order: `plan`, `build` or `review`. Their skills are `dim-plan`, `dim-build` and `dim-review` |
+| Order | One piece of work: a title, the owner's request and a project. It waits until the operator runs it, and is built in its own worktree and branch |
+| Status | The state an order is in, read from its log: `queued`, `running`, `shipped` or `cancelled`. The wall's columns are these words, and a cancelled order leaves the board |
+| Next step | What an order waits on, worked out from its log alone: `run`, `approve`, `revise` or `decide`. An action that is not the next step is refused |
+| Slice | One increment of a plan, with a title and its outcome, that the builder commits on its own |
+| Ship | Landing an order's commits on the project's default branch, which ends the order |
 | Command | One `dim` subcommand, in the `src/<name>-command.ts` named for it ([`src/cli-contract.ts`](../src/cli-contract.ts)) |
 | Command line | The text a shell runs, such as `bun run verify` |
 | Workspace task | What a repo declares in its manifest — a `package.json` script, a `mise` task, a `Makefile` target — read, never inferred ([`src/workspace-tasks.ts`](../src/workspace-tasks.ts)). The check is the task that says a change is sound |
@@ -30,21 +27,14 @@ One word per thing. A page that uses a word links here rather than defining it a
 
 | Term | Definition |
 |---|---|
-| Start | The first `dim order plan` on a queued order, which makes its worktree and moves it out of the queue |
-| Attempt | One station hand's run on an order, from start to finish, with its outcome. An attempt that has not finished and whose worker is not over refuses a second station run on the order ([`src/order.ts`](../src/order.ts) `admit`) |
+| Log | An order's one list of actions, each naming who took it, appended and never changed |
+| Evidence | What an action produced, such as a check's output, attached to that action in the log |
+| Artifact | What a station's worker returns for the owner — the plan, the Build artifact or the Review artifact. The operator approves or returns it on the owner's decision |
+| Worker's return | A station worker handing the order back: a planner that cannot plan it as written, or a builder or reviewer that found a problem in the previous station's work |
 | Cancel | The owner's decision to stop an order before it ships, with the reason |
-| Ledger | An order's events in `factory_order_event`, appended and never changed ([`src/order-ledger.ts`](../src/order-ledger.ts)) |
-| Evidence | What an order produced: commits, changed files, checks, proofs, findings and answers |
-| Artifact | A document a station worker writes for the owner — a plan, a Build artifact or a review — one row per revision in `factory_order_artifact`. The worker submits each revision, and the operator approves or returns it. It leads with the outcome and never lives in the worktree |
-| Build turn | What a builder returns after code work: the commit subject, an answer per finding it was handed, the test files the slice adds or changes, and on the last turn the Build artifact ([`src/station-build-turn.ts`](../src/station-build-turn.ts)). The runner commits; the builder does not |
-| Proof | The runner's run of the declared check at the head a slice was built on, with only the build turn's named tests laid over it. A `fix` order's slice commits only when its proof fails ([`src/station-build-proof.ts`](../src/station-build-proof.ts)) |
-| Check sandbox | The confinement the runner runs a repo's check in: worktree writable, network and `dim`'s data refused ([`src/check-sandbox.ts`](../src/check-sandbox.ts)) |
-| Ship run | One ship of an order, recorded by the factory with no worker in `factory_order_ship_run`: `landed`, `refused` with its code and reason, or `conflict` with the paths the rebase stopped on ([`src/ship.ts`](../src/ship.ts)) |
-| Rewrite | The commits a ship run's rebase replaced. Each new commit row names the run and the sha it retires; a builder resolving a conflict finishes the conflict run's rebase, so its commits name that run |
-| Finding | A problem a reviewer raised, with a file and line, the failure, a fix direction and a severity ([`src/order-finding-state.ts`](../src/order-finding-state.ts)) |
+| Finding | A problem a reviewer raised, with its area, file and line, what is wrong, the fix and a severity |
 | Severity | How much a finding costs if it ships: `critical`, `high` or `medium` |
-| Observation | A point in a review that blocks nothing |
-| Answer | The builder's one reply to a finding: `fixed`, or `refused` with a resolution. A later round that still finds the problem raises a new finding |
+| Answer | The builder's one reply to a finding: `fixed`, or `refused` with a reason |
 | Gate | A rule git or `dim` refuses to let pass, whether or not anything was read |
 | Comment gate | The part of the commit gate that refuses a new comment in a JS or TS file, in a repo that bans them ([`usage.md`](usage.md#comment-gate)) |
 | Config | `dim`'s settings, from the user's and the project's JSON layers ([`usage.md`](usage.md#configuration)) |

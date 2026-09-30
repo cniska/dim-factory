@@ -20,11 +20,7 @@ const LOADERS: Record<string, () => Promise<Command>> = {
   wake: () => import("./wake-command").then((m) => m.wakeCommand),
   "format-edit": () => import("./format-edit-command").then((m) => m.formatEditCommand),
   wt: () => import("./wt-command").then((m) => m.wtCommand),
-  order: () => import("./order-command").then((m) => m.orderCommand),
-  operator: () => import("./operator-command").then((m) => m.operatorCommand),
-  route: () => import("./route-command").then((m) => m.routeCommand),
   trace: () => import("./trace-command").then((m) => m.traceCommand),
-  wall: () => import("./wall-command").then((m) => m.wallCommand),
 };
 
 export function findCommand(name: string | undefined): Promise<Command> | undefined {

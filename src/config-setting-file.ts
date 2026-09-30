@@ -1,13 +1,11 @@
-import { existsSync } from "node:fs";
 import { duplicateKeys, parseJsonc } from "./config-jsonc";
-import { readJsoncText } from "./config-jsonc-file";
 
 export type SettingDefect =
   | { kind: "duplicate-key"; keys: string[] }
   | { kind: "not-object" }
   | { kind: "unknown-key"; keys: string[] };
 
-export type SettingShape = {
+type SettingShape = {
   isKey: (key: string) => boolean;
   refuse: (defect: SettingDefect) => Error;
 };
@@ -21,9 +19,4 @@ export function parseSetting(text: string, file: string, shape: SettingShape): R
   const unknown = Object.keys(raw).filter((key) => !shape.isKey(key));
   if (unknown.length > 0) throw shape.refuse({ kind: "unknown-key", keys: unknown });
   return raw as Record<string, unknown>;
-}
-
-export function readSettingFile(path: string, shape: SettingShape): Record<string, unknown> | null {
-  if (!existsSync(path)) return null;
-  return parseSetting(readJsoncText(path), path, shape);
 }

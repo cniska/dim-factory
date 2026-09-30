@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { editedPaths, formatAfterEdit } from "./format-edit";
-import { WORKER_NAME_VAR } from "./worker-name";
 
 const roots: string[] = [];
 
@@ -70,13 +69,6 @@ describe("formatting after an edit", () => {
     });
     expect(runs).toEqual([{ checkout: root, commandLine: "bun run format", exitCode: 0 }]);
     expect(existsSync(join(root, "formatted"))).toBe(true);
-  });
-
-  test("runs nothing in a factory worker's session, whose worktree manifest it wrote", () => {
-    const root = checkout({ format: "touch escaped" });
-    const edit = { tool_name: "Edit", tool_input: { file_path: join(root, "src", "a.ts") } };
-    expect(formatAfterEdit(edit, { ...process.env, [WORKER_NAME_VAR]: "builder-1" })).toEqual([]);
-    expect(existsSync(join(root, "escaped"))).toBe(false);
   });
 
   test("a failing format task is reported and does not throw", () => {

@@ -5,7 +5,7 @@ description: Drive a changed dim through its own CLI against a throwaway record.
 
 # Verify
 
-Run the changed checkout's `dim` the way an operator does, against a record, a repository and harness configs that exist only for this run. `bun run verify` proves the suite; this proves the behavior an operator meets. The suite does not replace this run, and this run does not replace the suite.
+Run the changed checkout's `dim` against a record, a repository and harness configs that exist only for this run. `bun run verify` proves the suite; this proves the behavior a user meets. The suite does not replace this run, and this run does not replace the suite. The factory's orders are driven by the acceptance suite under `acceptance/`, not by this run.
 
 ## Start
 
@@ -15,34 +15,21 @@ From this repository's root:
 scripts/verify-dim.sh new
 ```
 
-It prints the run's directory; name it in every later call. [`scripts/verify-dim.sh`](../../../scripts/verify-dim.sh) points `DIM_HOME`, `DIM_CLAUDE_PROJECTS`, `DIM_CODEX_DIR` and `GROK_HOME` into that directory, so the run never reads or writes the machine's record or harness configs. It puts this checkout's `dim` and a scripted `codex` ([`scripts/verify-harness.ts`](../../../scripts/verify-harness.ts)) first on `PATH`, installs the session hooks into the scratch configs, and creates a repository at `<run>/repo` that ships to its own `main`.
+It prints the run's directory; name it in every later call. [`scripts/verify-dim.sh`](../../../scripts/verify-dim.sh) points `DIM_HOME`, `DIM_CLAUDE_PROJECTS`, `DIM_CODEX_DIR` and `GROK_HOME` into that directory, so the run never reads or writes the machine's record or harness configs. It puts this checkout's `dim` first on `PATH`, installs the session hooks into the scratch configs, and creates a repository at `<run>/repo`.
 
-Readiness: `scripts/verify-dim.sh <run> doctor` reports the schema, `hooks` installed, and `harnesses` with codex ready. Its skill, commit gate and rules checks read the real home and do not bear on the run.
+Readiness: `scripts/verify-dim.sh <run> doctor` reports the schema and `hooks` installed. Its skill, commit gate and rules checks read the real home and do not bear on the run.
 
 ## Drive
 
-`scripts/verify-dim.sh <run> <dim args…>` runs one `dim` command in the run's repository as its operator. Before the command, the script fires the installed SessionStart spool hook as its own child, so the script is the session's harness, and runs `dim operator`, which registers that session. The command and the workers it starts resolve their identity from that ancestry. Each call is its own session, so each approval names a different operator.
+`scripts/verify-dim.sh <run> <dim args…>` runs one `dim` command in the run's repository. Before the command, the script fires the installed SessionStart spool hook as its own child, so the script is the session's harness.
 
-The scripted harness answers each station the way a worker would: the planner returns two slices, the builder writes `built-by-scripted-harness-<n>.txt` and a commit subject per slice with the Build artifact on the last, and the reviewer raises no findings. One order from queue to ship:
-
-```sh
-scripts/verify-dim.sh "$run" order add greet --title "Greet" --line feat
-scripts/verify-dim.sh "$run" order plan greet --harness codex
-scripts/verify-dim.sh "$run" order approve greet
-scripts/verify-dim.sh "$run" order build greet --harness codex
-scripts/verify-dim.sh "$run" order approve greet --reason "both slices are present"
-scripts/verify-dim.sh "$run" order review greet --harness codex
-scripts/verify-dim.sh "$run" order approve greet
-```
-
-Each command prints one JSON line; read `ok` and `result`, never the exit code alone. For behavior the scripted harness does not produce, such as findings, a red check or a conflict, drive the state the change needs with the commands [`docs/factory.md`](../../../docs/factory.md) lists, or extend the scripted harness in the same change. Files the change needs in the repository go in `<run>/repo` and are committed there.
+Each command prints one JSON line; read `ok` and `result`, never the exit code alone. Files the change needs in the repository go in `<run>/repo` and are committed there.
 
 ## Observe
 
-- `scripts/verify-dim.sh <run> q order <id>` — the order's status and next act in its first row, then its history and evidence.
 - `scripts/verify-dim.sh <run> sql "<select>"` — any table of the record, read-only.
-- `git -C <run>/repo log --format='%an | %s' main` — what landed, and under whose identity.
-- `ls <run>/repo/.claude/worktrees` — worktrees an order kept.
+- `scripts/verify-dim.sh <run> q search "<words>"` — what the record holds of a session's text.
+- `git -C <run>/repo log --format='%an | %s' main` — what was committed, and under whose identity.
 
 Name the behavior the change was for, run the commands that reach it, and quote the output that shows it. A result read from the record beats one inferred from a message.
 

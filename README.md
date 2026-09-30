@@ -29,7 +29,7 @@ Then open a project in your harness. For routine factory work, ask the agent to 
 ## Docs
 
 - [Agent command reference](docs/usage.md) — install, collect, query, gates and config
-- [The factory](docs/factory.md) — orders, stations, workers, and ship
+- [The factory](docs/factory.md) — the argument the factory executes
 - [My workflow](docs/my-workflow.md) — the manual workflow the factory replaces
 - [Todo](docs/todo.md) — what is not built
 - [Everything else](docs/README.md)

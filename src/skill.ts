@@ -8,11 +8,12 @@ import {
   symlinkSync,
   unlinkSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { withPathLock } from "./db-lock";
 import { harnessInstalled } from "./harness-installed";
 import { defaultDataDir, type Env, resolveHomeDir } from "./paths";
-import { SKILLS_DIR } from "./skill-plugin";
+
+const SKILLS_DIR = join(resolve(import.meta.dir, ".."), "skills");
 
 export const SKILL_NAMES = [
   "dim-add",

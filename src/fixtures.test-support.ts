@@ -1,93 +1,9 @@
-import type { Database } from "bun:sqlite";
 import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { installHooks } from "./hooks";
-import type { OrderCheck } from "./order-evidence";
 import type { Env } from "./paths";
-import { startStationAttempt } from "./station-attempt";
-import type { Station } from "./station-contract";
-import { REVIEW_DIMENSIONS, type ReviewFinding } from "./station-review-artifact";
-import { mintWorker, newWorkerSession } from "./worker";
-import type { Role } from "./worker-roles";
 import { worktreePath } from "./worktree";
-
-export function attemptIn(
-  db: Database,
-  orderId: string,
-  worker: string,
-  operatorWorker: string,
-  runId = "run-1",
-  at = new Date().toISOString(),
-  station: Station = "build",
-): void {
-  startStationAttempt(db, orderId, { runId, worker, operatorWorker, station }, at);
-}
-
-export function workerIn(db: Database, role: Role = "builder"): string {
-  return mintWorker(db, { role, sessionId: newWorkerSession("test-worker") }).name;
-}
-
-export function openReviewBy(
-  db: Database,
-  orderId: string,
-  round: { reviewer: string; baseSha: string; headSha: string },
-  at = new Date().toISOString(),
-): { id: number; reviewer: string } {
-  const next =
-    (db
-      .query<{ n: number }, [string]>(
-        "SELECT coalesce(max(round), 0) AS n FROM factory_order_review WHERE order_id = ?",
-      )
-      .get(orderId)?.n as number) + 1;
-  const written = db.run(
-    `INSERT INTO factory_order_review (order_id, round, reviewer, base_sha, head_sha, opened_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [orderId, next, round.reviewer, round.baseSha, round.headSha, at],
-  );
-  return { id: Number(written.lastInsertRowid), reviewer: round.reviewer };
-}
-
-export function reviewIn(
-  db: Database,
-  orderId: string,
-  at?: string,
-  sha = "base0000",
-): { review: number; reviewer: string } {
-  const reviewer = mintWorker(db, { role: "reviewer", sessionId: newWorkerSession("test-reviewer") }).name;
-  const opened = openReviewBy(db, orderId, { reviewer, baseSha: sha, headSha: sha }, at);
-  return { review: opened.id, reviewer };
-}
-
-export function located(finding: Pick<ReviewFinding, "dimension" | "failure">): ReviewFinding {
-  return { file: "src/example.ts", line: 1, fix: "make it hold", severity: "medium", ...finding };
-}
-
-export function ranCheck(
-  check: Pick<OrderCheck, "command" | "exitCode"> & Partial<OrderCheck>,
-  at = new Date().toISOString(),
-): OrderCheck {
-  return { startedAt: at, finishedAt: at, result: "", ...check };
-}
-
-export function reviewOutput(fields: Record<string, unknown> = {}): string {
-  const findings = (fields.findings ?? []) as { dimension: string }[];
-  const flagged = new Set(findings.map((finding) => finding.dimension));
-  return JSON.stringify({
-    verdict: "The change does what the plan asked.",
-    findings,
-    conformance: [],
-    coverage: REVIEW_DIMENSIONS.map((dimension) => ({
-      dimension,
-      status: flagged.has(dimension) ? "findings" : "clean",
-      reason: null,
-    })),
-    set_aside: [],
-    unverified: [],
-    observations: [],
-    ...fields,
-  });
-}
 
 let signingKey: { key: string; allowedSigners: string } | undefined;
 

@@ -28,7 +28,6 @@ import { drainSpool, ensureSpoolDirs, toolSpoolDir } from "./ingest-spool";
 import { rebuild, sync } from "./ingest-sync";
 import type { Tool } from "./ingest-tools";
 import { dbPath, type Env } from "./paths";
-import { mintWorker } from "./worker";
 
 const SESSION = "11111111-2222-3333-4444-555555555555";
 const roots: string[] = [];
@@ -43,16 +42,9 @@ afterEach(() => {
   while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
 });
 
-function spool(env: Env, tool: Tool, nanos: string, payload: unknown, worker = ""): string {
+function spool(env: Env, tool: Tool, nanos: string, payload: unknown): string {
   ensureSpoolDirs(env);
-  const path = join(toolSpoolDir(tool, env), `${nanos}-4242-${worker}.json`);
-  writeFileSync(path, JSON.stringify(payload));
-  return path;
-}
-
-function spoolWithoutWorker(env: Env, tool: Tool, nanos: string, payload: unknown): string {
-  ensureSpoolDirs(env);
-  const path = join(toolSpoolDir(tool, env), `${nanos}-4242.json`);
+  const path = join(toolSpoolDir(tool, env), `${nanos}-4242-.json`);
   writeFileSync(path, JSON.stringify(payload));
   return path;
 }
@@ -793,43 +785,5 @@ describe("installHooks", () => {
       },
     ]);
     expect(installHooks(env).written).toEqual([]);
-  });
-});
-
-describe("joining a worker to the session it ran in", () => {
-  test("records the worker the hook named in its own file", () => {
-    const root = newRoot();
-    const env = scratchEnv(root);
-    const db = openDb(dbPath(env));
-    try {
-      const minted = mintWorker(db, { role: "builder", sessionId: "spool-worker" });
-      spool(env, "claude", "1789000000000000000", endEvent(SESSION, "logout"), minted.name);
-
-      drainSpool(db, env);
-
-      expect(db.prepare("SELECT worker, session_id FROM factory_worker_session").all()).toEqual([
-        { worker: minted.name, session_id: SESSION },
-      ]);
-    } finally {
-      closeDb(db);
-    }
-  });
-
-  test("takes a session from a file no worker named, and a name it never issued, as no sighting", () => {
-    const root = newRoot();
-    const env = scratchEnv(root);
-    const db = openDb(dbPath(env));
-    try {
-      spool(env, "claude", "1789000000000000000", endEvent(SESSION, "logout"));
-      spool(env, "claude", "1789000000000000001", endEvent("other-session", "logout"), "nobody-9");
-      spoolWithoutWorker(env, "claude", "1789000000000000002", endEvent("older-session", "logout"));
-
-      drainSpool(db, env);
-
-      expect(db.prepare("SELECT count(*) AS n FROM factory_worker_session").get()).toEqual({ n: 0 });
-      expect(db.prepare("SELECT count(*) AS n FROM hook_event").get()).toEqual({ n: 3 });
-    } finally {
-      closeDb(db);
-    }
   });
 });

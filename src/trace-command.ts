@@ -1,7 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { type Command, UsageError } from "./cli-contract";
 import { openReadOnly } from "./db-read";
-import { isTerminalOrderStatus, type OrderStatus, orderStatus } from "./order-status";
 import { dbPath, type Env } from "./paths";
 
 type TraceRow = {
@@ -47,10 +46,6 @@ function print(row: TraceRow, write: (line: string) => void): void {
   );
 }
 
-function status(db: Database, orderId: string): OrderStatus | null {
-  return db.query("SELECT 1 FROM factory_order WHERE id = ?").get(orderId) ? orderStatus(db, orderId) : null;
-}
-
 function read(db: Database, orderId: string, after: number): TraceRow[] {
   return db
     .query<TraceRow, [string, number]>("SELECT * FROM trace_event WHERE order_id = ? AND id > ? ORDER BY id")
@@ -69,13 +64,10 @@ export async function runTraceCommand(
   while (true) {
     const db = openReadOnly(dbPath(env));
     try {
-      const currentStatus = status(db, orderId);
-      if (currentStatus === null) throw new Error(`no order named ${orderId}`);
       for (const row of read(db, orderId, lastId)) {
         lastId = row.id;
         print(row, write);
       }
-      if (isTerminalOrderStatus(currentStatus)) return;
     } finally {
       db.close();
     }
@@ -86,7 +78,7 @@ export async function runTraceCommand(
 export const traceCommand: Command = {
   name: "trace",
   usage: "usage: dim trace <order-id>",
-  summary: "stream an order's diagnostic events as JSONL until it reaches a terminal state",
+  summary: "stream an order's diagnostic events as JSONL until stopped",
   raw: () => true,
   run: (args) => runTraceCommand(args[0]),
 };

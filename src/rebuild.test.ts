@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -70,12 +70,12 @@ describe("absorbing a schema change", () => {
     db.close();
   });
 
-  test("a database opened for rebuild takes a new indexed column and a new factory table", () => {
+  test("a database opened for rebuild takes a new indexed column and a new table", () => {
     const { db, env } = scratch();
     fill(db);
     db.run("DROP INDEX tool_call_file");
     db.run("ALTER TABLE tool_call DROP COLUMN file_path");
-    db.run("DROP TABLE factory_runner_barrier");
+    db.run("DROP TABLE guidance_walk");
     db.run("UPDATE schema_version SET version = ?", [SCHEMA_VERSION - 1]);
     db.close();
 
@@ -83,7 +83,7 @@ describe("absorbing a schema change", () => {
     rebuild(reopened, env);
 
     expect(columnsOf(reopened, "tool_call")).toContain("file_path");
-    expect(tablesOf(reopened)).toContain("factory_runner_barrier");
+    expect(tablesOf(reopened)).toContain("guidance_walk");
     expect(reopened.query("SELECT version FROM schema_version").get()).toEqual({ version: SCHEMA_VERSION });
     reopened.close();
   });
@@ -157,166 +157,16 @@ describe("rebuilding a database an older schema wrote", () => {
     db.close();
   });
 
-  test("a factory order reaches the current schema with its evidence intact", () => {
+  test("the trace survives a rebuild", () => {
     const { db, env } = scratch();
-    db.run("ALTER TABLE factory_order DROP COLUMN description");
     db.run(
-      `INSERT INTO factory_order (id, project, line, title, created_at, updated_at)
-       VALUES ('order-1', 'cniska/dim-factory', 'feat', 'Survive a rebuild', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
-    );
-    db.run(
-      "INSERT INTO factory_worker (name, role, started_at) VALUES ('copper-1', 'builder', '2026-01-01T00:00:00Z')",
-    );
-    db.run(
-      `INSERT INTO factory_order_event (order_id, ts, kind, worker)
-       VALUES ('order-1', '2026-01-01T00:00:00Z', 'started', 'copper-1')`,
-    );
-    db.run(
-      "INSERT INTO factory_order_commit (order_id, sha, subject, recorded_at) VALUES ('order-1', 'abc', 'feat: abc', '2026-01-01T00:00:00Z')",
-    );
-    db.run(
-      `INSERT INTO factory_order_proof
-         (order_id, head_sha, base_sha, paths, command, exit_code, started_at, finished_at, result, recorded_at)
-       VALUES ('order-1', 'abc', 'base', '["a.test.ts"]', 'bun run verify', 1, '2026-01-01T00:00:00Z',
-               '2026-01-01T00:00:00Z', 'red', '2026-01-01T00:00:00Z')`,
+      `INSERT INTO trace_event (ts, event, order_id, session_id, fields)
+       VALUES ('2026-01-01T00:03:00Z', 'ship.debug', 'order-history', 'session-1', '{}')`,
     );
 
     rebuild(db, env);
 
-    expect(columnsOf(db, "factory_order")).toContain("description");
-    expect(db.query("SELECT id, project, description FROM factory_order").all()).toEqual([
-      { id: "order-1", project: "cniska/dim-factory", description: null },
-    ]);
-    expect(db.query("SELECT order_id, kind FROM factory_order_event").all()).toEqual([
-      { order_id: "order-1", kind: "started" },
-    ]);
-    expect(db.query("SELECT order_id, sha FROM factory_order_commit").all()).toEqual([
-      { order_id: "order-1", sha: "abc" },
-    ]);
-    expect(db.query("SELECT order_id, base_sha, paths FROM factory_order_proof").all()).toEqual([
-      { order_id: "order-1", base_sha: "base", paths: '["a.test.ts"]' },
-    ]);
-    expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
-    db.close();
-  });
-
-  test("first-party lifecycle records and diagnostics survive a rebuild together", () => {
-    const { db, env } = scratch();
-    db.run(
-      `INSERT INTO factory_order (id, project, line, title, created_at, updated_at)
-       VALUES ('order-history', 'cniska/dim-factory', 'feat', 'Keep lifecycle history',
-               '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
-    );
-    db.run(
-      "INSERT INTO factory_worker (name, role, started_at, session_id) VALUES ('copper-1', 'builder', '2026-01-01T00:00:00Z', 'session-1')",
-    );
-    db.run(
-      `INSERT INTO factory_order_event (order_id, ts, kind, worker)
-       VALUES ('order-history', '2026-01-01T00:00:00Z', 'queued', 'copper-1')`,
-    );
-    db.run(
-      `INSERT INTO factory_order_attempt
-         (order_id, run_id, worker, station, harness, model, tier, started_at, recorded_at, kind, outcome)
-       VALUES ('order-history', 'run-1', 'copper-1', 'build', 'codex', 'gpt-test', 'standard',
-               '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'started', 'running')`,
-    );
-    db.run(
-      `INSERT INTO trace_event (ts, event, order_id, worker, session_id, fields)
-       VALUES ('2026-01-01T00:03:00Z', 'ship.debug', 'order-history', 'copper-1', 'session-1', '{}')`,
-    );
-
-    rebuild(db, env);
-
-    expect(db.query("SELECT count(*) AS n FROM factory_order_event").get()).toEqual({ n: 1 });
-    expect(db.query("SELECT count(*) AS n FROM factory_order_attempt").get()).toEqual({ n: 1 });
     expect(db.query("SELECT event FROM trace_event").all()).toEqual([{ event: "ship.debug" }]);
-    db.close();
-  });
-
-  test("a factory order keeps the words it was queued with", () => {
-    const { db, env } = scratch();
-    db.run(
-      `INSERT INTO factory_order (id, project, line, title, description, created_at, updated_at)
-       VALUES ('order-1', 'cniska/dim-factory', 'feat', 'Survive a rebuild',
-               'No surface can tell a reader what an order is about.',
-               '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
-    );
-
-    rebuild(db, env);
-
-    expect(db.query("SELECT id, description FROM factory_order").all()).toEqual([
-      { id: "order-1", description: "No surface can tell a reader what an order is about." },
-    ]);
-    db.close();
-  });
-
-  test("a plan an order was built from is still readable after a rebuild", () => {
-    const { db, env } = scratch();
-    db.run(
-      `INSERT INTO factory_order (id, project, line, title, created_at, updated_at)
-       VALUES ('order-1', 'cniska/dim-factory', 'feat', 'Keep the plan', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
-    );
-    db.run(
-      "INSERT INTO factory_worker (name, role, started_at) VALUES ('copper-1', 'planner', '2026-01-01T00:00:00Z')",
-    );
-    db.run(
-      `INSERT INTO factory_order_artifact (order_id, kind, revision, body)
-       VALUES ('order-1', 'plan', 1, '## outcome\n\nMove the order before building.')`,
-    );
-    db.run(
-      `INSERT INTO factory_order_event (order_id, ts, kind, worker, artifact_id)
-       VALUES ('order-1', '2026-01-01T00:00:00Z', 'artifact_submitted', 'copper-1', 1)`,
-    );
-
-    rebuild(db, env);
-
-    expect(
-      db
-        .query(
-          `SELECT a.order_id, a.kind, a.body, w.worker FROM factory_order_artifact a
-           JOIN factory_order_event w ON w.artifact_id = a.id AND w.kind = 'artifact_submitted'`,
-        )
-        .all(),
-    ).toEqual([
-      {
-        order_id: "order-1",
-        kind: "plan",
-        body: "## outcome\n\nMove the order before building.",
-        worker: "copper-1",
-      },
-    ]);
-    db.close();
-  });
-
-  test("evidence left behind by an order deleted outside the code goes with the order", () => {
-    const { db, env } = scratch();
-    db.run("PRAGMA foreign_keys = OFF");
-    db.run(
-      `INSERT INTO factory_order (id, project, line, title, created_at, updated_at)
-       VALUES ('order-kept', 'cniska/dim-factory', 'feat', 'Survive a rebuild', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
-    );
-    db.run(
-      "INSERT INTO factory_worker (name, role, started_at) VALUES ('copper-1', 'builder', '2026-01-01T00:00:00Z')",
-    );
-    db.run(
-      `INSERT INTO factory_order_event (order_id, ts, kind, worker)
-       VALUES ('order-kept', '2026-01-01T00:00:00Z', 'started', 'copper-1'),
-              ('order-gone', '2026-01-01T00:00:00Z', 'started', 'copper-1')`,
-    );
-    db.run(
-      `INSERT INTO factory_order_commit (order_id, sha, subject, recorded_at)
-       VALUES ('order-gone', 'abc', 'feat: abc', '2026-01-01T00:00:00Z')`,
-    );
-    db.run("PRAGMA foreign_keys = ON");
-
-    const report = rebuild(db, env);
-
-    expect(db.query("SELECT order_id FROM factory_order_event").all()).toEqual([{ order_id: "order-kept" }]);
-    expect(db.query("SELECT order_id FROM factory_order_commit").all()).toEqual([]);
-    expect(report.orphans).toEqual([
-      { table: "factory_order_commit", rows: 1 },
-      { table: "factory_order_event", rows: 1 },
-    ]);
     db.close();
   });
 
@@ -337,152 +187,6 @@ describe("rebuilding a database an older schema wrote", () => {
     expect(tablesOf(db)).not.toContain("queue_item_transition");
     expect(tablesOf(db)).toContain("message_fts");
     expect(tablesOf(db)).toContain("message_fts_data");
-    db.close();
-  });
-
-  test("a factory order written before the title column stops the rebuild", () => {
-    const { db, env } = scratch();
-    db.run("ALTER TABLE factory_order DROP COLUMN title");
-    db.run(
-      `INSERT INTO factory_order (id, project, line, created_at, updated_at)
-       VALUES ('order-old', 'cniska/dim-factory', 'feat', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
-    );
-
-    expect(() => rebuild(db, env)).toThrow(/factory_order\.title/);
-    expect(() => rebuild(db, env)).toThrow(/sqlite3/);
-
-    expect(db.query("SELECT id FROM factory_order").all()).toEqual([{ id: "order-old" }]);
-    db.close();
-  });
-
-  test("a column a schema change discards is dropped with its values, and its rows come back", () => {
-    const { db, env } = scratch();
-    db.run("ALTER TABLE factory_worker ADD COLUMN token_digest TEXT");
-    db.run(
-      "INSERT INTO factory_worker (name, role, started_at, token_digest) VALUES ('bolt-1', 'operator', '2026-01-01T00:00:00Z', 'digest')",
-    );
-
-    rebuild(db, env);
-
-    expect(columnsOf(db, "factory_worker")).not.toContain("token_digest");
-    expect(db.query("SELECT name, role FROM factory_worker").all()).toEqual([
-      { name: "bolt-1", role: "operator" },
-    ]);
-    db.close();
-  });
-
-  test("factory data the new schema cannot take stops the rebuild before anything is dropped", () => {
-    const { db, env } = scratch();
-    db.run("ALTER TABLE factory_order RENAME COLUMN description TO summary");
-    db.run('ALTER TABLE factory_order ADD COLUMN "retired note" TEXT');
-    db.run(
-      `INSERT INTO factory_order (id, project, line, title, summary, created_at, updated_at)
-       VALUES ('order-1', 'cniska/dim-factory', 'feat', 'Keep the summary', 'held only here', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
-    );
-    db.run("UPDATE factory_order SET \"retired note\" = 'keep this too'");
-    db.run("CREATE TABLE queue_item (id TEXT PRIMARY KEY)");
-    db.run("INSERT INTO queue_item (id) VALUES ('item-1')");
-    const snapshot = () => ({
-      schema: db.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all(),
-      orders: db.query("SELECT * FROM factory_order").all(),
-      items: db.query("SELECT * FROM queue_item").all(),
-    });
-    const before = snapshot();
-    const run = spyOn(db, "run");
-
-    let message = "";
-    try {
-      rebuild(db, env);
-    } catch (error) {
-      message = (error as Error).message;
-    }
-
-    expect(message).toContain("factory_order.summary");
-    expect(message).toContain("factory_order.retired note");
-    expect(message).toContain("sqlite3");
-    expect(run.mock.calls.some(([sql]) => /^DROP TABLE/.test(sql))).toBe(false);
-    expect(snapshot()).toEqual(before);
-    run.mockRestore();
-    db.close();
-  });
-
-  test("a factory column the schema dropped goes without a refusal when it holds no values", () => {
-    const { db, env } = scratch();
-    db.run("ALTER TABLE factory_order ADD COLUMN retired_note TEXT");
-    db.run(
-      `INSERT INTO factory_order (id, project, line, title, created_at, updated_at)
-       VALUES ('order-1', 'cniska/dim-factory', 'feat', 'Drop an empty column', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
-    );
-
-    rebuild(db, env);
-
-    expect(db.query("SELECT id FROM factory_order").all()).toEqual([{ id: "order-1" }]);
-    db.close();
-  });
-
-  test("a factory table retired from the schema is dropped during rebuild", () => {
-    const { db, env } = scratch();
-    db.run(
-      `CREATE TABLE factory_order_account (
-         id INTEGER PRIMARY KEY,
-         order_id TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
-         body TEXT NOT NULL
-       )`,
-    );
-    db.run(
-      `INSERT INTO factory_order (id, project, line, title, created_at, updated_at)
-       VALUES ('order-1', 'cniska/dim-factory', 'feat', 'Retire an old table', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
-    );
-    db.run("INSERT INTO factory_order_account (order_id, body) VALUES ('order-1', 'old artifact')");
-
-    rebuild(db, env);
-
-    expect(
-      db
-        .query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'factory_order_account'")
-        .get(),
-    ).toBeNull();
-    expect(db.query("SELECT id FROM factory_order WHERE id = 'order-1'").get()).toEqual({ id: "order-1" });
-    db.close();
-  });
-
-  test("a retired table hanging off two carried tables does not stop the rebuild", () => {
-    const { db, env } = scratch();
-    db.run(
-      "INSERT INTO factory_worker (name, role, started_at) VALUES ('copper-1', 'reviewer', '2026-01-01T00:00:00Z')",
-    );
-    db.run(
-      `INSERT INTO factory_order (id, project, line, title, created_at, updated_at)
-       VALUES ('order-1', 'cniska/dim-factory', 'feat', 'Retire a review table', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
-    );
-    db.run(
-      `INSERT INTO factory_order_review (order_id, round, reviewer, base_sha, head_sha, opened_at)
-       VALUES ('order-1', 1, 'copper-1', 'aaa', 'bbb', '2026-01-01T00:00:00Z')`,
-    );
-    db.run(
-      `CREATE TABLE factory_order_review_account (
-         id INTEGER PRIMARY KEY,
-         order_id TEXT NOT NULL REFERENCES factory_order(id) ON DELETE CASCADE,
-         review_id INTEGER NOT NULL REFERENCES factory_order_review(id) ON DELETE CASCADE,
-         body TEXT NOT NULL
-       )`,
-    );
-    db.run(
-      "INSERT INTO factory_order_review_account (order_id, review_id, body) VALUES ('order-1', 1, 'old')",
-    );
-
-    rebuild(db, env);
-
-    expect(
-      db
-        .query(
-          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'factory_order_review_account'",
-        )
-        .get(),
-    ).toBeNull();
-    expect(db.query("SELECT order_id, round FROM factory_order_review").all()).toEqual([
-      { order_id: "order-1", round: 1 },
-    ]);
     db.close();
   });
 });

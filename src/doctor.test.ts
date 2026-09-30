@@ -216,60 +216,6 @@ describe("doctor", () => {
     expect(warned?.fix).toContain("set-head");
   });
 
-  test("names a checkout the factory ships from that declares no ship method", () => {
-    const env = seeded();
-    expect(check(env, "ship method")?.state).toBe("ok");
-
-    const isolated = { ...process.env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_SYSTEM: devNull };
-    const factoryRepo = join(newRoot(), "shipped");
-    const otherRepo = join(newRoot(), "unrelated");
-    for (const repo of [factoryRepo, otherRepo]) {
-      execFileSync("git", ["init", "-q", "-b", "main", repo], { env: isolated });
-    }
-    const gitIn = (dir: string, args: string[]) =>
-      execFileSync("git", ["-C", dir, "-c", "user.name=T", "-c", "user.email=t@example.com", ...args], {
-        env: isolated,
-      });
-    gitIn(factoryRepo, ["commit", "-q", "--allow-empty", "-m", "feat: x"]);
-    const factoryWorktree = join(newRoot(), "shipped-wt");
-    gitIn(factoryRepo, ["worktree", "add", "-q", "-b", "o1", factoryWorktree]);
-    const db = openDb(dbPath(env));
-    db.run(
-      "INSERT INTO repo_commit (sha, repo, label, ts, author, subject) VALUES ('s1', ?, 'cniska/shipped', '2026-01-01T00:00:00Z', 'a', 'feat: x'), ('s2', ?, 'cniska/unrelated', '2026-01-01T00:00:00Z', 'a', 'feat: y')",
-      [factoryWorktree, otherRepo],
-    );
-    db.run(
-      "INSERT INTO factory_order (id, project, line, title, created_at, updated_at) VALUES ('o1', 'cniska/shipped', 'feat', 'Shipped', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
-    );
-    closeDb(db);
-    const throughWorktree = check(env, "ship method");
-    expect(throughWorktree?.state).toBe("warn");
-    expect(throughWorktree?.detail).toEndWith(factoryRepo.replace(`${env.HOME}/`, ""));
-
-    const both = openDb(dbPath(env));
-    both.run(
-      "INSERT INTO repo_commit (sha, repo, label, ts, author, subject) VALUES ('s3', ?, 'cniska/shipped', '2026-01-01T00:00:00Z', 'a', 'feat: z')",
-      [factoryRepo],
-    );
-    closeDb(both);
-
-    const warned = check(env, "ship method");
-    expect(warned?.state).toBe("warn");
-    expect(warned?.detail).toStartWith("1 checkouts");
-    expect(warned?.detail).toEndWith(factoryRepo.replace(`${env.HOME}/`, ""));
-    expect(warned?.detail).not.toContain("unrelated");
-    expect(warned?.fix).toBe("git config dim.ship trunk, in each");
-
-    execFileSync("git", ["-C", factoryRepo, "config", "dim.ship", "main"], { env: isolated });
-    expect(check(env, "ship method")?.state).toBe("warn");
-
-    execFileSync("git", ["-C", factoryRepo, "config", "dim.ship", "pull-request"], { env: isolated });
-    expect(check(env, "ship method")?.state).toBe("warn");
-
-    execFileSync("git", ["-C", factoryRepo, "config", "dim.ship", "trunk"], { env: isolated });
-    expect(check(env, "ship method")?.state).toBe("ok");
-  });
-
   test("fails the hooks while none are installed, and does not yet expect end reasons", () => {
     const env = seeded();
     expect(check(env, "hooks")?.state).toBe("fail");
@@ -389,77 +335,6 @@ describe("doctor", () => {
     } finally {
       db.close();
     }
-  });
-});
-
-describe("harness readiness", () => {
-  function machine(binaries: string[], routing: string | null): Env {
-    const env = seeded();
-    const bin = join(newRoot(), "bin");
-    mkdirSync(bin);
-    for (const name of binaries) {
-      writeFileSync(join(bin, name), "#!/bin/sh\n");
-      execFileSync("chmod", ["+x", join(bin, name)]);
-    }
-    mkdirSync(env.DIM_HOME as string, { recursive: true });
-    if (routing) writeFileSync(join(env.DIM_HOME as string, "routing.json"), routing);
-    return { ...env, PATH: bin };
-  }
-  const MAP = '{ "light": "a", "standard": "b", "deep": "c" }';
-
-  test("names each harness a station can run under", () => {
-    const env = machine(["codex", "claude"], `{ "codex": ${MAP}, "claude": ${MAP} }`);
-
-    expect(check(env, "harnesses")).toEqual({
-      name: "harnesses",
-      state: "ok",
-      detail: "codex, claude ready: each is on PATH and mapped in routing.json",
-    });
-  });
-
-  test("names a harness that is installed and not routed, or routed and not installed", () => {
-    const env = machine(["codex", "claude"], `{ "codex": ${MAP} }`);
-
-    expect(check(env, "harnesses")).toMatchObject({
-      state: "warn",
-      detail: "codex ready; claude is on PATH but routing.json has no claude map",
-      fix: "add a claude map to routing.json",
-    });
-    expect(check(machine([], `{ "codex": ${MAP} }`), "harnesses")).toMatchObject({
-      state: "warn",
-      detail: "no harness is ready; codex is mapped in routing.json but not on PATH",
-      fix: "install codex, or remove its map",
-    });
-  });
-
-  test("warns when no harness is ready at all, since no station could start a worker", () => {
-    expect(check(machine([], null), "harnesses")).toEqual({
-      name: "harnesses",
-      state: "warn",
-      detail: "no harness is ready, so no station can start a worker",
-      fix: "install codex, claude, or grok and map it in routing.json",
-    });
-  });
-
-  test("fails on a routing.json no harness can be read from, and still reports every other check", () => {
-    for (const routing of ['{ "codex": ["a"] }', '{ "codex": ']) {
-      const env = machine(["codex"], routing);
-
-      expect(check(env, "harnesses")).toMatchObject({
-        state: "fail",
-        fix: `repair ${join(env.DIM_HOME as string, "routing.json")} by hand`,
-      });
-      expect(check(env, "spool")).toBeDefined();
-    }
-  });
-
-  test("leaves alone a harness that is neither installed nor routed", () => {
-    const env = machine(["codex"], `{ "codex": ${MAP} }`);
-
-    expect(check(env, "harnesses")).toMatchObject({
-      state: "ok",
-      detail: expect.stringContaining("codex ready"),
-    });
   });
 });
 

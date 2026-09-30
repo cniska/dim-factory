@@ -1,8 +1,6 @@
 import { CircleAlert, CircleCheck, CircleDot, CircleX, type LucideIcon, Radio, X } from "lucide-react";
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { OrderLine } from "../order-line";
-import type { Role } from "../worker-roles";
 import { age } from "./age";
 import { ordersByStatus, STATION_LABELS, WALL_COLUMNS } from "./board";
 import { Badge } from "./components/ui/badge";
@@ -16,13 +14,15 @@ import { msUntilNextMinute } from "./minute-beat";
 import { RECORD_POLL_MS } from "./record-poll";
 import type {
   BoardStatus,
+  OrderLine,
+  Role,
   WallFailure,
   WallItemEntry,
   WallItemView,
   WallOrder,
   WallSnapshot,
   WallWorker,
-} from "./server";
+} from "./wall-contract";
 import { wallJson } from "./wall-json";
 import "./styles.css";
 

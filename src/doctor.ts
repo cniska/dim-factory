@@ -11,19 +11,15 @@ import { GATE_ERROR } from "./gate-contract";
 import { type GatePlan, installedOwners, planCommitGate, sharedHooksDir } from "./gate-install";
 import { unarmedCheckouts } from "./gate-push";
 import { checkoutRoot } from "./git-checkout";
-import { primaryCheckout } from "./git-primary-checkout";
 import { isHostQualified } from "./git-remote-slug";
 import { harnessInstalled, installedHarnesses } from "./harness-installed";
-import { HARNESSES } from "./harness-name";
 import { type HookPlan, hookGaps, outdatedLabel } from "./hooks";
 import { codexConfigPath, planCodexTrust, type TrustState } from "./hooks-codex-trust";
 import { AGENT_LABEL, planAgent } from "./ingest-launchd";
 import { TOOLS } from "./ingest-tools";
 import { dataDir, type Env, resolveHomeDir, tildePath } from "./paths";
 import { planRules } from "./rules";
-import { shipMethod } from "./ship-method";
 import { planSkill, retiredLinks } from "./skill";
-import { findHarnessMap, harnessMapPath } from "./worker-routing";
 
 export type Health = { name: string; state: "ok" | "warn" | "fail"; detail: string; fix?: string };
 
@@ -200,58 +196,6 @@ function spool(env: Env): Health {
     state: waiting > SPOOL_BEHIND_EVENTS ? "warn" : "ok",
     detail: `${waiting} hook events written but not yet read`,
     fix: waiting > SPOOL_BEHIND_EVENTS ? "dim sync" : undefined,
-  };
-}
-
-function harnesses(env: Env): Health {
-  const ready: string[] = [];
-  const gaps: string[] = [];
-  const repairs: string[] = [];
-  for (const harness of HARNESSES) {
-    const installed = harnessInstalled(harness, env);
-    let mapped: boolean;
-    try {
-      mapped = "map" in findHarnessMap(harness, env);
-    } catch (error) {
-      if (error instanceof ConfigError) return unreadable("harnesses", error);
-      if (!(error instanceof CodedError)) throw error;
-      return {
-        name: "harnesses",
-        state: "fail",
-        detail: error.message,
-        fix: `repair ${harnessMapPath(env)} by hand`,
-      };
-    }
-    if (installed && mapped) ready.push(harness);
-    else if (installed) {
-      gaps.push(`${harness} is on PATH but routing.json has no ${harness} map`);
-      repairs.push(`add a ${harness} map to routing.json`);
-    } else if (mapped) {
-      gaps.push(`${harness} is mapped in routing.json but not on PATH`);
-      repairs.push(`install ${harness}, or remove its map`);
-    }
-  }
-  if (ready.length === 0 && gaps.length === 0) {
-    return {
-      name: "harnesses",
-      state: "warn",
-      detail: "no harness is ready, so no station can start a worker",
-      fix: "install codex, claude, or grok and map it in routing.json",
-    };
-  }
-  const readiness = ready.length > 0 ? `${ready.join(", ")} ready` : "no harness is ready";
-  if (gaps.length === 0) {
-    return {
-      name: "harnesses",
-      state: "ok",
-      detail: `${readiness}: each is on PATH and mapped in routing.json`,
-    };
-  }
-  return {
-    name: "harnesses",
-    state: "warn",
-    detail: `${readiness}; ${gaps.join("; ")}`,
-    fix: repairs.join("; "),
   };
 }
 
@@ -475,36 +419,6 @@ function pushGate(db: Database, env: Env): Health {
       };
 }
 
-function shipMethods(db: Database, env: Env): Health {
-  const shippedFrom = new Set(
-    db
-      .query<{ repo: string }, []>(
-        "SELECT DISTINCT repo FROM repo_commit WHERE label IN (SELECT project FROM factory_order)",
-      )
-      .all()
-      .map((r) => primaryCheckout(r.repo))
-      .filter((root) => root !== null),
-  );
-  const unusable = [...shippedFrom].sort().filter((root) => {
-    const declared = shipMethod(root);
-    return !("method" in declared) || declared.method !== "trunk";
-  });
-  return unusable.length === 0
-    ? {
-        name: "ship method",
-        state: "ok",
-        detail: "every checkout the factory ships from declares dim.ship = trunk",
-      }
-    : {
-        name: "ship method",
-        state: "warn",
-        detail: `${unusable.length} checkouts the factory ships from declare no dim.ship that \`dim order ship\` can land, so it refuses there: ${unusable
-          .map((d) => d.replace(`${resolveHomeDir(env)}/`, ""))
-          .join(", ")}`,
-        fix: "git config dim.ship trunk, in each",
-      };
-}
-
 function agent(env: Env): Health {
   const plan = planAgent(env);
   const plist = plan.path;
@@ -576,12 +490,10 @@ export function diagnose(db: Database, env: Env, cwd: string): Health[] {
     ...gateOwners(env),
     commentGate(env, cwd, commit),
     pushGate(db, env),
-    shipMethods(db, env),
     agent(env),
     rules(env),
     retention(env),
     spool(env),
-    harnesses(env),
     outcomes(db),
   ];
 }

@@ -33,9 +33,9 @@ dim install-commit-gate --owner=<host>/<account>
 ```
 
 - A command that changes a shared installation needs `--write`.
-- Each hook command ends in `# dim-hook:<version>`, bumped whenever its text changes; an older version is stale. A station run — `dim order plan`, `build` or `review` — is refused while a hook is missing or stale, since its worker's session would go unrecorded.
+- Each hook command ends in `# dim-hook:<version>`, bumped whenever its text changes; an older version is stale.
 - Hooks, Codex rules, Codex hook trust and `~/.codex/skills` are installed and checked only for a harness whose executable is on `PATH`; `~/.agents/skills` is linked whatever is installed.
-- `dim doctor` reports missing or stale hooks, missing Codex trust, database drift, unloaded agents, a checkout with no usable ship method, a harness installed but not routed or routed but not installed, and whether the comment gate is on — each with its repair.
+- `dim doctor` reports missing or stale hooks, missing Codex trust, database drift, unloaded agents, and whether the comment gate is on — each with its repair.
 
 ### Commit gate
 
@@ -53,17 +53,12 @@ Part of the commit gate, on where the [config](#configuration) resolves `comment
 - A file rewritten past git's rename detection is a new file.
 - **Not judged:** tool contracts (`/// <reference …>`, `@ts-`, `eslint-`, `biome-ignore`, `prettier-ignore`, `#__PURE__`, `@__PURE__`, a `/*!` license header, and in plain JS a JSDoc of only `@type`, `@typedef` or `@param`), a `#!` line, files git marks `linguist-generated` or `linguist-vendored`, files that do not parse (named on stderr), and other languages.
 - A config it cannot read lets the commit through, says why, and still runs the check.
-- A factory builder's commit is judged by the runner instead, by the same rules ([`factory.md`](factory.md)).
 
 `dim comments purge [<path>...]` reports the comments tracked JS and TS files hold. `--write` removes them, sets `comments` to `banned` in the project config and runs the declared format command; then run the check and commit. Languages are adapters in [`src/comments-language.ts`](../src/comments-language.ts).
 
 ### Push gate
 
 Refuses a rewrite or deletion of the remote default branch, and any push carrying a revert, since git commits a revert without running the commit gate. A repository's own `core.hooksPath` is left alone.
-
-### Ship method
-
-A repository the factory ships from declares it with `git config dim.ship trunk`; [`factory.md`](factory.md#shipped) says how an order ships with it.
 
 ## Configuration
 
@@ -79,7 +74,7 @@ dim config unset comments
 |---|---|
 | `comments` | `banned` turns on the comment gate; `allowed` turns it off |
 
-## Worktrees and stations
+## Worktrees
 
 ```sh
 dim wt <branch>
@@ -89,7 +84,7 @@ dim wt rm [--force] <branch>
 dim wt prune   # prune stale worktree admin entries
 ```
 
-See [Worktrees](worktrees.md). The line's entry points are the `dim-feat` and `dim-fix` skills, its stations `dim-plan`, `dim-build` and `dim-review`, and `dim-factory` operates it ([`factory.md`](factory.md)). `dim-audit` reads existing code across quality dimensions without changing the project.
+See [Worktrees](worktrees.md). `dim-audit` reads existing code across quality dimensions without changing the project.
 
 ## Session start
 
