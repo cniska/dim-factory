@@ -245,7 +245,7 @@ describe("hooks", () => {
     }
   });
 
-  test("an edit in a station worker's session runs neither the worktree's format command nor its settings' hooks", async () => {
+  test("an edit in a station worker's session runs neither the workspace's format command nor its settings' hooks", async () => {
     const m = await start({
       script: {
         planner: [planTurn([{ title: "One", outcome: "One file." }])],
@@ -270,12 +270,12 @@ describe("hooks", () => {
     m.git(["commit", "-q", "-m", "chore: a format command and a project hook"]);
     const id = await built(m.operator);
 
-    const { worktree } = await showOrder(m.operator, id);
-    expect(existsSync(join(worktree, "formatted.marker"))).toBe(false);
-    expect(existsSync(join(worktree, "project-hook.marker"))).toBe(false);
+    const { workspace } = await showOrder(m.operator, id);
+    expect(existsSync(join(workspace, "formatted.marker"))).toBe(false);
+    expect(existsSync(join(workspace, "project-hook.marker"))).toBe(false);
   });
 
-  test("a station worker, whether or not it may edit, cannot write the worktree's git data or the checkout's shared git data", async () => {
+  test("a station worker, whether or not it may edit, cannot write the workspace's git data or the checkout's shared git data", async () => {
     const probe: HarnessTurn = [
       { act: "sh", command: 'touch "$(git rev-parse --git-dir)/probe-$$"' },
       { act: "sh", command: 'touch "$(git rev-parse --git-common-dir)/probe-$$"' },
@@ -288,12 +288,12 @@ describe("hooks", () => {
     });
     const id = await built(m.operator);
 
-    const { worktree } = await showOrder(m.operator, id);
+    const { workspace } = await showOrder(m.operator, id);
     const probes = (dir: string) =>
       Bun.spawnSync(["sh", "-c", `ls "${dir}" | grep -c '^probe-' || true`], { stdout: "pipe" })
         .stdout.toString()
         .trim();
-    expect(probes(m.git(["rev-parse", "--absolute-git-dir"], worktree))).toBe("0");
+    expect(probes(m.git(["rev-parse", "--absolute-git-dir"], workspace))).toBe("0");
     expect(probes(join(m.repo, ".git"))).toBe("0");
   });
 });

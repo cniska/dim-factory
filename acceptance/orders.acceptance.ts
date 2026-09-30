@@ -83,7 +83,7 @@ describe("an order from request to ship", () => {
     resultOf(named);
   });
 
-  test("two orders build at once in their own worktrees", async () => {
+  test("two orders build at once in their own workspaces", async () => {
     const held: HarnessTurn = [
       { act: "write", path: `${ORDER_PLACEHOLDER}.txt`, content: "one\n" },
       { act: "commit", subject: "feat: add the order's file" },
@@ -104,9 +104,9 @@ describe("an order from request to ship", () => {
     m.release("build");
     await Promise.all(builds);
 
-    expect(a.worktree).not.toBe(b.worktree);
+    expect(a.workspace).not.toBe(b.workspace);
     expect(a.branch).not.toBe(b.branch);
-    expect(existsSync(a.worktree) && existsSync(b.worktree)).toBe(true);
+    expect(existsSync(a.workspace) && existsSync(b.workspace)).toBe(true);
   });
 
   test("two orders approved together ship one after the other", async () => {
@@ -361,19 +361,19 @@ describe("shipping", () => {
     expect((await showOrder(m.operator, id)).status).toBe("shipped");
   });
 
-  test("an order whose worktree cannot be removed is still shipped and names what it kept", async () => {
+  test("an order whose workspace cannot be removed is still shipped and names what it kept", async () => {
     const m = await start({ script: happyPath() });
     const id = await reviewed(m.operator);
-    const { worktree, branch } = await showOrder(m.operator, id);
-    m.git(["worktree", "lock", worktree, "--reason", "the owner is reading it"]);
+    const { workspace, branch } = await showOrder(m.operator, id);
+    m.git(["worktree", "lock", workspace, "--reason", "the owner is reading it"]);
 
     await approve(m.operator, id);
 
     const order = await showOrder(m.operator, id);
     expect(order.status).toBe("shipped");
-    expect(existsSync(worktree)).toBe(true);
+    expect(existsSync(workspace)).toBe(true);
     const kept = JSON.stringify(entryOf(order, ACTION.shipLanded).details);
-    expect(kept).toContain(worktree);
+    expect(kept).toContain(workspace);
     expect(kept).toContain(branch);
   });
 });

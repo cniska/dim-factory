@@ -32,6 +32,6 @@ A rule leaves `~/.claude/CLAUDE.md` only once a gate holds it, since moving it i
 
 ## Direction
 
-- **What every project repeats, the factory holds once.** Commit checks, pre-push, worktree setup, ship scripts and CI checks drift apart when each project keeps its own copy; each one pulled into `dim` is one less thing to maintain per project.
-- **The core is general; the owner's taste is policy.** The session record, orders, worktrees, attributed approvals, the wall and trust earned per kind of order hold for any repo. The comment ban, the subject limit, shipping to the default branch and the anti-pattern review are defaults a repo adopts.
+- **What every project repeats, the factory holds once.** Commit checks, pre-push, workspace setup, ship scripts and CI checks drift apart when each project keeps its own copy; each one pulled into `dim` is one less thing to maintain per project.
+- **The core is general; the owner's taste is policy.** The session record, orders, workspaces, attributed approvals, the wall and trust earned per kind of order hold for any repo. The comment ban, the subject limit, shipping to the default branch and the anti-pattern review are defaults a repo adopts.
 - **Harness-independent and local.** No vendor builds a ledger that compares its own agent against another's, so the record stays on the machine and works under any harness.

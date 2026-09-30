@@ -189,12 +189,12 @@ describe("station workers", () => {
     const id = await planned(m.operator);
     const building = approve(m.operator, id);
     await m.reached("building");
-    const { worktree, branch } = await showOrder(m.operator, id);
-    writeFileSync(join(worktree, "intruder.txt"), "x\n");
+    const { workspace, branch } = await showOrder(m.operator, id);
+    writeFileSync(join(workspace, "intruder.txt"), "x\n");
     const intruder = m.createOperator();
     await intruder.fire("SessionStart");
 
-    const refused = await intruder.dimIn(worktree, [
+    const refused = await intruder.dimIn(workspace, [
       "slice",
       "commit",
       "--subject",
@@ -283,7 +283,7 @@ describe("a session that dies", () => {
     expect(sessionOf(builder, 0).died?.code).toBeString();
     expect(actions(order)).toContain(ACTION.sessionDied);
     expect(m.commitsOn(order.branch)).toEqual(["feat: add slice 1", "feat: add slice 2"]);
-    expect(existsSync(join(order.worktree, "uncommitted.txt"))).toBe(true);
+    expect(existsSync(join(order.workspace, "uncommitted.txt"))).toBe(true);
     expect(order.next).toBe(NEXT.approve);
   });
 

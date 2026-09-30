@@ -128,7 +128,7 @@ describe("briefs", () => {
 });
 
 describe("what a station worker may change", () => {
-  test("a planner's writes to the worktree and the record are refused and its plan comes only from its return", async () => {
+  test("a planner's writes to the workspace and the record are refused and its plan comes only from its return", async () => {
     const m = await start({
       script: {
         planner: [
@@ -143,13 +143,13 @@ describe("what a station worker may change", () => {
     });
     const order = await showOrder(m.operator, await planned(m.operator));
 
-    expect(existsSync(join(order.worktree, "planted-by-write.txt"))).toBe(false);
-    expect(existsSync(join(order.worktree, "planted-by-shell.txt"))).toBe(false);
+    expect(existsSync(join(order.workspace, "planted-by-write.txt"))).toBe(false);
+    expect(existsSync(join(order.workspace, "planted-by-shell.txt"))).toBe(false);
     expect(existsSync(join(m.dimHome, "planted"))).toBe(false);
     expect(actions(order).filter((action) => action === ACTION.planReturned)).toHaveLength(1);
   });
 
-  test("a reviewer's writes to the worktree and the record are refused", async () => {
+  test("a reviewer's writes to the workspace and the record are refused", async () => {
     const m = await start({
       script: {
         ...happyPath(),
@@ -166,8 +166,8 @@ describe("what a station worker may change", () => {
     await approve(m.operator, id);
 
     const order = await showOrder(m.operator, id);
-    expect(existsSync(join(order.worktree, "planted.txt"))).toBe(false);
-    expect(existsSync(join(order.worktree, "planted-by-shell.txt"))).toBe(false);
+    expect(existsSync(join(order.workspace, "planted.txt"))).toBe(false);
+    expect(existsSync(join(order.workspace, "planted-by-shell.txt"))).toBe(false);
     expect(existsSync(join(m.dimHome, "planted"))).toBe(false);
   });
 });
@@ -227,8 +227,8 @@ describe("slice gates", () => {
       ],
       async during(m, id) {
         await m.reached("before-commit");
-        const { worktree } = await showOrder(m.operator, id);
-        m.git(["commit", "-q", "--allow-empty", "-m", "chore: the owner moves the branch"], worktree);
+        const { workspace } = await showOrder(m.operator, id);
+        m.git(["commit", "-q", "--allow-empty", "-m", "chore: the owner moves the branch"], workspace);
         m.release("branch-moved");
       },
     },

@@ -78,7 +78,7 @@ export type OrderView = {
   readonly station: Station | null;
   readonly next: Next | null;
   readonly branch: string;
-  readonly worktree: string;
+  readonly workspace: string;
   readonly log: readonly LogEntry[];
   readonly workers: readonly WorkerView[];
   readonly slices: readonly { readonly title: string; readonly outcome: string; readonly commit?: string }[];
