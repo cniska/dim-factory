@@ -39,7 +39,7 @@ What the survey found overall: the argument for a factory with human-held gates 
 
 ## Evidence the premise holds
 
-- **[Gas Town](https://github.com/gastownhall/gastown)** has an agent ask a predecessor what it decided rather than re-read the code, the premise of `dim q search` reached independently. *Refused:* batch bisection (slices are serial), watchdog tiers (a gate refuses rather than a witness nudging), and its private vocabulary.
+- **[Gas Town](https://github.com/gastownhall/gastown)** has an agent ask a predecessor what it decided rather than re-read the code, the premise of `dim query search` reached independently. *Refused:* batch bisection (slices are serial), watchdog tiers (a gate refuses rather than a witness nudging), and its private vocabulary.
 - **[Gas City](https://github.com/gastownhall/gascity)** is that machinery as configuration: a formula becomes beads, each step names its runtime, and a restart adopts a live session instead of spawning another. A bead that outlives its agent is the order, reached independently. *Refused:* formula graphs and parallel steps (slices stay serial), roles that are only prompts (a station stays fixed; the harness is what changes), and the same private vocabulary.
 - **[agent-working-memory](https://github.com/CompleteIdeas/agent-working-memory)** answers an empty recall by abstaining with the withheld count, this repo's rule that a query with nothing to report says so. *Refused:* scheduled decay; a record of what happened does not forget.
 

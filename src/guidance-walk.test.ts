@@ -88,7 +88,7 @@ describe("the walk a session starts with", () => {
     mkdirSync(repo);
     execFileSync("mkfifo", [join(repo, "AGENTS.md")]);
 
-    const child = Bun.spawn([process.execPath, resolve(import.meta.dir, "cli.ts"), "wake"], {
+    const child = Bun.spawn([process.execPath, resolve(import.meta.dir, "cli.ts"), "hooks", "start"], {
       cwd: repo,
       env: { ...process.env, ...env },
       stdin: new Blob([JSON.stringify({ session_id: "s-fifo", cwd: repo })]),

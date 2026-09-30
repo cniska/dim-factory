@@ -6,7 +6,7 @@ const OWNERS_LINE = /^# dim-owners: ([^\r\n]+)$/m;
 
 export function hookBody(owners: readonly string[]): string {
   return `#!/bin/sh
-# Installed by \`dim install-commit-gate\`. One copy for every repo; see dim-factory.
+# Installed by \`dim gate install\`. One copy for every repo; see dim-factory.
 # dim-owners: ${JSON.stringify(owners.map(foldAscii))}
 hook=$(basename "$0")
 command -v dim >/dev/null 2>&1 || { echo "$hook: dim is not on PATH, so this is not judged." >&2; exit 0; }

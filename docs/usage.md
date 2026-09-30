@@ -16,8 +16,8 @@ bun link       # puts dim on PATH
 dim sync       # read new session data
 dim doctor     # check the installation and name repairs
 dim rebuild    # rebuild tables from their sources
-dim q list     # the named queries
-dim q <name>
+dim query list     # the named queries
+dim query <name>
 dim sql "<read-only select>"
 ```
 
@@ -26,13 +26,13 @@ dim sql "<read-only select>"
 ## Install the shared controls
 
 ```sh
-dim install-hooks
-dim install-rules
-dim install-skill
-dim install-commit-gate --owner=<host>/<account>
+dim hooks install
+dim rules install
+dim skills install
+dim gate install --owner <host>/<account>
 ```
 
-- A command that changes a shared installation needs `--write`.
+- Each install writes at once and copies aside any file it replaces.
 - Each hook command ends in `# dim-hook:<version>`, bumped whenever its text changes; an older version is stale.
 - Hooks, Codex rules, Codex hook trust and `~/.codex/skills` are installed and checked only for a harness whose executable is on `PATH`; `~/.agents/skills` is linked whatever is installed.
 - `dim doctor` reports missing or stale hooks, missing Codex trust, database drift, unloaded agents, and whether the comment gate is on — each with its repair.
@@ -41,7 +41,7 @@ dim install-commit-gate --owner=<host>/<account>
 
 Each git hook the gate installs calls `dim gate`, and each hook's rules are one entry in [`src/gate-registry.ts`](../src/gate-registry.ts). A hook that cannot find or run `dim` lets the commit or push through and says it was not judged.
 
-- A commit's subject is a Conventional Commit of at most 50 ASCII characters, with no body. A `fixup!` subject is judged by the subject it names, so `git commit --fixup` makes a commit that `git rebase --autosquash` folds in; `dim check-commits` still refuses one that is left in a range.
+- A commit's subject is a Conventional Commit of at most 50 ASCII characters, with no body. A `fixup!` subject is judged by the subject it names, so `git commit --fixup` makes a commit that `git rebase --autosquash` folds in; `dim gate check` still refuses one that is left in a range.
 - The repository's declared check runs before the commit. `DIM_SKIP_CHECK=1` skips it and the comment gate for one commit.
 
 ### Comment gate
@@ -76,7 +76,7 @@ dim config unset comments
 
 ## Session start
 
-The `SessionStart` hook runs `dim wake` to print the repo's declared check and format commands and record which guidance files were in force.
+The `SessionStart` hook runs `dim hooks start` to print the repo's declared check and format commands and record which guidance files were in force.
 
 ## Verification
 

@@ -65,7 +65,7 @@ describe("skill install", () => {
     expect(lstatSync(join(dir, "theirs")).isSymbolicLink()).toBe(true);
   });
 
-  test("install-skill --write retires a stale link when every current skill is already linked", () => {
+  test("skills install retires a stale link when every current skill is already linked", () => {
     const home = newHome();
     try {
       const codex = harnessesOnPath(home, ["codex"]);
@@ -73,12 +73,9 @@ describe("skill install", () => {
       const stale = join(home, ".codex", "skills", "dim-retired");
       symlinkSync(join(resolve(import.meta.dir, "..", "skills"), "dim-retired"), stale);
 
-      const run = Bun.spawnSync(
-        [process.execPath, resolve(import.meta.dir, "cli.ts"), "install-skill", "--write"],
-        {
-          env: { ...process.env, HOME: home, PATH: `${codex}:${process.env.PATH}` },
-        },
-      );
+      const run = Bun.spawnSync([process.execPath, resolve(import.meta.dir, "cli.ts"), "skills", "install"], {
+        env: { ...process.env, HOME: home, PATH: `${codex}:${process.env.PATH}` },
+      });
       expect(run.exitCode).toBe(0);
       expect(lstatSync(stale, { throwIfNoEntry: false })).toBeUndefined();
     } finally {

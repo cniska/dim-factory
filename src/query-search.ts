@@ -61,7 +61,7 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryRes
       (missing.length > 0
         ? ` ${missing.length === 1 ? "This term matched" : "These terms matched"} nothing anyone said: ${missing.join(", ")}.`
         : "") +
-      " `dim q thread <session>@<when>` reads the exchange a hit sits in.",
+      " `dim query thread <session>@<when>` reads the exchange a hit sits in.",
     columns,
     rows: toRows(records, columns),
     note:
@@ -75,6 +75,6 @@ function keywordSearch(db: Database, ctx: QueryContext, terms: string): QueryRes
 export const search: Query = {
   name: "search",
   summary: "find a message by the words in it, across every session",
-  usage: 'dim q search "<words>"',
+  usage: 'dim query search "<words>"',
   run: (db, ctx) => keywordSearch(db, ctx, requiredArg(ctx, search.usage)),
 };

@@ -7,7 +7,7 @@ import { closeDb, openDb, SchemaTooOldError } from "./db";
 import { NoDatabaseError, openReadOnly } from "./db-read";
 import { SCHEMA_VERSION } from "./db-schema";
 import { dbPath } from "./paths";
-import { qCommand } from "./q-command";
+import { queryCommand } from "./query-command";
 import { QUERIES } from "./query-registry";
 import { sqlCommand } from "./sql-command";
 import { runTraceCommand } from "./trace-command";
@@ -135,15 +135,15 @@ describe("each reader of the record", () => {
     }
   });
 
-  test("dim q answers every query without changing the record beside its own trace, and creates none", async () => {
+  test("dim query answers every query without changing the record beside its own trace, and creates none", async () => {
     const { home, path } = recordWithCommit();
     const empty = mkdtempSync(join(tmpdir(), "dim-db-read-"));
     try {
       const before = recordBesideTraces(path);
-      for (const query of QUERIES) await asDimHome(home, () => qCommand.run([query.name, "stay"]));
+      for (const query of QUERIES) await asDimHome(home, () => queryCommand.run([query.name, "stay"]));
       expect(recordBesideTraces(path)).toEqual(before);
 
-      await expect(asDimHome(empty, () => qCommand.run(["search", "stay"]))).rejects.toBeInstanceOf(
+      await expect(asDimHome(empty, () => queryCommand.run(["search", "stay"]))).rejects.toBeInstanceOf(
         NoDatabaseError,
       );
       expect(existsSync(dbPath({ DIM_HOME: empty }))).toBe(false);
@@ -178,7 +178,7 @@ describe("a reader of a record built by another schema version", () => {
         stampSchemaVersion(path, version);
         const before = fingerprint(path);
         const readers: Record<string, () => unknown> = {
-          "dim q": () => qCommand.run(["search", "stay"]),
+          "dim query": () => queryCommand.run(["search", "stay"]),
           "dim sql": () => sqlCommand.run(["SELECT 1"]),
           "dim trace": () => runTraceCommand("order-1", { DIM_HOME: home }, () => {}),
         };

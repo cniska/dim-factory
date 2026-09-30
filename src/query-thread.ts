@@ -21,7 +21,7 @@ function parsePassageRef(ref: string): { id: string; at?: string } {
 export const thread: Query = {
   name: "thread",
   summary: "read one session's exchange, or the messages around a timestamp",
-  usage: "dim q thread <id-prefix>[@<ts>]",
+  usage: "dim query thread <id-prefix>[@<ts>]",
   run: (db, ctx) => {
     const { id: prefix, at } = parsePassageRef(requiredArg(ctx, thread.usage));
     const found = table(db, "SELECT id FROM session WHERE id LIKE ? || '%' LIMIT 2", [prefix]);

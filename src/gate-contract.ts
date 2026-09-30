@@ -44,7 +44,7 @@ const MESSAGES: { readonly [Code in GateErrorCode]: (meta: GateErrorMeta[Code]) 
   [GATE_ERROR.unreadableUpdate]: ({ line }) =>
     `git passed pre-push an update line that does not hold four fields, so the push is not judged: ${line}`,
   [GATE_ERROR.unreadableOwners]: ({ path }) =>
-    `${path} names no readable owners, so this is not judged; dim install-commit-gate --owner=<host>/<account> --write rewrites it`,
+    `${path} names no readable owners, so this is not judged; dim gate install --owner <host>/<account> rewrites it`,
   [GATE_ERROR.gitConfigUnreadable]: ({ args, root, detail }) =>
     `git config ${args} failed in ${root}: ${detail}`,
   [GATE_ERROR.hooksPathTaken]: ({ existing }) =>

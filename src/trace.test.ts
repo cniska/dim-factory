@@ -36,7 +36,7 @@ describe("the diagnostic trace", () => {
     trace(
       {
         event: "query.completed",
-        command: "q",
+        command: "query",
         name: "search",
         path: "keyword",
         rowCount: 3,
@@ -47,7 +47,7 @@ describe("the diagnostic trace", () => {
     expect(rows(env)).toMatchObject([
       {
         event: "query.completed",
-        command: "q",
+        command: "query",
         name: "search",
         path: "keyword",
         row_count: 3,
@@ -90,7 +90,7 @@ describe("the diagnostic trace", () => {
     db.run("INSERT INTO schema_version (version) VALUES (?)", [SCHEMA_VERSION]);
     db.close();
 
-    trace({ event: "query.completed", command: "q", name: "thread" }, env);
+    trace({ event: "query.completed", command: "query", name: "thread" }, env);
     expect(rows(env)).toHaveLength(1);
   });
 
@@ -103,7 +103,7 @@ describe("the diagnostic trace", () => {
     const files = [path, `${path}-wal`, `${path}-shm`];
     for (const file of files) chmodSync(file, 0o444);
     try {
-      expect(() => trace({ event: "query.completed", command: "q", name: "search" }, env)).not.toThrow();
+      expect(() => trace({ event: "query.completed", command: "query", name: "search" }, env)).not.toThrow();
     } finally {
       for (const file of files) chmodSync(file, 0o644);
       writer.close();
@@ -114,7 +114,7 @@ describe("the diagnostic trace", () => {
     const env = scratch();
     expect(() =>
       trace(
-        { event: "query.completed", command: "q", name: "thread" },
+        { event: "query.completed", command: "query", name: "thread" },
         { ...env, DIM_HOME: "/nowhere/at/all" },
       ),
     ).not.toThrow();

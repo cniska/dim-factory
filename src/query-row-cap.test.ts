@@ -3,8 +3,8 @@ import { capRows, DEFAULT_MAX_ROWS, rowsFromArgs } from "./query-row-cap";
 
 describe("--rows", () => {
   test("defaults to the cap, and takes a count", () => {
-    expect(rowsFromArgs(["q", "sessions"])).toBe(DEFAULT_MAX_ROWS);
-    expect(rowsFromArgs(["q", "sessions", "--rows", "200"])).toBe(200);
+    expect(rowsFromArgs(["sessions"])).toBe(DEFAULT_MAX_ROWS);
+    expect(rowsFromArgs(["sessions", "--rows", "200"])).toBe(200);
   });
 
   test("refuses a count that is not one", () => {

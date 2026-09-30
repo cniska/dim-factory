@@ -14,7 +14,7 @@ I route work by capability: a powerful model for hard design and high-risk revie
 
 ### 1. Scope against what was already done
 
-Before deciding anything, ask the record: where this shape already exists (`dim q prior-art`) and what was settled before (`dim q search`).
+Before deciding anything, ask the record: where this shape already exists (`dim query prior-art`) and what was settled before (`dim query search`).
 
 - **Check:** nothing is re-derived that the record already holds.
 - **Factory:** the planner's brief (`dim-plan`).

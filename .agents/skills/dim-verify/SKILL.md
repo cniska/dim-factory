@@ -42,6 +42,6 @@ rm -rf "$run"
 ## Red flags
 
 - Running `dim` directly rather than through the script, which reads and writes the machine's own record and harness configs
-- `install-commit-gate`, `install-skill`, `install-agent` or `install-rules` during a run: they write outside the run's directory
+- `gate install`, `skills install`, `agent install` or `rules install` during a run: they write outside the run's directory
 - Reporting a run as verified from exit codes, without reading the JSON or the record
 - Leaving the run's directory behind

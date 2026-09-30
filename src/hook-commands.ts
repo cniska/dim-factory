@@ -20,7 +20,7 @@ export function hookContractVersion(command: string): number | null {
   return found ? Number(found[1]) : null;
 }
 
-export type HookKind = "spool" | "wake" | "format";
+export type HookKind = "spool" | "start" | "edit";
 
 export function hookCommand(tool: Tool, env: Env = process.env, event?: string): string {
   const harnessPid = event === "SessionStart" ? "-$PPID" : "";
@@ -29,12 +29,12 @@ export function hookCommand(tool: Tool, env: Env = process.env, event?: string):
   );
 }
 
-export function wakeCommand(tool: Tool): string {
-  return marked(`${dimPath()} wake --tool=${tool} 2>/dev/null || true`);
+export function startCommand(tool: Tool): string {
+  return marked(`${dimPath()} hooks start --tool=${tool} 2>/dev/null || true`);
 }
 
-export function formatEditCommand(): string {
-  return marked(`${dimPath()} format-edit 2>/dev/null || true`);
+export function editCommand(): string {
+  return marked(`${dimPath()} hooks edit 2>/dev/null || true`);
 }
 
 export function dimPath(): string {
@@ -54,13 +54,13 @@ export function wantedHooks(tool: Tool, env: Env = process.env): WantedHook[] {
   });
   return [
     spool("SessionStart"),
-    { event: "SessionStart", kind: "wake", command: wakeCommand(tool) },
+    { event: "SessionStart", kind: "start", command: startCommand(tool) },
     spool("SessionEnd"),
     spool("PostToolUse"),
     {
       event: "PostToolUse",
-      kind: "format",
-      command: formatEditCommand(),
+      kind: "edit",
+      command: editCommand(),
       matcher: EDIT_TOOLS[tool].join("|"),
     },
   ];

@@ -56,4 +56,4 @@ jobs:
           git cat-file -e "$base^{commit}" 2>/dev/null || base="$HEAD_SHA^"
           echo "range=$base..$HEAD_SHA" >> "$GITHUB_OUTPUT"
 
-      - run: bun run dim check-commits "${{ steps.range.outputs.range }}"
+      - run: bun run dim gate check "${{ steps.range.outputs.range }}"

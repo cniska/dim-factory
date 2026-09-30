@@ -111,18 +111,15 @@ describe("install", () => {
     writeFileSync(source, "canonical");
     writeFileSync(target, "owner rules");
     const run = () => {
-      const child = Bun.spawnSync(
-        [process.execPath, join(import.meta.dir, "cli.ts"), "install-rules", "--write"],
-        {
-          env: {
-            ...process.env,
-            HOME: root,
-            PATH: `${harnessesOnPath(root, ["codex"])}:${process.env.PATH}`,
-          },
-          stdout: "pipe",
-          stderr: "pipe",
+      const child = Bun.spawnSync([process.execPath, join(import.meta.dir, "cli.ts"), "rules", "install"], {
+        env: {
+          ...process.env,
+          HOME: root,
+          PATH: `${harnessesOnPath(root, ["codex"])}:${process.env.PATH}`,
         },
-      );
+        stdout: "pipe",
+        stderr: "pipe",
+      });
       expect(child.exitCode).toBe(0);
       return JSON.parse(child.stdout.toString()).result.backup;
     };

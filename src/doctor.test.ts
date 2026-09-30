@@ -87,7 +87,7 @@ describe("doctor", () => {
 
     expect(check(env, "agent")).toMatchObject({
       state: "warn",
-      fix: "dim install-agent --write, then reload the launchd agent",
+      fix: "dim agent install, then reload the launchd agent",
     });
   });
 
@@ -101,7 +101,7 @@ describe("doctor", () => {
     const retired = check(env, "skill");
     expect(retired?.state).toBe("warn");
     expect(retired?.detail).toContain(stale);
-    expect(retired?.fix).toBe("dim install-skill --write");
+    expect(retired?.fix).toBe("dim skills install");
   });
 
   test("fails when retention is unset, because that deletes the sources", () => {
@@ -125,7 +125,7 @@ describe("doctor", () => {
     const env = seeded();
     const missing = check(env, "commit gate");
     expect(missing?.state).toBe("warn");
-    expect(missing?.fix).toContain("install-commit-gate");
+    expect(missing?.fix).toContain("dim gate install");
 
     const hooks = join(env.HOME as string, ".config", "dim", "hooks");
     mkdirSync(hooks, { recursive: true });
@@ -153,7 +153,7 @@ describe("doctor", () => {
     const stale = check(env, "commit gate");
     expect(stale?.state).toBe("warn");
     expect(stale?.detail).toContain("pre-push");
-    expect(stale?.fix).toContain("install-commit-gate");
+    expect(stale?.fix).toContain("dim gate install");
   });
 
   test("names a gate git is not pointed at", () => {
@@ -418,7 +418,7 @@ describe("the comment gate for the current repo", () => {
     installCommitGate(["github.com/someone-else"], [], env);
     expect(commentGate(env, cwd)).toMatchObject({
       state: "warn",
-      fix: expect.stringContaining("install-commit-gate"),
+      fix: expect.stringContaining("dim gate install"),
     });
   });
 

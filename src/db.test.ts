@@ -215,7 +215,7 @@ describe("the lock wait a connection is opened with", () => {
     const env = { DIM_HOME: root };
     const opened = spyOn(db, "openDb");
     try {
-      trace({ event: "query.completed", command: "q", name: "search" }, env);
+      trace({ event: "query.completed", command: "query", name: "search" }, env);
       expect(opened).toHaveBeenCalledWith(dbPath(env), { busyTimeoutMs: 250 });
     } finally {
       opened.mockRestore();

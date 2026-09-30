@@ -63,7 +63,7 @@ function sessionHooks(hooks: HookRead): Health {
       name: "hooks",
       state: "warn",
       detail: "no harness is installed, so no session hook is written and nothing is recorded",
-      fix: "install codex or claude, then dim install-hooks --write",
+      fix: "install codex or claude, then dim hooks install",
     };
   }
   if (hooks.missing.length === 0 && hooks.stale.length === 0) {
@@ -79,7 +79,7 @@ function sessionHooks(hooks: HookRead): Health {
     name: "hooks",
     state: "fail",
     detail: `session hooks: ${counts.join("; ")}`,
-    fix: "dim install-hooks --write",
+    fix: "dim hooks install",
   };
 }
 
@@ -199,7 +199,7 @@ function spool(env: Env): Health {
   };
 }
 
-const REINSTALL_GATE = "dim install-commit-gate --owner=<host>/<account> --write";
+const REINSTALL_GATE = "dim gate install --owner <host>/<account>";
 
 function gateFailure(name: string, error: unknown): Health | null {
   if (!(error instanceof CodedError)) return null;
@@ -245,7 +245,7 @@ function commentGate(env: Env, cwd: string, commitGate: Health): Health {
       name,
       state: "warn",
       detail: `comments are banned for ${label}, but no installed pre-commit hook covers its origin, so nothing refuses them`,
-      fix: "dim install-commit-gate --owner=<host>/<account> --write",
+      fix: REINSTALL_GATE,
     };
   }
   if (commitGate.state !== "ok") {
@@ -334,7 +334,7 @@ function skill(env: Env): Health {
             : []),
           ...(retired.length > 0 ? [`links to skills that no longer ship: ${retired.join(", ")}`] : []),
         ].join("; "),
-        fix: "dim install-skill --write",
+        fix: "dim skills install",
       };
 }
 
@@ -363,7 +363,7 @@ function commitGateHealth(plan: GatePlan, dir: string): Health {
         name: "commit gate",
         state: "warn",
         detail: `${gaps.join(", ")}; those rules are held only where a repo gates its own`,
-        fix: "dim install-commit-gate --owner=<owner> --write",
+        fix: "dim gate install --owner <owner>",
       };
 }
 
@@ -427,7 +427,7 @@ function agent(env: Env): Health {
       name: "agent",
       state: "warn",
       detail: "no launchd agent, so syncing is manual",
-      fix: "dim install-agent --write",
+      fix: "dim agent install",
     };
   }
   if (!plan.unchanged) {
@@ -435,7 +435,7 @@ function agent(env: Env): Health {
       name: "agent",
       state: "warn",
       detail: "launchd agent points to a different checkout or Bun path",
-      fix: "dim install-agent --write, then reload the launchd agent",
+      fix: "dim agent install, then reload the launchd agent",
     };
   }
   if (launchdLoaded()) return { name: "agent", state: "ok", detail: "launchd agent loaded" };
@@ -460,7 +460,7 @@ function rules(env: Env): Health {
     plan.state === "absent"
       ? "codex has no rules file, so none of the conventions reach it"
       : "codex rules differ from the canonical file";
-  return { name: "rules", state: "fail", detail, fix: "dim install-rules --write" };
+  return { name: "rules", state: "fail", detail, fix: "dim rules install" };
 }
 
 function outcomes(db: Database): Health {

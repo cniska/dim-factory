@@ -68,7 +68,7 @@ describe("search", () => {
     const db = seeded();
     const result = ask(db, { arg: "checkout" });
     expect(result.rows[0]?.[result.columns.indexOf("ref")]).toBe("s1@2026-09-01T10:30:00Z");
-    expect(result.denominator).toContain("dim q thread <session>@<when>");
+    expect(result.denominator).toContain("dim query thread <session>@<when>");
     db.close();
   });
 
@@ -110,7 +110,7 @@ describe("search", () => {
 
   test("refuses no words, or only whitespace, as a usage error", () => {
     const db = seeded();
-    const usage = expect.objectContaining({ code: "usage", message: 'usage: dim q search "<words>"' });
+    const usage = expect.objectContaining({ code: "usage", message: 'usage: dim query search "<words>"' });
     expect(() => ask(db, {})).toThrow(usage);
     expect(() => ask(db, { arg: "   " })).toThrow(usage);
     db.close();

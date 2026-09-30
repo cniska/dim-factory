@@ -33,7 +33,7 @@ describe("reading the codex hooks a trust key points at", () => {
   test("finds the hook's position in a hooks.json carrying comments", () => {
     const env = codexEnv(
       (e) => `{
-  // written by dim install-hooks
+  // written by dim hooks install
   "hooks": {
     "SessionStart": [{ "hooks": [{ "type": "command", "command": ${JSON.stringify(hookCommand("codex", e, "SessionStart"))} }] }],
   }

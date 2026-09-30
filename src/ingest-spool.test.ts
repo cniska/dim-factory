@@ -16,11 +16,11 @@ import { closeDb, openDb } from "./db";
 import { harnessesOnPath, scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
 import {
   dimPath,
-  formatEditCommand,
+  editCommand,
   HOOK_CONTRACT_VERSION,
   hookCommand,
   hookContractVersion,
-  wakeCommand,
+  startCommand,
   wantedHooks,
 } from "./hook-commands";
 import { hookConfigPath, installHooks, planHooks } from "./hooks";
@@ -360,10 +360,10 @@ describe("installHooks", () => {
     expect(after.hooks.SessionEnd[1].hooks[0].command).toBe(hookCommand("claude", env));
     expect(after.hooks.SessionStart).toHaveLength(2);
     expect(after.hooks.SessionStart[0].hooks[0].command).toBe(hookCommand("claude", env, "SessionStart"));
-    expect(after.hooks.SessionStart[1].hooks[0].command).toBe(wakeCommand("claude"));
+    expect(after.hooks.SessionStart[1].hooks[0].command).toBe(startCommand("claude"));
     expect(after.hooks.PostToolUse).toHaveLength(2);
     expect(after.hooks.PostToolUse[0].hooks[0].command).toBe(hookCommand("claude", env));
-    expect(after.hooks.PostToolUse[1].hooks[0].command).toBe(formatEditCommand());
+    expect(after.hooks.PostToolUse[1].hooks[0].command).toBe(editCommand());
     expect(readFileSync(`${paths.claude}.dim-backup`, "utf8")).toContain("existing-notifier");
   });
 
@@ -655,11 +655,11 @@ describe("installHooks", () => {
         .map((entry) => entry.matcher ?? null);
     expect(claude.hooks.PostToolUse).toContainEqual({
       matcher: "Edit|Write|MultiEdit|NotebookEdit",
-      hooks: [{ type: "command", command: formatEditCommand() }],
+      hooks: [{ type: "command", command: editCommand() }],
     });
     expect(codex.hooks.PostToolUse).toContainEqual({
       matcher: "apply_patch",
-      hooks: [{ type: "command", command: formatEditCommand() }],
+      hooks: [{ type: "command", command: editCommand() }],
     });
     expect(matchers(claude).filter((m) => m !== null)).toHaveLength(1);
     expect(matchers(codex).filter((m) => m !== null)).toHaveLength(1);
@@ -677,13 +677,13 @@ describe("installHooks", () => {
         hooks: {
           PostToolUse: [
             { hooks: [{ type: "command", command: hookCommand("claude", env) }] },
-            { hooks: [{ type: "command", command: formatEditCommand(), timeout: 40 }] },
+            { hooks: [{ type: "command", command: editCommand(), timeout: 40 }] },
           ],
         },
       }),
     );
 
-    expect(planHooks(env).find((p) => p.event === "PostToolUse" && p.kind === "format")).toMatchObject({
+    expect(planHooks(env).find((p) => p.event === "PostToolUse" && p.kind === "edit")).toMatchObject({
       state: "stale",
       outdated: "matcher",
     });
@@ -693,7 +693,7 @@ describe("installHooks", () => {
       { hooks: [{ type: "command", command: hookCommand("claude", env) }] },
       {
         matcher: "Edit|Write|MultiEdit|NotebookEdit",
-        hooks: [{ type: "command", command: formatEditCommand(), timeout: 40 }],
+        hooks: [{ type: "command", command: editCommand(), timeout: 40 }],
       },
     ]);
     expect(installHooks(env).written).toEqual([]);
@@ -711,7 +711,7 @@ describe("installHooks", () => {
           PostToolUse: [
             {
               hooks: [
-                { type: "command", command: formatEditCommand() },
+                { type: "command", command: editCommand() },
                 { type: "command", command: oldSpool },
               ],
             },
@@ -726,7 +726,7 @@ describe("installHooks", () => {
       { hooks: [{ type: "command", command: hookCommand("claude", env) }] },
       {
         matcher: "Edit|Write|MultiEdit|NotebookEdit",
-        hooks: [{ type: "command", command: formatEditCommand() }],
+        hooks: [{ type: "command", command: editCommand() }],
       },
     ]);
     expect(installHooks(env).written).toEqual([]);

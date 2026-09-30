@@ -7,9 +7,9 @@ import { findQuery, QUERIES } from "./query-registry";
 import { capRows, DEFAULT_MAX_ROWS, rowsFromArgs } from "./query-row-cap";
 import { trace } from "./trace";
 
-export const qCommand: Command = {
-  name: "q",
-  usage: `usage: dim q <name> [arg] [--rows <n>]; dim q list names them; ${DEFAULT_MAX_ROWS} rows print unless widened`,
+export const queryCommand: Command = {
+  name: "query",
+  usage: `usage: dim query <name> [arg] [--rows <n>]; dim query list names them; ${DEFAULT_MAX_ROWS} rows print unless widened`,
   summary: "ask the database a named question",
   async run(args) {
     const name = args[0];
@@ -23,11 +23,11 @@ export const qCommand: Command = {
       };
     }
     const query = findQuery(name);
-    if (!query) throw new UsageError(`no query named ${name}; dim q list names them`);
+    if (!query) throw new UsageError(`no query named ${name}; dim query list names them`);
     const arg = positionalArg(
       args.slice(1),
       ["--rows"],
-      (message) => new UsageError(`dim q ${name} ${message}`),
+      (message) => new UsageError(`dim query ${name} ${message}`),
     );
     const maxRows = rowsFromArgs(args);
     const db = openReadOnly(dbPath());
@@ -39,7 +39,7 @@ export const qCommand: Command = {
     } finally {
       trace({
         event: "query.completed",
-        command: "q",
+        command: "query",
         name: query.name,
         rowCount: result?.rows.length,
         durationMs: Date.now() - started,

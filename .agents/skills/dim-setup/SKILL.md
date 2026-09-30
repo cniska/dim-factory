@@ -19,17 +19,17 @@ Run `dim sync` to populate the local record. If it refuses a schema mismatch, ru
 
 ## Repair from doctor
 
-Use the doctor's findings to choose only the needed installers. Preview each before `--write` and inspect the paths and scope it will change:
+Use the doctor's findings to choose only the needed installers. Each writes when run, so read the paths and scope doctor names before running it:
 
-- `dim install-hooks` for Claude Code and Codex session hooks.
-- `dim install-skill` for dim's shared skills in the agent skill directories.
-- `dim install-rules` when its canonical Claude rules source exists.
-- `dim install-commit-gate --owner=<host>/<account>` for the owner's verified remote scope. Do not infer that scope from an unrelated clone.
-- `dim install-agent` on macOS when scheduled sync is wanted. Preview it even when doctor says the agent is loaded, because the plist names this checkout and the installed Bun path. Its written result gives the command to load the launchd agent.
+- `dim hooks install` for Claude Code and Codex session hooks.
+- `dim skills install` for dim's shared skills in the agent skill directories.
+- `dim rules install` when its canonical Claude rules source exists.
+- `dim gate install --owner <host>/<account>` for the owner's verified remote scope. Do not infer that scope from an unrelated clone.
+- `dim agent install` on macOS when scheduled sync is wanted. Run it even when doctor says the agent is loaded, because the plist names this checkout and the installed Bun path. Its result gives the command to load the launchd agent.
 
 On Linux, run `dim sync` manually; the launchd installer is macOS-specific.
 
-Apply a previewed installer with `--write` when setup was requested and its scope is understood. Skip an installer that reports everything already installed or unchanged. An occupied skill link pointing to a previous dim checkout can be replaced after checking the target and backup in the preview; an unrelated occupied path or owner-specific choice goes to the owner with the exact proposed change. Keep configuration outside dim's planned change intact. If a loaded launchd job's plist changed, use the installer's returned remove command before its load command, then inspect the loaded job; writing the plist alone does not restart it.
+Run an installer when setup was requested and its scope is understood. An occupied skill link is moved aside to the backup the result names; check that it pointed to a previous dim checkout, and take an unrelated occupied path or owner-specific choice to the owner. Keep configuration outside dim's planned change intact. If a loaded launchd job's plist changed, use the installer's returned remove command before its load command, then inspect the loaded job; writing the plist alone does not restart it.
 
 Run `dim doctor` again after repairs. Codex hook trust is granted in Codex, and routing or retention choices may need the owner; name those checks and the action they need. A warning is a stated limitation, not a passing check.
 
@@ -44,7 +44,7 @@ Report which controls were installed or already healthy, the final doctor result
 ## Red flags
 
 - calling a different `dim` from PATH
-- writing machine-wide hooks or gates before reading their preview
+- writing machine-wide hooks or gates before reading what doctor says they change
 - guessing the commit gate's owner scope
 - treating a doctor's warning or failure as a successful installation
 - concealing a trust or routing decision the owner must make

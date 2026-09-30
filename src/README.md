@@ -12,9 +12,9 @@ Flat, so a module is found by name. A file's prefix is its module: `db-read.ts` 
 | `ingest` | Read session sources, hook events and git history into the database, on a schedule |
 | `guidance` | Which rules files were in force, and the walk that loaded them |
 | `query` | The named queries, their arguments and the row cap |
-| `session-start`, `wake` | Repo commands passed to a new session |
+| `session-start` | Repo commands passed to a new session |
 | `harness` | Which harnesses are installed |
-| `gate`, `comments`, `hooks`, `skill`, `rules`, `install` | Install and enforce the shared controls |
+| `gate`, `comments`, `hooks`, `skill`, `rules` | Install and enforce the shared controls |
 | `git`, `repo`, `worktree`, `declared` | Repositories, what they declare, and folding worktree paths onto their checkout |
 | `wall/` | The read-only board's UI; `components/` and `lib/` hold its primitives |
 | `trace` | Diagnostic events |

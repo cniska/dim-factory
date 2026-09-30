@@ -47,18 +47,18 @@ dim sync: drain the spool → read changed files → derive session ends
 - **The cursor follows the session, not the path.** Codex archives a rollout by moving it, so the cursor is keyed by `(session_id, kind)` and `message.src_file` follows the new path through `ON UPDATE CASCADE`.
 - **Idempotent.** Natural keys make a re-run a no-op: Claude `message.id` and `uuid`, tool-use ids, `response_id`, Codex item ids and `(thread_id, turn_id)`.
 - **Claude usage is deduplicated and the largest kept.** One API response is written as one line per content block, each repeating `message.id` and a `usage` that accumulates as the response streams, so the line with the most output tokens holds the total.
-- **Schedule.** `dim install-agent` writes a `launchd` agent that runs `dim sync` every 15 minutes, naming `bun` by absolute path because launchd starts with almost no environment. `dim rebuild` is `sync` with every cursor reset.
+- **Schedule.** `dim agent install` writes a `launchd` agent that runs `dim sync` every 15 minutes, naming `bun` by absolute path because launchd starts with almost no environment. `dim rebuild` is `sync` with every cursor reset.
 - **The lock** is a directory under the data directory that records its holder's pid, since macOS has no `flock` and a killed run would otherwise leave it held forever.
 
 ## Hooks
 
-`dim install-hooks` installs its hooks for each of Claude Code and Codex whose executable is on `PATH` ([`src/hook-commands.ts`](../src/hook-commands.ts), [`src/hooks.ts`](../src/hooks.ts), [`src/harness-installed.ts`](../src/harness-installed.ts)): a spool hook on each event below, `dim wake` on `SessionStart` and `dim format-edit` on `PostToolUse`, matched to their edit tools ([`src/format-edit.ts`](../src/format-edit.ts) `EDIT_TOOLS`) so no other tool call starts it. An installed hook whose command or matcher differs from the wanted one is stale and is rewritten in place.
+`dim hooks install` installs its hooks for each of Claude Code and Codex whose executable is on `PATH` ([`src/hook-commands.ts`](../src/hook-commands.ts), [`src/hooks.ts`](../src/hooks.ts), [`src/harness-installed.ts`](../src/harness-installed.ts)): a spool hook on each event below, `dim hooks start` on `SessionStart` and `dim hooks edit` on `PostToolUse`, matched to their edit tools ([`src/format-edit.ts`](../src/format-edit.ts) `EDIT_TOOLS`) so no other tool call starts it. An installed hook whose command or matcher differs from the wanted one is stale and is rewritten in place.
 
 | Event | What it does |
 |---|---|
-| `SessionStart` | spools the start source, model and harness pid from the hook's parent process. `dim wake` prints declared repo commands and records the guidance in force |
+| `SessionStart` | spools the start source, model and harness pid from the hook's parent process. `dim hooks start` prints declared repo commands and records the guidance in force |
 | `SessionEnd` | spools the end time and reason, which a transcript lacks |
-| `PostToolUse` | spools the tool call with its payload. `dim format-edit` runs the repo's declared format task in the checkout an edit touched ([`src/format-edit.ts`](../src/format-edit.ts)), bounded and failing open. In a factory worker's session it runs nothing, since the worker wrote that manifest and the hook runs outside its sandbox; a builder formats inside its sandbox, and the runner's check holds the result |
+| `PostToolUse` | spools the tool call with its payload. `dim hooks edit` runs the repo's declared format task in the checkout an edit touched ([`src/format-edit.ts`](../src/format-edit.ts)), bounded and failing open. In a factory worker's session it runs nothing, since the worker wrote that manifest and the hook runs outside its sandbox; a builder formats inside its sandbox, and the runner's check holds the result |
 - **The spool hook never opens the database.** It writes one file per event, so a session never waits on `sessions.db`; `sync` drains the spool into `hook_event`.
 - **`hook_event` is never re-derived**, because a hook fires once. It has no foreign key to `session`, so an event that arrives before its transcript waits for it. A spool file that cannot be placed moves to `spool/unreadable/`, since it is the only copy. A drain is one transaction, and a file is deleted only once it has committed.
 - **One source per column.** `session.ended_at` and `end_reason` come from `hook_event` alone, never from a transcript.
@@ -72,8 +72,8 @@ dim sync: drain the spool → read changed files → derive session ends
 
 ## Read path
 
-- **`dim q <name>`** runs a named query; `dim q list` names them. Each is a `Query` in one of the modules [`src/query-registry.ts`](../src/query-registry.ts) imports.
-- **One output shape.** Every command prints one line of JSON: `{command, ok, result}` on stdout, or `{command, ok: false, error}` on stderr ([`src/cli-output.ts`](../src/cli-output.ts)). An agent reads the error, so a coded error carries a `code` to branch on, its facts as `meta` fields, and a message that names the act that resolves it, or says nothing does. A `raw` command prints the format its consumer parses instead: `wake`, `format-edit`, `check-command`, `trace`, and `gate`, which speaks to git through its exit code and stderr.
+- **`dim query <name>`** runs a named query; `dim query list` names them. Each is a `Query` in one of the modules [`src/query-registry.ts`](../src/query-registry.ts) imports.
+- **One output shape.** Every command prints one line of JSON: `{command, ok, result}` on stdout, or `{command, ok: false, error}` on stderr ([`src/cli-output.ts`](../src/cli-output.ts)). An agent reads the error, so a coded error carries a `code` to branch on, its facts as `meta` fields, and a message that names the act that resolves it, or says nothing does. A `raw` command prints the format its consumer parses instead: `hooks start`, `hooks edit`, `trace`, and `gate` run by a git hook, which speaks to git through its exit code and stderr.
 - **A result states its base.** It carries `denominator`, `columns`, `rows` and `note`; an empty result says why, and a figure covering a subset names the subset.
 - **Capped rows.** A result longer than 40 rows says so and names `--rows`, the one cap on what a query returns. `search` reads one row past the cap and no further, since a common word matches most of the record.
 - **Arguments are refused, not guessed.** A missing or malformed argument, an ambiguous prefix, a second positional or an unknown flag is a usage error; a prefix that matches nothing is an empty result that says so.

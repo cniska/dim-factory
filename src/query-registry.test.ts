@@ -81,7 +81,7 @@ describe("read path", () => {
     try {
       db.run(SCHEMA_SQL);
       expect(() => findQuery("prior-art")?.run(db, ctx)).toThrow(
-        expect.objectContaining({ code: "usage", message: 'usage: dim q prior-art "<path fragment>"' }),
+        expect.objectContaining({ code: "usage", message: 'usage: dim query prior-art "<path fragment>"' }),
       );
     } finally {
       db.close();
@@ -124,7 +124,7 @@ describe("read path", () => {
       expect(missing?.note).toContain("no session starts with");
 
       expect(() => findQuery("thread")?.run(db, ctx)).toThrow(
-        expect.objectContaining({ code: "usage", message: "usage: dim q thread <id-prefix>[@<ts>]" }),
+        expect.objectContaining({ code: "usage", message: "usage: dim query thread <id-prefix>[@<ts>]" }),
       );
       expect(() => findQuery("thread")?.run(db, { ...ctx, arg: "" })).toThrow(
         expect.objectContaining({ code: "usage" }),

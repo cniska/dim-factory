@@ -6,7 +6,7 @@ const PER_REPO = 3;
 export const priorArt: Query = {
   name: "prior-art",
   summary: "where a path like this one already exists across the repos on disk, newest first",
-  usage: 'dim q prior-art "<path fragment>"',
+  usage: 'dim query prior-art "<path fragment>"',
   run: (db, ctx) => {
     const columns = ["file", "repo", "commits", "days_since", "authors"];
     const fragment = requiredArg(ctx, priorArt.usage);

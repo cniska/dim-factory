@@ -19,7 +19,7 @@ if [ "$1" = new ]; then
   mkdir -p "$scratch/bin" "$DIM_HOME"
   printf '#!/bin/sh\nexec bun "%s" "$@"\n' "$checkout/src/cli.ts" > "$scratch/bin/dim"
   chmod +x "$scratch/bin/dim"
-  dim install-hooks --write > /dev/null
+  dim hooks install > /dev/null
 
   git init -q -b main "$repo"
   git -C "$repo" config user.name Verify
