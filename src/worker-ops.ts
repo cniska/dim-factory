@@ -1,10 +1,17 @@
 import type { Database } from "bun:sqlite";
+import { invariant } from "./assert";
 import { writeTransaction } from "./db";
-import { openSessionsUnder } from "./hooks-sessions";
+import { type OpenSession, openSessionsUnder } from "./hooks-sessions";
 import { drainSpool } from "./ingest-spool";
 import { checkoutAt } from "./project";
 import { actingSession, ancestry, isRunning, nearestHarnessSession, workerNameOf } from "./worker";
-import { type Acting, refuseWorker, type WorkerRecord } from "./worker-contract";
+import {
+  type Acting,
+  type ProcessId,
+  type ProcessRow,
+  refuseWorker,
+  type WorkerRecord,
+} from "./worker-contract";
 import { processTable } from "./worker-effects";
 import {
   insertSession,
@@ -17,27 +24,37 @@ import {
   workerNames,
 } from "./worker-store";
 
-export function actingWorker(db: Database, cwd: string): Acting | null {
+type Above = {
+  readonly table: readonly ProcessRow[];
+  readonly chain: readonly ProcessId[];
+  readonly open: readonly OpenSession[];
+};
+
+function above(db: Database): Above {
   drainSpool(db);
-  const chain = ancestry(processTable(), process.pid);
+  const table = processTable();
+  const chain = ancestry(table, process.pid);
+  const open = openSessionsUnder(
+    db,
+    chain.map((ancestor) => ancestor.pid),
+  );
+  return { table, chain, open };
+}
+
+export function actingWorker(db: Database, cwd: string): Acting | null {
+  const { chain, open } = above(db);
   const session = actingSession(chain, sessions(db));
   const worker = session === null ? null : workerNamed(db, session.worker);
   if (session !== null && worker !== null) return { worker, session };
-  if (
-    openSessionsUnder(
-      db,
-      chain.map((ancestor) => ancestor.pid),
-    ).length === 0
-  ) {
-    throw refuseWorker("no_session", { cwd });
-  }
+  if (open.length === 0) throw refuseWorker("no_session", { cwd });
   return null;
 }
 
 export function workersNamed(db: Database, names: readonly string[]): readonly WorkerRecord[] {
-  return names.flatMap((name) => {
+  return names.map((name) => {
     const worker = workerNamed(db, name);
-    return worker === null ? [] : [{ worker, sessions: sessionsOf(db, name) }];
+    invariant(worker !== null, `worker ${name}, named in an order's log, is on record`);
+    return { worker, sessions: sessionsOf(db, name) };
   });
 }
 
@@ -49,20 +66,16 @@ function mintedName(db: Database): string {
   }
 }
 
-export function registerOperator(
-  db: Database,
-  cwd: string,
-): { readonly operator: string; readonly session: string; readonly project: string } {
+export type Registered = { readonly operator: string; readonly session: string; readonly project: string };
+
+export function registerOperator(db: Database, cwd: string): Registered {
   const project = checkoutAt(cwd)?.project;
   if (project === undefined) throw refuseWorker("no_project", { cwd });
-  drainSpool(db);
-  const table = processTable();
-  const chain = ancestry(table, process.pid);
-  const open = openSessionsUnder(
-    db,
-    chain.map((ancestor) => ancestor.pid),
-  ).filter((session) => session.cwd !== null && checkoutAt(session.cwd)?.project === project);
-  const found = nearestHarnessSession(chain, open);
+  const { table, chain, open } = above(db);
+  const inProject = open.filter(
+    (session) => session.cwd !== null && checkoutAt(session.cwd)?.project === project,
+  );
+  const found = nearestHarnessSession(chain, inProject);
   if (found === null) throw refuseWorker("no_session", { cwd });
   return writeTransaction(db, () => {
     const registered = sessionNamed(db, found.session.id);

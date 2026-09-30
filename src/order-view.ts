@@ -95,7 +95,7 @@ export function orderView(
     project: state.project,
     description: state.description,
     status: state.status,
-    station: state.status === "queued" ? null : stationOf(state.phase),
+    station: stationOf(state),
     next: nextOf(state.phase),
     branch: branchOf(state.id),
     workspace,

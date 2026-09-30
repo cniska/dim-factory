@@ -58,7 +58,11 @@ const STATION_BEFORE: Readonly<Record<Station, Station | null>> = {
   review: "build",
 };
 
-export function stationOf(phase: Phase): Station | null {
+export function stationOf(state: OrderState): Station | null {
+  return state.status === "queued" ? null : phaseStation(state.phase);
+}
+
+function phaseStation(phase: Phase): Station | null {
   switch (phase.kind) {
     case "run":
     case "approve":
@@ -120,7 +124,7 @@ function apply(state: OrderState, entry: LaterEntry): OrderState {
     case "workspace_created":
       return { ...state, head: entry.details.base };
     case "order_cancelled":
-      return { ...state, status: "cancelled", phase: { kind: "done", station: stationOf(state.phase) } };
+      return { ...state, status: "cancelled", phase: { kind: "done", station: stationOf(state) } };
     case "artifact_approved":
       return approved(state, entry.details.station);
     case "artifact_returned":
@@ -210,12 +214,14 @@ export type OperatorAct =
   | { readonly kind: "update" }
   | { readonly kind: "cancel" };
 
-export type Admission = { readonly admitted: Acting } | { readonly refused: CodedError };
+export type Admission =
+  | { readonly kind: "admitted"; readonly by: Acting }
+  | { readonly kind: "refused"; readonly refusal: CodedError };
 
-export function mayAdd(by: Acting | null, project: string): Admission {
+export function operatorOf(by: Acting | null, project: string): Admission {
   return by?.worker.role === "operator" && by.worker.project === project
-    ? { admitted: by }
-    : { refused: refuseWorker("not_operator", { project }) };
+    ? { kind: "admitted", by }
+    : { kind: "refused", refusal: refuseWorker("not_operator", { project }) };
 }
 
 function stepRefusal(state: OrderState, act: OperatorAct): CodedError | null {
@@ -238,8 +244,8 @@ function stepRefusal(state: OrderState, act: OperatorAct): CodedError | null {
 }
 
 export function admit(state: OrderState, by: Acting | null, act: OperatorAct): Admission {
-  const operator = mayAdd(by, state.project);
-  if ("refused" in operator) return operator;
-  const refused = stepRefusal(state, act);
-  return refused === null ? operator : { refused };
+  const operator = operatorOf(by, state.project);
+  if (operator.kind === "refused") return operator;
+  const refusal = stepRefusal(state, act);
+  return refusal === null ? operator : { kind: "refused", refusal };
 }

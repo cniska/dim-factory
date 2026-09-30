@@ -1,14 +1,11 @@
 import type { Database } from "bun:sqlite";
 import { type Command, UsageError } from "./cli-contract";
 import { parseArgs } from "./cli-flags";
-import { readConfig } from "./config";
 import { closeDb } from "./db";
 import { openFactory } from "./factory-db";
-import { OrderId, refuseOrder } from "./order-contract";
-import { addOrder, takeAct, viewOf } from "./order-ops";
+import { OrderId } from "./order-contract";
+import { addOrder, cancelOrder, showOrder, updateOrder } from "./order-ops";
 import type { OrderView } from "./order-view";
-import { checkoutAt, defaultBranch, lastCheckoutOf } from "./project";
-import { refuseWorker } from "./worker-contract";
 import { actingWorker } from "./worker-ops";
 
 const USAGE = [
@@ -37,20 +34,8 @@ function add(db: Database, args: readonly string[]): OrderView {
     throw usage("add needs --title and --description");
   }
   const cwd = process.cwd();
-  const here = checkoutAt(cwd);
-  const project = flags.project ?? here?.project;
-  if (project === undefined) throw refuseWorker("no_project", { cwd });
-  const checkout = here?.project === project ? here : lastCheckoutOf(db, project);
-  if (checkout === null) throw refuseOrder("no_checkout", { project });
-  const branch = defaultBranch(checkout.root);
-  if (branch === null) throw refuseOrder("no_default_branch", { checkout: checkout.root });
-  readConfig({ root: checkout.root, at: branch });
-  const order = addOrder(db, actingWorker(db, cwd), {
-    title: flags.title,
-    description: flags.description,
-    project,
-  });
-  return viewOf(db, order);
+  const fields = { title: flags.title, description: flags.description, project: flags.project, cwd };
+  return showOrder(db, addOrder(db, actingWorker(db, cwd), fields));
 }
 
 function update(db: Database, args: readonly string[]): OrderView {
@@ -63,28 +48,21 @@ function update(db: Database, args: readonly string[]): OrderView {
     throw usage("update needs --title, --description or both");
   }
   const order = orderArg(positionals);
-  takeAct(db, order, actingWorker(db, process.cwd()), { kind: "update" }, (state) => ({
-    action: "order_updated",
-    details: { title: flags.title ?? state.title, description: flags.description ?? state.description },
-  }));
-  return viewOf(db, order);
+  updateOrder(db, order, actingWorker(db, process.cwd()), flags);
+  return showOrder(db, order);
 }
 
 function cancel(db: Database, args: readonly string[]): OrderView {
   const { positionals, flags } = parseArgs(args, { positionals: [1, 1], flags: ["reason"] }, usage);
-  const reason = flags.reason;
-  if (reason === undefined) throw usage("cancel needs --reason");
+  if (flags.reason === undefined) throw usage("cancel needs --reason");
   const order = orderArg(positionals);
-  takeAct(db, order, actingWorker(db, process.cwd()), { kind: "cancel" }, () => ({
-    action: "order_cancelled",
-    details: { reason },
-  }));
-  return viewOf(db, order);
+  cancelOrder(db, order, actingWorker(db, process.cwd()), flags.reason);
+  return showOrder(db, order);
 }
 
 function show(db: Database, args: readonly string[]): OrderView {
   const { positionals } = parseArgs(args, { positionals: [1, 1], flags: [] }, usage);
-  return viewOf(db, orderArg(positionals));
+  return showOrder(db, orderArg(positionals));
 }
 
 const VERBS: Readonly<Record<string, (db: Database, args: readonly string[]) => OrderView>> = {

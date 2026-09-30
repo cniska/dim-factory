@@ -68,7 +68,7 @@ const planned = [RUN, BASE, PLAN];
 const built = [...planned, approve("plan"), committed("c1"), committed("c2"), BUILT];
 const reviewed = [...built, approve("build"), REVIEWED];
 
-const at = (order: OrderState) => [stationOf(order.phase), nextOf(order.phase)];
+const at = (order: OrderState) => [stationOf(order), nextOf(order.phase)];
 
 describe("an order's state, folded from its log", () => {
   test("waits to be run once added, and is queued until it runs", () => {
@@ -219,12 +219,15 @@ describe("an order id", () => {
 describe("which act an order admits", () => {
   const refusedCode = (order: OrderState, act: Parameters<typeof admit>[2], by: Acting | null = OPERATOR) => {
     const admission = admit(order, by, act);
-    return "refused" in admission ? admission.refused.code : null;
+    return admission.kind === "refused" ? admission.refusal.code : null;
   };
 
   test("refuses an act that is not the next step, naming the next step", () => {
     const admission = admit(state(), OPERATOR, { kind: "approve" });
-    expect("refused" in admission && admission.refused.meta).toEqual({ order: "k7m2qx4d", next: "run" });
+    expect(admission.kind === "refused" && admission.refusal.meta).toEqual({
+      order: "k7m2qx4d",
+      next: "run",
+    });
     expect(refusedCode(state(...planned), { kind: "run" })).toBe("not_next_step");
     expect(refusedCode(state(...planned), { kind: "approve" })).toBeNull();
     expect(refusedCode(state(...planned), { kind: "return" })).toBeNull();
@@ -234,7 +237,7 @@ describe("which act an order admits", () => {
     const elsewhere: Acting = { ...OPERATOR, worker: { ...OPERATOR.worker, project: "acme/gadgets" } };
     expect(refusedCode(state(), { kind: "run" }, elsewhere)).toBe("not_operator");
     expect(refusedCode(state(), { kind: "run" }, null)).toBe("not_operator");
-    expect(admit(state(), OPERATOR, { kind: "run" })).toEqual({ admitted: OPERATOR });
+    expect(admit(state(), OPERATOR, { kind: "run" })).toEqual({ kind: "admitted", by: OPERATOR });
   });
 
   test("admits an update until the plan is approved, and refuses one after", () => {
