@@ -49,7 +49,11 @@ type TurnOf = {
   readonly newSessionHarness: HarnessName;
 };
 
-type Ended = { readonly end: TurnEnd; readonly session: string };
+const MISSES_TO_FAIL = 2;
+
+type Ended =
+  | { readonly end: TurnEnd; readonly session: string }
+  | { readonly end: "missed"; readonly session: string; readonly missed: string };
 
 function serve(db: Database, order: string, acting: Acting, request: TurnRequest): unknown {
   if (request.act === "order_show") return showOrder(db, order);
@@ -105,10 +109,24 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
       });
     });
     const acting: Acting = { worker, session: registered };
+    const misses: string[] = [];
     const faults: unknown[] = [];
+    const stopped = () => misses.length >= MISSES_TO_FAIL;
+    const answer = (line: string): unknown => {
+      if (stopped()) throw refuseStation("turn_stopped", { order: turn.order, station: turn.station });
+      try {
+        return serve(db, turn.order, acting, requestOf(line));
+      } catch (error) {
+        if (error instanceof CodedError && error.code === "not_done") {
+          misses.push(error.message);
+          if (stopped()) spawned.kill();
+        }
+        throw error;
+      }
+    };
     const listening = listen(opened.socket, async (line) => {
       try {
-        return JSON.stringify({ ok: true, result: serve(db, turn.order, acting, requestOf(line)) });
+        return JSON.stringify({ ok: true, result: answer(line) });
       } catch (error) {
         try {
           return JSON.stringify(replyTo(error));
@@ -132,23 +150,30 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
       workerSessionsDir(worker.name),
       session.id,
     );
-    return { end: closeTurnRecord(db, turn, session.id), session: session.id };
+    return closeTurnRecord(db, turn, session.id, stopped() ? misses.join("; ") : null);
   } finally {
     closeTurn(opened);
   }
 }
 
-function closeTurnRecord(db: Database, turn: TurnOf, session: string): TurnEnd {
+function closeTurnRecord(db: Database, turn: TurnOf, session: string, missed: string | null): Ended {
   return writeTransaction(db, () => {
     const end = turnEnd(orderState(db, turn.order), turn.station);
-    if (end === "no_return") {
+    if (end !== "no_return") return { end, session };
+    if (missed === null) {
       recordFactory(db, turn.order, turn.cause, {
         action: "station_failed",
         code: "no_return",
         details: { session },
       });
+      return { end, session };
     }
-    return end;
+    recordFactory(db, turn.order, turn.cause, {
+      action: "station_failed",
+      code: "return_missed",
+      details: { session, missed },
+    });
+    return { end: "missed", session, missed };
   });
 }
 
@@ -168,6 +193,9 @@ export async function runOrder(db: Database, order: string, caller: Caller): Pro
     const ended = await runTurn(db, { order, station: phase.station, by, cause, model, newSessionHarness });
     if (ended.end === "no_return") {
       throw refuseStation("no_return", { order, station: phase.station, session: ended.session });
+    }
+    if (ended.end === "missed") {
+      throw refuseStation("return_missed", { order, station: phase.station, missed: ended.missed });
     }
   } finally {
     endRun(db, order);
