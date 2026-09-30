@@ -72,6 +72,10 @@ const REVIEWED: Later = {
   },
 };
 const SHIP_STARTED: Later = { action: "ship_started", details: {} };
+const fromBuildEntry: Later = {
+  action: "order_returned",
+  details: { station: "build", reason: "the second slice contradicts the first" },
+};
 
 const planned = [RUN, BASE, PLAN];
 const built = [...planned, approve("plan"), committed("c1"), committed("c2"), BUILT];
@@ -124,6 +128,31 @@ describe("an order's state, folded from its log", () => {
       details: { station: "review", reason: "x" },
     });
     expect(fromReview.phase).toEqual({ kind: "run", station: "build" });
+  });
+
+  test("holds why the order came back for the station it goes back to, until that station returns again", () => {
+    const returnedArtifact = state(...planned, {
+      action: "artifact_returned",
+      details: { station: "plan", reason: "name the file", decidedBy: "owner" },
+    });
+    expect(returnedArtifact.returned).toEqual({ from: "owner", reason: "name the file" });
+    expect(state(...planned, approve("plan")).returned).toBeNull();
+    const fromBuild = state(...planned, approve("plan"), {
+      action: "order_returned",
+      details: { station: "build", reason: "the second slice contradicts the first" },
+    });
+    expect(fromBuild.returned).toEqual({ from: "build", reason: "the second slice contradicts the first" });
+    expect(state(...planned, approve("plan"), fromBuildEntry, PLAN).returned).toBeNull();
+    const updated = state(
+      RUN,
+      BASE,
+      { action: "order_returned", details: { station: "plan", reason: "which?" } },
+      {
+        action: "order_updated",
+        details: { title: "Greet the reader", description: "The top-level README." },
+      },
+    );
+    expect(updated.returned).toBeNull();
   });
 
   test("an update plans the order again with the new description", () => {

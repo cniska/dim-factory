@@ -14,7 +14,7 @@ import {
 } from "./order";
 import {
   type Actor,
-  type Detailed,
+  Detailed,
   type Later,
   type LaterEntry,
   type LogEntry,
@@ -55,7 +55,7 @@ const actorOf = (acting: Acting): Actor => ({
 });
 
 function append(db: Database, order: string, seq: number, by: Actor, detailed: Detailed): number {
-  appendEntries(db, order, [{ seq, at: new Date().toISOString(), by, ...detailed }]);
+  appendEntries(db, order, [{ seq, at: new Date().toISOString(), by, ...Detailed.parse(detailed) }]);
   return seq;
 }
 

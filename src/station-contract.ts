@@ -4,9 +4,12 @@ import { RefusalRecord, refuser } from "./coded-error";
 export const PlanReturn = z.object({ act: z.literal("plan_return"), plan: z.string() });
 export type PlanReturn = z.infer<typeof PlanReturn>;
 
+export const OrderReturn = z.object({ act: z.literal("order_return"), reason: z.string() });
+export type OrderReturn = z.infer<typeof OrderReturn>;
+
 export const OrderShow = z.object({ act: z.literal("order_show") });
 
-export const TurnRequest = z.discriminatedUnion("act", [PlanReturn, OrderShow]);
+export const TurnRequest = z.discriminatedUnion("act", [PlanReturn, OrderReturn, OrderShow]);
 export type TurnRequest = z.infer<typeof TurnRequest>;
 
 export const TurnReply = z.discriminatedUnion("ok", [
@@ -18,6 +21,8 @@ export type TurnReply = z.infer<typeof TurnReply>;
 type StationRefusalMeta = {
   readonly no_turn: { readonly detail: string };
   readonly bad_request: { readonly issues: string };
+  readonly no_reason: { readonly command: string };
+  readonly wrong_station: { readonly act: string; readonly station: string };
   readonly not_done: { readonly station: string; readonly missed: string; readonly command: string };
   readonly no_return: { readonly order: string; readonly station: string; readonly session: string };
   readonly return_missed: { readonly order: string; readonly station: string; readonly missed: string };
@@ -35,6 +40,14 @@ export const refuseStation = refuser<StationRefusalMeta>({
   bad_request: {
     message: ({ issues }) => `the station could not read this request: ${issues}`,
     resolve: () => "dim doctor",
+  },
+  no_reason: {
+    message: () => "a decision records why it was taken, and this one gives no reason",
+    resolve: ({ command }) => command,
+  },
+  wrong_station: {
+    message: ({ act, station }) => `${act} is no act of the ${station} station`,
+    resolve: () => "dim order show",
   },
   not_done: {
     message: ({ station, missed }) => `the ${station} return is not done, so nothing was recorded: ${missed}`,

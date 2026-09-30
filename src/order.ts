@@ -3,6 +3,7 @@ import type { CodedError } from "./coded-error";
 import {
   type Answer,
   CROCKFORD,
+  type Decider,
   type LaterEntry,
   type Next,
   ORDER_ID_LENGTH,
@@ -32,6 +33,8 @@ export type Plan = { readonly body: string; readonly slices: readonly Slice[]; r
 
 export type FindingState = RecordedFinding & { readonly answer: Answer | null };
 
+export type Returned = { readonly from: Decider | Station; readonly reason: string };
+
 export type OrderState = {
   readonly id: string;
   readonly title: string;
@@ -44,6 +47,7 @@ export type OrderState = {
   readonly commits: readonly string[];
   readonly head: string | null;
   readonly findings: readonly FindingState[];
+  readonly returned: Returned | null;
   readonly lastSeq: number;
 };
 
@@ -119,6 +123,7 @@ function apply(state: OrderState, entry: LaterEntry): OrderState {
         phase: run("plan"),
         title: entry.details.title,
         description: entry.details.description,
+        returned: null,
       };
     case "order_run":
       return { ...state, status: "running" };
@@ -129,12 +134,20 @@ function apply(state: OrderState, entry: LaterEntry): OrderState {
     case "artifact_approved":
       return approved(state, entry.details.station);
     case "artifact_returned":
-      return { ...state, phase: run(entry.details.station) };
+      return {
+        ...state,
+        phase: run(entry.details.station),
+        returned: { from: entry.details.decidedBy, reason: entry.details.reason },
+      };
     case "order_returned":
-      return returnedByWorker(state, entry.details.station);
+      return {
+        ...returnedByWorker(state, entry.details.station),
+        returned: { from: entry.details.station, reason: entry.details.reason },
+      };
     case "plan_returned":
       return {
         ...state,
+        returned: null,
         phase: { kind: "approve", station: "plan" },
         plan: { body: entry.details.body, slices: entry.details.slices, base: state.commits.length },
       };
@@ -150,12 +163,15 @@ function apply(state: OrderState, entry: LaterEntry): OrderState {
         findings: answered(state.findings, entry.details.finding, entry.details.answer),
       };
     case "build_returned":
-      return { ...state, phase: { kind: "approve", station: "build" } };
+      return { ...state, returned: null, phase: { kind: "approve", station: "build" } };
     case "review_returned": {
       const { returned } = entry.details;
-      if (returned.kind === "artifact") return { ...state, phase: { kind: "approve", station: "review" } };
+      if (returned.kind === "artifact") {
+        return { ...state, returned: null, phase: { kind: "approve", station: "review" } };
+      }
       return {
         ...state,
+        returned: null,
         phase: run("build"),
         findings: returned.findings.map((finding) => ({ ...finding, answer: null })),
       };
@@ -203,6 +219,7 @@ export function fold(id: string, added: AddedEntry, later: readonly LaterEntry[]
     commits: [],
     head: null,
     findings: [],
+    returned: null,
     lastSeq: added.seq,
   };
   return later.reduce((state, entry) => ({ ...apply(state, entry), lastSeq: entry.seq }), start);

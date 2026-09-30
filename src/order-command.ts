@@ -13,6 +13,7 @@ const USAGE = [
   "usage: dim order add --title <title> --description <description> [--project <owner>/<repo>]",
   "dim order run <order>",
   "dim order show [<order>]",
+  "dim order return --reason <reason>",
   "dim order update <order> [--title <title>] [--description <description>]",
   "dim order cancel <order> --reason <reason>",
 ].join(" | ");
@@ -72,17 +73,35 @@ function show(db: Database, args: readonly string[]): OrderView {
   const { positionals } = parseArgs(args, { positionals: [1, 1], flags: [] }, usage);
   return showOrder(db, orderArg(positionals));
 }
+
 type Verb = (db: Database, args: readonly string[]) => OrderView | Promise<OrderView>;
 
 const VERBS: Readonly<Record<string, Verb>> = { add, run, show, update, cancel };
 
+type TurnVerb = (args: readonly string[]) => Promise<unknown>;
+
+const TURN_VERBS: Readonly<Record<string, TurnVerb>> = {
+  show: (args) => {
+    parseArgs(args, { positionals: [0, 0], flags: [] }, usage);
+    return sendAct({ act: "order_show" });
+  },
+  return: (args) => {
+    const { flags } = parseArgs(args, { positionals: [0, 0], flags: ["reason"] }, usage);
+    if (flags.reason === undefined) throw usage("return needs --reason");
+    return sendAct({ act: "order_return", reason: flags.reason });
+  },
+};
+
+const namesNoOrder = (rest: readonly string[]) => rest[0] === undefined || rest[0].startsWith("--");
+
 export const orderCommand: Command = {
   name: "order",
   usage: USAGE,
-  summary: "add, run, show, update or cancel an order",
+  summary: "add, run, show, update or cancel an order, or from inside a turn, show or return its order",
   async run(args) {
     const [verb, ...rest] = args;
-    if (verb === "show" && rest.length === 0) return sendAct({ act: "order_show" });
+    const inTurn = verb === undefined || !namesNoOrder(rest) ? undefined : TURN_VERBS[verb];
+    if (inTurn !== undefined) return inTurn(rest);
     const act = verb === undefined ? undefined : VERBS[verb];
     if (act === undefined) throw new UsageError(USAGE);
     const db = openFactory();

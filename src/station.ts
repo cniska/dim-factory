@@ -1,9 +1,10 @@
+import { unreachable } from "./assert";
 import { listedEnv, PASSED_THROUGH } from "./check";
 import type { Models } from "./config";
 import type { OrderState } from "./order";
 import { type Later, Plan, type Station } from "./order-contract";
 import type { Env } from "./paths";
-import { type PlanReturn, refuseStation, TurnRequest } from "./station-contract";
+import { type OrderReturn, type PlanReturn, refuseStation, TurnRequest } from "./station-contract";
 import type { StationRole } from "./worker-contract";
 
 export const TURN_SOCKET_ENV = "DIM_TURN_SOCKET";
@@ -51,14 +52,20 @@ export function planBrief(state: OrderState, workspace: string): string {
     skill: SKILLS.plan,
     order: { id: state.id, title: state.title, project: state.project, description: state.description },
     workspace,
-    returned: null,
+    returned: state.returned,
     committed: state.commits,
   });
 }
 
-type WorkRequest = Exclude<TurnRequest, { readonly act: "order_show" }>;
+export type WorkRequest = Exclude<TurnRequest, { readonly act: "order_show" }>;
 
-type Work<R> = { readonly station: Station; readonly command: string; entry(request: R): Later };
+type Work<R> = {
+  readonly stations: readonly Station[];
+  readonly command: string;
+  entry(request: R, station: Station): Later;
+};
+
+export const STATIONS: readonly Station[] = ["plan", "build", "review"];
 
 function planOf(text: string, command: string): Plan {
   let raw: unknown;
@@ -75,11 +82,26 @@ function planOf(text: string, command: string): Plan {
 
 const PLAN_RETURN = "dim plan return <file>";
 
+const ORDER_RETURN = "dim order return --reason <reason>";
+
+function reasonOf(reason: string, command: string): string {
+  if (reason.trim() === "") throw refuseStation("no_reason", { command });
+  return reason;
+}
+
 export const WORK: { readonly [A in WorkRequest["act"]]: Work<Extract<WorkRequest, { readonly act: A }>> } = {
   plan_return: {
-    station: "plan",
+    stations: ["plan"],
     command: PLAN_RETURN,
     entry: (request: PlanReturn) => ({ action: "plan_returned", details: planOf(request.plan, PLAN_RETURN) }),
+  },
+  order_return: {
+    stations: STATIONS,
+    command: ORDER_RETURN,
+    entry: (request: OrderReturn, station) => ({
+      action: "order_returned",
+      details: { station, reason: reasonOf(request.reason, ORDER_RETURN) },
+    }),
   },
 };
 
@@ -95,6 +117,22 @@ export function requestOf(line: string): TurnRequest {
   throw refuseStation("bad_request", {
     issues: request.error.issues.map((issue) => issue.message).join("; "),
   });
+}
+
+function entryAt<R>(work: Work<R>, request: R, station: Station): Later {
+  if (!work.stations.includes(station)) throw refuseStation("wrong_station", { act: work.command, station });
+  return work.entry(request, station);
+}
+
+export function workEntry(request: WorkRequest, station: Station): Later {
+  switch (request.act) {
+    case "plan_return":
+      return entryAt(WORK.plan_return, request, station);
+    case "order_return":
+      return entryAt(WORK.order_return, request, station);
+    default:
+      return unreachable(request);
+  }
 }
 
 export type TurnEnd = "returned" | "no_return" | "closed";

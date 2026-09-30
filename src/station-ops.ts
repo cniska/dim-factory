@@ -26,7 +26,7 @@ import {
   TURN_SOCKET_ENV,
   type TurnEnd,
   turnEnd,
-  WORK,
+  workEntry,
   workerEnv,
 } from "./station";
 import {
@@ -55,10 +55,9 @@ type Ended =
   | { readonly end: TurnEnd; readonly session: string }
   | { readonly end: "missed"; readonly session: string; readonly missed: string };
 
-function serve(db: Database, order: string, acting: Acting, request: TurnRequest): unknown {
-  if (request.act === "order_show") return showOrder(db, order);
-  const work = WORK[request.act];
-  recordWork(db, order, acting, work.station, work.entry(request));
+function serve(db: Database, turn: TurnOf, acting: Acting, request: TurnRequest): unknown {
+  if (request.act === "order_show") return showOrder(db, turn.order);
+  recordWork(db, turn.order, acting, turn.station, workEntry(request, turn.station));
   return { recorded: request.act };
 }
 
@@ -115,7 +114,7 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
     const answer = (line: string): unknown => {
       if (stopped()) throw refuseStation("turn_stopped", { order: turn.order, station: turn.station });
       try {
-        return serve(db, turn.order, acting, requestOf(line));
+        return serve(db, turn, acting, requestOf(line));
       } catch (error) {
         if (error instanceof CodedError && error.code === "not_done") {
           misses.push(error.message);
