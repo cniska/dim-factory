@@ -5,6 +5,7 @@ import { closeDb } from "./db";
 import { openFactory } from "./factory-db";
 import { Decider, type Decision, OrderId } from "./order-contract";
 import { addOrder, cancelOrder, showOrder, updateOrder } from "./order-ops";
+import { WORKER_COMMAND } from "./station-contract";
 import { advanceOrder, inTurn, sendAct } from "./station-ops";
 import { callerOf } from "./worker-ops";
 
@@ -18,7 +19,7 @@ const USAGE = [
   "dim order cancel <order> --reason <reason>",
 ].join(" | ");
 
-const TURN_USAGE = "usage, inside a station turn: dim order show | dim order return --reason <reason>";
+const TURN_USAGE = `usage, inside a station turn: ${WORKER_COMMAND.order_show} | ${WORKER_COMMAND.order_return}`;
 
 const usage = (message: string) => new UsageError(`dim order ${message}`);
 

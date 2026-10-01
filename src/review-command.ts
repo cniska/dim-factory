@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 import { type Command, UsageError } from "./cli-contract";
 import { parseArgs } from "./cli-flags";
+import { WORKER_COMMAND } from "./station-contract";
 import { sendAct } from "./station-ops";
 
-const USAGE = "usage: dim review return --findings <file> | --artifact <file>";
+const USAGE = `usage: ${WORKER_COMMAND.review_return}`;
 
 export const reviewCommand: Command = {
   name: "review",

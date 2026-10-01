@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import { type Command, UsageError } from "./cli-contract";
+import { WORKER_COMMAND } from "./station-contract";
 import { sendAct } from "./station-ops";
 
-const USAGE = "usage: dim plan return <file>";
+const USAGE = `usage: ${WORKER_COMMAND.plan_return}`;
 
 export const planCommand: Command = {
   name: "plan",

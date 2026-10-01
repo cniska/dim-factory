@@ -18,6 +18,7 @@ import {
   refuseStation,
   type TurnReply,
   TurnRequest,
+  WORKER_COMMAND,
 } from "./station-contract";
 import type { StationRole } from "./worker-contract";
 
@@ -147,17 +148,19 @@ type BranchFacts = { readonly tip: string; readonly clean: boolean };
 
 type WorkContext = { readonly station: Station; readonly state: OrderState; readonly branch: BranchFacts };
 
-function planOf(text: string, command: string): Plan {
+type Returning = { readonly station: Station; readonly what: string; readonly command: string };
+
+function parsedAs<T>(text: string, schema: z.ZodType<T>, { station, what, command }: Returning): T {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch (error) {
-    throw refuseStation("not_done", { station: "plan", missed: `the plan is not JSON: ${error}`, command });
+    throw refuseStation("not_done", { station, missed: `the ${what} is not JSON: ${error}`, command });
   }
-  const plan = Plan.safeParse(raw);
-  if (plan.success) return plan.data;
-  const missed = plan.error.issues.map((issue) => `${issue.path.join(".") || "plan"}: ${issue.message}`);
-  throw refuseStation("not_done", { station: "plan", missed: missed.join("; "), command });
+  const parsed = schema.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  const missed = parsed.error.issues.map((issue) => `${[what, ...issue.path].join(".")}: ${issue.message}`);
+  throw refuseStation("not_done", { station, missed: missed.join("; "), command });
 }
 
 function reasonOf(reason: string, command: string): string {
@@ -176,17 +179,20 @@ function buildMissing(state: OrderState, branch: BranchFacts, artifact: string):
   ];
 }
 
-const PLAN_RETURN = "dim plan return <file>";
-const ORDER_RETURN = "dim order return --reason <reason>";
-const FINDING_ANSWER = "dim finding answer <finding> fixed|refused --reason <reason>";
-const BUILD_RETURN = "dim build return <file>";
-
 function planReturned(request: PlanReturn): Later {
-  return { action: "plan_returned", details: planOf(request.plan, PLAN_RETURN) };
+  const plan = parsedAs(request.plan, Plan, {
+    station: "plan",
+    what: "plan",
+    command: WORKER_COMMAND.plan_return,
+  });
+  return { action: "plan_returned", details: plan };
 }
 
 function orderReturned(request: OrderReturn, { station }: WorkContext): Later {
-  return { action: "order_returned", details: { station, reason: reasonOf(request.reason, ORDER_RETURN) } };
+  return {
+    action: "order_returned",
+    details: { station, reason: reasonOf(request.reason, WORKER_COMMAND.order_return) },
+  };
 }
 
 function findingAnswered(request: FindingAnswer, { state }: WorkContext): Later {
@@ -198,7 +204,7 @@ function findingAnswered(request: FindingAnswer, { state }: WorkContext): Later 
     details: {
       finding: finding.id,
       answer: request.answer,
-      reason: reasonOf(request.reason, FINDING_ANSWER),
+      reason: reasonOf(request.reason, WORKER_COMMAND.finding_answer),
     },
   };
 }
@@ -206,41 +212,26 @@ function findingAnswered(request: FindingAnswer, { state }: WorkContext): Later 
 function buildReturned(request: BuildReturn, { state, branch }: WorkContext): Later {
   const missed = buildMissing(state, branch, request.artifact);
   if (missed.length > 0) {
-    throw refuseStation("not_done", { station: "build", missed: missed.join("; "), command: BUILD_RETURN });
+    throw refuseStation("not_done", {
+      station: "build",
+      missed: missed.join("; "),
+      command: WORKER_COMMAND.build_return,
+    });
   }
   return { action: "build_returned", details: { artifact: request.artifact } };
 }
 
-const REVIEW_RETURN = "dim review return --findings <file> | --artifact <file>";
-
-function parsedAs<T>(text: string, schema: z.ZodType<T>, what: string): T {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(text);
-  } catch (error) {
-    throw refuseStation("not_done", {
-      station: "review",
-      missed: `the ${what} is not JSON: ${error}`,
-      command: REVIEW_RETURN,
-    });
-  }
-  const parsed = schema.safeParse(raw);
-  if (parsed.success) return parsed.data;
-  const missed = parsed.error.issues.map((issue) => `${what}.${issue.path.join(".")}: ${issue.message}`);
-  throw refuseStation("not_done", { station: "review", missed: missed.join("; "), command: REVIEW_RETURN });
-}
-
 function reviewReturned(request: ReviewReturn, { state }: WorkContext): Later {
   const { returned } = request;
+  const returning = { station: "review", command: WORKER_COMMAND.review_return } as const;
   if (returned.kind === "artifact") {
-    const artifact = parsedAs(returned.text, ReviewArtifact, "Review artifact");
+    const artifact = parsedAs(returned.text, ReviewArtifact, { ...returning, what: "Review artifact" });
     return { action: "review_returned", details: { returned: { kind: "artifact", artifact } } };
   }
-  const round = state.lastSeq + 1;
-  const findings = parsedAs(returned.text, ReviewFindings, "findings").map((finding, index) => ({
-    ...finding,
-    id: `f${round}-${index + 1}`,
-  }));
+  const seq = state.lastSeq + 1;
+  const findings = parsedAs(returned.text, ReviewFindings, { ...returning, what: "findings" }).map(
+    (finding, index) => ({ ...finding, id: `f${seq}-${index + 1}` }),
+  );
   return { action: "review_returned", details: { returned: { kind: "findings", findings } } };
 }
 

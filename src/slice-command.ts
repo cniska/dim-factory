@@ -1,7 +1,8 @@
 import { type Command, UsageError } from "./cli-contract";
+import { WORKER_COMMAND } from "./station-contract";
 import { sendAct } from "./station-ops";
 
-const USAGE = "usage: dim slice submit";
+const USAGE = `usage: ${WORKER_COMMAND.slice_submit}`;
 
 export const sliceCommand: Command = {
   name: "slice",

@@ -45,6 +45,16 @@ export const TurnRequest = z.discriminatedUnion("act", [
 ]);
 export type TurnRequest = z.infer<typeof TurnRequest>;
 
+export const WORKER_COMMAND = {
+  plan_return: "dim plan return <file>",
+  order_return: "dim order return --reason <reason>",
+  finding_answer: "dim finding answer <finding> fixed|refused --reason <reason>",
+  build_return: "dim build return <file>",
+  review_return: "dim review return --findings <file> | --artifact <file>",
+  slice_submit: "dim slice submit",
+  order_show: "dim order show",
+} as const satisfies Record<TurnRequest["act"], string>;
+
 export const TurnReply = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), result: z.unknown() }),
   z.object({ ok: z.literal(false), error: RefusalRecord }),

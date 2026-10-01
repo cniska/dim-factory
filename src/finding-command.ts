@@ -1,9 +1,10 @@
 import { type Command, UsageError } from "./cli-contract";
 import { parseArgs } from "./cli-flags";
 import { Answer } from "./order-contract";
+import { WORKER_COMMAND } from "./station-contract";
 import { sendAct } from "./station-ops";
 
-const USAGE = "usage: dim finding answer <finding> fixed|refused --reason <reason>";
+const USAGE = `usage: ${WORKER_COMMAND.finding_answer}`;
 
 export const findingCommand: Command = {
   name: "finding",
