@@ -33,7 +33,7 @@ Each entry is one change. [schema] entries change the schema and run with nothin
 - Does an unattended run push, or commit locally?
 - Does the wall become where the owner reads artifacts and approves, rather than only watches?
 - Is `dim` for one owner, or for teams with several?
-- Repo identity is `project`, `repo` and `label`, sometimes a path and sometimes owner/repo. "Finding" names review findings, checking-agent findings and measurements; the glossary lacks repo, checkout, round and brief. Which words?
+- Repo identity is `project`, `repo` and `label`, sometimes a path and sometimes owner/repo. "Finding" names review findings and checking-agent findings; the glossary lacks repo, checkout, round and brief. Which words?
 
 ## Waiting on data
 

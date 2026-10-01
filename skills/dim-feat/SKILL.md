@@ -13,7 +13,7 @@ The approved plan supplies the order's scope and slices; report a plan defect to
 
 Use `dim-git` for the worktree ownership, commit evidence and integration boundaries; this line decides the feature's scope and slices, not a second Git policy.
 
-What makes this front different from `dim-fix` is the shape of the work rather than a preference. A feature in the owner's own repos touches 30 files against a fix's 10 ([`findings.md`](../../docs/findings.md)). Thirty files is not one slice, so the hard part here is the cut, and that is what phase 1 buys.
+What makes this front different from `dim-fix` is the shape of the work rather than a preference. A feature touches more files than one slice holds, so the hard part here is the cut, and that is what phase 1 buys.
 
 ## Scope
 
@@ -58,7 +58,7 @@ The feature is done when:
 
 `dim q prior-art` cannot tell a file that was got right from one that was abandoned, and a file copied between repos looks as settled as one that was worked out. Use it to find the reading, and do the reading.
 
-Effort is not a grade either. Work that held took more turns per file than work that came back ([`findings.md`](../../docs/findings.md)) — a slice finished quickly is not a slice done well, and the check that was skipped is the usual reason it was quick.
+Effort is not a grade either: a slice finished quickly is not a slice done well, and the check that was skipped is the usual reason it was quick.
 
 ## Red flags
 

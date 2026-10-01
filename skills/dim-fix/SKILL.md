@@ -16,7 +16,7 @@ In a factory order, each phase belongs to one station, and the runner owns the c
 
 Use `dim-git` for the worktree ownership, commit evidence and integration boundaries; this line decides the defect's cause and fix slices, not a second Git policy.
 
-The record says why this is one station and not three pointers. `debug` has loaded in 9 sessions in this corpus, against 1,470 `fix:` commits in the owner's own repos ([`findings.md`](../../docs/findings.md)). A phase named in prose is a phase that does not run — so triage is performed here rather than delegated to a skill the agent has to remember.
+This is one station and not three pointers. A phase named in prose is a phase that does not run — so triage is performed here rather than delegated to a skill the agent has to remember.
 
 A fix is also smaller than a feature and localized differently: 10 files to a feature's 30. That is why the slicing phase is borrowed rather than owned, and the reading phase is owned rather than borrowed.
 

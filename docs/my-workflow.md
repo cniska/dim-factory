@@ -2,7 +2,7 @@
 
 How I build software with coding agents by hand — the workflow the factory replaces. It is the factory's yardstick: each step either has a station or gate that does it, or it is a gap. [`factory.md`](factory.md) says how the factory works.
 
-Sources: my [My Workflow](https://gist.github.com/cniska/e3081dc2b47de82fe2ae04f5af3a2237) gist, what I said on 2026-09-20 (Codex session `01a0b967`), and what the record shows ([`findings.md`](findings.md), "The workflow the factory copies was never written down").
+Sources: my [My Workflow](https://gist.github.com/cniska/e3081dc2b47de82fe2ae04f5af3a2237) gist, what I said on 2026-09-20 (Codex session `01a0b967`), and what the record shows.
 
 ```text
 design → build → review → ship

@@ -8,8 +8,6 @@ argument-hint: "<what to build>"
 
 One agent, in one session. The work is edits, and edits need the context that produced them to stay coherent across slices; a subagent returns a conclusion and keeps its evidence. That is a good trade for a review, where findings are the product, and a bad one here.
 
-This is a decision to measure rather than a principle. `build` has handed work to a subagent five times in the whole corpus, so nothing says fan-out is worse here — it says nobody has tried it. The review arm that did fan out is confounded by being review ([`findings.md`](../../docs/findings.md), "Delegating has cost nothing measurable"). Fan-out in a build is a change that earns its way in through a measured arm, not an assumption.
-
 What makes this a station is that the record aims it. This machine knows which files a later `fix:` commit had to come back to, which shipped untouched, and what the owner has had to say more than once.
 
 ## A factory turn
@@ -42,7 +40,7 @@ Use `dim-git` at the commit boundary. The factory records the check and the comm
 
 Use `dim-tdd` for behavior-changing slices and `dim-simplify` for the simplification pass. Their methods remain shared; this station supplies the slice boundary, repository evidence and finding loop.
 
-An edit repeated across many sites — a rename, a changed signature, one pattern removed everywhere — is a codemod over the parsed code rather than a sweep by hand, the way `dim comments purge` rewrites through `@babel/parser`: a transform that refuses what it cannot parse reaches every site or says which it could not, while a hand sweep misses a site silently ([`findings.md`](../../docs/findings.md), "A proof by removal can pass without proving anything"). Run it, read its diff, then edit by hand only the sites that need judgement.
+An edit repeated across many sites — a rename, a changed signature, one pattern removed everywhere — is a codemod over the parsed code rather than a sweep by hand, the way `dim comments purge` rewrites through `@babel/parser`: a transform that refuses what it cannot parse reaches every site or says which it could not, while a hand sweep misses a site silently. Run it, read its diff, then edit by hand only the sites that need judgement.
 
 Where the comment gate is on — `dim doctor` says so for the repo it runs in — write no comments at all. A why goes into a name, a test that holds the invariant, or the doc that owns the subject; those are the places the gate leaves for it.
 
@@ -78,7 +76,7 @@ What earns an edit is a reader's cost — a name that has to be held in the head
 
 ## Check the slice before the next one
 
-Between the simplification pass and the commit, hand the slice's diff to one agent working from a fixed brief. This is not the fan-out the top of this file argues against: that objection is about delegating the edits, which need the context that produced them. A reviewer returns findings and keeps nothing, which is the trade `dim-review` makes and the one the corpus measured as costing nothing.
+Between the simplification pass and the commit, hand the slice's diff to one agent working from a fixed brief. This is not the fan-out the top of this file argues against: that objection is about delegating the edits, which need the context that produced them. A reviewer returns findings and keeps nothing, which is the trade `dim-review` makes.
 
 **Give the reviewer read-only tools.** An agent that can edit answers a finding by editing, and what it overwrites is the fix the builder already made — one was reverted that way on 2026-09-18, caught only because the file tools report an on-disk change.
 
@@ -91,7 +89,7 @@ Bounded means a fixed brief, not "review this". It also means the reviewer is to
 
 Withhold your own reading. Hand over the diff and the claim, not the conclusion, or what comes back is agreement.
 
-Returning nothing is the expected result and not a sign the check was wasted: of the sessions that loaded `review` in this corpus, 72% made no edit under it ([`findings.md`](../../docs/findings.md), "Review already finds nothing, most of the time"). A reviewer earns trust the way a test does — plant a defect once, watch it be caught, take it out — and after that an empty result is the good news it reads as.
+Returning nothing is the expected result and not a sign the check was wasted. A reviewer earns trust the way a test does — plant a defect once, watch it be caught, take it out — and after that an empty result is the good news it reads as.
 
 ### Every finding gets an answer
 
@@ -126,7 +124,7 @@ Unattended, stop only where the choice is genuinely the owner's: work that is ha
 
 ## What the record cannot tell you
 
-Effort is not a grade. Work that held took more turns per file than work that came back, more pushback, and more commands ([`findings.md`](../../docs/findings.md), "Effort does not grade the work"). A slice finished quickly is not a slice done well, and the check that was skipped is the usual reason it was quick.
+Effort is not a grade. A slice finished quickly is not a slice done well, and the check that was skipped is the usual reason it was quick.
 
 ## Red flags
 
