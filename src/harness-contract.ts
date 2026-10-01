@@ -1,5 +1,3 @@
-import { refuser } from "./coded-error";
-
 export type Policy = {
   readonly kind: "read" | "edit";
   readonly writable: readonly string[];
@@ -43,15 +41,3 @@ export type Adapter = {
   transcript(home: string, workspace: string, session: string): string;
   outcome(ended: Ended, session: SessionStart): Outcome;
 };
-
-type HarnessRefusalMeta = {
-  readonly no_adapter: { readonly harness: string };
-};
-
-export const refuseHarness = refuser<HarnessRefusalMeta>({
-  no_adapter: {
-    message: ({ harness }) =>
-      `dim cannot start a station worker under ${harness}; Claude Code is the harness built`,
-    resolve: () => "dim config set harness claude",
-  },
-});

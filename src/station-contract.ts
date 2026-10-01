@@ -86,7 +86,6 @@ type StationRefusalMeta = {
     readonly session: string;
     readonly code: string;
   };
-  readonly harness_unset: { readonly project: string };
   readonly git_config_changed: { readonly order: string; readonly station: string; readonly config: string };
   readonly no_model: { readonly role: string; readonly file: string };
   readonly not_to_operator: { readonly to: string };
@@ -147,11 +146,6 @@ export const refuseStation = refuser<StationRefusalMeta>({
     message: ({ order, station, config }) =>
       `the ${station} worker changed ${config}, which git runs as the owner, so the file was put back, the station failed and order ${order} stays at ${station}`,
     resolve: ({ order }) => `dim order show ${order}`,
-  },
-  harness_unset: {
-    message: ({ project }) =>
-      `neither ${project}'s settings nor the user's name a harness to start its workers under`,
-    resolve: () => "dim config set harness claude --project",
   },
   no_model: {
     message: ({ role, file }) =>

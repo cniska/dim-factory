@@ -66,7 +66,7 @@ const RECORD = ["dim-factory", "record"] as const;
 
 export const RECORD_PROBE = `$XDG_DATA_HOME/${RECORD.join("/")}/planted`;
 
-export const PROJECT_SETTINGS = { ship: "default-branch", harness: "claude" } as const;
+export const PROJECT_SETTINGS = { ship: "default-branch" } as const;
 
 export type MachineOptions = {
   readonly script?: HarnessScript;

@@ -18,7 +18,7 @@ Each factory module has a rules file of pure functions, a `-contract.ts` of type
 | `order` | The log, the fold that works out an order's state, and which action is allowed next |
 | `worker` | Worker names, roles and sessions, and who a process acts as |
 | `station` | Briefs, the acts a worker may send, each station's definition of done, and running a turn |
-| `harness` | A registry of adapters, one per harness: how to start, resume and replace a session, and how to read its stream. Claude Code is the adapter built |
+| `harness` | The Claude Code adapter, the one harness station workers run under: how to start, resume and replace a session, and how to read its stream |
 | `workspace` | Creating and removing an order's workspace and branch |
 | `slice` | Gating the builder's commits |
 | `ship` | Rebasing an order onto the default branch, checking it and landing it |
@@ -37,7 +37,7 @@ One layout, resolved in `src/paths.ts`, like acolyte's. A relative XDG value is 
 | Data | `$XDG_DATA_HOME/dim-factory` | `record/` (the SQLite record and the hook spool), `workspaces/<owner>/<repo>/<order>/`, `workers/<name>/home/` (each station worker's `HOME`), `workers/<name>/sessions/<session>.jsonl` (the factory's copy of each of its transcripts) |
 | State | `$XDG_STATE_HOME/dim-factory` | `trace.jsonl`, `locks/` and `sync.log` (the scheduled sync's output) |
 
-The record sits in its own directory so a worker's sandbox can deny writes to it without also denying the workspaces beside it. A project's settings are its committed `.dim/config.json`. Settings: `ship` (one value, `default-branch`), `harness` (which harness a new session starts under; required, since no harness is right for everyone), `comments`, and in the user's layer only, `models`.
+The record sits in its own directory so a worker's sandbox can deny writes to it without also denying the workspaces beside it. A project's settings are its committed `.dim/config.json`. Settings: `ship` (one value, `default-branch`), `comments`, and in the user's layer only, `models`.
 
 ## The log
 
@@ -118,7 +118,6 @@ The Claude Code adapter starts `claude -p --output-format stream-json --verbose`
 - **Settings:** `--setting-sources user` leaves out the project's `.claude/settings.json`, so no hook from a workspace runs. The worker's own `HOME` holds no settings, so the factory's hooks, the sandbox and the permissions all come in the `--settings` JSON.
 - **Sandbox:** the sandbox is on, Bash is allowed only inside it, and it writes only where it is allowed to. The builder, in `acceptEdits`, may write its workspace, which Claude's sandbox allows as the working directory, and its turn's temp directory, which an `Edit` allow rule opens to its edit tools, since `acceptEdits` accepts edits only in the working directory, within the git limits under slice commits. The planner and reviewer, in `default`, may write only their turn's temp directory, so they change nothing. The record, the factory's code, its skills and every harness config lie outside what any worker may write, in every project, dim-factory included.
 - **Model:** the user's `config.json` names one model per role in its `models` setting, `{"default": …, "planner": …, "builder": …, "reviewer": …}`, in the harness's own names. It is read from the user's layer only, and a project's settings that name it are refused. A role it leaves out runs on `default`. With neither, the run is refused `no_model` before anything is recorded.
-- **Harness:** a new session starts under the `harness` setting. A session is always resumed under the harness it started under, whatever the setting says now.
 - **A replacement session** is the dead session's transcript under a new id. The factory writes its byte copy back to the harness's session file if the harness lost it, then resumes it with `--fork-session` under the new id. A dead session the factory holds no copy of, one killed before its harness wrote anything, is replaced by a new session. The copy is verbatim, not rebuilt from the session record's rows, because a resume needs every line as written: tool results, thinking and the links between lines, which the record does not store. The new session holds what the dead one held as of its last closed turn, whether it hit a usage limit or its file was deleted.
 - **Ingestion** reads each worker's `HOME` beside the owner's, so the owner's queries see worker sessions. Their rows stay pointers, like every other session's.
 

@@ -1,18 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { settingsPath } from "./support/claude-hooks";
 import { transcriptPath } from "./support/claude-transcript";
 import { parseDim, refusal, resultOf } from "./support/dim-output";
 import { type HarnessTurn, ORDER_PLACEHOLDER } from "./support/harness-script";
-import { CHECKOUT, MODELS, machines, PROJECT_SETTINGS, RECORD_PROBE } from "./support/machine";
+import { CHECKOUT, MODELS, machines, RECORD_PROBE } from "./support/machine";
 import {
   addOrder,
   approve,
   built,
   messageWorker,
   planned,
-  returnArtifact,
   runOrder,
   shipThrough,
   showOrder,
@@ -271,20 +270,6 @@ describe("station workers", () => {
     const refused = await runOrder(m.operator, id);
     expect(refusal(refused).code).toBe("no_model");
     expect(await showOrder(m.operator, id)).toEqual(before);
-  });
-
-  test("a session stays with the harness it started under when the harness setting changes", async () => {
-    const m = await start({ script: { planner: [planTurn(), planTurn()] } });
-    const id = await planned(m.operator);
-    writeFileSync(join(m.bin, "codex"), "#!/bin/sh\nexit 1\n");
-    chmodSync(join(m.bin, "codex"), 0o755);
-    m.projectSettings({ ...PROJECT_SETTINGS, harness: "codex" });
-
-    resultOf(await returnArtifact(m.operator, id, "again"));
-
-    expect(m.invocation("planner", 1).resumed).toBe(m.invocation("planner", 0).sessionId);
-    const sessions = workerOf(await showOrder(m.operator, id), "planner").sessions;
-    expect(sessions.map((session) => session.harness)).toEqual(["claude"]);
   });
 });
 

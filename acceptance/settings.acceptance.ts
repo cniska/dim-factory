@@ -9,23 +9,9 @@ import { ACTION } from "./support/vocabulary";
 const start = machines();
 
 describe("settings", () => {
-  test("an order follows the project's setting over the user's", async () => {
-    const m = await start({ script: happyPath() });
-    m.userSettings({ harness: "codex" });
-    const id = await reviewed(m.operator);
-
-    await approve(m.operator, id);
-
-    const order = await showOrder(m.operator, id);
-    expect(order.status).toBe("shipped");
-    for (const worker of order.workers) {
-      for (const session of worker.sessions) expect(session.harness).toBe("claude");
-    }
-  });
-
   test("a project whose settings do not say how it ships is not shipped", async () => {
     const m = await start({ script: happyPath() });
-    m.projectSettings({ harness: PROJECT_SETTINGS.harness });
+    m.projectSettings({});
     const id = await reviewed(m.operator);
     const main = m.git(["rev-parse", "main"]);
 
