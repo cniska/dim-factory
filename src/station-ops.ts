@@ -411,7 +411,7 @@ async function messageAt(db: Database, turn: TurnOf): Promise<string> {
     case "replied":
       return ended.reply;
     case "closed":
-      throw refuseOrder("not_next_step", { order, next: null });
+      throw refuseOrder("not_admitted", { order, act: "message", admits: [], next: null });
     case "config_changed":
       throw refuseStation("git_config_changed", { order, station, config: join(turn.checkoutGit, "config") });
     case "died":

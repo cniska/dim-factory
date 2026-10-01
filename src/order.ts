@@ -381,24 +381,26 @@ export function asOperator(by: Acting | null, project: string): Admission {
     : { kind: "refused", refusal: refuseWorker("not_operator", { project }) };
 }
 
-function stepRefusal(state: OrderState, act: OperatorAct["kind"]): CodedError | null {
-  const next = nextOf(state.phase);
-  const notNext = () => refuseOrder("not_next_step", { order: state.id, next });
-  switch (act) {
-    case "run":
-      return next === "run" ? null : notNext();
-    case "approve":
-    case "return":
-      return next === "approve" ? null : notNext();
-    case "update":
-      if (next === null) return notNext();
-      return state.planApproved ? refuseOrder("plan_approved", { order: state.id }) : null;
-    case "cancel":
-    case "message":
-      return next === null ? notNext() : null;
-    default:
-      return unreachable(act);
-  }
+export type ActKind = OperatorAct["kind"];
+
+const STEPS_AT: Readonly<Record<Exclude<Phase["kind"], "done">, readonly ActKind[]>> = {
+  run: ["run"],
+  ship: ["run"],
+  approve: ["approve", "return"],
+  update: [],
+};
+
+export function admits(state: OrderState): readonly ActKind[] {
+  const { phase } = state;
+  if (phase.kind === "done") return [];
+  return [...STEPS_AT[phase.kind], ...(state.planApproved ? [] : ["update" as const]), "cancel", "message"];
+}
+
+function stepRefusal(state: OrderState, act: ActKind): CodedError | null {
+  const admitted = admits(state);
+  return admitted.includes(act)
+    ? null
+    : refuseOrder("not_admitted", { order: state.id, act, admits: admitted, next: nextOf(state.phase) });
 }
 
 function busyRefusal(state: OrderState, act: OperatorAct["kind"], live: RunKind | null): CodedError | null {
@@ -428,9 +430,7 @@ export function workRefusal(state: OrderState, station: Station, by: WorkBy): Co
       return refuseWorker("not_station_worker", { order: state.id, station });
     }
   }
-  return atStation(state, station)
-    ? null
-    : refuseOrder("not_next_step", { order: state.id, next: nextOf(state.phase) });
+  return atStation(state, station) ? null : refuseOrder("not_at_station", { order: state.id, station });
 }
 
 export function admitOperator(

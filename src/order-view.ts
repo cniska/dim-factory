@@ -1,4 +1,4 @@
-import { nextOf, type OrderState, type SliceView, slicesOf, stationOf } from "./order";
+import { type ActKind, admits, nextOf, type OrderState, type SliceView, slicesOf, stationOf } from "./order";
 import type { Answer, LogEntry, Next, Severity, Station, Status } from "./order-contract";
 import type { Role, WorkerRecord } from "./worker-contract";
 import { branchOf } from "./workspace";
@@ -36,6 +36,7 @@ export type OrderView = {
   readonly status: Status;
   readonly station: Station | null;
   readonly next: Next | null;
+  readonly admits: readonly ActKind[];
   readonly branch: string;
   readonly workspace: string;
   readonly log: readonly LogEntry[];
@@ -78,6 +79,7 @@ export function orderView(
     status: state.status,
     station: stationOf(state),
     next: nextOf(state.phase),
+    admits: admits(state),
     branch: branchOf(state.id),
     workspace,
     log,

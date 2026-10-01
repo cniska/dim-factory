@@ -79,6 +79,7 @@ export type OrderView = {
   readonly status: "queued" | "running" | "shipped" | "cancelled";
   readonly station: Station | null;
   readonly next: Next | null;
+  readonly admits: readonly string[];
   readonly branch: string;
   readonly workspace: string;
   readonly log: readonly LogEntry[];

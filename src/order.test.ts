@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   admitOperator,
+  admits,
   fold,
   nextOf,
   type OperatorAct,
@@ -354,13 +355,22 @@ describe("which act an order admits", () => {
   const workRefused = (order: OrderState, acting: Acting) =>
     workRefusal(order, "plan", { kind: "worker", acting })?.code ?? null;
 
-  test("refuses an act that is not the next step, naming the next step", () => {
+  test("admits, for each kind of order, its step, an update before the plan is approved, a cancel and a message", () => {
+    expect(admits(state())).toEqual(["run", "update", "cancel", "message"]);
+    expect(admits(state(...planned))).toEqual(["approve", "return", "update", "cancel", "message"]);
+    expect(admits(state(...planned, approve("plan")))).toEqual(["run", "cancel", "message"]);
+    expect(admits(state(...planned, { action: "order_cancelled", details: { reason: "x" } }))).toEqual([]);
+  });
+
+  test("refuses an act the order does not admit, naming what it admits and its next step", () => {
     const admission = admitOperator(state(), OPERATOR, "approve", null);
     expect(admission.kind === "refused" && admission.refusal.meta).toEqual({
       order: "k7m2qx4d",
+      act: "approve",
+      admits: ["run", "update", "cancel", "message"],
       next: "run",
     });
-    expect(refusedCode(state(...planned), { kind: "run" })).toBe("not_next_step");
+    expect(refusedCode(state(...planned), { kind: "run" })).toBe("not_admitted");
     expect(refusedCode(state(...planned), { kind: "approve" })).toBeNull();
     expect(refusedCode(state(...planned), { kind: "return" })).toBeNull();
   });
@@ -378,14 +388,14 @@ describe("which act an order admits", () => {
   test("admits an update until the plan is approved, and refuses one after", () => {
     expect(refusedCode(state(), { kind: "update" })).toBeNull();
     expect(refusedCode(state(...planned), { kind: "update" })).toBeNull();
-    expect(refusedCode(state(...planned, approve("plan")), { kind: "update" })).toBe("plan_approved");
+    expect(refusedCode(state(...planned, approve("plan")), { kind: "update" })).toBe("not_admitted");
   });
 
   test("admits a cancel at any point until the order ends", () => {
     expect(refusedCode(state(...built), { kind: "cancel" })).toBeNull();
     const cancelled = state(...planned, { action: "order_cancelled", details: { reason: "x" } });
     for (const kind of ["run", "approve", "return", "update", "cancel"] as const) {
-      expect(refusedCode(cancelled, { kind })).toBe("not_next_step");
+      expect(refusedCode(cancelled, { kind })).toBe("not_admitted");
     }
   });
 
@@ -408,11 +418,11 @@ describe("which act an order admits", () => {
     expect(workRefused(running, planner)).toBeNull();
     expect(workRefused(running, OPERATOR)).toBe("not_station_worker");
     expect(workRefused(running, otherOrder)).toBe("not_station_worker");
-    expect(workRefused(state(...planned), planner)).toBe("not_next_step");
+    expect(workRefused(state(...planned), planner)).toBe("not_at_station");
     const cancelled = state(RUN, BASE, { action: "order_cancelled", details: { reason: "x" } });
-    expect(workRefused(cancelled, planner)).toBe("not_next_step");
+    expect(workRefused(cancelled, planner)).toBe("not_at_station");
     expect(workRefusal(running, "plan", { kind: "factory", cause: 2 })).toBeNull();
-    expect(workRefusal(cancelled, "plan", { kind: "factory", cause: 2 })?.code).toBe("not_next_step");
+    expect(workRefusal(cancelled, "plan", { kind: "factory", cause: 2 })?.code).toBe("not_at_station");
   });
 
   test("builds what an admitted act records, and refuses a decision or cancel without a reason", () => {

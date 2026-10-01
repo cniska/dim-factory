@@ -18,7 +18,7 @@ import type { OperatorSession } from "./support/operator-session";
 import { actions, entriesOf, workerOf } from "./support/order-view";
 import { alive } from "./support/processes";
 import { buildTurn, happyPath, planTurn, reviewTurn, sliceActs } from "./support/scripts";
-import { ACTION, NEXT, type Next, REFUSAL } from "./support/vocabulary";
+import { ACTION, NEXT, REFUSAL } from "./support/vocabulary";
 
 const start = machines();
 
@@ -34,28 +34,22 @@ const perform: Readonly<
   return: (operator, id) => returnArtifact(operator, id, "try again"),
 };
 
-const ALLOWED_BY_NEXT: Readonly<Record<Next, readonly OperatorAction[]>> = {
-  run: ["run"],
-  approve: ["approve", "return"],
-  update: [],
-};
-
 const IN_ENGLISH = "Add a greeting to the README, in English.";
 
-async function expectOnlyNextAllowed(m: Machine, id: string): Promise<void> {
+async function expectOnlyAdmitted(m: Machine, id: string, admitted: readonly string[]): Promise<void> {
   const before = await showOrder(m.operator, id);
-  const allowed = before.next === null ? [] : ALLOWED_BY_NEXT[before.next];
+  expect(before.admits).toEqual([...admitted]);
   for (const action of OPERATOR_ACTIONS) {
-    if (allowed.includes(action)) continue;
+    if (admitted.includes(action)) continue;
     const { code, meta } = refusal(await perform[action](m.operator, id));
-    expect(code).toBe(REFUSAL.notNext);
-    expect(meta).toHaveProperty("next", before.next);
+    expect(code).toBe(REFUSAL.notAdmitted);
+    expect(meta).toHaveProperty("admits", [...admitted]);
     expect(await showOrder(m.operator, id)).toEqual(before);
   }
 }
 
-describe("an order's next step", () => {
-  test("in every state, only the next step is allowed and every other action is refused naming it", async () => {
+describe("what an order admits", () => {
+  test("in every state, only the acts it admits are allowed and every other one is refused naming them", async () => {
     const m = await start({
       script: {
         planner: [[{ act: "order-return", reason: "the description names no language" }], planTurn()],
@@ -64,24 +58,24 @@ describe("an order's next step", () => {
       },
     });
     const id = await addOrder(m.operator);
-    await expectOnlyNextAllowed(m, id);
+    await expectOnlyAdmitted(m, id, ["run", "update", "cancel", "message"]);
     await runOrder(m.operator, id);
     expect((await showOrder(m.operator, id)).next).toBe(NEXT.update);
-    await expectOnlyNextAllowed(m, id);
+    await expectOnlyAdmitted(m, id, ["update", "cancel", "message"]);
     await updateOrder(m.operator, id, IN_ENGLISH);
-    await expectOnlyNextAllowed(m, id);
+    await expectOnlyAdmitted(m, id, ["run", "update", "cancel", "message"]);
     await runOrder(m.operator, id);
-    await expectOnlyNextAllowed(m, id);
+    await expectOnlyAdmitted(m, id, ["approve", "return", "update", "cancel", "message"]);
     await approve(m.operator, id);
-    await expectOnlyNextAllowed(m, id);
+    await expectOnlyAdmitted(m, id, ["approve", "return", "cancel", "message"]);
     await approve(m.operator, id);
-    await expectOnlyNextAllowed(m, id);
+    await expectOnlyAdmitted(m, id, ["approve", "return", "cancel", "message"]);
     await approve(m.operator, id);
     const shipped = await showOrder(m.operator, id);
     expect(shipped.status).toBe("shipped");
     expect(shipped.next).toBeNull();
-    await expectOnlyNextAllowed(m, id);
-    expect(refusal(await cancelOrder(m.operator, id)).code).toBeString();
+    await expectOnlyAdmitted(m, id, []);
+    expect(refusal(await cancelOrder(m.operator, id)).code).toBe(REFUSAL.notAdmitted);
   });
 
   test("an update is accepted until the plan is approved, replans the order, and is refused after", async () => {
@@ -114,7 +108,7 @@ describe("an order's next step", () => {
     const cancelled = await showOrder(m.operator, id);
     expect(cancelled.status).toBe("cancelled");
     expect(cancelled.next).toBeNull();
-    await expectOnlyNextAllowed(m, id);
+    await expectOnlyAdmitted(m, id, []);
   });
 });
 

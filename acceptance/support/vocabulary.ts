@@ -36,7 +36,7 @@ export const NEXT = {
 export type Next = (typeof NEXT)[keyof typeof NEXT];
 
 export const REFUSAL = {
-  notNext: "not_next_step",
+  notAdmitted: "not_admitted",
   busy: "order_busy",
   notOperator: "not_operator",
   noSession: "no_session",

@@ -16,7 +16,8 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Order | One piece of work: a title, a description and a project. It waits until the operator runs it, and is built in its own workspace and branch |
 | Workspace | The isolated checkout an order is built in, with its own branch, apart from the project's checkout and every other order's. A git worktree of the checkout is how one is made |
 | Status | The state an order is in, read from its log: `queued`, `running`, `shipped` or `cancelled`. The wall's columns are these words, and a cancelled order leaves the board |
-| Next step | What an order waits on, worked out from its log alone: `run`, `approve` or `update`. An action that is not the next step is refused |
+| Admits | The operator actions an order accepts now, worked out from its log alone. Any other action is refused, naming these |
+| Next step | The admitted action that moves an order on: `run`, `approve` or `update` |
 | Update | The operator's change to an order's title or description, allowed until its plan is approved. The next run plans the order again |
 | Turn | One run of a station worker's session: the factory starts or resumes it with a brief and serves the acts it sends until its process ends |
 | Message turn | A turn that resumes a station worker's session with the operator's message instead of a brief. It only reads, and its final text is the reply |

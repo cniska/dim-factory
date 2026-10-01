@@ -27,9 +27,14 @@ export type RunKind = z.infer<typeof RunKind>;
 
 type OrderRefusalMeta = {
   readonly no_order: { readonly order: string };
-  readonly not_next_step: { readonly order: string; readonly next: Next | null };
+  readonly not_admitted: {
+    readonly order: string;
+    readonly act: string;
+    readonly admits: readonly string[];
+    readonly next: Next | null;
+  };
+  readonly not_at_station: { readonly order: string; readonly station: string };
   readonly order_busy: { readonly order: string; readonly run: RunKind };
-  readonly plan_approved: { readonly order: string };
   readonly no_reason: { readonly order: string; readonly act: string };
   readonly no_checkout: { readonly project: string };
   readonly no_default_branch: { readonly checkout: string };
@@ -48,12 +53,17 @@ const STEP: Readonly<Record<Next, (order: string) => string>> = {
 
 export const refuseOrder = refuser<OrderRefusalMeta>({
   no_order: { message: ({ order }) => `no order ${order} is on record`, resolve: () => ADD_ORDER },
-  not_next_step: {
-    message: ({ order, next }) =>
-      next === null
+  not_admitted: {
+    message: ({ order, act, admits }) =>
+      admits.length === 0
         ? `order ${order} has ended, so nothing more happens to it`
-        : `order ${order} waits on ${next}, and that is the only step it takes now`,
+        : `order ${order} admits ${admits.join(", ")} now, and ${act} is not among them`,
     resolve: ({ order, next }) => (next === null ? `dim order show ${order}` : STEP[next](order)),
+  },
+  not_at_station: {
+    message: ({ order, station }) =>
+      `order ${order} is not at its ${station} station, so this act records nothing`,
+    resolve: ({ order }) => `dim order show ${order}`,
   },
   order_busy: {
     message: ({ order, run }) =>
@@ -66,11 +76,6 @@ export const refuseOrder = refuser<OrderRefusalMeta>({
     message: ({ order, act }) =>
       `a decision records why it was taken, and this ${act} of order ${order} gives no reason`,
     resolve: ({ order, act }) => `dim order ${act} ${order} --reason <reason> --decided owner|operator`,
-  },
-  plan_approved: {
-    message: ({ order }) =>
-      `order ${order}'s plan is approved, so its title and description stay; cancel it and add a new order instead`,
-    resolve: ({ order }) => `dim order cancel ${order} --reason <reason>`,
   },
   no_checkout: {
     message: ({ project }) =>
