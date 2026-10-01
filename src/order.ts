@@ -5,6 +5,7 @@ import {
   CROCKFORD,
   type Decider,
   type Decision,
+  type Evidence,
   type Later,
   type LaterEntry,
   type Next,
@@ -35,9 +36,12 @@ export type Plan = { readonly body: string; readonly slices: readonly Slice[]; r
 
 type FindingState = RecordedFinding & { readonly answer: Answer | null; readonly reason: string | null };
 
+type FailedCheck = { readonly command: string; readonly exitCode: number | null; readonly output: string };
+
 type Returned =
   | { readonly kind: "decision"; readonly decidedBy: Decider; readonly reason: string }
-  | { readonly kind: "worker"; readonly station: Station; readonly reason: string };
+  | { readonly kind: "worker"; readonly station: Station; readonly reason: string }
+  | { readonly kind: "ship"; readonly check: FailedCheck };
 
 export type SliceView = { readonly title: string; readonly outcome: string; readonly commit: string | null };
 
@@ -138,6 +142,12 @@ function answered(
   return findings.map((finding) => (finding.id === id ? { ...finding, answer, reason } : finding));
 }
 
+function failedCheck(evidence: readonly Evidence[]): FailedCheck {
+  const check = evidence.find((item) => item.kind === "check");
+  invariant(check !== undefined, "a ship stopped by a red check records the check");
+  return { command: check.command, exitCode: check.exitCode, output: check.output };
+}
+
 function apply(state: OrderState, entry: Later): OrderState {
   switch (entry.action) {
     case "order_updated":
@@ -212,8 +222,13 @@ function apply(state: OrderState, entry: Later): OrderState {
         case "ship_conflict":
           return { ...state, phase: run("build"), conflict: entry.details.paths };
         case "ship_check_failed":
-          return { ...state, phase: run("build") };
+          return {
+            ...state,
+            phase: run("build"),
+            returned: { kind: "ship", check: failedCheck(entry.evidence) },
+          };
         case "ship_unset":
+        case "ship_no_check":
         case "checkout_dirty":
           return { ...state, phase: { kind: "ship" } };
         default:

@@ -25,7 +25,7 @@ export const refuseShip = refuser<ShipRefusalMeta>({
   },
   checkout_dirty: {
     message: ({ order, checkout }) =>
-      `the checkout ${checkout} holds uncommitted changes, so order ${order} does not land there yet`,
+      `the checkout ${checkout} holds changes the landing would overwrite, so order ${order} does not land there yet`,
     resolve: ({ order }) => `dim order run ${order}`,
   },
   ship_conflict: {

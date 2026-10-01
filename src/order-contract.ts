@@ -202,6 +202,7 @@ export const Later = z.union([
     stop("ship_stopped", "checkout_dirty", { checkout: z.string() }),
     stop("ship_stopped", "ship_conflict", { commit: z.string(), paths: z.array(z.string()).min(1) }),
     stop("ship_stopped", "ship_check_failed", { head: z.string() }).extend({ evidence }),
+    stop("ship_stopped", "ship_no_check", { head: z.string() }).extend({ evidence }),
   ]),
   entry("ship_landed", {
     head: z.string(),

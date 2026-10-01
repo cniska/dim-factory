@@ -100,25 +100,35 @@ function land(db: Database, ship: ShipOf): void {
     throw refuseShip("ship_conflict", { order, commit, paths });
   }
   const task = checkTask(workspace);
-  const check = task === null ? null : judge(workspace, task.commandLine, ship.env);
-  if (check === null || check.exitCode !== 0) {
+  if (task === null) {
+    record({
+      action: "ship_stopped",
+      code: "ship_no_check",
+      details: { head: replayed.head },
+      evidence: [rebase],
+    });
+    throw refuseShip("ship_no_check", { order, head: replayed.head });
+  }
+  const check = judge(workspace, task.commandLine, ship.env);
+  if (check.exitCode !== 0) {
     record({
       action: "ship_stopped",
       code: "ship_check_failed",
       details: { head: replayed.head },
-      evidence: check === null ? [rebase] : [rebase, check],
+      evidence: [rebase, check],
     });
-    throw check === null
-      ? refuseShip("ship_no_check", { order, head: replayed.head })
-      : refuseShip("ship_check_failed", {
-          order,
-          head: replayed.head,
-          command: check.command,
-          exitCode: check.exitCode,
-        });
+    throw refuseShip("ship_check_failed", {
+      order,
+      head: replayed.head,
+      command: check.command,
+      exitCode: check.exitCode,
+    });
   }
-  if (checkedOutBranch(checkout) === defaultBranch) fastForward(checkout, replayed.head);
-  else moveRef(checkout, defaultBranch, replayed.head, onto);
+  if (checkedOutBranch(checkout) !== defaultBranch) moveRef(checkout, defaultBranch, replayed.head, onto);
+  else if (!fastForward(checkout, replayed.head)) {
+    record({ action: "ship_stopped", code: "checkout_dirty", details: { checkout } });
+    throw refuseShip("checkout_dirty", { order, checkout });
+  }
   const kept = removeWorkspace(checkout, ship.project, order);
   record({
     action: "ship_landed",

@@ -259,6 +259,28 @@ describe("an order's state, folded from its log", () => {
       details: { checkout: "/repo" },
     });
     expect(at(dirty)).toEqual(["review", "run"]);
+    const unchecked = state(...shipping, {
+      action: "ship_stopped",
+      code: "ship_no_check",
+      details: { head: "c2" },
+      evidence: [],
+    });
+    expect(at(unchecked)).toEqual(["review", "run"]);
+  });
+
+  test("a red check at ship briefs the builder with the check that failed", () => {
+    const check = { kind: "check" as const, command: "bun test", exitCode: 1, output: "1 fail" };
+    const red = state(...reviewed, approve("review"), SHIP_STARTED, {
+      action: "ship_stopped",
+      code: "ship_check_failed",
+      details: { head: "c2" },
+      evidence: [{ kind: "rebase", onto: "m2", commits: [] }, check],
+    });
+    expect(red.phase).toEqual({ kind: "run", station: "build" });
+    expect(red.returned).toEqual({
+      kind: "ship",
+      check: { command: "bun test", exitCode: 1, output: "1 fail" },
+    });
   });
 
   test("a landed ship ends the order, and so does a cancel", () => {

@@ -73,6 +73,6 @@ export function checkedOutBranch(root: string): string | null {
   return head.ok ? head.out : null;
 }
 
-export function fastForward(root: string, head: string): void {
-  ran(root, ["merge", "-q", "--ff-only", head]);
+export function fastForward(root: string, head: string): boolean {
+  return git(root, ["merge", "-q", "--ff-only", head]).ok;
 }

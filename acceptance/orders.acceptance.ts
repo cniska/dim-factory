@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { commandLine, refusal, resultOf } from "./support/dim-output";
 import { type HarnessTurn, ORDER_PLACEHOLDER } from "./support/harness-script";
@@ -357,6 +357,22 @@ describe("shipping", () => {
     expect(refusal(stopped).code).toBeString();
     expect((await showOrder(m.operator, id)).status).toBe("running");
     m.git(["checkout", "--", "README.md"]);
+    await runOrder(m.operator, id);
+    expect((await showOrder(m.operator, id)).status).toBe("shipped");
+  });
+
+  test("a ship stopped by an untracked file the landing would overwrite lands once the file is gone", async () => {
+    const m = await start({ script: happyPath() });
+    const id = await reviewed(m.operator);
+    const main = m.git(["rev-parse", "main"]);
+    writeFileSync(join(m.repo, "slice-1.txt"), "the owner's scratch\n");
+
+    const stopped = await approve(m.operator, id);
+
+    expect(refusal(stopped).code).toBe("checkout_dirty");
+    expect(m.git(["rev-parse", "main"])).toBe(main);
+    expect((await showOrder(m.operator, id)).status).toBe("running");
+    rmSync(join(m.repo, "slice-1.txt"));
     await runOrder(m.operator, id);
     expect((await showOrder(m.operator, id)).status).toBe("shipped");
   });
