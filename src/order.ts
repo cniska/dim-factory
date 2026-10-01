@@ -300,7 +300,8 @@ export type OperatorAct =
   | { readonly kind: "approve"; readonly decision: Decision }
   | { readonly kind: "return"; readonly decision: Decision }
   | { readonly kind: "update"; readonly title?: string; readonly description?: string }
-  | { readonly kind: "cancel"; readonly reason: string };
+  | { readonly kind: "cancel"; readonly reason: string }
+  | { readonly kind: "message"; readonly to: string; readonly text: string };
 
 function reasonOf(state: OrderState, act: OperatorAct["kind"], reason: string): string {
   if (reason.trim() === "") throw refuseOrder("no_reason", { order: state.id, act });
@@ -331,6 +332,8 @@ export function operatorEntry(state: OrderState, act: OperatorAct): Later {
       };
     case "cancel":
       return { action: "order_cancelled", details: { reason: reasonOf(state, act.kind, act.reason) } };
+    case "message":
+      return { action: "message_sent", details: { to: act.to, text: act.text } };
     default:
       return unreachable(act);
   }
@@ -391,6 +394,7 @@ function stepRefusal(state: OrderState, act: OperatorAct["kind"]): CodedError | 
       if (next === null) return notNext();
       return state.planApproved ? refuseOrder("plan_approved", { order: state.id }) : null;
     case "cancel":
+    case "message":
       return next === null ? notNext() : null;
     default:
       return unreachable(act);

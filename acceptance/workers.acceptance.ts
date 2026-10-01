@@ -159,6 +159,33 @@ describe("station workers", () => {
     ]);
   });
 
+  test("a message turn only reads: its worker's write to the workspace and its slice submit are refused", async () => {
+    const m = await start({
+      script: {
+        ...happyPath(),
+        builder: [
+          buildTurn(),
+          [
+            { act: "sh", command: "touch probe.txt" },
+            { act: "dim", args: ["slice", "submit"] },
+            { act: "say", text: "Nothing changed." },
+          ],
+        ],
+      },
+    });
+    const id = await built(m.operator);
+    const before = await showOrder(m.operator, id);
+
+    resultOf(await messageWorker(m.operator, id, "build", "Anything left?"));
+
+    const after = await showOrder(m.operator, id);
+    expect(existsSync(join(after.workspace, "probe.txt"))).toBe(false);
+    expect(after.log.slice(before.log.length).map((entry) => entry.action)).toEqual([
+      ACTION.messageSent,
+      ACTION.messageSent,
+    ]);
+  });
+
   test("a station worker's message to another station's worker or to the owner is refused and recorded as refused", async () => {
     const m = await start({
       script: {

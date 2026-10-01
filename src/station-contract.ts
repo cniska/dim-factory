@@ -34,6 +34,12 @@ export const SliceSubmit = z.object({ act: z.literal("slice_submit") });
 
 export const OrderShow = z.object({ act: z.literal("order_show") });
 
+export const MessageSend = z.object({
+  act: z.literal("message_send"),
+  text: z.string(),
+  to: z.string().nullable(),
+});
+
 export const TurnRequest = z.discriminatedUnion("act", [
   PlanReturn,
   OrderReturn,
@@ -42,6 +48,7 @@ export const TurnRequest = z.discriminatedUnion("act", [
   ReviewReturn,
   SliceSubmit,
   OrderShow,
+  MessageSend,
 ]);
 export type TurnRequest = z.infer<typeof TurnRequest>;
 
@@ -53,6 +60,7 @@ export const WORKER_COMMAND = {
   review_return: "dim review return --findings <file> | --artifact <file>",
   slice_submit: "dim slice submit",
   order_show: "dim order show",
+  message_send: "dim message send <text>",
 } as const satisfies Record<TurnRequest["act"], string>;
 
 export const TurnReply = z.discriminatedUnion("ok", [
@@ -81,6 +89,9 @@ type StationRefusalMeta = {
   readonly harness_unset: { readonly project: string };
   readonly git_config_changed: { readonly order: string; readonly station: string; readonly config: string };
   readonly no_model: { readonly role: string; readonly file: string };
+  readonly not_to_operator: { readonly to: string };
+  readonly message_turn: { readonly act: string };
+  readonly no_reply: { readonly order: string; readonly station: string; readonly session: string };
 };
 
 export const refuseStation = refuser<StationRefusalMeta>({
@@ -146,5 +157,20 @@ export const refuseStation = refuser<StationRefusalMeta>({
     message: ({ role, file }) =>
       `${file} names no model for the ${role} and no default, so no ${role} can start; its models setting maps each role, or default, to a model`,
     resolve: () => "dim config",
+  },
+  not_to_operator: {
+    message: ({ to }) =>
+      `a station worker's message goes only to the operator, so this one to ${to} was recorded as refused and not delivered`,
+    resolve: () => "dim message send <text>",
+  },
+  message_turn: {
+    message: ({ act }) =>
+      `${act} is no act of a message turn, which only reads; the reply is this turn's final text`,
+    resolve: () => "dim order show",
+  },
+  no_reply: {
+    message: ({ order, station, session }) =>
+      `the ${station} worker's session ${session} ended its message turn on order ${order} with an error and no reply`,
+    resolve: ({ order }) => `dim order show ${order}`,
   },
 });

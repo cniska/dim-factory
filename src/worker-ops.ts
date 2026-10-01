@@ -82,6 +82,10 @@ export function stationWorker(db: Database, created: StationWorker): WorkerRecor
   });
 }
 
+export function stationWorkerAt(db: Database, order: string, role: StationRole): Worker | null {
+  return stationWorkerOf(db, order, role);
+}
+
 export function processOf(pid: number): ProcessId {
   const row = processTable().find((candidate) => candidate.pid === pid);
   invariant(row !== undefined, `process ${pid}, waiting for its prompt, is running`);

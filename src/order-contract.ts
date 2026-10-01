@@ -34,6 +34,7 @@ type OrderRefusalMeta = {
   readonly no_checkout: { readonly project: string };
   readonly no_default_branch: { readonly checkout: string };
   readonly no_git_identity: { readonly checkout: string };
+  readonly no_worker: { readonly order: string; readonly station: string };
 };
 
 const ADD_ORDER = "dim order add --title <title> --description <description>";
@@ -79,6 +80,11 @@ export const refuseOrder = refuser<OrderRefusalMeta>({
     message: ({ checkout }) =>
       `git names no user.name and user.email in ${checkout}, and every commit the factory makes carries the owner's identity; set both with git config --global, then run the order again`,
     resolve: () => "dim doctor",
+  },
+  no_worker: {
+    message: ({ order, station }) =>
+      `order ${order} has no ${station} worker yet, so there is no session to message; one starts when the order runs its ${station} station`,
+    resolve: ({ order }) => `dim order show ${order}`,
   },
   no_default_branch: {
     message: ({ checkout }) =>

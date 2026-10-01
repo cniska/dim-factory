@@ -23,6 +23,7 @@ const StreamEvent = z.object({
   type: z.string(),
   subtype: z.string().optional(),
   rate_limit_info: z.object({ status: z.string(), resetsAt: z.number().optional() }).optional(),
+  result: z.string().optional(),
 });
 
 const MS_PER_SECOND = 1000;
@@ -35,7 +36,8 @@ function outcome({ lines }: Ended, session: SessionStart): Outcome {
       limit.resetsAt === undefined ? null : new Date(limit.resetsAt * MS_PER_SECOND).toISOString();
     return { kind: "died", code: "usage_limit", resetsAt };
   }
-  if (events.some((event) => event.type === "result")) return { kind: "finished" };
+  const result = events.filter((event) => event.type === "result").at(-1);
+  if (result !== undefined) return { kind: "finished", result: result.result ?? null };
   const started = events.some((event) => event.type === "system" && event.subtype === "init");
   return { kind: "died", code: session.kind !== "new" && !started ? "resume_failed" : "killed" };
 }

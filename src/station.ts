@@ -68,9 +68,15 @@ export function workerEnv(
 
 type Places = { readonly workspace: string; readonly checkoutGit: string; readonly turn: Turn };
 
-export function policyAt(station: Station, { workspace, checkoutGit, turn }: Places): Policy {
-  if (station !== "build") return { kind: "read", writable: [turn.tmp], denied: [workspace, checkoutGit] };
-  return { kind: "edit", writable: [turn.tmp], denied: [join(checkoutGit, "hooks")] };
+export function policyOf(kind: Policy["kind"], { workspace, checkoutGit, turn }: Places): Policy {
+  switch (kind) {
+    case "read":
+      return { kind, writable: [turn.tmp], denied: [workspace, checkoutGit] };
+    case "edit":
+      return { kind, writable: [turn.tmp], denied: [join(checkoutGit, "hooks")] };
+    default:
+      return unreachable(kind);
+  }
 }
 
 const orderFacts = (state: OrderState) => ({
@@ -135,6 +141,7 @@ export function briefAt(station: Station, { state, workspace, diff }: BriefFacts
 const STATIONS_OF: Readonly<Record<TurnRequest["act"], readonly Station[]>> = {
   order_show: STATIONS,
   order_return: STATIONS,
+  message_send: STATIONS,
   plan_return: ["plan"],
   slice_submit: ["build"],
   finding_answer: ["build"],
@@ -142,10 +149,27 @@ const STATIONS_OF: Readonly<Record<TurnRequest["act"], readonly Station[]>> = {
   review_return: ["review"],
 };
 
-export function actAllowed(request: TurnRequest, station: Station): void {
-  if (!STATIONS_OF[request.act].includes(station)) {
-    throw refuseStation("wrong_station", { act: request.act, station });
-  }
+export type Purpose = {
+  readonly policy: Policy["kind"];
+  readonly prompt: (facts: BriefFacts) => string;
+  readonly refusal: (act: TurnRequest["act"]) => CodedError | null;
+};
+
+export function stationPurpose(station: Station): Purpose {
+  return {
+    policy: station === "build" ? "edit" : "read",
+    prompt: (facts) => briefAt(station, facts),
+    refusal: (act) =>
+      STATIONS_OF[act].includes(station) ? null : refuseStation("wrong_station", { act, station }),
+  };
+}
+
+export function messagePurpose(text: string): Purpose {
+  return {
+    policy: "read",
+    prompt: () => text,
+    refusal: (act) => (act === "order_show" ? null : refuseStation("message_turn", { act })),
+  };
 }
 
 type BranchFacts = { readonly tip: string; readonly clean: boolean };
@@ -239,7 +263,10 @@ function reviewReturned(request: ReviewReturn, { state }: WorkContext): Later {
   return { action: "review_returned", details: { returned: { kind: "findings", findings } } };
 }
 
-export type WorkRequest = Exclude<TurnRequest, { readonly act: "order_show" | "slice_submit" }>;
+export type WorkRequest = Exclude<
+  TurnRequest,
+  { readonly act: "order_show" | "slice_submit" | "message_send" }
+>;
 
 export function workEntry(request: WorkRequest, context: WorkContext): Later {
   switch (request.act) {

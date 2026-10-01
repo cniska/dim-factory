@@ -6,7 +6,7 @@ import { checkTask } from "./declared-tasks";
 import { commitsBetween, isClean, moveRef, tipOf } from "./git-tree";
 import { movedCommits } from "./order";
 import type { Later } from "./order-contract";
-import { orderState, ownerIdentity, recordFactory } from "./order-ops";
+import { orderState, ownerIdentity, recordAs } from "./order-ops";
 import type { Env } from "./paths";
 import { refuseShip } from "./ship-contract";
 import { checkedOutBranch, fastForward, shipLock } from "./ship-effects";
@@ -39,7 +39,7 @@ export async function shipOrder(db: Database, ship: ShipOf): Promise<void> {
 
 function land(db: Database, ship: ShipOf): void {
   const { order, checkout } = ship;
-  const record = (later: Later) => recordFactory(db, order, ship.cause, later);
+  const record = (later: Later) => recordAs(db, order, { kind: "factory", cause: ship.cause }, later);
   ownerIdentity(checkout, ship.env);
   record({ action: "ship_started", details: {} });
   if (ship.config.ship === undefined) {

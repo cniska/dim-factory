@@ -19,6 +19,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Next step | What an order waits on, worked out from its log alone: `run`, `approve` or `update`. An action that is not the next step is refused |
 | Update | The operator's change to an order's title or description, allowed until its plan is approved. The next run plans the order again |
 | Turn | One run of a station worker's session: the factory starts or resumes it with a brief and serves the acts it sends until its process ends |
+| Message turn | A turn that resumes a station worker's session with the operator's message instead of a brief. It only reads, and its final text is the reply |
 | Brief | The JSON a turn starts with: the station's skill, the order's facts and where the station stands. It carries no instructions |
 | Turn socket | The Unix socket a turn opens for its worker. It is the worker's only way to write the record, and any connection to it acts as that worker |
 | Run | A turn or a ship in flight on an order, recorded with its process so another act on the order is refused while it is alive |

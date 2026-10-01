@@ -86,8 +86,13 @@ const NEW = { kind: "new", id: "s1" } as const;
 const RESUME = { kind: "resume", id: "s1" } as const;
 
 describe("how a Claude Code session ended", () => {
-  test("a session that reported its result finished", () => {
-    expect(claude.outcome(ended([INIT, RESULT]), NEW)).toEqual({ kind: "finished" });
+  test("a session that reported its result finished, with the result's text", () => {
+    expect(claude.outcome(ended([INIT, RESULT]), NEW)).toEqual({ kind: "finished", result: "done" });
+  });
+
+  test("a session whose result carries no text finished with none", () => {
+    const failed = { type: "result", subtype: "error_during_execution", is_error: true, session_id: "s1" };
+    expect(claude.outcome(ended([INIT, failed], 1), NEW)).toEqual({ kind: "finished", result: null });
   });
 
   test("a rejected rate limit is a usage limit, with the time it resets", () => {

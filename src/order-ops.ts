@@ -204,16 +204,12 @@ function recordAt(
     const { state } = loadOrder(db, order);
     const refusal = workRefusal(state, station, by);
     if (refusal !== null) throw refusal;
-    return append(
-      db,
-      order,
-      by.kind === "worker" ? actorOf(by.acting) : factoryActor(by.cause),
-      later(state),
-    );
+    return append(db, order, actorBy(by), later(state));
   });
 }
 
-const factoryActor = (cause: number): Actor => ({ kind: "factory", version, cause });
+const actorBy = (by: WorkBy): Actor =>
+  by.kind === "worker" ? actorOf(by.acting) : { kind: "factory", version, cause: by.cause };
 
 export function recordWork(
   db: Database,
@@ -235,8 +231,8 @@ export function recordVerdict(
   return recordAt(db, order, station, { kind: "factory", cause }, () => later);
 }
 
-export function recordFactory(db: Database, order: string, cause: number, later: Later): Appended {
-  return writeTransaction(db, () => append(db, order, factoryActor(cause), later));
+export function recordAs(db: Database, order: string, by: WorkBy, later: Later): Appended {
+  return writeTransaction(db, () => append(db, order, actorBy(by), later));
 }
 
 export function showOrder(db: Database, order: string): OrderView {
