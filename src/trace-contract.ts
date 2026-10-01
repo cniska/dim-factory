@@ -2,9 +2,13 @@ import type { ActKind, Later, Station } from "./order-contract";
 import type { TurnRequest } from "./station-contract";
 import type { Rebased } from "./workspace";
 
+type LineKey = "at" | "pid" | "order" | "seq" | "step" | "phase" | "ms" | "outcome";
+
+type Fields<T> = Extract<keyof T, LineKey> extends never ? T : never;
+
 type Step<Start, Result = Readonly<Record<never, never>>> = {
-  readonly start: Start;
-  readonly result: Result;
+  readonly start: Fields<Start>;
+  readonly result: Fields<Result>;
 };
 
 export type Steps = {
@@ -30,9 +34,12 @@ export type Steps = {
   readonly lock: Step<{ readonly path: string }>;
   readonly turn_open: Step<{ readonly home: string }, { readonly dir: string }>;
   readonly turn_close: Step<{ readonly dir: string }>;
-  readonly harness_spawn: Step<{ readonly cwd: string; readonly session: string }, { readonly pid: number }>;
-  readonly harness_wait: Step<{ readonly pid: number }, { readonly exitCode: number | null }>;
-  readonly harness_kill: Step<{ readonly pid: number }>;
+  readonly harness_spawn: Step<
+    { readonly cwd: string; readonly session: string },
+    { readonly harness: number }
+  >;
+  readonly harness_wait: Step<{ readonly harness: number }, { readonly exitCode: number | null }>;
+  readonly harness_kill: Step<{ readonly harness: number }>;
   readonly session_copy: Step<{ readonly session: string }>;
   readonly session_restore: Step<{ readonly session: string }>;
   readonly config_check: Step<{ readonly path: string }, { readonly restored: boolean }>;

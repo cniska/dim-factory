@@ -14,7 +14,7 @@ function killed(pid: number): void {
 }
 
 export function killGroup(trace: Trace, pid: number): void {
-  trace.step("harness_kill", { pid }, () => killed(pid));
+  trace.step("harness_kill", { harness: pid }, () => killed(pid));
 }
 
 export function spawnHarness(trace: Trace, { argv, cwd, env, session }: Spawn): Spawned {
@@ -30,7 +30,7 @@ export function spawnHarness(trace: Trace, { argv, cwd, env, session }: Spawn): 
         stderr: "pipe",
         detached: true,
       }),
-    (spawned) => ({ pid: spawned.pid }),
+    (spawned) => ({ harness: spawned.pid }),
   );
   return {
     pid: child.pid,
@@ -43,7 +43,7 @@ export function spawnHarness(trace: Trace, { argv, cwd, env, session }: Spawn): 
     },
     ended: trace.stepAsync(
       "harness_wait",
-      { pid: child.pid },
+      { harness: child.pid },
       async () => {
         const [lines, stderr] = await Promise.all([
           linesOf(child.stdout),

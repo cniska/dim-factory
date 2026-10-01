@@ -61,6 +61,17 @@ describe("a trace step", () => {
     expect(ended.ms).toBeNumber();
   });
 
+  test("keys every line by the writing process, apart from a process the step acts on", () => {
+    const env = scratchEnv();
+
+    traceOf("k7m2qx4d", env).step("harness_kill", { harness: 99 }, () => null);
+
+    expect(linesOf(env)).toMatchObject([
+      { pid: process.pid, harness: 99, phase: "started" },
+      { pid: process.pid, phase: "ended" },
+    ]);
+  });
+
   test("ends a step that throws a refusal as refused with its code, and one that throws anything else as failed", async () => {
     const env = scratchEnv();
     const trace = traceOf("k7m2qx4d", env);
