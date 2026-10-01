@@ -6,7 +6,7 @@ import { writeTransaction } from "./db";
 import { diffSince, tipOf } from "./git-tree";
 import type { Adapter, SessionStart, Spawned } from "./harness-contract";
 import type { HarnessName } from "./harness-name";
-import { adapterFor, startHarness } from "./harness-ops";
+import { adapterFor, startHarness, stopOrphan } from "./harness-ops";
 import { type OperatorAct, phaseAfter, ROLE_AT } from "./order";
 import type { Station } from "./order-contract";
 import {
@@ -278,7 +278,8 @@ export async function advanceOrder(
   const setup = projectSetup(db, before.project, caller.cwd);
   const prepared = expected?.kind === "run" ? prepareTurn(setup, before.project, expected.station) : null;
   const base = tipOf(setup.root, setup.branch);
-  const { by, cause, created, state } = startRun(db, order, caller, base, act);
+  const { by, cause, created, state, orphan } = startRun(db, order, caller, base, act);
+  if (orphan !== null) stopOrphan(orphan);
   try {
     if (created) createWorkspace(setup.root, before.project, order, base);
     const { phase } = state;

@@ -141,7 +141,15 @@ export type StartedRun = {
   readonly cause: number;
   readonly created: boolean;
   readonly state: OrderState;
+  readonly orphan: ProcessId | null;
 };
+
+function clearLostRun(db: Database, order: string, running: readonly ProcessId[]): ProcessId | null {
+  const lost = runOf(db, order);
+  if (lost === null) return null;
+  deleteRun(db, order);
+  return lost.harness !== null && isRunning(lost.harness, running) ? lost.harness : null;
+}
 
 export function startRun(
   db: Database,
@@ -164,8 +172,9 @@ export function startRun(
           },
         ).state
       : acted.state;
+    const orphan = clearLostRun(db, order, caller.running);
     insertRun(db, order, runKindOf(state.phase), caller.self);
-    return { by: acted.by, cause: acted.seq, created, state };
+    return { by: acted.by, cause: acted.seq, created, state, orphan };
   });
 }
 

@@ -4,6 +4,10 @@ async function linesOf(stream: ReadableStream<Uint8Array>): Promise<readonly str
   return (await new Response(stream).text()).split("\n").filter((line) => line.trim() !== "");
 }
 
+export function killGroup(pid: number): void {
+  process.kill(-pid, "SIGKILL");
+}
+
 export function spawnHarness(argv: readonly string[], cwd: string, env: Record<string, string>): Spawned {
   const child = Bun.spawn([...argv], {
     cwd,
@@ -20,7 +24,7 @@ export function spawnHarness(argv: readonly string[], cwd: string, env: Record<s
       child.stdin.end();
     },
     kill() {
-      process.kill(-child.pid, "SIGKILL");
+      killGroup(child.pid);
     },
     ended: Promise.all([linesOf(child.stdout), new Response(child.stderr).text(), child.exited]).then(
       ([lines, stderr]) => ({ lines, stderr, exitCode: child.exitCode }),

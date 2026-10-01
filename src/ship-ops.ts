@@ -104,9 +104,10 @@ function land(db: Database, ship: ShipOf): void {
   const rebase: Evidence = { kind: "rebase", onto, commits: [...replayed.moved] };
   if (replayed.head !== head) {
     record({ action: "branch_rebased", details: { head: replayed.head, commits: [...replayed.moved] } });
-    moveRef(checkout, branch, replayed.head, head);
-    resetWorkspace(checkout, ship.project, order, replayed.head);
   }
+  const tip = tipOf(checkout, branch);
+  if (tip !== replayed.head) moveRef(checkout, branch, replayed.head, tip);
+  resetWorkspace(checkout, ship.project, order, replayed.head);
   if (replayed.conflict !== null) {
     const { commit, tree, paths } = replayed.conflict;
     spreadMerge(ship.project, order, tree);

@@ -63,10 +63,10 @@ An order's state is a fold over its log, a pure function: status, station, next 
 - **Two acts are not steps.** `order update` is allowed until the plan is approved and sends the order back to `run`, which plans it again. `order cancel` is allowed until the ship starts.
 - **Busy** is not part of the state. A run table holds each station turn or ship in flight: the process running it, the harness process it started, and each one's start time. A run, approval, return or update on an order whose run is alive is refused `order_busy`; so is a cancel while the order ships. A process that has ended no longer counts, so nothing has to stay running to notice a turn is over. A matching pid with a different start time is a different process.
 - **Every write a turn makes after its worker ends is decided against a fresh fold.** A turn whose order is no longer running records nothing. A cancel records `order_cancelled` first, then kills the turn's process group, so the dying turn records nothing.
-- **Repair** runs at the start of `order run` on a run whose process is gone. It needs no judgement.
+- **Repair** runs at the start of every run, on a run whose process is gone. It needs no judgement.
   - A lost turn is closed, and its orphaned harness process is killed. A session that cannot be resumed is replaced.
   - A branch commit the record does not hold is taken off the branch, and its changes are left in the workspace.
-  - An interrupted ship is finished if the default branch already holds the order's tip. Otherwise it is rolled back.
+  - An interrupted ship runs again from the recorded head: the checkout's branch and the workspace are moved to it, and a default branch that already holds the order's tip lands as a fast-forward to itself.
   - Anything else is reported to the operator with its cause.
 
 ## Who a command acts as
