@@ -4,9 +4,9 @@ import { parseArgs } from "./cli-flags";
 import { closeDb } from "./db";
 import { openFactory } from "./factory-db";
 import { Decider, type Decision, OrderId } from "./order-contract";
-import { addOrder, cancelOrder, showOrder, updateOrder } from "./order-ops";
+import { addOrder, showOrder, updateOrder } from "./order-ops";
 import { WORKER_COMMAND } from "./station-contract";
-import { advanceOrder, inTurn, sendAct } from "./station-ops";
+import { advanceOrder, cancelOrder, inTurn, sendAct } from "./station-ops";
 import { callerOf } from "./worker-ops";
 
 const USAGE = [

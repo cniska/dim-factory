@@ -7,7 +7,7 @@ import { writeTransaction } from "./db";
 import { diffSince, gitCommonDir, type Identity, tipOf } from "./git-tree";
 import { claude } from "./harness-claude";
 import type { Outcome, SessionStart, Spawned } from "./harness-contract";
-import { startHarness, stopOrphan } from "./harness-ops";
+import { startHarness, stopHarness } from "./harness-ops";
 import { type Death, type OperatorAct, type OrderState, phaseAfter, ROLE_AT, type WorkBy } from "./order";
 import { type DeathCode, type Later, refuseOrder, type Station } from "./order-contract";
 import {
@@ -18,6 +18,7 @@ import {
   type ProjectSetup,
   projectSetup,
   recordAs,
+  recordCancel,
   recordWork,
   showOrder,
   startRun,
@@ -55,7 +56,7 @@ import {
 } from "./station-effects";
 import type { Acting, Caller, Worker, WorkerSession } from "./worker-contract";
 import { processOf, registerSession, stationWorker, stationWorkerAt } from "./worker-ops";
-import { createWorkspace, workspaceOf } from "./workspace-ops";
+import { createWorkspace, removeWorkspaceTree, workspaceOf } from "./workspace-ops";
 
 type TurnOf = {
   readonly order: string;
@@ -80,6 +81,7 @@ type Ended =
 
 type Replied =
   | { readonly end: "replied"; readonly reply: string }
+  | { readonly end: "closed" }
   | { readonly end: "no_reply"; readonly session: string }
   | { readonly end: "died"; readonly session: string; readonly code: DeathCode }
   | { readonly end: "lost"; readonly session: string }
@@ -309,6 +311,7 @@ function closeStationTurn(db: Database, turn: TurnOf, closing: Closing): Ended {
   const { session, stop } = closing;
   const failed = (later: Later) => recordAs(db, turn.order, byFactory(turn), later);
   return writeTransaction(db, () => {
+    if (orderState(db, turn.order).status !== "running") return { end: "closed", session };
     switch (stop?.kind) {
       case "config_changed":
         failed({ action: "station_failed", code: "git_config_changed", details: { session } });
@@ -347,6 +350,7 @@ function closeMessageTurn(
   turn: TurnOf,
   { acting, session, stop, outcome, copied, resumed }: Closing,
 ): Replied {
+  if (orderState(db, turn.order).status !== "running") return { end: "closed" };
   if (stop?.kind === "config_changed") return { end: "config_changed", session };
   invariant(stop === null, `a message turn on order ${turn.order} has no definition of done to miss`);
   if (outcome.kind === "died") {
@@ -406,6 +410,8 @@ async function messageAt(db: Database, turn: TurnOf): Promise<string> {
   switch (ended.end) {
     case "replied":
       return ended.reply;
+    case "closed":
+      throw refuseOrder("not_next_step", { order, next: null });
     case "config_changed":
       throw refuseStation("git_config_changed", { order, station, config: join(turn.checkoutGit, "config") });
     case "died":
@@ -439,7 +445,7 @@ async function withRun<T>(
   const base = tipOf(setup.root, setup.branch);
   const { by, cause, created, state, orphan } = startRun(db, order, caller, base, act);
   try {
-    if (orphan !== null) stopOrphan(orphan);
+    if (orphan !== null) stopHarness(orphan);
     if (created) createWorkspace(setup.root, project, order, base);
     return await body({
       setup,
@@ -507,6 +513,15 @@ export async function messageWorker(
   return withRun(db, order, caller, act, station, env, ({ turnOf }) =>
     messageAt(db, turnOf(station, messagePurpose(text))),
   );
+}
+
+export function cancelOrder(db: Database, order: string, caller: Caller, reason: string): void {
+  const { state, harness } = recordCancel(db, order, caller, reason);
+  if (harness !== null) stopHarness(harness);
+  if (state.head === null) return;
+  const workspace = workspaceOf(state.project, order);
+  const kept = removeWorkspaceTree(projectSetup(db, state.project, caller.cwd).root, workspace);
+  if (kept !== null) throw refuseOrder("worktree_kept", { order, dir: workspace.dir, reason: kept });
 }
 
 export function inTurn(env: Env): boolean {

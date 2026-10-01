@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { type DimResult, refusal, resultOf } from "./support/dim-output";
 import { checkHeld, holdCheck, holdingCheck, releaseCheck } from "./support/holds";
 import { type Machine, machines } from "./support/machine";
@@ -124,6 +123,7 @@ describe("an order that is busy", () => {
     const m = await start({
       script: {
         planner: [[{ act: "signal", name: "planning" }, { act: "wait", name: "plan" }, ...planTurn()]],
+        builder: [buildTurn()],
       },
     });
     const id = await addOrder(m.operator);
@@ -167,7 +167,7 @@ describe("an order that is busy", () => {
 });
 
 describe("cancelling and failing", () => {
-  test("cancelling mid-build stops the builder, records nothing of its turn and keeps its commits and workspace", async () => {
+  test("cancelling mid-build stops the builder, records nothing of its turn, removes its workspace and keeps its commits on its branch", async () => {
     const m = await start({
       script: {
         planner: [planTurn()],
@@ -197,7 +197,7 @@ describe("cancelling and failing", () => {
     expect(order.log.slice(0, before.log.length)).toEqual([...before.log]);
     expect(actions(order).slice(before.log.length)).toEqual([ACTION.cancelled]);
     expect(m.commitsOn(order.branch)).toEqual(["feat: add slice 1"]);
-    expect(existsSync(join(order.workspace, "unfinished.txt"))).toBe(true);
+    expect(existsSync(order.workspace)).toBe(false);
   });
 
   test("after a failed station, running the order again resumes the same worker where the record puts it", async () => {

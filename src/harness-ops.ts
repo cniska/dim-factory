@@ -6,6 +6,6 @@ export function startHarness(argv: readonly string[], cwd: string, env: Record<s
   return spawnHarness(argv, cwd, env);
 }
 
-export function stopOrphan(harness: ProcessId): void {
+export function stopHarness(harness: ProcessId): void {
   killGroup(harness.pid);
 }

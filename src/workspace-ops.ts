@@ -32,6 +32,10 @@ export function rebaseWorkspace({ dir }: Workspace, onto: string, env: Env): Reb
   return rebaseOnto(dir, onto, env);
 }
 
+export function removeWorkspaceTree(root: string, { dir }: Workspace): string | null {
+  return removeWorktree(root, dir);
+}
+
 export function removeWorkspace(root: string, { dir, branch }: Workspace): readonly Kept[] {
   const keptDir = removeWorktree(root, dir);
   if (keptDir !== null) {

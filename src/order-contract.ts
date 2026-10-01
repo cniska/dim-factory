@@ -35,6 +35,7 @@ type OrderRefusalMeta = {
   readonly no_default_branch: { readonly checkout: string };
   readonly no_git_identity: { readonly checkout: string };
   readonly no_worker: { readonly order: string; readonly station: string };
+  readonly worktree_kept: { readonly order: string; readonly dir: string; readonly reason: string };
 };
 
 const ADD_ORDER = "dim order add --title <title> --description <description>";
@@ -85,6 +86,11 @@ export const refuseOrder = refuser<OrderRefusalMeta>({
     message: ({ order, station }) =>
       `order ${order} has no ${station} worker yet, so there is no session to message; one starts when the order runs its ${station} station`,
     resolve: ({ order }) => `dim order show ${order}`,
+  },
+  worktree_kept: {
+    message: ({ order, dir, reason }) =>
+      `order ${order} is cancelled and its branch kept, but its worktree at ${dir} could not be removed: ${reason}`,
+    resolve: ({ dir }) => `git worktree remove --force ${dir}`,
   },
   no_default_branch: {
     message: ({ checkout }) =>

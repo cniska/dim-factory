@@ -135,8 +135,15 @@ export function updateOrder(
   act(db, order, caller, { kind: "update", ...fields });
 }
 
-export function cancelOrder(db: Database, order: string, caller: Caller, reason: string): void {
-  act(db, order, caller, { kind: "cancel", reason });
+export type Cancelled = { readonly state: OrderState; readonly harness: ProcessId | null };
+
+export function recordCancel(db: Database, order: string, caller: Caller, reason: string): Cancelled {
+  return writeTransaction(db, () => {
+    const { state } = act(db, order, caller, { kind: "cancel", reason });
+    const run = runOf(db, order);
+    const live = run?.harness ?? null;
+    return { state, harness: live !== null && isRunning(live, caller.running) ? live : null };
+  });
 }
 
 export function orderState(db: Database, order: string): OrderState {
