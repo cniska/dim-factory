@@ -195,6 +195,7 @@ export const Later = z.union([
     stop("station_failed", "no_return", session),
     stop("station_failed", "return_missed", { ...session, missed: text }),
     stop("station_failed", "session_died", session),
+    stop("station_failed", "git_config_changed", session),
   ]),
   entry("ship_started", {}),
   entry("branch_rebased", {
@@ -210,7 +211,12 @@ export const Later = z.union([
   ]),
   entry("ship_landed", {
     head: z.string(),
-    kept: z.array(z.object({ path: z.string(), reason: z.string() })),
+    kept: z.array(
+      z.discriminatedUnion("kind", [
+        z.object({ kind: z.literal("workspace"), dir: z.string(), reason: z.string() }),
+        z.object({ kind: z.literal("branch"), branch: z.string(), reason: z.string() }),
+      ]),
+    ),
   }).extend({ evidence }),
   entry("cleaned_up", {}),
 ]);

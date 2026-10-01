@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { chmodSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { briefFrom } from "./support/brief";
 import { refusal, resultOf } from "./support/dim-output";
@@ -135,6 +135,35 @@ describe("briefs", () => {
 
     expect(m.invocation("planner", 1).prompt).toContain("Add a greeting to the top-level README.");
     expect((await showOrder(m.operator, id)).next).toBe(NEXT.approve);
+  });
+});
+
+describe("a builder's commits", () => {
+  test("carry the owner's git identity and no signature, in a checkout that signs commits", async () => {
+    const m = await start({ script: happyPath() });
+    m.git(["config", "commit.gpgsign", "true"]);
+    const id = await built(m.operator);
+
+    const { branch } = await showOrder(m.operator, id);
+    const commits = m.git(["log", "--format=%an <%ae>|%cn <%ce>|%G?", `main..${branch}`]).split("\n");
+    expect(commits).toEqual([
+      "Owner <owner@example.com>|Owner <owner@example.com>|N",
+      "Owner <owner@example.com>|Owner <owner@example.com>|N",
+    ]);
+  });
+
+  test("run the project's own hooks, so a hook that refuses a commit leaves it uncommitted", async () => {
+    const m = await start({ script: happyPath() });
+    const hook = join(m.repo, ".git", "hooks", "pre-commit");
+    writeFileSync(hook, "#!/bin/sh\necho 'refused by the project' >&2\nexit 1\n");
+    chmodSync(hook, 0o755);
+    const id = await planned(m.operator);
+
+    expect(refusal(await approve(m.operator, id)).code).toBeString();
+
+    const order = await showOrder(m.operator, id);
+    expect(m.commitsOn(order.branch)).toEqual([]);
+    expect(actions(order)).not.toContain(ACTION.sliceSubmitted);
   });
 });
 

@@ -1,9 +1,10 @@
 import { join } from "node:path";
 import type { z } from "zod";
-import { unreachable } from "./assert";
+import { invariant, unreachable } from "./assert";
 import { listedEnv, PASSED_THROUGH } from "./check";
 import { type CodedError, recordOf } from "./coded-error";
 import type { Models } from "./config";
+import type { Identity } from "./git-tree";
 import type { Policy } from "./harness-contract";
 import { atStation, type OrderState, openFindings, slicesOf } from "./order";
 import { type Later, Plan, ReviewArtifact, STATIONS, type Station } from "./order-contract";
@@ -46,19 +47,21 @@ export type Turn = {
 export function workerEnv(
   owner: Env,
   turn: Turn,
-  worker: string,
+  identity: Identity,
   signIn: readonly string[],
 ): Record<string, string> {
-  const email = `${worker}@dim.local`;
   return {
     ...listedEnv(owner, [...PASSED_THROUGH, ...XDG, ...signIn]),
     HOME: turn.home,
     TMPDIR: turn.tmp,
     [TURN_SOCKET_ENV]: turn.socket,
-    GIT_AUTHOR_NAME: worker,
-    GIT_AUTHOR_EMAIL: email,
-    GIT_COMMITTER_NAME: worker,
-    GIT_COMMITTER_EMAIL: email,
+    GIT_AUTHOR_NAME: identity.name,
+    GIT_AUTHOR_EMAIL: identity.email,
+    GIT_COMMITTER_NAME: identity.name,
+    GIT_COMMITTER_EMAIL: identity.email,
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "commit.gpgsign",
+    GIT_CONFIG_VALUE_0: "false",
   };
 }
 
@@ -67,7 +70,7 @@ type Places = { readonly workspace: string; readonly checkout: string; readonly 
 export function policyAt(station: Station, { workspace, checkout, turn }: Places): Policy {
   const checkoutGit = join(checkout, ".git");
   if (station !== "build") return { kind: "read", writable: [turn.tmp], denied: [workspace, checkoutGit] };
-  return { kind: "edit", writable: [turn.tmp], denied: [join(workspace, ".git", "hooks"), checkoutGit] };
+  return { kind: "edit", writable: [turn.tmp], denied: [join(checkoutGit, "hooks")] };
 }
 
 const orderFacts = (state: OrderState) => ({
@@ -80,7 +83,7 @@ const orderFacts = (state: OrderState) => ({
 export type BriefFacts = {
   readonly state: OrderState;
   readonly workspace: string;
-  readonly diff: () => string;
+  readonly diff: string | null;
 };
 
 export function briefAt(station: Station, { state, workspace, diff }: BriefFacts): string {
@@ -112,12 +115,13 @@ export function briefAt(station: Station, { state, workspace, diff }: BriefFacts
         conflict: state.conflict,
       });
     case "review":
+      invariant(diff !== null, `order ${state.id}'s review is briefed with its diff`);
       return JSON.stringify({
         skill: SKILLS.review,
         order: orderFacts(state),
         workspace,
         build: state.buildArtifact,
-        diff: diff(),
+        diff,
         answers: state.findings.flatMap(({ id, file, line, answered }) =>
           answered === null ? [] : [{ finding: id, file, line, ...answered }],
         ),

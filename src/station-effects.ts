@@ -1,4 +1,13 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { invariant } from "./assert";
 import type { Turn } from "./station";
@@ -63,6 +72,20 @@ export function send(socket: string, line: string): Promise<string> {
       },
     }).catch(reject);
   });
+}
+
+export type FileGuard = { readonly path: string; readonly restored: () => boolean };
+
+export function guardFile(path: string): FileGuard {
+  const held = readFileSync(path);
+  return {
+    path,
+    restored: () => {
+      if (readFileSync(path).equals(held)) return false;
+      writeFileSync(path, held);
+      return true;
+    },
+  };
 }
 
 const copyOf = (sessions: string, session: string) => join(sessions, `${session}.jsonl`);

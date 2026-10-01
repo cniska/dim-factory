@@ -11,7 +11,6 @@ import { refuseSlice, type SliceVerdict } from "./slice-contract";
 import { checkChanged, parentsOf } from "./slice-effects";
 import type { Acting } from "./worker-contract";
 import { branchOf } from "./workspace";
-import { publishRecordedHead } from "./workspace-ops";
 
 export function branchFacts(
   workspace: string,
@@ -28,9 +27,7 @@ export function alignBranch(workspace: string, order: string, head: string): voi
 
 export type SliceTurn = {
   readonly order: string;
-  readonly project: string;
   readonly workspace: string;
-  readonly checkout: string;
   readonly acting: Acting;
   readonly env: Env;
 };
@@ -72,6 +69,5 @@ export function submitSlice(db: Database, turn: SliceTurn): { readonly committed
     details: { commit: tip },
     evidence: [check],
   });
-  publishRecordedHead(turn.checkout, turn.project, order, tip);
   return { committed: tip };
 }

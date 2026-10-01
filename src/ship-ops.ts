@@ -17,7 +17,6 @@ import {
   recommit,
   shipLock,
 } from "./ship-effects";
-import { branchOf } from "./workspace";
 import { removeWorkspace, resetWorkspace, spreadMerge, workspaceOf } from "./workspace-ops";
 
 export type ShipOf = {
@@ -91,7 +90,6 @@ function land(db: Database, ship: ShipOf): void {
   }
   const { head } = orderState(db, order);
   invariant(head !== null, `order ${order} has a recorded head when it ships`);
-  const branch = branchOf(order);
   const workspace = workspaceOf(ship.project, order);
   const onto = tipOf(checkout, defaultBranch);
   const replayed = replay({
@@ -105,16 +103,14 @@ function land(db: Database, ship: ShipOf): void {
   if (replayed.head !== head) {
     record({ action: "branch_rebased", details: { head: replayed.head, commits: [...replayed.moved] } });
   }
-  const tip = tipOf(checkout, branch);
-  if (tip !== replayed.head) moveRef(checkout, branch, replayed.head, tip);
-  resetWorkspace(checkout, ship.project, order, replayed.head);
+  resetWorkspace(workspace, replayed.head);
   if (replayed.conflict !== null) {
     const { commit, tree, paths } = replayed.conflict;
-    spreadMerge(ship.project, order, tree);
+    spreadMerge(workspace, tree);
     record({ action: "ship_stopped", code: "ship_conflict", details: { commit, paths: [...paths] } });
     throw refuseShip("ship_conflict", { order, commit, paths });
   }
-  const task = checkTask(workspace);
+  const task = checkTask(workspace.dir);
   if (task === null) {
     record({
       action: "ship_stopped",
@@ -124,7 +120,7 @@ function land(db: Database, ship: ShipOf): void {
     });
     throw refuseShip("ship_no_check", { order, head: replayed.head });
   }
-  const check = judge(workspace, task.commandLine, ship.env);
+  const check = judge(workspace.dir, task.commandLine, ship.env);
   if (check.exitCode !== 0) {
     record({
       action: "ship_stopped",
@@ -144,7 +140,7 @@ function land(db: Database, ship: ShipOf): void {
     record({ action: "ship_stopped", code: "checkout_dirty", details: { checkout } });
     throw refuseShip("checkout_dirty", { order, checkout });
   }
-  const kept = removeWorkspace(checkout, ship.project, order);
+  const kept = removeWorkspace(checkout, workspace);
   record({
     action: "ship_landed",
     details: { head: replayed.head, kept: [...kept] },

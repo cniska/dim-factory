@@ -58,6 +58,12 @@ export function bashAllowed(settings: ClaudeSettings, mode: PermissionMode): boo
 
 const quoted = (path: string) => JSON.stringify(path);
 
+function linkedCommonDir(cwd: string): readonly string[] {
+  if (!isFile(join(cwd, ".git"))) return [];
+  const common = Bun.spawnSync(["git", "-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  return common.success ? [common.stdout.toString().trim()] : [];
+}
+
 const isFile = (path: string) => existsSync(path) && statSync(path).isFile();
 
 function deniedRoot(path: string): string {
@@ -72,7 +78,12 @@ export function sandboxed(
   command: string,
 ): string[] {
   if (!settings.sandbox?.enabled) return ["sh", "-c", command];
-  const writable = [cwd, ...writableDirs, ...(settings.sandbox.filesystem?.allowWrite ?? [])].map(real);
+  const writable = [
+    cwd,
+    ...linkedCommonDir(cwd),
+    ...writableDirs,
+    ...(settings.sandbox.filesystem?.allowWrite ?? []),
+  ].map(real);
   const edits = deniedEdits(settings, cwd);
   const denied = [
     join(cwd, ".git", "hooks"),

@@ -1,11 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { everyHookCommand, settingsHooks } from "./support/claude-hooks";
 import { commandLine, parseDim, refusal, resultOf } from "./support/dim-output";
 import type { HarnessScript, HarnessTurn } from "./support/harness-script";
 import { type Machine, machines } from "./support/machine";
-import { addOrder, built, STEP_ARGS_BY_NEXT, shipThrough, showOrder } from "./support/operator-acts";
+import {
+  addOrder,
+  approve,
+  built,
+  planned,
+  STEP_ARGS_BY_NEXT,
+  shipThrough,
+  showOrder,
+} from "./support/operator-acts";
 import { actions, entriesOf, finalStop, type OrderView, sessionOf, workerOf } from "./support/order-view";
 import { commandOf, descendants, killPid } from "./support/processes";
 import {
@@ -277,41 +285,61 @@ describe("hooks", () => {
     expect(existsSync(join(workspace, "project-hook.marker"))).toBe(false);
   });
 
-  test("a station worker cannot write the checkout's git data, nor its workspace's git config or hooks, and a planner no git data at all", async () => {
+  test("a planner writes no git data, and a builder's write to the checkout's git hooks is refused", async () => {
     const checkoutGit = (m: Machine) => join(m.repo, ".git");
-    const sharedProbe = (m: Machine): HarnessTurn => [
-      { act: "sh", command: `touch "${checkoutGit(m)}/probe-$$"` },
-      { act: "sh", command: `git -C "${m.repo}" branch probe-$$` },
-      { act: "sh", command: `git -C "${m.repo}" update-ref refs/heads/main HEAD` },
-      { act: "sh", command: "git config core.hooksPath hooks" },
-      { act: "sh", command: 'touch "$(git rev-parse --git-dir)/hooks/probe-$$"' },
-    ];
     const m = await start({ script: {} });
     m.script({
       planner: [
         [
-          { act: "sh", command: 'touch "$(git rev-parse --git-dir)/probe-$$"' },
-          ...sharedProbe(m),
+          { act: "sh", command: `touch "${checkoutGit(m)}/probe-$$"` },
+          { act: "sh", command: `git -C "${m.repo}" branch probe-$$` },
+          { act: "sh", command: `git -C "${m.repo}" config probe.planner yes` },
           ...planTurn([{ title: "One", outcome: "One file." }]),
         ],
       ],
-      builder: [[...sliceActs(1), ...sharedProbe(m), { act: "build-return", artifact: BUILD_ARTIFACT }]],
+      builder: [
+        [
+          { act: "sh", command: `touch "${checkoutGit(m)}/hooks/probe-$$"` },
+          ...sliceActs(1),
+          { act: "build-return", artifact: BUILD_ARTIFACT },
+        ],
+      ],
     });
-    const main = m.git(["rev-parse", "main"]);
-    const id = await built(m.operator);
+    const config = readFileSync(join(checkoutGit(m), "config"), "utf8");
+    await built(m.operator);
 
-    const { workspace } = await showOrder(m.operator, id);
     const probes = (dir: string) =>
       Bun.spawnSync(["sh", "-c", `ls "${dir}" | grep -c '^probe-' || true`], { stdout: "pipe" })
         .stdout.toString()
         .trim();
-    const workspaceGit = m.git(["rev-parse", "--absolute-git-dir"], workspace);
-    expect(probes(workspaceGit)).toBe("0");
-    expect(probes(join(workspaceGit, "hooks"))).toBe("0");
     expect(probes(checkoutGit(m))).toBe("0");
+    expect(probes(join(checkoutGit(m), "hooks"))).toBe("0");
     expect(m.git(["branch", "--list", "probe-*"])).toBe("");
-    expect(m.git(["rev-parse", "main"])).toBe(main);
-    expect(m.git(["config", "--get", "core.hooksPath"], workspace)).toBe("");
+    expect(readFileSync(join(checkoutGit(m), "config"), "utf8")).toBe(config);
+  });
+
+  test("a builder that changes the checkout's git config fails its station, with the config put back", async () => {
+    const m = await start({
+      script: {
+        planner: [planTurn()],
+        builder: [
+          [
+            ...sliceActs(1),
+            { act: "sh", command: "git config core.hooksPath elsewhere" },
+            ...sliceActs(2),
+            { act: "build-return", artifact: BUILD_ARTIFACT },
+          ],
+        ],
+      },
+    });
+    const config = readFileSync(join(m.repo, ".git", "config"), "utf8");
+    const id = await planned(m.operator);
+
+    expect(refusal(await approve(m.operator, id)).code).toBe("git_config_changed");
+
+    expect(readFileSync(join(m.repo, ".git", "config"), "utf8")).toBe(config);
+    const order = await showOrder(m.operator, id);
+    expect(actions(order).filter((action) => action === ACTION.sliceCommitted)).toHaveLength(1);
   });
 });
 

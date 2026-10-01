@@ -53,7 +53,9 @@ function clearAbandoned(path: string): number | null {
   return null;
 }
 
-function claimOrHolder(path: string): number | null {
+type Claim = { readonly kind: "claimed" } | { readonly kind: "held"; readonly holder: number };
+
+function claim(path: string): Claim {
   mkdirSync(dirname(path), { recursive: true });
   const pidFile = join(path, "pid");
   const staging = `${path}.${process.pid}`;
@@ -61,11 +63,13 @@ function claimOrHolder(path: string): number | null {
   try {
     mkdirSync(staging, { recursive: true });
     writeFileSync(join(staging, "pid"), String(process.pid));
-    if (tryInstall(staging, path)) return null;
+    if (tryInstall(staging, path)) return { kind: "claimed" };
     const holder = holderOf(pidFile);
-    const living = holderIsAlive(holder) ? holder : clearAbandoned(path);
-    if (living === null && tryInstall(staging, path)) return null;
-    return living ?? holderOf(pidFile);
+    if (holderIsAlive(holder)) return { kind: "held", holder };
+    const living = clearAbandoned(path);
+    if (living !== null) return { kind: "held", holder: living };
+    if (tryInstall(staging, path)) return { kind: "claimed" };
+    return { kind: "held", holder: holderOf(pidFile) };
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }
@@ -82,12 +86,12 @@ function release(path: string): void {
 }
 
 export function tryClaimPathLock(path: string): (() => void) | null {
-  return claimOrHolder(path) === null ? releaser(path) : null;
+  return claim(path).kind === "claimed" ? releaser(path) : null;
 }
 
 export function claimPathLock(path: string): () => void {
-  const holder = claimOrHolder(path);
-  if (holder !== null) throw new LockHeldError(path, holder);
+  const claimed = claim(path);
+  if (claimed.kind === "held") throw new LockHeldError(path, claimed.holder);
   return releaser(path);
 }
 
