@@ -11,19 +11,27 @@ import {
 import { dirname, join } from "node:path";
 import { invariant } from "./assert";
 import type { Turn } from "./station";
+import type { Trace } from "./trace-contract";
 
 const SOCKET_ROOT = "/tmp";
 
-export function openTurn(home: string): Turn {
-  mkdirSync(home, { recursive: true });
-  const dir = realpathSync(mkdtempSync(join(SOCKET_ROOT, "dim-")));
-  const tmp = join(dir, "tmp");
-  mkdirSync(tmp);
-  return { dir, home, tmp, socket: join(dir, "s") };
+export function openTurn(trace: Trace, home: string): Turn {
+  return trace.step(
+    "turn_open",
+    { home },
+    () => {
+      mkdirSync(home, { recursive: true });
+      const dir = realpathSync(mkdtempSync(join(SOCKET_ROOT, "dim-")));
+      const tmp = join(dir, "tmp");
+      mkdirSync(tmp);
+      return { dir, home, tmp, socket: join(dir, "s") };
+    },
+    (turn) => ({ dir: turn.dir }),
+  );
 }
 
-export function closeTurn(turn: Turn): void {
-  rmSync(turn.dir, { recursive: true, force: true });
+export function closeTurn(trace: Trace, turn: Turn): void {
+  trace.step("turn_close", { dir: turn.dir }, () => rmSync(turn.dir, { recursive: true, force: true }));
 }
 
 export type Listening = { stop(): void };
@@ -76,23 +84,31 @@ export function send(socket: string, line: string): Promise<string> {
 
 export type FileGuard = { readonly path: string; readonly putBack: () => boolean };
 
-export function guardFile(path: string): FileGuard {
+export function guardFile(trace: Trace, path: string): FileGuard {
   const held = readFileSync(path);
   return {
     path,
-    putBack: () => {
-      if (readFileSync(path).equals(held)) return false;
-      writeFileSync(path, held);
-      return true;
-    },
+    putBack: () =>
+      trace.step(
+        "config_check",
+        { path },
+        () => {
+          if (readFileSync(path).equals(held)) return false;
+          writeFileSync(path, held);
+          return true;
+        },
+        (changed) => ({ changed }),
+      ),
   };
 }
 
 const copyOf = (sessions: string, session: string) => join(sessions, `${session}.jsonl`);
 
-export function copySession(transcript: string, sessions: string, session: string): void {
-  mkdirSync(sessions, { recursive: true });
-  copyFileSync(transcript, copyOf(sessions, session));
+export function copySession(trace: Trace, transcript: string, sessions: string, session: string): void {
+  trace.step("session_copy", { session }, () => {
+    mkdirSync(sessions, { recursive: true });
+    copyFileSync(transcript, copyOf(sessions, session));
+  });
 }
 
 export function sessionWritten(transcript: string): boolean {
@@ -103,9 +119,11 @@ export function sessionHeld(sessions: string, session: string): boolean {
   return existsSync(copyOf(sessions, session));
 }
 
-export function restoreSession(sessions: string, session: string, transcript: string): void {
+export function restoreSession(trace: Trace, sessions: string, session: string, transcript: string): void {
   if (existsSync(transcript)) return;
   invariant(sessionHeld(sessions, session), `the factory holds the copy of session ${session} it recorded`);
-  mkdirSync(dirname(transcript), { recursive: true });
-  copyFileSync(copyOf(sessions, session), transcript);
+  trace.step("session_restore", { session }, () => {
+    mkdirSync(dirname(transcript), { recursive: true });
+    copyFileSync(copyOf(sessions, session), transcript);
+  });
 }

@@ -35,6 +35,10 @@ export function stateDir(env: Env = process.env): string {
   return join(xdgBase(env, "XDG_STATE_HOME", [".local", "state"]), DATA_NAME);
 }
 
+export function tracePath(env: Env = process.env): string {
+  return join(stateDir(env), "trace.jsonl");
+}
+
 function recordDir(env: Env): string {
   return join(dataDir(env), "record");
 }

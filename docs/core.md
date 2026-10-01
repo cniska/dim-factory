@@ -78,7 +78,9 @@ A workspace is a linked worktree of the project's checkout on the branch `dim/<o
 
 ## The trace
 
-Planned. `trace.jsonl` in the state directory gets a line for each step the factory runs on its own, keyed by order; `dim trace <order>` follows it. Nothing reads it for state.
+Every effect the factory runs on its own, and every log append, is a step of the run's trace ([`src/trace-ops.ts`](../src/trace-ops.ts)). A run makes its trace once, keyed by order and by the log entry that caused the run, and passes it to every effect, so an effect cannot be called untraced. Each step writes a `started` line with its fields and an `ended` line with its time, outcome and result to `trace.jsonl` in the state directory; the steps are a closed list ([`src/trace-contract.ts`](../src/trace-contract.ts)). A failed write fails the step. `dim trace <order>` follows one order's lines, and `dim trace clear` empties the file. Nothing reads it for state.
+
+A run that hangs ends in a `started` line with no `ended`, naming what it waits on; a failed run shows which step refused and with what code.
 
 ## Record versions
 

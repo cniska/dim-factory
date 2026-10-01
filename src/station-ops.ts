@@ -54,11 +54,14 @@ import {
   sessionHeld,
   sessionWritten,
 } from "./station-effects";
+import type { Trace } from "./trace-contract";
+import { traceOf } from "./trace-ops";
 import type { Acting, Caller, Worker, WorkerSession } from "./worker-contract";
 import { processOf, registerSession, stationWorker, stationWorkerAt } from "./worker-ops";
 import { createWorkspace, removeWorkspaceTree, workspaceOf } from "./workspace-ops";
 
 type TurnOf = {
+  readonly trace: Trace;
   readonly order: string;
   readonly station: Station;
   readonly by: Acting;
@@ -129,7 +132,7 @@ function openSession(
     if (session.kind === "resume") return session.record;
     const registered = { id: session.id, worker: worker.name, harness: "claude", process } as const;
     registerSession(db, registered);
-    recordAs(db, turn.order, byFactory(turn), {
+    recordAs(turn.trace, db, turn.order, byFactory(turn), {
       action: "session_started",
       details: { worker: worker.name, session: session.id, harness: registered.harness },
     });
@@ -146,22 +149,25 @@ type Served = {
 };
 
 function serve({ db, turn, workspace, acting }: Served, request: TurnRequest): unknown {
-  const { order, station } = turn;
+  const { trace, order, station } = turn;
   const refusal = turn.purpose.refusal(request.act);
   if (refusal !== null) throw refusal;
   switch (request.act) {
     case "order_show":
       return showOrder(db, order);
     case "slice_submit":
-      return submitSlice(db, { order, workspace, acting, env: turn.env });
+      return submitSlice(db, { trace, order, workspace, acting, env: turn.env });
     case "message_send": {
       const { text, to } = request;
       if (to !== null) {
-        recordWork(db, order, acting, station, () => ({ action: "message_refused", details: { to, text } }));
+        recordWork(trace, db, order, acting, station, () => ({
+          action: "message_refused",
+          details: { to, text },
+        }));
         throw refuseStation("not_to_operator", { to });
       }
       const operator = turn.by.worker.name;
-      recordWork(db, order, acting, station, () => ({
+      recordWork(trace, db, order, acting, station, () => ({
         action: "message_sent",
         details: { to: operator, text },
       }));
@@ -169,7 +175,9 @@ function serve({ db, turn, workspace, acting }: Served, request: TurnRequest): u
     }
     default: {
       const branch = branchFacts(workspace, order);
-      recordWork(db, order, acting, station, (state) => workEntry(request, { station, state, branch }));
+      recordWork(trace, db, order, acting, station, (state) =>
+        workEntry(request, { station, state, branch }),
+      );
       return { recorded: request.act };
     }
   }
@@ -207,7 +215,9 @@ async function serveTurn(
       return JSON.stringify(replyTo(changed, misses).reply);
     }
     try {
-      return JSON.stringify({ ok: true, result: serve(served, requestOf(line)) });
+      const request = requestOf(line);
+      const result = served.turn.trace.step("act", { act: request.act }, () => serve(served, request));
+      return JSON.stringify({ ok: true, result });
     } catch (error) {
       if (!(error instanceof CodedError)) {
         stopWith({ kind: "fault", error });
@@ -254,16 +264,17 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
   const copies = workerSessionsDir(worker.name);
   const session = sessionOf(sessions, state.died);
   const workspace = workspaceOf(state.project, turn.order).dir;
-  alignBranch(workspace, turn.order, head);
-  const opened = openTurn(workerHomeDir(worker.name));
+  const { trace } = turn;
+  alignBranch(trace, workspace, turn.order, head);
+  const opened = openTurn(trace, workerHomeDir(worker.name));
   try {
     if (session.kind === "fork") {
-      restoreSession(copies, session.from, claude.transcript(opened.home, workspace, session.from));
+      restoreSession(trace, copies, session.from, claude.transcript(opened.home, workspace, session.from));
     }
     const spawned = spawnFor(turn, session, workspace, opened);
     const acting: Acting = { worker, session: openSession(db, turn, worker, session, spawned.pid) };
     const served = await serveTurn(
-      { db, turn, workspace, acting, config: guardFile(join(turn.checkoutGit, "config")) },
+      { db, turn, workspace, acting, config: guardFile(trace, join(turn.checkoutGit, "config")) },
       spawned,
       opened.socket,
       turn.purpose.prompt({ state, workspace, diff: diffOf(turn, head) }),
@@ -273,7 +284,7 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
     const id = idOf(session);
     const outcome = claude.outcome(served.ended, startOf(session));
     const transcript = claude.transcript(opened.home, workspace, id);
-    if (outcome.kind === "finished" || sessionWritten(transcript)) copySession(transcript, copies, id);
+    if (outcome.kind === "finished" || sessionWritten(transcript)) copySession(trace, transcript, copies, id);
     return {
       acting,
       session: id,
@@ -283,7 +294,7 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
       resumed: session.kind === "resume",
     };
   } finally {
-    closeTurn(opened);
+    closeTurn(trace, opened);
   }
 }
 
@@ -298,7 +309,7 @@ function spawnFor(turn: TurnOf, session: SessionOf, workspace: string, opened: T
     policy: policyOf(turn.purpose.policy, { workspace, checkoutGit: turn.checkoutGit, turn: opened }),
     socket: opened.socket,
   });
-  return startHarness(argv, workspace, workerEnv(turn.env, opened, turn.identity, claude));
+  return startHarness(turn.trace, argv, workspace, workerEnv(turn.env, opened, turn.identity, claude));
 }
 
 function deathOf(session: string, copied: boolean, outcome: Outcome & { readonly kind: "died" }): Later {
@@ -309,7 +320,7 @@ function deathOf(session: string, copied: boolean, outcome: Outcome & { readonly
 
 function closeStationTurn(db: Database, turn: TurnOf, closing: Closing): Ended {
   const { session, stop } = closing;
-  const failed = (later: Later) => recordAs(db, turn.order, byFactory(turn), later);
+  const failed = (later: Later) => recordAs(turn.trace, db, turn.order, byFactory(turn), later);
   return writeTransaction(db, () => {
     if (orderState(db, turn.order).status !== "running") return { end: "closed", session };
     switch (stop?.kind) {
@@ -332,7 +343,7 @@ function closeStationTurn(db: Database, turn: TurnOf, closing: Closing): Ended {
 }
 
 function closeEndedTurn(db: Database, turn: TurnOf, { session, outcome, copied, resumed }: Closing): Ended {
-  const failed = (later: Later) => recordAs(db, turn.order, byFactory(turn), later);
+  const failed = (later: Later) => recordAs(turn.trace, db, turn.order, byFactory(turn), later);
   if (outcome.kind === "died") failed(deathOf(session, copied, outcome));
   const end = turnEnd(orderState(db, turn.order), turn.station);
   if (end !== "no_return") return { end, session };
@@ -355,11 +366,12 @@ function closeMessageTurn(
   invariant(stop === null, `a message turn on order ${turn.order} has no definition of done to miss`);
   if (outcome.kind === "died") {
     if (outcome.code === "resume_failed" && resumed) return { end: "lost", session };
-    recordAs(db, turn.order, byFactory(turn), deathOf(session, copied, outcome));
+    recordAs(turn.trace, db, turn.order, byFactory(turn), deathOf(session, copied, outcome));
     return { end: "died", session, code: outcome.code };
   }
   if (outcome.result === null) return { end: "no_reply", session };
   recordAs(
+    turn.trace,
     db,
     turn.order,
     { kind: "worker", acting },
@@ -424,6 +436,7 @@ async function messageAt(db: Database, turn: TurnOf): Promise<string> {
 }
 
 type Running = {
+  readonly trace: Trace;
   readonly setup: ProjectSetup;
   readonly cause: number;
   readonly state: OrderState;
@@ -444,28 +457,33 @@ async function withRun<T>(
   const prepared = station === null ? null : prepareTurn(setup, station, env);
   const base = tipOf(setup.root, setup.branch);
   const { by, cause, created, state, orphan } = startRun(db, order, caller, base, act);
+  const trace = traceOf(order, cause, env);
   try {
-    if (orphan !== null) stopHarness(orphan);
-    if (created) createWorkspace(setup.root, project, order, base);
-    return await body({
-      setup,
-      cause,
-      state,
-      turnOf: (at, purpose) => {
-        invariant(prepared !== null && at === station, `order ${order} was prepared for the ${at} station`);
-        return {
-          order,
-          station: at,
-          by,
-          cause,
-          checkout: setup.root,
-          checkoutGit: gitCommonDir(setup.root),
-          defaultBranch: setup.branch,
-          env,
-          purpose,
-          ...prepared,
-        };
-      },
+    return await trace.stepAsync("run", { act: act.kind, station }, () => {
+      if (orphan !== null) stopHarness(trace, orphan);
+      if (created) createWorkspace(trace, setup.root, project, order, base);
+      return body({
+        trace,
+        setup,
+        cause,
+        state,
+        turnOf: (at, purpose) => {
+          invariant(prepared !== null && at === station, `order ${order} was prepared for the ${at} station`);
+          return {
+            trace,
+            order,
+            station: at,
+            by,
+            cause,
+            checkout: setup.root,
+            checkoutGit: gitCommonDir(setup.root),
+            defaultBranch: setup.branch,
+            env,
+            purpose,
+            ...prepared,
+          };
+        },
+      });
     });
   } finally {
     endRun(db, order);
@@ -481,10 +499,11 @@ export async function advanceOrder(
 ): Promise<void> {
   const expected = phaseAfter(orderState(db, order), act);
   const station = expected?.kind === "run" ? expected.station : null;
-  await withRun(db, order, caller, act, station, env, async ({ setup, cause, state, turnOf }) => {
+  await withRun(db, order, caller, act, station, env, async ({ trace, setup, cause, state, turnOf }) => {
     const { phase } = state;
     if (phase.kind === "ship") {
       await shipOrder(db, {
+        trace,
         order,
         project: state.project,
         checkout: setup.root,
@@ -515,12 +534,13 @@ export async function messageWorker(
   );
 }
 
-export function cancelOrder(db: Database, order: string, caller: Caller, reason: string): void {
-  const { state, harness } = recordCancel(db, order, caller, reason);
-  if (harness !== null) stopHarness(harness);
+export function cancelOrder(db: Database, order: string, caller: Caller, reason: string, env: Env): void {
+  const { state, harness, cause } = recordCancel(db, order, caller, reason);
+  const trace = traceOf(order, cause, env);
+  if (harness !== null) stopHarness(trace, harness);
   if (state.head === null) return;
   const workspace = workspaceOf(state.project, order);
-  const kept = removeWorkspaceTree(projectSetup(db, state.project, caller.cwd).root, workspace);
+  const kept = removeWorkspaceTree(trace, projectSetup(db, state.project, caller.cwd).root, workspace);
   if (kept !== null) throw refuseOrder("worktree_kept", { order, dir: workspace.dir, reason: kept });
 }
 

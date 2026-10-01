@@ -24,6 +24,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Brief | The JSON a turn starts with: the station's skill, the order's facts and where the station stands. It carries no instructions |
 | Turn socket | The Unix socket a turn opens for its worker. It is the worker's only way to write the record, and any connection to it acts as that worker |
 | Run | A turn or a ship in flight on an order, recorded with its process so another act on the order is refused while it is alive |
+| Trace | The run's record of each trace step: one thing the factory did on its own, such as a rebase, a check or a log append, with its time and outcome. It is for diagnosing the factory, and no state is read from it |
 | Slice | One increment of a plan, with a title and its outcome, that the builder commits on its own |
 | Ship | Landing an order's commits on the project's default branch, which ends the order |
 | Command | One `dim` subcommand, in the `src/<name>-command.ts` named for it ([`src/cli-contract.ts`](../src/cli-contract.ts)) |

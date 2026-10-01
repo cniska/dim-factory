@@ -3,17 +3,19 @@ import { invariant } from "./assert";
 import { judge } from "./check-ops";
 import type { UserConfig } from "./config";
 import { checkTask } from "./declared-tasks";
-import { commitsBetween, isClean, moveRef, tipOf } from "./git-tree";
+import { commitsBetween, isClean, tipOf } from "./git-tree";
 import { movedCommits } from "./order";
 import type { Later } from "./order-contract";
 import { orderState, ownerIdentity, recordAs } from "./order-ops";
 import type { Env } from "./paths";
 import { refuseShip } from "./ship-contract";
 import { checkedOutBranch, fastForward, shipLock } from "./ship-effects";
+import type { Trace } from "./trace-contract";
 import type { Workspace } from "./workspace";
-import { rebaseWorkspace, removeWorkspace, settleWorkspace, workspaceOf } from "./workspace-ops";
+import { moveRef, rebaseWorkspace, removeWorkspace, settleWorkspace, workspaceOf } from "./workspace-ops";
 
 export type ShipOf = {
+  readonly trace: Trace;
   readonly order: string;
   readonly project: string;
   readonly checkout: string;
@@ -29,7 +31,7 @@ type Shipping = ShipOf & {
 };
 
 export async function shipOrder(db: Database, ship: ShipOf): Promise<void> {
-  const release = await shipLock(ship.project, ship.env);
+  const release = await shipLock(ship.trace, ship.project, ship.env);
   try {
     land(db, ship);
   } finally {
@@ -38,8 +40,8 @@ export async function shipOrder(db: Database, ship: ShipOf): Promise<void> {
 }
 
 function land(db: Database, ship: ShipOf): void {
-  const { order, checkout } = ship;
-  const record = (later: Later) => recordAs(db, order, { kind: "factory", cause: ship.cause }, later);
+  const { trace, order, checkout } = ship;
+  const record = (later: Later) => recordAs(trace, db, order, { kind: "factory", cause: ship.cause }, later);
   ownerIdentity(checkout, ship.env);
   record({ action: "ship_started", details: {} });
   if (ship.config.ship === undefined) {
@@ -53,7 +55,7 @@ function land(db: Database, ship: ShipOf): void {
   const landing = rebase(shipping, head);
   const check = checked(shipping, landing);
   landOnDefault(shipping, landing);
-  const kept = removeWorkspace(checkout, shipping.workspace);
+  const kept = removeWorkspace(trace, checkout, shipping.workspace);
   record({ action: "ship_landed", details: { head: landing.head, kept: [...kept] }, evidence: [check] });
 }
 
@@ -68,12 +70,12 @@ function dirty(
 type Landing = { readonly head: string; readonly onto: string };
 
 function rebase(shipping: Shipping, head: string): Landing {
-  const { order, checkout, defaultBranch, workspace, record, env } = shipping;
-  settleWorkspace(workspace, head);
+  const { trace, order, checkout, defaultBranch, workspace, record, env } = shipping;
+  settleWorkspace(trace, workspace, head);
   const onto = tipOf(checkout, defaultBranch);
   const before = commitsBetween(checkout, onto, head);
   if (before.length === 0) return { head, onto };
-  const rebased = rebaseWorkspace(workspace, onto, env);
+  const rebased = rebaseWorkspace(trace, workspace, onto, env);
   if (rebased.kind === "conflict") {
     record({ action: "ship_stopped", code: "ship_conflict", details: { onto, paths: [...rebased.paths] } });
     throw refuseShip("ship_conflict", { order, onto, paths: rebased.paths });
@@ -88,13 +90,13 @@ function rebase(shipping: Shipping, head: string): Landing {
   return { head: moved, onto };
 }
 
-function checked({ order, env, workspace, record }: Shipping, { head }: Landing) {
+function checked({ trace, order, env, workspace, record }: Shipping, { head }: Landing) {
   const task = checkTask(workspace.dir);
   if (task === null) {
     record({ action: "ship_stopped", code: "ship_no_check", details: { head } });
     throw refuseShip("ship_no_check", { order, head });
   }
-  const check = judge(workspace.dir, task.commandLine, env);
+  const check = judge(trace, workspace.dir, task.commandLine, env);
   if (check.exitCode !== 0) {
     record({ action: "ship_stopped", code: "ship_check_failed", details: { head }, evidence: [check] });
     throw refuseShip("ship_check_failed", { order, head, command: check.command, exitCode: check.exitCode });
@@ -103,11 +105,11 @@ function checked({ order, env, workspace, record }: Shipping, { head }: Landing)
 }
 
 function landOnDefault(shipping: Shipping, { head, onto }: Landing): void {
-  const { checkout, defaultBranch } = shipping;
+  const { trace, checkout, defaultBranch } = shipping;
   if (checkedOutBranch(checkout) !== defaultBranch) {
-    moveRef(checkout, defaultBranch, head, onto);
+    moveRef(trace, checkout, defaultBranch, head, onto);
     return;
   }
-  const landed = fastForward(checkout, head);
+  const landed = fastForward(trace, checkout, head);
   if (!landed.ok) dirty(shipping, landed.reason);
 }

@@ -48,10 +48,6 @@ export function isAncestor(repo: string, ancestor: string, commit: string): bool
   return git(repo, ["merge-base", "--is-ancestor", ancestor, commit]).ok;
 }
 
-export function moveRef(repo: string, branch: string, to: string, from: string): void {
-  ran(repo, ["update-ref", `refs/heads/${branch}`, to, from]);
-}
-
 export function isClean(repo: string, untracked: "all" | "no"): boolean {
   return ran(repo, ["status", "--porcelain", `--untracked-files=${untracked}`]) === "";
 }

@@ -100,7 +100,7 @@ function cancel(db: Database, args: readonly string[]) {
   const { positionals, flags } = parseArgs(args, { positionals: [1, 1], flags: ["reason"] }, usage);
   if (flags.reason === undefined) throw usage("cancel needs --reason");
   const order = orderArg(positionals);
-  cancelOrder(db, order, callerOf(db, process.cwd()), flags.reason);
+  cancelOrder(db, order, callerOf(db, process.cwd()), flags.reason, process.env);
   return showOrder(db, order);
 }
 

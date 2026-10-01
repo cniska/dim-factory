@@ -1,13 +1,10 @@
 import { Database, type SQLiteError } from "bun:sqlite";
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import * as db from "./db";
 import { closeDb, openDb } from "./db";
 import { SCHEMA_VERSION } from "./db-schema";
-import { dbPath } from "./paths";
-import { trace } from "./trace";
 
 const WRITER = join(import.meta.dir, "db-writer.test-support.ts");
 const HOLD_MS = 500;
@@ -206,19 +203,6 @@ describe("the lock wait a connection is opened with", () => {
       expect(conn.query("PRAGMA busy_timeout").get()).toEqual({ timeout: 5000 });
     } finally {
       conn.close();
-    }
-  });
-
-  test("is a quarter second for a trace", () => {
-    const root = mkdtempSync(join(tmpdir(), "dim-db-"));
-    roots.push(root);
-    const env = { XDG_DATA_HOME: root };
-    const opened = spyOn(db, "openDb");
-    try {
-      trace({ event: "query.completed", command: "query", name: "search" }, env);
-      expect(opened).toHaveBeenCalledWith(dbPath(env), { busyTimeoutMs: 250 });
-    } finally {
-      opened.mockRestore();
     }
   });
 });

@@ -1,6 +1,6 @@
 import { TOOLS_SQL } from "./ingest-tools";
 
-export const SCHEMA_VERSION = 89;
+export const SCHEMA_VERSION = 90;
 
 export const SCHEMA_SQL = `
 -- One row per source file on disk. The cursor is keyed by session, not by path:
@@ -128,30 +128,6 @@ CREATE TABLE IF NOT EXISTS guidance_walk (
   PRIMARY KEY (session_id, path)
 );
 CREATE INDEX IF NOT EXISTS guidance_walk_path ON guidance_walk(path, seen_at);
-
--- One ordered, diagnostic event stream. It is deliberately separate from the
--- factory order audit: trace explains execution, while order events prove
--- attributed business actions. Like hook_event it has no source to re-read, so
--- \`rebuild\` never clears it.
-CREATE TABLE IF NOT EXISTS trace_event (
-  id            INTEGER PRIMARY KEY,
-  ts            TEXT NOT NULL,
-  event         TEXT NOT NULL,
-  order_id      TEXT,
-  attempt_id    TEXT,
-  station       TEXT,
-  worker        TEXT,
-  session_id    TEXT,
-  command       TEXT,
-  name          TEXT,
-  path          TEXT,
-  row_count     INTEGER,
-  duration_ms   INTEGER,
-  cwd           TEXT,
-  fields        TEXT NOT NULL DEFAULT '{}'
-);
-CREATE INDEX IF NOT EXISTS trace_event_order_ts ON trace_event(order_id, ts, id);
-CREATE INDEX IF NOT EXISTS trace_event_name ON trace_event(event, name, ts);
 
 CREATE TABLE IF NOT EXISTS turn (
   session_id      TEXT NOT NULL REFERENCES session(id),

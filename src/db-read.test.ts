@@ -10,7 +10,7 @@ import { dbPath } from "./paths";
 import { queryCommand } from "./query-command";
 import { QUERIES } from "./query-registry";
 import { sqlCommand } from "./sql-command";
-import { runTraceCommand } from "./trace-command";
+import { traceCommand } from "./trace-command";
 
 function writtenDatabase(): string {
   const path = join(mkdtempSync(join(tmpdir(), "dim-db-read-")), "sessions.db");
@@ -86,12 +86,12 @@ function fingerprint(path: string): string {
   return new Bun.CryptoHasher("sha256").update(readFileSync(path)).digest("hex");
 }
 
-function recordBesideTraces(path: string): unknown {
+function recordOf(path: string): unknown {
   const db = new Database(path);
   try {
     const tables = db
       .query<{ name: string; sql: string }, []>(
-        "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name <> 'trace_event' ORDER BY name",
+        "SELECT name, sql FROM sqlite_master WHERE type = 'table' ORDER BY name",
       )
       .all();
     return {
@@ -136,13 +136,13 @@ describe("each reader of the record", () => {
     }
   });
 
-  test("dim query answers every query without changing the record beside its own trace, and creates none", async () => {
+  test("dim query answers every query without changing the record, and creates none", async () => {
     const { home, path } = recordWithCommit();
     const empty = mkdtempSync(join(tmpdir(), "dim-db-read-"));
     try {
-      const before = recordBesideTraces(path);
+      const before = recordOf(path);
       for (const query of QUERIES) await asDataHome(home, () => queryCommand.run([query.name, "stay"]));
-      expect(recordBesideTraces(path)).toEqual(before);
+      expect(recordOf(path)).toEqual(before);
 
       await expect(asDataHome(empty, () => queryCommand.run(["search", "stay"]))).rejects.toBeInstanceOf(
         NoDatabaseError,
@@ -181,7 +181,7 @@ describe("a reader of a record built by another schema version", () => {
         const readers: Record<string, () => unknown> = {
           "dim query": () => queryCommand.run(["search", "stay"]),
           "dim sql": () => sqlCommand.run(["SELECT 1"]),
-          "dim trace": () => runTraceCommand("order-1", { XDG_DATA_HOME: home }, () => {}),
+          "dim trace": () => traceCommand.run(["k7m2qx4d"]),
         };
         for (const [reader, run] of Object.entries(readers)) {
           const error = await asDataHome(home, () => refusal(run));

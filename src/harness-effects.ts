@@ -1,10 +1,11 @@
 import type { Spawned } from "./harness-contract";
+import type { Trace } from "./trace-contract";
 
 async function linesOf(stream: ReadableStream<Uint8Array>): Promise<readonly string[]> {
   return (await new Response(stream).text()).split("\n").filter((line) => line.trim() !== "");
 }
 
-export function killGroup(pid: number): void {
+function killed(pid: number): void {
   try {
     process.kill(-pid, "SIGKILL");
   } catch (error) {
@@ -12,15 +13,30 @@ export function killGroup(pid: number): void {
   }
 }
 
-export function spawnHarness(argv: readonly string[], cwd: string, env: Record<string, string>): Spawned {
-  const child = Bun.spawn([...argv], {
-    cwd,
-    env,
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
-    detached: true,
-  });
+export function killGroup(trace: Trace, pid: number): void {
+  trace.step("harness_kill", { pid }, () => killed(pid));
+}
+
+export function spawnHarness(
+  trace: Trace,
+  argv: readonly string[],
+  cwd: string,
+  env: Record<string, string>,
+): Spawned {
+  const child = trace.step(
+    "harness_spawn",
+    { cwd },
+    () =>
+      Bun.spawn([...argv], {
+        cwd,
+        env,
+        stdin: "pipe",
+        stdout: "pipe",
+        stderr: "pipe",
+        detached: true,
+      }),
+    (spawned) => ({ pid: spawned.pid }),
+  );
   return {
     pid: child.pid,
     prompt(text) {
@@ -28,10 +44,20 @@ export function spawnHarness(argv: readonly string[], cwd: string, env: Record<s
       child.stdin.end();
     },
     kill() {
-      killGroup(child.pid);
+      killGroup(trace, child.pid);
     },
-    ended: Promise.all([linesOf(child.stdout), new Response(child.stderr).text(), child.exited]).then(
-      ([lines, stderr]) => ({ lines, stderr, exitCode: child.exitCode }),
+    ended: trace.stepAsync(
+      "harness_wait",
+      { pid: child.pid },
+      async () => {
+        const [lines, stderr] = await Promise.all([
+          linesOf(child.stdout),
+          new Response(child.stderr).text(),
+          child.exited,
+        ]);
+        return { lines, stderr, exitCode: child.exitCode };
+      },
+      (ended) => ({ exitCode: ended.exitCode }),
     ),
   };
 }

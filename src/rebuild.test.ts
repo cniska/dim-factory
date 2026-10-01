@@ -157,16 +157,13 @@ describe("rebuilding a database an older schema wrote", () => {
     db.close();
   });
 
-  test("the trace survives a rebuild", () => {
+  test("drops the trace table a record of an older version holds", () => {
     const { db, env } = scratch();
-    db.run(
-      `INSERT INTO trace_event (ts, event, order_id, session_id, fields)
-       VALUES ('2026-01-01T00:03:00Z', 'ship.debug', 'order-history', 'session-1', '{}')`,
-    );
+    db.run("CREATE TABLE trace_event (id INTEGER PRIMARY KEY)");
 
     rebuild(db, env);
 
-    expect(db.query("SELECT event FROM trace_event").all()).toEqual([{ event: "ship.debug" }]);
+    expect(db.query("SELECT name FROM sqlite_master WHERE name = 'trace_event'").all()).toEqual([]);
     db.close();
   });
 

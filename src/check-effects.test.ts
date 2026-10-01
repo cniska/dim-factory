@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CHECK_OUTPUT_TAIL_BYTES, outputTail } from "./check";
 import { runCheck } from "./check-effects";
+import type { Trace } from "./trace-contract";
+import { traceOf } from "./trace-ops";
 
 const roots: string[] = [];
 
@@ -11,22 +13,22 @@ afterEach(() => {
   while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
 });
 
-function scratch(): { tree: string; outside: string } {
+function scratch(): { tree: string; outside: string; trace: Trace } {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "dim-check-test-")));
   roots.push(root);
   const tree = join(root, "tree");
   const outside = join(root, "outside");
   mkdirSync(tree);
   mkdirSync(outside);
-  return { tree, outside };
+  return { tree, outside, trace: traceOf("k7m2qx4d", 1, { XDG_STATE_HOME: join(root, "state") }) };
 }
 
 const OWNER = { PATH: process.env.PATH };
 
 describe("a check run", () => {
   test("records its command, exit code and output", () => {
-    const { tree } = scratch();
-    expect(runCheck(tree, "echo RED; exit 3", OWNER)).toEqual({
+    const { tree, trace } = scratch();
+    expect(runCheck(trace, tree, "echo RED; exit 3", OWNER)).toEqual({
       kind: "check",
       command: "echo RED; exit 3",
       exitCode: 3,
@@ -35,8 +37,9 @@ describe("a check run", () => {
   });
 
   test("writes inside the tree it checks and its own temp directory, and nowhere else", () => {
-    const { tree, outside } = scratch();
+    const { tree, outside, trace } = scratch();
     const ran = runCheck(
+      trace,
       tree,
       `touch "${tree}/inside" && touch "$TMPDIR/tmp" && touch "${outside}/escaped"; echo done`,
       OWNER,
@@ -47,7 +50,7 @@ describe("a check run", () => {
   });
 
   test("sees none of the owner's keys or sign-in, and its caches sit in its temp directory", () => {
-    const { tree } = scratch();
+    const { tree, trace } = scratch();
     const owner = {
       PATH: process.env.PATH,
       ANTHROPIC_API_KEY: "sk-ant",
@@ -55,6 +58,7 @@ describe("a check run", () => {
       HOME: "/owner",
     };
     const ran = runCheck(
+      trace,
       tree,
       'echo "[$ANTHROPIC_API_KEY$CLAUDE_CODE_OAUTH_TOKEN]"; echo "$HOME" "$XDG_CACHE_HOME"',
       owner,

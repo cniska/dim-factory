@@ -5,7 +5,17 @@ import { Glob } from "bun";
 
 const SRC = import.meta.dir;
 
-const FACTORY_MODULES = ["order", "worker", "station", "harness", "workspace", "check", "slice", "ship"];
+const FACTORY_MODULES = [
+  "order",
+  "worker",
+  "station",
+  "harness",
+  "workspace",
+  "check",
+  "slice",
+  "ship",
+  "trace",
+];
 
 const COMMAND_IMPORTS = /^\.\/([a-z-]+-(ops|contract)|cli-[a-z-]+|db|factory-db)$/;
 
@@ -100,6 +110,7 @@ describe("the module checks", () => {
       "review-command.ts",
       "session-command.ts",
       "slice-command.ts",
+      "trace-command.ts",
     ]);
   });
 

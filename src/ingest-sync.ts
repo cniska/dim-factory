@@ -135,6 +135,7 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
     db.run("DROP TABLE IF EXISTS commit_file");
     db.run("DROP TABLE IF EXISTS repo_file");
     db.run("DROP TABLE IF EXISTS repo_commit");
+    db.run("DROP TABLE IF EXISTS trace_event");
     db.run(SCHEMA_SQL);
     const restoreHook = db.prepare<
       void,

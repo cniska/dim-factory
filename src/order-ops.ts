@@ -31,6 +31,7 @@ import { appendEntries, deleteRun, insertRun, readLog, runOf, setRunHarness } fr
 import { type OrderView, orderView, workerNamesOf } from "./order-view";
 import { type Env, workspaceDir } from "./paths";
 import { checkoutAt, checkoutOf, defaultBranch } from "./project";
+import type { Trace } from "./trace-contract";
 import { isRunning } from "./worker";
 import { type Acting, type Caller, type ProcessId, refuseWorker } from "./worker-contract";
 import { actingOperator, workersNamed } from "./worker-ops";
@@ -135,14 +136,18 @@ export function updateOrder(
   act(db, order, caller, { kind: "update", ...fields });
 }
 
-export type Cancelled = { readonly state: OrderState; readonly harness: ProcessId | null };
+export type Cancelled = {
+  readonly state: OrderState;
+  readonly cause: number;
+  readonly harness: ProcessId | null;
+};
 
 export function recordCancel(db: Database, order: string, caller: Caller, reason: string): Cancelled {
   return writeTransaction(db, () => {
-    const { state } = act(db, order, caller, { kind: "cancel", reason });
+    const { state, seq } = act(db, order, caller, { kind: "cancel", reason });
     const run = runOf(db, order);
     const live = run?.harness ?? null;
-    return { state, harness: live !== null && isRunning(live, caller.running) ? live : null };
+    return { state, cause: seq, harness: live !== null && isRunning(live, caller.running) ? live : null };
   });
 }
 
@@ -200,7 +205,20 @@ export function endRun(db: Database, order: string): void {
   deleteRun(db, order);
 }
 
+const actorBy = (by: WorkBy): Actor =>
+  by.kind === "worker" ? actorOf(by.acting) : { kind: "factory", version, cause: by.cause };
+
+function appendTraced(trace: Trace, db: Database, order: string, by: WorkBy, later: Later): Appended {
+  return trace.step(
+    "record",
+    { action: later.action },
+    () => append(db, order, actorBy(by), later),
+    ({ seq }) => ({ entry: seq }),
+  );
+}
+
 function recordAt(
+  trace: Trace,
   db: Database,
   order: string,
   station: Station,
@@ -211,35 +229,34 @@ function recordAt(
     const { state } = loadOrder(db, order);
     const refusal = workRefusal(state, station, by);
     if (refusal !== null) throw refusal;
-    return append(db, order, actorBy(by), later(state));
+    return appendTraced(trace, db, order, by, later(state));
   });
 }
 
-const actorBy = (by: WorkBy): Actor =>
-  by.kind === "worker" ? actorOf(by.acting) : { kind: "factory", version, cause: by.cause };
-
 export function recordWork(
+  trace: Trace,
   db: Database,
   order: string,
   acting: Acting,
   station: Station,
   later: (state: OrderState) => Later,
 ): Appended {
-  return recordAt(db, order, station, { kind: "worker", acting }, later);
+  return recordAt(trace, db, order, station, { kind: "worker", acting }, later);
 }
 
 export function recordVerdict(
+  trace: Trace,
   db: Database,
   order: string,
   cause: number,
   station: Station,
   later: Later,
 ): Appended {
-  return recordAt(db, order, station, { kind: "factory", cause }, () => later);
+  return recordAt(trace, db, order, station, { kind: "factory", cause }, () => later);
 }
 
-export function recordAs(db: Database, order: string, by: WorkBy, later: Later): Appended {
-  return writeTransaction(db, () => append(db, order, actorBy(by), later));
+export function recordAs(trace: Trace, db: Database, order: string, by: WorkBy, later: Later): Appended {
+  return writeTransaction(db, () => appendTraced(trace, db, order, by, later));
 }
 
 export function showOrder(db: Database, order: string): OrderView {

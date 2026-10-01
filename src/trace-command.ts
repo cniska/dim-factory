@@ -1,84 +1,31 @@
-import type { Database } from "bun:sqlite";
 import { type Command, UsageError } from "./cli-contract";
-import { openReadOnly } from "./db-read";
-import { dbPath, type Env } from "./paths";
+import { openFactoryReadOnly } from "./factory-db";
+import { OrderId } from "./order-contract";
+import { orderState } from "./order-ops";
+import { clearTrace, followTrace } from "./trace-ops";
 
-type TraceRow = {
-  id: number;
-  ts: string;
-  event: string;
-  order_id: string | null;
-  attempt_id: string | null;
-  station: string | null;
-  worker: string | null;
-  session_id: string | null;
-  command: string | null;
-  name: string | null;
-  path: string | null;
-  row_count: number | null;
-  duration_ms: number | null;
-  cwd: string | null;
-  fields: string;
-};
-
-function print(row: TraceRow, write: (line: string) => void): void {
-  const {
-    id,
-    order_id: orderId,
-    attempt_id: attemptId,
-    session_id: sessionId,
-    row_count: rowCount,
-    duration_ms: durationMs,
-    fields,
-    ...rest
-  } = row;
-  write(
-    JSON.stringify({
-      ...rest,
-      id,
-      orderId,
-      attemptId,
-      sessionId,
-      rowCount,
-      durationMs,
-      fields: JSON.parse(fields),
-    }),
-  );
-}
-
-function read(db: Database, orderId: string, after: number): TraceRow[] {
-  return db
-    .query<TraceRow, [string, number]>("SELECT * FROM trace_event WHERE order_id = ? AND id > ? ORDER BY id")
-    .all(orderId, after);
-}
-
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-export async function runTraceCommand(
-  orderId: string | undefined,
-  env: Env = process.env,
-  write: (line: string) => void = console.log,
-): Promise<void> {
-  if (!orderId) throw new UsageError("trace names the order to follow");
-  let lastId = 0;
-  while (true) {
-    const db = openReadOnly(dbPath(env));
-    try {
-      for (const row of read(db, orderId, lastId)) {
-        lastId = row.id;
-        print(row, write);
-      }
-    } finally {
-      db.close();
-    }
-    await wait(100);
-  }
-}
+const USAGE = "usage: dim trace <order> | dim trace clear";
 
 export const traceCommand: Command = {
   name: "trace",
-  usage: "usage: dim trace <order-id>",
-  summary: "stream an order's diagnostic events as JSONL until stopped",
-  raw: () => true,
-  run: (args) => runTraceCommand(args[0]),
+  usage: USAGE,
+  summary: "follow an order's factory steps as JSONL until stopped, or empty the trace",
+  raw: (args) => args[0] !== "clear",
+  run(args) {
+    const [target, ...rest] = args;
+    if (target === undefined || rest.length > 0) throw new UsageError(USAGE);
+    if (target === "clear") {
+      clearTrace(process.env);
+      return { cleared: true };
+    }
+    const order = OrderId.safeParse(target);
+    if (!order.success) throw new UsageError(USAGE);
+    const db = openFactoryReadOnly();
+    try {
+      orderState(db, order.data);
+    } finally {
+      db.close();
+    }
+    return followTrace(order.data, process.env, (line) => process.stdout.write(`${line}\n`));
+  },
 };
