@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { LockHeldError, withLock } from "./db-lock";
+import { claimPathLock, LockHeldError, tryClaimPathLock, withLock } from "./db-lock";
 import type { Env } from "./paths";
 
 const roots: string[] = [];
@@ -112,5 +112,17 @@ describe("the write lock", () => {
     writeFileSync(join(lock, "pid"), String(process.pid));
     expect(() => withLock(() => "ran", env)).toThrow(LockHeldError);
     expect(readdirSync(dirname(lock))).toEqual(["record"]);
+  });
+
+  test("a try while the lock is held claims nothing, and claims it once released", () => {
+    const { lock } = newRoot();
+    const release = claimPathLock(lock);
+    expect(tryClaimPathLock(lock)).toBeNull();
+    expect(readdirSync(dirname(lock))).toEqual(["record"]);
+    release();
+    const again = tryClaimPathLock(lock);
+    expect(readFileSync(join(lock, "pid"), "utf8")).toBe(String(process.pid));
+    again?.();
+    expect(existsSync(lock)).toBe(false);
   });
 });

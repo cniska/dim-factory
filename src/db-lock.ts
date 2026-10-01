@@ -36,37 +36,38 @@ function tryInstall(staging: string, path: string): boolean {
   }
 }
 
-function clearAbandoned(path: string): void {
+function clearAbandoned(path: string): number | null {
   const aside = `${path}.stale.${process.pid}`;
   rmSync(aside, { recursive: true, force: true });
   try {
     renameSync(path, aside);
   } catch {
-    return;
+    return null;
   }
   const holder = holderOf(join(aside, "pid"));
   if (holderIsAlive(holder)) {
     renameSync(aside, path);
-    throw new LockHeldError(path, holder);
+    return holder;
   }
   rmSync(aside, { recursive: true, force: true });
+  return null;
 }
 
-function claim(path: string, pidFile: string): void {
+function claimOrHolder(path: string): number | null {
+  mkdirSync(dirname(path), { recursive: true });
+  const pidFile = join(path, "pid");
   const staging = `${path}.${process.pid}`;
+  rmSync(staging, { recursive: true, force: true });
   try {
-    rmSync(staging, { recursive: true, force: true });
     mkdirSync(staging, { recursive: true });
     writeFileSync(join(staging, "pid"), String(process.pid));
-    if (tryInstall(staging, path)) return;
+    if (tryInstall(staging, path)) return null;
     const holder = holderOf(pidFile);
-    if (holderIsAlive(holder)) throw new LockHeldError(path, holder);
-    clearAbandoned(path);
-    if (tryInstall(staging, path)) return;
-    throw new LockHeldError(path, holderOf(pidFile));
-  } catch (error) {
+    const living = holderIsAlive(holder) ? holder : clearAbandoned(path);
+    if (living === null && tryInstall(staging, path)) return null;
+    return living ?? holderOf(pidFile);
+  } finally {
     rmSync(staging, { recursive: true, force: true });
-    throw error;
   }
 }
 
@@ -80,9 +81,17 @@ function release(path: string): void {
   rmSync(dropped, { recursive: true, force: true });
 }
 
+export function tryClaimPathLock(path: string): (() => void) | null {
+  return claimOrHolder(path) === null ? releaser(path) : null;
+}
+
 export function claimPathLock(path: string): () => void {
-  mkdirSync(dirname(path), { recursive: true });
-  claim(path, join(path, "pid"));
+  const holder = claimOrHolder(path);
+  if (holder !== null) throw new LockHeldError(path, holder);
+  return releaser(path);
+}
+
+function releaser(path: string): () => void {
   let held = true;
   return () => {
     if (!held) return;

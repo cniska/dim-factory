@@ -40,7 +40,15 @@ type Replayed = {
   } | null;
 };
 
-function replay(root: string, onto: string, commits: readonly string[], oldHead: string): Replayed {
+type Replay = {
+  readonly root: string;
+  readonly onto: string;
+  readonly commits: readonly string[];
+  readonly oldHead: string;
+  readonly env: Env;
+};
+
+function replay({ root, onto, commits, oldHead, env }: Replay): Replayed {
   const [first] = commits;
   if (first === undefined || parentOf(root, first) === onto)
     return { head: oldHead, moved: [], conflict: null };
@@ -53,7 +61,7 @@ function replay(root: string, onto: string, commits: readonly string[], oldHead:
       const rest = mergeTree(root, base, head, oldHead);
       return { head, moved, conflict: { commit, tree: rest.tree, paths: merged.paths } };
     }
-    const to = recommit(root, commit, merged.tree, head);
+    const to = recommit(root, commit, merged.tree, head, env);
     moved.push({ from: commit, to });
     head = to;
   }
@@ -61,7 +69,7 @@ function replay(root: string, onto: string, commits: readonly string[], oldHead:
 }
 
 export async function shipOrder(db: Database, ship: ShipOf): Promise<void> {
-  const release = await shipLock(ship.project);
+  const release = await shipLock(ship.project, ship.env);
   try {
     land(db, ship);
   } finally {
@@ -86,7 +94,13 @@ function land(db: Database, ship: ShipOf): void {
   const branch = branchOf(order);
   const workspace = workspaceOf(ship.project, order);
   const onto = tipOf(checkout, defaultBranch);
-  const replayed = replay(checkout, onto, commitsSince(checkout, defaultBranch, head), head);
+  const replayed = replay({
+    root: checkout,
+    onto,
+    commits: commitsSince(checkout, defaultBranch, head),
+    oldHead: head,
+    env: ship.env,
+  });
   const rebase: Evidence = { kind: "rebase", onto, commits: [...replayed.moved] };
   if (replayed.head !== head) {
     record({ action: "branch_rebased", details: { head: replayed.head, commits: [...replayed.moved] } });

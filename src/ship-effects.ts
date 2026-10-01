@@ -1,20 +1,17 @@
 import { join } from "node:path";
 import { invariant } from "./assert";
-import { claimPathLock, LockHeldError } from "./db-lock";
+import { tryClaimPathLock } from "./db-lock";
 import { git, ran } from "./git-tree";
-import { locksDir } from "./paths";
+import { type Env, locksDir } from "./paths";
 
 const LOCK_POLL_MS = 100;
 
-export async function shipLock(project: string): Promise<() => void> {
-  const path = join(locksDir(), `ship-${project.replace("/", "-")}`);
+export async function shipLock(project: string, env: Env): Promise<() => void> {
+  const path = join(locksDir(env), `ship-${project.replace("/", "-")}`);
   for (;;) {
-    try {
-      return claimPathLock(path);
-    } catch (error) {
-      if (!(error instanceof LockHeldError)) throw error;
-      await Bun.sleep(LOCK_POLL_MS);
-    }
+    const release = tryClaimPathLock(path);
+    if (release !== null) return release;
+    await Bun.sleep(LOCK_POLL_MS);
   }
 }
 
@@ -48,7 +45,7 @@ export function mergeTree(root: string, base: string, ours: string, theirs: stri
 
 const FACTORY_COMMITTER = { GIT_COMMITTER_NAME: "dim", GIT_COMMITTER_EMAIL: "factory@dim.local" };
 
-export function recommit(root: string, commit: string, tree: string, parent: string): string {
+export function recommit(root: string, commit: string, tree: string, parent: string, env: Env): string {
   const [name = "", email = "", date = "", ...message] = ran(root, [
     "log",
     "-1",
@@ -56,7 +53,7 @@ export function recommit(root: string, commit: string, tree: string, parent: str
     commit,
   ]).split("\n");
   return ran(root, ["commit-tree", tree, "-p", parent, "-m", message.join("\n").trim()], {
-    ...process.env,
+    ...env,
     GIT_AUTHOR_NAME: name,
     GIT_AUTHOR_EMAIL: email,
     GIT_AUTHOR_DATE: date,
