@@ -11,6 +11,7 @@ import {
   runOrder,
   shipThrough,
   showOrder,
+  transcriptOf,
 } from "./support/operator-acts";
 import {
   actions,
@@ -143,8 +144,8 @@ describe("the order log", () => {
       "evidence" in entry ? entry.evidence.map((item) => item.kind) : [],
     );
     expect(evidence).toContain("check");
-    expect(evidence).toContain("rebase");
-    expect(actions(order)).toContain(ACTION.shipLanded);
+    expect(entryOf(order, ACTION.branchRebased).details.commits).toHaveLength(2);
+    expect(entryOf(order, ACTION.shipLanded).evidence.map((item) => item.kind)).toEqual(["check"]);
     expect(actions(order)).toContain(ACTION.cleanedUp);
   });
 
@@ -171,10 +172,13 @@ describe("the order log", () => {
     const order = await shipThrough(m.operator, await addOrder(m.operator));
     const session = sessionOf(workerOf(order, "builder"), 0).id;
 
-    const shown = JSON.stringify(resultOf(await m.operator.dim(["session", "show", session])));
+    const entries = await transcriptOf(m.operator, session);
 
-    expect(shown).toContain(m.invocation("builder", 0).prompt.slice(0, 40));
-    expect(shown).toContain("feat: add slice 2");
+    expect(entries).toContainEqual({ type: "user", text: m.invocation("builder", 0).prompt });
+    const commands = entries.flatMap((entry) =>
+      entry.type === "tool_use" ? [String(entry.input.command)] : [],
+    );
+    expect(commands.some((command) => command.includes("feat: add slice 2"))).toBe(true);
   });
 });
 
