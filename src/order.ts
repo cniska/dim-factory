@@ -6,7 +6,6 @@ import {
   type DeathCode,
   type Decider,
   type Decision,
-  type Evidence,
   type Later,
   type LaterEntry,
   type Next,
@@ -39,6 +38,20 @@ type FindingState = RecordedFinding & {
   readonly answered: { readonly answer: Answer; readonly reason: string } | null;
 };
 
+export function movedCommits(
+  from: readonly string[],
+  to: readonly string[],
+): readonly { readonly from: string; readonly to: string }[] {
+  invariant(from.length === to.length, `a rebase keeps each of the order's ${from.length} commits`);
+  return from.map((commit, index) => {
+    const moved = to[index];
+    invariant(moved !== undefined, `a rebase moves the order's commit ${commit}`);
+    return { from: commit, to: moved };
+  });
+}
+
+export type Conflict = { readonly onto: string; readonly paths: readonly string[] };
+
 type FailedCheck = { readonly command: string; readonly exitCode: number | null; readonly output: string };
 
 type Returned =
@@ -64,7 +77,7 @@ export type OrderState = {
   readonly findings: readonly FindingState[];
   readonly returned: Returned | null;
   readonly buildArtifact: string | null;
-  readonly conflict: readonly string[] | null;
+  readonly conflict: Conflict | null;
   readonly died: readonly Death[];
   readonly lastSeq: number;
 };
@@ -150,12 +163,6 @@ function answered(
   );
 }
 
-function failedCheck(evidence: readonly Evidence[]): FailedCheck {
-  const check = evidence.find((item) => item.kind === "check");
-  invariant(check !== undefined, "a ship stopped by a red check records the check");
-  return { command: check.command, exitCode: check.exitCode, output: check.output };
-}
-
 function apply(state: OrderState, entry: Later): OrderState {
   switch (entry.action) {
     case "order_updated":
@@ -228,22 +235,34 @@ function apply(state: OrderState, entry: Later): OrderState {
       return {
         ...state,
         head: entry.details.head,
-        commits: state.commits.map((commit) => moved.get(commit) ?? commit),
+        conflict: null,
+        commits: state.commits.map((commit) => {
+          const to = moved.get(commit);
+          invariant(to !== undefined, `a rebase of order ${state.id} moves its commit ${commit}`);
+          return to;
+        }),
       };
     }
     case "ship_stopped":
       switch (entry.code) {
         case "ship_conflict":
-          return { ...state, phase: run("build"), conflict: entry.details.paths };
-        case "ship_check_failed":
           return {
             ...state,
             phase: run("build"),
-            returned: { kind: "ship", check: failedCheck(entry.evidence) },
+            conflict: { onto: entry.details.onto, paths: entry.details.paths },
           };
+        case "ship_check_failed": {
+          const [{ command, exitCode, output }] = entry.evidence;
+          return {
+            ...state,
+            phase: run("build"),
+            returned: { kind: "ship", check: { command, exitCode, output } },
+          };
+        }
         case "ship_unset":
         case "ship_no_check":
         case "checkout_dirty":
+        case "rebase_failed":
           return { ...state, phase: { kind: "ship" } };
         default:
           return unreachable(entry);

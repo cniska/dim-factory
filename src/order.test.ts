@@ -74,6 +74,23 @@ const REVIEWED: Later = {
   },
 };
 const SHIP_STARTED: Later = { action: "ship_started", details: {} };
+const CONFLICT: Later = {
+  action: "ship_stopped",
+  code: "ship_conflict",
+  details: { onto: "m2", paths: ["slice-1.txt"] },
+};
+const rebasedOnto = (onto: string): Later => ({
+  action: "branch_rebased",
+  details: {
+    head: "r2",
+    onto,
+    commits: [
+      { from: "c1", to: "r1" },
+      { from: "c2", to: "r2" },
+    ],
+  },
+  evidence: [],
+});
 const fromBuildEntry: Later = {
   action: "order_returned",
   details: { station: "build", reason: "the second slice contradicts the first" },
@@ -220,25 +237,14 @@ describe("an order's state, folded from its log", () => {
   test("the recorded head starts at the workspace's base and moves with each commit and rebase", () => {
     expect(state(RUN, BASE).head).toBe("base0");
     expect(state(...built).head).toBe("c2");
-    const rebased = state(...built, {
-      action: "branch_rebased",
-      details: {
-        head: "r2",
-        commits: [
-          { from: "c1", to: "r1" },
-          { from: "c2", to: "r2" },
-        ],
-      },
-    });
+    const rebased = state(...built, rebasedOnto("m2"));
     expect([rebased.head, rebased.commits]).toEqual(["r2", ["r1", "r2"]]);
   });
 
-  test("a rebase stopped by a conflict keeps each slice's commit, moved or not", () => {
-    const stopped = state(...built, {
-      action: "branch_rebased",
-      details: { head: "r1", commits: [{ from: "c1", to: "r1" }] },
-    });
-    expect([stopped.head, stopped.commits]).toEqual(["r1", ["r1", "c2"]]);
+  test("a rebase that resolves a ship conflict clears it from the build's brief", () => {
+    const conflicted = [...reviewed, approve("review"), SHIP_STARTED, CONFLICT];
+    expect(state(...conflicted).conflict).toEqual({ onto: "m2", paths: ["slice-1.txt"] });
+    expect(state(...conflicted, rebasedOnto("m2")).conflict).toBeNull();
   });
 
   test("a refused slice leaves the recorded head where it was", () => {
@@ -265,25 +271,25 @@ describe("an order's state, folded from its log", () => {
 
   test("a ship stopped by a conflict or a red check goes back to build, and any other stop ships again", () => {
     const shipping = [...reviewed, approve("review"), SHIP_STARTED];
-    const conflicted = state(...shipping, {
-      action: "ship_stopped",
-      code: "ship_conflict",
-      details: { commit: "c1", paths: ["slice-1.txt"] },
-    });
-    expect(conflicted.phase).toEqual({ kind: "run", station: "build" });
+    expect(state(...shipping, CONFLICT).phase).toEqual({ kind: "run", station: "build" });
     const dirty = state(...shipping, {
       action: "ship_stopped",
       code: "checkout_dirty",
-      details: { checkout: "/repo" },
+      details: { checkout: "/repo", reason: "tracked files have uncommitted changes" },
     });
     expect(at(dirty)).toEqual(["review", "run"]);
     const unchecked = state(...shipping, {
       action: "ship_stopped",
       code: "ship_no_check",
       details: { head: "c2" },
-      evidence: [],
     });
     expect(at(unchecked)).toEqual(["review", "run"]);
+    const unsigned = state(...shipping, {
+      action: "ship_stopped",
+      code: "rebase_failed",
+      details: { onto: "m2", reason: "error: couldn't sign" },
+    });
+    expect(at(unsigned)).toEqual(["review", "run"]);
   });
 
   test("a red check at ship briefs the builder with the check that failed", () => {
@@ -292,7 +298,7 @@ describe("an order's state, folded from its log", () => {
       action: "ship_stopped",
       code: "ship_check_failed",
       details: { head: "c2" },
-      evidence: [{ kind: "rebase", onto: "m2", commits: [] }, check],
+      evidence: [check],
     });
     expect(red.phase).toEqual({ kind: "run", station: "build" });
     expect(red.returned).toEqual({
@@ -305,7 +311,7 @@ describe("an order's state, folded from its log", () => {
     const shipped = state(...reviewed, approve("review"), SHIP_STARTED, {
       action: "ship_landed",
       details: { head: "m2", kept: [] },
-      evidence: [],
+      evidence: [{ kind: "check", command: "bun test", exitCode: 0, output: "" }],
     });
     expect([shipped.status, nextOf(shipped.phase)]).toEqual(["shipped", null]);
     const cancelled = state(...planned, {

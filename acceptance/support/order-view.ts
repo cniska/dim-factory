@@ -36,7 +36,8 @@ type Detailed =
       readonly details: { readonly commit: string };
       readonly evidence: readonly Evidence[];
     }
-  | { readonly action: "ship_landed"; readonly details: Details; readonly evidence: readonly Evidence[] };
+  | { readonly action: "ship_landed"; readonly details: Details; readonly evidence: readonly Evidence[] }
+  | { readonly action: "branch_rebased"; readonly details: Details; readonly evidence: readonly Evidence[] };
 
 type PlainAction = Exclude<Action, Detailed["action"]>;
 

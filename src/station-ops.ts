@@ -3,7 +3,7 @@ import { invariant } from "./assert";
 import { CodedError, refusalOf } from "./coded-error";
 import { userConfigPath } from "./config";
 import { writeTransaction } from "./db";
-import { diffSince, type Identity, identityOf, sharedConfigOf, tipOf } from "./git-tree";
+import { diffSince, type Identity, sharedConfigOf, tipOf } from "./git-tree";
 import type { Adapter, Outcome, SessionStart, Spawned } from "./harness-contract";
 import type { HarnessName } from "./harness-name";
 import { adapterFor, startHarness, stopOrphan } from "./harness-ops";
@@ -13,6 +13,7 @@ import {
   endRun,
   markHarness,
   orderState,
+  ownerIdentity,
   type ProjectSetup,
   projectSetup,
   recordFactory,
@@ -352,8 +353,7 @@ function prepareTurn(setup: ProjectSetup, project: string, station: Station, env
   if (model === null) throw refuseStation("no_model", { role, file: userConfigPath() });
   const newSessionHarness = setup.config.harness;
   if (newSessionHarness === undefined) throw refuseStation("harness_unset", { project });
-  const identity = identityOf(setup.root, env);
-  if (identity === null) throw refuseStation("no_git_identity", { checkout: setup.root });
+  const identity = ownerIdentity(setup.root, env);
   return { model, newSessionHarness, identity };
 }
 

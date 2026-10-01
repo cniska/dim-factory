@@ -3,6 +3,7 @@ import { version } from "../package.json";
 import { invariant } from "./assert";
 import { readConfig, type UserConfig } from "./config";
 import { writeTransaction } from "./db";
+import { type Identity, identityOf } from "./git-tree";
 import {
   admitOperator,
   asOperator,
@@ -28,7 +29,7 @@ import {
 } from "./order-contract";
 import { appendEntries, deleteRun, insertRun, readLog, runOf, setRunHarness } from "./order-store";
 import { type OrderView, orderView, workerNamesOf } from "./order-view";
-import { workspaceDir } from "./paths";
+import { type Env, workspaceDir } from "./paths";
 import { checkoutAt, checkoutOf, defaultBranch } from "./project";
 import { isRunning } from "./worker";
 import { type Acting, type Caller, type ProcessId, refuseWorker } from "./worker-contract";
@@ -90,6 +91,12 @@ export function projectSetup(db: Database, project: string, cwd: string): Projec
   const branch = defaultBranch(checkout.root);
   if (branch === null) throw refuseOrder("no_default_branch", { checkout: checkout.root });
   return { root: checkout.root, branch, config: readConfig({ root: checkout.root, at: branch }) };
+}
+
+export function ownerIdentity(checkout: string, env: Env): Identity {
+  const identity = identityOf(checkout, env);
+  if (identity === null) throw refuseOrder("no_git_identity", { checkout });
+  return identity;
 }
 
 export type NewOrder = {

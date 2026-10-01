@@ -7,6 +7,7 @@ export const SLICE_CODES = [
   "no_check",
   "check_failed",
   "check_rewrote",
+  "not_rebased",
 ] as const;
 
 export type SliceCode = (typeof SLICE_CODES)[number];
@@ -17,7 +18,8 @@ export type SliceVerdict =
   | { readonly code: "workspace_dirty" }
   | { readonly code: "no_check" }
   | { readonly code: "check_failed"; readonly command: string; readonly exitCode: number | null }
-  | { readonly code: "check_rewrote"; readonly command: string };
+  | { readonly code: "check_rewrote"; readonly command: string }
+  | { readonly code: "not_rebased"; readonly onto: string; readonly commits: number };
 
 type Tip = { readonly order: string; readonly tip: string };
 
@@ -57,5 +59,10 @@ export const refuseSlice = refuser<SliceRefusalMeta>({
     message: ({ order, tip }) =>
       `${tip} declares no check task, so no slice of order ${order} can be judged; the project needs one such as a verify script`,
     resolve: () => "dim doctor",
+  },
+  not_rebased: {
+    message: ({ tip, onto, commits }) =>
+      `${tip} is not the order's ${commits} commits rebased onto ${onto} with the rebase finished, so the branch is back at the recorded head`,
+    resolve: ({ onto }) => `git rebase ${onto} && dim slice submit`,
   },
 });

@@ -44,7 +44,7 @@ The record sits in its own directory so a worker's sandbox can deny writes to it
 Each order has one log: an append-only table of entries, each with a per-order `seq`, a time, who took it, an action and that action's typed details. A trigger refuses any `UPDATE` or `DELETE`. An entry is a union discriminated on `action`: shared fields plus required details per action, never a bag of optional fields.
 
 - **Who took it** is either a worker and its session, or the factory with its version and the `seq` of the entry that caused it. A factory landing names the approval it followed from.
-- **Evidence** sits on the entry that produced it: the check's output on a committed or refused slice, and the check and the rebase on a landing.
+- **Evidence** sits on the entry that produced it: the check's output on a committed or refused slice, on a builder's rebase and on a landing. A rebase is its own entry, `branch_rebased`, naming the commit it rebased onto and each commit's old and new id.
 - **A decision** records its reason. An approval or return also records whether the owner decided it or handed it to the operator (`--decided owner|operator`). A stop records its cause as a code with its details.
 - The actions are the acceptance suite's vocabulary ([`acceptance/support/vocabulary.ts`](../acceptance/support/vocabulary.ts)). The operator's decision on an artifact is `artifact_approved` or `artifact_returned`; a worker handing the order back is `order_returned`.
 
@@ -66,7 +66,7 @@ An order's state is a fold over its log, a pure function: status, station, next 
 - **Repair** runs at the start of every run, on a run whose process is gone. It needs no judgement.
   - A lost turn's run row is cleared and its orphaned harness process group is killed. Its session is resumed by the next turn, and replaced if it cannot be resumed.
   - A branch commit the record does not hold is taken off the branch, and its changes are left in the workspace.
-  - An interrupted ship runs again from the recorded head: the checkout's branch and the workspace are moved to it, and a default branch that already holds the order's tip lands as a fast-forward to itself.
+  - An interrupted ship runs again from the recorded head: an open rebase in the workspace is aborted and the workspace reset to that head, and a default branch that already holds it lands as a fast-forward to itself.
   - Anything else is reported to the operator with its cause.
 
 ## Who a command acts as
@@ -97,7 +97,7 @@ A station turn:
   - The build: every slice of the plan is committed, the branch is at the recorded head with a clean workspace, every finding it was given is answered once, and the Build artifact is back.
   - The review: findings, each with an area, a file, a line, what is wrong, the fix and a severity; or the Review artifact, naming the areas it covered.
 - A turn that ends with no accepted return fails the station with `no_return`, and the session stays. A session has died when its harness reported no finished result (`usage_limit`, `killed`) or when a resume or fork never started it (`resume_failed`: no `init` event in the stream). `session_died` records whether the factory holds a copy of its transcript. A dead session fails the station with `session_died`, and the next run replaces it; a resume that fails is replaced in the same run, with no failed station recorded.
-- **Slices map to the plan by position:** the nth commit of a build is the plan's nth slice. A commit after the last slice is a fix, answering a finding or resolving a conflict. A revised plan after a return to plan says which committed slices stay, and its slices are counted from the branch as it stands.
+- **Slices map to the plan by position:** the nth commit of a build is the plan's nth slice. A commit after the last slice is a fix answering a finding. A revised plan after a return to plan says which committed slices stay, and its slices are counted from the branch as it stands.
 
 **A message turn** is its own kind. `dim message send` from the operator resumes the named station worker's session with the message as the prompt, admits only reads (`order show`, `session show`), and has no definition of done. The turn's final text is the reply. Both are logged as `message_sent`. A station worker's message to anyone but the operator is logged as `message_refused` and not delivered.
 
@@ -106,7 +106,7 @@ A station turn:
 A brief is JSON with a fixed set of keys per station. A key with no value is `null`, never absent, so every order's brief has the same keys. It holds facts and names the skill; it carries no instructions.
 
 - **plan:** `skill`, `order` (id, title, project, description), `workspace`, `returned` (why the order came back: the operator's reason, or a builder's return), `committed` (slices already on the branch).
-- **build:** `skill`, `order`, `workspace`, `plan`, `returned` (the operator's reason, or the check that failed at ship with its output), `findings` with their ids, `conflict` (the paths a rebase stopped on).
+- **build:** `skill`, `order`, `workspace`, `plan`, `returned` (the operator's reason, or the check that failed at ship with its output), `findings` with their ids, `conflict` (the commit to rebase onto and the paths the ship's rebase stopped on).
 - **review:** `skill`, `order`, `workspace`, `build` (the Build artifact), `diff` (the order's diff against the default branch), `answers` (the builder's answers to the last findings), `returned`.
 
 ## Starting a worker
@@ -136,6 +136,8 @@ On `dim slice submit`, the station:
 4. Refuses `workspace_dirty` unless the workspace is clean, so the files on disk are exactly the committed code, and `no_check` if the tip declares no check task. Then it runs the check there, and refuses `check_failed` with the output attached, or `check_rewrote` if the workspace is not clean afterwards.
 5. Records `slice_committed` with the commit and the check's output, or `slice_refused` with its code, and then moves the branch back to the recorded head. A refused slice's files stay in the workspace as uncommitted changes.
 
+**While a ship conflict is open**, `dim slice submit` takes the builder's rebase instead of a new commit: it refuses `not_rebased` unless the rebase is finished and the tip holds exactly the order's commits on top of the conflict's commit, judges the check's definition against that commit, runs the check, and records `branch_rebased` with the check as evidence, which clears the conflict.
+
 A kill anywhere in this leaves the branch ahead of the record, and the next turn moves it back. A `git commit` after the turn closes lands on the branch but not in the record, and the next run takes it off.
 
 **A builder's commit is a developer's commit in a worktree of the checkout.** Git resolves its hooks as it would there: the checkout's local `core.hooksPath`, or the shared `.git/hooks`. The worker's own `HOME` holds no git config, so nothing of the owner's global config reaches it. The commit names the owner as author and committer and is not signed.
@@ -148,11 +150,12 @@ Approving the Review artifact ships the order in the same process. Ships of one 
 
 1. Reads how the project ships from the default branch's settings. A project that does not say is stopped with `ship_unset`.
 2. Refuses `checkout_dirty` if a tracked file in the checkout has changes.
-3. **Rebases** the order's commits, from the recorded head, onto the default branch's tip, in the checkout: `git merge-tree --write-tree` then `commit-tree` for each, keeping the builder as author with the factory as committer. Nothing is touched until the rebase is known. It records `branch_rebased` with the new head and each moved commit's old and new id, so the order's commits stay its slices, then moves the checkout's branch and resets the workspace to it.
-   - **A conflict** at a commit keeps the commits before it as the new head, puts the merge of the rest into the workspace with its conflict markers, records `ship_stopped` with the paths, sends the order to build with those paths as the brief's `conflict`, and refuses with `ship_conflict`. The builder resolves it with an ordinary commit and `slice submit`, and nothing is replayed after it. A slice whose commit the conflict stopped keeps that commit's id; the resolution carries its change.
+3. **Rebases** in the workspace, as a developer would: it aborts a rebase a killed ship left open, resets the workspace to the recorded head, and runs `git rebase --force-rebase --empty=keep` onto the default branch's tip, with the owner as committer and the owner's git config deciding the signature. Every commit is rewritten, so every landed commit is signed when the owner's config signs. It records `branch_rebased`, so the order's commits stay its slices. A default branch that already holds the recorded head is not rebased again.
+   - **A conflict** aborts the rebase, records `ship_stopped` with the commit it rebased onto and the paths, sends the order to build with both as the brief's `conflict`, and refuses with `ship_conflict`. The builder runs `git rebase` onto that commit itself, resolves, `git rebase --continue`s and runs `slice submit`.
+   - **Any other refusal by git**, such as a signing key it cannot reach, aborts the rebase, records `rebase_failed` with git's reason, lands nothing and waits to ship.
 4. Runs the check on the rebased workspace. A failing check sends the order to build with the check as the brief's `returned`, and refuses with `ship_check_failed`. A rebased tip that declares no check is stopped with `ship_no_check` and waits to ship.
 5. **Lands:** `git merge --ff-only` in the checkout if the default branch is checked out there, otherwise `update-ref` against its expected old value. Either one is the single moment the default branch moves, so it holds all of the order's commits or none. A refused fast-forward, such as an untracked file the landing would overwrite, is stopped with `checkout_dirty`.
-6. Removes the workspace, and the checkout's branch once the workspace is gone, then records `ship_landed` with the rebase and the check as evidence and what it could not remove in its details: a workspace it could not remove keeps its branch too. When nothing was kept it records `cleaned_up`; otherwise `order clean` records it once the rest is removed.
+6. Removes the workspace, and the checkout's branch once the workspace is gone, then records `ship_landed` with the check as evidence and what it could not remove in its details: a workspace it could not remove keeps its branch too. When nothing was kept it records `cleaned_up`; otherwise `order clean` records it once the rest is removed.
 
 The check an order is judged by until it ships is the default branch's definition of the declared check, run on the order's code, together with the gates of the installed `dim`. A slice that changes that definition is refused. The code the check runs is the order's to change: tests are code.
 

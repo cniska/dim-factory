@@ -1,7 +1,15 @@
 import { realpathSync } from "node:fs";
-import { workspaceDir } from "./paths";
-import { branchOf, type Kept, type Workspace } from "./workspace";
-import { addWorktree, deleteBranch, removeWorktree, resetTo, spreadTree } from "./workspace-effects";
+import { type Env, workspaceDir } from "./paths";
+import { branchOf, type Kept, type Rebased, type Workspace } from "./workspace";
+import {
+  abortRebase,
+  addWorktree,
+  deleteBranch,
+  rebaseOnto,
+  rebasing,
+  removeWorktree,
+  resetTo,
+} from "./workspace-effects";
 
 export function createWorkspace(root: string, project: string, order: string, base: string): void {
   addWorktree(root, workspaceDir(project, order), branchOf(order), base);
@@ -11,12 +19,17 @@ export function workspaceOf(project: string, order: string): Workspace {
   return { dir: realpathSync(workspaceDir(project, order)), branch: branchOf(order) };
 }
 
-export function resetWorkspace(workspace: Workspace, head: string): void {
-  resetTo(workspace.dir, head);
+export function settleWorkspace({ dir }: Workspace, head: string): void {
+  if (rebasing(dir)) abortRebase(dir);
+  resetTo(dir, head);
 }
 
-export function spreadMerge(workspace: Workspace, tree: string): void {
-  spreadTree(workspace.dir, tree);
+export function workspaceRebasing({ dir }: Workspace): boolean {
+  return rebasing(dir);
+}
+
+export function rebaseWorkspace({ dir }: Workspace, onto: string, env: Env): Rebased {
+  return rebaseOnto(dir, onto, env);
 }
 
 export function removeWorkspace(root: string, { dir, branch }: Workspace): readonly Kept[] {

@@ -40,6 +40,15 @@ export function tipOf(repo: string, branch: string): string {
   return ran(repo, ["rev-parse", "--verify", `refs/heads/${branch}^{commit}`]);
 }
 
+export function commitsBetween(repo: string, base: string, head: string): readonly string[] {
+  const listed = ran(repo, ["rev-list", "--reverse", `${base}..${head}`]);
+  return listed === "" ? [] : listed.split("\n");
+}
+
+export function isAncestor(repo: string, ancestor: string, commit: string): boolean {
+  return git(repo, ["merge-base", "--is-ancestor", ancestor, commit]).ok;
+}
+
 export function moveRef(repo: string, branch: string, to: string, from: string): void {
   ran(repo, ["update-ref", `refs/heads/${branch}`, to, from]);
 }

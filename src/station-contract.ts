@@ -79,7 +79,6 @@ type StationRefusalMeta = {
     readonly code: string;
   };
   readonly harness_unset: { readonly project: string };
-  readonly no_git_identity: { readonly checkout: string };
   readonly git_config_changed: { readonly order: string; readonly station: string; readonly config: string };
   readonly no_model: { readonly role: string; readonly file: string };
 };
@@ -137,11 +136,6 @@ export const refuseStation = refuser<StationRefusalMeta>({
     message: ({ order, station, config }) =>
       `the ${station} worker changed ${config}, which git runs as the owner, so the file was put back, the station failed and order ${order} stays at ${station}`,
     resolve: ({ order }) => `dim order show ${order}`,
-  },
-  no_git_identity: {
-    message: ({ checkout }) =>
-      `git names no user.name and user.email in ${checkout}, and every commit the factory makes carries the owner's identity; set both with git config --global, then run the order again`,
-    resolve: () => "dim doctor",
   },
   harness_unset: {
     message: ({ project }) =>

@@ -33,6 +33,7 @@ type OrderRefusalMeta = {
   readonly no_reason: { readonly order: string; readonly act: string };
   readonly no_checkout: { readonly project: string };
   readonly no_default_branch: { readonly checkout: string };
+  readonly no_git_identity: { readonly checkout: string };
 };
 
 const ADD_ORDER = "dim order add --title <title> --description <description>";
@@ -73,6 +74,11 @@ export const refuseOrder = refuser<OrderRefusalMeta>({
     message: ({ project }) =>
       `no session on record ran in a checkout of ${project}, so its settings cannot be read; add the order from inside that checkout`,
     resolve: () => ADD_ORDER,
+  },
+  no_git_identity: {
+    message: ({ checkout }) =>
+      `git names no user.name and user.email in ${checkout}, and every commit the factory makes carries the owner's identity; set both with git config --global, then run the order again`,
+    resolve: () => "dim doctor",
   },
   no_default_branch: {
     message: ({ checkout }) =>
@@ -119,23 +125,18 @@ export type ReviewArtifact = z.infer<typeof ReviewArtifact>;
 export const Answer = z.enum(["fixed", "refused"]);
 export type Answer = z.infer<typeof Answer>;
 
-const CheckEvidence = z.object({
+export const Evidence = z.object({
   kind: z.literal("check"),
   command: z.string(),
   exitCode: z.number().int().nullable(),
   output: z.string(),
 });
-
-const RebaseEvidence = z.object({
-  kind: z.literal("rebase"),
-  onto: z.string(),
-  commits: z.array(z.object({ from: z.string(), to: z.string() })),
-});
-
-export const Evidence = z.discriminatedUnion("kind", [CheckEvidence, RebaseEvidence]);
 export type Evidence = z.infer<typeof Evidence>;
 
 const evidence = z.array(Evidence);
+const checked = z.tuple([Evidence]);
+
+const Moved = z.object({ from: z.string(), to: z.string() });
 
 const entry = <A extends string, D extends z.ZodRawShape>(action: A, details: D) =>
   z.object({ action: z.literal(action), details: z.object(details) });
@@ -198,16 +199,16 @@ export const Later = z.union([
     stop("station_failed", "git_config_changed", session),
   ]),
   entry("ship_started", {}),
-  entry("branch_rebased", {
-    head: z.string(),
-    commits: z.array(z.object({ from: z.string(), to: z.string() })),
+  entry("branch_rebased", { head: z.string(), onto: z.string(), commits: z.array(Moved) }).extend({
+    evidence,
   }),
   z.discriminatedUnion("code", [
     stop("ship_stopped", "ship_unset", {}),
-    stop("ship_stopped", "checkout_dirty", { checkout: z.string() }),
-    stop("ship_stopped", "ship_conflict", { commit: z.string(), paths: z.array(z.string()).min(1) }),
-    stop("ship_stopped", "ship_check_failed", { head: z.string() }).extend({ evidence }),
-    stop("ship_stopped", "ship_no_check", { head: z.string() }).extend({ evidence }),
+    stop("ship_stopped", "checkout_dirty", { checkout: z.string(), reason: text }),
+    stop("ship_stopped", "ship_conflict", { onto: z.string(), paths: z.array(z.string()).min(1) }),
+    stop("ship_stopped", "rebase_failed", { onto: z.string(), reason: text }),
+    stop("ship_stopped", "ship_check_failed", { head: z.string() }).extend({ evidence: checked }),
+    stop("ship_stopped", "ship_no_check", { head: z.string() }),
   ]),
   entry("ship_landed", {
     head: z.string(),
@@ -217,7 +218,7 @@ export const Later = z.union([
         z.object({ kind: z.literal("branch"), branch: z.string(), reason: z.string() }),
       ]),
     ),
-  }).extend({ evidence }),
+  }).extend({ evidence: checked }),
   entry("cleaned_up", {}),
 ]);
 export type Later = z.infer<typeof Later>;

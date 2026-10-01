@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { commandLine, refusal, resultOf } from "./support/dim-output";
 import { type HarnessTurn, ORDER_PLACEHOLDER } from "./support/harness-script";
@@ -24,6 +25,19 @@ import { ACTION, NEXT, REFUSAL } from "./support/vocabulary";
 import { waitFor } from "./support/wait";
 
 const start = machines();
+
+function signingKey(): string {
+  const key = join(mkdtempSync(join(tmpdir(), "dim-signing-")), "id_ed25519");
+  const made = Bun.spawnSync(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", key]);
+  if (!made.success) throw new Error(`ssh-keygen failed: ${made.stderr.toString()}`);
+  return key;
+}
+
+function signWith(m: Machine, key: string): void {
+  m.git(["config", "gpg.format", "ssh"]);
+  m.git(["config", "user.signingkey", key]);
+  m.git(["config", "commit.gpgsign", "true"]);
+}
 
 const approveInFlight = (m: Machine, id: string) => m.operator.sh(commandLine(approveArgs(id)));
 
@@ -287,9 +301,11 @@ describe("shipping", () => {
         builder: [
           buildTurn(),
           [
+            { act: "sh", command: "git rebase main" },
             { act: "write", path: "slice-1.txt", content: "the owner's own line\nslice 1\n" },
-            { act: "commit", subject: "fix: keep the owner's line" },
-            { act: "build-return", artifact: "## Outcome\n\nResolved the conflict." },
+            { act: "sh", command: "git add slice-1.txt && GIT_EDITOR=true git rebase --continue" },
+            { act: "dim", args: ["slice", "submit"] },
+            { act: "build-return", artifact: "## Outcome\n\nRebased onto the owner's line." },
           ],
         ],
         reviewer: [reviewTurn(), reviewTurn()],
@@ -305,7 +321,8 @@ describe("shipping", () => {
 
     const order = await showOrder(m.operator, id);
     expect(order.status).toBe("shipped");
-    expect(actions(order)).toContain(ACTION.sliceCommitted);
+    const rebased = entriesOf(order, ACTION.branchRebased).filter((entry) => entry.by.kind === "factory");
+    expect(rebased.some((entry) => entry.evidence.some((proof) => proof.kind === "check"))).toBe(true);
     expect(m.git(["show", "main:slice-1.txt"])).toBe("the owner's own line\nslice 1");
   });
 
@@ -374,6 +391,40 @@ describe("shipping", () => {
     expect((await showOrder(m.operator, id)).status).toBe("running");
     rmSync(join(m.repo, "slice-1.txt"));
     await runOrder(m.operator, id);
+    expect((await showOrder(m.operator, id)).status).toBe("shipped");
+  });
+
+  test("in a checkout that signs commits, every landed commit is signed and names the owner as committer", async () => {
+    const m = await start({ script: happyPath() });
+    signWith(m, signingKey());
+    const id = await reviewed(m.operator);
+    const before = m.git(["rev-parse", "main"]);
+
+    resultOf(await approve(m.operator, id));
+
+    const landed = m.git(["rev-list", `${before}..main`]).split("\n");
+    expect(landed).toHaveLength(2);
+    for (const commit of landed) {
+      expect(m.git(["cat-file", "-p", commit])).toContain("gpgsig");
+      expect(m.git(["log", "-1", "--format=%an <%ae>|%cn <%ce>", commit])).toBe(
+        "Owner <owner@example.com>|Owner <owner@example.com>",
+      );
+    }
+  });
+
+  test("a landing whose signing key cannot be reached lands nothing and ships once the key is back", async () => {
+    const m = await start({ script: happyPath() });
+    const key = signingKey();
+    signWith(m, join(key, "..", "missing"));
+    const id = await reviewed(m.operator);
+    const main = m.git(["rev-parse", "main"]);
+
+    expect(refusal(await approve(m.operator, id)).code).toBe("rebase_failed");
+
+    expect(m.git(["rev-parse", "main"])).toBe(main);
+    expect((await showOrder(m.operator, id)).next).toBe(NEXT.run);
+    signWith(m, key);
+    resultOf(await runOrder(m.operator, id));
     expect((await showOrder(m.operator, id)).status).toBe("shipped");
   });
 

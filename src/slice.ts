@@ -14,6 +14,23 @@ export function submittedVerdict(facts: SubmittedFacts): SliceVerdict | null {
   return facts.clean ? null : { code: "workspace_dirty" };
 }
 
+export type RebasedFacts = {
+  readonly onto: string;
+  readonly expected: number;
+  readonly rebasing: boolean;
+  readonly onOnto: boolean;
+  readonly commits: number;
+  readonly checkChanged: boolean;
+  readonly clean: boolean;
+};
+
+export function rebasedVerdict(facts: RebasedFacts): SliceVerdict | null {
+  if (facts.rebasing || !facts.onOnto || facts.commits !== facts.expected)
+    return { code: "not_rebased", onto: facts.onto, commits: facts.expected };
+  if (facts.checkChanged) return { code: "check_changed" };
+  return facts.clean ? null : { code: "workspace_dirty" };
+}
+
 export type CheckRun = { readonly command: string; readonly exitCode: number | null };
 
 export function checkVerdict(check: CheckRun, cleanAfter: boolean): SliceVerdict | null {
