@@ -2,7 +2,7 @@ import { existsSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 export type ClaudeSettings = {
-  readonly permissions?: { readonly deny?: readonly string[] };
+  readonly permissions?: { readonly allow?: readonly string[]; readonly deny?: readonly string[] };
   readonly sandbox?: {
     readonly enabled?: boolean;
     readonly autoAllowBashIfSandboxed?: boolean;
@@ -28,13 +28,16 @@ function ruleRoot(rule: string, project: string): string {
   return rule.startsWith("//") ? real(rule.slice(1)) : real(resolve(project, rule.replace(/^\//, "")));
 }
 
-function deniedEdits(settings: ClaudeSettings, project: string): readonly string[] | "all" {
-  const deny = settings.permissions?.deny ?? [];
-  if (deny.some((rule) => ["Write", "Edit", "NotebookEdit"].includes(rule))) return "all";
-  return deny.flatMap((rule) => {
+const editRoots = (rules: readonly string[], project: string): readonly string[] =>
+  rules.flatMap((rule) => {
     const matched = /^Edit\((.+?)(\/\*\*)?\)$/.exec(rule);
     return matched?.[1] ? [ruleRoot(matched[1], project)] : [];
   });
+
+function deniedEdits(settings: ClaudeSettings, project: string): readonly string[] | "all" {
+  const deny = settings.permissions?.deny ?? [];
+  if (deny.some((rule) => ["Write", "Edit", "NotebookEdit"].includes(rule))) return "all";
+  return editRoots(deny, project);
 }
 
 export function writeAllowed(
@@ -44,8 +47,11 @@ export function writeAllowed(
   path: string,
 ): boolean {
   if (mode !== "acceptEdits" && mode !== "bypassPermissions") return false;
+  const target = real(resolve(project, path));
+  const editable = [real(project), ...editRoots(settings.permissions?.allow ?? [], project)];
+  if (mode === "acceptEdits" && !editable.some((root) => within(target, root))) return false;
   const denied = deniedEdits(settings, project);
-  return denied !== "all" && !denied.some((root) => within(real(resolve(project, path)), root));
+  return denied !== "all" && !denied.some((root) => within(target, root));
 }
 
 export function bashAllowed(settings: ClaudeSettings, mode: PermissionMode): boolean {

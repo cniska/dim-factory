@@ -3,7 +3,7 @@ import { chmodSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { briefFrom } from "./support/brief";
 import { refusal, resultOf } from "./support/dim-output";
-import type { HarnessScript, HarnessTurn } from "./support/harness-script";
+import { type HarnessScript, type HarnessTurn, TMPDIR_PLACEHOLDER } from "./support/harness-script";
 import { type Machine, type MachineOptions, machines, RECORD_PROBE } from "./support/machine";
 import {
   addOrder,
@@ -342,6 +342,24 @@ describe("slice gates", () => {
     const refused = entryOf(order, ACTION.sliceRefused);
     expect(refused.code).toBeString();
     expect(JSON.stringify(refused.evidence)).toContain("RED-CHECK-OUTPUT");
+  });
+
+  test("a builder returns a Build artifact it wrote in its temp directory", async () => {
+    const m = await start({
+      script: {
+        planner: [planTurn()],
+        builder: [
+          [
+            ...SLICES.flatMap((_, i) => sliceActs(i + 1)),
+            { act: "write", path: `${TMPDIR_PLACEHOLDER}/build.md`, content: BUILD_ARTIFACT },
+            { act: "sh", command: 'dim build return "$TMPDIR/build.md"' },
+          ],
+        ],
+      },
+    });
+    const order = await showOrder(m.operator, await built(m.operator));
+
+    expect(entryOf(order, ACTION.buildReturned).details.artifact).toBe(BUILD_ARTIFACT);
   });
 
   test("one build commits each slice in order through the gates and returns once", async () => {

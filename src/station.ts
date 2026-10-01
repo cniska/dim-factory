@@ -5,7 +5,7 @@ import { listedEnv, PASSED_THROUGH } from "./check";
 import { type CodedError, recordOf } from "./coded-error";
 import type { Models } from "./config";
 import type { Identity } from "./git-tree";
-import type { Policy } from "./harness-contract";
+import type { Adapter, Policy } from "./harness-contract";
 import { atStation, type OrderState, openFindings, slicesOf } from "./order";
 import { type Later, Plan, ReviewArtifact, STATIONS, type Station } from "./order-contract";
 import type { Env } from "./paths";
@@ -48,12 +48,13 @@ export function workerEnv(
   owner: Env,
   turn: Turn,
   identity: Identity,
-  signIn: readonly string[],
+  { signIn, tempRoot }: Pick<Adapter, "signIn" | "tempRoot">,
 ): Record<string, string> {
   return {
     ...listedEnv(owner, [...PASSED_THROUGH, ...XDG, ...signIn]),
     HOME: turn.home,
     TMPDIR: turn.tmp,
+    [tempRoot]: turn.tmp,
     [TURN_SOCKET_ENV]: turn.socket,
     GIT_AUTHOR_NAME: identity.name,
     GIT_AUTHOR_EMAIL: identity.email,

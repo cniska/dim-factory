@@ -42,12 +42,17 @@ function outcome({ lines }: Ended, session: SessionStart): Outcome {
 
 const EDIT_TOOLS = ["Write", "Edit", "NotebookEdit"];
 
-function deniedTools(policy: Policy): readonly string[] {
+const editRule = (path: string) => `Edit(${absoluteRule(path)}/**)`;
+
+function permissions(policy: Policy): {
+  readonly allow: readonly string[];
+  readonly deny: readonly string[];
+} {
   switch (policy.kind) {
     case "read":
-      return EDIT_TOOLS;
+      return { allow: [], deny: EDIT_TOOLS };
     case "edit":
-      return policy.denied.map((path) => `Edit(${absoluteRule(path)}/**)`);
+      return { allow: policy.writable.map(editRule), deny: policy.denied.map(editRule) };
   }
 }
 
@@ -61,12 +66,13 @@ function settings({ policy, socket }: Start): string {
       filesystem: { allowWrite: policy.writable, denyWrite: policy.denied },
       network: { allowUnixSockets: [socket] },
     },
-    permissions: { deny: deniedTools(policy) },
+    permissions: permissions(policy),
   });
 }
 
 export const claude: Adapter = {
   signIn: ["CLAUDE_CODE_OAUTH_TOKEN"],
+  tempRoot: "CLAUDE_CODE_TMPDIR",
   argv: (start) => [
     "claude",
     "-p",

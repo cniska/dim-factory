@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { settingsPath } from "./support/claude-hooks";
 import { transcriptPath } from "./support/claude-transcript";
@@ -353,6 +353,21 @@ describe("what a station worker can reach", () => {
       for (const name of Object.keys(OWNER_SECRETS)) expect(call.env[name]).toBeUndefined();
       expect(call.env.CLAUDE_CODE_OAUTH_TOKEN).toBe(CLAUDE_LOGIN);
     }
+  });
+
+  test("a file one worker leaves in its temp directory is not in the next worker's", async () => {
+    const leftover = `left-by-planner-${crypto.randomUUID()}`;
+    const m = await start({
+      script: {
+        planner: [[{ act: "sh", command: `touch "$TMPDIR/${leftover}"` }, ...planTurn()]],
+        builder: [[{ act: "sh", command: 'ls -a "$TMPDIR" > tmp-listing.txt' }, ...buildTurn()]],
+        reviewer: [reviewTurn()],
+      },
+    });
+    await built(m.operator);
+
+    const listing = readFileSync(join(m.invocation("builder", 0).cwd, "tmp-listing.txt"), "utf8");
+    expect(listing).not.toContain(leftover);
   });
 
   test("a station worker's writes to the record, the factory's code, its installed skills, hooks or settings are refused", async () => {

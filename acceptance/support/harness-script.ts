@@ -17,3 +17,5 @@ export type HarnessTurn = readonly HarnessAct[];
 export type HarnessScript = Readonly<Partial<Record<StationRole, readonly HarnessTurn[]>>>;
 
 export const ORDER_PLACEHOLDER = "{order}";
+
+export const TMPDIR_PLACEHOLDER = "{tmpdir}";

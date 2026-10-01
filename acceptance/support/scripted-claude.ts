@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { briefOf } from "./brief";
 import { type ClaudeHooks, fireHooksSync, mergeHooks, settingsHooks } from "./claude-hooks";
 import {
@@ -13,7 +13,7 @@ import {
 } from "./claude-sandbox";
 import { claudeLine, readTranscript, type TranscriptEntry, transcriptPath } from "./claude-transcript";
 import { commandLine, parseDim } from "./dim-output";
-import { type HarnessAct, ORDER_PLACEHOLDER } from "./harness-script";
+import { type HarnessAct, ORDER_PLACEHOLDER, TMPDIR_PLACEHOLDER } from "./harness-script";
 import { orderShown } from "./order-view";
 import {
   type Invocation,
@@ -221,7 +221,8 @@ record({ type: "user", text: flags.prompt });
 
 const tmp = env.TMPDIR ?? tmpdir();
 const scratch = mkdtempSync(`${tmp}/scripted-claude-`);
-const sessionTmp = mkdtempSync(`${tmp}/scripted-claude-tmp-`);
+const sessionTmp = join(env.CLAUDE_CODE_TMPDIR ?? "/tmp", `claude-${process.getuid?.()}`);
+mkdirSync(sessionTmp, { recursive: true });
 const shell = (command: string) =>
   Bun.spawnSync(sandboxed(flags.settings, cwd, [sessionTmp], command), {
     cwd,
@@ -276,7 +277,7 @@ async function perform(act: HarnessAct): Promise<string | null> {
       return null;
     }
     case "write": {
-      const path = resolve(cwd, withOrder(act.path));
+      const path = resolve(cwd, withOrder(act.path).replaceAll(TMPDIR_PLACEHOLDER, sessionTmp));
       tool("Write", { file_path: path, content: act.content }, () => {
         if (!writeAllowed(flags.settings, flags.permissionMode, cwd, path))
           return `Permission to write ${path} has been denied.`;

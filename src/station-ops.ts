@@ -278,7 +278,7 @@ function spawnFor(
     policy: policyAt(turn.station, { workspace, checkoutGit: turn.checkoutGit, turn: opened }),
     socket: opened.socket,
   });
-  return startHarness(argv, workspace, workerEnv(turn.env, opened, turn.identity, adapter.signIn));
+  return startHarness(argv, workspace, workerEnv(turn.env, opened, turn.identity, adapter));
 }
 
 type Closing = {
