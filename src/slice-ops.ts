@@ -2,12 +2,13 @@ import type { Database } from "bun:sqlite";
 import { invariant } from "./assert";
 import { judge } from "./check-ops";
 import { checkTask } from "./declared-tasks";
+import { isClean, moveRef, tipOf } from "./git-tree";
 import type { Evidence } from "./order-contract";
 import { recordVerdict, recordWork } from "./order-ops";
 import type { Env } from "./paths";
 import { checkVerdict, submittedVerdict } from "./slice";
 import { refuseSlice, type SliceVerdict } from "./slice-contract";
-import { branchTip, checkChanged, isClean, moveBranch, parentsOf } from "./slice-effects";
+import { checkChanged, parentsOf } from "./slice-effects";
 import type { Acting } from "./worker-contract";
 import { branchOf } from "./workspace";
 import { publishRecordedHead } from "./workspace-ops";
@@ -16,13 +17,13 @@ export function branchFacts(
   workspace: string,
   order: string,
 ): { readonly tip: string; readonly clean: boolean } {
-  return { tip: branchTip(workspace, branchOf(order)), clean: isClean(workspace) };
+  return { tip: tipOf(workspace, branchOf(order)), clean: isClean(workspace, "all") };
 }
 
 export function alignBranch(workspace: string, order: string, head: string): void {
   const branch = branchOf(order);
-  const tip = branchTip(workspace, branch);
-  if (tip !== head) moveBranch(workspace, branch, head, tip);
+  const tip = tipOf(workspace, branch);
+  if (tip !== head) moveRef(workspace, branch, head, tip);
 }
 
 export type SliceTurn = {
@@ -37,7 +38,7 @@ export type SliceTurn = {
 export function submitSlice(db: Database, turn: SliceTurn): { readonly committed: string } {
   const { order, workspace, acting } = turn;
   const branch = branchOf(order);
-  const tip = branchTip(workspace, branch);
+  const tip = tipOf(workspace, branch);
   const submitted = recordWork(db, order, acting, "build", () => ({
     action: "slice_submitted",
     details: { tip },
@@ -51,20 +52,20 @@ export function submitSlice(db: Database, turn: SliceTurn): { readonly committed
       details: { tip },
       evidence: [...evidence],
     });
-    moveBranch(workspace, branch, head, tip);
+    moveRef(workspace, branch, head, tip);
     throw refuseSlice(verdict.code, { order, tip, ...verdict });
   };
   const early = submittedVerdict({
     head,
     parents: parentsOf(workspace, tip),
     checkChanged: checkChanged(workspace, tip, head),
-    clean: isClean(workspace),
+    clean: isClean(workspace, "all"),
   });
   if (early !== null) return refused(early, []);
   const task = checkTask(workspace);
   if (task === null) return refused({ code: "no_check" }, []);
   const check = judge(workspace, task.commandLine, turn.env);
-  const checked = checkVerdict(check, isClean(workspace));
+  const checked = checkVerdict(check, isClean(workspace, "all"));
   if (checked !== null) return refused(checked, [check]);
   recordVerdict(db, order, submitted.seq, "build", {
     action: "slice_committed",

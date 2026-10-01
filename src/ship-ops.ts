@@ -3,28 +3,22 @@ import { invariant } from "./assert";
 import { judge } from "./check-ops";
 import type { UserConfig } from "./config";
 import { checkTask } from "./declared-tasks";
+import { isClean, moveRef, tipOf } from "./git-tree";
 import type { Evidence } from "./order-contract";
 import { orderState, recordFactory } from "./order-ops";
 import type { Env } from "./paths";
 import { refuseShip } from "./ship-contract";
 import {
   checkedOutBranch,
-  checkoutClean,
   commitsSince,
-  deleteBranch,
   fastForward,
   mergeTree,
-  moveRef,
   parentOf,
   recommit,
-  removeDir,
-  resetWorkspace,
   shipLock,
-  spreadTree,
-  tipOfBranch,
 } from "./ship-effects";
 import { branchOf } from "./workspace";
-import { workspaceOf } from "./workspace-ops";
+import { removeWorkspace, resetWorkspace, spreadMerge, workspaceOf } from "./workspace-ops";
 
 export type ShipOf = {
   readonly order: string;
@@ -47,6 +41,9 @@ type Replayed = {
 };
 
 function replay(root: string, onto: string, commits: readonly string[], oldHead: string): Replayed {
+  const [first] = commits;
+  if (first === undefined || parentOf(root, first) === onto)
+    return { head: oldHead, moved: [], conflict: null };
   let head = onto;
   const moved: { from: string; to: string }[] = [];
   for (const commit of commits) {
@@ -80,7 +77,7 @@ function land(db: Database, ship: ShipOf): void {
     record({ action: "ship_stopped", code: "ship_unset", details: {} });
     throw refuseShip("ship_unset", { order, project: ship.project });
   }
-  if (!checkoutClean(checkout)) {
+  if (!isClean(checkout, "no")) {
     record({ action: "ship_stopped", code: "checkout_dirty", details: { checkout } });
     throw refuseShip("checkout_dirty", { order, checkout });
   }
@@ -88,17 +85,17 @@ function land(db: Database, ship: ShipOf): void {
   invariant(head !== null, `order ${order} has a recorded head when it ships`);
   const branch = branchOf(order);
   const workspace = workspaceOf(ship.project, order);
-  const onto = tipOfBranch(checkout, defaultBranch);
+  const onto = tipOf(checkout, defaultBranch);
   const replayed = replay(checkout, onto, commitsSince(checkout, defaultBranch, head), head);
   const rebase: Evidence = { kind: "rebase", onto, commits: [...replayed.moved] };
   if (replayed.head !== head) {
     record({ action: "branch_rebased", details: { head: replayed.head } });
     moveRef(checkout, branch, replayed.head, head);
-    resetWorkspace(workspace, checkout, branch, replayed.head);
+    resetWorkspace(checkout, ship.project, order, replayed.head);
   }
   if (replayed.conflict !== null) {
     const { commit, tree, paths } = replayed.conflict;
-    spreadTree(workspace, tree);
+    spreadMerge(ship.project, order, tree);
     record({ action: "ship_stopped", code: "ship_conflict", details: { commit, paths: [...paths] } });
     throw refuseShip("ship_conflict", { order, commit, paths });
   }
@@ -122,12 +119,11 @@ function land(db: Database, ship: ShipOf): void {
   }
   if (checkedOutBranch(checkout) === defaultBranch) fastForward(checkout, replayed.head);
   else moveRef(checkout, defaultBranch, replayed.head, onto);
-  const keptWorkspace = removeDir(workspace);
-  const keptBranch = keptWorkspace === null ? deleteBranch(checkout, branch) : "kept with its workspace";
-  const kept = [
-    ...(keptWorkspace === null ? [] : [`${workspace}: ${keptWorkspace}`]),
-    ...(keptBranch === null ? [] : [`${branch}: ${keptBranch}`]),
-  ];
-  record({ action: "ship_landed", details: { head: replayed.head, kept }, evidence: [rebase, check] });
+  const kept = removeWorkspace(checkout, ship.project, order);
+  record({
+    action: "ship_landed",
+    details: { head: replayed.head, kept: [...kept] },
+    evidence: [rebase, check],
+  });
   if (kept.length === 0) record({ action: "cleaned_up", details: {} });
 }

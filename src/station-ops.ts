@@ -3,6 +3,7 @@ import { invariant } from "./assert";
 import { CodedError, refusalOf } from "./coded-error";
 import { userConfigPath } from "./config";
 import { writeTransaction } from "./db";
+import { diffSince, tipOf } from "./git-tree";
 import type { Adapter, SessionStart, Spawned } from "./harness-contract";
 import type { HarnessName } from "./harness-name";
 import { adapterFor, startHarness } from "./harness-ops";
@@ -40,7 +41,7 @@ import { refuseStation, TurnReply, type TurnRequest } from "./station-contract";
 import { closeTurn, copySession, listen, openTurn, send } from "./station-effects";
 import type { Acting, Caller, Worker, WorkerSession } from "./worker-contract";
 import { processOf, registerSession, stationWorker } from "./worker-ops";
-import { baseOf, createWorkspace, orderDiff, workspaceOf } from "./workspace-ops";
+import { createWorkspace, workspaceOf } from "./workspace-ops";
 
 type TurnOf = {
   readonly order: string;
@@ -171,7 +172,8 @@ async function serveTurn(
 async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
   const state = orderState(db, turn.order);
   const { station } = turn;
-  invariant(state.head !== null, `order ${turn.order} has a recorded head once its workspace is made`);
+  const { head } = state;
+  invariant(head !== null, `order ${turn.order} has a recorded head once its workspace is made`);
   const { worker, sessions } = stationWorker(db, {
     role: ROLE_AT[station],
     project: state.project,
@@ -181,7 +183,7 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
   const session = sessionOf(sessions, turn.newSessionHarness);
   const adapter = adapterFor(harnessOf(session));
   const workspace = workspaceOf(state.project, turn.order);
-  alignBranch(workspace, turn.order, state.head);
+  alignBranch(workspace, turn.order, head);
   const opened = openTurn(workerHomeDir(worker.name));
   try {
     const spawned = spawnFor(adapter, turn, session, workspace, opened, worker);
@@ -190,7 +192,11 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
       { db, turn, workspace, acting },
       spawned,
       opened.socket,
-      briefAt(station, { state, workspace, diff: orderDiff(turn.checkout, turn.defaultBranch, state.head) }),
+      briefAt(station, {
+        state,
+        workspace,
+        diff: () => diffSince(turn.checkout, turn.defaultBranch, head),
+      }),
     );
     if (served.fault !== null) throw served.fault;
     const id = idOf(session);
@@ -271,7 +277,7 @@ export async function advanceOrder(
   const expected = phaseAfter(before, act);
   const setup = projectSetup(db, before.project, caller.cwd);
   const prepared = expected?.kind === "run" ? prepareTurn(setup, before.project, expected.station) : null;
-  const base = baseOf(setup.root, setup.branch);
+  const base = tipOf(setup.root, setup.branch);
   const { by, cause, created, state } = startRun(db, order, caller, base, act);
   try {
     if (created) createWorkspace(setup.root, before.project, order, base);

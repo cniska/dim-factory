@@ -76,7 +76,11 @@ const orderFacts = (state: OrderState) => ({
   description: state.description,
 });
 
-export type BriefFacts = { readonly state: OrderState; readonly workspace: string; readonly diff: string };
+export type BriefFacts = {
+  readonly state: OrderState;
+  readonly workspace: string;
+  readonly diff: () => string;
+};
 
 export function briefAt(station: Station, { state, workspace, diff }: BriefFacts): string {
   switch (station) {
@@ -112,7 +116,7 @@ export function briefAt(station: Station, { state, workspace, diff }: BriefFacts
         order: orderFacts(state),
         workspace,
         build: state.buildArtifact,
-        diff,
+        diff: diff(),
         answers: state.findings.flatMap(({ id, file, line, answer, reason }) =>
           answer === null ? [] : [{ finding: id, file, line, answer, reason }],
         ),

@@ -203,7 +203,10 @@ export const Later = z.union([
     stop("ship_stopped", "ship_conflict", { commit: z.string(), paths: z.array(z.string()).min(1) }),
     stop("ship_stopped", "ship_check_failed", { head: z.string() }).extend({ evidence }),
   ]),
-  entry("ship_landed", { head: z.string(), kept: z.array(z.string()) }).extend({ evidence }),
+  entry("ship_landed", {
+    head: z.string(),
+    kept: z.array(z.object({ path: z.string(), reason: z.string() })),
+  }).extend({ evidence }),
   entry("cleaned_up", {}),
 ]);
 export type Later = z.infer<typeof Later>;

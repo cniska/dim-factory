@@ -1,8 +1,7 @@
-import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { invariant } from "./assert";
 import { claimPathLock, LockHeldError } from "./db-lock";
-import { git } from "./git-tree";
+import { git, ran } from "./git-tree";
 import { locksDir } from "./paths";
 
 const LOCK_POLL_MS = 100;
@@ -19,23 +18,9 @@ export async function shipLock(project: string): Promise<() => void> {
   }
 }
 
-function ran(cwd: string, args: readonly string[], env?: Record<string, string>): string {
-  const result = git(cwd, [...args], env === undefined ? {} : { env: { ...process.env, ...env } });
-  invariant(result.ok, `git ${args.join(" ")} in ${cwd}: ${result.err}`);
-  return result.out;
-}
-
-export function checkoutClean(root: string): boolean {
-  return ran(root, ["status", "--porcelain", "--untracked-files=no"]) === "";
-}
-
 export function commitsSince(root: string, defaultBranch: string, head: string): readonly string[] {
   const listed = ran(root, ["rev-list", "--reverse", `refs/heads/${defaultBranch}..${head}`]);
   return listed === "" ? [] : listed.split("\n");
-}
-
-export function tipOfBranch(root: string, branch: string): string {
-  return ran(root, ["rev-parse", "--verify", `refs/heads/${branch}^{commit}`]);
 }
 
 export type Merged =
@@ -71,6 +56,7 @@ export function recommit(root: string, commit: string, tree: string, parent: str
     commit,
   ]).split("\n");
   return ran(root, ["commit-tree", tree, "-p", parent, "-m", message.join("\n").trim()], {
+    ...process.env,
     GIT_AUTHOR_NAME: name,
     GIT_AUTHOR_EMAIL: email,
     GIT_AUTHOR_DATE: date,
@@ -82,17 +68,6 @@ export function parentOf(root: string, commit: string): string {
   return ran(root, ["rev-parse", `${commit}^`]);
 }
 
-export function resetWorkspace(workspace: string, checkout: string, branch: string, head: string): void {
-  ran(workspace, ["fetch", "-q", "--no-tags", checkout, head]);
-  ran(workspace, ["update-ref", `refs/heads/${branch}`, head]);
-  ran(workspace, ["reset", "-q", "--hard", head]);
-}
-
-export function spreadTree(workspace: string, tree: string): void {
-  ran(workspace, ["read-tree", "--reset", "-u", tree]);
-  ran(workspace, ["reset", "-q"]);
-}
-
 export function checkedOutBranch(root: string): string | null {
   const head = git(root, ["symbolic-ref", "-q", "--short", "HEAD"]);
   return head.ok ? head.out : null;
@@ -100,22 +75,4 @@ export function checkedOutBranch(root: string): string | null {
 
 export function fastForward(root: string, head: string): void {
   ran(root, ["merge", "-q", "--ff-only", head]);
-}
-
-export function moveRef(root: string, branch: string, to: string, from: string): void {
-  ran(root, ["update-ref", `refs/heads/${branch}`, to, from]);
-}
-
-export function removeDir(dir: string): string | null {
-  try {
-    rmSync(dir, { recursive: true });
-    return null;
-  } catch (error) {
-    return String(error);
-  }
-}
-
-export function deleteBranch(root: string, branch: string): string | null {
-  const deleted = git(root, ["update-ref", "-d", `refs/heads/${branch}`]);
-  return deleted.ok ? null : deleted.err;
 }

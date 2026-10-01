@@ -1,5 +1,6 @@
+import { rmSync } from "node:fs";
 import { invariant } from "./assert";
-import { git } from "./git-tree";
+import { git, ran } from "./git-tree";
 import { refuseWorkspace } from "./workspace-contract";
 
 const WORKSPACE_CONFIG = [
@@ -7,12 +8,6 @@ const WORKSPACE_CONFIG = [
   ["commit.gpgsign", "false"],
   ["gc.auto", "0"],
 ] as const;
-
-export function tipOf(root: string, branch: string): string {
-  const tip = git(root, ["rev-parse", "--verify", `refs/heads/${branch}^{commit}`]);
-  invariant(tip.ok, `the default branch ${branch} of ${root} names a commit: ${tip.err}`);
-  return tip.out;
-}
 
 export function cloneWorkspace(root: string, dir: string, branch: string, base: string): void {
   const origin = git(root, ["remote", "get-url", "origin"]);
@@ -25,23 +20,37 @@ export function cloneWorkspace(root: string, dir: string, branch: string, base: 
     [dir, ["checkout", "-q", "-b", branch, base]],
   ];
   for (const [cwd, args] of steps) {
-    const ran = git(cwd, [...args]);
-    if (!ran.ok) throw refuseWorkspace("workspace_failed", { dir, detail: ran.err });
+    const step = git(cwd, [...args]);
+    if (!step.ok) throw refuseWorkspace("workspace_failed", { dir, detail: step.err });
   }
-}
-
-export function diffSince(root: string, defaultBranch: string, head: string): string {
-  const diff = git(root, ["diff", "--no-ext-diff", "--no-color", `refs/heads/${defaultBranch}...${head}`]);
-  invariant(diff.ok, `git diff of ${head} against ${defaultBranch} in ${root}: ${diff.err}`);
-  return diff.out;
 }
 
 export function publishHead(root: string, dir: string, branch: string, head: string): void {
-  for (const args of [
-    ["fetch", "-q", "--no-tags", dir, head],
-    ["update-ref", `refs/heads/${branch}`, head],
-  ]) {
-    const ran = git(root, args);
-    invariant(ran.ok, `git ${args.join(" ")} in the checkout ${root}: ${ran.err}`);
+  ran(root, ["fetch", "-q", "--no-tags", dir, head]);
+  ran(root, ["update-ref", `refs/heads/${branch}`, head]);
+}
+
+export function resetTo(dir: string, root: string, branch: string, head: string): void {
+  ran(dir, ["fetch", "-q", "--no-tags", root, head]);
+  ran(dir, ["update-ref", `refs/heads/${branch}`, head]);
+  ran(dir, ["reset", "-q", "--hard", head]);
+}
+
+export function spreadTree(dir: string, tree: string): void {
+  ran(dir, ["read-tree", "--reset", "-u", tree]);
+  ran(dir, ["reset", "-q"]);
+}
+
+export function removeDir(dir: string): string | null {
+  try {
+    rmSync(dir, { recursive: true });
+    return null;
+  } catch (error) {
+    return String(error);
   }
+}
+
+export function deleteBranch(root: string, branch: string): string | null {
+  const deleted = git(root, ["update-ref", "-d", `refs/heads/${branch}`]);
+  return deleted.ok ? null : deleted.err;
 }
