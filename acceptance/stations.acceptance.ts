@@ -57,7 +57,16 @@ async function twoShippedOrders(): Promise<Machine> {
   const m = await start({
     script: {
       planner: [planTurn(), planTurn(FAREWELL_SLICES, "## Outcome\n\nA farewell under the greeting.")],
-      builder: [buildTurn(), buildTurn(2, "## Outcome\n\nThe README ends with a farewell.")],
+      builder: [
+        buildTurn(),
+        [
+          { act: "write", path: "farewell.txt", content: "farewell\n" },
+          { act: "commit", subject: "feat: write the farewell" },
+          { act: "write", path: "README.md", content: "# widgets\n\nSee farewell.txt.\n" },
+          { act: "commit", subject: "feat: link the farewell" },
+          { act: "build-return", artifact: "## Outcome\n\nThe README ends with a farewell." },
+        ],
+      ],
       reviewer: [reviewTurn(), reviewTurn()],
     },
   });
