@@ -5,7 +5,11 @@ async function linesOf(stream: ReadableStream<Uint8Array>): Promise<readonly str
 }
 
 export function killGroup(pid: number): void {
-  process.kill(-pid, "SIGKILL");
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+  }
 }
 
 export function spawnHarness(argv: readonly string[], cwd: string, env: Record<string, string>): Spawned {

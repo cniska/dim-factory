@@ -1,5 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { invariant } from "./assert";
 import type { Turn } from "./station";
 
 const SOCKET_ROOT = "/tmp";
@@ -81,6 +82,7 @@ export function sessionHeld(sessions: string, session: string): boolean {
 
 export function restoreSession(sessions: string, session: string, transcript: string): void {
   if (existsSync(transcript)) return;
+  invariant(sessionHeld(sessions, session), `the factory holds the copy of session ${session} it recorded`);
   mkdirSync(dirname(transcript), { recursive: true });
   copyFileSync(copyOf(sessions, session), transcript);
 }

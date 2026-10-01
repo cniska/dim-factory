@@ -46,7 +46,7 @@ type Returned =
   | { readonly kind: "worker"; readonly station: Station; readonly reason: string }
   | { readonly kind: "ship"; readonly check: FailedCheck };
 
-export type Death = { readonly session: string; readonly code: DeathCode };
+export type Death = { readonly session: string; readonly code: DeathCode; readonly copied: boolean };
 
 export type SliceView = { readonly title: string; readonly outcome: string; readonly commit: string | null };
 
@@ -256,7 +256,13 @@ function apply(state: OrderState, entry: Later): OrderState {
         head: entry.details.head,
       };
     case "session_died":
-      return { ...state, died: [...state.died, { session: entry.details.session, code: entry.code }] };
+      return {
+        ...state,
+        died: [
+          ...state.died,
+          { session: entry.details.session, code: entry.code, copied: entry.details.copied },
+        ],
+      };
     case "slice_submitted":
     case "slice_refused":
     case "message_sent":

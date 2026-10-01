@@ -109,8 +109,12 @@ describe("how a Claude Code session ended", () => {
     expect(claude.outcome(ended([INIT], null), NEW)).toEqual({ kind: "died", code: "killed" });
   });
 
-  test("a resume that never started its session failed", () => {
+  test("a resume or fork that never started its session failed", () => {
     expect(claude.outcome(ended([], 1), RESUME)).toEqual({ kind: "died", code: "resume_failed" });
+    expect(claude.outcome(ended([], 1), { kind: "fork", id: "s2", from: "s1" })).toEqual({
+      kind: "died",
+      code: "resume_failed",
+    });
     expect(claude.outcome(ended([], 1), NEW)).toEqual({ kind: "died", code: "killed" });
   });
 });

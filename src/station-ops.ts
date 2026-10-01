@@ -67,7 +67,8 @@ type TurnOf = {
 type Ended =
   | { readonly end: TurnEnd; readonly session: string }
   | { readonly end: "missed"; readonly session: string; readonly missed: string }
-  | { readonly end: "died"; readonly session: string; readonly code: DeathCode };
+  | { readonly end: "died"; readonly session: string; readonly code: DeathCode }
+  | { readonly end: "lost"; readonly session: string };
 
 type SessionOf =
   | { readonly kind: "new"; readonly id: string; readonly harness: HarnessName }
@@ -78,13 +79,13 @@ function sessionOf(
   sessions: readonly WorkerSession[],
   died: readonly Death[],
   newSessionHarness: HarnessName,
-  held: (session: string) => boolean,
 ): SessionOf {
   const current = sessions.at(-1);
   const fresh = { kind: "new", id: crypto.randomUUID(), harness: newSessionHarness } as const;
   if (current === undefined) return fresh;
-  if (!died.some((death) => death.session === current.id)) return { kind: "resume", record: current };
-  return held(current.id)
+  const death = died.find((one) => one.session === current.id);
+  if (death === undefined) return { kind: "resume", record: current };
+  return death.copied
     ? { kind: "fork", id: crypto.randomUUID(), harness: current.harness, from: current.id }
     : fresh;
 }
@@ -214,7 +215,7 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
     createdBy: turn.by.worker.name,
   });
   const copies = workerSessionsDir(worker.name);
-  const session = sessionOf(sessions, state.died, turn.newSessionHarness, (id) => sessionHeld(copies, id));
+  const session = sessionOf(sessions, state.died, turn.newSessionHarness);
   const adapter = adapterFor(harnessOf(session));
   const workspace = workspaceOf(state.project, turn.order);
   alignBranch(workspace, turn.order, head);
@@ -239,10 +240,14 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
     const id = idOf(session);
     const outcome = adapter.outcome(served.ended, startOf(session));
     const transcript = adapter.transcript(opened.home, workspace, id);
-    if (outcome.kind === "finished" || sessionWritten(transcript)) {
-      copySession(transcript, workerSessionsDir(worker.name), id);
-    }
-    return closeTurnRecord(db, turn, { session: id, missed: served.missed, outcome });
+    if (outcome.kind === "finished" || sessionWritten(transcript)) copySession(transcript, copies, id);
+    return closeTurnRecord(db, turn, {
+      session: id,
+      missed: served.missed,
+      outcome,
+      copied: sessionHeld(copies, id),
+      resumed: session.kind === "resume",
+    });
   } finally {
     closeTurn(opened);
   }
@@ -265,19 +270,31 @@ function spawnFor(
   return startHarness(argv, workspace, workerEnv(turn.env, opened, worker.name, adapter.signIn));
 }
 
-type Closing = { readonly session: string; readonly missed: string | null; readonly outcome: Outcome };
+type Closing = {
+  readonly session: string;
+  readonly missed: string | null;
+  readonly outcome: Outcome;
+  readonly copied: boolean;
+  readonly resumed: boolean;
+};
 
-function deathOf(session: string, outcome: Outcome & { readonly kind: "died" }): Later {
+function deathOf(session: string, copied: boolean, outcome: Outcome & { readonly kind: "died" }): Later {
   return outcome.code === "usage_limit"
-    ? { action: "session_died", code: outcome.code, details: { session, resetsAt: outcome.resetsAt } }
-    : { action: "session_died", code: outcome.code, details: { session } };
+    ? { action: "session_died", code: outcome.code, details: { session, copied, resetsAt: outcome.resetsAt } }
+    : { action: "session_died", code: outcome.code, details: { session, copied } };
 }
 
-function closeTurnRecord(db: Database, turn: TurnOf, { session, missed, outcome }: Closing): Ended {
+function closeTurnRecord(db: Database, turn: TurnOf, closing: Closing): Ended {
+  const { session, missed, outcome } = closing;
   return writeTransaction(db, () => {
-    if (outcome.kind === "died") recordFactory(db, turn.order, turn.cause, deathOf(session, outcome));
+    if (outcome.kind === "died") {
+      recordFactory(db, turn.order, turn.cause, deathOf(session, closing.copied, outcome));
+    }
     const end = turnEnd(orderState(db, turn.order), turn.station);
     if (end !== "no_return") return { end, session };
+    if (outcome.kind === "died" && outcome.code === "resume_failed" && closing.resumed) {
+      return { end: "lost", session };
+    }
     if (outcome.kind === "died") {
       recordFactory(db, turn.order, turn.cause, {
         action: "station_failed",
@@ -316,7 +333,8 @@ function prepareTurn(setup: ProjectSetup, project: string, station: Station): Pr
 
 async function turnAt(db: Database, turn: TurnOf): Promise<void> {
   const first = await runTurn(db, turn);
-  const ended = first.end === "died" && first.code === "resume_failed" ? await runTurn(db, turn) : first;
+  const ended = first.end === "lost" ? await runTurn(db, turn) : first;
+  invariant(ended.end !== "lost", `order ${turn.order}'s replacement session is a fork, never a resume`);
   if (ended.end === "died") {
     throw refuseStation("session_died", {
       order: turn.order,
@@ -346,8 +364,8 @@ export async function advanceOrder(
   const prepared = expected?.kind === "run" ? prepareTurn(setup, before.project, expected.station) : null;
   const base = tipOf(setup.root, setup.branch);
   const { by, cause, created, state, orphan } = startRun(db, order, caller, base, act);
-  if (orphan !== null) stopOrphan(orphan);
   try {
+    if (orphan !== null) stopOrphan(orphan);
     if (created) createWorkspace(setup.root, before.project, order, base);
     const { phase } = state;
     if (phase.kind === "ship") {

@@ -37,7 +37,7 @@ function outcome({ lines }: Ended, session: SessionStart): Outcome {
   }
   if (events.some((event) => event.type === "result")) return { kind: "finished" };
   const started = events.some((event) => event.type === "system" && event.subtype === "init");
-  return { kind: "died", code: session.kind === "resume" && !started ? "resume_failed" : "killed" };
+  return { kind: "died", code: session.kind !== "new" && !started ? "resume_failed" : "killed" };
 }
 
 const EDIT_TOOLS = ["Write", "Edit", "NotebookEdit"];
