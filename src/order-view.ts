@@ -91,8 +91,8 @@ export function orderView(
     log,
     workers: workers.map((worker) => workerView(worker, died)),
     slices: slicesOf(state),
-    findings: state.findings.map(({ answer, ...finding }) =>
-      answer === null ? finding : { ...finding, answer },
+    findings: state.findings.map(({ answered, ...finding }) =>
+      answered === null ? finding : { ...finding, answer: answered.answer },
     ),
   };
 }

@@ -189,12 +189,12 @@ describe("an order's state, folded from its log", () => {
       { action: "review_returned", details: { returned: { kind: "findings", findings: [finding] } } },
     ];
     expect(state(...withFindings).phase).toEqual({ kind: "run", station: "build" });
-    expect(state(...withFindings).findings).toEqual([{ ...finding, answer: null, reason: null }]);
+    expect(state(...withFindings).findings).toEqual([{ ...finding, answered: null }]);
     const answered = state(...withFindings, {
       action: "finding_answered",
       details: { finding: "f7-1", answer: "fixed", reason: "hello" },
     });
-    expect(answered.findings.map((f) => f.answer)).toEqual(["fixed"]);
+    expect(answered.findings.map((f) => f.answered?.answer)).toEqual(["fixed"]);
   });
 
   test("holds the Build artifact once it is returned, and each finding's answer with its reason", () => {
@@ -214,7 +214,7 @@ describe("an order's state, folded from its log", () => {
       { action: "review_returned", details: { returned: { kind: "findings", findings: [finding] } } },
       { action: "finding_answered", details: { finding: "f7-1", answer: "refused", reason: "it holds" } },
     );
-    expect(answered.findings).toEqual([{ ...finding, answer: "refused", reason: "it holds" }]);
+    expect(answered.findings).toEqual([{ ...finding, answered: { answer: "refused", reason: "it holds" } }]);
   });
 
   test("the recorded head starts at the workspace's base and moves with each commit and rebase", () => {

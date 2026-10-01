@@ -34,7 +34,9 @@ export type Phase =
 
 export type Plan = { readonly body: string; readonly slices: readonly Slice[]; readonly base: number };
 
-type FindingState = RecordedFinding & { readonly answer: Answer | null; readonly reason: string | null };
+type FindingState = RecordedFinding & {
+  readonly answered: { readonly answer: Answer; readonly reason: string } | null;
+};
 
 type FailedCheck = { readonly command: string; readonly exitCode: number | null; readonly output: string };
 
@@ -82,7 +84,7 @@ export function slicesOf(state: OrderState): readonly SliceView[] {
 }
 
 export function openFindings(state: OrderState): readonly FindingState[] {
-  return state.findings.filter((finding) => finding.answer === null);
+  return state.findings.filter((finding) => finding.answered === null);
 }
 
 export function stationOf(state: OrderState): Station | null {
@@ -139,7 +141,9 @@ function answered(
   answer: Answer,
   reason: string,
 ): readonly FindingState[] {
-  return findings.map((finding) => (finding.id === id ? { ...finding, answer, reason } : finding));
+  return findings.map((finding) =>
+    finding.id === id ? { ...finding, answered: { answer, reason } } : finding,
+  );
 }
 
 function failedCheck(evidence: readonly Evidence[]): FailedCheck {
@@ -212,7 +216,7 @@ function apply(state: OrderState, entry: Later): OrderState {
         ...state,
         returned: null,
         phase: run("build"),
-        findings: returned.findings.map((finding) => ({ ...finding, answer: null, reason: null })),
+        findings: returned.findings.map((finding) => ({ ...finding, answered: null })),
       };
     }
     case "branch_rebased": {

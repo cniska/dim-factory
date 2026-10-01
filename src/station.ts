@@ -117,8 +117,8 @@ export function briefAt(station: Station, { state, workspace, diff }: BriefFacts
         workspace,
         build: state.buildArtifact,
         diff: diff(),
-        answers: state.findings.flatMap(({ id, file, line, answer, reason }) =>
-          answer === null ? [] : [{ finding: id, file, line, answer, reason }],
+        answers: state.findings.flatMap(({ id, file, line, answered }) =>
+          answered === null ? [] : [{ finding: id, file, line, ...answered }],
         ),
         returned: state.returned,
       });
@@ -192,7 +192,7 @@ function orderReturned(request: OrderReturn, { station }: WorkContext): Later {
 function findingAnswered(request: FindingAnswer, { state }: WorkContext): Later {
   const finding = state.findings.find((one) => one.id === request.finding);
   if (finding === undefined) throw refuseStation("no_finding", { finding: request.finding });
-  if (finding.answer !== null) throw refuseStation("finding_answered", { finding: request.finding });
+  if (finding.answered !== null) throw refuseStation("finding_answered", { finding: request.finding });
   return {
     action: "finding_answered",
     details: {
