@@ -46,7 +46,7 @@ describe("starting Claude Code", () => {
     }
   });
 
-  test("turns a read policy into Claude's sandbox, with every edit tool denied and only the turn's socket reachable", () => {
+  test("turns a read policy into default mode and Claude's sandbox, with edits allowed only in the writable directories and only the turn's socket reachable", () => {
     const settings = settingsOf(claude.argv(START));
     expect(settings.sandbox).toEqual({
       enabled: true,
@@ -54,7 +54,7 @@ describe("starting Claude Code", () => {
       filesystem: { allowWrite: ["/t"], denyWrite: ["/w"] },
       network: { allowUnixSockets: ["/t/s"] },
     });
-    expect(settings.permissions.deny).toEqual(["Write", "Edit", "NotebookEdit"]);
+    expect(settings.permissions).toEqual({ allow: ["Edit(//t/**)"], deny: ["Edit(//w/**)"] });
     expect(argvMode(claude.argv(START))).toBe("default");
   });
 

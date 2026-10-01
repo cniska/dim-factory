@@ -46,10 +46,15 @@ export function writeAllowed(
   project: string,
   path: string,
 ): boolean {
-  if (mode !== "acceptEdits" && mode !== "bypassPermissions") return false;
   const target = real(resolve(project, path));
-  const editable = [real(project), ...editRoots(settings.permissions?.allow ?? [], project)];
-  if (mode === "acceptEdits" && !editable.some((root) => within(target, root))) return false;
+  const allowed = editRoots(settings.permissions?.allow ?? [], project);
+  const editable = {
+    default: allowed,
+    plan: [],
+    acceptEdits: [real(project), ...allowed],
+    bypassPermissions: [target],
+  }[mode];
+  if (!editable.some((root) => within(target, root))) return false;
   const denied = deniedEdits(settings, project);
   return denied !== "all" && !denied.some((root) => within(target, root));
 }

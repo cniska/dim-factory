@@ -11,6 +11,7 @@ import {
   built,
   planned,
   returnArtifact,
+  reviewed,
   runOrder,
   shipThrough,
   showOrder,
@@ -360,6 +361,30 @@ describe("slice gates", () => {
     const order = await showOrder(m.operator, await built(m.operator));
 
     expect(entryOf(order, ACTION.buildReturned).details.artifact).toBe(BUILD_ARTIFACT);
+  });
+
+  test("a reviewer, which may not edit the workspace, returns a Review artifact it wrote in its temp directory", async () => {
+    const m = await start({
+      script: {
+        planner: [planTurn()],
+        builder: [buildTurn()],
+        reviewer: [
+          [
+            {
+              act: "write",
+              path: `${TMPDIR_PLACEHOLDER}/review.json`,
+              content: JSON.stringify(REVIEW_ARTIFACT),
+            },
+            { act: "sh", command: 'dim review return --artifact "$TMPDIR/review.json"' },
+          ],
+        ],
+      },
+    });
+    const order = await showOrder(m.operator, await reviewed(m.operator));
+
+    expect(entryOf(order, ACTION.reviewReturned).details).toEqual({
+      returned: { kind: "artifact", artifact: REVIEW_ARTIFACT },
+    });
   });
 
   test("one build commits each slice in order through the gates and returns once", async () => {

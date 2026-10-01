@@ -42,21 +42,12 @@ function outcome({ lines }: Ended, session: SessionStart): Outcome {
   return { kind: "died", code: session.kind !== "new" && !started ? "resume_failed" : "killed" };
 }
 
-const EDIT_TOOLS = ["Write", "Edit", "NotebookEdit"];
-
 const editRule = (path: string) => `Edit(${absoluteRule(path)}/**)`;
 
-function permissions(policy: Policy): {
-  readonly allow: readonly string[];
-  readonly deny: readonly string[];
-} {
-  switch (policy.kind) {
-    case "read":
-      return { allow: [], deny: EDIT_TOOLS };
-    case "edit":
-      return { allow: policy.writable.map(editRule), deny: policy.denied.map(editRule) };
-  }
-}
+const permissions = ({ writable, denied }: Policy) => ({
+  allow: writable.map(editRule),
+  deny: denied.map(editRule),
+});
 
 const PERMISSION_MODE: Readonly<Record<Policy["kind"], string>> = { read: "default", edit: "acceptEdits" };
 
