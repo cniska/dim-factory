@@ -55,7 +55,6 @@ function land(db: Database, ship: ShipOf): void {
   landOnDefault(shipping, landing);
   const kept = removeWorkspace(checkout, shipping.workspace);
   record({ action: "ship_landed", details: { head: landing.head, kept: [...kept] }, evidence: [check] });
-  if (kept.length === 0) record({ action: "cleaned_up", details: {} });
 }
 
 function dirty(

@@ -155,7 +155,7 @@ Approving the Review artifact ships the order in the same process. Ships of one 
    - **Any other refusal by git**, such as a signing key it cannot reach, aborts the rebase, records `rebase_failed` with git's reason, lands nothing and waits to ship.
 4. Runs the check on the rebased workspace. A failing check sends the order to build with the check as the brief's `returned`, and refuses with `ship_check_failed`. A rebased tip that declares no check is stopped with `ship_no_check` and waits to ship.
 5. **Lands:** `git merge --ff-only` in the checkout if the default branch is checked out there, otherwise `update-ref` against its expected old value. Either one is the single moment the default branch moves, so it holds all of the order's commits or none. A refused fast-forward, such as an untracked file the landing would overwrite, is stopped with `checkout_dirty`.
-6. Removes the workspace, and the checkout's branch once the workspace is gone, then records `ship_landed` with the check as evidence and what it could not remove in its details: a workspace it could not remove keeps its branch too. When nothing was kept it records `cleaned_up`; otherwise `order clean` records it once the rest is removed.
+6. Removes the workspace, and the checkout's branch once the workspace is gone, then records `ship_landed` with the check as evidence and what it could not remove in its details: a workspace it could not remove keeps its branch too, for `git worktree remove` to take later.
 
 The check an order is judged by until it ships is the default branch's definition of the declared check, run on the order's code, together with the gates of the installed `dim`. A slice that changes that definition is refused. The code the check runs is the order's to change: tests are code.
 
@@ -177,7 +177,7 @@ The record carries one schema version for the whole file, the session record's t
 
 ## Commands and output
 
-The command names are whole words with subcommands (`dim order approve`, `dim hooks install`, `dim query search`), hooks included. Bare `dim` lists the commands. The operator's: `order add|run|approve|return|update|cancel|show|clean`, `message send`, `session show`, `trace`. `order clean` succeeds on an order already cleaned up.
+The command names are whole words with subcommands (`dim order approve`, `dim hooks install`, `dim query search`), hooks included. Bare `dim` lists the commands. The operator's: `order add|run|approve|return|update|cancel|show`, `message send`, `session show`, `trace`.
 
 Each command prints one line of JSON. A refusal carries `code`, `message`, `meta` and `resolve`, the `dim` command that resolves it. Each module's contract builds its refusals from one table keyed by every code, holding each code's message and resolve, so a new code does not compile until it says how it is resolved.
 

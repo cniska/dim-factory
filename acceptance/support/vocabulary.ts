@@ -23,7 +23,6 @@ export const ACTION = {
   branchRebased: "branch_rebased",
   shipLanded: "ship_landed",
   shipStopped: "ship_stopped",
-  cleanedUp: "cleaned_up",
 } as const;
 
 export type Action = (typeof ACTION)[keyof typeof ACTION];

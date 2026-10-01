@@ -289,7 +289,6 @@ function apply(state: OrderState, entry: Later): OrderState {
     case "session_started":
     case "station_failed":
     case "ship_started":
-    case "cleaned_up":
       return state;
     default:
       return unreachable(entry);

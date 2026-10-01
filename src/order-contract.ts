@@ -219,7 +219,6 @@ export const Later = z.union([
       ]),
     ),
   }).extend({ evidence: checked }),
-  entry("cleaned_up", {}),
 ]);
 export type Later = z.infer<typeof Later>;
 

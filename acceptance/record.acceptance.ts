@@ -133,7 +133,7 @@ describe("attribution", () => {
 });
 
 describe("the order log", () => {
-  test("one log holds every action on the order once, in order, with the factory's checks, rebase, landing and cleanup and their evidence", async () => {
+  test("one log holds every action on the order once, in order, with the factory's checks, rebase and landing and their evidence", async () => {
     const m = await start({ script: happyPath() });
     const order = await shippedAfterMainMoved(m);
 
@@ -145,8 +145,9 @@ describe("the order log", () => {
     );
     expect(evidence).toContain("check");
     expect(entryOf(order, ACTION.branchRebased).details.commits).toHaveLength(2);
-    expect(entryOf(order, ACTION.shipLanded).evidence.map((item) => item.kind)).toEqual(["check"]);
-    expect(actions(order)).toContain(ACTION.cleanedUp);
+    const landed = entryOf(order, ACTION.shipLanded);
+    expect(landed.evidence.map((item) => item.kind)).toEqual(["check"]);
+    expect(landed.details.kept).toEqual([]);
   });
 
   test("no command changes or removes an entry the log already holds", async () => {
@@ -157,8 +158,6 @@ describe("the order log", () => {
       () => runOrder(m.operator, id),
       () => approve(m.operator, id),
       () => approve(m.operator, id),
-      () => approve(m.operator, id),
-      () => m.operator.dim(["order", "clean", id]),
     ]) {
       resultOf(await step());
       const { log } = await showOrder(m.operator, id);
