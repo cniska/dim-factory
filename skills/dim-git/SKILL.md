@@ -21,7 +21,7 @@ A commit is evidence that one slice passed `dim-build`'s slice loop, not a save 
 
 In a factory order, commit the slice with `git add -A && git commit -m "<subject>"` and hand it in with `dim slice submit`. The gates keep it only when it is one new commit on the order's recorded head, it leaves the check's declaration as it was, the workspace is clean, and the repository's declared check passes on it without changing a file. A refused commit is taken back off the branch and its changes stay in the workspace: answer the reason, commit again and submit again. Do not `--amend`, `reset` or `rebase` a submitted commit; the factory puts the branch back at the recorded head and the rewrite is lost.
 
-Take the subject's form from the repository's `git log`. The repository's hooks do not run in a workspace; the gates judge the commit.
+Take the subject's form from the repository's `git log`. The repository's own hooks run on the commit as in any worktree of it; a hook that refuses it is the project's rule, so answer it and commit again. The gates then judge the slice.
 
 An unwanted commit is dropped, never reverted: reset or rebase it out while it is still local and unsubmitted. Once it is on a shared branch, dropping it rewrites that branch, which is the owner's call — stop and ask. A revert leaves both commits in the history and the message git writes for it answers to no one.
 
@@ -29,7 +29,7 @@ Outside a factory order, record the commit SHA, changed files, check command and
 
 ## Resolve a ship's conflict
 
-Shipping rebases an order onto the moved default branch. When a commit conflicts, the order comes back to build with the brief's `conflict` naming the paths, and the workspace holds the merge with its conflict markers. Resolve only those paths, so each carries both the order's change and the default branch's with no marker left, change nothing else, then commit the resolution as an ordinary commit and `dim slice submit` it. Nothing after it is replayed; the resolution is the order's new head.
+Shipping rebases an order onto the moved default branch. When the rebase conflicts, the order comes back to build with the brief's `conflict` naming the commit to rebase onto and the paths, and the workspace at the order's recorded head. Run `git rebase --reapply-cherry-picks --empty=keep <onto>`, resolve each conflicted path so it carries both the order's change and the default branch's with no marker left, change nothing else, `git add` it and `git rebase --continue`. When the rebase has finished, `dim slice submit` hands in the rebased branch, which keeps one commit per slice.
 
 ## Land work
 

@@ -428,6 +428,45 @@ describe("shipping", () => {
     expect((await showOrder(m.operator, id)).status).toBe("shipped");
   });
 
+  test("an order one of whose slices already reached the default branch still ships, one commit per slice", async () => {
+    const m = await start({ script: happyPath() });
+    const id = await reviewed(m.operator);
+    const [first] = (await showOrder(m.operator, id)).slices;
+    if (first?.commit === undefined || first.commit === null) throw new Error("the first slice has a commit");
+    m.git(["cherry-pick", first.commit]);
+
+    resultOf(await approve(m.operator, id));
+
+    expect((await showOrder(m.operator, id)).status).toBe("shipped");
+    expect(m.onMain("slice-1.txt") && m.onMain("slice-2.txt")).toBe(true);
+  });
+
+  test("a hook the order commits runs inside the builder's sandbox only, never at ship", async () => {
+    const m = await start({ script: {} });
+    const marker = join(m.repo, "..", "hook-ran");
+    m.git(["config", "core.hooksPath", ".hooks"]);
+    m.script({
+      planner: [planTurn([{ title: "One", outcome: "A hook the project runs." }])],
+      builder: [
+        [
+          {
+            act: "sh",
+            command: `mkdir -p .hooks && printf '#!/bin/sh\\ntouch "%s"\\n' '${marker}' > .hooks/post-commit && chmod +x .hooks/post-commit`,
+          },
+          { act: "commit", subject: "feat: add a project hook" },
+          { act: "build-return", artifact: "## Outcome\n\nA hook." },
+        ],
+      ],
+      reviewer: [reviewTurn()],
+    });
+    const id = await reviewed(m.operator);
+
+    resultOf(await approve(m.operator, id));
+
+    expect((await showOrder(m.operator, id)).status).toBe("shipped");
+    expect(existsSync(marker)).toBe(false);
+  });
+
   test("an order whose workspace cannot be removed is still shipped and names what it kept", async () => {
     const m = await start({ script: happyPath() });
     const id = await reviewed(m.operator);

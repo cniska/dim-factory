@@ -40,7 +40,7 @@ export async function shipOrder(db: Database, ship: ShipOf): Promise<void> {
 function land(db: Database, ship: ShipOf): void {
   const { order, checkout } = ship;
   const record = (later: Later) => recordFactory(db, order, ship.cause, later);
-  const identity = ownerIdentity(checkout, ship.env);
+  ownerIdentity(checkout, ship.env);
   record({ action: "ship_started", details: {} });
   if (ship.config.ship === undefined) {
     record({ action: "ship_stopped", code: "ship_unset", details: {} });
@@ -50,15 +50,11 @@ function land(db: Database, ship: ShipOf): void {
   const { head } = orderState(db, order);
   invariant(head !== null, `order ${order} has a recorded head when it ships`);
   const shipping: Shipping = { ...ship, workspace: workspaceOf(ship.project, order), record };
-  const rebased = rebase(shipping, head, {
-    ...ship.env,
-    GIT_COMMITTER_NAME: identity.name,
-    GIT_COMMITTER_EMAIL: identity.email,
-  });
-  const check = checked(shipping, rebased);
-  landOnDefault(shipping, rebased.head, rebased.onto);
+  const landing = rebase(shipping, head);
+  const check = checked(shipping, landing);
+  landOnDefault(shipping, landing);
   const kept = removeWorkspace(checkout, shipping.workspace);
-  record({ action: "ship_landed", details: { head: rebased.head, kept: [...kept] }, evidence: [check] });
+  record({ action: "ship_landed", details: { head: landing.head, kept: [...kept] }, evidence: [check] });
   if (kept.length === 0) record({ action: "cleaned_up", details: {} });
 }
 
@@ -70,10 +66,10 @@ function dirty(
   throw refuseShip("checkout_dirty", { order, checkout, reason });
 }
 
-type Rebase = { readonly head: string; readonly onto: string };
+type Landing = { readonly head: string; readonly onto: string };
 
-function rebase(shipping: Shipping, head: string, env: Env): Rebase {
-  const { order, checkout, defaultBranch, workspace, record } = shipping;
+function rebase(shipping: Shipping, head: string): Landing {
+  const { order, checkout, defaultBranch, workspace, record, env } = shipping;
   settleWorkspace(workspace, head);
   const onto = tipOf(checkout, defaultBranch);
   const before = commitsBetween(checkout, onto, head);
@@ -93,7 +89,7 @@ function rebase(shipping: Shipping, head: string, env: Env): Rebase {
   return { head: moved, onto };
 }
 
-function checked({ order, env, workspace, record }: Shipping, { head }: Rebase) {
+function checked({ order, env, workspace, record }: Shipping, { head }: Landing) {
   const task = checkTask(workspace.dir);
   if (task === null) {
     record({ action: "ship_stopped", code: "ship_no_check", details: { head } });
@@ -107,7 +103,7 @@ function checked({ order, env, workspace, record }: Shipping, { head }: Rebase) 
   return check;
 }
 
-function landOnDefault(shipping: Shipping, head: string, onto: string): void {
+function landOnDefault(shipping: Shipping, { head, onto }: Landing): void {
   const { checkout, defaultBranch } = shipping;
   if (checkedOutBranch(checkout) !== defaultBranch) {
     moveRef(checkout, defaultBranch, head, onto);

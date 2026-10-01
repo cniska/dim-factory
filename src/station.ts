@@ -65,10 +65,9 @@ export function workerEnv(
   };
 }
 
-type Places = { readonly workspace: string; readonly checkout: string; readonly turn: Turn };
+type Places = { readonly workspace: string; readonly checkoutGit: string; readonly turn: Turn };
 
-export function policyAt(station: Station, { workspace, checkout, turn }: Places): Policy {
-  const checkoutGit = join(checkout, ".git");
+export function policyAt(station: Station, { workspace, checkoutGit, turn }: Places): Policy {
   if (station !== "build") return { kind: "read", writable: [turn.tmp], denied: [workspace, checkoutGit] };
   return { kind: "edit", writable: [turn.tmp], denied: [join(checkoutGit, "hooks")] };
 }

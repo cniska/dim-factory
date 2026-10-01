@@ -74,13 +74,13 @@ export function send(socket: string, line: string): Promise<string> {
   });
 }
 
-export type FileGuard = { readonly path: string; readonly restored: () => boolean };
+export type FileGuard = { readonly path: string; readonly putBack: () => boolean };
 
 export function guardFile(path: string): FileGuard {
   const held = readFileSync(path);
   return {
     path,
-    restored: () => {
+    putBack: () => {
       if (readFileSync(path).equals(held)) return false;
       writeFileSync(path, held);
       return true;

@@ -1,9 +1,10 @@
 import type { Database } from "bun:sqlite";
-import { invariant } from "./assert";
+import { join } from "node:path";
+import { invariant, unreachable } from "./assert";
 import { CodedError, refusalOf } from "./coded-error";
 import { userConfigPath } from "./config";
 import { writeTransaction } from "./db";
-import { diffSince, type Identity, sharedConfigOf, tipOf } from "./git-tree";
+import { diffSince, gitCommonDir, type Identity, tipOf } from "./git-tree";
 import type { Adapter, Outcome, SessionStart, Spawned } from "./harness-contract";
 import type { HarnessName } from "./harness-name";
 import { adapterFor, startHarness, stopOrphan } from "./harness-ops";
@@ -64,6 +65,7 @@ type TurnOf = {
   readonly newSessionHarness: HarnessName;
   readonly identity: Identity;
   readonly checkout: string;
+  readonly checkoutGit: string;
   readonly defaultBranch: string;
   readonly env: Env;
 };
@@ -157,11 +159,14 @@ function serve({ db, turn, workspace, acting }: Served, request: TurnRequest): u
 }
 
 type TurnServed = {
-  readonly missed: string | null;
-  readonly fault: unknown;
+  readonly stop: Stop | null;
   readonly ended: Awaited<Spawned["ended"]>;
-  readonly configChanged: boolean;
 };
+
+type Stop =
+  | { readonly kind: "missed"; readonly missed: string }
+  | { readonly kind: "config_changed" }
+  | { readonly kind: "fault"; readonly error: unknown };
 
 async function serveTurn(
   served: Served,
@@ -171,16 +176,16 @@ async function serveTurn(
 ): Promise<TurnServed> {
   const { order, station } = served.turn;
   let misses: readonly string[] = [];
-  let stopped = false;
-  let configChanged = false;
-  let fault: unknown = null;
+  const stopped: { cause: Stop | null } = { cause: null };
+  const stopWith = (cause: Stop) => {
+    stopped.cause = cause;
+    spawned.kill();
+  };
   const answer = (line: string): string | null => {
-    if (stopped)
+    if (stopped.cause !== null)
       return JSON.stringify(replyTo(refuseStation("turn_stopped", { order, station }), misses).reply);
-    if (served.config.restored()) {
-      configChanged = true;
-      stopped = true;
-      spawned.kill();
+    if (served.config.putBack()) {
+      stopWith({ kind: "config_changed" });
       const changed = refuseStation("git_config_changed", { order, station, config: served.config.path });
       return JSON.stringify(replyTo(changed, misses).reply);
     }
@@ -188,16 +193,12 @@ async function serveTurn(
       return JSON.stringify({ ok: true, result: serve(served, requestOf(line)) });
     } catch (error) {
       if (!(error instanceof CodedError)) {
-        fault = error;
-        spawned.kill();
+        stopWith({ kind: "fault", error });
         return null;
       }
       const refused = replyTo(error, misses);
       misses = refused.misses;
-      if (refused.stop) {
-        stopped = true;
-        spawned.kill();
-      }
+      if (refused.stop) stopWith({ kind: "missed", missed: misses.join("; ") });
       return JSON.stringify(refused.reply);
     }
   };
@@ -205,8 +206,9 @@ async function serveTurn(
   try {
     spawned.prompt(brief);
     const ended = await spawned.ended;
-    if (served.config.restored()) configChanged = true;
-    return { missed: stopped && !configChanged ? misses.join("; ") : null, fault, ended, configChanged };
+    const { cause } = stopped;
+    const changed = served.config.putBack() && cause?.kind !== "fault";
+    return { stop: changed ? { kind: "config_changed" } : cause, ended };
   } finally {
     listening.stop();
   }
@@ -236,7 +238,7 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
     const spawned = spawnFor(adapter, turn, session, workspace, opened);
     const acting: Acting = { worker, session: openSession(db, turn, worker, session, spawned.pid) };
     const served = await serveTurn(
-      { db, turn, workspace, acting, config: guardFile(sharedConfigOf(turn.checkout)) },
+      { db, turn, workspace, acting, config: guardFile(join(turn.checkoutGit, "config")) },
       spawned,
       opened.socket,
       briefAt(station, {
@@ -245,18 +247,18 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
         diff: station === "review" ? diffSince(turn.checkout, turn.defaultBranch, head) : null,
       }),
     );
-    if (served.fault !== null) throw served.fault;
+    const { stop } = served;
+    if (stop?.kind === "fault") throw stop.error;
     const id = idOf(session);
     const outcome = adapter.outcome(served.ended, startOf(session));
     const transcript = adapter.transcript(opened.home, workspace, id);
     if (outcome.kind === "finished" || sessionWritten(transcript)) copySession(transcript, copies, id);
     return closeTurnRecord(db, turn, {
       session: id,
-      missed: served.missed,
+      stop,
       outcome,
       copied: sessionHeld(copies, id),
       resumed: session.kind === "resume",
-      configChanged: served.configChanged,
     });
   } finally {
     closeTurn(opened);
@@ -273,7 +275,7 @@ function spawnFor(
   const argv = adapter.argv({
     session: startOf(session),
     model: turn.model,
-    policy: policyAt(turn.station, { workspace, checkout: turn.checkout, turn: opened }),
+    policy: policyAt(turn.station, { workspace, checkoutGit: turn.checkoutGit, turn: opened }),
     socket: opened.socket,
   });
   return startHarness(argv, workspace, workerEnv(turn.env, opened, turn.identity, adapter.signIn));
@@ -281,11 +283,10 @@ function spawnFor(
 
 type Closing = {
   readonly session: string;
-  readonly missed: string | null;
+  readonly stop: Exclude<Stop, { readonly kind: "fault" }> | null;
   readonly outcome: Outcome;
   readonly copied: boolean;
   readonly resumed: boolean;
-  readonly configChanged: boolean;
 };
 
 function deathOf(session: string, copied: boolean, outcome: Outcome & { readonly kind: "died" }): Later {
@@ -294,51 +295,41 @@ function deathOf(session: string, copied: boolean, outcome: Outcome & { readonly
     : { action: "session_died", code: outcome.code, details: { session, copied } };
 }
 
-const FINISHED: Outcome = { kind: "finished" };
-
 function closeTurnRecord(db: Database, turn: TurnOf, closing: Closing): Ended {
-  const { session, missed, configChanged } = closing;
-  const outcome = missed !== null || configChanged ? FINISHED : closing.outcome;
+  const { session, stop } = closing;
+  const failed = (later: Later) => recordFactory(db, turn.order, turn.cause, later);
   return writeTransaction(db, () => {
-    if (outcome.kind === "died") {
-      recordFactory(db, turn.order, turn.cause, deathOf(session, closing.copied, outcome));
+    switch (stop?.kind) {
+      case "config_changed":
+        failed({ action: "station_failed", code: "git_config_changed", details: { session } });
+        return { end: "config_changed", session };
+      case "missed":
+        failed({
+          action: "station_failed",
+          code: "return_missed",
+          details: { session, missed: stop.missed },
+        });
+        return { end: "missed", session, missed: stop.missed };
+      case undefined:
+        return closeEndedTurn(db, turn, closing);
+      default:
+        return unreachable(stop);
     }
-    if (configChanged) {
-      recordFactory(db, turn.order, turn.cause, {
-        action: "station_failed",
-        code: "git_config_changed",
-        details: { session },
-      });
-      return { end: "config_changed", session };
-    }
-    const end = turnEnd(orderState(db, turn.order), turn.station);
-    if (end !== "no_return") return { end, session };
-    if (outcome.kind === "died" && outcome.code === "resume_failed" && closing.resumed) {
-      return { end: "lost", session };
-    }
-    if (outcome.kind === "died") {
-      recordFactory(db, turn.order, turn.cause, {
-        action: "station_failed",
-        code: "session_died",
-        details: { session },
-      });
-      return { end: "died", session, code: outcome.code };
-    }
-    if (missed === null) {
-      recordFactory(db, turn.order, turn.cause, {
-        action: "station_failed",
-        code: "no_return",
-        details: { session },
-      });
-      return { end, session };
-    }
-    recordFactory(db, turn.order, turn.cause, {
-      action: "station_failed",
-      code: "return_missed",
-      details: { session, missed },
-    });
-    return { end: "missed", session, missed };
   });
+}
+
+function closeEndedTurn(db: Database, turn: TurnOf, { session, outcome, copied, resumed }: Closing): Ended {
+  const failed = (later: Later) => recordFactory(db, turn.order, turn.cause, later);
+  if (outcome.kind === "died") failed(deathOf(session, copied, outcome));
+  const end = turnEnd(orderState(db, turn.order), turn.station);
+  if (end !== "no_return") return { end, session };
+  if (outcome.kind === "died" && outcome.code === "resume_failed" && resumed) return { end: "lost", session };
+  if (outcome.kind === "died") {
+    failed({ action: "station_failed", code: "session_died", details: { session } });
+    return { end: "died", session, code: outcome.code };
+  }
+  failed({ action: "station_failed", code: "no_return", details: { session } });
+  return { end, session };
 }
 
 type Prepared = {
@@ -365,7 +356,7 @@ async function turnAt(db: Database, turn: TurnOf): Promise<void> {
     throw refuseStation("git_config_changed", {
       order: turn.order,
       station: turn.station,
-      config: sharedConfigOf(turn.checkout),
+      config: join(turn.checkoutGit, "config"),
     });
   }
   if (ended.end === "died") {
@@ -422,6 +413,7 @@ export async function advanceOrder(
       by,
       cause,
       checkout: setup.root,
+      checkoutGit: gitCommonDir(setup.root),
       defaultBranch: setup.branch,
       env,
       ...prepared,

@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import { invariant } from "./assert";
 import type { Env } from "./paths";
 
@@ -24,8 +23,8 @@ export function ran(repo: string, args: readonly string[], env?: Env): string {
   return result.out;
 }
 
-export function sharedConfigOf(repo: string): string {
-  return join(ran(repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"]), "config");
+export function gitCommonDir(repo: string): string {
+  return ran(repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
 }
 
 export type Identity = { readonly name: string; readonly email: string };

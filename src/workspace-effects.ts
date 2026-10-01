@@ -4,8 +4,19 @@ import type { Env } from "./paths";
 import type { Rebased } from "./workspace";
 import { refuseWorkspace } from "./workspace-contract";
 
+const NO_HOOKS = ["-c", "core.hooksPath=/dev/null"];
+
+const REBASE = [
+  "rebase",
+  "--force-rebase",
+  "--reapply-cherry-picks",
+  "--empty=keep",
+  "--no-autosquash",
+  "--no-update-refs",
+];
+
 export function addWorktree(root: string, dir: string, branch: string, base: string): void {
-  const added = git(root, ["worktree", "add", "-q", "-b", branch, dir, base]);
+  const added = git(root, [...NO_HOOKS, "worktree", "add", "-q", "-b", branch, dir, base]);
   if (!added.ok) throw refuseWorkspace("workspace_failed", { dir, detail: added.err });
 }
 
@@ -20,18 +31,14 @@ export function rebasing(dir: string): boolean {
 }
 
 export function abortRebase(dir: string): void {
-  ran(dir, ["rebase", "--abort"]);
+  ran(dir, [...NO_HOOKS, "rebase", "--abort"]);
 }
 
 export function rebaseOnto(dir: string, onto: string, env: Env): Rebased {
-  const rebased = git(
-    dir,
-    ["rebase", "--force-rebase", "--empty=keep", "--no-autosquash", "--no-update-refs", onto],
-    { env },
-  );
+  const rebased = git(dir, [...NO_HOOKS, ...REBASE, onto], { env });
   if (rebased.ok) return { kind: "rebased" };
   const unmerged = ran(dir, ["diff", "--name-only", "--diff-filter=U"]);
-  abortRebase(dir);
+  if (rebasing(dir)) abortRebase(dir);
   return unmerged === ""
     ? { kind: "failed", reason: rebased.err }
     : { kind: "conflict", paths: unmerged.split("\n") };

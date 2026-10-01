@@ -63,6 +63,6 @@ export const refuseSlice = refuser<SliceRefusalMeta>({
   not_rebased: {
     message: ({ tip, onto, commits }) =>
       `${tip} is not the order's ${commits} commits rebased onto ${onto} with the rebase finished, so the branch is back at the recorded head`,
-    resolve: ({ onto }) => `git rebase ${onto} && dim slice submit`,
+    resolve: ({ onto }) => `git rebase --reapply-cherry-picks --empty=keep ${onto} && dim slice submit`,
   },
 });

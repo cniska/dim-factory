@@ -3,7 +3,7 @@ import { invariant } from "./assert";
 import { judge } from "./check-ops";
 import { checkTask } from "./declared-tasks";
 import { commitsBetween, isAncestor, isClean, moveRef, tipOf } from "./git-tree";
-import { movedCommits } from "./order";
+import { type Conflict, movedCommits } from "./order";
 import type { Evidence } from "./order-contract";
 import { recordVerdict, recordWork } from "./order-ops";
 import type { Env } from "./paths";
@@ -44,52 +44,84 @@ export function submitSlice(db: Database, turn: SliceTurn): { readonly committed
   }));
   const { head, conflict, commits } = submitted.state;
   invariant(head !== null, `order ${order} has a recorded head once its workspace is made`);
-  const refused = (verdict: SliceVerdict, evidence: readonly Evidence[]): never => {
-    recordVerdict(db, order, submitted.seq, "build", {
-      action: "slice_refused",
-      code: verdict.code,
-      details: { tip },
-      evidence: [...evidence],
-    });
-    moveRef(workspace, branch, head, tip);
-    throw refuseSlice(verdict.code, { order, tip, ...verdict });
-  };
-  const rebased = conflict === null ? [] : commitsBetween(workspace, conflict.onto, tip);
-  const early =
-    conflict === null
-      ? submittedVerdict({
-          head,
-          parents: parentsOf(workspace, tip),
-          checkChanged: checkChanged(workspace, tip, head),
-          clean: isClean(workspace, "all"),
-        })
-      : rebasedVerdict({
-          onto: conflict.onto,
-          expected: commits.length,
-          rebasing: workspaceRebasing({ dir: workspace, branch }),
-          onOnto: isAncestor(workspace, conflict.onto, tip),
-          commits: rebased.length,
-          checkChanged: checkChanged(workspace, tip, conflict.onto),
-          clean: isClean(workspace, "all"),
-        });
-  if (early !== null) return refused(early, []);
-  const task = checkTask(workspace);
-  if (task === null) return refused({ code: "no_check" }, []);
-  const check = judge(workspace, task.commandLine, turn.env);
-  const checked = checkVerdict(check, isClean(workspace, "all"));
-  if (checked !== null) return refused(checked, [check]);
-  recordVerdict(
-    db,
-    order,
-    submitted.seq,
-    "build",
-    conflict === null
-      ? { action: "slice_committed", details: { commit: tip }, evidence: [check] }
-      : {
-          action: "branch_rebased",
-          details: { head: tip, onto: conflict.onto, commits: [...movedCommits(commits, rebased)] },
-          evidence: [check],
-        },
+  const judging: Judging = { db, order, seq: submitted.seq, workspace, branch, tip, head, env: turn.env };
+  return conflict === null ? takeCommit(judging) : takeRebase(judging, conflict, commits);
+}
+
+type Judging = {
+  readonly db: Database;
+  readonly order: string;
+  readonly seq: number;
+  readonly workspace: string;
+  readonly branch: string;
+  readonly tip: string;
+  readonly head: string;
+  readonly env: Env;
+};
+
+function refuse(judging: Judging, verdict: SliceVerdict, evidence: readonly Evidence[]): never {
+  const { db, order, seq, workspace, branch, tip, head } = judging;
+  recordVerdict(db, order, seq, "build", {
+    action: "slice_refused",
+    code: verdict.code,
+    details: { tip },
+    evidence: [...evidence],
+  });
+  moveRef(workspace, branch, head, tip);
+  throw refuseSlice(verdict.code, { order, tip, ...verdict });
+}
+
+function checked(judging: Judging, early: SliceVerdict | null): Evidence {
+  if (early !== null) return refuse(judging, early, []);
+  const task = checkTask(judging.workspace);
+  if (task === null) return refuse(judging, { code: "no_check" }, []);
+  const check = judge(judging.workspace, task.commandLine, judging.env);
+  const verdict = checkVerdict(check, isClean(judging.workspace, "all"));
+  return verdict === null ? check : refuse(judging, verdict, [check]);
+}
+
+function takeCommit(judging: Judging): { readonly committed: string } {
+  const { db, order, seq, workspace, tip, head } = judging;
+  const check = checked(
+    judging,
+    submittedVerdict({
+      head,
+      parents: parentsOf(workspace, tip),
+      checkChanged: checkChanged(workspace, tip, head),
+      clean: isClean(workspace, "all"),
+    }),
   );
+  recordVerdict(db, order, seq, "build", {
+    action: "slice_committed",
+    details: { commit: tip },
+    evidence: [check],
+  });
+  return { committed: tip };
+}
+
+function takeRebase(
+  judging: Judging,
+  { onto }: Conflict,
+  commits: readonly string[],
+): { readonly committed: string } {
+  const { db, order, seq, workspace, branch, tip } = judging;
+  const rebased = commitsBetween(workspace, onto, tip);
+  const check = checked(
+    judging,
+    rebasedVerdict({
+      onto,
+      expected: commits.length,
+      rebasing: workspaceRebasing({ dir: workspace, branch }),
+      onOnto: isAncestor(workspace, onto, tip),
+      commits: rebased.length,
+      checkChanged: checkChanged(workspace, tip, onto),
+      clean: isClean(workspace, "all"),
+    }),
+  );
+  recordVerdict(db, order, seq, "build", {
+    action: "branch_rebased",
+    details: { head: tip, onto, commits: [...movedCommits(commits, rebased)] },
+    evidence: [check],
+  });
   return { committed: tip };
 }
