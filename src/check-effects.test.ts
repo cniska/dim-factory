@@ -20,7 +20,7 @@ function scratch(): { tree: string; outside: string; trace: Trace } {
   const outside = join(root, "outside");
   mkdirSync(tree);
   mkdirSync(outside);
-  return { tree, outside, trace: traceOf("k7m2qx4d", 1, { XDG_STATE_HOME: join(root, "state") }) };
+  return { tree, outside, trace: traceOf("k7m2qx4d", { XDG_STATE_HOME: join(root, "state") }) };
 }
 
 const OWNER = { PATH: process.env.PATH };

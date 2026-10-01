@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { writeFileSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseDim, quote, refusal, resultOf } from "./support/dim-output";
 import { type Machine, machines } from "./support/machine";
@@ -301,18 +301,22 @@ describe("the trace", () => {
     const id = await planned(m.operator);
     const before = await showOrder(m.operator, id);
 
-    resultOf(await m.operator.dim(["trace", "clear"]));
+    const trace = join(m.env.XDG_STATE_HOME, "dim-factory", "trace.jsonl");
+    expect(existsSync(trace)).toBe(true);
+    rmSync(trace);
 
     expect(await showOrder(m.operator, id)).toEqual(before);
   });
 
-  test("the trace follows one order's factory steps while it runs", async () => {
+  test("the trace follows one order's factory steps while it runs, and ends once the run does", async () => {
     const m = await start({
       script: {
         planner: [[{ act: "signal", name: "planning" }, { act: "wait", name: "plan" }, ...planTurn()]],
       },
     });
     const id = await addOrder(m.operator);
+    const running = runOrder(m.operator, id);
+    await m.reached("planning");
     const following = Bun.spawn(["dim", "trace", id], { cwd: m.repo, env: m.env, stdout: "pipe" });
     const printed: string[] = [];
     const reading = (async () => {
@@ -320,14 +324,12 @@ describe("the trace", () => {
       for await (const chunk of following.stdout) printed.push(decoder.decode(chunk));
     })();
     const lines = () => printed.join("").split("\n").slice(0, -1);
-    const running = runOrder(m.operator, id);
-    await m.reached("planning");
     await waitFor("the trace to print a step of the running order", () => lines().length > 0);
     m.release("plan");
     resultOf(await running);
-    following.kill();
-    await reading;
 
+    expect(await following.exited).toBe(0);
+    await reading;
     for (const line of lines()) expect(JSON.parse(line).order).toBe(id);
   });
 });

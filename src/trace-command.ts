@@ -1,31 +1,38 @@
+import type { Database } from "bun:sqlite";
 import { type Command, UsageError } from "./cli-contract";
 import { openFactoryReadOnly } from "./factory-db";
 import { OrderId } from "./order-contract";
-import { orderState } from "./order-ops";
-import { clearTrace, followTrace } from "./trace-ops";
+import { orderState, runAlive } from "./order-ops";
+import { followTrace } from "./trace-ops";
+import { runningProcesses } from "./worker-ops";
 
-const USAGE = "usage: dim trace <order> | dim trace clear";
+const USAGE = "usage: dim trace <order>";
+
+function readFactory<T>(read: (db: Database) => T): T {
+  const db = openFactoryReadOnly();
+  try {
+    return read(db);
+  } finally {
+    db.close();
+  }
+}
 
 export const traceCommand: Command = {
   name: "trace",
   usage: USAGE,
-  summary: "follow an order's factory steps as JSONL until stopped, or empty the trace",
-  raw: (args) => args[0] !== "clear",
+  summary: "print an order's factory steps as JSONL until it has no live run",
+  raw: () => true,
   run(args) {
     const [target, ...rest] = args;
     if (target === undefined || rest.length > 0) throw new UsageError(USAGE);
-    if (target === "clear") {
-      clearTrace(process.env);
-      return { cleared: true };
-    }
     const order = OrderId.safeParse(target);
     if (!order.success) throw new UsageError(USAGE);
-    const db = openFactoryReadOnly();
-    try {
-      orderState(db, order.data);
-    } finally {
-      db.close();
-    }
-    return followTrace(order.data, process.env, (line) => process.stdout.write(`${line}\n`));
+    readFactory((db) => orderState(db, order.data));
+    return followTrace(
+      order.data,
+      process.env,
+      () => readFactory((db) => runAlive(db, order.data, runningProcesses())),
+      (line) => process.stdout.write(`${line}\n`),
+    );
   },
 };

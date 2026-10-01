@@ -13,7 +13,7 @@ import { checkChanged, parentsOf } from "./slice-effects";
 import type { Trace } from "./trace-contract";
 import type { Acting } from "./worker-contract";
 import { branchOf } from "./workspace";
-import { moveRef, workspaceRebasing } from "./workspace-ops";
+import { moveBranch, rebasing } from "./workspace-ops";
 
 export function branchFacts(
   workspace: string,
@@ -25,7 +25,7 @@ export function branchFacts(
 export function alignBranch(trace: Trace, workspace: string, order: string, head: string): void {
   const branch = branchOf(order);
   const tip = tipOf(workspace, branch);
-  if (tip !== head) moveRef(trace, workspace, branch, head, tip);
+  if (tip !== head) moveBranch(trace, workspace, branch, head, tip);
 }
 
 export type SliceTurn = {
@@ -80,7 +80,7 @@ function refuse(judging: Judging, verdict: SliceVerdict, evidence: readonly Evid
     details: { tip },
     evidence: [...evidence],
   });
-  moveRef(trace, workspace, branch, head, tip);
+  moveBranch(trace, workspace, branch, head, tip);
   throw refuseSlice(verdict.code, { order, tip, ...verdict });
 }
 
@@ -124,7 +124,7 @@ function takeRebase(
     rebasedVerdict({
       onto,
       expected: commits.length,
-      rebasing: workspaceRebasing({ dir: workspace, branch }),
+      rebasing: rebasing({ dir: workspace, branch }),
       onOnto: isAncestor(workspace, onto, tip),
       commits: rebased.length,
       checkChanged: checkChanged(workspace, tip, onto),

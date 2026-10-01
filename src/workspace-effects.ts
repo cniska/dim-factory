@@ -33,8 +33,12 @@ export function rebasing(dir: string): boolean {
   );
 }
 
+function aborted(dir: string): void {
+  ran(dir, [...NO_HOOKS, "rebase", "--abort"]);
+}
+
 export function abortRebase(trace: Trace, dir: string): void {
-  trace.step("rebase_abort", { dir }, () => ran(dir, [...NO_HOOKS, "rebase", "--abort"]));
+  trace.step("rebase_abort", { dir }, () => aborted(dir));
 }
 
 export function rebaseOnto(trace: Trace, dir: string, onto: string, env: Env): Rebased {
@@ -45,7 +49,7 @@ export function rebaseOnto(trace: Trace, dir: string, onto: string, env: Env): R
       const rebased = git(dir, [...NO_HOOKS, ...REBASE, onto], { env });
       if (rebased.ok) return { kind: "rebased" };
       const unmerged = ran(dir, ["diff", "--name-only", "--diff-filter=U"]);
-      if (rebasing(dir)) ran(dir, [...NO_HOOKS, "rebase", "--abort"]);
+      if (rebasing(dir)) aborted(dir);
       return unmerged === ""
         ? { kind: "failed", reason: rebased.err }
         : { kind: "conflict", paths: unmerged.split("\n") };

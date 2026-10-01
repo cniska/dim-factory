@@ -29,17 +29,17 @@ type OrderRefusalMeta = {
   readonly no_order: { readonly order: string };
   readonly not_admitted: {
     readonly order: string;
-    readonly act: string;
-    readonly admits: readonly string[];
+    readonly act: ActKind;
+    readonly admits: readonly ActKind[];
     readonly next: Next | null;
   };
-  readonly not_at_station: { readonly order: string; readonly station: string };
+  readonly not_at_station: { readonly order: string; readonly station: Station };
   readonly order_busy: { readonly order: string; readonly run: RunKind };
-  readonly no_reason: { readonly order: string; readonly act: string };
+  readonly no_reason: { readonly order: string; readonly act: ActKind };
   readonly no_checkout: { readonly project: string };
   readonly no_default_branch: { readonly checkout: string };
   readonly no_git_identity: { readonly checkout: string };
-  readonly no_worker: { readonly order: string; readonly station: string };
+  readonly no_worker: { readonly order: string; readonly station: Station };
   readonly worktree_kept: { readonly order: string; readonly dir: string; readonly reason: string };
 };
 
@@ -168,6 +168,17 @@ const decision = { station: Station, reason: text, decidedBy: Decider };
 
 export const Decision = z.object({ reason: z.string(), decidedBy: Decider });
 export type Decision = z.infer<typeof Decision>;
+
+export type OperatorAct =
+  | { readonly kind: "run" }
+  | { readonly kind: "approve"; readonly decision: Decision }
+  | { readonly kind: "return"; readonly decision: Decision }
+  | { readonly kind: "update"; readonly title?: string; readonly description?: string }
+  | { readonly kind: "cancel"; readonly reason: string }
+  | { readonly kind: "message"; readonly to: string; readonly text: string };
+
+export type ActKind = OperatorAct["kind"];
+
 const message = { to: z.string(), text };
 
 export const Plan = z.object({ body: text, slices: z.array(Slice).min(1) });

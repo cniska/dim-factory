@@ -12,7 +12,7 @@ import { refuseShip } from "./ship-contract";
 import { checkedOutBranch, fastForward, shipLock } from "./ship-effects";
 import type { Trace } from "./trace-contract";
 import type { Workspace } from "./workspace";
-import { moveRef, rebaseWorkspace, removeWorkspace, settleWorkspace, workspaceOf } from "./workspace-ops";
+import { moveBranch, rebaseOnto, removeWorkspace, settleWorkspace, workspaceOf } from "./workspace-ops";
 
 export type ShipOf = {
   readonly trace: Trace;
@@ -75,7 +75,7 @@ function rebase(shipping: Shipping, head: string): Landing {
   const onto = tipOf(checkout, defaultBranch);
   const before = commitsBetween(checkout, onto, head);
   if (before.length === 0) return { head, onto };
-  const rebased = rebaseWorkspace(trace, workspace, onto, env);
+  const rebased = rebaseOnto(trace, workspace, onto, env);
   if (rebased.kind === "conflict") {
     record({ action: "ship_stopped", code: "ship_conflict", details: { onto, paths: [...rebased.paths] } });
     throw refuseShip("ship_conflict", { order, onto, paths: rebased.paths });
@@ -107,7 +107,7 @@ function checked({ trace, order, env, workspace, record }: Shipping, { head }: L
 function landOnDefault(shipping: Shipping, { head, onto }: Landing): void {
   const { trace, checkout, defaultBranch } = shipping;
   if (checkedOutBranch(checkout) !== defaultBranch) {
-    moveRef(trace, checkout, defaultBranch, head, onto);
+    moveBranch(trace, checkout, defaultBranch, head, onto);
     return;
   }
   const landed = fastForward(trace, checkout, head);

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { refuser } from "./coded-error";
 import { tracePath } from "./paths";
-import { clearTrace, traceOf } from "./trace-ops";
+import { followTrace, traceOf } from "./trace-ops";
 
 const roots: string[] = [];
 
@@ -31,7 +31,7 @@ const refuse = refuser<{ held: { readonly path: string } }>({
 describe("a trace step", () => {
   test("writes a started line with its fields and an ended line with its time, outcome and result", () => {
     const env = scratchEnv();
-    const trace = traceOf("k7m2qx4d", 7, env);
+    const trace = traceOf("k7m2qx4d", env);
 
     const done = trace.step(
       "check",
@@ -44,7 +44,7 @@ describe("a trace step", () => {
     const [started, ended] = linesOf(env);
     expect(started).toMatchObject({
       order: "k7m2qx4d",
-      cause: 7,
+      pid: process.pid,
       seq: 1,
       step: "check",
       phase: "started",
@@ -63,7 +63,7 @@ describe("a trace step", () => {
 
   test("ends a step that throws a refusal as refused with its code, and one that throws anything else as failed", async () => {
     const env = scratchEnv();
-    const trace = traceOf("k7m2qx4d", 7, env);
+    const trace = traceOf("k7m2qx4d", env);
 
     expect(() =>
       trace.step("lock", { path: "/l" }, () => {
@@ -71,7 +71,7 @@ describe("a trace step", () => {
       }),
     ).toThrow();
     await expect(
-      trace.stepAsync("harness_wait", { pid: 1 }, async () => {
+      trace.stepAsync("lock", { path: "/m" }, async () => {
         throw new Error("gone");
       }),
     ).rejects.toThrow("gone");
@@ -82,13 +82,30 @@ describe("a trace step", () => {
       { kind: "failed", error: "gone" },
     ]);
   });
+});
 
-  test("is emptied by clearing the trace", () => {
+describe("following the trace", () => {
+  test("prints only the order's lines and ends once the order has no live run and no new lines", async () => {
     const env = scratchEnv();
-    traceOf("k7m2qx4d", 7, env).step("lock", { path: "/l" }, () => null);
+    traceOf("k7m2qx4d", env).step("lock", { path: "/l" }, () => null);
+    traceOf("p3n8wz2c", env).step("lock", { path: "/o" }, () => null);
+    const printed: string[] = [];
+    let polls = 0;
 
-    clearTrace(env);
+    await followTrace(
+      "k7m2qx4d",
+      env,
+      () => {
+        polls += 1;
+        return polls < 3;
+      },
+      (line) => printed.push(line),
+    );
 
-    expect(readFileSync(tracePath(env), "utf8")).toBe("");
+    expect(printed.map((line) => JSON.parse(line))).toMatchObject([
+      { order: "k7m2qx4d", phase: "started" },
+      { order: "k7m2qx4d", phase: "ended" },
+    ]);
+    expect(polls).toBe(3);
   });
 });

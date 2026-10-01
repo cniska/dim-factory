@@ -4,7 +4,6 @@ import {
   admits,
   fold,
   nextOf,
-  type OperatorAct,
   type OrderState,
   operatorEntry,
   orderIdOf,
@@ -12,7 +11,14 @@ import {
   stationOf,
   workRefusal,
 } from "./order";
-import { type Actor, type Later, type LaterEntry, OrderId, type RunKind } from "./order-contract";
+import {
+  type Actor,
+  type Later,
+  type LaterEntry,
+  type OperatorAct,
+  OrderId,
+  type RunKind,
+} from "./order-contract";
 import type { Acting } from "./worker-contract";
 
 const OPERATOR_ACTOR: Actor = { kind: "worker", worker: "nut-1", session: "s-operator" };

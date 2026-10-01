@@ -1,4 +1,4 @@
-import type { Spawned } from "./harness-contract";
+import type { Spawn, Spawned } from "./harness-contract";
 import type { Trace } from "./trace-contract";
 
 async function linesOf(stream: ReadableStream<Uint8Array>): Promise<readonly string[]> {
@@ -17,15 +17,10 @@ export function killGroup(trace: Trace, pid: number): void {
   trace.step("harness_kill", { pid }, () => killed(pid));
 }
 
-export function spawnHarness(
-  trace: Trace,
-  argv: readonly string[],
-  cwd: string,
-  env: Record<string, string>,
-): Spawned {
+export function spawnHarness(trace: Trace, { argv, cwd, env, session }: Spawn): Spawned {
   const child = trace.step(
     "harness_spawn",
-    { cwd },
+    { cwd, session },
     () =>
       Bun.spawn([...argv], {
         cwd,

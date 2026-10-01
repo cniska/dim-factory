@@ -6,7 +6,7 @@ How `dim` runs an order from added to shipped. The words are the [glossary](glos
 
 The factory and the session record share one SQLite file and own separate tables. The factory reads the session record only through its published functions ([`design.md`](design.md) owns the record).
 
-Each factory module has a rules file of pure functions, a `-contract.ts` (types, schemas, refusals), a `-store.ts` (its SQL), `-effects.ts` (git, processes, files) and `-ops.ts` (what other modules and commands call). A command parses arguments, calls ops and prints the result. [`src/factory-modules.test.ts`](../src/factory-modules.test.ts) enforces the boundaries.
+A factory module is made of up to five files: a rules file of pure functions, a `-contract.ts` (types, schemas, refusals), a `-store.ts` (its SQL), `-effects.ts` (git, processes, files) and `-ops.ts` (what other modules and commands call). Only `order` and `worker` have a store. A command parses arguments, calls ops and prints the result. [`src/factory-modules.test.ts`](../src/factory-modules.test.ts) enforces the boundaries.
 
 | Module | Holds |
 |---|---|
@@ -18,6 +18,7 @@ Each factory module has a rules file of pure functions, a `-contract.ts` (types,
 | `slice` | The gates on a builder's commits |
 | `ship` | Rebasing, checking and landing an order |
 | `check` | Running the project's declared check in a sandbox |
+| `trace` | Writing each factory step to the trace and following one order's steps |
 
 ## Paths
 
@@ -78,7 +79,7 @@ A workspace is a linked worktree of the project's checkout on the branch `dim/<o
 
 ## The trace
 
-Every effect the factory runs on its own, and every log append, is a step of the run's trace ([`src/trace-ops.ts`](../src/trace-ops.ts)). A run makes its trace once, keyed by order and by the log entry that caused the run, and passes it to every effect, so an effect cannot be called untraced. Each step writes a `started` line with its fields and an `ended` line with its time, outcome and result to `trace.jsonl` in the state directory; the steps are a closed list ([`src/trace-contract.ts`](../src/trace-contract.ts)). A failed write fails the step. `dim trace <order>` follows one order's lines, and `dim trace clear` empties the file. Nothing reads it for state.
+Every effect the factory runs on its own, and every log append, is a step of the run's trace ([`src/trace-ops.ts`](../src/trace-ops.ts)). A run, cancel included, makes its trace before anything else, keyed by order and process, and passes it to every effect, so an effect cannot be called untraced. Everything the run does is under its `run` step, and its first step records the act that started it and names the log entry that caused the run. Each step writes a `started` line with its fields and an `ended` line with its time, outcome and result to `trace.jsonl` in the state directory; the steps and their fields are a closed list ([`src/trace-contract.ts`](../src/trace-contract.ts)). A failed write fails the step. `dim trace <order>` prints one order's lines and ends once the order has no live run and no new lines. Nothing reads the trace for state, so deleting `trace.jsonl` changes nothing else.
 
 A run that hangs ends in a `started` line with no `ended`, naming what it waits on; a failed run shows which step refused and with what code.
 

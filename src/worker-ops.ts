@@ -86,6 +86,10 @@ export function stationWorkerAt(db: Database, order: string, role: StationRole):
   return stationWorkerOf(db, order, role);
 }
 
+export function runningProcesses(): readonly ProcessId[] {
+  return processTable();
+}
+
 export function processOf(pid: number): ProcessId {
   const row = processTable().find((candidate) => candidate.pid === pid);
   invariant(row !== undefined, `process ${pid}, waiting for its prompt, is running`);

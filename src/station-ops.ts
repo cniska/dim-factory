@@ -8,8 +8,8 @@ import { diffSince, gitCommonDir, type Identity, tipOf } from "./git-tree";
 import { claude } from "./harness-claude";
 import type { Outcome, SessionStart, Spawned } from "./harness-contract";
 import { startHarness, stopHarness } from "./harness-ops";
-import { type Death, type OperatorAct, type OrderState, phaseAfter, ROLE_AT, type WorkBy } from "./order";
-import { type DeathCode, type Later, refuseOrder, type Station } from "./order-contract";
+import { type Death, type OrderState, phaseAfter, ROLE_AT, stepRefusal, type WorkBy } from "./order";
+import { type DeathCode, type Later, type OperatorAct, refuseOrder, type Station } from "./order-contract";
 import {
   endRun,
   markHarness,
@@ -58,7 +58,7 @@ import type { Trace } from "./trace-contract";
 import { traceOf } from "./trace-ops";
 import type { Acting, Caller, Worker, WorkerSession } from "./worker-contract";
 import { processOf, registerSession, stationWorker, stationWorkerAt } from "./worker-ops";
-import { createWorkspace, removeWorkspaceTree, workspaceOf } from "./workspace-ops";
+import { createWorkspace, removeWorktree, workspaceOf } from "./workspace-ops";
 
 type TurnOf = {
   readonly trace: Trace;
@@ -309,7 +309,8 @@ function spawnFor(turn: TurnOf, session: SessionOf, workspace: string, opened: T
     policy: policyOf(turn.purpose.policy, { workspace, checkoutGit: turn.checkoutGit, turn: opened }),
     socket: opened.socket,
   });
-  return startHarness(turn.trace, argv, workspace, workerEnv(turn.env, opened, turn.identity, claude));
+  const env = workerEnv(turn.env, opened, turn.identity, claude);
+  return startHarness(turn.trace, { argv, cwd: workspace, env, session: idOf(session) });
 }
 
 function deathOf(session: string, copied: boolean, outcome: Outcome & { readonly kind: "died" }): Later {
@@ -422,8 +423,11 @@ async function messageAt(db: Database, turn: TurnOf): Promise<string> {
   switch (ended.end) {
     case "replied":
       return ended.reply;
-    case "closed":
-      throw refuseOrder("not_admitted", { order, act: "message", admits: [], next: null });
+    case "closed": {
+      const refusal = stepRefusal(orderState(db, order), "message");
+      invariant(refusal !== null, `order ${order} admits no message once it is closed`);
+      throw refusal;
+    }
     case "config_changed":
       throw refuseStation("git_config_changed", { order, station, config: join(turn.checkoutGit, "config") });
     case "died":
@@ -452,17 +456,17 @@ async function withRun<T>(
   env: Env,
   body: (running: Running) => Promise<T>,
 ): Promise<T> {
-  const { project } = orderState(db, order);
-  const setup = projectSetup(db, project, caller.cwd);
-  const prepared = station === null ? null : prepareTurn(setup, station, env);
-  const base = tipOf(setup.root, setup.branch);
-  const { by, cause, created, state, orphan } = startRun(db, order, caller, base, act);
-  const trace = traceOf(order, cause, env);
-  try {
-    return await trace.stepAsync("run", { act: act.kind, station }, () => {
+  const trace = traceOf(order, env);
+  return trace.stepAsync("run", { act: act.kind, station }, async () => {
+    const { project } = orderState(db, order);
+    const setup = projectSetup(db, project, caller.cwd);
+    const prepared = station === null ? null : prepareTurn(setup, station, env);
+    const base = tipOf(setup.root, setup.branch);
+    const { by, cause, created, state, orphan } = startRun(trace, db, order, caller, base, act);
+    try {
       if (orphan !== null) stopHarness(trace, orphan);
       if (created) createWorkspace(trace, setup.root, project, order, base);
-      return body({
+      return await body({
         trace,
         setup,
         cause,
@@ -484,10 +488,10 @@ async function withRun<T>(
           };
         },
       });
-    });
-  } finally {
-    endRun(db, order);
-  }
+    } finally {
+      endRun(db, order);
+    }
+  });
 }
 
 export async function advanceOrder(
@@ -535,13 +539,15 @@ export async function messageWorker(
 }
 
 export function cancelOrder(db: Database, order: string, caller: Caller, reason: string, env: Env): void {
-  const { state, harness, cause } = recordCancel(db, order, caller, reason);
-  const trace = traceOf(order, cause, env);
-  if (harness !== null) stopHarness(trace, harness);
-  if (state.head === null) return;
-  const workspace = workspaceOf(state.project, order);
-  const kept = removeWorkspaceTree(trace, projectSetup(db, state.project, caller.cwd).root, workspace);
-  if (kept !== null) throw refuseOrder("worktree_kept", { order, dir: workspace.dir, reason: kept });
+  const trace = traceOf(order, env);
+  trace.step("run", { act: "cancel", station: null }, () => {
+    const { state, harness } = recordCancel(trace, db, order, caller, reason);
+    if (harness !== null) stopHarness(trace, harness);
+    if (state.head === null) return;
+    const workspace = workspaceOf(state.project, order);
+    const kept = removeWorktree(trace, projectSetup(db, state.project, caller.cwd).root, workspace);
+    if (kept !== null) throw refuseOrder("worktree_kept", { order, dir: workspace.dir, reason: kept });
+  });
 }
 
 export function inTurn(env: Env): boolean {

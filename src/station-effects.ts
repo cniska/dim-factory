@@ -97,7 +97,7 @@ export function guardFile(trace: Trace, path: string): FileGuard {
           writeFileSync(path, held);
           return true;
         },
-        (changed) => ({ changed }),
+        (restored) => ({ restored }),
       ),
   };
 }

@@ -8,7 +8,6 @@ import {
   admitOperator,
   asOperator,
   fold,
-  type OperatorAct,
   type OrderState,
   operatorEntry,
   orderIdOf,
@@ -22,6 +21,7 @@ import {
   type Later,
   type LaterEntry,
   type LogEntry,
+  type OperatorAct,
   ORDER_ID_LENGTH,
   type RunKind,
   refuseOrder,
@@ -51,6 +51,10 @@ function loadOrder(db: Database, order: string): LoadedOrder {
 function liveRun(db: Database, order: string, running: readonly ProcessId[]): RunKind | null {
   const run = runOf(db, order);
   return run !== null && isRunning(run.process, running) ? run.kind : null;
+}
+
+export function runAlive(db: Database, order: string, running: readonly ProcessId[]): boolean {
+  return liveRun(db, order, running) !== null;
 }
 
 const actorOf = (acting: Acting): Actor => ({
@@ -142,13 +146,25 @@ export type Cancelled = {
   readonly harness: ProcessId | null;
 };
 
-export function recordCancel(db: Database, order: string, caller: Caller, reason: string): Cancelled {
-  return writeTransaction(db, () => {
-    const { state, seq } = act(db, order, caller, { kind: "cancel", reason });
-    const run = runOf(db, order);
-    const live = run?.harness ?? null;
-    return { state, cause: seq, harness: live !== null && isRunning(live, caller.running) ? live : null };
-  });
+export function recordCancel(
+  trace: Trace,
+  db: Database,
+  order: string,
+  caller: Caller,
+  reason: string,
+): Cancelled {
+  return trace.step(
+    "run_start",
+    { act: "cancel" },
+    () =>
+      writeTransaction(db, () => {
+        const { state, seq } = act(db, order, caller, { kind: "cancel", reason });
+        const run = runOf(db, order);
+        const live = run?.harness ?? null;
+        return { state, cause: seq, harness: live !== null && isRunning(live, caller.running) ? live : null };
+      }),
+    ({ cause }) => ({ cause }),
+  );
 }
 
 export function orderState(db: Database, order: string): OrderState {
@@ -171,6 +187,22 @@ function clearLostRun(db: Database, order: string, running: readonly ProcessId[]
 }
 
 export function startRun(
+  trace: Trace,
+  db: Database,
+  order: string,
+  caller: Caller,
+  base: string,
+  leading: OperatorAct,
+): StartedRun {
+  return trace.step(
+    "run_start",
+    { act: leading.kind },
+    () => openRun(db, order, caller, base, leading),
+    ({ cause }) => ({ cause }),
+  );
+}
+
+function openRun(
   db: Database,
   order: string,
   caller: Caller,

@@ -1,14 +1,15 @@
 import { invariant, unreachable } from "./assert";
 import type { CodedError } from "./coded-error";
 import {
+  type ActKind,
   type Answer,
   CROCKFORD,
   type DeathCode,
   type Decider,
-  type Decision,
   type Later,
   type LaterEntry,
   type Next,
+  type OperatorAct,
   ORDER_ID_LENGTH,
   type OrderAdded,
   type RecordedFinding,
@@ -295,15 +296,7 @@ function apply(state: OrderState, entry: Later): OrderState {
   }
 }
 
-export type OperatorAct =
-  | { readonly kind: "run" }
-  | { readonly kind: "approve"; readonly decision: Decision }
-  | { readonly kind: "return"; readonly decision: Decision }
-  | { readonly kind: "update"; readonly title?: string; readonly description?: string }
-  | { readonly kind: "cancel"; readonly reason: string }
-  | { readonly kind: "message"; readonly to: string; readonly text: string };
-
-function reasonOf(state: OrderState, act: OperatorAct["kind"], reason: string): string {
+function reasonOf(state: OrderState, act: ActKind, reason: string): string {
   if (reason.trim() === "") throw refuseOrder("no_reason", { order: state.id, act });
   return reason;
 }
@@ -381,29 +374,26 @@ export function asOperator(by: Acting | null, project: string): Admission {
     : { kind: "refused", refusal: refuseWorker("not_operator", { project }) };
 }
 
-export type ActKind = OperatorAct["kind"];
-
-const STEPS_AT: Readonly<Record<Exclude<Phase["kind"], "done">, readonly ActKind[]>> = {
+const STEPS: Readonly<Record<Next, readonly ActKind[]>> = {
   run: ["run"],
-  ship: ["run"],
   approve: ["approve", "return"],
   update: [],
 };
 
 export function admits(state: OrderState): readonly ActKind[] {
-  const { phase } = state;
-  if (phase.kind === "done") return [];
-  return [...STEPS_AT[phase.kind], ...(state.planApproved ? [] : ["update" as const]), "cancel", "message"];
+  const next = nextOf(state.phase);
+  if (next === null) return [];
+  return [...STEPS[next], ...(state.planApproved ? [] : ["update" as const]), "cancel", "message"];
 }
 
-function stepRefusal(state: OrderState, act: ActKind): CodedError | null {
+export function stepRefusal(state: OrderState, act: ActKind): CodedError | null {
   const admitted = admits(state);
   return admitted.includes(act)
     ? null
     : refuseOrder("not_admitted", { order: state.id, act, admits: admitted, next: nextOf(state.phase) });
 }
 
-function busyRefusal(state: OrderState, act: OperatorAct["kind"], live: RunKind | null): CodedError | null {
+function busyRefusal(state: OrderState, act: ActKind, live: RunKind | null): CodedError | null {
   if (live === null || (act === "cancel" && live === "station")) return null;
   return refuseOrder("order_busy", { order: state.id, run: live });
 }
@@ -436,7 +426,7 @@ export function workRefusal(state: OrderState, station: Station, by: WorkBy): Co
 export function admitOperator(
   state: OrderState,
   by: Acting | null,
-  act: OperatorAct["kind"],
+  act: ActKind,
   live: RunKind | null,
 ): Admission {
   const operator = asOperator(by, state.project);

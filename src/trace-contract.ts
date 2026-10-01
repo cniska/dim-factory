@@ -1,27 +1,41 @@
-import type { Station } from "./order-contract";
+import type { ActKind, Later, Station } from "./order-contract";
+import type { TurnRequest } from "./station-contract";
+import type { Rebased } from "./workspace";
+
+type Step<Start, Result = Readonly<Record<never, never>>> = {
+  readonly start: Start;
+  readonly result: Result;
+};
 
 export type Steps = {
-  readonly run: { readonly act: string; readonly station: Station | null };
-  readonly record: { readonly action: string };
-  readonly act: { readonly act: string };
-  readonly worktree_add: { readonly dir: string; readonly base: string };
-  readonly worktree_remove: { readonly dir: string };
-  readonly branch_delete: { readonly branch: string };
-  readonly branch_move: { readonly repo: string; readonly branch: string; readonly to: string };
-  readonly workspace_reset: { readonly dir: string; readonly head: string };
-  readonly rebase_abort: { readonly dir: string };
-  readonly rebase: { readonly dir: string; readonly onto: string };
-  readonly land: { readonly repo: string; readonly head: string };
-  readonly check: { readonly tree: string; readonly command: string };
-  readonly lock: { readonly path: string };
-  readonly turn_open: { readonly home: string };
-  readonly turn_close: { readonly dir: string };
-  readonly harness_spawn: { readonly cwd: string };
-  readonly harness_wait: { readonly pid: number };
-  readonly harness_kill: { readonly pid: number };
-  readonly session_copy: { readonly session: string };
-  readonly session_restore: { readonly session: string };
-  readonly config_check: { readonly path: string };
+  readonly run: Step<{ readonly act: ActKind; readonly station: Station | null }>;
+  readonly run_start: Step<{ readonly act: ActKind }, { readonly cause: number }>;
+  readonly record: Step<{ readonly action: Later["action"] }, { readonly entry: number }>;
+  readonly act: Step<{ readonly act: TurnRequest["act"] }>;
+  readonly worktree_add: Step<{ readonly dir: string; readonly base: string }>;
+  readonly worktree_remove: Step<{ readonly dir: string }, { readonly kept: boolean }>;
+  readonly branch_delete: Step<{ readonly branch: string }, { readonly kept: boolean }>;
+  readonly branch_move: Step<{ readonly repo: string; readonly branch: string; readonly to: string }>;
+  readonly workspace_reset: Step<{ readonly dir: string; readonly head: string }>;
+  readonly rebase_abort: Step<{ readonly dir: string }>;
+  readonly rebase: Step<
+    { readonly dir: string; readonly onto: string },
+    { readonly result: Rebased["kind"] }
+  >;
+  readonly land: Step<{ readonly repo: string; readonly head: string }, { readonly landed: boolean }>;
+  readonly check: Step<
+    { readonly tree: string; readonly command: string },
+    { readonly exitCode: number | null }
+  >;
+  readonly lock: Step<{ readonly path: string }>;
+  readonly turn_open: Step<{ readonly home: string }, { readonly dir: string }>;
+  readonly turn_close: Step<{ readonly dir: string }>;
+  readonly harness_spawn: Step<{ readonly cwd: string; readonly session: string }, { readonly pid: number }>;
+  readonly harness_wait: Step<{ readonly pid: number }, { readonly exitCode: number | null }>;
+  readonly harness_kill: Step<{ readonly pid: number }>;
+  readonly session_copy: Step<{ readonly session: string }>;
+  readonly session_restore: Step<{ readonly session: string }>;
+  readonly config_check: Step<{ readonly path: string }, { readonly restored: boolean }>;
 };
 
 export type StepName = keyof Steps;
@@ -31,21 +45,21 @@ export type StepOutcome =
   | { readonly kind: "refused"; readonly code: string }
   | { readonly kind: "failed"; readonly error: string };
 
-export type StepResult = Readonly<Record<string, string | number | boolean | null>>;
+type ResultOf<N extends StepName, T> = keyof Steps[N]["result"] extends never
+  ? []
+  : [result: (done: T) => Steps[N]["result"]];
 
 export type Trace = {
-  readonly order: string;
-  readonly cause: number;
   step<N extends StepName, T>(
     name: N,
-    start: Steps[N],
+    start: Steps[N]["start"],
     perform: () => T,
-    result?: (done: T) => StepResult,
+    ...result: ResultOf<N, T>
   ): T;
   stepAsync<N extends StepName, T>(
     name: N,
-    start: Steps[N],
+    start: Steps[N]["start"],
     perform: () => Promise<T>,
-    result?: (done: T) => StepResult,
+    ...result: ResultOf<N, T>
   ): Promise<T>;
 };

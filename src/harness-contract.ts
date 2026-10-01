@@ -27,6 +27,13 @@ export type Ended = {
   readonly exitCode: number | null;
 };
 
+export type Spawn = {
+  readonly argv: readonly string[];
+  readonly cwd: string;
+  readonly env: Record<string, string>;
+  readonly session: string;
+};
+
 export type Spawned = {
   readonly pid: number;
   prompt(text: string): void;

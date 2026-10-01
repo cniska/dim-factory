@@ -1,7 +1,7 @@
 import { CodedError } from "./coded-error";
 import { type Env, tracePath } from "./paths";
-import type { StepOutcome, StepResult, Trace } from "./trace-contract";
-import { appendLine, empty, readFrom, sizeOf } from "./trace-effects";
+import type { StepOutcome, Trace } from "./trace-contract";
+import { appendLine, readFrom, sizeOf } from "./trace-effects";
 
 const FOLLOW_POLL_MS = 100;
 
@@ -10,26 +10,24 @@ function outcomeOf(error: unknown): StepOutcome {
   return { kind: "failed", error: error instanceof Error ? error.message : String(error) };
 }
 
-export function traceOf(order: string, cause: number, env: Env): Trace {
+export function traceOf(order: string, env: Env): Trace {
   const path = tracePath(env);
   let seq = 0;
   const write = (fields: Readonly<Record<string, unknown>>) => {
     seq += 1;
     appendLine(
       path,
-      JSON.stringify({ at: new Date().toISOString(), pid: process.pid, order, cause, seq, ...fields }),
+      JSON.stringify({ at: new Date().toISOString(), pid: process.pid, order, seq, ...fields }),
     );
   };
   const started = (step: string, start: object) => {
     write({ step, phase: "started", ...start });
     return performance.now();
   };
-  const ended = (step: string, since: number, outcome: StepOutcome, result: StepResult = {}) =>
+  const ended = (step: string, since: number, outcome: StepOutcome, result: object = {}) =>
     write({ step, phase: "ended", ms: Math.round(performance.now() - since), outcome, ...result });
   return {
-    order,
-    cause,
-    step(name, start, perform, result) {
+    step(name, start, perform, ...[result]) {
       const since = started(name, start);
       let done: ReturnType<typeof perform>;
       try {
@@ -41,7 +39,7 @@ export function traceOf(order: string, cause: number, env: Env): Trace {
       ended(name, since, { kind: "ok" }, result?.(done));
       return done;
     },
-    async stepAsync(name, start, perform, result) {
+    async stepAsync(name, start, perform, ...[result]) {
       const since = started(name, start);
       let done: Awaited<ReturnType<typeof perform>>;
       try {
@@ -56,24 +54,27 @@ export function traceOf(order: string, cause: number, env: Env): Trace {
   };
 }
 
-export async function followTrace(order: string, env: Env, print: (line: string) => void): Promise<never> {
+export async function followTrace(
+  order: string,
+  env: Env,
+  live: () => boolean,
+  print: (line: string) => void,
+): Promise<void> {
   const path = tracePath(env);
   let offset = 0;
   let partial = "";
   for (;;) {
+    const alive = live();
     if (sizeOf(path) < offset) {
       offset = 0;
       partial = "";
     }
     const text = readFrom(path, offset);
     offset += Buffer.byteLength(text);
+    if (text === "" && !alive) return;
     const lines = `${partial}${text}`.split("\n");
     partial = lines.pop() ?? "";
     for (const line of lines) if (JSON.parse(line).order === order) print(line);
     await Bun.sleep(FOLLOW_POLL_MS);
   }
-}
-
-export function clearTrace(env: Env): void {
-  empty(tracePath(env));
 }
