@@ -38,9 +38,9 @@ export const sliceActs = (n: number): HarnessTurn => [
   { act: "commit", subject: `feat: add slice ${n}` },
 ];
 
-export const buildTurn = (slices = SLICES.length, artifact = BUILD_ARTIFACT): HarnessTurn => [
-  ...Array.from({ length: slices }, (_, i) => sliceActs(i + 1)).flat(),
-  { act: "build-return", artifact },
+export const buildTurn = (): HarnessTurn => [
+  ...SLICES.flatMap((_, i) => sliceActs(i + 1)),
+  { act: "build-return", artifact: BUILD_ARTIFACT },
 ];
 
 export const reviewTurn = (): HarnessTurn => [{ act: "review-return", artifact: REVIEW_ARTIFACT }];
