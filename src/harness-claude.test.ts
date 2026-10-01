@@ -27,6 +27,16 @@ describe("starting Claude Code", () => {
     ]);
   });
 
+  test("replaces a dead session by forking its transcript under the new session's id", () => {
+    expect(claude.argv({ ...START, session: { kind: "fork", id: "s2", from: "s1" } }).slice(-5)).toEqual([
+      "--resume",
+      "s1",
+      "--fork-session",
+      "--session-id",
+      "s2",
+    ]);
+  });
+
   test("loads dim's station skills as the dim plugin, since a worker's HOME holds none", () => {
     const argv = claude.argv(START);
     const plugin = argv[argv.indexOf("--plugin-dir") + 1] ?? "";
@@ -60,5 +70,47 @@ describe("starting Claude Code", () => {
       allowWrite: ["/t"],
       denyWrite: ["/w/.git/hooks", "/c/.git"],
     });
+  });
+});
+
+const ended = (events: readonly object[], exitCode: number | null = 0) => ({
+  lines: events.map((event) => JSON.stringify(event)),
+  stderr: "",
+  exitCode,
+});
+
+const INIT = { type: "system", subtype: "init", session_id: "s1" };
+const RESULT = { type: "result", subtype: "success", is_error: false, result: "done", session_id: "s1" };
+const NEW = { kind: "new", id: "s1" } as const;
+const RESUME = { kind: "resume", id: "s1" } as const;
+
+describe("how a Claude Code session ended", () => {
+  test("a session that reported its result finished", () => {
+    expect(claude.outcome(ended([INIT, RESULT]), NEW)).toEqual({ kind: "finished" });
+  });
+
+  test("a rejected rate limit is a usage limit, with the time it resets", () => {
+    const limited = ended(
+      [
+        INIT,
+        { type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt: 1759276800 } },
+        { type: "result", subtype: "error_during_execution", is_error: true, session_id: "s1" },
+      ],
+      1,
+    );
+    expect(claude.outcome(limited, NEW)).toEqual({
+      kind: "died",
+      code: "usage_limit",
+      resetsAt: "2025-10-01T00:00:00.000Z",
+    });
+  });
+
+  test("a session that stopped with no result was killed", () => {
+    expect(claude.outcome(ended([INIT], null), NEW)).toEqual({ kind: "died", code: "killed" });
+  });
+
+  test("a resume that never started its session failed", () => {
+    expect(claude.outcome(ended([], 1), RESUME)).toEqual({ kind: "died", code: "resume_failed" });
+    expect(claude.outcome(ended([], 1), NEW)).toEqual({ kind: "died", code: "killed" });
   });
 });

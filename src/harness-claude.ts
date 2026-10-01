@@ -1,5 +1,6 @@
 import { join, resolve } from "node:path";
-import type { Adapter, Policy, SessionStart, Start } from "./harness-contract";
+import { z } from "zod";
+import type { Adapter, Ended, Outcome, Policy, SessionStart, Start } from "./harness-contract";
 
 const DIM_PLUGIN = resolve(import.meta.dir, "..");
 
@@ -13,7 +14,30 @@ function sessionFlags(session: SessionStart): readonly string[] {
       return ["--session-id", session.id];
     case "resume":
       return ["--resume", session.id];
+    case "fork":
+      return ["--resume", session.from, "--fork-session", "--session-id", session.id];
   }
+}
+
+const StreamEvent = z.object({
+  type: z.string(),
+  subtype: z.string().optional(),
+  rate_limit_info: z.object({ status: z.string(), resetsAt: z.number().optional() }).optional(),
+});
+
+const MS_PER_SECOND = 1000;
+
+function outcome({ lines }: Ended, session: SessionStart): Outcome {
+  const events = lines.map((line) => StreamEvent.parse(JSON.parse(line)));
+  const limit = events.find((event) => event.rate_limit_info?.status === "rejected")?.rate_limit_info;
+  if (limit !== undefined) {
+    const resetsAt =
+      limit.resetsAt === undefined ? null : new Date(limit.resetsAt * MS_PER_SECOND).toISOString();
+    return { kind: "died", code: "usage_limit", resetsAt };
+  }
+  if (events.some((event) => event.type === "result")) return { kind: "finished" };
+  const started = events.some((event) => event.type === "system" && event.subtype === "init");
+  return { kind: "died", code: session.kind === "resume" && !started ? "resume_failed" : "killed" };
 }
 
 const EDIT_TOOLS = ["Write", "Edit", "NotebookEdit"];
@@ -63,4 +87,5 @@ export const claude: Adapter = {
   ],
   transcript: (home, workspace, session) =>
     join(home, ".claude", "projects", workspace.replace(NOT_ALPHANUMERIC, "-"), `${session}.jsonl`),
+  outcome,
 };

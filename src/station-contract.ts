@@ -72,6 +72,12 @@ type StationRefusalMeta = {
   readonly no_return: { readonly order: string; readonly station: string; readonly session: string };
   readonly return_missed: { readonly order: string; readonly station: string; readonly missed: string };
   readonly turn_stopped: { readonly order: string; readonly station: string };
+  readonly session_died: {
+    readonly order: string;
+    readonly station: string;
+    readonly session: string;
+    readonly code: string;
+  };
   readonly harness_unset: { readonly project: string };
   readonly no_model: { readonly role: string; readonly file: string };
 };
@@ -119,6 +125,11 @@ export const refuseStation = refuser<StationRefusalMeta>({
   turn_stopped: {
     message: ({ order, station }) => `order ${order}'s ${station} turn has failed and takes no more work`,
     resolve: ({ order }) => `dim order show ${order}`,
+  },
+  session_died: {
+    message: ({ order, station, session, code }) =>
+      `the ${station} worker's session ${session} died (${code}) before it returned, so order ${order} stays at ${station}; the next run carries on in a new session holding what it held`,
+    resolve: ({ order }) => `dim order run ${order}`,
   },
   harness_unset: {
     message: ({ project }) =>

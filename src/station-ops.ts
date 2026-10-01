@@ -4,11 +4,11 @@ import { CodedError, refusalOf } from "./coded-error";
 import { userConfigPath } from "./config";
 import { writeTransaction } from "./db";
 import { diffSince, tipOf } from "./git-tree";
-import type { Adapter, SessionStart, Spawned } from "./harness-contract";
+import type { Adapter, Outcome, SessionStart, Spawned } from "./harness-contract";
 import type { HarnessName } from "./harness-name";
 import { adapterFor, startHarness, stopOrphan } from "./harness-ops";
-import { type OperatorAct, phaseAfter, ROLE_AT } from "./order";
-import type { Station } from "./order-contract";
+import { type Death, type OperatorAct, phaseAfter, ROLE_AT } from "./order";
+import type { DeathCode, Later, Station } from "./order-contract";
 import {
   endRun,
   markHarness,
@@ -38,7 +38,16 @@ import {
   workerEnv,
 } from "./station";
 import { refuseStation, TurnReply, type TurnRequest } from "./station-contract";
-import { closeTurn, copySession, listen, openTurn, send } from "./station-effects";
+import {
+  closeTurn,
+  copySession,
+  listen,
+  openTurn,
+  restoreSession,
+  send,
+  sessionHeld,
+  sessionWritten,
+} from "./station-effects";
 import type { Acting, Caller, Worker, WorkerSession } from "./worker-contract";
 import { processOf, registerSession, stationWorker } from "./worker-ops";
 import { createWorkspace, workspaceOf } from "./workspace-ops";
@@ -57,24 +66,44 @@ type TurnOf = {
 
 type Ended =
   | { readonly end: TurnEnd; readonly session: string }
-  | { readonly end: "missed"; readonly session: string; readonly missed: string };
+  | { readonly end: "missed"; readonly session: string; readonly missed: string }
+  | { readonly end: "died"; readonly session: string; readonly code: DeathCode };
 
 type SessionOf =
   | { readonly kind: "new"; readonly id: string; readonly harness: HarnessName }
+  | { readonly kind: "fork"; readonly id: string; readonly harness: HarnessName; readonly from: string }
   | { readonly kind: "resume"; readonly record: WorkerSession };
 
-function sessionOf(sessions: readonly WorkerSession[], newSessionHarness: HarnessName): SessionOf {
+function sessionOf(
+  sessions: readonly WorkerSession[],
+  died: readonly Death[],
+  newSessionHarness: HarnessName,
+  held: (session: string) => boolean,
+): SessionOf {
   const current = sessions.at(-1);
-  return current === undefined
-    ? { kind: "new", id: crypto.randomUUID(), harness: newSessionHarness }
-    : { kind: "resume", record: current };
+  const fresh = { kind: "new", id: crypto.randomUUID(), harness: newSessionHarness } as const;
+  if (current === undefined) return fresh;
+  if (!died.some((death) => death.session === current.id)) return { kind: "resume", record: current };
+  return held(current.id)
+    ? { kind: "fork", id: crypto.randomUUID(), harness: current.harness, from: current.id }
+    : fresh;
 }
 
-const idOf = (session: SessionOf) => (session.kind === "new" ? session.id : session.record.id);
+const idOf = (session: SessionOf) => (session.kind === "resume" ? session.record.id : session.id);
 
-const harnessOf = (session: SessionOf) => (session.kind === "new" ? session.harness : session.record.harness);
+const harnessOf = (session: SessionOf) =>
+  session.kind === "resume" ? session.record.harness : session.harness;
 
-const startOf = (session: SessionOf): SessionStart => ({ kind: session.kind, id: idOf(session) });
+function startOf(session: SessionOf): SessionStart {
+  switch (session.kind) {
+    case "new":
+      return { kind: "new", id: session.id };
+    case "fork":
+      return { kind: "fork", id: session.id, from: session.from };
+    case "resume":
+      return { kind: "resume", id: session.record.id };
+  }
+}
 
 function openSession(
   db: Database,
@@ -127,7 +156,11 @@ function serve({ db, turn, workspace, acting }: Served, request: TurnRequest): u
   }
 }
 
-type TurnServed = { readonly missed: string | null; readonly fault: unknown };
+type TurnServed = {
+  readonly missed: string | null;
+  readonly fault: unknown;
+  readonly ended: Awaited<Spawned["ended"]>;
+};
 
 async function serveTurn(
   served: Served,
@@ -162,11 +195,11 @@ async function serveTurn(
   const listening = listen(socket, answer);
   try {
     spawned.prompt(brief);
-    await spawned.ended;
+    const ended = await spawned.ended;
+    return { missed: stopped ? misses.join("; ") : null, fault, ended };
   } finally {
     listening.stop();
   }
-  return { missed: stopped ? misses.join("; ") : null, fault };
 }
 
 async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
@@ -180,12 +213,16 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
     order: turn.order,
     createdBy: turn.by.worker.name,
   });
-  const session = sessionOf(sessions, turn.newSessionHarness);
+  const copies = workerSessionsDir(worker.name);
+  const session = sessionOf(sessions, state.died, turn.newSessionHarness, (id) => sessionHeld(copies, id));
   const adapter = adapterFor(harnessOf(session));
   const workspace = workspaceOf(state.project, turn.order);
   alignBranch(workspace, turn.order, head);
   const opened = openTurn(workerHomeDir(worker.name));
   try {
+    if (session.kind === "fork") {
+      restoreSession(copies, session.from, adapter.transcript(opened.home, workspace, session.from));
+    }
     const spawned = spawnFor(adapter, turn, session, workspace, opened, worker);
     const acting: Acting = { worker, session: openSession(db, turn, worker, session, spawned.pid) };
     const served = await serveTurn(
@@ -200,8 +237,12 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Ended> {
     );
     if (served.fault !== null) throw served.fault;
     const id = idOf(session);
-    copySession(adapter.transcript(opened.home, workspace, id), workerSessionsDir(worker.name), id);
-    return closeTurnRecord(db, turn, id, served.missed);
+    const outcome = adapter.outcome(served.ended, startOf(session));
+    const transcript = adapter.transcript(opened.home, workspace, id);
+    if (outcome.kind === "finished" || sessionWritten(transcript)) {
+      copySession(transcript, workerSessionsDir(worker.name), id);
+    }
+    return closeTurnRecord(db, turn, { session: id, missed: served.missed, outcome });
   } finally {
     closeTurn(opened);
   }
@@ -224,10 +265,27 @@ function spawnFor(
   return startHarness(argv, workspace, workerEnv(turn.env, opened, worker.name, adapter.signIn));
 }
 
-function closeTurnRecord(db: Database, turn: TurnOf, session: string, missed: string | null): Ended {
+type Closing = { readonly session: string; readonly missed: string | null; readonly outcome: Outcome };
+
+function deathOf(session: string, outcome: Outcome & { readonly kind: "died" }): Later {
+  return outcome.code === "usage_limit"
+    ? { action: "session_died", code: outcome.code, details: { session, resetsAt: outcome.resetsAt } }
+    : { action: "session_died", code: outcome.code, details: { session } };
+}
+
+function closeTurnRecord(db: Database, turn: TurnOf, { session, missed, outcome }: Closing): Ended {
   return writeTransaction(db, () => {
+    if (outcome.kind === "died") recordFactory(db, turn.order, turn.cause, deathOf(session, outcome));
     const end = turnEnd(orderState(db, turn.order), turn.station);
     if (end !== "no_return") return { end, session };
+    if (outcome.kind === "died") {
+      recordFactory(db, turn.order, turn.cause, {
+        action: "station_failed",
+        code: "session_died",
+        details: { session },
+      });
+      return { end: "died", session, code: outcome.code };
+    }
     if (missed === null) {
       recordFactory(db, turn.order, turn.cause, {
         action: "station_failed",
@@ -257,7 +315,16 @@ function prepareTurn(setup: ProjectSetup, project: string, station: Station): Pr
 }
 
 async function turnAt(db: Database, turn: TurnOf): Promise<void> {
-  const ended = await runTurn(db, turn);
+  const first = await runTurn(db, turn);
+  const ended = first.end === "died" && first.code === "resume_failed" ? await runTurn(db, turn) : first;
+  if (ended.end === "died") {
+    throw refuseStation("session_died", {
+      order: turn.order,
+      station: turn.station,
+      session: ended.session,
+      code: ended.code,
+    });
+  }
   if (ended.end === "no_return") {
     throw refuseStation("no_return", { order: turn.order, station: turn.station, session: ended.session });
   }

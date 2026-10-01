@@ -3,6 +3,7 @@ import type { CodedError } from "./coded-error";
 import {
   type Answer,
   CROCKFORD,
+  type DeathCode,
   type Decider,
   type Decision,
   type Evidence,
@@ -45,6 +46,8 @@ type Returned =
   | { readonly kind: "worker"; readonly station: Station; readonly reason: string }
   | { readonly kind: "ship"; readonly check: FailedCheck };
 
+export type Death = { readonly session: string; readonly code: DeathCode };
+
 export type SliceView = { readonly title: string; readonly outcome: string; readonly commit: string | null };
 
 export type OrderState = {
@@ -62,6 +65,7 @@ export type OrderState = {
   readonly returned: Returned | null;
   readonly buildArtifact: string | null;
   readonly conflict: readonly string[] | null;
+  readonly died: readonly Death[];
   readonly lastSeq: number;
 };
 
@@ -251,12 +255,13 @@ function apply(state: OrderState, entry: Later): OrderState {
         phase: { kind: "done", station: "review" },
         head: entry.details.head,
       };
+    case "session_died":
+      return { ...state, died: [...state.died, { session: entry.details.session, code: entry.code }] };
     case "slice_submitted":
     case "slice_refused":
     case "message_sent":
     case "message_refused":
     case "session_started":
-    case "session_died":
     case "station_failed":
     case "ship_started":
     case "cleaned_up":
@@ -333,6 +338,7 @@ export function fold(id: string, added: AddedEntry, later: readonly LaterEntry[]
     returned: null,
     buildArtifact: null,
     conflict: null,
+    died: [],
     lastSeq: added.seq,
   };
   return later.reduce((state, entry) => ({ ...apply(state, entry), lastSeq: entry.seq }), start);

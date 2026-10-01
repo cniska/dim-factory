@@ -8,7 +8,13 @@ export type Policy = {
 
 export type SessionStart =
   | { readonly kind: "new"; readonly id: string }
-  | { readonly kind: "resume"; readonly id: string };
+  | { readonly kind: "resume"; readonly id: string }
+  | { readonly kind: "fork"; readonly id: string; readonly from: string };
+
+export type Outcome =
+  | { readonly kind: "finished" }
+  | { readonly kind: "died"; readonly code: "killed" | "resume_failed" }
+  | { readonly kind: "died"; readonly code: "usage_limit"; readonly resetsAt: string | null };
 
 export type Start = {
   readonly session: SessionStart;
@@ -17,7 +23,7 @@ export type Start = {
   readonly socket: string;
 };
 
-type Ended = {
+export type Ended = {
   readonly lines: readonly string[];
   readonly stderr: string;
   readonly exitCode: number | null;
@@ -34,6 +40,7 @@ export type Adapter = {
   readonly signIn: readonly string[];
   argv(start: Start): readonly string[];
   transcript(home: string, workspace: string, session: string): string;
+  outcome(ended: Ended, session: SessionStart): Outcome;
 };
 
 type HarnessRefusalMeta = {

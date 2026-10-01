@@ -314,6 +314,16 @@ describe("an order's state, folded from its log", () => {
     });
     expect([cancelled.status, at(cancelled)]).toEqual(["cancelled", ["plan", null]]);
   });
+
+  test("holds each session that died with its cause, and leaves the station where it was", () => {
+    const died = state(...planned, approve("plan"), {
+      action: "session_died",
+      code: "usage_limit",
+      details: { session: "s-builder", resetsAt: "2026-10-01T00:00:00Z" },
+    });
+    expect(died.died).toEqual([{ session: "s-builder", code: "usage_limit" }]);
+    expect(at(died)).toEqual(["build", "run"]);
+  });
 });
 
 describe("an order id", () => {

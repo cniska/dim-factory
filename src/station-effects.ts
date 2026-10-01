@@ -1,5 +1,5 @@
-import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { Turn } from "./station";
 
 const SOCKET_ROOT = "/tmp";
@@ -64,7 +64,23 @@ export function send(socket: string, line: string): Promise<string> {
   });
 }
 
+const copyOf = (sessions: string, session: string) => join(sessions, `${session}.jsonl`);
+
 export function copySession(transcript: string, sessions: string, session: string): void {
   mkdirSync(sessions, { recursive: true });
-  copyFileSync(transcript, join(sessions, `${session}.jsonl`));
+  copyFileSync(transcript, copyOf(sessions, session));
+}
+
+export function sessionWritten(transcript: string): boolean {
+  return existsSync(transcript);
+}
+
+export function sessionHeld(sessions: string, session: string): boolean {
+  return existsSync(copyOf(sessions, session));
+}
+
+export function restoreSession(sessions: string, session: string, transcript: string): void {
+  if (existsSync(transcript)) return;
+  mkdirSync(dirname(transcript), { recursive: true });
+  copyFileSync(copyOf(sessions, session), transcript);
 }

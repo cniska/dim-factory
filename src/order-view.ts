@@ -53,14 +53,6 @@ export function workerNamesOf(log: readonly LogEntry[]): readonly string[] {
   return [...new Set(names)];
 }
 
-function deaths(log: readonly LogEntry[]): ReadonlyMap<string, string> {
-  return new Map(
-    log.flatMap((entry) =>
-      entry.action === "session_died" ? [[entry.details.session, entry.code] as const] : [],
-    ),
-  );
-}
-
 function workerView({ worker, sessions }: WorkerRecord, died: ReadonlyMap<string, string>): WorkerView {
   const views = sessions.map((session): SessionView => {
     const code = died.get(session.id);
@@ -77,7 +69,7 @@ export function orderView(
   workers: readonly WorkerRecord[],
   workspace: string,
 ): OrderView {
-  const died = deaths(log);
+  const died = new Map(state.died.map(({ session, code }) => [session, code]));
   return {
     id: state.id,
     title: state.title,

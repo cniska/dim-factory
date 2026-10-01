@@ -215,6 +215,8 @@ export const Later = z.union([
 ]);
 export type Later = z.infer<typeof Later>;
 
+export type DeathCode = Extract<Later, { readonly action: "session_died" }>["code"];
+
 export const Detailed = z.union([OrderAdded, Later]);
 export type Detailed = z.infer<typeof Detailed>;
 
