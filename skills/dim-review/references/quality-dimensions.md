@@ -1,1 +1,0 @@
-../../references/quality-dimensions.md

@@ -56,7 +56,7 @@ The plan is the shared artifact the owner approves and the builder executes, not
 - **Checks.** An executable check for each contract and the repository's own task for every slice.
 - **Slices.** The behavior, affected area, check, and dependency for each independently verifiable vertical cut. The builder's nth commit is the nth slice, so on a revision with commits already on the branch, say which of them stay, change or go, and count the new slices from the branch as it stands.
 - **Risks and decisions.** Holds, unresolved questions, predictions, and the conditions under which the operator should approve the plan.
-- **Review scope.** What the review should aim at: the concrete questions each dimension must answer for this change, and whether it touches a performance-sensitive path, the one dimension review runs only when the plan names one. It never removes a dimension; every other pass `dim-review` lists runs on every order.
+- **Review scope.** What the review should aim at: the concrete questions each area must answer for this change, and whether it touches a performance-sensitive path, the one area review runs only when the plan names one. It never removes an area; every other pass `dim-review` lists runs on every order.
 
 Use readable Markdown and project language. Keep identifiers, commands, and paths where they let the owner verify a claim; do not make the owner reconstruct the design from a worker transcript.
 

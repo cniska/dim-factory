@@ -103,7 +103,7 @@ describe("skill install", () => {
           expect(readlinkSync(link)).toBe(skillSourceDir(name));
         }
         for (const name of ["dim-audit", "dim-review"]) {
-          expect(existsSync(join(dir, name, "references", "quality-dimensions.md"))).toBe(true);
+          expect(existsSync(join(dir, name, "references", "quality-areas.md"))).toBe(true);
         }
       }
       expect(planSkill(env).every((p) => p.state === "linked")).toBe(true);

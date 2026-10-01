@@ -31,7 +31,7 @@ Before spawning anything:
 
 ## The passes
 
-Spawn one agent per area, each given the diff, the intent, its brief from [quality dimensions](references/quality-dimensions.md), and only the grounding below, and each with read-only tools. Withhold your own read of the diff — hand over a conclusion and what comes back is agreement with it. A reviewer that can edit answers a finding by editing, and what it overwrites is work it was sent to read.
+Spawn one agent per area, each given the diff, the intent, its brief from [quality areas](references/quality-areas.md), and only the grounding below, and each with read-only tools. Withhold your own read of the diff — hand over a conclusion and what comes back is agreement with it. A reviewer that can edit answers a finding by editing, and what it overwrites is work it was sent to read.
 
 | area | what it reads against |
 |---|---|

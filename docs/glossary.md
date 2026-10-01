@@ -38,6 +38,7 @@ One word per thing. A page that uses a word links here rather than defining it a
 | Worker's return | A station worker handing the order back: a planner that cannot plan it as written, or a builder or reviewer that found a problem in the previous station's work |
 | Cancel | The owner's decision to stop an order before it ships, with the reason |
 | Finding | A problem a reviewer raised, with its area, file and line, what is wrong, the fix and a severity |
+| Area | The question a review or audit reads code against, such as correctness or tests, each with its own reader ([`skills/references/quality-areas.md`](../skills/references/quality-areas.md)) |
 | Severity | How much a finding costs if it ships: `critical`, `high` or `medium` |
 | Answer | The builder's one reply to a finding: `fixed`, or `refused` with a reason |
 | Gate | A rule git or `dim` refuses to let pass, whether or not anything was read |

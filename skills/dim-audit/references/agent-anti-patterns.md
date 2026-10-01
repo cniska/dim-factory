@@ -2,7 +2,7 @@
 
 Shapes coding agents keep writing, and the fix for each. An agent copies the code nearest its change, so one instance left standing becomes the next change's template. Code an agent writes is rid of every entry here before it lands, and an instance found in merged code is fixed rather than left as precedent.
 
-The entries are the owner's corrections to agents across their projects, quoted from the record; the examples are from dim-factory. Each names what holds it: a type or constraint where one can, otherwise review. A review dimension reading against this page is in [`todo.md`](../../../docs/todo.md).
+The entries are the owner's corrections to agents across their projects, quoted from the record; the examples are from dim-factory. Each names what holds it: a type or constraint where one can, otherwise review. A review area reading against this page is in [`todo.md`](../../../docs/todo.md).
 
 ## A workaround in place of the cause
 
