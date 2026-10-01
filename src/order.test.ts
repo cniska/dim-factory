@@ -220,7 +220,25 @@ describe("an order's state, folded from its log", () => {
   test("the recorded head starts at the workspace's base and moves with each commit and rebase", () => {
     expect(state(RUN, BASE).head).toBe("base0");
     expect(state(...built).head).toBe("c2");
-    expect(state(...built, { action: "branch_rebased", details: { head: "r2" } }).head).toBe("r2");
+    const rebased = state(...built, {
+      action: "branch_rebased",
+      details: {
+        head: "r2",
+        commits: [
+          { from: "c1", to: "r1" },
+          { from: "c2", to: "r2" },
+        ],
+      },
+    });
+    expect([rebased.head, rebased.commits]).toEqual(["r2", ["r1", "r2"]]);
+  });
+
+  test("a rebase stopped by a conflict keeps each slice's commit, moved or not", () => {
+    const stopped = state(...built, {
+      action: "branch_rebased",
+      details: { head: "r1", commits: [{ from: "c1", to: "r1" }] },
+    });
+    expect([stopped.head, stopped.commits]).toEqual(["r1", ["r1", "c2"]]);
   });
 
   test("a refused slice leaves the recorded head where it was", () => {

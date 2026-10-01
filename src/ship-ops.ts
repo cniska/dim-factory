@@ -89,7 +89,7 @@ function land(db: Database, ship: ShipOf): void {
   const replayed = replay(checkout, onto, commitsSince(checkout, defaultBranch, head), head);
   const rebase: Evidence = { kind: "rebase", onto, commits: [...replayed.moved] };
   if (replayed.head !== head) {
-    record({ action: "branch_rebased", details: { head: replayed.head } });
+    record({ action: "branch_rebased", details: { head: replayed.head, commits: [...replayed.moved] } });
     moveRef(checkout, branch, replayed.head, head);
     resetWorkspace(checkout, ship.project, order, replayed.head);
   }

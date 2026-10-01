@@ -196,7 +196,10 @@ export const Later = z.union([
     stop("station_failed", "session_died", session),
   ]),
   entry("ship_started", {}),
-  entry("branch_rebased", { head: z.string() }),
+  entry("branch_rebased", {
+    head: z.string(),
+    commits: z.array(z.object({ from: z.string(), to: z.string() })),
+  }),
   z.discriminatedUnion("code", [
     stop("ship_stopped", "ship_unset", {}),
     stop("ship_stopped", "checkout_dirty", { checkout: z.string() }),

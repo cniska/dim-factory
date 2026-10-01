@@ -215,8 +215,14 @@ function apply(state: OrderState, entry: Later): OrderState {
         findings: returned.findings.map((finding) => ({ ...finding, answer: null, reason: null })),
       };
     }
-    case "branch_rebased":
-      return { ...state, head: entry.details.head };
+    case "branch_rebased": {
+      const moved = new Map(entry.details.commits.map(({ from, to }) => [from, to]));
+      return {
+        ...state,
+        head: entry.details.head,
+        commits: state.commits.map((commit) => moved.get(commit) ?? commit),
+      };
+    }
     case "ship_stopped":
       switch (entry.code) {
         case "ship_conflict":
