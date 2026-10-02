@@ -107,7 +107,7 @@ export function rebuild(db: Database, env: Env = process.env): SyncReport {
     dropEveryTable(db);
     db.run(SCHEMA_SQL);
     db.run(
-      `INSERT INTO hook_event (${HOOK_EVENT_COLUMNS}) SELECT ${HOOK_EVENT_COLUMNS} FROM kept_hook_event`,
+      `INSERT OR IGNORE INTO hook_event (${HOOK_EVENT_COLUMNS}) SELECT ${HOOK_EVENT_COLUMNS} FROM kept_hook_event`,
     );
     db.run("DROP TABLE kept_hook_event");
   });

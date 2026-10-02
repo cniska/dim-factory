@@ -1,11 +1,13 @@
 import { HARNESSES } from "./harness-name";
+import { HOOK_EVENTS } from "./hook-events";
 import { TOOLS } from "./ingest-tools";
 
 const sqlList = (values: readonly string[]): string => values.map((value) => `'${value}'`).join(",");
 const TOOLS_SQL = sqlList(TOOLS);
 const HARNESSES_SQL = sqlList(HARNESSES);
+const HOOK_EVENTS_SQL = sqlList(Object.values(HOOK_EVENTS));
 
-export const SCHEMA_VERSION = 94;
+export const SCHEMA_VERSION = 95;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS source_file (
@@ -82,7 +84,7 @@ CREATE TABLE IF NOT EXISTS hook_event (
   id          INTEGER PRIMARY KEY,
   tool        TEXT NOT NULL CHECK (tool IN (${TOOLS_SQL})),
   session_id  TEXT NOT NULL,
-  event       TEXT NOT NULL CHECK (event IN ('session_start','session_end','post_tool_use')),
+  event       TEXT NOT NULL CHECK (event IN (${HOOK_EVENTS_SQL})),
   ts          TEXT NOT NULL,
   harness_pid INTEGER,
   reason      TEXT,

@@ -124,7 +124,7 @@ describe("rebuilding a database an older schema wrote", () => {
     return Object.fromEntries(rows.map((row) => [row.name, row.sql]));
   }
 
-  test("hook events keep their rows while their table takes the current definition", () => {
+  test("hook events keep the rows the current definition accepts while their table takes it", () => {
     const { db, env } = scratch();
     db.run("DROP TABLE hook_event");
     db.run(
@@ -132,7 +132,7 @@ describe("rebuilding a database an older schema wrote", () => {
          id INTEGER PRIMARY KEY,
          tool TEXT NOT NULL CHECK (tool IN ('claude','codex')),
          session_id TEXT NOT NULL,
-         event TEXT NOT NULL CHECK (event IN ('session_start','session_end')),
+         event TEXT NOT NULL CHECK (event IN ('session_start','session_end','post_tool_use')),
          ts TEXT NOT NULL,
          harness_pid INTEGER, source TEXT, reason TEXT, model TEXT, cwd TEXT,
          payload TEXT NOT NULL,
@@ -141,6 +141,9 @@ describe("rebuilding a database an older schema wrote", () => {
     );
     db.run(
       "INSERT INTO hook_event (tool, session_id, event, ts, reason, payload) VALUES ('claude', 's1', 'session_end', '2026-01-01T00:00:00Z', 'clear', '{}')",
+    );
+    db.run(
+      "INSERT INTO hook_event (tool, session_id, event, ts, payload) VALUES ('claude', 's1', 'post_tool_use', '2026-01-01T00:00:01Z', '{}')",
     );
 
     rebuild(db, env);

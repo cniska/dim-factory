@@ -3,6 +3,7 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync } from "no
 import { basename, join } from "node:path";
 import { writeTransaction } from "./db";
 import { HARNESSES, type HarnessName } from "./harness-name";
+import { hookEventOf } from "./hook-events";
 import { type Env, spoolDir } from "./paths";
 
 export type DrainReport = { applied: number; duplicate: number; unreadable: number };
@@ -35,16 +36,6 @@ function text(value: string | undefined): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function eventOf(
-  payload: HookPayload | undefined,
-): "session_start" | "session_end" | "post_tool_use" | undefined {
-  const name = payload?.hook_event_name;
-  if (name === "SessionStart") return "session_start";
-  if (name === "SessionEnd") return "session_end";
-  if (name === "PostToolUse") return "post_tool_use";
-  return undefined;
-}
-
 export function drainSpool(db: Database, env: Env = process.env): DrainReport {
   ensureSpoolDirs(env);
   const report: DrainReport = { applied: 0, duplicate: 0, unreadable: 0 };
@@ -69,7 +60,7 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
             payload = undefined;
           }
         }
-        const event = eventOf(payload);
+        const event = hookEventOf(payload?.hook_event_name);
         const sessionId = text(payload?.session_id);
         if (!match || !sessionId || !event) {
           setAsideUnreadable(path, env);

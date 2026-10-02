@@ -57,16 +57,6 @@ function startEvent(sessionId: string, source: string) {
   return { session_id: sessionId, hook_event_name: "SessionStart", source, cwd: "/Users/x/code/demo" };
 }
 
-function toolEvent(sessionId: string) {
-  return {
-    session_id: sessionId,
-    hook_event_name: "PostToolUse",
-    tool_name: "Edit",
-    tool_use_id: "toolu_123",
-    cwd: "/Users/x/code/demo",
-  };
-}
-
 describe("spool", () => {
   test("records the harness pid from a SessionStart spool filename", () => {
     const env = scratchEnv(newRoot());
@@ -287,17 +277,24 @@ describe("spool", () => {
     }
   });
 
-  test("stores a post-tool event", () => {
+  test("sets aside a post-tool event, which the record does not keep", () => {
     const root = newRoot();
     const env = scratchEnv(root);
-    spool(env, "claude", "1789000000000000000", toolEvent(SESSION));
+    spool(env, "claude", "1789000000000000000", {
+      session_id: SESSION,
+      hook_event_name: "PostToolUse",
+      tool_name: "Edit",
+      cwd: "/Users/x/code/demo",
+    });
     const db = openDb(dbPath(env));
     try {
-      expect(drainSpool(db, env)).toMatchObject({ applied: 1, unreadable: 0 });
-      expect(db.prepare("SELECT event, session_id FROM hook_event").get()).toEqual({
-        event: "post_tool_use",
-        session_id: SESSION,
-      });
+      expect(drainSpool(db, env)).toMatchObject({ applied: 0, unreadable: 1 });
+      expect(db.prepare("SELECT count(*) AS n FROM hook_event").get()).toEqual({ n: 0 });
+      expect(() =>
+        db.run(
+          "INSERT INTO hook_event (tool, session_id, event, ts) VALUES ('claude', 's', 'post_tool_use', '2026-01-01T00:00:00Z')",
+        ),
+      ).toThrow();
     } finally {
       closeDb(db);
     }
