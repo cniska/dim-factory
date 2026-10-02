@@ -36,7 +36,7 @@ export function closeTurn(trace: Trace, turn: Turn): void {
 
 export type Listening = { stop(): void };
 
-export function listen(socket: string, serve: (line: string) => string | null): Listening {
+export function listen(socket: string, serve: (line: string) => string): Listening {
   const server = Bun.listen<{ buffer: string }>({
     unix: socket,
     socket: {
@@ -47,8 +47,7 @@ export function listen(socket: string, serve: (line: string) => string | null): 
         client.data.buffer += chunk.toString();
         const end = client.data.buffer.indexOf("\n");
         if (end === -1) return;
-        const reply = serve(client.data.buffer.slice(0, end));
-        if (reply !== null) client.write(`${reply}\n`);
+        client.write(`${serve(client.data.buffer.slice(0, end))}\n`);
         client.end();
       },
     },

@@ -206,7 +206,7 @@ async function serveTurn(
     stopped.cause = cause;
     spawned.kill();
   };
-  const answer = (line: string): string | null => {
+  const answer = (line: string): string => {
     if (stopped.cause !== null)
       return JSON.stringify(replyTo(refuseStation("turn_stopped", { order, station }), misses).reply);
     if (served.config.putBack()) {
@@ -221,7 +221,7 @@ async function serveTurn(
     } catch (error) {
       if (!isRefusal(error)) {
         stopWith({ kind: "fault", error });
-        return null;
+        return JSON.stringify(replyTo(refuseStation("turn_stopped", { order, station }), misses).reply);
       }
       const refused = replyTo(error, misses);
       misses = refused.misses;
@@ -598,6 +598,7 @@ export async function sendAct(request: TurnRequest, env: Env): Promise<unknown> 
   } catch (error) {
     throw refuseStation("no_turn", { detail: String(error) });
   }
+  if (line === "") throw refuseStation("no_turn", { detail: "the turn closed without replying" });
   const reply = TurnReply.parse(JSON.parse(line));
   if (reply.ok) return reply.result;
   throw refusalOf(reply.error);
