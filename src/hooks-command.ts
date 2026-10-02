@@ -1,6 +1,6 @@
 import { type Command, UsageError } from "./cli-contract";
 import { type EditPayload, formatAfterEdit } from "./format-edit";
-import { type HookPlan, installHooks, planHooks } from "./hooks";
+import { installHooks } from "./hooks";
 import { readHookPayload } from "./hooks-payload";
 import { startSession } from "./hooks-start";
 import { ensureSpoolDirs } from "./ingest-spool";
@@ -10,15 +10,9 @@ const USAGE =
 
 const HOOK_VERBS = ["start", "edit"];
 
-function hookState(plans: HookPlan[]) {
-  const pending = plans.filter((plan) => plan.state !== "installed");
-  return { installed: plans.length - pending.length, pending };
-}
-
 function install() {
   ensureSpoolDirs();
-  const report = installHooks();
-  return { ...hookState(planHooks()), ...report };
+  return installHooks();
 }
 
 async function edit(): Promise<void> {

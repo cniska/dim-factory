@@ -215,6 +215,7 @@ function applyRemovals(text: string, removals: readonly HookRemoval[], configPat
 
 export type InstallReport = {
   written: string[];
+  added: number;
   alreadyPresent: number;
   refreshed: number;
   retired: number;
@@ -222,7 +223,14 @@ export type InstallReport = {
 };
 
 export function installHooks(env: Env = process.env): InstallReport {
-  const report: InstallReport = { written: [], alreadyPresent: 0, refreshed: 0, retired: 0, backups: [] };
+  const report: InstallReport = {
+    written: [],
+    added: 0,
+    alreadyPresent: 0,
+    refreshed: 0,
+    retired: 0,
+    backups: [],
+  };
   const byConfig = new Map<string, HookPlan[]>();
   for (const plan of planHooks(env)) {
     const list = byConfig.get(plan.configPath) ?? [];
@@ -258,6 +266,7 @@ export function installHooks(env: Env = process.env): InstallReport {
       text = appendToJsoncArray(text, ["hooks", plan.event], entry, configPath);
     }
     refuseIneffective(text, configPath, [...stale, ...missing]);
+    report.added += missing.length;
     report.refreshed += stale.length;
     report.retired += retired.length;
     pending.push({ configPath, text });

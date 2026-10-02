@@ -13,16 +13,14 @@ function installSkills(root: string) {
   return JSON.parse(run.stdout.toString()).result;
 }
 
-test("skills install reports the skills it linked as linked", () => {
+test("skills install reports the links it made, and none on a second run", () => {
   const root = mkdtempSync(join(tmpdir(), "dim-skill-write-"));
   try {
     const written = installSkills(root);
-    const again = installSkills(root);
-    expect({ linked: written.linked, links: written.links }).toEqual({
-      linked: again.linked,
-      links: again.links,
-    });
+    expect(written.linked).toContain(join(root, ".claude", "skills", SKILL_NAMES[0]));
+    expect(written.linked).toHaveLength(SKILL_NAMES.length * 2);
     expect(written.backups).toEqual([]);
+    expect(installSkills(root)).toEqual({ linked: [], backups: [] });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
