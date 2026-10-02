@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { withPathLock } from "./db-lock";
+import { nextBackupPath } from "./file-backup";
 import { HARNESSES } from "./harness-contract";
 import { harnessInstalled } from "./harness-ops";
 import { type Env, locksDir, resolveHomeDir } from "./paths";
@@ -38,48 +39,23 @@ export function skillLinkDirs(env: Env = process.env): string[] {
   return harnessInstalled(HARNESSES.codex, env) ? [shared, join(home, ".codex", "skills")] : [shared];
 }
 
-export function skillLinkPaths(name: SkillName, env: Env = process.env): string[] {
-  return skillLinkDirs(env).map((dir) => join(dir, name));
-}
-
-type SkillPlanBase = {
-  name: SkillName;
-  link: string;
-  target: string;
-};
-
-export type SkillPlan = SkillPlanBase &
-  ({ state: "linked" | "missing" } | { state: "occupied"; backup: string });
-
-function backupPath(link: string): string {
-  const base = `${link}.dim-backup`;
-  let path = base;
-  let number = 2;
-  while (lstatSync(path, { throwIfNoEntry: false })) {
-    path = `${base}-${number}`;
-    number += 1;
-  }
-  return path;
-}
+export type SkillPlan = { name: SkillName; link: string; target: string } & (
+  | { state: "linked" | "missing" }
+  | { state: "occupied"; backup: string }
+);
 
 export function planSkill(env: Env = process.env): SkillPlan[] {
   return SKILL_NAMES.flatMap((name) => {
     const target = skillSourceDir(name);
-    return skillLinkPaths(name, env).map((link) => {
-      if (!existsSync(link) && !isLink(link)) return { name, link, target, state: "missing" as const };
-      if (isLink(link) && readlinkSync(link) === target)
+    return skillLinkDirs(env).map((dir) => {
+      const link = join(dir, name);
+      const found = lstatSync(link, { throwIfNoEntry: false });
+      if (!found) return { name, link, target, state: "missing" as const };
+      if (found.isSymbolicLink() && readlinkSync(link) === target)
         return { name, link, target, state: "linked" as const };
-      return { name, link, target, state: "occupied" as const, backup: backupPath(link) };
+      return { name, link, target, state: "occupied" as const, backup: nextBackupPath(link) };
     });
   });
-}
-
-function isLink(path: string): boolean {
-  try {
-    return lstatSync(path).isSymbolicLink();
-  } catch {
-    return false;
-  }
 }
 
 export function retiredLinks(env: Env = process.env): string[] {
@@ -89,7 +65,7 @@ export function retiredLinks(env: Env = process.env): string[] {
     if (!existsSync(dir)) continue;
     for (const entry of readdirSync(dir)) {
       const link = join(dir, entry);
-      if (!isLink(link)) continue;
+      if (!lstatSync(link).isSymbolicLink()) continue;
       const target = readlinkSync(link);
       if (target.startsWith(`${SKILLS_DIR}/`) && !current.has(target)) stale.push(link);
     }

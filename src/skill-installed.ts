@@ -8,9 +8,8 @@ export function listInstalledSkills(env: Env = process.env): Set<string> {
   const names = new Set<string>();
   for (const root of roots) {
     if (!existsSync(root)) continue;
-    for (const entry of readdirSync(root, { withFileTypes: true })) {
-      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
-      if (existsSync(join(root, entry.name, "SKILL.md"))) names.add(entry.name);
+    for (const entry of readdirSync(root)) {
+      if (existsSync(join(root, entry, "SKILL.md"))) names.add(entry);
     }
   }
   return names;
