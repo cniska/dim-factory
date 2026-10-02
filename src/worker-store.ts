@@ -19,6 +19,10 @@ type SessionRow = {
   readonly pid_started_at: string;
 };
 
+const WORKER = "SELECT name, role, project, order_id, created_by FROM worker";
+
+const SESSION = "SELECT id, worker, harness, pid, pid_started_at FROM worker_session";
+
 function roleOf(value: string): Role {
   const role = ROLES.find((known) => known === value);
   invariant(role !== undefined, `worker role ${value} is one the table allows`);
@@ -70,53 +74,34 @@ export function workerNames(db: Database): ReadonlySet<string> {
 }
 
 export function workerNamed(db: Database, name: string): Worker | null {
-  const row = db
-    .query<WorkerRow, [string]>("SELECT name, role, project, order_id, created_by FROM worker WHERE name = ?")
-    .get(name);
+  const row = db.query<WorkerRow, [string]>(`${WORKER} WHERE name = ?`).get(name);
   return row === null ? null : workerOf(row);
 }
 
 export function stationWorkerOf(db: Database, order: string, role: Role): Worker | null {
   const row = db
-    .query<WorkerRow, [string, string]>(
-      "SELECT name, role, project, order_id, created_by FROM worker WHERE order_id = ? AND role = ?",
-    )
+    .query<WorkerRow, [string, string]>(`${WORKER} WHERE order_id = ? AND role = ?`)
     .get(order, role);
   return row === null ? null : workerOf(row);
 }
 
 export function sessionNamed(db: Database, id: string): WorkerSession | null {
-  const row = db
-    .query<SessionRow, [string]>(
-      "SELECT id, worker, harness, pid, pid_started_at FROM worker_session WHERE id = ?",
-    )
-    .get(id);
+  const row = db.query<SessionRow, [string]>(`${SESSION} WHERE id = ?`).get(id);
   return row === null ? null : sessionOf(row);
 }
 
 export function sessionsOf(db: Database, worker: string): readonly WorkerSession[] {
   return db
-    .query<SessionRow, [string]>(
-      "SELECT id, worker, harness, pid, pid_started_at FROM worker_session WHERE worker = ? ORDER BY rowid",
-    )
+    .query<SessionRow, [string]>(`${SESSION} WHERE worker = ? ORDER BY rowid`)
     .all(worker)
     .map(sessionOf);
 }
 
 export function sessions(db: Database): readonly WorkerSession[] {
-  return db
-    .query<SessionRow, []>(
-      "SELECT id, worker, harness, pid, pid_started_at FROM worker_session ORDER BY rowid",
-    )
-    .all()
-    .map(sessionOf);
+  return db.query<SessionRow, []>(`${SESSION} ORDER BY rowid`).all().map(sessionOf);
 }
 
 export function operatorOf(db: Database, project: string): Worker | null {
-  const row = db
-    .query<WorkerRow, [string]>(
-      "SELECT name, role, project, order_id, created_by FROM worker WHERE role = 'operator' AND project = ?",
-    )
-    .get(project);
+  const row = db.query<WorkerRow, [string]>(`${WORKER} WHERE role = 'operator' AND project = ?`).get(project);
   return row === null ? null : workerOf(row);
 }
