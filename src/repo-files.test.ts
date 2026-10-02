@@ -84,7 +84,7 @@ describe("indexing what a repo tracks", () => {
     try {
       const db = freshDb();
       expect(indexRepoFiles(db, [gone, repo], fail)).toEqual({ repos: 1, files: 2 });
-      expect(failures).toEqual([{ path: gone, code: "git_unreadable" }]);
+      expect(failures).toEqual([{ path: gone, code: "git_failed" }]);
       db.close();
     } finally {
       rmSync(repo, { recursive: true, force: true });

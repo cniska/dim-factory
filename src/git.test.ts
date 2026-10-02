@@ -28,9 +28,9 @@ describe("running git", () => {
     const repo = emptyRepo();
     expect(() => ran(repo, ["rev-parse", "--verify", "-q", "HEAD"])).toThrow(
       expect.objectContaining({
-        code: "git_unreadable",
+        code: "git_failed",
         kind: "refusal",
-        meta: { root: repo, what: "git rev-parse --verify -q HEAD", detail: "exit 1" },
+        meta: { repo, command: "git rev-parse --verify -q HEAD", status: 1, detail: "" },
       }),
     );
   });
@@ -38,7 +38,7 @@ describe("running git", () => {
   test("refuses an ancestry question about a commit that does not exist, rather than answering no", () => {
     const repo = emptyRepo();
     expect(() => isAncestor(repo, "0000000000000000000000000000000000000000", "HEAD")).toThrow(
-      expect.objectContaining({ code: "git_unreadable" }),
+      expect.objectContaining({ code: "git_failed" }),
     );
   });
 

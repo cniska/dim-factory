@@ -16,10 +16,11 @@ export function git(repo: string, args: readonly string[], options: GitOptions =
 }
 
 export function refused(repo: string, args: readonly string[], run: GitRun) {
-  return refuseGit("git_unreadable", {
-    root: repo,
-    what: `git ${args.join(" ")}`,
-    detail: run.err === "" ? `exit ${run.status}` : run.err,
+  return refuseGit("git_failed", {
+    repo,
+    command: `git ${args.join(" ")}`,
+    status: run.status,
+    detail: run.err,
   });
 }
 

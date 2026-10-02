@@ -45,13 +45,13 @@ describe("reading the repos the sessions ran in", () => {
     const broken = brokenCheckout();
 
     expect(ingestCommits(db, [broken, healthy], fail)).toEqual({ repos: 1, commits: 1, files: 1 });
-    expect(failed).toEqual([{ path: broken, code: "git_unreadable" }]);
+    expect(failed).toEqual([{ path: broken, code: "git_failed" }]);
     expect(db.query("SELECT subject FROM repo_commit").all()).toEqual([{ subject: "feat: a" }]);
 
     db.run("INSERT INTO session (id, tool, cwd) VALUES ('s1', 'claude', ?)", [broken]);
     failed.length = 0;
     expect(repoRoots(db, fail)).toEqual([]);
-    expect(failed).toEqual([{ path: broken, code: "git_unreadable" }]);
+    expect(failed).toEqual([{ path: broken, code: "git_failed" }]);
     db.close();
   });
 });

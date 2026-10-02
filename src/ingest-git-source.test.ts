@@ -67,7 +67,7 @@ describe("reading a repo", () => {
       git(["init", "-q", empty], empty);
       expect(readCommits(empty, null)).toEqual([]);
       writeFileSync(join(broken, ".git"), "gitdir: /nonexistent/dim-test\n");
-      expect(() => repoRoot(broken)).toThrow(expect.objectContaining({ code: "git_unreadable" }));
+      expect(() => repoRoot(broken)).toThrow(expect.objectContaining({ code: "git_failed" }));
     } finally {
       rmSync(empty, { recursive: true, force: true });
       rmSync(broken, { recursive: true, force: true });
