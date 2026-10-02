@@ -1,4 +1,4 @@
-import { CodedError } from "./coded-error";
+import { isRefusal } from "./coded-error";
 import { type Env, tracePath } from "./paths";
 import type { StepOutcome, Trace } from "./trace-contract";
 import { appendLine, readFrom, sizeOf } from "./trace-effects";
@@ -6,7 +6,7 @@ import { appendLine, readFrom, sizeOf } from "./trace-effects";
 const FOLLOW_POLL_MS = 100;
 
 function outcomeOf(error: unknown): StepOutcome {
-  if (error instanceof CodedError) return { kind: "refused", code: error.code };
+  if (isRefusal(error)) return { kind: "refused", code: error.code };
   return { kind: "failed", error: error instanceof Error ? error.message : String(error) };
 }
 

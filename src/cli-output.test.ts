@@ -24,6 +24,7 @@ describe("an error on stderr", () => {
       "no order k7m2qx4d is on record",
       { order: "k7m2qx4d" },
       "dim order add --title <title> --description <description>",
+      "refusal",
     );
     expect(printed(refused)).toEqual({
       command: "trace",

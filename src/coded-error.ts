@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export type ErrorKind = "refusal" | "fault";
+
 export class CodedError<Code extends string = string, Meta extends object = object> extends Error {
   override readonly name = "CodedError";
 
@@ -8,9 +10,14 @@ export class CodedError<Code extends string = string, Meta extends object = obje
     message: string,
     readonly meta: Meta,
     readonly resolve: string,
+    readonly kind: ErrorKind,
   ) {
     super(message);
   }
+}
+
+export function isRefusal(error: unknown): error is CodedError {
+  return error instanceof CodedError && error.kind === "refusal";
 }
 
 export const RefusalRecord = z.object({
@@ -26,7 +33,7 @@ export function recordOf(error: CodedError): RefusalRecord {
 }
 
 export function refusalOf({ code, message, meta, resolve }: RefusalRecord): CodedError {
-  return new CodedError(code, message, meta, resolve);
+  return new CodedError(code, message, meta, resolve, "refusal");
 }
 
 export type RefusalTable<Metas extends Record<string, object>> = {
@@ -36,7 +43,12 @@ export type RefusalTable<Metas extends Record<string, object>> = {
   };
 };
 
-export function refuser<Metas extends Record<string, object>>(table: RefusalTable<Metas>) {
-  return <Code extends keyof Metas & string>(code: Code, meta: Metas[Code]): CodedError<Code, Metas[Code]> =>
-    new CodedError(code, table[code].message(meta), meta, table[code].resolve(meta));
+function coder(kind: ErrorKind) {
+  return <Metas extends Record<string, object>>(table: RefusalTable<Metas>) =>
+    <Code extends keyof Metas & string>(code: Code, meta: Metas[Code]): CodedError<Code, Metas[Code]> =>
+      new CodedError(code, table[code].message(meta), meta, table[code].resolve(meta), kind);
 }
+
+export const refuser = coder("refusal");
+
+export const faulter = coder("fault");

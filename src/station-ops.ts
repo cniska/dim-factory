@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { join } from "node:path";
 import { invariant, unreachable } from "./assert";
-import { CodedError, refusalOf } from "./coded-error";
+import { isRefusal, refusalOf } from "./coded-error";
 import { userConfigPath } from "./config";
 import { writeTransaction } from "./db";
 import { checkTask } from "./declared-tasks";
@@ -220,7 +220,7 @@ async function serveTurn(
       const result = served.turn.trace.step("act", { act: request.act }, () => serve(served, request));
       return JSON.stringify({ ok: true, result });
     } catch (error) {
-      if (!(error instanceof CodedError)) {
+      if (!isRefusal(error)) {
         stopWith({ kind: "fault", error });
         return null;
       }

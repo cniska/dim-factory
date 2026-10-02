@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { CodedError, recordOf } from "../coded-error";
+import { isRefusal, recordOf } from "../coded-error";
 import { openReadOnly } from "../db-read";
 import { OrderId } from "../order-contract";
 import { listOrders, showOrder } from "../order-ops";
@@ -38,7 +38,7 @@ function pushFor(path: string, { order }: Topic): string {
         : { kind: "order", view: readRecord(path, (db) => itemViewOf(showOrder(db, order))) };
     return JSON.stringify(push);
   } catch (error) {
-    if (!(error instanceof CodedError)) throw error;
+    if (!isRefusal(error)) throw error;
     return JSON.stringify({ kind: "failure", failure: recordOf(error) } satisfies BoardPush);
   }
 }

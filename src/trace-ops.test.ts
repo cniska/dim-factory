@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { invariant } from "./assert";
 import { refuser } from "./coded-error";
 import { tracePath } from "./paths";
 import { followTrace, traceOf } from "./trace-ops";
@@ -86,11 +87,13 @@ describe("a trace step", () => {
         throw new Error("gone");
       }),
     ).rejects.toThrow("gone");
+    expect(() => trace.step("lock", { path: "/n" }, () => invariant(false, "the lock is held"))).toThrow();
 
     const ended = linesOf(env).filter((line) => line.phase === "ended");
     expect(ended.map((line) => line.outcome)).toEqual([
       { kind: "refused", code: "held" },
       { kind: "failed", error: "gone" },
+      { kind: "failed", error: "invariant failed: the lock is held" },
     ]);
   });
 });

@@ -17,6 +17,6 @@ export class Ran {
 
 export class UsageError extends CodedError<"usage", Record<string, never>> {
   constructor(message: string) {
-    super("usage", message, {}, "");
+    super("usage", message, {}, "", "refusal");
   }
 }
