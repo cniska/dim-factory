@@ -6,13 +6,11 @@ import type { Evidence } from "./order-contract";
 import type { Env } from "./paths";
 import type { Trace } from "./trace-contract";
 
-export type CheckEvidence = Extract<Evidence, { readonly kind: "check" }>;
-
-export function runCheck(trace: Trace, tree: string, commandLine: string, owner: Env): CheckEvidence {
+export function runCheck(trace: Trace, tree: string, commandLine: string, owner: Env): Evidence {
   return trace.step(
     "check",
     { tree, command: commandLine },
-    (): CheckEvidence => {
+    (): Evidence => {
       const tmp = realpathSync(mkdtempSync(join(tmpdir(), "dim-check-")));
       try {
         const profile = sandboxProfile([realpathSync(tree), tmp]);

@@ -1,6 +1,6 @@
 import type { Env } from "./paths";
 
-export const CHECK_OUTPUT_TAIL_BYTES = 64 * 1024;
+const CHECK_OUTPUT_TAIL_BYTES = 64 * 1024;
 
 export const PASSED_THROUGH = ["PATH", "USER", "LANG"] as const;
 

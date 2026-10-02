@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CHECK_OUTPUT_TAIL_BYTES, outputTail } from "./check";
+import { outputTail } from "./check";
 import { runCheck } from "./check-effects";
 import type { Trace } from "./trace-contract";
 import { traceOf } from "./trace-ops";
@@ -72,9 +72,9 @@ describe("a check run", () => {
 
 describe("a check's output", () => {
   test("keeps the end of an output longer than the cap, where a failure says what failed", () => {
-    const long = `${"x".repeat(CHECK_OUTPUT_TAIL_BYTES)}FAILED: the last line`;
+    const long = `${"x".repeat(65536)}FAILED: the last line`;
     const kept = outputTail(long);
-    expect(Buffer.byteLength(kept)).toBe(CHECK_OUTPUT_TAIL_BYTES);
+    expect(Buffer.byteLength(kept)).toBe(65536);
     expect(kept.endsWith("FAILED: the last line")).toBe(true);
     expect(outputTail("short")).toBe("short");
   });
