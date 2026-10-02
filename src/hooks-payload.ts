@@ -20,7 +20,8 @@ export const EditPayload = z.object({
 export type EditPayload = z.infer<typeof EditPayload>;
 
 export async function readHookPayload<T>(schema: z.ZodType<T>): Promise<T> {
-  const text = process.stdin.isTTY ? "" : await Bun.stdin.text();
+  if (process.stdin.isTTY) throw refusePayload("hook_payload_invalid", { reason: "nothing on stdin" });
+  const text = await Bun.stdin.text();
   let json: unknown;
   try {
     json = JSON.parse(text);
