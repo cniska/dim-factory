@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { existsSync, readdirSync } from "node:fs";
+import { invariant } from "./assert";
 import { type ConfigRefusal, isConfigRefusal } from "./config-error";
 import { readJsonc } from "./config-jsonc-file";
 import { recordVersion } from "./db";
@@ -11,6 +12,7 @@ import { codexConfigPath, planCodexTrust, type TrustState } from "./hooks-codex-
 import { AGENT_LABEL, planAgent } from "./ingest-launchd";
 import { toolSpoolDir } from "./ingest-spool";
 import type { Env } from "./paths";
+import { scalar } from "./query";
 import { planRules } from "./rules";
 import { planSkill, retiredLinks } from "./skill";
 
@@ -24,12 +26,18 @@ const CLAUDE_CODE_DEFAULT_CLEANUP_DAYS = 30;
 const RETENTION_WANTED_DAYS = 365;
 const SPOOL_BEHIND_EVENTS = 200;
 
-function scalar(db: Database, sql: string): number {
-  return db.query<{ n: number }, []>(sql).get()?.n ?? 0;
+function text(db: Database, sql: string): string | null {
+  const row = db.query<{ v: string | null }, []>(sql).get();
+  invariant(row !== null, `an aggregate returns one row: ${sql}`);
+  return row.v;
 }
 
-function text(db: Database, sql: string): string | null {
-  return db.query<{ v: string | null }, []>(sql).get()?.v ?? null;
+function notJudged(name: string, version: number): Health {
+  return {
+    name,
+    state: "warn",
+    detail: `not judged; the record is version ${version}, which this build does not read`,
+  };
 }
 
 function unreadable(name: string, error: ConfigRefusal): Health {
@@ -146,9 +154,9 @@ function judgeEnds(hooks: HookRead, since: string | null, judgeable: number, end
 }
 
 function launchdLoaded(): boolean {
-  const uid = Bun.spawnSync(["id", "-u"], { stdout: "pipe" });
-  const who = new TextDecoder().decode(uid.stdout).trim();
-  return Bun.spawnSync(["launchctl", "print", `gui/${who}/${AGENT_LABEL}`], {
+  const uid = process.getuid?.();
+  invariant(uid !== undefined, "launchd runs only where processes have a user id");
+  return Bun.spawnSync(["launchctl", "print", `gui/${uid}/${AGENT_LABEL}`], {
     stdout: "pipe",
     stderr: "pipe",
   }).success;
@@ -194,8 +202,9 @@ function spool(env: Env): Health {
 }
 
 function dimOnPath(): Health {
-  return Bun.which("dim")
-    ? { name: "path", state: "ok", detail: `dim resolves to ${Bun.which("dim")}` }
+  const dim = Bun.which("dim");
+  return dim
+    ? { name: "path", state: "ok", detail: `dim resolves to ${dim}` }
     : {
         name: "path",
         state: "fail",
@@ -204,8 +213,7 @@ function dimOnPath(): Health {
       };
 }
 
-function schema(db: Database): Health {
-  const version = recordVersion(db);
+function schema(version: number): Health {
   return version === SCHEMA_VERSION
     ? { name: "schema", state: "ok", detail: `version ${version}` }
     : {
@@ -233,23 +241,24 @@ function endReasons(db: Database, hooks: HookRead): Health {
     ? scalar(
         db,
         `SELECT count(*) AS n FROM session
-         WHERE parent_id IS NULL AND started_at >= '${since}'
-           AND ${settled}`,
+         WHERE parent_id IS NULL AND started_at >= ? AND ${settled}`,
+        [since],
       )
     : 0;
   const ended = since
     ? scalar(
         db,
         `SELECT count(*) AS n FROM session
-         WHERE parent_id IS NULL AND started_at >= '${since}' AND end_reason IS NOT NULL
-           AND ${settled}`,
+         WHERE parent_id IS NULL AND started_at >= ? AND end_reason IS NOT NULL AND ${settled}`,
+        [since],
       )
     : 0;
   return judgeEnds(hooks, since, judgeable, ended);
 }
 
 function skill(env: Env): Health {
-  const pendingLinks = planSkill(env).filter((p) => p.state !== "linked");
+  const links = planSkill(env);
+  const pendingLinks = links.filter((p) => p.state !== "linked");
   const retired = retiredLinks(env);
   return pendingLinks.length === 0 && retired.length === 0
     ? { name: "skill", state: "ok", detail: "every skill linked for every tool" }
@@ -258,7 +267,7 @@ function skill(env: Env): Health {
         state: "warn",
         detail: [
           ...(pendingLinks.length > 0
-            ? [`${pendingLinks.length} of ${planSkill(env).length} skill links missing`]
+            ? [`${pendingLinks.length} of ${links.length} skill links missing`]
             : []),
           ...(retired.length > 0 ? [`links to skills that no longer ship: ${retired.join(", ")}`] : []),
         ].join("; "),
@@ -324,18 +333,20 @@ function outcomes(db: Database): Health {
 
 export function diagnose(db: Database, env: Env): Health[] {
   const hooks = readHooks(env);
+  const version = recordVersion(db);
+  const readable = version === SCHEMA_VERSION;
   return [
     dimOnPath(),
-    schema(db),
-    freshness(db),
+    schema(version),
+    readable ? freshness(db) : notJudged("freshness", version),
     sessionHooks(hooks),
     codexTrust(env),
-    endReasons(db, hooks),
+    readable ? endReasons(db, hooks) : notJudged("end reasons", version),
     skill(env),
     agent(env),
     rules(env),
     retention(env),
     spool(env),
-    outcomes(db),
+    readable ? outcomes(db) : notJudged("outcomes", version),
   ];
 }

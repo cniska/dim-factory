@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -65,6 +66,28 @@ describe("doctor", () => {
     } finally {
       if (dataHome === undefined) delete process.env.XDG_DATA_HOME;
       else process.env.XDG_DATA_HOME = dataHome;
+    }
+  });
+
+  test("reports a record of another version without reading tables that version may not have", () => {
+    const root = newRoot();
+    const env = { ...scratchEnv(root), HOME: join(root, "home") };
+    mkdirSync(dirname(dbPath(env)), { recursive: true });
+    const old = new Database(dbPath(env));
+    old.run("CREATE TABLE schema_version (version INTEGER)");
+    old.run("PRAGMA user_version = 1");
+    old.close();
+
+    const db = openReadOnly(dbPath(env), { forDiagnosis: true });
+    try {
+      const checks = diagnose(db, env);
+      const named = (name: string) => checks.find((c) => c.name === name);
+      expect(named("schema")).toMatchObject({ state: "fail", fix: "dim rebuild" });
+      for (const name of ["freshness", "end reasons", "outcomes"]) {
+        expect(named(name)).toMatchObject({ state: "warn", detail: expect.stringContaining("version 1") });
+      }
+    } finally {
+      db.close();
     }
   });
 
