@@ -10,7 +10,20 @@ describe("a command's arguments", () => {
     expect(parseArgs(["k7", "--reason", "fine", "--decided", "owner"], spec, fail)).toEqual({
       positionals: ["k7"],
       flags: { reason: "fine", decided: "owner" },
+      switches: new Set(),
     });
+  });
+
+  test("reads a switch as present without taking the next argument as its value", () => {
+    const write: ArgSpec<never, "write"> = { positionals: [0, 2], flags: [], switches: ["write"] };
+    expect(parseArgs(["--write", "a.ts"], write, fail)).toEqual({
+      positionals: ["a.ts"],
+      flags: {},
+      switches: new Set(["write"]),
+    });
+    expect(parseArgs(["a.ts"], write, fail).switches.has("write")).toBe(false);
+    expect(() => parseArgs(["--write", "--write"], write, fail)).toThrow("takes --write once");
+    expect(() => parseArgs(["--wirte"], write, fail)).toThrow("does not take --wirte");
   });
 
   test("finds a positional by position, so one equal to a flag's value survives", () => {

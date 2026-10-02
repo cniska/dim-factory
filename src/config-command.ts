@@ -1,4 +1,5 @@
 import { type Command, UsageError } from "./cli-contract";
+import { parseArgs } from "./cli-flags";
 import { isSetting, SETTINGS } from "./config";
 import { changeSetting, configLayers } from "./config-ops";
 import type { Env } from "./paths";
@@ -7,8 +8,13 @@ const USAGE =
   "usage: dim config | dim config set <setting> <value> [--project] | dim config unset <setting> [--project]";
 
 export function runConfig(args: string[], cwd = process.cwd(), env: Env = process.env): unknown {
-  const project = args.includes("--project");
-  const [verb, name, ...rest] = args.filter((arg) => arg !== "--project");
+  const { positionals, switches } = parseArgs(
+    args,
+    { positionals: [0, 3], flags: [], switches: ["project"] },
+    (message) => new UsageError(`config ${message}`),
+  );
+  const project = switches.has("project");
+  const [verb, name, ...rest] = positionals;
   if (verb === undefined) {
     if (project) throw new UsageError("--project names the layer to change, so it goes with set or unset");
     return configLayers(cwd, env);

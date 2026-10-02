@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
-import type { Command } from "./cli-contract";
+import { type Command, UsageError } from "./cli-contract";
+import { parseArgs } from "./cli-flags";
 import { dbPath } from "./paths";
 import { DEFAULT_WALL_PORT, refusePort, WALL_PORT_ENV, WALL_SERVING_ENV, wallPort } from "./wall/port";
 import { serveWall } from "./wall/server";
@@ -11,7 +12,11 @@ export const wallCommand: Command = {
   usage: "usage: dim wall [--dev]",
   summary: `serve the local read-only factory wall on loopback, at one address every run (${DEFAULT_WALL_PORT}, or ${WALL_PORT_ENV}); --dev reloads the page and the server as you edit`,
   async run(args) {
-    const dev = args.includes("--dev");
+    const dev = parseArgs(
+      args,
+      { positionals: [0, 0], flags: [], switches: ["dev"] },
+      (message) => new UsageError(`wall ${message}`),
+    ).switches.has("dev");
     if (process.env[WALL_SERVING_ENV] !== "1") {
       const hot = dev ? ["--hot"] : [];
       const child = Bun.spawn(

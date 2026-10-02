@@ -1,26 +1,35 @@
 type FlagFail = (message: string) => Error;
 
-export type Parsed<Flag extends string> = {
+export type Parsed<Flag extends string, Switch extends string = never> = {
   readonly positionals: readonly string[];
   readonly flags: Readonly<Partial<Record<Flag, string>>>;
+  readonly switches: ReadonlySet<Switch>;
 };
 
-export type ArgSpec<Flag extends string> = {
+export type ArgSpec<Flag extends string, Switch extends string = never> = {
   readonly positionals: readonly [min: number, max: number];
   readonly flags: readonly Flag[];
+  readonly switches?: readonly Switch[];
 };
 
-export function parseArgs<Flag extends string>(
+export function parseArgs<Flag extends string, Switch extends string = never>(
   args: readonly string[],
-  spec: ArgSpec<Flag>,
+  spec: ArgSpec<Flag, Switch>,
   fail: FlagFail,
-): Parsed<Flag> {
+): Parsed<Flag, Switch> {
   const positionals: string[] = [];
   const flags: Partial<Record<Flag, string>> = {};
+  const switches = new Set<Switch>();
   const rest = [...args];
   for (let arg = rest.shift(); arg !== undefined; arg = rest.shift()) {
     if (!arg.startsWith("--")) {
       positionals.push(arg);
+      continue;
+    }
+    const switched = spec.switches?.find((known) => `--${known}` === arg);
+    if (switched !== undefined) {
+      if (switches.has(switched)) throw fail(`takes ${arg} once`);
+      switches.add(switched);
       continue;
     }
     const flag = spec.flags.find((known) => `--${known}` === arg);
@@ -35,5 +44,5 @@ export function parseArgs<Flag extends string>(
     const wanted = min === max ? `${min}` : `${min} to ${max}`;
     throw fail(`takes ${wanted} argument(s), and got ${positionals.length}: ${positionals.join(" ")}`);
   }
-  return { positionals, flags };
+  return { positionals, flags, switches };
 }

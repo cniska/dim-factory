@@ -1,13 +1,16 @@
 import { type Command, Ran, UsageError } from "./cli-contract";
+import { parseArgs } from "./cli-flags";
 import { purgeComments } from "./comments-ops";
 
 const USAGE = "usage: dim comments purge [--write] [<path>...]";
 
 function purge(args: string[]): unknown {
-  const purged = purgeComments(process.cwd(), {
-    write: args.includes("--write"),
-    paths: args.filter((arg) => arg !== "--write"),
-  });
+  const { positionals, switches } = parseArgs(
+    args,
+    { positionals: [0, Number.POSITIVE_INFINITY], flags: [], switches: ["write"] },
+    (message) => new UsageError(`comments purge ${message}`),
+  );
+  const purged = purgeComments(process.cwd(), { write: switches.has("write"), paths: positionals });
   return purged.written && purged.failed ? new Ran(purged.report, 1) : purged.report;
 }
 

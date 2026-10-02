@@ -1,5 +1,5 @@
 import { relative, resolve } from "node:path";
-import { UsageError } from "./cli-contract";
+import { refuseComments } from "./comments-contract";
 import { type PurgedFile, purgeCheckout } from "./comments-purge";
 import { checkTask, formatTask } from "./declared-tasks";
 import { checkoutRoot } from "./git-checkout";
@@ -32,7 +32,7 @@ export function purgeComments(
   options: { readonly write: boolean; readonly paths: readonly string[] },
 ): Purged {
   const root = checkoutRoot(cwd);
-  if (root === null) throw new UsageError(`${cwd} is not inside a git checkout`);
+  if (root === null) throw refuseComments("not_a_checkout", { cwd });
   const paths = options.paths.map((path) => relative(root, resolve(cwd, path)) || ".");
   const { files, unparsed } = purgeCheckout(root, { write: options.write, paths });
   const comments = files.reduce((sum, file) => sum + file.removed, 0);
