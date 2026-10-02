@@ -467,6 +467,21 @@ describe("shipping", () => {
     expect(existsSync(marker)).toBe(false);
   });
 
+  test("an order whose workspace git could not make gets it on the next run", async () => {
+    const m = await start({ script: happyPath() });
+    const id = await addOrder(m.operator);
+    m.git(["branch", `dim/${id}`]);
+    expect(refusal(await runOrder(m.operator, id)).code).toBe("workspace_failed");
+    expect(actions(await showOrder(m.operator, id))).not.toContain(ACTION.workspaceCreated);
+
+    m.git(["branch", "-D", `dim/${id}`]);
+    resultOf(await runOrder(m.operator, id));
+
+    const order = await showOrder(m.operator, id);
+    expect(existsSync(order.workspace)).toBe(true);
+    expect(order.next).toBe(NEXT.approve);
+  });
+
   test("an order whose workspace cannot be removed is still shipped and names what it kept", async () => {
     const m = await start({ script: happyPath() });
     const id = await reviewed(m.operator);

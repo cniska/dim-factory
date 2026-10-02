@@ -457,6 +457,29 @@ type Running = {
   turnOf(station: Station, purpose: Purpose): TurnOf;
 };
 
+type NewWorkspace = {
+  readonly root: string;
+  readonly project: string;
+  readonly order: string;
+  readonly base: string;
+  readonly cause: number;
+};
+
+function madeWorkspace(
+  trace: Trace,
+  db: Database,
+  { root, project, order, base, cause }: NewWorkspace,
+): OrderState {
+  createWorkspace(trace, root, project, order, base);
+  return recordAs(
+    trace,
+    db,
+    order,
+    { kind: "factory", cause },
+    { action: "workspace_created", details: { base } },
+  ).state;
+}
+
 async function withRun<T>(
   db: Database,
   order: string,
@@ -472,10 +495,12 @@ async function withRun<T>(
     const setup = projectSetup(db, project, caller.cwd);
     const prepared = station === null ? null : prepareTurn(setup, station, env);
     const base = tipOf(setup.root, setup.branch);
-    const { by, cause, created, state, orphan } = startRun(trace, db, order, caller, base, act);
+    const { by, cause, created, state: started, orphan } = startRun(trace, db, order, caller, act);
     try {
       if (orphan !== null) stopHarness(trace, orphan);
-      if (created) createWorkspace(trace, setup.root, project, order, base);
+      const state = created
+        ? madeWorkspace(trace, db, { root: setup.root, project, order, base, cause })
+        : started;
       return await body({
         trace,
         setup,

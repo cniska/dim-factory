@@ -191,41 +191,28 @@ export function startRun(
   db: Database,
   order: string,
   caller: Caller,
-  base: string,
   leading: OperatorAct,
 ): StartedRun {
   return trace.step(
     "run_start",
     { act: leading.kind },
-    () => openRun(db, order, caller, base, leading),
+    () => openRun(db, order, caller, leading),
     ({ cause }) => ({ cause }),
   );
 }
 
-function openRun(
-  db: Database,
-  order: string,
-  caller: Caller,
-  base: string,
-  leading: OperatorAct,
-): StartedRun {
+function openRun(db: Database, order: string, caller: Caller, leading: OperatorAct): StartedRun {
   return writeTransaction(db, () => {
     const acted = act(db, order, caller, leading);
-    const created = acted.admitted.head === null;
-    const state = created
-      ? append(
-          db,
-          order,
-          { kind: "factory", version, cause: acted.seq },
-          {
-            action: "workspace_created",
-            details: { base },
-          },
-        ).state
-      : acted.state;
     const orphan = clearLostRun(db, order, caller.running);
-    insertRun(db, order, runKindOf(state.phase), caller.self);
-    return { by: acted.by, cause: acted.seq, created, state, orphan };
+    insertRun(db, order, runKindOf(acted.state.phase), caller.self);
+    return {
+      by: acted.by,
+      cause: acted.seq,
+      created: acted.admitted.head === null,
+      state: acted.state,
+      orphan,
+    };
   });
 }
 
