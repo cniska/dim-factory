@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
 import { harnessesOnPath, scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
-import type { HarnessName } from "./harness-name";
+import { HARNESSES, type HarnessName } from "./harness-registry";
 import {
   dimPath,
   editCommand,
@@ -23,7 +23,7 @@ import {
   startCommand,
   wantedHooks,
 } from "./hook-commands";
-import { hookConfigPath, installHooks, planHooks } from "./hooks";
+import { installHooks, planHooks } from "./hooks";
 import { drainSpool, ensureSpoolDirs, toolSpoolDir } from "./ingest-spool";
 import { rebuild, sync } from "./ingest-sync";
 import { dbPath, type Env, resolveHomeDir, spoolDir } from "./paths";
@@ -513,7 +513,7 @@ describe("installHooks", () => {
     const env = hookEnv(dir);
     installHooks(env);
     const installed = (["claude", "codex"] as const).flatMap((tool) => {
-      const config = JSON.parse(readFileSync(hookConfigPath(tool, env), "utf8")) as {
+      const config = JSON.parse(readFileSync(HARNESSES[tool].hookConfig(env), "utf8")) as {
         hooks: Record<string, { hooks: { command: string }[] }[]>;
       };
       return Object.values(config.hooks).flatMap((entries) =>

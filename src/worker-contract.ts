@@ -1,5 +1,5 @@
 import { refuser } from "./coded-error";
-import type { HarnessName } from "./harness-name";
+import type { HarnessName } from "./harness-registry";
 import type { OpenSession } from "./hooks-sessions";
 
 type WorkerRefusalMeta = {

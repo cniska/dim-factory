@@ -1,14 +1,10 @@
 import { existsSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { claudeProjectsDir, type Env, resolveHomeDir } from "./paths";
+import { join } from "node:path";
+import { claudeDir, type Env, resolveHomeDir } from "./paths";
 
 export function listInstalledSkills(env: Env = process.env): Set<string> {
   const home = resolveHomeDir(env);
-  const roots = [
-    join(home, ".agents", "skills"),
-    join(dirname(claudeProjectsDir(env)), "skills"),
-    join(home, ".claude", "skills"),
-  ];
+  const roots = [join(home, ".agents", "skills"), join(claudeDir(env), "skills")];
   const names = new Set<string>();
   for (const root of roots) {
     if (!existsSync(root)) continue;

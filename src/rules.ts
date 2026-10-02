@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join } from "node:path";
 import { refuser } from "./coded-error";
 import { copyBackup } from "./file-backup";
 import { harnessInstalled } from "./harness-installed";
+import { HARNESSES } from "./harness-registry";
 import { type Env, resolveHomeDir } from "./paths";
 
 const refuseRules = refuser<{ readonly rules_import_cycle: { readonly path: string } }>({
@@ -60,7 +61,7 @@ export type RulesPlan = {
 export function planRules(env: Env = process.env): RulesPlan {
   const source = canonicalPath(env);
   const path = generatedPath(env);
-  if (!harnessInstalled("codex", env)) return { source, path, contents: "", state: "not-installed" };
+  if (!harnessInstalled(HARNESSES.codex, env)) return { source, path, contents: "", state: "not-installed" };
   if (!existsSync(source)) {
     return { source, path, contents: "", state: "missing-source" };
   }

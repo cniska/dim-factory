@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync } from "node:fs";
 import { basename, join } from "node:path";
 import { writeTransaction } from "./db";
-import { HARNESSES, type HarnessName } from "./harness-name";
+import { HarnessName } from "./harness-registry";
 import { hookEventOf } from "./hook-events";
 import { type Env, spoolDir } from "./paths";
 
@@ -19,7 +19,7 @@ export function setAsideUnreadable(path: string, env: Env = process.env): void {
 }
 
 export function ensureSpoolDirs(env: Env = process.env): void {
-  for (const tool of HARNESSES) {
+  for (const tool of HarnessName.options) {
     mkdirSync(toolSpoolDir(tool, env), { recursive: true });
   }
   mkdirSync(join(spoolDir(env), "unreadable"), { recursive: true });
@@ -47,7 +47,7 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
   );
   const drained: string[] = [];
   writeTransaction(db, () => {
-    for (const tool of HARNESSES) {
+    for (const tool of HarnessName.options) {
       const dir = toolSpoolDir(tool, env);
       for (const name of readdirSync(dir).sort()) {
         const path = join(dir, name);

@@ -1,5 +1,4 @@
-import { EDIT_TOOLS } from "./format-edit";
-import type { HarnessName } from "./harness-name";
+import { HARNESSES, type HarnessName } from "./harness-registry";
 import { toolSpoolDir } from "./ingest-spool";
 import type { Env } from "./paths";
 
@@ -60,7 +59,7 @@ export function wantedHooks(tool: HarnessName, env: Env = process.env): WantedHo
       event: "PostToolUse",
       kind: "edit",
       command: editCommand(),
-      matcher: EDIT_TOOLS[tool].join("|"),
+      matcher: HARNESSES[tool].editTools.join("|"),
     },
   ];
 }

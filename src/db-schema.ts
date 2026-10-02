@@ -1,10 +1,10 @@
-import { HARNESSES } from "./harness-name";
+import { HarnessName } from "./harness-registry";
 import { HOOK_EVENTS } from "./hook-events";
 import { TOOLS } from "./ingest-tools";
 
 const sqlList = (values: readonly string[]): string => values.map((value) => `'${value}'`).join(",");
 const TOOLS_SQL = sqlList(TOOLS);
-const HARNESSES_SQL = sqlList(HARNESSES);
+const HARNESSES_SQL = sqlList(HarnessName.options);
 const HOOK_EVENTS_SQL = sqlList(Object.values(HOOK_EVENTS));
 
 export const SCHEMA_VERSION = 95;

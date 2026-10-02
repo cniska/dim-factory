@@ -2,8 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { refuseConfig } from "./config-error";
 import { readJsonc } from "./config-jsonc-file";
+import { HARNESSES } from "./harness-registry";
 import { type HookEntry, wantedHooks } from "./hook-commands";
-import { hookConfigPath } from "./hooks";
 import { codexDir, type Env } from "./paths";
 
 export type TrustState = {
@@ -43,7 +43,7 @@ function positionOf(entries: HookEntry[], command: string): [number, number] | n
 }
 
 export function planCodexTrust(env: Env = process.env): TrustState[] {
-  const hooksPath = hookConfigPath("codex", env);
+  const hooksPath = HARNESSES.codex.hookConfig(env);
   const config = readJsonc<{ hooks?: Record<string, HookEntry[]> }>(hooksPath) ?? {};
   const recorded = recordedKeys(codexConfigPath(env));
 

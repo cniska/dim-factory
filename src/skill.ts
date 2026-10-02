@@ -11,6 +11,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { withPathLock } from "./db-lock";
 import { harnessInstalled } from "./harness-installed";
+import { HARNESSES } from "./harness-registry";
 import { type Env, locksDir, resolveHomeDir } from "./paths";
 
 const SKILLS_DIR = join(resolve(import.meta.dir, ".."), "skills");
@@ -34,7 +35,7 @@ export function skillSourceDir(name: SkillName): string {
 export function skillLinkDirs(env: Env = process.env): string[] {
   const home = resolveHomeDir(env);
   const shared = join(home, ".agents", "skills");
-  return harnessInstalled("codex", env) ? [shared, join(home, ".codex", "skills")] : [shared];
+  return harnessInstalled(HARNESSES.codex, env) ? [shared, join(home, ".codex", "skills")] : [shared];
 }
 
 export function skillLinkPaths(name: SkillName, env: Env = process.env): string[] {

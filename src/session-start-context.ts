@@ -1,6 +1,6 @@
 import { checkTask, formatTask } from "./declared-tasks";
 import { checkoutRoot } from "./git-checkout";
-import type { HarnessName } from "./harness-name";
+import type { HarnessName } from "./harness-registry";
 
 export function wireFor(tool: HarnessName, block: string): string {
   if (block === "") return "";

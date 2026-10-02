@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { refuser } from "./coded-error";
-import { HarnessName } from "./harness-name";
+import { HarnessName } from "./harness-registry";
 import { SLICE_CODES } from "./slice-contract";
 
 export const STATIONS = ["plan", "build", "review"] as const;

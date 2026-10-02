@@ -1,10 +1,9 @@
-import { dirname, join } from "node:path";
 import type { JSONPath } from "jsonc-parser";
 import { refuseConfig } from "./config-error";
 import { appendToJsoncArray, parseJsonc, removeJsoncValue, setJsoncValue } from "./config-jsonc";
 import { readJsonc, readJsoncText, writeJsoncFile } from "./config-jsonc-file";
 import { installedHarnesses } from "./harness-installed";
-import type { HarnessName } from "./harness-name";
+import type { HarnessName } from "./harness-registry";
 import {
   entryFor,
   type HookEntry,
@@ -17,7 +16,7 @@ import {
   wantedHooks,
 } from "./hook-commands";
 import { toolSpoolDir } from "./ingest-spool";
-import { claudeProjectsDir, codexDir, type Env } from "./paths";
+import type { Env } from "./paths";
 
 function hookKind(command: string, tool: HarnessName, env: Env): HookKind | null {
   const bare = unmarked(command);
@@ -58,11 +57,6 @@ export type HookPlan = {
   refresh?: HookRefresh;
   installedVersion?: number | null;
 };
-
-export function hookConfigPath(tool: HarnessName, env: Env = process.env): string {
-  if (tool === "claude") return join(dirname(claudeProjectsDir(env)), "settings.json");
-  return join(codexDir(env), "hooks.json");
-}
 
 type HookConfig = { hooks?: Record<string, HookEntry[]> };
 
@@ -125,8 +119,9 @@ function ownHandlers(config: HookConfig, tool: HarnessName, env: Env): OwnHandle
 
 export function planHooks(env: Env = process.env): HookPlan[] {
   const plans: HookPlan[] = [];
-  for (const tool of installedHarnesses(env)) {
-    const configPath = hookConfigPath(tool, env);
+  for (const harness of installedHarnesses(env)) {
+    const tool = harness.name;
+    const configPath = harness.hookConfig(env);
     const config = readConfig(configPath);
     const claimed = new Set<string>();
     for (const wanted of wantedHooks(tool, env)) {

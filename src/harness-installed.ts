@@ -1,10 +1,10 @@
-import { HARNESSES, type HarnessName } from "./harness-name";
+import { HARNESSES, type Harness } from "./harness-registry";
 import type { Env } from "./paths";
 
-export function harnessInstalled(harness: HarnessName, env: Env = process.env): boolean {
-  return Bun.which(harness, { PATH: env.PATH ?? "" }) !== null;
+export function harnessInstalled(harness: Harness, env: Env = process.env): boolean {
+  return Bun.which(harness.name, { PATH: env.PATH ?? "" }) !== null;
 }
 
-export function installedHarnesses(env: Env = process.env): HarnessName[] {
-  return HARNESSES.filter((harness) => harnessInstalled(harness, env));
+export function installedHarnesses(env: Env = process.env): Harness[] {
+  return Object.values(HARNESSES).filter((harness) => harnessInstalled(harness, env));
 }

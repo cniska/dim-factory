@@ -2,38 +2,20 @@ import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { formatTask } from "./declared-tasks";
 import { checkoutRoot } from "./git-checkout";
+import { type EditInput, HARNESSES } from "./harness-registry";
 
 export const FORMAT_TIMEOUT_MS = 30_000;
 
-export const EDIT_TOOLS = {
-  claude: ["Edit", "Write", "MultiEdit", "NotebookEdit"],
-  codex: ["apply_patch"],
-} as const;
-
-const FILE_TOOLS = new Set<string>(EDIT_TOOLS.claude);
-const PATCH_TARGET = /^\*\*\* (?:Add File|Update File|Move to): (.+)$/gm;
-
-export type EditPayload = {
-  tool_name?: unknown;
-  cwd?: unknown;
-  tool_input?: { file_path?: unknown; notebook_path?: unknown; command?: unknown };
-};
+export type EditPayload = { tool_name?: unknown; cwd?: unknown; tool_input?: EditInput };
 
 export type FormatRun = { checkout: string; commandLine: string; exitCode: number | null };
 
 export function editedPaths(payload: EditPayload): string[] {
   const cwd = typeof payload.cwd === "string" ? payload.cwd : process.cwd();
-  const input = payload.tool_input ?? {};
-  if (typeof payload.tool_name === "string" && FILE_TOOLS.has(payload.tool_name)) {
-    const path = input.file_path ?? input.notebook_path;
-    return typeof path === "string" ? [resolve(cwd, path)] : [];
-  }
-  if (payload.tool_name === EDIT_TOOLS.codex[0] && typeof input.command === "string") {
-    return [...input.command.matchAll(PATCH_TARGET)].map((match) =>
-      resolve(cwd, (match[1] as string).trim()),
-    );
-  }
-  return [];
+  const harness = Object.values(HARNESSES).find(
+    (candidate) => typeof payload.tool_name === "string" && candidate.editTools.includes(payload.tool_name),
+  );
+  return harness ? harness.editedPaths(payload.tool_input ?? {}).map((path) => resolve(cwd, path)) : [];
 }
 
 export function formatAfterEdit(payload: EditPayload): FormatRun[] {

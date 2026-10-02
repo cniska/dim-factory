@@ -61,8 +61,12 @@ export function workerSessionsDir(worker: string, env: Env = process.env): strin
   return join(dataDir(env), "workers", worker, "sessions");
 }
 
+export function claudeDir(env: Env = process.env): string {
+  return join(resolveHomeDir(env), ".claude");
+}
+
 export function claudeProjectsDir(env: Env = process.env): string {
-  return join(resolveHomeDir(env), ".claude", "projects");
+  return join(claudeDir(env), "projects");
 }
 
 export function codexDir(env: Env = process.env): string {

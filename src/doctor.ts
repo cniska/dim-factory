@@ -1,16 +1,16 @@
 import type { Database } from "bun:sqlite";
 import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import { type ConfigRefusal, isConfigRefusal } from "./config-error";
 import { readJsonc } from "./config-jsonc-file";
 import { recordVersion } from "./db";
 import { SCHEMA_VERSION } from "./db-schema";
 import { harnessInstalled, installedHarnesses } from "./harness-installed";
-import { HARNESSES } from "./harness-name";
+import { HARNESSES } from "./harness-registry";
 import { type HookPlan, hookGaps, outdatedLabel } from "./hooks";
 import { codexConfigPath, planCodexTrust, type TrustState } from "./hooks-codex-trust";
 import { AGENT_LABEL, planAgent } from "./ingest-launchd";
-import { type Env, resolveHomeDir, spoolDir } from "./paths";
+import { toolSpoolDir } from "./ingest-spool";
+import type { Env } from "./paths";
 import { planRules } from "./rules";
 import { planSkill, retiredLinks } from "./skill";
 
@@ -79,7 +79,7 @@ function sessionHooks(hooks: HookRead): Health {
 }
 
 function codexTrust(env: Env): Health {
-  if (!harnessInstalled("codex", env)) {
+  if (!harnessInstalled(HARNESSES.codex, env)) {
     return { name: "codex trust", state: "ok", detail: "codex is not installed" };
   }
   let untrusted: TrustState[];
@@ -155,7 +155,7 @@ function launchdLoaded(): boolean {
 }
 
 function retention(env: Env): Health {
-  const path = join(resolveHomeDir(env), ".claude", "settings.json");
+  const path = HARNESSES.claude.hookConfig(env);
   let days: unknown;
   try {
     days = readJsonc<Record<string, unknown>>(path)?.cleanupPeriodDays;
@@ -179,10 +179,9 @@ function retention(env: Env): Health {
 }
 
 function spool(env: Env): Health {
-  const root = spoolDir(env);
   let waiting = 0;
-  for (const tool of HARNESSES) {
-    const dir = join(root, tool);
+  for (const harness of Object.values(HARNESSES)) {
+    const dir = toolSpoolDir(harness.name, env);
     if (existsSync(dir)) waiting += readdirSync(dir).filter((f) => f.endsWith(".json")).length;
   }
   if (waiting === 0) return { name: "spool", state: "ok", detail: "no hook events waiting" };
