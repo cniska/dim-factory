@@ -18,14 +18,10 @@ const SKILLS_DIR = join(resolve(import.meta.dir, ".."), "skills");
 export const SKILL_NAMES = [
   "dim-add",
   "dim-audit",
-  "dim-artifact",
   "dim-plan",
   "dim-build",
   "dim-review",
   "dim-factory",
-  "dim-git",
-  "dim-tdd",
-  "dim-simplify",
   "dim-rules",
 ] as const;
 

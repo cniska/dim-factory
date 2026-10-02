@@ -12,7 +12,7 @@ An order that describes a defect is planned, built and reviewed as one: the caus
 
 ## Build
 
-- The first test is `dim-tdd`'s red test for the defect, written and run before the code it covers changes. A test written after the fix was written against code that already worked.
+- The first test is the red test for the defect, written and run before the code it covers changes. A test written after the fix was written against code that already worked.
 - Fix the cause the plan names. Where the cause turns out to be out of reach, return the order with the real options rather than patch the symptom.
 - The test stays in the slice, and the commit subject names the cause in plain words.
 

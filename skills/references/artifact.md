@@ -1,11 +1,6 @@
----
-name: dim-artifact
-description: How every factory artifact is written for the owner — the outcome first, drawn from the record. Use from dim-plan, dim-build and dim-review when writing the plan, the Build artifact or the Review artifact.
----
+# An artifact
 
-# Artifact
-
-An artifact is the owner's reading of a station's work. They read it instead of the diff, the queries and the worker's session, so it is Markdown that stands on its own.
+An artifact is the owner's reading of a station's work: the plan, the Build artifact or the Review artifact. They read it instead of the diff, the queries and the worker's session, so it is Markdown that stands on its own.
 
 - Open with the outcome: what is true for the owner now and what they must decide. The reasons and the evidence follow.
 - Write what the record supports and name what it does not. A claim carries its evidence, such as a commit, a check's result, a query's answer or a file and line, or is labeled unverified. No check passed because a process exited.

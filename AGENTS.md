@@ -14,5 +14,5 @@ A software factory run by coding agents, with the owner at the gates that still 
 - Cloud work runs on a branch and lands on `main` by fast-forward, `git push origin HEAD:main`, once `bun run verify` passes. Never force it.
 - How the factory is built and run is settled in the work. The wall's design answers to the owner.
 - One word per concept, settled in [`docs/glossary.md`](docs/glossary.md). Read it before naming a thing, add a new word there, and rename rather than keep a synonym.
-- A skill under `skills/` cites only queries whose output you checked.
+- A skill under `skills/` follows the layout in [`docs/core.md`](docs/core.md#skills) and cites only queries whose output you checked.
 - Code carries no comments, tool contracts aside. A why goes into a name, a test, or the doc that owns the subject.

@@ -5,6 +5,7 @@ What is not built, highest priority first. An entry is here only for a need this
 ## Bugs
 
 - **A plugin skill loads under two names** — a `Skill` call names it `dim:dim-plan`, while a typed `/dim:dim-plan`, which `COMMAND_NAME` rejects for its colon, takes `dim-plan` from its body path, so `skill_load` records one skill under two names. `ingest-skill-load.ts` `COMMAND_NAME`, `ingest-parse-claude.ts`. Read the plugin name from the typed command.
+- **Worker sessions never reach the record** — the copy of each worker's transcript in `workers/<name>/sessions/` is read only by `dim session show`; ingestion reads `~/.claude/projects` alone, so no skill load or file read by a worker is queryable and no skill's effect on workers is measurable. `ingest-claude-source.ts` `listClaudeTranscripts`, `paths.ts` `workerSessionsDir`. Ingest the worker copies as sessions.
 - **Hook payloads are stored verbatim** — every PostToolUse stdin, with file contents, command output and edits, goes into `hook_event.payload`, which nothing reads, against [`design.md`](design.md) "Never stored". `ingest-spool.ts` `drainSpool`, `db-schema.ts` `hook_event`, `ingest-sync.ts`. Keep the parsed fields; drop the column.
 
 ## Debt
@@ -28,7 +29,6 @@ Each entry is one change. [schema] entries change the schema and run with nothin
 
 ## Owner decides
 
-- Should one base skill every worker loads, shaped after pstack's `poteto-mode`, hold the conduct in `dim-git`, `dim-tdd`, `dim-simplify` and `dim-artifact`? The spec names each as its own skill.
 - Should the comment gate refuse `biome-ignore` and `@ts-*`?
 - Does an unattended run push, or commit locally?
 - Does the wall become where the owner reads artifacts and approves, rather than only watches?

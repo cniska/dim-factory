@@ -58,6 +58,10 @@ A turn resumes or replaces the worker's session, spawns the harness with a brief
 - **A sandbox**: the builder writes its workspace and turn directory; the planner and reviewer write only the turn directory. The record, the factory and every harness config are out of reach. The checkout's git hooks are denied, and a changed git config is put back and fails the station.
 - **The model** its role's entry in the user's `models` setting names.
 
+## Skills
+
+A skill under [`skills/`](../skills) is one the owner or a worker invokes by name. What only one skill reads sits inline in that skill, since a worker reads a skill it loads and sometimes skips what it links. What several skills read is one file in `skills/references/`, linked from each skill's own `references/` folder.
+
 ## Slices
 
 The builder commits with plain `git commit` and hands the commit in with `dim slice submit`. The station keeps it only if it is one new commit on the recorded head, leaves the check's definition unchanged, and passes the check in a clean workspace ([`src/slice.ts`](../src/slice.ts)). A refused slice's files stay in the workspace.

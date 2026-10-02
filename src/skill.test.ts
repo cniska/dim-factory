@@ -30,16 +30,12 @@ describe("skill install", () => {
   test("ships the skills that need dim on PATH", () => {
     expect(shipped()).toEqual([
       "dim-add",
-      "dim-artifact",
       "dim-audit",
       "dim-build",
       "dim-factory",
-      "dim-git",
       "dim-plan",
       "dim-review",
       "dim-rules",
-      "dim-simplify",
-      "dim-tdd",
     ]);
   });
 
@@ -116,6 +112,7 @@ describe("skill install", () => {
         }
         for (const name of ["dim-plan", "dim-build", "dim-review"]) {
           expect(existsSync(join(dir, name, "references", "bug.md"))).toBe(true);
+          expect(existsSync(join(dir, name, "references", "artifact.md"))).toBe(true);
         }
       }
       expect(planSkill(env).every((p) => p.state === "linked")).toBe(true);
