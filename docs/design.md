@@ -14,7 +14,7 @@ Sessions are read from these files. Each one lands in the same tables.
 These are read too.
 
 - **Hooks.** Events spooled by the hooks `dim` installs (see [Hooks](#hooks)).
-- **Git.** `git log` of the repos the session rows name, into `repo_commit` and `commit_file`, and `git ls-files` into `repo_file`.
+- **Git.** `git log` of the repos the session rows name, into `repo_commit` and `commit_file`, and `git ls-files` into `repo_file`, through the one runner in [`src/git.ts`](../src/git.ts). A repo with no commits yet records nothing; one git cannot read is skipped and named in the sync report's `failures`.
 
 Claude Code deletes transcripts after 30 days unless `cleanupPeriodDays` is raised. This machine sets it to 3650. Codex does not prune. Grok removes a session when it is deleted. The database stores pointers into these files rather than archiving them, so a deleted source file loses whatever the database did not extract.
 

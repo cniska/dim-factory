@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { tryClaimPathLock } from "./db-lock";
-import { git } from "./git-tree";
+import { git } from "./git";
 import { type Env, locksDir } from "./paths";
 import type { Trace } from "./trace-contract";
 
@@ -17,11 +17,6 @@ export function shipLock(trace: Trace, project: string, env: Env): Promise<() =>
   });
 }
 
-export function checkedOutBranch(repo: string): string | null {
-  const head = git(repo, ["symbolic-ref", "-q", "--short", "HEAD"]);
-  return head.ok ? head.out : null;
-}
-
 export type FastForward = { readonly ok: true } | { readonly ok: false; readonly reason: string };
 
 export function fastForward(trace: Trace, repo: string, head: string): FastForward {
@@ -30,7 +25,7 @@ export function fastForward(trace: Trace, repo: string, head: string): FastForwa
     { repo, head },
     (): FastForward => {
       const merged = git(repo, ["merge", "-q", "--ff-only", head]);
-      return merged.ok ? { ok: true } : { ok: false, reason: merged.err };
+      return merged.status === 0 ? { ok: true } : { ok: false, reason: merged.err };
     },
     (landed) => ({ landed: landed.ok }),
   );

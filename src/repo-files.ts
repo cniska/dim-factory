@@ -1,32 +1,29 @@
 import type { Database } from "bun:sqlite";
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { writeTransaction } from "./db";
-import { recordedRepos } from "./ingest-git";
+import { nulFields, ranRaw } from "./git";
+import type { RepoFailure } from "./ingest-git";
 
 export type RepoFileReport = { repos: number; files: number };
 
 export function trackedFiles(repo: string): string[] {
-  const proc = Bun.spawnSync(["git", "ls-files", "-z"], { cwd: repo, stdout: "pipe", stderr: "pipe" });
-  if (!proc.success) return [];
-  return new TextDecoder()
-    .decode(proc.stdout)
-    .split("\0")
-    .filter(Boolean)
-    .map((p) => join(repo, p));
+  return nulFields(ranRaw(repo, ["ls-files", "-z"]), "git ls-files -z").map((path) => join(repo, path));
 }
 
-export function indexRepoFiles(db: Database): RepoFileReport {
-  const repos = recordedRepos(db).filter((repo) => existsSync(repo));
-
+export function indexRepoFiles(db: Database, roots: readonly string[], fail: RepoFailure): RepoFileReport {
   const clear = db.prepare("DELETE FROM repo_file WHERE repo = ?");
   const insert = db.prepare("INSERT INTO repo_file (repo, path) VALUES (?, ?) ON CONFLICT DO NOTHING");
 
   const report: RepoFileReport = { repos: 0, files: 0 };
   writeTransaction(db, () => {
-    for (const repo of repos) {
-      const paths = trackedFiles(repo);
-      if (paths.length === 0) continue;
+    for (const repo of roots) {
+      let paths: string[];
+      try {
+        paths = trackedFiles(repo);
+      } catch (error) {
+        fail(repo, error);
+        continue;
+      }
       clear.run(repo);
       for (const path of paths) insert.run(repo, path);
       report.repos += 1;

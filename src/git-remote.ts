@@ -1,4 +1,4 @@
-import { existsSync, statSync } from "node:fs";
+import { configValue } from "./git";
 
 export function repositoryLabel(url: string): string | null {
   const trimmed = url.trim();
@@ -18,34 +18,12 @@ export function repositoryLabel(url: string): string | null {
   return ownerAndName.join("/").toLowerCase();
 }
 
-function git(args: string[], cwd: string): string | null {
-  try {
-    if (!statSync(cwd).isDirectory()) return null;
-  } catch (error) {
-    if (isMissingPath(error)) return null;
-    throw error;
-  }
-  try {
-    const proc = Bun.spawnSync(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" });
-    return proc.success ? new TextDecoder().decode(proc.stdout).trim() || null : null;
-  } catch (error) {
-    if (isMissingPath(error) && !existsSync(cwd)) return null;
-    throw error;
-  }
-}
-
-function isMissingPath(error: unknown): boolean {
-  return error instanceof Error && "code" in error && (error.code === "ENOENT" || error.code === "ENOTDIR");
-}
-
 export function originLabel(repoRoot: string): string | null {
-  const url = git(["config", "--get", "remote.origin.url"], repoRoot);
+  const url = configValue(repoRoot, "remote.origin.url");
   return url ? repositoryLabel(url) : null;
 }
 
 export function labelFor(repoRoot: string): string | null {
-  const url =
-    git(["config", "--get", "remote.origin.url"], repoRoot) ??
-    git(["config", "--get", "remote.upstream.url"], repoRoot);
+  const url = configValue(repoRoot, "remote.origin.url") ?? configValue(repoRoot, "remote.upstream.url");
   return url ? repositoryLabel(url) : null;
 }

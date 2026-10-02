@@ -1,8 +1,9 @@
 import type { Database } from "bun:sqlite";
+import { isRefusal } from "./coded-error";
 import { writeTransaction } from "./db";
 import { SCHEMA_SQL, SCHEMA_VERSION } from "./db-schema";
 import { createIngester, type FileSpec } from "./ingest";
-import { type GitReport, ingestCommits } from "./ingest-git";
+import { type GitReport, ingestCommits, repoRoots } from "./ingest-git";
 import { SESSION_SOURCES, type SessionSource } from "./ingest-sources";
 import { applyHookEvents, type DrainReport, drainSpool } from "./ingest-spool";
 import { TOOLS, type Tool } from "./ingest-tools";
@@ -80,8 +81,13 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
   }
 
   applyHookEvents(db);
-  report.git = ingestCommits(db);
-  report.repoFiles = indexRepoFiles(db);
+  const failRefused = (path: string, error: unknown): void => {
+    if (!isRefusal(error)) throw error;
+    fail(path, error);
+  };
+  const roots = repoRoots(db, failRefused);
+  report.git = ingestCommits(db, roots, failRefused);
+  report.repoFiles = indexRepoFiles(db, roots, failRefused);
   return report;
 }
 

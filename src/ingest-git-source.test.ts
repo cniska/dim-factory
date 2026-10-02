@@ -50,14 +50,27 @@ describe("reading a repo", () => {
     }
   });
 
-  test("a directory that is gone or was never a repo yields nothing, not an error", () => {
+  test("a directory that is gone or was never a repo has no root", () => {
     expect(repoRoot("/no/such/directory/anywhere")).toBeNull();
     const plain = mkdtempSync(join(tmpdir(), "dim-plain-"));
     try {
       expect(repoRoot(plain)).toBeNull();
-      expect(readCommits(plain, null)).toEqual([]);
     } finally {
       rmSync(plain, { recursive: true, force: true });
+    }
+  });
+
+  test("a repo with no commits yet has none to read, and a checkout git cannot read is refused", () => {
+    const empty = mkdtempSync(join(tmpdir(), "dim-empty-"));
+    const broken = mkdtempSync(join(tmpdir(), "dim-broken-"));
+    try {
+      git(["init", "-q", empty], empty);
+      expect(readCommits(empty, null)).toEqual([]);
+      writeFileSync(join(broken, ".git"), "gitdir: /nonexistent/dim-test\n");
+      expect(() => repoRoot(broken)).toThrow(expect.objectContaining({ code: "git_unreadable" }));
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+      rmSync(broken, { recursive: true, force: true });
     }
   });
 });

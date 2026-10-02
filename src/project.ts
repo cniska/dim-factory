@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
+import { remoteHeadBranch } from "./git";
 import { checkoutRoot } from "./git-checkout";
 import { originLabel } from "./git-remote";
-import { remoteHeadBranch } from "./git-tree";
 import { sessionDirs } from "./hooks-sessions";
 
 export type Checkout = { readonly root: string; readonly project: string };

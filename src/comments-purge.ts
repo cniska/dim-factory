@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { git, nulFields, outsideTheCode } from "./comments-files";
+import { outsideTheCode, trackedFiles } from "./comments-files";
 import { type CommentSpan, languageFor } from "./comments-language";
 
 export type PurgedFile = { path: string; removed: number };
@@ -40,10 +40,7 @@ export function purgeText(path: string, text: string): { text: string; removed: 
 }
 
 export function purgeCheckout(root: string, options: { write: boolean; paths?: string[] }): PurgeReport {
-  const tracked = nulFields(
-    git(root, ["ls-files", "-z", "--", ...(options.paths ?? [])]),
-    "git ls-files -z",
-  ).filter((path) => languageFor(path) !== undefined);
+  const tracked = trackedFiles(root, options.paths ?? []).filter((path) => languageFor(path) !== undefined);
   const skipped = outsideTheCode(root, tracked);
   const files: PurgedFile[] = [];
   const unparsed: string[] = [];

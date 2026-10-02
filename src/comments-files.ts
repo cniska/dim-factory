@@ -1,34 +1,31 @@
-import { execFileSync } from "node:child_process";
+import { nulFields, ranRaw } from "./git";
 import { refuseGit } from "./git-contract";
 
-const LARGE_REPO_GIT_OUTPUT_BYTES = 256 * 1024 * 1024;
-
-export function git(root: string, args: string[], input?: string): string {
-  return execFileSync("git", ["--literal-pathspecs", ...args], {
-    cwd: root,
-    encoding: "utf8",
-    maxBuffer: LARGE_REPO_GIT_OUTPUT_BYTES,
-    input,
-    stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
-  });
-}
-
-export function nulFields(output: string, command: string): string[] {
-  if (output === "") return [];
-  if (!output.endsWith("\0")) {
-    throw refuseGit("git_output_malformed", { command, problem: "a record that does not end in NUL" });
-  }
-  return output.slice(0, -1).split("\0");
+export function trackedFiles(root: string, paths: readonly string[]): string[] {
+  return nulFields(
+    ranRaw(root, ["--literal-pathspecs", "ls-files", "-z", "--", ...paths]),
+    "git ls-files -z",
+  );
 }
 
 export function outsideTheCode(root: string, paths: string[]): Set<string> {
   if (paths.length === 0) return new Set();
   const command = "git check-attr --stdin --cached -z";
   const fields = nulFields(
-    git(
+    ranRaw(
       root,
-      ["check-attr", "--stdin", "--cached", "-z", "linguist-generated", "linguist-vendored"],
-      paths.map((p) => `${p}\0`).join(""),
+      [
+        "--literal-pathspecs",
+        "check-attr",
+        "--stdin",
+        "--cached",
+        "-z",
+        "linguist-generated",
+        "linguist-vendored",
+      ],
+      {
+        stdin: paths.map((p) => `${p}\0`).join(""),
+      },
     ),
     command,
   );

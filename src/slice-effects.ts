@@ -1,6 +1,6 @@
 import { invariant } from "./assert";
 import { checkDeclared, manifestsAt } from "./declared-tasks";
-import { ran } from "./git-tree";
+import { ran } from "./git";
 
 export function parentsOf(workspace: string, commit: string): readonly string[] {
   const [, ...parents] = ran(workspace, ["rev-list", "--parents", "-n", "1", commit]).split(" ");

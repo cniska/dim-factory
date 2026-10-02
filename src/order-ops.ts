@@ -3,7 +3,7 @@ import { version } from "../package.json";
 import { invariant } from "./assert";
 import { readConfig, type UserConfig } from "./config";
 import { writeTransaction } from "./db";
-import { type Identity, identityOf } from "./git-tree";
+import { type Identity, identityOf } from "./git";
 import {
   admitOperator,
   asOperator,

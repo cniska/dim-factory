@@ -4,7 +4,7 @@ import { invariant, unreachable } from "./assert";
 import { listedEnv, PASSED_THROUGH } from "./check";
 import { type CodedError, recordOf } from "./coded-error";
 import type { Models } from "./config";
-import type { Identity } from "./git-tree";
+import type { Identity } from "./git";
 import type { Adapter, Policy } from "./harness-contract";
 import { atStation, type OrderState, openFindings, slicesOf } from "./order";
 import { type Later, Plan, ReviewArtifact, STATIONS, type Station } from "./order-contract";

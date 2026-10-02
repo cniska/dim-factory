@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { labelFor, repositoryLabel } from "./git-remote";
+import { repositoryLabel } from "./git-remote";
 
 describe("repositoryLabel", () => {
   test("names the same repository however it is addressed", () => {
@@ -26,9 +24,5 @@ describe("repositoryLabel", () => {
     expect(repositoryLabel("../sibling")).toBeNull();
     expect(repositoryLabel("C:/code/acolyte")).toBeNull();
     expect(repositoryLabel("github.com/onlyowner")).toBeNull();
-  });
-
-  test("ignores a checkout path that no longer exists", () => {
-    expect(labelFor(join(tmpdir(), `missing-checkout-${crypto.randomUUID()}`))).toBeNull();
   });
 });

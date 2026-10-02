@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { git, ran } from "./git-tree";
+import { git, ran } from "./git";
 import type { Env } from "./paths";
 import type { Trace } from "./trace-contract";
 import type { Rebased } from "./workspace";
@@ -19,7 +19,7 @@ const REBASE = [
 export function addWorktree(trace: Trace, root: string, dir: string, branch: string, base: string): void {
   trace.step("worktree_add", { dir, base }, () => {
     const added = git(root, [...NO_HOOKS, "worktree", "add", "-q", "-b", branch, dir, base]);
-    if (!added.ok) throw refuseWorkspace("workspace_failed", { dir, detail: added.err });
+    if (added.status !== 0) throw refuseWorkspace("workspace_failed", { dir, detail: added.err });
   });
 }
 
@@ -47,7 +47,7 @@ export function rebaseOnto(trace: Trace, dir: string, onto: string, env: Env): R
     { dir, onto },
     (): Rebased => {
       const rebased = git(dir, [...NO_HOOKS, ...REBASE, onto], { env });
-      if (rebased.ok) return { kind: "rebased" };
+      if (rebased.status === 0) return { kind: "rebased" };
       const unmerged = ran(dir, ["diff", "--name-only", "--diff-filter=U"]);
       if (rebasing(dir)) aborted(dir);
       return unmerged === ""
@@ -64,7 +64,7 @@ export function removeWorktree(trace: Trace, root: string, dir: string): string 
     { dir },
     () => {
       const removed = git(root, ["worktree", "remove", "--force", dir]);
-      return removed.ok ? null : removed.err;
+      return removed.status === 0 ? null : removed.err;
     },
     (kept) => ({ kept: kept !== null }),
   );
@@ -76,7 +76,7 @@ export function deleteBranch(trace: Trace, root: string, branch: string): string
     { branch },
     () => {
       const deleted = git(root, ["update-ref", "-d", `refs/heads/${branch}`]);
-      return deleted.ok ? null : deleted.err;
+      return deleted.status === 0 ? null : deleted.err;
     },
     (kept) => ({ kept: kept !== null }),
   );

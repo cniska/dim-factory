@@ -1,4 +1,6 @@
 import { existsSync } from "node:fs";
+import { hasCommit, ran } from "./git";
+import { checkoutRoot } from "./git-checkout";
 
 export type Commit = {
   sha: string;
@@ -10,25 +12,21 @@ export type Commit = {
   files: string[];
 };
 
-const FIELD = "";
-const RECORD = "";
+const FIELD = "\x1f";
+const RECORD = "\x1e";
 
 export function commitKind(subject: string): string | null {
   const match = /^([a-z]+)(\([^)]*\))?!?:/.exec(subject);
   return match ? (match[1] as string) : null;
 }
 
-function run(args: string[], cwd: string): string | null {
-  const proc = Bun.spawnSync(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" });
-  return proc.success ? new TextDecoder().decode(proc.stdout) : null;
-}
-
 export function repoRoot(dir: string): string | null {
-  if (!existsSync(dir)) return null;
-  return run(["rev-parse", "--show-toplevel"], dir)?.trim() || null;
+  if (!existsSync(dir) || checkoutRoot(dir) === null) return null;
+  return ran(dir, ["rev-parse", "--show-toplevel"]);
 }
 
 export function readCommits(repo: string, since: string | null): Commit[] {
+  if (!hasCommit(repo, "HEAD")) return [];
   const args = [
     "log",
     `--pretty=format:${RECORD}%H${FIELD}%aI${FIELD}%an${FIELD}%s`,
@@ -37,8 +35,7 @@ export function readCommits(repo: string, since: string | null): Commit[] {
     "--no-renames",
   ];
   if (since) args.push(`--since=${since}`);
-  const out = run(args, repo);
-  if (!out) return [];
+  const out = ran(repo, args);
 
   const commits: Commit[] = [];
   for (const block of out.split(RECORD)) {

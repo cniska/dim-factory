@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { invariant } from "./assert";
 import { judge } from "./check-ops";
 import { checkTask } from "./declared-tasks";
-import { commitsBetween, isAncestor, isClean, tipOf } from "./git-tree";
+import { commitsBetween, isAncestor, isClean, tipOf } from "./git";
 import { type Conflict, movedCommits } from "./order";
 import type { Evidence } from "./order-contract";
 import { recordVerdict, recordWork } from "./order-ops";

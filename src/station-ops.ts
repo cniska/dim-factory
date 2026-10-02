@@ -5,7 +5,7 @@ import { isRefusal, refusalOf } from "./coded-error";
 import { userConfigPath } from "./config";
 import { writeTransaction } from "./db";
 import { checkTask } from "./declared-tasks";
-import { diffSince, gitCommonDir, type Identity, tipOf } from "./git-tree";
+import { diffSince, gitCommonDir, type Identity, tipOf } from "./git";
 import { claude } from "./harness-claude";
 import type { Outcome, SessionStart, Spawned } from "./harness-contract";
 import { startHarness, stopHarness } from "./harness-ops";
