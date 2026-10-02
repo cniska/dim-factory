@@ -121,7 +121,7 @@ type NewOrder = {
 export function addOrder(db: Database, caller: Caller, fields: NewOrder): string {
   const project = fields.project ?? checkoutAt(caller.cwd)?.project;
   if (project === undefined) throw refuseWorker("no_project", { cwd: caller.cwd });
-  projectCheckout(db, project, caller.cwd);
+  projectSetup(db, project, caller.cwd);
   return writeTransaction(db, () => {
     const by = actingOperator(db, caller, project);
     const refusal = operatorRefusal(by, project);
