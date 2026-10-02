@@ -64,6 +64,7 @@ function settings({ policy, socket }: Start): string {
 }
 
 export const claude: Adapter = {
+  name: "claude",
   signIn: ["CLAUDE_CODE_OAUTH_TOKEN"],
   tempRoot: "CLAUDE_CODE_TMPDIR",
   argv: (start) => [

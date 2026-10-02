@@ -1,3 +1,5 @@
+import type { HarnessName } from "./harness-registry";
+
 export type Policy = {
   readonly kind: "read" | "edit";
   readonly writable: readonly string[];
@@ -42,6 +44,7 @@ export type Spawned = {
 };
 
 export type Adapter = {
+  readonly name: HarnessName;
   readonly signIn: readonly string[];
   readonly tempRoot: string;
   argv(start: Start): readonly string[];

@@ -131,7 +131,7 @@ function openSession(
   return writeTransaction(db, () => {
     markHarness(db, turn.order, process);
     if (session.kind === "resume") return session.record;
-    const registered = { id: session.id, worker: worker.name, harness: "claude", process } as const;
+    const registered = { id: session.id, worker: worker.name, harness: claude.name, process };
     registerSession(db, registered);
     recordAs(turn.trace, db, turn.order, byFactory(turn), {
       action: "session_started",
