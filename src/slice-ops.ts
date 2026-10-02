@@ -4,8 +4,8 @@ import { judge } from "./check-ops";
 import { checkTask } from "./declared-tasks";
 import { commitsBetween, isAncestor, isClean, tipOf } from "./git";
 import { type Conflict, movedCommits } from "./order";
-import type { Evidence } from "./order-contract";
-import { recordVerdict, recordWork } from "./order-ops";
+import type { Evidence, Later } from "./order-contract";
+import { recordAt } from "./order-ops";
 import type { Env } from "./paths";
 import { checkVerdict, rebasedVerdict, submittedVerdict } from "./slice";
 import { refuseSlice, type SliceVerdict } from "./slice-contract";
@@ -40,10 +40,12 @@ export function submitSlice(db: Database, turn: SliceTurn): { readonly committed
   const { trace, order, workspace, acting } = turn;
   const branch = branchOf(order);
   const tip = tipOf(workspace, branch);
-  const submitted = recordWork(trace, db, order, acting, "build", () => ({
-    action: "slice_submitted",
-    details: { tip },
-  }));
+  const submitted = recordAt(trace, db, {
+    order,
+    station: "build",
+    by: { kind: "worker", acting },
+    later: () => ({ action: "slice_submitted", details: { tip } }),
+  });
   const { head, conflict, commits } = submitted.state;
   invariant(head !== null, `order ${order} has a recorded head once its workspace is made`);
   const judging: Judging = {
@@ -72,9 +74,13 @@ type Judging = {
   readonly env: Env;
 };
 
+function recordJudged({ trace, db, order, seq }: Judging, later: Later): void {
+  recordAt(trace, db, { order, station: "build", by: { kind: "factory", cause: seq }, later: () => later });
+}
+
 function refuse(judging: Judging, verdict: SliceVerdict, evidence: readonly Evidence[]): never {
-  const { trace, db, order, seq, workspace, branch, tip, head } = judging;
-  recordVerdict(trace, db, order, seq, "build", {
+  const { trace, order, workspace, branch, tip, head } = judging;
+  recordJudged(judging, {
     action: "slice_refused",
     code: verdict.code,
     details: { tip },
@@ -94,7 +100,7 @@ function checked(judging: Judging, early: SliceVerdict | null): Evidence {
 }
 
 function takeCommit(judging: Judging): { readonly committed: string } {
-  const { trace, db, order, seq, workspace, tip, head } = judging;
+  const { workspace, tip, head } = judging;
   const check = checked(
     judging,
     submittedVerdict({
@@ -104,7 +110,7 @@ function takeCommit(judging: Judging): { readonly committed: string } {
       clean: isClean(workspace, "all"),
     }),
   );
-  recordVerdict(trace, db, order, seq, "build", {
+  recordJudged(judging, {
     action: "slice_committed",
     details: { commit: tip },
     evidence: [check],
@@ -117,7 +123,7 @@ function takeRebase(
   { onto }: Conflict,
   commits: readonly string[],
 ): { readonly committed: string } {
-  const { trace, db, order, seq, workspace, branch, tip } = judging;
+  const { workspace, branch, tip } = judging;
   const rebased = commitsBetween(workspace, onto, tip);
   const check = checked(
     judging,
@@ -131,7 +137,7 @@ function takeRebase(
       clean: isClean(workspace, "all"),
     }),
   );
-  recordVerdict(trace, db, order, seq, "build", {
+  recordJudged(judging, {
     action: "branch_rebased",
     details: { head: tip, onto, commits: [...movedCommits(commits, rebased)] },
     evidence: [check],

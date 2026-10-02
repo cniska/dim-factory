@@ -19,8 +19,8 @@ import {
   projectCheckout,
   projectSetup,
   recordAs,
+  recordAt,
   recordCancel,
-  recordWork,
   showOrder,
   startRun,
 } from "./order-ops";
@@ -161,25 +161,33 @@ function serve({ db, turn, workspace, acting }: Served, request: TurnRequest): u
       return submitSlice(db, { trace, order, workspace, acting, env: turn.env });
     case "message_send": {
       const { text, to } = request;
+      const by = { kind: "worker", acting } as const;
       if (to !== null) {
-        recordWork(trace, db, order, acting, station, () => ({
-          action: "message_refused",
-          details: { to, text },
-        }));
+        recordAt(trace, db, {
+          order,
+          station,
+          by,
+          later: () => ({ action: "message_refused", details: { to, text } }),
+        });
         throw refuseStation("not_to_operator", { to });
       }
       const operator = turn.by.worker.name;
-      recordWork(trace, db, order, acting, station, () => ({
-        action: "message_sent",
-        details: { to: operator, text },
-      }));
+      recordAt(trace, db, {
+        order,
+        station,
+        by,
+        later: () => ({ action: "message_sent", details: { to: operator, text } }),
+      });
       return { sent: operator };
     }
     default: {
       const branch = branchFacts(workspace, order);
-      recordWork(trace, db, order, acting, station, (state) =>
-        workEntry(request, { station, state, branch }),
-      );
+      recordAt(trace, db, {
+        order,
+        station,
+        by: { kind: "worker", acting },
+        later: (state) => workEntry(request, { station, state, branch }),
+      });
       return { recorded: request.act };
     }
   }

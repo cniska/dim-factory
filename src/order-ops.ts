@@ -242,42 +242,20 @@ function appendTraced(trace: Trace, db: Database, order: string, by: WorkBy, lat
   );
 }
 
-function recordAt(
-  trace: Trace,
-  db: Database,
-  order: string,
-  station: Station,
-  by: WorkBy,
-  later: (state: OrderState) => Later,
-) {
+type Work = {
+  readonly order: string;
+  readonly station: Station;
+  readonly by: WorkBy;
+  readonly later: (state: OrderState) => Later;
+};
+
+export function recordAt(trace: Trace, db: Database, { order, station, by, later }: Work): Appended {
   return writeTransaction(db, () => {
     const { state } = loadOrder(db, order);
     const refusal = workRefusal(state, station, by);
     if (refusal !== null) throw refusal;
     return appendTraced(trace, db, order, by, later(state));
   });
-}
-
-export function recordWork(
-  trace: Trace,
-  db: Database,
-  order: string,
-  acting: Acting,
-  station: Station,
-  later: (state: OrderState) => Later,
-): Appended {
-  return recordAt(trace, db, order, station, { kind: "worker", acting }, later);
-}
-
-export function recordVerdict(
-  trace: Trace,
-  db: Database,
-  order: string,
-  cause: number,
-  station: Station,
-  later: Later,
-): Appended {
-  return recordAt(trace, db, order, station, { kind: "factory", cause }, () => later);
 }
 
 export function recordAs(trace: Trace, db: Database, order: string, by: WorkBy, later: Later): Appended {
