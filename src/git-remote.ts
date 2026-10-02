@@ -1,5 +1,4 @@
 import { existsSync, statSync } from "node:fs";
-import { remoteSlug } from "./git-remote-slug";
 
 export function repositoryLabel(url: string): string | null {
   const trimmed = url.trim();
@@ -49,9 +48,4 @@ export function labelFor(repoRoot: string): string | null {
     git(["config", "--get", "remote.origin.url"], repoRoot) ??
     git(["config", "--get", "remote.upstream.url"], repoRoot);
   return url ? repositoryLabel(url) : null;
-}
-
-export function checkoutSlug(repoRoot: string): string | null {
-  const url = git(["config", "--get", "remote.origin.url"], repoRoot);
-  return url ? remoteSlug(url) : null;
 }
