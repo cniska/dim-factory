@@ -257,7 +257,7 @@ export type Detailed = z.infer<typeof Detailed>;
 
 export type Action = Detailed["action"];
 
-type Shared = { readonly seq: number; readonly at: string; readonly by: Actor };
+type Shared = { readonly seq: number; readonly ts: string; readonly by: Actor };
 
 export type LogEntry = Shared & Detailed;
 

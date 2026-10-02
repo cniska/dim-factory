@@ -67,7 +67,7 @@ type Appended = { readonly seq: number; readonly state: OrderState };
 
 function append(db: Database, order: string, by: Actor, detailed: Detailed): Appended {
   const seq = loadOrder(db, order).state.lastSeq + 1;
-  appendEntries(db, order, [{ seq, at: new Date().toISOString(), by, ...Detailed.parse(detailed) }]);
+  appendEntries(db, order, [{ seq, ts: new Date().toISOString(), by, ...Detailed.parse(detailed) }]);
   return { seq, state: loadOrder(db, order).state };
 }
 
@@ -121,7 +121,7 @@ export function addOrder(db: Database, caller: Caller, fields: NewOrder): string
     appendEntries(db, order, [
       {
         seq: 1,
-        at: new Date().toISOString(),
+        ts: new Date().toISOString(),
         by: actorOf(admission.by),
         action: "order_added",
         details: { title: fields.title, description: fields.description, project },

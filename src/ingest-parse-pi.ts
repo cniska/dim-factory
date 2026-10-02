@@ -17,8 +17,6 @@ type PiUsage = {
   output?: number;
   cacheRead?: number;
   cacheWrite?: number;
-  reasoning?: number;
-  reasoningTokens?: number;
 };
 
 type PiMessage = {
@@ -38,8 +36,6 @@ type PiLine = {
   timestamp?: string;
   cwd?: string;
   title?: string;
-  model?: string;
-  modelId?: string;
   message?: PiMessage;
 };
 
@@ -66,7 +62,6 @@ function usageOf(message: PiMessage, ts: string, messageId: string | undefined):
       cacheReadTokens: usage.cacheRead ?? 0,
       cacheWriteTokens: usage.cacheWrite ?? 0,
       outputTokens: usage.output ?? 0,
-      reasoningTokens: usage.reasoning ?? usage.reasoningTokens,
       messageId,
     },
   ];
@@ -115,11 +110,6 @@ export function parsePiChunk(lines: string[], firstLineNumber: number): ParsedCh
       case "title_change":
         if (line.title) session.push({ title: line.title });
         continue;
-      case "model_change": {
-        const model = nonEmpty(line.modelId) ?? nonEmpty(line.model);
-        if (model) session.push({ ts, model });
-        continue;
-      }
       case "message":
         break;
       default:
@@ -157,5 +147,5 @@ export function parsePiChunk(lines: string[], firstLineNumber: number): ParsedCh
     toolCalls.push(...callsOf(message, ts, srcLine));
   }
 
-  return { session, messages, usage, turns: [], costs: [], toolCalls, skillLoads: [], dropped };
+  return { session, messages, usage, turns: [], toolCalls, skillLoads: [], dropped };
 }

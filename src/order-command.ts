@@ -1,10 +1,10 @@
 import type { Database } from "bun:sqlite";
 import { type Command, UsageError } from "./cli-contract";
 import { parseArgs } from "./cli-flags";
-import { closeDb } from "./db";
-import { openFactory } from "./factory-db";
+import { closeDb, openDb } from "./db";
 import { Decider, type Decision, OrderId } from "./order-contract";
 import { addOrder, showOrder, updateOrder } from "./order-ops";
+import { dbPath } from "./paths";
 import { WORKER_COMMAND } from "./station-contract";
 import { advanceOrder, cancelOrder, inTurn, sendAct } from "./station-ops";
 import { callerOf } from "./worker-ops";
@@ -148,7 +148,7 @@ export const orderCommand: Command = {
     }
     const act = verb === undefined ? undefined : VERBS[verb];
     if (act === undefined) throw new UsageError(USAGE);
-    const db = openFactory();
+    const db = openDb(dbPath());
     try {
       return await act(db, rest);
     } finally {

@@ -47,7 +47,7 @@ function snapshot(db: Database, root: string) {
     sessions: db
       .prepare(
         `SELECT id, tool, parent_id, agent_type, cwd, project, git_branch, cli_version, entrypoint,
-                started_at, last_seen_at, first_model, last_model, title FROM session ORDER BY id`,
+                started_at, last_seen_at, title FROM session ORDER BY id`,
       )
       .all() as Record<string, unknown>[],
     messages: strip(
@@ -61,19 +61,13 @@ function snapshot(db: Database, root: string) {
     usage: db
       .prepare(
         `SELECT response_id, session_id, message_id, model, input_tokens, cache_read_tokens,
-                cache_write_tokens, output_tokens, reasoning_tokens FROM usage ORDER BY response_id`,
+                cache_write_tokens, output_tokens FROM usage ORDER BY response_id`,
       )
       .all() as Record<string, unknown>[],
     turns: db
       .prepare(
         `SELECT session_id, turn_id, ts_start, ts_end, duration_ms, message_count, status, model,
                 time_to_first_token_ms FROM turn ORDER BY session_id, turn_id`,
-      )
-      .all() as Record<string, unknown>[],
-    costs: db
-      .prepare(
-        `SELECT session_id, reported_by, total_cost_usd, model_usage, has_unknown_model_cost
-         FROM session_cost_reported ORDER BY session_id`,
       )
       .all() as Record<string, unknown>[],
   };
@@ -163,26 +157,6 @@ describe("ingest", () => {
       };
       expect(JSON.stringify(snapshot(db, root))).not.toContain("SECRET AGENT MESSAGE");
       expect(dump.t).not.toContain("SECRET AGENT MESSAGE");
-    } finally {
-      closeDb(db);
-    }
-  });
-
-  test("stores the cost the tool computed, and derives none of its own", () => {
-    const root = newRoot();
-    const env = scratchEnv(root);
-    writeClaudeTranscript(env, "-Users-x-code-demo", SESSION);
-    writeCodexRollout(env, "sessions", THREAD);
-    const db = run(env);
-    try {
-      expect(
-        db.prepare("SELECT session_id, reported_by, total_cost_usd FROM session_cost_reported").all(),
-      ).toEqual([{ session_id: SESSION, reported_by: "claude-code cost-state", total_cost_usd: 9.611748 }]);
-      expect(
-        db.prepare("SELECT count(*) AS n FROM session_cost_reported WHERE session_id = ?").get(THREAD),
-      ).toEqual({
-        n: 0,
-      });
     } finally {
       closeDb(db);
     }
@@ -448,7 +422,7 @@ describe("ingest", () => {
     }
   });
 
-  test("addresses a pre-August Codex message by thread and ordinal", () => {
+  test("addresses a pre-August Codex message by thread and line", () => {
     const root = newRoot();
     const env = scratchEnv(root);
     const legacy = codexRolloutLines(THREAD, { withIds: false });

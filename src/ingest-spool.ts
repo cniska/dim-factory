@@ -13,10 +13,6 @@ export function toolSpoolDir(tool: HarnessName, env: Env = process.env): string 
   return join(spoolDir(env), tool);
 }
 
-export function walkSpoolDir(env: Env = process.env): string {
-  return join(spoolDir(env), "walk");
-}
-
 export function setAsideUnreadable(path: string, env: Env = process.env): void {
   renameSync(path, join(spoolDir(env), "unreadable", basename(path)));
 }
@@ -25,7 +21,6 @@ export function ensureSpoolDirs(env: Env = process.env): void {
   for (const tool of HARNESSES) {
     mkdirSync(toolSpoolDir(tool, env), { recursive: true });
   }
-  mkdirSync(walkSpoolDir(env), { recursive: true });
   mkdirSync(join(spoolDir(env), "unreadable"), { recursive: true });
 }
 
@@ -33,9 +28,7 @@ type HookPayload = {
   session_id?: string;
   hook_event_name?: string;
   cwd?: string;
-  source?: string;
   reason?: string;
-  model?: string;
 };
 
 function text(value: string | undefined): string | undefined {
@@ -57,8 +50,8 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
   const report: DrainReport = { applied: 0, duplicate: 0, unreadable: 0 };
 
   const insert = db.prepare(
-    `INSERT INTO hook_event (tool, session_id, event, ts, harness_pid, source, reason, model, cwd, payload)
-     VALUES ($tool, $sessionId, $event, $ts, $harnessPid, $source, $reason, $model, $cwd, $payload)
+    `INSERT INTO hook_event (tool, session_id, event, ts, harness_pid, reason, cwd)
+     VALUES ($tool, $sessionId, $event, $ts, $harnessPid, $reason, $cwd)
      ON CONFLICT(session_id, event, ts) DO NOTHING`,
   );
   const drained: string[] = [];
@@ -69,11 +62,9 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
         const path = join(dir, name);
         const match = SPOOL_NAME.exec(name);
         let payload: HookPayload | undefined;
-        let raw = "";
         if (match) {
           try {
-            raw = readFileSync(path, "utf8");
-            payload = JSON.parse(raw) as HookPayload;
+            payload = JSON.parse(readFileSync(path, "utf8")) as HookPayload;
           } catch {
             payload = undefined;
           }
@@ -92,11 +83,8 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
           $event: event,
           $ts: ts,
           $harnessPid: event === "session_start" && match[3] ? Number(match[3]) : null,
-          $source: payload?.source ?? null,
           $reason: payload?.reason ?? null,
-          $model: text(payload?.model) ?? null,
           $cwd: payload?.cwd ?? null,
-          $payload: raw,
         });
         if (changes.changes === 0) report.duplicate += 1;
         else report.applied += 1;

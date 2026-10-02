@@ -77,7 +77,7 @@ export function stationWorker(db: Database, created: StationWorker): WorkerRecor
     const found = stationWorkerOf(db, created.order, created.role);
     if (found !== null) return { worker: found, sessions: sessionsOf(db, found.name) };
     const worker = { ...created, name: mintedName(db) };
-    insertWorker(db, worker, new Date().toISOString());
+    insertWorker(db, worker);
     return { worker, sessions: [] };
   });
 }
@@ -105,7 +105,7 @@ export function showSession(db: Database, id: string): { readonly lines: readonl
 }
 
 export function registerSession(db: Database, session: WorkerSession): void {
-  insertSession(db, session, new Date().toISOString());
+  insertSession(db, session);
 }
 
 export function workersNamed(db: Database, names: readonly string[]): readonly WorkerRecord[] {
@@ -128,7 +128,7 @@ function operatorWorker(db: Database, project: string): Worker {
   const found = operatorOf(db, project);
   if (found !== null) return found;
   const worker: Worker = { role: "operator", name: mintedName(db), project };
-  insertWorker(db, worker, new Date().toISOString());
+  insertWorker(db, worker);
   return worker;
 }
 
@@ -151,7 +151,7 @@ export function actingOperator(db: Database, caller: Caller, project: string): A
       harness: HarnessName.parse(found.session.tool),
       process: found.harness,
     };
-    insertSession(db, session, new Date().toISOString());
+    insertSession(db, session);
     return { worker, session };
   });
 }

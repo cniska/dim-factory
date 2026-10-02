@@ -61,7 +61,7 @@ dim config unset ship
 
 ## Session start
 
-The `SessionStart` hook runs `dim hooks start` to print the repo's declared check and format commands and record which guidance files were in force.
+The `SessionStart` hook runs `dim hooks start` to print the repo's declared check and format commands.
 
 ## Verification
 

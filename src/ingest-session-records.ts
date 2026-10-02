@@ -7,9 +7,7 @@ export type SessionFacts = {
   gitBranch?: string;
   cliVersion?: string;
   entrypoint?: string;
-  model?: string;
   title?: string;
-  extra?: string;
 };
 
 export type MessageRow = {
@@ -23,7 +21,6 @@ export type MessageRow = {
   isMeta: boolean;
   isSkillBody: boolean;
   attributionSkill?: string;
-  stopReason?: string;
   interruptedMessageId?: string;
   denialKind?: string;
   userFeedback?: string;
@@ -39,12 +36,9 @@ export type UsageRow = {
   inputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
-  cacheWrite1hTokens?: number;
   outputTokens: number;
-  reasoningTokens?: number;
   attributionSkill?: string;
   messageId?: string;
-  extra?: string;
 };
 
 export type TurnRow = {
@@ -56,14 +50,6 @@ export type TurnRow = {
   status: string;
   model?: string;
   timeToFirstTokenMs?: number;
-};
-
-export type CostRow = {
-  reportedBy: string;
-  totalCostUsd?: number;
-  modelUsage: string;
-  hasUnknownModelCost?: boolean;
-  ts?: string;
 };
 
 export type ToolCallRow = {
@@ -85,7 +71,6 @@ export type ToolCallRow = {
   resultBytes?: number;
   srcLineCall?: number;
   srcLineResult?: number;
-  extra?: string;
 };
 
 export type ParsedChunk = {
@@ -93,7 +78,6 @@ export type ParsedChunk = {
   messages: MessageRow[];
   usage: UsageRow[];
   turns: TurnRow[];
-  costs: CostRow[];
   toolCalls: ToolCallRow[];
   skillLoads: SkillLoadRow[];
   dropped: number[];

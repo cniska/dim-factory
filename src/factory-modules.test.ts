@@ -17,7 +17,7 @@ const FACTORY_MODULES = [
   "trace",
 ];
 
-const COMMAND_IMPORTS = /^\.\/([a-z-]+-(ops|contract)|cli-[a-z-]+|db|db-read|factory-db|paths)$/;
+const COMMAND_IMPORTS = /^\.\/([a-z-]+-(ops|contract)|cli-[a-z-]+|db|db-read|paths)$/;
 
 const transpiler = new Bun.Transpiler({ loader: "ts" });
 
@@ -53,15 +53,12 @@ export function commandBreaches(file: string, text: string): readonly string[] {
 
 const PRIVATE_FILE = /^\.\/([a-z]+)-(store|effects)$/;
 
-const DDL_JOIN = "factory-db.ts";
-
 export function boundaryBreaches(file: string, text: string): readonly string[] {
   const importer = file.split("-")[0]?.replace(/\.tsx?$/, "");
   return importsOf(text)
     .filter((path) => {
       const owner = PRIVATE_FILE.exec(path);
-      if (owner === null || owner[1] === importer) return false;
-      return !(file === DDL_JOIN && owner[2] === "store");
+      return owner !== null && owner[1] !== importer;
     })
     .map((path) => `${file} imports ${path}, another module's own file`);
 }
@@ -125,10 +122,6 @@ describe("the module checks", () => {
     const text = 'import { a } from "./worker-store";\nimport { b } from "./order-store";\n';
     expect(boundaryBreaches("order-ops.ts", text)).toEqual([
       "order-ops.ts imports ./worker-store, another module's own file",
-    ]);
-    expect(boundaryBreaches("factory-db.ts", text)).toEqual([]);
-    expect(boundaryBreaches("factory-db.ts", 'import { c } from "./worker-effects";\n')).toEqual([
-      "factory-db.ts imports ./worker-effects, another module's own file",
     ]);
   });
 

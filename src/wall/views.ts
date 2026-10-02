@@ -38,7 +38,7 @@ export function cardOf(view: OrderView): WallOrder {
     station,
     worker: station === null ? null : stationWorker(view, station),
     status: view.status,
-    lastEventAt: last.at,
+    lastEventAt: last.ts,
     next: view.status === "running" ? view.next : null,
   };
 }
@@ -99,7 +99,7 @@ function entryStation(entry: LogEntry): Station | null {
 
 function entryOf(view: OrderView, entry: LogEntry): WallItemEntry {
   return {
-    at: entry.at,
+    at: entry.ts,
     action: entry.action,
     code: "code" in entry ? entry.code : null,
     station: entryStation(entry),

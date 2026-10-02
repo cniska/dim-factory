@@ -93,7 +93,7 @@ const LINES = [
 ].map((line) => JSON.stringify(line));
 
 describe("a Pi or omp session", () => {
-  test("records the session's directory, title and model", () => {
+  test("records the session's directory and title", () => {
     const { session } = parsePiChunk(LINES, 1);
 
     expect(session).toContainEqual({
@@ -102,7 +102,6 @@ describe("a Pi or omp session", () => {
       project: "/home/dev/widgets",
     });
     expect(session).toContainEqual({ title: "Greet the reader" });
-    expect(session).toContainEqual({ ts: "2026-01-01T10:00:01.000Z", model: "model-a" });
   });
 
   test("records what the owner and the agent said, not its thinking or the harness's reminders", () => {
@@ -167,7 +166,6 @@ describe("a Pi or omp session", () => {
         cacheReadTokens: 100,
         cacheWriteTokens: 7,
         outputTokens: 20,
-        reasoningTokens: 5,
         messageId: "a1",
       },
     ]);

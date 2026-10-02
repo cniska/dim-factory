@@ -1,5 +1,4 @@
 import {
-  type CostRow,
   jsonOrUndefined,
   type MessageRow,
   type ParsedChunk,
@@ -20,14 +19,11 @@ type CodexUsage = {
   cached_input_tokens?: number;
   cache_write_input_tokens?: number;
   output_tokens?: number;
-  reasoning_output_tokens?: number;
-  total_tokens?: number;
 };
 
 type CodexLine = {
   type?: string;
   timestamp?: string;
-  ordinal?: number;
   payload?: {
     type?: string;
     id?: string | null;
@@ -37,10 +33,6 @@ type CodexLine = {
     cwd?: string;
     originator?: string;
     cli_version?: string;
-    source?: string;
-    thread_source?: string;
-    model_provider?: string;
-    history_mode?: string;
     git?: { branch?: string };
     turn_id?: string;
     model?: string;
@@ -63,8 +55,6 @@ type CodexLine = {
       duration?: { secs?: number; nanos?: number };
       stdout?: string;
       stderr?: string;
-      server?: string;
-      tool?: string;
     };
   };
 };
@@ -106,7 +96,6 @@ export function parseCodexChunk(
   const messages: MessageRow[] = [];
   const usage: UsageRow[] = [];
   const turns: TurnRow[] = [];
-  const costs: CostRow[] = [];
   const toolCalls: ToolCallRow[] = [];
   const skillLoads: SkillLoadRow[] = [];
   const dropped: number[] = [];
@@ -128,7 +117,7 @@ export function parseCodexChunk(
       dropped.push(firstLineNumber + index);
       continue;
     }
-    const ordinal = line.ordinal ?? 0;
+    const srcLine = firstLineNumber + index;
 
     if (line.type === "session_meta") {
       session.push({
@@ -138,12 +127,6 @@ export function parseCodexChunk(
         gitBranch: nonEmpty(p.git?.branch),
         cliVersion: nonEmpty(p.cli_version),
         entrypoint: nonEmpty(p.originator),
-        extra: jsonOrUndefined({
-          source: p.source,
-          thread_source: p.thread_source,
-          model_provider: p.model_provider,
-          history_mode: p.history_mode,
-        }),
       });
       continue;
     }
@@ -157,7 +140,6 @@ export function parseCodexChunk(
         ts,
         cwd: p.cwd,
         project: projectOf(p.cwd),
-        model: current.model,
       });
       if (current.turnId) {
         turns.push({
@@ -179,7 +161,7 @@ export function parseCodexChunk(
       const injected = /^\s*(#\s*AGENTS\.md instructions|<[a-z_]+>|\[\s*\{)/.test(text ?? "");
       const promptSource = p.role === "user" ? (injected ? "system" : "typed") : undefined;
 
-      const id = nonEmpty(p.id) ?? `${threadId}:${ordinal}`;
+      const id = nonEmpty(p.id) ?? `${threadId}:${srcLine}`;
       messages.push({
         id,
         ts,
@@ -190,7 +172,7 @@ export function parseCodexChunk(
         isMeta: false,
         isSkillBody: false,
         text,
-        srcLine: ordinal,
+        srcLine,
         extra: jsonOrUndefined({ content_types: p.content?.map((c) => c?.type).filter(Boolean) }),
       });
       continue;
@@ -237,9 +219,8 @@ export function parseCodexChunk(
           exitCode: item.exit_code,
           durationMs: durationMs(item.duration),
           resultBytes: (item.stdout?.length ?? 0) + (item.stderr?.length ?? 0) || undefined,
-          srcLineCall: ordinal,
-          srcLineResult: ordinal,
-          extra: jsonOrUndefined({ status: item.status, server: item.server, tool: item.tool }),
+          srcLineCall: srcLine,
+          srcLineResult: srcLine,
         });
       }
       continue;
@@ -255,8 +236,6 @@ export function parseCodexChunk(
         cacheReadTokens: u.cached_input_tokens ?? 0,
         cacheWriteTokens: u.cache_write_input_tokens ?? 0,
         outputTokens: u.output_tokens ?? 0,
-        reasoningTokens: u.reasoning_output_tokens,
-        extra: jsonOrUndefined({ turn_id: p.turn_id, total_tokens: u.total_tokens }),
       });
     }
   }
@@ -266,7 +245,6 @@ export function parseCodexChunk(
     messages,
     usage,
     turns,
-    costs,
     toolCalls,
     skillLoads,
     dropped,

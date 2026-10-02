@@ -30,9 +30,6 @@ function fill(db: Database): void {
   );
   db.run("INSERT INTO turn (session_id, turn_id, ts_end) VALUES ('s1', 't1', '2026-01-01T00:00:00Z')");
   db.run(
-    "INSERT INTO session_cost_reported (session_id, reported_by, model_usage) VALUES ('s1', 'claude', '{}')",
-  );
-  db.run(
     "INSERT INTO tool_call (id, session_id, message_id, tool_name, src_file) VALUES ('tc1', 's1', 'm1', 'Bash', '/f.jsonl')",
   );
   db.run("INSERT INTO git_command (tool_call_id, position, subcommand) VALUES ('tc1', 0, 'commit')");
@@ -77,7 +74,7 @@ describe("absorbing a schema change", () => {
     fill(db);
     db.run("DROP INDEX tool_call_file");
     db.run("ALTER TABLE tool_call DROP COLUMN file_path");
-    db.run("DROP TABLE guidance_walk");
+    db.run("DROP TABLE run");
     db.run(`PRAGMA user_version = ${SCHEMA_VERSION - 1}`);
     db.close();
 
@@ -85,7 +82,7 @@ describe("absorbing a schema change", () => {
     rebuild(reopened, env);
 
     expect(columnsOf(reopened, "tool_call")).toContain("file_path");
-    expect(tablesOf(reopened)).toContain("guidance_walk");
+    expect(tablesOf(reopened)).toContain("run");
     expect(recordVersion(reopened)).toBe(SCHEMA_VERSION);
     reopened.close();
   });
@@ -127,7 +124,7 @@ describe("rebuilding a database an older schema wrote", () => {
     return Object.fromEntries(rows.map((row) => [row.name, row.sql]));
   }
 
-  test("a table whose definition went stale is brought up to the current schema", () => {
+  test("hook events keep their rows while their table takes the current definition", () => {
     const { db, env } = scratch();
     db.run("DROP TABLE hook_event");
     db.run(
@@ -137,13 +134,13 @@ describe("rebuilding a database an older schema wrote", () => {
          session_id TEXT NOT NULL,
          event TEXT NOT NULL CHECK (event IN ('session_start','session_end')),
          ts TEXT NOT NULL,
-         source TEXT, reason TEXT, model TEXT, cwd TEXT,
+         harness_pid INTEGER, source TEXT, reason TEXT, model TEXT, cwd TEXT,
          payload TEXT NOT NULL,
          UNIQUE (session_id, event, ts)
        )`,
     );
     db.run(
-      "INSERT INTO hook_event (tool, session_id, event, ts, payload) VALUES ('claude', 's1', 'session_start', '2026-01-01T00:00:00Z', '{}')",
+      "INSERT INTO hook_event (tool, session_id, event, ts, reason, payload) VALUES ('claude', 's1', 'session_end', '2026-01-01T00:00:00Z', 'clear', '{}')",
     );
 
     rebuild(db, env);
@@ -151,38 +148,35 @@ describe("rebuilding a database an older schema wrote", () => {
     expect(
       db.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'hook_event'").get(),
     ).toEqual({ sql: currentDefinitions().hook_event });
-    expect(db.query("SELECT session_id, event FROM hook_event").all()).toEqual([
-      { session_id: "s1", event: "session_start" },
+    expect(db.query("SELECT session_id, event, reason FROM hook_event").all()).toEqual([
+      { session_id: "s1", event: "session_end", reason: "clear" },
     ]);
     db.close();
   });
 
-  test("drops the trace table a record of an older version holds", () => {
+  test("a table the schema no longer defines is dropped", () => {
     const { db, env } = scratch();
-    db.run("CREATE TABLE trace_event (id INTEGER PRIMARY KEY)");
+    db.run("CREATE TABLE retired (id INTEGER PRIMARY KEY)");
 
     rebuild(db, env);
 
-    expect(db.query("SELECT name FROM sqlite_master WHERE name = 'trace_event'").all()).toEqual([]);
-    db.close();
-  });
-
-  test("a table the schema does not define survives a rebuild with its shape and rows", () => {
-    const { db, env } = scratch();
-    db.run("CREATE TABLE order_log (order_id TEXT, seq INTEGER, action TEXT, PRIMARY KEY (order_id, seq))");
-    db.run("INSERT INTO order_log VALUES ('k7m2qx4d', 1, 'order_added'), ('k7m2qx4d', 2, 'order_run')");
-    const shape = () =>
-      db.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'order_log'").get();
-    const before = shape();
-
-    rebuild(db, env);
-
-    expect(shape()).toEqual(before);
-    expect(db.query("SELECT order_id, seq, action FROM order_log ORDER BY seq").all()).toEqual([
-      { order_id: "k7m2qx4d", seq: 1, action: "order_added" },
-      { order_id: "k7m2qx4d", seq: 2, action: "order_run" },
-    ]);
+    expect(tablesOf(db)).not.toContain("retired");
     expect(tablesOf(db)).toContain("message_fts");
+    db.close();
+  });
+
+  test("the factory's tables are reset to the current definition", () => {
+    const { db, env } = scratch();
+    db.run("DROP TABLE order_log");
+    db.run("CREATE TABLE order_log (order_id TEXT, seq INTEGER, action TEXT, PRIMARY KEY (order_id, seq))");
+    db.run("INSERT INTO order_log VALUES ('k7m2qx4d', 1, 'order_added')");
+
+    rebuild(db, env);
+
+    expect(
+      db.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'order_log'").get(),
+    ).toEqual({ sql: currentDefinitions().order_log });
+    expect(db.query("SELECT count(*) AS n FROM order_log").get()).toEqual({ n: 0 });
     db.close();
   });
 });

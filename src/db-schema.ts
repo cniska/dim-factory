@@ -1,11 +1,13 @@
-import { TOOLS_SQL } from "./ingest-tools";
+import { HARNESSES } from "./harness-name";
+import { TOOLS } from "./ingest-tools";
 
-export const SCHEMA_VERSION = 92;
+const sqlList = (values: readonly string[]): string => values.map((value) => `'${value}'`).join(",");
+const TOOLS_SQL = sqlList(TOOLS);
+const HARNESSES_SQL = sqlList(HARNESSES);
+
+export const SCHEMA_VERSION = 93;
 
 export const SCHEMA_SQL = `
--- One row per source file on disk. The cursor is keyed by session, not by path:
--- Codex moves rollouts into archived_sessions/, and re-reading a moved file from
--- byte zero would append its assistant text a second time.
 CREATE TABLE IF NOT EXISTS source_file (
   path            TEXT PRIMARY KEY,
   tool            TEXT NOT NULL CHECK (tool IN (${TOOLS_SQL})),
@@ -14,18 +16,17 @@ CREATE TABLE IF NOT EXISTS source_file (
   bytes_ingested  INTEGER NOT NULL DEFAULT 0,
   lines_ingested  INTEGER NOT NULL DEFAULT 0,
   cursor_state    TEXT,
-  origin_mtime    TEXT,
   ingested_at     TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS source_file_session ON source_file(session_id, kind);
 
 CREATE TABLE IF NOT EXISTS session (
   id              TEXT PRIMARY KEY,
-  tool            TEXT NOT NULL,
+  tool            TEXT NOT NULL CHECK (tool IN (${TOOLS_SQL})),
   parent_id       TEXT REFERENCES session(id),
   agent_type      TEXT,
   cwd             TEXT,
-  worktree        TEXT,                 -- the task worktree cwd sits in, null in a primary checkout
+  worktree        TEXT,
   project         TEXT,
   git_branch      TEXT,
   cli_version     TEXT,
@@ -34,15 +35,10 @@ CREATE TABLE IF NOT EXISTS session (
   last_seen_at    TEXT,
   ended_at        TEXT,
   end_reason      TEXT,
-  first_model     TEXT,
-  last_model      TEXT,
-  title           TEXT,
-  extra           TEXT
+  title           TEXT
 );
 CREATE INDEX IF NOT EXISTS session_project ON session(project, started_at);
 
--- Claude assistant content-block lines sharing a message.id collapse into one
--- row; Codex is one row per response_item message.
 CREATE TABLE IF NOT EXISTS message (
   id              TEXT PRIMARY KEY,
   session_id      TEXT NOT NULL REFERENCES session(id),
@@ -55,7 +51,6 @@ CREATE TABLE IF NOT EXISTS message (
   is_meta         INTEGER NOT NULL DEFAULT 0,
   is_skill_body   INTEGER NOT NULL DEFAULT 0,
   attribution_skill TEXT,
-  stop_reason     TEXT,
   interrupted_message_id TEXT,
   denial_kind     TEXT,
   user_feedback   TEXT,
@@ -68,9 +63,6 @@ CREATE TABLE IF NOT EXISTS message (
 CREATE INDEX IF NOT EXISTS message_session_ts ON message(session_id, ts);
 CREATE INDEX IF NOT EXISTS message_attr ON message(attribution_skill);
 
--- The only table token sums come from. input_tokens is stored as each tool
--- reports it: Claude excludes cached reads from it, Codex includes them, so no
--- column adds the two tools together.
 CREATE TABLE IF NOT EXISTS usage (
   response_id     TEXT PRIMARY KEY,
   session_id      TEXT NOT NULL REFERENCES session(id),
@@ -80,21 +72,12 @@ CREATE TABLE IF NOT EXISTS usage (
   input_tokens    INTEGER NOT NULL,
   cache_read_tokens   INTEGER NOT NULL DEFAULT 0,
   cache_write_tokens  INTEGER NOT NULL DEFAULT 0,
-  cache_write_1h_tokens INTEGER,
   output_tokens   INTEGER NOT NULL,
-  reasoning_tokens INTEGER,
-  attribution_skill TEXT,
-  extra           TEXT
+  attribution_skill TEXT
 );
 CREATE INDEX IF NOT EXISTS usage_session ON usage(session_id, ts);
 CREATE INDEX IF NOT EXISTS usage_model ON usage(model);
 
--- Drained from the hook spool, which deletes each file once it is read, so these
--- rows have no source: \`dim rebuild\` reads them out and writes them back rather
--- than clearing them. A transcript records no end marker, so a session that ended
--- before its hook was installed can never be told apart from one still open. There
--- is no foreign key to session because a hook can fire for a session whose
--- transcript has not been read yet, or ever.
 CREATE TABLE IF NOT EXISTS hook_event (
   id          INTEGER PRIMARY KEY,
   tool        TEXT NOT NULL CHECK (tool IN (${TOOLS_SQL})),
@@ -102,121 +85,60 @@ CREATE TABLE IF NOT EXISTS hook_event (
   event       TEXT NOT NULL CHECK (event IN ('session_start','session_end','post_tool_use')),
   ts          TEXT NOT NULL,
   harness_pid INTEGER,
-  source      TEXT,               -- SessionStart: startup|resume|clear|compact|fork
-  reason      TEXT,               -- SessionEnd: clear|resume|logout|prompt_input_exit|other
-  model       TEXT,
+  reason      TEXT,
   cwd         TEXT,
-  payload     TEXT NOT NULL,      -- the hook's stdin, verbatim
   UNIQUE (session_id, event, ts)
 );
 CREATE INDEX IF NOT EXISTS hook_event_session ON hook_event(session_id);
 
--- Which rules files were in force together when a session started, and which one
--- imported which. guidance_version records what each file said; this records that
--- they were read as one set, which nothing else holds: the same project file
--- governs different work depending on what sat above it. Written from the
--- SessionStart hook and, like hook_event, never cleared by \`rebuild\` — a file
--- edited since cannot be read back as it was. No foreign key, for the same
--- reason: the hook fires before the transcript has been read, or ever.
-CREATE TABLE IF NOT EXISTS guidance_walk (
-  session_id  TEXT NOT NULL,
-  tool        TEXT NOT NULL CHECK (tool IN (${TOOLS_SQL})),
-  seen_at     TEXT NOT NULL,
-  path        TEXT NOT NULL,       -- absolute, as the agent would read it
-  blob_sha    TEXT NOT NULL,       -- sha256 of the bytes read, joining to guidance_version
-  imported_by TEXT,                -- the surface whose import pulled this one in
-  PRIMARY KEY (session_id, path)
-);
-CREATE INDEX IF NOT EXISTS guidance_walk_path ON guidance_walk(path, seen_at);
-
 CREATE TABLE IF NOT EXISTS turn (
   session_id      TEXT NOT NULL REFERENCES session(id),
-  turn_id         TEXT NOT NULL,        -- Codex turn_id; Claude the turn_duration uuid
+  turn_id         TEXT NOT NULL,
   ts_start        TEXT,
   ts_end          TEXT NOT NULL,
   duration_ms     INTEGER,
-  message_count   INTEGER,              -- Claude only
-  status          TEXT,                 -- completed | interrupted | <Codex abort reason>
+  message_count   INTEGER,
+  status          TEXT,
   model           TEXT,
-  time_to_first_token_ms INTEGER,       -- Codex only
+  time_to_first_token_ms INTEGER,
   PRIMARY KEY (session_id, turn_id)
 );
 CREATE INDEX IF NOT EXISTS turn_session ON turn(session_id, ts_end);
 
--- Cost only where the tool computed it. This database carries no price table
--- and derives no dollar figure; Codex reports none at all.
-CREATE TABLE IF NOT EXISTS session_cost_reported (
-  session_id      TEXT PRIMARY KEY REFERENCES session(id),
-  reported_by     TEXT NOT NULL,
-  total_cost_usd  REAL,
-  model_usage     TEXT NOT NULL,        -- JSON as written
-  has_unknown_model_cost INTEGER,
-  ts              TEXT
-);
-
--- Typed prompts whose transcript no longer exists. Both tools keep a flat
--- history of what was typed, and it outlived the transcripts that were pruned
--- before retention was extended: for those sessions this is all that is left.
--- No foreign key, because by definition these sessions have no row.
-CREATE TABLE IF NOT EXISTS orphan_prompt (
-  tool            TEXT NOT NULL CHECK (tool IN (${TOOLS_SQL})),
-  session_id      TEXT NOT NULL,
-  ts              TEXT NOT NULL,
-  project         TEXT,
-  text            TEXT NOT NULL,
-  PRIMARY KEY (tool, session_id, ts, text)
-) WITHOUT ROWID;
-CREATE INDEX IF NOT EXISTS orphan_prompt_session ON orphan_prompt(session_id);
-
--- One row per tool call. The call and its result are separate records in both
--- formats, so a row is written twice: once from the call, once from the result.
--- What the tool returned is never stored, only how big it was and whether it
--- failed; the bytes stay in the source file, reachable by src_line_result.
 CREATE TABLE IF NOT EXISTS tool_call (
-  id              TEXT PRIMARY KEY,     -- toolu_… / Codex item id
+  id              TEXT PRIMARY KEY,
   session_id      TEXT NOT NULL REFERENCES session(id),
   message_id      TEXT REFERENCES message(id),
   model           TEXT,
   attribution_skill TEXT,
-  ts_call         TEXT,                 -- null when only the result was seen
+  ts_call         TEXT,
   ts_result       TEXT,
   tool_name       TEXT NOT NULL,
-  skill_name      TEXT,                 -- the Skill tool's input.skill
+  skill_name      TEXT,
   file_path       TEXT,
   command         TEXT,
   is_error        INTEGER,
   interrupted     INTEGER,
-  denial_kind     TEXT,
-  exit_code       INTEGER,              -- Codex records one; Claude does not
+  exit_code       INTEGER,
   duration_ms     INTEGER,
   git_operation   TEXT,
   result_bytes    INTEGER,
   src_file        TEXT NOT NULL REFERENCES source_file(path) ON UPDATE CASCADE,
   src_line_call   INTEGER,
-  src_line_result INTEGER,
-  extra           TEXT
+  src_line_result INTEGER
 );
 CREATE INDEX IF NOT EXISTS tool_call_session ON tool_call(session_id, ts_call);
 CREATE INDEX IF NOT EXISTS tool_call_name ON tool_call(tool_name);
 CREATE INDEX IF NOT EXISTS tool_call_file ON tool_call(file_path);
 
--- The git a session actually ran, read from the command line. One shell call
--- runs several often enough that this is a row per operation rather than a
--- column: "git add -A && git commit" is one tool_call and two operations.
--- tool_call.git_operation is the tool's own metadata beside this, and covers
--- push, branch and PR only, on Claude alone.
 CREATE TABLE IF NOT EXISTS git_command (
   tool_call_id    TEXT NOT NULL REFERENCES tool_call(id) ON DELETE CASCADE,
-  position        INTEGER NOT NULL,     -- order within the one shell command
+  position        INTEGER NOT NULL,
   subcommand      TEXT NOT NULL,
   PRIMARY KEY (tool_call_id, position)
 );
 CREATE INDEX IF NOT EXISTS git_command_sub ON git_command(subcommand);
 
--- Every time a skill's body entered the context window. The body itself is not
--- stored, only its size and hash: it is recoverable from the source file by
--- locator, and the hash is what dates it against the skills repo's history
--- without depending on that working tree having been clean.
 CREATE TABLE IF NOT EXISTS skill_load (
   id              INTEGER PRIMARY KEY,
   session_id      TEXT NOT NULL REFERENCES session(id),
@@ -225,8 +147,6 @@ CREATE TABLE IF NOT EXISTS skill_load (
   model           TEXT,
   skill_name      TEXT NOT NULL,
   how             TEXT NOT NULL CHECK (how IN ('model','user','read')),
-      -- model: the Skill tool chose it; user: typed /name or $name;
-      -- read: the model opened SKILL.md itself, which is Codex's usual path
   body_chars      INTEGER,
   body_sha256     TEXT,
   skill_path      TEXT,
@@ -234,61 +154,31 @@ CREATE TABLE IF NOT EXISTS skill_load (
 );
 CREATE INDEX IF NOT EXISTS skill_load_name ON skill_load(skill_name, ts);
 
--- The only outcome signal here. Everything else in this database is process — what
--- was said, loaded, called, stopped — and process cannot say whether the work was
--- right. A later commit that fixes a file is the repo's own verdict on an earlier
--- change to it, written by whoever had to come back.
 CREATE TABLE IF NOT EXISTS repo_commit (
   sha             TEXT PRIMARY KEY,
-  repo            TEXT NOT NULL,        -- git toplevel: one row per checkout, worktrees included
-  label           TEXT,                 -- owner/repo from the remote; the identity a worktree shares
-  ts              TEXT NOT NULL,        -- author date, ISO, UTC
+  repo            TEXT NOT NULL,
+  label           TEXT,
+  ts              TEXT NOT NULL,
   author          TEXT,
   subject         TEXT NOT NULL,
-  kind            TEXT                  -- Conventional Commits type: fix, feat, docs, …
+  kind            TEXT
 );
 CREATE INDEX IF NOT EXISTS repo_commit_repo_ts ON repo_commit(repo, ts);
 
 CREATE TABLE IF NOT EXISTS commit_file (
   sha             TEXT NOT NULL REFERENCES repo_commit(sha) ON DELETE CASCADE,
-  -- Absolute, not the repo-relative path git reports: a tool call records the
-  -- absolute path, and joining on a path assembled in SQL cannot use an index.
   path            TEXT NOT NULL,
   PRIMARY KEY (sha, path)
 );
 CREATE INDEX IF NOT EXISTS commit_file_path ON commit_file(path);
 
--- What each repo tracks right now, replaced whole on every sync. commit_file
--- answers what a repo once held: a rename is a delete and an add there, and a
--- file deleted years ago still has its rows. A reader looking for how a problem
--- was solved before needs a path that opens, which is this table.
 CREATE TABLE IF NOT EXISTS repo_file (
-  repo            TEXT NOT NULL,        -- git toplevel, as in repo_commit
-  path            TEXT NOT NULL,        -- absolute, as in commit_file
+  repo            TEXT NOT NULL,
+  path            TEXT NOT NULL,
   PRIMARY KEY (repo, path)
 );
 CREATE INDEX IF NOT EXISTS repo_file_path ON repo_file(path);
 
--- Which version of a rules file was in force when a session ran. Skills carry a
--- body hash on every load; AGENTS.md and CLAUDE.md are loaded in every session and
--- carried none, so the 82% of edits made under no skill could not be split by the
--- guidance that governed them. Versions inside a repo come from git and reach back
--- as far as its history; a file outside one is only ever seen from the first sync
--- that read it, which is why waiting costs something no rebuild can return.
-CREATE TABLE IF NOT EXISTS guidance_version (
-  path            TEXT NOT NULL,        -- absolute, as an agent would read it
-  blob_sha        TEXT NOT NULL,        -- git blob id, or sha256 for a file outside a repo
-  first_seen      TEXT NOT NULL,        -- commit date, or the sync that first saw it
-  last_seen       TEXT NOT NULL,
-  bytes           INTEGER,
-  source          TEXT NOT NULL CHECK (source IN ('git','snapshot')),
-  PRIMARY KEY (path, blob_sha)
-);
-CREATE INDEX IF NOT EXISTS guidance_version_seen ON guidance_version(path, first_seen);
-
--- Prose search over message.text, so finding what was said in a past session is a
--- query rather than a grep across every transcript on disk. External content: the
--- index stores no copy of the text and reads it back through message.rowid.
 CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
   text,
   content = 'message',
@@ -296,16 +186,65 @@ CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
   tokenize = 'unicode61'
 );
 
--- The ingester upserts, so a row arriving twice fires the update trigger rather
--- than a second insert; all three keep the index level with the table.
 CREATE TRIGGER IF NOT EXISTS message_fts_insert AFTER INSERT ON message BEGIN
   INSERT INTO message_fts (rowid, text) VALUES (new.rowid, new.text);
 END;
 CREATE TRIGGER IF NOT EXISTS message_fts_delete AFTER DELETE ON message BEGIN
   INSERT INTO message_fts (message_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
 END;
-CREATE TRIGGER IF NOT EXISTS message_fts_update AFTER UPDATE ON message BEGIN
+CREATE TRIGGER IF NOT EXISTS message_fts_update AFTER UPDATE ON message WHEN old.text IS NOT new.text BEGIN
   INSERT INTO message_fts (message_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
   INSERT INTO message_fts (rowid, text) VALUES (new.rowid, new.text);
 END;
+
+CREATE TABLE IF NOT EXISTS worker (
+  name        TEXT PRIMARY KEY CHECK (name GLOB '[a-z]*-[0-9]*'),
+  role        TEXT NOT NULL CHECK (role IN ('operator','planner','builder','reviewer')),
+  project     TEXT NOT NULL,
+  order_id    TEXT,
+  created_by  TEXT REFERENCES worker(name),
+  CHECK ((role = 'operator') = (order_id IS NULL AND created_by IS NULL))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS worker_station ON worker(order_id, role) WHERE order_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS worker_operator ON worker(project) WHERE role = 'operator';
+
+CREATE TABLE IF NOT EXISTS worker_session (
+  id              TEXT PRIMARY KEY,
+  worker          TEXT NOT NULL REFERENCES worker(name),
+  harness         TEXT NOT NULL CHECK (harness IN (${HARNESSES_SQL})),
+  pid             INTEGER NOT NULL,
+  pid_started_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS order_log (
+  order_id        TEXT NOT NULL,
+  seq             INTEGER NOT NULL,
+  ts              TEXT NOT NULL,
+  worker          TEXT,
+  session         TEXT,
+  factory_version TEXT,
+  cause           INTEGER,
+  action          TEXT NOT NULL,
+  code            TEXT,
+  details         TEXT NOT NULL CHECK (json_valid(details)),
+  evidence        TEXT CHECK (json_valid(evidence)),
+  PRIMARY KEY (order_id, seq),
+  FOREIGN KEY (order_id, cause) REFERENCES order_log(order_id, seq),
+  CHECK ((worker IS NOT NULL AND session IS NOT NULL AND factory_version IS NULL AND cause IS NULL)
+      OR (worker IS NULL AND session IS NULL AND factory_version IS NOT NULL AND cause IS NOT NULL))
+);
+CREATE TRIGGER IF NOT EXISTS order_log_no_update BEFORE UPDATE ON order_log
+BEGIN SELECT RAISE(ABORT, 'order_log is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS order_log_no_delete BEFORE DELETE ON order_log
+BEGIN SELECT RAISE(ABORT, 'order_log is append-only'); END;
+
+CREATE TABLE IF NOT EXISTS run (
+  order_id            TEXT PRIMARY KEY,
+  kind                TEXT NOT NULL CHECK (kind IN ('station','ship')),
+  pid                 INTEGER NOT NULL,
+  pid_started_at      TEXT NOT NULL,
+  harness_pid         INTEGER,
+  harness_started_at  TEXT,
+  CHECK ((harness_pid IS NULL) = (harness_started_at IS NULL))
+);
 `;

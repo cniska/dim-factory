@@ -221,9 +221,9 @@ describe("spool", () => {
     const db = openDb(dbPath(env));
     try {
       expect(drainSpool(db, env)).toMatchObject({ applied: 2, duplicate: 0 });
-      expect(db.prepare("SELECT source FROM hook_event ORDER BY ts").all()).toEqual([
-        { source: "startup" },
-        { source: "compact" },
+      expect(db.prepare("SELECT ts FROM hook_event ORDER BY ts").all()).toEqual([
+        { ts: "2026-09-10T00:26:40.000Z" },
+        { ts: "2026-09-10T00:26:40.400Z" },
       ]);
     } finally {
       closeDb(db);
@@ -287,16 +287,16 @@ describe("spool", () => {
     }
   });
 
-  test("stores a post-tool event for a later pass to interpret", () => {
+  test("stores a post-tool event", () => {
     const root = newRoot();
     const env = scratchEnv(root);
     spool(env, "claude", "1789000000000000000", toolEvent(SESSION));
     const db = openDb(dbPath(env));
     try {
       expect(drainSpool(db, env)).toMatchObject({ applied: 1, unreadable: 0 });
-      expect(db.prepare("SELECT event, payload FROM hook_event").get()).toEqual({
+      expect(db.prepare("SELECT event, session_id FROM hook_event").get()).toEqual({
         event: "post_tool_use",
-        payload: JSON.stringify(toolEvent(SESSION)),
+        session_id: SESSION,
       });
     } finally {
       closeDb(db);

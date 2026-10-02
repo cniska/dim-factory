@@ -14,11 +14,20 @@ describe("parseCodexChunk", () => {
     expect(assistants.map((m) => m.turnId)).toEqual(["turn-1", "turn-2"]);
   });
 
-  test("addresses a message with no id by thread and ordinal", () => {
+  test("addresses a message with no id by thread and the line it is on", () => {
     const parsed = parseCodexChunk(legacy, 1, THREAD, {});
     expect(parsed.messages).toHaveLength(3);
     expect(new Set(parsed.messages.map((m) => m.id)).size).toBe(3);
-    expect(parsed.messages[0]?.id).toBe(`${THREAD}:2`);
+    expect(parsed.messages[0]?.id).toBe(`${THREAD}:3`);
+  });
+
+  test("points each message at the line of the file it came from", () => {
+    const parsed = parseCodexChunk(modern, 10, THREAD, {});
+    expect(parsed.messages.length).toBeGreaterThan(0);
+    for (const message of parsed.messages) {
+      const line = JSON.parse(modern[message.srcLine - 10] ?? "{}");
+      expect(line.payload?.id).toBe(message.id);
+    }
   });
 
   test("maps the token fields Codex reports, with input including cached reads", () => {
@@ -30,7 +39,6 @@ describe("parseCodexChunk", () => {
       cacheReadTokens: 9984,
       cacheWriteTokens: 0,
       outputTokens: 305,
-      reasoningTokens: 94,
       model: "gpt-5.6-luna",
     });
   });

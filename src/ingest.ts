@@ -47,10 +47,7 @@ function foldSession(facts: SessionFacts[]) {
     entrypoint?: string;
     startedAt?: string;
     lastSeenAt?: string;
-    firstModel?: string;
-    lastModel?: string;
     title?: string;
-    extra?: string;
   } = {};
   for (const f of facts) {
     if (f.ts) {
@@ -60,11 +57,8 @@ function foldSession(facts: SessionFacts[]) {
     out.cwd ??= f.cwd;
     out.project ??= f.project;
     out.entrypoint ??= f.entrypoint;
-    out.firstModel ??= f.model;
-    out.extra ??= f.extra;
     if (f.gitBranch) out.gitBranch = f.gitBranch;
     if (f.cliVersion) out.cliVersion = f.cliVersion;
-    if (f.model) out.lastModel = f.model;
     if (f.title) out.title = f.title;
   }
   return out;
@@ -77,15 +71,15 @@ export function createIngester(db: Database) {
   const movePath = db.prepare<void, [string, string, string]>(
     "UPDATE source_file SET path = ? WHERE session_id = ? AND kind = ?",
   );
-  const insertSourceFile = db.prepare<void, [string, string, string, string, string]>(
-    `INSERT INTO source_file (path, tool, kind, session_id, origin_mtime)
-     VALUES (?, ?, ?, ?, ?) ON CONFLICT(path) DO NOTHING`,
+  const insertSourceFile = db.prepare<void, [string, string, string, string]>(
+    `INSERT INTO source_file (path, tool, kind, session_id)
+     VALUES (?, ?, ?, ?) ON CONFLICT(path) DO NOTHING`,
   );
   const upsertSession = db.prepare(
     `INSERT INTO session (id, tool, parent_id, agent_type, cwd, worktree, project, git_branch, cli_version,
-       entrypoint, started_at, last_seen_at, first_model, last_model, title, extra)
+       entrypoint, started_at, last_seen_at, title)
      VALUES ($id, $tool, $parent, $agentType, $cwd, $worktree, $project, $gitBranch, $cliVersion,
-       $entrypoint, $startedAt, $lastSeenAt, $firstModel, $lastModel, $title, $extra)
+       $entrypoint, $startedAt, $lastSeenAt, $title)
      ON CONFLICT(id) DO UPDATE SET
        parent_id    = coalesce(session.parent_id, excluded.parent_id),
        agent_type   = coalesce(session.agent_type, excluded.agent_type),
@@ -99,18 +93,15 @@ export function createIngester(db: Database) {
                           coalesce(excluded.started_at, session.started_at)),
        last_seen_at = max(coalesce(session.last_seen_at, excluded.last_seen_at),
                           coalesce(excluded.last_seen_at, session.last_seen_at)),
-       first_model  = coalesce(session.first_model, excluded.first_model),
-       last_model   = coalesce(excluded.last_model, session.last_model),
-       title        = coalesce(excluded.title, session.title),
-       extra        = coalesce(session.extra, excluded.extra)`,
+       title        = coalesce(excluded.title, session.title)`,
   );
 
   const upsertMessage = db.prepare(
     `INSERT INTO message (id, session_id, ts, role, model, turn_id, prompt_source, origin_kind,
-       is_meta, is_skill_body, attribution_skill, stop_reason, interrupted_message_id, denial_kind,
+       is_meta, is_skill_body, attribution_skill, interrupted_message_id, denial_kind,
        user_feedback, text, text_chars, src_file, src_line, extra)
      VALUES ($id, $sessionId, $ts, $role, $model, $turnId, $promptSource, $originKind,
-       $isMeta, $isSkillBody, $attributionSkill, $stopReason, $interruptedMessageId, $denialKind,
+       $isMeta, $isSkillBody, $attributionSkill, $interruptedMessageId, $denialKind,
        $userFeedback, $text, $textChars, $srcFile, $srcLine, $extra)
      ON CONFLICT(id) DO UPDATE SET
        ts                     = min(message.ts, excluded.ts),
@@ -121,7 +112,6 @@ export function createIngester(db: Database) {
        is_meta                = max(message.is_meta, excluded.is_meta),
        is_skill_body          = max(message.is_skill_body, excluded.is_skill_body),
        attribution_skill      = coalesce(excluded.attribution_skill, message.attribution_skill),
-       stop_reason            = coalesce(excluded.stop_reason, message.stop_reason),
        interrupted_message_id = coalesce(excluded.interrupted_message_id, message.interrupted_message_id),
        denial_kind            = coalesce(excluded.denial_kind, message.denial_kind),
        user_feedback          = coalesce(excluded.user_feedback, message.user_feedback),
@@ -134,18 +124,9 @@ export function createIngester(db: Database) {
 
   const insertUsage = db.prepare(
     `INSERT INTO usage (response_id, session_id, message_id, ts, model, input_tokens,
-       cache_read_tokens, cache_write_tokens, cache_write_1h_tokens, output_tokens,
-       reasoning_tokens, attribution_skill, extra)
+       cache_read_tokens, cache_write_tokens, output_tokens, attribution_skill)
      VALUES ($responseId, $sessionId, $messageId, $ts, $model, $inputTokens,
-       $cacheReadTokens, $cacheWriteTokens, $cacheWrite1hTokens, $outputTokens,
-       $reasoningTokens, $attributionSkill, $extra)
-     -- One API response is written as one line per content block, and usage
-     -- accumulates across them: only the last line holds the complete figures.
-     -- The whole row is replaced together so its fields stay from one line.
-     -- Keyed on output_tokens rather than a terminal stop_reason: over one full
-     -- corpus the two pick the same record for all but 0.5% of responses, and
-     -- every one of those was interrupted and has no terminal record at all, so
-     -- a stop_reason filter would drop them without saying so.
+       $cacheReadTokens, $cacheWriteTokens, $outputTokens, $attributionSkill)
      ON CONFLICT(response_id) DO UPDATE SET
        message_id            = excluded.message_id,
        ts                    = excluded.ts,
@@ -153,11 +134,8 @@ export function createIngester(db: Database) {
        input_tokens          = excluded.input_tokens,
        cache_read_tokens     = excluded.cache_read_tokens,
        cache_write_tokens    = excluded.cache_write_tokens,
-       cache_write_1h_tokens = excluded.cache_write_1h_tokens,
        output_tokens         = excluded.output_tokens,
-       reasoning_tokens      = excluded.reasoning_tokens,
-       attribution_skill     = excluded.attribution_skill,
-       extra                 = excluded.extra
+       attribution_skill     = excluded.attribution_skill
      WHERE excluded.output_tokens > usage.output_tokens`,
   );
 
@@ -176,27 +154,13 @@ export function createIngester(db: Database) {
        time_to_first_token_ms = coalesce(excluded.time_to_first_token_ms, turn.time_to_first_token_ms)`,
   );
 
-  const upsertCost = db.prepare(
-    `INSERT INTO session_cost_reported (session_id, reported_by, total_cost_usd, model_usage,
-       has_unknown_model_cost, ts)
-     VALUES ($sessionId, $reportedBy, $totalCostUsd, $modelUsage, $hasUnknownModelCost, $ts)
-     ON CONFLICT(session_id) DO UPDATE SET
-       reported_by            = excluded.reported_by,
-       total_cost_usd         = excluded.total_cost_usd,
-       model_usage            = excluded.model_usage,
-       has_unknown_model_cost = excluded.has_unknown_model_cost,
-       ts                     = excluded.ts`,
-  );
-
   const upsertToolCall = db.prepare(
     `INSERT INTO tool_call (id, session_id, message_id, model, attribution_skill, ts_call, ts_result,
        tool_name, skill_name, file_path, command, is_error, interrupted, exit_code, duration_ms,
-       git_operation, result_bytes, src_file, src_line_call, src_line_result, extra)
+       git_operation, result_bytes, src_file, src_line_call, src_line_result)
      VALUES ($id, $sessionId, $messageId, $model, $attributionSkill, $tsCall, $tsResult,
        $toolName, $skillName, $filePath, $command, $isError, $interrupted, $exitCode, $durationMs,
-       $gitOperation, $resultBytes, $srcFile, $srcLineCall, $srcLineResult, $extra)
-     -- The call and its result are separate records, so whichever lands second
-     -- fills in the half the first one could not know.
+       $gitOperation, $resultBytes, $srcFile, $srcLineCall, $srcLineResult)
      ON CONFLICT(id) DO UPDATE SET
        message_id        = coalesce(excluded.message_id, tool_call.message_id),
        model             = coalesce(excluded.model, tool_call.model),
@@ -215,8 +179,7 @@ export function createIngester(db: Database) {
        result_bytes      = coalesce(excluded.result_bytes, tool_call.result_bytes),
        src_file          = excluded.src_file,
        src_line_call     = coalesce(excluded.src_line_call, tool_call.src_line_call),
-       src_line_result   = coalesce(excluded.src_line_result, tool_call.src_line_result),
-       extra             = coalesce(excluded.extra, tool_call.extra)`,
+       src_line_result   = coalesce(excluded.src_line_result, tool_call.src_line_result)`,
   );
 
   const clearGitCommands = db.prepare("DELETE FROM git_command WHERE tool_call_id = ?");
@@ -256,13 +219,11 @@ export function createIngester(db: Database) {
   const deleteSkillLoads = db.prepare<void, [string]>("DELETE FROM skill_load WHERE session_id = ?");
   const deleteToolCalls = db.prepare<void, [string]>("DELETE FROM tool_call WHERE session_id = ?");
   const deleteTurns = db.prepare<void, [string]>("DELETE FROM turn WHERE session_id = ?");
-  const deleteCost = db.prepare<void, [string]>("DELETE FROM session_cost_reported WHERE session_id = ?");
   const deleteUsage = db.prepare<void, [string]>("DELETE FROM usage WHERE session_id = ?");
   const deleteMessages = db.prepare<void, [string]>("DELETE FROM message WHERE session_id = ?");
   const clearTranscriptFields = db.prepare<void, [string]>(
     `UPDATE session SET agent_type = NULL, cwd = NULL, worktree = NULL, project = NULL, git_branch = NULL,
-       cli_version = NULL, entrypoint = NULL, started_at = NULL, last_seen_at = NULL, first_model = NULL,
-       last_model = NULL, title = NULL, extra = NULL
+       cli_version = NULL, entrypoint = NULL, started_at = NULL, last_seen_at = NULL, title = NULL
      WHERE id = ?`,
   );
   const resetCursor = db.prepare<void, [string]>(
@@ -272,7 +233,6 @@ export function createIngester(db: Database) {
   function resetSession(sessionId: string, path: string): void {
     deleteSkillLoads.run(sessionId);
     deleteToolCalls.run(sessionId);
-    deleteCost.run(sessionId);
     deleteTurns.run(sessionId);
     deleteUsage.run(sessionId);
     deleteMessages.run(sessionId);
@@ -280,14 +240,8 @@ export function createIngester(db: Database) {
     resetCursor.run(path);
   }
 
-  function applyChunk(
-    spec: FileSpec,
-    parsed: ParsedChunk,
-    bytes: number,
-    lines: number,
-    mtime: string,
-  ): void {
-    insertSourceFile.run(spec.path, spec.tool, spec.kind, spec.sessionId, mtime);
+  function applyChunk(spec: FileSpec, parsed: ParsedChunk, bytes: number, lines: number): void {
+    insertSourceFile.run(spec.path, spec.tool, spec.kind, spec.sessionId);
     const s = foldSession(parsed.session);
     upsertSession.run({
       $id: spec.sessionId,
@@ -302,10 +256,7 @@ export function createIngester(db: Database) {
       $entrypoint: s.entrypoint ?? null,
       $startedAt: s.startedAt ?? null,
       $lastSeenAt: s.lastSeenAt ?? null,
-      $firstModel: s.firstModel ?? null,
-      $lastModel: s.lastModel ?? null,
       $title: s.title ?? null,
-      $extra: s.extra ?? null,
     });
 
     for (const m of parsed.messages) {
@@ -321,7 +272,6 @@ export function createIngester(db: Database) {
         $isMeta: m.isMeta ? 1 : 0,
         $isSkillBody: m.isSkillBody ? 1 : 0,
         $attributionSkill: m.attributionSkill ?? null,
-        $stopReason: m.stopReason ?? null,
         $interruptedMessageId: m.interruptedMessageId ?? null,
         $denialKind: m.denialKind ?? null,
         $userFeedback: m.userFeedback ?? null,
@@ -343,11 +293,8 @@ export function createIngester(db: Database) {
         $inputTokens: u.inputTokens,
         $cacheReadTokens: u.cacheReadTokens,
         $cacheWriteTokens: u.cacheWriteTokens,
-        $cacheWrite1hTokens: u.cacheWrite1hTokens ?? null,
         $outputTokens: u.outputTokens,
-        $reasoningTokens: u.reasoningTokens ?? null,
         $attributionSkill: u.attributionSkill ?? null,
-        $extra: u.extra ?? null,
       });
     }
 
@@ -387,7 +334,6 @@ export function createIngester(db: Database) {
         $srcFile: spec.path,
         $srcLineCall: t.srcLineCall ?? null,
         $srcLineResult: t.srcLineResult ?? null,
-        $extra: t.extra ?? null,
       });
 
       if (t.command) {
@@ -432,29 +378,17 @@ export function createIngester(db: Database) {
       });
     }
 
-    for (const c of parsed.costs) {
-      upsertCost.run({
-        $sessionId: spec.sessionId,
-        $reportedBy: c.reportedBy,
-        $totalCostUsd: c.totalCostUsd ?? null,
-        $modelUsage: c.modelUsage,
-        $hasUnknownModelCost: c.hasUnknownModelCost == null ? null : c.hasUnknownModelCost ? 1 : 0,
-        $ts: c.ts ?? null,
-      });
-    }
-
     db.run(
       `UPDATE source_file SET bytes_ingested = ?, lines_ingested = ?,
          cursor_state = coalesce(?, cursor_state),
-         origin_mtime = ?, ingested_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+         ingested_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
        WHERE path = ?`,
-      [bytes, lines, parsed.cursorState ?? null, mtime, spec.path],
+      [bytes, lines, parsed.cursorState ?? null, spec.path],
     );
   }
 
   function ingestFile(spec: FileSpec): FileResult {
     const stat = statSync(spec.path);
-    const mtime = new Date(stat.mtimeMs).toISOString().replace(/\.\d{3}Z$/, "Z");
 
     const existing = selectCursor.get(spec.sessionId, spec.kind);
     if (existing && existing.path !== spec.path) {
@@ -480,7 +414,7 @@ export function createIngester(db: Database) {
     const parsed = spec.parse(chunk.lines, lines + 1, state);
     writeTransaction(db, () => {
       if (reset) resetSession(spec.sessionId, spec.path);
-      applyChunk(spec, parsed, cursor + chunk.bytes, lines + chunk.lines.length, mtime);
+      applyChunk(spec, parsed, cursor + chunk.bytes, lines + chunk.lines.length);
     });
 
     return {

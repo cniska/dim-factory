@@ -6,12 +6,11 @@ import { parseGrokChunk } from "./ingest-parse-grok";
 import { projectOf, type SessionFacts } from "./ingest-session-records";
 import { type Env, grokDir } from "./paths";
 
-export type GrokSummary = {
+type GrokSummary = {
   id: string;
   cwd?: string;
   project?: string;
   gitBranch?: string;
-  model?: string;
   title?: string;
   parentId?: string;
   agentType?: string;
@@ -21,7 +20,6 @@ export type GrokSummary = {
 type SummaryFile = {
   info?: { id?: string; cwd?: string };
   generated_title?: string;
-  current_model_id?: string;
   head_branch?: string;
   parent_session_id?: string;
   created_at?: string;
@@ -32,7 +30,7 @@ function nonEmpty(value: string | undefined): string | undefined {
   return value != null && value !== "" ? value : undefined;
 }
 
-export function readGrokSummary(sessionDir: string): GrokSummary | undefined {
+function readGrokSummary(sessionDir: string): GrokSummary | undefined {
   const path = join(sessionDir, "summary.json");
   if (!existsSync(path)) return undefined;
   let parsed: SummaryFile;
@@ -48,7 +46,6 @@ export function readGrokSummary(sessionDir: string): GrokSummary | undefined {
     cwd,
     project: projectOf(cwd),
     gitBranch: nonEmpty(parsed.head_branch),
-    model: nonEmpty(parsed.current_model_id),
     title: nonEmpty(parsed.generated_title),
     parentId: nonEmpty(parsed.parent_session_id),
     agentType: nonEmpty(parsed.agent_name),
@@ -64,7 +61,6 @@ function summaryFacts(summary: GrokSummary | undefined): SessionFacts[] {
       cwd: summary.cwd,
       project: summary.project,
       gitBranch: summary.gitBranch,
-      model: summary.model,
       title: summary.title,
     },
   ];
@@ -112,22 +108,4 @@ function orderParents(specs: FileSpec[]): FileSpec[] {
     for (const spec of ready) remaining.splice(remaining.indexOf(spec), 1);
   }
   return ordered;
-}
-
-export function grokGroupCwd(historyPath: string): string | undefined {
-  const dir = dirname(historyPath);
-  const marker = join(dir, ".cwd");
-  if (existsSync(marker)) {
-    try {
-      const text = readFileSync(marker, "utf8").trim();
-      if (text !== "") return text;
-    } catch {
-      return undefined;
-    }
-  }
-  try {
-    return decodeURIComponent(basename(dir));
-  } catch {
-    return undefined;
-  }
 }

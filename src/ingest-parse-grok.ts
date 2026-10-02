@@ -109,5 +109,5 @@ export function parseGrokChunk(lines: string[], firstLineNumber: number): Parsed
     });
   }
 
-  return { session, messages, usage: [], turns: [], costs: [], toolCalls, skillLoads: [], dropped };
+  return { session, messages, usage: [], turns: [], toolCalls, skillLoads: [], dropped };
 }

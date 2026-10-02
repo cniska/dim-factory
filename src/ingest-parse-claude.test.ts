@@ -34,9 +34,7 @@ describe("parseClaudeChunk", () => {
       inputTokens: 5,
       cacheReadTokens: 1000,
       cacheWriteTokens: 200,
-      cacheWrite1hTokens: 200,
       outputTokens: 50,
-      reasoningTokens: 30,
       attributionSkill: "build",
       model: "claude-opus-5",
     });

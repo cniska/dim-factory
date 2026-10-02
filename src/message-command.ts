@@ -1,8 +1,8 @@
 import { type Command, UsageError } from "./cli-contract";
 import { parseArgs } from "./cli-flags";
-import { closeDb } from "./db";
-import { openFactory } from "./factory-db";
+import { closeDb, openDb } from "./db";
 import { OrderId, Station } from "./order-contract";
+import { dbPath } from "./paths";
 import { inTurn, messageWorker, sendAct } from "./station-ops";
 import { callerOf } from "./worker-ops";
 
@@ -24,7 +24,7 @@ async function send(args: readonly string[]) {
   const order = OrderId.safeParse(flags.order);
   const station = Station.safeParse(flags.to);
   if (!order.success || !station.success) throw new UsageError(USAGE);
-  const db = openFactory();
+  const db = openDb(dbPath());
   try {
     const caller = callerOf(db, process.cwd());
     const reply = await messageWorker(db, order.data, caller, { station: station.data, text }, process.env);

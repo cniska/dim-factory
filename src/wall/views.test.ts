@@ -10,7 +10,7 @@ const FACTORY = { kind: "factory", version: "0.1.0", cause: 1 } as const;
 
 const ADDED: LogEntry = {
   seq: 1,
-  at: "2026-10-02T10:00:00.000Z",
+  ts: "2026-10-02T10:00:00.000Z",
   by: OPERATOR,
   action: "order_added",
   details: { title: "Greet the reader", description: "Add a greeting.", project: "acme/widgets" },
@@ -42,13 +42,13 @@ function viewOf(fields: Partial<OrderView> & { readonly log: readonly LogEntry[]
 const at = (minute: number) => `2026-10-02T10:${String(minute).padStart(2, "0")}:00.000Z`;
 
 function ordered(id: string, status: Status, minute: number): OrderView {
-  return viewOf({ id, status, log: [{ ...ADDED, at: at(minute) }] });
+  return viewOf({ id, status, log: [{ ...ADDED, ts: at(minute) }] });
 }
 
 describe("the board", () => {
   test("carries each order's title, project, description, station, worker and last change", () => {
     const view = viewOf({
-      log: [ADDED, { seq: 2, at: at(5), by: FACTORY, action: "order_run", details: {} }],
+      log: [ADDED, { seq: 2, ts: at(5), by: FACTORY, action: "order_run", details: {} }],
     });
 
     expect(snapshotOf([view])).toEqual({
@@ -103,41 +103,41 @@ describe("an opened order", () => {
     ADDED,
     {
       seq: 2,
-      at: at(1),
+      ts: at(1),
       by: PLANNER,
       action: "plan_returned",
       details: { body: "## First", slices: [{ title: "a", outcome: "b" }] },
     },
     {
       seq: 3,
-      at: at(2),
+      ts: at(2),
       by: OPERATOR,
       action: "artifact_returned",
       details: { station: "plan", reason: "tighter", decidedBy: "owner" },
     },
     {
       seq: 4,
-      at: at(3),
+      ts: at(3),
       by: PLANNER,
       action: "plan_returned",
       details: { body: "## Second", slices: [{ title: "a", outcome: "b" }] },
     },
     {
       seq: 5,
-      at: at(4),
+      ts: at(4),
       by: OPERATOR,
       action: "artifact_approved",
       details: { station: "plan", reason: "good", decidedBy: "owner" },
     },
     {
       seq: 6,
-      at: at(5),
+      ts: at(5),
       by: FACTORY,
       action: "station_failed",
       code: "no_return",
       details: { session: "s-build" },
     },
-    { seq: 7, at: at(6), by: BUILDER, action: "build_returned", details: { artifact: "## Built" } },
+    { seq: 7, ts: at(6), by: BUILDER, action: "build_returned", details: { artifact: "## Built" } },
   ];
 
   test("shows the latest revision of each artifact, who returned it and whether it was approved after", () => {

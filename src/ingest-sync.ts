@@ -1,11 +1,8 @@
 import type { Database } from "bun:sqlite";
 import { writeTransaction } from "./db";
 import { SCHEMA_SQL, SCHEMA_VERSION } from "./db-schema";
-import { type GuidanceReport, ingestGuidance } from "./guidance";
-import { drainWalk, type WalkReport } from "./guidance-walk";
 import { createIngester, type FileSpec } from "./ingest";
 import { type GitReport, ingestCommits } from "./ingest-git";
-import { type HistoryReport, ingestHistory } from "./ingest-history";
 import { SESSION_SOURCES, type SessionSource } from "./ingest-sources";
 import { applyHookEvents, type DrainReport, drainSpool } from "./ingest-spool";
 import type { Tool } from "./ingest-tools";
@@ -19,11 +16,8 @@ export type SyncReport = {
   failures: { path: string; error: string }[];
   dropped: { path: string; lines: number[] }[];
   hooks: DrainReport;
-  history: HistoryReport;
   git: GitReport;
   repoFiles: RepoFileReport;
-  guidance: GuidanceReport;
-  walk: WalkReport;
 };
 
 export function sync(db: Database, env: Env = process.env): SyncReport {
@@ -40,11 +34,8 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
     failures: [],
     dropped: [],
     hooks: drainSpool(db, env),
-    history: { read: 0, orphans: 0 },
     git: { repos: 0, commits: 0, files: 0 },
     repoFiles: { repos: 0, files: 0 },
-    guidance: { files: 0, versions: 0 },
-    walk: drainWalk(db, env),
   };
 
   const fail = (path: string, error: unknown): void => {
@@ -88,87 +79,37 @@ export function sync(db: Database, env: Env = process.env): SyncReport {
   }
 
   applyHookEvents(db);
-  report.history = ingestHistory(db, env);
   report.git = ingestCommits(db);
   report.repoFiles = indexRepoFiles(db);
-  report.guidance = ingestGuidance(db, env);
   return report;
 }
 
-type HookEvent = {
-  tool: string;
-  session_id: string;
-  event: string;
-  ts: string;
-  harness_pid: number | null;
-  source: string | null;
-  reason: string | null;
-  model: string | null;
-  cwd: string | null;
-  payload: string;
-};
+const HOOK_EVENT_COLUMNS = "tool, session_id, event, ts, harness_pid, reason, cwd";
+
+function tablesWhere(db: Database, condition: string): readonly string[] {
+  return db
+    .query<{ name: string }, []>(
+      `SELECT name FROM main.sqlite_master WHERE type = 'table' AND name NOT GLOB 'sqlite_*' AND ${condition}`,
+    )
+    .all()
+    .map((row) => row.name);
+}
+
+function dropEveryTable(db: Database): void {
+  db.run("PRAGMA defer_foreign_keys = ON");
+  for (const name of tablesWhere(db, "sql LIKE 'CREATE VIRTUAL TABLE%'")) db.run(`DROP TABLE "${name}"`);
+  for (const name of tablesWhere(db, "1")) db.run(`DROP TABLE "${name}"`);
+}
 
 export function rebuild(db: Database, env: Env = process.env): SyncReport {
   writeTransaction(db, () => {
-    const hasHarnessPid = db
-      .query<{ name: string }, []>("PRAGMA table_info(hook_event)")
-      .all()
-      .some((column) => column.name === "harness_pid");
-    const hookEvents = db
-      .query<HookEvent, []>(
-        `SELECT tool, session_id, event, ts, ${hasHarnessPid ? "harness_pid" : "NULL AS harness_pid"}, source, reason, model, cwd, payload FROM hook_event`,
-      )
-      .all();
-    db.run("DROP TABLE IF EXISTS hook_event");
-    db.run("DROP TABLE IF EXISTS message_fts");
-    db.run("DROP TABLE IF EXISTS git_command");
-    db.run("DROP TABLE IF EXISTS skill_load");
-    db.run("DROP TABLE IF EXISTS tool_call");
-    db.run("DROP TABLE IF EXISTS orphan_prompt");
-    db.run("DROP TABLE IF EXISTS session_cost_reported");
-    db.run("DROP TABLE IF EXISTS turn");
-    db.run("DROP TABLE IF EXISTS usage");
-    db.run("DROP TABLE IF EXISTS message");
-    db.run("DROP TABLE IF EXISTS session");
-    db.run("DROP TABLE IF EXISTS source_file");
-    db.run("DROP TABLE IF EXISTS guidance_version");
-    db.run("DROP TABLE IF EXISTS commit_file");
-    db.run("DROP TABLE IF EXISTS repo_file");
-    db.run("DROP TABLE IF EXISTS repo_commit");
-    db.run("DROP TABLE IF EXISTS trace_event");
+    db.run(`CREATE TEMP TABLE kept_hook_event AS SELECT ${HOOK_EVENT_COLUMNS} FROM hook_event`);
+    dropEveryTable(db);
     db.run(SCHEMA_SQL);
-    const restoreHook = db.prepare<
-      void,
-      [
-        string,
-        string,
-        string,
-        string,
-        number | null,
-        string | null,
-        string | null,
-        string | null,
-        string | null,
-        string,
-      ]
-    >(
-      `INSERT INTO hook_event (tool, session_id, event, ts, harness_pid, source, reason, model, cwd, payload)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    db.run(
+      `INSERT INTO hook_event (${HOOK_EVENT_COLUMNS}) SELECT ${HOOK_EVENT_COLUMNS} FROM kept_hook_event`,
     );
-    for (const row of hookEvents) {
-      restoreHook.run(
-        row.tool,
-        row.session_id,
-        row.event,
-        row.ts,
-        row.harness_pid,
-        row.source,
-        row.reason,
-        row.model,
-        row.cwd,
-        row.payload,
-      );
-    }
+    db.run("DROP TABLE kept_hook_event");
   });
   const report = sync(db, env);
   db.run(`PRAGMA user_version = ${SCHEMA_VERSION}`);

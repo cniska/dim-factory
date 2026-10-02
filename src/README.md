@@ -29,12 +29,10 @@ The factory's modules follow this shape. The record's modules predate it and are
 | `check` | Running a project's declared check in a sandbox with a listed environment |
 | `plan`, `build`, `review`, `finding`, `message` | The commands a station's worker runs during its turn, one file each |
 | `session` | The operator's command that prints a worker's transcript |
-| `factory` | Opening the record with the factory's tables |
 | `trace` | The factory's diagnostic steps, for `dim trace` |
 | `ingest`, `agent` | Read session sources, hook events and git history into the record, on the schedule the launchd agent sets |
 | `db` | Open, lock and read the SQLite record, and its schema |
 | `query`, `sql` | The named queries over the record, and raw read-only SQL |
-| `guidance` | Which rules files were in force, and the walk that loaded them |
 | `session-start` | The repo's declared commands, passed to a new session |
 | `config` | Read settings, and edit tools' JSONC configs |
 | `comments`, `hooks`, `skill`, `rules` | Install the shared controls |

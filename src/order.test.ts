@@ -41,7 +41,7 @@ function state(...later: readonly Later[]): OrderState {
   const entries = later.map(
     (detail, index): LaterEntry => ({
       seq: index + 2,
-      at: `2026-09-30T10:00:${String(index).padStart(2, "0")}Z`,
+      ts: `2026-09-30T10:00:${String(index).padStart(2, "0")}Z`,
       by: OPERATOR_ACTOR,
       ...detail,
     }),

@@ -8,12 +8,11 @@ Sessions are read from these files. Each one lands in the same tables.
 
 - **Claude Code.** `~/.claude/projects/<slug>/<session-id>.jsonl`, one JSON object per line. Subagents are under `<session-id>/subagents/`. A subagent's session is `<agent id>@<parent session id>`, because an agent id repeats across parents.
 - **Codex.** `~/.codex/sessions/**/rollout-*.jsonl` and `~/.codex/archived_sessions/`. The rollout is the source of record. Codex's own SQLite files are a projection of it, and only the rollout holds token usage.
-- **Grok Build.** `~/.grok/sessions/<encoded-cwd>/<session-id>/updates.jsonl`. `summary.json` in that directory holds the title, working directory, branch, model, and parent. A child session is an ordinary session whose summary names its parent. Grok is read from its files only; `dim` installs no hook for it.
+- **Grok Build.** `~/.grok/sessions/<encoded-cwd>/<session-id>/updates.jsonl`. `summary.json` in that directory holds the title, working directory, branch and parent. A child session is an ordinary session whose summary names its parent. Grok is read from its files only; `dim` installs no hook for it.
 - **Pi and omp.** `~/.pi/agent/sessions/<encoded-cwd>/<time>_<session-id>.jsonl` and the same layout under `~/.omp`, omp being a fork of Pi that keeps its session format. One parser reads both; each is recorded under its own name. Read from their files only.
 
 These are read too.
 
-- **Prompt history.** `~/.claude/history.jsonl`, `~/.codex/history.jsonl`, and each Grok directory's `prompt_history.jsonl`. This is what remains when the transcript was deleted.
 - **Hooks.** Events spooled by the hooks `dim` installs (see [Hooks](#hooks)).
 - **Git.** `git log` of the repos the session rows name, into `repo_commit` and `commit_file`, and `git ls-files` into `repo_file`.
 
@@ -27,15 +26,23 @@ Claude Code deletes transcripts after 30 days unless `cleanupPeriodDays` is rais
 
 ## Schema
 
-[`src/db-schema.ts`](../src/db-schema.ts) is the schema, and each table carries the reason for its own shape beside it.
+[`src/db-schema.ts`](../src/db-schema.ts) is the schema, the record's tables and the factory's in one statement under one version.
 
-- **Every tool lands in the same tables.** A session records its `tool` from the vocabulary in [`src/ingest-tools.ts`](../src/ingest-tools.ts), and tool-specific detail goes in an `extra` JSON column, so a question about more than one needs no `UNION`. Times are ISO-8601 UTC text.
-- **Tables are rebuilt by re-reading their sources**, so a schema change is `dim rebuild`, not a migration. `rebuild` drops the derived tables it names and recreates them from `SCHEMA_SQL`, since `CREATE TABLE IF NOT EXISTS` would leave an old shape in place.
-- **Tables with no source to re-read survive it.** `hook_event` is dropped and written back row for row, so it can still take a schema change. A table `rebuild` does not name, such as `guidance_walk` or any of the factory's, is left as it is ([record versions](core.md#record-versions)).
+- **Every tool lands in the same tables.** A session records its `tool` from the vocabulary in [`src/ingest-tools.ts`](../src/ingest-tools.ts), which every `tool` column checks, so a question about more than one needs no `UNION`. Times are ISO-8601 UTC text.
+- **What a table holds.**
+  - A `message` is one row per Claude response, its content-block lines collapsed on `message.id`, and one per Codex `response_item` message.
+  - A `tool_call` is written from its call and again from its result, and whichever lands second fills in what the first could not know.
+  - A `git_command` is one git operation read from a shell command, so `git add -A && git commit` is one call and two rows. `tool_call.git_operation` is Claude's own metadata beside it, covering push, branch and PR only.
+  - A `skill_load` says `how` the body arrived: `model` through the Skill tool, `user` by a typed `/name` or `$name`, `read` by opening `SKILL.md`, which is Codex's usual path.
+  - A Claude `turn` is keyed by its `turn_duration` line and carries `message_count`; a Codex turn carries `time_to_first_token_ms`.
+  - `repo_commit.repo` is the git toplevel, one row per checkout, and `label` is the `owner/repo` the checkouts of one project share. `commit_file` is every path a commit touched; `repo_file` is what each repo tracks now, replaced on every sync, so a path from it opens. Both store absolute paths, to join a tool call's path on an index.
+- **Tables are rebuilt by re-reading their sources**, so a schema change is `dim rebuild`, not a migration. `rebuild` drops every table and recreates them from `SCHEMA_SQL`, since `CREATE TABLE IF NOT EXISTS` would leave an old shape in place, and a table the schema no longer defines goes with them.
+- **`hook_event` has no source to re-read**, so `rebuild` copies its rows aside and writes them back into the current definition. The factory's tables are reset ([record versions](core.md#record-versions)).
 - **`SCHEMA_VERSION` is bumped for a change only a re-read can correct** — a changed column, or a changed rule for what identifies a row. The version is the file's `PRAGMA user_version`. Until `rebuild` has finished and stamped the new version, `sync`, every other write and every reader refuse the database with `record_version`, whichever side is newer. A reader checks before its first query ([`src/db-read.ts`](../src/db-read.ts)), and the wall shows the refusal as it shows any failed read. `dim doctor` alone reads any version, so it can report the drift and its repair.
 - **A new table needs no bump**, because every write opens the database through `SCHEMA_SQL`, which creates it. That holds only until some database has run the statement; after that, changing its columns takes a bump.
 - [`src/db-schema-version.test.ts`](../src/db-schema-version.test.ts) pins the version beside a digest of `SCHEMA_SQL`, so every schema edit changes that line and two branches editing the schema conflict there.
-- **Model identity is a column**, on `session`, `message`, `usage`, `tool_call`, `turn` and `skill_load`, kept verbatim as each surface reported it.
+- **Model identity is a column**, on `message`, `usage`, `tool_call`, `turn` and `skill_load`, kept verbatim as each surface reported it.
+
 ## Ingestion
 
 ```text
@@ -44,11 +51,11 @@ dim sync: drain the spool → read changed files → derive session ends
 
 - **No network, credential or per-token cost, and no model reads a transcript.** Nothing is filtered or scored at ingest; deciding at read time is the only policy that is reversible.
 - **Per-tool parsers** ([`src/ingest-parse-claude.ts`](../src/ingest-parse-claude.ts), [`src/ingest-parse-codex.ts`](../src/ingest-parse-codex.ts), [`src/ingest-parse-grok.ts`](../src/ingest-parse-grok.ts), [`src/ingest-parse-pi.ts`](../src/ingest-parse-pi.ts)) turn lines into rows and know nothing of the database; [`src/ingest.ts`](../src/ingest.ts) writes their rows and knows nothing of any format.
-- **Another session source is one entry in [`src/ingest-sources.ts`](../src/ingest-sources.ts).** It lists session files and parses each into the same rows. Listing names the session and where it lives. Claude Code, Codex, Grok Build, Pi and omp are files, so each one is a [`FileSpec`](../src/ingest.ts) and a byte cursor. A source whose sessions are not files implements the same two steps without a path. The name is added to the vocabulary in [`src/ingest-tools.ts`](../src/ingest-tools.ts), which is what the schema checks. Prompt history, when the tool keeps one, is a path and a function that picks the session id, the time, and the text. A source does not require hooks or a harness.
+- **Another session source is one entry in [`src/ingest-sources.ts`](../src/ingest-sources.ts).** It lists session files and parses each into the same rows. Listing names the session and where it lives. Claude Code, Codex, Grok Build, Pi and omp are files, so each one is a [`FileSpec`](../src/ingest.ts) and a byte cursor. A source whose sessions are not files implements the same two steps without a path. The name is added to the vocabulary in [`src/ingest-tools.ts`](../src/ingest-tools.ts), which is what the schema checks. A source does not require hooks or a harness.
 - **Incremental.** `source_file.bytes_ingested` is each file's cursor, and a changed file is read from it. A file shorter than its cursor is re-ingested from zero in one transaction with the removal of what it wrote: its session row stays, so a subagent's link to it holds, and only the fields the transcript supplies are cleared and read again.
 - **The cursor follows the session, not the path.** Codex archives a rollout by moving it, so the cursor is keyed by `(session_id, kind)` and `message.src_file` follows the new path through `ON UPDATE CASCADE`.
 - **Idempotent.** Natural keys make a re-run a no-op: Claude `message.id` and `uuid`, tool-use ids, `response_id`, Codex item ids and `(thread_id, turn_id)`, Grok event ids and tool-call ids, Pi entry ids and tool-call ids.
-- **Claude usage is deduplicated and the largest kept.** One API response is written as one line per content block, each repeating `message.id` and a `usage` that accumulates as the response streams, so the line with the most output tokens holds the total.
+- **Claude usage is deduplicated and the largest kept.** One API response is written as one line per content block, each repeating `message.id` and a `usage` that accumulates as the response streams, so the line with the most output tokens holds the total, and its row is replaced whole. A terminal `stop_reason` picks the same line for all but a sliver of responses, and each of those was interrupted and has no terminal line, so keying on it would drop them.
 - **Schedule.** `dim agent install` writes a `launchd` agent that runs `dim sync` every 15 minutes, naming `bun` by absolute path because launchd starts with almost no environment. `dim rebuild` is `sync` with every cursor reset.
 - **The lock** is a directory under the state directory's `locks/` that records its holder's pid, since macOS has no `flock` and a killed run would otherwise leave it held forever.
 
@@ -58,9 +65,9 @@ dim sync: drain the spool → read changed files → derive session ends
 
 | Event | What it does |
 |---|---|
-| `SessionStart` | spools the start source, model and harness pid from the hook's parent process. `dim hooks start` prints declared repo commands and records the guidance in force |
+| `SessionStart` | spools the session's directory and the harness pid from the hook's parent process. `dim hooks start` prints declared repo commands |
 | `SessionEnd` | spools the end time and reason, which a transcript lacks |
-| `PostToolUse` | spools the tool call with its payload. `dim hooks edit` runs the repo's declared format task in the checkout an edit touched ([`src/format-edit.ts`](../src/format-edit.ts)), bounded and failing open. In a factory worker's session it runs nothing, since the worker wrote that manifest and the hook runs outside its sandbox; a builder formats inside its sandbox, and the runner's check holds the result |
+| `PostToolUse` | spools the event. `dim hooks edit` runs the repo's declared format task in the checkout an edit touched ([`src/format-edit.ts`](../src/format-edit.ts)), bounded and failing open. In a factory worker's session it runs nothing, since the worker wrote that manifest and the hook runs outside its sandbox; a builder formats inside its sandbox, and the runner's check holds the result |
 - **The spool hook never opens the database.** It writes one file per event, so a session never waits on `sessions.db`; `sync` drains the spool into `hook_event`.
 - **`hook_event` is never re-derived**, because a hook fires once. It has no foreign key to `session`, so an event that arrives before its transcript waits for it. A spool file that cannot be placed moves to `spool/unreadable/`, since it is the only copy. A drain is one transaction, and a file is deleted only once it has committed.
 - **One source per column.** `session.ended_at` and `end_reason` come from `hook_event` alone, never from a transcript.
@@ -69,8 +76,8 @@ dim sync: drain the spool → read changed files → derive session ends
 
 ## Tokens and cost
 
-- **Tokens** come from `usage` only. Counts from different tools are never summed into one total, since they are not the same currency.
-- **Cost** is stored only where the tool computed it. Claude writes that figure on `cost-state`. The database derives no dollar figure.
+- **Tokens** come from `usage` only. Counts from different tools are never summed into one total, since they are not the same currency: `input_tokens` is stored as each tool reports it, which for Claude excludes cached reads and for Codex includes them.
+- **No cost is stored**, and the database derives no dollar figure.
 
 ## Read path
 

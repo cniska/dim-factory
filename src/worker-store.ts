@@ -3,28 +3,6 @@ import { invariant } from "./assert";
 import { HarnessName } from "./harness-name";
 import { ROLES, type Role, type Worker, type WorkerSession } from "./worker-contract";
 
-export const WORKER_SQL = `
-CREATE TABLE IF NOT EXISTS worker (
-  name        TEXT PRIMARY KEY CHECK (name GLOB '[a-z]*-[0-9]*'),
-  role        TEXT NOT NULL CHECK (role IN ('operator','planner','builder','reviewer')),
-  project     TEXT NOT NULL,
-  order_id    TEXT,
-  created_by  TEXT REFERENCES worker(name),
-  created_at  TEXT NOT NULL,
-  CHECK ((role = 'operator') = (order_id IS NULL AND created_by IS NULL))
-);
-CREATE UNIQUE INDEX IF NOT EXISTS worker_station ON worker(order_id, role) WHERE order_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS worker_operator ON worker(project) WHERE role = 'operator';
-CREATE TABLE IF NOT EXISTS worker_session (
-  id              TEXT PRIMARY KEY,
-  worker          TEXT NOT NULL REFERENCES worker(name),
-  harness         TEXT NOT NULL,
-  pid             INTEGER NOT NULL,
-  pid_started_at  TEXT NOT NULL,
-  registered_at   TEXT NOT NULL
-);
-`;
-
 type WorkerRow = {
   readonly name: string;
   readonly role: string;
@@ -61,19 +39,25 @@ const sessionOf = (row: SessionRow): WorkerSession => ({
   process: { pid: row.pid, startedAt: row.pid_started_at },
 });
 
-export function insertWorker(db: Database, worker: Worker, at: string): void {
+export function insertWorker(db: Database, worker: Worker): void {
   const [order, createdBy] = worker.role === "operator" ? [null, null] : [worker.order, worker.createdBy];
-  db.run(
-    "INSERT INTO worker (name, role, project, order_id, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-    [worker.name, worker.role, worker.project, order, createdBy, at],
-  );
+  db.run("INSERT INTO worker (name, role, project, order_id, created_by) VALUES (?, ?, ?, ?, ?)", [
+    worker.name,
+    worker.role,
+    worker.project,
+    order,
+    createdBy,
+  ]);
 }
 
-export function insertSession(db: Database, session: WorkerSession, at: string): void {
-  db.run(
-    "INSERT INTO worker_session (id, worker, harness, pid, pid_started_at, registered_at) VALUES (?, ?, ?, ?, ?, ?)",
-    [session.id, session.worker, session.harness, session.process.pid, session.process.startedAt, at],
-  );
+export function insertSession(db: Database, session: WorkerSession): void {
+  db.run("INSERT INTO worker_session (id, worker, harness, pid, pid_started_at) VALUES (?, ?, ?, ?, ?)", [
+    session.id,
+    session.worker,
+    session.harness,
+    session.process.pid,
+    session.process.startedAt,
+  ]);
 }
 
 export function workerNames(db: Database): ReadonlySet<string> {

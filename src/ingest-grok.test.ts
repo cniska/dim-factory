@@ -9,7 +9,6 @@ import { dbPath, type Env, grokDir } from "./paths";
 
 const PARENT = "018f3b2a-7c3e-7b2a-8f1e-6c0b9a2d4e11";
 const CHILD = "018f3b2a-7c3e-7b2a-8f1e-6c0b9a2d4e22";
-const GONE = "018f3b2a-7c3e-7b2a-8f1e-6c0b9a2d4e33";
 const ORPHAN = "018f3b2a-7c3e-7b2a-8f1e-6c0b9a2d4e44";
 const AT = 1700000000000;
 const roots: string[] = [];
@@ -143,16 +142,6 @@ function seed(env: Env): string {
       created_at: "2023-11-14T22:13:20.000Z",
     },
   );
-  const history = join(grokDir(env), "sessions", "%2FUsers%2Fx%2Fcode%2Fdemo", "prompt_history.jsonl");
-  writeFileSync(
-    history,
-    `${JSON.stringify({
-      timestamp: "2023-11-14T22:13:21.000Z",
-      session_id: GONE,
-      prompt: "only in history",
-      is_bash: false,
-    })}\n`,
-  );
   return path;
 }
 
@@ -168,16 +157,13 @@ describe("grok sessions", () => {
       expect(report.orphanSubagents).toEqual([ORPHAN]);
       expect(
         db
-          .prepare(
-            "SELECT id, tool, cwd, title, last_model, git_branch, agent_type, parent_id FROM session WHERE id = ?",
-          )
+          .prepare("SELECT id, tool, cwd, title, git_branch, agent_type, parent_id FROM session WHERE id = ?")
           .get(PARENT),
       ).toEqual({
         id: PARENT,
         tool: "grok",
         cwd: "/Users/x/code/demo",
         title: "import grok",
-        last_model: "grok-4.7",
         git_branch: "main",
         agent_type: "grok-build",
         parent_id: null,
@@ -207,14 +193,9 @@ describe("grok sessions", () => {
       });
       const stored =
         JSON.stringify(db.prepare("SELECT text FROM message").all()) +
-        JSON.stringify(db.prepare("SELECT extra, command FROM tool_call").all());
+        JSON.stringify(db.prepare("SELECT command FROM tool_call").all());
       expect(stored).not.toContain("THINKING_SECRET");
       expect(stored).not.toContain("SECRET_RESULT");
-      expect(db.prepare("SELECT tool, text, project FROM orphan_prompt").get()).toEqual({
-        tool: "grok",
-        text: "only in history",
-        project: "/Users/x/code/demo",
-      });
     } finally {
       closeDb(db);
     }

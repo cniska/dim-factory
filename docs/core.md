@@ -34,7 +34,7 @@ A project's settings are its committed `.dim/config.json`, layered over the user
 
 ## The rules
 
-- **The log is the only state.** Each order has one append-only log of typed entries, each naming who took it: a worker's session, or the factory with its version and the entry that caused it. Everything else, such as the status, the plan, the findings and what the order admits, is a fold over the log ([`src/order.ts`](../src/order.ts)).
+- **The log is the only state.** Each order has one append-only log of typed entries, each naming who took it: a worker's session, or the factory with its version and the entry that caused it. Everything else, such as the status, the plan, the findings and what the order admits, is a fold over the log ([`src/order.ts`](../src/order.ts)). The one exception is a [run](glossary.md), a row per live process that is deleted when the process ends.
 - **An order admits a set of actions.** The fold gives the actions the order accepts now and the one that moves it on. Any other action is refused, naming the set. A run already alive makes the order busy, except to a cancel of a station turn.
 - **A worker writes only through its turn.** Each turn opens a Unix socket and passes its path to the worker; any connection to it acts as that worker. The worker's sandbox cannot write the record, so every work act is a request the station checks and records. Once the turn ends, nothing more is recorded for it.
 - **Who acts is read from the process tree.** A command acts as the worker whose registered session is its nearest ancestor. Nothing a worker sets changes that.
@@ -89,7 +89,7 @@ A run that hangs ends in a `started` line with no `ended`, naming what it waits 
 
 ## Record versions
 
-The record carries one schema version as `PRAGMA user_version`. Every reader and writer refuses another version, naming `dim rebuild` as the repair; `dim doctor` reports a mismatch. While orders are disposable, a change to a factory table resets the factory.
+The record carries one schema version as `PRAGMA user_version`, covering the factory's tables with the record's. Every reader and writer refuses another version, naming `dim rebuild` as the repair; `dim doctor` reports a mismatch. While orders are disposable, `dim rebuild` resets the factory: its workers, sessions, logs and runs are dropped and recreated empty.
 
 ## Design rule
 

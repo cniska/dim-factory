@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import wallServeConfig from "../../bunfig.toml";
-import { openFactory } from "../factory-db";
+import { openDb } from "../db";
 import type { LogEntry } from "../order-contract";
 import { appendEntries } from "../order-store";
 import { insertWorker } from "../worker-store";
@@ -21,7 +21,7 @@ afterEach(() => {
 
 const ADDED: LogEntry = {
   seq: 1,
-  at: "2026-10-02T10:00:00.000Z",
+  ts: "2026-10-02T10:00:00.000Z",
   by: { kind: "worker", worker: "hinge-1", session: "s-op" },
   action: "order_added",
   details: { title: "Greet the reader", description: "Add a greeting.", project: "acme/widgets" },
@@ -29,7 +29,7 @@ const ADDED: LogEntry = {
 
 const RUN: LogEntry = {
   seq: 2,
-  at: "2026-10-02T10:01:00.000Z",
+  ts: "2026-10-02T10:01:00.000Z",
   by: { kind: "worker", worker: "hinge-1", session: "s-op" },
   action: "order_run",
   details: {},
@@ -39,8 +39,8 @@ function record(): { readonly path: string; readonly db: Database } {
   const root = mkdtempSync(join(tmpdir(), "dim-wall-"));
   roots.push(root);
   const path = join(root, "sessions.db");
-  const db = openFactory(path);
-  insertWorker(db, { role: "operator", name: "hinge-1", project: "acme/widgets" }, ADDED.at);
+  const db = openDb(path);
+  insertWorker(db, { role: "operator", name: "hinge-1", project: "acme/widgets" });
   return { path, db };
 }
 

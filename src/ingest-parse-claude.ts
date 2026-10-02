@@ -1,5 +1,4 @@
 import {
-  type CostRow,
   jsonOrUndefined,
   type MessageRow,
   type ParsedChunk,
@@ -37,11 +36,6 @@ type ClaudeUsage = {
   output_tokens?: number;
   cache_read_input_tokens?: number;
   cache_creation_input_tokens?: number;
-  cache_creation?: { ephemeral_1h_input_tokens?: number; ephemeral_5m_input_tokens?: number };
-  output_tokens_details?: { thinking_tokens?: number } | null;
-  service_tier?: string | null;
-  speed?: string | null;
-  server_tool_use?: unknown;
 };
 
 type ClaudeLine = {
@@ -73,14 +67,10 @@ type ClaudeLine = {
   subtype?: string;
   durationMs?: number;
   messageCount?: number;
-  totalCostUSD?: number;
-  modelUsage?: Record<string, unknown>;
-  hasUnknownModelCost?: boolean;
   toolUseResult?: ClaudeToolUseResult;
   message?: {
     id?: string;
     model?: string;
-    stop_reason?: string | null;
     content?: string | ContentBlock[];
     usage?: ClaudeUsage | null;
   };
@@ -125,7 +115,6 @@ export function parseClaudeChunk(
   const messages: MessageRow[] = [];
   const usage: UsageRow[] = [];
   const turns: TurnRow[] = [];
-  const costs: CostRow[] = [];
   const toolCalls: ToolCallRow[] = [];
   const skillLoads: SkillLoadRow[] = [];
   const dropped: number[] = [];
@@ -169,17 +158,6 @@ export function parseClaudeChunk(
       continue;
     }
 
-    if (line.type === "cost-state" && line.modelUsage) {
-      costs.push({
-        reportedBy: "claude-code cost-state",
-        totalCostUsd: line.totalCostUSD,
-        modelUsage: JSON.stringify(line.modelUsage),
-        hasUnknownModelCost: line.hasUnknownModelCost,
-        ts,
-      });
-      continue;
-    }
-
     if (line.type === "assistant" && line.message?.id) {
       if (!ts) {
         dropped.push(srcLine);
@@ -193,7 +171,6 @@ export function parseClaudeChunk(
         gitBranch: nonEmpty(line.gitBranch),
         cliVersion: nonEmpty(line.version),
         entrypoint: nonEmpty(line.entrypoint),
-        model,
       });
       messages.push({
         id: line.message.id,
@@ -203,7 +180,6 @@ export function parseClaudeChunk(
         isMeta: false,
         isSkillBody: false,
         attributionSkill: nonEmpty(line.attributionSkill),
-        stopReason: nonEmpty(line.message.stop_reason),
         text: visibleText(line.message.content),
         srcLine,
         extra: jsonOrUndefined({
@@ -253,15 +229,8 @@ export function parseClaudeChunk(
           inputTokens: u.input_tokens ?? 0,
           cacheReadTokens: u.cache_read_input_tokens ?? 0,
           cacheWriteTokens: u.cache_creation_input_tokens ?? 0,
-          cacheWrite1hTokens: u.cache_creation?.ephemeral_1h_input_tokens,
           outputTokens: u.output_tokens ?? 0,
-          reasoningTokens: u.output_tokens_details?.thinking_tokens,
           attributionSkill: nonEmpty(line.attributionSkill),
-          extra: jsonOrUndefined({
-            service_tier: u.service_tier,
-            speed: u.speed,
-            server_tool_use: u.server_tool_use,
-          }),
         });
       }
       continue;
@@ -341,5 +310,5 @@ export function parseClaudeChunk(
     }
   }
 
-  return { session, messages, usage, turns, costs, toolCalls, skillLoads, dropped };
+  return { session, messages, usage, turns, toolCalls, skillLoads, dropped };
 }
