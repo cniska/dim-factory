@@ -1,16 +1,17 @@
 import { type Command, Ran, UsageError } from "./cli-contract";
+import { parseArgs } from "./cli-flags";
 import { openReadOnly } from "./db-read";
 import { diagnose } from "./doctor";
 import { dbPath } from "./paths";
 
-const USAGE = "usage: dim doctor";
+const usage = (message: string) => new UsageError(`dim doctor ${message}`);
 
 export const doctorCommand: Command = {
   name: "doctor",
-  usage: USAGE,
+  usage: "usage: dim doctor",
   summary: "check that collection is actually working, and say what to fix",
   run(args) {
-    if (args.length > 0) throw new UsageError(USAGE);
+    parseArgs(args, { positionals: [0, 0], flags: [] }, usage);
     const db = openReadOnly(dbPath(), { forDiagnosis: true });
     try {
       const checks = diagnose(db, process.env);
