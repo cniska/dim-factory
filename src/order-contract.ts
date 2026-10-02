@@ -2,6 +2,7 @@ import { z } from "zod";
 import { refuser } from "./coded-error";
 import { HarnessName } from "./harness-contract";
 import { SLICE_CODES } from "./slice-contract";
+import type { Role } from "./worker-contract";
 
 export const STATIONS = ["plan", "build", "review"] as const;
 export const Station = z.enum(STATIONS);
@@ -260,3 +261,47 @@ export type LogEntry = Shared & Detailed;
 export type LaterEntry = Shared & Later;
 
 export type EntryOf<A extends Action> = Extract<LogEntry, { readonly action: A }>;
+
+export type SliceView = { readonly title: string; readonly outcome: string; readonly commit: string | null };
+
+export type SessionView = {
+  readonly id: string;
+  readonly harness: string;
+  readonly pid: number;
+  readonly died?: { readonly code: string };
+};
+
+export type WorkerView = {
+  readonly name: string;
+  readonly role: Role;
+  readonly createdBy?: string;
+  readonly sessions: readonly SessionView[];
+};
+
+type FindingView = {
+  readonly id: string;
+  readonly area: string;
+  readonly file: string;
+  readonly line: number;
+  readonly failure: string;
+  readonly fix: string;
+  readonly severity: Severity;
+  readonly answer?: Answer;
+};
+
+export type OrderView = {
+  readonly id: string;
+  readonly title: string;
+  readonly project: string;
+  readonly description: string;
+  readonly status: Status;
+  readonly station: Station | null;
+  readonly next: Next | null;
+  readonly admits: readonly ActKind[];
+  readonly branch: string;
+  readonly workspace: string;
+  readonly log: readonly LogEntry[];
+  readonly workers: readonly WorkerView[];
+  readonly slices: readonly SliceView[];
+  readonly findings: readonly FindingView[];
+};

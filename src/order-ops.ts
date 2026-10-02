@@ -23,12 +23,13 @@ import {
   type LogEntry,
   type OperatorAct,
   ORDER_ID_LENGTH,
+  type OrderView,
   type RunKind,
   refuseOrder,
   type Station,
 } from "./order-contract";
 import { appendEntry, deleteRun, insertRun, orderIds, readLog, runOf, setRunHarness } from "./order-store";
-import { type OrderView, orderView, workerNamesOf } from "./order-view";
+import { orderView, workerNamesOf } from "./order-view";
 import { type Env, workspaceDir } from "./paths";
 import { checkoutAt, checkoutOf, defaultBranch } from "./project";
 import type { Trace } from "./trace-contract";

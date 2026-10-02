@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { Glob } from "bun";
 
 const SRC = import.meta.dir;
@@ -19,7 +19,7 @@ const FACTORY_MODULES = [
 
 const COMMAND_IMPORTS = /^\.\/([a-z-]+-(ops|contract)|cli-[a-z-]+|db|db-read|paths)$/;
 
-const transpiler = new Bun.Transpiler({ loader: "ts" });
+const transpiler = new Bun.Transpiler({ loader: "tsx" });
 
 const TYPE_IMPORT = /^import\s+type\s[^;]*?from\s+"([^"]+)"/gm;
 
@@ -32,9 +32,14 @@ function importsOf(text: string): readonly string[] {
 }
 
 function sources(pattern: string): readonly { readonly file: string; readonly text: string }[] {
-  return [...new Glob(pattern).scanSync(SRC)]
-    .filter((file) => !file.endsWith(".test.ts"))
-    .map((file) => ({ file, text: readFileSync(join(SRC, file), "utf8") }));
+  return withTests(pattern).filter(({ file }) => !file.endsWith(".test.ts"));
+}
+
+function withTests(pattern: string): readonly { readonly file: string; readonly text: string }[] {
+  return [...new Glob(pattern).scanSync(SRC)].map((file) => ({
+    file,
+    text: readFileSync(join(SRC, file), "utf8"),
+  }));
 }
 
 const moduleFiles = () =>
@@ -51,7 +56,7 @@ export function commandBreaches(file: string, text: string): readonly string[] {
     .map((path) => `${file} imports ${path}`);
 }
 
-const MODULE_FILE = /^\.\/([a-z]+)-([a-z-]+)$/;
+const MODULE_FILE = /^\.\.?\/([a-z]+)-([a-z-]+)$/;
 
 const PUBLIC_PARTS = new Set(["ops", "contract", "command"]);
 
@@ -61,7 +66,7 @@ function isInternal(owner: string, part: string): boolean {
 }
 
 export function boundaryBreaches(file: string, text: string): readonly string[] {
-  const importer = file.split("-")[0]?.replace(/\.tsx?$/, "");
+  const importer = basename(file).split(/[-.]/)[0];
   return importsOf(text)
     .filter((path) => {
       const named = MODULE_FILE.exec(path);
@@ -79,8 +84,9 @@ export function sqlBreaches(file: string, text: string): readonly string[] {
 }
 
 describe("the factory's modules", () => {
-  test("another module reaches a factory module only through its rules file, ops, contract and command", () => {
-    expect(sources("*.ts").flatMap(({ file, text }) => boundaryBreaches(file, text))).toEqual([]);
+  test("another module or its tests reach a factory module only through its public files; only a test fixture seeds a store", () => {
+    const checked = withTests("**/*.{ts,tsx}").filter(({ file }) => !file.endsWith(".test-support.ts"));
+    expect(checked.flatMap(({ file, text }) => boundaryBreaches(file, text))).toEqual([]);
   });
 
   test("a factory command imports only ops, contracts and the CLI's own files", () => {

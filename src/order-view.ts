@@ -1,49 +1,7 @@
-import { admits, nextOf, type OrderState, type SliceView, slicesOf, stationOf } from "./order";
-import type { ActKind, Answer, LogEntry, Next, Severity, Station, Status } from "./order-contract";
-import type { Role, WorkerRecord } from "./worker-contract";
+import { admits, nextOf, type OrderState, slicesOf, stationOf } from "./order";
+import type { LogEntry, OrderView, SessionView, WorkerView } from "./order-contract";
+import type { WorkerRecord } from "./worker-contract";
 import { branchOf } from "./workspace";
-
-type SessionView = {
-  readonly id: string;
-  readonly harness: string;
-  readonly pid: number;
-  readonly died?: { readonly code: string };
-};
-
-type WorkerView = {
-  readonly name: string;
-  readonly role: Role;
-  readonly createdBy?: string;
-  readonly sessions: readonly SessionView[];
-};
-
-type FindingView = {
-  readonly id: string;
-  readonly area: string;
-  readonly file: string;
-  readonly line: number;
-  readonly failure: string;
-  readonly fix: string;
-  readonly severity: Severity;
-  readonly answer?: Answer;
-};
-
-export type OrderView = {
-  readonly id: string;
-  readonly title: string;
-  readonly project: string;
-  readonly description: string;
-  readonly status: Status;
-  readonly station: Station | null;
-  readonly next: Next | null;
-  readonly admits: readonly ActKind[];
-  readonly branch: string;
-  readonly workspace: string;
-  readonly log: readonly LogEntry[];
-  readonly workers: readonly WorkerView[];
-  readonly slices: readonly SliceView[];
-  readonly findings: readonly FindingView[];
-};
 
 export function workerNamesOf(log: readonly LogEntry[]): readonly string[] {
   const names = log.flatMap((entry) => [

@@ -6,8 +6,7 @@ import { basename, join } from "node:path";
 import wallServeConfig from "../../bunfig.toml";
 import { openDb } from "../db";
 import type { LogEntry } from "../order-contract";
-import { appendEntry } from "../order-store";
-import { insertWorker } from "../worker-store";
+import { seedEntry, seedOperator } from "../record-seed.test-support";
 import { wallHandler } from "./server";
 
 const WALL_PAGE = new URL("./index.html", import.meta.url).pathname;
@@ -40,7 +39,7 @@ function record(): { readonly path: string; readonly db: Database } {
   roots.push(root);
   const path = join(root, "sessions.db");
   const db = openDb(path);
-  insertWorker(db, { role: "operator", name: "hinge-1", project: "acme/widgets" });
+  seedOperator(db, "hinge-1", "acme/widgets");
   return { path, db };
 }
 
@@ -116,7 +115,7 @@ describe("serving", () => {
 describe("pushing the record", () => {
   test("sends the board when a socket opens, again only once the record changes, and ignores what a page sends", () => {
     const { path, db } = record();
-    appendEntry(db, ORDER, ADDED);
+    seedEntry(db, ORDER, ADDED);
     const wall = wallHandler(path);
     const board = socket(null);
 
@@ -145,7 +144,7 @@ describe("pushing the record", () => {
     ]);
 
     wall.websocket.message();
-    appendEntry(db, ORDER, RUN);
+    seedEntry(db, ORDER, RUN);
     wall.tick();
     expect(pushes(board)).toHaveLength(2);
     expect(pushes(board)[1].snapshot.orders[0].lastEventAt).toBe("2026-10-02T10:01:00.000Z");
@@ -153,7 +152,7 @@ describe("pushing the record", () => {
 
   test("pushes an open order to its own socket alone as new entries arrive", () => {
     const { path, db } = record();
-    appendEntry(db, ORDER, ADDED);
+    seedEntry(db, ORDER, ADDED);
     const wall = wallHandler(path);
     const board = socket(null);
     const item = socket(ORDER);
@@ -165,7 +164,7 @@ describe("pushing the record", () => {
       "order_added",
     ]);
 
-    appendEntry(db, ORDER, RUN);
+    seedEntry(db, ORDER, RUN);
     wall.tick();
     expect(pushes(item)).toHaveLength(2);
     expect(pushes(item)[1].view.entries.map((entry: { action: string }) => entry.action)).toEqual([
@@ -191,7 +190,7 @@ describe("pushing the record", () => {
 
   test("says the record is another version rather than reading it", () => {
     const { path, db } = record();
-    appendEntry(db, ORDER, ADDED);
+    seedEntry(db, ORDER, ADDED);
     db.run("PRAGMA user_version = 1");
     db.close();
     const board = socket(null);

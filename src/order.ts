@@ -16,6 +16,7 @@ import {
   type RecordedFinding,
   type RunKind,
   refuseOrder,
+  type SliceView,
   type Station,
   type Status,
 } from "./order-contract";
@@ -61,8 +62,6 @@ type Returned =
   | { readonly kind: "ship"; readonly check: FailedCheck };
 
 export type Death = { readonly session: string; readonly code: DeathCode; readonly copied: boolean };
-
-export type SliceView = { readonly title: string; readonly outcome: string; readonly commit: string | null };
 
 export type OrderState = {
   readonly id: string;

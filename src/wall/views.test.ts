@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { LogEntry, Status } from "../order-contract";
-import type { OrderView } from "../order-view";
+import type { LogEntry, OrderView, Status } from "../order-contract";
 import { itemViewOf, MAX_COLUMN_CARDS, snapshotOf } from "./views";
 
 const OPERATOR = { kind: "worker", worker: "hinge-1", session: "s-op" } as const;

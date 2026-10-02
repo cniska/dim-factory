@@ -1,7 +1,6 @@
 import { invariant, unreachable } from "../assert";
 import { ROLE_AT } from "../order";
-import type { LogEntry, Station } from "../order-contract";
-import type { OrderView } from "../order-view";
+import type { LogEntry, OrderView, Station } from "../order-contract";
 import type {
   BoardOrder,
   BoardStatus,
