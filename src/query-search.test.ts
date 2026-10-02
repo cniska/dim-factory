@@ -48,6 +48,14 @@ describe("search", () => {
     db.close();
   });
 
+  test("counts a word typed twice as one term", () => {
+    const db = seeded();
+    const result = ask(db, { arg: "checkout checkout" });
+    expect(result.rows.map((r) => r[result.columns.indexOf("terms")])).toEqual(["1/1"]);
+    expect(result.denominator).toContain("how many of the 1 terms matched");
+    db.close();
+  });
+
   test("finds the word that was typed", () => {
     const db = seeded();
     const result = ask(db, { arg: "checkout" });
@@ -102,7 +110,8 @@ describe("search", () => {
 
   test("searches a bounded number of words, and says what it dropped", () => {
     const db = seeded();
-    const result = ask(db, { arg: `checkout ${"word ".repeat(40)}` });
+    const words = Array.from({ length: 40 }, (_, i) => `word${i}`).join(" ");
+    const result = ask(db, { arg: `checkout ${words}` });
     expect(result.denominator).toContain("Only the first 16 words were searched");
     expect(result.denominator).toContain("25 more were dropped");
     db.close();

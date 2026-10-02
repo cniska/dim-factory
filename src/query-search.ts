@@ -5,7 +5,7 @@ const MAX_TERMS = 16;
 type Term = { readonly word: string; readonly quoted: string };
 
 function termsOf(words: string): { readonly terms: readonly Term[]; readonly dropped: number } {
-  const all = words.split(/\s+/).filter(Boolean);
+  const all = [...new Set(words.split(/\s+/).filter(Boolean))];
   return {
     terms: all.slice(0, MAX_TERMS).map((word) => ({ word, quoted: `"${word.replaceAll('"', '""')}"` })),
     dropped: Math.max(0, all.length - MAX_TERMS),
@@ -27,7 +27,7 @@ export const search: Query = {
          WHERE message_fts MATCH ? AND ${SAID}) AS n`,
         [term.quoted],
       ) === 0;
-    const missing = [...new Set(terms.filter(saidNothing).map((term) => term.word))];
+    const missing = terms.filter(saidNothing).map((term) => term.word);
     const perTerm = quoted
       .map(() => "SELECT rowid FROM message_fts WHERE message_fts MATCH ?")
       .join(" UNION ALL ");
