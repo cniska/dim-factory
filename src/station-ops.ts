@@ -6,9 +6,8 @@ import { userConfigPath } from "./config";
 import { writeTransaction } from "./db";
 import { checkTask } from "./declared-tasks";
 import { diffSince, gitCommonDir, type Identity, tipOf } from "./git";
-import { claude } from "./harness-claude";
 import type { Outcome, SessionStart, Spawned } from "./harness-contract";
-import { startHarness, stopHarness } from "./harness-ops";
+import { startHarness, stopHarness, WORKER_HARNESS } from "./harness-ops";
 import { type Death, type OrderState, phaseAfter, ROLE_AT, stepRefusal, type WorkBy } from "./order";
 import { type DeathCode, type Later, type OperatorAct, refuseOrder, type Station } from "./order-contract";
 import {
@@ -131,7 +130,7 @@ function openSession(
   return writeTransaction(db, () => {
     markHarness(db, turn.order, process);
     if (session.kind === "resume") return session.record;
-    const registered = { id: session.id, worker: worker.name, harness: claude.name, process };
+    const registered = { id: session.id, worker: worker.name, harness: WORKER_HARNESS.name, process };
     registerSession(db, registered);
     recordAs(turn.trace, db, turn.order, byFactory(turn), {
       action: "session_started",
@@ -270,7 +269,12 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
   const opened = openTurn(trace, workerHomeDir(worker.name));
   try {
     if (session.kind === "fork") {
-      restoreSession(trace, copies, session.from, claude.transcript(opened.home, workspace, session.from));
+      restoreSession(
+        trace,
+        copies,
+        session.from,
+        WORKER_HARNESS.transcript(opened.home, workspace, session.from),
+      );
     }
     const spawned = spawnFor(turn, session, workspace, opened);
     const acting: Acting = { worker, session: openSession(db, turn, worker, session, spawned.pid) };
@@ -283,8 +287,8 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
     const { stop } = served;
     if (stop?.kind === "fault") throw stop.error;
     const id = idOf(session);
-    const outcome = claude.outcome(served.ended, startOf(session));
-    const transcript = claude.transcript(opened.home, workspace, id);
+    const outcome = WORKER_HARNESS.outcome(served.ended, startOf(session));
+    const transcript = WORKER_HARNESS.transcript(opened.home, workspace, id);
     if (outcome.kind === "finished" || sessionWritten(transcript)) copySession(trace, transcript, copies, id);
     return {
       acting,
@@ -309,13 +313,13 @@ function checkOf(turn: TurnOf, workspace: string): string | null {
 }
 
 function spawnFor(turn: TurnOf, session: SessionOf, workspace: string, opened: Turn): Spawned {
-  const argv = claude.argv({
+  const argv = WORKER_HARNESS.argv({
     session: startOf(session),
     model: turn.model,
     policy: policyOf(turn.purpose.policy, { workspace, checkoutGit: turn.checkoutGit, turn: opened }),
     socket: opened.socket,
   });
-  const env = workerEnv(turn.env, opened, turn.identity, claude);
+  const env = workerEnv(turn.env, opened, turn.identity, WORKER_HARNESS);
   return startHarness(turn.trace, { argv, cwd: workspace, env, session: idOf(session) });
 }
 

@@ -51,14 +51,23 @@ export function commandBreaches(file: string, text: string): readonly string[] {
     .map((path) => `${file} imports ${path}`);
 }
 
-const PRIVATE_FILE = /^\.\/([a-z]+)-(store|effects)$/;
+const MODULE_FILE = /^\.\/([a-z]+)-([a-z-]+)$/;
+
+const PUBLIC_PARTS = new Set(["ops", "contract", "command"]);
+
+function isInternal(owner: string, part: string): boolean {
+  if (part === "store" || part === "effects") return true;
+  return FACTORY_MODULES.includes(owner) && !PUBLIC_PARTS.has(part);
+}
 
 export function boundaryBreaches(file: string, text: string): readonly string[] {
   const importer = file.split("-")[0]?.replace(/\.tsx?$/, "");
   return importsOf(text)
     .filter((path) => {
-      const owner = PRIVATE_FILE.exec(path);
-      return owner !== null && owner[1] !== importer;
+      const named = MODULE_FILE.exec(path);
+      if (named === null) return false;
+      const [, owner = "", part = ""] = named;
+      return owner !== importer && isInternal(owner, part);
     })
     .map((path) => `${file} imports ${path}, another module's own file`);
 }
@@ -70,7 +79,7 @@ export function sqlBreaches(file: string, text: string): readonly string[] {
 }
 
 describe("the factory's modules", () => {
-  test("a module's store and effects are imported only by that module", () => {
+  test("another module reaches a factory module only through its rules file, ops, contract and command", () => {
     expect(sources("*.ts").flatMap(({ file, text }) => boundaryBreaches(file, text))).toEqual([]);
   });
 
@@ -122,6 +131,15 @@ describe("the module checks", () => {
     const text = 'import { a } from "./worker-store";\nimport { b } from "./order-store";\n';
     expect(boundaryBreaches("order-ops.ts", text)).toEqual([
       "order-ops.ts imports ./worker-store, another module's own file",
+    ]);
+  });
+
+  test("catch an import of a factory module's internal part, but not of its ops, contract or rules", () => {
+    const text =
+      'import { a } from "./harness-claude";\nimport { b } from "./harness-ops";\n' +
+      'import { c } from "./harness-contract";\nimport { d } from "./order";\nimport { e } from "./config-jsonc";\n';
+    expect(boundaryBreaches("station-ops.ts", text)).toEqual([
+      "station-ops.ts imports ./harness-claude, another module's own file",
     ]);
   });
 

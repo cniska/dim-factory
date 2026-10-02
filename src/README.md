@@ -13,7 +13,7 @@ A module's files are named for their layer:
 | `<module>-store.ts` | Its SQL and the mapping from rows |
 | `<name>-command.ts` | The one `dim` command `<name>`: parse the arguments, call the operations, return the result |
 
-The factory's modules follow this shape. The record's modules predate it and are named by step instead (`ingest-parse-claude.ts`, `ingest-spool.ts`).
+The factory's modules follow this shape, and another module reaches one only through its rules file, contract, ops and command; any other file of it, such as `harness-claude.ts`, is its own ([`factory-modules.test.ts`](factory-modules.test.ts)). The record's modules predate it and are named by step instead (`ingest-parse-claude.ts`, `ingest-spool.ts`).
 
 ## Modules
 

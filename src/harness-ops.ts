@@ -1,8 +1,11 @@
-import { HARNESSES, type Harness, type Spawn, type Spawned } from "./harness-contract";
+import { claude } from "./harness-claude";
+import { type Adapter, HARNESSES, type Harness, type Spawn, type Spawned } from "./harness-contract";
 import { killGroup, spawnHarness } from "./harness-effects";
 import type { Env } from "./paths";
 import type { Trace } from "./trace-contract";
 import type { ProcessId } from "./worker-contract";
+
+export const WORKER_HARNESS: Adapter = claude;
 
 export function harnessInstalled(harness: Harness, env: Env = process.env): boolean {
   return Bun.which(harness.name, { PATH: env.PATH ?? "" }) !== null;
