@@ -18,6 +18,7 @@ describe("session-start context", () => {
       writeFileSync(join(repo, "docs", "Makefile"), "test:\n\techo hi\n");
 
       const line = projectLine(join(repo, "docs"));
+      if (line === null) throw new Error("no declared tasks found");
       expect(line).toContain("check `bun run verify`");
       expect(line).toContain("format `bun run format`");
       expect(line).not.toContain("lint");
@@ -34,8 +35,7 @@ describe("session-start context", () => {
     const root = mkdtempSync(join(tmpdir(), "dim-session-start-"));
     try {
       mkdirSync(join(root, ".git"));
-      expect(projectLine(root)).toBe("");
-      expect(wireFor("")).toBe("");
+      expect(projectLine(root)).toBeNull();
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

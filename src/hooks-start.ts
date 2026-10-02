@@ -6,7 +6,7 @@ export async function startSession(): Promise<void> {
   const cwd = typeof payload.cwd === "string" ? payload.cwd : process.cwd();
 
   try {
-    const wire = wireFor(projectLine(cwd));
-    if (wire) console.log(wire);
+    const line = projectLine(cwd);
+    if (line !== null) console.log(wireFor(line));
   } catch {}
 }
