@@ -34,7 +34,7 @@ export function closeTurn(trace: Trace, turn: Turn): void {
   trace.step("turn_close", { dir: turn.dir }, () => rmSync(turn.dir, { recursive: true, force: true }));
 }
 
-export type Listening = { stop(): void };
+type Listening = { stop(): void };
 
 export function listen(socket: string, serve: (line: string) => string): Listening {
   const server = Bun.listen<{ buffer: string }>({

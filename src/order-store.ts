@@ -89,13 +89,11 @@ function actorColumns(by: Actor): readonly [string | null, string | null, string
   }
 }
 
-export function appendEntries(db: Database, orderId: string, entries: readonly LogEntry[]): void {
-  const insert = db.prepare(
+export function appendEntry(db: Database, orderId: string, { seq, ts, by, ...detailed }: LogEntry): void {
+  db.run(
     `INSERT INTO order_log (order_id, seq, ts, worker, session, factory_version, cause, action, code, details, evidence)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  );
-  for (const { seq, ts, by, ...detailed } of entries) {
-    insert.run(
+    [
       orderId,
       seq,
       ts,
@@ -104,8 +102,8 @@ export function appendEntries(db: Database, orderId: string, entries: readonly L
       "code" in detailed ? detailed.code : null,
       JSON.stringify(detailed.details),
       "evidence" in detailed ? JSON.stringify(detailed.evidence) : null,
-    );
-  }
+    ],
+  );
 }
 
 export function orderIds(db: Database): readonly string[] {

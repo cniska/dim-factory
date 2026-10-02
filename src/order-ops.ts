@@ -27,7 +27,7 @@ import {
   refuseOrder,
   type Station,
 } from "./order-contract";
-import { appendEntries, deleteRun, insertRun, orderIds, readLog, runOf, setRunHarness } from "./order-store";
+import { appendEntry, deleteRun, insertRun, orderIds, readLog, runOf, setRunHarness } from "./order-store";
 import { type OrderView, orderView, workerNamesOf } from "./order-view";
 import { type Env, workspaceDir } from "./paths";
 import { checkoutAt, checkoutOf, defaultBranch } from "./project";
@@ -67,7 +67,7 @@ type Appended = { readonly seq: number; readonly state: OrderState };
 
 function append(db: Database, order: string, by: Actor, detailed: Detailed): Appended {
   const seq = loadOrder(db, order).state.lastSeq + 1;
-  appendEntries(db, order, [{ seq, ts: new Date().toISOString(), by, ...Detailed.parse(detailed) }]);
+  appendEntry(db, order, { seq, ts: new Date().toISOString(), by, ...Detailed.parse(detailed) });
   return { seq, state: loadOrder(db, order).state };
 }
 
@@ -90,12 +90,19 @@ export type ProjectSetup = {
   readonly config: UserConfig;
 };
 
-export function projectSetup(db: Database, project: string, cwd: string): ProjectSetup {
+type ProjectCheckout = Omit<ProjectSetup, "config">;
+
+export function projectCheckout(db: Database, project: string, cwd: string): ProjectCheckout {
   const checkout = checkoutOf(db, project, cwd);
   if (checkout === null) throw refuseOrder("no_checkout", { project });
   const branch = defaultBranch(checkout.root);
   if (branch === null) throw refuseOrder("no_default_branch", { checkout: checkout.root });
-  return { root: checkout.root, branch, config: readConfig({ root: checkout.root, at: branch }) };
+  return { root: checkout.root, branch };
+}
+
+export function projectSetup(db: Database, project: string, cwd: string): ProjectSetup {
+  const { root, branch } = projectCheckout(db, project, cwd);
+  return { root, branch, config: readConfig({ root, at: branch }) };
 }
 
 export function ownerIdentity(checkout: string, env: Env): Identity {
@@ -104,7 +111,7 @@ export function ownerIdentity(checkout: string, env: Env): Identity {
   return identity;
 }
 
-export type NewOrder = {
+type NewOrder = {
   readonly title: string;
   readonly description: string;
   readonly project: string | undefined;
@@ -113,20 +120,18 @@ export type NewOrder = {
 export function addOrder(db: Database, caller: Caller, fields: NewOrder): string {
   const project = fields.project ?? checkoutAt(caller.cwd)?.project;
   if (project === undefined) throw refuseWorker("no_project", { cwd: caller.cwd });
-  projectSetup(db, project, caller.cwd);
+  projectCheckout(db, project, caller.cwd);
   return writeTransaction(db, () => {
     const admission = asOperator(actingOperator(db, caller, project), project);
     if (admission.kind === "refused") throw admission.refusal;
     const order = orderIdOf(crypto.getRandomValues(new Uint8Array(ORDER_ID_LENGTH)));
-    appendEntries(db, order, [
-      {
-        seq: 1,
-        ts: new Date().toISOString(),
-        by: actorOf(admission.by),
-        action: "order_added",
-        details: { title: fields.title, description: fields.description, project },
-      },
-    ]);
+    appendEntry(db, order, {
+      seq: 1,
+      ts: new Date().toISOString(),
+      by: actorOf(admission.by),
+      action: "order_added",
+      details: { title: fields.title, description: fields.description, project },
+    });
     return order;
   });
 }
@@ -171,7 +176,7 @@ export function orderState(db: Database, order: string): OrderState {
   return loadOrder(db, order).state;
 }
 
-export type StartedRun = {
+type StartedRun = {
   readonly by: Acting;
   readonly cause: number;
   readonly created: boolean;

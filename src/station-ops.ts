@@ -16,6 +16,7 @@ import {
   orderState,
   ownerIdentity,
   type ProjectSetup,
+  projectCheckout,
   projectSetup,
   recordAs,
   recordCancel,
@@ -70,13 +71,14 @@ type TurnOf = {
   readonly identity: Identity;
   readonly checkout: string;
   readonly checkoutGit: string;
+  readonly gitConfig: string;
   readonly defaultBranch: string;
   readonly env: Env;
   readonly purpose: Purpose;
 };
 
 type Ended =
-  | { readonly end: TurnEnd; readonly session: string }
+  | { readonly end: TurnEnd | "closed"; readonly session: string }
   | { readonly end: "missed"; readonly session: string; readonly missed: string }
   | { readonly end: "died"; readonly session: string; readonly code: DeathCode }
   | { readonly end: "lost"; readonly session: string }
@@ -279,7 +281,7 @@ async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
     const spawned = spawnFor(turn, session, workspace, opened);
     const acting: Acting = { worker, session: openSession(db, turn, worker, session, spawned.pid) };
     const served = await serveTurn(
-      { db, turn, workspace, acting, config: guardFile(trace, join(turn.checkoutGit, "config")) },
+      { db, turn, workspace, acting, config: guardFile(trace, turn.gitConfig) },
       spawned,
       opened.socket,
       turn.purpose.prompt({ state, workspace, diff: diffOf(turn, head), check: checkOf(turn, workspace) }),
@@ -413,7 +415,7 @@ async function turnAt(db: Database, turn: TurnOf): Promise<void> {
     case "closed":
       return;
     case "config_changed":
-      throw refuseStation("git_config_changed", { order, station, config: join(turn.checkoutGit, "config") });
+      throw refuseStation("git_config_changed", { order, station, config: turn.gitConfig });
     case "died":
       throw refuseStation("session_died", { order, station, session: ended.session, code: ended.code });
     case "no_return":
@@ -439,7 +441,7 @@ async function messageAt(db: Database, turn: TurnOf): Promise<string> {
       throw refusal;
     }
     case "config_changed":
-      throw refuseStation("git_config_changed", { order, station, config: join(turn.checkoutGit, "config") });
+      throw refuseStation("git_config_changed", { order, station, config: turn.gitConfig });
     case "died":
       throw refuseStation("session_died", { order, station, session: ended.session, code: ended.code });
     case "no_reply":
@@ -508,6 +510,7 @@ async function withRun<T>(
         state,
         turnOf: (at, purpose) => {
           invariant(prepared !== null && at === station, `order ${order} was prepared for the ${at} station`);
+          const checkoutGit = gitCommonDir(setup.root);
           return {
             trace,
             order,
@@ -515,7 +518,8 @@ async function withRun<T>(
             by,
             cause,
             checkout: setup.root,
-            checkoutGit: gitCommonDir(setup.root),
+            checkoutGit,
+            gitConfig: join(checkoutGit, "config"),
             defaultBranch: setup.branch,
             env,
             purpose,
@@ -577,7 +581,7 @@ export function cancelOrder(db: Database, order: string, caller: Caller, reason:
   const trace = traceOf(order, env);
   trace.step("run", { act: "cancel", station: null }, () => {
     const { project, head } = orderState(db, order);
-    const root = head === null ? null : projectSetup(db, project, caller.cwd).root;
+    const root = head === null ? null : projectCheckout(db, project, caller.cwd).root;
     const { harness } = recordCancel(trace, db, order, caller, reason);
     if (harness !== null) stopHarness(trace, harness);
     if (root === null) return;

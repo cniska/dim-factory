@@ -26,7 +26,7 @@ export function orderIdOf(random: Uint8Array): string {
   return [...random].map((byte) => CROCKFORD[byte % CROCKFORD.length]).join("");
 }
 
-export type Phase =
+type Phase =
   | { readonly kind: "run"; readonly station: Station }
   | { readonly kind: "approve"; readonly station: Station }
   | { readonly kind: "update" }
@@ -340,7 +340,7 @@ export function runKindOf(phase: Phase): RunKind {
   return phase.kind === "ship" ? "ship" : "station";
 }
 
-export type AddedEntry = OrderAdded & { readonly seq: number };
+type AddedEntry = OrderAdded & { readonly seq: number };
 
 export function fold(id: string, added: AddedEntry, later: readonly LaterEntry[]): OrderState {
   const start: OrderState = {

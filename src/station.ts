@@ -87,14 +87,14 @@ const orderFacts = (state: OrderState) => ({
   description: state.description,
 });
 
-export type BriefFacts = {
+type BriefFacts = {
   readonly state: OrderState;
   readonly workspace: string;
   readonly diff: string | null;
   readonly check: string | null;
 };
 
-export function briefAt(station: Station, { state, workspace, diff, check }: BriefFacts): string {
+function briefAt(station: Station, { state, workspace, diff, check }: BriefFacts): string {
   switch (station) {
     case "plan":
       return JSON.stringify({
@@ -181,16 +181,29 @@ type WorkContext = { readonly station: Station; readonly state: OrderState; read
 
 type Returning = { readonly station: Station; readonly what: string; readonly command: string };
 
-function parsedAs<T>(text: string, schema: z.ZodType<T>, { station, what, command }: Returning): T {
+type Issue = { readonly path: readonly PropertyKey[]; readonly message: string };
+
+type JsonParsed<T> =
+  | { readonly ok: true; readonly data: T }
+  | { readonly ok: false; readonly issues: readonly Issue[] };
+
+function parseJson<T>(text: string, schema: z.ZodType<T>): JsonParsed<T> {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch (error) {
-    throw refuseStation("not_done", { station, missed: `the ${what} is not JSON: ${error}`, command });
+    return { ok: false, issues: [{ path: [], message: `not JSON: ${error}` }] };
   }
   const parsed = schema.safeParse(raw);
-  if (parsed.success) return parsed.data;
-  const missed = parsed.error.issues.map((issue) => `${[what, ...issue.path].join(".")}: ${issue.message}`);
+  return parsed.success ? { ok: true, data: parsed.data } : { ok: false, issues: parsed.error.issues };
+}
+
+function parsedAs<T>(text: string, schema: z.ZodType<T>, { station, what, command }: Returning): T {
+  const parsed = parseJson(text, schema);
+  if (parsed.ok) return parsed.data;
+  const missed = parsed.issues.map(
+    (issue) => `${[what, ...issue.path.map(String)].join(".")}: ${issue.message}`,
+  );
   throw refuseStation("not_done", { station, missed: missed.join("; "), command });
 }
 
@@ -266,10 +279,7 @@ function reviewReturned(request: ReviewReturn, { state }: WorkContext): Later {
   return { action: "review_returned", details: { returned: { kind: "findings", findings } } };
 }
 
-export type WorkRequest = Exclude<
-  TurnRequest,
-  { readonly act: "order_show" | "slice_submit" | "message_send" }
->;
+type WorkRequest = Exclude<TurnRequest, { readonly act: "order_show" | "slice_submit" | "message_send" }>;
 
 export function workEntry(request: WorkRequest, context: WorkContext): Later {
   switch (request.act) {
@@ -289,22 +299,14 @@ export function workEntry(request: WorkRequest, context: WorkContext): Later {
 }
 
 export function requestOf(line: string): TurnRequest {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(line);
-  } catch (error) {
-    throw refuseStation("bad_request", { issues: `not JSON: ${error}` });
-  }
-  const request = TurnRequest.safeParse(raw);
-  if (request.success) return request.data;
-  throw refuseStation("bad_request", {
-    issues: request.error.issues.map((issue) => issue.message).join("; "),
-  });
+  const request = parseJson(line, TurnRequest);
+  if (request.ok) return request.data;
+  throw refuseStation("bad_request", { issues: request.issues.map((issue) => issue.message).join("; ") });
 }
 
-export const MISSES_TO_FAIL = 2;
+const MISSES_TO_FAIL = 2;
 
-export type Refused = {
+type Refused = {
   readonly reply: TurnReply;
   readonly misses: readonly string[];
   readonly stop: boolean;
@@ -319,9 +321,8 @@ export function replyTo(refusal: CodedError, misses: readonly string[]): Refused
   };
 }
 
-export type TurnEnd = "returned" | "no_return" | "closed";
+export type TurnEnd = "returned" | "no_return";
 
 export function turnEnd(state: OrderState, station: Station): TurnEnd {
-  if (state.status !== "running") return "closed";
   return atStation(state, station) ? "no_return" : "returned";
 }

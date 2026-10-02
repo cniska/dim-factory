@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { RefusalRecord, refuser } from "./coded-error";
-import { Answer, Finding } from "./order-contract";
+import { Answer, Finding, type Station } from "./order-contract";
 
 export const PlanReturn = z.object({ act: z.literal("plan_return"), plan: z.string() });
 export type PlanReturn = z.infer<typeof PlanReturn>;
@@ -30,11 +30,11 @@ export const ReviewReturn = z.object({
 });
 export type ReviewReturn = z.infer<typeof ReviewReturn>;
 
-export const SliceSubmit = z.object({ act: z.literal("slice_submit") });
+const SliceSubmit = z.object({ act: z.literal("slice_submit") });
 
-export const OrderShow = z.object({ act: z.literal("order_show") });
+const OrderShow = z.object({ act: z.literal("order_show") });
 
-export const MessageSend = z.object({
+const MessageSend = z.object({
   act: z.literal("message_send"),
   text: z.string(),
   to: z.string().nullable(),
@@ -73,24 +73,24 @@ type StationRefusalMeta = {
   readonly no_turn: { readonly detail: string };
   readonly bad_request: { readonly issues: string };
   readonly no_reason: { readonly command: string };
-  readonly wrong_station: { readonly act: string; readonly station: string };
+  readonly wrong_station: { readonly act: TurnRequest["act"]; readonly station: Station };
   readonly no_finding: { readonly finding: string };
   readonly finding_answered: { readonly finding: string };
-  readonly not_done: { readonly station: string; readonly missed: string; readonly command: string };
-  readonly no_return: { readonly order: string; readonly station: string; readonly session: string };
-  readonly return_missed: { readonly order: string; readonly station: string; readonly missed: string };
-  readonly turn_stopped: { readonly order: string; readonly station: string };
+  readonly not_done: { readonly station: Station; readonly missed: string; readonly command: string };
+  readonly no_return: { readonly order: string; readonly station: Station; readonly session: string };
+  readonly return_missed: { readonly order: string; readonly station: Station; readonly missed: string };
+  readonly turn_stopped: { readonly order: string; readonly station: Station };
   readonly session_died: {
     readonly order: string;
-    readonly station: string;
+    readonly station: Station;
     readonly session: string;
     readonly code: string;
   };
-  readonly git_config_changed: { readonly order: string; readonly station: string; readonly config: string };
+  readonly git_config_changed: { readonly order: string; readonly station: Station; readonly config: string };
   readonly no_model: { readonly role: string; readonly file: string };
   readonly not_to_operator: { readonly to: string };
-  readonly message_turn: { readonly act: string };
-  readonly no_reply: { readonly order: string; readonly station: string; readonly session: string };
+  readonly message_turn: { readonly act: TurnRequest["act"] };
+  readonly no_reply: { readonly order: string; readonly station: Station; readonly session: string };
 };
 
 export const refuseStation = refuser<StationRefusalMeta>({

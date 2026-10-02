@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
 import type { LogEntry } from "./order-contract";
-import { appendEntries, deleteRun, insertRun, orderIds, readLog, runOf, setRunHarness } from "./order-store";
+import { appendEntry, deleteRun, insertRun, orderIds, readLog, runOf, setRunHarness } from "./order-store";
+
+function appendAll(db: Database, order: string, entries: readonly LogEntry[]): void {
+  for (const entry of entries) appendEntry(db, order, entry);
+}
 
 const roots: string[] = [];
 const opened: Database[] = [];
@@ -58,7 +62,7 @@ const ENTRIES: readonly LogEntry[] = [
 
 test("reads back each entry as it was appended, in order", () => {
   const db = factory();
-  appendEntries(db, "k7m2qx4d", ENTRIES);
+  appendAll(db, "k7m2qx4d", ENTRIES);
   expect(readLog(db, "k7m2qx4d")).toEqual(ENTRIES);
   expect(readLog(db, "zzzzzzzz")).toEqual([]);
 });
@@ -66,14 +70,14 @@ test("reads back each entry as it was appended, in order", () => {
 test("lists each order the log holds once, by id", () => {
   const db = factory();
   expect(orderIds(db)).toEqual([]);
-  appendEntries(db, "m3x9p2ka", ENTRIES);
-  appendEntries(db, "k7m2qx4d", ENTRIES);
+  appendAll(db, "m3x9p2ka", ENTRIES);
+  appendAll(db, "k7m2qx4d", ENTRIES);
   expect(orderIds(db)).toEqual(["k7m2qx4d", "m3x9p2ka"]);
 });
 
 test("refuses to change or remove an entry the log holds", () => {
   const db = factory();
-  appendEntries(db, "k7m2qx4d", ENTRIES);
+  appendAll(db, "k7m2qx4d", ENTRIES);
   expect(() => db.run("UPDATE order_log SET action = 'order_run'")).toThrow("append-only");
   expect(() => db.run("DELETE FROM order_log")).toThrow("append-only");
   expect(readLog(db, "k7m2qx4d")).toEqual(ENTRIES);
@@ -81,17 +85,18 @@ test("refuses to change or remove an entry the log holds", () => {
 
 test("refuses a second entry at a seq the order already holds", () => {
   const db = factory();
-  appendEntries(db, "k7m2qx4d", ENTRIES);
-  expect(() => appendEntries(db, "k7m2qx4d", [{ ...ENTRIES[1], seq: 2 } as LogEntry])).toThrow();
+  appendAll(db, "k7m2qx4d", ENTRIES);
+  expect(() => appendEntry(db, "k7m2qx4d", { ...ENTRIES[1], seq: 2 } as LogEntry)).toThrow();
 });
 
 test("refuses an entry naming the factory with a cause the log does not hold", () => {
   const db = factory();
-  appendEntries(db, "k7m2qx4d", [ENTRIES[0] as LogEntry]);
+  appendEntry(db, "k7m2qx4d", ENTRIES[0] as LogEntry);
   expect(() =>
-    appendEntries(db, "k7m2qx4d", [
-      { ...(ENTRIES[1] as LogEntry), by: { kind: "factory", version: "0.1.0", cause: 9 } },
-    ]),
+    appendEntry(db, "k7m2qx4d", {
+      ...(ENTRIES[1] as LogEntry),
+      by: { kind: "factory", version: "0.1.0", cause: 9 },
+    }),
   ).toThrow();
 });
 
@@ -112,7 +117,7 @@ test("keeps the factory's tables when the record is reopened", () => {
   roots.push(root);
   const path = join(root, "sessions.db");
   const first = openDb(path);
-  appendEntries(first, "k7m2qx4d", ENTRIES);
+  appendAll(first, "k7m2qx4d", ENTRIES);
   closeDb(first);
   const again = openDb(path);
   opened.push(again);

@@ -6,7 +6,7 @@ import { basename, join } from "node:path";
 import wallServeConfig from "../../bunfig.toml";
 import { openDb } from "../db";
 import type { LogEntry } from "../order-contract";
-import { appendEntries } from "../order-store";
+import { appendEntry } from "../order-store";
 import { insertWorker } from "../worker-store";
 import { wallHandler } from "./server";
 
@@ -116,7 +116,7 @@ describe("serving", () => {
 describe("pushing the record", () => {
   test("sends the board when a socket opens, again only once the record changes, and ignores what a page sends", () => {
     const { path, db } = record();
-    appendEntries(db, ORDER, [ADDED]);
+    appendEntry(db, ORDER, ADDED);
     const wall = wallHandler(path);
     const board = socket(null);
 
@@ -145,7 +145,7 @@ describe("pushing the record", () => {
     ]);
 
     wall.websocket.message();
-    appendEntries(db, ORDER, [RUN]);
+    appendEntry(db, ORDER, RUN);
     wall.tick();
     expect(pushes(board)).toHaveLength(2);
     expect(pushes(board)[1].snapshot.orders[0].lastEventAt).toBe("2026-10-02T10:01:00.000Z");
@@ -153,7 +153,7 @@ describe("pushing the record", () => {
 
   test("pushes an open order to its own socket alone as new entries arrive", () => {
     const { path, db } = record();
-    appendEntries(db, ORDER, [ADDED]);
+    appendEntry(db, ORDER, ADDED);
     const wall = wallHandler(path);
     const board = socket(null);
     const item = socket(ORDER);
@@ -165,7 +165,7 @@ describe("pushing the record", () => {
       "order_added",
     ]);
 
-    appendEntries(db, ORDER, [RUN]);
+    appendEntry(db, ORDER, RUN);
     wall.tick();
     expect(pushes(item)).toHaveLength(2);
     expect(pushes(item)[1].view.entries.map((entry: { action: string }) => entry.action)).toEqual([
@@ -191,7 +191,7 @@ describe("pushing the record", () => {
 
   test("says the record is another version rather than reading it", () => {
     const { path, db } = record();
-    appendEntries(db, ORDER, [ADDED]);
+    appendEntry(db, ORDER, ADDED);
     db.run("PRAGMA user_version = 1");
     db.close();
     const board = socket(null);
