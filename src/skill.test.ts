@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   readlinkSync,
   rmSync,
   symlinkSync,
@@ -12,6 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { Glob } from "bun";
 import { LockHeldError, withPathLock } from "./db-lock";
 import { harnessesOnPath } from "./fixtures.test-support";
 import { installSkill, planSkill, retiredLinks, SKILL_NAMES, skillLinkDirs, skillSourceDir } from "./skill";
@@ -39,6 +41,15 @@ describe("skill install", () => {
       "dim-simplify",
       "dim-tdd",
     ]);
+  });
+
+  test("every skill a shipped skill names is shipped too", () => {
+    const skills = resolve(import.meta.dir, "..", "skills");
+    const named = [...new Glob("**/*.md").scanSync({ cwd: skills, followSymlinks: false })].flatMap((file) =>
+      [...readFileSync(join(skills, file), "utf8").matchAll(/`(dim-[a-z]+)`/g)].map((match) => match[1]),
+    );
+    expect(named.length).toBeGreaterThan(0);
+    expect(named.filter((name) => !shipped().includes(name as string))).toEqual([]);
   });
 
   test("installs every skill directory in the repo, so a new one is not left behind", () => {
