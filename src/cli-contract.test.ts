@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { allCommands, findCommand } from "./cli-commands";
+import { scratchEnv } from "./fixtures.test-support";
 
 const COMMANDS = await allCommands();
 
@@ -67,6 +69,24 @@ describe("the command contract", () => {
         path,
         names: [path.replace(/-command\.ts$/, "")],
       });
+    }
+  });
+
+  test("a command that takes no arguments refuses one", () => {
+    const root = mkdtempSync(join(tmpdir(), "dim-no-args-"));
+    try {
+      for (const name of ["sync", "rebuild", "doctor"]) {
+        const run = Bun.spawnSync([process.execPath, join(SRC, "cli.ts"), name, "extra"], {
+          env: { ...process.env, ...scratchEnv(root) },
+        });
+        expect({ name, exitCode: run.exitCode, stderr: run.stderr.toString() }).toMatchObject({
+          name,
+          exitCode: 1,
+          stderr: expect.stringContaining('"code":"usage"'),
+        });
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 
