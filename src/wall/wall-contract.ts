@@ -1,49 +1,34 @@
-export type Station = "plan" | "build" | "review";
+import type { RefusalRecord } from "../coded-error";
+import type { Action, Next, Station, Status } from "../order-contract";
+import type { Role } from "../worker-contract";
 
-export type Role = "operator" | "planner" | "builder" | "reviewer";
-
-export type OrderLine = "feat" | "fix";
-
-export type BoardStatus = "queued" | "running" | "shipped";
-
-export type Next = "run" | "approve" | "revise" | "decide";
-
-export type OrderEventKind =
-  | "queued"
-  | "started"
-  | "station_started"
-  | "artifact_submitted"
-  | "artifact_approved"
-  | "artifact_returned"
-  | "commit_created"
-  | "finding_raised"
-  | "finding_answered"
-  | "ship_retried"
-  | "dropped"
-  | "failed";
+export type BoardStatus = Exclude<Status, "cancelled">;
 
 export type WallWorker = { name: string; role: Role };
 
 export type WallOrder = {
   id: string;
   title: string;
-  line: OrderLine;
-  description: string | null;
+  project: string;
+  description: string;
   station: Station | null;
   worker: WallWorker | null;
-  status: BoardStatus;
+  status: Status;
   lastEventAt: string;
   next: Next | null;
 };
 
+export type BoardOrder = WallOrder & { status: BoardStatus };
+
 export type WallSnapshot = {
-  orders: WallOrder[];
+  orders: BoardOrder[];
   totals: Record<BoardStatus, number>;
 };
 
 export type WallItemEntry = {
   at: string;
-  kind: OrderEventKind;
+  action: Action;
+  code: string | null;
   station: Station | null;
   worker: WallWorker | null;
 };
@@ -57,11 +42,14 @@ export type WallArtifact = {
 
 export type WallItemView = {
   order: WallOrder;
-  project: string;
   plan: WallArtifact | null;
   build: WallArtifact | null;
   review: WallArtifact | null;
   entries: WallItemEntry[];
 };
 
-export type WallFailure = { error: string };
+export type BoardPush =
+  | { kind: "snapshot"; snapshot: WallSnapshot }
+  | { kind: "failure"; failure: RefusalRecord };
+
+export type OrderPush = { kind: "order"; view: WallItemView } | { kind: "failure"; failure: RefusalRecord };

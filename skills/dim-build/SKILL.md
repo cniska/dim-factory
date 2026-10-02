@@ -62,4 +62,4 @@ A `conflict` in the brief means the ship's rebase onto the default branch stoppe
 
 ## The Build artifact
 
-It follows [artifact](references/artifact.md): the outcome first, drawn from the record. Its sections: the outcome; what changed, grouped by behavior; why this shape and what was not taken; what the checks establish; where the build departed from the plan, and what a careful reader should look at. On a returned Build artifact, the code changes where the reason asks for a change, the artifact where it does not.
+It follows [artifact](references/artifact.md): no title, the outcome first, drawn from the record. Its sections: the outcome; what changed, grouped by behavior; why this shape and what was not taken; what the checks establish; where the build departed from the plan, and what a careful reader should look at. On a returned Build artifact, the code changes where the reason asks for a change, the artifact where it does not.

@@ -51,4 +51,4 @@ Returning nothing is the expected result.
 
 ## The body
 
-`body` follows [artifact](references/artifact.md): the outcome first, drawn from the record. Its sections, where the change earns them: the outcome and its boundary; the evidence from the record and what it ruled out; the data shape and contracts; the slices; the decisions that are the owner's, and the risks; what review should aim at in this change.
+`body` follows [artifact](references/artifact.md): no title, the outcome first, drawn from the record. Its sections, where the change earns them: the outcome and its boundary; the evidence from the record and what it ruled out; the data shape and contracts; the slices; the decisions that are the owner's, and the risks; what review should aim at in this change.

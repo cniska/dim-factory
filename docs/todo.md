@@ -19,7 +19,7 @@ Each entry is one change. [schema] entries change the schema and run with nothin
 - **Closed vocabularies are exhaustive at compile time** [schema] — one `as const` list per vocabulary feeds both its type and its `CHECK`: `session.tool` has none. `Tool` and `HarnessName` become one list.
 - **The FTS trigger re-indexes unchanged text** [schema] — `message_fts_update` re-indexes a message whose text did not change, about five times the ingest cost, and `message.src_file` and `tool_call.src_file` cascade with no index. `db-schema.ts`. `WHEN old.text IS NOT new.text` on the trigger, and the two indexes.
 - **Comments in the schema and generated files** — `db-schema.ts` carries SQL comment blocks, some stale, and `wall/styles.css` and the generated hooks carry rationale comments, against the ban. A table's reason goes into [`design.md`](design.md), and design.md stops saying it lives beside the table.
-- **Tests without proof or duplicates** — the trace permission tests prove nothing as root; the lock tests in `ingest-launchd.test.ts` repeat `db-lock.test.ts`; spies in `db.test.ts` test calls, not outcomes; `ingest-tools.test.ts` asserts schema text; `src/wall/client.test.tsx` greps its own source for class strings, so it fails on a restyle and passes on a broken render.
+- **Tests without proof or duplicates** — the trace permission tests prove nothing as root; the lock tests in `ingest-launchd.test.ts` repeat `db-lock.test.ts`; spies in `db.test.ts` test calls, not outcomes; `ingest-tools.test.ts` asserts schema text.
 
 ## Features
 

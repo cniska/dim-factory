@@ -127,6 +127,13 @@ export function appendEntries(db: Database, orderId: string, entries: readonly L
   }
 }
 
+export function orderIds(db: Database): readonly string[] {
+  return db
+    .query<{ order_id: string }, []>("SELECT order_id FROM order_log WHERE seq = 1 ORDER BY order_id")
+    .all()
+    .map((row) => row.order_id);
+}
+
 export function readLog(db: Database, orderId: string): readonly LogEntry[] {
   return db
     .query<LogRow, [string]>(

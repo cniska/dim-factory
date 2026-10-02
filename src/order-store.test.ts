@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { closeDb } from "./db";
 import { openFactory } from "./factory-db";
 import type { LogEntry } from "./order-contract";
-import { appendEntries, deleteRun, insertRun, readLog, runOf, setRunHarness } from "./order-store";
+import { appendEntries, deleteRun, insertRun, orderIds, readLog, runOf, setRunHarness } from "./order-store";
 
 const roots: string[] = [];
 const opened: Database[] = [];
@@ -46,6 +46,14 @@ test("reads back each entry as it was appended, in order", () => {
   appendEntries(db, "k7m2qx4d", ENTRIES);
   expect(readLog(db, "k7m2qx4d")).toEqual(ENTRIES);
   expect(readLog(db, "zzzzzzzz")).toEqual([]);
+});
+
+test("lists each order the log holds once, by id", () => {
+  const db = factory();
+  expect(orderIds(db)).toEqual([]);
+  appendEntries(db, "m3x9p2ka", ENTRIES);
+  appendEntries(db, "k7m2qx4d", ENTRIES);
+  expect(orderIds(db)).toEqual(["k7m2qx4d", "m3x9p2ka"]);
 });
 
 test("refuses to change or remove an entry the log holds", () => {

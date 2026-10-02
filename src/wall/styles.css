@@ -1,14 +1,10 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* The wall hangs on a screen in a room and never follows a system theme, so these are the
-   palette rather than an override and there is no light branch to keep. */
 @theme inline {
   --color-background: #090a0b;
   --color-foreground: #f5f7f8;
   --color-card: #111315;
-  /* A card that stopped sits on its own ground, so a column reads as moving or not before
-     any of its text resolves. */
   --color-card-stopped: #181414;
   --color-border: #30353a;
   --color-muted-foreground: #a0a7ad;
@@ -22,11 +18,6 @@
   --color-danger: #df806f;
   --color-good: #9fb99f;
 
-  /* A role's color is the only color a running card carries, so it is set bright: at 13px a
-     desaturated mid-tone is indistinguishable from the body grey, which is what these replaced.
-     Held clear of the warn amber, which means something else. */
-  /* The operator is the one hand that runs the line rather than doing the work, so it takes
-     the foreground white and every worked role takes a hue. */
   --color-role-operator: #f5f7f8;
   --color-role-planner: #c39fe0;
   --color-role-builder: #7fd7a4;

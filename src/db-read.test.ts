@@ -11,6 +11,7 @@ import { queryCommand } from "./query-command";
 import { QUERIES } from "./query-registry";
 import { sqlCommand } from "./sql-command";
 import { traceCommand } from "./trace-command";
+import { wallHandler } from "./wall/server";
 
 function writtenDatabase(): string {
   const path = join(mkdtempSync(join(tmpdir(), "dim-db-read-")), "sessions.db");
@@ -191,6 +192,11 @@ describe("a reader of a record built by another schema version", () => {
             code: "record_version",
           });
         }
+        const sent: string[] = [];
+        wallHandler(path).websocket.open({ data: { order: null }, send: (push) => sent.push(String(push)) });
+        expect(sent.map((push) => JSON.parse(push))).toMatchObject([
+          { kind: "failure", failure: { code: "record_version" } },
+        ]);
         expect(fingerprint(path)).toBe(before);
       } finally {
         rmSync(home, { recursive: true, force: true });

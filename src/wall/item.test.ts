@@ -1,22 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { ITEM_KIND_LABELS, itemKindLabel } from "./item";
+import { ACTION_LABELS, DECIDED_LABELS, itemLabel } from "./item";
 
 describe("factory wall item view", () => {
-  test("calls a record's kinds what a person calls them, not what the column holds", () => {
-    expect(ITEM_KIND_LABELS.commit_created).toBe("Commit");
-    expect(ITEM_KIND_LABELS.finding_raised).toBe("Finding raised");
-    expect(ITEM_KIND_LABELS.finding_answered).toBe("Finding answered");
-    expect(ITEM_KIND_LABELS.started).toBe("Order started");
-    expect(Object.values(ITEM_KIND_LABELS).every((label) => !label.includes("_"))).toBe(true);
+  test("calls each logged action what a person calls it, not what the log stores", () => {
+    expect(ACTION_LABELS.order_added).toBe("Added");
+    expect(ACTION_LABELS.slice_committed).toBe("Slice committed");
+    expect(ACTION_LABELS.finding_answered).toBe("Finding answered");
+    expect(ACTION_LABELS.ship_landed).toBe("Shipped");
+    const labels = [...Object.values(ACTION_LABELS), ...Object.values(DECIDED_LABELS)];
+    expect(labels.every((label) => !label.includes("_"))).toBe(true);
   });
 
-  test("names an artifact event by the station whose artifact it is", () => {
-    expect(itemKindLabel({ kind: "station_started", station: "plan" })).toBe("Plan started");
-    expect(itemKindLabel({ kind: "artifact_submitted", station: "plan" })).toBe("Plan submitted");
-    expect(itemKindLabel({ kind: "artifact_approved", station: "build" })).toBe("Build approved");
-    expect(itemKindLabel({ kind: "artifact_returned", station: "review" })).toBe("Review returned");
-    expect(itemKindLabel({ kind: "commit_created", station: "build" })).toBe("Commit");
-    expect(itemKindLabel({ kind: "failed", station: "build" })).toBe("Build failed");
-    expect(itemKindLabel({ kind: "failed", station: null })).toBe("Failed");
+  test("names a decision by the station whose artifact it decided", () => {
+    expect(itemLabel({ action: "artifact_approved", station: "build" })).toBe("Build approved");
+    expect(itemLabel({ action: "artifact_returned", station: "review" })).toBe("Review returned");
+    expect(itemLabel({ action: "order_returned", station: "plan" })).toBe("Plan returned the order");
+    expect(itemLabel({ action: "slice_committed", station: "build" })).toBe("Slice committed");
   });
 });

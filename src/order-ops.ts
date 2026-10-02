@@ -27,7 +27,7 @@ import {
   refuseOrder,
   type Station,
 } from "./order-contract";
-import { appendEntries, deleteRun, insertRun, readLog, runOf, setRunHarness } from "./order-store";
+import { appendEntries, deleteRun, insertRun, orderIds, readLog, runOf, setRunHarness } from "./order-store";
 import { type OrderView, orderView, workerNamesOf } from "./order-view";
 import { type Env, workspaceDir } from "./paths";
 import { checkoutAt, checkoutOf, defaultBranch } from "./project";
@@ -294,4 +294,8 @@ export function recordAs(trace: Trace, db: Database, order: string, by: WorkBy, 
 export function showOrder(db: Database, order: string): OrderView {
   const { state, log } = loadOrder(db, order);
   return orderView(state, log, workersNamed(db, workerNamesOf(log)), workspaceDir(state.project, order));
+}
+
+export function listOrders(db: Database): readonly OrderView[] {
+  return orderIds(db).map((order) => showOrder(db, order));
 }

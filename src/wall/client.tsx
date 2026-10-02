@@ -1,29 +1,30 @@
 import { CircleAlert, CircleCheck, CircleDot, CircleX, type LucideIcon, Radio, X } from "lucide-react";
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { unreachable } from "../assert";
+import type { RefusalRecord } from "../coded-error";
+import type { Status } from "../order-contract";
+import type { Role } from "../worker-contract";
 import { age } from "./age";
 import { ordersByStatus, STATION_LABELS, WALL_COLUMNS } from "./board";
 import { Badge } from "./components/ui/badge";
 import { Card, CardFooter } from "./components/ui/card";
 import { Digits } from "./components/ui/digits";
 import { Robot } from "./components/ui/robot";
-import { itemKindLabel } from "./item";
+import { itemLabel } from "./item";
 import { cn } from "./lib/utils";
 import { WallMarkdown } from "./markdown";
 import { msUntilNextMinute } from "./minute-beat";
-import { RECORD_POLL_MS } from "./record-poll";
 import type {
+  BoardPush,
   BoardStatus,
-  OrderLine,
-  Role,
-  WallFailure,
+  OrderPush,
   WallItemEntry,
   WallItemView,
   WallOrder,
   WallSnapshot,
   WallWorker,
 } from "./wall-contract";
-import { wallJson } from "./wall-json";
 import "./styles.css";
 
 const unavailableSnapshot: WallSnapshot = {
@@ -31,10 +32,11 @@ const unavailableSnapshot: WallSnapshot = {
   totals: { queued: 0, running: 0, shipped: 0 },
 };
 
-const statusLabels: Record<BoardStatus, string> = {
+const statusLabels: Record<Status, string> = {
   queued: "Queued",
   running: "Running",
   shipped: "Shipped",
+  cancelled: "Cancelled",
 };
 
 function isStopped(order: Pick<WallOrder, "next">): boolean {
@@ -50,10 +52,11 @@ function stateLabel(order: WallOrder): string {
   return statusLabels[order.status];
 }
 
-const statusIcon: Record<BoardStatus, LucideIcon> = {
+const statusIcon: Record<Status, LucideIcon> = {
   queued: CircleDot,
   running: CircleDot,
   shipped: CircleCheck,
+  cancelled: CircleX,
 };
 
 const roleTint: Record<Role, string | undefined> = {
@@ -64,25 +67,6 @@ const roleTint: Record<Role, string | undefined> = {
 };
 
 const NO_WORKER = "none";
-
-const LINE_LABELS: Record<OrderLine, string> = { feat: "feature", fix: "fix" };
-const LINE_TINT: Record<OrderLine, string> = { feat: "bg-good", fix: "bg-danger" };
-
-function LineMarker({ line, size = "card" }: { line: OrderLine; size?: "card" | "dialog" }) {
-  return (
-    <span
-      role="img"
-      aria-label={LINE_LABELS[line]}
-      className={cn(
-        "inline-block shrink-0",
-        size === "dialog" ? "rounded-sm" : "rounded-xs",
-        size === "dialog" ? "h-[20px] w-[20px]" : "h-[12px] w-[12px]",
-        LINE_TINT[line],
-      )}
-      title={LINE_LABELS[line]}
-    />
-  );
-}
 
 const clock = new Intl.DateTimeFormat([], {
   hour: "numeric",
@@ -120,16 +104,16 @@ function OrderCard({
       )}
     >
       <div className={cn(ROW, "justify-between gap-[var(--space-sm)]")}>
-        <span className="flex min-w-0 items-center gap-[var(--space-sm)]">
-          <LineMarker line={order.line} />
-          <h3 className="min-w-0 truncate font-medium text-foreground leading-[18px]">{order.title}</h3>
-        </span>
+        <h3 className="min-w-0 truncate font-medium text-foreground leading-[18px]">{order.title}</h3>
         <span className="shrink-0 tabular-nums text-quiet">
           <Digits value={age(order.lastEventAt, now)} />
         </span>
       </div>
 
-      <p className="line-clamp-3 min-h-[54px] shrink-0 text-quiet leading-[18px]">{order.description}</p>
+      <div className="flex min-h-[54px] shrink-0 flex-col leading-[18px]">
+        <p className="truncate text-muted-foreground">{order.project}</p>
+        <p className="line-clamp-2 text-quiet">{order.description}</p>
+      </div>
 
       <CardFooter className={cn(ROW, "justify-between gap-[var(--space-sm)] text-quiet")}>
         <button
@@ -170,7 +154,7 @@ function NoWorkerLabel() {
 }
 
 function EntryWorker({ entry }: { entry: WallItemEntry }) {
-  if (!entry.worker) return <NoWorkerLabel />;
+  if (entry.worker === null) return null;
 
   return <WorkerLabel worker={entry.worker} className="justify-end" />;
 }
@@ -216,14 +200,15 @@ function ItemHistory({ entries, now }: { entries: WallItemEntry[]; now: Date }) 
               return (
                 <li
                   // biome-ignore lint/suspicious/noArrayIndexKey: entries can share every recorded field, so position is their identity
-                  key={`${entry.at}-${entry.kind}-${index}`}
+                  key={`${entry.at}-${entry.action}-${index}`}
                 >
                   <div className="flex min-h-[18px] flex-wrap items-center justify-between gap-x-4 gap-y-1">
                     <div className="flex flex-wrap items-baseline gap-x-[var(--space-sm)] gap-y-[var(--space-xs)]">
                       <time dateTime={entry.at} className="text-quiet tabular-nums">
                         {timeLabel(entry.at)}
                       </time>
-                      <strong className="font-normal text-foreground">{itemKindLabel(entry)}</strong>
+                      <strong className="font-normal text-foreground">{itemLabel(entry)}</strong>
+                      {entry.code === null ? null : <span className="text-quiet">{entry.code}</span>}
                     </div>
                     <EntryWorker entry={entry} />
                   </div>
@@ -262,12 +247,7 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
       <div className="flex max-h-[85vh] flex-col">
         <header className="flex flex-col gap-[var(--space-lg)] border-b p-[var(--space-lg)]">
           <div className="flex items-start justify-between gap-[var(--space-md)]">
-            <div className="flex min-w-0 items-center gap-[var(--space-md)]">
-              <LineMarker line={order.line} size="dialog" />
-              <h2 className="min-w-0 truncate text-lg font-medium text-foreground leading-7">
-                {order.title}
-              </h2>
-            </div>
+            <h2 className="min-w-0 truncate text-lg font-medium text-foreground leading-7">{order.title}</h2>
             <button
               type="button"
               onClick={() => dialog.current?.close()}
@@ -279,16 +259,12 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
           </div>
           <dl className="flex flex-wrap items-center gap-x-[var(--space-xl)] gap-y-[var(--space-xs)] text-quiet">
             <div className="flex items-center gap-[var(--space-sm)]">
-              <dt>line</dt>
-              <dd className="text-muted-foreground">{LINE_LABELS[order.line]}</dd>
-            </div>
-            <div className="flex items-center gap-[var(--space-sm)]">
               <dt>order</dt>
               <dd className="text-muted-foreground">{order.id}</dd>
             </div>
             <div className="flex items-center gap-[var(--space-sm)]">
               <dt>project</dt>
-              <dd className="text-muted-foreground">{read.view?.project}</dd>
+              <dd className="text-muted-foreground">{order.project}</dd>
             </div>
             {order.station ? (
               <div className="flex items-center gap-[var(--space-sm)]">
@@ -323,11 +299,9 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
         </header>
 
         <div className="flex min-h-0 flex-col overflow-y-auto">
-          {order.description ? (
-            <p className="whitespace-pre-wrap px-[var(--space-lg)] pt-[var(--space-lg)] text-quiet leading-5">
-              {order.description}
-            </p>
-          ) : null}
+          <p className="whitespace-pre-wrap px-[var(--space-lg)] pt-[var(--space-lg)] text-quiet leading-5">
+            {order.description}
+          </p>
           <section
             aria-labelledby="item-plan"
             className="min-w-0 space-y-[var(--space-lg)] px-[var(--space-lg)] pb-[var(--space-lg)] pt-[var(--space-lg)]"
@@ -470,7 +444,7 @@ function ItemDialog({ card, onClose }: { card: WallOrder; onClose: () => void })
             <div className="space-y-[var(--space-lg)]">
               {read.state === "unavailable" ? (
                 <p className="text-warn-foreground">
-                  {ITEM_READ_MESSAGE.unavailable} {read.failure}
+                  {ITEM_READ_MESSAGE.unavailable} {read.failure.message}
                 </p>
               ) : null}
               {read.view && read.view.entries.length > 0 ? (
@@ -558,58 +532,25 @@ const BUMP_MS = 2000;
 const RECONNECT_MS = 1000;
 const CLOCK_BLINK_MS = 1000;
 
-function useSnapshot() {
-  const [snapshot, setSnapshot] = useState<WallSnapshot>(unavailableSnapshot);
-  const [stale, setStale] = useState(true);
-  const [unavailable, setUnavailable] = useState(true);
-  const [failure, setFailure] = useState<string | null>(null);
-  const [answered, setAnswered] = useState(false);
-  const [lastMessage, setLastMessage] = useState<number | null>(null);
-  const [bumped, setBumped] = useState<ReadonlySet<string>>(new Set());
-  const seen = useRef(new Map<string, string>());
+type SocketState = "connecting" | "open" | "closed";
+
+function useSocket<Push>(path: string, receive: (push: Push) => void): SocketState {
+  const [state, setState] = useState<SocketState>("connecting");
+  const latest = useRef(receive);
+
+  useEffect(() => {
+    latest.current = receive;
+  });
 
   useEffect(() => {
     let socket: WebSocket | undefined;
-    let clearBump: ReturnType<typeof setTimeout> | undefined;
     let retry: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
-    let acceptedSocketSnapshot = false;
 
-    const accept = (data: WallSnapshot) => {
-      const changed = new Set(
-        data.orders
-          .filter((order) => seen.current.get(order.id) !== cardState(order))
-          .map((order) => order.id),
-      );
-      const first = seen.current.size === 0;
-      seen.current = new Map(data.orders.map((order) => [order.id, cardState(order)]));
-      clearTimeout(clearBump);
-      setBumped(first ? new Set() : changed);
-      if (changed.size > 0 && !first) clearBump = setTimeout(() => setBumped(new Set()), BUMP_MS);
-
-      setSnapshot(data);
-      setStale(false);
-      setUnavailable(false);
-      setFailure(null);
-      setAnswered(true);
-      setLastMessage(Date.now());
-    };
-
-    fetch("/api/snapshot")
-      .then(wallJson<WallSnapshot>)
-      .then((data) => {
-        if (!acceptedSocketSnapshot) accept(data);
-      })
-      .catch((error: unknown) => {
-        if (acceptedSocketSnapshot) return;
-        setFailure(error instanceof Error ? error.message : String(error));
-        setUnavailable(true);
-        setAnswered(true);
-      });
     const release = (current: WebSocket | undefined) => {
       if (current === undefined) return;
+      current.onopen = null;
       current.onmessage = null;
-      current.onerror = null;
       current.onclose = null;
       if (current.readyState !== WebSocket.CLOSED) current.close();
     };
@@ -618,54 +559,84 @@ function useSnapshot() {
       release(socket);
       socket = undefined;
       if (stopped) return;
-      let next: WebSocket;
-      try {
-        next = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
-      } catch {
-        setStale(true);
-        setUnavailable(true);
-        setAnswered(true);
-        retry = setTimeout(connect, RECONNECT_MS);
-        return;
-      }
+      const next = new WebSocket(
+        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${path}`,
+      );
       socket = next;
-      next.onmessage = (event) => {
-        if (socket !== next) return;
-        const data = JSON.parse(event.data) as WallSnapshot & Partial<WallFailure>;
-        if (data.error) {
-          setFailure(data.error);
-          setStale(true);
-          return;
-        }
-        acceptedSocketSnapshot = true;
-        accept(data);
+      next.onopen = () => {
+        if (socket === next) setState("open");
       };
-      next.onerror = () => {
-        if (socket === next) setStale(true);
+      next.onmessage = (event) => {
+        if (socket === next) latest.current(JSON.parse(event.data) as Push);
       };
       next.onclose = () => {
         if (socket !== next) return;
         socket = undefined;
-        setStale(true);
+        setState("closed");
         if (!stopped) retry = setTimeout(connect, RECONNECT_MS);
       };
     };
     connect();
     return () => {
       stopped = true;
-      clearTimeout(clearBump);
       clearTimeout(retry);
       release(socket);
       socket = undefined;
     };
-  }, []);
+  }, [path]);
 
-  return { snapshot, stale, unavailable, failure, answered, lastMessage, bumped };
+  return state;
+}
+
+type Board = { snapshot: WallSnapshot; failure: RefusalRecord | null; readAt: number | null };
+
+function useSnapshot() {
+  const [board, setBoard] = useState<Board>({ snapshot: unavailableSnapshot, failure: null, readAt: null });
+  const [bumped, setBumped] = useState<ReadonlySet<string>>(new Set());
+  const seen = useRef(new Map<string, string>());
+  const clearBump = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => () => clearTimeout(clearBump.current), []);
+
+  const socket = useSocket<BoardPush>("/ws", (push) => {
+    switch (push.kind) {
+      case "failure":
+        setBoard({ snapshot: unavailableSnapshot, failure: push.failure, readAt: Date.now() });
+        return;
+      case "snapshot": {
+        const data = push.snapshot;
+        const changed = new Set(
+          data.orders
+            .filter((order) => seen.current.get(order.id) !== cardState(order))
+            .map((order) => order.id),
+        );
+        const first = seen.current.size === 0;
+        seen.current = new Map(data.orders.map((order) => [order.id, cardState(order)]));
+        clearTimeout(clearBump.current);
+        setBumped(first ? new Set() : changed);
+        if (changed.size > 0 && !first) clearBump.current = setTimeout(() => setBumped(new Set()), BUMP_MS);
+        setBoard({ snapshot: data, failure: null, readAt: Date.now() });
+        return;
+      }
+      default:
+        unreachable(push);
+    }
+  });
+
+  return {
+    snapshot: board.snapshot,
+    stale: socket !== "open",
+    unavailable: board.failure !== null || board.readAt === null,
+    failure: board.failure,
+    answered: board.readAt !== null || socket === "closed",
+    lastMessage: board.readAt,
+    bumped,
+  };
 }
 
 type ItemRead =
   | { state: "reading" | "read"; view: WallItemView | null }
-  | { state: "unavailable"; view: WallItemView | null; failure: string };
+  | { state: "unavailable"; view: WallItemView | null; failure: RefusalRecord };
 
 const ITEM_READ_MESSAGE: Record<ItemRead["state"], string> = {
   reading: "Reading the record.",
@@ -676,32 +647,18 @@ const ITEM_READ_MESSAGE: Record<ItemRead["state"], string> = {
 function useItemView(orderId: string): ItemRead {
   const [read, setRead] = useState<ItemRead>({ state: "reading", view: null });
 
-  useEffect(() => {
-    let current = true;
-    let inFlight = false;
-    const refresh = () => {
-      if (inFlight) return;
-      inFlight = true;
-      fetch(`/api/order/${encodeURIComponent(orderId)}`)
-        .then(wallJson<WallItemView>)
-        .then((data) => {
-          if (current) setRead({ state: "read", view: data });
-        })
-        .catch((error: unknown) => {
-          const failure = error instanceof Error ? error.message : String(error);
-          if (current) setRead((last) => ({ state: "unavailable", view: last.view, failure }));
-        })
-        .finally(() => {
-          inFlight = false;
-        });
-    };
-    refresh();
-    const interval = setInterval(refresh, RECORD_POLL_MS);
-    return () => {
-      current = false;
-      clearInterval(interval);
-    };
-  }, [orderId]);
+  useSocket<OrderPush>(`/ws?order=${encodeURIComponent(orderId)}`, (push) => {
+    switch (push.kind) {
+      case "order":
+        setRead({ state: "read", view: push.view });
+        return;
+      case "failure":
+        setRead((last) => ({ state: "unavailable", view: last.view, failure: push.failure }));
+        return;
+      default:
+        unreachable(push);
+    }
+  });
 
   return read;
 }
@@ -783,7 +740,6 @@ function App() {
             FEED_TINT[feed],
             !answered && "invisible",
           )}
-          title={failure ?? undefined}
         >
           <FeedIcon size={15} aria-hidden="true" />
           <span>{FEED_LABEL[feed]}</span>
@@ -793,6 +749,12 @@ function App() {
           <Clock at={timeLabel(now.toISOString())} beat={blink} />
         </div>
       </header>
+
+      {failure === null ? null : (
+        <p role="status" className="pb-[var(--space-lg)] text-warn-foreground">
+          {failure.message}
+        </p>
+      )}
 
       <section
         className="grid grid-cols-3 items-start gap-[var(--space-md)] pb-[var(--space-xxl)]"

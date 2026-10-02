@@ -1,32 +1,47 @@
+import { invariant } from "../assert";
+import type { Action } from "../order-contract";
 import { STATION_LABELS } from "./board";
-import type { OrderEventKind, WallItemEntry } from "./wall-contract";
+import type { WallItemEntry } from "./wall-contract";
 
-export const ITEM_KIND_LABELS: Record<OrderEventKind, string> = {
-  queued: "Queued",
-  started: "Order started",
-  station_started: "Station started",
-  artifact_submitted: "Artifact submitted",
-  artifact_approved: "Artifact approved",
-  artifact_returned: "Artifact returned",
-  commit_created: "Commit",
-  finding_raised: "Finding raised",
+type Decided = "artifact_approved" | "artifact_returned" | "order_returned";
+
+export const ACTION_LABELS: Record<Exclude<Action, Decided>, string> = {
+  order_added: "Added",
+  order_updated: "Updated",
+  order_run: "Run",
+  workspace_created: "Workspace created",
+  order_cancelled: "Cancelled",
+  plan_returned: "Plan submitted",
+  slice_submitted: "Slice submitted",
+  slice_committed: "Slice committed",
+  slice_refused: "Slice refused",
   finding_answered: "Finding answered",
-  ship_retried: "Ship retried",
-  dropped: "Dropped",
-  failed: "Failed",
+  build_returned: "Build submitted",
+  review_returned: "Review submitted",
+  message_sent: "Message",
+  message_refused: "Message refused",
+  session_started: "Session started",
+  session_died: "Session died",
+  station_failed: "Station failed",
+  ship_started: "Ship started",
+  branch_rebased: "Rebased",
+  ship_stopped: "Ship stopped",
+  ship_landed: "Shipped",
 };
 
-const STATION_VERBS: Partial<Record<OrderEventKind, string>> = {
-  station_started: "started",
-  artifact_submitted: "submitted",
+export const DECIDED_LABELS: Record<Decided, string> = {
   artifact_approved: "approved",
   artifact_returned: "returned",
+  order_returned: "returned the order",
 };
 
-export function itemKindLabel(entry: Pick<WallItemEntry, "kind" | "station">): string {
-  if (entry.kind === "failed" && entry.station) return `${STATION_LABELS[entry.station]} failed`;
-  const verb = STATION_VERBS[entry.kind];
-  if (verb === undefined) return ITEM_KIND_LABELS[entry.kind];
-  if (!entry.station) throw new Error(`${entry.kind} names no station`);
-  return `${STATION_LABELS[entry.station]} ${verb}`;
+function isDecided(action: Action): action is Decided {
+  return Object.hasOwn(DECIDED_LABELS, action);
+}
+
+export function itemLabel(entry: Pick<WallItemEntry, "action" | "station">): string {
+  const { action } = entry;
+  if (!isDecided(action)) return ACTION_LABELS[action];
+  invariant(entry.station !== null, `${action} names its station`);
+  return `${STATION_LABELS[entry.station]} ${DECIDED_LABELS[action]}`;
 }

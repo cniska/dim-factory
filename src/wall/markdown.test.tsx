@@ -41,3 +41,13 @@ test("an image in an artifact renders as its alt text, so the page fetches nothi
   expect(html).not.toContain("attacker.example");
   expect(html).toContain("the chart");
 });
+
+test("a link in an artifact renders as code, so nothing a worker named can be followed", () => {
+  const html = renderToStaticMarkup(
+    <WallMarkdown>{"See [the report](https://attacker.example/r?d=secret)."}</WallMarkdown>,
+  );
+
+  expect(html).not.toContain("<a");
+  expect(html).not.toContain("href");
+  expect(html).toContain("the report");
+});

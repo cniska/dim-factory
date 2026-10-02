@@ -5,8 +5,8 @@ import type { WallOrder } from "./wall-contract";
 const order = (id: string, status: WallOrder["status"], station: WallOrder["station"]): WallOrder => ({
   id,
   title: `Work on ${id}`,
-  line: "feat",
-  description: null,
+  project: "acme/widgets",
+  description: `Describe ${id}.`,
   worker: { name: "copper-1", role: "builder" },
   station,
   status,

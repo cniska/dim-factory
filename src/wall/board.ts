@@ -1,4 +1,5 @@
-import type { BoardStatus, Station, WallOrder } from "./wall-contract";
+import type { Station } from "../order-contract";
+import type { BoardStatus, WallOrder } from "./wall-contract";
 
 export const WALL_COLUMNS: ReadonlyArray<{ status: BoardStatus; label: string }> = [
   { status: "queued", label: "Queued" },
