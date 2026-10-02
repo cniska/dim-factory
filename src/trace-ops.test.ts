@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { invariant } from "./assert";
 import { refuser } from "./coded-error";
 import { tracePath } from "./paths";
@@ -121,5 +121,32 @@ describe("following the trace", () => {
       { order: "k7m2qx4d", phase: "ended" },
     ]);
     expect(polls).toBe(3);
+  });
+
+  test("prints a line whose bytes arrive across two polls, split inside a character, intact", async () => {
+    const env = scratchEnv();
+    const path = tracePath(env);
+    const line = Buffer.from(`${JSON.stringify({ order: "k7m2qx4d", step: "lock", path: "/tmp/är" })}\n`);
+    const cut = line.indexOf(Buffer.from("ä")) + 1;
+    const second = Buffer.from(`${JSON.stringify({ order: "k7m2qx4d", step: "lock", path: "/b" })}\n`);
+    const writes = [line.subarray(0, cut), Buffer.concat([line.subarray(cut), second])];
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "");
+    const printed: string[] = [];
+    let polls = 0;
+
+    await followTrace(
+      "k7m2qx4d",
+      env,
+      () => {
+        const next = writes[polls];
+        if (next !== undefined) appendFileSync(path, next);
+        polls += 1;
+        return polls <= writes.length;
+      },
+      (printedLine) => printed.push(printedLine),
+    );
+
+    expect(printed.map((printedLine) => JSON.parse(printedLine).path)).toEqual(["/tmp/är", "/b"]);
   });
 });

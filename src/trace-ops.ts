@@ -5,6 +5,8 @@ import { appendLine, readFrom, sizeOf } from "./trace-effects";
 
 const FOLLOW_POLL_MS = 100;
 
+const NEWLINE = 0x0a;
+
 function outcomeOf(error: unknown): StepOutcome {
   if (isRefusal(error)) return { kind: "refused", code: error.code };
   return { kind: "failed", error: error instanceof Error ? error.message : String(error) };
@@ -62,18 +64,20 @@ export async function followTrace(
 ): Promise<void> {
   const path = tracePath(env);
   let offset = 0;
-  let partial = "";
+  let partial = Buffer.alloc(0);
   for (;;) {
     const alive = live();
     if (sizeOf(path) < offset) {
       offset = 0;
-      partial = "";
+      partial = Buffer.alloc(0);
     }
-    const text = readFrom(path, offset);
-    offset += Buffer.byteLength(text);
-    if (text === "" && !alive) return;
-    const lines = `${partial}${text}`.split("\n");
-    partial = lines.pop() ?? "";
+    const read = readFrom(path, offset);
+    offset += read.length;
+    if (read.length === 0 && !alive) return;
+    const pending = Buffer.concat([partial, read]);
+    const end = pending.lastIndexOf(NEWLINE);
+    partial = pending.subarray(end + 1);
+    const lines = end < 0 ? [] : pending.subarray(0, end).toString("utf8").split("\n");
     for (const line of lines) if (JSON.parse(line).order === order) print(line);
     await Bun.sleep(FOLLOW_POLL_MS);
   }
