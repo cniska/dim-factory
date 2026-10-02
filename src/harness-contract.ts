@@ -5,7 +5,10 @@ import { claudeDir, codexDir, type Env, resolveHomeDir } from "./paths";
 export const HarnessName = z.enum(["codex", "claude"]);
 export type HarnessName = z.infer<typeof HarnessName>;
 
-export type EditInput = { file_path?: unknown; notebook_path?: unknown; command?: unknown };
+export const EditInput = z
+  .object({ file_path: z.string(), notebook_path: z.string(), command: z.string() })
+  .partial();
+export type EditInput = z.infer<typeof EditInput>;
 
 export type Harness = {
   readonly name: HarnessName;
@@ -24,9 +27,9 @@ export const HARNESSES: Readonly<Record<HarnessName, Harness>> = {
     skillDir: (env) => join(resolveHomeDir(env), ".agents", "skills"),
     editTools: ["apply_patch"],
     editedPaths: ({ command }) =>
-      typeof command === "string"
-        ? [...command.matchAll(PATCH_TARGET)].map((match) => (match[1] as string).trim())
-        : [],
+      command === undefined
+        ? []
+        : [...command.matchAll(PATCH_TARGET)].map((match) => (match[1] as string).trim()),
   },
   claude: {
     name: "claude",
@@ -35,7 +38,7 @@ export const HARNESSES: Readonly<Record<HarnessName, Harness>> = {
     editTools: ["Edit", "Write", "MultiEdit", "NotebookEdit"],
     editedPaths: ({ file_path, notebook_path }) => {
       const path = file_path ?? notebook_path;
-      return typeof path === "string" ? [path] : [];
+      return path === undefined ? [] : [path];
     },
   },
 };

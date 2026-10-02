@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { refuser } from "./coded-error";
+import { EditInput } from "./harness-contract";
 
 const refusePayload = refuser<{ readonly hook_payload_invalid: { readonly reason: string } }>({
   hook_payload_invalid: {
@@ -13,9 +14,7 @@ export const StartPayload = z.object({ cwd: z.string() });
 export const EditPayload = z.object({
   cwd: z.string(),
   tool_name: z.string(),
-  tool_input: z
-    .object({ file_path: z.unknown(), notebook_path: z.unknown(), command: z.unknown() })
-    .partial(),
+  tool_input: EditInput,
 });
 export type EditPayload = z.infer<typeof EditPayload>;
 
