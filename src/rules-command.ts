@@ -11,6 +11,6 @@ export const rulesCommand: Command = {
   run(args) {
     if (args[0] !== "install" || args.length > 1) throw new UsageError(USAGE);
     const { source, path, state, backup } = installRules();
-    return { source, path, state, backup: backup ?? null };
+    return { source, path, state, backup };
   },
 };
