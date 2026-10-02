@@ -16,7 +16,7 @@ export const findingCommand: Command = {
     const { positionals, flags } = parseArgs(
       rest,
       { positionals: [2, 2], flags: ["reason"] },
-      (message) => new UsageError(`dim finding answer ${message}`),
+      "dim finding answer",
     );
     const [finding, answer] = positionals;
     const parsed = Answer.safeParse(answer);

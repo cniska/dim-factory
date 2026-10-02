@@ -1,4 +1,5 @@
 import { type Command, UsageError } from "./cli-contract";
+import { parseArgs } from "./cli-flags";
 import { formatAfterEdit } from "./format-edit";
 import { installHooks } from "./hooks";
 import { EditPayload, readHookPayload, StartPayload } from "./hooks-payload";
@@ -7,8 +8,6 @@ import { projectLine, wireFor } from "./session-start-context";
 
 const USAGE =
   "usage: dim hooks install | dim hooks start < <SessionStart payload> | dim hooks edit < <PostToolUse payload>";
-
-const HOOK_VERBS = ["start", "edit"];
 
 function install() {
   ensureSpoolDirs();
@@ -24,17 +23,25 @@ async function edit(): Promise<void> {
   formatAfterEdit(await readHookPayload(EditPayload));
 }
 
+const VERBS = new Map<string, () => unknown>([
+  ["install", install],
+  ["start", start],
+  ["edit", edit],
+]);
+
+const RAW_VERBS = new Set(["start", "edit"]);
+
 export const hooksCommand: Command = {
   name: "hooks",
   usage: USAGE,
   summary:
     "install the session hooks, copying each config aside; start and edit are what the SessionStart and PostToolUse hooks run",
-  raw: (args) => HOOK_VERBS.includes(args[0] ?? ""),
+  raw: (args) => RAW_VERBS.has(args[0] ?? ""),
   run(args) {
-    const [verb] = args;
-    if (verb === "install") return install();
-    if (verb === "start") return start();
-    if (verb === "edit") return edit();
-    throw new UsageError(USAGE);
+    const [verb, ...rest] = args;
+    const act = verb === undefined ? undefined : VERBS.get(verb);
+    if (act === undefined) throw new UsageError(USAGE);
+    parseArgs(rest, { positionals: [0, 0], flags: [] }, `dim hooks ${verb}`);
+    return act();
   },
 };

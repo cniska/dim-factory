@@ -11,10 +11,12 @@ const USAGE = "usage: dim message send <text> --order <order> --to plan|build|re
 const TURN_USAGE =
   "usage, inside a station turn: dim message send <text> [--to <recipient>], which reaches only the operator";
 
-const usage = (message: string) => new UsageError(`dim message ${message}`);
-
 async function send(args: readonly string[]) {
-  const { positionals, flags } = parseArgs(args, { positionals: [1, 1], flags: ["order", "to"] }, usage);
+  const { positionals, flags } = parseArgs(
+    args,
+    { positionals: [1, 1], flags: ["order", "to"] },
+    "dim message send",
+  );
   const [text] = positionals;
   if (text === undefined) throw new UsageError(USAGE);
   if (inTurn(process.env)) {

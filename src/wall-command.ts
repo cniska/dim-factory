@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { type Command, UsageError } from "./cli-contract";
+import type { Command } from "./cli-contract";
 import { parseArgs } from "./cli-flags";
 import { dbPath } from "./paths";
 import { DEFAULT_WALL_PORT, refusePort, WALL_PORT_ENV, WALL_SERVING_ENV, wallPort } from "./wall/port";
@@ -15,7 +15,7 @@ export const wallCommand: Command = {
     const dev = parseArgs(
       args,
       { positionals: [0, 0], flags: [], switches: ["dev"] },
-      (message) => new UsageError(`wall ${message}`),
+      "dim wall",
     ).switches.has("dev");
     if (process.env[WALL_SERVING_ENV] !== "1") {
       const hot = dev ? ["--hot"] : [];

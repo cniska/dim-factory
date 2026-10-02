@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { type Command, UsageError } from "./cli-contract";
+import { parseArgs } from "./cli-flags";
 import { openReadOnly } from "./db-read";
 import { OrderId } from "./order-contract";
 import { orderState, runAlive } from "./order-ops";
@@ -24,8 +25,7 @@ export const traceCommand: Command = {
   summary: "print an order's factory steps as JSONL until it has no live run",
   raw: () => true,
   run(args) {
-    const [target, ...rest] = args;
-    if (target === undefined || rest.length > 0) throw new UsageError(USAGE);
+    const [target] = parseArgs(args, { positionals: [1, 1], flags: [] }, "dim trace").positionals;
     const order = OrderId.safeParse(target);
     if (!order.success) throw new UsageError(USAGE);
     readFactory((db) => orderState(db, order.data));

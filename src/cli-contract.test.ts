@@ -90,6 +90,24 @@ describe("the command contract", () => {
     }
   });
 
+  test("a command refuses a verb named like a property every object inherits", () => {
+    const root = mkdtempSync(join(tmpdir(), "dim-inherited-verb-"));
+    try {
+      for (const name of ["order", "hooks"]) {
+        const run = Bun.spawnSync([process.execPath, join(SRC, "cli.ts"), name, "constructor"], {
+          env: { ...process.env, ...scratchEnv(root) },
+        });
+        expect({ name, exitCode: run.exitCode, stderr: run.stderr.toString() }).toMatchObject({
+          name,
+          exitCode: 1,
+          stderr: expect.stringContaining('"code":"usage"'),
+        });
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("every command states its usage and what it is for", () => {
     for (const command of COMMANDS) {
       expect(command.usage).toStartWith(`usage: dim ${command.name}`);

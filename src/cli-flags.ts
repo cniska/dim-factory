@@ -1,4 +1,4 @@
-type FlagFail = (message: string) => Error;
+import { UsageError } from "./cli-contract";
 
 export type Parsed<Flag extends string, Switch extends string = never> = {
   readonly positionals: readonly string[];
@@ -15,8 +15,9 @@ export type ArgSpec<Flag extends string, Switch extends string = never> = {
 export function parseArgs<Flag extends string, Switch extends string = never>(
   args: readonly string[],
   spec: ArgSpec<Flag, Switch>,
-  fail: FlagFail,
+  command: string,
 ): Parsed<Flag, Switch> {
+  const fail = (message: string) => new UsageError(`${command} ${message}`);
   const positionals: string[] = [];
   const flags: Partial<Record<Flag, string>> = {};
   const switches = new Set<Switch>();

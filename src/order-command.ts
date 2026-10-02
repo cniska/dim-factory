@@ -34,7 +34,7 @@ function add(db: Database, args: readonly string[]) {
   const { flags } = parseArgs(
     args,
     { positionals: [0, 0], flags: ["title", "description", "project"] },
-    usage,
+    "dim order",
   );
   if (flags.title === undefined || flags.description === undefined) {
     throw usage("add needs --title and --description");
@@ -44,7 +44,7 @@ function add(db: Database, args: readonly string[]) {
 }
 
 async function run(db: Database, args: readonly string[]) {
-  const { positionals } = parseArgs(args, { positionals: [1, 1], flags: [] }, usage);
+  const { positionals } = parseArgs(args, { positionals: [1, 1], flags: [] }, "dim order");
   const order = orderArg(positionals);
   await advanceOrder(db, order, callerOf(db, process.cwd()), { kind: "run" }, process.env);
   return showOrder(db, order);
@@ -62,7 +62,7 @@ async function approve(db: Database, args: readonly string[]) {
   const { positionals, flags } = parseArgs(
     args,
     { positionals: [1, 1], flags: ["reason", "decided"] },
-    usage,
+    "dim order",
   );
   const order = orderArg(positionals);
   const decision = decisionOf("approve", flags);
@@ -74,7 +74,7 @@ async function returnArtifact(db: Database, args: readonly string[]) {
   const { positionals, flags } = parseArgs(
     args,
     { positionals: [1, 1], flags: ["reason", "decided"] },
-    usage,
+    "dim order",
   );
   const order = orderArg(positionals);
   const decision = decisionOf("return", flags);
@@ -86,7 +86,7 @@ function update(db: Database, args: readonly string[]) {
   const { positionals, flags } = parseArgs(
     args,
     { positionals: [1, 1], flags: ["title", "description"] },
-    usage,
+    "dim order",
   );
   if (flags.title === undefined && flags.description === undefined) {
     throw usage("update needs --title, --description or both");
@@ -97,7 +97,7 @@ function update(db: Database, args: readonly string[]) {
 }
 
 function cancel(db: Database, args: readonly string[]) {
-  const { positionals, flags } = parseArgs(args, { positionals: [1, 1], flags: ["reason"] }, usage);
+  const { positionals, flags } = parseArgs(args, { positionals: [1, 1], flags: ["reason"] }, "dim order");
   if (flags.reason === undefined) throw usage("cancel needs --reason");
   const order = orderArg(positionals);
   cancelOrder(db, order, callerOf(db, process.cwd()), flags.reason, process.env);
@@ -105,35 +105,41 @@ function cancel(db: Database, args: readonly string[]) {
 }
 
 function show(db: Database, args: readonly string[]) {
-  const { positionals } = parseArgs(args, { positionals: [1, 1], flags: [] }, usage);
+  const { positionals } = parseArgs(args, { positionals: [1, 1], flags: [] }, "dim order");
   return showOrder(db, orderArg(positionals));
 }
 
 type Verb = (db: Database, args: readonly string[]) => unknown;
 
-const VERBS: Readonly<Record<string, Verb>> = {
-  add,
-  run,
-  approve,
-  return: returnArtifact,
-  show,
-  update,
-  cancel,
-};
+const VERBS = new Map<string, Verb>([
+  ["add", add],
+  ["run", run],
+  ["approve", approve],
+  ["return", returnArtifact],
+  ["show", show],
+  ["update", update],
+  ["cancel", cancel],
+]);
 
 type TurnVerb = (args: readonly string[]) => Promise<unknown>;
 
-const TURN_VERBS: Readonly<Record<string, TurnVerb>> = {
-  show: (args) => {
-    parseArgs(args, { positionals: [0, 0], flags: [] }, usage);
-    return sendAct({ act: "order_show" }, process.env);
-  },
-  return: (args) => {
-    const { flags } = parseArgs(args, { positionals: [0, 0], flags: ["reason"] }, usage);
-    if (flags.reason === undefined) throw usage("return needs --reason");
-    return sendAct({ act: "order_return", reason: flags.reason }, process.env);
-  },
-};
+const TURN_VERBS = new Map<string, TurnVerb>([
+  [
+    "show",
+    (args) => {
+      parseArgs(args, { positionals: [0, 0], flags: [] }, "dim order");
+      return sendAct({ act: "order_show" }, process.env);
+    },
+  ],
+  [
+    "return",
+    (args) => {
+      const { flags } = parseArgs(args, { positionals: [0, 0], flags: ["reason"] }, "dim order");
+      if (flags.reason === undefined) throw usage("return needs --reason");
+      return sendAct({ act: "order_return", reason: flags.reason }, process.env);
+    },
+  ],
+]);
 
 export const orderCommand: Command = {
   name: "order",
@@ -142,11 +148,11 @@ export const orderCommand: Command = {
   async run(args) {
     const [verb, ...rest] = args;
     if (inTurn(process.env)) {
-      const turnVerb = verb === undefined ? undefined : TURN_VERBS[verb];
+      const turnVerb = verb === undefined ? undefined : TURN_VERBS.get(verb);
       if (turnVerb === undefined) throw new UsageError(TURN_USAGE);
       return turnVerb(rest);
     }
-    const act = verb === undefined ? undefined : VERBS[verb];
+    const act = verb === undefined ? undefined : VERBS.get(verb);
     if (act === undefined) throw new UsageError(USAGE);
     const db = openDb(dbPath());
     try {

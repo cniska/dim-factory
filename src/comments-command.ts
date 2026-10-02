@@ -8,7 +8,7 @@ function purge(args: string[]): unknown {
   const { positionals, switches } = parseArgs(
     args,
     { positionals: [0, Number.POSITIVE_INFINITY], flags: [], switches: ["write"] },
-    (message) => new UsageError(`comments purge ${message}`),
+    "dim comments purge",
   );
   const purged = purgeComments(process.cwd(), { write: switches.has("write"), paths: positionals });
   return purged.written && purged.failed ? new Ran(purged.report, 1) : purged.report;

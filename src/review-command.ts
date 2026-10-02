@@ -16,7 +16,7 @@ export const reviewCommand: Command = {
     const { flags } = parseArgs(
       rest,
       { positionals: [0, 0], flags: ["findings", "artifact"] },
-      () => new UsageError(USAGE),
+      "dim review return",
     );
     const { findings, artifact } = flags;
     if (findings !== undefined && artifact === undefined) {

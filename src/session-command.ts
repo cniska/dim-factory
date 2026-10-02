@@ -1,4 +1,5 @@
 import { type Command, UsageError } from "./cli-contract";
+import { parseArgs } from "./cli-flags";
 import { openReadOnly } from "./db-read";
 import { dbPath } from "./paths";
 import { showSession } from "./worker-ops";
@@ -10,8 +11,10 @@ export const sessionCommand: Command = {
   usage: USAGE,
   summary: "print the factory's copy of a station worker's session transcript",
   run(args) {
-    const [verb, session, ...rest] = args;
-    if (verb !== "show" || session === undefined || rest.length > 0) throw new UsageError(USAGE);
+    const [verb, ...rest] = args;
+    if (verb !== "show") throw new UsageError(USAGE);
+    const [session] = parseArgs(rest, { positionals: [1, 1], flags: [] }, "dim session show").positionals;
+    if (session === undefined) throw new UsageError(USAGE);
     const db = openReadOnly(dbPath());
     try {
       return showSession(db, session);

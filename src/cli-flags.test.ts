@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { type ArgSpec, parseArgs } from "./cli-flags";
 
-const fail = (message: string) => new Error(message);
+const fail = "dim order run";
 
 describe("a command's arguments", () => {
   const spec: ArgSpec<"reason" | "decided"> = { positionals: [1, 1], flags: ["reason", "decided"] };
@@ -37,6 +37,12 @@ describe("a command's arguments", () => {
     expect(() => parseArgs(["k7", "--reason", "a", "--reason", "b"], spec, fail)).toThrow("once");
     expect(() => parseArgs(["k7", "--reason"], spec, fail)).toThrow("needs a value");
     expect(() => parseArgs(["k7", "--reason", "--decided", "owner"], spec, fail)).toThrow("needs a value");
+  });
+
+  test("refuses with a usage error that names the command", () => {
+    expect(() => parseArgs([], spec, fail)).toThrow(
+      expect.objectContaining({ code: "usage", message: "dim order run takes 1 argument(s), and got 0: " }),
+    );
   });
 
   test("refuses more or fewer positionals than the command takes", () => {

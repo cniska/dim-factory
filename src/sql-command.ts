@@ -9,11 +9,7 @@ export const sqlCommand: Command = {
   usage: 'usage: dim sql "<select>" [--rows <n>]',
   summary: "run one read-only statement against the database",
   run(args) {
-    const { positionals, flags } = parseArgs(
-      args,
-      { positionals: [0, 1], flags: ["rows"] },
-      (message) => new UsageError(`sql ${message}`),
-    );
+    const { positionals, flags } = parseArgs(args, { positionals: [0, 1], flags: ["rows"] }, "dim sql");
     const [statement] = positionals;
     if (!statement)
       throw new UsageError('sql needs one statement, as in: dim sql "SELECT count(*) FROM session"');

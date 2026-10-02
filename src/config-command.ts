@@ -11,7 +11,7 @@ export function runConfig(args: string[], cwd = process.cwd(), env: Env = proces
   const { positionals, switches } = parseArgs(
     args,
     { positionals: [0, 3], flags: [], switches: ["project"] },
-    (message) => new UsageError(`config ${message}`),
+    "dim config",
   );
   const project = switches.has("project");
   const [verb, name, ...rest] = positionals;

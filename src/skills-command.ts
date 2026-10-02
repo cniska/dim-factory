@@ -1,4 +1,5 @@
 import { type Command, UsageError } from "./cli-contract";
+import { parseArgs } from "./cli-flags";
 import { installSkill } from "./skill";
 
 const USAGE = "usage: dim skills install";
@@ -8,7 +9,9 @@ export const skillsCommand: Command = {
   usage: USAGE,
   summary: "link this repo's skills where each installed harness reads them, moving an occupied link aside",
   run(args) {
-    if (args[0] !== "install" || args.length > 1) throw new UsageError(USAGE);
+    const [verb, ...rest] = args;
+    if (verb !== "install") throw new UsageError(USAGE);
+    parseArgs(rest, { positionals: [0, 0], flags: [] }, "dim skills install");
     const changed = installSkill().filter((plan) => plan.state !== "linked");
     return {
       linked: changed.map((plan) => plan.link),
