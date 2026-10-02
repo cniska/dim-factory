@@ -6,10 +6,10 @@ import { userConfigPath } from "./config";
 import { writeTransaction } from "./db";
 import { checkTask } from "./declared-tasks";
 import { diffSince, gitCommonDir, type Identity, tipOf } from "./git";
-import type { Outcome, SessionStart, Spawned } from "./harness-contract";
+import type { SessionStart, Spawned } from "./harness-contract";
 import { startHarness, stopHarness, WORKER_HARNESS } from "./harness-ops";
 import { type Death, type OrderState, phaseAfter, roleAt, stepRefusal, type WorkBy } from "./order";
-import { type DeathCode, type Later, type OperatorAct, refuseOrder, type Station } from "./order-contract";
+import { type OperatorAct, refuseOrder, type Station } from "./order-contract";
 import {
   endRun,
   markHarness,
@@ -28,6 +28,8 @@ import { type Env, workerHomeDir, workerSessionsDir } from "./paths";
 import { shipOrder } from "./ship-ops";
 import { alignBranch, branchFacts, submitSlice } from "./slice-ops";
 import {
+  closedTurn,
+  type Ended,
   messagePurpose,
   modelOf,
   type Purpose,
@@ -37,8 +39,8 @@ import {
   stationPurpose,
   TURN_SOCKET_ENV,
   type Turn,
-  type TurnEnd,
-  turnEnd,
+  type TurnClose,
+  type TurnStop,
   workEntry,
   workerEnv,
 } from "./station";
@@ -76,21 +78,6 @@ type TurnOf = {
   readonly env: Env;
   readonly purpose: Purpose;
 };
-
-type Ended =
-  | { readonly end: TurnEnd | "closed"; readonly session: string }
-  | { readonly end: "missed"; readonly session: string; readonly missed: string }
-  | { readonly end: "died"; readonly session: string; readonly code: DeathCode }
-  | { readonly end: "lost"; readonly session: string }
-  | { readonly end: "config_changed"; readonly session: string };
-
-type Replied =
-  | { readonly end: "replied"; readonly reply: string }
-  | { readonly end: "closed" }
-  | { readonly end: "no_reply"; readonly session: string }
-  | { readonly end: "died"; readonly session: string; readonly code: DeathCode }
-  | { readonly end: "lost"; readonly session: string }
-  | { readonly end: "config_changed"; readonly session: string };
 
 type SessionOf =
   | { readonly kind: "new"; readonly id: string }
@@ -198,10 +185,7 @@ type TurnServed = {
   readonly ended: Awaited<Spawned["ended"]>;
 };
 
-type Stop =
-  | { readonly kind: "missed"; readonly missed: string }
-  | { readonly kind: "config_changed" }
-  | { readonly kind: "fault"; readonly error: unknown };
+type Stop = TurnStop | { readonly kind: "fault"; readonly error: unknown };
 
 async function serveTurn(
   served: Served,
@@ -251,14 +235,7 @@ async function serveTurn(
   }
 }
 
-type Closing = {
-  readonly acting: Acting;
-  readonly session: string;
-  readonly stop: Exclude<Stop, { readonly kind: "fault" }> | null;
-  readonly outcome: Outcome;
-  readonly copied: boolean;
-  readonly resumed: boolean;
-};
+type Closing = TurnClose & { readonly acting: Acting };
 
 async function runTurn(db: Database, turn: TurnOf): Promise<Closing> {
   const state = orderState(db, turn.order);
@@ -333,72 +310,22 @@ function spawnFor(turn: TurnOf, session: SessionOf, workspace: string, opened: T
   return startHarness(turn.trace, { argv, cwd: workspace, env, session: idOf(session) });
 }
 
-function deathOf(session: string, copied: boolean, outcome: Outcome & { readonly kind: "died" }): Later {
-  return outcome.code === "usage_limit"
-    ? { action: "session_died", code: outcome.code, details: { session, copied, resetsAt: outcome.resetsAt } }
-    : { action: "session_died", code: outcome.code, details: { session, copied } };
-}
-
-function closeStationTurn(db: Database, turn: TurnOf, closing: Closing): Ended {
-  const { session, stop } = closing;
-  const failed = (later: Later) => recordAs(turn.trace, db, turn.order, byFactory(turn), later);
+function settleTurn(db: Database, turn: TurnOf, closing: Closing): Ended {
   return writeTransaction(db, () => {
-    if (orderState(db, turn.order).status !== "running") return { end: "closed", session };
-    switch (stop?.kind) {
-      case "config_changed":
-        failed({ action: "station_failed", code: "git_config_changed", details: { session } });
-        return { end: "config_changed", session };
-      case "missed":
-        failed({
-          action: "station_failed",
-          code: "return_missed",
-          details: { session, missed: stop.missed },
-        });
-        return { end: "missed", session, missed: stop.missed };
-      case undefined:
-        return closeEndedTurn(db, turn, closing);
-      default:
-        return unreachable(stop);
+    const state = orderState(db, turn.order);
+    const { ended, record } = closedTurn(state, turn.station, turn.purpose.answers, closing);
+    for (const later of record) recordAs(turn.trace, db, turn.order, byFactory(turn), later);
+    if (ended.end === "replied") {
+      recordAs(
+        turn.trace,
+        db,
+        turn.order,
+        { kind: "worker", acting: closing.acting },
+        { action: "message_sent", details: { to: turn.by.worker.name, text: ended.reply } },
+      );
     }
+    return ended;
   });
-}
-
-function closeEndedTurn(db: Database, turn: TurnOf, { session, outcome, copied, resumed }: Closing): Ended {
-  const failed = (later: Later) => recordAs(turn.trace, db, turn.order, byFactory(turn), later);
-  if (outcome.kind === "died") failed(deathOf(session, copied, outcome));
-  const end = turnEnd(orderState(db, turn.order), turn.station);
-  if (end !== "no_return") return { end, session };
-  if (outcome.kind === "died" && outcome.code === "resume_failed" && resumed) return { end: "lost", session };
-  if (outcome.kind === "died") {
-    failed({ action: "station_failed", code: "session_died", details: { session } });
-    return { end: "died", session, code: outcome.code };
-  }
-  failed({ action: "station_failed", code: "no_return", details: { session } });
-  return { end, session };
-}
-
-function closeMessageTurn(
-  db: Database,
-  turn: TurnOf,
-  { acting, session, stop, outcome, copied, resumed }: Closing,
-): Replied {
-  if (orderState(db, turn.order).status !== "running") return { end: "closed" };
-  if (stop?.kind === "config_changed") return { end: "config_changed", session };
-  invariant(stop === null, `a message turn on order ${turn.order} has no definition of done to miss`);
-  if (outcome.kind === "died") {
-    recordAs(turn.trace, db, turn.order, byFactory(turn), deathOf(session, copied, outcome));
-    if (outcome.code === "resume_failed" && resumed) return { end: "lost", session };
-    return { end: "died", session, code: outcome.code };
-  }
-  if (outcome.result === null) return { end: "no_reply", session };
-  recordAs(
-    turn.trace,
-    db,
-    turn.order,
-    { kind: "worker", acting },
-    { action: "message_sent", details: { to: turn.by.worker.name, text: outcome.result } },
-  );
-  return { end: "replied", reply: outcome.result };
 }
 
 type Prepared = {
@@ -413,37 +340,18 @@ function prepareTurn(setup: ProjectSetup, station: Station, env: Env): Prepared 
   return { model, identity: ownerIdentity(setup.root, env) };
 }
 
-async function turnAt(db: Database, turn: TurnOf): Promise<void> {
-  const first = closeStationTurn(db, turn, await runTurn(db, turn));
-  const ended = first.end === "lost" ? closeStationTurn(db, turn, await runTurn(db, turn)) : first;
+async function turnAt(db: Database, turn: TurnOf): Promise<string | null> {
+  const first = settleTurn(db, turn, await runTurn(db, turn));
+  const ended = first.end === "lost" ? settleTurn(db, turn, await runTurn(db, turn)) : first;
   const { order, station } = turn;
   invariant(ended.end !== "lost", `order ${order}'s replacement session is a fork, never a resume`);
   switch (ended.end) {
     case "returned":
-    case "closed":
-      return;
-    case "config_changed":
-      throw refuseStation("git_config_changed", { order, station, config: turn.gitConfig });
-    case "died":
-      throw refuseStation("session_died", { order, station, session: ended.session, code: ended.code });
-    case "no_return":
-      throw refuseStation("no_return", { order, station, session: ended.session });
-    case "missed":
-      throw refuseStation("return_missed", { order, station, missed: ended.missed });
-    default:
-      return unreachable(ended);
-  }
-}
-
-async function messageAt(db: Database, turn: TurnOf): Promise<string> {
-  const first = closeMessageTurn(db, turn, await runTurn(db, turn));
-  const ended = first.end === "lost" ? closeMessageTurn(db, turn, await runTurn(db, turn)) : first;
-  const { order, station } = turn;
-  invariant(ended.end !== "lost", `order ${order}'s replacement session is a fork, never a resume`);
-  switch (ended.end) {
+      return null;
     case "replied":
       return ended.reply;
     case "closed": {
+      if (turn.purpose.answers === "return") return null;
       const refusal = stepRefusal(orderState(db, order), "message");
       invariant(refusal !== null, `order ${order} admits no message once it is closed`);
       throw refusal;
@@ -452,8 +360,12 @@ async function messageAt(db: Database, turn: TurnOf): Promise<string> {
       throw refuseStation("git_config_changed", { order, station, config: turn.gitConfig });
     case "died":
       throw refuseStation("session_died", { order, station, session: ended.session, code: ended.code });
+    case "no_return":
+      throw refuseStation("no_return", { order, station, session: ended.session });
     case "no_reply":
       throw refuseStation("no_reply", { order, station, session: ended.session });
+    case "missed":
+      throw refuseStation("return_missed", { order, station, missed: ended.missed });
     default:
       return unreachable(ended);
   }
@@ -579,9 +491,11 @@ export async function messageWorker(
   const worker = stationWorkerAt(db, order, roleAt(station));
   if (worker === null) throw refuseOrder("no_worker", { order, station });
   const act = { kind: "message", to: worker.name, text } as const;
-  return withRun(db, order, caller, act, station, env, ({ turnOf }) =>
-    messageAt(db, turnOf(messagePurpose(text))),
-  );
+  return withRun(db, order, caller, act, station, env, async ({ turnOf }) => {
+    const reply = await turnAt(db, turnOf(messagePurpose(text)));
+    invariant(reply !== null, `a message turn on order ${order} ends in a reply or a refusal`);
+    return reply;
+  });
 }
 
 export function cancelOrder(db: Database, order: string, caller: Caller, reason: string, env: Env): void {

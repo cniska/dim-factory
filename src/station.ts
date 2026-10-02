@@ -5,9 +5,9 @@ import { listedEnv, PASSED_THROUGH } from "./check";
 import { type CodedError, recordOf } from "./coded-error";
 import type { Models } from "./config";
 import type { Identity } from "./git";
-import type { Adapter, Policy } from "./harness-contract";
+import type { Adapter, Outcome, Policy } from "./harness-contract";
 import { atStation, type OrderState, openFindings, slicesOf } from "./order";
-import { type Later, Plan, ReviewArtifact, STATIONS, type Station } from "./order-contract";
+import { type DeathCode, type Later, Plan, ReviewArtifact, STATIONS, type Station } from "./order-contract";
 import type { Env } from "./paths";
 import type { SkillName } from "./skill";
 import {
@@ -164,7 +164,10 @@ const STATIONS_OF: Readonly<Record<TurnRequest["act"], readonly Station[]>> = {
   review_return: ["review"],
 };
 
+export type Answering = "return" | "reply";
+
 export type Purpose = {
+  readonly answers: Answering;
   readonly policy: Policy["kind"];
   readonly briefsDiff: boolean;
   readonly briefsCheck: boolean;
@@ -175,6 +178,7 @@ export type Purpose = {
 export function stationPurpose(station: Station): Purpose {
   const { skill, policy, briefsDiff, briefsCheck, brief } = STATION_TURNS[station];
   return {
+    answers: "return",
     policy,
     briefsDiff,
     briefsCheck,
@@ -186,6 +190,7 @@ export function stationPurpose(station: Station): Purpose {
 
 export function messagePurpose(text: string): Purpose {
   return {
+    answers: "reply",
     policy: "read",
     briefsDiff: false,
     briefsCheck: false,
@@ -337,8 +342,81 @@ export function replyTo(refusal: CodedError, misses: readonly string[]): Refused
   };
 }
 
-export type TurnEnd = "returned" | "no_return";
+export type TurnStop =
+  | { readonly kind: "missed"; readonly missed: string }
+  | { readonly kind: "config_changed" };
 
-export function turnEnd(state: OrderState, station: Station): TurnEnd {
-  return atStation(state, station) ? "no_return" : "returned";
+export type TurnClose = {
+  readonly session: string;
+  readonly stop: TurnStop | null;
+  readonly outcome: Outcome;
+  readonly copied: boolean;
+  readonly resumed: boolean;
+};
+
+export type Ended =
+  | { readonly end: "returned" }
+  | { readonly end: "closed" }
+  | { readonly end: "replied"; readonly reply: string }
+  | { readonly end: "missed"; readonly session: string; readonly missed: string }
+  | { readonly end: "died"; readonly session: string; readonly code: DeathCode }
+  | { readonly end: "lost"; readonly session: string }
+  | { readonly end: "config_changed"; readonly session: string }
+  | { readonly end: "no_return"; readonly session: string }
+  | { readonly end: "no_reply"; readonly session: string };
+
+type Closed = { readonly ended: Ended; readonly record: readonly Later[] };
+
+function deathOf(
+  session: string,
+  copied: boolean,
+  outcome: Extract<Outcome, { readonly kind: "died" }>,
+): Later {
+  return outcome.code === "usage_limit"
+    ? { action: "session_died", code: outcome.code, details: { session, copied, resetsAt: outcome.resetsAt } }
+    : { action: "session_died", code: outcome.code, details: { session, copied } };
+}
+
+const failed = (code: "git_config_changed" | "no_return" | "session_died", session: string): Later => ({
+  action: "station_failed",
+  code,
+  details: { session },
+});
+
+export function closedTurn(
+  state: OrderState,
+  station: Station,
+  answers: Answering,
+  close: TurnClose,
+): Closed {
+  const { session, stop, outcome, copied, resumed } = close;
+  if (state.status !== "running") return { ended: { end: "closed" }, record: [] };
+  if (stop?.kind === "config_changed") {
+    const record = answers === "return" ? [failed("git_config_changed", session)] : [];
+    return { ended: { end: "config_changed", session }, record };
+  }
+  if (stop?.kind === "missed") {
+    invariant(answers === "return", `a message turn on order ${state.id} has no definition of done to miss`);
+    const record: readonly Later[] = [
+      { action: "station_failed", code: "return_missed", details: { session, missed: stop.missed } },
+    ];
+    return { ended: { end: "missed", session, missed: stop.missed }, record };
+  }
+  const returned = answers === "return" && !atStation(state, station);
+  if (outcome.kind === "died") {
+    const death = deathOf(session, copied, outcome);
+    if (returned) return { ended: { end: "returned" }, record: [death] };
+    if (outcome.code === "resume_failed" && resumed)
+      return { ended: { end: "lost", session }, record: [death] };
+    const record = answers === "return" ? [death, failed("session_died", session)] : [death];
+    return { ended: { end: "died", session, code: outcome.code }, record };
+  }
+  if (answers === "reply") {
+    return outcome.result === null
+      ? { ended: { end: "no_reply", session }, record: [] }
+      : { ended: { end: "replied", reply: outcome.result }, record: [] };
+  }
+  return returned
+    ? { ended: { end: "returned" }, record: [] }
+    : { ended: { end: "no_return", session }, record: [failed("no_return", session)] };
 }
