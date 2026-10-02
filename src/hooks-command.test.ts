@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { scratchEnv } from "./fixtures.test-support";
@@ -32,6 +32,51 @@ test("hooks install reports a refreshed matcher", () => {
     writeFileSync(settings, JSON.stringify(config));
     expect(installHooks(root)).toMatchObject({ added: 0, refreshed: 1, alreadyPresent: 7 });
     expect(installHooks(root)).toMatchObject({ written: [], refreshed: 0 });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function runHook(verb: string, payload: unknown, root: string) {
+  return Bun.spawnSync([process.execPath, resolve(import.meta.dir, "cli.ts"), "hooks", verb], {
+    env: { ...process.env, ...scratchEnv(root), HOME: root },
+    stdin: new TextEncoder().encode(JSON.stringify(payload)),
+  });
+}
+
+test("hooks start gives the session its checkout's declared tasks", () => {
+  const root = mkdtempSync(join(tmpdir(), "dim-hooks-start-"));
+  try {
+    mkdirSync(join(root, ".git"));
+    writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { verify: "bun test" } }));
+    writeFileSync(join(root, "bun.lock"), "");
+    const run = runHook("start", { cwd: root }, root);
+    expect(run.exitCode).toBe(0);
+    expect(JSON.parse(run.stdout.toString())).toEqual({
+      hookSpecificOutput: {
+        hookEventName: "SessionStart",
+        additionalContext: "This repo declares: check `bun run verify`.",
+      },
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("hooks start and edit refuse a payload with no session directory", () => {
+  const root = mkdtempSync(join(tmpdir(), "dim-hooks-payload-"));
+  try {
+    for (const [verb, payload] of [
+      ["start", { session_id: "s" }],
+      ["edit", { tool_name: "Write", tool_input: { file_path: "/a.ts" } }],
+    ] as const) {
+      const run = runHook(verb, payload, root);
+      expect({ verb, exitCode: run.exitCode, stderr: run.stderr.toString() }).toMatchObject({
+        verb,
+        exitCode: 1,
+        stderr: expect.stringContaining('"code":"hook_payload_invalid"'),
+      });
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -2,20 +2,16 @@ import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { formatTask } from "./declared-tasks";
 import { checkoutRoot } from "./git-checkout";
-import { type EditInput, HARNESSES } from "./harness-contract";
+import { HARNESSES } from "./harness-contract";
+import type { EditPayload } from "./hooks-payload";
 
 export const FORMAT_TIMEOUT_MS = 30_000;
 
-export type EditPayload = { tool_name?: unknown; cwd?: unknown; tool_input?: EditInput };
-
 export type FormatRun = { checkout: string; commandLine: string; exitCode: number | null };
 
-export function editedPaths(payload: EditPayload): string[] {
-  const cwd = typeof payload.cwd === "string" ? payload.cwd : process.cwd();
-  const harness = Object.values(HARNESSES).find(
-    (candidate) => typeof payload.tool_name === "string" && candidate.editTools.includes(payload.tool_name),
-  );
-  return harness ? harness.editedPaths(payload.tool_input ?? {}).map((path) => resolve(cwd, path)) : [];
+export function editedPaths({ cwd, tool_name, tool_input }: EditPayload): string[] {
+  const harness = Object.values(HARNESSES).find((candidate) => candidate.editTools.includes(tool_name));
+  return harness ? harness.editedPaths(tool_input).map((path) => resolve(cwd, path)) : [];
 }
 
 export function formatAfterEdit(payload: EditPayload): FormatRun[] {

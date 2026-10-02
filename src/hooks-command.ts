@@ -1,7 +1,7 @@
 import { type Command, UsageError } from "./cli-contract";
-import { type EditPayload, formatAfterEdit } from "./format-edit";
+import { formatAfterEdit } from "./format-edit";
 import { installHooks } from "./hooks";
-import { readHookPayload } from "./hooks-payload";
+import { EditPayload, readHookPayload } from "./hooks-payload";
 import { startSession } from "./hooks-start";
 import { ensureSpoolDirs } from "./ingest-spool";
 
@@ -16,9 +16,7 @@ function install() {
 }
 
 async function edit(): Promise<void> {
-  try {
-    formatAfterEdit((await readHookPayload()) as EditPayload);
-  } catch {}
+  formatAfterEdit(await readHookPayload(EditPayload));
 }
 
 export const hooksCommand: Command = {
