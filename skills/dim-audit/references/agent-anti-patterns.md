@@ -2,7 +2,7 @@
 
 Shapes coding agents keep writing, and the fix for each. An agent copies the code nearest its change, so one instance left standing becomes the next change's template. Code an agent writes is rid of every entry here before it lands, and an instance found in merged code is fixed rather than left as precedent.
 
-The entries are the owner's corrections to agents across their projects, quoted from the record; the examples are from dim-factory. Each names what holds it: a type or constraint where one can, otherwise review. A review area reading against this page is in [`todo.md`](../../../docs/todo.md).
+The entries are the owner's corrections to agents across their projects, quoted from the record; the examples are from dim-factory. Each names what holds it: a type or constraint where one can, otherwise review.
 
 ## A workaround in place of the cause
 
@@ -26,9 +26,9 @@ The same thing done by two routes — a synchronous twin beside the live runner,
 
 A thing is made to fit an existing concept because the shape was already there: shipping, an act the operator runs once every station is done, stored as a fourth station an order is moved to. The borrowed concept's rules then apply to something they do not describe, and every reader special-cases it. The same shape is a state invented to paper over a gap — a "ready to resume" flag where the order's real status was missing.
 
-**Fix.** Give it its own concept, its own word in [`glossary.md`](../../../docs/glossary.md), and its own code. Shipping is `dim order ship`, gated on its own entry conditions; the stations are `plan`, `build` and `review`.
+**Fix.** Give it its own concept, its own word in [`glossary.md`](../../../docs/glossary.md), and its own code. Shipping is what approving the Review artifact does, with its own entry conditions; the stations are `plan`, `build` and `review`.
 
-**Holds it.** The closed vocabulary of the concept it was borrowed from ([`src/station.ts`](../../../src/station.ts) and its `CHECK`), and review of any new member proposed for one.
+**Holds it.** The closed vocabulary of the concept it was borrowed from ([`src/order-contract.ts`](../../../src/order-contract.ts) `STATIONS`), and review of any new member proposed for one.
 
 ## A code comment
 
@@ -36,11 +36,11 @@ A comment is where an agent excuses what the code should have fixed. A comment e
 
 **Fix.** No comments, tool contracts aside. A why goes into a name, a test that holds the invariant, or the doc that owns the subject. A comment defending a workaround is not moved into a doc, which only relocates the excuse: the workaround is fixed, or filed in [`todo.md`](../../../docs/todo.md).
 
-**Holds it.** The comment gate, in a repo that bans comments: the commit gate refuses a commit adding one to a JS or TS line ([`usage.md`](../../../docs/usage.md#install-the-shared-controls)), and the runner refuses a factory builder's turn that adds one ([`factory.md`](../../../docs/factory.md)).
+**Holds it.** The comment gate, in a repo that bans comments: the commit gate refuses a commit adding one to a JS or TS line ([`usage.md`](../../../docs/usage.md#comment-gate)). Elsewhere, review.
 
 ## A gate on the step before the act
 
-A check placed on the move that usually precedes an act rather than on the act: the operator and review checks on moving an order to ship, while `dim order ship` itself trusted that the move had happened. Any other route to the act is unguarded.
+A check placed on the move that usually precedes an act rather than on the act: the operator and review checks on moving an order to ship, while the ship itself trusted that the move had happened. Any other route to the act is unguarded.
 
 **Fix.** The act checks its own entry conditions from the record. The step before it has nothing left to guard and usually goes.
 
@@ -90,7 +90,7 @@ A regex, a word list or text parsing standing in for a field the record already 
 
 A new component, field, helper or format written beside one the codebase already has. "why are you adding another abstraction when there is already a system for this?"
 
-**Fix.** Look for prior art before writing — `dim q prior-art` across the repos on disk — and reuse it.
+**Fix.** Look for prior art before writing — `dim query prior-art "<path fragment>"` across the repos on disk — and reuse it.
 
 **Holds it.** The plan station's prior-art step, and review.
 

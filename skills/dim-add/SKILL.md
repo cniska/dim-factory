@@ -1,62 +1,16 @@
 ---
 name: dim-add
-description: Turn a build request into one attributed factory order.
-argument-hint: "<what needs to be built>"
+description: Turn what the owner asks for into one factory order with a title, a description and a project. Use in the operator's session when the owner asks for work to be built or fixed.
+argument-hint: "<what should become true>"
 ---
 
 # Add
 
-Turn the request into the one order the operator will run. This is intake, not planning: preserve the request, make its identity durable, and hand back the id.
+Intake, not planning: keep the request, make it an order, hand back the id.
 
-## Entry contract
+1. The title names the outcome in the project's words.
+2. The description is the request as the owner gave it: what should become true, every detail they named, and a report's stack or log verbatim. It is not a plan or an outline; the planner reads it from the brief. The wall shows it as plain text, so it reads unrendered.
+3. The project is the checkout's own unless the owner names another. From inside a checkout of the project, run `dim order add --title "<title>" --description "<request>" [--project <owner>/<repo>]`.
+4. The result prints the order with its id. Hand the id back; the owner runs it through `dim-factory`.
 
-- The request states what should become true in ordinary project language.
-- Read the repository's project and factory rules before choosing the order's project.
-- Use `dim q search` or `dim q prior-art` only when the request refers to an earlier decision or existing order; do not redesign the request here.
-- Run intake as the project's operator, registered by `dim operator`; `dim` reads the worker from the process tree.
-
-## Write the order
-
-1. Choose a stable kebab-case order id from the request. Do not put a timestamp or model name in it.
-2. Write a short title that names the requested outcome.
-3. Choose `feat` for work that adds behavior or `fix` for work that repairs behavior.
-4. Keep the request's detail in `--description`; do not replace it with a plan or implementation outline.
-5. Use the repository's canonical project identity.
-6. Run:
-
-   ```text
-   dim order add <order-id> --line <feat|fix> --title "<title>" --description "<request>" --project "<owner/repo>"
-   ```
-
-7. Verify the command returned the same id and that `dim q order <order-id>` reads the queued record.
-8. Hand the id to the operator loop. Do not claim, plan, approve, build, review, ship, or drop it here.
-
-## Description
-
-The wall prints the description as plain text, markup and all: a card shows its first three lines and the item view the whole of it with line breaks kept (`src/wall/client.tsx`). So open with what should become true, and write the rest to be read unrendered.
-
-## Result
-
-Return only the order id and the next action:
-
-```text
-<order-id> — hand this order to the operator.
-```
-
-## Exit check
-
-The order is added when:
-
-- exactly one order was written;
-- its title, description, and project are the request's durable intake record;
-- the write is attributed to the current worker;
-- no planning or implementation decision was added.
-
-## Red flags
-
-- inventing a plan while writing the order
-- creating a second order for one request
-- naming a worker in a flag or prose instead of letting the process tree name it
-- claiming or starting the order during intake
-- adding a timestamp or model name to the id
-- silently dropping request details
+One request is one order. `dim query search "<words>"` serves only a request that refers to an earlier decision.

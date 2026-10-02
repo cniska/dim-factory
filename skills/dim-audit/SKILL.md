@@ -1,35 +1,25 @@
 ---
 name: dim-audit
-description: Audit an existing codebase across independent quality areas. Use for a read-only sweep of code already on the default branch.
+description: Audit an existing codebase across independent quality areas, one reader each, and report findings the owner turns into orders. Use for a read-only sweep of code already on the default branch.
 argument-hint: "<project or path>"
 ---
 
 # Audit
 
-Audit existing code across independent areas, one reader per area. `dim-review` judges a change; this skill examines the declared project or scope as it stands. Leave the project, its record and its orders unchanged.
+`dim-review` judges a change; an audit examines the project, or the scope named, as it stands. It changes nothing: not the project, not the record, not an order.
 
 ## Scope
 
-Audit the whole project when no narrower scope was requested. Identify the project, revision and scope being inspected. Read its rules and the available docs that state the scope's behavior and boundaries, then enumerate the owned source and tests. Name a missing authority instead of assuming one exists. Exclude generated files and dependencies, and name any part that cannot be inspected. Size the scope so each reader can inspect its relevant paths in full; divide a larger audit into coherent scopes and report each separately.
+Name the project, revision and scope. Read its rules and the docs that state the scope's behavior and boundaries, then list the source and tests it owns. Name a missing authority instead of assuming one. Leave out generated files and dependencies, and name any part that cannot be inspected. Size the scope so each reader inspects its paths in full; divide a larger audit into coherent scopes and report each separately.
 
 ## The passes
 
-Use the shared [quality areas](references/quality-areas.md) on code already on the default branch, plus the anti-pattern pass below. Spawn a read-only agent for each area when independent sessions are available. Give each the same scope and revision, the project's rules and only its own brief. A reader may use searches to locate candidates, but must inspect the surrounding implementation, callers, tests and contracts before judging them. When subagents are unavailable, run the passes separately and keep their findings distinct until convergence.
+One read-only agent per area in [quality areas](references/quality-areas.md), plus one for every entry in [agent anti-patterns](references/agent-anti-patterns.md), each given the same scope and revision, the project's rules and only its own brief. A reader may search to find candidates, but judges each only after reading the surrounding implementation, callers, tests and contracts. The anti-pattern examples are from dim-factory; apply a project rule only where the audited project has adopted it, and translate each fix to that project's own files and commands. A test that must change for a behavior-preserving refactor is suspect, while a guard for a wire value, a model-facing instruction, security or storage stays.
 
-The anti-pattern pass checks every entry in [the reference](references/agent-anti-patterns.md). Its dim-factory examples are candidates; apply project-specific rules only where the audited project has adopted them, and translate fix directions to that project's own files and commands. In the tests pass, a test that must change for a behavior-preserving refactor is suspect, but preserve independent guards for wire values, model-facing instructions, security, storage and other contracts. Run performance where stated behavior or observed use identifies a sensitive path.
-
-Each reader returns source-backed findings, paths checked and paths it could not judge. For a proposed test deletion, name the failure the test can detect, its production owner, overlapping tests and the stronger proof that would remain. Recheck candidate findings at their source, resolve duplicates and contradictions, and keep responsibility for the final result in this session.
+Each reader returns source-backed findings, the paths it checked and the paths it could not judge. For a proposed test deletion, it names the failure the test can detect, the production owner, overlapping tests and the stronger proof that would remain. Recheck each candidate at its source, resolve duplicates and contradictions, and keep responsibility for the result in this session.
 
 ## Report
 
-State the project revision and inspected scope. Show one summary row per area with `findings`, `clear`, `not_applicable` or `incomplete`, and a reason for either of the latter two. Within the anti-pattern pass, account for every entry in the reference. A `clear` mark requires inspection of the relevant paths, not just a text search. For each confirmed finding, give the area, exact file and line, concrete consequence, source evidence and fix direction. Say what would settle each unresolved case.
+State the revision and scope. One row per area with `findings`, `clear`, `not_applicable` or `incomplete`, and a reason for either of the last two; the anti-pattern row accounts for every entry. A `clear` mark means the relevant paths were read, not that a search matched nothing. For each confirmed finding, give the area, file and line, the consequence, the source evidence and the fix. Say what would settle each unresolved case.
 
-The result is for the operator to decide what work to request. Do not edit code, create orders, or turn one finding into an assumed order. A clean audit means every applicable area was checked in the stated scope and no finding survived verification.
-
-## Red flags
-
-- treating a regex match or a broad style preference as a confirmed finding
-- marking an area clear after inspecting only a sample
-- reporting a problem without its consequence and source evidence
-- editing the project or creating an order during discovery
-- hiding an uninspected part behind a clean verdict
+The result is for the operator to decide what work to request. A clean audit means every applicable area was read in the stated scope and no finding survived verification.

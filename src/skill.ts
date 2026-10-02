@@ -19,8 +19,6 @@ export const SKILL_NAMES = [
   "dim-add",
   "dim-audit",
   "dim-artifact",
-  "dim-feat",
-  "dim-fix",
   "dim-plan",
   "dim-build",
   "dim-review",

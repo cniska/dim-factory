@@ -11,7 +11,6 @@ What is not built, highest priority first. An entry is here only for a need this
 
 Each entry is one change. [schema] entries change the schema and run with nothing else in flight.
 
-- **Worker skills follow the new spec** — lands with the core rewrite, after `core.md`. `dim-feat` and `dim-fix` go, and their bug-fixing content becomes `references/bug.md` in `dim-plan`, `dim-build` and `dim-review`. One base skill every worker loads holds the conduct now spread across `dim-git`, `dim-tdd`, `dim-simplify` and `dim-artifact`, shaped after pstack's `poteto-mode` (a short core, principles read when one applies, a playbook per kind of work). The planner and builder name the data shape before logic; the operator runs an experiment rather than ask the owner what one can answer, and checks each artifact against the record rather than repeating a worker's summary.
 - **Install a project's gates when dim adopts it** — built when dim adopts hoodly, not before. `dim` brings the machinery that writes a project's gates into the project, where every contributor runs them: hooks set through `prepare`, one canonical commit-subject script, the no-comments test, the CI commits job, and a report of a project whose copy differs from the canonical one. `dim gate` goes when this lands.
 - **The module checks read imports with a parser** — `src/factory-modules.test.ts` `importsOf` takes value imports from `Bun.Transpiler.scanImports`, which drops `import type`, so type-only imports come from a regex a reformatted import slips past; `sqlBreaches` and `throwBreaches` match text, strings included. The installed TypeScript 7 has no stable parser API. Take the import graph from the compiler or the linter.
 - **One git runner, one clock** — the `git()` wrappers have several result shapes and handle failure differently at every call site. `git()` in `comments-files.ts` `git-committed.ts` `git-remote.ts` `guidance.ts` `worktree.ts`; one remote-URL parser for `git-remote.ts` `repositoryLabel` and `git-remote-slug.ts` `remoteSlug`.
@@ -29,6 +28,7 @@ Each entry is one change. [schema] entries change the schema and run with nothin
 
 ## Owner decides
 
+- Should one base skill every worker loads, shaped after pstack's `poteto-mode`, hold the conduct in `dim-git`, `dim-tdd`, `dim-simplify` and `dim-artifact`? The spec names each as its own skill.
 - Should the comment gate refuse `biome-ignore` and `@ts-*`?
 - Does an unattended run push, or commit locally?
 - Does the wall become where the owner reads artifacts and approves, rather than only watches?

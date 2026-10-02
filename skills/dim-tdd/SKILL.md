@@ -1,34 +1,26 @@
 ---
 name: dim-tdd
-description: Drive a behavior-changing factory slice through red, green and refactor while preserving evidence for each cycle.
-argument-hint: "<behavior to add or change>"
+description: Red, green, refactor for a slice that changes behavior, with each test proven to catch what it claims. Use from dim-build on a behavior-changing slice.
 ---
 
 # TDD
 
-Use this shared capability inside a build station when a slice changes observable behavior. It supplies the red-green-refactor method; the station supplies the slice boundary, repository check and commit evidence.
-
 ## Red
 
-Understand the public behavior and write one test that describes the next change. Run it and confirm that it fails for the intended reason. Keep the test at the public interface and pin wire values as literals where the contract carries them.
+Write one test at the public interface that describes the next behavior. Run it and read why it fails: the reason is the behavior missing, not an import or a typo. Pin wire values as literals, such as header names, record fields and status codes; importing the production constant lets a rename ratify itself.
 
 ## Green
 
-Make the smallest implementation that passes the failing test. Do not add speculative cases, unrelated cleanup or a second behavior before the first one is green.
+Make the smallest change that passes. No second behavior and no cleanup before the first is green.
 
 ## Refactor
 
-Simplify the implementation while the test is green. Preserve behavior, run the focused test after each change and leave tests untouched during a simplification-only pass.
+With the test green, simplify the implementation under `dim-simplify`. The test does not change.
 
-## Repeat and report
+## Prove the test
 
-Repeat one behavior at a time. Run the repository's declared check before the slice reaches the reviewer. Report the red failure, green result, refactor result and any behavior intentionally left outside the slice. In a factory order, name the slice's test files in the build turn's `tests`, and the runner's proof records whether they fail at the slice's base.
+A test claiming an invariant must fail when the invariant is removed: delete the check, run the test, watch it go red, put the check back.
 
-## Red flags
+Read each test for passing by its own doing: an assertion made after the resource it checks is released, a `?? null` default that makes the expected and the actual value meet, a comparison of a value to itself, a mock of the function under test.
 
-- writing all tests before implementing any behavior
-- claiming red without running the test
-- testing private implementation details
-- mocking internal functions instead of system boundaries
-- refactoring while the test is red
-- using a test to ratify behavior that was never observed
+A fake standing in for a real thing is as strict as the real thing: built from recorded real behavior, refusing every flag and input the real thing refuses, so a test green against the fake is green against the real thing.

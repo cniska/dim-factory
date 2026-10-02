@@ -1,49 +1,17 @@
 ---
 name: dim-artifact
-description: Write a human-facing factory artifact from recorded evidence. Use when a station worker must explain its outcome to the owner.
-argument-hint: "<station> <evidence>"
+description: How every factory artifact is written for the owner — the outcome first, drawn from the record. Use from dim-plan, dim-build and dim-review when writing the plan, the Build artifact or the Review artifact.
 ---
 
 # Artifact
 
-A station worker writes an artifact as its explanation for the owner. It is not a transcript, a second plan, or a review of the worker's prose. The record is the authority: write what the evidence supports, and name what it does not.
+An artifact is the owner's reading of a station's work. They read it instead of the diff, the queries and the worker's session, so it is Markdown that stands on its own.
 
-## Write the artifact
+- Open with the outcome: what is true for the owner now and what they must decide. The reasons and the evidence follow.
+- Write what the record supports and name what it does not. A claim carries its evidence, such as a commit, a check's result, a query's answer or a file and line, or is labeled unverified. No check passed because a process exited.
+- Separate fact from judgement. Label an assumption, a deviation from the plan or an open risk rather than smoothing it over.
+- Size it to the change. One or two sentences under a heading is enough for a narrow change; a cross-boundary change carries the contracts and decisions the owner must check. Each section the station names is one `##` heading, and an empty section is omitted. Comparable rows, such as slices or areas, go in a table.
+- Repeat nothing: not a fact in two sections, not the log's command output, not a file inventory or a slice-by-slice diary.
+- Keep commands, paths and identifiers exact where they let the owner verify a claim.
 
-1. Write only the content. Open with the first `##` section, leading with the outcome and why it matters to the order.
-2. Keep the detail proportional to the change. A small change needs a short artifact; a broad or risky change needs the contracts, evidence and decisions an owner must check.
-3. Use Markdown that reads without the worker session. Give every included dimension its own `##` heading; do not compress the artifact into one paragraph. Use a table for comparable rows, such as plan slices or review dimensions, when it makes differences easier to scan. Write one point as a sentence and use bullets for multiple distinct points. Keep commands, paths, identifiers and decisions exact where they let the operator verify a claim.
-4. Separate facts from judgment. Name the evidence behind a conclusion and label unresolved risks, assumptions and deviations instead of smoothing them over.
-5. Name the worker that performed each act you cite, such as a finding or an approval; never borrow the operator's identity for missing evidence.
-6. Do not invent evidence, claim a check passed from an exit message, or repeat the same fact in several sections.
-
-The station supplies the artifact's subject and required sections. Use the station's section names as headings and omit only a section the evidence cannot support. Write one artifact for the worker's completed work. The operator checks it against the record and decides whether the order advances. A returned artifact is feedback for the same station: address the stated gap, then write a new revision under the same station worker identity. Keep the earlier artifact unchanged so the record shows what was returned and what changed. Each revision has its own evidence and approval.
-
-## Size
-
-Size the artifact to the change. There is no fixed template or target length: write only enough for the owner to decide and the next worker to act.
-
-Choose the dimensions from the change's boundary and risk before drafting it:
-
-- A narrow change needs the outcome, the evidence that supports it and the check that proves it.
-- A multi-part change also needs its boundary and independently verifiable slices.
-- A cross-boundary or risky change also needs the contracts, owner decisions and risks that determine whether it can proceed.
-
-Use only the dimensions that earn their place. Omit empty sections, exhaustive file inventories, repeated evidence and implementation detail that does not reduce an owner's uncertainty.
-
-A short artifact may have one or two sentences under a heading. It still uses headings when it includes more than one dimension. A status paragraph, command transcript or slice-by-slice diary is not an artifact.
-
-## Red flags
-
-- writing a transcript instead of an outcome
-- describing intended work as completed work
-- hiding an unresolved risk behind a confident verdict
-- copying evidence without explaining what it proves
-- using a fixed length for changes of different size
-- attributing a station act to the operator because the worker did not report it
-
-## See also
-
-- `dim-plan`
-- `dim-build`
-- `dim-review`
+A returned artifact comes back revised by the same worker, addressing the stated reason. The record keeps the earlier revision.

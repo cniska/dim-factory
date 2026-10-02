@@ -32,8 +32,6 @@ describe("skill install", () => {
       "dim-audit",
       "dim-build",
       "dim-factory",
-      "dim-feat",
-      "dim-fix",
       "dim-git",
       "dim-plan",
       "dim-review",
@@ -104,6 +102,9 @@ describe("skill install", () => {
         }
         for (const name of ["dim-audit", "dim-review"]) {
           expect(existsSync(join(dir, name, "references", "quality-areas.md"))).toBe(true);
+        }
+        for (const name of ["dim-plan", "dim-build", "dim-review"]) {
+          expect(existsSync(join(dir, name, "references", "bug.md"))).toBe(true);
         }
       }
       expect(planSkill(env).every((p) => p.state === "linked")).toBe(true);
