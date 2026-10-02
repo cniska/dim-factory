@@ -1,6 +1,7 @@
 import type { FileSpec } from "./ingest";
 import { listClaudeSubagents, listClaudeTranscripts } from "./ingest-claude-source";
 import { codexTitlesPath, listCodexRollouts, readCodexTitles } from "./ingest-codex-source";
+import { listGrokSessions } from "./ingest-grok-source";
 import type { Tool } from "./ingest-tools";
 import type { Env } from "./paths";
 
@@ -19,5 +20,9 @@ export const SESSION_SOURCES: readonly SessionSource[] = [
     tool: "codex",
     list: listCodexRollouts,
     titles: { path: codexTitlesPath, read: readCodexTitles },
+  },
+  {
+    tool: "grok",
+    list: listGrokSessions,
   },
 ];

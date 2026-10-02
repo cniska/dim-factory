@@ -2,14 +2,14 @@ import type { Database } from "bun:sqlite";
 import { mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync } from "node:fs";
 import { basename, join } from "node:path";
 import { writeTransaction } from "./db";
-import { TOOLS, type Tool } from "./ingest-tools";
+import { HARNESSES, type HarnessName } from "./harness-name";
 import { type Env, spoolDir } from "./paths";
 
 export type DrainReport = { applied: number; duplicate: number; unreadable: number };
 
 const SPOOL_NAME = /^(\d{10,})-([A-Za-z0-9]+)(?:-(\d+)-([A-Za-z0-9-]*))?(?:-([A-Za-z0-9-]*))?\.json$/;
 
-export function toolSpoolDir(tool: Tool, env: Env = process.env): string {
+export function toolSpoolDir(tool: HarnessName, env: Env = process.env): string {
   return join(spoolDir(env), tool);
 }
 
@@ -22,7 +22,7 @@ export function setAsideUnreadable(path: string, env: Env = process.env): void {
 }
 
 export function ensureSpoolDirs(env: Env = process.env): void {
-  for (const tool of TOOLS) {
+  for (const tool of HARNESSES) {
     mkdirSync(toolSpoolDir(tool, env), { recursive: true });
   }
   mkdirSync(walkSpoolDir(env), { recursive: true });
@@ -63,7 +63,7 @@ export function drainSpool(db: Database, env: Env = process.env): DrainReport {
   );
   const drained: string[] = [];
   writeTransaction(db, () => {
-    for (const tool of TOOLS) {
+    for (const tool of HARNESSES) {
       const dir = toolSpoolDir(tool, env);
       for (const name of readdirSync(dir).sort()) {
         const path = join(dir, name);

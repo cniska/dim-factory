@@ -1,15 +1,19 @@
 import type { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { Glob } from "bun";
 import { writeTransaction } from "./db";
 import { readChunk } from "./ingest-chunk";
+import { grokGroupCwd } from "./ingest-grok-source";
+import { projectOf } from "./ingest-session-records";
 import type { Tool } from "./ingest-tools";
-import { claudeProjectsDir, codexDir, type Env } from "./paths";
+import { claudeProjectsDir, codexDir, type Env, grokDir } from "./paths";
 
 export type HistoryReport = { read: number; orphans: number };
 
 type ClaudeHistoryLine = { display?: string; timestamp?: number; project?: string; sessionId?: string };
 type CodexHistoryLine = { text?: string; ts?: number; session_id?: string };
+type GrokHistoryLine = { prompt?: string; timestamp?: string; session_id?: string };
 
 export function claudeHistoryPath(env: Env = process.env): string {
   return join(dirname(claudeProjectsDir(env)), "history.jsonl");
@@ -66,6 +70,25 @@ export function ingestHistory(db: Database, env: Env = process.env): HistoryRepo
     const l = JSON.parse(raw) as CodexHistoryLine;
     return { sessionId: l.session_id, ts: l.ts == null ? undefined : l.ts * 1000, text: l.text };
   });
+  for (const path of grokHistoryPaths(env)) {
+    const project = projectOf(grokGroupCwd(path));
+    load(path, "grok", (raw) => {
+      const line = JSON.parse(raw) as GrokHistoryLine;
+      const ts = line.timestamp == null ? undefined : Date.parse(line.timestamp);
+      return {
+        sessionId: line.session_id,
+        ts: ts == null || Number.isNaN(ts) ? undefined : ts,
+        text: line.prompt,
+        project,
+      };
+    });
+  }
 
   return report;
+}
+
+function grokHistoryPaths(env: Env): string[] {
+  const root = join(grokDir(env), "sessions");
+  if (!existsSync(root)) return [];
+  return [...new Glob("*/prompt_history.jsonl").scanSync({ cwd: root, absolute: true })].sort();
 }

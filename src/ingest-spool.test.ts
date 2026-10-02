@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { ConfigError } from "./config-error";
 import { closeDb, openDb } from "./db";
 import { harnessesOnPath, scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
+import type { HarnessName } from "./harness-name";
 import {
   dimPath,
   editCommand,
@@ -26,7 +27,6 @@ import {
 import { hookConfigPath, installHooks, planHooks } from "./hooks";
 import { drainSpool, ensureSpoolDirs, toolSpoolDir } from "./ingest-spool";
 import { rebuild, sync } from "./ingest-sync";
-import type { Tool } from "./ingest-tools";
 import { dbPath, type Env, resolveHomeDir, spoolDir } from "./paths";
 
 const SESSION = "11111111-2222-3333-4444-555555555555";
@@ -42,7 +42,7 @@ afterEach(() => {
   while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
 });
 
-function spool(env: Env, tool: Tool, nanos: string, payload: unknown): string {
+function spool(env: Env, tool: HarnessName, nanos: string, payload: unknown): string {
   ensureSpoolDirs(env);
   const path = join(toolSpoolDir(tool, env), `${nanos}-4242-.json`);
   writeFileSync(path, JSON.stringify(payload));

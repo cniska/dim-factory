@@ -74,3 +74,7 @@ export function claudeProjectsDir(env: Env = process.env): string {
 export function codexDir(env: Env = process.env): string {
   return join(resolveHomeDir(env), ".codex");
 }
+
+export function grokDir(env: Env = process.env): string {
+  return join(resolveHomeDir(env), ".grok");
+}

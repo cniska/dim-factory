@@ -6,10 +6,10 @@ import { readJsonc } from "./config-jsonc-file";
 import { recordVersion } from "./db";
 import { SCHEMA_VERSION } from "./db-schema";
 import { harnessInstalled, installedHarnesses } from "./harness-installed";
+import { HARNESSES } from "./harness-name";
 import { type HookPlan, hookGaps, outdatedLabel } from "./hooks";
 import { codexConfigPath, planCodexTrust, type TrustState } from "./hooks-codex-trust";
 import { AGENT_LABEL, planAgent } from "./ingest-launchd";
-import { TOOLS } from "./ingest-tools";
 import { type Env, resolveHomeDir, spoolDir } from "./paths";
 import { planRules } from "./rules";
 import { planSkill, retiredLinks } from "./skill";
@@ -179,7 +179,7 @@ function retention(env: Env): Health {
 function spool(env: Env): Health {
   const root = spoolDir(env);
   let waiting = 0;
-  for (const tool of TOOLS) {
+  for (const tool of HARNESSES) {
     const dir = join(root, tool);
     if (existsSync(dir)) waiting += readdirSync(dir).filter((f) => f.endsWith(".json")).length;
   }

@@ -4,6 +4,7 @@ import { ConfigError } from "./config-error";
 import { appendToJsoncArray, parseJsonc, setJsoncValue } from "./config-jsonc";
 import { readJsonc, readJsoncText, writeJsoncFile } from "./config-jsonc-file";
 import { installedHarnesses } from "./harness-installed";
+import type { HarnessName } from "./harness-name";
 import {
   entryFor,
   type HookEntry,
@@ -16,10 +17,9 @@ import {
   wantedHooks,
 } from "./hook-commands";
 import { toolSpoolDir } from "./ingest-spool";
-import type { Tool } from "./ingest-tools";
 import { claudeProjectsDir, codexDir, type Env } from "./paths";
 
-function hookKind(command: string, tool: Tool, env: Env): HookKind | null {
+function hookKind(command: string, tool: HarnessName, env: Env): HookKind | null {
   const bare = unmarked(command);
   if (bare === unmarked(hookCommand(tool, env))) return "spool";
   if (bare === unmarked(hookCommand(tool, env, "SessionStart"))) return "spool";
@@ -42,7 +42,7 @@ function hookKind(command: string, tool: Tool, env: Env): HookKind | null {
 export type HookRefresh = { at: JSONPath; value?: unknown; append?: HookEntry };
 
 export type HookPlan = {
-  tool: Tool;
+  tool: HarnessName;
   configPath: string;
   event: string;
   kind: HookKind;
@@ -54,7 +54,7 @@ export type HookPlan = {
   installedVersion?: number | null;
 };
 
-export function hookConfigPath(tool: Tool, env: Env = process.env): string {
+export function hookConfigPath(tool: HarnessName, env: Env = process.env): string {
   if (tool === "claude") return join(dirname(claudeProjectsDir(env)), "settings.json");
   return join(codexDir(env), "hooks.json");
 }
@@ -71,7 +71,7 @@ function hasCommand(entries: HookEntry[], command: string, matcher: string | und
 
 type OwnHook = { entry: number; hook: number; within: HookEntry; handler: HookHandler; command: string };
 
-function findOwn(entries: HookEntry[], kind: HookKind, tool: Tool, env: Env): OwnHook | null {
+function findOwn(entries: HookEntry[], kind: HookKind, tool: HarnessName, env: Env): OwnHook | null {
   for (const [entry, within] of entries.entries()) {
     for (const [hook, handler] of (within.hooks ?? []).entries()) {
       if (handler.command && hookKind(handler.command, tool, env) === kind) {

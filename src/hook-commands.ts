@@ -1,6 +1,6 @@
 import { EDIT_TOOLS } from "./format-edit";
+import type { HarnessName } from "./harness-name";
 import { toolSpoolDir } from "./ingest-spool";
-import type { Tool } from "./ingest-tools";
 import type { Env } from "./paths";
 
 export const HOOK_CONTRACT_VERSION = 3;
@@ -22,14 +22,14 @@ export function hookContractVersion(command: string): number | null {
 
 export type HookKind = "spool" | "start" | "edit";
 
-export function hookCommand(tool: Tool, env: Env = process.env, event?: string): string {
+export function hookCommand(tool: HarnessName, env: Env = process.env, event?: string): string {
   const harnessPid = event === "SessionStart" ? "-$PPID" : "";
   return marked(
     `cat > "${toolSpoolDir(tool, env)}/$(date +%s%N)-$$${harnessPid}-\${DIM_WORKER_NAME:-}.json" 2>/dev/null; exit 0`,
   );
 }
 
-export function startCommand(tool: Tool): string {
+export function startCommand(tool: HarnessName): string {
   return marked(`${dimPath()} hooks start --tool=${tool} 2>/dev/null || true`);
 }
 
@@ -46,7 +46,7 @@ export type HookEntry = { matcher?: string; hooks?: HookHandler[] };
 
 export type WantedHook = { event: string; kind: HookKind; command: string; matcher?: string };
 
-export function wantedHooks(tool: Tool, env: Env = process.env): WantedHook[] {
+export function wantedHooks(tool: HarnessName, env: Env = process.env): WantedHook[] {
   const spool = (event: string): WantedHook => ({
     event,
     kind: "spool",
