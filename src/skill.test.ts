@@ -101,6 +101,17 @@ describe("skill install", () => {
     );
   });
 
+  test("links once where one harness's skill directory is a link to the other's that does not exist yet", () => {
+    const env = machine(["claude", "codex"]);
+    mkdirSync(join(env.HOME, ".claude"));
+    symlinkSync("../.agents/skills", join(env.HOME, ".claude", "skills"));
+    expect(skillLinkDirs(env)).toHaveLength(1);
+    installSkill(env);
+    expect(readlinkSync(join(env.HOME, ".agents", "skills", SKILL_NAMES[0]))).toBe(
+      skillSourceDir(SKILL_NAMES[0]),
+    );
+  });
+
   test("a skill linked for one harness still leaves the other pending", () => {
     const env = machine(["claude", "codex"]);
     const [first] = skillLinkDirs(env);

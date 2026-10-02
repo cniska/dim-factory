@@ -9,7 +9,7 @@ import {
   symlinkSync,
   unlinkSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { withPathLock } from "./db-lock";
 import { nextBackupPath } from "./file-backup";
 import { installedHarnesses } from "./harness-ops";
@@ -34,7 +34,10 @@ export function skillSourceDir(name: SkillName): string {
 }
 
 function realDir(dir: string): string {
-  return existsSync(dir) ? realpathSync(dir) : dir;
+  if (existsSync(dir)) return realpathSync(dir);
+  if (lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink())
+    return realDir(resolve(dirname(dir), readlinkSync(dir)));
+  return join(realDir(dirname(dir)), basename(dir));
 }
 
 export function skillLinkDirs(env: Env = process.env): string[] {
