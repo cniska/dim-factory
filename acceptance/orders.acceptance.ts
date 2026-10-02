@@ -467,6 +467,22 @@ describe("shipping", () => {
     expect(existsSync(marker)).toBe(false);
   });
 
+  test("a cancel the checkout cannot carry out is refused and leaves the order as it was", async () => {
+    const m = await start({ script: happyPath() });
+    const id = await planned(m.operator);
+    m.git(["symbolic-ref", "-d", "refs/remotes/origin/HEAD"]);
+
+    const refused = refusal(
+      await m.operator.dim(["order", "cancel", id, "--reason", "Not wanted any more."]),
+    );
+
+    expect(refused.code).toBe("no_default_branch");
+    const order = await showOrder(m.operator, id);
+    expect(order.status).not.toBe("cancelled");
+    expect(actions(order)).not.toContain(ACTION.cancelled);
+    expect(existsSync(order.workspace)).toBe(true);
+  });
+
   test("an order whose workspace git could not make gets it on the next run", async () => {
     const m = await start({ script: happyPath() });
     const id = await addOrder(m.operator);

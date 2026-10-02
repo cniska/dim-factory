@@ -576,11 +576,13 @@ export async function messageWorker(
 export function cancelOrder(db: Database, order: string, caller: Caller, reason: string, env: Env): void {
   const trace = traceOf(order, env);
   trace.step("run", { act: "cancel", station: null }, () => {
-    const { state, harness } = recordCancel(trace, db, order, caller, reason);
+    const { project, head } = orderState(db, order);
+    const root = head === null ? null : projectSetup(db, project, caller.cwd).root;
+    const { harness } = recordCancel(trace, db, order, caller, reason);
     if (harness !== null) stopHarness(trace, harness);
-    if (state.head === null) return;
-    const workspace = workspaceOf(state.project, order);
-    const kept = removeWorktree(trace, projectSetup(db, state.project, caller.cwd).root, workspace);
+    if (root === null) return;
+    const workspace = workspaceOf(project, order);
+    const kept = removeWorktree(trace, root, workspace);
     if (kept !== null) throw refuseOrder("worktree_kept", { order, dir: workspace.dir, reason: kept });
   });
 }
