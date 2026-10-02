@@ -18,6 +18,6 @@ export const queryCommand: Command = {
       { positionals: [0, 1], flags: ["rows"] },
       (message) => new UsageError(`dim query ${name} ${message}`),
     );
-    return runQuery(query, positionals[0], rowsOf(flags.rows));
+    return runQuery(query, positionals[0] ?? null, rowsOf(flags.rows));
   },
 };

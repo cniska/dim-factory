@@ -29,7 +29,7 @@ function seeded(): Database {
   return db;
 }
 
-const ctx: QueryContext = { home: "/home", maxRows: 40 };
+const ctx: QueryContext = { arg: null, home: "/home", maxRows: 40 };
 
 const ask = (db: Database, over: Partial<QueryContext>): QueryResult => search.run(db, { ...ctx, ...over });
 

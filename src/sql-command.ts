@@ -20,7 +20,7 @@ export const sqlCommand: Command = {
     const maxRows = rowsOf(flags.rows);
     const db = openReadOnly(dbPath());
     try {
-      const rows = db.prepare(statement).all() as Record<string, unknown>[];
+      const rows = db.query<Record<string, unknown>, []>(statement).all();
       return {
         denominator: `${rows.length} rows`,
         ...capRows(rows, maxRows),

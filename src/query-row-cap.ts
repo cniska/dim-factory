@@ -9,7 +9,10 @@ export function rowsOf(spec: string | undefined): number {
   return n;
 }
 
-export function capRows<Row>(rows: Row[], maxRows: number): { rows: Row[]; more: string | null } {
+export function capRows<Row>(
+  rows: readonly Row[],
+  maxRows: number,
+): { rows: readonly Row[]; more: string | null } {
   const shown = rows.slice(0, maxRows);
   return {
     rows: shown,

@@ -12,7 +12,7 @@ import { dbPath, type Env } from "./paths";
 import type { QueryContext } from "./query";
 import { findQuery } from "./query-registry";
 
-const ctx: QueryContext = { home: "/h", maxRows: 40 };
+const ctx: QueryContext = { arg: null, home: "/h", maxRows: 40 };
 
 const SESSION = "11111111-2222-3333-4444-555555555555";
 const THREAD = "01a0a651-086e-7150-8650-cef0f4025a58";
@@ -37,6 +37,25 @@ function seeded(): Env {
   closeDb(db);
   return env;
 }
+
+describe("an argument holding SQL wildcard characters", () => {
+  test("is matched as written by thread and prior-art", () => {
+    const db = new Database(":memory:");
+    try {
+      db.run(SCHEMA_SQL);
+      db.run("INSERT INTO session (id, tool) VALUES ('ab-1', 'claude'), ('aXb-2', 'claude')");
+      db.run("INSERT INTO repo_file (repo, path) VALUES ('/h/r', '/h/r/a_b.ts'), ('/h/r', '/h/r/aXb.ts')");
+      const run = (name: string, arg: string) => findQuery(name)?.run(db, { ...ctx, arg });
+
+      expect(run("thread", "a_")?.note).toBe("no session starts with a_");
+      expect(run("thread", "a%")).toMatchObject({ columns: ["when", "role", "skill", "text"], rows: [] });
+      expect(run("thread", " AB")?.denominator).toStartWith("session ab-1:");
+      expect(run("prior-art", "A_B")?.rows.map((row) => row[0])).toEqual(["r/a_b.ts"]);
+    } finally {
+      db.close();
+    }
+  });
+});
 
 describe("read path", () => {
   test("prior-art ranks by recency, caps one repo, and folds its worktrees together", () => {
@@ -70,7 +89,7 @@ describe("read path", () => {
       expect(files?.filter((f) => String(f).includes("/two/"))).toHaveLength(3);
       expect(files?.some((f) => String(f).includes("worktrees"))).toBe(false);
       expect(result?.rows[0]?.[2]).toBe(2);
-      expect(result?.denominator).toContain("6 tracked files");
+      expect(result?.denominator).toContain("5 tracked files");
     } finally {
       db.close();
     }

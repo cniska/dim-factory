@@ -8,7 +8,7 @@ export function listQueries() {
   return { queries: QUERIES.map(({ name, usage, summary }) => ({ name, usage, summary })) };
 }
 
-export function runQuery(query: Query, arg: string | undefined, maxRows: number) {
+export function runQuery(query: Query, arg: string | null, maxRows: number) {
   const db = openReadOnly(dbPath());
   try {
     const result = query.run(db, { arg, home: resolveHomeDir(), maxRows });

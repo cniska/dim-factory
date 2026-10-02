@@ -1,4 +1,4 @@
-import { type Query, requiredArg, scalar, table, toRows } from "./query";
+import { type Query, requiredArg, scalar, select } from "./query";
 import { withoutWorktree } from "./worktree";
 
 const PER_REPO = 3;
@@ -8,14 +8,13 @@ export const priorArt: Query = {
   summary: "where a path like this one already exists across the repos on disk, newest first",
   usage: 'dim query prior-art "<path fragment>"',
   run: (db, ctx) => {
-    const columns = ["file", "repo", "commits", "days_since", "authors"];
     const fragment = requiredArg(ctx, priorArt.usage);
-    const records = table(
+    const result = select(
       db,
       `WITH matched AS (
          SELECT ${withoutWorktree("f.path")} AS path, f.path AS real_path, f.repo AS repo
          FROM repo_file f
-         WHERE f.path LIKE '%' || ? || '%'
+         WHERE instr(lower(f.path), lower(?)) > 0
        ),
        dated AS (
          SELECT m.path AS path,
@@ -43,15 +42,19 @@ export const priorArt: Query = {
       [fragment, ctx.home, ctx.home],
     );
 
-    const repos = new Set(records.map((r) => r.repo)).size;
-    const total = scalar(db, "SELECT count(*) AS n FROM repo_file WHERE path LIKE '%' || ? || '%'", fragment);
+    const repoAt = result.columns.indexOf("repo");
+    const repos = new Set(result.rows.map((row) => row[repoAt])).size;
+    const total = scalar(
+      db,
+      `SELECT count(DISTINCT ${withoutWorktree("path")}) AS n FROM repo_file WHERE instr(lower(path), lower(?)) > 0`,
+      [fragment],
+    );
     return {
       denominator:
         `${total} tracked files match "${fragment}", in ${repos} of ` +
         `${scalar(db, "SELECT count(DISTINCT repo) AS n FROM repo_file")} repos indexed` +
-        (records.length < total ? `; the ${PER_REPO} most recently touched in each repo are ranked` : ""),
-      columns,
-      rows: toRows(records, columns),
+        (result.rows.length < total ? `; the ${PER_REPO} most recently touched in each repo are ranked` : ""),
+      ...result,
       note:
         total === 0
           ? "nothing on disk matches; `dim sync` indexes the repos the corpus names, and only those"

@@ -1,40 +1,50 @@
-import type { Database } from "bun:sqlite";
+import type { Database, SQLQueryBindings } from "bun:sqlite";
+import { invariant } from "./assert";
 import { UsageError } from "./cli-contract";
 
-export type QueryResult = {
-  denominator: string;
-  columns: string[];
-  rows: (string | number | null)[][];
-  note: string | null;
-};
+export type Cell = string | number | null;
+
+export type Rows = { readonly columns: readonly string[]; readonly rows: readonly (readonly Cell[])[] };
+
+export type QueryResult = Rows & { readonly denominator: string; readonly note: string | null };
 
 export type QueryContext = {
-  arg?: string;
-  home: string;
-  maxRows: number;
+  readonly arg: string | null;
+  readonly home: string;
+  readonly maxRows: number;
 };
 
 export type Query = {
-  name: string;
-  summary: string;
-  usage: string;
-  run: (db: Database, ctx: QueryContext) => QueryResult;
+  readonly name: string;
+  readonly summary: string;
+  readonly usage: string;
+  readonly run: (db: Database, ctx: QueryContext) => QueryResult;
 };
 
+export const SAID = "m.is_skill_body = 0 AND (m.is_meta = 0 OR m.origin_kind IN ('coordinator', 'peer'))";
+
 export function requiredArg(ctx: QueryContext, usage: string): string {
-  if (!ctx.arg?.trim()) throw new UsageError(`usage: ${usage}`);
-  return ctx.arg;
+  const arg = ctx.arg?.trim();
+  if (!arg) throw new UsageError(`usage: ${usage}`);
+  return arg;
 }
 
-export function scalar(db: Database, sql: string, ...params: unknown[]): number {
-  const row = db.prepare(sql).get(...(params as [])) as { n: number };
+export function scalar(db: Database, sql: string, params: SQLQueryBindings[] = []): number {
+  const row = db.query<{ n: number }, SQLQueryBindings[]>(sql).get(...params);
+  invariant(row !== null, `a count returns one row: ${sql}`);
   return row.n;
 }
 
-export function table(db: Database, sql: string, params: unknown[] = []): Record<string, unknown>[] {
-  return db.prepare(sql).all(...(params as [])) as Record<string, unknown>[];
+function cellOf(value: unknown): Cell {
+  invariant(
+    value === null || typeof value === "string" || typeof value === "number",
+    `a query column holds text, a number or null, not ${typeof value}`,
+  );
+  return value;
 }
 
-export function toRows(records: Record<string, unknown>[], columns: string[]): (string | number | null)[][] {
-  return records.map((r) => columns.map((c) => (r[c] ?? null) as string | number | null));
+export function select(db: Database, sql: string, params: SQLQueryBindings[] = []): Rows {
+  const statement = db.query<unknown, SQLQueryBindings[]>(sql);
+  const rows = statement.values(...params).map((row) => row.map(cellOf));
+  return { columns: statement.columnNames, rows };
 }
