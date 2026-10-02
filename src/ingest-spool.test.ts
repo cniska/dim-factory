@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -527,7 +527,7 @@ describe("installHooks", () => {
     expect(planHooks(env).every((p) => p.state === "installed")).toBe(true);
   });
 
-  test("no installed hook can fail a session, whether dim fails, dies, is missing or has no spool", () => {
+  test("no installed hook can fail a session, whether dim fails, dies, is missing or has no spool", async () => {
     const dir = newRoot();
     const env = hookEnv(dir);
     installHooks(env);
@@ -558,13 +558,18 @@ describe("installHooks", () => {
     for (const [state, body] of dims) {
       rmSync(shim, { force: true });
       if (body !== null) writeFileSync(shim, body, { mode: 0o755 });
-      for (const { tool, command } of installed) {
-        const run = spawnSync("/bin/sh", ["-c", throughShim(command)], {
-          input: JSON.stringify(endEvent(SESSION, "exit")),
-          env: { PATH: `${bin}:/usr/bin:/bin` },
-        });
-        expect({ tool, command, state, status: run.status }).toEqual({ tool, command, state, status: 0 });
-      }
+      const runs = await Promise.all(
+        installed.map(async ({ tool, command }) => {
+          const run = Bun.spawn(["/bin/sh", "-c", throughShim(command)], {
+            stdin: new TextEncoder().encode(JSON.stringify(endEvent(SESSION, "exit"))),
+            stdout: "ignore",
+            stderr: "ignore",
+            env: { PATH: `${bin}:/usr/bin:/bin` },
+          });
+          return { tool, command, state, status: await run.exited };
+        }),
+      );
+      for (const run of runs) expect(run).toEqual({ ...run, status: 0 });
     }
   });
 
