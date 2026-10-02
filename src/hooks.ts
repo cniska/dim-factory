@@ -2,8 +2,8 @@ import type { JSONPath } from "jsonc-parser";
 import { refuseConfig } from "./config-error";
 import { appendToJsoncArray, parseJsonc, removeJsoncValue, setJsoncValue } from "./config-jsonc";
 import { readJsonc, readJsoncText, writeJsoncFile } from "./config-jsonc-file";
-import { installedHarnesses } from "./harness-installed";
-import type { HarnessName } from "./harness-registry";
+import type { HarnessName } from "./harness-contract";
+import { installedHarnesses } from "./harness-ops";
 import {
   entryFor,
   type HookEntry,

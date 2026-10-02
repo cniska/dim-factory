@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeDb, openDb } from "./db";
 import { harnessesOnPath, scratchEnv, writeClaudeTranscript } from "./fixtures.test-support";
-import { HARNESSES, type HarnessName } from "./harness-registry";
+import { HARNESSES, type HarnessName } from "./harness-contract";
 import {
   dimPath,
   editCommand,

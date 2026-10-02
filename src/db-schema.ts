@@ -1,4 +1,4 @@
-import { HarnessName } from "./harness-registry";
+import { HarnessName } from "./harness-contract";
 import { HOOK_EVENTS } from "./hook-events";
 import { TOOLS } from "./ingest-tools";
 

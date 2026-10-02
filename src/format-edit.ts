@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { formatTask } from "./declared-tasks";
 import { checkoutRoot } from "./git-checkout";
-import { type EditInput, HARNESSES } from "./harness-registry";
+import { type EditInput, HARNESSES } from "./harness-contract";
 
 export const FORMAT_TIMEOUT_MS = 30_000;
 

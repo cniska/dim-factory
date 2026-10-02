@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { join } from "node:path";
 import { invariant } from "./assert";
 import { writeTransaction } from "./db";
-import { HarnessName } from "./harness-registry";
+import { HarnessName } from "./harness-contract";
 import { openSessionsUnder } from "./hooks-sessions";
 import { drainSpool } from "./ingest-spool";
 import { workerSessionsDir } from "./paths";

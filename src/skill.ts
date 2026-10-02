@@ -10,8 +10,8 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { withPathLock } from "./db-lock";
-import { harnessInstalled } from "./harness-installed";
-import { HARNESSES } from "./harness-registry";
+import { HARNESSES } from "./harness-contract";
+import { harnessInstalled } from "./harness-ops";
 import { type Env, locksDir, resolveHomeDir } from "./paths";
 
 const SKILLS_DIR = join(resolve(import.meta.dir, ".."), "skills");

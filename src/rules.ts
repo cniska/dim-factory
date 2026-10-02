@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { dirname, isAbsolute, join } from "node:path";
 import { refuser } from "./coded-error";
 import { copyBackup } from "./file-backup";
-import { harnessInstalled } from "./harness-installed";
-import { HARNESSES } from "./harness-registry";
+import { HARNESSES } from "./harness-contract";
+import { harnessInstalled } from "./harness-ops";
 import { type Env, resolveHomeDir } from "./paths";
 
 const refuseRules = refuser<{ readonly rules_import_cycle: { readonly path: string } }>({

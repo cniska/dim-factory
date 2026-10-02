@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync } from "node:fs";
 import { basename, join } from "node:path";
 import { writeTransaction } from "./db";
-import { HarnessName } from "./harness-registry";
+import { HarnessName } from "./harness-contract";
 import { hookEventOf } from "./hook-events";
 import { type Env, spoolDir } from "./paths";
 

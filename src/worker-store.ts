@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { invariant } from "./assert";
-import { HarnessName } from "./harness-registry";
+import { HarnessName } from "./harness-contract";
 import { ROLES, type Role, type Worker, type WorkerSession } from "./worker-contract";
 
 type WorkerRow = {

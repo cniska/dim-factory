@@ -1,4 +1,4 @@
-import { HARNESSES, type HarnessName } from "./harness-registry";
+import { HARNESSES, type HarnessName } from "./harness-contract";
 import { toolSpoolDir } from "./ingest-spool";
 import type { Env } from "./paths";
 

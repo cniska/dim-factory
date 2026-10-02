@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { refuseConfig } from "./config-error";
 import { readJsonc } from "./config-jsonc-file";
-import { HARNESSES } from "./harness-registry";
+import { HARNESSES } from "./harness-contract";
 import { type HookEntry, wantedHooks } from "./hook-commands";
 import { codexDir, type Env } from "./paths";
 
