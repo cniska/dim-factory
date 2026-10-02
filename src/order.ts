@@ -296,11 +296,6 @@ function apply(state: OrderState, entry: Later): OrderState {
   }
 }
 
-function reasonOf(state: OrderState, act: ActKind, reason: string): string {
-  if (reason.trim() === "") throw refuseOrder("no_reason", { order: state.id, act });
-  return reason;
-}
-
 export function operatorEntry(state: OrderState, act: OperatorAct): Later {
   switch (act.kind) {
     case "run":
@@ -311,7 +306,7 @@ export function operatorEntry(state: OrderState, act: OperatorAct): Later {
       invariant(phase.kind === "approve", `order ${state.id} is admitted to ${act.kind} only at approval`);
       const details = {
         station: phase.station,
-        reason: reasonOf(state, act.kind, act.decision.reason),
+        reason: act.decision.reason,
         decidedBy: act.decision.decidedBy,
       };
       return act.kind === "approve"
@@ -324,7 +319,7 @@ export function operatorEntry(state: OrderState, act: OperatorAct): Later {
         details: { title: act.title ?? state.title, description: act.description ?? state.description },
       };
     case "cancel":
-      return { action: "order_cancelled", details: { reason: reasonOf(state, act.kind, act.reason) } };
+      return { action: "order_cancelled", details: { reason: act.reason } };
     case "message":
       return { action: "message_sent", details: { to: act.to, text: act.text } };
     default:

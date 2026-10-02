@@ -1,18 +1,18 @@
 import { z } from "zod";
 import { RefusalRecord, refuser } from "./coded-error";
-import { Answer, Finding, type Station } from "./order-contract";
+import { Answer, Finding, Reason, type Station } from "./order-contract";
 
 export const PlanReturn = z.object({ act: z.literal("plan_return"), plan: z.string() });
 export type PlanReturn = z.infer<typeof PlanReturn>;
 
-export const OrderReturn = z.object({ act: z.literal("order_return"), reason: z.string() });
+export const OrderReturn = z.object({ act: z.literal("order_return"), reason: Reason });
 export type OrderReturn = z.infer<typeof OrderReturn>;
 
 export const FindingAnswer = z.object({
   act: z.literal("finding_answer"),
   finding: z.string(),
   answer: Answer,
-  reason: z.string(),
+  reason: Reason,
 });
 export type FindingAnswer = z.infer<typeof FindingAnswer>;
 
@@ -72,7 +72,6 @@ export type TurnReply = z.infer<typeof TurnReply>;
 type StationRefusalMeta = {
   readonly no_turn: { readonly detail: string };
   readonly bad_request: { readonly issues: string };
-  readonly no_reason: { readonly command: string };
   readonly wrong_station: { readonly act: TurnRequest["act"]; readonly station: Station };
   readonly no_finding: { readonly finding: string };
   readonly finding_answered: { readonly finding: string };
@@ -102,10 +101,6 @@ export const refuseStation = refuser<StationRefusalMeta>({
   bad_request: {
     message: ({ issues }) => `the station could not read this request: ${issues}`,
     resolve: () => "dim doctor",
-  },
-  no_reason: {
-    message: () => "a decision records why it was taken, and this one gives no reason",
-    resolve: ({ command }) => command,
   },
   wrong_station: {
     message: ({ act, station }) => `${act} is no act of the ${station} station`,

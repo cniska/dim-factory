@@ -35,7 +35,6 @@ type OrderRefusalMeta = {
   };
   readonly not_at_station: { readonly order: string; readonly station: Station };
   readonly order_busy: { readonly order: string; readonly run: RunKind };
-  readonly no_reason: { readonly order: string; readonly act: ActKind };
   readonly no_checkout: { readonly project: string };
   readonly no_default_branch: { readonly checkout: string };
   readonly no_git_identity: { readonly checkout: string };
@@ -71,11 +70,6 @@ export const refuseOrder = refuser<OrderRefusalMeta>({
         ? `order ${order} is shipping, and nothing else happens to it until the ship ends`
         : `a station is working on order ${order}, and nothing else happens to it until its worker ends`,
     resolve: ({ order }) => `dim order show ${order}`,
-  },
-  no_reason: {
-    message: ({ order, act }) =>
-      `a decision records why it was taken, and this ${act} of order ${order} gives no reason`,
-    resolve: ({ order, act }) => `dim order ${act} ${order} --reason <reason> --decided owner|operator`,
   },
   no_checkout: {
     message: ({ project }) =>
@@ -166,7 +160,9 @@ const dying = { ...session, copied: z.boolean() };
 const tip = { tip: z.string() };
 const decision = { station: Station, reason: text, decidedBy: Decider };
 
-export const Decision = z.object({ reason: z.string(), decidedBy: Decider });
+export const Reason = text;
+
+export const Decision = z.object({ reason: Reason, decidedBy: Decider });
 export type Decision = z.infer<typeof Decision>;
 
 export type OperatorAct =

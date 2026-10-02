@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { type Command, UsageError } from "./cli-contract";
 import { parseArgs } from "./cli-flags";
 import { closeDb, openDb } from "./db";
-import { Decider, type Decision, OrderId } from "./order-contract";
+import { Decision, OrderId, Reason } from "./order-contract";
 import { addOrder, showOrder, updateOrder } from "./order-ops";
 import { dbPath } from "./paths";
 import { WORKER_COMMAND } from "./station-contract";
@@ -51,11 +51,9 @@ async function run(db: Database, args: readonly string[]) {
 }
 
 function decisionOf(verb: string, flags: { readonly reason?: string; readonly decided?: string }): Decision {
-  const decidedBy = Decider.safeParse(flags.decided);
-  if (flags.reason === undefined || !decidedBy.success) {
-    throw usage(`${verb} needs --reason and --decided owner|operator`);
-  }
-  return { reason: flags.reason, decidedBy: decidedBy.data };
+  const decision = Decision.safeParse({ reason: flags.reason, decidedBy: flags.decided });
+  if (!decision.success) throw usage(`${verb} needs a non-blank --reason and --decided owner|operator`);
+  return decision.data;
 }
 
 async function approve(db: Database, args: readonly string[]) {
@@ -98,9 +96,10 @@ function update(db: Database, args: readonly string[]) {
 
 function cancel(db: Database, args: readonly string[]) {
   const { positionals, flags } = parseArgs(args, { positionals: [1, 1], flags: ["reason"] }, "dim order");
-  if (flags.reason === undefined) throw usage("cancel needs --reason");
+  const reason = Reason.safeParse(flags.reason);
+  if (!reason.success) throw usage("cancel needs a non-blank --reason");
   const order = orderArg(positionals);
-  cancelOrder(db, order, callerOf(db, process.cwd()), flags.reason, process.env);
+  cancelOrder(db, order, callerOf(db, process.cwd()), reason.data, process.env);
   return showOrder(db, order);
 }
 

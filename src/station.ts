@@ -207,11 +207,6 @@ function parsedAs<T>(text: string, schema: z.ZodType<T>, { station, what, comman
   throw refuseStation("not_done", { station, missed: missed.join("; "), command });
 }
 
-function reasonOf(reason: string, command: string): string {
-  if (reason.trim() === "") throw refuseStation("no_reason", { command });
-  return reason;
-}
-
 function buildMissing(state: OrderState, branch: BranchFacts, artifact: string): readonly string[] {
   const unbuilt = slicesOf(state).filter((slice) => slice.commit === null);
   return [
@@ -235,7 +230,7 @@ function planReturned(request: PlanReturn): Later {
 function orderReturned(request: OrderReturn, { station }: WorkContext): Later {
   return {
     action: "order_returned",
-    details: { station, reason: reasonOf(request.reason, WORKER_COMMAND.order_return) },
+    details: { station, reason: request.reason },
   };
 }
 
@@ -248,7 +243,7 @@ function findingAnswered(request: FindingAnswer, { state }: WorkContext): Later 
     details: {
       finding: finding.id,
       answer: request.answer,
-      reason: reasonOf(request.reason, WORKER_COMMAND.finding_answer),
+      reason: request.reason,
     },
   };
 }
@@ -301,7 +296,9 @@ export function workEntry(request: WorkRequest, context: WorkContext): Later {
 export function requestOf(line: string): TurnRequest {
   const request = parseJson(line, TurnRequest);
   if (request.ok) return request.data;
-  throw refuseStation("bad_request", { issues: request.issues.map((issue) => issue.message).join("; ") });
+  throw refuseStation("bad_request", {
+    issues: request.issues.map((issue) => [...issue.path.map(String), issue.message].join(": ")).join("; "),
+  });
 }
 
 const MISSES_TO_FAIL = 2;

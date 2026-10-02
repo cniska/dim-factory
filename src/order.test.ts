@@ -431,17 +431,12 @@ describe("which act an order admits", () => {
     expect(workRefusal(cancelled, "plan", { kind: "factory", cause: 2 })?.code).toBe("not_at_station");
   });
 
-  test("builds what an admitted act records, and refuses a decision or cancel without a reason", () => {
+  test("builds what an admitted act records", () => {
     const decision = { reason: "it does", decidedBy: "owner" } as const;
     expect(operatorEntry(state(...planned), { kind: "approve", decision })).toEqual({
       action: "artifact_approved",
       details: { station: "plan", reason: "it does", decidedBy: "owner" },
     });
-    const noReason = { reason: " ", decidedBy: "owner" } as const;
-    expect(() => operatorEntry(state(...planned), { kind: "return", decision: noReason })).toThrow(
-      "no reason",
-    );
-    expect(() => operatorEntry(state(), { kind: "cancel", reason: "" })).toThrow("no reason");
     expect(phaseAfter(state(...planned), { kind: "approve", decision })).toEqual({
       kind: "run",
       station: "build",
