@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { appendToJsoncArray, parseJsonc } from "./config-jsonc";
+import { appendToJsoncArray, parseJsonc, removeJsoncValue } from "./config-jsonc";
 
 const entry = { hooks: [{ type: "command", command: "dim-spool" }] };
 
@@ -101,6 +101,45 @@ describe("appending to an array in place", () => {
         code: "config_not_an_object",
         meta: expect.objectContaining({ at: "hooks" }),
       }),
+    );
+  });
+});
+
+describe("removing a value", () => {
+  const config = {
+    hooks: { P: [{ hooks: ["s"] }, { hooks: ["u", "s"] }, { m: 1, hooks: ["e"] }] },
+    keep: true,
+  };
+  const cases: [string, (string | number)[], unknown][] = [
+    ["the first item", ["hooks", "P", 0], [{ hooks: ["u", "s"] }, { m: 1, hooks: ["e"] }]],
+    ["the last item", ["hooks", "P", 2], [{ hooks: ["s"] }, { hooks: ["u", "s"] }]],
+    [
+      "a nested last item",
+      ["hooks", "P", 1, "hooks", 1],
+      [{ hooks: ["s"] }, { hooks: ["u"] }, { m: 1, hooks: ["e"] }],
+    ],
+  ];
+
+  for (const [layout, text] of [
+    ["compact", JSON.stringify(config)],
+    ["indented", JSON.stringify(config, null, 2)],
+  ] as const) {
+    for (const [what, path, left] of cases) {
+      test(`takes ${what} out of ${layout} JSON and leaves it valid`, () => {
+        const after = JSON.parse(removeJsoncValue(text, path, "settings.json"));
+        expect(after.hooks.P).toEqual(left);
+        expect(after.keep).toBe(true);
+      });
+    }
+  }
+
+  test("removes the only item, leaving an empty array", () => {
+    expect(JSON.parse(removeJsoncValue('{"a":[1]}', ["a", 0], "settings.json"))).toEqual({ a: [] });
+  });
+
+  test("refuses a path the config does not hold", () => {
+    expect(() => removeJsoncValue('{"a":[1]}', ["a", 3], "settings.json")).toThrow(
+      expect.objectContaining({ code: "config_absent" }),
     );
   });
 });

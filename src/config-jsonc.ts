@@ -80,6 +80,21 @@ export function setJsoncValue(text: string, path: JSONPath, value: unknown, file
   return applyEdits(text, modify(text, path, value, { formattingOptions: indentOf(text) }));
 }
 
+export function removeJsoncValue(text: string, path: JSONPath, file: string): string {
+  const root = parseTree(text, [], { allowTrailingComma: true });
+  const node = root && findNodeAtLocation(root, path);
+  if (!node) throw refuseConfig("config_absent", { path: file, at: path.join(".") });
+  const target = node.parent?.type === "property" ? node.parent : node;
+  const siblings = target.parent?.children ?? [];
+  const at = siblings.indexOf(target);
+  const next = siblings[at + 1];
+  const previous = siblings[at - 1];
+  const end = target.offset + target.length;
+  if (next) return text.slice(0, target.offset) + text.slice(next.offset);
+  if (previous) return text.slice(0, previous.offset + previous.length) + text.slice(end);
+  return text.slice(0, target.offset) + text.slice(end);
+}
+
 export function appendToJsoncArray(text: string, path: JSONPath, value: unknown, file: string): string {
   const root = parseTree(text, [], { allowTrailingComma: true });
   if (root) refuseWrongShape(root, path, file);

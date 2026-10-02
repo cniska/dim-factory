@@ -176,6 +176,25 @@ describe("doctor", () => {
     expect(check(env, "hooks")?.state).toBe("ok");
   });
 
+  test("fails while a hook dim no longer wants is installed, until install removes it", () => {
+    const base = seeded();
+    const env = { ...base, PATH: `${harnessesOnPath(newRoot(), ["claude"])}:/usr/bin:/bin` };
+    installHooks(env);
+    const settings = join(base.HOME ?? "", ".claude", "settings.json");
+    const config = JSON.parse(readFileSync(settings, "utf8"));
+    const spool = config.hooks.SessionEnd[0];
+    config.hooks.PostToolUse.unshift(spool);
+    writeFileSync(settings, JSON.stringify(config));
+
+    expect(check(env, "hooks")).toMatchObject({
+      state: "fail",
+      detail: expect.stringContaining("1 retired (PostToolUse: spool)"),
+      fix: "dim hooks install",
+    });
+    installHooks(env);
+    expect(check(env, "hooks")?.state).toBe("ok");
+  });
+
   test("says no harness is installed rather than calling absent hooks installed", () => {
     const env = { ...seeded(), PATH: "/usr/bin:/bin" };
     expect(check(env, "hooks")).toMatchObject({ state: "warn" });

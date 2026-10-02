@@ -61,13 +61,13 @@ dim sync: drain the spool → read changed files → derive session ends
 
 ## Hooks
 
-`dim hooks install` installs its hooks for each of Claude Code and Codex whose executable is on `PATH` ([`src/hook-commands.ts`](../src/hook-commands.ts), [`src/hooks.ts`](../src/hooks.ts), [`src/harness-installed.ts`](../src/harness-installed.ts)): a spool hook on each event below, `dim hooks start` on `SessionStart` and `dim hooks edit` on `PostToolUse`, matched to their edit tools ([`src/format-edit.ts`](../src/format-edit.ts) `EDIT_TOOLS`) so no other tool call starts it. An installed hook whose command or matcher differs from the wanted one is stale and is rewritten in place.
+`dim hooks install` installs its hooks for each of Claude Code and Codex whose executable is on `PATH` ([`src/hook-commands.ts`](../src/hook-commands.ts), [`src/hooks.ts`](../src/hooks.ts), [`src/harness-installed.ts`](../src/harness-installed.ts)): a spool hook on `SessionStart` and `SessionEnd`, `dim hooks start` on `SessionStart` and `dim hooks edit` on `PostToolUse`, matched to their edit tools ([`src/format-edit.ts`](../src/format-edit.ts) `EDIT_TOOLS`) so no other tool call starts it. An installed hook whose command or matcher differs from the wanted one is stale and is rewritten in place. A hook dim installed and no longer wants is retired: install removes it, leaving any other hook in its entry, and `dim doctor` fails until it has.
 
 | Event | What it does |
 |---|---|
 | `SessionStart` | spools the session's directory and the harness pid from the hook's parent process. `dim hooks start` prints declared repo commands |
 | `SessionEnd` | spools the end time and reason, which a transcript lacks |
-| `PostToolUse` | spools the event. `dim hooks edit` runs the repo's declared format task in the checkout an edit touched ([`src/format-edit.ts`](../src/format-edit.ts)), bounded and failing open. In a factory worker's session it runs nothing, since the worker wrote that manifest and the hook runs outside its sandbox; a builder formats inside its sandbox, and the runner's check holds the result |
+| `PostToolUse` | `dim hooks edit` runs the repo's declared format task in the checkout an edit touched ([`src/format-edit.ts`](../src/format-edit.ts)), bounded and failing open. In a factory worker's session it runs nothing, since the worker wrote that manifest and the hook runs outside its sandbox; a builder formats inside its sandbox, and the runner's check holds the result |
 - **The spool hook never opens the database.** It writes one file per event, so a session never waits on `sessions.db`; `sync` drains the spool into `hook_event`.
 - **`hook_event` is never re-derived**, because a hook fires once. It has no foreign key to `session`, so an event that arrives before its transcript waits for it. A spool file that cannot be placed moves to `spool/unreadable/`, since it is the only copy. A drain is one transaction, and a file is deleted only once it has committed.
 - **One source per column.** `session.ended_at` and `end_reason` come from `hook_event` alone, never from a transcript.

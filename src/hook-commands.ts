@@ -56,7 +56,6 @@ export function wantedHooks(tool: HarnessName, env: Env = process.env): WantedHo
     spool("SessionStart"),
     { event: "SessionStart", kind: "start", command: startCommand(tool) },
     spool("SessionEnd"),
-    spool("PostToolUse"),
     {
       event: "PostToolUse",
       kind: "edit",

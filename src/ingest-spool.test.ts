@@ -357,9 +357,8 @@ describe("installHooks", () => {
     expect(after.hooks.SessionStart).toHaveLength(2);
     expect(after.hooks.SessionStart[0].hooks[0].command).toBe(hookCommand("claude", env, "SessionStart"));
     expect(after.hooks.SessionStart[1].hooks[0].command).toBe(startCommand("claude"));
-    expect(after.hooks.PostToolUse).toHaveLength(2);
-    expect(after.hooks.PostToolUse[0].hooks[0].command).toBe(hookCommand("claude", env));
-    expect(after.hooks.PostToolUse[1].hooks[0].command).toBe(editCommand());
+    expect(after.hooks.PostToolUse).toHaveLength(1);
+    expect(after.hooks.PostToolUse[0].hooks[0].command).toBe(editCommand());
     expect(readFileSync(`${paths.claude}.dim-backup`, "utf8")).toContain("existing-notifier");
   });
 
@@ -383,7 +382,7 @@ describe("installHooks", () => {
     const after = JSON.parse(readFileSync(paths.claude, "utf8"));
     expect(after.hooks.PostToolUse[0].hooks[0].command).toBe("echo format-edit");
     expect(after.hooks.SessionEnd[0].hooks[0].command).toBe(`echo ${toolSpoolDir("claude", env)}`);
-    expect(after.hooks.PostToolUse).toHaveLength(3);
+    expect(after.hooks.PostToolUse).toHaveLength(2);
     expect(after.hooks.SessionEnd).toHaveLength(2);
   });
 
@@ -504,7 +503,7 @@ describe("installHooks", () => {
     const env = hookEnv(dir);
     installHooks(env);
     const first = readFileSync(configs(env).claude, "utf8");
-    expect(installHooks(env)).toMatchObject({ written: [], alreadyPresent: 10 });
+    expect(installHooks(env)).toMatchObject({ written: [], alreadyPresent: 8, retired: 0 });
     expect(readFileSync(configs(env).claude, "utf8")).toBe(first);
     expect(planHooks(env).every((p) => p.state === "installed")).toBe(true);
   });
@@ -605,11 +604,11 @@ describe("installHooks", () => {
     writeFileSync(
       configs(env).claude,
       JSON.stringify({
-        hooks: { PostToolUse: [{ hooks: [{ type: "command", command: unmarked }] }] },
+        hooks: { SessionEnd: [{ hooks: [{ type: "command", command: unmarked }] }] },
       }),
     );
 
-    const plan = planHooks(env).find((p) => p.tool === "claude" && p.event === "PostToolUse");
+    const plan = planHooks(env).find((p) => p.tool === "claude" && p.event === "SessionEnd");
     expect(plan).toMatchObject({ state: "stale", installedVersion: null });
   });
 
@@ -670,12 +669,7 @@ describe("installHooks", () => {
     writeFileSync(
       configs(env).claude,
       JSON.stringify({
-        hooks: {
-          PostToolUse: [
-            { hooks: [{ type: "command", command: hookCommand("claude", env) }] },
-            { hooks: [{ type: "command", command: editCommand(), timeout: 40 }] },
-          ],
-        },
+        hooks: { PostToolUse: [{ hooks: [{ type: "command", command: editCommand(), timeout: 40 }] }] },
       }),
     );
 
@@ -686,12 +680,37 @@ describe("installHooks", () => {
     expect(installHooks(env)).toMatchObject({ refreshed: 1 });
     const after = JSON.parse(readFileSync(configs(env).claude, "utf8"));
     expect(after.hooks.PostToolUse).toEqual([
-      { hooks: [{ type: "command", command: hookCommand("claude", env) }] },
       {
         matcher: "Edit|Write|MultiEdit|NotebookEdit",
         hooks: [{ type: "command", command: editCommand(), timeout: 40 }],
       },
     ]);
+    expect(installHooks(env).written).toEqual([]);
+  });
+
+  test("a spool hook it once installed after every tool is removed, and the hooks around it stay", () => {
+    const dir = newRoot();
+    const env = hookEnv(dir, ["claude"]);
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    installHooks(env);
+    const installed = JSON.parse(readFileSync(configs(env).claude, "utf8"));
+    const spool = { type: "command", command: hookCommand("claude", env) };
+    installed.hooks.PostToolUse = [
+      { hooks: [spool] },
+      { hooks: [{ type: "command", command: "user-formatter" }, spool] },
+      ...installed.hooks.PostToolUse,
+    ];
+    writeFileSync(configs(env).claude, JSON.stringify(installed));
+
+    expect(planHooks(env).filter((p) => p.state === "retired")).toHaveLength(2);
+    expect(installHooks(env)).toMatchObject({ retired: 2, refreshed: 0 });
+    const after = JSON.parse(readFileSync(configs(env).claude, "utf8"));
+    expect(after.hooks.PostToolUse).toEqual([
+      { hooks: [{ type: "command", command: "user-formatter" }] },
+      { matcher: "Edit|Write|MultiEdit|NotebookEdit", hooks: [{ type: "command", command: editCommand() }] },
+    ]);
+    expect(after.hooks.SessionEnd).toEqual([{ hooks: [spool] }]);
+    expect(planHooks(env).every((p) => p.state === "installed")).toBe(true);
     expect(installHooks(env).written).toEqual([]);
   });
 
@@ -716,10 +735,9 @@ describe("installHooks", () => {
       }),
     );
 
-    expect(installHooks(env)).toMatchObject({ refreshed: 2 });
+    expect(installHooks(env)).toMatchObject({ refreshed: 1, retired: 1 });
     const after = JSON.parse(readFileSync(configs(env).claude, "utf8"));
     expect(after.hooks.PostToolUse).toEqual([
-      { hooks: [{ type: "command", command: hookCommand("claude", env) }] },
       {
         matcher: "Edit|Write|MultiEdit|NotebookEdit",
         hooks: [{ type: "command", command: editCommand() }],

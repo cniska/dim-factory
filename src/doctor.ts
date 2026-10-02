@@ -37,7 +37,7 @@ function unreadable(name: string, error: ConfigRefusal): Health {
 }
 
 type HookRead =
-  | { read: true; harnesses: number; missing: HookPlan[]; stale: HookPlan[] }
+  | { read: true; harnesses: number; missing: HookPlan[]; stale: HookPlan[]; retired: HookPlan[] }
   | { read: false; error: ConfigRefusal };
 
 function readHooks(env: Env): HookRead {
@@ -59,7 +59,7 @@ function sessionHooks(hooks: HookRead): Health {
       fix: "install codex or claude, then dim hooks install",
     };
   }
-  if (hooks.missing.length === 0 && hooks.stale.length === 0) {
+  if (hooks.missing.length === 0 && hooks.stale.length === 0 && hooks.retired.length === 0) {
     return { name: "hooks", state: "ok", detail: "installed" };
   }
   const counts = [
@@ -67,6 +67,8 @@ function sessionHooks(hooks: HookRead): Health {
       `${hooks.missing.length} missing (${hooks.missing.map((p) => p.event).join(", ")})`,
     hooks.stale.length > 0 &&
       `${hooks.stale.length} out of date (${hooks.stale.map(outdatedLabel).join(", ")})`,
+    hooks.retired.length > 0 &&
+      `${hooks.retired.length} retired (${hooks.retired.map((p) => `${p.event}: ${p.kind}`).join(", ")})`,
   ].filter((c): c is string => c !== false);
   return {
     name: "hooks",
