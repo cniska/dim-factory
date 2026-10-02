@@ -1,10 +1,8 @@
 import { checkTask, formatTask } from "./declared-tasks";
 import { checkoutRoot } from "./git-checkout";
-import type { HarnessName } from "./harness-registry";
 
-export function wireFor(tool: HarnessName, block: string): string {
+export function wireFor(block: string): string {
   if (block === "") return "";
-  if (tool === "claude") return block;
   return JSON.stringify({
     hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: block },
   });

@@ -22,8 +22,7 @@ describe("session-start context", () => {
       expect(line).toContain("format `bun run format`");
       expect(line).not.toContain("lint");
       expect(line).not.toContain("make test");
-      expect(wireFor("claude", line)).toBe(line);
-      expect(JSON.parse(wireFor("codex", line))).toEqual({
+      expect(JSON.parse(wireFor(line))).toEqual({
         hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: line },
       });
     } finally {
@@ -36,7 +35,7 @@ describe("session-start context", () => {
     try {
       mkdirSync(join(root, ".git"));
       expect(projectLine(root)).toBe("");
-      expect(wireFor("codex", "")).toBe("");
+      expect(wireFor("")).toBe("");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

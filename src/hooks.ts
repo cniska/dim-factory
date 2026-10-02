@@ -32,7 +32,7 @@ function hookKind(command: string, tool: HarnessName, env: Env): HookKind | null
     )
   )
     return "spool";
-  if (new RegExp(`^(?:\\S*/)?dim hooks start --tool=${tool} 2>/dev/null \\|\\| true$`).test(bare))
+  if (new RegExp(`^(?:\\S*/)?dim hooks start(?: --tool=${tool})? 2>/dev/null \\|\\| true$`).test(bare))
     return "start";
   if (/^(?:\S*\/)?dim hooks edit 2>\/dev\/null \|\| true$/.test(bare)) return "edit";
   return null;

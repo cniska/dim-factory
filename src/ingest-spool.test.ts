@@ -356,7 +356,8 @@ describe("installHooks", () => {
     expect(after.hooks.SessionEnd[1].hooks[0].command).toBe(hookCommand("claude", env));
     expect(after.hooks.SessionStart).toHaveLength(2);
     expect(after.hooks.SessionStart[0].hooks[0].command).toBe(hookCommand("claude", env, "SessionStart"));
-    expect(after.hooks.SessionStart[1].hooks[0].command).toBe(startCommand("claude"));
+    expect(after.hooks.SessionStart[1].hooks[0].command).toBe(startCommand());
+    expect(startCommand()).not.toContain("--tool");
     expect(after.hooks.PostToolUse).toHaveLength(1);
     expect(after.hooks.PostToolUse[0].hooks[0].command).toBe(editCommand());
     expect(readFileSync(`${paths.claude}.dim-backup`, "utf8")).toContain("existing-notifier");
@@ -384,6 +385,24 @@ describe("installHooks", () => {
     expect(after.hooks.SessionEnd[0].hooks[0].command).toBe(`echo ${toolSpoolDir("claude", env)}`);
     expect(after.hooks.PostToolUse).toHaveLength(2);
     expect(after.hooks.SessionEnd).toHaveLength(2);
+  });
+
+  test("a start hook that still names its harness is refreshed in place, not run twice", () => {
+    const dir = newRoot();
+    const env = hookEnv(dir, ["claude"]);
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    const old = `${dimPath()} hooks start --tool=claude 2>/dev/null || true # dim-hook:3`;
+    writeFileSync(
+      configs(env).claude,
+      JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: old }] }] } }),
+    );
+
+    expect(installHooks(env).refreshed).toBe(1);
+    const after = JSON.parse(readFileSync(configs(env).claude, "utf8"));
+    const starts = after.hooks.SessionStart.flatMap((entry: { hooks: { command: string }[] }) =>
+      entry.hooks.map((hook) => hook.command),
+    ).filter((command: string) => command.includes("hooks start"));
+    expect(starts).toEqual([startCommand()]);
   });
 
   test("an older spool hook is refreshed in place", () => {
@@ -560,7 +579,7 @@ describe("installHooks", () => {
     const dir = newRoot();
     const env = hookEnv(dir);
     mkdirSync(join(dir, ".claude"), { recursive: true });
-    const old = hookCommand("claude", env).replace("dim-hook:3", "dim-hook:2");
+    const old = hookCommand("claude", env).replace(`dim-hook:${HOOK_CONTRACT_VERSION}`, "dim-hook:2");
     writeFileSync(
       configs(env).claude,
       JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: old }] }] } }),

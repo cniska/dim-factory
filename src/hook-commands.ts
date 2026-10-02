@@ -2,7 +2,7 @@ import { HARNESSES, type HarnessName } from "./harness-registry";
 import { toolSpoolDir } from "./ingest-spool";
 import type { Env } from "./paths";
 
-export const HOOK_CONTRACT_VERSION = 3;
+export const HOOK_CONTRACT_VERSION = 4;
 
 const CONTRACT_MARKER = /#\s*dim-hook:(\d+)\s*$/;
 
@@ -28,8 +28,8 @@ export function hookCommand(tool: HarnessName, env: Env = process.env, event?: s
   );
 }
 
-export function startCommand(tool: HarnessName): string {
-  return marked(`${dimPath()} hooks start --tool=${tool} 2>/dev/null || true`);
+export function startCommand(): string {
+  return marked(`${dimPath()} hooks start 2>/dev/null || true`);
 }
 
 export function editCommand(): string {
@@ -53,7 +53,7 @@ export function wantedHooks(tool: HarnessName, env: Env = process.env): WantedHo
   });
   return [
     spool("SessionStart"),
-    { event: "SessionStart", kind: "start", command: startCommand(tool) },
+    { event: "SessionStart", kind: "start", command: startCommand() },
     spool("SessionEnd"),
     {
       event: "PostToolUse",
